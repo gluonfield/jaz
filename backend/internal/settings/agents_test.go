@@ -266,11 +266,11 @@ func TestNormalizeAgentDefaultsRejectsModelSpecificUnsupportedReasoning(t *testi
 	input := testAgentDefaultsSeed()
 	claude := input.ACP["claude"]
 	claude.Model = "sonnet"
-	claude.ReasoningEffort = "xhigh"
+	claude.ReasoningEffort = "minimal"
 	input.ACP["claude"] = claude
 
 	_, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), modelcatalog.NewService(nil))
-	if err == nil || !strings.Contains(err.Error(), `reasoning effort "xhigh" is not supported for claude model "sonnet"`) {
+	if err == nil || !strings.Contains(err.Error(), `reasoning effort "minimal" is not supported for claude model "sonnet"`) {
 		t.Fatalf("err = %v", err)
 	}
 }

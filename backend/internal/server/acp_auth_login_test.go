@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testexec"
 )
@@ -36,7 +37,7 @@ echo {} > "%CODEX_HOME%\auth.json"
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/codex/auth/login", strings.NewReader(`{"auth":{"mode":"jaz_profile"}}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -92,7 +93,7 @@ echo ok
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/codex/auth/login", strings.NewReader(`{"auth":{"mode":"jaz_profile"}}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -141,7 +142,7 @@ echo {} > "%CODEX_HOME%\auth.json"
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/codex/auth/login", strings.NewReader(`{"auth":{"mode":"jaz_profile"}}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -208,7 +209,7 @@ echo {} > "%CODEX_HOME%\auth.json"
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	body, err := json.Marshal(map[string]any{"auth": map[string]string{"mode": "existing_cli", "path": existing}})
 	if err != nil {
@@ -254,7 +255,7 @@ echo ok
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/codex/auth/login", strings.NewReader(`{"auth":{"mode":"jaz_profile"}}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -296,7 +297,7 @@ echo {} > "%HOME%\.grok\auth.json"
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/grok/auth/login", strings.NewReader(`{"auth":{"mode":"existing_cli"}}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -340,7 +341,7 @@ echo ok
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/grok/auth/login", nil)
 	res := httptest.NewRecorder()

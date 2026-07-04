@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/providerstore"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -24,7 +25,7 @@ func newProvidersTestServer(t *testing.T) (http.Handler, *sqlitestore.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return (&Server{Store: store, Root: root, Providers: source}).Handler(), store
+	return (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler(), store
 }
 
 func TestProvidersCRUDLifecycle(t *testing.T) {

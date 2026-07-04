@@ -59,7 +59,7 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 	}
 	switch strings.TrimSpace(meta.ID) {
 	case provider.ProviderOpenAI, codexOpenAIAPIKeyProvider:
-		return OpenAIModels(), nil
+		return s.enrichReasoning(OpenAIModels()), nil
 	case provider.ProviderOpenRouter:
 		models, ok := s.providerModelSnapshot(meta)
 		if !ok {
@@ -72,6 +72,53 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 		}
 		return []Model{}, nil
 	}
+}
+
+// AgentModels returns the curated models for an agent with reasoning efforts
+// filled from the OpenRouter catalog, the sole source of per-model effort
+// truth. Models it doesn't know keep nil efforts and resolve to the agent's
+// harness efforts downstream.
+func (s *Service) AgentModels(agent string) []Model {
+	agent = strings.ToLower(strings.TrimSpace(agent))
+	models := s.enrichReasoning(AgentModels(agent))
+	if agent == "claude" {
+		for i := range models {
+			models[i].ReasoningEfforts = withUltracode(models[i].ReasoningEfforts)
+		}
+	}
+	return models
+}
+
+func (s *Service) enrichReasoning(models []Model) []Model {
+	for i := range models {
+		source, ok := s.openRouterModel(models[i].OpenRouterID)
+		if !ok {
+			continue
+		}
+		models[i].ReasoningEfforts = source.ReasoningEfforts
+		models[i].ReasoningDefaultEffort = source.ReasoningDefaultEffort
+		models[i].ReasoningMandatory = source.ReasoningMandatory
+	}
+	return models
+}
+
+func (s *Service) openRouterModel(id string) (Model, bool) {
+	if id == "" {
+		return Model{}, false
+	}
+	meta, ok := s.providerMeta(provider.ProviderOpenRouter)
+	if !ok {
+		return Model{}, false
+	}
+	key := modelCatalogKey(meta)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, model := range s.providerModels[key] {
+		if model.Value == id {
+			return cloneModel(model), true
+		}
+	}
+	return Model{}, false
 }
 
 func (s *Service) ValidateReasoningEffort(agent, providerID, model, effort string) error {
@@ -103,7 +150,7 @@ func (s *Service) ValidateReasoningEffort(agent, providerID, model, effort strin
 
 func (s *Service) reasoningEfforts(agent, providerID, model string) ([]string, bool, error) {
 	agent = strings.ToLower(strings.TrimSpace(agent))
-	if model, ok := findModel(AgentModels(agent), model); ok {
+	if model, ok := findModel(s.AgentModels(agent), model); ok {
 		if model.ReasoningEfforts == nil {
 			if efforts := harnessReasoningEfforts(agent); efforts != nil {
 				return efforts, true, nil
@@ -135,9 +182,9 @@ func (s *Service) reasoningEfforts(agent, providerID, model string) ([]string, b
 func harnessReasoningEfforts(agent string) []string {
 	switch agent {
 	case "codex":
-		return cloneStrings(codexReasoningEfforts)
+		return cloneStrings(codexHarnessEfforts)
 	case "claude":
-		return cloneStrings(claudeLongThinkingEfforts)
+		return cloneStrings(claudeHarnessEfforts)
 	default:
 		return nil
 	}

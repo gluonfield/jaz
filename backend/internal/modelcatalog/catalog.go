@@ -1,6 +1,9 @@
 package modelcatalog
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 type Pricing struct {
 	Input      float64 `json:"input"`
@@ -21,30 +24,61 @@ type Model struct {
 	ReasoningMandatory     bool     `json:"reasoning_mandatory,omitempty"`
 }
 
+// reasoningEffortRank orders efforts from fastest to smartest; every list the
+// catalog serves follows this canonical order so consumers (validation errors,
+// effort sliders) never re-sort.
+var reasoningEffortRank = map[string]int{
+	"none": 0, "minimal": 1, "low": 2, "medium": 3, "high": 4, "xhigh": 5, "max": 6, "ultracode": 7,
+}
+
+func sortReasoningEfforts(efforts []string) {
+	sort.SliceStable(efforts, func(i, j int) bool {
+		return reasoningEffortRank[efforts[i]] < reasoningEffortRank[efforts[j]]
+	})
+}
+
+// withUltracode appends the Claude Code harness level to efforts that include
+// xhigh: ultracode is built on xhigh thinking and never appears in provider
+// catalogs. Idempotent, so it applies to static and enriched lists alike.
+func withUltracode(efforts []string) []string {
+	hasXhigh := false
+	for _, effort := range efforts {
+		if effort == "ultracode" {
+			return efforts
+		}
+		hasXhigh = hasXhigh || effort == "xhigh"
+	}
+	if !hasXhigh {
+		return efforts
+	}
+	return append(efforts, "ultracode")
+}
+
+// Curated models carry no effort data: the OpenRouter catalog is the only
+// source of per-model supported efforts (Service.enrichReasoning fills them
+// by OpenRouterID). Models it doesn't know fall back to the agent's harness
+// efforts, which is the correct agent-level truth, not a compat shim.
 var (
-	openAIReasoningEfforts        = []string{"xhigh", "high", "medium", "low", "none"}
-	codexReasoningEfforts         = []string{"minimal", "low", "medium", "high", "xhigh", "none"}
-	claudeLongThinkingEfforts     = []string{"low", "medium", "high", "xhigh", "max", "ultracode"}
-	claudeStandardThinkingEfforts = []string{"low", "medium", "high", "max"}
-	noReasoningEfforts            = []string{}
-	openAIModels                  = []Model{
-		{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5", ReasoningEfforts: openAIReasoningEfforts},
-		{Value: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini", ReasoningEfforts: openAIReasoningEfforts},
-		{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Tuned for coding", ContextLength: 400000, ReasoningEfforts: openAIReasoningEfforts},
+	codexHarnessEfforts  = []string{"none", "minimal", "low", "medium", "high", "xhigh"}
+	claudeHarnessEfforts = []string{"low", "medium", "high", "xhigh", "max", "ultracode"}
+	openAIModels         = []Model{
+		{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
+		{Value: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
+		{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Tuned for coding", ContextLength: 400000},
 	}
 	agentModels = map[string][]Model{
 		"codex": {
-			{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5", ReasoningEfforts: codexReasoningEfforts},
-			{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Account-gated research preview", ContextLength: 400000, ReasoningEfforts: codexReasoningEfforts},
-			{Value: "gpt-5.4", Label: "GPT-5.4", Description: "Strong coding model", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4", ReasoningEfforts: codexReasoningEfforts},
-			{Value: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini", ReasoningEfforts: codexReasoningEfforts},
+			{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
+			{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Account-gated research preview", ContextLength: 400000},
+			{Value: "gpt-5.4", Label: "GPT-5.4", Description: "Strong coding model", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4"},
+			{Value: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
 		},
 		"claude": {
-			{Value: "default", Label: "Default (Opus 4.8)", Description: "Opus 4.8 with 1M context · Recommended", ContextLength: 1000000, OpenRouterID: "anthropic/claude-opus-4.8", ReasoningEfforts: claudeLongThinkingEfforts},
-			{Value: "claude-fable-5[1m]", Label: "Fable 5", Description: "Most capable for the hardest tasks", ContextLength: 1000000, OpenRouterID: "anthropic/claude-fable-5", ReasoningEfforts: claudeLongThinkingEfforts},
-			{Value: "sonnet", Label: "Sonnet 5", Description: "Efficient for routine tasks", ContextLength: 200000, OpenRouterID: "anthropic/claude-sonnet-5", ReasoningEfforts: claudeStandardThinkingEfforts},
-			{Value: "sonnet[1m]", Label: "Sonnet 5 (1M context)", Description: "Draws from usage credits", ContextLength: 1000000, OpenRouterID: "anthropic/claude-sonnet-5", ReasoningEfforts: claudeStandardThinkingEfforts},
-			{Value: "haiku", Label: "Haiku 4.5", Description: "Fastest for quick answers", ContextLength: 200000, OpenRouterID: "anthropic/claude-haiku-4.5", ReasoningEfforts: noReasoningEfforts},
+			{Value: "default", Label: "Default (Opus 4.8)", Description: "Opus 4.8 with 1M context · Recommended", ContextLength: 1000000, OpenRouterID: "anthropic/claude-opus-4.8"},
+			{Value: "claude-fable-5[1m]", Label: "Fable 5", Description: "Most capable for the hardest tasks", ContextLength: 1000000, OpenRouterID: "anthropic/claude-fable-5"},
+			{Value: "sonnet", Label: "Sonnet 5", Description: "Efficient for routine tasks", ContextLength: 200000, OpenRouterID: "anthropic/claude-sonnet-5"},
+			{Value: "sonnet[1m]", Label: "Sonnet 5 (1M context)", Description: "Draws from usage credits", ContextLength: 1000000, OpenRouterID: "anthropic/claude-sonnet-5"},
+			{Value: "haiku", Label: "Haiku 4.5", Description: "Fastest for quick answers", ContextLength: 200000, OpenRouterID: "anthropic/claude-haiku-4.5"},
 		},
 		"grok": {
 			{Value: "grok-build", Label: "Grok Build", Description: "Best for advanced coding tasks", ContextLength: 512000, OpenRouterID: "x-ai/grok-build-0.1"},
@@ -74,14 +108,18 @@ func Clone(models []Model) []Model {
 func cloneModels(models []Model) []Model {
 	out := make([]Model, len(models))
 	for i, model := range models {
-		out[i] = model
-		out[i].ReasoningEfforts = cloneStrings(model.ReasoningEfforts)
-		if model.Pricing != nil {
-			pricing := *model.Pricing
-			out[i].Pricing = &pricing
-		}
+		out[i] = cloneModel(model)
 	}
 	return out
+}
+
+func cloneModel(model Model) Model {
+	model.ReasoningEfforts = cloneStrings(model.ReasoningEfforts)
+	if model.Pricing != nil {
+		pricing := *model.Pricing
+		model.Pricing = &pricing
+	}
+	return model
 }
 
 func cloneStrings(values []string) []string {

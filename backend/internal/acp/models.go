@@ -629,14 +629,11 @@ func configuredReasoningEffort(value string) string {
 	return effort
 }
 
-func AgentOptionsFor(name string) AgentOptions {
-	return AgentOptionsForConfig(name, AgentConfig{})
-}
-
+// AgentOptionsForConfig fills the harness-level options; the caller owns
+// Models, which carry per-model reasoning truth from the model catalog.
 func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 	options := AgentOptions{
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
-		Models:           modelcatalog.AgentModels(name),
 	}
 	options.Local = cfg.Local
 	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)

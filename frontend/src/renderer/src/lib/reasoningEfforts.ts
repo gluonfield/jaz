@@ -56,14 +56,13 @@ export function modelReasoningEffortOptions(
   model: string,
   suggestions: ModelSuggestion[],
 ): ReasoningEffortOption[] {
-  if (agent === 'codex') return runtimeOptionsFromAgent(settings, agent)
+  const agentOptions = acpReasoningEffortOptions(settings, agent)
   const values = modelReasoningEfforts(model, suggestions)
-  if (values === undefined) return acpReasoningEffortOptions(settings, agent)
+  if (values === undefined) return agentOptions
   if (values.length === 0) return [NO_REASONING_EFFORT_OPTION]
   return dedupeReasoningOptions([
     { value: '', label: 'Default' },
-    NO_REASONING_EFFORT_OPTION,
-    ...values.map(reasoningOption),
+    ...harnessSupported(values, agentOptions).map(reasoningOption),
   ])
 }
 
@@ -73,13 +72,23 @@ export function modelSettingsReasoningEffortOptions(
   model: string,
   suggestions: ModelSuggestion[],
 ): ReasoningEffortOption[] {
-  if (agent === 'codex') return settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))
+  const agentOptions = acpReasoningEffortOptions(settings, agent)
   const values = modelReasoningEfforts(model, suggestions)
-  if (values === undefined) return settingsReasoningOptions(acpReasoningEffortOptions(settings, agent))
+  if (values === undefined) return settingsReasoningOptions(agentOptions)
   return settingsReasoningOptions([
     { value: '', label: 'None' },
-    ...values.filter((value) => value !== 'none').map(reasoningOption),
+    ...harnessSupported(values, agentOptions)
+      .filter((value) => value !== 'none')
+      .map(reasoningOption),
   ])
+}
+
+// A model's efforts gated by what the agent harness accepts: an agent CLI
+// rejects levels it doesn't know even when the model supports them (e.g.
+// codex has no max). 'none' always passes — agents map it to "no reasoning".
+function harnessSupported(values: string[], agentOptions: ReasoningEffortOption[]): string[] {
+  const supported = new Set(agentOptions.map((option) => option.value))
+  return values.filter((value) => value === 'none' || supported.has(value))
 }
 
 export function supportedReasoningEffort(value: string, options: ReasoningEffortOption[]): boolean {
@@ -113,17 +122,6 @@ function modelReasoningEfforts(model: string, suggestions: ModelSuggestion[]): s
 
 function reasoningOption(value: string): ReasoningEffortOption {
   return { value, label: REASONING_LABELS[value] ?? value }
-}
-
-function runtimeOptionsFromAgent(
-  settings: AgentSettings | undefined,
-  agent: string,
-): ReasoningEffortOption[] {
-  return dedupeReasoningOptions([
-    { value: '', label: 'Default' },
-    NO_REASONING_EFFORT_OPTION,
-    ...acpReasoningEffortOptions(settings, agent).filter((option) => option.value !== ''),
-  ])
 }
 
 function dedupeReasoningOptions(options: ReasoningEffortOption[]): ReasoningEffortOption[] {
