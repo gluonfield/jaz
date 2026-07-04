@@ -140,7 +140,7 @@ func ApplyModelProviderConfig(meta ModelProvider, cfg ModelProviderConfig) Model
 		meta.Codex = true
 		meta.OpenAICompatible = true
 	}
-	if strings.TrimSpace(meta.APIKeyEnv) == "" {
+	if strings.TrimSpace(meta.APIKeyEnv) == "" && (!builtIn || strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(cfg.APIKeyEnv) != "") {
 		meta.APIKeyEnv = ConfiguredAPIKeyEnv(meta.ID, cfg)
 	}
 	if strings.TrimSpace(cfg.APIKey) != "" || strings.TrimSpace(meta.APIKeyEnv) != "" {
