@@ -14,19 +14,37 @@ const (
 )
 
 type MemorySettings struct {
-	Enabled bool   `json:"enabled"`
-	Agent   string `json:"agent,omitempty"`
+	Enabled         bool   `json:"enabled"`
+	Agent           string `json:"agent,omitempty"`
+	Model           string `json:"model,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 type memorySettingsStorage struct {
 	Enabled           bool   `json:"enabled"`
 	Agent             string `json:"agent,omitempty"`
+	Model             string `json:"model,omitempty"`
+	ReasoningEffort   string `json:"reasoning_effort,omitempty"`
 	LegacyDreamAgent  string `json:"dream_agent,omitempty"`
 	LegacySearchAgent string `json:"search_agent,omitempty"`
 }
 
 func DefaultMemorySettings() MemorySettings {
 	return MemorySettings{Enabled: true}
+}
+
+func (m MemorySettings) WorkerModel(defaults AgentDefaults) string {
+	if m.Model != "" {
+		return m.Model
+	}
+	return WorkerAgentModel(m.Agent, defaults)
+}
+
+func (m MemorySettings) WorkerReasoningEffort() string {
+	if m.ReasoningEffort != "" {
+		return m.ReasoningEffort
+	}
+	return WorkerAgentReasoningEffort(m.Agent)
 }
 
 func LoadMemorySettings(store storage.SettingsStorage) (MemorySettings, error) {
@@ -42,13 +60,17 @@ func LoadMemorySettings(store storage.SettingsStorage) (MemorySettings, error) {
 		return MemorySettings{}, err
 	}
 	return MemorySettings{
-		Enabled: stored.Enabled,
-		Agent:   firstMemoryAgent(stored.Agent, stored.LegacySearchAgent, stored.LegacyDreamAgent),
+		Enabled:         stored.Enabled,
+		Agent:           firstMemoryAgent(stored.Agent, stored.LegacySearchAgent, stored.LegacyDreamAgent),
+		Model:           strings.TrimSpace(stored.Model),
+		ReasoningEffort: strings.TrimSpace(stored.ReasoningEffort),
 	}, nil
 }
 
 func SaveMemorySettings(store storage.SettingsStorage, settings MemorySettings) (MemorySettings, error) {
 	settings.Agent = strings.TrimSpace(settings.Agent)
+	settings.Model = strings.TrimSpace(settings.Model)
+	settings.ReasoningEffort = strings.TrimSpace(settings.ReasoningEffort)
 	data, err := json.Marshal(settings)
 	if err != nil {
 		return MemorySettings{}, err

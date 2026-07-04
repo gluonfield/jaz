@@ -107,7 +107,7 @@ func (r *Runner) RunOnce(ctx context.Context) (int, error) {
 	if len(sources) == 0 {
 		return len(batch.Missing), nil
 	}
-	if err := r.capture(ctx, agent, batch.Sources); err != nil {
+	if err := r.capture(ctx, settings, batch.Sources); err != nil {
 		_ = r.Queue.Release(context.Background(), sources)
 		return 0, err
 	}
@@ -132,7 +132,8 @@ func (r *Runner) RunUntilIdle(ctx context.Context) (int, error) {
 // the restricted worker with the source-memory system prompt, sends the batch,
 // and waits for the session to finish. Queue bookkeeping is the caller's job;
 // capture only reports whether the agent completed cleanly.
-func (r *Runner) capture(ctx context.Context, agent string, sources []batchSource) error {
+func (r *Runner) capture(ctx context.Context, settings agentsettings.MemorySettings, sources []batchSource) error {
+	agent := acp.CanonicalAgentName(settings.Agent)
 	defaults, err := agentsettings.LoadAgentDefaults(r.Store)
 	if errors.Is(err, storage.ErrSettingNotFound) {
 		defaults = agentsettings.DefaultAgentDefaults()
@@ -149,8 +150,8 @@ func (r *Runner) capture(ctx context.Context, agent string, sources []batchSourc
 		Slug:                   fmt.Sprintf("memory-source-%s-%s", agent, stamp),
 		Title:                  "Memory Source Capture",
 		Directory:              r.Root,
-		Model:                  agentsettings.WorkerAgentModel(agent, defaults),
-		ReasoningEffort:        agentsettings.WorkerAgentReasoningEffort(agent),
+		Model:                  settings.WorkerModel(defaults),
+		ReasoningEffort:        settings.WorkerReasoningEffort(),
 		SourceType:             storage.SourceMemorySource,
 		SourceID:               stamp,
 		SystemPromptExtensions: promptmodule.New(memorysourceprompt.System()),

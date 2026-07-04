@@ -68,8 +68,8 @@ func (r *Runner) SearchMemory(ctx context.Context, req memoryservice.AgenticSear
 		Slug:            fmt.Sprintf("memory-search-%s-%d", agent, stamp),
 		Title:           "Memory Search",
 		Directory:       workerDirectory,
-		Model:           jazsettings.WorkerAgentModel(agent, agentDefaults),
-		ReasoningEffort: jazsettings.WorkerAgentReasoningEffort(agent),
+		Model:           settings.WorkerModel(agentDefaults),
+		ReasoningEffort: settings.WorkerReasoningEffort(),
 		SourceType:      storage.SourceMemorySearch,
 		SourceID:        fmt.Sprintf("%d", stamp),
 		SystemPromptExtensions: promptmodule.New(

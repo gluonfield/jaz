@@ -17,11 +17,12 @@ import {
   memoryQuery,
   reindexMemory,
   saveMemoryHorizon,
-  updateMemoryEnabled,
   updateMemorySettings,
 } from '@/lib/api/memory'
 import type { MemoryHorizon, MemoryQueueStatus, MemoryStatus, MemoryTask } from '@/lib/api/types'
 import { enabledACPAgents } from '@/lib/agentRuntimes'
+import { acpAgentModelSuggestions, modelSuggestionLabel } from '@/lib/models'
+import { modelReasoningEffortOptions, reasoningEffortLabel } from '@/lib/reasoningEfforts'
 import { keys } from '@/lib/query/keys'
 
 const HORIZON_DESCRIPTIONS: Record<string, string> = {
@@ -99,16 +100,10 @@ export function MemorySettings() {
 
   const setStatus = (next: MemoryStatus) => queryClient.setQueryData(keys.memory, next)
 
-  const toggle = useMutation({
-    mutationFn: updateMemoryEnabled,
+  const update = useMutation({
+    mutationFn: updateMemorySettings,
     onSuccess: setStatus,
-    onError: (error: Error) => toast(`Couldn't update memory: ${error.message}`, 'danger'),
-  })
-
-  const setMemoryAgent = useMutation({
-    mutationFn: (agent: string) => updateMemorySettings({ agent }),
-    onSuccess: setStatus,
-    onError: (error: Error) => toast(`Couldn't update memory agent: ${error.message}`, 'danger'),
+    onError: (error: Error) => toast(`Couldn't update memory settings: ${error.message}`, 'danger'),
   })
 
   const reindex = useMutation({
@@ -200,6 +195,33 @@ export function MemorySettings() {
     !selectedMemoryAgent || memoryAgents.includes(selectedMemoryAgent) || agentSettings.isPending
   const summary = memoryStatusSummary(memory, selectedMemoryAgent, memoryAgentValid)
 
+  const modelSuggestions = selectedMemoryAgent
+    ? acpAgentModelSuggestions(agentSettings.data, selectedMemoryAgent)
+    : []
+  const defaultModelLabel = memory.default_model
+    ? modelSuggestionLabel(modelSuggestions, memory.default_model)
+    : 'Agent default'
+  const memoryModelOptions = [
+    { value: '', label: `${defaultModelLabel} · default` },
+    ...modelSuggestions.map((s) => ({ value: s.value, label: s.label })),
+  ]
+  const effectiveMemoryModel = memory.model || memory.default_model || ''
+  const baseEffortOptions = modelReasoningEffortOptions(
+    agentSettings.data,
+    selectedMemoryAgent,
+    effectiveMemoryModel,
+    modelSuggestions,
+  )
+  const defaultEffortLabel = memory.default_reasoning_effort
+    ? reasoningEffortLabel(memory.default_reasoning_effort, baseEffortOptions)
+    : ''
+  const memoryEffortOptions = baseEffortOptions.map((option) =>
+    option.value === ''
+      ? { value: '', label: defaultEffortLabel ? `${defaultEffortLabel} · default` : 'Default' }
+      : option,
+  )
+  const memoryEffort = memory.reasoning_effort ?? ''
+
   return (
     <div className="flex flex-col gap-5 py-5">
       <header>
@@ -217,8 +239,8 @@ export function MemorySettings() {
             <span className="text-[12px] text-ink-2">{enabled ? 'Enabled' : 'Disabled'}</span>
             <Switch
               checked={enabled}
-              disabled={toggle.isPending}
-              onChange={(next) => toggle.mutate(next)}
+              disabled={update.isPending}
+              onChange={(next) => update.mutate({ enabled: next })}
               aria-label="Enable memory"
             />
           </div>
@@ -234,8 +256,8 @@ export function MemorySettings() {
             <Select
               value={selectedMemoryAgent}
               options={memoryAgentOptions}
-              disabled={!enabled || setMemoryAgent.isPending || agentSettings.isPending}
-              onChange={(agent) => setMemoryAgent.mutate(agent)}
+              disabled={!enabled || update.isPending || agentSettings.isPending}
+              onChange={(agent) => update.mutate({ agent })}
               aria-label="Memory agent"
               className="w-full md:w-[260px]"
             />
@@ -244,6 +266,38 @@ export function MemorySettings() {
             ) : null}
           </div>
         </MemorySettingsRow>
+
+        {selectedMemoryAgent ? (
+          <MemorySettingsRow
+            title="Model and reasoning"
+            description={
+              memory.model || memory.reasoning_effort
+                ? 'Custom for memory work.'
+                : 'Fast defaults for background work.'
+            }
+            explanation="Memory upkeep runs many background sessions, so it defaults to a fast, inexpensive model with low reasoning effort. Pick a different model or effort if you want deeper memory work."
+            disabled={!enabled}
+          >
+            <div className="grid gap-1.5">
+              <Select
+                value={memory.model ?? ''}
+                options={memoryModelOptions}
+                disabled={!enabled || update.isPending || agentSettings.isPending}
+                onChange={(model) => update.mutate({ model })}
+                aria-label="Memory model"
+                className="w-full md:w-[260px]"
+              />
+              <Select
+                value={memoryEffort}
+                options={memoryEffortOptions}
+                disabled={!enabled || update.isPending || agentSettings.isPending}
+                onChange={(effort) => update.mutate({ reasoning_effort: effort })}
+                aria-label="Memory reasoning effort"
+                className="w-full md:w-[260px]"
+              />
+            </div>
+          </MemorySettingsRow>
+        ) : null}
       </SettingsCard>
 
       {enabled ? (

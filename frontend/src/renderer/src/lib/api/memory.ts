@@ -11,14 +11,12 @@ export const memoryQuery = queryOptions({
 export interface MemorySettingsInput {
   enabled?: boolean
   agent?: string
+  model?: string
+  reasoning_effort?: string
 }
 
 export function updateMemorySettings(input: MemorySettingsInput): Promise<MemoryStatus> {
   return put<MemoryStatus>('/v1/memory', input)
-}
-
-export function updateMemoryEnabled(enabled: boolean): Promise<MemoryStatus> {
-  return updateMemorySettings({ enabled })
 }
 
 export function saveMemoryHorizon(name: string, content: string): Promise<MemoryHorizon> {
