@@ -137,12 +137,12 @@ export function ModelBreakdown({
               </div>
               <div className="divide-y divide-border/60">
                 <AnimatedList>
-                  {visible.map(({ model, cost: modelCost }) => (
+                  {visible.map(({ model, label, cost: modelCost }) => (
                     <AnimatedListItem
                       key={`${model.agent ?? ''}:${model.model_provider ?? ''}:${model.model ?? ''}`}
                     >
                       <ModelTableRow
-                        label={modelName(model)}
+                        label={label}
                         meta={formatModelMeta(model)}
                         usage={model.usage}
                         cost={modelCost == null ? null : formatUsd(modelCost)}
@@ -404,10 +404,6 @@ function tokenText(value: number): string | null {
   return value > 0 ? formatTokens(value) : null
 }
 
-function modelName(model: UsageModelTotals): string {
-  return model.model?.trim() || 'Unknown model'
-}
-
 function formatModelMeta(model: UsageModelTotals): string {
   const parts = [model.agent, model.model_provider].map((part) => part?.trim()).filter(Boolean)
   return parts.length > 0 ? parts.join(' / ') : 'ACP'
@@ -440,9 +436,9 @@ const PIE_MAX_SLICES = 6
 
 function buildModelPieEntries(rows: PricedModel[]): ModelPieEntry[] {
   return rows
-    .map(({ model, cost }) => ({
+    .map(({ model, label, cost }) => ({
       id: `model:${model.agent ?? ''}:${model.model_provider ?? ''}:${model.model ?? ''}`,
-      label: modelName(model),
+      label,
       meta: formatModelMeta(model),
       total: totalUsageTokens(model.usage),
       cost,

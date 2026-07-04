@@ -1,5 +1,5 @@
 import type { AgentSettings, UsageTotals } from './api/types'
-import { type ModelPricing, pricingIdForUsage } from './models'
+import { type ModelPricing, pricingIdForUsage, usageModelLabel } from './models'
 import { inputTokens, totalUsageTokens, type UsageModelTotals } from './usageDaily'
 
 export function buildPricingIndex(models: { value: string; pricing?: ModelPricing }[]): Map<string, ModelPricing> {
@@ -19,6 +19,7 @@ function estimateUsageCost(usage: UsageTotals, pricing: ModelPricing): number {
 
 export interface PricedModel {
   model: UsageModelTotals
+  label: string
   cost: number | null
 }
 
@@ -39,7 +40,7 @@ export function priceModels(
     const id = pricingIdForUsage(model, settings)
     const pricing = id ? index.get(id) : undefined
     const cost = pricing ? estimateUsageCost(model.usage, pricing) : null
-    rows.push({ model, cost })
+    rows.push({ model, label: usageModelLabel(model, settings), cost })
     if (cost != null) {
       summary.total += cost
       summary.priced += 1

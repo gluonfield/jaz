@@ -287,7 +287,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 			go func() {
 				for delay := time.Second; ; delay = min(delay*2, time.Minute) {
 					err := catalog.Warm(ctx)
-					if err == nil {
+					if err == nil || ctx.Err() != nil {
 						return
 					}
 					logger.WithPrefix("models").Warn("model provider catalog warmup failed", "error", err, "retry_in", delay)
