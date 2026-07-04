@@ -11,7 +11,7 @@ import { Transcript } from '@/components/session/Transcript'
 import { deriveSessionView, type SessionView } from '@/components/session/sessionView'
 import { IconButton } from '@/components/ui/IconButton'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { useAppearance } from '@/lib/appearance'
+import { toLayoutRect } from '@/lib/dom/zoom'
 import { markThreadSeen } from '@/lib/api/feed'
 import { sessionMessagesQuery, setSessionArchived } from '@/lib/api/sessions'
 import type { FeedItem, Session } from '@/lib/api/types'
@@ -258,7 +258,6 @@ function FeedOverview({
   onSend: SendMessageHandler
 }) {
   const reducedMotion = useReducedMotion()
-  const { settings } = useAppearance()
   const [rect, setRect] = useState<DOMRect | null>(null)
 
   // The card lives in a scroll container, so the panel is portalled out and
@@ -285,14 +284,11 @@ function FeedOverview({
   }, [anchorRef])
 
   if (!rect) return null
-  // getBoundingClientRect is viewport-accurate, but the panel is portalled under
-  // <html>, which the Appearance font size zooms — so fixed left/top get scaled a
-  // second time. Pre-divide by the zoom to cancel it (no-op at the default 1x).
-  const zoom = settings.fontScale
+  const anchor = toLayoutRect(rect)
   const from = reducedMotion ? 0 : -16
   return createPortal(
     <motion.div
-      style={{ position: 'fixed', top: rect.top / zoom, left: (rect.right + 12) / zoom }}
+      style={{ position: 'fixed', top: anchor.top, left: anchor.right + 12 }}
       initial={{ opacity: 0, x: from }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: from }}

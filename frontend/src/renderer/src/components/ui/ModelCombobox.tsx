@@ -2,6 +2,7 @@ import { Check, LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { layoutRect } from '@/lib/dom/zoom'
 import { filterModelSuggestions, type ModelSuggestion } from '@/lib/models'
 
 // Free-text input with a portalled suggestion menu (portalled so it escapes the
@@ -48,7 +49,7 @@ export function ModelCombobox({
   }
 
   useLayoutEffect(() => {
-    if (open && inputRef.current) setRect(inputRef.current.getBoundingClientRect())
+    if (open && inputRef.current) setRect(layoutRect(inputRef.current))
   }, [open])
 
   useEffect(() => {

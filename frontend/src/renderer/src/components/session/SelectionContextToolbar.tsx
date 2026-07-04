@@ -2,6 +2,7 @@ import { MessageSquareQuote } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { layoutViewport, toLayoutRect } from '@/lib/dom/zoom'
 
 interface Pending {
   text: string
@@ -61,7 +62,7 @@ export function SelectionContextToolbar({
       reset()
       return
     }
-    const rect = range.getBoundingClientRect()
+    const rect = toLayoutRect(range.getBoundingClientRect())
     composingRef.current = false
     setComposing(false)
     setComment('')
@@ -133,7 +134,7 @@ export function SelectionContextToolbar({
           transition={{ type: 'spring', duration: 0.22, bounce: 0 }}
           style={{
             top: Math.max(8, pending.top - 44),
-            left: Math.min(Math.max(pending.left, halfWidth), window.innerWidth - halfWidth),
+            left: Math.min(Math.max(pending.left, halfWidth), layoutViewport().width - halfWidth),
           }}
           className="fixed z-50 -translate-x-1/2"
         >

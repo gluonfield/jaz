@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
+import { layoutRect, layoutViewport } from '@/lib/dom/zoom'
 import { sessionQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
 import { decodeMentions, type Mention } from './mentionCodec'
@@ -130,16 +131,17 @@ function MentionPopover({
     const place = () => {
       const anchor = anchorRef.current
       if (!anchor) return
-      const rect = anchor.getBoundingClientRect()
+      const rect = layoutRect(anchor)
+      const vp = layoutViewport()
       const left = Math.min(
         Math.max(rect.left + rect.width / 2 - POPOVER_WIDTH / 2, VIEWPORT_MARGIN),
-        window.innerWidth - POPOVER_WIDTH - VIEWPORT_MARGIN,
+        vp.width - POPOVER_WIDTH - VIEWPORT_MARGIN,
       )
       const below = rect.top < 220
       setPos(
         below
           ? { left, top: rect.bottom + ANCHOR_GAP, below }
-          : { left, bottom: window.innerHeight - rect.top + ANCHOR_GAP, below },
+          : { left, bottom: vp.height - rect.top + ANCHOR_GAP, below },
       )
     }
     place()
