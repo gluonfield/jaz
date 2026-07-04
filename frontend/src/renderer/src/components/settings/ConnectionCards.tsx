@@ -40,7 +40,8 @@ export function ExistingConnectionCard({
       <ConnectionSummary
         plugin={plugin}
         title={plugin.name}
-        detail={address || account.id}
+        detail={<MaskedAccountDetail value={address || account.id} />}
+        detailTitle="Account hidden until hover or focus"
         meta={sync}
       />
       <Button
@@ -57,6 +58,23 @@ export function ExistingConnectionCard({
   )
 }
 
+function MaskedAccountDetail({ value }: { value: string }) {
+  return (
+    <span
+      tabIndex={0}
+      aria-label={value}
+      className="group/account inline-grid max-w-full cursor-default rounded-[6px] bg-surface-2/70 px-1.5 py-0.5 align-baseline font-mono text-[11px] leading-4 text-ink-2 ring-1 ring-border/50 transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
+      <span className="col-start-1 row-start-1 truncate tracking-[0.16em] text-ink-3 transition-opacity duration-150 group-hover/account:opacity-0 group-focus/account:opacity-0">
+        ************
+      </span>
+      <span className="col-start-1 row-start-1 truncate opacity-0 transition-opacity duration-150 group-hover/account:opacity-100 group-focus/account:opacity-100">
+        {value}
+      </span>
+    </span>
+  )
+}
+
 export function ConnectionPluginCard({
   plugin,
   onOpen,
@@ -70,7 +88,12 @@ export function ConnectionPluginCard({
       onClick={onOpen}
       className="group grid h-full w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-surface px-3 py-3 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
-      <ConnectionSummary plugin={plugin} title={plugin.name} detail={plugin.description} />
+      <ConnectionSummary
+        plugin={plugin}
+        title={plugin.name}
+        detail={plugin.description}
+        detailTitle={plugin.description}
+      />
       <ChevronRight
         size={14}
         className="shrink-0 text-ink-3 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-ink-2"
@@ -83,11 +106,13 @@ function ConnectionSummary({
   plugin,
   title,
   detail,
+  detailTitle,
   meta,
 }: {
   plugin: IntegrationPlugin
   title: string
-  detail?: string
+  detail?: ReactNode
+  detailTitle?: string
   meta?: string
 }) {
   return (
@@ -98,7 +123,7 @@ function ConnectionSummary({
           {title}
         </p>
         {detail ? (
-          <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-ink-2" title={detail}>
+          <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-ink-2" title={detailTitle}>
             {detail}
           </p>
         ) : null}
