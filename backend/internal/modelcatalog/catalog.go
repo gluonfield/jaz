@@ -1,9 +1,6 @@
 package modelcatalog
 
-import (
-	"sort"
-	"strings"
-)
+import "sort"
 
 type Pricing struct {
 	Input      float64 `json:"input"`
@@ -82,18 +79,6 @@ var (
 		},
 	}
 )
-
-func AgentModels(agent string) []Model {
-	return cloneModels(agentModels[strings.ToLower(strings.TrimSpace(agent))])
-}
-
-func OpenAIModels() []Model {
-	return cloneModels(openAIModels)
-}
-
-func Clone(models []Model) []Model {
-	return cloneModels(models)
-}
 
 func cloneModels(models []Model) []Model {
 	out := make([]Model, len(models))

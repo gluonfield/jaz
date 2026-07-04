@@ -22,9 +22,9 @@ export const REASONING_EFFORT_OPTIONS: ReasoningEffortOption[] = [
   { value: 'xhigh', label: 'Extra high' },
 ]
 
-export const NO_REASONING_EFFORT_OPTION: ReasoningEffortOption = { value: 'none', label: 'None' }
+const NO_REASONING_EFFORT_OPTION: ReasoningEffortOption = { value: 'none', label: 'None' }
 
-export function acpReasoningEffortOptions(
+function acpReasoningEffortOptions(
   settings: AgentSettings | undefined,
   agent: string,
 ): ReasoningEffortOption[] {
@@ -34,7 +34,7 @@ export function acpReasoningEffortOptions(
 
 export function reasoningEffortLabel(
   value: string | undefined,
-  options: ReasoningEffortOption[] = REASONING_EFFORT_OPTIONS,
+  options: ReasoningEffortOption[],
 ): string {
   const effort = value ?? ''
   return options.find((option) => option.value === effort)?.label ?? REASONING_LABELS[effort] ?? (effort || 'Default')
@@ -42,9 +42,7 @@ export function reasoningEffortLabel(
 
 // Settings screens treat '' as "no effort configured" (shown as "None") rather
 // than "inherit the default".
-export function settingsReasoningOptions(
-  options: ReasoningEffortOption[] = REASONING_EFFORT_OPTIONS,
-): ReasoningEffortOption[] {
+function settingsReasoningOptions(options: ReasoningEffortOption[]): ReasoningEffortOption[] {
   return dedupeReasoningOptions(options)
     .filter((option) => option.value !== 'none')
     .map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
