@@ -1,5 +1,5 @@
 import type { AgentSettings, ReasoningEffortOption } from './api/types'
-import type { ModelSuggestion } from './models'
+import { modelSuggestionFor, type ModelSuggestion } from './models'
 
 const REASONING_LABELS: Record<string, string> = {
   '': 'Default',
@@ -112,9 +112,7 @@ export function inheritedReasoningEffortOverride(
 }
 
 function modelReasoningEfforts(model: string, suggestions: ModelSuggestion[]): string[] | undefined {
-  const value = model.trim()
-  const suggestion = suggestions.find((item) => item.value === value) ?? (value === '' ? suggestions[0] : undefined)
-  return suggestion?.reasoningEfforts
+  return modelSuggestionFor(suggestions, model)?.reasoningEfforts
 }
 
 function reasoningOption(value: string): ReasoningEffortOption {

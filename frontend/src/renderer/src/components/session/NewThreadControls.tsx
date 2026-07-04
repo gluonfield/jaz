@@ -25,6 +25,7 @@ import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import {
   filterModelSuggestions,
+  modelSuggestionFor,
   modelSuggestionLabel,
   type ModelSuggestion,
 } from '@/lib/models'
@@ -135,8 +136,7 @@ export function ModelSelect({
   const effortValue = effort ?? ''
   const effortLabel = reasoningEffortLabel(effortValue, effortOptions)
   const effortStops = effortOptions.filter((option) => option.value !== '')
-  const selectedSuggestion =
-    suggestions.find((s) => s.value === value) ?? (value === '' ? suggestions[0] : undefined)
+  const selectedSuggestion = modelSuggestionFor(suggestions, value)
   const showEffortSlider = Boolean(onEffortChange) && effortStops.length > 1
   const description = `Model: ${value === '' ? 'default' : value}${
     effortValue ? `, reasoning effort: ${effortLabel}` : ''
