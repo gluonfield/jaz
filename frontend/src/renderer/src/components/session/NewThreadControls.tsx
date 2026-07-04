@@ -141,11 +141,6 @@ export function ModelSelect({
   const description = `Model: ${value === '' ? 'default' : value}${
     effortValue ? `, reasoning effort: ${effortLabel}` : ''
   }`
-  const select = (model: string) => {
-    onChange(model)
-    setOpen(false)
-  }
-
   return (
     <Popover
       open={open}
@@ -190,7 +185,7 @@ export function ModelSelect({
             onKeyDown={(e) => {
               if (e.key === 'Enter' && typed !== '') {
                 e.preventDefault()
-                select(typed)
+                onChange(typed)
               }
             }}
             className="h-7 w-full rounded-full bg-ink/10 px-2.5 text-[12px] text-ink outline-none placeholder:text-ink-3 focus:bg-ink/15"
@@ -210,7 +205,7 @@ export function ModelSelect({
           } overflow-y-auto`}
         >
           {typedIsNew ? (
-            <MenuRow selected={typed === value} onClick={() => select(typed)}>
+            <MenuRow selected={typed === value} onClick={() => onChange(typed)}>
               Use “{typed}”
             </MenuRow>
           ) : null}
@@ -224,7 +219,7 @@ export function ModelSelect({
               <button
                 key={s.value}
                 type="button"
-                onClick={() => select(s.value)}
+                onClick={() => onChange(s.value)}
                 className={`flex w-full items-start gap-2 rounded-[8px] px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-2 ${
                   s.value === value ? 'text-ink' : 'text-ink-2'
                 }`}

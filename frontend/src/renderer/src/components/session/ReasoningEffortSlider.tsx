@@ -162,21 +162,30 @@ function UltracodeDither({ active }: { active: boolean }) {
     const state = stateRef.current
     state.active = active
     const canvas = canvasRef.current
-    if (!canvas || state.raf) return
-
-    const rect = canvas.getBoundingClientRect()
-    if (!rect.width || !rect.height) return
+    if (!canvas || state.raf || (!active && state.wave === 0)) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = Math.round(rect.width * dpr)
-    canvas.height = Math.round(rect.height * dpr)
-    ctx.scale(dpr, dpr)
-    const cells = buildCells(rect.width, rect.height)
-    const palette = ditherPalette()
+
+    let width = 0
+    let height = 0
+    let cells: DitherCell[] = []
+    let palette: string[] = []
+    const size = () => {
+      const rect = canvas.getBoundingClientRect()
+      if (!rect.width || !rect.height) return false
+      width = rect.width
+      height = rect.height
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(height * dpr)
+      ctx.scale(dpr, dpr)
+      cells = buildCells(width, height)
+      palette = ditherPalette()
+      return true
+    }
 
     const draw = (t: number) => {
-      ctx.clearRect(0, 0, rect.width, rect.height)
+      ctx.clearRect(0, 0, width, height)
       for (const cell of cells) {
         const front = Math.max(0, Math.min(1, (state.wave * 1.04 - cell.need) * 6))
         if (front <= 0.01) continue
@@ -188,35 +197,37 @@ function UltracodeDither({ active }: { active: boolean }) {
       ctx.globalAlpha = 1
     }
 
-    if (reducedMotion) {
-      state.wave = state.active ? 1 : 0
-      draw(0)
-      return
-    }
-
     let lastMs = performance.now()
     const frame = (ms: number) => {
       const dt = Math.min(0.05, (ms - lastMs) / 1000)
       lastMs = ms
-      state.wave += ((state.active ? 1 : 0) - state.wave) * (1 - Math.exp(-dt * 5))
+      if (!width && !size()) {
+        state.raf = state.active ? requestAnimationFrame(frame) : 0
+        return
+      }
+      const target = state.active ? 1 : 0
+      state.wave = reducedMotion
+        ? target
+        : state.wave + (target - state.wave) * (1 - Math.exp(-dt * 5))
       if (!state.active && state.wave < 0.01) {
         state.wave = 0
         state.raf = 0
-        ctx.clearRect(0, 0, rect.width, rect.height)
+        ctx.clearRect(0, 0, width, height)
         return
       }
       draw(ms / 1000)
-      state.raf = requestAnimationFrame(frame)
+      state.raf = reducedMotion ? 0 : requestAnimationFrame(frame)
     }
     state.raf = requestAnimationFrame(frame)
   }, [active, reducedMotion])
 
-  useEffect(
-    () => () => {
-      cancelAnimationFrame(stateRef.current.raf)
-    },
-    [],
-  )
+  useEffect(() => {
+    const state = stateRef.current
+    return () => {
+      cancelAnimationFrame(state.raf)
+      state.raf = 0
+    }
+  }, [])
 
   return <canvas ref={canvasRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
 }
