@@ -14,6 +14,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -24,13 +25,31 @@ func testACPAgentCatalog(extra map[string]acp.AgentConfig) acp.AgentCatalog {
 	return acp.MergeAgents(acp.BuiltinAgents(), extra)
 }
 
+func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
+	t.Helper()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
+			{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
+		]}`))
+	}))
+	t.Cleanup(upstream.Close)
+	service := modelcatalog.NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		provider.ProviderOpenRouter: {BaseURL: upstream.URL + "/api/v1"},
+	}))
+	if err := service.Warm(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return service
+}
+
 func TestMCPServerSettingsAPI(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store}).Handler()
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{
 		"name":"Docs",
@@ -134,7 +153,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, AgentCatalog: testACPAgentCatalog(nil)}).Handler()
+	handler := (&Server{ModelCatalog: warmedModelCatalog(t), Store: store, AgentCatalog: testACPAgentCatalog(nil)}).Handler()
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil)
 	getRes := httptest.NewRecorder()
@@ -220,7 +239,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}
-	if !hasModelReasoningEfforts(got.ACPOptions["claude"].Models, "sonnet", "low,medium,high,max") {
+	if !hasModelReasoningEfforts(got.ACPOptions["claude"].Models, "sonnet", "low,medium,high,xhigh,max,ultracode") {
 		t.Fatalf("claude model options missing sonnet reasoning matrix %#v", got.ACPOptions["claude"].Models)
 	}
 	// The desktop client treats a missing capability flag as "requires a command",
@@ -298,7 +317,7 @@ func TestAgentSettingsSavesModelProviderKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
 		"provider_keys":{"openrouter":"sk-or-test"}
@@ -350,7 +369,7 @@ func TestAgentSettingsRejectsEnabledACPWithoutAuth(t *testing.T) {
 	}
 	defer store.Close()
 	exe := testexec.Write(t, filepath.Join(root, "codex-acp"), "", "")
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store: store,
 		Root:  root,
 		AgentCatalog: acp.AgentCatalog{
@@ -413,7 +432,7 @@ func TestAgentSettingsRejectsEnabledProviderBackedACPWithoutProviderKey(t *testi
 	}
 	defer store.Close()
 	exe := testexec.Write(t, filepath.Join(root, "opencode-acp"), "", "")
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store: store,
 		Root:  root,
 		AgentCatalog: acp.AgentCatalog{
@@ -472,7 +491,7 @@ func TestAgentSettingsSavesCustomModelProviderKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store: store,
 		Root:  root,
 		Providers: provider.StaticSource(map[string]provider.ModelProviderConfig{
@@ -518,7 +537,7 @@ func TestAgentSettingsRejectsInvalidSettingsBeforeSavingACPKeys(t *testing.T) {
 	req.RemoteAddr = "127.0.0.1:1234"
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store, Root: root}).Handler().ServeHTTP(res, req)
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler().ServeHTTP(res, req)
 
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "auth mode") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -604,7 +623,7 @@ func TestAgentSettingsAPIIncludesCustomProviderForACPAgents(t *testing.T) {
 			Model:                   "chat",
 		},
 	})
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store:        store,
 		AgentCatalog: catalog,
 		Providers: provider.StaticSource(map[string]provider.ModelProviderConfig{
@@ -696,7 +715,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 			ReasoningEffort: "low",
 		},
 	})
-	handler := (&Server{Store: store, AgentCatalog: catalog}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, AgentCatalog: catalog}).Handler()
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil)
 	getRes := httptest.NewRecorder()
@@ -761,7 +780,7 @@ func TestAgentSettingsRejectsJazACPAgent(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store, AgentCatalog: catalog}).Handler().ServeHTTP(res, req)
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, AgentCatalog: catalog}).Handler().ServeHTTP(res, req)
 
 	if res.Code != http.StatusBadRequest ||
 		!strings.Contains(res.Body.String(), "unknown acp agent") ||
@@ -782,7 +801,7 @@ func TestAgentSettingsRejectUnknownACPAgent(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store}).Handler().ServeHTTP(res, req)
 
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown acp agent") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -804,7 +823,7 @@ func TestAgentSettingsRejectEnabledACPWithoutCommand(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store}).Handler().ServeHTTP(res, req)
 
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "command is required") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -819,7 +838,7 @@ func TestCORSAllowsDeletePreflight(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := (&Server{Store: store}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store}).Handler()
 
 	req := httptest.NewRequest(http.MethodOptions, "/v1/mcp/servers/abc", nil)
 	req.Header.Set("Origin", "http://localhost:5180")
@@ -842,7 +861,7 @@ func TestCORSAllowsDeletePreflight(t *testing.T) {
 }
 
 func TestCORSAllowsStaticWebClient(t *testing.T) {
-	handler := (&Server{}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil)}).Handler()
 	req := httptest.NewRequest(http.MethodOptions, "https://server.example.com/v1/sessions", nil)
 	req.Header.Set("Origin", "https://web.jaz.chat")
 	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
@@ -898,7 +917,7 @@ func TestMCPServerSettingsRefreshDoesNotBlockResponse(t *testing.T) {
 		release: make(chan struct{}),
 	}
 	defer close(runtime.release)
-	handler := (&Server{Store: store, MCP: runtime}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, MCP: runtime}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{
 		"name":"Docs",
@@ -928,7 +947,7 @@ func TestMCPServerSettingsRejectInvalidURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers", strings.NewReader(`{
 		"name":"Docs",

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -30,7 +31,7 @@ func TestDisconnectACPAuthRemovesJazOwnedCredentialAndKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	// A Jaz-owned (profile) OAuth credential + a Jaz-managed API key.
 	claudeDir := filepath.Join(root, "acp", "claude")
@@ -97,7 +98,7 @@ func TestDisconnectACPAuthKeepsGlobalConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/claude/auth/disconnect", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
@@ -154,7 +155,7 @@ func TestDisconnectACPAuthStopsAutoFallbackToGlobalClaudeConfig(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/claude/auth/disconnect", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	res := httptest.NewRecorder()
-	(&Server{Store: store, Root: root}).Handler().ServeHTTP(res, req)
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}

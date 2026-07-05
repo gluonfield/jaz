@@ -281,11 +281,27 @@ func NewModelCatalog(providerSource provider.Source) *modelcatalog.Service {
 }
 
 func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, logger *log.Logger) {
+	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			if err := catalog.Warm(ctx); err != nil {
-				logger.WithPrefix("models").Warn("model provider catalog warmup failed", "error", err)
-			}
+		OnStart: func(context.Context) error {
+			go func() {
+				for delay := time.Second; ; delay = min(delay*2, time.Minute) {
+					err := catalog.Warm(ctx)
+					if err == nil || ctx.Err() != nil {
+						return
+					}
+					logger.WithPrefix("models").Warn("model provider catalog warmup failed", "error", err, "retry_in", delay)
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(delay):
+					}
+				}
+			}()
+			return nil
+		},
+		OnStop: func(context.Context) error {
+			cancel()
 			return nil
 		},
 	})

@@ -629,14 +629,9 @@ func configuredReasoningEffort(value string) string {
 	return effort
 }
 
-func AgentOptionsFor(name string) AgentOptions {
-	return AgentOptionsForConfig(name, AgentConfig{})
-}
-
 func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 	options := AgentOptions{
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
-		Models:           modelcatalog.AgentModels(name),
 	}
 	options.Local = cfg.Local
 	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)

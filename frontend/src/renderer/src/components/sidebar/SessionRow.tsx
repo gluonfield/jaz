@@ -49,11 +49,13 @@ export function SessionRow({
   child = false,
   shortcutIndex,
   shortcutMode = false,
+  showRuntimeBadge = true,
 }: {
   session: Session
   child?: boolean
   shortcutIndex?: number
   shortcutMode?: boolean
+  showRuntimeBadge?: boolean
 }) {
   const shortcut = shortcutMode && shortcutIndex ? shortcutIndex : undefined
   const [rename, setRename] = useState<null | 'inline' | 'modal'>(null)
@@ -76,7 +78,7 @@ export function SessionRow({
         <StatusDot session={session} />
         {/* When the chip leads the row, a negative margin optically aligns
             its text with the titles. */}
-        {session.runtime === 'acp' ? (
+        {showRuntimeBadge && session.runtime === 'acp' ? (
           <RuntimeBadge session={session} compact className={child ? '' : '-ml-1.5'} />
         ) : null}
         {inlineEditing ? (

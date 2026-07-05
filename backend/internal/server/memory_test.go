@@ -15,6 +15,7 @@ import (
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
@@ -66,6 +67,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 		Store:                 store,
 		Memory:                svc,
 		JazTools:              tools,
+		ModelCatalog:          modelcatalog.NewService(nil),
 		SourceProjectionQueue: sourceProjectionQueue,
 		MemorySourceQueue:     memorySourceQueue,
 	}, scheduler
@@ -159,7 +161,8 @@ func TestMemoryAgentSetting(t *testing.T) {
 	handler := srv.Handler()
 
 	if _, err := jazsettings.SaveAgentDefaults(srv.Store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
-		"codex": {Enabled: true, Command: "codex-acp"},
+		"codex":  {Enabled: true, Command: "codex-acp"},
+		"claude": {Enabled: true, Command: "claude-acp"},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -175,6 +178,46 @@ func TestMemoryAgentSetting(t *testing.T) {
 	}
 	if status.Agent != "codex" || !status.Enabled {
 		t.Fatalf("unexpected memory agent status %#v", status)
+	}
+	if status.Model != "" || status.DefaultModel != "gpt-5.4-mini" || status.DefaultReasoningEffort != "low" {
+		t.Fatalf("unexpected memory worker defaults %#v", status)
+	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"model":"gpt-5.5","reasoning_effort":"high"}`)))
+	if res.Code != http.StatusOK {
+		t.Fatalf("set memory model = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Model != "gpt-5.5" || status.ReasoningEffort != "high" {
+		t.Fatalf("unexpected memory model status %#v", status)
+	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"reasoning_effort":"max"}`)))
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("unsupported codex effort should 400, got %d body = %s", res.Code, res.Body.String())
+	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"agent":"claude"}`)))
+	if res.Code != http.StatusOK {
+		t.Fatalf("switch memory agent = %d, body = %s", res.Code, res.Body.String())
+	}
+	status = memoryStatusResponse{}
+	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Agent != "claude" || status.Model != "" || status.ReasoningEffort != "" || status.DefaultModel != "sonnet" {
+		t.Fatalf("switching agents should reset overrides, got %#v", status)
+	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{"agent":"codex"}`)))
+	if res.Code != http.StatusOK {
+		t.Fatalf("restore memory agent = %d, body = %s", res.Code, res.Body.String())
 	}
 
 	res = httptest.NewRecorder()

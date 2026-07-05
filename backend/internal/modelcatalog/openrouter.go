@@ -156,6 +156,7 @@ func cleanOpenRouterReasoningEfforts(reasoning *openRouterReasoning) []string {
 			out = append(out, effort)
 		}
 	}
+	sortReasoningEfforts(out)
 	return out
 }
 

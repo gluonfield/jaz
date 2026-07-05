@@ -212,6 +212,7 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 
 	finalState := StateFailed
 	finalError := "Agent stream ended without a completion event."
+	finalStopReason := ""
 	failed := false
 	artifactSurface := ""
 	if session.RuntimeRef != nil {
@@ -264,14 +265,18 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 		finalState = StateCancelled
 		finalError = ""
 	}
-	if jobCancelRequested(job) {
+	if reason, ok := job.cancelReason(); ok {
 		finalState = StateCancelled
 		finalError = ""
+		finalStopReason = reason
 	}
 	if finalState == StateIdle {
 		job.setState(StateIdle, "", "")
 	} else if finalState == StateCancelled {
-		job.setState(StateCancelled, "cancelled", "")
+		if finalStopReason == "" {
+			finalStopReason = StopReasonCancelled
+		}
+		job.setState(StateCancelled, finalStopReason, "")
 	} else {
 		job.setState(StateFailed, "", finalError)
 	}

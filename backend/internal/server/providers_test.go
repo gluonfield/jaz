@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -32,7 +33,6 @@ func newProvidersTestServer(t *testing.T) (http.Handler, *sqlitestore.Store) {
 func TestProvidersCRUDLifecycle(t *testing.T) {
 	handler, _ := newProvidersTestServer(t)
 
-	// Create a custom provider with a key (loopback request → key setup allowed).
 	body := `{"label":"Groq","base_url":"https://api.groq.com/openai/v1","api_type":"openai-compatible","api_key":"gk-test"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/providers", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -60,7 +60,6 @@ func TestProvidersCRUDLifecycle(t *testing.T) {
 		t.Fatal("expected configured=true after the key was set")
 	}
 
-	// The custom provider appears in the agent settings provider list, flagged custom.
 	settingsRes := httptest.NewRecorder()
 	handler.ServeHTTP(settingsRes, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
 	if settingsRes.Code != http.StatusOK {
@@ -73,7 +72,6 @@ func TestProvidersCRUDLifecycle(t *testing.T) {
 		t.Fatalf("groq not flagged custom: %s", settingsRes.Body)
 	}
 
-	// Delete it.
 	delReq := httptest.NewRequest(http.MethodDelete, "/v1/providers/groq", nil)
 	delReq.RemoteAddr = "127.0.0.1:1234"
 	delRes := httptest.NewRecorder()
@@ -183,6 +181,25 @@ func TestAgentSettingsTreatsLegacyLoopbackProviderAsNoKey(t *testing.T) {
 	t.Fatalf("ollama-2 missing from providers: %#v", got.Providers)
 }
 
+func TestAgentSettingsDoesNotProbeNoKeyProviderStatus(t *testing.T) {
+	var hits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer upstream.Close()
+	handler, _ := newProviderStatusTestServer(t, upstream.URL+"/v1")
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("settings status %d: %s", res.Code, res.Body)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("settings read probed provider %d times", hits.Load())
+	}
+}
+
 func TestProviderStatusProbesNoKeyProviderConnected(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
@@ -204,51 +221,56 @@ func TestProviderStatusProbesNoKeyProviderDisconnected(t *testing.T) {
 
 func assertNoKeyProviderStatus(t *testing.T, baseURL string, status string) {
 	t.Helper()
-	root := t.TempDir()
-	store, err := sqlitestore.New(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
-	record, err := providerstore.Create(store, providerstore.Input{Label: "Local", BaseURL: baseURL})
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, err := provider.NewSource(map[string]provider.ModelProviderConfig{}, providerstore.Loader{Store: store})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler()
+	handler, record := newProviderStatusTestServer(t, baseURL)
 
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
-	if res.Code != http.StatusOK {
-		t.Fatalf("settings status %d: %s", res.Code, res.Body)
+	settingsRes := httptest.NewRecorder()
+	handler.ServeHTTP(settingsRes, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if settingsRes.Code != http.StatusOK {
+		t.Fatalf("settings status %d: %s", settingsRes.Code, settingsRes.Body)
 	}
-	var got struct {
+	var settingsGot struct {
 		Providers []struct {
 			ID             string `json:"id"`
 			Configured     bool   `json:"configured"`
 			RequiresAPIKey bool   `json:"requires_api_key"`
 		} `json:"providers"`
 	}
-	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+	if err := json.Unmarshal(settingsRes.Body.Bytes(), &settingsGot); err != nil {
 		t.Fatal(err)
 	}
-	for _, provider := range got.Providers {
+	for _, provider := range settingsGot.Providers {
 		if provider.ID != record.ID {
 			continue
 		}
 		if provider.RequiresAPIKey || !provider.Configured {
 			t.Fatalf("provider settings = %#v", provider)
 		}
-		assertProviderConnectionStatus(t, handler, record.ID, status)
+		assertSingleProviderConnectionStatus(t, handler, record.ID, status)
+		assertBatchProviderConnectionStatus(t, handler, record.ID, status)
 		return
 	}
-	t.Fatalf("%s missing from providers: %#v", record.ID, got.Providers)
+	t.Fatalf("%s missing from providers: %#v", record.ID, settingsGot.Providers)
 }
 
-func assertProviderConnectionStatus(t *testing.T, handler http.Handler, id string, status string) {
+func assertSingleProviderConnectionStatus(t *testing.T, handler http.Handler, id string, status string) {
+	t.Helper()
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/providers/"+id+"/status", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", res.Code, res.Body)
+	}
+	var got struct {
+		ConnectionStatus string `json:"connection_status"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ConnectionStatus != status {
+		t.Fatalf("connection_status = %q, want %q", got.ConnectionStatus, status)
+	}
+}
+
+func assertBatchProviderConnectionStatus(t *testing.T, handler http.Handler, id string, status string) {
 	t.Helper()
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/providers/status", nil))
@@ -274,6 +296,25 @@ func assertProviderConnectionStatus(t *testing.T, handler http.Handler, id strin
 		return
 	}
 	t.Fatalf("%s missing from provider statuses: %#v", id, got.Providers)
+}
+
+func newProviderStatusTestServer(t *testing.T, baseURL string) (http.Handler, providerstore.CustomProvider) {
+	t.Helper()
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	record, err := providerstore.Create(store, providerstore.Input{Label: "Local", BaseURL: baseURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := provider.NewSource(map[string]provider.ModelProviderConfig{}, providerstore.Loader{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler(), record
 }
 
 func TestCreateProviderRejectsInvalidURL(t *testing.T) {

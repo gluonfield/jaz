@@ -225,6 +225,16 @@ export function AppearanceSettings() {
             aria-label="Wide layout"
           />
         </Row>
+        <Row
+          title="Show Model Icons"
+          description="Show ACP agent/model marks beside threads in the left sidebar."
+        >
+          <Switch
+            checked={settings.showModelIcons}
+            onChange={(value) => setAppearance({ showModelIcons: value })}
+            aria-label="Show Model Icons"
+          />
+        </Row>
       </SettingsCard>
 
       <div className="mt-8 flex items-end justify-between gap-3">

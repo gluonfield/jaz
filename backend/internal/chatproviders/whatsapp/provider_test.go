@@ -370,6 +370,91 @@ func TestWhatsAppHistoryRecordsDropOldMessagesAndFullProtoBlob(t *testing.T) {
 	}
 }
 
+func TestWhatsAppHistoryContactsFollowAcceptedMessages(t *testing.T) {
+	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
+	userID := "15550103333@s.whatsapp.net"
+	groupID := "12345-67890@g.us"
+	oldID := "15550104444@s.whatsapp.net"
+	emptyID := "15550105555@s.whatsapp.net"
+	userName := "Alice Example"
+	groupName := "Friends"
+	oldName := "Old Contact"
+	emptyName := "No Messages"
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	sync := &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{
+			{
+				ID:          proto.String(userID),
+				DisplayName: proto.String(userName),
+				Messages: []*waHistorySync.HistorySyncMsg{
+					{Message: whatsappWebInfo("new-id", userID, uint64(now.Unix()), "new message")},
+				},
+			},
+			{
+				ID:   proto.String(groupID),
+				Name: proto.String(groupName),
+				Messages: []*waHistorySync.HistorySyncMsg{
+					{Message: whatsappWebInfo("group-id", groupID, uint64(now.Unix()), "group message")},
+				},
+			},
+			{
+				ID:          proto.String(oldID),
+				DisplayName: proto.String(oldName),
+				Messages: []*waHistorySync.HistorySyncMsg{
+					{Message: whatsappWebInfo("old-id", oldID, uint64(now.Add(-(whatsappHistoricalWindow + time.Hour)).Unix()), "old message")},
+				},
+			},
+			{
+				ID:          proto.String(emptyID),
+				DisplayName: proto.String(emptyName),
+			},
+		},
+	}
+
+	_, contacts, _ := whatsappHistoryRecordsLimited(connection, sync, whatsappHistoryCutoff(now), nil, 0)
+
+	want := map[string]bool{userID: true, groupID: true}
+	for _, contact := range contacts {
+		delete(want, contact.ExternalID)
+	}
+	if len(contacts) != 2 || len(want) > 0 {
+		t.Fatalf("contacts = %#v, missing %#v", contacts, want)
+	}
+}
+
+func TestWhatsAppHistoryContactsDoNotAppendAgainOnReplay(t *testing.T) {
+	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
+	raw := &fakeWhatsAppRawSink{}
+	provider := &Provider{
+		root:  t.TempDir(),
+		raw:   raw,
+		store: &fakeWhatsAppStore{},
+	}
+	now := time.Date(2026, 6, 26, 12, 0, 0, 0, time.UTC)
+	conversationID := "15550103333@s.whatsapp.net"
+	conversationName := "Alice Example"
+	sync := &waHistorySync.HistorySync{
+		Conversations: []*waHistorySync.Conversation{{
+			ID:          proto.String(conversationID),
+			DisplayName: proto.String(conversationName),
+			Messages: []*waHistorySync.HistorySyncMsg{
+				{Message: whatsappWebInfo("new-id", conversationID, uint64(now.Unix()), "new message")},
+			},
+		}},
+	}
+
+	if err := provider.writeHistorySync(context.Background(), connection, sync, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := provider.writeHistorySync(context.Background(), connection, sync, now); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := countWhatsAppRecords(raw.records, "whatsapp.contact"); got != 1 {
+		t.Fatalf("contact records = %d, want 1: %#v", got, raw.records)
+	}
+}
+
 func TestWhatsAppHistorySyncCapsGroupHistoryAcrossChunks(t *testing.T) {
 	connection := integrations.Connection{ID: "whatsapp:alice", AccountID: "15550102222"}
 	raw := &fakeWhatsAppRawSink{}
@@ -433,6 +518,16 @@ type fakeWhatsAppRawSink struct {
 func (s *fakeWhatsAppRawSink) WriteRecords(_ context.Context, records []integrations.Record) error {
 	s.records = append(s.records, records...)
 	return nil
+}
+
+func countWhatsAppRecords(records []integrations.Record, kind integrations.RecordKind) int {
+	var count int
+	for _, record := range records {
+		if record.Kind == kind {
+			count++
+		}
+	}
+	return count
 }
 
 type fakeWhatsAppStore struct {

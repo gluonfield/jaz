@@ -22,6 +22,7 @@ import (
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -58,8 +59,9 @@ type MCPRuntime interface {
 	Authorize(context.Context, mcpconfig.Server) mcpconfig.ServerStatus
 }
 
-type ReasoningEffortValidator interface {
+type ModelCatalog interface {
 	ValidateReasoningEffort(agent, providerID, model, effort string) error
+	AgentModels(agent string) []modelcatalog.Model
 }
 
 type ACPAdapterStatusReader interface {
@@ -81,7 +83,7 @@ type Server struct {
 	STT                  voice.STT
 	TTS                  voice.TTS
 	ModelProviderRuntime provider.ReloadableProvider
-	ModelCatalog         ReasoningEffortValidator
+	ModelCatalog         ModelCatalog
 	// Providers is the live registry of effective model providers (catalog +
 	// application.yaml + DB customs). Read it through modelProviders().
 	Providers    provider.Source

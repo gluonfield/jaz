@@ -149,11 +149,11 @@ func TestSpawnConfigRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
 	manager := &Manager{
 		cfg: Config{ModelCatalog: modelcatalog.NewService(nil)},
 		agents: AgentCatalog{
-			AgentClaude: {Command: AgentClaude, Model: "sonnet", ReasoningEffort: "xhigh"},
+			AgentClaude: {Command: AgentClaude, Model: "sonnet", ReasoningEffort: "minimal"},
 		},
 	}
 	_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentClaude})
-	if err == nil || !strings.Contains(err.Error(), `reasoning effort "xhigh" is not supported for claude model "sonnet"`) {
+	if err == nil || !strings.Contains(err.Error(), `reasoning effort "minimal" is not supported for claude model "sonnet"`) {
 		t.Fatalf("err = %v", err)
 	}
 }

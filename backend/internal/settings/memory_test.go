@@ -112,6 +112,25 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 	}
 }
 
+func TestMemorySettingsWorkerOverrides(t *testing.T) {
+	defaults := DefaultAgentDefaults()
+	settings := MemorySettings{Agent: acp.AgentClaude}
+	if got := settings.WorkerModel(defaults); got != "sonnet" {
+		t.Fatalf("default model = %q, want sonnet", got)
+	}
+	if got := settings.WorkerReasoningEffort(); got != "" {
+		t.Fatalf("default effort = %q, want empty", got)
+	}
+	settings.Model = "haiku"
+	settings.ReasoningEffort = "low"
+	if got := settings.WorkerModel(defaults); got != "haiku" {
+		t.Fatalf("override model = %q, want haiku", got)
+	}
+	if got := settings.WorkerReasoningEffort(); got != "low" {
+		t.Fatalf("override effort = %q, want low", got)
+	}
+}
+
 func TestLoadMemorySettingsReadsLegacyAgentFields(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

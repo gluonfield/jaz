@@ -40,6 +40,15 @@ func (s *Server) resolvedModelProviders() []resolvedModelProvider {
 	return out
 }
 
+func (s *Server) resolvedModelProvider(id string) (resolvedModelProvider, bool) {
+	for _, modelProvider := range s.resolvedModelProviders() {
+		if modelProvider.ID == id {
+			return modelProvider, true
+		}
+	}
+	return resolvedModelProvider{}, false
+}
+
 func (s *Server) modelProviderConfigReady(id string, cfg provider.ModelProviderConfig, meta provider.ModelProvider) bool {
 	if meta.RequiresAPIKey {
 		return s.modelProviderKeyConfigured(id, cfg, meta)

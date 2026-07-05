@@ -13,6 +13,7 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { layoutRect, layoutViewport } from '@/lib/dom/zoom'
 import { searchThreads } from '@/lib/api/search'
 import { projectsQuery, workspaceFilesQuery } from '@/lib/api/sessions'
 import { skillsQuery } from '@/lib/api/skills'
@@ -468,7 +469,7 @@ export function MentionSuggestions({
     if (!open) return
     const measure = () => {
       const el = mention.textareaRef.current
-      if (el) setRect(el.getBoundingClientRect())
+      if (el) setRect(layoutRect(el))
     }
     measure()
     window.addEventListener('scroll', measure, true)
@@ -488,7 +489,7 @@ export function MentionSuggestions({
         width: rect.width,
         zIndex: 'var(--z-modal)',
         ...(above
-          ? { bottom: window.innerHeight - rect.top + MENU_GAP }
+          ? { bottom: layoutViewport().height - rect.top + MENU_GAP }
           : { top: rect.bottom + MENU_GAP }),
       }
     : undefined
@@ -520,7 +521,7 @@ const MENU_GAP = 8
 // Honor the requested side unless it's too cramped and the other side is roomier.
 function prefersAbove(placement: 'above' | 'below', rect: DOMRect): boolean {
   const spaceAbove = rect.top
-  const spaceBelow = window.innerHeight - rect.bottom
+  const spaceBelow = layoutViewport().height - rect.bottom
   if (placement === 'above') return spaceAbove >= 220 || spaceAbove >= spaceBelow
   return spaceBelow < 220 && spaceAbove > spaceBelow
 }

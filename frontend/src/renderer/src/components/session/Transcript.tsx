@@ -18,6 +18,10 @@ const VISIBLE_TURN_BATCH = 24
 const INITIAL_VISIBLE_ITEMS = 90
 const VISIBLE_ITEM_BATCH = 120
 
+type RenderOptions = {
+  showAssistantCopy?: boolean
+}
+
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(1, Math.round(ms / 1000))
   const hours = Math.floor(totalSeconds / 3600)
@@ -153,7 +157,8 @@ export const Transcript = memo(function Transcript({
   const visibleChronological = chronological.slice(historyStart)
   const visibleTurns = turns.slice(historyStart)
 
-  const renderItem = (item: TimelineItem): ReactNode => {
+  const renderItem = (item: TimelineItem, options: RenderOptions = {}): ReactNode => {
+    const showAssistantCopy = options.showAssistantCopy ?? true
     switch (item.kind) {
       case 'message':
         return (
@@ -168,6 +173,7 @@ export const Transcript = memo(function Transcript({
           >
             <Bubble
               message={item.message}
+              showAssistantCopy={showAssistantCopy}
               onArtifactPrompt={onArtifactPrompt}
             />
           </div>
@@ -198,6 +204,7 @@ export const Transcript = memo(function Transcript({
             }
             onApprovePlan={onApprovePlan}
             onArtifactPrompt={onArtifactPrompt}
+            showCopy={showAssistantCopy}
             permissionResolution={
               item.event.permission ? permissionResolutions.get(item.event.permission.id) : undefined
             }
@@ -264,7 +271,7 @@ export const Transcript = memo(function Transcript({
                 durationMs={durationMs}
                 defaultOpen={false}
                 findActive={findActive}
-                render={renderItem}
+                render={(item) => renderItem(item, { showAssistantCopy: false })}
               />,
             )
           }

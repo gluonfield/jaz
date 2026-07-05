@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testexec"
@@ -26,7 +27,7 @@ func TestAgentSettingsEnablesCodexOpenAIAPIKeyWithOpenAIProviderKey(t *testing.T
 	}
 	defer store.Close()
 	exe := testexec.Write(t, filepath.Join(root, "codex-acp"), "", "")
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store: store,
 		Root:  root,
 		AgentCatalog: acp.AgentCatalog{
@@ -79,7 +80,7 @@ func TestAgentSettingsCodexOpenAIKeyOptionUsesOpenAIConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store:        store,
 		AgentCatalog: testACPAgentCatalog(nil),
 		Providers: provider.StaticSource(map[string]provider.ModelProviderConfig{

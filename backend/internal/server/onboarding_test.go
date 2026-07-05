@@ -12,6 +12,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/onboardingstate"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
@@ -45,7 +46,7 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEX_HOME", codexHome)
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store: store,
 		Root:  root,
 		AgentCatalog: acp.AgentCatalog{
@@ -137,7 +138,7 @@ func TestOnboardingSavesExplicitMemorySettings(t *testing.T) {
 	}
 	defer store.Close()
 	exe := testexec.Write(t, filepath.Join(root, "codex-acp"), "", "")
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store: store,
 		Root:  root,
 		AgentCatalog: acp.AgentCatalog{
@@ -185,7 +186,7 @@ func TestOnboardingRejectsEnabledMemoryWithoutAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root, AgentCatalog: acp.AgentCatalog{}}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, AgentCatalog: acp.AgentCatalog{}}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/onboarding", strings.NewReader(`{
 		"memory":{"enabled":true},
@@ -207,7 +208,7 @@ func TestOnboardingAllowsAuthenticatedRemoteProviderKeySetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root, AuthKey: "secret"}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, AuthKey: "secret"}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/onboarding", strings.NewReader(`{
 		"provider_keys":{"openrouter":"runtime-key"}
@@ -237,7 +238,7 @@ func TestOnboardingUsesACPReadiness(t *testing.T) {
 	}
 	defer store.Close()
 	exe := testexec.Write(t, filepath.Join(root, "claude-acp"), "", "")
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store: store,
 		Root:  root,
 		AgentCatalog: acp.AgentCatalog{
@@ -290,7 +291,7 @@ func TestOnboardingTreatsAuthenticatedManagedCodexAsAvailable(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store:       store,
 		Root:        root,
 		ACPAdapters: fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "codex", Version: "test-version", State: acpadapter.StateReady}},
@@ -344,7 +345,7 @@ func TestOnboardingWaitsForManagedCodexDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store:       store,
 		Root:        root,
 		ACPAdapters: fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "codex", Version: "test-version", State: acpadapter.StateDownloading, Message: "Downloading Codex adapter"}},
@@ -405,7 +406,7 @@ func TestOnboardingIgnoresClaudeSettingsOnlyConfig(t *testing.T) {
 	defer store.Close()
 	exe := testexec.Write(t, filepath.Join(root, "claude-acp"), "", "")
 	t.Setenv("CLAUDE_CODE_EXECUTABLE", exe)
-	handler := (&Server{
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store: store,
 		Root:  root,
 		AgentCatalog: acp.AgentCatalog{
@@ -454,7 +455,7 @@ func TestOnboardingRejectsUnauthenticatedRemoteProviderKeySetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{Store: store, Root: root}).Handler()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/onboarding", strings.NewReader(`{
 		"provider_keys":{"openrouter":"runtime-key"}

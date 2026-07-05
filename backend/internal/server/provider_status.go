@@ -20,6 +20,10 @@ const (
 
 var modelProviderStatusHTTPClient = &http.Client{Timeout: 900 * time.Millisecond}
 
+type providerStatusResponse struct {
+	ConnectionStatus string `json:"connection_status"`
+}
+
 type modelProviderStatusResponse struct {
 	Providers []modelProviderConnectionStatus `json:"providers"`
 }
@@ -27,6 +31,22 @@ type modelProviderStatusResponse struct {
 type modelProviderConnectionStatus struct {
 	ID               string `json:"id"`
 	ConnectionStatus string `json:"connection_status"`
+}
+
+func (s *Server) handleProviderStatus(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("provider id is required"))
+		return
+	}
+	input, ok := s.resolvedModelProvider(id)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Errorf("provider %q not found", id))
+		return
+	}
+	writeJSON(w, http.StatusOK, providerStatusResponse{
+		ConnectionStatus: s.modelProviderConnectionStatus(r.Context(), input),
+	})
 }
 
 func (s *Server) handleProviderStatuses(w http.ResponseWriter, r *http.Request) {

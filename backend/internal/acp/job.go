@@ -61,6 +61,7 @@ type activeTurn struct {
 	goalRequested         bool
 	startedAt             time.Time
 	cancelRequested       bool
+	cancelReason          string
 	firstPromptSent       chan struct{}
 	firstPromptSentClosed bool
 	promptHandoff         chan struct{}
@@ -226,16 +227,36 @@ func (j *jobState) turnDoneAndPlan() (chan struct{}, bool) {
 }
 
 func (j *jobState) requestCancel() (bool, chan struct{}) {
+	return j.requestTurnCancel(StopReasonCancelled)
+}
+
+func (j *jobState) requestShutdown() bool {
+	running, _ := j.requestTurnCancel(StopReasonServerShutdown)
+	return running
+}
+
+func (j *jobState) requestTurnCancel(reason string) (bool, chan struct{}) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if j.turn != nil {
-		j.turn.cancelRequested = true
-	}
 	running := j.State == StateRunning || j.State == StateStarting
-	if j.turn == nil {
+	if !running || j.turn == nil {
 		return running, nil
 	}
+	j.turn.cancelRequested = true
+	j.turn.cancelReason = reason
 	return running, j.turn.done
+}
+
+func (j *jobState) cancelReason() (string, bool) {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if j.turn == nil || !j.turn.cancelRequested {
+		return "", false
+	}
+	if j.turn.cancelReason != "" {
+		return j.turn.cancelReason, true
+	}
+	return StopReasonCancelled, true
 }
 
 func (j *jobState) addPromptCall(parentVisible bool) (chan struct{}, bool) {

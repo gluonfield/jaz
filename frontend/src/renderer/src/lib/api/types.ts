@@ -843,6 +843,10 @@ export interface MemorySourceQueues {
 export interface MemoryStatus {
   enabled: boolean
   agent?: string
+  model?: string
+  reasoning_effort?: string
+  default_model?: string
+  default_reasoning_effort?: string
   scheduler_running: boolean
   root: string
   db_path: string
@@ -968,6 +972,10 @@ export interface ModelProviderOption {
   api_type?: string
   /** icon slug (brand mark) for the provider; falls back to a generic mark */
   icon?: string
+}
+
+export interface ModelProviderStatus {
+  connection_status: 'connected' | 'not_connected'
 }
 
 export interface ModelPricing {

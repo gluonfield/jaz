@@ -1,5 +1,10 @@
 import { del, get, post, put } from './client'
-import type { ModelProviderOption, ModelProviderStatusResponse, ProviderInput } from './types'
+import type {
+  ModelProviderOption,
+  ModelProviderStatus,
+  ModelProviderStatusResponse,
+  ProviderInput,
+} from './types'
 
 // Trims text fields and drops a blank api_key so an edit that doesn't touch the
 // key leaves it unchanged. The endpoint URL keeps its path (unlike MCP's
@@ -22,6 +27,10 @@ export function createProvider(input: ProviderInput): Promise<ModelProviderOptio
 
 export function updateProvider(id: string, input: ProviderInput): Promise<ModelProviderOption> {
   return put<ModelProviderOption>(`/v1/providers/${encodeURIComponent(id)}`, normalizeProviderInput(input))
+}
+
+export function getProviderStatus(id: string): Promise<ModelProviderStatus> {
+  return get<ModelProviderStatus>(`/v1/providers/${encodeURIComponent(id)}/status`)
 }
 
 export function deleteProvider(id: string): Promise<{ ok: boolean }> {

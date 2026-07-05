@@ -2,6 +2,8 @@ package whatsapp
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -13,8 +15,9 @@ import (
 )
 
 type historyLimitState struct {
-	GroupMessages map[string]int `json:"group_messages,omitempty"`
-	UpdatedAt     time.Time      `json:"updated_at,omitempty"`
+	GroupMessages map[string]int    `json:"group_messages,omitempty"`
+	ContactHashes map[string]string `json:"contact_hashes,omitempty"`
+	UpdatedAt     time.Time         `json:"updated_at,omitempty"`
 }
 
 func (p *Provider) writeHistorySync(ctx context.Context, connection integrations.Connection, sync *waHistorySync.HistorySync, now time.Time) error {
@@ -25,21 +28,23 @@ func (p *Provider) writeHistorySync(ctx context.Context, connection integrations
 	if err != nil {
 		return err
 	}
-	records, groupCounts := whatsappHistoryRecordsLimited(connection, sync, whatsappHistoryCutoff(now), state.GroupMessages, p.groupHistoryLimit())
-	if err := p.writeRecords(ctx, records...); err != nil {
+	records, contacts, groupCounts := whatsappHistoryRecordsLimited(connection, sync, whatsappHistoryCutoff(now), state.GroupMessages, p.groupHistoryLimit())
+	contacts, contactHashes := newHistoryContacts(contacts, state.ContactHashes)
+	if err := p.writeRecords(ctx, append(records, contacts...)...); err != nil {
 		return err
 	}
 	state.GroupMessages = groupCounts
+	state.ContactHashes = contactHashes
 	return p.saveHistoryLimitState(connection.ID, state)
 }
 
 func (p *Provider) loadHistoryLimitState(connectionID string) (historyLimitState, error) {
 	if p.root == "" {
-		return historyLimitState{GroupMessages: map[string]int{}}, nil
+		return emptyHistoryLimitState(), nil
 	}
 	data, err := os.ReadFile(p.historyLimitStatePath(connectionID))
 	if errors.Is(err, os.ErrNotExist) {
-		return historyLimitState{GroupMessages: map[string]int{}}, nil
+		return emptyHistoryLimitState(), nil
 	}
 	if err != nil {
 		return historyLimitState{}, err
@@ -51,7 +56,17 @@ func (p *Provider) loadHistoryLimitState(connectionID string) (historyLimitState
 	if state.GroupMessages == nil {
 		state.GroupMessages = map[string]int{}
 	}
+	if state.ContactHashes == nil {
+		state.ContactHashes = map[string]string{}
+	}
 	return state, nil
+}
+
+func emptyHistoryLimitState() historyLimitState {
+	return historyLimitState{
+		GroupMessages: map[string]int{},
+		ContactHashes: map[string]string{},
+	}
 }
 
 func (p *Provider) saveHistoryLimitState(connectionID string, state historyLimitState) error {
@@ -83,4 +98,31 @@ func (p *Provider) removeHistoryLimitState(connectionID string) error {
 
 func (p *Provider) groupHistoryLimit() int {
 	return p.cfg.GroupHistoryLimit
+}
+
+func newHistoryContacts(records []integrations.Record, hashes map[string]string) ([]integrations.Record, map[string]string) {
+	hashes = copyStringMap(hashes)
+	changed := make([]integrations.Record, 0, len(records))
+	for _, record := range records {
+		hash := historyContactHash(record)
+		if hashes[record.ExternalID] == hash {
+			continue
+		}
+		hashes[record.ExternalID] = hash
+		changed = append(changed, record)
+	}
+	return changed, hashes
+}
+
+func historyContactHash(record integrations.Record) string {
+	sum := sha256.Sum256(record.Raw)
+	return hex.EncodeToString(sum[:])
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }

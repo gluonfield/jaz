@@ -80,7 +80,7 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return "", err
 	}
-	if resp.StopReason == "cancelled" {
+	if resp.StopReason == StopReasonCancelled {
 		return "", fmt.Errorf("utility prompt cancelled")
 	}
 	if text := strings.TrimSpace(collector.text()); text != "" {

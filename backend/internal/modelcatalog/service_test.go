@@ -53,7 +53,7 @@ func TestServiceReturnsStartupOpenRouterCatalog(t *testing.T) {
 			models[0].Pricing.Output != 0.000015 {
 			t.Fatalf("unexpected models %#v", models)
 		}
-		if strings.Join(models[0].ReasoningEfforts, ",") != "max,high,medium,low" {
+		if strings.Join(models[0].ReasoningEfforts, ",") != "low,medium,high,max" {
 			t.Fatalf("reasoning efforts = %#v", models[0].ReasoningEfforts)
 		}
 	}
@@ -125,30 +125,73 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	if len(models) == 0 || models[0].Value != "gpt-5.5" {
 		t.Fatalf("unexpected models %#v", models)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "xhigh,high,medium,low,none" {
+	if models[0].ReasoningEfforts != nil {
+		t.Fatalf("efforts before the catalog loads = %#v", models[0].ReasoningEfforts)
+	}
+
+	warmed := warmOpenRouterTestService(t, `{"data":[{
+		"id":"openai/gpt-5.5",
+		"name":"OpenAI: GPT-5.5",
+		"reasoning":{"supported_efforts":["xhigh","high","medium","low","none"],"default_effort":"medium"}
+	}]}`)
+	models, err = warmed.ProviderModels(codexOpenAIAPIKeyProvider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(models[0].ReasoningEfforts, ",") != "none,low,medium,high,xhigh" {
 		t.Fatalf("reasoning efforts = %#v", models[0].ReasoningEfforts)
 	}
 }
 
-func TestServiceValidatesModelSpecificReasoning(t *testing.T) {
+func TestServiceValidatesHarnessReasoningBeforeCatalogLoads(t *testing.T) {
 	service := NewService(nil)
 	if err := service.ValidateReasoningEffort("claude", "", "sonnet", "max"); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ValidateReasoningEffort("claude", "", "sonnet", "xhigh"); err == nil {
-		t.Fatal("expected sonnet xhigh to fail")
-	}
-	if err := service.ValidateReasoningEffort("claude", "", "default", "xhigh"); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ValidateReasoningEffort("claude", "", "haiku", "low"); err == nil {
-		t.Fatal("expected haiku reasoning to fail")
+	if err := service.ValidateReasoningEffort("claude", "", "sonnet", "minimal"); err == nil {
+		t.Fatal("expected claude minimal reasoning to fail")
 	}
 	if err := service.ValidateReasoningEffort("codex", "openrouter", "openai/gpt-5.5", "xhigh"); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.ValidateReasoningEffort("codex", "openrouter", "openai/gpt-5.5", "max"); err == nil {
 		t.Fatal("expected codex max reasoning to fail")
+	}
+}
+
+func TestServiceAgentModelsFollowOpenRouterReasoning(t *testing.T) {
+	service := warmOpenRouterTestService(t, `{"data":[
+		{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","high","medium","low"],"default_effort":"medium"}},
+		{"id":"anthropic/claude-opus-4.8","name":"Anthropic: Claude Opus 4.8","reasoning":{"mandatory":true,"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
+		{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
+	]}`)
+
+	models := service.AgentModels("claude")
+	efforts := map[string]Model{}
+	for _, model := range models {
+		efforts[model.Value] = model
+	}
+	if strings.Join(efforts["sonnet"].ReasoningEfforts, ",") != "low,medium,high,max" {
+		t.Fatalf("sonnet efforts = %#v", efforts["sonnet"].ReasoningEfforts)
+	}
+	if strings.Join(efforts["default"].ReasoningEfforts, ",") != "low,medium,high,xhigh,max,ultracode" {
+		t.Fatalf("default efforts = %#v", efforts["default"].ReasoningEfforts)
+	}
+	if efforts["default"].ReasoningDefaultEffort != "medium" || !efforts["default"].ReasoningMandatory {
+		t.Fatalf("default reasoning metadata = %#v", efforts["default"])
+	}
+	if efforts["haiku"].ReasoningEfforts == nil || len(efforts["haiku"].ReasoningEfforts) != 0 {
+		t.Fatalf("haiku efforts = %#v", efforts["haiku"].ReasoningEfforts)
+	}
+
+	if err := service.ValidateReasoningEffort("claude", "", "sonnet", "xhigh"); err == nil {
+		t.Fatal("expected xhigh to follow the live catalog and fail for sonnet")
+	}
+	if err := service.ValidateReasoningEffort("claude", "", "haiku", "low"); err == nil {
+		t.Fatal("expected haiku reasoning to fail")
+	}
+	if err := service.ValidateReasoningEffort("claude", "", "default", "ultracode"); err != nil {
+		t.Fatal(err)
 	}
 }
 
