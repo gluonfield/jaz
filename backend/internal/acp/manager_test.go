@@ -548,7 +548,7 @@ func TestManagerSteerUsesPromptQueueingWithoutCancel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.State != acp.StateIdle || job.StopReason == "cancelled" || job.Assistant != "hello from fake agent" {
+	if job.State != acp.StateIdle || job.StopReason == acp.StopReasonCancelled || job.Assistant != "hello from fake agent" {
 		t.Fatalf("steered job state=%s stop=%q assistant=%q error=%q", job.State, job.StopReason, job.Assistant, job.Error)
 	}
 	messages, err := store.LoadMessages(spawned.SessionID)
@@ -1572,6 +1572,100 @@ func TestManagerResumesStoredSessionAfterServeError(t *testing.T) {
 	}
 }
 
+func TestCloseMarksRunningTurnAsServerShutdownWithoutTransportFailure(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
+	waitForStoredState := func(sessionID, want string) storage.ACPState {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		var last storage.ACPState
+		var lastErr error
+		for time.Now().Before(deadline) {
+			last, lastErr = store.LoadACPState(sessionID)
+			if lastErr == nil && last.State == want {
+				return last
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if lastErr != nil {
+			t.Fatalf("stored acp state error = %v", lastErr)
+		}
+		t.Fatalf("stored acp state = %q, want %q", last.State, want)
+		return storage.ACPState{}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-close"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Send(ctx, acp.SendRequest{
+		Session:    spawned.SessionID,
+		Message:    "block until cancelled",
+		Completion: acp.CompletionInline,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitForStoredState(spawned.SessionID, acp.StateRunning)
+
+	manager.Close()
+
+	state := waitForStoredState(spawned.SessionID, acp.StateCancelled)
+	if state.StopReason != acp.StopReasonServerShutdown || state.Error != "" {
+		t.Fatalf("state stop/error = %q/%q, want server_shutdown with no error", state.StopReason, state.Error)
+	}
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Status != storage.StatusIdle || session.Error != "" {
+		t.Fatalf("session status/error = %q/%q, want idle with no error", session.Status, session.Error)
+	}
+}
+
+func TestCloseLeavesIdleTurnIdle(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-close-idle"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Send(ctx, acp.SendRequest{
+		Session:    spawned.SessionID,
+		Message:    "say hello",
+		Completion: acp.CompletionInline,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle {
+		t.Fatalf("state = %q, want idle", job.State)
+	}
+
+	manager.Close()
+
+	state, err := store.LoadACPState(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.State != acp.StateIdle || state.StopReason == acp.StopReasonServerShutdown || state.Error != "" {
+		t.Fatalf("state/stop/error = %q/%q/%q, want idle without shutdown error", state.State, state.StopReason, state.Error)
+	}
+}
+
 func TestCancelStopsRunningTurn(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -1659,7 +1753,7 @@ func TestCancelTreatsNormalStopAfterCancelAsCancelled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.State != acp.StateCancelled || job.StopReason != "cancelled" {
+	if job.State != acp.StateCancelled || job.StopReason != acp.StopReasonCancelled {
 		t.Fatalf("state/stop_reason = %s/%q, want cancelled/cancelled", job.State, job.StopReason)
 	}
 }

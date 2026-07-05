@@ -78,11 +78,13 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 }
 
 func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string) {
-	userCancelled := jobCancelRequested(job)
+	cancelReason, cancelRequested := job.cancelReason()
 	state := StateIdle
-	if userCancelled || stopReason == "cancelled" {
+	if cancelRequested {
 		state = StateCancelled
-		stopReason = "cancelled"
+		stopReason = cancelReason
+	} else if stopReason == StopReasonCancelled {
+		state = StateCancelled
 	}
 	job.mu.Lock()
 	turn := job.turn
@@ -94,7 +96,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		turn.promptCalls--
 	}
 	remaining := turn.promptCalls
-	if remaining > 0 && !userCancelled {
+	if remaining > 0 && !cancelRequested {
 		handoff := turn.promptHandoff
 		turn.promptHandoff = nil
 		job.UpdatedAt = time.Now().UTC()
@@ -166,13 +168,6 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
 		go m.Done(context.Background(), snapshot)
 	}
-}
-
-func jobCancelRequested(job *jobState) bool {
-	job.mu.RLock()
-	cancelled := job.turn != nil && job.turn.cancelRequested
-	job.mu.RUnlock()
-	return cancelled
 }
 
 func (m *Manager) attachmentResourceResolver(job *jobState) (attachmentResourceResolver, error) {
@@ -260,12 +255,12 @@ func marshalContentBlock(block any) (acpschema.ContentBlock, error) {
 	return acpschema.ContentBlock(data), nil
 }
 
-// A turn that died after a cancel request ends as cancelled, not failed; both
+// A turn that died after a stop request ends as cancelled, not failed; both
 // outcomes are published so the UI and stored status reflect them.
 func (m *Manager) failTurn(job *jobState, err error) {
-	if jobCancelRequested(job) {
-		job.setState(StateCancelled, "cancelled", "")
-		m.log.Info("acp turn cancelled", "session", job.ID)
+	if reason, ok := job.cancelReason(); ok {
+		job.setState(StateCancelled, reason, "")
+		m.log.Info("acp turn stopped", "session", job.ID, "stop_reason", reason)
 	} else {
 		if serveErr := m.serveErr(job.ID); serveErr != nil && errors.Is(err, jsonrpc.ErrClosed) {
 			err = serveErr

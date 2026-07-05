@@ -131,7 +131,8 @@ func runServe(args []string) error {
 	if err := fxApp.Start(ctx); err != nil {
 		return conciseError(err)
 	}
-	<-fxApp.Wait()
+	shutdown := <-fxApp.Wait()
+	fmt.Fprintf(os.Stderr, "jaz server stopping signal=%v exit_code=%d\n", shutdown.Signal, shutdown.ExitCode)
 	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return conciseError(fxApp.Stop(ctx))
