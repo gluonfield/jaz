@@ -119,17 +119,19 @@ export function AssistantBubble({
   text,
   reasoning = '',
   tools = [],
+  showCopy = true,
   onArtifactPrompt,
 }: {
   text: string
   reasoning?: string
   tools?: ToolBlock[]
+  showCopy?: boolean
   onArtifactPrompt?: (text: string) => void
 }) {
   return (
     <div className="flex min-w-0 max-w-[var(--prose-max)] flex-col gap-2">
       <ThinkingBlock text={reasoning} />
-      {text ? <AssistantMarkdown text={text} /> : null}
+      {text ? <AssistantMarkdown text={text} showCopy={showCopy} /> : null}
       {tools.map((block) =>
         isArtifactToolName(block.name) ? (
           <ArtifactBlock
@@ -155,9 +157,11 @@ export function AssistantBubble({
 
 export const Bubble = memo(function Bubble({
   message,
+  showAssistantCopy = true,
   onArtifactPrompt,
 }: {
   message: ChatMessage
+  showAssistantCopy?: boolean
   onArtifactPrompt?: (text: string) => void
 }) {
   switch (message.role) {
@@ -175,6 +179,7 @@ export const Bubble = memo(function Bubble({
           text={messageText(message)}
           reasoning={messageReasoning(message)}
           tools={message.blocks?.filter(isVisibleToolBlock) ?? []}
+          showCopy={showAssistantCopy}
           onArtifactPrompt={onArtifactPrompt}
         />
       )
