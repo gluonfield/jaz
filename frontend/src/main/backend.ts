@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { app, powerSaveBlocker } from 'electron'
+import { logMain } from './diagnostics'
 
 // Single source of truth for where the spawned backend lives; returned to the
 // renderer through the IPC result so both sides always agree.
@@ -36,12 +37,34 @@ type TerminateOptions = {
   forceTimeoutMs?: number
 }
 
+type BackendSpawnSpec = {
+  command: string
+  args: string[]
+  cwd: string
+  packaged: boolean
+}
+
+type LogValue = string | number | boolean | null | undefined
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const pidFilePath = (): string => join(app.getPath('userData'), 'local-backend.pid')
 const defaultRootPath = (): string => join(homedir(), '.jaz')
 const authFilePath = (root = defaultRootPath()): string => join(root, 'auth.json')
 const backendBinaryName = (): string => (process.platform === 'win32' ? 'jaz.exe' : 'jaz')
+
+function backendLog(message: string, fields: Record<string, LogValue> = {}): void {
+  const suffix = Object.entries(fields)
+    .filter(([, value]) => value !== undefined && value !== '')
+    .map(([key, value]) => `${key}=${formatLogValue(value)}`)
+    .join(' ')
+  logMain(`local backend ${message}${suffix ? ` ${suffix}` : ''}`)
+}
+
+function formatLogValue(value: LogValue): string {
+  if (typeof value === 'string') return JSON.stringify(value)
+  return String(value)
+}
 
 function localBackendEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env }
@@ -87,24 +110,34 @@ async function reapOrphan(): Promise<void> {
   } catch {
     return
   }
+  backendLog('orphan pid file found', { pid_file: pidFilePath(), raw_pid: rawPid.trim() })
   try {
     rmSync(pidFilePath())
   } catch {
     // best effort
   }
   const pid = Number(rawPid.trim())
-  if (!Number.isInteger(pid) || pid <= 1) return
-  if (!backendPIDAlive(pid)) return
+  if (!Number.isInteger(pid) || pid <= 1) {
+    backendLog('orphan pid ignored', { raw_pid: rawPid.trim() })
+    return
+  }
+  if (!backendPIDAlive(pid)) {
+    backendLog('orphan pid stale', { pid })
+    return
+  }
+  backendLog('reaping orphan process group', { pid, signal: 'SIGTERM' })
   signalBackendPID(pid, 'SIGTERM')
   // wait for the group to release the port before we spawn a fresh one
   const deadline = Date.now() + 3_000
   while (Date.now() < deadline) {
     if (!backendPIDAlive(pid)) {
+      backendLog('orphan process group exited', { pid })
       return
     }
     await sleep(150)
   }
-  if (process.platform === 'win32') killWindowsTree(pid, true)
+  backendLog('orphan process group still alive after timeout', { pid, signal: 'SIGKILL' })
+  signalBackendPID(pid, 'SIGKILL')
 }
 
 function readAuthKey(path: string): string {
@@ -140,7 +173,12 @@ async function localBackendStartResult(
   source: 'adopted' | 'spawned',
 ): Promise<LocalBackendResult> {
   const result = await localBackendResult(health, source)
-  if (result.ok && source === 'spawned') startPowerSaveBlocker()
+  if (result.ok) {
+    backendLog('ready', { source, auth_required: health.authRequired, child_pid: child?.pid })
+    if (source === 'spawned') startPowerSaveBlocker()
+  } else {
+    backendLog('start result failed', { source, error: result.error })
+  }
   return result
 }
 
@@ -194,24 +232,30 @@ async function localBackendResult(
   return { ok: true, url: LOCAL_BACKEND_URL, key: key || undefined }
 }
 
-function spawnBackend(): ChildProcess {
+function backendSpawnSpec(): BackendSpawnSpec {
   if (app.isPackaged) {
     // Run from the runtime root so application.yaml and .env can live next to
     // the server's data.
     const bin = join(process.resourcesPath, 'bin', backendBinaryName())
     const cwd = join(homedir(), '.jaz')
     mkdirSync(cwd, { recursive: true })
-    return spawn(bin, [], {
-      cwd,
-      detached: true,
-      env: localBackendEnv(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
+    return { command: bin, args: [], cwd, packaged: true }
   }
   // Dev: out/main → frontend/out/main, so the backend module sits three up.
   const backendDir = resolve(__dirname, '../../../backend')
-  return spawn('go', ['run', './cmd/jaz'], {
-    cwd: backendDir,
+  return { command: 'go', args: ['run', './cmd/jaz'], cwd: backendDir, packaged: false }
+}
+
+function spawnBackend(): ChildProcess {
+  const spec = backendSpawnSpec()
+  backendLog('spawn start', {
+    command: spec.command,
+    args: spec.args.join(' '),
+    cwd: spec.cwd,
+    packaged: spec.packaged,
+  })
+  return spawn(spec.command, spec.args, {
+    cwd: spec.cwd,
     detached: true,
     env: localBackendEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -304,6 +348,7 @@ function waitForExit(proc: ChildProcess, timeoutMs: number): Promise<boolean> {
 }
 
 export async function startLocalBackend(): Promise<LocalBackendResult> {
+  backendLog('start requested', { has_child: Boolean(child), child_pid: child?.pid })
   if (!child) await reapOrphan()
   let health = await readHealth()
   if (health?.ok) return localBackendStartResult(health, child ? 'spawned' : 'adopted')
@@ -318,8 +363,10 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
     try {
       proc = spawnBackend()
     } catch (err) {
+      backendLog('spawn failed', { error: err instanceof Error ? err.message : String(err) })
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
+    backendLog('spawned child', { pid: proc.pid, packaged: app.isPackaged })
     proc.stdout?.on('data', (chunk: Buffer) => {
       captureStartupOutput(chunk)
       process.stdout.write(`[jaz] ${chunk}`)
@@ -330,6 +377,7 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
     })
     proc.on('error', (err) => {
       exitError = err.message
+      backendLog('child error', { pid: proc.pid, error: err.message })
       stopPowerSaveBlocker()
       if (child === proc) child = null
     })
@@ -340,6 +388,7 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
       exitError = code
         ? detail || `backend exited with code ${code}`
         : `backend exited${signal ? ` (${signal})` : ''}`
+      backendLog('child exit', { pid: proc.pid, code, signal, detail: exitError })
       try {
         rmSync(pidFilePath())
       } catch {
@@ -351,7 +400,9 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
     if (proc.pid) {
       try {
         writeFileSync(pidFilePath(), String(proc.pid))
+        backendLog('pid file written', { pid: proc.pid, pid_file: pidFilePath() })
       } catch {
+        backendLog('pid file write failed', { pid: proc.pid, pid_file: pidFilePath() })
         // pid file is best effort; worst case a future session adopts this one
       }
     }
@@ -367,27 +418,49 @@ export async function startLocalBackend(): Promise<LocalBackendResult> {
       if (result.ok) return result
       authError = result.error ?? null
     }
-    if (!child) return { ok: false, error: exitError ?? 'backend exited' }
+    if (!child) {
+      backendLog('child exited before healthy', { error: exitError ?? 'backend exited' })
+      return { ok: false, error: exitError ?? 'backend exited' }
+    }
     await new Promise((r) => setTimeout(r, 500))
   }
   if (authError) return { ok: false, error: authError }
+  backendLog('start timed out', { timeout_ms: START_TIMEOUT_MS })
   return { ok: false, error: 'timed out waiting for the backend to become healthy' }
 }
 
-export function stopLocalBackend(): void {
+export function stopLocalBackend(reason = 'stop'): void {
   stopPowerSaveBlocker()
   const proc = takeLocalBackend()
-  if (proc) signalBackendProcess(proc, 'SIGTERM')
+  if (!proc) {
+    backendLog('stop requested with no spawned child', { reason })
+    return
+  }
+  backendLog('stop requested', { reason, pid: proc.pid, signal: 'SIGTERM' })
+  signalBackendProcess(proc, 'SIGTERM')
 }
 
-export async function terminateLocalBackend(options: TerminateOptions = {}): Promise<void> {
+export async function terminateLocalBackend(options: TerminateOptions = {}, reason = 'terminate'): Promise<void> {
   stopPowerSaveBlocker()
   const proc = takeLocalBackend()
-  if (!proc) return
+  if (!proc) {
+    backendLog('terminate requested with no spawned child', { reason })
+    return
+  }
+  backendLog('terminate requested', { reason, pid: proc.pid, signal: 'SIGTERM', timeout_ms: options.timeoutMs ?? 0 })
   signalBackendProcess(proc, 'SIGTERM')
   const timeoutMs = options.timeoutMs ?? 0
-  if (timeoutMs <= 0 || (await waitForExit(proc, timeoutMs))) return
+  if (timeoutMs <= 0) return
+  if (await waitForExit(proc, timeoutMs)) {
+    backendLog('terminated after signal', { reason, pid: proc.pid, signal: 'SIGTERM' })
+    return
+  }
+  backendLog('terminate timeout', { reason, pid: proc.pid, signal: 'SIGKILL', timeout_ms: timeoutMs })
   signalBackendProcess(proc, 'SIGKILL')
   const forceTimeoutMs = options.forceTimeoutMs ?? 0
-  if (forceTimeoutMs > 0) await waitForExit(proc, forceTimeoutMs)
+  if (forceTimeoutMs > 0 && (await waitForExit(proc, forceTimeoutMs))) {
+    backendLog('terminated after force signal', { reason, pid: proc.pid, signal: 'SIGKILL' })
+  } else if (forceTimeoutMs > 0) {
+    backendLog('terminate force timeout', { reason, pid: proc.pid, signal: 'SIGKILL', timeout_ms: forceTimeoutMs })
+  }
 }

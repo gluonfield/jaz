@@ -46,7 +46,7 @@ export function createUpdateController(getMainWindow: () => BrowserWindow | null
   }
 
   async function installDownloaded(): Promise<void> {
-    await terminateLocalBackend({ timeoutMs: 5_000, forceTimeoutMs: 1_000 })
+    await terminateLocalBackend({ timeoutMs: 5_000, forceTimeoutMs: 1_000 }, 'install_update')
     if (process.platform === 'darwin') {
       nativeAutoUpdater.once('before-quit-for-update', () => app.exit(0))
     }

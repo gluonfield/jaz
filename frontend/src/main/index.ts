@@ -429,5 +429,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   teardownLauncher()
-  stopLocalBackend()
+  stopLocalBackend('before_quit')
 })
