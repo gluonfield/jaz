@@ -50,7 +50,7 @@ export function ReasoningEffortSlider({
       <div
         ref={trackRef}
         className="relative mt-1.5 h-7"
-        onMouseMove={(e) => (disabled ? undefined : setPreviewIndex(indexFromPointer(e.clientX)))}
+        onMouseMove={(e) => setPreviewIndex(indexFromPointer(e.clientX))}
         onMouseLeave={() => setPreviewIndex(null)}
       >
         <div className="absolute inset-0 rounded-[10px] bg-ink/10" />
