@@ -22,7 +22,7 @@ import {
 import type { MemoryHorizon, MemoryQueueStatus, MemoryStatus, MemoryTask } from '@/lib/api/types'
 import { enabledACPAgents } from '@/lib/agentRuntimes'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
-import { acpAgentModelSuggestions, modelSuggestionFor, modelSuggestionLabel } from '@/lib/models'
+import { acpAgentModelSuggestions, modelSuggestionFor } from '@/lib/models'
 import { modelReasoningEffortOptions } from '@/lib/reasoningEfforts'
 import { keys } from '@/lib/query/keys'
 
@@ -101,10 +101,23 @@ export function MemorySettings() {
 
   const setStatus = (next: MemoryStatus) => queryClient.setQueryData(keys.memory, next)
 
+  const latestMutation = () => queryClient.isMutating({ mutationKey: keys.memory }) === 1
   const update = useMutation({
+    mutationKey: keys.memory,
     mutationFn: updateMemorySettings,
-    onSuccess: setStatus,
-    onError: (error: Error) => toast(`Couldn't update memory settings: ${error.message}`, 'danger'),
+    onMutate: (input) => {
+      void queryClient.cancelQueries({ queryKey: keys.memory })
+      const previous = queryClient.getQueryData<MemoryStatus>(keys.memory)
+      if (previous) queryClient.setQueryData<MemoryStatus>(keys.memory, { ...previous, ...input })
+      return { previous }
+    },
+    onSuccess: (next) => {
+      if (latestMutation()) setStatus(next)
+    },
+    onError: (error: Error, _input, context) => {
+      if (latestMutation() && context?.previous) queryClient.setQueryData(keys.memory, context.previous)
+      toast(`Couldn't update memory settings: ${error.message}`, 'danger')
+    },
   })
 
   const reindex = useMutation({
@@ -199,14 +212,13 @@ export function MemorySettings() {
   const modelSuggestions = selectedMemoryAgent
     ? acpAgentModelSuggestions(agentSettings.data, selectedMemoryAgent)
     : []
-  const defaultModelLabel = memory.default_model
-    ? modelSuggestionLabel(modelSuggestions, memory.default_model)
-    : 'Agent default'
+  const effectiveMemoryModel = memory.model || memory.default_model || ''
   const memoryModelOptions = [
-    { value: '', label: `${defaultModelLabel} · default` },
+    ...(effectiveMemoryModel === '' || modelSuggestions.some((s) => s.value === effectiveMemoryModel)
+      ? []
+      : [{ value: effectiveMemoryModel, label: effectiveMemoryModel }]),
     ...modelSuggestions.map((s) => ({ value: s.value, label: s.label })),
   ]
-  const effectiveMemoryModel = memory.model || memory.default_model || ''
   const memoryEffortStops = modelReasoningEffortOptions(
     agentSettings.data,
     selectedMemoryAgent,
@@ -276,7 +288,7 @@ export function MemorySettings() {
           >
             <div className="grid w-full gap-2 md:w-[260px]">
               <Select
-                value={memory.model ?? ''}
+                value={effectiveMemoryModel}
                 options={memoryModelOptions}
                 disabled={!enabled || update.isPending || agentSettings.isPending}
                 onChange={(model) => update.mutate({ model })}
