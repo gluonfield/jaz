@@ -87,8 +87,8 @@ func TestCreateLoopbackProviderDoesNotRequireKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.APIKeyEnv != "" {
-		t.Fatalf("api_key_env = %q, want empty", rec.APIKeyEnv)
+	if rec.APIKeyEnv != "JAZ_PROVIDER_OLLAMA_2_API_KEY" {
+		t.Fatalf("api_key_env = %q", rec.APIKeyEnv)
 	}
 	cfg := rec.Config()
 	if cfg.APIKeyEnv != "" {
@@ -109,7 +109,7 @@ func TestLoopbackProviderConfigIgnoresLegacyKeyEnv(t *testing.T) {
 	}
 }
 
-func TestListNormalizesLegacyLoopbackProviderKeyEnv(t *testing.T) {
+func TestListKeepsStableProviderKeyEnv(t *testing.T) {
 	store := newMemStore()
 	_, err := store.SaveSetting(SettingsNamespace, CustomKey, json.RawMessage(`{"providers":[{"id":"ollama-2","label":"Ollama","base_url":"http://localhost:11434/v1","api_type":"openai-compatible","api_key_env":"JAZ_PROVIDER_OLLAMA_2_API_KEY","created_at":"2026-07-04T14:11:38Z","updated_at":"2026-07-04T14:11:38Z"}]}`))
 	if err != nil {
@@ -122,19 +122,22 @@ func TestListNormalizesLegacyLoopbackProviderKeyEnv(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("records = %d, want 1", len(records))
 	}
-	if records[0].APIKeyEnv != "" {
-		t.Fatalf("api_key_env = %q, want empty", records[0].APIKeyEnv)
+	if records[0].APIKeyEnv != "JAZ_PROVIDER_OLLAMA_2_API_KEY" {
+		t.Fatalf("api_key_env = %q", records[0].APIKeyEnv)
+	}
+	if cfg := records[0].Config(); cfg.APIKeyEnv != "" {
+		t.Fatalf("config api_key_env = %q, want empty", cfg.APIKeyEnv)
 	}
 }
 
-func TestUpdateDerivesKeyEnvFromBaseURL(t *testing.T) {
+func TestUpdateKeepsStableKeyEnvAcrossBaseURLChanges(t *testing.T) {
 	store := newMemStore()
 	rec, err := Create(store, Input{Label: "Local", BaseURL: "http://localhost:11434/v1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.APIKeyEnv != "" {
-		t.Fatalf("api_key_env = %q, want empty", rec.APIKeyEnv)
+	if rec.APIKeyEnv != "JAZ_PROVIDER_LOCAL_API_KEY" {
+		t.Fatalf("api_key_env = %q", rec.APIKeyEnv)
 	}
 	remote, err := Update(store, rec.ID, Input{Label: "Local", BaseURL: "https://llm.internal/v1"})
 	if err != nil {
@@ -147,8 +150,11 @@ func TestUpdateDerivesKeyEnvFromBaseURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if local.APIKeyEnv != "" {
-		t.Fatalf("loopback api_key_env = %q, want empty", local.APIKeyEnv)
+	if local.APIKeyEnv != "JAZ_PROVIDER_LOCAL_API_KEY" {
+		t.Fatalf("loopback api_key_env = %q", local.APIKeyEnv)
+	}
+	if cfg := local.Config(); cfg.APIKeyEnv != "" {
+		t.Fatalf("loopback config api_key_env = %q, want empty", cfg.APIKeyEnv)
 	}
 }
 

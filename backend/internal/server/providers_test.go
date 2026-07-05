@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/providerstore"
+	"github.com/wins/jaz/backend/internal/runtimeenv"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -88,6 +89,52 @@ func TestProvidersCRUDLifecycle(t *testing.T) {
 	}
 }
 
+func TestProviderDeleteRemovesKeyAfterLoopbackUpdate(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	source, err := provider.NewSource(map[string]provider.ModelProviderConfig{}, providerstore.Loader{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler()
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/providers",
+		strings.NewReader(`{"label":"Local","base_url":"https://llm.internal/v1","api_type":"openai-compatible","api_key":"secret"}`))
+	createReq.RemoteAddr = "127.0.0.1:1234"
+	createRes := httptest.NewRecorder()
+	handler.ServeHTTP(createRes, createReq)
+	if createRes.Code != http.StatusOK {
+		t.Fatalf("create status %d: %s", createRes.Code, createRes.Body)
+	}
+	if _, ok := runtimeenv.Lookup(runtimeenv.Path(root), "JAZ_PROVIDER_LOCAL_API_KEY"); !ok {
+		t.Fatal("expected runtime provider key to be saved")
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/v1/providers/local",
+		strings.NewReader(`{"label":"Local","base_url":"http://127.0.0.1:11434/v1","api_type":"openai-compatible"}`))
+	updateReq.RemoteAddr = "127.0.0.1:1234"
+	updateRes := httptest.NewRecorder()
+	handler.ServeHTTP(updateRes, updateReq)
+	if updateRes.Code != http.StatusOK {
+		t.Fatalf("update status %d: %s", updateRes.Code, updateRes.Body)
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/v1/providers/local", nil)
+	deleteReq.RemoteAddr = "127.0.0.1:1234"
+	deleteRes := httptest.NewRecorder()
+	handler.ServeHTTP(deleteRes, deleteReq)
+	if deleteRes.Code != http.StatusOK {
+		t.Fatalf("delete status %d: %s", deleteRes.Code, deleteRes.Body)
+	}
+	if _, ok := runtimeenv.Lookup(runtimeenv.Path(root), "JAZ_PROVIDER_LOCAL_API_KEY"); ok {
+		t.Fatal("runtime provider key was not removed")
+	}
+}
+
 func TestAgentSettingsTreatsLegacyLoopbackProviderAsNoKey(t *testing.T) {
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)
@@ -95,7 +142,7 @@ func TestAgentSettingsTreatsLegacyLoopbackProviderAsNoKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
-	_, err = store.SaveSetting(providerstore.SettingsNamespace, providerstore.CustomKey, json.RawMessage(`{"providers":[{"id":"ollama-2","label":"Ollama","base_url":"http://localhost:11434/v1","api_type":"openai-compatible","api_key_env":"JAZ_PROVIDER_OLLAMA_2_API_KEY","created_at":"2026-07-04T14:11:38Z","updated_at":"2026-07-04T14:11:38Z"}]}`))
+	_, err = store.SaveSetting(providerstore.SettingsNamespace, providerstore.CustomKey, json.RawMessage(`{"providers":[{"id":"ollama-2","label":"Ollama","base_url":"http://127.0.0.1:1/v1","api_type":"openai-compatible","api_key_env":"JAZ_PROVIDER_OLLAMA_2_API_KEY","created_at":"2026-07-04T14:11:38Z","updated_at":"2026-07-04T14:11:38Z"}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,10 +159,10 @@ func TestAgentSettingsTreatsLegacyLoopbackProviderAsNoKey(t *testing.T) {
 	}
 	var got struct {
 		Providers []struct {
-			ID               string `json:"id"`
-			APIKeyEnv        string `json:"api_key_env"`
-			RequiresAPIKey   bool   `json:"requires_api_key"`
-			ConnectionStatus string `json:"connection_status"`
+			ID             string `json:"id"`
+			APIKeyEnv      string `json:"api_key_env"`
+			RequiresAPIKey bool   `json:"requires_api_key"`
+			Configured     bool   `json:"configured"`
 		} `json:"providers"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
@@ -128,15 +175,15 @@ func TestAgentSettingsTreatsLegacyLoopbackProviderAsNoKey(t *testing.T) {
 		if provider.APIKeyEnv != "" || provider.RequiresAPIKey {
 			t.Fatalf("legacy loopback provider exposed as key-backed: %#v", provider)
 		}
-		if provider.ConnectionStatus == "" {
-			t.Fatalf("legacy loopback provider missing connection status: %#v", provider)
+		if !provider.Configured {
+			t.Fatalf("legacy loopback provider should be config-ready: %#v", provider)
 		}
 		return
 	}
 	t.Fatalf("ollama-2 missing from providers: %#v", got.Providers)
 }
 
-func TestAgentSettingsProbesNoKeyProviderConnected(t *testing.T) {
+func TestProviderStatusProbesNoKeyProviderConnected(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/models" {
 			t.Fatalf("path = %q, want /v1/models", r.URL.Path)
@@ -144,18 +191,18 @@ func TestAgentSettingsProbesNoKeyProviderConnected(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
 	defer upstream.Close()
-	assertNoKeyProviderStatus(t, upstream.URL+"/v1", true, modelProviderStatusConnected)
+	assertNoKeyProviderStatus(t, upstream.URL+"/v1", modelProviderStatusConnected)
 }
 
-func TestAgentSettingsProbesNoKeyProviderDisconnected(t *testing.T) {
+func TestProviderStatusProbesNoKeyProviderDisconnected(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "down", http.StatusInternalServerError)
 	}))
 	defer upstream.Close()
-	assertNoKeyProviderStatus(t, upstream.URL+"/v1", false, modelProviderStatusNotConnected)
+	assertNoKeyProviderStatus(t, upstream.URL+"/v1", modelProviderStatusNotConnected)
 }
 
-func assertNoKeyProviderStatus(t *testing.T, baseURL string, configured bool, status string) {
+func assertNoKeyProviderStatus(t *testing.T, baseURL string, status string) {
 	t.Helper()
 	root := t.TempDir()
 	store, err := sqlitestore.New(root)
@@ -180,10 +227,9 @@ func assertNoKeyProviderStatus(t *testing.T, baseURL string, configured bool, st
 	}
 	var got struct {
 		Providers []struct {
-			ID               string `json:"id"`
-			Configured       bool   `json:"configured"`
-			ConnectionStatus string `json:"connection_status"`
-			RequiresAPIKey   bool   `json:"requires_api_key"`
+			ID             string `json:"id"`
+			Configured     bool   `json:"configured"`
+			RequiresAPIKey bool   `json:"requires_api_key"`
 		} `json:"providers"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
@@ -193,12 +239,41 @@ func assertNoKeyProviderStatus(t *testing.T, baseURL string, configured bool, st
 		if provider.ID != record.ID {
 			continue
 		}
-		if provider.RequiresAPIKey || provider.Configured != configured || provider.ConnectionStatus != status {
-			t.Fatalf("provider status = %#v", provider)
+		if provider.RequiresAPIKey || !provider.Configured {
+			t.Fatalf("provider settings = %#v", provider)
 		}
+		assertProviderConnectionStatus(t, handler, record.ID, status)
 		return
 	}
 	t.Fatalf("%s missing from providers: %#v", record.ID, got.Providers)
+}
+
+func assertProviderConnectionStatus(t *testing.T, handler http.Handler, id string, status string) {
+	t.Helper()
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/providers/status", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("provider status %d: %s", res.Code, res.Body)
+	}
+	var got struct {
+		Providers []struct {
+			ID               string `json:"id"`
+			ConnectionStatus string `json:"connection_status"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range got.Providers {
+		if provider.ID != id {
+			continue
+		}
+		if provider.ConnectionStatus != status {
+			t.Fatalf("connection status = %q, want %q", provider.ConnectionStatus, status)
+		}
+		return
+	}
+	t.Fatalf("%s missing from provider statuses: %#v", id, got.Providers)
 }
 
 func TestCreateProviderRejectsInvalidURL(t *testing.T) {

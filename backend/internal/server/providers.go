@@ -12,12 +12,11 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-// providerView is the API shape for a custom provider: the stored record plus its
-// live key-configured status. The key value itself is never returned.
+// providerView is the API shape for a custom provider: the stored record plus
+// config readiness. The key value itself is never returned.
 type providerView struct {
 	providerstore.CustomProvider
-	Configured       bool   `json:"configured"`
-	ConnectionStatus string `json:"connection_status"`
+	Configured bool `json:"configured"`
 }
 
 // providerRequest is the create/update body — the editable fields plus an
@@ -53,11 +52,9 @@ func (s *Server) customProviderIDSet() map[string]bool {
 func (s *Server) providerView(record providerstore.CustomProvider) providerView {
 	cfg := record.Config()
 	meta := provider.ApplyModelProviderConfig(provider.ModelProvider{ID: record.ID}, cfg)
-	configured := s.modelProviderConfiguredStatus(record.ID, cfg, meta, true)
 	return providerView{
-		CustomProvider:   record,
-		Configured:       configured,
-		ConnectionStatus: modelProviderConnectionStatus(configured),
+		CustomProvider: record,
+		Configured:     s.modelProviderConfigReady(record.ID, cfg, meta),
 	}
 }
 

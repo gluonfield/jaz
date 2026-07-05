@@ -1,7 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -13,7 +13,7 @@ import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { modelProviderRequiresKey, providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
-import { createProvider, deleteProvider, updateProvider } from '@/lib/api/providers'
+import { createProvider, deleteProvider, getProviderStatuses, updateProvider } from '@/lib/api/providers'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
@@ -23,11 +23,28 @@ const EASE = [0.22, 1, 0.36, 1] as const
 const PROVIDER_API_TYPES = [{ value: 'openai-compatible', label: 'OpenAI-compatible' }]
 
 type ProviderOption = AgentSettingsData['providers'][number]
-type ProviderConnection = 'connected' | 'disconnected'
+type ProviderConnection = 'connected' | 'disconnected' | 'checking'
 type ProviderDraft = ProviderInput & { id?: string }
 
 function prettyEndpoint(url: string): string {
   return url.replace(/^https?:\/\//, '')
+}
+
+function endpointRequiresKey(raw: string): boolean {
+  const value = raw.trim()
+  if (!value) return true
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(value) ? value : `http://${value}`)
+    const host = parsed.hostname.toLowerCase()
+    return host !== 'localhost' && host !== '::1' && host !== '[::1]' && !host.startsWith('127.')
+  } catch {
+    return true
+  }
+}
+
+function draftWithEndpoint(draft: ProviderDraft, baseUrl: string): ProviderDraft {
+  const next = { ...draft, base_url: baseUrl }
+  return endpointRequiresKey(baseUrl) ? next : { ...next, api_key: '' }
 }
 
 function emptyProviderDraft(): ProviderDraft {
@@ -53,11 +70,24 @@ export function AgentProvidersSettings() {
   const { settings, draft, providerKeys, setProviderKeys, save, providerKeyDirty } =
     useAgentSettingsDraft('providers')
   const [providerDraft, setProviderDraft] = useState<ProviderDraft | null>(null)
+  const providerStatuses = useQuery({
+    queryKey: keys.providerStatuses,
+    queryFn: getProviderStatuses,
+  })
+  const statusByProvider = useMemo(
+    () =>
+      new Map(
+        (providerStatuses.data?.providers ?? []).map((provider) => [
+          provider.id,
+          provider.connection_status,
+        ]),
+      ),
+    [providerStatuses.data],
+  )
 
-  // Custom-provider create/edit/delete refresh the provider list (which rides
-  // inside the agent-settings query) plus anything derived from it.
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+    queryClient.invalidateQueries({ queryKey: keys.providerStatuses })
     queryClient.invalidateQueries({ queryKey: keys.acpAgents })
     queryClient.invalidateQueries({ queryKey: keys.onboarding })
   }
@@ -108,24 +138,29 @@ export function AgentProvidersSettings() {
           <SkeletonRows count={3} />
         ) : (
           <div className="flex flex-col gap-1.5">
-            {providers.map((provider) => (
-              <ProviderRow
-                key={provider.id}
-                provider={provider}
-                keyDraft={providerKeys[provider.id] ?? ''}
-                disabled={save.isPending}
-                remote={remote}
-                onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
-                onEdit={provider.custom ? () => openEdit(provider) : undefined}
-                onDelete={
-                  provider.custom
-                    ? () => {
-                        if (window.confirm(`Remove ${provider.label}?`)) remove.mutate(provider.id)
-                      }
-                    : undefined
-                }
-              />
-            ))}
+            {providers.map((provider) => {
+              const status = statusByProvider.get(provider.id)
+              const providerWithStatus = status ? { ...provider, connection_status: status } : provider
+              return (
+                <ProviderRow
+                  key={provider.id}
+                  provider={providerWithStatus}
+                  keyDraft={providerKeys[provider.id] ?? ''}
+                  statusPending={providerStatuses.isPending && !status}
+                  disabled={save.isPending}
+                  remote={remote}
+                  onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
+                  onEdit={provider.custom ? () => openEdit(provider) : undefined}
+                  onDelete={
+                    provider.custom
+                      ? () => {
+                          if (window.confirm(`Remove ${provider.label}?`)) remove.mutate(provider.id)
+                        }
+                      : undefined
+                  }
+                />
+              )
+            })}
             <button
               type="button"
               onClick={openCreate}
@@ -159,6 +194,7 @@ export function AgentProvidersSettings() {
 function ProviderRow({
   provider,
   keyDraft,
+  statusPending,
   disabled,
   remote,
   onKeyChange,
@@ -167,6 +203,7 @@ function ProviderRow({
 }: {
   provider: ProviderOption
   keyDraft: string
+  statusPending: boolean
   disabled: boolean
   remote: boolean
   onKeyChange: (value: string) => void
@@ -178,7 +215,11 @@ function ProviderRow({
     (needsKey && Boolean(keyDraft.trim())) ||
     provider.connection_status === 'connected' ||
     (!provider.connection_status && needsKey && Boolean(provider.configured || keyDraft.trim()))
-  const state: ProviderConnection = connected ? 'connected' : 'disconnected'
+  const state: ProviderConnection = connected
+    ? 'connected'
+    : !needsKey && statusPending
+      ? 'checking'
+      : 'disconnected'
   const keyUrl = providerKeyUrl(provider.id)
   const [expanded, setExpanded] = useState(false)
 
@@ -290,9 +331,16 @@ function ProviderRow({
 }
 
 function ProviderPill({ state }: { state: ProviderConnection }) {
-  const tone =
-    state === 'connected' ? 'bg-primary-soft text-primary-strong' : 'bg-accent-soft text-accent-strong'
-  const text = state === 'connected' ? 'Connected' : 'Not connected'
+  const tone = {
+    connected: 'bg-primary-soft text-primary-strong',
+    disconnected: 'bg-accent-soft text-accent-strong',
+    checking: 'bg-surface-2 text-ink-2',
+  }[state]
+  const text = {
+    connected: 'Connected',
+    disconnected: 'Not connected',
+    checking: 'Checking',
+  }[state]
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-medium ${tone}`}
@@ -323,13 +371,18 @@ function ProviderEditorModal({
 }) {
   const isEdit = Boolean(draft?.id)
   const canSave = Boolean(draft && draft.label.trim() && draft.base_url.trim())
+  const needsKey = !draft || endpointRequiresKey(draft.base_url)
   return (
     <Modal
       open={draft !== null}
       onClose={onClose}
       size="md"
       title={isEdit ? 'Edit provider' : 'Add a provider'}
-      description="Connect any OpenAI-compatible endpoint with your own API key."
+      description={
+        needsKey
+          ? 'Connect any OpenAI-compatible endpoint with your own API key.'
+          : 'Connect a local OpenAI-compatible endpoint.'
+      }
       footer={
         <>
           <p className="min-w-0 truncate text-[12px] text-danger" role="alert">
@@ -359,7 +412,7 @@ function ProviderEditorModal({
           <ProviderField label="Endpoint URL" hint="The base URL of the OpenAI-compatible API.">
             <Input
               value={draft.base_url}
-              onChange={(event) => onChange({ ...draft, base_url: event.target.value })}
+              onChange={(event) => onChange(draftWithEndpoint(draft, event.target.value))}
               placeholder="https://api.groq.com/openai/v1"
               autoComplete="off"
               spellCheck={false}
@@ -376,21 +429,23 @@ function ProviderEditorModal({
               className="w-full"
             />
           </ProviderField>
-          <ProviderField
-            label="API key"
-            hint={remote ? 'API keys can only be added from the machine running jaz.' : undefined}
-          >
-            <Input
-              type="password"
-              value={draft.api_key ?? ''}
-              onChange={(event) => onChange({ ...draft, api_key: event.target.value })}
-              placeholder={isEdit ? 'Leave blank to keep the current key' : 'Paste an API key'}
-              autoComplete="off"
-              spellCheck={false}
-              className="font-mono text-[12px]"
-              aria-label="API key"
-            />
-          </ProviderField>
+          {needsKey ? (
+            <ProviderField
+              label="API key"
+              hint={remote ? 'API keys can only be added from the machine running jaz.' : undefined}
+            >
+              <Input
+                type="password"
+                value={draft.api_key ?? ''}
+                onChange={(event) => onChange({ ...draft, api_key: event.target.value })}
+                placeholder={isEdit ? 'Leave blank to keep the current key' : 'Paste an API key'}
+                autoComplete="off"
+                spellCheck={false}
+                className="font-mono text-[12px]"
+                aria-label="API key"
+              />
+            </ProviderField>
+          ) : null}
           <ProviderField label="Icon">
             <IconPicker value={draft.icon ?? ''} onChange={(icon) => onChange({ ...draft, icon })} />
           </ProviderField>

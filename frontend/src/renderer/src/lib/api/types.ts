@@ -843,10 +843,6 @@ export interface MemorySourceQueues {
 export interface MemoryStatus {
   enabled: boolean
   agent?: string
-  model?: string
-  reasoning_effort?: string
-  default_model?: string
-  default_reasoning_effort?: string
   scheduler_running: boolean
   root: string
   db_path: string
@@ -941,6 +937,17 @@ export interface MCPServerStatus {
   checked_at?: string
 }
 
+export type ModelProviderConnectionStatusValue = 'connected' | 'not_connected'
+
+export interface ModelProviderConnectionStatus {
+  id: string
+  connection_status: ModelProviderConnectionStatusValue
+}
+
+export interface ModelProviderStatusResponse {
+  providers: ModelProviderConnectionStatus[]
+}
+
 export interface ModelProviderOption {
   id: string
   label: string
@@ -954,7 +961,7 @@ export interface ModelProviderOption {
   requires_api_key?: boolean
   /** whether this provider's API key is already configured on the backend */
   configured?: boolean
-  connection_status?: 'connected' | 'not_connected'
+  connection_status?: ModelProviderConnectionStatusValue
   /** user-created (DB-backed) provider — editable and deletable in the UI */
   custom?: boolean
   /** API flavor, e.g. "openai-compatible" */

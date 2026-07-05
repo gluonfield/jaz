@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -30,8 +29,7 @@ type agentOptionResponse struct {
 
 type settingsModelProvider struct {
 	provider.ModelProvider
-	Configured       bool   `json:"configured"`
-	ConnectionStatus string `json:"connection_status"`
+	Configured bool `json:"configured"`
 	// Custom marks a user-created (DB-backed) provider, editable/deletable in the
 	// UI. Built-ins and application.yaml providers are not custom.
 	Custom bool `json:"custom,omitempty"`
@@ -93,7 +91,7 @@ func (s *Server) loadAgentSettings(store storage.SettingsStorage) (agentsettings
 
 func (s *Server) agentSettingsResponse(defaults agentsettings.AgentDefaults) agentSettingsResponse {
 	agentNames := s.allACPAgentNames()
-	providers := s.modelProvidersWithStatus()
+	providers := s.settingsModelProviders()
 	return agentSettingsResponse{
 		Providers:  providers,
 		ACP:        acpDefaultsForAgents(defaults.ACP, agentNames),
@@ -113,38 +111,14 @@ func acpDefaultsForAgents(defaults map[string]agentsettings.ACPAgentDefaults, ag
 	return out
 }
 
-func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
-	providers := s.modelProviders()
-	custom := s.customProviderIDSet()
-	out := []settingsModelProvider{}
-	seen := map[string]struct{}{}
-	for _, meta := range provider.ModelProviders() {
-		cfg := providers[meta.ID]
-		meta = provider.ApplyModelProviderConfig(meta, cfg)
-		configured := s.modelProviderConfiguredStatus(meta.ID, cfg, meta, provider.ModelProviderConfigPresent(cfg))
+func (s *Server) settingsModelProviders() []settingsModelProvider {
+	resolved := s.resolvedModelProviders()
+	out := make([]settingsModelProvider, 0, len(resolved))
+	for _, modelProvider := range resolved {
 		out = append(out, settingsModelProvider{
-			ModelProvider:    meta,
-			Configured:       configured,
-			ConnectionStatus: modelProviderConnectionStatus(configured),
-		})
-		seen[meta.ID] = struct{}{}
-	}
-	ids := make([]string, 0, len(providers))
-	for id := range providers {
-		if _, ok := seen[id]; !ok {
-			ids = append(ids, id)
-		}
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		cfg := providers[id]
-		meta := provider.ApplyModelProviderConfig(provider.ModelProvider{ID: id}, cfg)
-		configured := s.modelProviderConfiguredStatus(id, cfg, meta, true)
-		out = append(out, settingsModelProvider{
-			ModelProvider:    meta,
-			Configured:       configured,
-			ConnectionStatus: modelProviderConnectionStatus(configured),
-			Custom:           custom[id],
+			ModelProvider: modelProvider.Meta,
+			Configured:    s.modelProviderConfigReady(modelProvider.ID, modelProvider.Config, modelProvider.Meta),
+			Custom:        modelProvider.Custom,
 		})
 	}
 	return out
@@ -173,7 +147,7 @@ func (s *Server) modelProviderConfigured(id string) bool {
 	if id == "" {
 		return false
 	}
-	for _, provider := range s.modelProvidersWithStatus() {
+	for _, provider := range s.settingsModelProviders() {
 		if provider.ID == id {
 			return provider.Implemented && provider.Configured
 		}

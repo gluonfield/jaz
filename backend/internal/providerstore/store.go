@@ -48,18 +48,22 @@ type CustomProvider struct {
 // Config maps the record to the runtime provider config the Source overlays.
 func (p CustomProvider) Config() provider.ModelProviderConfig {
 	p = p.normalized()
+	keyEnv := p.APIKeyEnv
+	if provider.BaseURLIsLoopback(p.BaseURL) {
+		keyEnv = ""
+	}
 	return provider.ModelProviderConfig{
 		Type:      APITypeOpenAICompatible,
 		Label:     p.Label,
 		BaseURL:   p.BaseURL,
-		APIKeyEnv: p.APIKeyEnv,
+		APIKeyEnv: keyEnv,
 		OpenCode:  true,
 		Codex:     true,
 	}
 }
 
 func (p CustomProvider) normalized() CustomProvider {
-	p.APIKeyEnv = deriveAPIKeyEnv(p.ID, p.BaseURL)
+	p.APIKeyEnv = apiKeyEnv(p.ID)
 	return p
 }
 
@@ -114,7 +118,7 @@ func Create(store storage.SettingsStorage, in Input) (CustomProvider, error) {
 		Label:        in.Label,
 		BaseURL:      in.BaseURL,
 		APIType:      in.APIType,
-		APIKeyEnv:    deriveAPIKeyEnv(id, in.BaseURL),
+		APIKeyEnv:    apiKeyEnv(id),
 		DefaultModel: in.DefaultModel,
 		Icon:         in.Icon,
 		CreatedAt:    now,
@@ -143,7 +147,7 @@ func Update(store storage.SettingsStorage, id string, in Input) (CustomProvider,
 		list.Providers[i].Label = in.Label
 		list.Providers[i].BaseURL = in.BaseURL
 		list.Providers[i].APIType = in.APIType
-		list.Providers[i].APIKeyEnv = deriveAPIKeyEnv(list.Providers[i].ID, in.BaseURL)
+		list.Providers[i].APIKeyEnv = apiKeyEnv(list.Providers[i].ID)
 		list.Providers[i].DefaultModel = in.DefaultModel
 		list.Providers[i].Icon = in.Icon
 		list.Providers[i].UpdatedAt = time.Now().UTC()
@@ -239,11 +243,8 @@ func save(store storage.SettingsStorage, list customList) error {
 	return err
 }
 
-func deriveAPIKeyEnv(id, baseURL string) string {
-	if provider.BaseURLIsLoopback(baseURL) {
-		return ""
-	}
-	return provider.ConfiguredAPIKeyEnv(id, provider.ModelProviderConfig{Type: APITypeOpenAICompatible, BaseURL: baseURL})
+func apiKeyEnv(id string) string {
+	return provider.ConfiguredAPIKeyEnv(id, provider.ModelProviderConfig{Type: APITypeOpenAICompatible})
 }
 
 func uniqueID(label string, existing []CustomProvider) string {

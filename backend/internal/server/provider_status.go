@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/provider"
@@ -17,38 +18,85 @@ const (
 	modelProviderStatusNotConnected = "not_connected"
 )
 
-func (s *Server) modelProviderConfiguredStatus(id string, cfg provider.ModelProviderConfig, meta provider.ModelProvider, probeNoKey bool) bool {
-	if meta.RequiresAPIKey {
-		return s.modelProviderKeyConfigured(id, cfg, meta)
-	}
-	if meta.OpenAICompatible || strings.EqualFold(strings.TrimSpace(cfg.Type), "openai-compatible") {
-		if !probeNoKey {
-			return false
-		}
-		return probeOpenAICompatibleProvider(meta.BaseURL) == nil
-	}
-	return true
+var modelProviderStatusHTTPClient = &http.Client{Timeout: 900 * time.Millisecond}
+
+type modelProviderStatusResponse struct {
+	Providers []modelProviderConnectionStatus `json:"providers"`
 }
 
-func modelProviderConnectionStatus(configured bool) string {
-	if configured {
+type modelProviderConnectionStatus struct {
+	ID               string `json:"id"`
+	ConnectionStatus string `json:"connection_status"`
+}
+
+func (s *Server) handleProviderStatuses(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, modelProviderStatusResponse{
+		Providers: s.modelProviderConnectionStatuses(r.Context()),
+	})
+}
+
+func (s *Server) modelProviderConnectionStatuses(ctx context.Context) []modelProviderConnectionStatus {
+	inputs := s.modelProviderStatusInputs()
+	out := make([]modelProviderConnectionStatus, len(inputs))
+	var wg sync.WaitGroup
+	for i, input := range inputs {
+		i, input := i, input
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out[i] = modelProviderConnectionStatus{
+				ID:               input.ID,
+				ConnectionStatus: s.modelProviderConnectionStatus(ctx, input),
+			}
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+func (s *Server) modelProviderConnectionStatus(ctx context.Context, input resolvedModelProvider) string {
+	if !s.modelProviderConfigReady(input.ID, input.Config, input.Meta) {
+		return modelProviderStatusNotConnected
+	}
+	if input.Meta.RequiresAPIKey {
 		return modelProviderStatusConnected
 	}
-	return modelProviderStatusNotConnected
+	if input.Meta.OpenAICompatible || strings.EqualFold(strings.TrimSpace(input.Config.Type), "openai-compatible") {
+		if probeOpenAICompatibleProvider(ctx, modelProviderStatusHTTPClient, input.Meta.BaseURL) != nil {
+			return modelProviderStatusNotConnected
+		}
+	}
+	return modelProviderStatusConnected
 }
 
-func probeOpenAICompatibleProvider(baseURL string) error {
+func (s *Server) modelProviderStatusInputs() []resolvedModelProvider {
+	resolved := s.resolvedModelProviders()
+	out := make([]resolvedModelProvider, 0, len(resolved))
+	for _, input := range resolved {
+		if !input.Meta.Implemented && !provider.ModelProviderConfigPresent(input.Config) {
+			continue
+		}
+		out = append(out, input)
+	}
+	return out
+}
+
+type httpDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+func probeOpenAICompatibleProvider(ctx context.Context, client httpDoer, baseURL string) error {
 	endpoint, err := openAICompatibleModelsURL(baseURL)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
+	ctx, cancel := context.WithTimeout(ctx, 900*time.Millisecond)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
