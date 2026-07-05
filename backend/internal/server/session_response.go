@@ -32,6 +32,10 @@ func canonicalSessionResponse(session storage.Session) sessionResponse {
 }
 
 func canonicalSession(session storage.Session) storage.Session {
+	session.QueuedMessages = storage.PublicQueuedMessages(session.QueuedMessages)
+	if session.PendingSteer != nil && session.PendingSteer.IsInternal() {
+		session.PendingSteer = nil
+	}
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return session
 	}

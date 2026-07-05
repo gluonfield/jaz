@@ -108,7 +108,6 @@ func runServe(args []string) error {
 		),
 		app.UsageModule(),
 		fx.Invoke(
-			app.ConnectACPCompletion,
 			app.CloseMemory,
 			app.ConfigureMemoryDreamRunner,
 			app.ConfigureMemorySearchRunner,
@@ -268,6 +267,7 @@ func startServer(
 		Terminal:              terminals,
 		Devices:               deviceAuth,
 	}
+	app.ConnectACPCompletion(manager, handler, a, store, locks, events, prompts, logger)
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
 			terminals.Close()

@@ -24,6 +24,11 @@ type sendOptions struct {
 	requireCompactSupport bool
 }
 
+type InternalTurnRequest struct {
+	Session string
+	Message string
+}
+
 func (m *Manager) Send(ctx context.Context, req SendRequest) (Job, error) {
 	return m.send(ctx, req, sendOptions{transcript: sendTranscriptUserMessage})
 }
@@ -35,6 +40,14 @@ func (m *Manager) ContinueGoal(ctx context.Context, session string) (Job, error)
 		Message:       jazGoalContinuationMessage,
 		Completion:    CompletionAsync,
 		GoalRequested: true,
+	}, sendOptions{transcript: sendTranscriptHidden})
+}
+
+func (m *Manager) StartInternalTurn(ctx context.Context, req InternalTurnRequest) (Job, error) {
+	return m.send(ctx, SendRequest{
+		Session:    req.Session,
+		Message:    req.Message,
+		Completion: CompletionAsync,
 	}, sendOptions{transcript: sendTranscriptHidden})
 }
 
