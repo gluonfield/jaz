@@ -63,6 +63,7 @@ export function modelProviderRequiresKey(provider: ModelProviderOption): boolean
 }
 
 export function modelProviderConnected(provider: ModelProviderOption): boolean {
+  if (provider.connection_status) return provider.connection_status === 'connected'
   return Boolean(provider.configured) || !modelProviderRequiresKey(provider)
 }
 

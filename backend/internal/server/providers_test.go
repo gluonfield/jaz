@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/providerstore"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -24,7 +25,7 @@ func newProvidersTestServer(t *testing.T) (http.Handler, *sqlitestore.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return (&Server{Store: store, Root: root, Providers: source}).Handler(), store
+	return (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler(), store
 }
 
 func TestProvidersCRUDLifecycle(t *testing.T) {
@@ -85,6 +86,119 @@ func TestProvidersCRUDLifecycle(t *testing.T) {
 	if strings.Contains(listRes.Body.String(), "groq") {
 		t.Fatalf("provider not deleted: %s", listRes.Body)
 	}
+}
+
+func TestAgentSettingsTreatsLegacyLoopbackProviderAsNoKey(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	_, err = store.SaveSetting(providerstore.SettingsNamespace, providerstore.CustomKey, json.RawMessage(`{"providers":[{"id":"ollama-2","label":"Ollama","base_url":"http://localhost:11434/v1","api_type":"openai-compatible","api_key_env":"JAZ_PROVIDER_OLLAMA_2_API_KEY","created_at":"2026-07-04T14:11:38Z","updated_at":"2026-07-04T14:11:38Z"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := provider.NewSource(map[string]provider.ModelProviderConfig{}, providerstore.Loader{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("settings status %d: %s", res.Code, res.Body)
+	}
+	var got struct {
+		Providers []struct {
+			ID               string `json:"id"`
+			APIKeyEnv        string `json:"api_key_env"`
+			RequiresAPIKey   bool   `json:"requires_api_key"`
+			ConnectionStatus string `json:"connection_status"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range got.Providers {
+		if provider.ID != "ollama-2" {
+			continue
+		}
+		if provider.APIKeyEnv != "" || provider.RequiresAPIKey {
+			t.Fatalf("legacy loopback provider exposed as key-backed: %#v", provider)
+		}
+		if provider.ConnectionStatus == "" {
+			t.Fatalf("legacy loopback provider missing connection status: %#v", provider)
+		}
+		return
+	}
+	t.Fatalf("ollama-2 missing from providers: %#v", got.Providers)
+}
+
+func TestAgentSettingsProbesNoKeyProviderConnected(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("path = %q, want /v1/models", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer upstream.Close()
+	assertNoKeyProviderStatus(t, upstream.URL+"/v1", true, modelProviderStatusConnected)
+}
+
+func TestAgentSettingsProbesNoKeyProviderDisconnected(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusInternalServerError)
+	}))
+	defer upstream.Close()
+	assertNoKeyProviderStatus(t, upstream.URL+"/v1", false, modelProviderStatusNotConnected)
+}
+
+func assertNoKeyProviderStatus(t *testing.T, baseURL string, configured bool, status string) {
+	t.Helper()
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	record, err := providerstore.Create(store, providerstore.Input{Label: "Local", BaseURL: baseURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := provider.NewSource(map[string]provider.ModelProviderConfig{}, providerstore.Loader{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("settings status %d: %s", res.Code, res.Body)
+	}
+	var got struct {
+		Providers []struct {
+			ID               string `json:"id"`
+			Configured       bool   `json:"configured"`
+			ConnectionStatus string `json:"connection_status"`
+			RequiresAPIKey   bool   `json:"requires_api_key"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range got.Providers {
+		if provider.ID != record.ID {
+			continue
+		}
+		if provider.RequiresAPIKey || provider.Configured != configured || provider.ConnectionStatus != status {
+			t.Fatalf("provider status = %#v", provider)
+		}
+		return
+	}
+	t.Fatalf("%s missing from providers: %#v", record.ID, got.Providers)
 }
 
 func TestCreateProviderRejectsInvalidURL(t *testing.T) {

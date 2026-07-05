@@ -36,6 +36,16 @@ func TestApplyModelProviderConfigGeneratesKeyEnvForCustomProvider(t *testing.T) 
 	}
 }
 
+func TestApplyModelProviderConfigKeepsLoopbackCustomNoKey(t *testing.T) {
+	got := ApplyModelProviderConfig(ModelProvider{ID: "local"}, ModelProviderConfig{
+		Type:    "openai-compatible",
+		BaseURL: "http://127.0.0.1:11434/v1",
+	})
+	if got.RequiresAPIKey || got.APIKeyEnv != "" {
+		t.Fatalf("loopback provider key metadata = requires %v env %q", got.RequiresAPIKey, got.APIKeyEnv)
+	}
+}
+
 func TestApplyModelProviderConfigAllowsExplicitKeyForNoKeyBuiltin(t *testing.T) {
 	meta, ok := ModelProviderByID(ProviderOllama)
 	if !ok {

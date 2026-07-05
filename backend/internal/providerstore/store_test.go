@@ -69,7 +69,7 @@ func TestCreateGetUpdateDelete(t *testing.T) {
 		t.Fatalf("update did not apply: %#v", upd)
 	}
 	if upd.ID != "groq" || upd.APIKeyEnv != rec.APIKeyEnv {
-		t.Fatal("id and api_key_env must be immutable across updates")
+		t.Fatal("id changed or remote api_key_env was not stable across updates")
 	}
 
 	removed, err := Delete(store, "groq")
@@ -79,6 +79,76 @@ func TestCreateGetUpdateDelete(t *testing.T) {
 	list, _ := List(store)
 	if len(list) != 0 {
 		t.Fatalf("expected empty list, got %d", len(list))
+	}
+}
+
+func TestCreateLoopbackProviderDoesNotRequireKey(t *testing.T) {
+	rec, err := Create(newMemStore(), Input{Label: "Ollama", BaseURL: "http://127.0.0.1:11434/v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.APIKeyEnv != "" {
+		t.Fatalf("api_key_env = %q, want empty", rec.APIKeyEnv)
+	}
+	cfg := rec.Config()
+	if cfg.APIKeyEnv != "" {
+		t.Fatalf("config api_key_env = %q, want empty", cfg.APIKeyEnv)
+	}
+}
+
+func TestLoopbackProviderConfigIgnoresLegacyKeyEnv(t *testing.T) {
+	rec := CustomProvider{
+		ID:        "ollama-2",
+		Label:     "Ollama",
+		BaseURL:   "http://127.0.0.1:11434/v1",
+		APIType:   APITypeOpenAICompatible,
+		APIKeyEnv: "JAZ_PROVIDER_OLLAMA_2_API_KEY",
+	}
+	if cfg := rec.Config(); cfg.APIKeyEnv != "" {
+		t.Fatalf("config api_key_env = %q, want empty", cfg.APIKeyEnv)
+	}
+}
+
+func TestListNormalizesLegacyLoopbackProviderKeyEnv(t *testing.T) {
+	store := newMemStore()
+	_, err := store.SaveSetting(SettingsNamespace, CustomKey, json.RawMessage(`{"providers":[{"id":"ollama-2","label":"Ollama","base_url":"http://localhost:11434/v1","api_type":"openai-compatible","api_key_env":"JAZ_PROVIDER_OLLAMA_2_API_KEY","created_at":"2026-07-04T14:11:38Z","updated_at":"2026-07-04T14:11:38Z"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := List(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("records = %d, want 1", len(records))
+	}
+	if records[0].APIKeyEnv != "" {
+		t.Fatalf("api_key_env = %q, want empty", records[0].APIKeyEnv)
+	}
+}
+
+func TestUpdateDerivesKeyEnvFromBaseURL(t *testing.T) {
+	store := newMemStore()
+	rec, err := Create(store, Input{Label: "Local", BaseURL: "http://localhost:11434/v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.APIKeyEnv != "" {
+		t.Fatalf("api_key_env = %q, want empty", rec.APIKeyEnv)
+	}
+	remote, err := Update(store, rec.ID, Input{Label: "Local", BaseURL: "https://llm.internal/v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if remote.APIKeyEnv != "JAZ_PROVIDER_LOCAL_API_KEY" {
+		t.Fatalf("remote api_key_env = %q", remote.APIKeyEnv)
+	}
+	local, err := Update(store, rec.ID, Input{Label: "Local", BaseURL: "http://127.0.0.1:11434/v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.APIKeyEnv != "" {
+		t.Fatalf("loopback api_key_env = %q, want empty", local.APIKeyEnv)
 	}
 }
 

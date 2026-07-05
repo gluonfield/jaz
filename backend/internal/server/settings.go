@@ -30,7 +30,8 @@ type agentOptionResponse struct {
 
 type settingsModelProvider struct {
 	provider.ModelProvider
-	Configured bool `json:"configured"`
+	Configured       bool   `json:"configured"`
+	ConnectionStatus string `json:"connection_status"`
 	// Custom marks a user-created (DB-backed) provider, editable/deletable in the
 	// UI. Built-ins and application.yaml providers are not custom.
 	Custom bool `json:"custom,omitempty"`
@@ -120,9 +121,11 @@ func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
 	for _, meta := range provider.ModelProviders() {
 		cfg := providers[meta.ID]
 		meta = provider.ApplyModelProviderConfig(meta, cfg)
+		configured := s.modelProviderConfiguredStatus(meta.ID, cfg, meta, provider.ModelProviderConfigPresent(cfg))
 		out = append(out, settingsModelProvider{
-			ModelProvider: meta,
-			Configured:    s.modelProviderKeyConfigured(meta.ID, cfg, meta),
+			ModelProvider:    meta,
+			Configured:       configured,
+			ConnectionStatus: modelProviderConnectionStatus(configured),
 		})
 		seen[meta.ID] = struct{}{}
 	}
@@ -136,10 +139,12 @@ func (s *Server) modelProvidersWithStatus() []settingsModelProvider {
 	for _, id := range ids {
 		cfg := providers[id]
 		meta := provider.ApplyModelProviderConfig(provider.ModelProvider{ID: id}, cfg)
+		configured := s.modelProviderConfiguredStatus(id, cfg, meta, true)
 		out = append(out, settingsModelProvider{
-			ModelProvider: meta,
-			Configured:    s.modelProviderKeyConfigured(id, cfg, meta),
-			Custom:        custom[id],
+			ModelProvider:    meta,
+			Configured:       configured,
+			ConnectionStatus: modelProviderConnectionStatus(configured),
+			Custom:           custom[id],
 		})
 	}
 	return out

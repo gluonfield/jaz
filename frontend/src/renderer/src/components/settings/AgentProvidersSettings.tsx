@@ -23,7 +23,7 @@ const EASE = [0.22, 1, 0.36, 1] as const
 const PROVIDER_API_TYPES = [{ value: 'openai-compatible', label: 'OpenAI-compatible' }]
 
 type ProviderOption = AgentSettingsData['providers'][number]
-type ProviderConnection = 'connected' | 'disconnected' | 'no-key'
+type ProviderConnection = 'connected' | 'disconnected'
 type ProviderDraft = ProviderInput & { id?: string }
 
 function prettyEndpoint(url: string): string {
@@ -174,8 +174,11 @@ function ProviderRow({
   onDelete?: () => void
 }) {
   const needsKey = modelProviderRequiresKey(provider)
-  const connected = needsKey ? Boolean(provider.configured || keyDraft.trim()) : true
-  const state: ProviderConnection = needsKey ? (connected ? 'connected' : 'disconnected') : 'no-key'
+  const connected =
+    (needsKey && Boolean(keyDraft.trim())) ||
+    provider.connection_status === 'connected' ||
+    (!provider.connection_status && needsKey && Boolean(provider.configured || keyDraft.trim()))
+  const state: ProviderConnection = connected ? 'connected' : 'disconnected'
   const keyUrl = providerKeyUrl(provider.id)
   const [expanded, setExpanded] = useState(false)
 
@@ -288,13 +291,8 @@ function ProviderRow({
 
 function ProviderPill({ state }: { state: ProviderConnection }) {
   const tone =
-    state === 'connected'
-      ? 'bg-primary-soft text-primary-strong'
-      : state === 'no-key'
-        ? 'bg-surface-2 text-ink-3'
-        : 'bg-accent-soft text-accent-strong'
-  const text =
-    state === 'connected' ? 'Connected' : state === 'no-key' ? 'No key needed' : 'Not connected'
+    state === 'connected' ? 'bg-primary-soft text-primary-strong' : 'bg-accent-soft text-accent-strong'
+  const text = state === 'connected' ? 'Connected' : 'Not connected'
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-medium ${tone}`}
