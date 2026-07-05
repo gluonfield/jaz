@@ -17,6 +17,7 @@ export const LiveEvent = memo(function LiveEvent({
   event,
   showHeader,
   working = false,
+  showCopy = true,
   permissionResolution,
   showTaskSurface,
   onApprovePlan,
@@ -25,6 +26,7 @@ export const LiveEvent = memo(function LiveEvent({
   event: SessionEvent
   showHeader: boolean
   working?: boolean
+  showCopy?: boolean
   permissionResolution?: ACPPermission
   showTaskSurface?: boolean
   onApprovePlan?: () => void
@@ -56,7 +58,9 @@ export const LiveEvent = memo(function LiveEvent({
         <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
       ) : null}
       {loopCreated ? <LoopCreatedCard loop={loopCreated} /> : null}
-      {event.content && !artifact ? <AssistantMarkdown text={event.content} /> : null}
+      {event.content && !artifact ? (
+        <AssistantMarkdown text={event.content} showCopy={showCopy} />
+      ) : null}
       {event.acp?.error ? <SessionErrorNotice message={event.acp.error} /> : null}
       {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} active={working} /> : null}
       {event.permission ? (
