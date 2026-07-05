@@ -67,25 +67,6 @@ func whatsappContactRecord(connection integrations.Connection, jid waTypes.JID, 
 	}
 }
 
-func whatsappContactSnapshotRecord(connection integrations.Connection, jid waTypes.JID, contact waTypes.ContactInfo) (integrations.Record, bool) {
-	if !whatsappUsefulContactSnapshot(jid, contact) {
-		return integrations.Record{}, false
-	}
-	return whatsappContactRecord(connection, jid, contact), true
-}
-
-func whatsappUsefulContactSnapshot(jid waTypes.JID, contact waTypes.ContactInfo) bool {
-	if jid.User == "" {
-		return false
-	}
-	switch jid.Server {
-	case waTypes.DefaultUserServer, waTypes.HiddenUserServer, waTypes.LegacyUserServer:
-	default:
-		return false
-	}
-	return len(contactNames(contact)) > 0
-}
-
 func whatsappContactDisplayName(jid waTypes.JID, contact waTypes.ContactInfo, names []string) string {
 	if len(names) > 0 {
 		return names[0]
@@ -104,28 +85,6 @@ func contactNames(contact waTypes.ContactInfo) []string {
 		out = append(out, value)
 	}
 	return out
-}
-
-func whatsappContactActionRecord(connection integrations.Connection, event *events.Contact) integrations.Record {
-	rawAction, _ := protojson.Marshal(event.Action)
-	raw := rawJSON(map[string]any{
-		"whatsapp_id":    event.JID.String(),
-		"jid":            event.JID.String(),
-		"phone_number":   event.JID.User,
-		"phone":          event.JID.User,
-		"timestamp":      event.Timestamp,
-		"from_full_sync": event.FromFullSync,
-		"action":         json.RawMessage(rawAction),
-	})
-	return integrations.Record{
-		Provider:     whatsappconnector.ProviderID,
-		ConnectionID: connection.ID,
-		AccountID:    connection.AccountID,
-		Kind:         "whatsapp.contact",
-		ExternalID:   event.JID.String(),
-		OccurredAt:   event.Timestamp,
-		Raw:          raw,
-	}
 }
 
 func whatsappMessageRecord(connection integrations.Connection, event *events.Message) integrations.Record {
@@ -156,44 +115,13 @@ func whatsappMessageRecord(connection integrations.Connection, event *events.Mes
 }
 
 func whatsappHistoryRecords(connection integrations.Connection, sync *waHistorySync.HistorySync, cutoff time.Time) []integrations.Record {
-	records, _ := whatsappHistoryRecordsLimited(connection, sync, cutoff, nil, 0)
+	records, _, _ := whatsappHistoryRecordsLimited(connection, sync, cutoff, nil, 0)
 	return records
 }
 
-func whatsappHistoryContactRecords(connection integrations.Connection, sync *waHistorySync.HistorySync) []integrations.Record {
+func whatsappHistoryRecordsLimited(connection integrations.Connection, sync *waHistorySync.HistorySync, cutoff time.Time, groupCounts map[string]int, groupLimit int) ([]integrations.Record, []integrations.Record, map[string]int) {
 	if sync == nil {
-		return nil
-	}
-	records := make([]integrations.Record, 0, len(sync.GetConversations()))
-	for _, conversation := range sync.GetConversations() {
-		jid, ok := whatsappParseJID(conversation.GetID())
-		if !ok {
-			continue
-		}
-		name := firstNonEmpty(conversation.GetName(), conversation.GetDisplayName())
-		if name == "" {
-			continue
-		}
-		if jid.Server == waTypes.GroupServer {
-			records = append(records, whatsappGroupRecord(connection, jid, name))
-			continue
-		}
-		record, ok := whatsappContactSnapshotRecord(connection, jid, waTypes.ContactInfo{FullName: name})
-		if ok {
-			records = append(records, record)
-		}
-	}
-	return records
-}
-
-func whatsappParseJID(value string) (waTypes.JID, bool) {
-	jid, err := waTypes.ParseJID(value)
-	return jid, err == nil && !jid.IsEmpty()
-}
-
-func whatsappHistoryRecordsLimited(connection integrations.Connection, sync *waHistorySync.HistorySync, cutoff time.Time, groupCounts map[string]int, groupLimit int) ([]integrations.Record, map[string]int) {
-	if sync == nil {
-		return nil, groupCounts
+		return nil, nil, groupCounts
 	}
 	groupCounts = copyGroupCounts(groupCounts)
 	records := []integrations.Record{{
@@ -210,6 +138,8 @@ func whatsappHistoryRecordsLimited(connection integrations.Connection, sync *waH
 			"status_message_count": len(sync.GetStatusV3Messages()),
 		}),
 	}}
+	var contacts []integrations.Record
+	contactSeen := map[string]bool{}
 	for _, conversation := range sync.GetConversations() {
 		conversationID := conversation.GetID()
 		for _, msg := range conversation.GetMessages() {
@@ -224,6 +154,10 @@ func whatsappHistoryRecordsLimited(connection integrations.Connection, sync *waH
 				groupCounts[conversationID]++
 			}
 			records = append(records, record)
+			if contact, ok := whatsappHistoryConversationContactRecord(connection, conversation); ok && !contactSeen[contact.ExternalID] {
+				contactSeen[contact.ExternalID] = true
+				contacts = append(contacts, contact)
+			}
 		}
 	}
 	for _, msg := range sync.GetStatusV3Messages() {
@@ -231,7 +165,30 @@ func whatsappHistoryRecordsLimited(connection integrations.Connection, sync *waH
 			records = append(records, record)
 		}
 	}
-	return records, groupCounts
+	return records, contacts, groupCounts
+}
+
+func whatsappHistoryConversationContactRecord(connection integrations.Connection, conversation *waHistorySync.Conversation) (integrations.Record, bool) {
+	if conversation == nil {
+		return integrations.Record{}, false
+	}
+	jid, err := waTypes.ParseJID(conversation.GetID())
+	if err != nil || jid.IsEmpty() {
+		return integrations.Record{}, false
+	}
+	name := firstNonEmpty(conversation.GetName(), conversation.GetDisplayName())
+	if name == "" {
+		return integrations.Record{}, false
+	}
+	if jid.Server == waTypes.GroupServer {
+		return whatsappGroupRecord(connection, jid, name), true
+	}
+	switch jid.Server {
+	case waTypes.DefaultUserServer, waTypes.HiddenUserServer, waTypes.LegacyUserServer:
+		return whatsappContactRecord(connection, jid, waTypes.ContactInfo{FullName: name}), true
+	default:
+		return integrations.Record{}, false
+	}
 }
 
 func copyGroupCounts(counts map[string]int) map[string]int {
