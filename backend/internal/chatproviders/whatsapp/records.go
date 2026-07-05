@@ -67,6 +67,25 @@ func whatsappContactRecord(connection integrations.Connection, jid waTypes.JID, 
 	}
 }
 
+func whatsappContactSnapshotRecord(connection integrations.Connection, jid waTypes.JID, contact waTypes.ContactInfo) (integrations.Record, bool) {
+	if !whatsappUsefulContactSnapshot(jid, contact) {
+		return integrations.Record{}, false
+	}
+	return whatsappContactRecord(connection, jid, contact), true
+}
+
+func whatsappUsefulContactSnapshot(jid waTypes.JID, contact waTypes.ContactInfo) bool {
+	if jid.User == "" {
+		return false
+	}
+	switch jid.Server {
+	case waTypes.DefaultUserServer, waTypes.HiddenUserServer, waTypes.LegacyUserServer:
+	default:
+		return false
+	}
+	return len(contactNames(contact)) > 0
+}
+
 func whatsappContactDisplayName(jid waTypes.JID, contact waTypes.ContactInfo, names []string) string {
 	if len(names) > 0 {
 		return names[0]
@@ -139,6 +158,37 @@ func whatsappMessageRecord(connection integrations.Connection, event *events.Mes
 func whatsappHistoryRecords(connection integrations.Connection, sync *waHistorySync.HistorySync, cutoff time.Time) []integrations.Record {
 	records, _ := whatsappHistoryRecordsLimited(connection, sync, cutoff, nil, 0)
 	return records
+}
+
+func whatsappHistoryContactRecords(connection integrations.Connection, sync *waHistorySync.HistorySync) []integrations.Record {
+	if sync == nil {
+		return nil
+	}
+	records := make([]integrations.Record, 0, len(sync.GetConversations()))
+	for _, conversation := range sync.GetConversations() {
+		jid, ok := whatsappParseJID(conversation.GetID())
+		if !ok {
+			continue
+		}
+		name := firstNonEmpty(conversation.GetName(), conversation.GetDisplayName())
+		if name == "" {
+			continue
+		}
+		if jid.Server == waTypes.GroupServer {
+			records = append(records, whatsappGroupRecord(connection, jid, name))
+			continue
+		}
+		record, ok := whatsappContactSnapshotRecord(connection, jid, waTypes.ContactInfo{FullName: name})
+		if ok {
+			records = append(records, record)
+		}
+	}
+	return records
+}
+
+func whatsappParseJID(value string) (waTypes.JID, bool) {
+	jid, err := waTypes.ParseJID(value)
+	return jid, err == nil && !jid.IsEmpty()
 }
 
 func whatsappHistoryRecordsLimited(connection integrations.Connection, sync *waHistorySync.HistorySync, cutoff time.Time, groupCounts map[string]int, groupLimit int) ([]integrations.Record, map[string]int) {

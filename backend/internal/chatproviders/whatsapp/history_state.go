@@ -26,6 +26,9 @@ func (p *Provider) writeHistorySync(ctx context.Context, connection integrations
 		return err
 	}
 	records, groupCounts := whatsappHistoryRecordsLimited(connection, sync, whatsappHistoryCutoff(now), state.GroupMessages, p.groupHistoryLimit())
+	if err := p.writeContactSnapshotRecords(ctx, connection, whatsappHistoryContactRecords(connection, sync)...); err != nil {
+		return err
+	}
 	if err := p.writeRecords(ctx, records...); err != nil {
 		return err
 	}
