@@ -51,6 +51,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/mcp/servers/", s.handleMCPServerAction)
 	mux.HandleFunc("GET /v1/providers", s.handleListProviders)
 	mux.HandleFunc("POST /v1/providers", s.handleCreateProvider)
+	mux.HandleFunc("GET /v1/providers/{id}/status", s.handleProviderStatus)
 	mux.HandleFunc("PUT /v1/providers/", s.handleProviderAction)
 	mux.HandleFunc("DELETE /v1/providers/", s.handleProviderAction)
 	mux.HandleFunc("GET /v1/agent/files", s.handleListAgentFiles)

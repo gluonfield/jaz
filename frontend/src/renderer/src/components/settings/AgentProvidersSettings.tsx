@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useState } from 'react'
@@ -12,8 +12,13 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { modelProviderRequiresKey, providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
-import { createProvider, deleteProvider, updateProvider } from '@/lib/api/providers'
+import {
+  modelProviderConnected,
+  modelProviderRequiresKey,
+  providerHidden,
+  providerKeyUrl,
+} from '@/lib/agentRuntimes'
+import { createProvider, deleteProvider, getProviderStatus, updateProvider } from '@/lib/api/providers'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
@@ -174,8 +179,17 @@ function ProviderRow({
   onDelete?: () => void
 }) {
   const needsKey = modelProviderRequiresKey(provider)
-  const connected = needsKey ? Boolean(provider.configured || keyDraft.trim()) : true
-  const state: ProviderConnection = needsKey ? (connected ? 'connected' : 'disconnected') : 'no-key'
+  const probe = useQuery({
+    queryKey: keys.modelProviderStatus(provider.id),
+    queryFn: () => getProviderStatus(provider.id),
+    enabled: !needsKey && provider.openai_compatible === true,
+    staleTime: 5000,
+    retry: false,
+  })
+  const ready = Boolean(keyDraft.trim()) || modelProviderConnected(provider)
+  let state: ProviderConnection = ready ? (needsKey ? 'connected' : 'no-key') : 'disconnected'
+  if (probe.data?.connection_status === 'connected') state = 'connected'
+  if (probe.data?.connection_status === 'not_connected') state = 'disconnected'
   const keyUrl = providerKeyUrl(provider.id)
   const [expanded, setExpanded] = useState(false)
 

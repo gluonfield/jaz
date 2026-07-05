@@ -962,6 +962,10 @@ export interface ModelProviderOption {
   icon?: string
 }
 
+export interface ModelProviderStatus {
+  connection_status: 'connected' | 'not_connected'
+}
+
 export interface ModelPricing {
   input: number
   output: number

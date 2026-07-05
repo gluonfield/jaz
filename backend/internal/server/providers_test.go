@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -131,6 +132,83 @@ func TestAgentSettingsTreatsLegacyLoopbackProviderAsNoKey(t *testing.T) {
 		return
 	}
 	t.Fatalf("ollama-2 missing from providers: %#v", got.Providers)
+}
+
+func TestAgentSettingsDoesNotProbeNoKeyProviderStatus(t *testing.T) {
+	var hits atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer upstream.Close()
+	handler, _ := newProviderStatusTestServer(t, upstream.URL+"/v1")
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("settings status %d: %s", res.Code, res.Body)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("settings read probed provider %d times", hits.Load())
+	}
+}
+
+func TestProviderStatusProbesNoKeyProviderConnected(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("path = %q, want /v1/models", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer upstream.Close()
+	assertNoKeyProviderStatus(t, upstream.URL+"/v1", modelProviderStatusConnected)
+}
+
+func TestProviderStatusProbesNoKeyProviderDisconnected(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusInternalServerError)
+	}))
+	defer upstream.Close()
+	assertNoKeyProviderStatus(t, upstream.URL+"/v1", modelProviderStatusNotConnected)
+}
+
+func assertNoKeyProviderStatus(t *testing.T, baseURL string, status string) {
+	t.Helper()
+	handler, record := newProviderStatusTestServer(t, baseURL)
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/providers/"+record.ID+"/status", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", res.Code, res.Body)
+	}
+	var got struct {
+		ConnectionStatus string `json:"connection_status"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ConnectionStatus != status {
+		t.Fatalf("connection_status = %q, want %q", got.ConnectionStatus, status)
+	}
+}
+
+func newProviderStatusTestServer(t *testing.T, baseURL string) (http.Handler, providerstore.CustomProvider) {
+	t.Helper()
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	record, err := providerstore.Create(store, providerstore.Input{Label: "Local", BaseURL: baseURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := provider.NewSource(map[string]provider.ModelProviderConfig{}, providerstore.Loader{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler(), record
 }
 
 func TestCreateProviderRejectsInvalidURL(t *testing.T) {
