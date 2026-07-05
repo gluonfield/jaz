@@ -280,9 +280,6 @@ func NewModelCatalog(providerSource provider.Source) *modelcatalog.Service {
 	return modelcatalog.NewService(providerSource)
 }
 
-// StartModelCatalogWarmup loads the OpenRouter catalog in the background and
-// retries until it succeeds: it is the sole source of per-model reasoning
-// efforts, so the process keeps working toward it instead of degrading.
 func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, logger *log.Logger) {
 	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
@@ -290,7 +287,7 @@ func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, log
 			go func() {
 				for delay := time.Second; ; delay = min(delay*2, time.Minute) {
 					err := catalog.Warm(ctx)
-					if err == nil {
+					if err == nil || ctx.Err() != nil {
 						return
 					}
 					logger.WithPrefix("models").Warn("model provider catalog warmup failed", "error", err, "retry_in", delay)

@@ -88,6 +88,51 @@ func TestProvidersCRUDLifecycle(t *testing.T) {
 	}
 }
 
+func TestAgentSettingsTreatsLegacyLoopbackProviderAsNoKey(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	_, err = store.SaveSetting(providerstore.SettingsNamespace, providerstore.CustomKey, json.RawMessage(`{"providers":[{"id":"ollama-2","label":"Ollama","base_url":"http://localhost:11434/v1","api_type":"openai-compatible","api_key_env":"JAZ_PROVIDER_OLLAMA_2_API_KEY","created_at":"2026-07-04T14:11:38Z","updated_at":"2026-07-04T14:11:38Z"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := provider.NewSource(map[string]provider.ModelProviderConfig{}, providerstore.Loader{Store: store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("settings status %d: %s", res.Code, res.Body)
+	}
+	var got struct {
+		Providers []struct {
+			ID             string `json:"id"`
+			APIKeyEnv      string `json:"api_key_env"`
+			RequiresAPIKey bool   `json:"requires_api_key"`
+			Configured     bool   `json:"configured"`
+		} `json:"providers"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range got.Providers {
+		if provider.ID != "ollama-2" {
+			continue
+		}
+		if provider.APIKeyEnv != "" || provider.RequiresAPIKey || provider.Configured {
+			t.Fatalf("legacy loopback provider exposed as key-backed: %#v", provider)
+		}
+		return
+	}
+	t.Fatalf("ollama-2 missing from providers: %#v", got.Providers)
+}
+
 func TestCreateProviderRejectsInvalidURL(t *testing.T) {
 	handler, _ := newProvidersTestServer(t)
 	req := httptest.NewRequest(http.MethodPost, "/v1/providers",

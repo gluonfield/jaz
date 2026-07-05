@@ -2,6 +2,7 @@ import { Check } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { layoutPoint, layoutRect, layoutViewport } from '@/lib/dom/zoom'
 
 const GAP = 6
 
@@ -37,7 +38,7 @@ export function Popover({
   const [rect, setRect] = useState<DOMRect | null>(null)
 
   useLayoutEffect(() => {
-    if (open && anchorRef.current) setRect(anchorRef.current.getBoundingClientRect())
+    if (open && anchorRef.current) setRect(layoutRect(anchorRef.current))
   }, [open])
 
   useEffect(() => {
@@ -71,16 +72,16 @@ export function Popover({
   }, [open, onClose])
 
   const slide = reducedMotion ? 0 : placement === 'above' ? 6 : -6
-  const style: CSSProperties = rect
-    ? {
-        position: 'fixed',
-        zIndex: 'var(--z-modal)',
-        ...(placement === 'below'
-          ? { top: rect.bottom + GAP }
-          : { bottom: window.innerHeight - rect.top + GAP }),
-        ...(align === 'end' ? { right: window.innerWidth - rect.right } : { left: rect.left }),
-      }
-    : {}
+  let style: CSSProperties = {}
+  if (rect) {
+    const vp = layoutViewport()
+    style = {
+      position: 'fixed',
+      zIndex: 'var(--z-modal)',
+      ...(placement === 'below' ? { top: rect.bottom + GAP } : { bottom: vp.height - rect.top + GAP }),
+      ...(align === 'end' ? { right: vp.width - rect.right } : { left: rect.left }),
+    }
+  }
 
   return (
     <div ref={anchorRef} className="relative" data-escape-surface={open ? '' : undefined}>
@@ -125,11 +126,13 @@ export function ContextMenu({
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    const { width, height } = el.getBoundingClientRect()
+    const { width, height } = layoutRect(el)
+    const vp = layoutViewport()
+    const p = layoutPoint(point.x, point.y)
     const margin = 8
     setPos({
-      x: Math.max(margin, Math.min(point.x, window.innerWidth - width - margin)),
-      y: Math.max(margin, Math.min(point.y, window.innerHeight - height - margin)),
+      x: Math.max(margin, Math.min(p.x, vp.width - width - margin)),
+      y: Math.max(margin, Math.min(p.y, vp.height - height - margin)),
     })
   }, [point])
 

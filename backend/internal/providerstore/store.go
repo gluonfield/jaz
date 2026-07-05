@@ -47,6 +47,7 @@ type CustomProvider struct {
 
 // Config maps the record to the runtime provider config the Source overlays.
 func (p CustomProvider) Config() provider.ModelProviderConfig {
+	p = p.normalized()
 	return provider.ModelProviderConfig{
 		Type:      APITypeOpenAICompatible,
 		Label:     p.Label,
@@ -55,6 +56,11 @@ func (p CustomProvider) Config() provider.ModelProviderConfig {
 		OpenCode:  true,
 		Codex:     true,
 	}
+}
+
+func (p CustomProvider) normalized() CustomProvider {
+	p.APIKeyEnv = deriveAPIKeyEnv(p.ID, p.BaseURL)
+	return p
 }
 
 // Input is the editable surface of a custom provider — everything but the id,
@@ -134,10 +140,10 @@ func Update(store storage.SettingsStorage, id string, in Input) (CustomProvider,
 		if list.Providers[i].ID != id {
 			continue
 		}
-		// The id (and thus APIKeyEnv) is immutable so stored keys never orphan.
 		list.Providers[i].Label = in.Label
 		list.Providers[i].BaseURL = in.BaseURL
 		list.Providers[i].APIType = in.APIType
+		list.Providers[i].APIKeyEnv = deriveAPIKeyEnv(list.Providers[i].ID, in.BaseURL)
 		list.Providers[i].DefaultModel = in.DefaultModel
 		list.Providers[i].Icon = in.Icon
 		list.Providers[i].UpdatedAt = time.Now().UTC()
@@ -218,6 +224,9 @@ func load(store storage.SettingsStorage) (customList, error) {
 	if err := json.Unmarshal(setting.Value, &list); err != nil {
 		return customList{}, err
 	}
+	for i := range list.Providers {
+		list.Providers[i] = list.Providers[i].normalized()
+	}
 	return list, nil
 }
 
@@ -231,6 +240,9 @@ func save(store storage.SettingsStorage, list customList) error {
 }
 
 func deriveAPIKeyEnv(id, baseURL string) string {
+	if provider.BaseURLIsLoopback(baseURL) {
+		return ""
+	}
 	return provider.ConfiguredAPIKeyEnv(id, provider.ModelProviderConfig{Type: APITypeOpenAICompatible, BaseURL: baseURL})
 }
 

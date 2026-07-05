@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 
-// Width of the native range thumb; dots and pointer math share the rail the
-// thumb's center travels, so everything stays aligned at every stop.
 const THUMB = 28
 
 function stopPosition(index: number, count: number): string {
@@ -11,22 +9,17 @@ function stopPosition(index: number, count: number): string {
   return `calc(${THUMB / 2}px + ${index / (count - 1)} * (100% - ${THUMB}px))`
 }
 
-// Discrete effort slider, fastest on the left, smartest on the right.
-// Hovering the track previews the stop under the pointer; the ultracode stop
-// lights the track with a dither field sweeping in from the right.
 export function ReasoningEffortSlider({
   options,
   value,
   defaultValue,
-  showDefaultReset,
+  disabled,
   onChange,
 }: {
-  // Concrete stops, ordered fastest → smartest ('' never appears here).
   options: ReasoningEffortOption[]
-  // '' inherits the configured default; the thumb then parks on defaultValue.
   value: string
   defaultValue?: string
-  showDefaultReset?: boolean
+  disabled?: boolean
   onChange: (effort: string) => void
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -47,33 +40,16 @@ export function ReasoningEffortSlider({
   }
 
   return (
-    <div className="px-3 pt-1.5 pb-2.5">
-      <div className="flex items-baseline justify-between">
-        <p className="text-[13px] text-ink-3">
-          Effort{' '}
-          <span className={`font-semibold ${ultra ? 'text-primary' : 'text-ink'}`}>
-            {shown?.label ?? 'Default'}
-          </span>
-        </p>
-        {showDefaultReset ? (
-          <button
-            type="button"
-            onClick={() => onChange('')}
-            className={`rounded-full px-1.5 text-[11px] transition-colors duration-150 ${
-              value === '' ? 'text-primary' : 'text-ink-3 hover:text-ink'
-            }`}
-          >
-            Default
-          </button>
-        ) : null}
-      </div>
-      <div className="mt-1 mb-1.5 flex items-baseline justify-between text-[12px] text-ink-3">
-        <span>Faster</span>
-        <span>Smarter</span>
-      </div>
+    <div className={disabled ? 'pointer-events-none opacity-60' : ''}>
+      <p className="text-[13px] text-ink-3">
+        Effort{' '}
+        <span className={`font-semibold ${ultra ? 'text-primary' : 'text-ink'}`}>
+          {shown?.label ?? 'Default'}
+        </span>
+      </p>
       <div
         ref={trackRef}
-        className="relative h-8"
+        className="relative mt-1.5 h-7"
         onMouseMove={(e) => setPreviewIndex(indexFromPointer(e.clientX))}
         onMouseLeave={() => setPreviewIndex(null)}
       >
@@ -98,28 +74,26 @@ export function ReasoningEffortSlider({
           value={index}
           aria-label="Reasoning effort"
           aria-valuetext={shown?.label}
+          disabled={disabled}
           onChange={(e) => onChange(options[Number(e.target.value)]?.value ?? '')}
           className="absolute inset-0 w-full cursor-pointer appearance-none bg-transparent outline-none
-            [&::-webkit-slider-runnable-track]:h-8
-            [&::-webkit-slider-thumb]:mt-1 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-7
+            [&::-webkit-slider-runnable-track]:h-7
+            [&::-webkit-slider-thumb]:mt-1 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-7
             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-[6px]
             [&::-webkit-slider-thumb]:bg-ink/90 hover:[&::-webkit-slider-thumb]:bg-ink
             [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.35)]
             [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:duration-150
-            [&::-moz-range-thumb]:h-6 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:appearance-none
+            [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:appearance-none
             [&::-moz-range-thumb]:rounded-[6px] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-ink/90"
         />
+      </div>
+      <div className="mt-1 flex items-baseline justify-between text-[12px] text-ink-3">
+        <span>Faster</span>
+        <span>Smarter</span>
       </div>
     </div>
   )
 }
-
-/* ---------------- ultracode dither ----------------
- * A grid of ~4px pixels over the track, brightness ramping toward the right.
- * Activation sweeps a wavefront right → left (per-cell jitter keeps the edge
- * dithered, not a hard line); deactivation runs the same front in reverse.
- * The wave chases `active` with an exponential approach, so flipping state
- * mid-sweep retargets smoothly instead of restarting. */
 
 const CELL = 5
 const PIXEL = 4
@@ -128,14 +102,13 @@ type DitherCell = {
   x: number
   y: number
   nx: number
-  need: number // wave level at which this cell lights; grows toward the left
-  ramp: number // spatial brightness, dim left → bright right
+  need: number
+  ramp: number
   color: number
   phase: number
   speed: number
 }
 
-// Resolve a CSS color (oklch tokens included) to RGB by letting canvas parse it.
 function cssToRgb(css: string): [number, number, number] {
   const scratch = document.createElement('canvas')
   scratch.width = scratch.height = 1
@@ -147,9 +120,6 @@ function cssToRgb(css: string): [number, number, number] {
   return [r, g, b]
 }
 
-// Four primary-derived shades: negative k darkens toward black, positive
-// lightens toward white — dim purple at the field's tail, near-white at the
-// bright end by the thumb.
 function ditherPalette(): string[] {
   const [r, g, b] = cssToRgb(
     getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim(),
@@ -170,8 +140,6 @@ function buildCells(width: number, height: number): DitherCell[] {
   for (let c = 0; c < cols; c++) {
     const nx = (c + 0.5) / cols
     for (let r = 0; r < rows; r++) {
-      // Density thins toward the left: the field should trail off into dark
-      // track, not carpet it edge to edge.
       if (Math.random() > 0.1 + 0.9 * Math.pow(nx, 1.1)) continue
       cells.push({
         x: c * CELL + (CELL - PIXEL) / 2,
@@ -190,68 +158,84 @@ function buildCells(width: number, height: number): DitherCell[] {
 
 function UltracodeDither({ active }: { active: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const stateRef = useRef({ active, wave: 0, raf: 0 })
+  const stateRef = useRef({ active, reduced: false, wave: 0, raf: 0 })
   const reducedMotion = useReducedEffectsMotion()
 
   useEffect(() => {
     const state = stateRef.current
     state.active = active
+    state.reduced = reducedMotion
     const canvas = canvasRef.current
-    if (!canvas || state.raf) return
-
-    const rect = canvas.getBoundingClientRect()
-    if (!rect.width || !rect.height) return
+    if (!canvas || state.raf || (!active && state.wave === 0)) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = Math.round(rect.width * dpr)
-    canvas.height = Math.round(rect.height * dpr)
-    ctx.scale(dpr, dpr)
-    const cells = buildCells(rect.width, rect.height)
-    const palette = ditherPalette()
+
+    let width = 0
+    let height = 0
+    let cells: DitherCell[] = []
+    let palette: string[] = []
+    const size = () => {
+      const rect = canvas.getBoundingClientRect()
+      if (!rect.width || !rect.height) return false
+      width = rect.width
+      height = rect.height
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(height * dpr)
+      ctx.scale(dpr, dpr)
+      cells = buildCells(width, height)
+      palette = ditherPalette()
+      return true
+    }
 
     const draw = (t: number) => {
-      ctx.clearRect(0, 0, rect.width, rect.height)
+      ctx.clearRect(0, 0, width, height)
       for (const cell of cells) {
         const front = Math.max(0, Math.min(1, (state.wave * 1.04 - cell.need) * 6))
         if (front <= 0.01) continue
-        const twinkle = reducedMotion ? 1 : 0.72 + 0.28 * Math.sin(t * cell.speed + cell.phase)
-        ctx.globalAlpha = front * cell.ramp * twinkle
+        const flow = state.reduced
+          ? 1
+          : 0.6 +
+            0.3 * Math.sin(cell.nx * 14 + t * 3.4 + cell.phase * 0.5) +
+            0.1 * Math.sin(t * cell.speed + cell.phase)
+        ctx.globalAlpha = front * cell.ramp * flow
         ctx.fillStyle = palette[cell.color]
         ctx.fillRect(cell.x, cell.y, PIXEL, PIXEL)
       }
       ctx.globalAlpha = 1
     }
 
-    if (reducedMotion) {
-      state.wave = state.active ? 1 : 0
-      draw(0)
-      return
-    }
-
     let lastMs = performance.now()
     const frame = (ms: number) => {
       const dt = Math.min(0.05, (ms - lastMs) / 1000)
       lastMs = ms
-      state.wave += ((state.active ? 1 : 0) - state.wave) * (1 - Math.exp(-dt * 5))
+      if (!width && !size()) {
+        state.raf = state.active ? requestAnimationFrame(frame) : 0
+        return
+      }
+      const target = state.active ? 1 : 0
+      state.wave = state.reduced
+        ? target
+        : state.wave + (target - state.wave) * (1 - Math.exp(-dt * 5))
       if (!state.active && state.wave < 0.01) {
         state.wave = 0
         state.raf = 0
-        ctx.clearRect(0, 0, rect.width, rect.height)
+        ctx.clearRect(0, 0, width, height)
         return
       }
       draw(ms / 1000)
-      state.raf = requestAnimationFrame(frame)
+      state.raf = state.reduced ? 0 : requestAnimationFrame(frame)
     }
     state.raf = requestAnimationFrame(frame)
   }, [active, reducedMotion])
 
-  useEffect(
-    () => () => {
-      cancelAnimationFrame(stateRef.current.raf)
-    },
-    [],
-  )
+  useEffect(() => {
+    const state = stateRef.current
+    return () => {
+      cancelAnimationFrame(state.raf)
+      state.raf = 0
+    }
+  }, [])
 
   return <canvas ref={canvasRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
 }

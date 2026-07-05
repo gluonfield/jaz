@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
-import { ReasoningEffortSlider } from '@/components/session/ReasoningEffortSlider'
+import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { Modal } from '@/components/ui/Modal'
@@ -25,6 +25,7 @@ import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import {
   filterModelSuggestions,
+  modelSuggestionFor,
   modelSuggestionLabel,
   type ModelSuggestion,
 } from '@/lib/models'
@@ -134,21 +135,12 @@ export function ModelSelect({
   const label = value === '' ? 'Model' : modelSuggestionLabel(suggestions, value)
   const effortValue = effort ?? ''
   const effortLabel = reasoningEffortLabel(effortValue, effortOptions)
-  // Slider stops are the concrete levels; '' (inherit the default) stays a
-  // separate reset affordance instead of a position on the track.
   const effortStops = effortOptions.filter((option) => option.value !== '')
-  const hasDefaultEffort = effortOptions.some((option) => option.value === '')
-  const selectedSuggestion =
-    suggestions.find((s) => s.value === value) ?? (value === '' ? suggestions[0] : undefined)
+  const selectedSuggestion = modelSuggestionFor(suggestions, value)
   const showEffortSlider = Boolean(onEffortChange) && effortStops.length > 1
   const description = `Model: ${value === '' ? 'default' : value}${
     effortValue ? `, reasoning effort: ${effortLabel}` : ''
   }`
-  const select = (model: string) => {
-    onChange(model)
-    setOpen(false)
-  }
-
   return (
     <Popover
       open={open}
@@ -193,7 +185,7 @@ export function ModelSelect({
             onKeyDown={(e) => {
               if (e.key === 'Enter' && typed !== '') {
                 e.preventDefault()
-                select(typed)
+                onChange(typed)
               }
             }}
             className="h-7 w-full rounded-full bg-ink/10 px-2.5 text-[12px] text-ink outline-none placeholder:text-ink-3 focus:bg-ink/15"
@@ -213,7 +205,7 @@ export function ModelSelect({
           } overflow-y-auto`}
         >
           {typedIsNew ? (
-            <MenuRow selected={typed === value} onClick={() => select(typed)}>
+            <MenuRow selected={typed === value} onClick={() => onChange(typed)}>
               Use “{typed}”
             </MenuRow>
           ) : null}
@@ -227,7 +219,7 @@ export function ModelSelect({
               <button
                 key={s.value}
                 type="button"
-                onClick={() => select(s.value)}
+                onClick={() => onChange(s.value)}
                 className={`flex w-full items-start gap-2 rounded-[8px] px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-2 ${
                   s.value === value ? 'text-ink' : 'text-ink-2'
                 }`}
@@ -248,14 +240,14 @@ export function ModelSelect({
         {showEffortSlider && onEffortChange ? (
           <>
             <div className="my-1 border-t border-border" />
-            {/* Stays open: effort is a refinement, not the menu's main action. */}
-            <ReasoningEffortSlider
-              options={effortStops}
-              value={effortValue}
-              defaultValue={selectedSuggestion?.reasoningDefaultEffort}
-              showDefaultReset={hasDefaultEffort}
-              onChange={onEffortChange}
-            />
+            <div className="px-3 pt-1.5 pb-2.5">
+              <ReasoningEffortSlider
+                options={effortStops}
+                value={effortValue}
+                defaultValue={selectedSuggestion?.reasoningDefaultEffort}
+                onChange={onEffortChange}
+              />
+            </div>
           </>
         ) : null}
       </div>

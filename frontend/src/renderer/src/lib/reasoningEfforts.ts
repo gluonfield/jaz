@@ -1,5 +1,5 @@
 import type { AgentSettings, ReasoningEffortOption } from './api/types'
-import type { ModelSuggestion } from './models'
+import { modelSuggestionFor, type ModelSuggestion } from './models'
 
 const REASONING_LABELS: Record<string, string> = {
   '': 'Default',
@@ -22,9 +22,9 @@ export const REASONING_EFFORT_OPTIONS: ReasoningEffortOption[] = [
   { value: 'xhigh', label: 'Extra high' },
 ]
 
-export const NO_REASONING_EFFORT_OPTION: ReasoningEffortOption = { value: 'none', label: 'None' }
+const NO_REASONING_EFFORT_OPTION: ReasoningEffortOption = { value: 'none', label: 'None' }
 
-export function acpReasoningEffortOptions(
+function acpReasoningEffortOptions(
   settings: AgentSettings | undefined,
   agent: string,
 ): ReasoningEffortOption[] {
@@ -34,7 +34,7 @@ export function acpReasoningEffortOptions(
 
 export function reasoningEffortLabel(
   value: string | undefined,
-  options: ReasoningEffortOption[] = REASONING_EFFORT_OPTIONS,
+  options: ReasoningEffortOption[],
 ): string {
   const effort = value ?? ''
   return options.find((option) => option.value === effort)?.label ?? REASONING_LABELS[effort] ?? (effort || 'Default')
@@ -42,9 +42,7 @@ export function reasoningEffortLabel(
 
 // Settings screens treat '' as "no effort configured" (shown as "None") rather
 // than "inherit the default".
-export function settingsReasoningOptions(
-  options: ReasoningEffortOption[] = REASONING_EFFORT_OPTIONS,
-): ReasoningEffortOption[] {
+function settingsReasoningOptions(options: ReasoningEffortOption[]): ReasoningEffortOption[] {
   return dedupeReasoningOptions(options)
     .filter((option) => option.value !== 'none')
     .map((option) => (option.value === '' ? { ...option, label: 'None' } : option))
@@ -83,9 +81,6 @@ export function modelSettingsReasoningEffortOptions(
   ])
 }
 
-// A model's efforts gated by what the agent harness accepts: an agent CLI
-// rejects levels it doesn't know even when the model supports them (e.g.
-// codex has no max). 'none' always passes — agents map it to "no reasoning".
 function harnessSupported(values: string[], agentOptions: ReasoningEffortOption[]): string[] {
   const supported = new Set(agentOptions.map((option) => option.value))
   return values.filter((value) => value === 'none' || supported.has(value))
@@ -115,9 +110,7 @@ export function inheritedReasoningEffortOverride(
 }
 
 function modelReasoningEfforts(model: string, suggestions: ModelSuggestion[]): string[] | undefined {
-  const value = model.trim()
-  const suggestion = suggestions.find((item) => item.value === value) ?? (value === '' ? suggestions[0] : undefined)
-  return suggestion?.reasoningEfforts
+  return modelSuggestionFor(suggestions, model)?.reasoningEfforts
 }
 
 function reasoningOption(value: string): ReasoningEffortOption {

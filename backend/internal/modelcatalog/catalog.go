@@ -1,9 +1,6 @@
 package modelcatalog
 
-import (
-	"sort"
-	"strings"
-)
+import "sort"
 
 type Pricing struct {
 	Input      float64 `json:"input"`
@@ -24,9 +21,6 @@ type Model struct {
 	ReasoningMandatory     bool     `json:"reasoning_mandatory,omitempty"`
 }
 
-// reasoningEffortRank orders efforts from fastest to smartest; every list the
-// catalog serves follows this canonical order so consumers (validation errors,
-// effort sliders) never re-sort.
 var reasoningEffortRank = map[string]int{
 	"none": 0, "minimal": 1, "low": 2, "medium": 3, "high": 4, "xhigh": 5, "max": 6, "ultracode": 7,
 }
@@ -37,9 +31,6 @@ func sortReasoningEfforts(efforts []string) {
 	})
 }
 
-// withUltracode appends the Claude Code harness level to efforts that include
-// xhigh: ultracode is built on xhigh thinking and never appears in provider
-// catalogs. Idempotent, so it applies to static and enriched lists alike.
 func withUltracode(efforts []string) []string {
 	hasXhigh := false
 	for _, effort := range efforts {
@@ -54,10 +45,6 @@ func withUltracode(efforts []string) []string {
 	return append(efforts, "ultracode")
 }
 
-// Curated models carry no effort data: the OpenRouter catalog is the only
-// source of per-model supported efforts (Service.enrichReasoning fills them
-// by OpenRouterID). Models it doesn't know fall back to the agent's harness
-// efforts, which is the correct agent-level truth, not a compat shim.
 var (
 	codexHarnessEfforts  = []string{"none", "minimal", "low", "medium", "high", "xhigh"}
 	claudeHarnessEfforts = []string{"low", "medium", "high", "xhigh", "max", "ultracode"}
@@ -74,7 +61,7 @@ var (
 			{Value: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
 		},
 		"claude": {
-			{Value: "default", Label: "Default (Opus 4.8)", Description: "Opus 4.8 with 1M context · Recommended", ContextLength: 1000000, OpenRouterID: "anthropic/claude-opus-4.8"},
+			{Value: "default", Label: "Opus 4.8", Description: "Recommended · 1M context", ContextLength: 1000000, OpenRouterID: "anthropic/claude-opus-4.8"},
 			{Value: "claude-fable-5[1m]", Label: "Fable 5", Description: "Most capable for the hardest tasks", ContextLength: 1000000, OpenRouterID: "anthropic/claude-fable-5"},
 			{Value: "sonnet", Label: "Sonnet 5", Description: "Efficient for routine tasks", ContextLength: 200000, OpenRouterID: "anthropic/claude-sonnet-5"},
 			{Value: "sonnet[1m]", Label: "Sonnet 5 (1M context)", Description: "Draws from usage credits", ContextLength: 1000000, OpenRouterID: "anthropic/claude-sonnet-5"},
@@ -92,18 +79,6 @@ var (
 		},
 	}
 )
-
-func AgentModels(agent string) []Model {
-	return cloneModels(agentModels[strings.ToLower(strings.TrimSpace(agent))])
-}
-
-func OpenAIModels() []Model {
-	return cloneModels(openAIModels)
-}
-
-func Clone(models []Model) []Model {
-	return cloneModels(models)
-}
 
 func cloneModels(models []Model) []Model {
 	out := make([]Model, len(models))

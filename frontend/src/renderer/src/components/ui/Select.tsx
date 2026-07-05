@@ -2,6 +2,7 @@ import { Check, ChevronDown } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { layoutRect } from '@/lib/dom/zoom'
 
 export type SelectOption = { value: string; label: string; description?: string }
 
@@ -55,7 +56,7 @@ export function Select({
   }
 
   useLayoutEffect(() => {
-    if (open && triggerRef.current) setRect(triggerRef.current.getBoundingClientRect())
+    if (open && triggerRef.current) setRect(layoutRect(triggerRef.current))
   }, [open])
 
   useEffect(() => {

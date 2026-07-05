@@ -59,7 +59,7 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 	}
 	switch strings.TrimSpace(meta.ID) {
 	case provider.ProviderOpenAI, codexOpenAIAPIKeyProvider:
-		return s.enrichReasoning(OpenAIModels()), nil
+		return s.enrichReasoning(cloneModels(openAIModels)), nil
 	case provider.ProviderOpenRouter:
 		models, ok := s.providerModelSnapshot(meta)
 		if !ok {
@@ -74,13 +74,9 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 	}
 }
 
-// AgentModels returns the curated models for an agent with reasoning efforts
-// filled from the OpenRouter catalog, the sole source of per-model effort
-// truth. Models it doesn't know keep nil efforts and resolve to the agent's
-// harness efforts downstream.
 func (s *Service) AgentModels(agent string) []Model {
 	agent = strings.ToLower(strings.TrimSpace(agent))
-	models := s.enrichReasoning(AgentModels(agent))
+	models := s.enrichReasoning(cloneModels(agentModels[agent]))
 	if agent == "claude" {
 		for i := range models {
 			models[i].ReasoningEfforts = withUltracode(models[i].ReasoningEfforts)
@@ -237,7 +233,7 @@ func (s *Service) providerModelSnapshot(meta provider.ModelProvider) ([]Model, b
 	if !ok {
 		return nil, false
 	}
-	return Clone(entry), true
+	return cloneModels(entry), true
 }
 
 func (s *Service) setProviderModels(meta provider.ModelProvider, models []Model) {
@@ -246,7 +242,7 @@ func (s *Service) setProviderModels(meta provider.ModelProvider, models []Model)
 	if s.providerModels == nil {
 		s.providerModels = map[string][]Model{}
 	}
-	s.providerModels[key] = Clone(models)
+	s.providerModels[key] = cloneModels(models)
 	s.mu.Unlock()
 }
 

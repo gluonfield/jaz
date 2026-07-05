@@ -31,19 +31,40 @@ export function acpAgentModelSuggestions(
   return modelSuggestionsFromCatalog(settings?.acp_options?.[agent]?.models ?? [])
 }
 
+// '' resolves to the first suggestion — the model an unset value runs as.
+export function modelSuggestionFor(
+  suggestions: ModelSuggestion[],
+  value: string,
+): ModelSuggestion | undefined {
+  const raw = value.trim()
+  return raw ? suggestions.find((s) => s.value === raw) : suggestions[0]
+}
+
+function usageCatalogEntry(
+  model: { agent?: string; model?: string },
+  settings?: AgentSettings,
+): ModelSuggestion | undefined {
+  if (!settings || !model.agent) return undefined
+  return modelSuggestionFor(acpAgentModelSuggestions(settings, model.agent), model.model ?? '')
+}
+
 export function pricingIdForUsage(
   model: { agent?: string; model?: string },
   settings?: AgentSettings,
 ): string | null {
+  const openRouterId = usageCatalogEntry(model, settings)?.openRouterId
+  if (openRouterId) return openRouterId
   const raw = model.model?.trim() ?? ''
-  if (settings && model.agent) {
-    const catalog = acpAgentModelSuggestions(settings, model.agent)
-    const entry = raw ? catalog.find((m) => m.value === raw) : catalog[0]
-    if (entry?.openRouterId) return entry.openRouterId
-  }
   if (!raw) return null
   const direct = raw.replace(/^openrouter\//, '')
   return direct.includes('/') ? direct : null
+}
+
+export function usageModelLabel(
+  model: { agent?: string; model?: string },
+  settings?: AgentSettings,
+): string {
+  return usageCatalogEntry(model, settings)?.label || model.model?.trim() || 'Unknown model'
 }
 
 export function modelSuggestionsForProvider(

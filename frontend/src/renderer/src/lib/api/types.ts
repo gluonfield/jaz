@@ -843,6 +843,10 @@ export interface MemorySourceQueues {
 export interface MemoryStatus {
   enabled: boolean
   agent?: string
+  model?: string
+  reasoning_effort?: string
+  default_model?: string
+  default_reasoning_effort?: string
   scheduler_running: boolean
   root: string
   db_path: string
