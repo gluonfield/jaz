@@ -21,8 +21,9 @@ import {
 } from '@/lib/api/memory'
 import type { MemoryHorizon, MemoryQueueStatus, MemoryStatus, MemoryTask } from '@/lib/api/types'
 import { enabledACPAgents } from '@/lib/agentRuntimes'
-import { acpAgentModelSuggestions, modelSuggestionLabel } from '@/lib/models'
-import { modelReasoningEffortOptions, reasoningEffortLabel } from '@/lib/reasoningEfforts'
+import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
+import { acpAgentModelSuggestions, modelSuggestionFor, modelSuggestionLabel } from '@/lib/models'
+import { modelReasoningEffortOptions } from '@/lib/reasoningEfforts'
 import { keys } from '@/lib/query/keys'
 
 const HORIZON_DESCRIPTIONS: Record<string, string> = {
@@ -206,20 +207,15 @@ export function MemorySettings() {
     ...modelSuggestions.map((s) => ({ value: s.value, label: s.label })),
   ]
   const effectiveMemoryModel = memory.model || memory.default_model || ''
-  const baseEffortOptions = modelReasoningEffortOptions(
+  const memoryEffortStops = modelReasoningEffortOptions(
     agentSettings.data,
     selectedMemoryAgent,
     effectiveMemoryModel,
     modelSuggestions,
-  )
-  const defaultEffortLabel = memory.default_reasoning_effort
-    ? reasoningEffortLabel(memory.default_reasoning_effort, baseEffortOptions)
-    : ''
-  const memoryEffortOptions = baseEffortOptions.map((option) =>
-    option.value === ''
-      ? { value: '', label: defaultEffortLabel ? `${defaultEffortLabel} · default` : 'Default' }
-      : option,
-  )
+  ).filter((option) => option.value !== '')
+  const defaultMemoryEffort =
+    memory.default_reasoning_effort ||
+    modelSuggestionFor(modelSuggestions, effectiveMemoryModel)?.reasoningDefaultEffort
   const memoryEffort = memory.reasoning_effort ?? ''
 
   return (
@@ -278,23 +274,24 @@ export function MemorySettings() {
             explanation="Memory upkeep runs many background sessions, so it defaults to a fast, inexpensive model with low reasoning effort. Pick a different model or effort if you want deeper memory work."
             disabled={!enabled}
           >
-            <div className="grid gap-1.5">
+            <div className="grid w-full gap-2 md:w-[260px]">
               <Select
                 value={memory.model ?? ''}
                 options={memoryModelOptions}
                 disabled={!enabled || update.isPending || agentSettings.isPending}
                 onChange={(model) => update.mutate({ model })}
                 aria-label="Memory model"
-                className="w-full md:w-[260px]"
+                className="w-full"
               />
-              <Select
-                value={memoryEffort}
-                options={memoryEffortOptions}
-                disabled={!enabled || update.isPending || agentSettings.isPending}
-                onChange={(effort) => update.mutate({ reasoning_effort: effort })}
-                aria-label="Memory reasoning effort"
-                className="w-full md:w-[260px]"
-              />
+              {memoryEffortStops.length > 1 ? (
+                <ReasoningEffortSlider
+                  options={memoryEffortStops}
+                  value={memoryEffort}
+                  defaultValue={defaultMemoryEffort}
+                  disabled={!enabled || agentSettings.isPending}
+                  onChange={(effort) => update.mutate({ reasoning_effort: effort })}
+                />
+              ) : null}
             </div>
           </MemorySettingsRow>
         ) : null}

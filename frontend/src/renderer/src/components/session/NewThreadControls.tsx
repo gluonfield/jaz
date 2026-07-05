@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
-import { ReasoningEffortSlider } from '@/components/session/ReasoningEffortSlider'
+import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { Modal } from '@/components/ui/Modal'
@@ -240,12 +240,14 @@ export function ModelSelect({
         {showEffortSlider && onEffortChange ? (
           <>
             <div className="my-1 border-t border-border" />
-            <ReasoningEffortSlider
-              options={effortStops}
-              value={effortValue}
-              defaultValue={selectedSuggestion?.reasoningDefaultEffort}
-              onChange={onEffortChange}
-            />
+            <div className="px-3 pt-1.5 pb-2.5">
+              <ReasoningEffortSlider
+                options={effortStops}
+                value={effortValue}
+                defaultValue={selectedSuggestion?.reasoningDefaultEffort}
+                onChange={onEffortChange}
+              />
+            </div>
           </>
         ) : null}
       </div>

@@ -13,11 +13,13 @@ export function ReasoningEffortSlider({
   options,
   value,
   defaultValue,
+  disabled,
   onChange,
 }: {
   options: ReasoningEffortOption[]
   value: string
   defaultValue?: string
+  disabled?: boolean
   onChange: (effort: string) => void
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
@@ -38,7 +40,7 @@ export function ReasoningEffortSlider({
   }
 
   return (
-    <div className="px-3 pt-1.5 pb-2.5">
+    <div className={disabled ? 'pointer-events-none opacity-60' : ''}>
       <p className="text-[13px] text-ink-3">
         Effort{' '}
         <span className={`font-semibold ${ultra ? 'text-primary' : 'text-ink'}`}>
@@ -48,7 +50,7 @@ export function ReasoningEffortSlider({
       <div
         ref={trackRef}
         className="relative mt-1.5 h-7"
-        onMouseMove={(e) => setPreviewIndex(indexFromPointer(e.clientX))}
+        onMouseMove={(e) => (disabled ? undefined : setPreviewIndex(indexFromPointer(e.clientX)))}
         onMouseLeave={() => setPreviewIndex(null)}
       >
         <div className="absolute inset-0 rounded-[10px] bg-ink/10" />
@@ -72,6 +74,7 @@ export function ReasoningEffortSlider({
           value={index}
           aria-label="Reasoning effort"
           aria-valuetext={shown?.label}
+          disabled={disabled}
           onChange={(e) => onChange(options[Number(e.target.value)]?.value ?? '')}
           className="absolute inset-0 w-full cursor-pointer appearance-none bg-transparent outline-none
             [&::-webkit-slider-runnable-track]:h-7
