@@ -1,4 +1,4 @@
-import type { SessionEvent } from '@/lib/api/types'
+import type { ACPToolCall, ACPToolRuntime, SessionEvent } from '@/lib/api/types'
 import { mergeProviderSubagentEvent } from '@/lib/providerSubagents'
 import { taskSurfaceFromEvent, taskSurfaceKey } from '@/lib/taskSurface'
 
@@ -137,6 +137,8 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
 function mergeCoalescedSessionEvent(prev: SessionEvent, next: SessionEvent): SessionEvent {
   const mergedText = mergeACPTextEvents(prev, next)
   if (mergedText) return mergedText
+  const mergedTools = mergeACPToolEvents(prev, next)
+  if (mergedTools) return mergedTools
   if (prev.type === 'provider_subagent' && next.type === 'provider_subagent' && next.provider_subagent) {
     return {
       ...next,
@@ -144,6 +146,52 @@ function mergeCoalescedSessionEvent(prev: SessionEvent, next: SessionEvent): Ses
     }
   }
   return next
+}
+
+function mergeACPToolEvents(prev: SessionEvent, next: SessionEvent): SessionEvent | undefined {
+  if (!prev.acp?.tool_calls?.length || !next.acp?.tool_calls?.length) return undefined
+  if (prev.acp.id !== next.acp.id) return undefined
+  const previousByID = new Map(prev.acp.tool_calls.map((call) => [call.id, call]))
+  const mergedCalls = next.acp.tool_calls.map((call) => {
+    const previous = previousByID.get(call.id)
+    return previous ? mergeACPToolCall(previous, call) : call
+  })
+  const nextIDs = new Set(next.acp.tool_calls.map((call) => call.id))
+  for (const call of prev.acp.tool_calls) {
+    if (!nextIDs.has(call.id)) mergedCalls.push(call)
+  }
+  return { ...next, acp: { ...prev.acp, ...next.acp, tool_calls: mergedCalls } }
+}
+
+function mergeACPToolCall(prev: ACPToolCall, next: ACPToolCall): ACPToolCall {
+  return {
+    ...prev,
+    ...next,
+    title: next.title || prev.title,
+    status: next.status || prev.status,
+    kind: next.kind || prev.kind,
+    tool_name: next.tool_name || prev.tool_name,
+    content: next.content?.length ? next.content : prev.content,
+    raw_input: next.raw_input ?? prev.raw_input,
+    runtime: mergeACPToolRuntime(prev.runtime, next.runtime),
+    started_at: next.started_at || prev.started_at,
+    updated_at: next.updated_at || prev.updated_at,
+  }
+}
+
+function mergeACPToolRuntime(prev?: ACPToolRuntime, next?: ACPToolRuntime): ACPToolRuntime | undefined {
+  if (!prev) return next
+  if (!next) return prev
+  return {
+    ...prev,
+    ...next,
+    terminal_id: next.terminal_id || prev.terminal_id,
+    terminal_cwd: next.terminal_cwd || prev.terminal_cwd,
+    parent_tool_use_id: next.parent_tool_use_id || prev.parent_tool_use_id,
+    terminal_output_at: next.terminal_output_at || prev.terminal_output_at,
+    terminal_exit_code: next.terminal_exit_code ?? prev.terminal_exit_code,
+    terminal_exit_signal: next.terminal_exit_signal || prev.terminal_exit_signal,
+  }
 }
 
 function mergeAdjacentACPText(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {

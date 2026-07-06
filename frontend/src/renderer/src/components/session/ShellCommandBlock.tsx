@@ -5,13 +5,13 @@ import { toolCallCategory } from './ToolCallContent'
 import { normalized } from './TranscriptUtils'
 
 const RUNNING_STATUSES = new Set(['pending', 'in_progress', 'in-progress', 'running'])
+const GENERIC_COMMAND_TITLES = new Set(['terminal', 'bash', 'shell', 'command'])
 
 export function hasInlineShellCommand(call: ACPToolCall): boolean {
-  return toolCallCategory(call) === 'command'
+  return toolCallCategory(call) === 'command' && Boolean(commandText(call))
 }
 
-function commandText(call: ACPToolCall): string {
-  const input = call.raw_input
+function commandTextFromInput(input: unknown): string {
   if (input && typeof input === 'object') {
     const record = input as Record<string, unknown>
     for (const key of ['command', 'cmd', 'script']) {
@@ -20,7 +20,16 @@ function commandText(call: ACPToolCall): string {
       if (Array.isArray(value) && value.length) return value.map(String).join(' ')
     }
   }
-  return (call.title ?? '').trim()
+  return ''
+}
+
+function titleCommandText(title?: string): string {
+  const text = title?.trim() ?? ''
+  return GENERIC_COMMAND_TITLES.has(text.toLowerCase()) ? '' : text
+}
+
+function commandText(call: ACPToolCall): string {
+  return commandTextFromInput(call.raw_input) || titleCommandText(call.title)
 }
 
 function commandDescription(call: ACPToolCall): string {
