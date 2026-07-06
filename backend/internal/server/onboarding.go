@@ -276,7 +276,7 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			auth.Reason = ""
 		}
 		appName, appInstalled := agentAppInstall(name)
-		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
+		readiness := s.probeACPReadiness(name, cfg, auth)
 		adapter := s.managedAdapterStatus(cfg)
 		adapterReady := adapter == nil || adapter.State == acpadapter.StateReady
 		tool := s.managedToolStatus(cfg.ManagedTool)
@@ -312,6 +312,16 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		})
 	}
 	return out
+}
+
+func (s *Server) probeACPReadiness(name string, cfg acp.AgentConfig, auth acp.AgentAuthStatus) acp.Readiness {
+	if strings.TrimSpace(cfg.ManagedAdapter) == "" {
+		return acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
+	}
+	if !auth.Authenticated {
+		return acp.Readiness{Reason: auth.Reason}
+	}
+	return acp.Readiness{Available: true}
 }
 
 func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapterStatus {

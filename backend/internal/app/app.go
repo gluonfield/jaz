@@ -252,51 +252,6 @@ func NewManagedToolManager(layout runtimefiles.Layout) *managedtool.Manager {
 	return managedtool.New(layout.Root)
 }
 
-func StartACPAdapterDownloads(lc fx.Lifecycle, catalog acp.AgentCatalog, adapters *acpadapter.Manager, logger *log.Logger) {
-	if adapters == nil {
-		return
-	}
-	var cancel context.CancelFunc
-	lc.Append(fx.Hook{
-		OnStart: func(context.Context) error {
-			ctx, stop := context.WithCancel(context.Background())
-			cancel = stop
-			for _, adapter := range managedAdapterNames(catalog) {
-				go func(adapter string) {
-					if err := adapters.Prepare(ctx, adapter); err != nil && ctx.Err() == nil {
-						logger.WithPrefix("acp-adapter").Warn("managed adapter download failed", "adapter", adapter, "error", err)
-					}
-				}(adapter)
-			}
-			return nil
-		},
-		OnStop: func(context.Context) error {
-			if cancel != nil {
-				cancel()
-			}
-			return nil
-		},
-	})
-}
-
-func managedAdapterNames(catalog acp.AgentCatalog) []string {
-	seen := map[string]struct{}{}
-	out := []string{}
-	for _, name := range catalog.Names() {
-		cfg, _ := catalog.Agent(name)
-		adapter := strings.TrimSpace(cfg.ManagedAdapter)
-		if adapter == "" {
-			continue
-		}
-		if _, ok := seen[adapter]; ok {
-			continue
-		}
-		seen[adapter] = struct{}{}
-		out = append(out, adapter)
-	}
-	return out
-}
-
 func appendPathList(current, dir string) string {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {

@@ -43,6 +43,7 @@ export function useAgentSettingsDraft(label: string) {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+      queryClient.invalidateQueries({ queryKey: keys.providerStatuses })
     },
   })
 

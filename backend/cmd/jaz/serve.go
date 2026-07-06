@@ -119,7 +119,6 @@ func runServe(args []string) error {
 			app.StartMemorySourceWorker,
 			app.StartSkillSync,
 			app.StartGmailSync,
-			app.StartACPAdapterDownloads,
 			app.StartModelCatalogWarmup,
 			startServer,
 			app.StartMCPManager,
