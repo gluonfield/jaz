@@ -32,6 +32,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/onboarding", s.handleOnboarding)
 	mux.HandleFunc("/v1/settings/agents", s.handleAgentSettings)
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
+	mux.HandleFunc("POST /v1/acp/agents/{agent}/prepare", s.handlePrepareACPAgent)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/login", s.handleStartACPAuthLogin)
 	mux.HandleFunc("POST /v1/acp/agents/{agent}/auth/disconnect", s.handleDisconnectACPAuth)
 	mux.HandleFunc("GET /v1/acp/auth-logins/", s.handleGetACPAuthLogin)

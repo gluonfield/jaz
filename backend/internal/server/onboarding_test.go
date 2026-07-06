@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
+	"github.com/wins/jaz/backend/internal/managedtool"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/onboardingstate"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
@@ -21,11 +23,37 @@ import (
 )
 
 type fakeACPAdapterStatusReader struct {
-	status acpadapter.Status
+	status     acpadapter.Status
+	prepared   *int
+	prepareErr error
 }
 
 func (r fakeACPAdapterStatusReader) Status(string) acpadapter.Status {
 	return r.status
+}
+
+func (r fakeACPAdapterStatusReader) Prepare(context.Context, string) error {
+	if r.prepared != nil {
+		*r.prepared = *r.prepared + 1
+	}
+	return r.prepareErr
+}
+
+type fakeManagedToolStatusReader struct {
+	status     managedtool.Status
+	prepared   *int
+	prepareErr error
+}
+
+func (r fakeManagedToolStatusReader) Status(string) managedtool.Status {
+	return r.status
+}
+
+func (r fakeManagedToolStatusReader) Prepare(context.Context, string) error {
+	if r.prepared != nil {
+		*r.prepared = *r.prepared + 1
+	}
+	return r.prepareErr
 }
 
 func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
@@ -382,6 +410,83 @@ func TestOnboardingWaitsForManagedCodexDownload(t *testing.T) {
 	}
 }
 
+func TestOnboardingWaitsForManagedAntigravityCLI(t *testing.T) {
+	root := t.TempDir()
+	clearAgentEnv(t)
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{
+		ModelCatalog: modelcatalog.NewService(nil),
+		Store:        store,
+		Root:         root,
+		ACPAdapters:  fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "antigravity", State: acpadapter.StateReady}},
+		ManagedTools: fakeManagedToolStatusReader{status: managedtool.Status{Tool: managedtool.AntigravityCLI, State: managedtool.StateMissing, Message: "Antigravity CLI is not downloaded yet"}},
+		AgentCatalog: acp.AgentCatalog{
+			acp.AgentAntigravity: {ManagedAdapter: "antigravity"},
+		},
+	}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/onboarding", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		ACP []struct {
+			Agent       string `json:"agent"`
+			Installed   bool   `json:"installed"`
+			Available   bool   `json:"available"`
+			Reason      string `json:"reason"`
+			ManagedTool struct {
+				State string `json:"state"`
+			} `json:"managed_tool"`
+		} `json:"acp"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ACP) != 1 || got.ACP[0].Agent != acp.AgentAntigravity ||
+		got.ACP[0].Installed ||
+		got.ACP[0].Available ||
+		got.ACP[0].ManagedTool.State != managedtool.StateMissing ||
+		!strings.Contains(got.ACP[0].Reason, "Antigravity CLI") {
+		t.Fatalf("unexpected antigravity probe: %#v", got.ACP)
+	}
+}
+
+func TestPrepareACPAgentInstallsAntigravityAdapterAndCLI(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	adapterPrepared := 0
+	toolPrepared := 0
+	handler := (&Server{
+		ModelCatalog: modelcatalog.NewService(nil),
+		Store:        store,
+		Root:         root,
+		ACPAdapters:  fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "antigravity", State: acpadapter.StateMissing}, prepared: &adapterPrepared},
+		ManagedTools: fakeManagedToolStatusReader{status: managedtool.Status{Tool: managedtool.AntigravityCLI, State: managedtool.StateMissing}, prepared: &toolPrepared},
+		AgentCatalog: acp.AgentCatalog{
+			acp.AgentAntigravity: {ManagedAdapter: "antigravity"},
+		},
+	}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/acp/agents/antigravity/prepare", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if adapterPrepared != 1 || toolPrepared != 1 {
+		t.Fatalf("prepared adapter=%d tool=%d, want both once", adapterPrepared, toolPrepared)
+	}
+}
+
 func TestOnboardingIgnoresClaudeSettingsOnlyConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -488,6 +593,30 @@ func assertOnboardingStateSaved(t *testing.T, root string) {
 	}
 	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("onboarding state permissions = %v", info.Mode().Perm())
+	}
+}
+
+func clearAgentEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("SHELL", "/bin/sh")
+	for _, key := range []string{
+		"CODEX_HOME",
+		"OPENAI_API_KEY",
+		"OPENAI_APIKEY",
+		"ANTHROPIC_API_KEY",
+		"ANTHROPIC_APIKEY",
+		"CLAUDE_CONFIG_DIR",
+		"CLAUDE_CODE_OAUTH_TOKEN",
+		"GEMINI_API_KEY",
+		"GEMINI_APIKEY",
+		"JAZ_ACP_CODEX_API_KEY",
+		"JAZ_ACP_CLAUDE_API_KEY",
+		"JAZ_ACP_GROK_API_KEY",
+		"JAZ_ACP_OPENCODE_API_KEY",
+	} {
+		t.Setenv(key, "")
 	}
 }
 

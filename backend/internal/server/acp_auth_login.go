@@ -78,8 +78,12 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	auth = acp.ProbeAgentAuth(agent, acp.AgentConfig{Auth: auth}, s.runtimeRoot(), nil).RecommendedAuth
-	invocation := acp.AgentLoginInvocationFor(agent, s.runtimeRoot(), auth, s.adapterBundleDir(cfg.ManagedAdapter))
+	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
+	cfg.LoginBinDir = s.agentLoginBinDirs(agent, cfg)
+	probeCfg := cfg
+	probeCfg.Auth = auth
+	auth = acp.ProbeAgentAuth(agent, probeCfg, s.runtimeRoot(), nil).RecommendedAuth
+	invocation := acp.AgentLoginInvocationFor(agent, s.runtimeRoot(), auth, cfg.LoginBinDir)
 	if !invocation.Available {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("%s", invocation.Reason))
 		return
@@ -207,7 +211,11 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 }
 
 func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) error {
-	status := acp.ProbeAgentAuthWithProviders(agent, acp.AgentConfig{Auth: auth}, s.runtimeRoot(), nil, s.modelProviders())
+	cfg, _ := s.acpAgentCatalog().Agent(agent)
+	cfg.Auth = auth
+	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
+	cfg.LoginBinDir = s.agentLoginBinDirs(agent, cfg)
+	status := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
 	if status.Authenticated {
 		return nil
 	}

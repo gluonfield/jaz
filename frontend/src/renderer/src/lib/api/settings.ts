@@ -131,6 +131,10 @@ export function startACPAuthLogin(agent: string, auth?: ACPAgentAuth): Promise<A
   return post<ACPAuthLogin>(`/v1/acp/agents/${encodeURIComponent(agent)}/auth/login`, { auth })
 }
 
+export function prepareACPAgent(agent: string): Promise<{ ok: boolean }> {
+  return post<{ ok: boolean }>(`/v1/acp/agents/${encodeURIComponent(agent)}/prepare`)
+}
+
 export function getACPAuthLogin(id: string): Promise<ACPAuthLogin> {
   return get<ACPAuthLogin>(`/v1/acp/auth-logins/${encodeURIComponent(id)}`)
 }

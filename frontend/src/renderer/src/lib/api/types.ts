@@ -1113,6 +1113,7 @@ export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   auth_command_available: boolean
   auth_command_reason?: string
   managed_adapter?: OnboardingACPAdapterStatus
+  managed_tool?: OnboardingManagedToolStatus
 }
 
 export interface OnboardingACPAdapterStatus {
@@ -1120,6 +1121,15 @@ export interface OnboardingACPAdapterStatus {
   version?: string
   platform?: string
   state: 'missing' | 'downloading' | 'ready' | 'failed' | 'unsupported'
+  message?: string
+}
+
+export interface OnboardingManagedToolStatus {
+  tool: string
+  version?: string
+  platform?: string
+  state: 'missing' | 'downloading' | 'ready' | 'failed' | 'unsupported'
+  path?: string
   message?: string
 }
 

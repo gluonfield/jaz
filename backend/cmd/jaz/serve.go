@@ -22,6 +22,7 @@ import (
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -86,6 +87,7 @@ func runServe(args []string) error {
 			app.NewPromptBuilder,
 			app.NewACPAgentConfigSource,
 			app.NewACPAdapterManager,
+			app.NewManagedToolManager,
 			app.NewACPConfig,
 			acp.NewManager,
 			sessionlock.New,
@@ -208,6 +210,7 @@ func startServer(
 	store *sqlitestore.Store,
 	manager *acp.Manager,
 	adapters *acpadapter.Manager,
+	managedTools *managedtool.Manager,
 	locks *sessionlock.Locks,
 	events *sessionevents.Bus,
 	prompts *coordinator.Builder,
@@ -243,6 +246,7 @@ func startServer(
 		Routes:                routes,
 		ACP:                   manager,
 		ACPAdapters:           adapters,
+		ManagedTools:          managedTools,
 		MCP:                   mcpManager,
 		Locks:                 locks,
 		Events:                events,

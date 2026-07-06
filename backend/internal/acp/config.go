@@ -127,9 +127,10 @@ type AgentConfig struct {
 	Auth                    AgentAuthConfig
 	Env                     map[string]string
 	Cwd                     string
-	// AdapterBinDir is the managed-adapter bundle dir; login resolves the CLI there
-	// before PATH. Runtime-only, never persisted.
+	// AdapterBinDir is the managed-adapter bundle dir. LoginBinDir is searched
+	// before PATH for companion CLIs. Runtime-only, never persisted.
 	AdapterBinDir string
+	LoginBinDir   string
 }
 
 func (c AgentConfig) RequiresCommand() bool {

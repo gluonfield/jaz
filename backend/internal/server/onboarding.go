@@ -11,6 +11,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
+	"github.com/wins/jaz/backend/internal/managedtool"
 	"github.com/wins/jaz/backend/internal/onboardingstate"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -25,16 +26,17 @@ type onboardingResponse struct {
 
 type onboardingACPProbe struct {
 	acpAuthStatusResponse
-	Agent                string                      `json:"agent"`
-	Command              string                      `json:"command,omitempty"`
-	Installed            bool                        `json:"installed"`
-	AppInstalled         bool                        `json:"app_installed,omitempty"`
-	AppName              string                      `json:"app_name,omitempty"`
-	Available            bool                        `json:"available"`
-	AuthCommand          string                      `json:"auth_command,omitempty"`
-	AuthCommandAvailable bool                        `json:"auth_command_available"`
-	AuthCommandReason    string                      `json:"auth_command_reason,omitempty"`
-	ManagedAdapter       *onboardingACPAdapterStatus `json:"managed_adapter,omitempty"`
+	Agent                string                       `json:"agent"`
+	Command              string                       `json:"command,omitempty"`
+	Installed            bool                         `json:"installed"`
+	AppInstalled         bool                         `json:"app_installed,omitempty"`
+	AppName              string                       `json:"app_name,omitempty"`
+	Available            bool                         `json:"available"`
+	AuthCommand          string                       `json:"auth_command,omitempty"`
+	AuthCommandAvailable bool                         `json:"auth_command_available"`
+	AuthCommandReason    string                       `json:"auth_command_reason,omitempty"`
+	ManagedAdapter       *onboardingACPAdapterStatus  `json:"managed_adapter,omitempty"`
+	ManagedTool          *onboardingManagedToolStatus `json:"managed_tool,omitempty"`
 }
 
 type onboardingACPAdapterStatus struct {
@@ -42,6 +44,15 @@ type onboardingACPAdapterStatus struct {
 	Version  string `json:"version,omitempty"`
 	Platform string `json:"platform,omitempty"`
 	State    string `json:"state"`
+	Message  string `json:"message,omitempty"`
+}
+
+type onboardingManagedToolStatus struct {
+	Tool     string `json:"tool"`
+	Version  string `json:"version,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	State    string `json:"state"`
+	Path     string `json:"path,omitempty"`
 	Message  string `json:"message,omitempty"`
 }
 
@@ -134,6 +145,40 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
 	}
+}
+
+func (s *Server) handlePrepareACPAgent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
+		return
+	}
+	agent := acp.CanonicalAgentName(r.PathValue("agent"))
+	cfg, ok := s.acpAgentCatalog().Agent(agent)
+	if !ok {
+		writeError(w, http.StatusNotFound, fmt.Errorf("unknown acp agent %q", agent))
+		return
+	}
+	if adapter := strings.TrimSpace(cfg.ManagedAdapter); adapter != "" {
+		if s.ACPAdapters == nil {
+			writeError(w, http.StatusServiceUnavailable, fmt.Errorf("managed adapter downloader is not available"))
+			return
+		}
+		if err := s.ACPAdapters.Prepare(r.Context(), adapter); err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+	}
+	if tool := managedToolForAgent(agent); tool != "" {
+		if s.ManagedTools == nil {
+			writeError(w, http.StatusServiceUnavailable, fmt.Errorf("managed tool downloader is not available"))
+			return
+		}
+		if err := s.ManagedTools.Prepare(r.Context(), tool); err != nil {
+			writeError(w, http.StatusBadGateway, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func saveOnboardingMemorySettings(store storage.SettingsStorage, defaults agentsettings.AgentDefaults, input *agentsettings.MemorySettings) (int, error) {
@@ -234,14 +279,18 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		adapter := s.managedAdapterStatus(cfg)
 		adapterReady := adapter == nil || adapter.State == acpadapter.StateReady
-		installed := adapterInstalled || auth.LoginCommandAvailable
+		tool := s.managedToolStatus(name)
+		toolReady := tool == nil || tool.State == managedtool.StateReady
+		installed := (adapterInstalled || auth.LoginCommandAvailable) && adapterReady && toolReady
 		reason := ""
-		if !installed {
+		if !adapterReady && adapter != nil {
+			reason = adapter.Message
+		} else if !toolReady && tool != nil {
+			reason = tool.Message
+		} else if !installed {
 			reason = firstMessage(commandMissingReason(cfg), auth.LoginCommandReason)
 		} else if !adapterInstalled {
 			reason = commandMissingReason(cfg)
-		} else if !adapterReady {
-			reason = adapter.Message
 		} else if !readiness.Available {
 			reason = firstMessage(readiness.Reason, auth.LoginCommandReason, auth.Reason)
 		}
@@ -254,11 +303,12 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			Installed:             installed,
 			AppInstalled:          appInstalled,
 			AppName:               appName,
-			Available:             readiness.Available && adapterReady,
+			Available:             readiness.Available && adapterReady && toolReady,
 			AuthCommand:           auth.LoginCommand,
 			AuthCommandAvailable:  auth.LoginCommandAvailable,
 			AuthCommandReason:     auth.LoginCommandReason,
 			ManagedAdapter:        adapter,
+			ManagedTool:           tool,
 		})
 	}
 	return out
@@ -286,6 +336,36 @@ func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapter
 	}
 }
 
+func (s *Server) managedToolStatus(agent string) *onboardingManagedToolStatus {
+	tool := managedToolForAgent(agent)
+	if tool == "" {
+		return nil
+	}
+	status := managedtool.Status{
+		Tool:    tool,
+		State:   managedtool.StateMissing,
+		Message: "managed tool downloader is not available",
+	}
+	if s.ManagedTools != nil {
+		status = s.ManagedTools.Status(tool)
+	}
+	if status.State != managedtool.StateReady {
+		if path, err := acp.ResolveExecutable("agy"); err == nil {
+			status.State = managedtool.StateReady
+			status.Path = path
+			status.Message = "Antigravity CLI is available on PATH"
+		}
+	}
+	return &onboardingManagedToolStatus{
+		Tool:     status.Tool,
+		Version:  status.Version,
+		Platform: status.Platform,
+		State:    status.State,
+		Path:     status.Path,
+		Message:  status.Message,
+	}
+}
+
 // adapterBundleDir is the dir holding a managed adapter's binaries, or "".
 func (s *Server) adapterBundleDir(adapter string) string {
 	adapter = strings.TrimSpace(adapter)
@@ -297,6 +377,32 @@ func (s *Server) adapterBundleDir(adapter string) string {
 		return ""
 	}
 	return filepath.Dir(path)
+}
+
+func managedToolForAgent(agent string) string {
+	if acp.CanonicalAgentName(agent) == acp.AgentAntigravity {
+		return managedtool.AntigravityCLI
+	}
+	return ""
+}
+
+func (s *Server) managedToolBinDir(agent string) string {
+	status := s.managedToolStatus(agent)
+	if status == nil || status.State != managedtool.StateReady || strings.TrimSpace(status.Path) == "" {
+		return ""
+	}
+	return filepath.Dir(status.Path)
+}
+
+func (s *Server) agentLoginBinDirs(agent string, cfg acp.AgentConfig) string {
+	dirs := []string{}
+	if dir := strings.TrimSpace(cfg.AdapterBinDir); dir != "" {
+		dirs = append(dirs, dir)
+	}
+	if dir := strings.TrimSpace(s.managedToolBinDir(agent)); dir != "" {
+		dirs = append(dirs, dir)
+	}
+	return strings.Join(dirs, string(os.PathListSeparator))
 }
 
 func agentAppInstall(name string) (string, bool) {
@@ -399,5 +505,6 @@ func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefault
 		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
 	}
 	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
+	cfg.LoginBinDir = s.agentLoginBinDirs(name, cfg)
 	return cfg, command, nil
 }

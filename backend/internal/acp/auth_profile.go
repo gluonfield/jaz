@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/wins/jaz/backend/internal/processenv"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
@@ -348,7 +349,7 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 	}
 	cliAuthenticated := false
 	if mode == AuthModeAuto || mode == "" || mode == AuthModeExistingCLI {
-		cliAuthenticated = antigravityCLIAuthenticated()
+		cliAuthenticated = antigravityCLIAuthenticated(env)
 	}
 	if mode == AuthModeAuto || mode == "" {
 		mode = AuthModeExistingCLI
@@ -384,14 +385,21 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 	return status
 }
 
-func antigravityCLIAuthenticated() bool {
-	path, err := exec.LookPath("agy")
+func antigravityCLIAuthenticated(env map[string]string) bool {
+	path, err := executableInPath("agy", env["PATH"])
 	if err != nil {
-		return false
+		path, err = ResolveExecutable("agy")
+		if err != nil {
+			return false
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return exec.CommandContext(ctx, path, "models").Run() == nil
+	cmd := exec.CommandContext(ctx, path, "models")
+	if len(env) > 0 {
+		cmd.Env = processenv.List(env)
+	}
+	return cmd.Run() == nil
 }
 
 func openCodeProviderID(model string) string {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/managedtool"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
@@ -1082,6 +1083,23 @@ func TestProcessEnvBindsDirectGeminiAPIKey(t *testing.T) {
 	env := NewManager(nil, Config{Root: root}, nil).processEnv(AgentAntigravity, AgentConfig{})
 	if env["GEMINI_API_KEY"] != "gemini-key" {
 		t.Fatalf("GEMINI_API_KEY = %q, want runtime key", env["GEMINI_API_KEY"])
+	}
+}
+
+func TestProcessEnvAddsManagedAntigravityCLIToPath(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	path := managedtool.ExecutablePath(root, managedtool.AntigravityCLI)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	env := NewManager(nil, Config{Root: root}, nil).processEnv(AgentAntigravity, AgentConfig{})
+	if parts := filepath.SplitList(env["PATH"]); len(parts) == 0 || parts[0] != filepath.Dir(path) {
+		t.Fatalf("PATH = %q, want managed agy dir first", env["PATH"])
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/memoryservice"
@@ -66,6 +67,12 @@ type ModelCatalog interface {
 
 type ACPAdapterStatusReader interface {
 	Status(name string) acpadapter.Status
+	Prepare(context.Context, string) error
+}
+
+type ManagedToolStatusReader interface {
+	Status(name string) managedtool.Status
+	Prepare(context.Context, string) error
 }
 
 type Server struct {
@@ -74,6 +81,7 @@ type Server struct {
 	Routes               Routes
 	ACP                  ACPManager
 	ACPAdapters          ACPAdapterStatusReader
+	ManagedTools         ManagedToolStatusReader
 	MCP                  MCPRuntime
 	Locks                *sessionlock.Locks
 	Events               *sessionevents.Bus

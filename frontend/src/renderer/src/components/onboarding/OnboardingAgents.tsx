@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronDown, KeyRound, LoaderCircle, Lock, LogIn } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Download, KeyRound, LoaderCircle, Lock, LogIn } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useState } from 'react'
 import { AgentLogo } from '@/components/acp/AgentLogo'
@@ -18,6 +18,8 @@ export function AgentList({
   acpKeysByAgent,
   loginJobs,
   loginPending,
+  preparePending,
+  onPrepare,
   onStartLogin,
   onAPIKeyChange,
 }: {
@@ -26,6 +28,8 @@ export function AgentList({
   acpKeysByAgent: Record<string, string>
   loginJobs: Record<string, ACPAuthLogin>
   loginPending?: string
+  preparePending?: string
+  onPrepare: (agent: string) => void
   onStartLogin: (agent: string) => void
   onAPIKeyChange: (agent: string, value: string) => void
 }) {
@@ -41,6 +45,8 @@ export function AgentList({
             apiKeyValue={acpKeysByAgent[probe.agent] ?? ''}
             loginJob={loginJobs[probe.agent]}
             loginPending={loginPending === probe.agent}
+            preparePending={preparePending === probe.agent}
+            onPrepare={() => onPrepare(probe.agent)}
             onStartLogin={() => onStartLogin(probe.agent)}
             onAPIKeyChange={(value) => onAPIKeyChange(probe.agent, value)}
           />
@@ -57,25 +63,43 @@ export function AgentList({
 type AgentState = 'ready' | 'action' | 'missing' | 'downloading' | 'failed'
 
 export function agentReady(probe: OnboardingACPProbe, keyDraft: string): boolean {
-  return probeReady(probe) || (adapterReady(probe) && Boolean(keyDraft.trim()))
+  return probeReady(probe) || (installReady(probe) && Boolean(keyDraft.trim()))
 }
 
 function probeReady(probe: OnboardingACPProbe): boolean {
-  return adapterReady(probe) && Boolean(probe.available || probe.api_key_configured)
+  return installReady(probe) && Boolean(probe.available || probe.api_key_configured)
 }
 
-function agentState(probe: OnboardingACPProbe): AgentState {
-  const authReady = Boolean(probe.authenticated || probe.api_key_configured)
-  if (authReady && probe.managed_adapter?.state === 'downloading') return 'downloading'
-  if (authReady && probe.managed_adapter?.state === 'failed') return 'failed'
-  if (authReady && probe.managed_adapter?.state === 'missing') return 'downloading'
+function agentState(probe: OnboardingACPProbe, installPending: boolean): AgentState {
+  if (installPending) return 'downloading'
+  const setup = installState(probe)
+  if (setup !== 'ready') return setup
   if (probeReady(probe)) return 'ready'
   if (!probe.installed) return 'missing'
   return 'action'
 }
 
-function adapterReady(probe: OnboardingACPProbe): boolean {
-  return !probe.managed_adapter || probe.managed_adapter.state === 'ready'
+function installReady(probe: OnboardingACPProbe): boolean {
+  return installState(probe) === 'ready'
+}
+
+function installState(probe: OnboardingACPProbe): AgentState {
+  const states = [probe.managed_adapter?.state, probe.managed_tool?.state].filter(Boolean)
+  if (states.some((state) => state === 'failed' || state === 'unsupported')) return 'failed'
+  if (states.some((state) => state === 'downloading')) return 'downloading'
+  if (states.some((state) => state === 'missing')) return 'missing'
+  return 'ready'
+}
+
+function installMessage(probe: OnboardingACPProbe): string {
+  for (const status of [probe.managed_adapter, probe.managed_tool]) {
+    if (status && status.state !== 'ready' && status.message) return status.message
+  }
+  return ''
+}
+
+function hasManagedInstall(probe: OnboardingACPProbe): boolean {
+  return Boolean(probe.managed_adapter || probe.managed_tool)
 }
 
 function AgentCard({
@@ -84,6 +108,8 @@ function AgentCard({
   apiKeyValue,
   loginJob,
   loginPending,
+  preparePending,
+  onPrepare,
   onStartLogin,
   onAPIKeyChange,
 }: {
@@ -92,13 +118,15 @@ function AgentCard({
   apiKeyValue: string
   loginJob?: ACPAuthLogin
   loginPending: boolean
+  preparePending: boolean
+  onPrepare: () => void
   onStartLogin: () => void
   onAPIKeyChange: (value: string) => void
 }) {
   const reducedMotion = useReducedMotion()
   const apiKeyEnv = probe.api_key?.source_env
   const apiKeyReady = Boolean(probe.api_key_configured || apiKeyValue.trim())
-  const state = agentState(probe)
+  const state = agentState(probe, preparePending)
   const running = loginPending || loginJob?.status === 'running'
   const canKey = Boolean(apiKeyEnv)
   const canLogin = Boolean(probe.auth_command_available)
@@ -106,17 +134,18 @@ function AgentCard({
   const [chosen, setChosen] = useState<'login' | 'key'>(apiKeyReady ? 'key' : 'login')
   const method = canKey && !canLogin ? 'key' : !canKey ? 'login' : chosen
   const actionable = state === 'action'
+  const canPrepare = hasManagedInstall(probe) && !installReady(probe)
   const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
   const missingLabel = companionAppBlocked ? `Needs ${onboardingAgentLabel(probe.agent)}` : undefined
   let missingDetail = ''
   if (companionAppBlocked) {
     missingDetail = `${probe.app_name || authProviderLabel(probe.agent)} is installed on ${agentHost}, but ${onboardingAgentLabel(probe.agent)} is not available to jaz.`
   } else if (state === 'downloading') {
-    missingDetail = probe.managed_adapter?.message || 'Downloading the managed adapter.'
+    missingDetail = installMessage(probe) || 'Downloading.'
   } else if (state === 'failed') {
-    missingDetail = probe.managed_adapter?.message || 'Managed adapter download failed.'
+    missingDetail = installMessage(probe) || 'Download failed.'
   } else if (state === 'missing') {
-    missingDetail = probe.reason ?? ''
+    missingDetail = installMessage(probe) || probe.reason || ''
   }
 
   return (
@@ -167,6 +196,25 @@ function AgentCard({
         </button>
         {missingDetail ? (
           <p className="px-3 pb-2 text-pretty text-[12px] leading-relaxed text-ink-3">{missingDetail}</p>
+        ) : null}
+        {canPrepare ? (
+          <div className="px-3 pb-3">
+            <Button
+              variant="secondary"
+              size="md"
+              disabled={preparePending || state === 'downloading'}
+              onClick={onPrepare}
+            >
+              {preparePending || state === 'downloading' ? (
+                <LoaderCircle size={14} className="animate-spin" />
+              ) : (
+                <Download size={14} />
+              )}
+              {preparePending || state === 'downloading'
+                ? `Downloading ${onboardingAgentLabel(probe.agent)}`
+                : `Download ${onboardingAgentLabel(probe.agent)}`}
+            </Button>
+          </div>
         ) : null}
 
         <AnimatePresence initial={false}>

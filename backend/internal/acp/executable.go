@@ -33,10 +33,14 @@ func ResolveExecutable(executable string) (string, error) {
 	return loginShellExecutable(executable)
 }
 
-// resolveLoginExecutable prefers the managed-adapter bundle dir before PATH.
+// resolveLoginExecutable prefers managed bundle/tool dirs before PATH.
 // Candidates are absolute, so ResolveExecutable does the exec-bit check.
 func resolveLoginExecutable(binDir, executable string) (string, error) {
-	if dir := strings.TrimSpace(binDir); dir != "" {
+	for _, dir := range filepath.SplitList(strings.TrimSpace(binDir)) {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
 		for _, name := range []string{executable, executable + ".exe"} {
 			if resolved, err := ResolveExecutable(filepath.Join(dir, name)); err == nil {
 				return resolved, nil
@@ -44,6 +48,25 @@ func resolveLoginExecutable(binDir, executable string) (string, error) {
 		}
 	}
 	return ResolveExecutable(executable)
+}
+
+func executableInPath(executable, pathList string) (string, error) {
+	executable = strings.TrimSpace(executable)
+	if executable == "" || filepath.IsAbs(executable) {
+		return ResolveExecutable(executable)
+	}
+	for _, dir := range filepath.SplitList(pathList) {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+		for _, name := range []string{executable, executable + ".exe"} {
+			if resolved, err := ResolveExecutable(filepath.Join(dir, name)); err == nil {
+				return resolved, nil
+			}
+		}
+	}
+	return "", exec.ErrNotFound
 }
 
 func loginShellExecutable(executable string) (string, error) {

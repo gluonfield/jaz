@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
 import { connectionPluginsQuery } from '@/lib/api/connections'
 import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
-import { cloneAgentSettings, compactKeys, startACPAuthLogin } from '@/lib/api/settings'
+import { cloneAgentSettings, compactKeys, prepareACPAgent, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
 import { disconnectBackend, isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { clientRuntime } from '@/lib/clientRuntime'
@@ -83,7 +83,8 @@ function OnboardingScreen({
   const [memoryAgent, setMemoryAgent] = useState(status.memory?.agent ?? '')
   const onboardingProbes = useMemo(() => status.acp.filter((probe) => selectableACPAgent(probe.agent)), [status.acp])
   const adapterPreparing = onboardingProbes.some(
-    (probe) => probe.managed_adapter?.state === 'missing' || probe.managed_adapter?.state === 'downloading',
+    (probe) =>
+      probe.managed_adapter?.state === 'downloading' || probe.managed_tool?.state === 'downloading',
   )
   // Only for the connections slide's action label; shares the list's cache.
   const plugins = useQuery(connectionPluginsQuery)
@@ -137,6 +138,15 @@ function OnboardingScreen({
       toast(`Started ${authProviderLabel(job.agent)} sign-in`)
     },
     onError: (error: Error) => toast(`Couldn't start sign-in: ${error.message}`, 'danger'),
+  })
+
+  const prepare = useMutation({
+    mutationFn: (agent: string) => prepareACPAgent(agent),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: keys.onboarding })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+    },
+    onError: (error: Error) => toast(`Couldn't download agent: ${error.message}`, 'danger'),
   })
 
   const save = useMutation({
@@ -207,6 +217,8 @@ function OnboardingScreen({
               acpKeysByAgent={acpKeysByAgent}
               loginJobs={loginJobs}
               loginPending={login.isPending ? login.variables?.agent : undefined}
+              preparePending={prepare.isPending ? prepare.variables : undefined}
+              onPrepare={(agent) => prepare.mutate(agent)}
               onStartLogin={(agent) => {
                 const auth = onboardingLoginAuth(draft.acp[agent]?.auth)
                 setDraft((current) => withAgentAuth(current, agent, auth))

@@ -19,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memorysearch"
@@ -221,6 +222,10 @@ func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog,
 
 func NewACPAdapterManager(layout runtimefiles.Layout, release Release) *acpadapter.Manager {
 	return acpadapter.New(layout.Root, release.Version)
+}
+
+func NewManagedToolManager(layout runtimefiles.Layout) *managedtool.Manager {
+	return managedtool.New(layout.Root)
 }
 
 func StartACPAdapterDownloads(lc fx.Lifecycle, catalog acp.AgentCatalog, adapters *acpadapter.Manager, logger *log.Logger) {

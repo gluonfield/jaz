@@ -51,7 +51,7 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 	}
 	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
 	resolved := resolveAgentAuthWithProviders(name, cfg, root, probeEnv, providers)
-	status := agentLoginCommand(name, root, resolved.Config, cfg.AdapterBinDir)
+	status := agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg))
 	status.RefreshOwner = RefreshOwnerAgentCLI
 	status.StoragePath = resolved.StoragePath
 	status.Authenticated = resolved.Authenticated
@@ -79,8 +79,7 @@ func agentLoginCommand(name, root string, auth AgentAuthConfig, binDir string) A
 	}
 }
 
-// AgentLoginInvocationFor builds an agent's login command; binDir is its adapter
-// bundle dir, searched before PATH.
+// AgentLoginInvocationFor builds an agent's login command; binDir is searched before PATH.
 func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir string) AgentLoginInvocation {
 	layout := runtimefiles.New(root)
 	switch CanonicalAgentName(name) {
@@ -97,6 +96,13 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 	default:
 		return AgentLoginInvocation{}
 	}
+}
+
+func loginBinDirs(cfg AgentConfig) string {
+	if strings.TrimSpace(cfg.LoginBinDir) != "" {
+		return cfg.LoginBinDir
+	}
+	return cfg.AdapterBinDir
 }
 
 func loginInvocation(env map[string]string, inheritHome bool, binDir, executable string, args ...string) AgentLoginInvocation {
