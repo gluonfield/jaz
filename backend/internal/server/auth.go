@@ -18,7 +18,7 @@ import (
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimSpace(s.AuthKey)
-		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) || publicConnectionOAuthCallback(r) || localBrowserExtensionRequest(r) {
+		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) || publicOAuthCallback(r) || localBrowserExtensionRequest(r) {
 			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, deviceauth.Principal{})))
 			return
 		}
@@ -101,8 +101,8 @@ func publicDeviceRequest(r *http.Request) bool {
 	return false
 }
 
-func publicConnectionOAuthCallback(r *http.Request) bool {
-	return r.Method == http.MethodGet && r.URL.Path == "/v1/connections/oauth/callback"
+func publicOAuthCallback(r *http.Request) bool {
+	return r.Method == http.MethodGet && (r.URL.Path == "/v1/connections/oauth/callback" || r.URL.Path == mcpOAuthCallbackPath)
 }
 
 func writeAuthError(w http.ResponseWriter, status int, code string, err error) {

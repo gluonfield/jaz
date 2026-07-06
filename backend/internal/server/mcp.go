@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/httpapi"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/storage"
 )
+
+const mcpOAuthCallbackPath = "/v1/mcp/oauth/callback"
 
 type mcpStore interface {
 	mcpconfig.Store
@@ -19,6 +23,10 @@ type mcpStore interface {
 
 type mcpProxyRuntime interface {
 	Handler() http.Handler
+}
+
+type mcpOAuthCallbackRuntime interface {
+	CompleteAuthorization(context.Context, string, string, string) error
 }
 
 type mcpProxySessionStore interface {
@@ -194,10 +202,52 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		// by the request context (cancelled if the client disconnects).
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 		defer cancel()
-		writeJSON(w, http.StatusOK, s.MCP.Authorize(ctx, server))
+		platform := requestClientPlatform(r)
+		writeJSON(w, http.StatusOK, s.MCP.Authorize(ctx, server, mcpconfig.AuthorizeOptions{
+			RedirectURL:   mcpOAuthCallbackURL(r),
+			ReturnAuthURL: platform == "browser" || platform == "mobile",
+			OpenBrowser:   platform != "browser" && platform != "mobile",
+		}))
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 	}
+}
+
+func (s *Server) handleMCPOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	runtime, ok := s.MCP.(mcpOAuthCallbackRuntime)
+	if !ok || runtime == nil {
+		writeMCPOAuthCallbackHTML(w, http.StatusServiceUnavailable, "Connection failed", "MCP runtime is not configured", false)
+		return
+	}
+	q := r.URL.Query()
+	failure := q.Get("error")
+	if err := runtime.CompleteAuthorization(r.Context(), q.Get("state"), q.Get("code"), failure); err != nil {
+		writeMCPOAuthCallbackHTML(w, http.StatusBadRequest, "Connection failed", err.Error(), false)
+		return
+	}
+	if failure != "" {
+		writeMCPOAuthCallbackHTML(w, http.StatusBadRequest, "Connection failed", "Authorization was rejected: "+failure, false)
+		return
+	}
+	writeMCPOAuthCallbackHTML(w, http.StatusOK, "Connected", "You can close this tab and return to Jaz.", true)
+}
+
+func mcpOAuthCallbackURL(r *http.Request) string {
+	base := strings.TrimRight(httpapi.RequestBaseURL(r), "/")
+	if base == "" {
+		return ""
+	}
+	return base + mcpOAuthCallbackPath
+}
+
+func writeMCPOAuthCallbackHTML(w http.ResponseWriter, status int, title, message string, autoClose bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	script := ""
+	if autoClose {
+		script = `<script>setTimeout(function(){window.close()},1200)</script>`
+	}
+	_, _ = w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>Jaz</title></head><body style="font-family:-apple-system,system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;color:#333;background:#fff"><main style="width:min(640px,calc(100vw - 48px));text-align:center"><h2 style="margin:0 0 10px;font-size:22px;font-weight:600">` + html.EscapeString(title) + `</h2><p style="margin:0;color:#666;font-size:14px;line-height:1.5">` + html.EscapeString(message) + `</p></main>` + script + `</body></html>`))
 }
 
 func decodeMCPServerInput(r *http.Request, current *mcpconfig.Server) (mcpconfig.ServerInput, error) {

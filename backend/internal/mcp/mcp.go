@@ -5,6 +5,8 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -60,6 +62,9 @@ type Manager struct {
 
 	handlerOnce sync.Once
 	handler     http.Handler
+
+	authMu     sync.Mutex
+	authStates map[string]chan loopbackResult
 }
 
 type Option func(*Manager)
@@ -135,6 +140,7 @@ func NewManager(store mcpconfig.ServerReader, tokens integrationoauth.Store, reg
 		localServers: make(map[string]localServer),
 		sessions:     make(map[string]*serverSession),
 		statuses:     make(map[string]mcpconfig.ServerStatus),
+		authStates:   make(map[string]chan loopbackResult),
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -400,13 +406,17 @@ func (m *Manager) Test(ctx context.Context, server mcpconfig.Server) mcpconfig.S
 	return result.status
 }
 
-// Authorize runs the interactive OAuth authorization-code flow for a server
-// (opening the user's browser), persists the resulting token, and reconnects so
-// the server's tools become available. It blocks until the user completes sign-in
-// or ctx is cancelled.
-func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpconfig.ServerStatus {
+// Authorize runs the interactive OAuth authorization-code flow for a server,
+// persists the resulting token, and reconnects so the server's tools become
+// available. Browser clients receive the provider URL immediately and finish
+// through the shared callback route; desktop callers keep the historical blocking
+// loopback flow.
+func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server, opts mcpconfig.AuthorizeOptions) mcpconfig.ServerStatus {
 	if m.tokens == nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}
+	}
+	if opts.ReturnAuthURL {
+		return m.authorizeWithCallback(ctx, server, opts)
 	}
 	receiver, err := newLoopbackReceiver()
 	if err != nil {
@@ -414,10 +424,47 @@ func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpcon
 	}
 	defer receiver.close()
 
+	return m.runAuthorize(ctx, server, receiver.redirectURL, receiver.fetch)
+}
+
+func (m *Manager) authorizeWithCallback(ctx context.Context, server mcpconfig.Server, opts mcpconfig.AuthorizeOptions) mcpconfig.ServerStatus {
+	if strings.TrimSpace(opts.RedirectURL) == "" {
+		return mcpconfig.ServerStatus{Status: "error", Error: "OAuth redirect URL is not configured", CheckedAt: time.Now().UTC()}
+	}
+	started := make(chan authorizationStart, 1)
+	done := make(chan mcpconfig.ServerStatus, 1)
+	receiver := &callbackReceiver{
+		manager:     m,
+		redirectURL: strings.TrimSpace(opts.RedirectURL),
+		started:     started,
+		openBrowser: opts.OpenBrowser,
+	}
+	flowCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	go func() {
+		defer cancel()
+		done <- m.runAuthorize(flowCtx, server, receiver.redirectURL, receiver.fetch)
+	}()
+
+	select {
+	case start := <-started:
+		return mcpconfig.ServerStatus{
+			Status:    "needs_auth",
+			Error:     "Sign in required",
+			AuthURL:   start.authURL,
+			CheckedAt: time.Now().UTC(),
+		}
+	case status := <-done:
+		return status
+	case <-ctx.Done():
+		return mcpconfig.ServerStatus{Status: "error", Error: ctx.Err().Error(), CheckedAt: time.Now().UTC()}
+	}
+}
+
+func (m *Manager) runAuthorize(ctx context.Context, server mcpconfig.Server, redirectURL string, fetch codeFetcher) mcpconfig.ServerStatus {
 	handler := newOAuthHandler(server, m.tokens, http.DefaultClient)
 	handler.mode = oauthModeInteractive
-	handler.redirectURL = receiver.redirectURL
-	handler.fetch = receiver.fetch
+	handler.redirectURL = redirectURL
+	handler.fetch = fetch
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
@@ -439,6 +486,99 @@ func (m *Manager) Authorize(ctx context.Context, server mcpconfig.Server) mcpcon
 		return status
 	}
 	return connectedStatus(ss.tools)
+}
+
+type authorizationStart struct {
+	authURL string
+}
+
+type callbackReceiver struct {
+	manager     *Manager
+	redirectURL string
+	started     chan<- authorizationStart
+	openBrowser bool
+}
+
+func (r *callbackReceiver) fetch(ctx context.Context, authURL string) (string, string, error) {
+	state := authorizationStateFromURL(authURL)
+	if state == "" {
+		return "", "", errors.New("authorization URL did not include state")
+	}
+	result := make(chan loopbackResult, 1)
+	if err := r.manager.registerAuthorizationState(state, result); err != nil {
+		return "", "", err
+	}
+	defer r.manager.unregisterAuthorizationState(state, result)
+
+	if r.openBrowser {
+		if err := openBrowser(authURL); err != nil {
+			fmt.Printf("Open this URL to authorize the MCP server:\n%s\n", authURL)
+		}
+	}
+	select {
+	case r.started <- authorizationStart{authURL: authURL}:
+	default:
+	}
+	select {
+	case res := <-result:
+		if res.err != "" {
+			return "", "", fmt.Errorf("authorization failed: %s", res.err)
+		}
+		if res.code == "" {
+			return "", "", errors.New("authorization returned no code")
+		}
+		return res.code, res.state, nil
+	case <-ctx.Done():
+		return "", "", ctx.Err()
+	}
+}
+
+func (m *Manager) CompleteAuthorization(ctx context.Context, state, code, failure string) error {
+	state = strings.TrimSpace(state)
+	if state == "" {
+		return errors.New("authorization state is required")
+	}
+	result, ok := m.takeAuthorizationState(state)
+	if !ok {
+		return errors.New("authorization state expired or was not started by Jaz")
+	}
+	select {
+	case result <- loopbackResult{code: strings.TrimSpace(code), state: state, err: strings.TrimSpace(failure)}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (m *Manager) registerAuthorizationState(state string, result chan loopbackResult) error {
+	m.authMu.Lock()
+	defer m.authMu.Unlock()
+	if m.authStates == nil {
+		m.authStates = make(map[string]chan loopbackResult)
+	}
+	if _, exists := m.authStates[state]; exists {
+		return errors.New("authorization state is already pending")
+	}
+	m.authStates[state] = result
+	return nil
+}
+
+func (m *Manager) unregisterAuthorizationState(state string, result chan loopbackResult) {
+	m.authMu.Lock()
+	defer m.authMu.Unlock()
+	if m.authStates[state] == result {
+		delete(m.authStates, state)
+	}
+}
+
+func (m *Manager) takeAuthorizationState(state string) (chan loopbackResult, bool) {
+	m.authMu.Lock()
+	defer m.authMu.Unlock()
+	result, ok := m.authStates[state]
+	if ok {
+		delete(m.authStates, state)
+	}
+	return result, ok
 }
 
 // asOAuthHandler converts a possibly-nil *oauthHandler to the interface without

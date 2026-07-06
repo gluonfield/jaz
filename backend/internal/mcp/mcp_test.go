@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/log"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -23,6 +24,56 @@ type testStore struct {
 
 func (s *testStore) ListMCPServers() ([]mcpconfig.Server, error) {
 	return append([]mcpconfig.Server(nil), s.servers...), nil
+}
+
+func TestCallbackReceiverSurfacesAuthURLAndCompletesFromCallback(t *testing.T) {
+	manager := NewManager(&testStore{}, newMemTokenStore(), tools.NewRegistry(), log.New(io.Discard))
+	started := make(chan authorizationStart, 1)
+	receiver := &callbackReceiver{
+		manager:     manager,
+		redirectURL: "https://jaz.example.com/v1/mcp/oauth/callback",
+		started:     started,
+	}
+	authURL := "https://auth.example.com/authorize?client_id=jaz&state=state-1"
+	done := make(chan struct {
+		code  string
+		state string
+		err   error
+	}, 1)
+	go func() {
+		code, state, err := receiver.fetch(context.Background(), authURL)
+		done <- struct {
+			code  string
+			state string
+			err   error
+		}{code: code, state: state, err: err}
+	}()
+
+	select {
+	case start := <-started:
+		if start.authURL != authURL {
+			t.Fatalf("auth url = %q, want %q", start.authURL, authURL)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for auth url")
+	}
+	if err := manager.CompleteAuthorization(context.Background(), "state-1", "code-1", ""); err != nil {
+		t.Fatalf("CompleteAuthorization: %v", err)
+	}
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatalf("fetch err = %v", got.err)
+		}
+		if got.code != "code-1" || got.state != "state-1" {
+			t.Fatalf("fetch = code %q, state %q", got.code, got.state)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for callback result")
+	}
+	if _, ok := manager.takeAuthorizationState("state-1"); ok {
+		t.Fatal("authorization state was not cleaned up")
+	}
 }
 
 type echoInput struct {
