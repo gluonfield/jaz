@@ -7,6 +7,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   claude: 'Claude',
   grok: 'Grok',
   opencode: 'OpenCode',
+  antigravity: 'Antigravity',
 }
 
 // Prettifies an ACP agent name for display, e.g. "claude" → "Claude".
@@ -30,6 +31,7 @@ const AUTH_PROVIDERS: Record<string, string> = {
   claude: 'Anthropic',
   grok: 'xAI',
   opencode: 'OpenRouter',
+  antigravity: 'Google AI',
 }
 
 export function authProviderLabel(value: string | undefined): string {
@@ -42,6 +44,7 @@ export function authProviderLabel(value: string | undefined): string {
 // shorter "Claude" reads better. Only the onboarding screen uses this variant.
 const ONBOARDING_NAMES: Record<string, string> = {
   claude: 'Claude Code',
+  antigravity: 'Antigravity',
 }
 
 export function onboardingAgentLabel(value: string | undefined): string {

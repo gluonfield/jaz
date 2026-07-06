@@ -27,7 +27,7 @@ import {
 } from './OnboardingParts'
 import { LoopsBoardsShowcase, SLIDES, WelcomeStep, slideFooter } from './OnboardingSlides'
 
-const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'opencode', 'grok']
+const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'opencode', 'antigravity', 'grok']
 
 // `?onboarding` pins the gate open so the flow can be iterated in a browser
 // against a live, already-onboarded backend.

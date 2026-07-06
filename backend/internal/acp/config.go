@@ -13,11 +13,12 @@ import (
 )
 
 const (
-	AgentJaz      = "jaz"
-	AgentCodex    = "codex"
-	AgentClaude   = "claude"
-	AgentGrok     = "grok"
-	AgentOpenCode = "opencode"
+	AgentJaz         = "jaz"
+	AgentCodex       = "codex"
+	AgentClaude      = "claude"
+	AgentGrok        = "grok"
+	AgentOpenCode    = "opencode"
+	AgentAntigravity = "antigravity"
 
 	AgentProviderModeNone          = ""
 	AgentProviderModeAgentDefaults = "agent_defaults"
@@ -291,6 +292,10 @@ func BuiltinAgents() AgentCatalog {
 			ModelProvider:           provider.ProviderOpenRouter,
 			Model:                   "openai/gpt-5.4-mini",
 			ReasoningEffort:         "",
+		},
+		AgentAntigravity: {
+			ManagedAdapter:     "antigravity",
+			ManagedAdapterArgs: []string{"--auth=auto", "--dangerously-skip-permissions"},
 		},
 	}
 }

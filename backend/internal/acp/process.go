@@ -242,6 +242,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 	normalizeEnv(env, "ANTHROPIC_API_KEY", "ANTHROPIC_APIKEY")
 	normalizeEnv(env, "OPENROUTER_API_KEY", "OPENROUTER_APIKEY")
 	normalizeEnv(env, "XAI_API_KEY", "XAI_APIKEY")
+	normalizeEnv(env, "GEMINI_API_KEY", "GEMINI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	if name == AgentCodex {
@@ -352,9 +353,23 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		}
 		auth.BindAPIKeyEnv(env)
 	}
+	if name == AgentAntigravity {
+		processenv.PreserveHost(env,
+			"HTTP_PROXY",
+			"HTTPS_PROXY",
+			"LANG",
+			"LC_ALL",
+			"LC_CTYPE",
+			"NO_PROXY",
+		)
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
+		auth.BindAPIKeyEnv(env)
+	}
 	if prepare {
 		if spec, ok := resolveAgentAPIKeySpec(name); ok {
-			delete(env, spec.SourceEnv)
+			if spec.SourceEnv != spec.TargetEnv {
+				delete(env, spec.SourceEnv)
+			}
 		}
 	}
 	return env, prepareErr

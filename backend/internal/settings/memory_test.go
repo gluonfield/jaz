@@ -86,6 +86,12 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			agent:    acp.AgentOpenCode,
 			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: "internal"}}},
 		},
+		{
+			name:    "antigravity",
+			agent:   acp.AgentAntigravity,
+			effort:  "medium",
+			allowed: []string{"minimal", "low", "medium", "high"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

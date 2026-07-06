@@ -106,6 +106,16 @@ func TestCodexBuiltinAgentUsesManagedAdapterElsewhere(t *testing.T) {
 	}
 }
 
+func TestAntigravityBuiltinAgentUsesManagedAdapter(t *testing.T) {
+	cfg := BuiltinAgents()[AgentAntigravity]
+	if cfg.Command != "" || cfg.ManagedAdapter != "antigravity" {
+		t.Fatalf("cfg = %#v, want managed adapter", cfg)
+	}
+	if !reflect.DeepEqual(cfg.ManagedAdapterArgs, []string{"--auth=auto", "--dangerously-skip-permissions"}) {
+		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)
+	}
+}
+
 func TestLaunchCommandWrapsWindowsCommandScripts(t *testing.T) {
 	command, args := resolvedLaunchCommand("windows", "npx.cmd", `C:\Program Files\nodejs\npx.cmd`, []string{"--version"})
 	if command != "cmd.exe" {
@@ -658,6 +668,7 @@ func TestProcessEnvMapsExplicitACPAPIKeysOnlyWhenNeeded(t *testing.T) {
 	t.Setenv("JAZ_ACP_CLAUDE_API_KEY", "claude-key")
 	t.Setenv("JAZ_ACP_GROK_API_KEY", "grok-key")
 	t.Setenv("JAZ_ACP_OPENCODE_API_KEY", "opencode-key")
+	t.Setenv("GEMINI_API_KEY", "antigravity-key")
 
 	manager := NewManager(nil, Config{Root: root}, nil)
 	codexEnv := manager.processEnv("codex", AgentConfig{})
@@ -678,6 +689,10 @@ func TestProcessEnvMapsExplicitACPAPIKeysOnlyWhenNeeded(t *testing.T) {
 	}
 	if openCodeEnv["OPENCODE_CONFIG_DIR"] == "" {
 		t.Fatalf("opencode config dir missing: %#v", openCodeEnv)
+	}
+	antigravityEnv := manager.processEnv(AgentAntigravity, AgentConfig{})
+	if antigravityEnv["GEMINI_API_KEY"] != "antigravity-key" {
+		t.Fatalf("antigravity explicit key not mapped cleanly: %#v", antigravityEnv)
 	}
 }
 
@@ -1013,6 +1028,63 @@ func TestProbeAgentAuthMatchesCustomOpenCodeProvider(t *testing.T) {
 	}
 }
 
+func TestProbeAgentAuthDetectsAntigravityAPIKey(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+
+	status := ProbeAgentAuth(AgentAntigravity, AgentConfig{}, root, nil)
+	if status.Authenticated || !strings.Contains(status.Reason, "GEMINI_API_KEY") {
+		t.Fatalf("status = %#v, want missing antigravity key", status)
+	}
+
+	status = ProbeAgentAuth(AgentAntigravity, AgentConfig{}, root, map[string]string{
+		"GEMINI_API_KEY": "managed-key",
+	})
+	if !status.Authenticated || status.AuthKind != AuthKindAPIKey || status.APIKey.TargetEnv != "GEMINI_API_KEY" {
+		t.Fatalf("status = %#v, want managed Gemini API key", status)
+	}
+}
+
+func TestProbeAgentAuthDetectsAntigravityExistingCLI(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	bin := t.TempDir()
+	testexec.Write(t, filepath.Join(bin, "agy"), "#!/bin/sh\nexit 0\n", "")
+	t.Setenv("PATH", bin)
+
+	status := ProbeAgentAuth(AgentAntigravity, AgentConfig{}, root, nil)
+	if !status.Authenticated || status.AuthKind != AuthKindOAuth || status.AuthMode != AuthModeExistingCLI {
+		t.Fatalf("status = %#v, want existing agy OAuth", status)
+	}
+}
+
+func TestProcessEnvBindsAntigravityAPIKey(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	manager := NewManager(nil, Config{
+		Root: root,
+		Env:  map[string]string{"GEMINI_API_KEY": "managed-key"},
+	}, nil)
+
+	env := manager.processEnv(AgentAntigravity, AgentConfig{})
+	if env["GEMINI_API_KEY"] != "managed-key" {
+		t.Fatalf("GEMINI_API_KEY = %q, want managed key", env["GEMINI_API_KEY"])
+	}
+}
+
+func TestProcessEnvBindsDirectGeminiAPIKey(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{"GEMINI_API_KEY": "gemini-key"}); err != nil {
+		t.Fatal(err)
+	}
+
+	env := NewManager(nil, Config{Root: root}, nil).processEnv(AgentAntigravity, AgentConfig{})
+	if env["GEMINI_API_KEY"] != "gemini-key" {
+		t.Fatalf("GEMINI_API_KEY = %q, want runtime key", env["GEMINI_API_KEY"])
+	}
+}
+
 func TestProcessEnvPrefersAccountAuthOverExplicitAPIKeys(t *testing.T) {
 	root := t.TempDir()
 	codexHome := t.TempDir()
@@ -1050,6 +1122,21 @@ func TestProbeReadinessAllowsCodexOAuthOrExplicitAPIKey(t *testing.T) {
 	ready = ProbeReadiness(AgentCodex, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"CODEX_HOME": codexHome})
 	if !ready.Available {
 		t.Fatalf("codex should be ready with oauth auth: %#v", ready)
+	}
+}
+
+func TestProbeReadinessRequiresAntigravityAPIKey(t *testing.T) {
+	clearHostEnv(t)
+	exe := testExecutable(t)
+
+	ready := ProbeReadiness(AgentAntigravity, AgentConfig{Command: exe}, t.TempDir(), nil)
+	if ready.Available || !strings.Contains(ready.Reason, "Antigravity CLI OAuth") || !strings.Contains(ready.Reason, "GEMINI_API_KEY") {
+		t.Fatalf("ready = %#v, want missing antigravity oauth or key", ready)
+	}
+
+	ready = ProbeReadiness(AgentAntigravity, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"GEMINI_API_KEY": "key"})
+	if !ready.Available {
+		t.Fatalf("antigravity should be ready with api key: %#v", ready)
 	}
 }
 

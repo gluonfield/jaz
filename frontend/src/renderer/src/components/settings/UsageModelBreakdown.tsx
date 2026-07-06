@@ -364,6 +364,8 @@ function agentName(agent: string): string {
       return 'Grok'
     case 'opencode':
       return 'OpenCode'
+    case 'antigravity':
+      return 'Antigravity'
     case 'jaz':
       return 'Jaz'
     default:

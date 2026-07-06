@@ -3,10 +3,20 @@ package acp
 import "testing"
 
 func TestDisconnectedAuthConfigPinsProfileAgents(t *testing.T) {
-	for _, agent := range []string{AgentCodex, AgentClaude, AgentOpenCode} {
+	for _, agent := range []string{AgentCodex, AgentClaude, AgentOpenCode, AgentAntigravity} {
 		if got := DisconnectedAuthConfig(agent, AgentAuthConfig{Mode: AuthModeExistingCLI}); got.Mode != AuthModeJazProfile || got.Path != "" {
 			t.Fatalf("%s disconnected auth = %#v, want Jaz profile", agent, got)
 		}
+	}
+}
+
+func TestNormalizeAgentAuthAllowsAntigravityExistingCLI(t *testing.T) {
+	got, err := NormalizeAgentAuthConfig(AgentAntigravity, AgentAuthConfig{Mode: AuthModeExistingCLI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != AuthModeExistingCLI {
+		t.Fatalf("mode = %q, want existing CLI", got.Mode)
 	}
 }
 

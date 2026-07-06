@@ -7,7 +7,7 @@ export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
 // once the provider is ready to surface in the UI.
 const HIDDEN_PROVIDERS = new Set(['ollama'])
 const HIDDEN_AGENTS = new Set(['jaz'])
-const AUTH_REQUIRED_AGENTS = new Set(['codex', 'claude', 'grok', 'opencode'])
+const AUTH_REQUIRED_AGENTS = new Set(['codex', 'claude', 'grok', 'opencode', 'antigravity'])
 
 export function providerHidden(id: string): boolean {
   return HIDDEN_PROVIDERS.has(id)

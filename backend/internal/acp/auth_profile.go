@@ -1,11 +1,14 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
@@ -71,7 +74,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 
 func DisconnectedAuthConfig(name string, current AgentAuthConfig) AgentAuthConfig {
 	switch CanonicalAgentName(name) {
-	case AgentCodex, AgentClaude, AgentOpenCode:
+	case AgentCodex, AgentClaude, AgentOpenCode, AgentAntigravity:
 		return AgentAuthConfig{Mode: AuthModeJazProfile}
 	default:
 		auth, err := NormalizeAgentAuthConfig(name, current)
@@ -88,6 +91,8 @@ func LoginAuthConfig(name string, requested AgentAuthConfig) (AgentAuthConfig, e
 		return AgentAuthConfig{}, err
 	}
 	switch CanonicalAgentName(name) {
+	case AgentAntigravity:
+		return AgentAuthConfig{Mode: AuthModeExistingCLI}, nil
 	case AgentCodex, AgentClaude, AgentOpenCode:
 		if auth.Mode == AuthModeJazProfile {
 			return auth, nil
@@ -117,6 +122,8 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 		return resolveGrokAuth(auth, cfg, root, env)
 	case AgentOpenCode:
 		return resolveOpenCodeAuth(auth, cfg, root, env, providers)
+	case AgentAntigravity:
+		return resolveAntigravityAuth(auth, root, env)
 	default:
 		return resolvedAgentAuth{Config: auth}
 	}
@@ -331,6 +338,62 @@ func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env
 	return status
 }
 
+func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]string) resolvedAgentAuth {
+	mode := auth.Mode
+	cliPath := expandAuthPath(defaultHomePath(filepath.Join(".gemini", "antigravity-cli")))
+	status := resolvedAgentAuth{
+		Config:      AgentAuthConfig{Mode: mode, Path: cliPath},
+		StoragePath: cliPath,
+		Source:      AuthModeExistingCLI,
+	}
+	cliAuthenticated := false
+	if mode == AuthModeAuto || mode == "" || mode == AuthModeExistingCLI {
+		cliAuthenticated = antigravityCLIAuthenticated()
+	}
+	if mode == AuthModeAuto || mode == "" {
+		mode = AuthModeExistingCLI
+		if !cliAuthenticated {
+			mode = AuthModeJazProfile
+		}
+		status.Config.Mode = mode
+	}
+	if mode == AuthModeExistingCLI && cliAuthenticated {
+		status.markAuthenticated("agy_models", AuthKindOAuth)
+		return status
+	}
+	status.Source = AuthModeJazProfile
+	status.Config = AgentAuthConfig{Mode: mode}
+	status.StoragePath = ""
+	if mode == AuthModeExistingCLI {
+		status.Source = AuthModeExistingCLI
+		status.Config.Path = cliPath
+		status.StoragePath = cliPath
+		status.Reason = "Antigravity CLI OAuth via agy, or Gemini API key via GEMINI_API_KEY"
+		return status
+	}
+	if status.resolveAPIKey(AgentAntigravity, root, env) {
+		status.markAuthenticated("api_key_env", AuthKindAPIKey)
+		return status
+	}
+	if value := codexProviderKeyValue(root, env, "GEMINI_API_KEY"); strings.TrimSpace(value) != "" {
+		status.APIKeyValue = value
+		status.markAuthenticated("gemini_api_key_env", AuthKindAPIKey)
+		return status
+	}
+	status.Reason = "Antigravity CLI OAuth via agy, or Gemini API key via " + status.APIKey.SourceEnv
+	return status
+}
+
+func antigravityCLIAuthenticated() bool {
+	path, err := exec.LookPath("agy")
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return exec.CommandContext(ctx, path, "models").Run() == nil
+}
+
 func openCodeProviderID(model string) string {
 	providerID := modelprovider.OpenCodeProviderIDFromModel(model)
 	if providerID == "" {
@@ -457,6 +520,8 @@ func resolveAgentAPIKeySpec(name string) (AgentAPIKeySpec, bool) {
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_GROK_API_KEY", TargetEnv: "XAI_API_KEY"}, true
 	case AgentOpenCode:
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_OPENCODE_API_KEY", TargetEnv: "OPENROUTER_API_KEY"}, true
+	case AgentAntigravity:
+		return AgentAPIKeySpec{SourceEnv: "GEMINI_API_KEY", TargetEnv: "GEMINI_API_KEY"}, true
 	default:
 		return AgentAPIKeySpec{}, false
 	}

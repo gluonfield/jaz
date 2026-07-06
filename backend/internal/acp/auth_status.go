@@ -92,6 +92,8 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 		return loginInvocation(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, false, binDir, "claude", "auth", "login", "--claudeai")
 	case AgentGrok:
 		return loginInvocation(nil, true, binDir, "grok", "login", "--device-auth")
+	case AgentAntigravity:
+		return loginInvocation(nil, true, binDir, "agy")
 	default:
 		return AgentLoginInvocation{}
 	}

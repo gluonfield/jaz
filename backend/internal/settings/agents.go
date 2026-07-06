@@ -128,7 +128,7 @@ func LoadEffectiveAgentDefaults(store storage.SettingsStorage, catalog acp.Agent
 }
 
 func DefaultWorkerAgent(defaults AgentDefaults) string {
-	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentOpenCode} {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentOpenCode, acp.AgentAntigravity} {
 		if current, ok := defaults.ACP[agent]; ok && current.Enabled {
 			return agent
 		}
@@ -165,6 +165,8 @@ func WorkerAgentReasoningEffort(agent string) string {
 	switch acp.CanonicalAgentName(agent) {
 	case acp.AgentCodex, acp.AgentGrok:
 		return "low"
+	case acp.AgentAntigravity:
+		return "medium"
 	default:
 		return ""
 	}

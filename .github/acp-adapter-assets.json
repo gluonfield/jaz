@@ -31,6 +31,37 @@
         }
       }
     },
+    "antigravity": {
+      "repo": "gluonfield/agy-acp",
+      "tag": "v0.1.0",
+      "version": "0.1.0",
+      "assets": {
+        "darwin-arm64": {
+          "name": "agy-acp-0.1.0-darwin-arm64.tar.gz",
+          "binary": "agy-acp"
+        },
+        "darwin-x64": {
+          "name": "agy-acp-0.1.0-darwin-x64.tar.gz",
+          "binary": "agy-acp"
+        },
+        "linux-arm64": {
+          "name": "agy-acp-0.1.0-linux-arm64.tar.gz",
+          "binary": "agy-acp"
+        },
+        "linux-x64": {
+          "name": "agy-acp-0.1.0-linux-x64.tar.gz",
+          "binary": "agy-acp"
+        },
+        "win32-arm64": {
+          "name": "agy-acp-0.1.0-win32-arm64.tar.gz",
+          "binary": "agy-acp.exe"
+        },
+        "win32-x64": {
+          "name": "agy-acp-0.1.0-win32-x64.tar.gz",
+          "binary": "agy-acp.exe"
+        }
+      }
+    },
     "claude": {
       "repo": "gluonfield/claude-agent-acp",
       "tag": "v0.55.0-jaz.1",
