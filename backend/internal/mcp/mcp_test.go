@@ -33,6 +33,7 @@ func TestCallbackReceiverSurfacesAuthURLAndCompletesFromCallback(t *testing.T) {
 		manager:     manager,
 		redirectURL: "https://jaz.example.com/v1/mcp/oauth/callback",
 		started:     started,
+		pending:     newAuthorizationPending(),
 	}
 	authURL := "https://auth.example.com/authorize?client_id=jaz&state=state-1"
 	done := make(chan struct {
@@ -57,9 +58,10 @@ func TestCallbackReceiverSurfacesAuthURLAndCompletesFromCallback(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for auth url")
 	}
-	if err := manager.CompleteAuthorization(context.Background(), "state-1", "code-1", ""); err != nil {
-		t.Fatalf("CompleteAuthorization: %v", err)
-	}
+	callbackDone := make(chan error, 1)
+	go func() {
+		callbackDone <- manager.CompleteAuthorization(context.Background(), "state-1", "code-1", "")
+	}()
 	select {
 	case got := <-done:
 		if got.err != nil {
@@ -71,8 +73,54 @@ func TestCallbackReceiverSurfacesAuthURLAndCompletesFromCallback(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for callback result")
 	}
+	select {
+	case err := <-callbackDone:
+		t.Fatalf("CompleteAuthorization returned before token exchange completed: %v", err)
+	default:
+	}
+	receiver.pending.complete(mcpconfig.ServerStatus{Status: "connected"})
+	select {
+	case err := <-callbackDone:
+		if err != nil {
+			t.Fatalf("CompleteAuthorization: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for authorization completion")
+	}
 	if _, ok := manager.takeAuthorizationState("state-1"); ok {
 		t.Fatal("authorization state was not cleaned up")
+	}
+}
+
+func TestCompleteAuthorizationReturnsFinalFailureStatus(t *testing.T) {
+	manager := NewManager(&testStore{}, newMemTokenStore(), tools.NewRegistry(), log.New(io.Discard))
+	started := make(chan authorizationStart, 1)
+	receiver := &callbackReceiver{
+		manager:     manager,
+		redirectURL: "https://jaz.example.com/v1/mcp/oauth/callback",
+		started:     started,
+		pending:     newAuthorizationPending(),
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, _, _ = receiver.fetch(context.Background(), "https://auth.example.com/authorize?state=state-fail")
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for auth url")
+	}
+	go func() {
+		done <- manager.CompleteAuthorization(context.Background(), "state-fail", "code-1", "")
+	}()
+	receiver.pending.complete(mcpconfig.ServerStatus{Status: "error", Error: "token exchange failed"})
+	select {
+	case err := <-done:
+		if err == nil || err.Error() != "token exchange failed" {
+			t.Fatalf("CompleteAuthorization error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for authorization failure")
 	}
 }
 
