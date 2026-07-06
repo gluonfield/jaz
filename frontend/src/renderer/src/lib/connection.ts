@@ -42,27 +42,59 @@ export type ConnectionState = {
 }
 
 const POLL_INTERVAL_MS = 5_000
+const REQUEST_TIMEOUT_MS = clientRuntime.kind === 'web' ? 10_000 : 3_000
 // One missed poll can be a transient blip (remote backends especially);
 // only treat the connection as lost after consecutive failures.
 const FAILURES_BEFORE_DISCONNECT = 2
 // How long 'reconnecting' keeps the app mounted before giving up and
 // falling back to the launch screen.
-const RECONNECT_GRACE_MS = 30_000
+const RECONNECT_GRACE_MS = clientRuntime.kind === 'web' ? 10 * 60_000 : 30_000
 
 let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), pairing: null, error: null }
 const listeners = new Set<() => void>()
 
 type HealthStatus = {
-  ok: boolean
   authRequired: boolean
 }
 
-type AuthAccess = {
-  ok: boolean
+type BackendFailureReason =
+  | 'unreachable'
+  | 'browser_session_required'
+  | 'missing_key'
+  | 'auth_rejected'
+  | 'device_approval_required'
+  | 'auth_failed'
+
+type BackendCheck =
+  | { ok: true }
+  | {
+      ok: false
+      reason: BackendFailureReason
+      message: string
+      recoverable: boolean
+    }
+
+type HealthProbe = ({ ok: true } & HealthStatus) | Extract<BackendCheck, { ok: false }>
+
+type AuthAccess =
+  | {
+      ok: true
+      authKind?: string
+      deviceId?: string
+    }
+  | {
+      ok: false
+      reason: BackendFailureReason
+      error: string
+      recoverable: boolean
+      code?: string
+    }
+
+type AuthFailureBody = {
   error?: string
   code?: string
-  authKind?: string
-  deviceId?: string
+  auth_kind?: string
+  device_id?: string
 }
 
 function setState(next: Partial<ConnectionState>) {
@@ -97,14 +129,58 @@ export function useBackendChange(onChange: (url: string) => void): void {
   }, [url, status])
 }
 
-async function readHealth(url: string): Promise<HealthStatus | null> {
+function backendFailure(
+  reason: BackendFailureReason,
+  message: string,
+  recoverable = false,
+): Extract<BackendCheck, { ok: false }> {
+  return { ok: false, reason, message, recoverable }
+}
+
+function teleportSessionMessage(url: string): string {
+  return `Sign in through Teleport again to reach the backend at ${url}`
+}
+
+function responseMovedOffBackend(url: string, res: Response): boolean {
+  if (!res.redirected) return false
   try {
-    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(3_000) })
-    if (!res.ok) return null
-    const body = (await res.json()) as { ok?: boolean; auth_required?: boolean }
-    return { ok: body.ok === true, authRequired: body.auth_required === true }
+    return new URL(res.url).origin !== new URL(normalizeBaseUrl(url)).origin
   } catch {
-    return null
+    return true
+  }
+}
+
+function responseIsJSON(contentType: string): boolean {
+  return contentType.includes('json')
+}
+
+function responseLooksLikeBrowserLogin(url: string, res: Response, contentType: string): boolean {
+  if (clientRuntime.kind !== 'web') return false
+  const authStatusWithoutAPIJSON =
+    (res.status === 401 || res.status === 403) && !responseIsJSON(contentType)
+  return responseMovedOffBackend(url, res) || authStatusWithoutAPIJSON || contentType.includes('text/html')
+}
+
+async function readHealth(url: string): Promise<HealthProbe> {
+  try {
+    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+    const contentType = res.headers.get('content-type')?.toLowerCase() ?? ''
+    if (responseLooksLikeBrowserLogin(url, res, contentType)) {
+      return backendFailure('browser_session_required', teleportSessionMessage(url))
+    }
+    if (!res.ok) {
+      return backendFailure('unreachable', `No backend responded at ${url}`, true)
+    }
+    if (!responseIsJSON(contentType)) {
+      return backendFailure('unreachable', `No Jaz backend responded at ${url}`, true)
+    }
+    const body = (await res.json()) as { ok?: boolean; auth_required?: boolean }
+    if (body.ok !== true) {
+      return backendFailure('unreachable', `No backend responded at ${url}`, true)
+    }
+    return { ok: true, authRequired: body.auth_required === true }
+  } catch {
+    return backendFailure('unreachable', `No backend responded at ${url}`, true)
   }
 }
 
@@ -117,7 +193,7 @@ async function readJSON<T>(res: Response): Promise<T | null> {
 }
 
 export async function checkHealth(url: string): Promise<boolean> {
-  return (await readHealth(url))?.ok === true
+  return (await readHealth(url)).ok === true
 }
 
 async function checkAuthAccess(url: string, token: string): Promise<AuthAccess> {
@@ -127,20 +203,47 @@ async function checkAuthAccess(url: string, token: string): Promise<AuthAccess> 
     headers.set(CLIENT_PLATFORM_HEADER, CLIENT_PLATFORM)
     const res = await fetch(`${url}/v1/auth/check`, {
       headers,
-      signal: AbortSignal.timeout(3_000),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
-    const body = await readJSON<{ error?: string; code?: string; auth_kind?: string; device_id?: string }>(res)
-    if (res.status === 401) return { ok: false, error: 'Backend key was rejected', code: body?.code }
+    const contentType = res.headers.get('content-type')?.toLowerCase() ?? ''
+    if (responseLooksLikeBrowserLogin(url, res, contentType)) {
+      return {
+        ok: false,
+        reason: 'browser_session_required',
+        error: teleportSessionMessage(url),
+        recoverable: false,
+      }
+    }
+    const body = responseIsJSON(contentType) ? await readJSON<AuthFailureBody>(res) : null
+    if (res.status === 401) {
+      return {
+        ok: false,
+        reason: 'auth_rejected',
+        error: 'Backend key was rejected',
+        recoverable: false,
+        code: body?.code,
+      }
+    }
     if (!res.ok) {
       return {
         ok: false,
+        reason: body?.code === 'device_approval_required' ? 'device_approval_required' : 'auth_failed',
         error: body?.error || `Backend auth check failed with ${res.status}`,
+        recoverable: res.status >= 500,
         code: body?.code,
+      }
+    }
+    if (!responseIsJSON(contentType)) {
+      return {
+        ok: false,
+        reason: 'auth_failed',
+        error: `Backend auth check returned an invalid response from ${url}`,
+        recoverable: true,
       }
     }
     return { ok: true, authKind: body?.auth_kind, deviceId: body?.device_id }
   } catch {
-    return { ok: false, error: 'Backend auth check failed' }
+    return { ok: false, reason: 'auth_failed', error: 'Backend auth check failed', recoverable: true }
   }
 }
 
@@ -148,13 +251,14 @@ async function verifyBackend(
   url: string,
   token = apiAuthToken(url),
   missingKeyMessage = `Backend at ${url} requires a key`,
-): Promise<string | null> {
+): Promise<BackendCheck> {
   const health = await readHealth(url)
-  if (!health?.ok) return `No backend responded at ${url}`
-  if (!health.authRequired) return null
-  if (!token) return missingKeyMessage
+  if (!health.ok) return health
+  if (!health.authRequired) return { ok: true }
+  if (!token) return backendFailure('missing_key', missingKeyMessage)
   const access = await checkAuthAccess(url, token)
-  return access.ok ? null : access.error || 'Backend auth check failed'
+  if (access.ok) return { ok: true }
+  return backendFailure(access.reason, access.error || 'Backend auth check failed', access.recoverable)
 }
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null
@@ -174,35 +278,64 @@ let preflightSnapshot: ConnectionSnapshot | null = null
 // cache-clear check in markConnected.
 let cacheOwnerUrl = ''
 
+function pageHidden(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState === 'hidden'
+}
+
+function recoverableReconnect(url: string, failure: Extract<BackendCheck, { ok: false }>): boolean {
+  return clientRuntime.kind === 'web' && Boolean(apiAuthToken(url)) && failure.recoverable
+}
+
+function enterReconnecting(url: string, error: string): void {
+  lostAt = Date.now()
+  setState({ status: 'reconnecting', url: normalizeBaseUrl(url), pairing: null, error })
+  schedulePoll()
+}
+
+function resumePolling(): void {
+  if (pageHidden() || state.status === 'pending_approval') return
+  if (state.status === 'reconnecting') lostAt = Date.now()
+  schedulePoll(0)
+}
+
 // Polls in every state: while connected it watches for loss; while
 // reconnecting/disconnected it keeps probing so the app recovers by itself
 // the moment the backend comes back (slow `go run` compile, backend restart,
 // login race).
-function schedulePoll() {
+function schedulePoll(delay = POLL_INTERVAL_MS) {
   const gen = ++pollGen
   if (pollTimer) clearTimeout(pollTimer)
   pollTimer = setTimeout(async () => {
+    if (pageHidden()) {
+      schedulePoll()
+      return
+    }
     const url = state.url
-    const healthError = await verifyBackend(url)
+    const check = await verifyBackend(url)
     if (gen !== pollGen || state.url !== url) return
     if (state.status === 'connected') {
-      if (!healthError) {
+      if (check.ok) {
         failures = 0
+      } else if (!check.recoverable) {
+        failures = 0
+        setState({ status: 'disconnected', error: check.message })
       } else {
         failures += 1
         if (failures >= FAILURES_BEFORE_DISCONNECT) {
-          lostAt = Date.now()
-          setState({ status: 'reconnecting', error: `Lost connection to the backend at ${url}` })
+          enterReconnecting(url, `Lost connection to the backend at ${url}`)
+          return
         }
       }
-    } else if (!healthError) {
+    } else if (check.ok) {
       markConnected(url)
       return
+    } else if (state.status === 'reconnecting' && !check.recoverable) {
+      setState({ status: 'disconnected', error: check.message })
     } else if (state.status === 'reconnecting' && Date.now() - lostAt > RECONNECT_GRACE_MS) {
-      setState({ status: 'disconnected', error: healthError })
+      setState({ status: 'disconnected', error: check.message })
     }
     schedulePoll()
-  }, POLL_INTERVAL_MS)
+  }, delay)
 }
 
 function markConnected(url: string) {
@@ -231,9 +364,13 @@ function markConnected(url: string) {
 // reconnect or surface why it's now unreachable.
 async function reconnectKnown(url: string): Promise<void> {
   setState({ status: 'checking', url, pairing: null, error: null })
-  const error = await verifyBackend(url)
-  if (error) {
-    setState({ status: 'disconnected', url, pairing: null, error })
+  const check = await verifyBackend(url)
+  if (!check.ok) {
+    if (recoverableReconnect(url, check)) {
+      enterReconnecting(url, check.message)
+      return
+    }
+    setState({ status: 'disconnected', url, pairing: null, error: check.message })
     schedulePoll()
     return
   }
@@ -469,7 +606,7 @@ export async function connectRemote(url: string): Promise<string | null> {
   if (!target) return 'Enter a backend URL'
   const token = parsed.key || apiAuthToken(target)
   const health = await readHealth(target)
-  if (!health?.ok) return `No backend responded at ${target}`
+  if (!health.ok) return health.message
   if (health.authRequired) {
     if (!token) return startPairing(target)
     const access = await checkAuthAccess(target, token)
@@ -508,7 +645,7 @@ export async function startLocal(): Promise<string | null> {
     '',
     `Backend at ${url} requires a key. Paste its client URL or stop that backend and start locally.`,
   )
-  if (error) return error
+  if (!error.ok) return error.message
   markConnected(url)
   return null
 }
@@ -516,7 +653,7 @@ export async function startLocal(): Promise<string | null> {
 async function connectStoredToken(url: string): Promise<boolean> {
   const token = apiAuthToken(url)
   if (!token) return false
-  if (!(await verifyBackend(url, token))) {
+  if ((await verifyBackend(url, token)).ok) {
     markConnected(url)
     return true
   }
@@ -569,12 +706,19 @@ async function init() {
   // otherwise present the welcome choice with NO error — nothing to disappoint
   // yet.
   const error = await verifyBackend(localUrl)
-  if (!error) {
+  if (error.ok) {
     markConnected(localUrl)
     return
   }
   setState({ status: 'disconnected', url: localUrl, error: null })
   schedulePoll()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('focus', resumePolling)
+  window.addEventListener('online', resumePolling)
+  window.addEventListener('pageshow', resumePolling)
+  document.addEventListener('visibilitychange', resumePolling)
 }
 
 void init()
