@@ -115,6 +115,9 @@ func TestAntigravityBuiltinAgentUsesManagedAdapter(t *testing.T) {
 	if !reflect.DeepEqual(cfg.ManagedAdapterArgs, []string{"--auth=auto", "--dangerously-skip-permissions"}) {
 		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)
 	}
+	if cfg.ManagedTool != "antigravity-cli" {
+		t.Fatalf("managed tool = %q", cfg.ManagedTool)
+	}
 }
 
 func TestLaunchCommandWrapsWindowsCommandScripts(t *testing.T) {
@@ -1041,7 +1044,7 @@ func TestProbeAgentAuthDetectsAntigravityAPIKey(t *testing.T) {
 	status = ProbeAgentAuth(AgentAntigravity, AgentConfig{}, root, map[string]string{
 		"GEMINI_API_KEY": "managed-key",
 	})
-	if !status.Authenticated || status.AuthKind != AuthKindAPIKey || status.APIKey.TargetEnv != "GEMINI_API_KEY" {
+	if !status.Authenticated || status.AuthKind != AuthKindAPIKey || status.AuthMode != AuthModeAuto || status.APIKey.TargetEnv != "GEMINI_API_KEY" {
 		t.Fatalf("status = %#v, want managed Gemini API key", status)
 	}
 }
@@ -1086,7 +1089,7 @@ func TestProcessEnvBindsDirectGeminiAPIKey(t *testing.T) {
 	}
 }
 
-func TestProcessEnvAddsManagedAntigravityCLIToPath(t *testing.T) {
+func TestProcessEnvAddsAntigravityLoginBinDirToPath(t *testing.T) {
 	clearHostEnv(t)
 	root := t.TempDir()
 	path := managedtool.ExecutablePath(root, managedtool.AntigravityCLI)
@@ -1097,7 +1100,7 @@ func TestProcessEnvAddsManagedAntigravityCLIToPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	env := NewManager(nil, Config{Root: root}, nil).processEnv(AgentAntigravity, AgentConfig{})
+	env := NewManager(nil, Config{Root: root}, nil).processEnv(AgentAntigravity, AgentConfig{LoginBinDir: filepath.Dir(path)})
 	if parts := filepath.SplitList(env["PATH"]); len(parts) == 0 || parts[0] != filepath.Dir(path) {
 		t.Fatalf("PATH = %q, want managed agy dir first", env["PATH"])
 	}

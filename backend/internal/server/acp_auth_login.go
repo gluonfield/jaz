@@ -79,7 +79,7 @@ func (s *Server) handleStartACPAuthLogin(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
-	cfg.LoginBinDir = s.agentLoginBinDirs(agent, cfg)
+	cfg.LoginBinDir = s.agentLoginBinDirs(cfg)
 	probeCfg := cfg
 	probeCfg.Auth = auth
 	auth = acp.ProbeAgentAuth(agent, probeCfg, s.runtimeRoot(), nil).RecommendedAuth
@@ -214,7 +214,7 @@ func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) erro
 	cfg, _ := s.acpAgentCatalog().Agent(agent)
 	cfg.Auth = auth
 	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
-	cfg.LoginBinDir = s.agentLoginBinDirs(agent, cfg)
+	cfg.LoginBinDir = s.agentLoginBinDirs(cfg)
 	status := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
 	if status.Authenticated {
 		return nil

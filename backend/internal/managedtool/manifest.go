@@ -51,7 +51,7 @@ func (m *Manager) resolveSpec(ctx context.Context, name string) (toolSpec, error
 		URL:      strings.TrimSpace(manifest.URL),
 		SHA512:   strings.TrimSpace(manifest.SHA512),
 		Root:     root,
-		Command:  filepath.Join(root, executableName(name)),
+		Command:  filepath.Join(root, ExecutableName(name)),
 	}, nil
 }
 
@@ -117,7 +117,7 @@ func linuxMusl() bool {
 	return err == nil && strings.Contains(strings.ToLower(string(out)), "musl")
 }
 
-func executableName(name string) string {
+func ExecutableName(name string) string {
 	switch name {
 	case AntigravityCLI:
 		if runtime.GOOS == "windows" {
@@ -134,7 +134,7 @@ func ExecutablePath(root, name string) string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(root, "acp", "managed", "tools", strings.TrimSpace(name), platform, executableName(name))
+	return filepath.Join(root, "acp", "managed", "tools", strings.TrimSpace(name), platform, ExecutableName(name))
 }
 
 func BinDir(root, name string) string {

@@ -77,14 +77,6 @@ var openCodeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil),
 	ReasoningEffortOption{Value: "max", Label: "Max"},
 )
 
-var antigravityReasoningEffortOptions = []ReasoningEffortOption{
-	{Value: "", Label: "Default"},
-	{Value: "minimal", Label: "Minimal"},
-	{Value: "low", Label: "Low"},
-	{Value: "medium", Label: "Medium"},
-	{Value: "high", Label: "High"},
-}
-
 func agentPolicyForAgent(agentName string) agentPolicy {
 	switch strings.ToLower(strings.TrimSpace(agentName)) {
 	case AgentClaude:
@@ -119,9 +111,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 	case AgentAntigravity:
 		return agentPolicy{
 			modelConfigID:       sessionConfigModel,
-			effortConfigID:      sessionConfigReasoningEffort,
 			modelValidationKind: modelValidationNone,
-			effortOptions:       antigravityReasoningEffortOptions,
 		}
 	default:
 		return agentPolicy{
@@ -156,11 +146,17 @@ func (p agentPolicy) sessionConfigModel(cfg AgentConfig) string {
 }
 
 func (p agentPolicy) reasoningEffortOptions() []ReasoningEffortOption {
+	if len(p.effortOptions) == 0 {
+		return nil
+	}
 	return append([]ReasoningEffortOption(nil), p.effortOptions...)
 }
 
 func (p agentPolicy) normalizeReasoningEffort(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
+	if len(p.effortOptions) == 0 {
+		return "", nil
+	}
 	if value == "none" {
 		value = ""
 	}

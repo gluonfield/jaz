@@ -165,8 +165,6 @@ func WorkerAgentReasoningEffort(agent string) string {
 	switch acp.CanonicalAgentName(agent) {
 	case acp.AgentCodex, acp.AgentGrok:
 		return "low"
-	case acp.AgentAntigravity:
-		return "medium"
 	default:
 		return ""
 	}

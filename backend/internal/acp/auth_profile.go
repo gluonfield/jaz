@@ -56,6 +56,10 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		return AgentAuthConfig{}, fmt.Errorf("acp agent %q auth mode %q is not supported", name, mode)
 	}
 	path := strings.TrimSpace(auth.Path)
+	if name == AgentAntigravity && mode == AuthModeJazProfile {
+		mode = AuthModeAuto
+		path = ""
+	}
 	if mode == AuthModeAuto {
 		path = ""
 	}
@@ -75,8 +79,10 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 
 func DisconnectedAuthConfig(name string, current AgentAuthConfig) AgentAuthConfig {
 	switch CanonicalAgentName(name) {
-	case AgentCodex, AgentClaude, AgentOpenCode, AgentAntigravity:
+	case AgentCodex, AgentClaude, AgentOpenCode:
 		return AgentAuthConfig{Mode: AuthModeJazProfile}
+	case AgentAntigravity:
+		return AgentAuthConfig{Mode: AuthModeAuto}
 	default:
 		auth, err := NormalizeAgentAuthConfig(name, current)
 		if err != nil {
@@ -341,30 +347,25 @@ func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env
 
 func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]string) resolvedAgentAuth {
 	mode := auth.Mode
+	if mode == "" {
+		mode = AuthModeAuto
+	}
 	cliPath := expandAuthPath(defaultHomePath(filepath.Join(".gemini", "antigravity-cli")))
 	status := resolvedAgentAuth{
-		Config:      AgentAuthConfig{Mode: mode, Path: cliPath},
-		StoragePath: cliPath,
-		Source:      AuthModeExistingCLI,
+		Config: AgentAuthConfig{Mode: mode},
+		Source: mode,
 	}
 	cliAuthenticated := false
-	if mode == AuthModeAuto || mode == "" || mode == AuthModeExistingCLI {
+	if mode == AuthModeAuto || mode == AuthModeExistingCLI {
 		cliAuthenticated = antigravityCLIAuthenticated(env)
 	}
-	if mode == AuthModeAuto || mode == "" {
-		mode = AuthModeExistingCLI
-		if !cliAuthenticated {
-			mode = AuthModeJazProfile
-		}
-		status.Config.Mode = mode
-	}
-	if mode == AuthModeExistingCLI && cliAuthenticated {
+	if cliAuthenticated {
+		status.Config = AgentAuthConfig{Mode: AuthModeExistingCLI, Path: cliPath}
+		status.StoragePath = cliPath
+		status.Source = AuthModeExistingCLI
 		status.markAuthenticated("agy_models", AuthKindOAuth)
 		return status
 	}
-	status.Source = AuthModeJazProfile
-	status.Config = AgentAuthConfig{Mode: mode}
-	status.StoragePath = ""
 	if mode == AuthModeExistingCLI {
 		status.Source = AuthModeExistingCLI
 		status.Config.Path = cliPath
@@ -378,6 +379,7 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 	}
 	if value := codexProviderKeyValue(root, env, "GEMINI_API_KEY"); strings.TrimSpace(value) != "" {
 		status.APIKeyValue = value
+		status.APIKeySet = true
 		status.markAuthenticated("gemini_api_key_env", AuthKindAPIKey)
 		return status
 	}

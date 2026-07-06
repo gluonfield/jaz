@@ -168,7 +168,7 @@ func (s *Server) handlePrepareACPAgent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if tool := managedToolForAgent(agent); tool != "" {
+	if tool := strings.TrimSpace(cfg.ManagedTool); tool != "" {
 		if s.ManagedTools == nil {
 			writeError(w, http.StatusServiceUnavailable, fmt.Errorf("managed tool downloader is not available"))
 			return
@@ -279,7 +279,7 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		adapter := s.managedAdapterStatus(cfg)
 		adapterReady := adapter == nil || adapter.State == acpadapter.StateReady
-		tool := s.managedToolStatus(name)
+		tool := s.managedToolStatus(cfg.ManagedTool)
 		toolReady := tool == nil || tool.State == managedtool.StateReady
 		installed := (adapterInstalled || auth.LoginCommandAvailable) && adapterReady && toolReady
 		reason := ""
@@ -336,8 +336,8 @@ func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapter
 	}
 }
 
-func (s *Server) managedToolStatus(agent string) *onboardingManagedToolStatus {
-	tool := managedToolForAgent(agent)
+func (s *Server) managedToolStatus(tool string) *onboardingManagedToolStatus {
+	tool = strings.TrimSpace(tool)
 	if tool == "" {
 		return nil
 	}
@@ -350,10 +350,10 @@ func (s *Server) managedToolStatus(agent string) *onboardingManagedToolStatus {
 		status = s.ManagedTools.Status(tool)
 	}
 	if status.State != managedtool.StateReady {
-		if path, err := acp.ResolveExecutable("agy"); err == nil {
+		if path, err := acp.ResolveExecutable(managedtool.ExecutableName(tool)); err == nil {
 			status.State = managedtool.StateReady
 			status.Path = path
-			status.Message = "Antigravity CLI is available on PATH"
+			status.Message = managedtool.DisplayName(tool) + " is available on PATH"
 		}
 	}
 	return &onboardingManagedToolStatus{
@@ -379,27 +379,20 @@ func (s *Server) adapterBundleDir(adapter string) string {
 	return filepath.Dir(path)
 }
 
-func managedToolForAgent(agent string) string {
-	if acp.CanonicalAgentName(agent) == acp.AgentAntigravity {
-		return managedtool.AntigravityCLI
-	}
-	return ""
-}
-
-func (s *Server) managedToolBinDir(agent string) string {
-	status := s.managedToolStatus(agent)
+func (s *Server) managedToolBinDir(tool string) string {
+	status := s.managedToolStatus(tool)
 	if status == nil || status.State != managedtool.StateReady || strings.TrimSpace(status.Path) == "" {
 		return ""
 	}
 	return filepath.Dir(status.Path)
 }
 
-func (s *Server) agentLoginBinDirs(agent string, cfg acp.AgentConfig) string {
+func (s *Server) agentLoginBinDirs(cfg acp.AgentConfig) string {
 	dirs := []string{}
 	if dir := strings.TrimSpace(cfg.AdapterBinDir); dir != "" {
 		dirs = append(dirs, dir)
 	}
-	if dir := strings.TrimSpace(s.managedToolBinDir(agent)); dir != "" {
+	if dir := strings.TrimSpace(s.managedToolBinDir(cfg.ManagedTool)); dir != "" {
 		dirs = append(dirs, dir)
 	}
 	return strings.Join(dirs, string(os.PathListSeparator))
@@ -505,6 +498,6 @@ func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefault
 		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
 	}
 	cfg.AdapterBinDir = s.adapterBundleDir(cfg.ManagedAdapter)
-	cfg.LoginBinDir = s.agentLoginBinDirs(name, cfg)
+	cfg.LoginBinDir = s.agentLoginBinDirs(cfg)
 	return cfg, command, nil
 }

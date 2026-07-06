@@ -65,11 +65,12 @@ function withLoginAuth(settings: AgentSettingsData, agent: string): AgentSetting
   if (agent === 'grok') return settings
   const next = cloneAgentSettings(settings)
   const current = next.acp[agent]
-  if (current) next.acp[agent] = { ...current, auth: { mode: 'jaz_profile', path: '' } }
+  if (current) next.acp[agent] = { ...current, auth: loginAuth(agent, current.auth) }
   return next
 }
 
 function loginAuth(agent: string, current: ACPAuthDraft): ACPAuthDraft {
+  if (agent === 'antigravity') return { mode: 'existing_cli' }
   if (agent === 'grok' || current?.mode === 'jaz_profile') return current
   return { mode: 'jaz_profile', path: '' }
 }

@@ -3,6 +3,7 @@ package managedtool
 import (
 	"context"
 	"net/http"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -61,6 +62,10 @@ func NewForTest(root, baseURL string, client *http.Client) *Manager {
 
 func (m *Manager) Prepare(ctx context.Context, name string) error {
 	name = strings.TrimSpace(name)
+	if status, ok := m.localReadyStatus(name); ok {
+		m.setStatus(name, status)
+		return nil
+	}
 	spec, err := m.resolveSpec(ctx, name)
 	if err != nil {
 		m.setResolveErrorStatus(name, err)
@@ -92,25 +97,52 @@ func (m *Manager) Status(name string) Status {
 		return Status{Tool: name, State: StateUnsupported, Message: err.Error()}
 	}
 	if status, ok := m.storedStatus(name); ok {
+		if status.State == StateDownloading {
+			return status
+		}
+		if status.State == StateReady && fileExists(status.Path) {
+			return status
+		}
+	}
+	if status, ok := m.localReadyStatus(name); ok {
+		if status.Platform == "" {
+			status.Platform = platform
+		}
 		return status
 	}
-	path := ExecutablePath(m.root, name)
-	if fileExists(path) {
-		return Status{
-			Tool:     name,
-			Platform: platform,
-			Path:     path,
-			State:    StateReady,
-			Message:  displayName(name) + " is ready",
-		}
+	if status, ok := m.storedStatus(name); ok {
+		return status
 	}
 	return Status{
 		Tool:     name,
 		Platform: platform,
-		Path:     path,
+		Path:     ExecutablePath(m.root, name),
 		State:    StateMissing,
-		Message:  displayName(name) + " is not downloaded yet",
+		Message:  DisplayName(name) + " is not downloaded yet",
 	}
+}
+
+func (m *Manager) BinDir(name string) string {
+	status, ok := m.localReadyStatus(name)
+	if !ok || strings.TrimSpace(status.Path) == "" {
+		return ""
+	}
+	return filepath.Dir(status.Path)
+}
+
+func (m *Manager) localReadyStatus(name string) (Status, bool) {
+	path := ExecutablePath(m.root, name)
+	if !fileExists(path) {
+		return Status{}, false
+	}
+	platform, _ := platformKey(runtime.GOOS, runtime.GOARCH)
+	return Status{
+		Tool:     name,
+		Platform: platform,
+		Path:     path,
+		State:    StateReady,
+		Message:  DisplayName(name) + " is ready",
+	}, true
 }
 
 func (m *Manager) storedStatus(name string) (Status, bool) {
@@ -141,7 +173,7 @@ func (m *Manager) setResolveErrorStatus(name string, err error) {
 	})
 }
 
-func displayName(name string) string {
+func DisplayName(name string) string {
 	switch name {
 	case AntigravityCLI:
 		return "Antigravity CLI"

@@ -216,8 +216,32 @@ func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
 	return acp.MergeAgents(acp.BuiltinAgents(), cfg.ACP.Agents)
 }
 
-func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog, modelCatalog *modelcatalog.Service) acp.AgentConfigSource {
-	return agentsettings.NewACPConfigSource(store, catalog, modelCatalog)
+func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog, modelCatalog *modelcatalog.Service, tools *managedtool.Manager) acp.AgentConfigSource {
+	source := agentsettings.NewACPConfigSource(store, catalog, modelCatalog)
+	if tools == nil {
+		return source
+	}
+	return managedToolAgentConfigSource{source: source, tools: tools}
+}
+
+type managedToolAgentConfigSource struct {
+	source acp.AgentConfigSource
+	tools  *managedtool.Manager
+}
+
+func (s managedToolAgentConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error) {
+	cfg, ok, err := s.source.AgentConfig(name)
+	if err != nil || !ok {
+		return cfg, ok, err
+	}
+	if dir := strings.TrimSpace(s.tools.BinDir(cfg.ManagedTool)); dir != "" {
+		cfg.LoginBinDir = appendPathList(cfg.LoginBinDir, dir)
+	}
+	return cfg, true, nil
+}
+
+func (s managedToolAgentConfigSource) EnabledAgentNames() ([]string, error) {
+	return s.source.EnabledAgentNames()
 }
 
 func NewACPAdapterManager(layout runtimefiles.Layout, release Release) *acpadapter.Manager {
@@ -271,6 +295,21 @@ func managedAdapterNames(catalog acp.AgentCatalog) []string {
 		out = append(out, adapter)
 	}
 	return out
+}
+
+func appendPathList(current, dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return strings.TrimSpace(current)
+	}
+	parts := filepath.SplitList(strings.TrimSpace(current))
+	for _, part := range parts {
+		if part == dir {
+			return strings.TrimSpace(current)
+		}
+	}
+	parts = append(parts, dir)
+	return strings.Join(parts, string(os.PathListSeparator))
 }
 
 // NewProviderSource builds the live, thread-safe registry of effective model

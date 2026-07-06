@@ -220,7 +220,7 @@ function OnboardingScreen({
               preparePending={prepare.isPending ? prepare.variables : undefined}
               onPrepare={(agent) => prepare.mutate(agent)}
               onStartLogin={(agent) => {
-                const auth = onboardingLoginAuth(draft.acp[agent]?.auth)
+                const auth = onboardingLoginAuth(agent, draft.acp[agent]?.auth)
                 setDraft((current) => withAgentAuth(current, agent, auth))
                 login.mutate({ agent, auth })
               }}
@@ -333,7 +333,8 @@ function onboardingAuth(current?: ACPAgentAuth, recommended?: ACPAgentAuth): ACP
   }
 }
 
-function onboardingLoginAuth(current?: ACPAgentAuth): ACPAgentAuth {
+function onboardingLoginAuth(agent: string, current?: ACPAgentAuth): ACPAgentAuth {
+  if (agent === 'antigravity') return { mode: 'existing_cli' }
   if (current?.mode === 'jaz_profile') return current
   return { mode: 'jaz_profile' }
 }

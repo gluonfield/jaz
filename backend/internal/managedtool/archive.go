@@ -23,7 +23,7 @@ func (m *Manager) install(ctx context.Context, spec toolSpec) error {
 		return err
 	}
 	if err := verifySHA512(body, spec.SHA512); err != nil {
-		return fmt.Errorf("verify %s: %w", displayName(spec.Tool), err)
+		return fmt.Errorf("verify %s: %w", DisplayName(spec.Tool), err)
 	}
 	parent := filepath.Dir(spec.Root)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
@@ -34,7 +34,7 @@ func (m *Manager) install(ctx context.Context, spec toolSpec) error {
 		return err
 	}
 	defer os.RemoveAll(tmp)
-	if err := installPayload(body, spec, filepath.Join(tmp, executableName(spec.Tool))); err != nil {
+	if err := installPayload(body, spec, filepath.Join(tmp, ExecutableName(spec.Tool))); err != nil {
 		return err
 	}
 	_ = os.RemoveAll(spec.Root)
@@ -123,7 +123,7 @@ func downloadingStatus(spec toolSpec) Status {
 		Platform:  spec.Platform,
 		Path:      spec.Command,
 		State:     StateDownloading,
-		Message:   "Downloading " + displayName(spec.Tool),
+		Message:   "Downloading " + DisplayName(spec.Tool),
 		StartedAt: time.Now().UTC(),
 	}
 }
@@ -135,7 +135,7 @@ func readyStatus(spec toolSpec) Status {
 		Platform:   spec.Platform,
 		Path:       spec.Command,
 		State:      StateReady,
-		Message:    displayName(spec.Tool) + " is ready",
+		Message:    DisplayName(spec.Tool) + " is ready",
 		FinishedAt: time.Now().UTC(),
 	}
 }

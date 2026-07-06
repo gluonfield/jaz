@@ -83,6 +83,24 @@ func TestPrepareRejectsBadChecksum(t *testing.T) {
 	}
 }
 
+func TestPrepareUsesExistingManagedToolWithoutFetchingManifest(t *testing.T) {
+	root := t.TempDir()
+	path := ExecutablePath(root, AntigravityCLI)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("ok"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewForTest(root, "http://127.0.0.1:1", nil)
+	if err := manager.Prepare(context.Background(), AntigravityCLI); err != nil {
+		t.Fatal(err)
+	}
+	if status := manager.Status(AntigravityCLI); status.State != StateReady || status.Path != path {
+		t.Fatalf("status = %#v, want existing ready tool", status)
+	}
+}
+
 func TestStatusFindsExistingManagedTool(t *testing.T) {
 	root := t.TempDir()
 	path := ExecutablePath(root, AntigravityCLI)

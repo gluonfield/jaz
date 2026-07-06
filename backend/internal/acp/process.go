@@ -17,7 +17,6 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
-	"github.com/wins/jaz/backend/internal/managedtool"
 	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
@@ -190,12 +189,6 @@ func addCommandDirToPath(env map[string]string, command string) {
 		return
 	}
 	env["PATH"] = dir + string(os.PathListSeparator) + env["PATH"]
-}
-
-func addManagedToolDirToPath(env map[string]string, root, tool string) {
-	if path := managedtool.ExecutablePath(root, tool); fileExists(path) {
-		prependDirToPath(env, filepath.Dir(path))
-	}
 }
 
 func addPathDirsToPath(env map[string]string, dirs string) {
@@ -390,7 +383,6 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 			"NO_PROXY",
 		)
 		addPathDirsToPath(env, agent.LoginBinDir)
-		addManagedToolDirToPath(env, root, managedtool.AntigravityCLI)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		auth.BindAPIKeyEnv(env)
 	}

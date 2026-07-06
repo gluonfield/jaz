@@ -425,7 +425,7 @@ func TestOnboardingWaitsForManagedAntigravityCLI(t *testing.T) {
 		ACPAdapters:  fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "antigravity", State: acpadapter.StateReady}},
 		ManagedTools: fakeManagedToolStatusReader{status: managedtool.Status{Tool: managedtool.AntigravityCLI, State: managedtool.StateMissing, Message: "Antigravity CLI is not downloaded yet"}},
 		AgentCatalog: acp.AgentCatalog{
-			acp.AgentAntigravity: {ManagedAdapter: "antigravity"},
+			acp.AgentAntigravity: {ManagedAdapter: "antigravity", ManagedTool: managedtool.AntigravityCLI},
 		},
 	}).Handler()
 
@@ -473,7 +473,7 @@ func TestPrepareACPAgentInstallsAntigravityAdapterAndCLI(t *testing.T) {
 		ACPAdapters:  fakeACPAdapterStatusReader{status: acpadapter.Status{Adapter: "antigravity", State: acpadapter.StateMissing}, prepared: &adapterPrepared},
 		ManagedTools: fakeManagedToolStatusReader{status: managedtool.Status{Tool: managedtool.AntigravityCLI, State: managedtool.StateMissing}, prepared: &toolPrepared},
 		AgentCatalog: acp.AgentCatalog{
-			acp.AgentAntigravity: {ManagedAdapter: "antigravity"},
+			acp.AgentAntigravity: {ManagedAdapter: "antigravity", ManagedTool: managedtool.AntigravityCLI},
 		},
 	}).Handler()
 
