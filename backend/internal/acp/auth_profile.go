@@ -439,6 +439,11 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	if !pathUnderRoot(storagePath, root) && name != AgentGrok && name != AgentAntigravity {
 		return nil
 	}
+	// Credentials are always files; a directory StoragePath (e.g. OpenCode's
+	// config dir) holds no removable login.
+	if info, err := os.Stat(storagePath); err == nil && info.IsDir() {
+		return nil
+	}
 	if err := os.Remove(storagePath); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -457,10 +462,18 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	return nil
 }
 
+// pathUnderRoot resolves symlinks before comparing so a symlinked directory
+// inside root cannot smuggle a global credential path past the ownership check.
 func pathUnderRoot(path, root string) bool {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		path = filepath.Join(resolved, filepath.Base(path))
 	}
 	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
 	if err != nil {

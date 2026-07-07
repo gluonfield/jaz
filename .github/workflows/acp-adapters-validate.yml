@@ -7,6 +7,7 @@ on:
       - .github/scripts/create-acp-adapters-manifest.mjs
       - .github/scripts/bump-acp-adapters.mjs
       - .github/workflows/acp-adapters-validate.yml
+      - dist/acp-adapters.json
   workflow_dispatch:
 
 permissions:
@@ -23,4 +24,6 @@ jobs:
       - name: Generate manifest from the pinned spec
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node .github/scripts/create-acp-adapters-manifest.mjs /tmp/acp-adapters.json
+        run: node .github/scripts/create-acp-adapters-manifest.mjs dist/acp-adapters.json
+      - name: Fail if tracked dist manifest drifted from the spec
+        run: git diff --exit-code dist/acp-adapters.json
