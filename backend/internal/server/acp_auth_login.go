@@ -178,9 +178,7 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	cmdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpAuthLoginTimeout)
 	cmd := exec.CommandContext(cmdCtx, invocation.Executable, invocation.Args...)
 	cmd.Env = acpAuthLoginEnv(invocation)
-	if root := strings.TrimSpace(s.runtimeRoot()); root != "" {
-		cmd.Dir = root
-	}
+	cmd.Dir = firstNonEmpty(strings.TrimSpace(invocation.Cwd), strings.TrimSpace(s.runtimeRoot()))
 	writer := acpAuthLoginWriter{job: job}
 	if err := startACPAuthLoginProcess(cmd, job, writer, invocation.UsePTY); err != nil {
 		cancel()
@@ -420,7 +418,7 @@ func acpAuthLoginHints(output string) (string, string) {
 	url := ""
 	for _, match := range acpAuthURL.FindAllString(clean, -1) {
 		match = strings.TrimRight(match, ".,)")
-		if strings.Contains(match, "auth.") || strings.Contains(match, "claude.com") {
+		if strings.Contains(match, "auth.") || strings.Contains(match, "claude.com") || strings.Contains(match, "accounts.google.com") {
 			url = match
 			break
 		}
