@@ -131,6 +131,9 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
           ? `Starting jaz on ${deviceLabel}…`
           : 'Connecting to server…'
         : 'Connecting to backend…'
+  const reconnectHint = canStartLocal
+    ? 'Start one here or point jaz at another server.'
+    : 'Point jaz at another server.'
 
   return (
     <div className="relative flex h-full flex-col bg-bg">
@@ -225,9 +228,8 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
                 </motion.p>
               ) : error ? (
                 <motion.p variants={rise} className="mt-2 text-pretty text-center text-[13px] text-ink-2">
-                  {canStartLocal
-                    ? 'The backend jaz was using is unreachable. Start one here or point jaz at another server.'
-                    : 'The backend jaz was using is unreachable. Point jaz at another server.'}
+                  <span>{error}</span>
+                  <span className="mt-1 block text-ink-3">{reconnectHint}</span>
                 </motion.p>
               ) : null}
 
