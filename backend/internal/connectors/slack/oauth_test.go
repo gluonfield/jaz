@@ -13,7 +13,7 @@ func TestAuthorizeURLIncludesPKCEAndScopes(t *testing.T) {
 	if !strings.HasPrefix(got, OAuthAuthURL+"?") {
 		t.Fatalf("auth url = %s", got)
 	}
-	for _, want := range []string{"client_id=cid", "code_challenge_method=S256", "code_challenge=", "state=state123", "scope=", "chat%3Awrite"} {
+	for _, want := range []string{"client_id=cid", "code_challenge_method=S256", "code_challenge=", "state=state123", "scope=", "chat%3Awrite", "search%3Aread", "reactions%3Awrite"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("auth url %s missing %q", got, want)
 		}
