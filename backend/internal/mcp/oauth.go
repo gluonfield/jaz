@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
+	"golang.org/x/net/publicsuffix"
 	"golang.org/x/oauth2"
 )
 
@@ -196,7 +198,7 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 		return zero, errors.New("server advertised no authorization servers")
 	}
 
-	asm, err := auth.GetAuthServerMetadata(ctx, prm.AuthorizationServers[0], h.httpClient)
+	asm, err := h.authorizationServerMetadata(ctx, prm.AuthorizationServers[0])
 	if err != nil {
 		return zero, fmt.Errorf("authorization server metadata: %w", err)
 	}
@@ -271,6 +273,181 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 		Scopes:       scopes,
 		Resource:     prm.Resource,
 	}, nil
+}
+
+func (h *oauthHandler) authorizationServerMetadata(ctx context.Context, issuerURL string) (*oauthex.AuthServerMeta, error) {
+	asm, err := auth.GetAuthServerMetadata(ctx, issuerURL, h.httpClient)
+	if err == nil {
+		return asm, nil
+	}
+	if !isAuthServerIssuerMismatch(err) {
+		return nil, err
+	}
+	// Slack's MCP resource advertises mcp.slack.com as its authorization server,
+	// while the fetched metadata has slack.com as the canonical issuer. Keep the
+	// SDK's normal strict path first, then only accept same-site canonical aliases.
+	asm, fallbackErr := h.authorizationServerMetadataWithCanonicalIssuer(ctx, issuerURL)
+	if fallbackErr != nil {
+		return nil, fmt.Errorf("%w; canonical issuer fallback failed: %v", err, fallbackErr)
+	}
+	if asm == nil {
+		return nil, err
+	}
+	return asm, nil
+}
+
+func (h *oauthHandler) authorizationServerMetadataWithCanonicalIssuer(ctx context.Context, issuerURL string) (*oauthex.AuthServerMeta, error) {
+	for _, metadataURL := range authorizationServerMetadataURLs(issuerURL) {
+		metadataIssuer, err := h.authorizationServerMetadataIssuer(ctx, metadataURL)
+		if err != nil {
+			return nil, err
+		}
+		if metadataIssuer == "" {
+			continue
+		}
+		if !authorizationServerIssuerTrusted(issuerURL, metadataIssuer) {
+			return nil, fmt.Errorf("metadata issuer %q is not trusted for issuer URL %q", metadataIssuer, issuerURL)
+		}
+		asm, err := oauthex.GetAuthServerMeta(ctx, metadataURL, metadataIssuer, h.httpClient)
+		if err != nil {
+			return nil, err
+		}
+		if asm != nil {
+			return asm, nil
+		}
+	}
+	return nil, nil
+}
+
+func (h *oauthHandler) authorizationServerMetadataIssuer(ctx context.Context, metadataURL string) (string, error) {
+	if err := checkAuthMetadataURL(metadataURL); err != nil {
+		return "", err
+	}
+	client := h.httpClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if 400 <= resp.StatusCode && resp.StatusCode < 500 {
+		return "", nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("GET %s: %s", metadataURL, resp.Status)
+	}
+	var body struct {
+		Issuer string `json:"issuer"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+		return "", fmt.Errorf("decode authorization server metadata: %w", err)
+	}
+	return strings.TrimSpace(body.Issuer), nil
+}
+
+func isAuthServerIssuerMismatch(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "metadata issuer") && strings.Contains(msg, "does not match issuer URL")
+}
+
+func authorizationServerMetadataURLs(issuerURL string) []string {
+	var urls []string
+	baseURL, err := url.Parse(issuerURL)
+	if err != nil {
+		return nil
+	}
+	if baseURL.Path == "" {
+		baseURL.Path = "/.well-known/oauth-authorization-server"
+		urls = append(urls, baseURL.String())
+		baseURL.Path = "/.well-known/openid-configuration"
+		urls = append(urls, baseURL.String())
+		return urls
+	}
+
+	originalPath := baseURL.Path
+	baseURL.Path = "/.well-known/oauth-authorization-server/" + strings.TrimLeft(originalPath, "/")
+	urls = append(urls, baseURL.String())
+	baseURL.Path = "/.well-known/openid-configuration/" + strings.TrimLeft(originalPath, "/")
+	urls = append(urls, baseURL.String())
+	baseURL.Path = "/" + strings.Trim(originalPath, "/") + "/.well-known/openid-configuration"
+	urls = append(urls, baseURL.String())
+	return urls
+}
+
+func authorizationServerIssuerTrusted(issuerURL, metadataIssuer string) bool {
+	issuer, ok := parseAliasableIssuerURL(issuerURL)
+	if !ok {
+		return false
+	}
+	metadata, ok := parseAliasableIssuerURL(metadataIssuer)
+	if !ok {
+		return false
+	}
+	if strings.EqualFold(issuer.Host, metadata.Host) && cleanIssuerPath(issuer.Path) == cleanIssuerPath(metadata.Path) {
+		return true
+	}
+	if cleanIssuerPath(issuer.Path) != "" || cleanIssuerPath(metadata.Path) != "" {
+		return false
+	}
+	if issuer.Port() != "" || metadata.Port() != "" {
+		return false
+	}
+	issuerHost := strings.ToLower(issuer.Hostname())
+	metadataHost := strings.ToLower(metadata.Hostname())
+	if !strings.HasSuffix(issuerHost, "."+metadataHost) {
+		return false
+	}
+	issuerDomain, err := publicsuffix.EffectiveTLDPlusOne(issuerHost)
+	if err != nil {
+		return false
+	}
+	metadataDomain, err := publicsuffix.EffectiveTLDPlusOne(metadataHost)
+	if err != nil {
+		return false
+	}
+	return issuerDomain == metadataDomain
+}
+
+func parseAliasableIssuerURL(raw string) (*url.URL, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return nil, false
+	}
+	return u, true
+}
+
+func cleanIssuerPath(path string) string {
+	return strings.TrimRight(path, "/")
+}
+
+func checkAuthMetadataURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return err
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(u.Hostname()) {
+			return nil
+		}
+	}
+	return fmt.Errorf("authorization server metadata URL must use https or loopback http: %s", raw)
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauthex.AuthServerMeta) (oauthClientConfig, error) {

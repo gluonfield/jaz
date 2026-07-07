@@ -149,6 +149,23 @@ func writeJSONResp(w http.ResponseWriter, body map[string]any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
+type rewriteTransport struct {
+	target *url.URL
+	base   http.RoundTripper
+}
+
+func (t rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.URL.Scheme = t.target.Scheme
+	clone.URL.Host = t.target.Host
+	clone.Host = req.Host
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(clone)
+}
+
 func TestRunAuthorizationCompletesFlow(t *testing.T) {
 	srv := mockAuthServer(t)
 	store := newMemTokenStore()
@@ -245,6 +262,127 @@ func TestAuthorizeFromMetadataUsesStaticOAuthClient(t *testing.T) {
 	}
 	if !handler.didAuthorize() {
 		t.Fatal("didAuthorize() = false, want true")
+	}
+}
+
+func TestAuthorizationServerMetadataAcceptsCanonicalParentIssuer(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		writeJSONResp(w, map[string]any{
+			"issuer":                           "https://slack.com",
+			"authorization_endpoint":           "https://slack.com/oauth/v2_user/authorize",
+			"token_endpoint":                   "https://slack.com/api/oauth.v2.user.access",
+			"response_types_supported":         []string{"code"},
+			"code_challenge_methods_supported": []string{"S256"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	target, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := newOAuthHandler(
+		mcpconfig.Server{ID: "slack", URL: "https://mcp.slack.com/mcp"},
+		newMemTokenStore(),
+		&http.Client{Transport: rewriteTransport{target: target}},
+	)
+
+	asm, err := handler.authorizationServerMetadata(context.Background(), "https://mcp.slack.com")
+	if err != nil {
+		t.Fatalf("authorizationServerMetadata: %v", err)
+	}
+	if asm.Issuer != "https://slack.com" || asm.TokenEndpoint != "https://slack.com/api/oauth.v2.user.access" {
+		t.Fatalf("metadata = %#v", asm)
+	}
+}
+
+func TestAuthorizationServerMetadataRejectsUnrelatedCanonicalIssuer(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		writeJSONResp(w, map[string]any{
+			"issuer":                           "https://evil.example",
+			"authorization_endpoint":           "https://evil.example/authorize",
+			"token_endpoint":                   "https://evil.example/token",
+			"response_types_supported":         []string{"code"},
+			"code_challenge_methods_supported": []string{"S256"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	target, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := newOAuthHandler(
+		mcpconfig.Server{ID: "slack", URL: "https://mcp.slack.com/mcp"},
+		newMemTokenStore(),
+		&http.Client{Transport: rewriteTransport{target: target}},
+	)
+
+	_, err = handler.authorizationServerMetadata(context.Background(), "https://mcp.slack.com")
+	if err == nil || !strings.Contains(err.Error(), "not trusted") {
+		t.Fatalf("err = %v, want untrusted issuer", err)
+	}
+}
+
+func TestAuthorizationServerIssuerTrusted(t *testing.T) {
+	tests := []struct {
+		name           string
+		issuerURL      string
+		metadataIssuer string
+		want           bool
+	}{
+		{
+			name:           "exact",
+			issuerURL:      "https://auth.example.com",
+			metadataIssuer: "https://auth.example.com/",
+			want:           true,
+		},
+		{
+			name:           "parent registrable domain",
+			issuerURL:      "https://mcp.slack.com",
+			metadataIssuer: "https://slack.com",
+			want:           true,
+		},
+		{
+			name:           "parent subdomain",
+			issuerURL:      "https://mcp.auth.example.com",
+			metadataIssuer: "https://auth.example.com",
+			want:           true,
+		},
+		{
+			name:           "unrelated",
+			issuerURL:      "https://mcp.slack.com",
+			metadataIssuer: "https://example.com",
+			want:           false,
+		},
+		{
+			name:           "public suffix",
+			issuerURL:      "https://foo.co.uk",
+			metadataIssuer: "https://co.uk",
+			want:           false,
+		},
+		{
+			name:           "path alias",
+			issuerURL:      "https://mcp.slack.com/oauth",
+			metadataIssuer: "https://slack.com",
+			want:           false,
+		},
+		{
+			name:           "non https",
+			issuerURL:      "http://mcp.slack.com",
+			metadataIssuer: "https://slack.com",
+			want:           false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := authorizationServerIssuerTrusted(tt.issuerURL, tt.metadataIssuer)
+			if got != tt.want {
+				t.Fatalf("authorizationServerIssuerTrusted(%q, %q) = %v, want %v", tt.issuerURL, tt.metadataIssuer, got, tt.want)
+			}
+		})
 	}
 }
 
