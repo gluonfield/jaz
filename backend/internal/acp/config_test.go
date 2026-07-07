@@ -89,21 +89,14 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 	})
 }
 
-func TestCodexBuiltinAgentUsesManagedAdapterOnWindows(t *testing.T) {
-	cfg := codexBuiltinAgent("windows")
+func TestCodexBuiltinAgentUsesManagedAdapter(t *testing.T) {
+	cfg := codexBuiltinAgent()
 	if cfg.Command != "" || cfg.ManagedAdapter != "codex" {
 		t.Fatalf("cfg = %#v, want managed adapter", cfg)
 	}
 	args := strings.Join(cfg.ManagedAdapterArgs, "\n")
 	if !strings.Contains(args, `sandbox_mode="danger-full-access"`) {
 		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)
-	}
-}
-
-func TestCodexBuiltinAgentUsesManagedAdapterElsewhere(t *testing.T) {
-	cfg := codexBuiltinAgent("darwin")
-	if cfg.Command != "" || cfg.ManagedAdapter != "codex" {
-		t.Fatalf("cfg = %#v, want managed adapter", cfg)
 	}
 }
 

@@ -2,7 +2,6 @@ package acp
 
 import (
 	"context"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -241,20 +240,27 @@ func (c AgentCatalog) EnabledAgentNames() ([]string, error) {
 
 func SelectableAgentNames(names []string) []string {
 	seen := map[string]struct{}{}
-	out := make([]string, 0, len(names))
 	for _, name := range names {
 		name = CanonicalAgentName(name)
 		if name == "" || name == AgentJaz {
 			continue
 		}
-		if _, ok := seen[name]; ok {
-			continue
-		}
 		seen[name] = struct{}{}
-		out = append(out, name)
 	}
-	sort.Strings(out)
-	return out
+
+	out := make([]string, 0, len(seen))
+	for _, name := range builtinAgentOrder {
+		if _, ok := seen[name]; ok {
+			out = append(out, name)
+			delete(seen, name)
+		}
+	}
+	custom := make([]string, 0, len(seen))
+	for name := range seen {
+		custom = append(custom, name)
+	}
+	sort.Strings(custom)
+	return append(out, custom...)
 }
 
 func SelectableAgentCatalog(catalog AgentCatalog) AgentCatalog {
@@ -267,9 +273,17 @@ func SelectableAgentCatalog(catalog AgentCatalog) AgentCatalog {
 	return out
 }
 
+var builtinAgentOrder = []string{
+	AgentCodex,
+	AgentClaude,
+	AgentGrok,
+	AgentOpenCode,
+	AgentAntigravity,
+}
+
 func BuiltinAgents() AgentCatalog {
 	return AgentCatalog{
-		AgentCodex: codexBuiltinAgent(runtime.GOOS),
+		AgentCodex: codexBuiltinAgent(),
 		AgentClaude: {
 			ManagedAdapter:  "claude",
 			Model:           "default",
@@ -305,7 +319,7 @@ func BuiltinAgents() AgentCatalog {
 	}
 }
 
-func codexBuiltinAgent(_ string) AgentConfig {
+func codexBuiltinAgent() AgentConfig {
 	return AgentConfig{
 		ManagedAdapter: "codex",
 		ManagedAdapterArgs: []string{

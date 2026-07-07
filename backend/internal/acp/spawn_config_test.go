@@ -59,6 +59,20 @@ func TestSpawnConfigRejectsJazAgent(t *testing.T) {
 	}
 }
 
+func TestSpawnConfigDefaultsToCodexBeforeClaude(t *testing.T) {
+	manager := &Manager{agents: AgentCatalog{
+		AgentClaude: AgentConfig{Command: "claude"},
+		AgentCodex:  AgentConfig{Command: "codex"},
+	}}
+	req, _, _, err := manager.spawnConfig(SpawnRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.ACPAgent != AgentCodex {
+		t.Fatalf("default agent = %q", req.ACPAgent)
+	}
+}
+
 func TestSpawnConfigDefaultsWorkerSourceToRestrictedMCPPolicy(t *testing.T) {
 	manager := &Manager{agents: AgentCatalog{
 		"fake": AgentConfig{Command: "fake"},

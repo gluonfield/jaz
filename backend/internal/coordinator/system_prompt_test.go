@@ -38,7 +38,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## AGENTS.md\n\nalways cite sources",
 		"## SOUL.md\n\nbe direct",
 		"## Agent delegation",
-		"configured ACP agents: `claude`, `codex`",
+		"configured ACP agents: `codex`, `claude`",
 		"## Artifacts and visualisation",
 		"Few-shot trace:",
 		"## memory",
@@ -91,7 +91,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if strings.Contains(acp, "You are Jaz") {
 		t.Fatalf("acp extension must carry no coordinator identity:\n%s", acp)
 	}
-	for _, want := range []string{"## Agent delegation", "`agent_spawn`", "configured ACP agents: `claude`, `codex`"} {
+	for _, want := range []string{"## Agent delegation", "`agent_spawn`", "configured ACP agents: `codex`, `claude`"} {
 		if !strings.Contains(acp, want) {
 			t.Fatalf("acp extension missing delegation guidance %q:\n%s", want, acp)
 		}

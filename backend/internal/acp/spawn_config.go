@@ -72,13 +72,6 @@ func (m *Manager) defaultSpawnAgent() (string, error) {
 		return "", err
 	}
 	names = SelectableAgentNames(names)
-	for _, preferred := range []string{AgentCodex, AgentClaude, AgentGrok, AgentOpenCode} {
-		for _, name := range names {
-			if name == preferred {
-				return name, nil
-			}
-		}
-	}
 	if len(names) > 0 {
 		return names[0], nil
 	}

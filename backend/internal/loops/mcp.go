@@ -3,7 +3,6 @@ package loops
 import (
 	"context"
 	"errors"
-	"sort"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -105,15 +104,12 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	}
 }
 
-// availableAgents returns the enabled ACP agent names, sorted, or nil when no
-// lister is wired.
+// availableAgents returns the enabled ACP agent names, or nil when no lister is wired.
 func (t *MCPTools) availableAgents() []string {
 	if t.agentNames == nil {
 		return nil
 	}
-	names := append([]string(nil), t.agentNames()...)
-	sort.Strings(names)
-	return names
+	return t.agentNames()
 }
 
 // coordinator is the shared create/update-with-boards use case; loop_create and
