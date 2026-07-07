@@ -293,7 +293,7 @@ function enterReconnecting(url: string, error: string): void {
 }
 
 function resumePolling(): void {
-  if (pageHidden() || state.status === 'pending_approval') return
+  if (pageHidden() || (state.status !== 'connected' && state.status !== 'reconnecting')) return
   if (state.status === 'reconnecting') lostAt = Date.now()
   schedulePoll(0)
 }
