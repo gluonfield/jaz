@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -45,6 +46,10 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request, sessi
 		writeError(w, http.StatusBadRequest, fmt.Errorf("path is a directory: %s", abs))
 		return
 	}
+	if rawSessionFileRequested(r) {
+		serveSessionFileContent(w, r, abs, info)
+		return
+	}
 	file, err := os.Open(abs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -72,6 +77,32 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request, sessi
 		resp.Content = string(data)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func rawSessionFileRequested(r *http.Request) bool {
+	raw := strings.TrimSpace(r.URL.Query().Get("raw"))
+	return raw == "1" || strings.EqualFold(raw, "true")
+}
+
+func rawSessionFileContentRequest(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, "/v1/sessions/") && strings.HasSuffix(r.URL.Path, "/file") && rawSessionFileRequested(r)
+}
+
+func serveSessionFileContent(w http.ResponseWriter, r *http.Request, abs string, info os.FileInfo) {
+	file, err := os.Open(abs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	defer file.Close()
+	if ctype := mime.TypeByExtension(strings.ToLower(filepath.Ext(abs))); ctype != "" {
+		w.Header().Set("Content-Type", ctype)
+	}
+	if disposition := mime.FormatMediaType("inline", map[string]string{"filename": filepath.Base(abs)}); disposition != "" {
+		w.Header().Set("Content-Disposition", disposition)
+	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, filepath.Base(abs), info.ModTime(), file)
 }
 
 func resolveSessionFile(session storage.Session, raw string) (string, string, error) {

@@ -61,6 +61,28 @@ func TestAuthMiddlewareAcceptsQueryKeyForSessionEvents(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareAcceptsQueryKeyForRawSessionFile(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/file?raw=1&path=paper.pdf&key=secret", nil)
+	res := httptest.NewRecorder()
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAuthMiddlewareRejectsQueryKeyForSessionFileJSON(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/file?path=paper.pdf&key=secret", nil)
+	res := httptest.NewRecorder()
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func TestAuthMiddlewareAcceptsQueryKeyForBrowserExtension(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension?key=secret", nil)
 	res := httptest.NewRecorder()
