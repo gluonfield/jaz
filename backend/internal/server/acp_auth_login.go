@@ -180,7 +180,8 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	cmd.Env = acpAuthLoginEnv(invocation)
 	cmd.Dir = firstNonEmpty(strings.TrimSpace(invocation.Cwd), strings.TrimSpace(s.runtimeRoot()))
 	writer := acpAuthLoginWriter{job: job}
-	if err := startACPAuthLoginProcess(cmd, job, writer, invocation.UsePTY); err != nil {
+	outputDone, err := startACPAuthLoginProcess(cmd, job, writer, invocation.UsePTY)
+	if err != nil {
 		cancel()
 		return nil, err
 	}
@@ -193,6 +194,12 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	go func() {
 		defer cancel()
 		err := cmd.Wait()
+		// Let the pty reader deliver the CLI's final lines before closing the
+		// master discards them; it ends on its own once the process exits.
+		select {
+		case <-outputDone:
+		case <-time.After(time.Second):
+		}
 		// The process is done reading; stop accepting input before the (slower)
 		// verify so a late paste rejects cleanly instead of writing to a pipe
 		// Wait already closed.
@@ -203,8 +210,8 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 		}
 		if err == nil {
 			err = s.verifyACPAuthLogin(agent, auth)
-		} else if last := job.lastOutputLine(); last != "" {
-			// CLI exit codes are opaque; the last printed line (e.g. agy's
+		} else if last := job.failureLine(); last != "" {
+			// CLI exit codes are opaque; the printed error (e.g. agy's
 			// "Error: authentication failed or timed out") is the real story.
 			err = errors.New(last)
 		}
@@ -213,31 +220,36 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	return job, nil
 }
 
-// startACPAuthLoginProcess wires the login process to the job. Keep stdin open
-// so a code the user pastes back can reach a CLI that's blocked waiting for
-// it; loopback flows simply never read it. usePTY runs the CLI on a
+// startACPAuthLoginProcess wires the login process to the job and returns a
+// channel that closes once its output has been fully read. Keep stdin open so
+// a code the user pastes back can reach a CLI that's blocked waiting for it;
+// loopback flows simply never read it. usePTY runs the CLI on a
 // pseudo-terminal for CLIs that stall draining piped stdin (agy).
-func startACPAuthLoginProcess(cmd *exec.Cmd, job *acpAuthLoginJob, writer acpAuthLoginWriter, usePTY bool) error {
+func startACPAuthLoginProcess(cmd *exec.Cmd, job *acpAuthLoginJob, writer acpAuthLoginWriter, usePTY bool) (<-chan struct{}, error) {
+	done := make(chan struct{})
 	if usePTY {
 		ptmx, err := pty.Start(cmd)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		job.stdin = ptmx
 		go func() {
 			// The copy ends with EIO once the process exits and the pty closes.
 			_, _ = io.Copy(writer, ptmx)
+			close(done)
 		}()
-		return nil
+		return done, nil
 	}
 	cmd.Stdout = writer
 	cmd.Stderr = writer
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	job.stdin = stdin
-	return cmd.Start()
+	// exec.Cmd owns the pipe copies; Wait returns only after output is drained.
+	close(done)
+	return done, cmd.Start()
 }
 
 var acpGlogLine = regexp.MustCompile(`^[IWEF][0-9]{4} `)
@@ -348,18 +360,28 @@ func (j *acpAuthLoginJob) finish(runErr, ctxErr error) {
 	}
 }
 
-// lastOutputLine returns the final non-empty line the login process printed.
-func (j *acpAuthLoginJob) lastOutputLine() string {
+// failureLine picks the login output line that explains a failure: the most
+// recent line starting with "Error", else the final non-empty line. Log-tailed
+// prompts can land after the CLI's error, so recency alone is not enough.
+func (j *acpAuthLoginJob) failureLine() string {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	clean := acpANSISequence.ReplaceAllString(j.Output, "")
 	lines := strings.Split(clean, "\n")
+	last := ""
 	for i := len(lines) - 1; i >= 0; i-- {
-		if line := strings.TrimSpace(lines[i]); line != "" {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if last == "" {
+			last = line
+		}
+		if strings.HasPrefix(strings.ToLower(line), "error") {
 			return line
 		}
 	}
-	return ""
+	return last
 }
 
 // closeStdin stops the job from accepting input once its process has exited.
