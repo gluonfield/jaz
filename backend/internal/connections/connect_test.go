@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/connectors/deployink"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
 func TestConnectServiceReportsMissingQRProviderForSessionPlugin(t *testing.T) {
-	service := NewConnectService(NewCatalog(), nil, NewQRService())
+	service := NewConnectService(NewCatalog(), nil, NewQRService(), nil)
 
 	_, err := service.Start(context.Background(), whatsapp.ProviderID, "")
 	if !errors.Is(err, ErrQRProviderUnavailable) {
@@ -33,7 +34,7 @@ func TestConnectServiceDelegatesSessionAuthToQRService(t *testing.T) {
 			Status: "available",
 		},
 	}}}
-	service := NewConnectService(catalog, nil, qr)
+	service := NewConnectService(catalog, nil, qr, nil)
 
 	_, err := service.Start(context.Background(), "matrix", "")
 	if !errors.Is(err, ErrQRProviderUnavailable) {
@@ -45,7 +46,7 @@ func TestConnectServiceStartsChatQRProviders(t *testing.T) {
 	service := NewConnectService(NewCatalog(), nil, NewQRService(
 		fakeQRProvider{provider: telegram.ProviderID, expires: time.Now().Add(time.Minute)},
 		fakeQRProvider{provider: whatsapp.ProviderID, expires: time.Now().Add(time.Minute)},
-	))
+	), nil)
 
 	for _, provider := range []string{telegram.ProviderID, whatsapp.ProviderID} {
 		start, err := service.Start(context.Background(), provider, "")
@@ -59,8 +60,24 @@ func TestConnectServiceStartsChatQRProviders(t *testing.T) {
 }
 
 func TestConnectServiceRejectsUnknownProvider(t *testing.T) {
-	service := NewConnectService(NewCatalog(), nil, NewQRService())
+	service := NewConnectService(NewCatalog(), nil, NewQRService(), nil)
 	if _, err := service.Start(context.Background(), "missing", ""); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestConnectServiceAddsRemoteMCPServer(t *testing.T) {
+	store := &remoteMCPStore{}
+	service := NewConnectService(NewCatalog(), nil, nil, NewRemoteMCPConnector(store, nil))
+
+	start, err := service.Start(context.Background(), deployink.ProviderID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if start.Type != "mcp" || start.MCP == nil || start.MCP.URL != deployink.RemoteMCPURL {
+		t.Fatalf("start = %#v", start)
+	}
+	if len(store.servers) != 1 {
+		t.Fatalf("servers = %#v", store.servers)
 	}
 }

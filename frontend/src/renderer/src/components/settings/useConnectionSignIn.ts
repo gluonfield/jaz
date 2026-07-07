@@ -68,6 +68,13 @@ export function useConnectionSignIn({ onStartAccepted }: { onStartAccepted?: () 
         handleQRStart(result.qr, request)
         return
       }
+      if (result.type === 'mcp' && result.mcp) {
+        onStartAccepted?.()
+        void queryClient.invalidateQueries({ queryKey: keys.connectionPlugins })
+        void queryClient.invalidateQueries({ queryKey: keys.mcpServers })
+        toast(`Added ${result.mcp.name} MCP server`)
+        return
+      }
       toast("Connection didn't return a usable sign-in method", 'danger')
     },
     onError: (error: Error, request) => {
