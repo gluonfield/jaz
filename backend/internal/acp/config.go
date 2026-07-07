@@ -116,6 +116,7 @@ type AgentConfig struct {
 	ManagedAdapter          string
 	ManagedAdapterArgs      []string
 	ManagedTool             string
+	ManagedToolAdapterArg   string
 	Local                   bool
 	ProviderMode            string
 	ModelProviderCapability string
@@ -296,9 +297,10 @@ func BuiltinAgents() AgentCatalog {
 			ReasoningEffort:         "",
 		},
 		AgentAntigravity: {
-			ManagedAdapter:     "antigravity",
-			ManagedAdapterArgs: []string{"--auth=auto", "--dangerously-skip-permissions"},
-			ManagedTool:        "antigravity-cli",
+			ManagedAdapter:        "antigravity",
+			ManagedAdapterArgs:    []string{"--auth=auto", "--dangerously-skip-permissions"},
+			ManagedTool:           "antigravity-cli",
+			ManagedToolAdapterArg: "--agy",
 		},
 	}
 }
@@ -352,6 +354,7 @@ func canonicalAgentConfig(cfg AgentConfig) AgentConfig {
 		cfg.useCommandLaunch(command, cfg.Args)
 	}
 	cfg.ManagedTool = strings.TrimSpace(cfg.ManagedTool)
+	cfg.ManagedToolAdapterArg = strings.TrimSpace(cfg.ManagedToolAdapterArg)
 	return cfg
 }
 
@@ -376,6 +379,9 @@ func mergeAgentConfig(base, override AgentConfig) AgentConfig {
 	}
 	if tool := strings.TrimSpace(override.ManagedTool); tool != "" {
 		next.ManagedTool = tool
+	}
+	if arg := strings.TrimSpace(override.ManagedToolAdapterArg); arg != "" {
+		next.ManagedToolAdapterArg = arg
 	}
 	if strings.TrimSpace(override.ProviderMode) != "" {
 		next.ProviderMode = override.ProviderMode

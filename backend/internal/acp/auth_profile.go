@@ -370,20 +370,10 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 		status.Source = AuthModeExistingCLI
 		status.Config.Path = cliPath
 		status.StoragePath = cliPath
-		status.Reason = "Antigravity CLI OAuth via agy, or Gemini API key via GEMINI_API_KEY"
+		status.Reason = "Antigravity CLI OAuth via agy"
 		return status
 	}
-	if status.resolveAPIKey(AgentAntigravity, root, env) {
-		status.markAuthenticated("api_key_env", AuthKindAPIKey)
-		return status
-	}
-	if value := codexProviderKeyValue(root, env, "GEMINI_API_KEY"); strings.TrimSpace(value) != "" {
-		status.APIKeyValue = value
-		status.APIKeySet = true
-		status.markAuthenticated("gemini_api_key_env", AuthKindAPIKey)
-		return status
-	}
-	status.Reason = "Antigravity CLI OAuth via agy, or Gemini API key via " + status.APIKey.SourceEnv
+	status.Reason = "Antigravity CLI OAuth via agy"
 	return status
 }
 
@@ -530,8 +520,6 @@ func resolveAgentAPIKeySpec(name string) (AgentAPIKeySpec, bool) {
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_GROK_API_KEY", TargetEnv: "XAI_API_KEY"}, true
 	case AgentOpenCode:
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_OPENCODE_API_KEY", TargetEnv: "OPENROUTER_API_KEY"}, true
-	case AgentAntigravity:
-		return AgentAPIKeySpec{SourceEnv: "GEMINI_API_KEY", TargetEnv: "GEMINI_API_KEY"}, true
 	default:
 		return AgentAPIKeySpec{}, false
 	}

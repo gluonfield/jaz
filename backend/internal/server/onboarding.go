@@ -359,13 +359,6 @@ func (s *Server) managedToolStatus(tool string) *onboardingManagedToolStatus {
 	if s.ManagedTools != nil {
 		status = s.ManagedTools.Status(tool)
 	}
-	if status.State != managedtool.StateReady {
-		if path, err := acp.ResolveExecutable(managedtool.ExecutableName(tool)); err == nil {
-			status.State = managedtool.StateReady
-			status.Path = path
-			status.Message = managedtool.DisplayName(tool) + " is available on PATH"
-		}
-	}
 	return &onboardingManagedToolStatus{
 		Tool:     status.Tool,
 		Version:  status.Version,

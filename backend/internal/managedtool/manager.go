@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/wins/jaz/backend/internal/execpath"
 )
 
 const (
@@ -110,6 +112,9 @@ func (m *Manager) Status(name string) Status {
 		}
 		return status
 	}
+	if status, ok := existingReadyStatus(name, platform); ok {
+		return status
+	}
 	if status, ok := m.storedStatus(name); ok {
 		return status
 	}
@@ -123,8 +128,8 @@ func (m *Manager) Status(name string) Status {
 }
 
 func (m *Manager) BinDir(name string) string {
-	status, ok := m.localReadyStatus(name)
-	if !ok || strings.TrimSpace(status.Path) == "" {
+	status := m.Status(name)
+	if status.State != StateReady || strings.TrimSpace(status.Path) == "" {
 		return ""
 	}
 	return filepath.Dir(status.Path)
@@ -142,6 +147,23 @@ func (m *Manager) localReadyStatus(name string) (Status, bool) {
 		Path:     path,
 		State:    StateReady,
 		Message:  DisplayName(name) + " is ready",
+	}, true
+}
+
+func existingReadyStatus(name, platform string) (Status, bool) {
+	if name != AntigravityCLI {
+		return Status{}, false
+	}
+	path, err := execpath.Resolve(ExecutableName(name))
+	if err != nil {
+		return Status{}, false
+	}
+	return Status{
+		Tool:     name,
+		Platform: platform,
+		Path:     path,
+		State:    StateReady,
+		Message:  DisplayName(name) + " is available on PATH",
 	}, true
 }
 

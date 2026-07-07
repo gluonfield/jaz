@@ -57,6 +57,8 @@ func TestPrepareDownloadsVerifiesAndInstallsAntigravityCLI(t *testing.T) {
 }
 
 func TestPrepareRejectsBadChecksum(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("SHELL", "/bin/sh")
 	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		t.Skip(err)
@@ -78,7 +80,7 @@ func TestPrepareRejectsBadChecksum(t *testing.T) {
 	if err := manager.Prepare(context.Background(), AntigravityCLI); err == nil {
 		t.Fatal("expected checksum error")
 	}
-	if status := manager.Status(AntigravityCLI); status.State != StateFailed {
+	if status, ok := manager.storedStatus(AntigravityCLI); !ok || status.State != StateFailed {
 		t.Fatalf("status = %#v, want failed", status)
 	}
 }
@@ -112,6 +114,25 @@ func TestStatusFindsExistingManagedTool(t *testing.T) {
 	}
 	if status := New(root).Status(AntigravityCLI); status.State != StateReady || status.Path != path {
 		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestStatusFindsExistingToolOnPath(t *testing.T) {
+	root := t.TempDir()
+	bin := t.TempDir()
+	path := filepath.Join(bin, ExecutableName(AntigravityCLI))
+	if err := os.WriteFile(path, []byte("ok"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("SHELL", "/bin/sh")
+
+	status := New(root).Status(AntigravityCLI)
+	if status.State != StateReady || status.Path != path {
+		t.Fatalf("status = %#v, want PATH tool %s", status, path)
+	}
+	if dir := New(root).BinDir(AntigravityCLI); dir != bin {
+		t.Fatalf("bin dir = %q, want %q", dir, bin)
 	}
 }
 

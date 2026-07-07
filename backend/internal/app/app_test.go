@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,13 +15,16 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	telegramconnector "github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/coordinator"
+	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
@@ -91,6 +95,56 @@ func TestNewAgentDefersMCPToolsByRegistryGroup(t *testing.T) {
 	}
 	if !a.DeferTools("remote") {
 		t.Fatal("tool in MCP registry group should be deferred")
+	}
+}
+
+func TestACPAgentConfigSourcePassesManagedToolPathToAdapter(t *testing.T) {
+	root := t.TempDir()
+	toolPath := managedtool.ExecutablePath(root, managedtool.AntigravityCLI)
+	if err := os.MkdirAll(filepath.Dir(toolPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(toolPath, []byte("ok"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	defaults := agentsettings.AgentDefaultsFromCatalog(acp.BuiltinAgents())
+	antigravity := defaults.ACP[acp.AgentAntigravity]
+	antigravity.Enabled = true
+	defaults.ACP[acp.AgentAntigravity] = antigravity
+	if _, err := agentsettings.SaveAgentDefaults(store, defaults); err != nil {
+		t.Fatal(err)
+	}
+
+	source := NewACPAgentConfigSource(store, acp.BuiltinAgents(), modelcatalog.NewService(nil), managedtool.New(root))
+	cfg, ok, err := source.AgentConfig(acp.AgentAntigravity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("antigravity config disabled")
+	}
+	if cfg.LoginBinDir != filepath.Dir(toolPath) {
+		t.Fatalf("login bin dir = %q, want %q", cfg.LoginBinDir, filepath.Dir(toolPath))
+	}
+	if !slices.Contains(cfg.ManagedAdapterArgs, "--agy="+toolPath) {
+		t.Fatalf("managed adapter args = %#v, want agy path", cfg.ManagedAdapterArgs)
+	}
+}
+
+func TestWithManagedToolAdapterArgReplacesExistingValues(t *testing.T) {
+	got := withManagedToolAdapterArg(
+		[]string{"--auth=auto", "--agy", "/old/agy", "--dangerously-skip-permissions", "--agy=/stale/agy"},
+		"--agy",
+		"/new/agy",
+	)
+	want := []string{"--auth=auto", "--dangerously-skip-permissions", "--agy=/new/agy"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("args = %#v, want %#v", got, want)
 	}
 }
 

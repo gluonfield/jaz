@@ -231,8 +231,9 @@ func (s managedToolAgentConfigSource) AgentConfig(name string) (acp.AgentConfig,
 	if err != nil || !ok {
 		return cfg, ok, err
 	}
-	if dir := strings.TrimSpace(s.tools.BinDir(cfg.ManagedTool)); dir != "" {
-		cfg.LoginBinDir = appendPathList(cfg.LoginBinDir, dir)
+	if tool := s.tools.Status(cfg.ManagedTool); tool.State == managedtool.StateReady && strings.TrimSpace(tool.Path) != "" {
+		cfg.LoginBinDir = appendPathList(cfg.LoginBinDir, filepath.Dir(tool.Path))
+		cfg.ManagedAdapterArgs = withManagedToolAdapterArg(cfg.ManagedAdapterArgs, cfg.ManagedToolAdapterArg, tool.Path)
 	}
 	return cfg, true, nil
 }
@@ -262,6 +263,27 @@ func appendPathList(current, dir string) string {
 	}
 	parts = append(parts, dir)
 	return strings.Join(parts, string(os.PathListSeparator))
+}
+
+func withManagedToolAdapterArg(args []string, flag, path string) []string {
+	flag = strings.TrimSpace(flag)
+	path = strings.TrimSpace(path)
+	if flag == "" || path == "" {
+		return args
+	}
+	out := make([]string, 0, len(args)+1)
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == flag {
+			i++
+			continue
+		}
+		if strings.HasPrefix(arg, flag+"=") {
+			continue
+		}
+		out = append(out, arg)
+	}
+	return append(out, flag+"="+path)
 }
 
 // NewProviderSource builds the live, thread-safe registry of effective model
