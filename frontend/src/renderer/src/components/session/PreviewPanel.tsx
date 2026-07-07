@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
+import { previewDisplayUrl, resolvePreviewSource, shouldProxyPreview, takePreviewFallbackSource } from '@/lib/api/preview'
 import type { Attachment } from '@/lib/api/types'
 import { clientRuntime } from '@/lib/clientRuntime'
 import type { BrowserAnnotation } from '@/lib/messageContext'
@@ -22,28 +23,30 @@ import {
 } from './browserAnnotationCapture'
 import { SidePanelShell } from './SidePanelShell'
 import type { PreviewNavigationEvent, PreviewWebviewElement } from './previewWebview'
+import type { PreviewTarget } from './previewTarget'
 
 export const PREVIEW_PANEL_WIDTH = 640
 
 export function PreviewPanel({
-  url,
-  onUrlChange,
+  target,
+  onTargetChange,
   onAddBrowserAnnotation,
   onUploadAttachment,
   onClose,
 }: {
-  url: string
-  onUrlChange: (url: string) => void
+  target: PreviewTarget
+  onTargetChange: (target: PreviewTarget) => void
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onClose: () => void
 }) {
   const webviewRef = useRef<PreviewWebviewElement | null>(null)
   const readyRef = useRef(false)
-  const urlRef = useRef(url)
+  const targetRef = useRef(target)
   const canUseWebview = clientRuntime.capabilities.previewWebview
   const [webview, setWebview] = useState<PreviewWebviewElement | null>(null)
-  const [draft, setDraft] = useState(url)
+  const [draft, setDraft] = useState(target.displayUrl)
+  const [resolvedSourceUrl, setResolvedSourceUrl] = useState(target.sourceUrl)
   const [webviewReady, setWebviewReady] = useState(false)
   const [iframeKey, setIframeKey] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -53,16 +56,32 @@ export function PreviewPanel({
   const [error, setError] = useState('')
 
   useEffect(() => {
-    urlRef.current = url
-    setDraft(url)
+    targetRef.current = target
+    setDraft(target.displayUrl)
     setError('')
     if (!canUseWebview) {
-      setLoading(Boolean(url))
-      setWebviewReady(Boolean(url))
+      setLoading(Boolean(target.sourceUrl))
+      setWebviewReady(Boolean(target.sourceUrl))
       setCanGoBack(false)
       setCanGoForward(false)
     }
-  }, [canUseWebview, url])
+  }, [canUseWebview, target])
+
+  useEffect(() => {
+    let cancelled = false
+    setResolvedSourceUrl(shouldProxyPreview(target.sourceUrl) ? '' : target.sourceUrl)
+    if (!target.sourceUrl) return
+    void resolvePreviewSource(target.sourceUrl)
+      .then((source) => {
+        if (!cancelled) setResolvedSourceUrl(source)
+      })
+      .catch((err: Error) => {
+        if (!cancelled) setError(err.message || 'Preview failed to load.')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [target.sourceUrl])
 
   const bindWebview = useCallback((element: Element | null) => {
     const next = element as PreviewWebviewElement | null
@@ -92,10 +111,11 @@ export function PreviewPanel({
         }
       }
       if (next) {
-        setDraft(next)
-        if (next !== urlRef.current) {
-          urlRef.current = next
-          onUrlChange(next)
+        const display = previewDisplayUrl(next) ?? next
+        setDraft(display)
+        if (display !== targetRef.current.displayUrl || next !== targetRef.current.sourceUrl) {
+          targetRef.current = { displayUrl: display, sourceUrl: next }
+          onTargetChange(targetRef.current)
         }
       }
     }
@@ -115,6 +135,12 @@ export function PreviewPanel({
     const fail = (event: PreviewNavigationEvent) => {
       setLoading(false)
       if (event.errorCode === -3 || event.isMainFrame === false) return
+      const fallback = takePreviewFallbackSource(resolvedSourceUrl)
+      if (fallback) {
+        setError('')
+        setResolvedSourceUrl(fallback)
+        return
+      }
       setError(event.errorDescription || 'Preview failed to load.')
       sync(event)
     }
@@ -132,7 +158,7 @@ export function PreviewPanel({
       webview.removeEventListener('did-fail-load', fail as EventListener)
       webview.removeEventListener('dom-ready', ready)
     }
-  }, [onUrlChange, webview])
+  }, [onTargetChange, resolvedSourceUrl, webview])
 
   const openDraft = () => {
     const next = normalizePreviewURL(draft)
@@ -141,8 +167,8 @@ export function PreviewPanel({
       return
     }
     setError('')
-    urlRef.current = next
-    onUrlChange(next)
+    targetRef.current = { displayUrl: next, sourceUrl: next }
+    onTargetChange(targetRef.current)
   }
 
   const runWhenReady = (action: (webview: PreviewWebviewElement) => void) => {
@@ -186,7 +212,7 @@ export function PreviewPanel({
       runWhenReady((view) => view.reload())
       return
     }
-    setLoading(Boolean(url))
+    setLoading(Boolean(resolvedSourceUrl))
     setIframeKey((key) => key + 1)
   }
 
@@ -223,7 +249,7 @@ export function PreviewPanel({
           size="sm"
           aria-label="Reload preview"
           title="Reload"
-          disabled={!url || (canUseWebview && !webviewReady)}
+          disabled={!resolvedSourceUrl || (canUseWebview && !webviewReady)}
           onClick={reload}
         >
           {loading ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
@@ -242,8 +268,8 @@ export function PreviewPanel({
           size="sm"
           aria-label="Open in Browser"
           title="Open in Browser"
-          disabled={!url}
-          onClick={() => window.open(url, '_blank', 'noopener')}
+          disabled={!resolvedSourceUrl}
+          onClick={() => window.open(resolvedSourceUrl, '_blank', 'noopener')}
         >
           <ExternalLink size={14} />
         </IconButton>
@@ -251,7 +277,7 @@ export function PreviewPanel({
           size="sm"
           aria-label={annotating ? 'Stop annotation' : 'Annotate preview'}
           title={annotating ? 'Stop annotation' : 'Annotate'}
-          disabled={!url || !webviewReady || !canAnnotate}
+          disabled={!resolvedSourceUrl || !webviewReady || !canAnnotate}
           onClick={() => (annotating ? void stopAnnotation() : void annotate())}
           className={annotating ? 'text-danger hover:bg-danger-soft hover:text-danger' : ''}
         >
@@ -270,18 +296,18 @@ export function PreviewPanel({
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
       ) : null}
       <div className="min-h-0 flex-1 bg-bg">
-        {url && canUseWebview ? (
+        {resolvedSourceUrl && canUseWebview ? (
           <webview
             ref={bindWebview}
-            src={url}
+            src={resolvedSourceUrl}
             partition="persist:jaz-preview"
             allowpopups
             className="h-full w-full bg-bg"
           />
-        ) : url ? (
+        ) : resolvedSourceUrl ? (
           <iframe
             key={iframeKey}
-            src={url}
+            src={resolvedSourceUrl}
             title="Preview"
             sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
             referrerPolicy="no-referrer"

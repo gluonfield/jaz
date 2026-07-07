@@ -29,6 +29,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/widgets", s.handleListWidgets)
 	mux.HandleFunc("/v1/widgets/", s.handleWidgetAction)
 	mux.HandleFunc("GET /v1/music/chart-feed", s.handleMusicChartFeed)
+	mux.HandleFunc("GET /v1/onboarding/state", s.handleOnboardingState)
 	mux.HandleFunc("/v1/onboarding", s.handleOnboarding)
 	mux.HandleFunc("/v1/settings/agents", s.handleAgentSettings)
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)
@@ -71,7 +72,16 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(serverconfig.JazmemMCPPath, s.memoryMCPHandler())
 	mux.Handle(serverconfig.MCPProxyPath, s.mcpProxyHandler())
 	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
-	return withCORS(withGzip(s.withAuth(mux)))
+	authed := withGzip(s.withAuth(mux))
+	return withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, route := range s.PublicRoutes {
+			if route.Match(r) {
+				route.Handler.ServeHTTP(w, r)
+				return
+			}
+		}
+		authed.ServeHTTP(w, r)
+	}))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

@@ -6,7 +6,7 @@ import './styles/globals.css'
 
 import { QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider, createHashHistory, createRouter } from '@tanstack/react-router'
-import { StrictMode } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BackendTransition } from './components/connection/BackendTransition'
 import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScreen'
@@ -45,6 +45,9 @@ const router = createRouter({
   history: window.location.protocol === 'file:' ? createHashHistory() : undefined,
 })
 
+const LAUNCH_SPLASH_SESSION_KEY = 'jaz.launchSplash.played'
+const LAUNCH_SPLASH_MS = 1_800
+
 declare module '@tanstack/react-router' {
   interface Register {
     router: typeof router
@@ -56,6 +59,7 @@ declare module '@tanstack/react-router' {
 // a blip. Only a sustained outage hands the window to the launch screen.
 function App() {
   const { status } = useConnection()
+  const launchSplash = useLaunchSplash()
   // Reset to home whenever the backend changes — done here, above the router and
   // the onboarding gate, so it also covers landing after a fresh backend's
   // onboarding finishes (the router mounts onto this location). The persisted
@@ -67,21 +71,43 @@ function App() {
   })
 
   const connected = devPreview('launch') === null && (status === 'connected' || status === 'reconnecting')
+  const showApp = connected && !launchSplash
   const app = <RouterProvider router={router} />
   return (
     <>
       {/* plays over everything whenever the backend changes */}
       <BackendTransition />
-      {connected ? (
+      {showApp ? (
         <>
           {clientRuntime.windowKind === 'main' ? <OnboardingGate>{app}</OnboardingGate> : app}
           <ReconnectingBanner show={status === 'reconnecting'} />
         </>
       ) : (
-        <LaunchScreen />
+        <LaunchScreen splash={launchSplash} />
       )}
     </>
   )
+}
+
+function useLaunchSplash(): boolean {
+  const [show, setShow] = useState(() => {
+    if (clientRuntime.kind !== 'electron' || clientRuntime.windowKind !== 'main' || devPreview('launch') !== null) return false
+    try {
+      if (sessionStorage.getItem(LAUNCH_SPLASH_SESSION_KEY)) return false
+      sessionStorage.setItem(LAUNCH_SPLASH_SESSION_KEY, '1')
+    } catch {
+      return true
+    }
+    return true
+  })
+
+  useEffect(() => {
+    if (!show) return
+    const timer = window.setTimeout(() => setShow(false), LAUNCH_SPLASH_MS)
+    return () => window.clearTimeout(timer)
+  }, [show])
+
+  return show
 }
 
 createRoot(document.getElementById('root')!).render(

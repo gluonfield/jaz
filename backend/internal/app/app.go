@@ -660,38 +660,40 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 	}
 }
 
-func ConnectACPCompletion(manager *acp.Manager, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger) {
+func ConnectACPCompletion(manager *acp.Manager, parentTurns internalTurnStarter, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger) {
 	manager.Events = events
 	manager.Done = func(ctx context.Context, job acp.Job) {
-		completeACP(ctx, a, store, locks, events, prompts, logger.WithPrefix("coordinator"), job)
+		completeACP(ctx, parentTurns, a, store, locks, events, prompts, logger.WithPrefix("coordinator"), job)
 	}
 }
 
-func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger, job acp.Job) {
+type internalTurnStarter interface {
+	StartInternalTurn(context.Context, string, string) error
+}
+
+func completeACP(ctx context.Context, parentStarter internalTurnStarter, a *agent.Agent, store *sqlitestore.Store, locks *sessionlock.Locks, events *sessionevents.Bus, prompts *coordinator.Builder, logger *log.Logger, job acp.Job) {
 	if job.ParentID == "" {
 		return
 	}
 	logger.Info("acp child finished, handling parent completion", "child", job.ID, "parent", job.ParentID, "state", job.State)
 	unlock := locks.Lock(job.ParentID)
-	defer unlock()
 
 	parent, err := store.LoadSession(job.ParentID)
 	if err != nil {
+		unlock()
 		logger.Error("loading parent session failed", "parent", job.ParentID, "error", err)
 		setStoredSessionError(store, job.ParentID, err.Error())
 		return
 	}
 	if usesExternalACPAgent(parent) {
-		content := acpParentCompletionMessage(job)
-		if err := store.AppendMessages(job.ParentID, provider.AssistantMessage(content, nil)); err != nil {
-			logger.Error("appending acp parent completion failed", "parent", job.ParentID, "error", err)
+		unlock()
+		if err := parentStarter.StartInternalTurn(ctx, job.ParentID, acpCompletion(job)); err != nil {
+			logger.Error("starting acp parent follow-up failed", "parent", job.ParentID, "child", job.ID, "error", err)
 			setStoredSessionError(store, job.ParentID, err.Error())
-			return
 		}
-		events.Publish(sessionevents.Event{SessionID: job.ParentID, Type: "assistant", Content: content, ACP: acp.EventFromJob(job)})
-		setStoredSessionStatus(store, job.ParentID, storage.StatusIdle)
 		return
 	}
+	defer unlock()
 	messages, err := store.LoadMessages(job.ParentID)
 	if err != nil {
 		logger.Error("loading parent messages failed", "parent", job.ParentID, "error", err)
@@ -788,7 +790,7 @@ func acpCompletion(job acp.Job) string {
 	})
 	if err != nil {
 		// Embedded and parse-checked at init; the completion turn must still fire.
-		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Report the outcome to the user now.", job.Slug, job.ACPAgent, job.State)
+		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Continue from this result and report/update the user with relevant details.", job.Slug, job.ACPAgent, job.State)
 	}
 	return prompt
 }
@@ -799,32 +801,6 @@ func usesExternalACPAgent(session storage.Session) bool {
 	}
 	agentName := acp.CanonicalAgentName(session.RuntimeRef.Agent)
 	return agentName != "" && agentName != acp.AgentJaz
-}
-
-func acpParentCompletionMessage(job acp.Job) string {
-	label := firstNonEmpty(job.Slug, job.Title, job.ID)
-	state := firstNonEmpty(job.State, "finished")
-	agentName := acp.CanonicalAgentName(job.ACPAgent)
-	var out strings.Builder
-	out.WriteString("Child session ")
-	out.WriteString(label)
-	if agentName != "" {
-		out.WriteString(" (")
-		out.WriteString(agentName)
-		out.WriteString(")")
-	}
-	out.WriteString(" finished with state ")
-	out.WriteString(state)
-	out.WriteString(".")
-	if job.Error != "" {
-		out.WriteString("\n\nError: ")
-		out.WriteString(job.Error)
-	}
-	if job.Assistant != "" {
-		out.WriteString("\n\n")
-		out.WriteString(job.Assistant)
-	}
-	return out.String()
 }
 
 func firstNonEmpty(values ...string) string {

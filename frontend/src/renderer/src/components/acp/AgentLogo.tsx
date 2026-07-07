@@ -1,7 +1,8 @@
 // Brand marks for the coding agents jaz speaks to, drawn monochrome via
 // currentColor so they tint to the design tokens (ink at rest) and read in both
-// themes. Claude = official sunburst, Codex = OpenAI knot, Grok = xAI mark,
-// OpenCode = official square mark.
+// themes.
+// Claude = official sunburst, Codex = OpenAI knot, Grok = xAI mark,
+// Antigravity = official curved A mark, OpenCode = official square mark.
 // Sourced from the providers' published logos; kept as inline SVG so they load
 // from file:// in the packaged app with no extra request.
 
@@ -62,8 +63,8 @@ export function AgentLogo({ agent, className = '', size }: Props) {
 
   if (slug === 'antigravity') {
     return (
-      <svg viewBox="0 0 24 24" style={dims} className={cls} fill="currentColor" aria-hidden="true">
-        <path d="M11.97 2.35 22 20.75h-4.22l-1.67-3.28H7.9l-1.67 3.28H2L11.97 2.35Zm-2.43 11.9h4.94l-2.47-4.98-2.47 4.98Z" />
+      <svg viewBox="0 0 16 15" style={dims} className={cls} fill="currentColor" aria-hidden="true">
+        <path d="M14.0777 13.984C14.945 14.6345 16.2458 14.2008 15.0533 13.0084C11.476 9.53949 12.2349 0 7.79033 0C3.34579 0 4.10461 9.53949 0.527295 13.0084C-0.773543 14.3092 0.635692 14.6345 1.50293 13.984C4.86344 11.7076 4.64663 7.69664 7.79033 7.69664C10.934 7.69664 10.7172 11.7076 14.0777 13.984Z" />
       </svg>
     )
   }

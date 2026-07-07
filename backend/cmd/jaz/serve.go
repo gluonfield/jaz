@@ -106,9 +106,8 @@ func runServe(args []string) error {
 			app.NewVoice,
 			app.NewAgent,
 		),
-		app.UsageModule(),
+		app.HTTPModule(),
 		fx.Invoke(
-			app.ConnectACPCompletion,
 			app.CloseMemory,
 			app.ConfigureMemoryDreamRunner,
 			app.ConfigureMemorySearchRunner,
@@ -234,6 +233,7 @@ func startServer(
 	threadService *threads.Service,
 	deviceAuth *deviceauth.Service,
 	routes server.Routes,
+	publicRoutes server.PublicRoutes,
 ) error {
 	authKey, err := runtimeauth.Ensure(store.RootDir())
 	if err != nil {
@@ -243,6 +243,7 @@ func startServer(
 		Agent:                 a,
 		Store:                 store,
 		Routes:                routes,
+		PublicRoutes:          publicRoutes,
 		ACP:                   manager,
 		ACPAdapters:           adapters,
 		ManagedTools:          managedTools,
@@ -269,6 +270,7 @@ func startServer(
 		Terminal:              terminals,
 		Devices:               deviceAuth,
 	}
+	app.ConnectACPCompletion(manager, handler, a, store, locks, events, prompts, logger)
 	lc.Append(fx.Hook{
 		OnStop: func(context.Context) error {
 			terminals.Close()

@@ -2,7 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
-import { apiFetch, ApiError, del, get, post, put } from './client'
+import { apiEmbeddedGetUrl, apiFetch, ApiError, del, get, post, put } from './client'
 import {
   fileKey,
   type Attachment,
@@ -64,6 +64,11 @@ export interface SideChatMessageInput {
 
 export function sendSessionSideChat(id: string, input: SideChatMessageInput): Promise<{ ok: boolean }> {
   return post<{ ok: boolean }>(`/v1/sessions/${id}/side-chat`, input)
+}
+
+export function sessionFileRawUrl(sessionId: string, path: string): string {
+  const params = new URLSearchParams({ path, raw: '1' })
+  return apiEmbeddedGetUrl(`/v1/sessions/${encodeURIComponent(sessionId)}/file?${params.toString()}`)
 }
 
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {

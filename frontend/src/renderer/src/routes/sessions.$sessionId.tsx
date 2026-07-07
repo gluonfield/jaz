@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown } from 'lucide-react'
+import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { BottomDock } from '@/components/session/BottomDock'
@@ -11,7 +11,7 @@ import { SelectionContextToolbar } from '@/components/session/SelectionContextTo
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MentionText } from '@/components/session/mentions'
-import { SessionErrorNotice } from '@/components/session/SessionErrorNotice'
+import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { GoalStatusBar } from '@/components/session/GoalStatusBar'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
@@ -195,7 +195,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const detailSession = detail.data?.session
   const sideChatAvailable = isCodexACPSession(detailSession)
   const sidePanel = useSidePanelState(sideChatAvailable)
-  const { openFile } = sidePanel
   // Phone: the docked panel would crush the transcript to a sliver, so it
   // becomes a full-screen overlay (CSS `max-sm:w-full`) that slides in instead
   // of a column.
@@ -421,9 +420,18 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   // early live events and would otherwise fold those events into the prior turn.
   const transcriptMessages = liveTranscriptMessages(messages, live, isACP)
   const goalStatusVisible = goalActive
+  const canContinueFromInlineError =
+    isACP && !sessionRunning && !streaming && !live && !hasBlockingPendingPermission
+  const continueErrorAction: SessionErrorAction | undefined =
+    canContinueFromInlineError ? {
+      label: 'Continue',
+      icon: <Play size={13} aria-hidden />,
+      onClick: () => handleSend('Continue'),
+      title: 'Continue this thread',
+    } : undefined
 
   return (
-    <FileReaderLinkProvider onOpen={openFile}>
+    <FileReaderLinkProvider onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
             clip horizontal overflow so it can't be revealed by scrolling. */}
@@ -467,6 +475,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                       working={sessionRunning}
                       findActive={threadFind.open && Boolean(threadFind.query.trim())}
                       highlightedSeq={highlightedMessageSeq}
+                      errorAction={sessionError ? undefined : continueErrorAction}
                       onArtifactPrompt={queue.onSend}
                       tail={
                         isACP ? (
@@ -525,7 +534,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                       }
                     />
                     {sessionError ? (
-                      <SessionErrorNotice message={sessionError} context={sessionErrorContext} className="mt-5" />
+                      <SessionErrorNotice
+                        message={sessionError}
+                        context={sessionErrorContext}
+                        className="mt-5"
+                        action={continueErrorAction}
+                      />
                     ) : null}
                   </>
                 )}
@@ -624,12 +638,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               working={sessionRunning}
               visible={sidePanel.open}
               view={sidePanel.view}
-              previewUrl={sidePanel.previewUrl}
+              previewTarget={sidePanel.previewTarget}
               fileRef={sidePanel.fileRef}
               sideChatAvailable={sideChatAvailable}
               sideChatEvents={sideChatEvents}
-              onPreviewUrlChange={sidePanel.setPreviewUrl}
-              onOpenFile={openFile}
+              onPreviewTargetChange={sidePanel.setPreviewTarget}
+              onOpenFile={sidePanel.openFile}
               onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
               onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
               onSend={queue.onSend}

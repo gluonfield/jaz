@@ -7,14 +7,22 @@ import (
 )
 
 type QueuedMessage struct {
-	ID            string           `json:"id,omitempty"`
-	Text          string           `json:"text"`
-	Contexts      []MessageContext `json:"contexts,omitempty"`
-	Quotes        []string         `json:"quotes,omitempty"`
-	AttachmentIDs []string         `json:"attachment_ids,omitempty"`
-	PlanRequested bool             `json:"plan_requested,omitempty"`
-	GoalRequested bool             `json:"goal_requested,omitempty"`
+	ID            string            `json:"id,omitempty"`
+	Text          string            `json:"text"`
+	Kind          QueuedMessageKind `json:"kind,omitempty"`
+	Contexts      []MessageContext  `json:"contexts,omitempty"`
+	Quotes        []string          `json:"quotes,omitempty"`
+	AttachmentIDs []string          `json:"attachment_ids,omitempty"`
+	PlanRequested bool              `json:"plan_requested,omitempty"`
+	GoalRequested bool              `json:"goal_requested,omitempty"`
 }
+
+type QueuedMessageKind string
+
+const (
+	QueuedMessageKindPublic   QueuedMessageKind = ""
+	QueuedMessageKindInternal QueuedMessageKind = "internal"
+)
 
 func NormalizeQueuedMessages(messages []QueuedMessage) []QueuedMessage {
 	if len(messages) == 0 {
@@ -72,6 +80,7 @@ func legacyQueuedMessageID(index int, seen map[string]bool) string {
 
 func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.ID = strings.TrimSpace(message.ID)
+	message.Kind = normalizeQueuedMessageKind(message.Kind)
 	message.Text = strings.TrimSpace(message.Text)
 	message.Contexts = NormalizeMessageContexts(append(SelectionContexts(message.Quotes), message.Contexts...))
 	message.Quotes = nil
@@ -81,6 +90,47 @@ func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 
 func NewQueuedMessage(text string, attachmentIDs []string) QueuedMessage {
 	return QueuedMessage{Text: strings.TrimSpace(text), AttachmentIDs: normalizeNonEmpty(attachmentIDs)}
+}
+
+func NewInternalQueuedMessage(text string) QueuedMessage {
+	return NewQueuedMessage(text, nil).AsInternal()
+}
+
+func PublicQueuedMessages(messages []QueuedMessage) []QueuedMessage {
+	messages = CanonicalQueuedMessages(messages)
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]QueuedMessage, 0, len(messages))
+	for _, message := range messages {
+		if !message.IsInternal() {
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+func (message QueuedMessage) IsInternal() bool {
+	return message.Kind == QueuedMessageKindInternal
+}
+
+func (message QueuedMessage) AsInternal() QueuedMessage {
+	message.Kind = QueuedMessageKindInternal
+	return message
+}
+
+func (message QueuedMessage) AsPublic() QueuedMessage {
+	message.Kind = QueuedMessageKindPublic
+	return message
+}
+
+func normalizeQueuedMessageKind(kind QueuedMessageKind) QueuedMessageKind {
+	switch kind {
+	case QueuedMessageKindInternal:
+		return kind
+	default:
+		return QueuedMessageKindPublic
+	}
 }
 
 func normalizeNonEmpty(values []string) []string {

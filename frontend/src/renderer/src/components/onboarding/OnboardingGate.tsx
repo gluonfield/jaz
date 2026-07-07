@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { DitherArt, DitherTerrain } from '@/components/launch/DitherArt'
+import { DitherArt, DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
 import { connectionPluginsQuery } from '@/lib/api/connections'
-import { completeOnboarding, onboardingQuery } from '@/lib/api/onboarding'
+import { completeOnboarding, onboardingQuery, onboardingStateQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, prepareACPAgent, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
 import { disconnectBackend, isLocalBackendUrl, useConnection } from '@/lib/connection'
@@ -34,11 +34,13 @@ const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'opencode', 'antigravity', 'gr
 const onboardingPreview = devPreview('onboarding') !== null
 
 export function OnboardingGate({ children }: { children: ReactNode }) {
-  const onboarding = useQuery(onboardingQuery)
+  const [preview, setPreview] = useState(onboardingPreview)
+  const state = useQuery({ ...onboardingStateQuery, enabled: !preview })
+  const loadFull = preview || state.data?.completed === false || state.isError
+  const onboarding = useQuery({ ...onboardingQuery, enabled: loadFull })
   // The preview pin is one-shot: finishing the flow releases it so "Launch
   // jaz" hands over to the app exactly like a real first run.
-  const [preview, setPreview] = useState(onboardingPreview)
-  const completed = onboarding.data?.completed === true && !preview
+  const completed = !preview && (state.data?.completed === true || onboarding.data?.completed === true)
 
   if (clientRuntime.windowKind === 'board') return <>{children}</>
   if (completed) return <>{children}</>
@@ -46,19 +48,21 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   // remount (a remount replays the boot art and reads as a blink).
   return (
     <OnboardingShell onDisconnect={disconnectBackend}>
-      {onboarding.isPending ? null : onboarding.isError ? (
+      {(!preview && state.isPending) || onboarding.isPending ? (
+        <LoadingBlock />
+      ) : onboarding.isError ? (
         <StatusBlock
           icon={<AlertCircle size={16} />}
           title="Couldn't load onboarding"
           text={onboarding.error.message}
         />
-      ) : (
+      ) : onboarding.data ? (
         <OnboardingScreen
           status={onboarding.data}
           onRefresh={() => void onboarding.refetch()}
           onFinished={() => setPreview(false)}
         />
-      )}
+      ) : null}
     </OnboardingShell>
   )
 }
@@ -171,6 +175,7 @@ function OnboardingScreen({
     },
     onSuccess: (saved) => {
       queryClient.setQueryData(keys.onboarding, saved)
+      queryClient.setQueryData(keys.onboardingState, { completed: saved.completed })
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
       queryClient.invalidateQueries({ queryKey: keys.acpAgents })
       onFinished()
@@ -267,6 +272,22 @@ function StatusBlock({ icon, title, text }: { icon: ReactNode; title: string; te
         <p className="mt-1 text-[12px] text-ink-3">{text}</p>
       </div>
     </div>
+  )
+}
+
+function LoadingBlock() {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1, transition: { duration: 0.18 } }}
+      className="flex flex-col items-center gap-7"
+    >
+      <DitherWordmark />
+      <div className="flex items-center gap-2 text-[12px] text-ink-3">
+        <LoaderCircle size={13} className="animate-spin" />
+        Opening jaz...
+      </div>
+    </motion.div>
   )
 }
 

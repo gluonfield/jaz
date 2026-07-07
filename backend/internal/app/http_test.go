@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/browserworker"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
+	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -54,27 +55,30 @@ func (fakeConnectionOAuthStore) DeleteConnection(context.Context, string) (bool,
 	return false, nil
 }
 
-func TestUsageModuleProvidesRoute(t *testing.T) {
+func TestHTTPModuleProvidesRoute(t *testing.T) {
 	var routes server.Routes
+	var publicRoutes server.PublicRoutes
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(Config{}),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
-		UsageModule(),
-		fx.Populate(&routes),
+		HTTPModule(),
+		fx.Populate(&routes, &publicRoutes),
 	)
 	if err := app.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(routes) != 3 ||
-		routes[0].Pattern != "GET /v1/usage/daily" ||
-		routes[0].Handler == nil ||
-		routes[1].Pattern != "GET /v1/usage/models" ||
-		routes[1].Handler == nil ||
-		routes[2].Pattern != "GET /v1/feed" ||
-		routes[2].Handler == nil {
-		t.Fatalf("routes = %#v", routes)
+	requireRoute(t, routes, "GET /v1/usage/daily")
+	requireRoute(t, routes, "GET /v1/usage/models")
+	requireRoute(t, routes, "GET /v1/feed")
+	requireRoute(t, routes, "/v1/preview/")
+	if len(publicRoutes) != 2 ||
+		publicRoutes[0].Match == nil ||
+		publicRoutes[0].Handler == nil ||
+		publicRoutes[1].Match == nil ||
+		publicRoutes[1].Handler == nil {
+		t.Fatalf("publicRoutes = %#v", publicRoutes)
 	}
 }
 
@@ -88,6 +92,7 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),
 		Devices: deviceauth.New(store),
+		Preview: previewapi.NewHandler(),
 	})
 	var foundRevoke bool
 	var foundConnection bool
@@ -122,6 +127,7 @@ func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 			Usage:   usagecore.NewService(fakeUsageStore{}),
 			Jaz:     Config{Devices: DevicesConfig{DisablePairing: disable}},
 			Devices: deviceauth.New(store),
+			Preview: previewapi.NewHandler(),
 		})
 		for _, route := range routes {
 			switch route.Pattern {
@@ -146,6 +152,7 @@ func TestNewRoutesIncludesBrowserExtensionRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),
 		Browser: browserworker.NewExtensionBridge(nil, nil),
+		Preview: previewapi.NewHandler(),
 	})
 	for _, route := range routes {
 		if route.Pattern == "GET /v1/browser/extension" && route.Handler != nil {
@@ -159,6 +166,7 @@ func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),
 		BrowserSettings: &BrowserSettingsHandler{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})},
+		Preview:         previewapi.NewHandler(),
 	})
 	found := map[string]bool{}
 	for _, route := range routes {
@@ -181,6 +189,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 		ConnectionOAuth: oauth,
 		ConnectionQR:    qr,
 		ConnectionStart: connections.NewConnectService(catalog, oauth, qr),
+		Preview:         previewapi.NewHandler(),
 	})
 	found := map[string]bool{}
 	for _, route := range routes {
@@ -214,6 +223,7 @@ func TestNewRoutesKeepsConnectionStartRoutesIndependent(t *testing.T) {
 		Usage:           usagecore.NewService(fakeUsageStore{}),
 		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}),
 		ConnectionOAuth: oauth,
+		Preview:         previewapi.NewHandler(),
 	})
 	for _, route := range routes {
 		if route.Pattern == "GET /v1/connections/oauth/callback" && route.Handler != nil {
@@ -223,34 +233,40 @@ func TestNewRoutesKeepsConnectionStartRoutesIndependent(t *testing.T) {
 	t.Fatalf("missing OAuth callback route without QR service: %#v", routes)
 }
 
-func TestUsageModuleWiresWithNewStore(t *testing.T) {
+func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 	var routes server.Routes
+	var publicRoutes server.PublicRoutes
 	var store *sqlitestore.Store
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}),
 		fx.Provide(NewStore),
-		UsageModule(),
-		fx.Populate(&routes, &store),
+		HTTPModule(),
+		fx.Populate(&routes, &publicRoutes, &store),
 	)
 	if err := app.Err(); err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 
-	if len(routes) != 3 {
-		t.Fatalf("routes = %#v", routes)
+	requireRoute(t, routes, "GET /v1/feed")
+	requireRoute(t, routes, "/v1/preview/")
+	if len(publicRoutes) != 2 {
+		t.Fatalf("publicRoutes = %#v", publicRoutes)
 	}
-	var hasFeed bool
 	for _, route := range routes {
 		if route.Handler == nil {
 			t.Fatalf("nil handler in routes = %#v", routes)
 		}
-		if route.Pattern == "GET /v1/feed" {
-			hasFeed = true
+	}
+}
+
+func requireRoute(t *testing.T, routes server.Routes, pattern string) {
+	t.Helper()
+	for _, route := range routes {
+		if route.Pattern == pattern && route.Handler != nil {
+			return
 		}
 	}
-	if !hasFeed {
-		t.Fatalf("feed route missing from routes = %#v", routes)
-	}
+	t.Fatalf("missing route %q in %#v", pattern, routes)
 }

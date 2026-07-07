@@ -9,6 +9,7 @@ import { CODE_DIFF_PANEL_WIDTH, CodeDiffPanel } from './CodeDiffPanel'
 import { FILE_READER_PANEL_WIDTH, FileReaderPanel } from './FileReaderPanel'
 import { OVERVIEW_PANEL_WIDTH, OverviewPanel } from './OverviewPanel'
 import { PREVIEW_PANEL_WIDTH, PreviewPanel } from './PreviewPanel'
+import type { PreviewTarget } from './previewTarget'
 import { SIDE_CHAT_PANEL_WIDTH, SideChatPanel } from './SideChatPanel'
 import { TERMINAL_PANEL_WIDTH, TerminalPanel } from './TerminalPanel'
 
@@ -31,11 +32,11 @@ export function SidePanel({
   working,
   visible,
   view,
-  previewUrl,
+  previewTarget,
   fileRef,
   sideChatAvailable,
   sideChatEvents,
-  onPreviewUrlChange,
+  onPreviewTargetChange,
   onOpenFile,
   onAddBrowserAnnotation,
   onUploadAttachment,
@@ -50,11 +51,11 @@ export function SidePanel({
   working: boolean
   visible: boolean
   view: SidePanelView
-  previewUrl: string
+  previewTarget: PreviewTarget
   fileRef: FileReference | null
   sideChatAvailable: boolean
   sideChatEvents: SessionEvent[]
-  onPreviewUrlChange: (url: string) => void
+  onPreviewTargetChange: (target: PreviewTarget) => void
   onOpenFile: (file: FileReference) => void
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
@@ -88,8 +89,8 @@ export function SidePanel({
     case 'preview':
       return (
         <PreviewPanel
-          url={previewUrl}
-          onUrlChange={onPreviewUrlChange}
+          target={previewTarget}
+          onTargetChange={onPreviewTargetChange}
           onAddBrowserAnnotation={onAddBrowserAnnotation}
           onUploadAttachment={onUploadAttachment}
           onClose={onClose}

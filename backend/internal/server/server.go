@@ -42,6 +42,7 @@ type ACPManager interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	Spawn(context.Context, acp.SpawnRequest) (acp.SpawnResult, error)
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
+	StartInternalTurn(context.Context, acp.InternalTurnRequest) (acp.Job, error)
 	ContinueGoal(context.Context, string) (acp.Job, error)
 	Compact(context.Context, acp.CompactRequest) (acp.Job, error)
 	Steer(context.Context, acp.SteerRequest) (acp.Job, error)
@@ -80,6 +81,7 @@ type Server struct {
 	Agent                *agent.Agent
 	Store                storage.Store
 	Routes               Routes
+	PublicRoutes         PublicRoutes
 	ACP                  ACPManager
 	ACPAdapters          ACPAdapterStatusReader
 	ManagedTools         ManagedToolStatusReader
@@ -133,6 +135,13 @@ type Route struct {
 }
 
 type Routes []Route
+
+type PublicRoute struct {
+	Match   func(*http.Request) bool
+	Handler http.Handler
+}
+
+type PublicRoutes []PublicRoute
 
 func (s *Server) logger() *log.Logger {
 	if s.Log != nil {

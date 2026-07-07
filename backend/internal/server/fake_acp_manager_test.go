@@ -12,6 +12,7 @@ import (
 type fakeACPManager struct {
 	mu             sync.Mutex
 	sent           acp.SendRequest
+	internal       acp.InternalTurnRequest
 	continueGoals  []string
 	compacted      acp.CompactRequest
 	steered        acp.SteerRequest
@@ -26,6 +27,7 @@ type fakeACPManager struct {
 	cancelCtxErr   error
 	cancelled      bool
 	sendErr        error
+	internalErr    error
 	compactErr     error
 	steerErr       error
 	steerSupported bool
@@ -129,6 +131,13 @@ func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job
 	f.sendCtxErr = ctx.Err()
 	f.sendPlatform = sessioncontext.ClientPlatform(ctx)
 	return f.job, f.sendErr
+}
+
+func (f *fakeACPManager) StartInternalTurn(_ context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.internal = req
+	return f.job, f.internalErr
 }
 
 func (f *fakeACPManager) ContinueGoal(_ context.Context, session string) (acp.Job, error) {

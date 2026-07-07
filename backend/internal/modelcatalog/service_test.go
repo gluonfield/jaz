@@ -195,6 +195,27 @@ func TestServiceAgentModelsFollowOpenRouterReasoning(t *testing.T) {
 	}
 }
 
+func TestServiceAgentModelsIncludesAntigravityModels(t *testing.T) {
+	models := NewService(nil).AgentModels("antigravity")
+	got := make([]string, 0, len(models))
+	for _, model := range models {
+		got = append(got, model.Value)
+	}
+	want := []string{
+		"Gemini 3.5 Flash (Medium)",
+		"Gemini 3.5 Flash (High)",
+		"Gemini 3.5 Flash (Low)",
+		"Gemini 3.1 Pro (Low)",
+		"Gemini 3.1 Pro (High)",
+		"Claude Sonnet 4.6 (Thinking)",
+		"Claude Opus 4.6 (Thinking)",
+		"GPT-OSS 120B (Medium)",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("antigravity models = %#v, want %#v", got, want)
+	}
+}
+
 func TestServiceDoesNotBorrowProviderReasoningForHarnessAgents(t *testing.T) {
 	service := warmOpenRouterTestService(t, `{"data":[{
 		"id":"z-ai/glm-5.2",

@@ -71,6 +71,16 @@ var (
 			{Value: "grok-build", Label: "Grok Build", Description: "Best for advanced coding tasks", ContextLength: 512000, OpenRouterID: "x-ai/grok-build-0.1"},
 			{Value: "grok-composer-2.5-fast", Label: "Composer 2.5", Description: "Cursor's coding model", ContextLength: 200000},
 		},
+		"antigravity": {
+			{Value: "Gemini 3.5 Flash (Medium)", Label: "Gemini 3.5 Flash", Description: "Medium"},
+			{Value: "Gemini 3.5 Flash (High)", Label: "Gemini 3.5 Flash", Description: "High"},
+			{Value: "Gemini 3.5 Flash (Low)", Label: "Gemini 3.5 Flash", Description: "Low"},
+			{Value: "Gemini 3.1 Pro (Low)", Label: "Gemini 3.1 Pro", Description: "Low"},
+			{Value: "Gemini 3.1 Pro (High)", Label: "Gemini 3.1 Pro", Description: "High"},
+			{Value: "Claude Sonnet 4.6 (Thinking)", Label: "Claude Sonnet 4.6", Description: "Thinking"},
+			{Value: "Claude Opus 4.6 (Thinking)", Label: "Claude Opus 4.6", Description: "Thinking"},
+			{Value: "GPT-OSS 120B (Medium)", Label: "GPT-OSS 120B", Description: "Medium"},
+		},
 		"opencode": {
 			{Value: "openrouter/openai/gpt-5.4-mini", Label: "GPT-5.4 Mini via OpenRouter", Description: "Fast and inexpensive", ContextLength: 400000},
 			{Value: "openrouter/openai/gpt-5.5", Label: "GPT-5.5 via OpenRouter", Description: "Most capable", ContextLength: 1050000},

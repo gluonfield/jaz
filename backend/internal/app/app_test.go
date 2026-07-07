@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -55,6 +56,18 @@ func (p *completeACPTestProvider) StreamComplete(context.Context, provider.Reque
 	ch := make(chan provider.Event)
 	close(ch)
 	return ch, nil
+}
+
+type completeACPParentStarter struct {
+	sessionID string
+	message   string
+	err       error
+}
+
+func (s *completeACPParentStarter) StartInternalTurn(_ context.Context, sessionID, message string) error {
+	s.sessionID = sessionID
+	s.message = message
+	return s.err
 }
 
 func TestNewToolRegistryAllowsApplyPatchAbsolutePaths(t *testing.T) {
@@ -112,6 +125,7 @@ func TestACPAgentConfigSourcePassesManagedToolPathToAdapter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
+
 	defaults := agentsettings.AgentDefaultsFromCatalog(acp.BuiltinAgents())
 	antigravity := defaults.ACP[acp.AgentAntigravity]
 	antigravity.Enabled = true
@@ -148,7 +162,70 @@ func TestWithManagedToolAdapterArgReplacesExistingValues(t *testing.T) {
 	}
 }
 
-func TestCompleteACPMaterializesExternalParentResult(t *testing.T) {
+func TestCompleteACPStartsExternalParentFollowup(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	parent, err := store.CreateSession(storage.CreateSession{
+		Slug:          "parent",
+		Runtime:       storage.RuntimeACP,
+		ModelProvider: acp.AgentClaude,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: acp.AgentClaude,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fakeProvider := &completeACPTestProvider{}
+	starter := &completeACPParentStarter{}
+
+	completeACP(context.Background(), starter, &agent.Agent{
+		Provider: fakeProvider,
+		Tools:    tools.NewRegistry(),
+		MaxTurns: 1,
+	}, store, sessionlock.New(), nil, coordinator.NewBuilder(t.TempDir(), t.TempDir(), "", nil), log.New(io.Discard), acp.Job{
+		ID:              "child-id",
+		Slug:            "seed-deck",
+		ACPAgent:        acp.AgentCodex,
+		ModelProvider:   acp.AgentCodex,
+		Model:           "gpt-5.5",
+		ReasoningEffort: "xhigh",
+		State:           acp.StateIdle,
+		Assistant:       "Deck rebuilt at deck/physicslab-deck.html.",
+		ParentID:        parent.ID,
+	})
+
+	if fakeProvider.called {
+		t.Fatal("external ACP parent completion should not call native provider")
+	}
+	if starter.sessionID != parent.ID {
+		t.Fatalf("internal turn session = %q, want parent session", starter.sessionID)
+	}
+	for _, want := range []string{
+		"ACP session seed-deck (codex) completed with state idle.",
+		"Deck rebuilt at deck/physicslab-deck.html.",
+		"Continue from this result and report/update the user with relevant details:",
+	} {
+		if !strings.Contains(starter.message, want) {
+			t.Fatalf("internal turn message %q missing %q", starter.message, want)
+		}
+	}
+	messages, err := store.LoadMessages(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("message count = %d, want no synthetic parent message", len(messages))
+	}
+}
+
+func TestCompleteACPDoesNotFakeExternalParentFollowupFailure(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -173,8 +250,9 @@ func TestCompleteACPMaterializesExternalParentResult(t *testing.T) {
 	defer cancel()
 	eventCh := events.Subscribe(ctx, parent.ID)
 	fakeProvider := &completeACPTestProvider{}
+	starter := &completeACPParentStarter{err: errors.New("parent busy")}
 
-	completeACP(ctx, &agent.Agent{
+	completeACP(ctx, starter, &agent.Agent{
 		Provider: fakeProvider,
 		Tools:    tools.NewRegistry(),
 		MaxTurns: 1,
@@ -191,41 +269,26 @@ func TestCompleteACPMaterializesExternalParentResult(t *testing.T) {
 	})
 
 	if fakeProvider.called {
-		t.Fatal("external ACP parent completion should not call native provider")
-	}
-	loaded, err := store.LoadSession(parent.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusIdle || loaded.Error != "" {
-		t.Fatalf("parent status = %s error=%q, want idle without error", loaded.Status, loaded.Error)
+		t.Fatal("external ACP parent failure should not call native provider")
 	}
 	messages, err := store.LoadMessages(parent.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 1 {
-		t.Fatalf("message count = %d, want 1", len(messages))
-	}
-	content := provider.MessageContent(messages[0])
-	for _, want := range []string{
-		"Child session seed-deck (codex) finished with state idle.",
-		"Deck rebuilt at deck/physicslab-deck.html.",
-	} {
-		if !strings.Contains(content, want) {
-			t.Fatalf("completion message %q missing %q", content, want)
-		}
+	if len(messages) != 0 {
+		t.Fatalf("message count = %d, want no synthetic parent message", len(messages))
 	}
 	select {
 	case event := <-eventCh:
-		if event.Type != "assistant" || event.Content != content {
-			t.Fatalf("event = %#v, want assistant completion", event)
-		}
-		if event.ACP == nil || event.ACP.ModelProvider != acp.AgentCodex || event.ACP.Model != "gpt-5.5" || event.ACP.ReasoningEffort != "xhigh" {
-			t.Fatalf("event acp metadata = %#v", event.ACP)
-		}
+		t.Fatalf("unexpected parent event %#v", event)
 	default:
-		t.Fatal("missing parent completion event")
+	}
+	loaded, err := store.LoadSession(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusError || !strings.Contains(loaded.Error, "parent busy") {
+		t.Fatalf("parent session status=%q error=%q, want parent busy error", loaded.Status, loaded.Error)
 	}
 }
 

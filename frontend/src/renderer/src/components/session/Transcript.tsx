@@ -11,6 +11,7 @@ import {
 } from './timeline'
 import { Bubble } from './Bubble'
 import { LiveEvent } from './LiveEvent'
+import type { SessionErrorAction } from './SessionErrorNotice'
 import { ToolDisclosure, toolRunLabel } from './ToolDisclosure'
 
 const INITIAL_VISIBLE_TURNS = 14
@@ -104,6 +105,11 @@ function isResultCard(item: TimelineItem): boolean {
   return item.kind === 'event' && item.event.type === 'loop_created'
 }
 
+function trailingErrorEventIndex(chronological: TimelineItem[], anchored: TimelineItem[]): number | undefined {
+  const lastItem = (anchored.length ? anchored : chronological).at(-1)
+  return lastItem?.kind === 'event' && lastItem.event.acp?.error ? lastItem.eventIndex : undefined
+}
+
 export const Transcript = memo(function Transcript({
   messages,
   events,
@@ -113,6 +119,7 @@ export const Transcript = memo(function Transcript({
   findActive = false,
   highlightedSeq,
   tail,
+  errorAction,
   onApprovePlan,
   onArtifactPrompt,
 }: {
@@ -125,6 +132,7 @@ export const Transcript = memo(function Transcript({
   highlightedSeq?: number
   // in-flight live exchange, rendered between history and anchored live state
   tail?: ReactNode
+  errorAction?: SessionErrorAction
   onApprovePlan?: () => void
   onArtifactPrompt?: (text: string) => void
 }) {
@@ -156,6 +164,7 @@ export const Transcript = memo(function Transcript({
   const hiddenHistoryCount = historyStart
   const visibleChronological = chronological.slice(historyStart)
   const visibleTurns = turns.slice(historyStart)
+  const errorActionEventIndex = errorAction ? trailingErrorEventIndex(chronological, anchored) : undefined
 
   const renderItem = (item: TimelineItem, options: RenderOptions = {}): ReactNode => {
     const showAssistantCopy = options.showAssistantCopy ?? true
@@ -204,6 +213,7 @@ export const Transcript = memo(function Transcript({
             }
             onApprovePlan={onApprovePlan}
             onArtifactPrompt={onArtifactPrompt}
+            errorAction={item.eventIndex === errorActionEventIndex ? errorAction : undefined}
             showCopy={showAssistantCopy}
             permissionResolution={
               item.event.permission ? permissionResolutions.get(item.event.permission.id) : undefined
