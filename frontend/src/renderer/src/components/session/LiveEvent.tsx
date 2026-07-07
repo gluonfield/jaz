@@ -7,7 +7,7 @@ import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { LoopCreatedCard } from './LoopCreatedCard'
-import { SessionErrorNotice } from './SessionErrorNotice'
+import { SessionErrorNotice, type SessionErrorAction } from './SessionErrorNotice'
 import { TaskChecklist } from './TaskChecklist'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolSummary } from './ToolDisclosure'
@@ -22,6 +22,7 @@ export const LiveEvent = memo(function LiveEvent({
   showTaskSurface,
   onApprovePlan,
   onArtifactPrompt,
+  errorAction,
 }: {
   event: SessionEvent
   showHeader: boolean
@@ -31,6 +32,7 @@ export const LiveEvent = memo(function LiveEvent({
   showTaskSurface?: boolean
   onApprovePlan?: () => void
   onArtifactPrompt?: (text: string) => void
+  errorAction?: SessionErrorAction
 }) {
   const eventTaskSurface = taskSurfaceFromEvent(event)
   const taskSurface = showTaskSurface ? eventTaskSurface : undefined
@@ -61,7 +63,7 @@ export const LiveEvent = memo(function LiveEvent({
       {event.content && !artifact ? (
         <AssistantMarkdown text={event.content} showCopy={showCopy} />
       ) : null}
-      {event.acp?.error ? <SessionErrorNotice message={event.acp.error} /> : null}
+      {event.acp?.error ? <SessionErrorNotice message={event.acp.error} action={errorAction} /> : null}
       {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} active={working} /> : null}
       {event.permission ? (
         <PermissionCard event={event} resolution={permissionResolution} />
