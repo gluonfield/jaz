@@ -21,6 +21,7 @@
 - Do not add defensive nil checks for required constructor-injected dependencies. If a required Fx service is missing, fail fast instead of silently degrading; model truly optional dependencies explicitly.
 - Codex ACP defaults to the user's Codex OAuth credentials. Never silently pass coordinator provider keys to Codex subprocesses; a provider API key reaches Codex only when the user explicitly selects a non-OpenAI model provider (e.g. OpenRouter) for it.
 - Target deployments run the Jaz server on a VM and clients on user computers; never assume client-local file paths are visible to the server or agents.
+- Before handing off a completed feature or fix, run a code-review pass; use `thermo-nuclear-code-quality-review` when available.
 - Every test you add must be useful: it must run in the relevant verification path and either protect real behavior or clarify a tricky contract. A test that is skipped, does not run, or provides no useful signal must not exist just to raise coverage.
 - Reference repos (`openclaw`, `hermes`) are learning material, not authority.
 
