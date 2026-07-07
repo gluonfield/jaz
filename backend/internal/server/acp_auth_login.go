@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/processenv"
 )
@@ -180,19 +182,14 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 		cmd.Dir = root
 	}
 	writer := acpAuthLoginWriter{job: job}
-	cmd.Stdout = writer
-	cmd.Stderr = writer
-	// Keep stdin open so a code the user pastes back can reach a CLI that's
-	// blocked waiting for it; loopback flows simply never read it.
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
+	if err := startACPAuthLoginProcess(cmd, job, writer, invocation.UsePTY); err != nil {
 		cancel()
 		return nil, err
 	}
-	job.stdin = stdin
-	if err := cmd.Start(); err != nil {
-		cancel()
-		return nil, err
+	var tail *acpAuthLogTail
+	if log := strings.TrimSpace(invocation.TailLog); log != "" {
+		tail = &acpAuthLogTail{path: log, w: writer}
+		go tail.follow(cmdCtx)
 	}
 	s.acpAuthLoginJobs.Store(job.ID, job)
 	go func() {
@@ -202,12 +199,94 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 		// verify so a late paste rejects cleanly instead of writing to a pipe
 		// Wait already closed.
 		job.closeStdin()
+		if tail != nil {
+			tail.drain()
+			_ = os.Remove(tail.path)
+		}
 		if err == nil {
 			err = s.verifyACPAuthLogin(agent, auth)
+		} else if last := job.lastOutputLine(); last != "" {
+			// CLI exit codes are opaque; the last printed line (e.g. agy's
+			// "Error: authentication failed or timed out") is the real story.
+			err = errors.New(last)
 		}
 		job.finish(err, cmdCtx.Err())
 	}()
 	return job, nil
+}
+
+// startACPAuthLoginProcess wires the login process to the job. Keep stdin open
+// so a code the user pastes back can reach a CLI that's blocked waiting for
+// it; loopback flows simply never read it. usePTY runs the CLI on a
+// pseudo-terminal for CLIs that stall draining piped stdin (agy).
+func startACPAuthLoginProcess(cmd *exec.Cmd, job *acpAuthLoginJob, writer acpAuthLoginWriter, usePTY bool) error {
+	if usePTY {
+		ptmx, err := pty.Start(cmd)
+		if err != nil {
+			return err
+		}
+		job.stdin = ptmx
+		go func() {
+			// The copy ends with EIO once the process exits and the pty closes.
+			_, _ = io.Copy(writer, ptmx)
+		}()
+		return nil
+	}
+	cmd.Stdout = writer
+	cmd.Stderr = writer
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	job.stdin = stdin
+	return cmd.Start()
+}
+
+var acpGlogLine = regexp.MustCompile(`^[IWEF][0-9]{4} `)
+
+// acpAuthLogTail streams a CLI log file's human-facing lines into the login
+// output: agy prints its sign-in URL and paste prompt only to its log, never
+// to stdout.
+type acpAuthLogTail struct {
+	path string
+	w    io.Writer
+
+	mu     sync.Mutex
+	offset int
+}
+
+func (t *acpAuthLogTail) follow(ctx context.Context) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			t.drain()
+		}
+	}
+}
+
+func (t *acpAuthLogTail) drain() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	data, err := os.ReadFile(t.path)
+	if err != nil {
+		return
+	}
+	end := bytes.LastIndexByte(data, '\n') + 1
+	if end <= t.offset {
+		return
+	}
+	chunk := data[t.offset:end]
+	t.offset = end
+	for _, line := range strings.Split(string(chunk), "\n") {
+		if strings.TrimSpace(line) == "" || acpGlogLine.MatchString(line) {
+			continue
+		}
+		_, _ = fmt.Fprintln(t.w, line)
+	}
 }
 
 func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) error {
@@ -236,6 +315,12 @@ func newACPAuthLoginID() (string, error) {
 func acpAuthLoginEnv(invocation acp.AgentLoginInvocation) []string {
 	env := processenv.Base()
 	processenv.PreserveHost(env, "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "SHELL", "SSH_AUTH_SOCK", "USER")
+	if invocation.UsePTY {
+		processenv.PreserveHost(env, "TERM")
+		if env["TERM"] == "" {
+			env["TERM"] = "xterm-256color"
+		}
+	}
 	if invocation.InheritHome {
 		if home := os.Getenv("HOME"); strings.TrimSpace(home) != "" {
 			env["HOME"] = home
@@ -263,6 +348,20 @@ func (j *acpAuthLoginJob) finish(runErr, ctxErr error) {
 	default:
 		j.Status = "succeeded"
 	}
+}
+
+// lastOutputLine returns the final non-empty line the login process printed.
+func (j *acpAuthLoginJob) lastOutputLine() string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	clean := acpANSISequence.ReplaceAllString(j.Output, "")
+	lines := strings.Split(clean, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 // closeStdin stops the job from accepting input once its process has exited.
