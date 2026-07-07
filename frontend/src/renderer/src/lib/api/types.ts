@@ -578,10 +578,17 @@ export interface ACPToolCall {
   kind?: string
   tool_name?: string
   content?: ACPToolContent[]
+  locations?: ACPToolLocation[]
   raw_input?: unknown
+  raw_output?: unknown
   runtime?: ACPToolRuntime
   started_at?: string
   updated_at?: string
+}
+
+export interface ACPToolLocation {
+  path: string
+  line?: number
 }
 
 export interface ACPToolRuntime {
@@ -938,6 +945,7 @@ export interface MCPServerStatus {
   tool_count: number
   tools?: MCPTool[]
   error?: string
+  auth_url?: string
   checked_at?: string
 }
 

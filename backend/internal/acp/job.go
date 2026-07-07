@@ -47,6 +47,7 @@ type jobState struct {
 	promptQueueing         bool
 	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
+	pendingToolUpdateByID  map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
 	usage                  storage.Usage
 	lastUsageDelta         storage.Usage
@@ -106,6 +107,7 @@ func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, mo
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.toolByID = make(map[string]sessionevents.ACPToolCall)
+	job.pendingToolUpdateByID = make(map[string]sessionevents.ACPToolCall)
 	return job
 }
 
@@ -202,6 +204,7 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	}
 	j.ParentVisible = parentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)
+	j.pendingToolUpdateByID = make(map[string]sessionevents.ACPToolCall)
 	j.UpdatedAt = now
 	j.LastEventAt = now
 	j.LastToolAt = time.Time{}
@@ -341,7 +344,9 @@ func CloneToolCalls(in []sessionevents.ACPToolCall) []sessionevents.ACPToolCall 
 	out := make([]sessionevents.ACPToolCall, 0, len(in))
 	for _, call := range in {
 		call.Content = append([]sessionevents.ACPToolContent(nil), call.Content...)
+		call.Locations = append([]sessionevents.ACPToolLocation(nil), call.Locations...)
 		call.RawInput = cloneMap(call.RawInput)
+		call.RawOutput = append([]byte(nil), call.RawOutput...)
 		call.Runtime = cloneToolRuntime(call.Runtime)
 		out = append(out, call)
 	}

@@ -26,6 +26,7 @@ import (
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/skills"
@@ -58,7 +59,7 @@ type MCPRuntime interface {
 	Refresh(context.Context)
 	Status(string) mcpconfig.ServerStatus
 	Test(context.Context, mcpconfig.Server) mcpconfig.ServerStatus
-	Authorize(context.Context, mcpconfig.Server) mcpconfig.ServerStatus
+	Authorize(context.Context, mcpconfig.Server, mcpconfig.AuthorizeOptions) mcpconfig.ServerStatus
 }
 
 type ModelCatalog interface {
@@ -99,6 +100,7 @@ type Server struct {
 	Providers    provider.Source
 	AgentCatalog acp.AgentCatalog
 	AuthKey      string
+	ServerConfig serverconfig.Config
 	// Prompts derives the system prompt fresh per turn from disk, so skill
 	// and prompt-file edits apply without a restart.
 	Prompts *coordinator.Builder

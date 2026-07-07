@@ -63,7 +63,14 @@ type ServerStatus struct {
 	ToolCount int          `json:"tool_count"`
 	Tools     []ServerTool `json:"tools,omitempty"`
 	Error     string       `json:"error,omitempty"`
+	AuthURL   string       `json:"auth_url,omitempty"`
 	CheckedAt time.Time    `json:"checked_at,omitempty"`
+}
+
+type AuthorizeOptions struct {
+	RedirectURL   string
+	ReturnAuthURL bool
+	OpenBrowser   bool
 }
 
 type ServerReader interface {

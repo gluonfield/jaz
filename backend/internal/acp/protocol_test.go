@@ -545,6 +545,168 @@ func TestToolCallUpdateCapturesLivenessState(t *testing.T) {
 	}
 }
 
+func TestSparseToolCallUpdateWaitsForToolData(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "claude-progress", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &jobState{
+		Job:                   Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentClaude, ACPSession: "acp-session"},
+		toolByID:              map[string]sessionevents.ACPToolCall{},
+		pendingToolUpdateByID: map[string]sessionevents.ACPToolCall{},
+	}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	raw, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call_update",
+				"toolCallId":    "exec-1",
+				"status":        "in_progress",
+				"_meta": map[string]any{
+					"claudeCode": map[string]any{
+						"toolName":     "Bash",
+						"toolResponse": map[string]any{"elapsedTimeSeconds": 1},
+					},
+				},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	if string(raw) != "{}" {
+		t.Fatalf("response = %s", raw)
+	}
+	assertNoEvent(t, sub)
+	if got := manager.jobsByID[session.ID].ToolCalls; len(got) != 0 {
+		t.Fatalf("orphan update created tool calls = %#v", got)
+	}
+
+	_, rpcErr = manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call_update",
+				"toolCallId":    "exec-1",
+				"kind":          "execute",
+				"status":        "in_progress",
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	assertNoEvent(t, sub)
+	if got := manager.jobsByID[session.ID].ToolCalls; len(got) != 0 {
+		t.Fatalf("kind-only update created tool calls = %#v", got)
+	}
+
+	_, rpcErr = manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call_update",
+				"toolCallId":    "exec-1",
+				"title":         "ls",
+				"status":        "completed",
+				"rawInput":      map[string]any{"command": "ls"},
+				"rawOutput":     map[string]any{"stdout": "ok"},
+				"locations":     []map[string]any{{"path": "script.sh", "line": 7}},
+				"_meta": map[string]any{
+					"claudeCode": map[string]any{"toolName": "Bash"},
+				},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	event := receiveEvent(t, sub)
+	if event.Type != "acp_tool" || event.ACP == nil || len(event.ACP.ToolCalls) != 1 {
+		t.Fatalf("unexpected event %#v", event)
+	}
+	call := event.ACP.ToolCalls[0]
+	if call.Title != "ls" || call.ToolName != "Bash" || call.RawInput["command"] != "ls" {
+		t.Fatalf("tool call = %#v", call)
+	}
+	if call.Status != "completed" {
+		t.Fatalf("status = %q, want completed", call.Status)
+	}
+	if len(call.Locations) != 1 || call.Locations[0].Path != "script.sh" || call.Locations[0].Line != 7 {
+		t.Fatalf("locations = %#v", call.Locations)
+	}
+	if !strings.Contains(string(call.RawOutput), "ok") {
+		t.Fatalf("raw output = %s", call.RawOutput)
+	}
+	if call.Runtime.ElapsedTimeSeconds != 1 {
+		t.Fatalf("elapsed seconds = %v, want 1", call.Runtime.ElapsedTimeSeconds)
+	}
+}
+
+func TestRawOutputToolCallUpdateMaterializesToolData(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "tool-result", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &jobState{
+		Job:                   Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentClaude, ACPSession: "acp-session"},
+		toolByID:              map[string]sessionevents.ACPToolCall{},
+		pendingToolUpdateByID: map[string]sessionevents.ACPToolCall{},
+	}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call_update",
+				"toolCallId":    "result-1",
+				"status":        "completed",
+				"rawOutput":     map[string]any{"stdout": "done"},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	event := receiveEvent(t, sub)
+	if event.Type != "acp_tool" || event.ACP == nil || len(event.ACP.ToolCalls) != 1 {
+		t.Fatalf("unexpected event %#v", event)
+	}
+	call := event.ACP.ToolCalls[0]
+	if call.ID != "result-1" || call.Status != "completed" || !strings.Contains(string(call.RawOutput), "done") {
+		t.Fatalf("tool call = %#v", call)
+	}
+}
+
 func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

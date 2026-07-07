@@ -11,9 +11,10 @@ import (
 )
 
 const (
-	maxToolContentBlocks = 64
-	maxToolContentText   = 8000
-	maxToolRawInputBytes = 2048
+	maxToolContentBlocks  = 64
+	maxToolContentText    = 8000
+	maxToolRawInputBytes  = 2048
+	maxToolRawOutputBytes = 8192
 )
 
 var (
@@ -46,8 +47,14 @@ func mergeToolCall(dst *sessionevents.ACPToolCall, src sessionevents.ACPToolCall
 	if len(src.Content) > 0 {
 		dst.Content = src.Content
 	}
+	if len(src.Locations) > 0 {
+		dst.Locations = src.Locations
+	}
 	if len(src.RawInput) > 0 {
 		dst.RawInput = src.RawInput
+	}
+	if len(src.RawOutput) > 0 {
+		dst.RawOutput = src.RawOutput
 	}
 	mergeACPToolRuntime(&dst.Runtime, src.Runtime)
 	if !src.StartedAt.IsZero() && dst.StartedAt.IsZero() {
@@ -58,22 +65,36 @@ func mergeToolCall(dst *sessionevents.ACPToolCall, src sessionevents.ACPToolCall
 	}
 }
 
-// toolUpdateSnapshot decodes one ACP tool-call update (a ToolCall or a
-// ToolCallUpdate — same fields) into a partial snapshot. Both session-update
-// variants share this so the protocol handler keeps a single code path; merge it
-// onto the running call with mergeToolCall.
-func toolUpdateSnapshot(id acpschema.ToolCallID, title string, status *acpschema.ToolCallStatus, kind *acpschema.ToolKind, content []acpschema.ToolCallContent, rawInput json.RawMessage, meta map[string]any, at time.Time) sessionevents.ACPToolCall {
+type toolUpdateFields struct {
+	ID        acpschema.ToolCallID
+	Title     string
+	Status    *acpschema.ToolCallStatus
+	Kind      *acpschema.ToolKind
+	Content   []acpschema.ToolCallContent
+	Locations []acpschema.ToolCallLocation
+	RawInput  json.RawMessage
+	RawOutput json.RawMessage
+	Meta      map[string]any
+	At        time.Time
+}
+
+// toolUpdateSnapshot decodes one ACP tool-call update (a ToolCall or
+// ToolCallUpdate) into a partial snapshot. Both session-update variants share
+// this so the protocol handler keeps one merge path.
+func toolUpdateSnapshot(fields toolUpdateFields) sessionevents.ACPToolCall {
 	src := sessionevents.ACPToolCall{
-		ID:       string(id),
-		Title:    title,
-		Kind:     kindString(kind),
-		ToolName: metaToolName(meta),
-		Content:  normalizeToolContent(content),
-		RawInput: boundedRawInput(rawInput),
-		Runtime:  acpToolRuntime(meta, at),
+		ID:        string(fields.ID),
+		Title:     fields.Title,
+		Kind:      kindString(fields.Kind),
+		ToolName:  metaToolName(fields.Meta),
+		Content:   normalizeToolContent(fields.Content),
+		Locations: normalizeToolLocations(fields.Locations),
+		RawInput:  boundedRawInput(fields.RawInput),
+		RawOutput: boundedRawOutput(fields.RawOutput),
+		Runtime:   acpToolRuntime(fields.Meta, fields.At),
 	}
-	if status != nil {
-		src.Status = string(*status)
+	if fields.Status != nil {
+		src.Status = string(*fields.Status)
 	}
 	return src
 }
@@ -94,6 +115,38 @@ func boundedRawInput(raw json.RawMessage) map[string]any {
 		return nil
 	}
 	return redactToolMap(out)
+}
+
+func boundedRawOutput(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 || len(raw) > maxToolRawOutputBytes {
+		return nil
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil
+	}
+	data, err := json.Marshal(redactToolValue(value))
+	if err != nil || len(data) == 0 || len(data) > maxToolRawOutputBytes {
+		return nil
+	}
+	return json.RawMessage(data)
+}
+
+func normalizeToolLocations(locations []acpschema.ToolCallLocation) []sessionevents.ACPToolLocation {
+	out := make([]sessionevents.ACPToolLocation, 0, len(locations))
+	for _, location := range locations {
+		if location.Path == "" {
+			continue
+		}
+		out = append(out, sessionevents.ACPToolLocation{
+			Path: redactToolText(location.Path),
+			Line: location.Line,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // metaToolName recovers the underlying tool name from the ACP _meta bag. Claude
