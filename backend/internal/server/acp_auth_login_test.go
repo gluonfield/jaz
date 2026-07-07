@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -418,4 +419,98 @@ func waitForACPAuthLogin(t *testing.T, handler http.Handler, id string) acpAuthL
 	}
 	t.Fatalf("login %s did not finish: %#v", id, got)
 	return got
+}
+
+func TestACPAuthLoginAntigravityTailsLogAndRelaysCode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the antigravity login PTY is unix-only")
+	}
+	home := t.TempDir()
+	bin := t.TempDir()
+	testexec.Write(t, filepath.Join(bin, "agy"), `#!/bin/sh
+if [ "$1" = "models" ]; then echo "Fake Model"; exit 0; fi
+log=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "--log-file" ]; then log="$arg"; fi
+  prev="$arg"
+done
+printf 'I0707 12:00:00.000000 1 server.go:1] glog noise\n' >> "$log"
+printf 'Authentication required. Please visit the URL to log in:\n' >> "$log"
+printf '  https://accounts.google.com/o/oauth2/auth?code_challenge=test\n' >> "$log"
+printf 'Or, paste the authorization code here and press Enter: \n' >> "$log"
+read code
+printf 'received=%s\n' "$code" >> "$log"
+exit 0
+`, "")
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/antigravity/auth/login", nil)
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("start status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var started acpAuthLoginResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &started); err != nil {
+		t.Fatal(err)
+	}
+
+	// The sign-in URL only exists in agy's log; the tail must surface it.
+	deadline := time.Now().Add(10 * time.Second)
+	var current acpAuthLoginResponse
+	for {
+		get := httptest.NewRequest(http.MethodGet, "/v1/acp/auth-logins/"+started.ID, nil)
+		getRes := httptest.NewRecorder()
+		handler.ServeHTTP(getRes, get)
+		if err := json.Unmarshal(getRes.Body.Bytes(), &current); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(current.AuthURL, "accounts.google.com") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("auth url never surfaced from the agy log: %#v", current)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if strings.Contains(current.Output, "glog noise") {
+		t.Fatalf("glog lines leaked into login output: %q", current.Output)
+	}
+
+	in := httptest.NewRequest(http.MethodPost, "/v1/acp/auth-logins/"+started.ID+"/input", strings.NewReader(`{"input":"SIGN-CODE-7"}`))
+	in.Header.Set("Content-Type", "application/json")
+	inRes := httptest.NewRecorder()
+	handler.ServeHTTP(inRes, in)
+	if inRes.Code != http.StatusOK {
+		t.Fatalf("input status = %d, body = %s", inRes.Code, inRes.Body.String())
+	}
+
+	done := waitForACPAuthLogin(t, handler, started.ID)
+	if done.Status != "succeeded" {
+		t.Fatalf("login status = %#v", done)
+	}
+	if !strings.Contains(done.Output, "received=SIGN-CODE-7") {
+		t.Fatalf("login did not relay pasted code through the pty: %q", done.Output)
+	}
+}
+
+func TestACPAuthLoginFailureLinePrefersErrorOverLaterPrompt(t *testing.T) {
+	job := &acpAuthLoginJob{Output: "Authentication required.\nError: authentication failed or timed out\nOr, paste the authorization code here and press Enter: \n"}
+	if got := job.failureLine(); got != "Error: authentication failed or timed out" {
+		t.Fatalf("failureLine = %q", got)
+	}
+	job = &acpAuthLoginJob{Output: "something odd happened\n\n"}
+	if got := job.failureLine(); got != "something odd happened" {
+		t.Fatalf("failureLine fallback = %q", got)
+	}
 }

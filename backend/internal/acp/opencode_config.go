@@ -19,6 +19,8 @@ const openCodeOpenAICompatibleNPM = "@ai-sdk/openai-compatible"
 type openCodeConfigContent struct {
 	Instructions []string                          `json:"instructions,omitempty"`
 	Provider     map[string]openCodeProviderConfig `json:"provider,omitempty"`
+	Model        string                            `json:"model,omitempty"`
+	SmallModel   string                            `json:"small_model,omitempty"`
 }
 
 type openCodeProviderConfig struct {
@@ -108,8 +110,14 @@ func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]stri
 		providerID := modelprovider.OpenCodeProviderIDFromModel(model)
 		content.Provider = map[string]openCodeProviderConfig{providerID: providerConfig}
 	}
+	if model != "" {
+		content.Model = model
+		if modelprovider.OpenCodeProviderIDFromModel(model) == modelprovider.ProviderOpenRouter {
+			content.SmallModel = model
+		}
+	}
 	addOpenCodeReasoningVariant(&content, model, agent.ReasoningEffort)
-	if len(content.Instructions) == 0 && len(content.Provider) == 0 {
+	if len(content.Instructions) == 0 && len(content.Provider) == 0 && content.Model == "" && content.SmallModel == "" {
 		return nil
 	}
 	data, err := json.Marshal(content)

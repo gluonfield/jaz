@@ -1,10 +1,11 @@
 package connections
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -29,9 +30,6 @@ type OAuthStore interface {
 	SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error
 }
 
-// DefaultOAuthRedirectBroker is the hosted HTTPS endpoint that bounces provider
-// callbacks to a desktop Jaz's local loopback, for providers (e.g. Slack) that
-// reject loopback redirect URIs.
 const DefaultOAuthRedirectBroker = "https://jaz.chat/oauth/callback"
 
 type OAuthConfig struct {
@@ -93,7 +91,7 @@ func NewOAuthService(store OAuthStore, config OAuthConfig) *OAuthService {
 	}
 }
 
-func (s *OAuthService) Start(_ context.Context, pluginID, localCallbackURL string) (OAuthStart, error) {
+func (s *OAuthService) Start(ctx context.Context, pluginID, localCallbackURL string) (OAuthStart, error) {
 	if localCallbackURL == "" {
 		return OAuthStart{}, errors.New("redirect URL is required")
 	}
@@ -107,12 +105,13 @@ func (s *OAuthService) Start(_ context.Context, pluginID, localCallbackURL strin
 	}
 	verifier := oauth2.GenerateVerifier()
 
-	// Providers that reject loopback callbacks are sent through the hosted broker,
-	// which bounces the response back to localCallbackURL (carried in state).
 	redirectURL, state := localCallbackURL, nonce
-	if provider.usesBroker() && s.brokerURL != "" && isLoopbackHTTP(localCallbackURL) {
-		redirectURL = s.brokerURL
-		state = encodeBrokerState(nonce, localCallbackURL)
+	if provider.usesBroker() && s.brokerURL != "" {
+		brokerState, err := s.mintBrokerState(ctx, localCallbackURL)
+		if err != nil {
+			return OAuthStart{}, err
+		}
+		redirectURL, state = s.brokerURL, brokerState
 	}
 
 	authURL, err := provider.authCodeURL(redirectURL, state, verifier)
@@ -212,17 +211,47 @@ func randomOAuthState() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-// encodeBrokerState packs the loopback callback into the OAuth state so the
-// hosted broker knows where to bounce the response. The broker validates it is
-// a loopback address before redirecting.
-func encodeBrokerState(nonce, localCallbackURL string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(nonce + "|" + localCallbackURL))
+type brokerStartRequest struct {
+	ReturnURL string `json:"return_url"`
 }
 
-func isLoopbackHTTP(raw string) bool {
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" {
-		return false
+type brokerStartResponse struct {
+	State string `json:"state"`
+}
+
+func (s *OAuthService) mintBrokerState(ctx context.Context, returnURL string) (string, error) {
+	body, err := json.Marshal(brokerStartRequest{ReturnURL: returnURL})
+	if err != nil {
+		return "", err
 	}
-	return u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, brokerStartURL(s.brokerURL), bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("oauth broker unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("oauth broker rejected start: %s", resp.Status)
+	}
+	var out brokerStartResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", fmt.Errorf("decode oauth broker response: %w", err)
+	}
+	if out.State == "" {
+		return "", errors.New("oauth broker returned no state")
+	}
+	return out.State, nil
+}
+
+func brokerStartURL(brokerCallbackURL string) string {
+	u, err := url.Parse(brokerCallbackURL)
+	if err != nil || u.Host == "" {
+		return brokerCallbackURL
+	}
+	u.Path, u.RawQuery, u.Fragment = "/oauth/start", "", ""
+	return u.String()
 }

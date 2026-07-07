@@ -15,9 +15,18 @@ import (
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/zalando/go-keyring"
 )
 
 const RefreshOwnerAgentCLI = "coding_agent_cli"
+
+// The agy CLI keeps its Google OAuth token in the OS keyring under this
+// entry, with ~/.gemini/antigravity-cli/antigravity-oauth-token as the
+// fallback copy for hosts without a keyring.
+const (
+	antigravityKeyringService = "gemini"
+	antigravityKeyringAccount = "antigravity"
+)
 
 const (
 	AuthKindOAuth  = "oauth"
@@ -352,8 +361,9 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 	}
 	cliPath := expandAuthPath(defaultHomePath(filepath.Join(".gemini", "antigravity-cli")))
 	status := resolvedAgentAuth{
-		Config: AgentAuthConfig{Mode: mode},
-		Source: mode,
+		Config:      AgentAuthConfig{Mode: mode},
+		StoragePath: filepath.Join(cliPath, "antigravity-oauth-token"),
+		Source:      mode,
 	}
 	cliAuthenticated := false
 	if mode == AuthModeAuto || mode == AuthModeExistingCLI {
@@ -361,17 +371,12 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 	}
 	if cliAuthenticated {
 		status.Config = AgentAuthConfig{Mode: AuthModeExistingCLI, Path: cliPath}
-		status.StoragePath = cliPath
 		status.Source = AuthModeExistingCLI
 		status.markAuthenticated("agy_models", AuthKindOAuth)
 		return status
 	}
 	if mode == AuthModeExistingCLI {
-		status.Source = AuthModeExistingCLI
 		status.Config.Path = cliPath
-		status.StoragePath = cliPath
-		status.Reason = "Antigravity CLI OAuth via agy"
-		return status
 	}
 	status.Reason = "Antigravity CLI OAuth via agy"
 	return status
@@ -421,7 +426,8 @@ func apiKeyAlias(key string) string {
 }
 
 // RemoveOwnedCredential deletes an agent's OAuth credential, but ONLY when Jaz
-// owns it — stored in Jaz's own profile (under root) or Grok's ~/.grok/auth.json.
+// owns it — stored in Jaz's own profile (under root) — or when the CLI login is
+// the agent's sole auth (Grok's ~/.grok/auth.json, Antigravity's agy token).
 // It never deletes the user's global ~/.claude.json / ~/.codex config. A no-op
 // when the path is empty, absent, or not Jaz-owned.
 func RemoveOwnedCredential(name, storagePath, root string) error {
@@ -430,7 +436,12 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	if storagePath == "" {
 		return nil
 	}
-	if !pathUnderRoot(storagePath, root) && name != AgentGrok {
+	if !pathUnderRoot(storagePath, root) && name != AgentGrok && name != AgentAntigravity {
+		return nil
+	}
+	// Credentials are always files; a directory StoragePath (e.g. OpenCode's
+	// config dir) holds no removable login.
+	if info, err := os.Stat(storagePath); err == nil && info.IsDir() {
 		return nil
 	}
 	if err := os.Remove(storagePath); err != nil && !os.IsNotExist(err) {
@@ -443,13 +454,26 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 			return err
 		}
 	}
+	// agy stores its OAuth token in the OS keyring; the file is a fallback copy.
+	// Best-effort: headless hosts have no keyring and agy uses the file there.
+	if name == AgentAntigravity {
+		_ = keyring.Delete(antigravityKeyringService, antigravityKeyringAccount)
+	}
 	return nil
 }
 
+// pathUnderRoot resolves symlinks before comparing so a symlinked directory
+// inside root cannot smuggle a global credential path past the ownership check.
 func pathUnderRoot(path, root string) bool {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		return false
+	}
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	if resolved, err := filepath.EvalSymlinks(filepath.Dir(path)); err == nil {
+		path = filepath.Join(resolved, filepath.Base(path))
 	}
 	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
 	if err != nil {

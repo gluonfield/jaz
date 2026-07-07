@@ -72,6 +72,49 @@ func TestDisconnectACPAuthRemovesJazOwnedCredentialAndKey(t *testing.T) {
 	}
 }
 
+func TestDisconnectACPAuthOpenCodeKeepsConfigDir(t *testing.T) {
+	// OpenCode's StoragePath is its config directory, not a credential file;
+	// disconnect must not try to delete it (it holds jaz-instructions.md).
+	t.Setenv("HOME", t.TempDir())
+	for _, key := range []string{"OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "JAZ_ACP_OPENCODE_API_KEY"} {
+		t.Setenv(key, "")
+	}
+
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
+
+	configDir := filepath.Join(root, "acp", "opencode")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	instructions := filepath.Join(configDir, "jaz-instructions.md")
+	if err := os.WriteFile(instructions, []byte("instructions"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{"JAZ_ACP_OPENCODE_API_KEY": "sk-test"}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/opencode/auth/disconnect", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if _, err := os.Stat(instructions); err != nil {
+		t.Fatalf("opencode config dir contents removed: %v", err)
+	}
+	if _, ok := runtimeenv.Lookup(runtimeenv.Path(root), "JAZ_ACP_OPENCODE_API_KEY"); ok {
+		t.Fatalf("api key not removed from runtime env")
+	}
+}
+
 func TestDisconnectACPAuthKeepsGlobalConfig(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

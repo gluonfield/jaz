@@ -1,71 +1,71 @@
 {
   "adapters": {
     "codex": {
-      "version": "0.16.18",
+      "version": "0.16.19",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.18/codex-acp-0.16.18-aarch64-apple-darwin.tar.gz",
-          "sha256": "c5c6b052c3a5061e266d3b5612ecaf823f6e79c7e7f1efba8624fdb3735dab57",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.19/codex-acp-0.16.19-aarch64-apple-darwin.tar.gz",
+          "sha256": "4bdb761d5985fea209a91cdb998071a7806d8cfdac04d799b20e8f96666f6f47",
           "binary": "codex-acp"
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.18/codex-acp-0.16.18-x86_64-apple-darwin.tar.gz",
-          "sha256": "4919bfb17ec93ccff91d2c4a1a5b4ae2ed3f0664f0f8fa52432753b7e5e1dda5",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.19/codex-acp-0.16.19-x86_64-apple-darwin.tar.gz",
+          "sha256": "83b312824322b1a42d147e6c5453fff18b5d9313bfbfedc2e04fdbf461073563",
           "binary": "codex-acp"
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.18/codex-acp-0.16.18-aarch64-unknown-linux-gnu.tar.gz",
-          "sha256": "92366d188902382e2f4a5a536fb86437acaa3b3bc9eb60939cfdb129ccc133c8",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.19/codex-acp-0.16.19-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "e54560cac8027d250718ad9420c5bfb7b342366d0bb5d607dc201f2b784886a9",
           "binary": "codex-acp"
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.18/codex-acp-0.16.18-x86_64-unknown-linux-gnu.tar.gz",
-          "sha256": "7bcd62c1684e16ddd5f5435f454cce03e081878ac0bd625d11f08174a5a6c429",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.19/codex-acp-0.16.19-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "17abfd347bdb661abffe2df9940bf1dd42e99da0e45bfa43e45446e6bbf20145",
           "binary": "codex-acp"
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.18/codex-acp-0.16.18-aarch64-pc-windows-msvc.tar.gz",
-          "sha256": "3aea080e48e9d68b2e347b90070d93491c77170f31b95fd1e591ce1bbeb8efa5",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.19/codex-acp-0.16.19-aarch64-pc-windows-msvc.tar.gz",
+          "sha256": "514f4000c2167c7555fc43794d2710be539719494afc15755ee95819f654e569",
           "binary": "codex-acp.exe"
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.18/codex-acp-0.16.18-x86_64-pc-windows-msvc.tar.gz",
-          "sha256": "b5046e2bf0f6d92e88a05ffbd00c13657fbcc829f88da32d7cc7ed7ea1404ff6",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.19/codex-acp-0.16.19-x86_64-pc-windows-msvc.tar.gz",
+          "sha256": "762a18c872d8b2c8bfc1ac897c1aa481520974ae061435abe978414e622f6755",
           "binary": "codex-acp.exe"
         }
       }
     },
     "antigravity": {
-      "version": "0.1.4",
+      "version": "0.1.6",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-darwin-arm64.tar.gz",
-          "sha256": "3091dbca8631b5dc18c5f9f2937b5495bf53d30bd5e7df262fb898b2f701925f",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.6/agy-acp-0.1.6-darwin-arm64.tar.gz",
+          "sha256": "f88ac3ae8983ace84f5c367e6ab95b4d056a50090fd353536a32147ec84c54e2",
           "binary": "agy-acp"
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-darwin-x64.tar.gz",
-          "sha256": "833735be5cd7cc4b0057976343f9504e29de6960b387bcd1158df1c2ae618f33",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.6/agy-acp-0.1.6-darwin-x64.tar.gz",
+          "sha256": "d9f5f58e98ec0ee7786f338af455d258ef643d78348b64c1f1048ae7997f93fa",
           "binary": "agy-acp"
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-linux-arm64.tar.gz",
-          "sha256": "2c6a4f51872e510271f51cd08b90be24b7c9206c711ddc17a50b4080d0755531",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.6/agy-acp-0.1.6-linux-arm64.tar.gz",
+          "sha256": "2645f3c9bd6cd27ad4b68a4f2a3ae99190deb174bddeb0dc1fa244814cb5f1ca",
           "binary": "agy-acp"
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-linux-x64.tar.gz",
-          "sha256": "805b21cd8fc4812f91c1113de032ee87a5ebd3696dee9f31824ac3cd69be20e6",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.6/agy-acp-0.1.6-linux-x64.tar.gz",
+          "sha256": "d2bfbcc1c2e43b71bf355f42e1d06f4d7be82886787ffc719f99d3e00d006368",
           "binary": "agy-acp"
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-win32-arm64.tar.gz",
-          "sha256": "796bfe8d50f9eb760355e056483177a543d61b79dc80852f5d337c15f147d82c",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.6/agy-acp-0.1.6-win32-arm64.tar.gz",
+          "sha256": "7bbc670c8bf87542bd068fb61629a8eed26712ed2017f864ee5c7c2d54672d70",
           "binary": "agy-acp.exe"
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-win32-x64.tar.gz",
-          "sha256": "44fd8f40714ff84e6891d81137b043d14cbce1c01f3e3dfdae388481fe563f5c",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.6/agy-acp-0.1.6-win32-x64.tar.gz",
+          "sha256": "b49a2f0f78524bdf8e1d75cc17871ceb7ca24a7cf0df5d596c778738f90eef09",
           "binary": "agy-acp.exe"
         }
       }

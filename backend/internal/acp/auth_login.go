@@ -24,6 +24,16 @@ func PrepareAgentLoginInvocation(name string, auth AgentAuthConfig, invocation A
 			return fmt.Errorf("prepare %s profile %s: %w", key, dir, err)
 		}
 	}
+	if log := strings.TrimSpace(invocation.TailLog); log != "" {
+		if err := os.MkdirAll(filepath.Dir(log), 0o700); err != nil {
+			return fmt.Errorf("prepare login log dir %s: %w", filepath.Dir(log), err)
+		}
+	}
+	if cwd := strings.TrimSpace(invocation.Cwd); cwd != "" {
+		if err := os.MkdirAll(cwd, 0o700); err != nil {
+			return fmt.Errorf("prepare login workspace %s: %w", cwd, err)
+		}
+	}
 	if CanonicalAgentName(name) == AgentCodex && auth.Mode == AuthModeJazProfile {
 		if err := ensureCodexFileCredentialConfig(invocation.Env["CODEX_HOME"]); err != nil {
 			return err

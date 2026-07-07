@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/processenv"
 )
@@ -176,38 +178,125 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 	cmdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpAuthLoginTimeout)
 	cmd := exec.CommandContext(cmdCtx, invocation.Executable, invocation.Args...)
 	cmd.Env = acpAuthLoginEnv(invocation)
-	if root := strings.TrimSpace(s.runtimeRoot()); root != "" {
-		cmd.Dir = root
-	}
+	cmd.Dir = firstNonEmpty(strings.TrimSpace(invocation.Cwd), strings.TrimSpace(s.runtimeRoot()))
 	writer := acpAuthLoginWriter{job: job}
-	cmd.Stdout = writer
-	cmd.Stderr = writer
-	// Keep stdin open so a code the user pastes back can reach a CLI that's
-	// blocked waiting for it; loopback flows simply never read it.
-	stdin, err := cmd.StdinPipe()
+	outputDone, err := startACPAuthLoginProcess(cmd, job, writer, invocation.UsePTY)
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	job.stdin = stdin
-	if err := cmd.Start(); err != nil {
-		cancel()
-		return nil, err
+	var tail *acpAuthLogTail
+	if log := strings.TrimSpace(invocation.TailLog); log != "" {
+		tail = &acpAuthLogTail{path: log, w: writer}
+		go tail.follow(cmdCtx)
 	}
 	s.acpAuthLoginJobs.Store(job.ID, job)
 	go func() {
 		defer cancel()
 		err := cmd.Wait()
+		// Let the pty reader deliver the CLI's final lines before closing the
+		// master discards them; it ends on its own once the process exits.
+		select {
+		case <-outputDone:
+		case <-time.After(time.Second):
+		}
 		// The process is done reading; stop accepting input before the (slower)
 		// verify so a late paste rejects cleanly instead of writing to a pipe
 		// Wait already closed.
 		job.closeStdin()
+		if tail != nil {
+			tail.drain()
+			_ = os.Remove(tail.path)
+		}
 		if err == nil {
 			err = s.verifyACPAuthLogin(agent, auth)
+		} else if last := job.failureLine(); last != "" {
+			// CLI exit codes are opaque; the printed error (e.g. agy's
+			// "Error: authentication failed or timed out") is the real story.
+			err = errors.New(last)
 		}
 		job.finish(err, cmdCtx.Err())
 	}()
 	return job, nil
+}
+
+// startACPAuthLoginProcess wires the login process to the job and returns a
+// channel that closes once its output has been fully read. Keep stdin open so
+// a code the user pastes back can reach a CLI that's blocked waiting for it;
+// loopback flows simply never read it. usePTY runs the CLI on a
+// pseudo-terminal for CLIs that stall draining piped stdin (agy).
+func startACPAuthLoginProcess(cmd *exec.Cmd, job *acpAuthLoginJob, writer acpAuthLoginWriter, usePTY bool) (<-chan struct{}, error) {
+	done := make(chan struct{})
+	if usePTY {
+		ptmx, err := pty.Start(cmd)
+		if err != nil {
+			return nil, err
+		}
+		job.stdin = ptmx
+		go func() {
+			// The copy ends with EIO once the process exits and the pty closes.
+			_, _ = io.Copy(writer, ptmx)
+			close(done)
+		}()
+		return done, nil
+	}
+	cmd.Stdout = writer
+	cmd.Stderr = writer
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	job.stdin = stdin
+	// exec.Cmd owns the pipe copies; Wait returns only after output is drained.
+	close(done)
+	return done, cmd.Start()
+}
+
+var acpGlogLine = regexp.MustCompile(`^[IWEF][0-9]{4} `)
+
+// acpAuthLogTail streams a CLI log file's human-facing lines into the login
+// output: agy prints its sign-in URL and paste prompt only to its log, never
+// to stdout.
+type acpAuthLogTail struct {
+	path string
+	w    io.Writer
+
+	mu     sync.Mutex
+	offset int
+}
+
+func (t *acpAuthLogTail) follow(ctx context.Context) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			t.drain()
+		}
+	}
+}
+
+func (t *acpAuthLogTail) drain() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	data, err := os.ReadFile(t.path)
+	if err != nil {
+		return
+	}
+	end := bytes.LastIndexByte(data, '\n') + 1
+	if end <= t.offset {
+		return
+	}
+	chunk := data[t.offset:end]
+	t.offset = end
+	for _, line := range strings.Split(string(chunk), "\n") {
+		if strings.TrimSpace(line) == "" || acpGlogLine.MatchString(line) {
+			continue
+		}
+		_, _ = fmt.Fprintln(t.w, line)
+	}
 }
 
 func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) error {
@@ -236,6 +325,12 @@ func newACPAuthLoginID() (string, error) {
 func acpAuthLoginEnv(invocation acp.AgentLoginInvocation) []string {
 	env := processenv.Base()
 	processenv.PreserveHost(env, "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "SHELL", "SSH_AUTH_SOCK", "USER")
+	if invocation.UsePTY {
+		processenv.PreserveHost(env, "TERM")
+		if env["TERM"] == "" {
+			env["TERM"] = "xterm-256color"
+		}
+	}
 	if invocation.InheritHome {
 		if home := os.Getenv("HOME"); strings.TrimSpace(home) != "" {
 			env["HOME"] = home
@@ -263,6 +358,30 @@ func (j *acpAuthLoginJob) finish(runErr, ctxErr error) {
 	default:
 		j.Status = "succeeded"
 	}
+}
+
+// failureLine picks the login output line that explains a failure: the most
+// recent line starting with "Error", else the final non-empty line. Log-tailed
+// prompts can land after the CLI's error, so recency alone is not enough.
+func (j *acpAuthLoginJob) failureLine() string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	clean := acpANSISequence.ReplaceAllString(j.Output, "")
+	lines := strings.Split(clean, "\n")
+	last := ""
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if last == "" {
+			last = line
+		}
+		if strings.HasPrefix(strings.ToLower(line), "error") {
+			return line
+		}
+	}
+	return last
 }
 
 // closeStdin stops the job from accepting input once its process has exited.
@@ -321,7 +440,7 @@ func acpAuthLoginHints(output string) (string, string) {
 	url := ""
 	for _, match := range acpAuthURL.FindAllString(clean, -1) {
 		match = strings.TrimRight(match, ".,)")
-		if strings.Contains(match, "auth.") || strings.Contains(match, "claude.com") {
+		if strings.Contains(match, "auth.") || strings.Contains(match, "claude.com") || strings.Contains(match, "accounts.google.com") {
 			url = match
 			break
 		}

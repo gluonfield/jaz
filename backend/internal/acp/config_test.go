@@ -872,6 +872,31 @@ func TestProcessEnvAddsOpenCodeOpenRouterReasoningVariant(t *testing.T) {
 	}
 }
 
+func TestProcessEnvSetsOpenCodeSmallModelForOpenRouter(t *testing.T) {
+	root := t.TempDir()
+	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+		ProviderMode:  AgentProviderModeAgentDefaults,
+		ModelProvider: "openrouter",
+		Model:         "tencent/hy3:free",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var content struct {
+		Model      string `json:"model"`
+		SmallModel string `json:"small_model"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	if content.Model != "openrouter/tencent/hy3:free" {
+		t.Fatalf("model = %q", content.Model)
+	}
+	if content.SmallModel != "openrouter/tencent/hy3:free" {
+		t.Fatalf("small_model = %q", content.SmallModel)
+	}
+}
+
 func TestProcessEnvDoesNotAddOpenCodeReasoningVariantForInvalidEffort(t *testing.T) {
 	root := t.TempDir()
 	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
@@ -883,8 +908,18 @@ func TestProcessEnvDoesNotAddOpenCodeReasoningVariantForInvalidEffort(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if content := env["OPENCODE_CONFIG_CONTENT"]; content != "" {
-		t.Fatalf("invalid effort should not create opencode config content: %q", content)
+	var content struct {
+		Provider map[string]struct {
+			Models map[string]struct {
+				Variants map[string]any `json:"variants"`
+			} `json:"models"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
+		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
+	}
+	if variants := content.Provider["openrouter"].Models["z-ai/glm-5.2"].Variants; len(variants) != 0 {
+		t.Fatalf("invalid effort created reasoning variants: %#v", variants)
 	}
 }
 
