@@ -59,22 +59,37 @@ func TestToolUpdateMergeSemantics(t *testing.T) {
 	now := time.Now().UTC()
 
 	// First update carries everything.
-	mergeToolCall(&call, toolUpdateSnapshot("t1", "\"query\"", &completed, &kind,
-		rawContent(t, `{"type":"content","content":{"type":"text","text":"Result (https://x.com)"}}`),
-		json.RawMessage(`{"query":"q"}`),
-		map[string]any{"claudeCode": map[string]any{"toolName": "WebSearch"}},
-		now,
-	))
+	mergeToolCall(&call, toolUpdateSnapshot(toolUpdateFields{
+		ID:      "t1",
+		Title:   "\"query\"",
+		Status:  &completed,
+		Kind:    &kind,
+		Content: rawContent(t, `{"type":"content","content":{"type":"text","text":"Result (https://x.com)"}}`),
+		Locations: []acpschema.ToolCallLocation{{
+			Path: "results.json",
+			Line: 3,
+		}},
+		RawInput:  json.RawMessage(`{"query":"q"}`),
+		RawOutput: json.RawMessage(`{"content":"ok","authorization":"Bearer ya29.visible"}`),
+		Meta:      map[string]any{"claudeCode": map[string]any{"toolName": "WebSearch"}},
+		At:        now,
+	}))
 	if call.Kind != "fetch" || call.ToolName != "WebSearch" {
 		t.Fatalf("kind/toolName not captured: %+v", call)
 	}
 	if len(call.Content) != 1 || len(call.RawInput) == 0 {
 		t.Fatalf("rich fields not captured: %+v", call)
 	}
+	if len(call.Locations) != 1 || call.Locations[0].Path != "results.json" || call.Locations[0].Line != 3 {
+		t.Fatalf("locations not captured: %+v", call.Locations)
+	}
+	if !strings.Contains(string(call.RawOutput), "[REDACTED]") || strings.Contains(string(call.RawOutput), "ya29.visible") {
+		t.Fatalf("rawOutput not redacted: %s", call.RawOutput)
+	}
 
 	// A sparse follow-up (id only) must NOT clear the captured content/kind.
-	mergeToolCall(&call, toolUpdateSnapshot("t1", "", nil, nil, nil, nil, nil, now))
-	if call.Kind != "fetch" || call.ToolName != "WebSearch" || len(call.Content) != 1 {
+	mergeToolCall(&call, toolUpdateSnapshot(toolUpdateFields{ID: "t1", At: now}))
+	if call.Kind != "fetch" || call.ToolName != "WebSearch" || len(call.Content) != 1 || len(call.Locations) != 1 || len(call.RawOutput) == 0 {
 		t.Fatalf("sparse update wrongly cleared fields: %+v", call)
 	}
 }
@@ -82,14 +97,20 @@ func TestToolUpdateMergeSemantics(t *testing.T) {
 func TestToolUpdateCapturesRuntimeMetadata(t *testing.T) {
 	now := time.Now().UTC()
 	status := acpschema.ToolCallStatusInProgress
-	call := toolUpdateSnapshot("bash-1", "Run tests", &status, nil, nil, nil, map[string]any{
-		"terminal_info": map[string]any{"terminal_id": "term-1", "cwd": "/repo"},
-		"claudeCode": map[string]any{
-			"toolName":        "Bash",
-			"parentToolUseId": "task-1",
-			"toolResponse":    map[string]any{"elapsedTimeSeconds": 12.5},
+	call := toolUpdateSnapshot(toolUpdateFields{
+		ID:     "bash-1",
+		Title:  "Run tests",
+		Status: &status,
+		Meta: map[string]any{
+			"terminal_info": map[string]any{"terminal_id": "term-1", "cwd": "/repo"},
+			"claudeCode": map[string]any{
+				"toolName":        "Bash",
+				"parentToolUseId": "task-1",
+				"toolResponse":    map[string]any{"elapsedTimeSeconds": 12.5},
+			},
 		},
-	}, now)
+		At: now,
+	})
 	if call.ToolName != "Bash" || call.Runtime.TerminalID != "term-1" || call.Runtime.TerminalCwd != "/repo" {
 		t.Fatalf("runtime metadata not captured: %+v", call)
 	}
@@ -97,10 +118,14 @@ func TestToolUpdateCapturesRuntimeMetadata(t *testing.T) {
 		t.Fatalf("claude metadata not captured: %+v", call.Runtime)
 	}
 
-	exit := toolUpdateSnapshot("bash-1", "", nil, nil, nil, nil, map[string]any{
-		"terminal_output": map[string]any{"terminal_id": "term-1", "data": "ok"},
-		"terminal_exit":   map[string]any{"terminal_id": "term-1", "exit_code": 0},
-	}, now)
+	exit := toolUpdateSnapshot(toolUpdateFields{
+		ID: "bash-1",
+		Meta: map[string]any{
+			"terminal_output": map[string]any{"terminal_id": "term-1", "data": "ok"},
+			"terminal_exit":   map[string]any{"terminal_id": "term-1", "exit_code": 0},
+		},
+		At: now,
+	})
 	mergeToolCall(&call, exit)
 	if call.Runtime.TerminalOutputAt.IsZero() {
 		t.Fatalf("terminal output timestamp not captured: %+v", call.Runtime)

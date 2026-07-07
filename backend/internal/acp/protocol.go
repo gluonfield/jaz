@@ -129,12 +129,28 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if err != nil {
 		return
 	}
-	recordTool := func(src sessionevents.ACPToolCall) {
-		call := job.toolByID[src.ID]
+	recordTool := func(src sessionevents.ACPToolCall, create bool) {
+		src.UpdatedAt = now
+		if job.toolByID == nil {
+			job.toolByID = make(map[string]sessionevents.ACPToolCall)
+		}
+		call, exists := job.toolByID[src.ID]
+		if !exists && !create && !toolUpdateCanMaterialize(src) {
+			if job.pendingToolUpdateByID == nil {
+				job.pendingToolUpdateByID = make(map[string]sessionevents.ACPToolCall)
+			}
+			pending := job.pendingToolUpdateByID[src.ID]
+			mergeToolCall(&pending, src)
+			job.pendingToolUpdateByID[src.ID] = pending
+			return
+		}
+		if pending, ok := job.pendingToolUpdateByID[src.ID]; ok {
+			mergeToolCall(&call, pending)
+			delete(job.pendingToolUpdateByID, src.ID)
+		}
 		if call.StartedAt.IsZero() {
 			call.StartedAt = now
 		}
-		src.UpdatedAt = now
 		mergeToolCall(&call, src)
 		job.toolByID[src.ID] = call
 		job.ToolCalls = sortedToolCalls(job.toolByID)
@@ -173,9 +189,31 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		thoughtMessageID = event.MessageID
 		job.Thought = appendACPText(job.Thought, thoughtChunk)
 	case acpschema.ToolCallSessionUpdate:
-		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta, now))
+		recordTool(toolUpdateSnapshot(toolUpdateFields{
+			ID:        event.ToolCallID,
+			Title:     event.Title,
+			Status:    event.Status,
+			Kind:      event.Kind,
+			Content:   event.Content,
+			Locations: event.Locations,
+			RawInput:  event.RawInput,
+			RawOutput: event.RawOutput,
+			Meta:      event.Meta,
+			At:        now,
+		}), true)
 	case acpschema.ToolCallUpdateSessionUpdate:
-		recordTool(toolUpdateSnapshot(event.ToolCallID, event.Title, event.Status, event.Kind, event.Content, event.RawInput, event.Meta, now))
+		recordTool(toolUpdateSnapshot(toolUpdateFields{
+			ID:        event.ToolCallID,
+			Title:     event.Title,
+			Status:    event.Status,
+			Kind:      event.Kind,
+			Content:   event.Content,
+			Locations: event.Locations,
+			RawInput:  event.RawInput,
+			RawOutput: event.RawOutput,
+			Meta:      event.Meta,
+			At:        now,
+		}), false)
 	case acpschema.PlanSessionUpdate:
 		plan := make([]sessionevents.PlanEntry, 0, len(event.Entries))
 		for _, entry := range event.Entries {
@@ -294,4 +332,8 @@ func sortedToolCalls(in map[string]sessionevents.ACPToolCall) []sessionevents.AC
 		return out[i].ID < out[j].ID
 	})
 	return out
+}
+
+func toolUpdateCanMaterialize(call sessionevents.ACPToolCall) bool {
+	return call.Title != "" || len(call.Content) > 0 || len(call.RawInput) > 0
 }

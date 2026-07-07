@@ -316,16 +316,23 @@ type PlanEntry struct {
 type ACPPlanEntry = PlanEntry
 
 type ACPToolCall struct {
-	ID        string           `json:"id"`
-	Title     string           `json:"title,omitempty"`
-	Status    string           `json:"status,omitempty"`
-	Kind      string           `json:"kind,omitempty"`
-	ToolName  string           `json:"tool_name,omitempty"`
-	Content   []ACPToolContent `json:"content,omitempty"`
-	RawInput  map[string]any   `json:"raw_input,omitempty"`
-	Runtime   ACPToolRuntime   `json:"runtime,omitzero"`
-	StartedAt time.Time        `json:"started_at,omitzero"`
-	UpdatedAt time.Time        `json:"updated_at,omitzero"`
+	ID        string            `json:"id"`
+	Title     string            `json:"title,omitempty"`
+	Status    string            `json:"status,omitempty"`
+	Kind      string            `json:"kind,omitempty"`
+	ToolName  string            `json:"tool_name,omitempty"`
+	Content   []ACPToolContent  `json:"content,omitempty"`
+	Locations []ACPToolLocation `json:"locations,omitempty"`
+	RawInput  map[string]any    `json:"raw_input,omitempty"`
+	RawOutput json.RawMessage   `json:"raw_output,omitempty"`
+	Runtime   ACPToolRuntime    `json:"runtime,omitzero"`
+	StartedAt time.Time         `json:"started_at,omitzero"`
+	UpdatedAt time.Time         `json:"updated_at,omitzero"`
+}
+
+type ACPToolLocation struct {
+	Path string `json:"path"`
+	Line int    `json:"line,omitempty"`
 }
 
 // ACPToolContent is a normalized tool-call result block, distilled from the ACP
