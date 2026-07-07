@@ -46,7 +46,7 @@ const router = createRouter({
 })
 
 const LAUNCH_SPLASH_SESSION_KEY = 'jaz.launchSplash.played'
-const LAUNCH_SPLASH_MS = 1_800
+const LAUNCH_SPLASH_MS = 900
 
 declare module '@tanstack/react-router' {
   interface Register {
