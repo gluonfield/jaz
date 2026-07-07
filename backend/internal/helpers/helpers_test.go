@@ -23,3 +23,17 @@ func TestGenerateSchemaMatchesOpenAIStrictRequirements(t *testing.T) {
 		t.Fatalf("optional type = %#v", types)
 	}
 }
+
+func TestGenerateSchemaAllowsNullForOptionalEnums(t *testing.T) {
+	type input struct {
+		Optional string `json:"optional,omitempty" jsonschema:"enum=low,enum=xhigh"`
+	}
+
+	schema := GenerateSchema[input]()
+	properties := schema["properties"].(map[string]any)
+	optional := properties["optional"].(map[string]any)
+	values := optional["enum"].([]any)
+	if len(values) != 3 || values[0] != "low" || values[1] != "xhigh" || values[2] != nil {
+		t.Fatalf("optional enum = %#v", values)
+	}
+}

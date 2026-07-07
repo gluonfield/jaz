@@ -68,6 +68,18 @@ func normalizeStrictSchema(schema map[string]any) {
 }
 
 func allowNull(schema map[string]any) {
+	if enum, ok := schema["enum"].([]any); ok {
+		hasNull := false
+		for _, item := range enum {
+			if item == nil {
+				hasNull = true
+				break
+			}
+		}
+		if !hasNull {
+			schema["enum"] = append(enum, nil)
+		}
+	}
 	switch typ := schema["type"].(type) {
 	case string:
 		if typ != "null" {

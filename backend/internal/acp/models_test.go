@@ -128,6 +128,11 @@ func TestDefaultAgentReasoningEffortPrefersXHighWhenSupported(t *testing.T) {
 	if got := DefaultAgentReasoningEffort(AgentAntigravity); got != "" {
 		t.Fatalf("antigravity default effort = %q, want empty", got)
 	}
+	for _, agent := range []string{"", "custom"} {
+		if got := DefaultAgentReasoningEffort(agent); got != "" {
+			t.Fatalf("%q default effort = %q, want empty", agent, got)
+		}
+	}
 }
 
 func TestResolveAdvertisedContextTag(t *testing.T) {

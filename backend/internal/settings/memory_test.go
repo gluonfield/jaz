@@ -37,6 +37,11 @@ func TestWorkerAgentReasoningEffortUsesXHighWhenAvailable(t *testing.T) {
 			t.Fatalf("%s effort = %q, want default", agent, got)
 		}
 	}
+	for _, agent := range []string{"", "custom"} {
+		if got := WorkerAgentReasoningEffort(agent, defaults); got != "" {
+			t.Fatalf("%q effort = %q, want default", agent, got)
+		}
+	}
 	defaults.ACP[acp.AgentOpenCode] = ACPAgentDefaults{ModelProvider: provider.ProviderOllama}
 	if got := WorkerAgentReasoningEffort(acp.AgentOpenCode, defaults); got != "" {
 		t.Fatalf("opencode/ollama effort = %q, want no default", got)
