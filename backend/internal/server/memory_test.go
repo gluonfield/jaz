@@ -179,7 +179,7 @@ func TestMemoryAgentSetting(t *testing.T) {
 	if status.Agent != "codex" || !status.Enabled {
 		t.Fatalf("unexpected memory agent status %#v", status)
 	}
-	if status.Model != "" || status.DefaultModel != "gpt-5.4-mini" || status.DefaultReasoningEffort != "low" {
+	if status.Model != "" || status.DefaultModel != "gpt-5.4-mini" || status.DefaultReasoningEffort != "xhigh" {
 		t.Fatalf("unexpected memory worker defaults %#v", status)
 	}
 
@@ -210,7 +210,7 @@ func TestMemoryAgentSetting(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Agent != "claude" || status.Model != "" || status.ReasoningEffort != "" || status.DefaultModel != "sonnet" {
+	if status.Agent != "claude" || status.Model != "" || status.ReasoningEffort != "" || status.DefaultModel != "default" || status.DefaultReasoningEffort != "xhigh" {
 		t.Fatalf("switching agents should reset overrides, got %#v", status)
 	}
 

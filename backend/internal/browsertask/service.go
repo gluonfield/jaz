@@ -202,7 +202,7 @@ func (s *Service) ensureWorker(ctx context.Context, parentID, sessionKey, slug, 
 		Title:           "Browser: " + sessionKey,
 		Directory:       workerDir,
 		Model:           jazsettings.WorkerAgentModel(agent, defaults),
-		ReasoningEffort: jazsettings.WorkerAgentReasoningEffort(agent),
+		ReasoningEffort: jazsettings.WorkerAgentReasoningEffort(agent, defaults),
 		SourceType:      storage.SourceBrowserTask,
 		SourceID:        sourceID(parentID, sessionKey),
 		SystemPromptExtensions: promptmodule.New(

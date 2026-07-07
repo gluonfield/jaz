@@ -40,11 +40,11 @@ func (m MemorySettings) WorkerModel(defaults AgentDefaults) string {
 	return WorkerAgentModel(m.Agent, defaults)
 }
 
-func (m MemorySettings) WorkerReasoningEffort() string {
+func (m MemorySettings) WorkerReasoningEffort(defaults AgentDefaults) string {
 	if m.ReasoningEffort != "" {
 		return m.ReasoningEffort
 	}
-	return WorkerAgentReasoningEffort(m.Agent)
+	return WorkerAgentReasoningEffort(m.Agent, defaults)
 }
 
 func LoadMemorySettings(store storage.SettingsStorage) (MemorySettings, error) {

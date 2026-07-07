@@ -109,7 +109,7 @@ func (s *Server) memoryStatus(r *http.Request) (memoryStatusResponse, error) {
 		Model:                  settings.Model,
 		ReasoningEffort:        settings.ReasoningEffort,
 		DefaultModel:           jazsettings.WorkerAgentModel(settings.Agent, agentDefaults),
-		DefaultReasoningEffort: jazsettings.WorkerAgentReasoningEffort(settings.Agent),
+		DefaultReasoningEffort: jazsettings.WorkerAgentReasoningEffort(settings.Agent, agentDefaults),
 		SchedulerRunning:       s.Memory.Scheduler != nil && s.Memory.Scheduler.Running(),
 		Root:                   s.Memory.Root(),
 		DBPath:                 s.Memory.DBPath(),

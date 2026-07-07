@@ -235,7 +235,8 @@ func spawnInputSchema(agents []string) map[string]any {
 			},
 			"reasoning_effort": map[string]any{
 				"type":        "string",
-				"description": "Reasoning effort override: none, minimal, low, medium, high, or xhigh.",
+				"description": "Reasoning effort override. Omit to use the configured default; built-in agents default to xhigh when supported.",
+				"enum":        []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultracode"},
 			},
 		},
 	}

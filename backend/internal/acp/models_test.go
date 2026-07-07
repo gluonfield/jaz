@@ -119,6 +119,17 @@ func TestNormalizeAgentReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestDefaultAgentReasoningEffortPrefersXHighWhenSupported(t *testing.T) {
+	for _, agent := range []string{AgentCodex, AgentClaude, AgentGrok, AgentOpenCode} {
+		if got := DefaultAgentReasoningEffort(agent); got != "xhigh" {
+			t.Fatalf("%s default effort = %q, want xhigh", agent, got)
+		}
+	}
+	if got := DefaultAgentReasoningEffort(AgentAntigravity); got != "" {
+		t.Fatalf("antigravity default effort = %q, want empty", got)
+	}
+}
+
 func TestResolveAdvertisedContextTag(t *testing.T) {
 	// Claude Code alternates Fable's [1m] context tag between restarts; whichever
 	// spelling the catalog carries, resolution must land on the advertised one.

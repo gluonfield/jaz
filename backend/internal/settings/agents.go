@@ -144,7 +144,7 @@ func WorkerAgentModel(agent string, defaults AgentDefaults) string {
 		}
 		return "gpt-5.4-mini"
 	case acp.AgentClaude:
-		return "sonnet"
+		return "default"
 	case acp.AgentGrok:
 		return "grok-composer-2.5-fast"
 	case acp.AgentOpenCode:
@@ -161,12 +161,17 @@ func WorkerAgentModel(agent string, defaults AgentDefaults) string {
 	}
 }
 
-func WorkerAgentReasoningEffort(agent string) string {
+func WorkerAgentReasoningEffort(agent string, defaults AgentDefaults) string {
 	switch acp.CanonicalAgentName(agent) {
-	case acp.AgentCodex, acp.AgentGrok:
-		return "low"
+	case acp.AgentOpenCode:
+		switch strings.TrimSpace(defaults.ACP[acp.AgentOpenCode].ModelProvider) {
+		case "", provider.ProviderOpenAI, provider.ProviderOpenRouter:
+			return acp.DefaultAgentReasoningEffort(agent)
+		default:
+			return ""
+		}
 	default:
-		return ""
+		return acp.DefaultAgentReasoningEffort(agent)
 	}
 }
 

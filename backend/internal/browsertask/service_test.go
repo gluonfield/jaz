@@ -108,7 +108,7 @@ func TestBrowserTaskSpawnsRestrictedWorker(t *testing.T) {
 	if manager.spawn.Directory != workerDir {
 		t.Fatalf("directory = %q", manager.spawn.Directory)
 	}
-	if manager.spawn.Model != "gpt-5.4-mini" || manager.spawn.ReasoningEffort != "low" {
+	if manager.spawn.Model != "gpt-5.4-mini" || manager.spawn.ReasoningEffort != "xhigh" {
 		t.Fatalf("model/effort = %q/%q", manager.spawn.Model, manager.spawn.ReasoningEffort)
 	}
 	if manager.send.Session != "browser-session" || manager.send.Completion != acp.CompletionInline || manager.send.ParentVisible {
