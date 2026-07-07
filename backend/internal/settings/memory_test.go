@@ -23,16 +23,23 @@ func TestDefaultWorkerAgentPriority(t *testing.T) {
 	}
 }
 
-func TestWorkerAgentReasoningEffortUsesAdvertisedLowTier(t *testing.T) {
-	for _, agent := range []string{acp.AgentCodex, acp.AgentGrok} {
-		if got := WorkerAgentReasoningEffort(agent); got != "low" {
-			t.Fatalf("%s effort = %q, want low", agent, got)
+func TestWorkerAgentReasoningEffortUsesXHighWhenAvailable(t *testing.T) {
+	defaults := AgentDefaults{ACP: map[string]ACPAgentDefaults{
+		acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter},
+	}}
+	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentGrok, acp.AgentOpenCode} {
+		if got := WorkerAgentReasoningEffort(agent, defaults); got != "xhigh" {
+			t.Fatalf("%s effort = %q, want xhigh", agent, got)
 		}
 	}
-	for _, agent := range []string{acp.AgentClaude, acp.AgentOpenCode} {
-		if got := WorkerAgentReasoningEffort(agent); got != "" {
+	for _, agent := range []string{acp.AgentAntigravity} {
+		if got := WorkerAgentReasoningEffort(agent, defaults); got != "" {
 			t.Fatalf("%s effort = %q, want default", agent, got)
 		}
+	}
+	defaults.ACP[acp.AgentOpenCode] = ACPAgentDefaults{ModelProvider: provider.ProviderOllama}
+	if got := WorkerAgentReasoningEffort(acp.AgentOpenCode, defaults); got != "" {
+		t.Fatalf("opencode/ollama effort = %q, want no default", got)
 	}
 }
 
@@ -49,19 +56,21 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			name:    "codex",
 			agent:   acp.AgentCodex,
 			model:   "gpt-5.4-mini",
-			effort:  "low",
+			effort:  "xhigh",
 			allowed: []string{"low", "medium", "high", "xhigh"},
 		},
 		{
-			name:  "claude",
-			agent: acp.AgentClaude,
-			model: "sonnet",
+			name:    "claude",
+			agent:   acp.AgentClaude,
+			model:   "default",
+			effort:  "xhigh",
+			allowed: []string{"low", "medium", "high", "xhigh", "max", "ultracode"},
 		},
 		{
 			name:    "grok",
 			agent:   acp.AgentGrok,
 			model:   "grok-composer-2.5-fast",
-			effort:  "low",
+			effort:  "xhigh",
 			allowed: []string{"low", "medium", "high", "xhigh"},
 		},
 		{
@@ -69,12 +78,16 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			agent:    acp.AgentOpenCode,
 			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter}}},
 			model:    "openai/gpt-5.4-mini",
+			effort:   "xhigh",
+			allowed:  []string{"low", "medium", "high", "xhigh", "max"},
 		},
 		{
 			name:     "opencode-openai",
 			agent:    acp.AgentOpenCode,
 			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenAI}}},
 			model:    "gpt-5.4-mini",
+			effort:   "xhigh",
+			allowed:  []string{"low", "medium", "high", "xhigh", "max"},
 		},
 		{
 			name:     "opencode-ollama",
@@ -99,7 +112,7 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			if got := WorkerAgentModel(tc.agent, tc.defaults); got != tc.model {
 				t.Fatalf("model = %q, want %q", got, tc.model)
 			}
-			effort := WorkerAgentReasoningEffort(tc.agent)
+			effort := WorkerAgentReasoningEffort(tc.agent, tc.defaults)
 			if effort != tc.effort {
 				t.Fatalf("effort = %q, want %q", effort, tc.effort)
 			}
@@ -119,18 +132,18 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 func TestMemorySettingsWorkerOverrides(t *testing.T) {
 	defaults := DefaultAgentDefaults()
 	settings := MemorySettings{Agent: acp.AgentClaude}
-	if got := settings.WorkerModel(defaults); got != "sonnet" {
-		t.Fatalf("default model = %q, want sonnet", got)
+	if got := settings.WorkerModel(defaults); got != "default" {
+		t.Fatalf("default model = %q, want default", got)
 	}
-	if got := settings.WorkerReasoningEffort(); got != "" {
-		t.Fatalf("default effort = %q, want empty", got)
+	if got := settings.WorkerReasoningEffort(defaults); got != "xhigh" {
+		t.Fatalf("default effort = %q, want xhigh", got)
 	}
 	settings.Model = "haiku"
 	settings.ReasoningEffort = "low"
 	if got := settings.WorkerModel(defaults); got != "haiku" {
 		t.Fatalf("override model = %q, want haiku", got)
 	}
-	if got := settings.WorkerReasoningEffort(); got != "low" {
+	if got := settings.WorkerReasoningEffort(defaults); got != "low" {
 		t.Fatalf("override effort = %q, want low", got)
 	}
 }

@@ -86,7 +86,7 @@ func TestSearchMemorySpawnsRestrictedSearchSession(t *testing.T) {
 	if manager.spawn.ACPAgent != acp.AgentCodex {
 		t.Fatalf("agent = %q", manager.spawn.ACPAgent)
 	}
-	if manager.spawn.Model != "gpt-5.4-mini" || manager.spawn.ReasoningEffort != "low" {
+	if manager.spawn.Model != "gpt-5.4-mini" || manager.spawn.ReasoningEffort != "xhigh" {
 		t.Fatalf("model/effort = %q/%q", manager.spawn.Model, manager.spawn.ReasoningEffort)
 	}
 	if manager.spawn.SourceType != storage.SourceMemorySearch || manager.spawn.SourceID != stamp {
@@ -141,7 +141,7 @@ func TestSearchMemoryUsesUnifiedMemoryAgent(t *testing.T) {
 	if manager.spawn.ACPAgent != acp.AgentClaude {
 		t.Fatalf("agent = %q", manager.spawn.ACPAgent)
 	}
-	if manager.spawn.Model != "sonnet" {
+	if manager.spawn.Model != "default" || manager.spawn.ReasoningEffort != "xhigh" {
 		t.Fatalf("model = %q", manager.spawn.Model)
 	}
 }
@@ -154,15 +154,15 @@ func TestSearchMemorySpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
 		model    string
 		effort   string
 	}{
-		{name: "codex", agent: acp.AgentCodex, model: "gpt-5.4-mini", effort: "low"},
-		{name: "claude", agent: acp.AgentClaude, model: "sonnet"},
-		{name: "grok", agent: acp.AgentGrok, model: "grok-composer-2.5-fast", effort: "low"},
+		{name: "codex", agent: acp.AgentCodex, model: "gpt-5.4-mini", effort: "xhigh"},
+		{name: "claude", agent: acp.AgentClaude, model: "default", effort: "xhigh"},
+		{name: "grok", agent: acp.AgentGrok, model: "grok-composer-2.5-fast", effort: "xhigh"},
 		{name: "opencode-openrouter-style", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter},
-		}}, model: "openai/gpt-5.4-mini"},
+		}}, model: "openai/gpt-5.4-mini", effort: "xhigh"},
 		{name: "opencode-openai", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenAI},
-		}}, model: "gpt-5.4-mini"},
+		}}, model: "gpt-5.4-mini", effort: "xhigh"},
 		{name: "opencode-ollama", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOllama},
 		}}},

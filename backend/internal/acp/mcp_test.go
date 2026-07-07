@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -87,6 +88,11 @@ func TestSpawnInputSchemaAdvertisesAgentEnums(t *testing.T) {
 		if len(enum) != 2 || enum[0] != AgentCodex || enum[1] != AgentClaude {
 			t.Fatalf("%s enum = %#v", name, property["enum"])
 		}
+	}
+	effort, _ := properties["reasoning_effort"].(map[string]any)
+	effortEnum, _ := effort["enum"].([]string)
+	if len(effortEnum) == 0 || !slices.Contains(effortEnum, "xhigh") || !slices.Contains(effortEnum, "ultracode") {
+		t.Fatalf("reasoning_effort enum = %#v", effort["enum"])
 	}
 }
 

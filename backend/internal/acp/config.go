@@ -273,7 +273,7 @@ func BuiltinAgents() AgentCatalog {
 		AgentClaude: {
 			ManagedAdapter:  "claude",
 			Model:           "default",
-			ReasoningEffort: "xhigh",
+			ReasoningEffort: DefaultAgentReasoningEffort(AgentClaude),
 		},
 		AgentGrok: {
 			Command: "grok",
@@ -285,7 +285,7 @@ func BuiltinAgents() AgentCatalog {
 				"stdio",
 			},
 			Model:           "grok-build",
-			ReasoningEffort: "medium",
+			ReasoningEffort: DefaultAgentReasoningEffort(AgentGrok),
 		},
 		AgentOpenCode: {
 			Command:                 "npx",
@@ -294,7 +294,7 @@ func BuiltinAgents() AgentCatalog {
 			ModelProviderCapability: provider.CapabilityOpenCode,
 			ModelProvider:           provider.ProviderOpenRouter,
 			Model:                   "openai/gpt-5.4-mini",
-			ReasoningEffort:         "",
+			ReasoningEffort:         DefaultAgentReasoningEffort(AgentOpenCode),
 		},
 		AgentAntigravity: {
 			ManagedAdapter:        "antigravity",
@@ -319,7 +319,7 @@ func codexBuiltinAgent(_ string) AgentConfig {
 		ModelProvider:           provider.ProviderOpenAI,
 		AuthProviderID:          provider.ProviderOpenAI,
 		Model:                   "gpt-5.5",
-		ReasoningEffort:         "xhigh",
+		ReasoningEffort:         DefaultAgentReasoningEffort(AgentCodex),
 	}
 }
 

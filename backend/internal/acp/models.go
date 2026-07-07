@@ -152,6 +152,15 @@ func (p agentPolicy) reasoningEffortOptions() []ReasoningEffortOption {
 	return append([]ReasoningEffortOption(nil), p.effortOptions...)
 }
 
+func (p agentPolicy) supportsReasoningEffort(value string) bool {
+	for _, option := range p.effortOptions {
+		if option.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
 func (p agentPolicy) normalizeReasoningEffort(value string) (string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	if len(p.effortOptions) == 0 {
@@ -661,6 +670,13 @@ func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 
 func NormalizeAgentReasoningEffort(agentName, value string) (string, error) {
 	return agentPolicyForAgent(CanonicalAgentName(agentName)).normalizeReasoningEffort(value)
+}
+
+func DefaultAgentReasoningEffort(agentName string) string {
+	if agentPolicyForAgent(CanonicalAgentName(agentName)).supportsReasoningEffort("xhigh") {
+		return "xhigh"
+	}
+	return ""
 }
 
 func configuredAgentReasoningEffort(agentName, value string) string {

@@ -69,7 +69,7 @@ func (r *Runner) SearchMemory(ctx context.Context, req memoryservice.AgenticSear
 		Title:           "Memory Search",
 		Directory:       workerDirectory,
 		Model:           settings.WorkerModel(agentDefaults),
-		ReasoningEffort: settings.WorkerReasoningEffort(),
+		ReasoningEffort: settings.WorkerReasoningEffort(agentDefaults),
 		SourceType:      storage.SourceMemorySearch,
 		SourceID:        fmt.Sprintf("%d", stamp),
 		SystemPromptExtensions: promptmodule.New(

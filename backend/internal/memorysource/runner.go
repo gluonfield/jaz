@@ -151,7 +151,7 @@ func (r *Runner) capture(ctx context.Context, settings agentsettings.MemorySetti
 		Title:                  "Memory Source Capture",
 		Directory:              r.Root,
 		Model:                  settings.WorkerModel(defaults),
-		ReasoningEffort:        settings.WorkerReasoningEffort(),
+		ReasoningEffort:        settings.WorkerReasoningEffort(defaults),
 		SourceType:             storage.SourceMemorySource,
 		SourceID:               stamp,
 		SystemPromptExtensions: promptmodule.New(memorysourceprompt.System()),
