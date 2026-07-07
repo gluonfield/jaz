@@ -256,6 +256,10 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 			t.Fatalf("acp_options.codex must emit %q, body = %s", flag, getRes.Body.String())
 		}
 	}
+	reasoningEfforts, ok := rawOptions.ACPOptions["antigravity"]["reasoning_efforts"]
+	if !ok || len(reasoningEfforts) == 0 || reasoningEfforts[0] != '[' {
+		t.Fatalf("acp_options.antigravity.reasoning_efforts must be an array, body = %s", getRes.Body.String())
+	}
 	if got.ACPOptions["opencode"].ProviderMode != acp.AgentProviderModeAgentDefaults ||
 		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openrouter") ||
 		!hasString(got.ACPOptions["opencode"].ModelProviderIDs, "openai") ||

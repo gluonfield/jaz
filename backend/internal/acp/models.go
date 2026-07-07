@@ -644,6 +644,9 @@ func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 	options := AgentOptions{
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
 	}
+	if options.ReasoningEfforts == nil {
+		options.ReasoningEfforts = []ReasoningEffortOption{}
+	}
 	options.Local = cfg.Local
 	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)
 	options.AuthProviderID = strings.TrimSpace(cfg.AuthProviderID)

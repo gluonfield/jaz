@@ -10,7 +10,7 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
     providers: settings.providers ?? [],
     acp_auth: settings.acp_auth ?? {},
     acp_keys: settings.acp_keys ?? {},
-    acp_options: settings.acp_options ?? {},
+    acp_options: cloneACPOptions(settings.acp_options),
     acp: Object.fromEntries(
       agents.map((agent) => {
         const current = settings.acp?.[agent] ?? { enabled: false }
@@ -32,6 +32,25 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
     ),
     agents,
   }
+}
+
+function cloneACPOptions(options: AgentSettings['acp_options']): AgentSettings['acp_options'] {
+  return Object.fromEntries(
+    Object.entries(options ?? {}).map(([agent, value]) => [
+      agent,
+      {
+        ...value,
+        reasoning_efforts: [...(value.reasoning_efforts ?? [])],
+        models: value.models?.map((model) => ({
+          ...model,
+          reasoning_efforts: model.reasoning_efforts ? [...model.reasoning_efforts] : model.reasoning_efforts,
+          pricing: model.pricing ? { ...model.pricing } : undefined,
+        })),
+        model_provider_ids: [...(value.model_provider_ids ?? [])],
+        model_providers: [...(value.model_providers ?? [])],
+      },
+    ]),
+  )
 }
 
 // The exact shape a save writes back: editable fields only, normalized. Also the
@@ -78,22 +97,7 @@ export function cloneAgentSettings(settings: AgentSettings): AgentSettings {
       ]),
     ),
     agents: [...(settings.agents ?? [])],
-    acp_options: Object.fromEntries(
-      Object.entries(settings.acp_options ?? {}).map(([agent, value]) => [
-        agent,
-        {
-          ...value,
-          reasoning_efforts: [...value.reasoning_efforts],
-          models: value.models?.map((model) => ({
-            ...model,
-            reasoning_efforts: model.reasoning_efforts ? [...model.reasoning_efforts] : model.reasoning_efforts,
-            pricing: model.pricing ? { ...model.pricing } : undefined,
-          })),
-          model_provider_ids: [...(value.model_provider_ids ?? [])],
-          model_providers: [...(value.model_providers ?? [])],
-        },
-      ]),
-    ),
+    acp_options: cloneACPOptions(settings.acp_options),
   }
 }
 
