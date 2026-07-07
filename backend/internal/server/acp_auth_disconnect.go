@@ -71,13 +71,13 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 
 	// Antigravity's login lives in CLI-owned stores Jaz can only best-effort
 	// clear; fail loudly instead of showing a still-connected card if the agy
-	// CLI kept its credentials (e.g. it moved its keyring entry).
-	if agent == acp.AgentAntigravity && auth.Authenticated {
-		if after := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders()); after.Authenticated {
-			writeError(w, http.StatusInternalServerError, fmt.Errorf("antigravity is still signed in after removing its credentials; sign out with the agy CLI and reconnect"))
-			return
-		}
+	// CLI kept its credentials (e.g. it moved its keyring entry). The response
+	// re-probes every agent, so its status doubles as the post-removal check.
+	response := s.agentSettingsResponse(defaults)
+	if agent == acp.AgentAntigravity && auth.Authenticated && response.ACPAuth[agent].Authenticated {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("antigravity is still signed in after removing its credentials; sign out with the agy CLI and reconnect"))
+		return
 	}
 
-	writeJSON(w, http.StatusOK, s.agentSettingsResponse(defaults))
+	writeJSON(w, http.StatusOK, response)
 }

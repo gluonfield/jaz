@@ -503,3 +503,14 @@ exit 0
 		t.Fatalf("login did not relay pasted code through the pty: %q", done.Output)
 	}
 }
+
+func TestACPAuthLoginFailureLinePrefersErrorOverLaterPrompt(t *testing.T) {
+	job := &acpAuthLoginJob{Output: "Authentication required.\nError: authentication failed or timed out\nOr, paste the authorization code here and press Enter: \n"}
+	if got := job.failureLine(); got != "Error: authentication failed or timed out" {
+		t.Fatalf("failureLine = %q", got)
+	}
+	job = &acpAuthLoginJob{Output: "something odd happened\n\n"}
+	if got := job.failureLine(); got != "something odd happened" {
+		t.Fatalf("failureLine fallback = %q", got)
+	}
+}
