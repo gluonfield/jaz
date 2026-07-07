@@ -5,7 +5,7 @@ import "github.com/wins/jaz/backend/pkg/integrations"
 const (
 	ProviderID   = "deployink"
 	ProviderName = "Deployink"
-	RemoteMCPURL = "https://mcp.ml.ink"
+	RemoteMCPURL = "https://mcp.deployink.com"
 )
 
 func Plugin() integrations.Plugin {
@@ -29,7 +29,7 @@ func Plugin() integrations.Plugin {
 		},
 		Auth: []integrations.AuthOption{{
 			Kind:        integrations.AuthKindRemoteMCP,
-			Description: "Remote Streamable HTTP MCP server at https://mcp.ml.ink.",
+			Description: "Remote Streamable HTTP MCP server at " + RemoteMCPURL + ".",
 		}},
 		Capabilities: []integrations.Capability{
 			integrations.CapabilityAct,
@@ -41,7 +41,7 @@ func Plugin() integrations.Plugin {
 			OAuthSecrets: false,
 		},
 		ConnectionNotes: []string{
-			"Jaz connects to https://mcp.ml.ink and forwards every tool the MCP server advertises.",
+			"Jaz connects to " + RemoteMCPURL + " and forwards every tool the MCP server advertises.",
 			"If the MCP server asks for authorization, complete sign-in from Settings > MCP servers.",
 		},
 		Implementation: integrations.Implementation{
