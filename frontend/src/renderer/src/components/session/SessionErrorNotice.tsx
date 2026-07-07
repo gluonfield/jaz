@@ -1,14 +1,25 @@
 import { Check, Copy } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { writeClipboard } from '@/lib/clipboard'
+import { Button } from '@/components/ui/Button'
+
+export interface SessionErrorAction {
+  label: string
+  icon?: ReactNode
+  onClick: () => void
+  disabled?: boolean
+  title?: string
+}
 
 export function SessionErrorNotice({
   message,
   context,
+  action,
   className = '',
 }: {
   message: string
   context?: string
+  action?: SessionErrorAction
   className?: string
 }) {
   const [copied, setCopied] = useState(false)
@@ -44,6 +55,20 @@ export function SessionErrorNotice({
         </button>
       </div>
       <p className="mt-1.5 whitespace-pre-wrap [overflow-wrap:break-word] text-[13px] leading-[1.55] text-ink select-text">{message}</p>
+      {action ? (
+        <div className="mt-3 flex">
+          <Button
+            size="md"
+            onClick={action.onClick}
+            disabled={action.disabled}
+            title={action.title ?? action.label}
+            className="min-h-10 px-3.5"
+          >
+            {action.icon}
+            {action.label}
+          </Button>
+        </div>
+      ) : null}
     </div>
   )
 }
