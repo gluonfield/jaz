@@ -64,6 +64,50 @@ func TestRemoveOwnedCredentialAntigravityRemovesTokenAndKeyring(t *testing.T) {
 	}
 }
 
+func TestRemoveOwnedCredentialSkipsDirectoryStoragePath(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "acp", "opencode")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	instructions := filepath.Join(configDir, "jaz-instructions.md")
+	if err := os.WriteFile(instructions, []byte("instructions"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveOwnedCredential(AgentOpenCode, configDir, root); err != nil {
+		t.Fatalf("directory storage path must be a no-op: %v", err)
+	}
+	if _, err := os.Stat(instructions); err != nil {
+		t.Fatalf("config dir contents removed: %v", err)
+	}
+}
+
+func TestPathUnderRootRejectsSymlinkedDir(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "jaz-root")
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "acp")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if pathUnderRoot(filepath.Join(link, "auth.json"), root) {
+		t.Fatal("symlinked dir escaping root must not count as Jaz-owned")
+	}
+	inside := filepath.Join(root, "profile")
+	if err := os.MkdirAll(inside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if !pathUnderRoot(filepath.Join(inside, "auth.json"), root) {
+		t.Fatal("real dir under root must count as Jaz-owned")
+	}
+}
+
 func TestDisconnectedAuthConfigKeepsGrokExistingCLI(t *testing.T) {
 	got := DisconnectedAuthConfig(AgentGrok, AgentAuthConfig{Mode: AuthModeExistingCLI})
 	if got.Mode != AuthModeExistingCLI || got.Path != "" {

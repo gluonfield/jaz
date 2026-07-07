@@ -28,11 +28,11 @@ jobs:
           echo "changed=$(echo "$summary" | jq -r .changed)" >> "$GITHUB_OUTPUT"
           echo "bumps=$(echo "$summary" | jq -rc '.bumps | join(", ")')" >> "$GITHUB_OUTPUT"
 
-      - name: Validate bumped spec resolves
+      - name: Regenerate tracked manifest from the bumped spec
         if: steps.bump.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node .github/scripts/create-acp-adapters-manifest.mjs /tmp/acp-adapters.json
+        run: node .github/scripts/create-acp-adapters-manifest.mjs dist/acp-adapters.json
 
       - name: Open or update PR
         if: steps.bump.outputs.changed == 'true'
@@ -44,7 +44,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add .github/acp-adapter-assets.json
+          git add .github/acp-adapter-assets.json dist/acp-adapters.json
           git commit -m "chore: bump ACP adapters (${{ steps.bump.outputs.bumps }})"
           git push -f origin "$branch"
           if [ -z "$(gh pr list --head "$branch" --state open --json number -q '.[].number')" ]; then
