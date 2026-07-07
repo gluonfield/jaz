@@ -40,32 +40,32 @@
       "assets": {
         "darwin-arm64": {
           "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-darwin-arm64.tar.gz",
-          "sha256": "d99d3d726025fff4e0d6c7885b6f9c3dd43ab8a53713349f28bd1a072257fbcf",
+          "sha256": "3091dbca8631b5dc18c5f9f2937b5495bf53d30bd5e7df262fb898b2f701925f",
           "binary": "agy-acp"
         },
         "darwin-x64": {
           "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-darwin-x64.tar.gz",
-          "sha256": "8ec4312ac2cb1efe68ee614ab93607ae1640a15acb0c1d655a9a360f884e3879",
+          "sha256": "833735be5cd7cc4b0057976343f9504e29de6960b387bcd1158df1c2ae618f33",
           "binary": "agy-acp"
         },
         "linux-arm64": {
           "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-linux-arm64.tar.gz",
-          "sha256": "5866c2aa31758b53615fa4dc848b09e936eee24b45ef7b80ca9228996c898698",
+          "sha256": "2c6a4f51872e510271f51cd08b90be24b7c9206c711ddc17a50b4080d0755531",
           "binary": "agy-acp"
         },
         "linux-x64": {
           "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-linux-x64.tar.gz",
-          "sha256": "01c03466f177155c72e94a4c573635104ac8f7e0bf78d77c82fcaff11d743772",
+          "sha256": "805b21cd8fc4812f91c1113de032ee87a5ebd3696dee9f31824ac3cd69be20e6",
           "binary": "agy-acp"
         },
         "win32-arm64": {
           "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-win32-arm64.tar.gz",
-          "sha256": "687a6e83060227f862b42ed3f976b7ddf6ce747d19f020b30e63f1d2b061d61b",
+          "sha256": "796bfe8d50f9eb760355e056483177a543d61b79dc80852f5d337c15f147d82c",
           "binary": "agy-acp.exe"
         },
         "win32-x64": {
           "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.1.4/agy-acp-0.1.4-win32-x64.tar.gz",
-          "sha256": "2e1847f569cdec428201fa7db55119650d0ddcff329e5a7c36c7b95612555e0e",
+          "sha256": "44fd8f40714ff84e6891d81137b043d14cbce1c01f3e3dfdae388481fe563f5c",
           "binary": "agy-acp.exe"
         }
       }
