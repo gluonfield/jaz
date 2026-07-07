@@ -1,7 +1,7 @@
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 import type { UpdateStatus } from '../../../shared/update'
 
-export const DEFAULT_API_BASE_URL = 'http://localhost:5299'
+export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5299'
 
 export type ClientRuntimeKind = 'electron' | 'web'
 export type ClientPlatform = 'desktop' | 'browser'

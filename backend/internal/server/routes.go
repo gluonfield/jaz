@@ -29,6 +29,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/widgets", s.handleListWidgets)
 	mux.HandleFunc("/v1/widgets/", s.handleWidgetAction)
 	mux.HandleFunc("GET /v1/music/chart-feed", s.handleMusicChartFeed)
+	mux.HandleFunc("GET /v1/onboarding/state", s.handleOnboardingState)
 	mux.HandleFunc("/v1/onboarding", s.handleOnboarding)
 	mux.HandleFunc("/v1/settings/agents", s.handleAgentSettings)
 	mux.HandleFunc("GET /v1/acp/agents", s.handleListACPAgents)

@@ -5,7 +5,7 @@ import {
 } from '../shared/browserNavigation'
 import type { UpdateStatus } from '../shared/update'
 
-const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://localhost:5299'
+const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
 
 // Board and launcher windows are spawned with a flag so the renderer can drop
 // the app chrome (sidebar, titlebar) and render that surface full-bleed.

@@ -157,6 +157,29 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	}
 }
 
+func TestOnboardingStateReadsCompletionWithoutSettingsStore(t *testing.T) {
+	root := t.TempDir()
+	if err := onboardingstate.Save(onboardingstate.Path(root), onboardingstate.State{Completed: true}); err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Root: root}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/onboarding/state", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var got struct {
+		Completed bool `json:"completed"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !got.Completed {
+		t.Fatalf("completed = false")
+	}
+}
+
 func TestOnboardingSavesExplicitMemorySettings(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()

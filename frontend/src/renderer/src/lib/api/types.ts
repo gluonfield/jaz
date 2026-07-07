@@ -1138,6 +1138,10 @@ export interface OnboardingMemorySettings {
   agent?: string
 }
 
+export interface OnboardingState {
+  completed: boolean
+}
+
 export interface OnboardingStatus {
   completed: boolean
   acp: OnboardingACPProbe[]

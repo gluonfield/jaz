@@ -26,6 +26,7 @@ export const keys = {
   devices: ['settings', 'devices'] as const,
   deviceConnectionLink: ['settings', 'devices', 'connection-link'] as const,
   onboarding: ['onboarding'] as const,
+  onboardingState: ['onboarding', 'state'] as const,
   memory: ['memory'] as const,
   connectionPlugins: ['connections', 'plugins'] as const,
   connectionQR: (id: string) => ['connections', 'qr', id] as const,

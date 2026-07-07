@@ -24,6 +24,10 @@ type onboardingResponse struct {
 	Memory    agentsettings.MemorySettings `json:"memory"`
 }
 
+type onboardingStateResponse struct {
+	Completed bool `json:"completed"`
+}
+
 type onboardingACPProbe struct {
 	acpAuthStatusResponse
 	Agent                string                       `json:"agent"`
@@ -145,6 +149,15 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
 	}
+}
+
+func (s *Server) handleOnboardingState(w http.ResponseWriter, r *http.Request) {
+	state, _, err := onboardingstate.Load(s.onboardingStatePath())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, onboardingStateResponse{Completed: state.Completed})
 }
 
 func (s *Server) handlePrepareACPAgent(w http.ResponseWriter, r *http.Request) {
