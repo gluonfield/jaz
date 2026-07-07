@@ -1,6 +1,8 @@
-// Brand marks for the coding agents jaz speaks to, drawn monochrome via
-// currentColor so they tint to the design tokens (ink at rest) and read in both
-// themes. Claude = official sunburst, Codex = OpenAI knot, Grok = xAI mark,
+import antigravityIcon from '@/assets/antigravity-icon.png'
+
+// Brand marks for the coding agents jaz speaks to. Most are drawn monochrome
+// via currentColor; Antigravity uses the exact installed app icon bitmap.
+// Claude = official sunburst, Codex = OpenAI knot, Grok = xAI mark,
 // OpenCode = official square mark.
 // Sourced from the providers' published logos; kept as inline SVG so they load
 // from file:// in the packaged app with no extra request.
@@ -14,7 +16,7 @@ const SIZES: Record<string, number> = {
   codex: 17,
   grok: 16,
   opencode: 15,
-  antigravity: 16,
+  antigravity: 18,
 }
 
 function canonical(agent: string): string {
@@ -61,11 +63,7 @@ export function AgentLogo({ agent, className = '', size }: Props) {
   }
 
   if (slug === 'antigravity') {
-    return (
-      <svg viewBox="0 0 24 24" style={dims} className={cls} fill="currentColor" aria-hidden="true">
-        <path d="M11.97 2.35 22 20.75h-4.22l-1.67-3.28H7.9l-1.67 3.28H2L11.97 2.35Zm-2.43 11.9h4.94l-2.47-4.98-2.47 4.98Z" />
-      </svg>
-    )
+    return <img src={antigravityIcon} style={dims} className={cls} alt="" aria-hidden="true" />
   }
 
   if (slug === 'opencode') {
