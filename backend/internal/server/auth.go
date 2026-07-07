@@ -140,7 +140,10 @@ func queryAuthAllowed(r *http.Request) bool {
 		return false
 	}
 	sessionRef, action, ok := strings.Cut(sessionPath, "/")
-	return ok && sessionRef != "" && (action == "events" || action == "terminal")
+	if !ok || sessionRef == "" {
+		return false
+	}
+	return action == "events" || action == "terminal" || (action == "file" && rawSessionFileRequested(r))
 }
 
 func bearerToken(header string) string {

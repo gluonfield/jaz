@@ -3,16 +3,19 @@ package app
 import (
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
+	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
 	"go.uber.org/fx"
 )
 
-func UsageModule() fx.Option {
+func HTTPModule() fx.Option {
 	return fx.Provide(
 		usagecore.NewService,
 		feedcore.NewService,
+		previewapi.NewHandler,
 		NewRoutes,
+		NewPublicRoutes,
 	)
 }
 

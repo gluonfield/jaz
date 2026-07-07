@@ -115,6 +115,11 @@ export function apiAuthenticatedWebSocketUrl(path: string): string {
   return appendAuthQuery(apiWebSocketUrl(path))
 }
 
+export function apiEmbeddedGetUrl(path: string): string {
+  assertBackendRelativePath(path, 'apiEmbeddedGetUrl')
+  return appendAuthQuery(apiUrl(path))
+}
+
 export function setApiBaseUrl(url: string): void {
   baseUrl = normalizeBaseUrl(url)
   localStorage.setItem(BACKEND_URL_KEY, baseUrl)

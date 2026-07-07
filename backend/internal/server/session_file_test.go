@@ -25,6 +25,10 @@ func TestSessionFileRead(t *testing.T) {
 	if err := os.WriteFile(file, []byte("export type Preview = string\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	pdf := filepath.Join(dir, "paper.pdf")
+	if err := os.WriteFile(pdf, []byte("%PDF-1.7\nbody"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -72,6 +76,22 @@ func TestSessionFileRead(t *testing.T) {
 	fileURL := get("/v1/sessions/"+session.ID+"/file?path="+url.QueryEscape(filepathx.FileURI(file)), http.StatusOK)
 	if fileURL.Path != file || fileURL.Content != relative.Content {
 		t.Fatalf("file URL read = %#v", fileURL)
+	}
+
+	rawReq := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/file?raw=1&path=paper.pdf", nil)
+	rawRes := httptest.NewRecorder()
+	handler.ServeHTTP(rawRes, rawReq)
+	if rawRes.Code != http.StatusOK {
+		t.Fatalf("raw file status = %d, body = %s", rawRes.Code, rawRes.Body.String())
+	}
+	if ctype := rawRes.Header().Get("Content-Type"); ctype != "application/pdf" {
+		t.Fatalf("raw Content-Type = %q", ctype)
+	}
+	if disposition := rawRes.Header().Get("Content-Disposition"); !strings.Contains(disposition, "inline") || !strings.Contains(disposition, "paper.pdf") {
+		t.Fatalf("raw Content-Disposition = %q", disposition)
+	}
+	if !strings.HasPrefix(rawRes.Body.String(), "%PDF") {
+		t.Fatalf("raw body = %q", rawRes.Body.String())
 	}
 
 	tempFile := filepath.Join(t.TempDir(), "agent-output.txt")

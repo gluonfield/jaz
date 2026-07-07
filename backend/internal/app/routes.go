@@ -12,6 +12,7 @@ import (
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
 	modelcatalogapi "github.com/wins/jaz/backend/internal/httpapi/modelcatalog"
+	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/server"
@@ -35,6 +36,7 @@ type routeDeps struct {
 	ConnectionStart *connections.ConnectService    `optional:"true"`
 	ConnectionOAuth *connections.OAuthService      `optional:"true"`
 	ConnectionQR    *connections.QRService         `optional:"true"`
+	Preview         *previewapi.Handler
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
@@ -43,7 +45,8 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes = append(routes, modelCatalogRoutes(deps.ModelCatalog)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.Config)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, deps.Jaz.Devices.DisablePairing)
-	return appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
+	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
+	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
 
 func modelCatalogRoutes(catalog *modelcatalog.Service) server.Routes {
@@ -147,6 +150,13 @@ func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler,
 		routes = append(routes, server.Route{Pattern: "GET /v1/browser/extension", Handler: extension})
 	}
 	return routes
+}
+
+func NewPublicRoutes(handler *previewapi.Handler) server.PublicRoutes {
+	return server.PublicRoutes{
+		{Match: previewapi.IsPublicPathRequest, Handler: handler},
+		{Match: previewapi.IsPublicHostRequest, Handler: handler},
+	}
 }
 
 type httpHandlerFunc func(http.ResponseWriter, *http.Request)

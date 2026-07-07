@@ -195,7 +195,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const detailSession = detail.data?.session
   const sideChatAvailable = isCodexACPSession(detailSession)
   const sidePanel = useSidePanelState(sideChatAvailable)
-  const { openFile } = sidePanel
   // Phone: the docked panel would crush the transcript to a sliver, so it
   // becomes a full-screen overlay (CSS `max-sm:w-full`) that slides in instead
   // of a column.
@@ -423,7 +422,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   const goalStatusVisible = goalActive
 
   return (
-    <FileReaderLinkProvider onOpen={openFile}>
+    <FileReaderLinkProvider onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
             clip horizontal overflow so it can't be revealed by scrolling. */}
@@ -624,12 +623,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               working={sessionRunning}
               visible={sidePanel.open}
               view={sidePanel.view}
-              previewUrl={sidePanel.previewUrl}
+              previewTarget={sidePanel.previewTarget}
               fileRef={sidePanel.fileRef}
               sideChatAvailable={sideChatAvailable}
               sideChatEvents={sideChatEvents}
-              onPreviewUrlChange={sidePanel.setPreviewUrl}
-              onOpenFile={openFile}
+              onPreviewTargetChange={sidePanel.setPreviewTarget}
+              onOpenFile={sidePanel.openFile}
               onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
               onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
               onSend={queue.onSend}

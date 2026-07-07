@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { ApiError } from '@/lib/api/client'
-import { healthQuery, sessionFileQuery } from '@/lib/api/sessions'
+import { healthQuery, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
 import type { HealthResponse, Session } from '@/lib/api/types'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { SidePanelShell } from './SidePanelShell'
@@ -26,6 +26,7 @@ export function FileReaderPanel({
   onClose: () => void
 }) {
   const filePath = fileRef?.path ?? ''
+  const pdf = isPDFPath(filePath)
   const file = useQuery({ ...sessionFileQuery(session.id, filePath), enabled: visible && Boolean(filePath) })
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
   const [draft, setDraft] = useState(filePath)
@@ -77,7 +78,7 @@ export function FileReaderPanel({
           {inputError}
         </p>
       ) : null}
-      <div className="min-h-0 flex-1 overflow-auto bg-bg">
+      <div className={`min-h-0 flex-1 bg-bg ${pdf ? 'overflow-hidden' : 'overflow-auto'}`}>
         {!filePath ? (
           <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
             No file selected.
@@ -102,6 +103,8 @@ export function FileReaderPanel({
               Couldn&apos;t open the file: {(file.error as Error).message}
             </p>
           )
+        ) : pdf ? (
+          <PDFFileView url={sessionFileRawUrl(session.id, filePath)} />
         ) : file.data.binary ? (
           <p className="px-3 py-4 text-[12px] text-ink-3">Binary file — no text preview.</p>
         ) : (
@@ -180,6 +183,21 @@ function FileTextView({
 
 function FileMarkdownView({ content }: { content: string }) {
   return <RenderedMarkdown text={content} className="file-prose" />
+}
+
+function PDFFileView({ url }: { url: string }) {
+  return (
+    <iframe
+      src={url}
+      title="PDF file preview"
+      referrerPolicy="no-referrer"
+      className="h-full w-full border-0 bg-bg"
+    />
+  )
+}
+
+function isPDFPath(path: string): boolean {
+  return path.toLowerCase().replace(/[?#].*$/, '').endsWith('.pdf')
 }
 
 function isMarkdownPath(path: string): boolean {

@@ -72,6 +72,7 @@ type Server struct {
 	Agent                *agent.Agent
 	Store                storage.Store
 	Routes               Routes
+	PublicRoutes         PublicRoutes
 	ACP                  ACPManager
 	ACPAdapters          ACPAdapterStatusReader
 	MCP                  MCPRuntime
@@ -123,6 +124,13 @@ type Route struct {
 }
 
 type Routes []Route
+
+type PublicRoute struct {
+	Match   func(*http.Request) bool
+	Handler http.Handler
+}
+
+type PublicRoutes []PublicRoute
 
 func (s *Server) logger() *log.Logger {
 	if s.Log != nil {

@@ -9,6 +9,7 @@ import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
+import type { PreviewTarget } from './previewTarget'
 import { SIDE_PANEL_LAYOUT, type SidePanelView } from './SidePanel'
 
 const PANEL_OPEN_KEY = 'jaz.sessionPanel'
@@ -23,7 +24,7 @@ export function useSidePanelState(sideChatAvailable = false) {
   const [view, setView] = useState<SidePanelView>('overview')
   const [widthOverride, setWidthOverride] = useState<number | null>(null)
   const [resizing, setResizing] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState('')
+  const [previewTarget, setPreviewTarget] = useState<PreviewTarget>({ displayUrl: '', sourceUrl: '' })
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
   const layout = SIDE_PANEL_LAYOUT[activeView]
@@ -44,7 +45,7 @@ export function useSidePanelState(sideChatAvailable = false) {
   }, [])
 
   const openPreview = useCallback((url: string) => {
-    setPreviewUrl(url)
+    setPreviewTarget({ displayUrl: url, sourceUrl: url })
     setView('preview')
     setOpen(true)
   }, [])
@@ -87,11 +88,11 @@ export function useSidePanelState(sideChatAvailable = false) {
   return {
     fileRef,
     open,
-    previewUrl,
+    previewTarget,
     resize,
     resizing,
     selectView,
-    setPreviewUrl,
+    setPreviewTarget,
     setResizing,
     toggle,
     view: activeView,
