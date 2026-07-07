@@ -24,7 +24,7 @@ func (r *proxyRuntime) Test(context.Context, mcpconfig.Server) mcpconfig.ServerS
 	return mcpconfig.ServerStatus{}
 }
 
-func (r *proxyRuntime) Authorize(context.Context, mcpconfig.Server) mcpconfig.ServerStatus {
+func (r *proxyRuntime) Authorize(context.Context, mcpconfig.Server, mcpconfig.AuthorizeOptions) mcpconfig.ServerStatus {
 	return mcpconfig.ServerStatus{}
 }
 

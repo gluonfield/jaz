@@ -47,6 +47,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/skills", s.handleListSkills)
 	mux.HandleFunc("GET /v1/mcp/servers", s.handleListMCPServers)
 	mux.HandleFunc("POST /v1/mcp/servers", s.handleCreateMCPServer)
+	mux.HandleFunc("GET "+mcpOAuthCallbackPath, s.handleMCPOAuthCallback)
 	mux.HandleFunc("PUT /v1/mcp/servers/", s.handleMCPServerAction)
 	mux.HandleFunc("DELETE /v1/mcp/servers/", s.handleMCPServerAction)
 	mux.HandleFunc("POST /v1/mcp/servers/", s.handleMCPServerAction)

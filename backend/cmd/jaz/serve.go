@@ -257,6 +257,7 @@ func startServer(
 		Providers:             providerSource,
 		AgentCatalog:          catalog,
 		AuthKey:               authKey,
+		ServerConfig:          serverConfig,
 		Prompts:               prompts,
 		Root:                  store.RootDir(),
 		Workspace:             string(workspace),
