@@ -856,8 +856,7 @@ func (m *Manager) List() []Job {
 	return out
 }
 
-// Agents lists the names of configured ACP agents, sorted, so the new-thread
-// UI can offer them as session runtimes.
+// Agents lists the names of configured ACP agents for session runtimes.
 func (m *Manager) Agents() []string {
 	names, err := m.agents.EnabledAgentNames()
 	if err != nil {

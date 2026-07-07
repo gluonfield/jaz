@@ -200,11 +200,11 @@ func TestMCPCreateWithoutBoardServiceIgnoresBoardIDs(t *testing.T) {
 	}
 }
 
-func TestMCPAvailableAgentsSorted(t *testing.T) {
+func TestMCPAvailableAgentsUsesListerOrder(t *testing.T) {
 	tools := NewMCPTools(&fakeMCPService{}, WithAgentNames(func() []string {
-		return []string{"opencode", "claude", "codex"}
+		return []string{"codex", "claude", "opencode"}
 	}))
-	if want := []string{"claude", "codex", "opencode"}; !reflect.DeepEqual(tools.availableAgents(), want) {
+	if want := []string{"codex", "claude", "opencode"}; !reflect.DeepEqual(tools.availableAgents(), want) {
 		t.Fatalf("availableAgents = %#v, want %#v", tools.availableAgents(), want)
 	}
 	if NewMCPTools(&fakeMCPService{}).availableAgents() != nil {

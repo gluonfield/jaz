@@ -30,16 +30,19 @@ export function useNewThreadControls() {
     setProviderOverride(null)
     setModelOverride(null)
     setEffortOverride(null)
+    if (next) localStorage.setItem(NEW_SESSION_AGENT_KEY, next)
+    else localStorage.removeItem(NEW_SESSION_AGENT_KEY)
   }
-
-  useEffect(() => {
-    localStorage.setItem(NEW_SESSION_AGENT_KEY, runtime)
-  }, [runtime])
 
   useEffect(() => {
     if (!runtimeReady || agents.includes(runtime)) return
     const next = agents[0] ?? ''
-    if (next !== runtime) selectRuntime(next)
+    if (next === runtime) return
+    setRuntime(next)
+    setProviderOverride(null)
+    setModelOverride(null)
+    setEffortOverride(null)
+    localStorage.removeItem(NEW_SESSION_AGENT_KEY)
   }, [agents, runtime, runtimeReady])
 
   const model = runtimeModelState(agentSettings, runtime, providerOverride)

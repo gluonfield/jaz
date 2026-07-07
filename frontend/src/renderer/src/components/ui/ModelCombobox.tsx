@@ -3,11 +3,11 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { layoutRect } from '@/lib/dom/zoom'
-import { filterModelSuggestions, type ModelSuggestion } from '@/lib/models'
+import { filterModelSuggestions, modelSuggestionLabel, type ModelSuggestion } from '@/lib/models'
 
 // Free-text input with a portalled suggestion menu (portalled so it escapes the
-// `overflow-hidden` settings cards, like Select). The input value is the model
-// id itself; suggestions filter once the user starts typing.
+// `overflow-hidden` settings cards, like Select). Known suggestions display
+// their label while selections still emit the raw model id.
 export function ModelCombobox({
   value,
   suggestions,
@@ -80,7 +80,7 @@ export function ModelCombobox({
     <>
       <input
         ref={inputRef}
-        value={value}
+        value={open ? value : modelSuggestionLabel(suggestions, value)}
         disabled={disabled}
         aria-label={ariaLabel}
         aria-expanded={open}
@@ -147,7 +147,7 @@ export function ModelCombobox({
               {loading ? (
                 <div className="flex h-7 items-center gap-2 px-2 text-[12px] text-ink-3">
                   <LoaderCircle size={13} className="animate-spin" />
-                  Loading models…
+                  Loading models...
                 </div>
               ) : filtered.length > 0 ? (
                 filtered.map((s, index) => {

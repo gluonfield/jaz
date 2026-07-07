@@ -138,7 +138,7 @@ export function ModelSelect({
   const effortStops = effortOptions.filter((option) => option.value !== '')
   const selectedSuggestion = modelSuggestionFor(suggestions, value)
   const showEffortSlider = Boolean(onEffortChange) && effortStops.length > 1
-  const description = `Model: ${value === '' ? 'default' : value}${
+  const description = `Model: ${value === '' ? 'default' : label}${
     effortValue ? `, reasoning effort: ${effortLabel}` : ''
   }`
   return (
