@@ -201,6 +201,7 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 		job.closeStdin()
 		if tail != nil {
 			tail.drain()
+			_ = os.Remove(tail.path)
 		}
 		if err == nil {
 			err = s.verifyACPAuthLogin(agent, auth)

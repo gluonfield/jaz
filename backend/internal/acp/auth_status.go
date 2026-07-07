@@ -1,6 +1,8 @@
 package acp
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -100,7 +102,7 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 	case AgentGrok:
 		return loginInvocation(nil, true, binDir, "grok", "login", "--device-auth")
 	case AgentAntigravity:
-		logFile := filepath.Join(root, "acp", "agy-login.log")
+		logFile := filepath.Join(root, "acp", "agy-login-"+randomHex(4)+".log")
 		invocation := loginInvocation(nil, true, binDir, "agy",
 			"--log-file", logFile,
 			"--print-timeout", "600s",
@@ -111,6 +113,14 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 	default:
 		return AgentLoginInvocation{}
 	}
+}
+
+func randomHex(bytes int) string {
+	b := make([]byte, bytes)
+	if _, err := rand.Read(b); err != nil {
+		return "0"
+	}
+	return hex.EncodeToString(b)
 }
 
 func loginBinDirs(cfg AgentConfig) string {

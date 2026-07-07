@@ -28,9 +28,6 @@ func PrepareAgentLoginInvocation(name string, auth AgentAuthConfig, invocation A
 		if err := os.MkdirAll(filepath.Dir(log), 0o700); err != nil {
 			return fmt.Errorf("prepare login log dir %s: %w", filepath.Dir(log), err)
 		}
-		if err := os.Remove(log); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("reset login log %s: %w", log, err)
-		}
 	}
 	if CanonicalAgentName(name) == AgentCodex && auth.Mode == AuthModeJazProfile {
 		if err := ensureCodexFileCredentialConfig(invocation.Env["CODEX_HOME"]); err != nil {
