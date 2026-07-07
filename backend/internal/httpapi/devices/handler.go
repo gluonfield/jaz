@@ -76,14 +76,8 @@ func NewHandler(service *deviceauth.Service, config serverconfig.Config, authKey
 
 func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
 	cfg := h.serverConfig
-	if strings.TrimSpace(cfg.PublicURL) == "" {
-		cfg.PublicURL = httpapi.RequestBaseURL(r)
-	}
-	url := serverconfig.ClientBaseURL(cfg)
-	if h.authKey != "" {
-		url = serverconfig.ClientURL(cfg, h.authKey)
-	}
-	httpapi.WriteJSON(w, http.StatusOK, connectionLinkResponse{URL: url})
+	cfg.PublicURL = connectionBaseURL(cfg, httpapi.RequestBaseURL(r), firstLocalNetworkIP)
+	httpapi.WriteJSON(w, http.StatusOK, connectionLinkResponse{URL: serverconfig.ClientURL(cfg, h.authKey)})
 }
 
 func (h Handler) List(w http.ResponseWriter, r *http.Request) {
