@@ -335,5 +335,5 @@ func sortedToolCalls(in map[string]sessionevents.ACPToolCall) []sessionevents.AC
 }
 
 func toolUpdateCanMaterialize(call sessionevents.ACPToolCall) bool {
-	return call.Title != "" || len(call.Content) > 0 || len(call.RawInput) > 0
+	return call.Title != "" || len(call.Content) > 0 || len(call.RawInput) > 0 || len(call.RawOutput) > 0
 }

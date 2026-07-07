@@ -1,6 +1,7 @@
 package managedtool
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -72,8 +73,12 @@ func (m *Manager) fetchAntigravityManifest(ctx context.Context, platform string)
 	if res.StatusCode != http.StatusOK {
 		return antigravityManifest{}, fmt.Errorf("fetch Antigravity CLI manifest: %s", res.Status)
 	}
+	body, err := readLimited(res.Body, maxManagedToolManifestBytes)
+	if err != nil {
+		return antigravityManifest{}, err
+	}
 	var out antigravityManifest
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&out); err != nil {
 		return antigravityManifest{}, err
 	}
 	return out, nil

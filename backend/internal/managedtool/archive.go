@@ -17,6 +17,12 @@ import (
 	"time"
 )
 
+const (
+	maxManagedToolManifestBytes = 1 << 20
+	maxManagedToolDownloadBytes = 256 << 20
+	maxManagedToolExtractBytes  = 256 << 20
+)
+
 func (m *Manager) install(ctx context.Context, spec toolSpec) error {
 	body, err := m.download(ctx, spec.URL)
 	if err != nil {
@@ -54,7 +60,7 @@ func (m *Manager) download(ctx context.Context, url string) ([]byte, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download %s: %s", url, res.Status)
 	}
-	return io.ReadAll(res.Body)
+	return readLimited(res.Body, maxManagedToolDownloadBytes)
 }
 
 func verifySHA512(body []byte, wantHex string) error {
@@ -80,6 +86,10 @@ func installPayload(body []byte, spec toolSpec, dst string) error {
 }
 
 func extractAntigravityTarball(body []byte, dst string) error {
+	return extractAntigravityTarballWithLimit(body, dst, maxManagedToolExtractBytes)
+}
+
+func extractAntigravityTarballWithLimit(body []byte, dst string, limit int64) error {
 	gz, err := gzip.NewReader(bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -108,12 +118,31 @@ func extractAntigravityTarball(body []byte, dst string) error {
 		if err != nil {
 			return err
 		}
-		if _, err := io.Copy(out, tr); err != nil {
+		if _, err := copyLimited(out, tr, limit); err != nil {
 			_ = out.Close()
 			return err
 		}
 		return out.Close()
 	}
+}
+
+func readLimited(r io.Reader, limit int64) ([]byte, error) {
+	var buf bytes.Buffer
+	if _, err := copyLimited(&buf, r, limit); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func copyLimited(dst io.Writer, src io.Reader, limit int64) (int64, error) {
+	n, err := io.Copy(dst, io.LimitReader(src, limit+1))
+	if err != nil {
+		return n, err
+	}
+	if n > limit {
+		return n, fmt.Errorf("managed tool payload exceeds %d bytes", limit)
+	}
+	return n, nil
 }
 
 func downloadingStatus(spec toolSpec) Status {

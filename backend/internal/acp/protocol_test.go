@@ -659,6 +659,54 @@ func TestSparseToolCallUpdateWaitsForToolData(t *testing.T) {
 	}
 }
 
+func TestRawOutputToolCallUpdateMaterializesToolData(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "tool-result", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &jobState{
+		Job:                   Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentClaude, ACPSession: "acp-session"},
+		toolByID:              map[string]sessionevents.ACPToolCall{},
+		pendingToolUpdateByID: map[string]sessionevents.ACPToolCall{},
+	}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+
+	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+		Method: acpschema.ClientMethodSessionUpdate,
+		Params: mustJSON(t, map[string]any{
+			"sessionId": "acp-session",
+			"update": map[string]any{
+				"sessionUpdate": "tool_call_update",
+				"toolCallId":    "result-1",
+				"status":        "completed",
+				"rawOutput":     map[string]any{"stdout": "done"},
+			},
+		}),
+	})
+	if rpcErr != nil {
+		t.Fatal(rpcErr)
+	}
+	event := receiveEvent(t, sub)
+	if event.Type != "acp_tool" || event.ACP == nil || len(event.ACP.ToolCalls) != 1 {
+		t.Fatalf("unexpected event %#v", event)
+	}
+	call := event.ACP.ToolCalls[0]
+	if call.ID != "result-1" || call.Status != "completed" || !strings.Contains(string(call.RawOutput), "done") {
+		t.Fatalf("tool call = %#v", call)
+	}
+}
+
 func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
