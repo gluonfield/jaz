@@ -108,7 +108,7 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 		logFile := filepath.Join(root, "acp", "agy-login-"+randomHex(4)+".log")
 		invocation := loginInvocation(nil, true, binDir, "agy",
 			"--log-file", logFile,
-			"--print-timeout", "600s",
+			"--print-timeout", "120s",
 			"--print", "Reply with exactly: signed in")
 		invocation.UsePTY = runtime.GOOS != "windows"
 		invocation.TailLog = logFile
