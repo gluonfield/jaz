@@ -790,7 +790,7 @@ func acpCompletion(job acp.Job) string {
 	})
 	if err != nil {
 		// Embedded and parse-checked at init; the completion turn must still fire.
-		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Report the outcome to the user now.", job.Slug, job.ACPAgent, job.State)
+		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Continue from this result and report/update the user with relevant details.", job.Slug, job.ACPAgent, job.State)
 	}
 	return prompt
 }

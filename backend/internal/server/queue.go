@@ -391,10 +391,10 @@ func markSessionRunning(session *storage.Session) {
 }
 
 type steeredQueuedPrompt struct {
-	session    storage.Session
-	prompt     storage.QueuedMessage
-	index      int
-	interrupts bool
+	session     storage.Session
+	prompt      storage.QueuedMessage
+	publicIndex int
+	interrupts  bool
 }
 
 func (s *Server) steerQueuedPrompt(sessionID string, req queueRequest) (storage.Session, error) {
@@ -410,7 +410,7 @@ func (s *Server) steerQueuedPrompt(sessionID string, req queueRequest) (storage.
 func (s *Server) dispatchSteeredQueuedPrompt(claimed steeredQueuedPrompt) {
 	if err := s.startSteeredQueuedPrompt(claimed); err != nil {
 		s.logger().Error("queued prompt steer failed", "session", claimed.session.ID, "error", err)
-		s.restoreQueuedPrompt(claimed.session.ID, claimed.prompt, claimed.index, err.Error())
+		s.restoreQueuedPrompt(claimed.session.ID, claimed.prompt, claimed.publicIndex, err.Error())
 	}
 }
 
@@ -426,7 +426,8 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 		session.Runtime = storage.RuntimeACP
 	}
 	queue := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
-	index, err := queuedPromptIndex(queue, req.ID)
+	internalQueue, publicQueue := splitQueuedMessages(queue)
+	index, err := queuedPromptIndex(publicQueue, req.ID)
 	if err != nil {
 		return steeredQueuedPrompt{}, err
 	}
@@ -439,11 +440,11 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 		return steeredQueuedPrompt{}, queueInputError{"session runtime is not configured"}
 	}
 
-	prompt := queue[index]
+	prompt := publicQueue[index]
 	if err := s.validateQueuedPrompt(session, prompt); err != nil {
 		return steeredQueuedPrompt{}, err
 	}
-	session.QueuedMessages = s.assignQueuedMessageIDs(removeQueuedPrompt(queue, index))
+	session.QueuedMessages = s.assignQueuedMessageIDs(append(internalQueue, removeQueuedPrompt(publicQueue, index)...))
 	pending := prompt
 	session.PendingSteer = &pending
 	session.Error = ""
@@ -461,10 +462,10 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 		s.maybeGenerateSessionTitle(session, prompt.Text)
 	}
 	return steeredQueuedPrompt{
-		session:    session,
-		prompt:     prompt,
-		index:      index,
-		interrupts: running,
+		session:     session,
+		prompt:      prompt,
+		publicIndex: index,
+		interrupts:  running,
 	}, nil
 }
 
@@ -603,10 +604,19 @@ func (s *Server) restoreQueuedPrompt(sessionID string, prompt storage.QueuedMess
 		return
 	}
 	queue := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
-	if index < 0 || index > len(queue) {
-		index = len(queue)
+	internalQueue, publicQueue := splitQueuedMessages(queue)
+	if prompt.IsInternal() {
+		if index < 0 || index > len(internalQueue) {
+			index = len(internalQueue)
+		}
+		internalQueue = append(internalQueue[:index], append([]storage.QueuedMessage{prompt.AsInternal()}, internalQueue[index:]...)...)
+	} else {
+		if index < 0 || index > len(publicQueue) {
+			index = len(publicQueue)
+		}
+		publicQueue = append(publicQueue[:index], append([]storage.QueuedMessage{prompt.AsPublic()}, publicQueue[index:]...)...)
 	}
-	queue = append(queue[:index], append([]storage.QueuedMessage{prompt}, queue[index:]...)...)
+	queue = append(internalQueue, publicQueue...)
 	session.QueuedMessages = s.assignQueuedMessageIDs(queue)
 	session.PendingSteer = nil
 	session.Status = storage.StatusError
