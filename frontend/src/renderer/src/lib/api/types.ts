@@ -938,6 +938,7 @@ export interface MCPServerStatus {
   tool_count: number
   tools?: MCPTool[]
   error?: string
+  auth_url?: string
   checked_at?: string
 }
 

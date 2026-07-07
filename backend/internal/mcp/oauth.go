@@ -444,6 +444,14 @@ func randomState() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
+func authorizationStateFromURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(u.Query().Get("state"))
+}
+
 // loopbackReceiver runs a localhost HTTP server that captures the OAuth redirect.
 type loopbackReceiver struct {
 	srv         *http.Server

@@ -12,7 +12,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { Button } from '@/components/ui/Button'
@@ -38,11 +38,13 @@ import type {
   MCPServer,
   MCPServerInput,
 } from '@/lib/api/types'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 import { mcpStatusText, mcpToolCountLabel } from './MCPSettingsFormatting'
 import { MCPToolsModal } from './MCPToolsModal'
 
 type Draft = MCPServerInput & { id?: string }
+type AuthorizeVariables = { id: string; authWindow: Window | null }
 
 function emptyDraft(): Draft {
   return {
@@ -67,10 +69,48 @@ function draftFromServer(server: MCPServer): Draft {
   }
 }
 
+function prepareAuthWindow(): Window | null {
+  if (clientRuntime.openExternalURL) return null
+  const authWindow = window.open('', '_blank')
+  if (authWindow) {
+    authWindow.opener = null
+    authWindow.document.title = 'Jaz sign-in'
+  }
+  return authWindow
+}
+
+function openAuthURL(url: string, authWindow: Window | null): void {
+  if (clientRuntime.openExternalURL) {
+    clientRuntime.openExternalURL(url)
+    return
+  }
+  if (authWindow && !authWindow.closed) {
+    authWindow.location.href = url
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function closeAuthWindow(authWindow: Window | null): void {
+  if (!authWindow || authWindow.closed) return
+  try {
+    if (authWindow.location.href === 'about:blank') {
+      authWindow.close()
+    }
+  } catch {
+    // The tab has already navigated cross-origin; the OAuth provider owns it now.
+  }
+}
+
 export function MCPSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const servers = useQuery(mcpServersQuery)
+  const [pendingAuthServerID, setPendingAuthServerID] = useState<string | null>(null)
+  const authWindowRef = useRef<Window | null>(null)
+  const servers = useQuery({
+    ...mcpServersQuery,
+    refetchInterval: pendingAuthServerID ? 2000 : false,
+  })
   const [draft, setDraft] = useState<Draft | null>(null)
   const [toolsServerID, setToolsServerID] = useState<string | null>(null)
 
@@ -109,15 +149,25 @@ export function MCPSettings() {
     onSettled: invalidate,
   })
   const authorize = useMutation({
-    mutationFn: authorizeMCPServer,
-    onSuccess: (status) => {
+    mutationFn: ({ id }: AuthorizeVariables) => authorizeMCPServer(id),
+    onSuccess: (status, variables) => {
       if (status.status === 'connected') {
+        closeAuthWindow(variables.authWindow)
         toast(`Connected, ${mcpToolCountLabel(status.tool_count)}`)
+      } else if (status.auth_url) {
+        openAuthURL(status.auth_url, variables.authWindow)
+        authWindowRef.current = variables.authWindow
+        setPendingAuthServerID(variables.id)
+        toast('Finish sign-in in your browser')
       } else {
+        closeAuthWindow(variables.authWindow)
         toast(status.error ? `Sign-in failed: ${status.error}` : 'Sign-in failed', 'danger')
       }
     },
-    onError: (error: Error) => toast(`Sign-in failed: ${error.message}`, 'danger'),
+    onError: (error: Error, variables) => {
+      closeAuthWindow(variables.authWindow)
+      toast(`Sign-in failed: ${error.message}`, 'danger')
+    },
     onSettled: invalidate,
   })
 
@@ -139,6 +189,38 @@ export function MCPSettings() {
     [servers.data],
   )
   const toolsServer = sortedServers.find((server) => server.id === toolsServerID) ?? null
+
+  useEffect(() => {
+    if (!pendingAuthServerID) return
+    const server = sortedServers.find((item) => item.id === pendingAuthServerID)
+    if (!server) {
+      closeAuthWindow(authWindowRef.current)
+      authWindowRef.current = null
+      setPendingAuthServerID(null)
+      return
+    }
+    if (server.status === 'connected') {
+      closeAuthWindow(authWindowRef.current)
+      authWindowRef.current = null
+      setPendingAuthServerID(null)
+      toast(`Connected, ${mcpToolCountLabel(server.tool_count)}`)
+    } else if (server.status === 'error') {
+      closeAuthWindow(authWindowRef.current)
+      authWindowRef.current = null
+      setPendingAuthServerID(null)
+      toast(server.error ? `Sign-in failed: ${server.error}` : 'Sign-in failed', 'danger')
+    }
+  }, [pendingAuthServerID, sortedServers, toast])
+
+  useEffect(() => {
+    if (!pendingAuthServerID) return
+    const timeout = window.setTimeout(() => {
+      closeAuthWindow(authWindowRef.current)
+      authWindowRef.current = null
+      setPendingAuthServerID(null)
+    }, 5 * 60 * 1000)
+    return () => window.clearTimeout(timeout)
+  }, [pendingAuthServerID])
 
   const busy = toggle.isPending || remove.isPending || test.isPending || authorize.isPending
   const isEdit = Boolean(draft?.id)
@@ -178,7 +260,10 @@ export function MCPSettings() {
                   <MCPServerRow
                     server={server}
                     busy={busy}
-                    authorizing={authorize.isPending && authorize.variables === server.id}
+                    authorizing={
+                      pendingAuthServerID === server.id ||
+                      (authorize.isPending && authorize.variables?.id === server.id)
+                    }
                     onEdit={() => openEdit(server)}
                     onTools={() => setToolsServerID(server.id)}
                     onToggle={() => toggle.mutate({ id: server.id, enabled: !server.enabled })}
@@ -186,7 +271,9 @@ export function MCPSettings() {
                       if (window.confirm(`Delete ${server.name}?`)) remove.mutate(server.id)
                     }}
                     onTest={() => test.mutate(server.id)}
-                    onAuthorize={() => authorize.mutate(server.id)}
+                    onAuthorize={() =>
+                      authorize.mutate({ id: server.id, authWindow: prepareAuthWindow() })
+                    }
                   />
                 </AnimatedListItem>
               ))}
@@ -296,7 +383,7 @@ function MCPServerRow({
           size="sm"
           aria-label="Sign in to MCP server"
           title="Sign in"
-          disabled={busy || !server.enabled}
+          disabled={busy || authorizing || !server.enabled}
           onClick={onAuthorize}
         >
           <KeyRound size={13} />
