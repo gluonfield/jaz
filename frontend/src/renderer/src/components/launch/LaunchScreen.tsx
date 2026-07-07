@@ -73,7 +73,9 @@ export function ReconnectingBanner({ show }: { show: boolean }) {
 // Boot gate renders with no props; the manual overlay must hand in a way to
 // dismiss itself. Pairing the two stops a manual screen from rendering with no
 // close button and no close-on-success — a trap with no way out.
-type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; onClose: () => void }
+type LaunchScreenProps =
+  | { manual?: false; onClose?: never; splash?: boolean }
+  | { manual: true; onClose: () => void; splash?: never }
 
 // Full-window connect screen. As the boot gate it shows whenever no backend is
 // reachable (first launch, failed startup probe, lost connection). In `manual`
@@ -81,9 +83,9 @@ type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; o
 // machines through the exact same flow they onboarded with; on success it
 // dismisses itself via `onClose`. The particle field renders the wordmark, so
 // the chrome stays text-light.
-export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
+export function LaunchScreen({ manual = false, onClose, splash = false }: LaunchScreenProps = {}) {
   const { status: liveStatus, error, pairing, url: currentUrl } = useConnection()
-  const status = previewStatus ?? liveStatus
+  const status = splash ? 'checking' : (previewStatus ?? liveStatus)
   // PixelField samples the palette at mount; remount it when the theme flips.
   const { resolved } = useTheme()
   const [mode, setMode] = useState<'options' | 'remote'>('options')
