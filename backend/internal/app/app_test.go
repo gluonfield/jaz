@@ -342,10 +342,10 @@ func TestTelegramProviderConfigUsesRuntimeEnvCredentials(t *testing.T) {
 }
 
 func TestDefaultSkillsManifestPin(t *testing.T) {
-	if defaultSkillsManifestURL != "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.28/manifest.json" {
+	if defaultSkillsManifestURL != "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.94/manifest.json" {
 		t.Fatalf("manifest url = %q", defaultSkillsManifestURL)
 	}
-	if defaultSkillsManifestSHA256 != "7acc2b360b5955721ae38edda1b75f5eb4409676a45dfad603e7325c3eab7497" {
+	if defaultSkillsManifestSHA256 != "40bb0076d6d3d218259403e7cb7e763816d897a03c2130428c41723775be6ee3" {
 		t.Fatalf("manifest sha = %q", defaultSkillsManifestSHA256)
 	}
 }
