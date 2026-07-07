@@ -1,6 +1,8 @@
 package acp
 
 import (
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/provider"
@@ -33,6 +35,12 @@ type AgentLoginInvocation struct {
 	Available   bool
 	Reason      string
 	InheritHome bool
+	// UsePTY runs the login on a pseudo-terminal: agy drains piped stdin as
+	// prompt input and would stall before ever starting its OAuth flow.
+	UsePTY bool
+	// TailLog streams a CLI log file into the login output. agy prints its
+	// sign-in URL and paste prompt only there, never to stdout.
+	TailLog string
 }
 
 func ProbeAgentAuth(name string, cfg AgentConfig, root string, env map[string]string) AgentAuthStatus {
@@ -92,7 +100,14 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 	case AgentGrok:
 		return loginInvocation(nil, true, binDir, "grok", "login", "--device-auth")
 	case AgentAntigravity:
-		return loginInvocation(nil, true, binDir, "agy")
+		logFile := filepath.Join(root, "acp", "agy-login.log")
+		invocation := loginInvocation(nil, true, binDir, "agy",
+			"--log-file", logFile,
+			"--print-timeout", "600s",
+			"--print", "Reply with exactly: signed in")
+		invocation.UsePTY = runtime.GOOS != "windows"
+		invocation.TailLog = logFile
+		return invocation
 	default:
 		return AgentLoginInvocation{}
 	}
