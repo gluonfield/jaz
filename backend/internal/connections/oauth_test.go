@@ -153,8 +153,10 @@ func TestOAuthStartBuildsSlackPKCEURL(t *testing.T) {
 		t.Fatalf("slack auth url = %s", start.AuthURL)
 	}
 	scope := strings.Split(q.Get("scope"), ",")
-	if !slices.Contains(scope, "search:read.public") || !slices.Contains(scope, "chat:write") {
-		t.Fatalf("slack scopes missing from %#v", scope)
+	for _, want := range []string{"search:read", "search:read.public", "chat:write", "reactions:write"} {
+		if !slices.Contains(scope, want) {
+			t.Fatalf("slack scope %q missing from %#v", want, scope)
+		}
 	}
 }
 
