@@ -149,7 +149,7 @@ func (t *MCPTools) Status(_ context.Context, _ *mcp.CallToolRequest, input MCPSe
 
 type MCPWaitInput struct {
 	Session        string `json:"session" jsonschema:"active Jaz thread id, thread slug, or ACP session id"`
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"maximum seconds to wait; defaults to 30"`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"maximum seconds to wait; defaults to 600. On timeout returns the current snapshot with state still running"`
 }
 
 func (t *MCPTools) Wait(ctx context.Context, _ *mcp.CallToolRequest, input MCPWaitInput) (*mcp.CallToolResult, Job, error) {
