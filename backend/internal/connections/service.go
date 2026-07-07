@@ -27,13 +27,15 @@ type SessionDisconnecter interface {
 type Service struct {
 	catalog       *Catalog
 	store         Store
+	remoteMCP     *RemoteMCPConnector
 	disconnecters map[string]SessionDisconnecter
 }
 
-func NewService(catalog *Catalog, store Store, disconnecters ...SessionDisconnecter) *Service {
+func NewService(catalog *Catalog, store Store, remoteMCP *RemoteMCPConnector, disconnecters ...SessionDisconnecter) *Service {
 	service := &Service{
 		catalog:       catalog,
 		store:         store,
+		remoteMCP:     remoteMCP,
 		disconnecters: map[string]SessionDisconnecter{},
 	}
 	for _, disconnecter := range disconnecters {
@@ -76,6 +78,11 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) error {
 		return err
 	}
 	if !ok {
+		if disconnected, remoteErr := s.remoteMCP.Disconnect(ctx, id, s.catalog); remoteErr != nil {
+			return remoteErr
+		} else if disconnected {
+			return nil
+		}
 		return ErrConnectionNotFound
 	}
 	ok, err = s.store.DeleteConnection(ctx, id)
@@ -122,6 +129,12 @@ func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, erro
 }
 
 func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin) (integrations.Plugin, error) {
+	if connection, err := s.remoteMCP.Connection(ctx, plugin); err != nil {
+		return integrations.Plugin{}, err
+	} else if connection != nil {
+		plugin.Connection = connection
+		return plugin, nil
+	}
 	if plugin.Provider.ID == "" {
 		return plugin, nil
 	}

@@ -13,7 +13,7 @@ import (
 )
 
 func TestServiceReportsGmailConnectionState(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{})
+	service := NewService(NewCatalog(), &serviceStore{}, nil)
 	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
@@ -33,7 +33,7 @@ func TestServiceReturnsSavedGmailAccounts(t *testing.T) {
 			Alias:       "personal",
 			Scopes:      []string{gmailconnector.ScopeModify},
 		}},
-	})
+	}, nil)
 	plugin, ok, err := service.Plugin(context.Background(), gmailconnector.ProviderID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
@@ -64,7 +64,7 @@ func TestServiceAddsAgentRelevantPaths(t *testing.T) {
 			AccountID: "augustinas@example.com",
 			Alias:     "personal",
 		}},
-	})
+	}, nil)
 
 	connections, err := service.AgentConnections(context.Background())
 	if err != nil {
@@ -102,7 +102,7 @@ func TestServiceAddsAgentRelevantPaths(t *testing.T) {
 }
 
 func TestServiceLeavesChatPluginConnectabilityInCatalog(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{})
+	service := NewService(NewCatalog(), &serviceStore{}, nil)
 	plugin, ok, err := service.Plugin(context.Background(), whatsapp.ProviderID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
@@ -113,7 +113,7 @@ func TestServiceLeavesChatPluginConnectabilityInCatalog(t *testing.T) {
 }
 
 func TestServiceListsChatSessionPluginsInCatalog(t *testing.T) {
-	service := NewService(NewCatalog(), &serviceStore{})
+	service := NewService(NewCatalog(), &serviceStore{}, nil)
 	plugins, err := service.ListPlugins(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestServiceDoesNotRewriteSessionPluginStatus(t *testing.T) {
 			Status: "available",
 		},
 	}}}
-	service := NewService(catalog, &serviceStore{})
+	service := NewService(catalog, &serviceStore{}, nil)
 
 	plugin, ok, err := service.Plugin(context.Background(), "matrix")
 	if err != nil || !ok {
@@ -165,7 +165,7 @@ func TestServiceDisconnectAccount(t *testing.T) {
 		}},
 	}
 	disconnecter := &fakeSessionDisconnecter{provider: gmailconnector.ProviderID}
-	service := NewService(NewCatalog(), &store, disconnecter)
+	service := NewService(NewCatalog(), &store, nil, disconnecter)
 	if err := service.DisconnectAccount(context.Background(), " gmail:personal "); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestServiceDisconnectCleanupSurvivesCanceledRequest(t *testing.T) {
 	disconnecter := &fakeSessionDisconnecter{provider: telegram.ProviderID}
 	ctx, cancel := context.WithCancel(context.Background())
 	store.afterDelete = cancel
-	service := NewService(NewCatalog(), &store, disconnecter)
+	service := NewService(NewCatalog(), &store, nil, disconnecter)
 
 	if err := service.DisconnectAccount(ctx, "telegram:personal"); err != nil {
 		t.Fatal(err)
