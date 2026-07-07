@@ -1105,6 +1105,45 @@ func TestManagerUsesCodexProviderNativeModel(t *testing.T) {
 	}
 }
 
+func TestManagerUsesOpenCodeLaunchModel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			acp.AgentOpenCode: {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				ProviderMode:    acp.AgentProviderModeAgentDefaults,
+				ModelProvider:   provider.ProviderOpenRouter,
+				Model:           "tencent/hy3:free",
+				ReasoningEffort: "",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT": "1",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentOpenCode, Slug: "opencode-openrouter-model"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.ModelProvider != provider.ProviderOpenRouter || session.Model != "tencent/hy3:free" {
+		t.Fatalf("unexpected stored model metadata %#v", session)
+	}
+}
+
 func TestManagerUsesAdvertisedThoughtLevelConfigOption(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

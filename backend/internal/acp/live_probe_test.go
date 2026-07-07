@@ -39,7 +39,10 @@ func TestLiveACPProbe(t *testing.T) {
 	}
 	cfg := probeAgentConfig(t, agent)
 	manager := NewManager(nil, Config{Root: root, Workspace: cwd}, log.New(io.Discard))
-	env := manager.processEnv(agent, cfg)
+	env, err := manager.processEnvPreparedForSurface(ctx, agent, cfg, cwd, "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if home := strings.TrimSpace(os.Getenv("ACP_PROBE_HOME")); home != "" {
 		env["HOME"] = home
 	}
@@ -123,6 +126,9 @@ func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn 
 	t.Helper()
 	policy := agentPolicyForAgent(agent)
 	rawModel := strings.TrimSpace(os.Getenv("ACP_PROBE_MODEL"))
+	if CanonicalAgentName(agent) == AgentOpenCode {
+		rawModel = ""
+	}
 	effort := strings.TrimSpace(os.Getenv("ACP_PROBE_REASONING_EFFORT"))
 	options := sessionConfigOptionsState{}
 	if rawModel != "" {
@@ -175,6 +181,7 @@ func applyProbeEnvOverrides(env map[string]string) {
 		"CLAUDE_CODE_USE_VERTEX",
 		"CLAUDE_CODE_USE_BEDROCK",
 		"CLAUDE_CODE_REMOTE",
+		"OPENROUTER_API_KEY",
 		"XAI_API_KEY",
 	} {
 		if value := os.Getenv(key); value != "" {
