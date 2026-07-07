@@ -29,6 +29,7 @@ import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/l
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 
 type RootSearch = { settings?: SettingsSection }
+type SettingsSectionNavigation = { replace?: boolean }
 
 export const Route = createRootRoute({
   // Settings rides in the URL so it's a real history entry that ⌘[ / ⌘] and the
@@ -137,17 +138,20 @@ function RootLayout() {
     [navigate],
   )
   const goToSettingsSection = useCallback(
-    (section: SettingsSection) =>
-      void navigate({ to: '.', search: (prev) => ({ ...prev, settings: section }), replace: true }),
+    (section: SettingsSection, options?: SettingsSectionNavigation) => {
+      if (section === settingsSection) return
+      void navigate({
+        to: '.',
+        search: (prev) => ({ ...prev, settings: section }),
+        replace: options?.replace,
+      })
+    },
+    [navigate, settingsSection],
+  )
+  const closeSettings = useCallback(
+    () => void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }) }),
     [navigate],
   )
-  // Leaving settings is just stepping back. But when it's the entry we loaded
-  // into (deep link / web reload) there's nothing behind it, so drop the param
-  // directly — otherwise back() is a no-op and the user is stuck inside settings.
-  const closeSettings = useCallback(() => {
-    if (router.history.canGoBack()) router.history.back()
-    else void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }), replace: true })
-  }, [router, navigate])
 
   // A specific board paints itself on bg-surface so its tiles blend; the app
   // titlebar inherits main's background, so match main to surface there too —

@@ -24,6 +24,8 @@ import {
 } from './sections'
 import { UsageSettings } from './UsageSettings'
 
+type SectionNavigationOptions = { replace?: boolean }
+
 export function SettingsOverlay({
   open,
   section,
@@ -33,7 +35,7 @@ export function SettingsOverlay({
 }: {
   open: boolean
   section?: SettingsSection
-  onSectionChange: (section: SettingsSection) => void
+  onSectionChange: (section: SettingsSection, options?: SectionNavigationOptions) => void
   onClose: () => void
   onOpenConnect: () => void
 }) {
@@ -72,7 +74,7 @@ export function SettingsOverlay({
   const current = visibleSections.find((item) => item.id === section) ?? visibleSections[0]
 
   useEffect(() => {
-    if (open && section && section !== current.id) onSectionChange(current.id)
+    if (open && section && section !== current.id) onSectionChange(current.id, { replace: true })
   }, [current.id, onSectionChange, open, section])
 
   return createPortal(
@@ -212,7 +214,7 @@ function SectionContent({
   onNavigate,
 }: {
   section: SettingsSection
-  onNavigate: (section: SettingsSection) => void
+  onNavigate: (section: SettingsSection, options?: SectionNavigationOptions) => void
 }) {
   switch (section) {
     case 'general':
