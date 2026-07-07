@@ -58,6 +58,7 @@ func runServe(args []string) error {
 			app.NewACPAgentCatalog,
 			app.NewRuntimeLayout,
 			app.NewStore,
+			app.NewRuntimeAuthKey,
 			app.NewWorkspace,
 			app.NewMemory,
 			app.NewDeviceAuth,
@@ -232,13 +233,11 @@ func startServer(
 	terminals *terminal.Manager,
 	threadService *threads.Service,
 	deviceAuth *deviceauth.Service,
+	runtimeAuthKey app.RuntimeAuthKey,
 	routes server.Routes,
 	publicRoutes server.PublicRoutes,
 ) error {
-	authKey, err := runtimeauth.Ensure(store.RootDir())
-	if err != nil {
-		return err
-	}
+	authKey := string(runtimeAuthKey)
 	handler := &server.Server{
 		Agent:                 a,
 		Store:                 store,

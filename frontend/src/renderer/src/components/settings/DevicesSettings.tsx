@@ -143,7 +143,7 @@ function AddDeviceModal({
       open={open}
       onClose={onClose}
       title="Add device"
-      description="Scan the code on another Jaz app, or paste the backend URL there."
+      description="Scan the code on another Jaz app, or paste this connection URL there."
       icon={<QrCode size={17} />}
       size="lg"
       footer={
@@ -164,7 +164,7 @@ function AddDeviceModal({
         <div className="grid gap-4 sm:grid-cols-[190px_minmax(0,1fr)]">
           <QRCodeImage value={displayURL} />
           <div className="min-w-0 space-y-3">
-            <ConnectionValue label="Backend URL" value={displayURL} />
+            <ConnectionValue label="Connection URL" value={displayURL} />
             <Button
               variant="primary"
               onClick={() => void copyConnectionURL(displayURL, toast)}

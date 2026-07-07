@@ -60,7 +60,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	var publicRoutes server.PublicRoutes
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(Config{}),
+		fx.Supply(Config{}, RuntimeAuthKey("secret")),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
 		HTTPModule(),
@@ -92,6 +92,7 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),
 		Devices: deviceauth.New(store),
+		AuthKey: RuntimeAuthKey("secret"),
 		Preview: previewapi.NewHandler(),
 	})
 	var foundRevoke bool
@@ -127,6 +128,7 @@ func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 			Usage:   usagecore.NewService(fakeUsageStore{}),
 			Jaz:     Config{Devices: DevicesConfig{DisablePairing: disable}},
 			Devices: deviceauth.New(store),
+			AuthKey: RuntimeAuthKey("secret"),
 			Preview: previewapi.NewHandler(),
 		})
 		for _, route := range routes {
@@ -240,7 +242,7 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}),
-		fx.Provide(NewStore),
+		fx.Provide(NewStore, NewRuntimeAuthKey),
 		HTTPModule(),
 		fx.Populate(&routes, &publicRoutes, &store),
 	)

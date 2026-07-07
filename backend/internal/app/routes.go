@@ -28,7 +28,8 @@ type routeDeps struct {
 	Feed            feedcore.Service
 	ModelCatalog    *modelcatalog.Service `optional:"true"`
 	Jaz             Config
-	Devices         *deviceauth.Service            `optional:"true"`
+	Devices         *deviceauth.Service `optional:"true"`
+	AuthKey         RuntimeAuthKey
 	Config          serverconfig.Config            `optional:"true"`
 	Browser         *browserworker.ExtensionBridge `optional:"true"`
 	BrowserSettings *BrowserSettingsHandler        `optional:"true"`
@@ -44,7 +45,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCatalogRoutes(deps.ModelCatalog)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.Config)
-	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, deps.Jaz.Devices.DisablePairing)
+	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, string(deps.AuthKey), deps.Jaz.Devices.DisablePairing)
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
@@ -118,11 +119,11 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 	return routes
 }
 
-func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, cfg serverconfig.Config, disablePairing bool) server.Routes {
+func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, cfg serverconfig.Config, authKey string, disablePairing bool) server.Routes {
 	if devices == nil {
 		return routes
 	}
-	handler := deviceapi.NewHandler(devices, cfg)
+	handler := deviceapi.NewHandler(devices, cfg, authKey)
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/devices/connection-link", Handler: httpHandlerFunc(handler.ConnectionLink)},
 		server.Route{Pattern: "GET /v1/devices", Handler: httpHandlerFunc(handler.List)},

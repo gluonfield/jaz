@@ -18,6 +18,7 @@ import (
 type Handler struct {
 	service      *deviceauth.Service
 	serverConfig serverconfig.Config
+	authKey      string
 }
 
 type deviceInput struct {
@@ -69,8 +70,8 @@ type pairingDTO struct {
 	Device     deviceDTO  `json:"device"`
 }
 
-func NewHandler(service *deviceauth.Service, config serverconfig.Config) Handler {
-	return Handler{service: service, serverConfig: config}
+func NewHandler(service *deviceauth.Service, config serverconfig.Config, authKey string) Handler {
+	return Handler{service: service, serverConfig: config, authKey: authKey}
 }
 
 func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
@@ -78,9 +79,11 @@ func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(cfg.PublicURL) == "" {
 		cfg.PublicURL = httpapi.RequestBaseURL(r)
 	}
-	httpapi.WriteJSON(w, http.StatusOK, connectionLinkResponse{
-		URL: serverconfig.ClientBaseURL(cfg),
-	})
+	url := serverconfig.ClientBaseURL(cfg)
+	if h.authKey != "" {
+		url = serverconfig.ClientURL(cfg, h.authKey)
+	}
+	httpapi.WriteJSON(w, http.StatusOK, connectionLinkResponse{URL: url})
 }
 
 func (h Handler) List(w http.ResponseWriter, r *http.Request) {

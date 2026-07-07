@@ -16,7 +16,7 @@ import (
 )
 
 func TestConnectionLinkUsesPublicURL(t *testing.T) {
-	handler := NewHandler(nil, serverconfig.Config{Addr: ":5299", PublicURL: "https://jaz.example.com/app"})
+	handler := NewHandler(nil, serverconfig.Config{Addr: ":5299", PublicURL: "https://jaz.example.com/app"}, "secret")
 	res := httptest.NewRecorder()
 	handler.ConnectionLink(res, httptest.NewRequest(http.MethodGet, "/v1/devices/connection-link", nil))
 
@@ -24,13 +24,13 @@ func TestConnectionLinkUsesPublicURL(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.URL != "https://jaz.example.com" {
+	if got.URL != "https://jaz.example.com?key=secret" {
 		t.Fatalf("url = %q", got.URL)
 	}
 }
 
 func TestConnectionLinkFallsBackToRequestHost(t *testing.T) {
-	handler := NewHandler(nil, serverconfig.Config{Addr: ":5299"})
+	handler := NewHandler(nil, serverconfig.Config{Addr: ":5299"}, "secret")
 	req := httptest.NewRequest(http.MethodGet, "/v1/devices/connection-link", nil)
 	req.Host = "jaz.example.net:5299"
 	req.Header.Set("X-Forwarded-Proto", "https")
@@ -41,7 +41,7 @@ func TestConnectionLinkFallsBackToRequestHost(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.URL != "https://jaz.example.net:5299" {
+	if got.URL != "https://jaz.example.net:5299?key=secret" {
 		t.Fatalf("url = %q", got.URL)
 	}
 }
@@ -60,7 +60,7 @@ func TestRegisterUsesRootPrincipalForApprovedRegistration(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/devices/register", strings.NewReader(testDeviceBody("Recovered Mac", 2)))
 	req = req.WithContext(deviceauth.WithPrincipal(req.Context(), deviceauth.Principal{Kind: deviceauth.PrincipalRoot}))
 	res := httptest.NewRecorder()
-	NewHandler(service, serverconfig.Config{}).Register(res, req)
+	NewHandler(service, serverconfig.Config{}, "").Register(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
