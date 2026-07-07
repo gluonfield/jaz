@@ -13,8 +13,9 @@ import (
 
 // handleDisconnectACPAuth removes an agent's credential so it can be re-connected
 // or switched. It deletes only what Jaz owns: the Jaz-managed API key env var,
-// and an OAuth credential that lives in Jaz's own profile (or Grok's auth file).
-// It never touches the user's global ~/.claude.json / ~/.codex config.
+// and an OAuth credential that lives in Jaz's own profile (or Grok's and
+// Antigravity's CLI-owned logins, which have no other sign-out). It never
+// touches the user's global ~/.claude.json / ~/.codex config.
 func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
@@ -63,11 +64,9 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if auth.AuthKind == acp.AuthKindOAuth {
-		if err := acp.RemoveOwnedCredential(agent, auth.StoragePath, s.runtimeRoot()); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
+	if err := acp.RemoveOwnedCredential(agent, auth.StoragePath, s.runtimeRoot()); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
 	}
 
 	writeJSON(w, http.StatusOK, s.agentSettingsResponse(defaults))
