@@ -12,6 +12,7 @@ import (
 	"github.com/wins/jaz/backend/internal/httpapi"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -204,7 +205,7 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 		defer cancel()
 		platform := requestClientPlatform(r)
 		writeJSON(w, http.StatusOK, s.MCP.Authorize(ctx, server, mcpconfig.AuthorizeOptions{
-			RedirectURL:   mcpOAuthCallbackURL(r),
+			RedirectURL:   mcpOAuthCallbackURL(r, s.ServerConfig),
 			ReturnAuthURL: platform == "browser" || platform == "mobile",
 			OpenBrowser:   platform != "browser" && platform != "mobile",
 		}))
@@ -232,8 +233,14 @@ func (s *Server) handleMCPOAuthCallback(w http.ResponseWriter, r *http.Request) 
 	writeMCPOAuthCallbackHTML(w, http.StatusOK, "Connected", "You can close this tab and return to Jaz.", true)
 }
 
-func mcpOAuthCallbackURL(r *http.Request) string {
-	base := strings.TrimRight(httpapi.RequestBaseURL(r), "/")
+func mcpOAuthCallbackURL(r *http.Request, cfg serverconfig.Config) string {
+	base := ""
+	if strings.TrimSpace(cfg.PublicURL) != "" {
+		base = serverconfig.ClientBaseURL(cfg)
+	} else {
+		base = httpapi.RequestBaseURL(r)
+	}
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if base == "" {
 		return ""
 	}

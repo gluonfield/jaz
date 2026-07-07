@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testexec"
 )
@@ -972,6 +973,44 @@ func TestMCPAuthorizeBrowserUsesPublicCallbackAndReturnsAuthURL(t *testing.T) {
 	}
 	if got.Status != "needs_auth" || got.AuthURL != "https://auth.example.com/authorize" {
 		t.Fatalf("authorize response = %#v", got)
+	}
+}
+
+func TestMCPAuthorizeUsesConfiguredPublicCallbackBeforeForwardedHost(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	server, err := store.CreateMCPServer(mcpconfig.ServerInput{
+		Name:    "Notion",
+		URL:     "https://mcp.notion.com/mcp",
+		Enabled: true,
+		OAuth:   mcpconfig.OAuthConfig{Issuer: "https://auth.example.com"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := &recordingMCPRuntime{}
+	handler := (&Server{
+		ModelCatalog: modelcatalog.NewService(nil),
+		Store:        store,
+		MCP:          runtime,
+		ServerConfig: serverconfig.Config{Addr: ":5299", PublicURL: "https://public.example.com/app"},
+	}).Handler()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/mcp/servers/"+server.ID+"/authorize", nil)
+	req.Header.Set(clientPlatformHeader, "browser")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "spoofed.example.com")
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("authorize status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if runtime.options.RedirectURL != "https://public.example.com/v1/mcp/oauth/callback" {
+		t.Fatalf("redirect url = %q", runtime.options.RedirectURL)
 	}
 }
 
