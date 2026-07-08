@@ -44,6 +44,10 @@ export function ConnectionsSettings() {
       ),
     [sortedPlugins],
   )
+  const availablePlugins = useMemo(
+    () => sortedPlugins.filter((plugin) => plugin.connection?.status !== 'connected'),
+    [sortedPlugins],
+  )
   const hasConnectedAccounts = connectedAccounts.length > 0
   const hasCatalogPlugins = sortedPlugins.length > 0
   const disconnectAccount = (account: IntegrationConnectionAccount) => {
@@ -85,6 +89,7 @@ export function ConnectionsSettings() {
                           plugin={plugin}
                           account={account}
                           disconnecting={disconnect.isPending && disconnect.variables === account.id}
+                          onOpen={() => setSelectedPluginID(plugin.id)}
                           onDisconnect={() => disconnectAccount(account)}
                         />
                       </AnimatedListItem>
@@ -93,10 +98,10 @@ export function ConnectionsSettings() {
                 </ConnectionSection>
               ) : null}
 
-              {hasCatalogPlugins ? (
+              {availablePlugins.length > 0 ? (
                 <ConnectionSection title="Available">
                   <AnimatedList>
-                    {sortedPlugins.map((plugin) => (
+                    {availablePlugins.map((plugin) => (
                       <AnimatedListItem key={plugin.id}>
                         <ConnectionPluginCard
                           plugin={plugin}
