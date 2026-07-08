@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
@@ -382,6 +383,21 @@ func resolveAntigravityAuth(auth AgentAuthConfig, root string, env map[string]st
 	return status
 }
 
+// agy keeps its OAuth in the OS keyring, not a readable file, so the only
+// reliable auth check is running `agy models`. A single settings load or save
+// probes every agent — and antigravity twice per probe (env build + resolve) —
+// so cache the result briefly to collapse those into one subprocess.
+//
+// Only the authenticated result is cached: a signed-in probe is the slow one
+// (~1s), while a signed-out probe is cheap (~0.3s) and must stay fresh so the
+// post-login verification sees the just-written credential instead of a stale no.
+var antigravityAuthCache = struct {
+	sync.Mutex
+	authedUntil map[string]time.Time
+}{authedUntil: map[string]time.Time{}}
+
+const antigravityAuthTTL = 30 * time.Second
+
 func antigravityCLIAuthenticated(env map[string]string) bool {
 	path, err := executableInPath("agy", env["PATH"])
 	if err != nil {
@@ -390,13 +406,34 @@ func antigravityCLIAuthenticated(env map[string]string) bool {
 			return false
 		}
 	}
+	key := path + "\x00" + env["HOME"]
+	antigravityAuthCache.Lock()
+	fresh := time.Now().Before(antigravityAuthCache.authedUntil[key])
+	antigravityAuthCache.Unlock()
+	if fresh {
+		return true
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, path, "models")
 	if len(env) > 0 {
 		cmd.Env = processenv.List(env)
 	}
-	return cmd.Run() == nil
+	if cmd.Run() != nil {
+		return false
+	}
+	antigravityAuthCache.Lock()
+	antigravityAuthCache.authedUntil[key] = time.Now().Add(antigravityAuthTTL)
+	antigravityAuthCache.Unlock()
+	return true
+}
+
+// invalidateAntigravityAuthCache drops cached results so a disconnect is
+// reflected on the next probe instead of lingering until the TTL expires.
+func invalidateAntigravityAuthCache() {
+	antigravityAuthCache.Lock()
+	clear(antigravityAuthCache.authedUntil)
+	antigravityAuthCache.Unlock()
 }
 
 func openCodeProviderID(model string) string {
@@ -458,6 +495,7 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	// Best-effort: headless hosts have no keyring and agy uses the file there.
 	if name == AgentAntigravity {
 		_ = keyring.Delete(antigravityKeyringService, antigravityKeyringAccount)
+		invalidateAntigravityAuthCache()
 	}
 	return nil
 }
