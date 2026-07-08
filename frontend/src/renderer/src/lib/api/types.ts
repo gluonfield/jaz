@@ -223,7 +223,7 @@ export interface HealthResponse {
   }
 }
 
-export type IntegrationAuthKind = 'oauth' | 'session' | 'bridge' | 'remote_mcp' | 'browser_local' | 'internal'
+export type IntegrationAuthKind = 'oauth' | 'session' | 'bridge' | 'remote_mcp' | 'browser_local'
 export type IntegrationCapability = 'sync' | 'act' | 'materialize' | 'mcp' | 'browser'
 export type IntegrationActionRisk = 'read' | 'draft' | 'write' | 'bulk_write' | 'delete'
 

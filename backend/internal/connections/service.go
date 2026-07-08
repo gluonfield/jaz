@@ -109,7 +109,7 @@ func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, erro
 	var out []AgentConnection
 	for _, plugin := range plugins {
 		providerID := plugin.Provider.ID
-		if providerID == "" || plugin.Internal() {
+		if providerID == "" {
 			continue
 		}
 		accounts, err := s.store.ListConnections(ctx, providerID)
@@ -133,10 +133,6 @@ func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, erro
 }
 
 func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin) (integrations.Plugin, error) {
-	if plugin.Internal() {
-		plugin.Connection = &integrations.PluginConnection{Status: integrations.PluginConnectionStatusConnected}
-		return plugin, nil
-	}
 	if connection, err := s.remoteMCP.Connection(ctx, plugin); err != nil {
 		return integrations.Plugin{}, err
 	} else if connection != nil {

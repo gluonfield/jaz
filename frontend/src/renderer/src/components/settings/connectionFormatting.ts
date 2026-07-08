@@ -25,7 +25,6 @@ export function accountSyncLabel(account: IntegrationConnectionAccount): string 
 
 export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean): string {
   if (connecting) return 'Connecting'
-  if (pluginInternal(plugin)) return 'Built in'
   const sessionAuth = plugin.auth[0]?.kind === 'session'
   const remoteMCPAuth = plugin.auth[0]?.kind === 'remote_mcp'
   if (!pluginCanConnect(plugin)) return titleCase(plugin.implementation.status)
@@ -36,12 +35,8 @@ export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean
   return 'Connect'
 }
 
-export function pluginInternal(plugin: IntegrationPlugin): boolean {
-  return plugin.auth[0]?.kind === 'internal'
-}
-
 export function pluginCanConnect(plugin: IntegrationPlugin): boolean {
-  return plugin.implementation.status === 'available' && !pluginInternal(plugin)
+  return plugin.implementation.status === 'available'
 }
 
 export function categoryLabel(value?: string): string {
