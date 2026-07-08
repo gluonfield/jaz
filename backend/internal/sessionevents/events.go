@@ -236,6 +236,11 @@ type ACPEvent struct {
 	LastToolAt      time.Time       `json:"last_tool_at,omitzero"`
 }
 
+// PlanCleared is the explicit-empty plan. A nil plan makes no statement (the
+// marshaler omits the field); PlanCleared serializes as plan:[] so subscribers
+// see that a previously published plan no longer stands.
+var PlanCleared = []PlanEntry{}
+
 func (e ACPEvent) MarshalJSON() ([]byte, error) {
 	type acpEvent ACPEvent
 	if e.Plan != nil {
