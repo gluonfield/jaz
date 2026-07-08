@@ -72,30 +72,27 @@ function ImageAttachment({
   if (!src || unavailable) return <ImageAttachmentPreview attachment={attachment} status="Unavailable" unavailable />
   return (
     <>
-      <ImageAttachmentPreview
+      <ImageAttachmentPreview attachment={attachment} onOpen={() => setOpen(true)} />
+      <ImageAttachmentModal
         attachment={attachment}
         src={src}
-        onOpen={() => setOpen(true)}
+        open={open}
+        onClose={() => setOpen(false)}
         onError={() => setUnavailable(true)}
       />
-      <ImageAttachmentModal attachment={attachment} src={src} open={open} onClose={() => setOpen(false)} />
     </>
   )
 }
 
 function ImageAttachmentPreview({
   attachment,
-  src,
   onOpen,
-  onError,
   status = formatAttachmentSize(attachment.size),
   unavailable = false,
   uploading = false,
 }: {
   attachment: MessageAttachment
-  src?: string
   onOpen?: () => void
-  onError?: () => void
   status?: string
   unavailable?: boolean
   uploading?: boolean
@@ -103,26 +100,15 @@ function ImageAttachmentPreview({
   const content = (
     <>
       <div className="relative grid aspect-[4/3] place-items-center overflow-hidden bg-surface-2">
-        {src ? (
-          <img
-            src={src}
-            alt={attachment.name}
-            loading="lazy"
-            decoding="async"
-            onError={onError}
-            className="size-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
-          />
-        ) : (
-          <div className="relative grid size-7 place-items-center rounded-[6px] bg-bg/70 text-ink-3 shadow-sm ring-1 ring-border/70">
-            {uploading ? (
-              <LoaderCircle size={15} className="animate-spin" aria-hidden />
-            ) : unavailable ? (
-              <ImageOff size={15} aria-hidden />
-            ) : (
-              <ImageIcon size={15} aria-hidden />
-            )}
-          </div>
-        )}
+        <div className="relative grid size-7 place-items-center rounded-[6px] bg-bg/70 text-ink-3 shadow-sm ring-1 ring-border/70">
+          {uploading ? (
+            <LoaderCircle size={15} className="animate-spin" aria-hidden />
+          ) : unavailable ? (
+            <ImageOff size={15} aria-hidden />
+          ) : (
+            <ImageIcon size={15} aria-hidden />
+          )}
+        </div>
         {onOpen ? (
           <span className="absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-bg/90 text-ink shadow-sm ring-1 ring-border/70">
             <Eye size={10} aria-hidden />
@@ -140,7 +126,7 @@ function ImageAttachmentPreview({
   if (!onOpen) {
     return (
       <div
-        className="w-28 max-w-full overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70"
+        className="w-24 max-w-full overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70"
         title={unavailable ? 'Attachment file is no longer available on the server' : attachmentTitle(attachment)}
       >
         {content}
@@ -153,7 +139,7 @@ function ImageAttachmentPreview({
       type="button"
       aria-label={`Open ${attachment.name}`}
       title={attachmentTitle(attachment)}
-      className="w-28 max-w-full cursor-pointer overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70 transition-[background-color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
+      className="w-24 max-w-full cursor-pointer overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70 transition-[background-color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
       onClick={onOpen}
     >
       {content}
@@ -166,11 +152,13 @@ function ImageAttachmentModal({
   src,
   open,
   onClose,
+  onError,
 }: {
   attachment: MessageAttachment
   src: string
   open: boolean
   onClose: () => void
+  onError: () => void
 }) {
   return (
     <Modal open={open} onClose={onClose} title={attachment.name} size="xl" chromeless>
@@ -179,6 +167,7 @@ function ImageAttachmentModal({
           <img
             src={src}
             alt={attachment.name}
+            onError={onError}
             className="max-h-[calc(100dvh-7rem)] max-w-full rounded-[8px] object-contain outline outline-1 -outline-offset-1 outline-white/10"
           />
         </div>
