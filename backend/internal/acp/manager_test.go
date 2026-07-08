@@ -726,7 +726,7 @@ func TestManagerIncludesAgentStderrWhenInitializeConnectionCloses(t *testing.T) 
 	}
 }
 
-func TestManagerUsesStoredACPCommandArgs(t *testing.T) {
+func TestManagerLaunchesCatalogCommandWithStoredModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -735,7 +735,6 @@ func TestManagerUsesStoredACPCommandArgs(t *testing.T) {
 		ACP: map[string]agentsettings.ACPAgentDefaults{
 			"codex": {
 				Enabled:         true,
-				Command:         agentsettings.CommandLine(os.Args[0], []string{"-test.run=TestFakeACPAgentProcess"}),
 				Model:           "fake-large",
 				ReasoningEffort: "high",
 			},
@@ -746,7 +745,8 @@ func TestManagerUsesStoredACPCommandArgs(t *testing.T) {
 	}
 	catalog := acp.AgentCatalog{
 		"codex": {
-			Command: "missing-codex-acp",
+			Command: os.Args[0],
+			Args:    []string{"-test.run=TestFakeACPAgentProcess"},
 			Env: map[string]string{
 				"JAZ_FAKE_ACP_AGENT":         "1",
 				"JAZ_FAKE_ACP_SET_MODEL":     "1",

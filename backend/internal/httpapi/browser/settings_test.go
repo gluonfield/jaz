@@ -28,7 +28,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
-		acp.AgentCodex: {Enabled: true, Command: "codex-acp"},
+		acp.AgentCodex: {Enabled: true},
 	}}); err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestSettingsEndpointAllowsManagedModeWithoutExtension(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
-		acp.AgentCodex: {Enabled: true, Command: "codex-acp"},
+		acp.AgentCodex: {Enabled: true},
 	}}); err != nil {
 		t.Fatal(err)
 	}

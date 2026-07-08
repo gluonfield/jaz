@@ -36,7 +36,6 @@ type AgentOptions struct {
 	ProviderMode     string                  `json:"provider_mode,omitempty"`
 	ModelProviderIDs []string                `json:"model_provider_ids,omitempty"`
 	AuthProviderID   string                  `json:"auth_provider_id,omitempty"`
-	RequiresCommand  bool                    `json:"requires_command"`
 	SupportsAuth     bool                    `json:"supports_auth"`
 }
 
@@ -669,7 +668,6 @@ func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 	options.Local = cfg.Local
 	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)
 	options.AuthProviderID = strings.TrimSpace(cfg.AuthProviderID)
-	options.RequiresCommand = cfg.RequiresCommand()
 	options.SupportsAuth = cfg.SupportsAuth()
 	return options
 }

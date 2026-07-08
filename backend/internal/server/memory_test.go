@@ -161,8 +161,8 @@ func TestMemoryAgentSetting(t *testing.T) {
 	handler := srv.Handler()
 
 	if _, err := jazsettings.SaveAgentDefaults(srv.Store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
-		"codex":  {Enabled: true, Command: "codex-acp"},
-		"claude": {Enabled: true, Command: "claude-acp"},
+		"codex":  {Enabled: true},
+		"claude": {Enabled: true},
 	}}); err != nil {
 		t.Fatal(err)
 	}

@@ -170,7 +170,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		Agents []string `json:"agents"`
 		ACP    map[string]struct {
 			Enabled         bool   `json:"enabled"`
-			Command         string `json:"command"`
 			ModelProvider   string `json:"model_provider"`
 			Model           string `json:"model"`
 			ReasoningEffort string `json:"reasoning_effort"`
@@ -192,9 +191,8 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 				Label      string `json:"label"`
 				Configured bool   `json:"configured"`
 			} `json:"model_providers"`
-			AuthProviderID  string `json:"auth_provider_id"`
-			RequiresCommand bool   `json:"requires_command"`
-			SupportsAuth    bool   `json:"supports_auth"`
+			AuthProviderID string `json:"auth_provider_id"`
+			SupportsAuth   bool   `json:"supports_auth"`
 		} `json:"acp_options"`
 	}
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
@@ -208,12 +206,8 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
 	if got.ACP["codex"].Enabled ||
-		got.ACP["codex"].Command != "" ||
 		got.ACP["codex"].Model != "gpt-5.5" {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
-	}
-	if got.ACPOptions["codex"].RequiresCommand {
-		t.Fatalf("unexpected codex capabilities %#v", got.ACPOptions["codex"])
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
 		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter" {
@@ -226,12 +220,10 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("unexpected codex model providers %#v", got.ACPOptions["codex"].ModelProviders)
 	}
 	if got.ACP["grok"].Enabled ||
-		got.ACP["grok"].Command != `grok --no-auto-update agent --no-leader --always-approve stdio` ||
 		got.ACP["grok"].Model != "grok-build" {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
 	}
 	if got.ACP["opencode"].Enabled ||
-		got.ACP["opencode"].Command != `npx -y opencode-ai@1.17.7 acp` ||
 		got.ACP["opencode"].ModelProvider != "openrouter" ||
 		got.ACP["opencode"].Model != "z-ai/glm-5.2" {
 		t.Fatalf("unexpected opencode defaults %#v", got.ACP["opencode"])
@@ -252,7 +244,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &rawOptions); err != nil {
 		t.Fatal(err)
 	}
-	for _, flag := range []string{"local", "requires_command", "supports_auth"} {
+	for _, flag := range []string{"local", "supports_auth"} {
 		if _, ok := rawOptions.ACPOptions["codex"][flag]; !ok {
 			t.Fatalf("acp_options.codex must emit %q, body = %s", flag, getRes.Body.String())
 		}
@@ -732,7 +724,6 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 		Agents []string `json:"agents"`
 		ACP    map[string]struct {
 			Enabled bool   `json:"enabled"`
-			Command string `json:"command"`
 			Model   string `json:"model"`
 		} `json:"acp"`
 	}
@@ -745,15 +736,15 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if _, ok := got.ACP[acp.AgentJaz]; ok {
 		t.Fatalf("jaz should not be exposed in editable settings: %#v", got.ACP)
 	}
-	if got.ACP["local_helper"].Command != "/opt/jaz/local-helper --stdio" || got.ACP["local_helper"].Model != "helper-model" {
+	if got.ACP["local_helper"].Model != "helper-model" {
 		t.Fatalf("custom agent not seeded: %#v", got.ACP["local_helper"])
 	}
 
 	putReq := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
 		"acp":{
-			"codex":{"enabled":false,"command":"codex-acp","model":"gpt-5.5","reasoning_effort":"medium"},
-			"claude":{"enabled":false,"command":"npx -y @agentclientprotocol/claude-agent-acp@0.43.0","model":"default","reasoning_effort":"medium"},
-			"local_helper":{"enabled":true,"command":"/opt/jaz/local-helper --stdio","model":"helper-model","reasoning_effort":"low"}
+			"codex":{"enabled":false,"model":"gpt-5.5","reasoning_effort":"medium"},
+			"claude":{"enabled":false,"model":"default","reasoning_effort":"medium"},
+			"local_helper":{"enabled":true,"model":"helper-model","reasoning_effort":"low"}
 		}
 	}`))
 	putReq.Header.Set("Content-Type", "application/json")
@@ -809,28 +800,6 @@ func TestAgentSettingsRejectUnknownACPAgent(t *testing.T) {
 	(&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store}).Handler().ServeHTTP(res, req)
 
 	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "unknown acp agent") {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
-func TestAgentSettingsRejectEnabledACPWithoutCommand(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", strings.NewReader(`{
-		"acp":{
-			"codex":{"enabled":false,"command":""},
-			"grok":{"enabled":true,"command":""}
-		}
-	}`))
-	req.Header.Set("Content-Type", "application/json")
-	res := httptest.NewRecorder()
-
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store}).Handler().ServeHTTP(res, req)
-
-	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "command is required") {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 }

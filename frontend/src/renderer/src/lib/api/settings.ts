@@ -18,7 +18,6 @@ function normalizeAgentSettings(settings: AgentSettings): AgentSettings {
           agent,
           {
             enabled: Boolean(current.enabled),
-            command: current.command?.trim() || '',
             model_provider: current.model_provider?.trim() || '',
             model: current.model?.trim() || '',
             reasoning_effort: current.reasoning_effort ?? '',
