@@ -34,7 +34,8 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   unread,
-  goal
+  goal,
+  manual_title
 FROM threads;
 
 -- name: GetSession :one
@@ -73,7 +74,8 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   unread,
-  goal
+  goal,
+  manual_title
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
@@ -95,6 +97,7 @@ INSERT INTO threads (
   id,
   slug,
   title,
+  manual_title,
   parent_id,
   status,
   runtime,
@@ -131,6 +134,7 @@ INSERT INTO threads (
   sqlc.arg(id),
   sqlc.arg(slug),
   sqlc.narg(title),
+  sqlc.arg(manual_title),
   sqlc.narg(parent_id),
   sqlc.arg(status),
   sqlc.arg(runtime),
@@ -167,6 +171,7 @@ INSERT INTO threads (
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
   title = excluded.title,
+  manual_title = excluded.manual_title,
   parent_id = excluded.parent_id,
   status = excluded.status,
   error = excluded.error,
@@ -212,8 +217,17 @@ WHERE id = sqlc.arg(id) OR parent_id = sqlc.arg(id);
 
 -- name: UpdateSessionTitle :exec
 UPDATE threads
-SET title = sqlc.narg(title)
+SET
+  title = sqlc.narg(title),
+  manual_title = 1
 WHERE id = sqlc.arg(id);
+
+-- name: UpdateSessionTitleFromRuntime :execrows
+UPDATE threads
+SET
+  title = sqlc.narg(title),
+  manual_title = 0
+WHERE id = sqlc.arg(id) AND manual_title = 0;
 
 -- name: UpdateSessionStatus :exec
 UPDATE threads

@@ -124,6 +124,7 @@ type Session struct {
 	ID              string          `json:"id"`
 	Slug            string          `json:"slug"`
 	Title           string          `json:"title,omitempty"`
+	ManualTitle     bool            `json:"manual_title,omitempty"`
 	ParentID        string          `json:"parent_id,omitempty"`
 	Status          string          `json:"status"`
 	Error           string          `json:"error,omitempty"`

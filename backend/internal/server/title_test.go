@@ -152,6 +152,35 @@ func TestGeneratedSessionTitlePublishesSessionEvent(t *testing.T) {
 	expectSessionChangedEvent(t, sub, session.ID)
 }
 
+func TestGeneratedSessionTitlePreservesManualTitle(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "manual-title",
+		Title:   "Fallback Title",
+		Runtime: storage.RuntimeACP,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionTitle(session.ID, "Fallback Title"); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{
+		Store: store,
+		ACP:   &fakeACPManager{utilityText: `{"title":"Generated Title"}`},
+	}
+
+	updated := server.generateAndSaveSessionTitle(context.Background(), session, "Fallback Title")
+
+	if updated.Title != "Fallback Title" || !updated.ManualTitle {
+		t.Fatalf("title/manual = %q/%v, want manual fallback", updated.Title, updated.ManualTitle)
+	}
+}
+
 func waitForSessionTitle(t *testing.T, store storage.SessionStore, sessionID, want string) {
 	t.Helper()
 	deadline := time.After(10 * time.Second)
