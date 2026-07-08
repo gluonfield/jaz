@@ -223,7 +223,7 @@ export interface HealthResponse {
   }
 }
 
-export type IntegrationAuthKind = 'oauth' | 'session' | 'bridge' | 'remote_mcp' | 'browser_local' | 'internal'
+export type IntegrationAuthKind = 'oauth' | 'session' | 'bridge' | 'remote_mcp' | 'browser_local'
 export type IntegrationCapability = 'sync' | 'act' | 'materialize' | 'mcp' | 'browser'
 export type IntegrationActionRisk = 'read' | 'draft' | 'write' | 'bulk_write' | 'delete'
 
@@ -510,7 +510,6 @@ export type MessageBlock =
       uri?: string
       mime_type?: string
       size?: number
-      server_path?: string
     }
   | { type: 'tool'; id: string; name: string; input_json?: string; result?: string }
 
@@ -519,8 +518,7 @@ export interface Attachment {
   name: string
   mime_type?: string
   size?: number
-  uri: string
-  server_path?: string
+  uri?: string
 }
 
 export interface ChatMessage {
@@ -1024,7 +1022,6 @@ export interface ProviderInput {
 
 export interface ACPAgentDefaults {
   enabled: boolean
-  command?: string
   model_provider?: string
   model?: string
   reasoning_effort?: string
@@ -1079,12 +1076,14 @@ export interface ReasoningEffortOption {
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
   models?: ModelCatalogEntry[]
+  default_model?: string
+  default_model_provider?: string
+  default_reasoning_effort?: string
   local: boolean
   provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]
   model_providers?: ModelProviderOption[]
   auth_provider_id?: string
-  requires_command: boolean
   supports_auth: boolean
 }
 

@@ -11,10 +11,11 @@ import (
 
 type PluginHandler struct {
 	Service *connections.Service
+	MCP     MCPRefresher
 }
 
-func NewPluginHandler(service *connections.Service) PluginHandler {
-	return PluginHandler{Service: service}
+func NewPluginHandler(service *connections.Service, mcp MCPRefresher) PluginHandler {
+	return PluginHandler{Service: service, MCP: mcp}
 }
 
 func (h PluginHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -42,13 +43,17 @@ func (h PluginHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h PluginHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.PathValue("id"))
-	if err := h.Service.DisconnectAccount(r.Context(), id); err != nil {
+	result, err := h.Service.DisconnectAccount(r.Context(), id)
+	if err != nil {
 		if errors.Is(err, connections.ErrConnectionNotFound) {
 			httpapi.WriteError(w, http.StatusNotFound, err)
 			return
 		}
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return
+	}
+	if result.MCPServersChanged {
+		refreshMCP(h.MCP)
 	}
 	httpapi.WriteJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

@@ -61,7 +61,7 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 		return "", err
 	}
 	collector.setSession(string(acpSession.response.SessionID))
-	defer m.closeUtilitySession(ac, acpSession.response.SessionID)
+	defer m.closeProtocolSession(ac, acpSession.response.SessionID)
 
 	prompt, err := promptContentBlocks(req.Message, nil, attachmentResourceResolver{})
 	if err != nil {
@@ -103,7 +103,7 @@ func (m *Manager) newUtilitySession(ctx context.Context, ac *agentConn, agent st
 	return session, nil
 }
 
-func (m *Manager) closeUtilitySession(ac *agentConn, sessionID acpschema.SessionID) {
+func (m *Manager) closeProtocolSession(ac *agentConn, sessionID acpschema.SessionID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _ = ac.peer.Call(ctx, acpschema.AgentMethodSessionClose, acpschema.CloseSessionRequest{

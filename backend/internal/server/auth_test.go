@@ -72,6 +72,17 @@ func TestAuthMiddlewareAcceptsQueryKeyForRawSessionFile(t *testing.T) {
 	}
 }
 
+func TestAuthMiddlewareAcceptsQueryKeyForSessionAttachment(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/attachments/attachment-id?key=secret", nil)
+	res := httptest.NewRecorder()
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func TestAuthMiddlewareRejectsQueryKeyForSessionFileJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/file?path=paper.pdf&key=secret", nil)
 	res := httptest.NewRecorder()
@@ -87,6 +98,28 @@ func TestAuthMiddlewareAcceptsQueryKeyForBrowserExtension(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension?key=secret", nil)
 	res := httptest.NewRecorder()
 	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestAuthMiddlewareAcceptsDeviceQueryKeyForSessionAttachmentAfterBootstrap(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	devices := deviceauth.New(store)
+	registered, err := devices.Register(testDeviceInfo("First Mac", "desktop", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/attachments/attachment-id?key="+registered.Token, nil)
+	res := httptest.NewRecorder()
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key", Devices: devices}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})).ServeHTTP(res, req)
 	if res.Code != http.StatusNoContent {

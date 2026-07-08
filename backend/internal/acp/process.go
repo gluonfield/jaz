@@ -374,6 +374,9 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		auth.BindAPIKeyEnv(env)
 	}
 	if name == AgentAntigravity {
+		// Antigravity authenticates through the agy CLI's own keyring, never an
+		// API key env var, so there is nothing to resolve or bind here — only the
+		// host/proxy env and the login bin dir on PATH.
 		processenv.PreserveHost(env,
 			"HTTP_PROXY",
 			"HTTPS_PROXY",
@@ -383,8 +386,6 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 			"NO_PROXY",
 		)
 		addPathDirsToPath(env, agent.LoginBinDir)
-		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
-		auth.BindAPIKeyEnv(env)
 	}
 	if prepare {
 		if spec, ok := resolveAgentAPIKeySpec(name); ok {

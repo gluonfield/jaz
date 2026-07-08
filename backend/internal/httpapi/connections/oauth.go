@@ -20,6 +20,7 @@ type ConnectHandler struct {
 	Connect *connections.ConnectService
 	OAuth   *connections.OAuthService
 	QR      *connections.QRService
+	MCP     MCPRefresher
 	// CallbackBaseURL is the trusted public origin for OAuth redirect URIs. When
 	// empty the request host is used. Providers like Slack require an HTTPS
 	// callback, configured here rather than derived from request headers.
@@ -30,12 +31,12 @@ type qrPasswordRequest struct {
 	Password string `json:"password"`
 }
 
-func NewConnectHandler(connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService, callbackBaseURL string) ConnectHandler {
-	return ConnectHandler{Connect: connect, OAuth: oauth, QR: qr, CallbackBaseURL: strings.TrimRight(strings.TrimSpace(callbackBaseURL), "/")}
+func NewConnectHandler(connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService, mcp MCPRefresher, callbackBaseURL string) ConnectHandler {
+	return ConnectHandler{Connect: connect, OAuth: oauth, QR: qr, MCP: mcp, CallbackBaseURL: strings.TrimRight(strings.TrimSpace(callbackBaseURL), "/")}
 }
 
 func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
-	start, err := h.Connect.Start(r.Context(), r.PathValue("id"), h.callbackURL(r))
+	result, err := h.Connect.Start(r.Context(), r.PathValue("id"), h.callbackURL(r))
 	if err != nil {
 		if errors.Is(err, connections.ErrQRProviderUnavailable) {
 			httpapi.WriteError(w, http.StatusServiceUnavailable, err)
@@ -44,7 +45,10 @@ func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
-	httpapi.WriteJSON(w, http.StatusOK, start)
+	if result.MCPServersChanged {
+		refreshMCP(h.MCP)
+	}
+	httpapi.WriteJSON(w, http.StatusOK, result.Start)
 }
 
 func (h ConnectHandler) Callback(w http.ResponseWriter, r *http.Request) {

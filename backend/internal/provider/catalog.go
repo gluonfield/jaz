@@ -14,6 +14,9 @@ const (
 	ProviderOllama     = "ollama"
 	ProviderMock       = "mock"
 
+	DefaultOpenRouterModel = "z-ai/glm-5.2"
+	DefaultOpenAIModel     = "gpt-5.4-mini"
+
 	CapabilityJaz      = "jaz"
 	CapabilityOpenCode = "opencode"
 	CapabilityCodex    = "codex"
@@ -50,7 +53,7 @@ func ModelProviders() []ModelProvider {
 			Label:                  "OpenRouter",
 			BaseURL:                "https://openrouter.ai/api/v1",
 			APIKeyEnv:              "OPENROUTER_API_KEY",
-			DefaultModel:           "openai/gpt-5.4-mini",
+			DefaultModel:           DefaultOpenRouterModel,
 			DefaultReasoningEffort: "medium",
 			Implemented:            true,
 			OpenCode:               true,
@@ -62,7 +65,7 @@ func ModelProviders() []ModelProvider {
 			Label:                  "OpenAI",
 			BaseURL:                "https://api.openai.com/v1",
 			APIKeyEnv:              "OPENAI_API_KEY",
-			DefaultModel:           "gpt-5.4-mini",
+			DefaultModel:           DefaultOpenAIModel,
 			DefaultReasoningEffort: "medium",
 			Implemented:            true,
 			OpenCode:               true,

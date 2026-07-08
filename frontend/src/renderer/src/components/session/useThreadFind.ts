@@ -113,6 +113,10 @@ function scrollRangeIntoView(range: Range, scrollRoot: HTMLElement): void {
   parent?.scrollIntoView({ block: 'center', inline: 'nearest' })
 }
 
+function threadFindShortcutsDisabled(event: KeyboardEvent): boolean {
+  return event.target instanceof Element && Boolean(event.target.closest('[data-thread-find-shortcuts="off"]'))
+}
+
 export function useThreadFind(contentKey: string, scrollRef: RefObject<HTMLElement | null>) {
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -178,6 +182,7 @@ export function useThreadFind(contentKey: string, scrollRef: RefObject<HTMLEleme
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (modalDialogOpen()) return
+      if (threadFindShortcutsDisabled(event)) return
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
         event.preventDefault()
         event.stopPropagation()

@@ -8,9 +8,6 @@ const (
 	AuthKindBridge       AuthKind = "bridge"
 	AuthKindRemoteMCP    AuthKind = "remote_mcp"
 	AuthKindBrowserLocal AuthKind = "browser_local"
-	// AuthKindInternal marks a built-in provider: always connected, no
-	// accounts, and no user sign-in flow.
-	AuthKindInternal AuthKind = "internal"
 )
 
 type Capability string
@@ -59,10 +56,6 @@ type Plugin struct {
 	ConnectionNotes []string          `json:"connection_notes,omitempty"`
 	Implementation  Implementation    `json:"implementation"`
 	Connection      *PluginConnection `json:"connection,omitempty"`
-}
-
-func (p Plugin) Internal() bool {
-	return len(p.Auth) > 0 && p.Auth[0].Kind == AuthKindInternal
 }
 
 type PluginConnectionStatus string

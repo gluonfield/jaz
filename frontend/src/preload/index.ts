@@ -3,6 +3,7 @@ import {
   BROWSER_NAVIGATION_CHANNEL,
   type BrowserNavigationDirection,
 } from '../shared/browserNavigation'
+import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
 import type { UpdateStatus } from '../shared/update'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
@@ -96,5 +97,10 @@ contextBridge.exposeInMainWorld('jaz', {
     }
     ipcRenderer.on(BROWSER_NAVIGATION_CHANNEL, listener)
     return () => ipcRenderer.removeListener(BROWSER_NAVIGATION_CHANNEL, listener)
+  },
+  onPreviewFindShortcut: (handler: () => void): (() => void) => {
+    const listener = (): void => handler()
+    ipcRenderer.on(PREVIEW_FIND_SHORTCUT_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(PREVIEW_FIND_SHORTCUT_CHANNEL, listener)
   },
 })

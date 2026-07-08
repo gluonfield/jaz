@@ -373,6 +373,9 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdS
 	if err != nil {
 		return createdSession{}, err
 	}
+	if err := m.validateSpawnModelBeforePersist(ctx, req, cfg); err != nil {
+		return createdSession{}, err
+	}
 	session, err := m.createStoredSession(req, cfg, effort)
 	if err != nil {
 		return createdSession{}, err

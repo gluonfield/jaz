@@ -43,8 +43,25 @@ import (
 )
 
 func runServe(args []string) error {
-	fxApp := fx.New(
-		fx.StopTimeout(15*time.Second),
+	fxApp := fx.New(serveOptions(args)...)
+	if err := fxApp.Err(); err != nil {
+		return conciseError(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := fxApp.Start(ctx); err != nil {
+		return conciseError(err)
+	}
+	shutdown := <-fxApp.Wait()
+	fmt.Fprintf(os.Stderr, "jaz server stopping signal=%v exit_code=%d\n", shutdown.Signal, shutdown.ExitCode)
+	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return conciseError(fxApp.Stop(ctx))
+}
+
+func serveOptions(args []string) []fx.Option {
+	return []fx.Option{
+		fx.StopTimeout(15 * time.Second),
 		fx.WithLogger(func() fxevent.Logger { return fxevent.NopLogger }),
 		fx.Supply(
 			serveArgs{Args: args},
@@ -63,6 +80,7 @@ func runServe(args []string) error {
 			app.NewMemory,
 			app.NewDeviceAuth,
 			connections.NewCatalog,
+			app.NewConnectionRemoteMCPConnector,
 			app.NewConnectionService,
 			app.NewConnectionOAuthService,
 			app.NewIntegrationRawWriter,
@@ -123,20 +141,7 @@ func runServe(args []string) error {
 			startServer,
 			app.StartMCPManager,
 		),
-	)
-	if err := fxApp.Err(); err != nil {
-		return conciseError(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := fxApp.Start(ctx); err != nil {
-		return conciseError(err)
-	}
-	shutdown := <-fxApp.Wait()
-	fmt.Fprintf(os.Stderr, "jaz server stopping signal=%v exit_code=%d\n", shutdown.Signal, shutdown.ExitCode)
-	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	return conciseError(fxApp.Stop(ctx))
 }
 
 type serveArgs struct {

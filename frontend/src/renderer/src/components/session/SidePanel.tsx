@@ -67,6 +67,7 @@ export function SidePanel({
     case 'side-chat':
       return sideChatAvailable ? (
         <SideChatPanel
+          sessionId={session.id}
           events={sideChatEvents}
           visible={visible}
           fileRoot={session.runtime_ref?.cwd}

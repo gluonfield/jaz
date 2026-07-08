@@ -65,6 +65,7 @@ type MCPRuntime interface {
 type ModelCatalog interface {
 	ValidateReasoningEffort(agent, providerID, model, effort string) error
 	AgentModels(agent string) []modelcatalog.Model
+	ProviderModels(id string) ([]modelcatalog.Model, error)
 }
 
 type ACPAdapterStatusReader interface {
@@ -300,6 +301,10 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	}
 	if !hasAction {
 		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+		return
+	}
+	if id, ok := strings.CutPrefix(action, "attachments/"); ok {
+		s.handleAttachmentContent(w, r, session, id)
 		return
 	}
 	switch action {

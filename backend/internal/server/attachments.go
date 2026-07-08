@@ -3,9 +3,11 @@ package server
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -86,4 +88,69 @@ func (s *Server) handleUploadAttachment(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeJSON(w, http.StatusOK, attachmentResponseFromStorage(attachment))
+}
+
+func (s *Server) handleAttachmentContent(w http.ResponseWriter, r *http.Request, session storage.Session, id string) {
+	id = strings.TrimSpace(id)
+	if !validAttachmentID(id) {
+		writeError(w, http.StatusNotFound, fmt.Errorf("attachment not found"))
+		return
+	}
+	attachments, err := s.resolveAttachments(session.ID, []string{id})
+	if err != nil || len(attachments) != 1 {
+		writeError(w, http.StatusNotFound, fmt.Errorf("attachment not found"))
+		return
+	}
+	attachment := attachments[0]
+	info, err := os.Stat(attachment.ServerPath)
+	if err != nil || info.IsDir() {
+		writeError(w, http.StatusNotFound, fmt.Errorf("attachment not found"))
+		return
+	}
+	serveAttachmentContent(w, r, attachment, info)
+}
+
+func serveAttachmentContent(w http.ResponseWriter, r *http.Request, attachment storage.Attachment, info os.FileInfo) {
+	file, err := os.Open(attachment.ServerPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	defer file.Close()
+	ctype := attachmentContentType(attachment)
+	if ctype != "" {
+		w.Header().Set("Content-Type", ctype)
+	}
+	dispositionType := "attachment"
+	if inlineAttachmentContentType(ctype) {
+		dispositionType = "inline"
+	}
+	if disposition := mime.FormatMediaType(dispositionType, map[string]string{"filename": attachment.Name}); disposition != "" {
+		w.Header().Set("Content-Disposition", disposition)
+	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, attachment.Name, info.ModTime(), file)
+}
+
+func attachmentContentType(attachment storage.Attachment) string {
+	if ctype := strings.TrimSpace(attachment.MimeType); ctype != "" && !strings.EqualFold(ctype, "application/octet-stream") {
+		return ctype
+	}
+	if byExt := mime.TypeByExtension(filepath.Ext(attachment.Name)); byExt != "" {
+		return byExt
+	}
+	return strings.TrimSpace(attachment.MimeType)
+}
+
+func inlineAttachmentContentType(ctype string) bool {
+	mediaType, _, err := mime.ParseMediaType(ctype)
+	if err != nil {
+		mediaType = ctype
+	}
+	switch strings.ToLower(strings.TrimSpace(mediaType)) {
+	case "image/avif", "image/bmp", "image/gif", "image/heic", "image/heif", "image/jpeg", "image/png", "image/tiff", "image/webp":
+		return true
+	default:
+		return false
+	}
 }

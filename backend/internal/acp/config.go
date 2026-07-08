@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -61,8 +62,11 @@ type SystemPromptModules interface {
 
 type SessionPromptExtensionResolver func(storage.Session) (promptmodule.Modules, error)
 
-type ReasoningEffortValidator interface {
+type ModelCatalog interface {
 	ValidateReasoningEffort(agent, providerID, model, effort string) error
+	AgentModels(agent string) []modelcatalog.Model
+	AgentModelsForProvider(agent, providerID string) ([]modelcatalog.Model, error)
+	ProviderModels(id string) ([]modelcatalog.Model, error)
 }
 
 func promptWithModules(base string, modules promptmodule.Modules) string {
@@ -103,7 +107,7 @@ type Config struct {
 	// manager reads per spawn so runtime provider changes reach new agents.
 	Providers      map[string]provider.ModelProviderConfig
 	ProviderSource provider.Source
-	ModelCatalog   ReasoningEffortValidator
+	ModelCatalog   ModelCatalog
 	SystemPrompt   SystemPromptSource
 	MCPStore       mcpconfig.ServerReader
 	ResumePrompt   SessionPromptExtensionResolver
@@ -307,7 +311,7 @@ func BuiltinAgents() AgentCatalog {
 			ProviderMode:            AgentProviderModeAgentDefaults,
 			ModelProviderCapability: provider.CapabilityOpenCode,
 			ModelProvider:           provider.ProviderOpenRouter,
-			Model:                   "openai/gpt-5.4-mini",
+			Model:                   provider.DefaultOpenRouterModel,
 			ReasoningEffort:         DefaultAgentReasoningEffort(AgentOpenCode),
 		},
 		AgentAntigravity: {

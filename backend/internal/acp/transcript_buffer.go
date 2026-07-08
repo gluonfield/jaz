@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,6 +28,11 @@ type acpTranscriptBuffer struct {
 	publishMu sync.Mutex
 	timer     *time.Timer
 	runs      []acpTranscriptRun
+
+	turnKey        string
+	runSeq         int
+	currentRunType string
+	currentRunID   string
 }
 
 func (m *Manager) queueACPMessage(job *jobState, content string) {
@@ -54,12 +60,13 @@ func (m *Manager) queueACPTranscript(job *jobState, run acpTranscriptRun) {
 	}
 	job.mu.RLock()
 	sessionID := job.ID
+	turnKey := transcriptTurnKey(job.turn)
 	job.mu.RUnlock()
 	if sessionID == "" {
 		return
 	}
 	buffer := m.transcriptBuffers.get(sessionID, true)
-	buffer.queue(m, run)
+	buffer.queue(m, run, turnKey)
 }
 
 func (m *Manager) withACPTranscriptBarrier(job Job, publish func()) {
@@ -117,10 +124,10 @@ func (b *acpTranscriptBuffers) delete(sessionID string) {
 	}
 }
 
-func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun) {
+func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun, turnKey string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	run.textRunID = textRunID(run.upstreamMessageID)
+	run.textRunID = b.textRunIDLocked(run.eventType, run.upstreamMessageID, turnKey)
 	if n := len(b.runs); n > 0 && run.textRunID != "" && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
 		b.runs[n-1].content += run.content
 	} else {
@@ -140,10 +147,41 @@ func textRunID(upstreamMessageID string) string {
 	return ""
 }
 
+func transcriptTurnKey(turn *activeTurn) string {
+	if turn == nil {
+		return ""
+	}
+	return strconv.FormatInt(turn.startedAt.UnixNano(), 10)
+}
+
+func (b *acpTranscriptBuffer) textRunIDLocked(eventType, upstreamMessageID, turnKey string) string {
+	if upstreamMessageID != "" {
+		b.currentRunType = ""
+		b.currentRunID = ""
+		return textRunID(upstreamMessageID)
+	}
+	if turnKey == "" {
+		return ""
+	}
+	if b.turnKey != turnKey {
+		b.turnKey = turnKey
+		b.runSeq = 0
+		b.currentRunType = ""
+		b.currentRunID = ""
+	}
+	if b.currentRunID != "" && b.currentRunType == eventType {
+		return b.currentRunID
+	}
+	b.runSeq++
+	b.currentRunType = eventType
+	b.currentRunID = "turn:" + turnKey + ":" + strconv.Itoa(b.runSeq)
+	return b.currentRunID
+}
+
 func (b *acpTranscriptBuffer) withBarrier(m *Manager, job Job, publish func()) {
 	b.publishMu.Lock()
 	defer b.publishMu.Unlock()
-	runs := b.drain()
+	runs := b.drainBarrier()
 	m.publishACPTranscriptRuns(job, runs)
 	if publish != nil {
 		publish()
@@ -167,6 +205,14 @@ func (b *acpTranscriptBuffer) flushTimer(m *Manager) {
 func (b *acpTranscriptBuffer) drain() []acpTranscriptRun {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.drainLocked()
+}
+
+func (b *acpTranscriptBuffer) drainBarrier() []acpTranscriptRun {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.currentRunType = ""
+	b.currentRunID = ""
 	return b.drainLocked()
 }
 

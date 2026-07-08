@@ -14,6 +14,7 @@ import (
 	modelcatalogapi "github.com/wins/jaz/backend/internal/httpapi/modelcatalog"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
@@ -37,6 +38,7 @@ type routeDeps struct {
 	ConnectionStart *connections.ConnectService    `optional:"true"`
 	ConnectionOAuth *connections.OAuthService      `optional:"true"`
 	ConnectionQR    *connections.QRService         `optional:"true"`
+	MCP             *mcpruntime.Manager            `optional:"true"`
 	Preview         *previewapi.Handler
 }
 
@@ -44,7 +46,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes := usageRoutes(deps.Usage)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCatalogRoutes(deps.ModelCatalog)...)
-	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.Config)
+	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.MCP, deps.Config)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, string(deps.AuthKey), deps.Jaz.Devices.DisablePairing)
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
@@ -92,18 +94,18 @@ func oauthCallbackBaseURL(cfg serverconfig.Config) string {
 	return serverconfig.ClientBaseURL(cfg)
 }
 
-func appendConnectionRoutes(routes server.Routes, service *connections.Service, connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService, cfg serverconfig.Config) server.Routes {
+func appendConnectionRoutes(routes server.Routes, service *connections.Service, connect *connections.ConnectService, oauth *connections.OAuthService, qr *connections.QRService, mcp connectionsapi.MCPRefresher, cfg serverconfig.Config) server.Routes {
 	if service == nil {
 		return routes
 	}
-	handler := connectionsapi.NewPluginHandler(service)
+	handler := connectionsapi.NewPluginHandler(service, mcp)
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/connections/plugins", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/connections/plugins/{id}", Handler: httpHandlerFunc(handler.Get)},
 		server.Route{Pattern: "DELETE /v1/connections/accounts/{id}", Handler: httpHandlerFunc(handler.Disconnect)},
 	)
 	if connect != nil || oauth != nil || qr != nil {
-		connectHandler := connectionsapi.NewConnectHandler(connect, oauth, qr, oauthCallbackBaseURL(cfg))
+		connectHandler := connectionsapi.NewConnectHandler(connect, oauth, qr, mcp, oauthCallbackBaseURL(cfg))
 		if connect != nil {
 			routes = append(routes, server.Route{Pattern: "POST /v1/connections/plugins/{id}/connect", Handler: httpHandlerFunc(connectHandler.Start)})
 		}

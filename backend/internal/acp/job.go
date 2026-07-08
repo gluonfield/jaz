@@ -184,7 +184,11 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.State = StateRunning
 	j.Assistant = ""
 	j.Thought = ""
-	j.Plan = nil
+	if len(j.Plan) > 0 {
+		j.Plan = sessionevents.PlanCleared
+	} else {
+		j.Plan = nil
+	}
 	j.ToolCalls = nil
 	j.Permissions = nil
 	j.Error = ""

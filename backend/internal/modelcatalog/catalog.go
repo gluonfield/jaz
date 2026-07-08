@@ -1,6 +1,10 @@
 package modelcatalog
 
-import "sort"
+import (
+	"sort"
+
+	"github.com/wins/jaz/backend/internal/provider"
+)
 
 type Pricing struct {
 	Input      float64 `json:"input"`
@@ -50,7 +54,7 @@ var (
 	claudeHarnessEfforts = []string{"low", "medium", "high", "xhigh", "max", "ultracode"}
 	openAIModels         = []Model{
 		{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
-		{Value: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
+		{Value: provider.DefaultOpenAIModel, Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
 		{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Tuned for coding", ContextLength: 400000},
 	}
 	agentModels = map[string][]Model{
@@ -58,7 +62,7 @@ var (
 			{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
 			{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Account-gated research preview", ContextLength: 400000},
 			{Value: "gpt-5.4", Label: "GPT-5.4", Description: "Strong coding model", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4"},
-			{Value: "gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
+			{Value: provider.DefaultOpenAIModel, Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
 		},
 		"claude": {
 			{Value: "default", Label: "Opus 4.8", Description: "Recommended · 1M context", ContextLength: 1000000, OpenRouterID: "anthropic/claude-opus-4.8"},
@@ -82,10 +86,15 @@ var (
 			{Value: "GPT-OSS 120B (Medium)", Label: "GPT-OSS 120B", Description: "Medium"},
 		},
 		"opencode": {
-			{Value: "openrouter/openai/gpt-5.4-mini", Label: "GPT-5.4 Mini via OpenRouter", Description: "Fast and inexpensive", ContextLength: 400000},
-			{Value: "openrouter/openai/gpt-5.5", Label: "GPT-5.5 via OpenRouter", Description: "Most capable", ContextLength: 1050000},
-			{Value: "openai/gpt-5.4-mini", Label: "GPT-5.4 Mini via OpenAI", Description: "Direct OpenAI provider", ContextLength: 400000},
-			{Value: "openai/gpt-5.5", Label: "GPT-5.5 via OpenAI", Description: "Direct OpenAI provider", ContextLength: 1050000},
+			{Value: provider.DefaultOpenRouterModel, Label: "GLM 5.2", Description: "Default OpenRouter coding model", ContextLength: 1048576},
+			{Value: "openai/gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000},
+			{Value: "openai/gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000},
+			{Value: "deepseek/deepseek-v4-flash", Label: "DeepSeek V4 Flash", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
+			{Value: "xiaomi/mimo-v2.5", Label: "MiMo-V2.5", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
+			{Value: "minimax/minimax-m3", Label: "MiniMax M3", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
+			{Value: "deepseek/deepseek-v4-pro", Label: "DeepSeek V4 Pro", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
+			{Value: "tencent/hy3-preview", Label: "Hy3 preview", Description: "Popular OpenRouter coding model", ContextLength: 262144},
+			{Value: "stepfun/step-3.7-flash", Label: "Step 3.7 Flash", Description: "Popular OpenRouter coding model", ContextLength: 256000},
 		},
 	}
 )

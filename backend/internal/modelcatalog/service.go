@@ -85,6 +85,15 @@ func (s *Service) AgentModels(agent string) []Model {
 	return models
 }
 
+func (s *Service) AgentModelsForProvider(agent, providerID string) ([]Model, error) {
+	agent = strings.ToLower(strings.TrimSpace(agent))
+	providerID = strings.ToLower(strings.TrimSpace(providerID))
+	if agent == "opencode" && providerID != "" && providerID != provider.ProviderOpenRouter {
+		return s.ProviderModels(providerID)
+	}
+	return s.AgentModels(agent), nil
+}
+
 func (s *Service) enrichReasoning(models []Model) []Model {
 	for i := range models {
 		source, ok := s.openRouterModel(models[i].OpenRouterID)

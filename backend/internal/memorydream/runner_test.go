@@ -70,7 +70,7 @@ func TestRunDreamSpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
 		{name: "grok", agent: acp.AgentGrok, model: "grok-composer-2.5-fast", effort: "xhigh"},
 		{name: "opencode-openrouter-style", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter},
-		}}, model: "openai/gpt-5.4-mini", effort: "xhigh"},
+		}}, model: "z-ai/glm-5.2", effort: "xhigh"},
 		{name: "opencode-openai", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenAI},
 		}}, model: "gpt-5.4-mini", effort: "xhigh"},

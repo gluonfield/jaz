@@ -4,7 +4,6 @@ const pluginAssetUrls: Record<string, string> = {
   gmail: '/integrations/gmail.svg',
   google_calendar: '/integrations/google_calendar.svg',
   ink: '/integrations/ink.png',
-  jaz: '/integrations/jaz.png',
   slack: '/integrations/slack.svg',
   telegram: '/integrations/telegram.svg',
   whatsapp: '/integrations/whatsapp.svg',

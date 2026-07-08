@@ -338,7 +338,7 @@ func TestOnboardingTreatsAuthenticatedManagedCodexAsAvailable(t *testing.T) {
 	}
 	defer store.Close()
 	if _, err := agentsettings.SaveAgentDefaults(store, agentsettings.AgentDefaults{ACP: map[string]agentsettings.ACPAgentDefaults{
-		"codex": {Command: "/stale/codex-acp --stdio", Model: "gpt-5.5"},
+		"codex": {Model: "gpt-5.5"},
 	}}); err != nil {
 		t.Fatal(err)
 	}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -24,17 +23,12 @@ type RemoteMCPStore interface {
 	DeleteMCPServer(string) error
 }
 
-type RemoteMCPRefresher interface {
-	Refresh(context.Context)
-}
-
 type RemoteMCPConnector struct {
-	store     RemoteMCPStore
-	refresher RemoteMCPRefresher
+	store RemoteMCPStore
 }
 
-func NewRemoteMCPConnector(store RemoteMCPStore, refresher RemoteMCPRefresher) *RemoteMCPConnector {
-	return &RemoteMCPConnector{store: store, refresher: refresher}
+func NewRemoteMCPConnector(store RemoteMCPStore) *RemoteMCPConnector {
+	return &RemoteMCPConnector{store: store}
 }
 
 func (c *RemoteMCPConnector) Connect(ctx context.Context, plugin integrations.Plugin) (RemoteMCPStart, error) {
@@ -60,7 +54,6 @@ func (c *RemoteMCPConnector) Connect(ctx context.Context, plugin integrations.Pl
 			if err != nil {
 				return RemoteMCPStart{}, err
 			}
-			c.refresh()
 			return remoteMCPStart(server), nil
 		}
 	}
@@ -68,7 +61,6 @@ func (c *RemoteMCPConnector) Connect(ctx context.Context, plugin integrations.Pl
 	if err != nil {
 		return RemoteMCPStart{}, err
 	}
-	c.refresh()
 	return remoteMCPStart(server), nil
 }
 
@@ -126,21 +118,9 @@ func (c *RemoteMCPConnector) Disconnect(ctx context.Context, id string, catalog 
 		if err := c.store.DeleteMCPServer(id); err != nil {
 			return false, err
 		}
-		c.refresh()
 		return true, nil
 	}
 	return false, nil
-}
-
-func (c *RemoteMCPConnector) refresh() {
-	if c.refresher == nil {
-		return
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		c.refresher.Refresh(ctx)
-	}()
 }
 
 func remoteMCPServerInput(plugin integrations.Plugin) (mcpconfig.ServerInput, error) {

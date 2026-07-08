@@ -216,6 +216,32 @@ func TestServiceAgentModelsIncludesAntigravityModels(t *testing.T) {
 	}
 }
 
+func TestServiceAgentModelsForProviderScopesOpenCodeModels(t *testing.T) {
+	service := NewService(nil)
+	models, err := service.AgentModelsForProvider("opencode", provider.ProviderOpenRouter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) == 0 || models[0].Value != provider.DefaultOpenRouterModel {
+		t.Fatalf("opencode/openrouter models = %#v", models)
+	}
+
+	models, err = service.AgentModelsForProvider("opencode", provider.ProviderOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]bool{}
+	for _, model := range models {
+		values[model.Value] = true
+	}
+	if !values[provider.DefaultOpenAIModel] {
+		t.Fatalf("opencode/openai models missing default: %#v", models)
+	}
+	if values[provider.DefaultOpenRouterModel] {
+		t.Fatalf("opencode/openai leaked OpenRouter model: %#v", models)
+	}
+}
+
 func TestServiceDoesNotBorrowProviderReasoningForHarnessAgents(t *testing.T) {
 	service := warmOpenRouterTestService(t, `{"data":[{
 		"id":"z-ai/glm-5.2",
