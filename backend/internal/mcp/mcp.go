@@ -23,9 +23,13 @@ import (
 )
 
 const (
-	RegistryGroup       = "mcp"
-	maxToolNameLen      = 64
-	remoteStatusTimeout = 25 * time.Second
+	RegistryGroup = "mcp"
+	// BuiltinRegistryGroup holds tools from in-process builtin servers
+	// (jaztools). They are Jaz's own surface, so they register under their
+	// bare names instead of the mcp_<server>_ prefix remote tools get.
+	BuiltinRegistryGroup = "builtin"
+	maxToolNameLen       = 64
+	remoteStatusTimeout  = 25 * time.Second
 
 	ProxyServerID   = "jaz_mcp"
 	ProxyServerName = "jaz_mcp"
@@ -239,7 +243,7 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 
 	next := make(map[string]*serverSession)
 	statuses := make(map[string]mcpconfig.ServerStatus)
-	var allTools []tools.Tool
+	var remoteTools, builtinTools []tools.Tool
 	usedNames := map[string]string{}
 	for _, result := range results {
 		if result.session == nil {
@@ -247,12 +251,27 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 			continue
 		}
 		next[result.server.ID] = result.session
+		builtin := m.hasLocalServer(result.server.ID)
 		for i := range result.session.tools {
 			rt := result.session.tools[i]
-			name := mappedToolName(result.server, rt.remoteName, usedNames)
+			var name string
+			if builtin {
+				name = m.builtinToolName(rt.remoteName, usedNames)
+				if name == "" {
+					// A directly registered native tool owns this name;
+					// the builtin variant would be a duplicate.
+					continue
+				}
+			} else {
+				name = mappedToolName(result.server, rt.remoteName, usedNames)
+			}
 			rt.definition = tools.Function(name, rt.description, false, rt.inputSchema)
 			result.session.tools[i] = rt
-			allTools = append(allTools, rt)
+			if builtin {
+				builtinTools = append(builtinTools, rt)
+			} else {
+				remoteTools = append(remoteTools, rt)
+			}
 		}
 		statuses[result.server.ID] = statusWithTools(result.status, result.session.tools)
 	}
@@ -267,9 +286,26 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 	m.sessions = next
 	m.statuses = statuses
 	m.mu.Unlock()
-	m.registry.SetGroup(RegistryGroup, allTools)
+	m.registry.SetGroup(BuiltinRegistryGroup, builtinTools)
+	m.registry.SetGroup(RegistryGroup, remoteTools)
 
 	closeSessions(old)
+}
+
+// builtinToolName exposes an in-process server tool under its bare name.
+// Returns "" when a tool registered outside the manager's groups already
+// owns the name — the native registration stays canonical.
+func (m *Manager) builtinToolName(remote string, used map[string]string) string {
+	source := "builtin:" + remote
+	name := clampToolName(sanitizeToolName(remote), source)
+	if existing, ok := used[name]; ok && existing != source {
+		return ""
+	}
+	if m.registry.HasOutside(name, RegistryGroup, BuiltinRegistryGroup) {
+		return ""
+	}
+	used[name] = source
+	return name
 }
 
 func (m *Manager) Close() {
@@ -278,6 +314,7 @@ func (m *Manager) Close() {
 	m.sessions = make(map[string]*serverSession)
 	m.statuses = make(map[string]mcpconfig.ServerStatus)
 	m.mu.Unlock()
+	m.registry.RemoveGroup(BuiltinRegistryGroup)
 	m.registry.RemoveGroup(RegistryGroup)
 	closeSessions(sessions)
 }
