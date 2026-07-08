@@ -657,7 +657,10 @@ func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Regis
 	return &agent.Agent{
 		Provider:   modelProvider,
 		Tools:      registry,
-		DeferTools: func(name string) bool { return registry.InGroup(mcpruntime.RegistryGroup, name) },
+		DeferTools: func(name string) bool {
+			return registry.InGroup(mcpruntime.RegistryGroup, name) ||
+				registry.InGroup(mcpruntime.BuiltinRegistryGroup, name)
+		},
 		MaxTurns:   agent.DefaultMaxTurns,
 	}
 }

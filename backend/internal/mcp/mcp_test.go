@@ -364,7 +364,7 @@ func TestManagerRefreshLocalCanUseLocalServer(t *testing.T) {
 	if status := manager.Status("remote"); status.Status != "" {
 		t.Fatalf("remote status = %#v, want unset", status)
 	}
-	tool, ok := registry.Get("mcp_jaztools_echo")
+	tool, ok := registry.Get("echo")
 	if !ok {
 		t.Fatalf("local handler tool not registered")
 	}
@@ -395,15 +395,15 @@ func TestManagerRefreshLocalRegistersJaztoolsGmailTools(t *testing.T) {
 		t.Fatalf("status = %#v", status)
 	}
 	for _, name := range []string{
-		"mcp_jaztools_gmail_get_profile",
-		"mcp_jaztools_gmail_search_threads",
-		"mcp_jaztools_gmail_read_thread",
-		"mcp_jaztools_gmail_create_draft",
-		"mcp_jaztools_gmail_create_reply_draft",
-		"mcp_jaztools_gmail_send_draft",
-		"mcp_jaztools_gmail_update_draft",
-		"mcp_jaztools_gmail_list_drafts",
-		"mcp_jaztools_gmail_read_attachment",
+		"gmail_get_profile",
+		"gmail_search_threads",
+		"gmail_read_thread",
+		"gmail_create_draft",
+		"gmail_create_reply_draft",
+		"gmail_send_draft",
+		"gmail_update_draft",
+		"gmail_list_drafts",
+		"gmail_read_attachment",
 	} {
 		if _, ok := registry.Get(name); !ok {
 			t.Fatalf("registry missing %s", name)
@@ -435,7 +435,7 @@ func TestManagerRefreshIncludesBuiltinLocalServerOutsideStore(t *testing.T) {
 	if status.Status != "connected" || status.ToolCount != 1 {
 		t.Fatalf("status = %#v", status)
 	}
-	tool, ok := registry.Get("mcp_jaztools_echo")
+	tool, ok := registry.Get("echo")
 	if !ok {
 		t.Fatalf("builtin tool not registered")
 	}
@@ -511,16 +511,105 @@ func TestMappedToolNameIsSafeAndBounded(t *testing.T) {
 	}
 }
 
-func TestJazToolsMappedNamesDoNotRepeatJaz(t *testing.T) {
-	used := map[string]string{}
-	server := mcpconfig.Server{ID: "jaztools", Name: "jaztools"}
-	if got := mappedToolName(server, "memory_search", used); got != "mcp_jaztools_memory_search" {
-		t.Fatalf("memory tool name = %q", got)
+type nativeStubTool struct{ name string }
+
+func (t nativeStubTool) Definition() tools.Definition {
+	return tools.Function(t.name, "native "+t.name, false, nil)
+}
+
+func (t nativeStubTool) Execute(context.Context, map[string]any) (tools.Result, error) {
+	return tools.Result{Content: "native"}, nil
+}
+
+func TestBuiltinServerToolsUseBareNamesAndYieldToNativeTools(t *testing.T) {
+	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "jaztools", Version: "test"}, nil)
+	for _, name := range []string{"memory_search", "agent_spawn"} {
+		mcpsdk.AddTool(server, &mcpsdk.Tool{
+			Name:        name,
+			Description: name,
+		}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+			return &mcpsdk.CallToolResult{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "builtin"}}}, nil, nil
+		})
 	}
-	if got := mappedToolName(server, "loop_create", used); got != "mcp_jaztools_loop_create" {
-		t.Fatalf("loop tool name = %q", got)
+
+	registry := tools.NewRegistry(nativeStubTool{name: "agent_spawn"})
+	manager := NewManager(&testStore{}, nil, registry, log.New(io.Discard), WithBuiltinServerProvider(mcpconfig.Server{
+		ID:      "jaztools",
+		Name:    "jaztools",
+		Enabled: true,
+	}, func() *mcpsdk.Server { return server }))
+	manager.RefreshLocal(context.Background())
+
+	if _, ok := registry.Get("memory_search"); !ok {
+		t.Fatal("builtin tool not registered under bare name")
 	}
-	if got := mappedToolName(server, "visualise_show_widget", used); got != "mcp_jaztools_visualise_show_widget" {
-		t.Fatalf("visualise tool name = %q", got)
+	if !registry.InGroup(BuiltinRegistryGroup, "memory_search") {
+		t.Fatal("builtin tool not in builtin group")
+	}
+	if registry.InGroup(RegistryGroup, "memory_search") {
+		t.Fatal("builtin tool leaked into mcp group")
+	}
+	if registry.InGroup(BuiltinRegistryGroup, "agent_spawn") {
+		t.Fatal("builtin duplicate clobbered the native tool")
+	}
+	if _, ok := registry.Get("mcp_jaztools_agent_spawn"); ok {
+		t.Fatal("builtin tool registered under mcp-prefixed name")
+	}
+
+	manager.RefreshLocal(context.Background())
+	if _, ok := registry.Get("memory_search"); !ok {
+		t.Fatal("builtin tool lost on second refresh")
+	}
+
+	manager.Close()
+	if _, ok := registry.Get("agent_spawn"); !ok {
+		t.Fatal("native tool removed by manager close")
+	}
+	if _, ok := registry.Get("memory_search"); ok {
+		t.Fatal("builtin group not removed by manager close")
+	}
+}
+
+func TestBuiltinServersDoNotShareToolNames(t *testing.T) {
+	newServer := func(reply string) *mcpsdk.Server {
+		server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: reply, Version: "test"}, nil)
+		mcpsdk.AddTool(server, &mcpsdk.Tool{
+			Name:        "echo",
+			Description: reply,
+		}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+			return &mcpsdk.CallToolResult{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: reply}}}, nil, nil
+		})
+		return server
+	}
+	first := newServer("first")
+	second := newServer("second")
+
+	registry := tools.NewRegistry()
+	manager := NewManager(&testStore{}, nil, registry, log.New(io.Discard), WithBuiltinServerProvider(mcpconfig.Server{
+		ID:      "alpha",
+		Name:    "alpha",
+		Enabled: true,
+	}, func() *mcpsdk.Server { return first }), WithBuiltinServerProvider(mcpconfig.Server{
+		ID:      "beta",
+		Name:    "beta",
+		Enabled: true,
+	}, func() *mcpsdk.Server { return second }))
+	manager.RefreshLocal(context.Background())
+	defer manager.Close()
+
+	if _, ok := registry.Get("echo"); !ok {
+		t.Fatal("echo not registered")
+	}
+	count := 0
+	for _, def := range registry.Definitions() {
+		if tools.DefinitionName(def) == "echo" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("echo registered %d times, want 1", count)
+	}
+	if manager.Status("alpha").ToolCount+manager.Status("beta").ToolCount != 1 {
+		t.Fatalf("statuses = %#v %#v, want one tool total", manager.Status("alpha"), manager.Status("beta"))
 	}
 }
