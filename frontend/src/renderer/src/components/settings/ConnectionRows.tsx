@@ -18,8 +18,8 @@ export function ConnectionSection({
 }) {
   return (
     <section>
-      <p className="border-b border-border/60 pb-2 text-[13px] font-medium text-ink">{title}</p>
-      <div className="mt-1">{children}</div>
+      <p className="mb-2 text-[13px] font-medium text-ink">{title}</p>
+      <div className="space-y-2">{children}</div>
     </section>
   )
 }
@@ -49,7 +49,7 @@ export function ConnectedAccountRow({
         <Button
           variant="danger"
           size="sm"
-          className="bg-surface-2"
+          className="ring-1 ring-border"
           disabled={disconnecting}
           onClick={onDisconnect}
         >
@@ -80,7 +80,7 @@ export function PluginCatalogRow({
         <Button
           variant="secondary"
           size="sm"
-          className="bg-surface-2"
+          className="ring-1 ring-border"
           disabled={!pluginCanConnect(plugin) || connecting}
           onClick={onConnect}
         >
@@ -103,7 +103,7 @@ function ConnectionRow({
   action: ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-card px-3 py-2.5 transition-colors duration-150 hover:bg-surface">
+    <div className="flex items-center gap-3 rounded-card bg-surface px-4 py-3 transition-colors duration-150 hover:bg-surface-2">
       <button
         type="button"
         onClick={onOpen}
