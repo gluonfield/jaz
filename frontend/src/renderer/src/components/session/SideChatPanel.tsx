@@ -31,6 +31,7 @@ type PendingSideChatTurn = {
 }
 
 export function SideChatPanel({
+  sessionId,
   events,
   visible,
   onSend,
@@ -38,6 +39,7 @@ export function SideChatPanel({
   onClose,
   fileRoot,
 }: {
+  sessionId: string
   events: SessionEvent[]
   visible: boolean
   onSend: (sideChatID: string, message: string, options?: SendMessageOptions) => Promise<void>
@@ -146,6 +148,7 @@ export function SideChatPanel({
               messages={transcriptMessages}
               events={transcript.events}
               sessionId={sideChatID}
+              attachmentSessionId={sessionId}
               working={pendingActive}
               tail={
                 pendingActive && !pendingOutputStarted ? (

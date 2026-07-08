@@ -16,7 +16,7 @@ export function userInputMessageBlocks(
     ),
     { type: 'text', text: content },
     ...attachments.flatMap<MessageBlock>((attachment) =>
-      attachment.id && attachment.uri
+      attachment.id
         ? [{
             type: 'attachment',
             id: attachment.id,
@@ -24,7 +24,6 @@ export function userInputMessageBlocks(
             uri: attachment.uri,
             mime_type: attachment.mime_type,
             size: attachment.size,
-            server_path: attachment.server_path,
           }]
         : [],
     ),

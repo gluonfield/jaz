@@ -71,6 +71,12 @@ export function sessionFileRawUrl(sessionId: string, path: string): string {
   return apiEmbeddedGetUrl(`/v1/sessions/${encodeURIComponent(sessionId)}/file?${params.toString()}`)
 }
 
+export function sessionAttachmentUrl(sessionId: string, attachmentId: string): string {
+  return apiEmbeddedGetUrl(
+    `/v1/sessions/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(attachmentId)}`,
+  )
+}
+
 export async function uploadSessionAttachment(sessionId: string, file: File, signal?: AbortSignal): Promise<Attachment> {
   const form = new FormData()
   form.append('file', file)

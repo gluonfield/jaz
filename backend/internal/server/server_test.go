@@ -478,6 +478,7 @@ func TestACPSideChatRoutesToManager(t *testing.T) {
 	workspace := t.TempDir()
 	handler := (&Server{Store: store, ACP: manager, Workspace: workspace}).Handler()
 	attachment := uploadTestAttachment(t, handler, session.ID, "note.txt", "hello")
+	metadata := readTestAttachmentMetadata(t, workspace, session.ID, attachment.ID)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -504,8 +505,8 @@ func TestACPSideChatRoutesToManager(t *testing.T) {
 	if len(sideChat.Contexts) != 1 || sideChat.Contexts[0].Text != "selected text" {
 		t.Fatalf("side chat contexts = %#v", sideChat.Contexts)
 	}
-	if len(sideChat.Attachments) != 1 || sideChat.Attachments[0].ID != attachment.ID || sideChat.Attachments[0].ServerPath != attachment.ServerPath {
-		t.Fatalf("side chat attachments = %#v, want %#v", sideChat.Attachments, attachment)
+	if len(sideChat.Attachments) != 1 || sideChat.Attachments[0].ID != attachment.ID || sideChat.Attachments[0].ServerPath != metadata.ServerPath {
+		t.Fatalf("side chat attachments = %#v, want server path %q", sideChat.Attachments, metadata.ServerPath)
 	}
 }
 

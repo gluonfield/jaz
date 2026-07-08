@@ -28,7 +28,6 @@ export interface LiveAttachment {
   uri?: string
   mime_type?: string
   size?: number
-  server_path?: string
   uploading?: boolean
 }
 
@@ -192,7 +191,6 @@ function liveContextAttachments(contexts: ComposerContext[]): LiveAttachment[] {
           uri: context.screenshotAttachment.uri,
           mime_type: context.screenshotAttachment.mime_type,
           size: context.screenshotAttachment.size,
-          server_path: context.screenshotAttachment.server_path,
         }]
       : [],
   )

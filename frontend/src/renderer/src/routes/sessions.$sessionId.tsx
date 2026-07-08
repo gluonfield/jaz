@@ -501,7 +501,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                               <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
                                 <MessageContexts contexts={live.contexts} />
                                 <MentionText text={live.user} />
-                                <LiveAttachmentList attachments={live.attachments} />
+                                <LiveAttachmentList attachments={live.attachments} attachmentSessionId={sessionId} />
                               </div>
                             </motion.div>
                             <ThinkingBlock text={live.reasoning} pending={streaming} />

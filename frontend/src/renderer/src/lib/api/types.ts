@@ -510,7 +510,6 @@ export type MessageBlock =
       uri?: string
       mime_type?: string
       size?: number
-      server_path?: string
     }
   | { type: 'tool'; id: string; name: string; input_json?: string; result?: string }
 
@@ -519,8 +518,7 @@ export interface Attachment {
   name: string
   mime_type?: string
   size?: number
-  uri: string
-  server_path?: string
+  uri?: string
 }
 
 export interface ChatMessage {

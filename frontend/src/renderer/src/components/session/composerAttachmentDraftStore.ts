@@ -196,14 +196,13 @@ function attachmentFromUnknown(value: unknown): Attachment | null {
   const id = typeof raw.id === 'string' ? raw.id : ''
   const name = typeof raw.name === 'string' ? raw.name : ''
   const uri = typeof raw.uri === 'string' ? raw.uri : ''
-  if (!id || !name || !uri) return null
+  if (!id || !name) return null
   return {
     id,
     name,
-    uri,
+    ...(uri ? { uri } : {}),
     ...(typeof raw.mime_type === 'string' ? { mime_type: raw.mime_type } : {}),
     ...(typeof raw.size === 'number' && Number.isFinite(raw.size) ? { size: raw.size } : {}),
-    ...(typeof raw.server_path === 'string' ? { server_path: raw.server_path } : {}),
   }
 }
 
