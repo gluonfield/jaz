@@ -67,7 +67,7 @@ func (s *Server) generateAndSaveSessionTitle(ctx context.Context, session storag
 		s.logger().Debug("loading session after title generation failed", "session", session.ID, "error", err)
 		return session
 	}
-	if current.Title != session.Title {
+	if current.ManualTitle || current.Title != session.Title {
 		return current
 	}
 	current.Title = title
