@@ -7,6 +7,7 @@ import { AuthLoginStatus } from '@/components/acp/AuthLoginStatus'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
 import { Button } from '@/components/ui/Button'
+import { Collapse } from '@/components/ui/Collapse'
 import { Input } from '@/components/ui/Input'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Segmented } from '@/components/ui/Segmented'
@@ -299,146 +300,140 @@ function ACPAgentRow({
         />
       </div>
 
-      {/* Animate open/closed with a grid-rows 0fr→1fr transition: the browser
-          interpolates the row height, so nested content (e.g. the auth panel's
-          layout animation) can't cause the measure-then-snap that height:auto
-          suffers. inert keeps collapsed controls out of the tab/a11y order. */}
-      <div
-        className={`grid transition-[grid-template-rows] duration-200 ease-out ${expanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
-      >
-        <div className="min-h-0 overflow-hidden" inert={!expanded}>
-          {showAuthPanel ? (
-            <div className="border-t border-border/70 px-3 py-3">
-              {/* Auth is never gated by the Enabled toggle: you must be able to connect
-                  an agent you skipped in onboarding. Connecting it turns it on.
-                  Provider-backed agents inherit their key from the linked Model
-                  Provider, so they show a read-only connection status instead. */}
-              <AgentAuthPanel
-                agent={agent}
-                disabled={disabled}
-                status={authStatus}
-                apiKeyValue={settings.acp_keys?.[agent] ?? ''}
-                loginJob={loginJob}
-                loginPending={loginPending}
-                disconnecting={disconnecting}
-                onStartLogin={() => onStartLogin(current.auth)}
-                onDisconnect={onDisconnect}
-                onAPIKeyChange={(value) =>
-                  onChange({
-                    ...settings,
-                    // Adding a key connects the agent — enable it so it's usable.
-                    acp: value.trim() ? { ...settings.acp, [agent]: { ...current, enabled: true } } : settings.acp,
-                    acp_keys: {
-                      ...(settings.acp_keys ?? {}),
-                      [agent]: value,
-                    },
-                  })
-                }
-              />
-            </div>
-          ) : null}
-
-          {usesModelProvider ? (
-            <>
-              <SettingsRow title="Provider" description="API provider used for this ACP client.">
-                <Select
-                  value={current.model_provider ?? ''}
-                  options={providerOptions.map((provider) => ({
-                    value: provider.id,
-                    label: provider.label,
-                    description: provider.base_url,
-                  }))}
-                  disabled={disabled}
-                  onChange={(model_provider) => {
-                    const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
-                    const model =
-                      (current.model ?? '').trim() === '' ||
-                      current.model === selectedProvider?.default_model
-                        ? (nextProvider?.default_model ?? '')
-                        : current.model
-                    update({ model_provider, model })
-                  }}
-                  aria-label={`${agentLabel(agent)} provider`}
-                  className={rowControlClass}
-                />
-              </SettingsRow>
-              {selectedProviderNativeAuth ? null : (
-                <div className="border-t border-border/70 px-3 py-3">
-                  <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
-                </div>
-              )}
-            </>
-          ) : null}
-
-          <SettingsRow title="Model" description="Model copied into new threads for this client.">
-            <ModelCombobox
-              value={current.model ?? ''}
-              suggestions={modelSuggestions}
-              loading={modelsLoading}
+      <Collapse open={expanded}>
+        {showAuthPanel ? (
+          <div className="border-t border-border/70 px-3 py-3">
+            {/* Auth is never gated by the Enabled toggle: you must be able to connect
+                an agent you skipped in onboarding. Connecting it turns it on.
+                Provider-backed agents inherit their key from the linked Model
+                Provider, so they show a read-only connection status instead. */}
+            <AgentAuthPanel
+              agent={agent}
               disabled={disabled}
-              onChange={(model) => {
-                const nextOptions = modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions)
-                update({
-                  model,
-                  reasoning_effort: supportedReasoningEffort(reasoningEffort, nextOptions)
-                    ? reasoningEffort
-                    : '',
+              status={authStatus}
+              apiKeyValue={settings.acp_keys?.[agent] ?? ''}
+              loginJob={loginJob}
+              loginPending={loginPending}
+              disconnecting={disconnecting}
+              onStartLogin={() => onStartLogin(current.auth)}
+              onDisconnect={onDisconnect}
+              onAPIKeyChange={(value) =>
+                onChange({
+                  ...settings,
+                  // Adding a key connects the agent — enable it so it's usable.
+                  acp: value.trim() ? { ...settings.acp, [agent]: { ...current, enabled: true } } : settings.acp,
+                  acp_keys: {
+                    ...(settings.acp_keys ?? {}),
+                    [agent]: value,
+                  },
                 })
-              }}
-              aria-label={`${agentLabel(agent)} model`}
-              className={rowControlClass}
+              }
             />
-          </SettingsRow>
+          </div>
+        ) : null}
 
-          {reasoningOptions.length > 0 ? (
-            <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
+        {usesModelProvider ? (
+          <>
+            <SettingsRow title="Provider" description="API provider used for this ACP client.">
               <Select
-                value={normalizedReasoningEffort}
-                options={reasoningOptions}
+                value={current.model_provider ?? ''}
+                options={providerOptions.map((provider) => ({
+                  value: provider.id,
+                  label: provider.label,
+                  description: provider.base_url,
+                }))}
                 disabled={disabled}
-                onChange={(reasoning_effort) => update({ reasoning_effort })}
-                aria-label={`${agentLabel(agent)} reasoning effort`}
+                onChange={(model_provider) => {
+                  const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
+                  const model =
+                    (current.model ?? '').trim() === '' ||
+                    current.model === selectedProvider?.default_model
+                      ? (nextProvider?.default_model ?? '')
+                      : current.model
+                  update({ model_provider, model })
+                }}
+                aria-label={`${agentLabel(agent)} provider`}
                 className={rowControlClass}
               />
             </SettingsRow>
-          ) : null}
+            {selectedProviderNativeAuth ? null : (
+              <div className="border-t border-border/70 px-3 py-3">
+                <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
+              </div>
+            )}
+          </>
+        ) : null}
 
-          {requiresCommand ? (
-            <>
-              <SettingsRow title="Command" description="Advanced startup command for this ACP client.">
-                <Button
-                  variant="ghost"
-                  size="md"
-                  active={commandOpen}
-                  aria-expanded={commandOpen}
+        <SettingsRow title="Model" description="Model copied into new threads for this client.">
+          <ModelCombobox
+            value={current.model ?? ''}
+            suggestions={modelSuggestions}
+            loading={modelsLoading}
+            disabled={disabled}
+            onChange={(model) => {
+              const nextOptions = modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions)
+              update({
+                model,
+                reasoning_effort: supportedReasoningEffort(reasoningEffort, nextOptions)
+                  ? reasoningEffort
+                  : '',
+              })
+            }}
+            aria-label={`${agentLabel(agent)} model`}
+            className={rowControlClass}
+          />
+        </SettingsRow>
+
+        {/* Show only when there's an effort to choose beyond "None": agents whose
+            thinking level is model-encoded (Antigravity) advertise no efforts. */}
+        {reasoningOptions.some((option) => option.value !== '') ? (
+          <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
+            <Select
+              value={normalizedReasoningEffort}
+              options={reasoningOptions}
+              disabled={disabled}
+              onChange={(reasoning_effort) => update({ reasoning_effort })}
+              aria-label={`${agentLabel(agent)} reasoning effort`}
+              className={rowControlClass}
+            />
+          </SettingsRow>
+        ) : null}
+
+        {requiresCommand ? (
+          <>
+            <SettingsRow title="Command" description="Advanced startup command for this ACP client.">
+              <Button
+                variant="ghost"
+                size="md"
+                active={commandOpen}
+                aria-expanded={commandOpen}
+                disabled={disabled}
+                onClick={() => setCommandOpen((open) => !open)}
+                className="w-full md:w-auto md:justify-self-end"
+              >
+                <Terminal size={13} />
+                {commandOpen ? 'Hide command' : 'Edit command'}
+                <ChevronDown
+                  size={13}
+                  className={`transition-transform duration-150 ${commandOpen ? 'rotate-180' : ''}`}
+                />
+              </Button>
+            </SettingsRow>
+
+            {commandOpen ? (
+              <label className="block border-t border-border/70 px-3 py-3">
+                <span className="mb-1 block text-[11px] text-ink-3">Startup command</span>
+                <input
+                  value={current.command ?? ''}
                   disabled={disabled}
-                  onClick={() => setCommandOpen((open) => !open)}
-                  className="w-full md:w-auto md:justify-self-end"
-                >
-                  <Terminal size={13} />
-                  {commandOpen ? 'Hide command' : 'Edit command'}
-                  <ChevronDown
-                    size={13}
-                    className={`transition-transform duration-150 ${commandOpen ? 'rotate-180' : ''}`}
-                  />
-                </Button>
-              </SettingsRow>
-
-              {commandOpen ? (
-                <label className="block border-t border-border/70 px-3 py-3">
-                  <span className="mb-1 block text-[11px] text-ink-3">Startup command</span>
-                  <input
-                    value={current.command ?? ''}
-                    disabled={disabled}
-                    onChange={(event) => update({ command: event.target.value })}
-                    className={`${inputClass} font-mono`}
-                  />
-                </label>
-              ) : null}
-            </>
-          ) : null}
-        </div>
-      </div>
+                  onChange={(event) => update({ command: event.target.value })}
+                  className={`${inputClass} font-mono`}
+                />
+              </label>
+            ) : null}
+          </>
+        ) : null}
+      </Collapse>
     </SettingsCard>
   )
 }

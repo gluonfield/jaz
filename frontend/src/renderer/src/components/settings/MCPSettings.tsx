@@ -11,11 +11,11 @@ import {
   RefreshCcw,
   Trash2,
 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { Button } from '@/components/ui/Button'
+import { Collapse } from '@/components/ui/Collapse'
 import { DashedCta } from '@/components/ui/DashedCta'
 import { IconButton } from '@/components/ui/IconButton'
 import { Input } from '@/components/ui/Input'
@@ -500,28 +500,13 @@ function MCPServerForm({
             </span>
           ) : null}
         </button>
-        <AnimatePresence initial={false}>
-          {advanced ? (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-              className="overflow-hidden"
-            >
-              <div className="space-y-4 pb-1">
-                <OAuthEditor
-                  value={draft.oauth ?? {}}
-                  onChange={(oauth) => onChange({ ...draft, oauth })}
-                />
-                <HeaderEditor
-                  headers={draft.headers ?? []}
-                  onChange={(headers) => onChange({ ...draft, headers })}
-                />
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+        <Collapse open={advanced} className="space-y-4 pb-1">
+          <OAuthEditor value={draft.oauth ?? {}} onChange={(oauth) => onChange({ ...draft, oauth })} />
+          <HeaderEditor
+            headers={draft.headers ?? []}
+            onChange={(headers) => onChange({ ...draft, headers })}
+          />
+        </Collapse>
       </div>
 
       <div className="flex items-center gap-2.5 border-t border-border pt-4 text-[13px] text-ink-2">
