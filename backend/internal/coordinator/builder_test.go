@@ -21,7 +21,7 @@ func TestBuilderPicksUpEditsWithoutRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "## SOUL.md\n\n(empty)") {
+	if !strings.Contains(prompt, "## SOUL.md\n\n(empty)") || !strings.Contains(prompt, "## INTERNAL.md") {
 		t.Fatalf("empty root should render SOUL.md as (empty):\n%s", prompt)
 	}
 
@@ -90,6 +90,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 	memoryRoot := t.TempDir()
 	write(t, root, "AGENTS.md", "save durable facts with jazmem")
 	write(t, root, "SOUL.md", "be kind")
+	write(t, root, "INTERNAL.md", "prefer direct fixes")
 	write(t, memoryRoot, "LONG_TERM.md", "- Goal: $5m.")
 	skillDir := filepath.Join(root, "skills", "deploy")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
@@ -120,6 +121,8 @@ func TestBuilderACPPrompt(t *testing.T) {
 		"save durable facts with jazmem",
 		"## SOUL.md",
 		"be kind",
+		"## INTERNAL.md",
+		"prefer direct fixes",
 		"configured ACP agents: `codex`",
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
@@ -156,7 +159,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(empty, "## AGENTS.md\n\n(empty)") || !strings.Contains(empty, "## SOUL.md\n\n(empty)") {
+	if !strings.Contains(empty, "## AGENTS.md\n\n(empty)") || !strings.Contains(empty, "## SOUL.md\n\n(empty)") || !strings.Contains(empty, "## INTERNAL.md") {
 		t.Fatalf("empty root must still render the platform with (empty) files:\n%s", empty)
 	}
 }

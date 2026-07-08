@@ -21,12 +21,14 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 			Root:             "/tmp/jaz",
 			AgentsPath:       "/tmp/jaz/AGENTS.md",
 			SoulPath:         "/tmp/jaz/SOUL.md",
+			InternalPath:     "/tmp/jaz/INTERNAL.md",
 			SkillsPath:       "/tmp/jaz/skills",
 			SessionsPath:     "/tmp/jaz/sessions",
 			DefaultWorkspace: "/tmp/jaz/workspaces/default",
 			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
 		},
-		Soul: "soul",
+		Soul:     "soul",
+		Internal: "prefer deletion fixes",
 		Memory: &MemoryData{
 			LongTerm:  "- Goal: $5m.",
 			ShortTerm: "- Focus: jaz memory.",
@@ -66,6 +68,9 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"/tmp/jaz/workspaces/default/.worktrees: ACP worktrees.",
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
+		"## INTERNAL.md",
+		"Agent-owned persistent realizations.",
+		"prefer deletion fixes",
 		"## connections",
 		"Connected accounts and agent-relevant memory paths",
 		"Telegram: personal (42)",
@@ -152,7 +157,7 @@ func TestRenderMemoryStates(t *testing.T) {
 	if strings.Contains(disabled, "## memory") || strings.Contains(disabled, "Capture as you go") {
 		t.Fatalf("nil memory must omit the memory block:\n%s", disabled)
 	}
-	if !strings.Contains(disabled, "## AGENTS.md") || !strings.Contains(disabled, "## SOUL.md") {
+	if !strings.Contains(disabled, "## AGENTS.md") || !strings.Contains(disabled, "## SOUL.md") || !strings.Contains(disabled, "## INTERNAL.md") {
 		t.Fatalf("prompt files must render regardless of memory:\n%s", disabled)
 	}
 
@@ -216,6 +221,7 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	for _, want := range []string{
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
+		"## INTERNAL.md",
 		"## Agent delegation",
 		"agent_spawn",
 		"agent_options",
@@ -253,12 +259,14 @@ func testData(agents, soul string) Data {
 			Root:             "/tmp/jaz",
 			AgentsPath:       "/tmp/jaz/AGENTS.md",
 			SoulPath:         "/tmp/jaz/SOUL.md",
+			InternalPath:     "/tmp/jaz/INTERNAL.md",
 			SkillsPath:       "/tmp/jaz/skills",
 			SessionsPath:     "/tmp/jaz/sessions",
 			DefaultWorkspace: "/tmp/jaz/workspaces/default",
 			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
 		},
-		Soul: soul,
+		Soul:     soul,
+		Internal: "(empty)",
 	}
 }
 

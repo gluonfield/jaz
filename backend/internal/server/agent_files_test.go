@@ -14,6 +14,7 @@ func TestAgentFilesIgnoreHeartbeat(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "AGENTS.md", "agents")
 	writeFile(t, root, "SOUL.md", "soul")
+	writeFile(t, root, "INTERNAL.md", "internal")
 	writeFile(t, root, "HEARTBEAT.md", "heartbeat")
 
 	handler := (&Server{Root: root}).Handler()
@@ -28,8 +29,21 @@ func TestAgentFilesIgnoreHeartbeat(t *testing.T) {
 	if err := json.Unmarshal(listRes.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Files) != 2 || listed.Files[0].Name != "AGENTS.md" || listed.Files[1].Name != "SOUL.md" {
-		t.Fatalf("files = %#v, want only AGENTS.md and SOUL.md", listed.Files)
+	if len(listed.Files) != 3 || listed.Files[0].Name != "AGENTS.md" || listed.Files[1].Name != "SOUL.md" || listed.Files[2].Name != "INTERNAL.md" {
+		t.Fatalf("files = %#v, want only prompt files", listed.Files)
+	}
+
+	internalRes := httptest.NewRecorder()
+	handler.ServeHTTP(internalRes, httptest.NewRequest(http.MethodPut, "/v1/agent/files/INTERNAL.md", strings.NewReader(`{"content":"updated"}`)))
+	if internalRes.Code != http.StatusOK {
+		t.Fatalf("internal write status = %d, body = %s", internalRes.Code, internalRes.Body.String())
+	}
+	data, err := os.ReadFile(filepath.Join(root, "INTERNAL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "updated" {
+		t.Fatalf("INTERNAL.md = %q, want updated", data)
 	}
 
 	writeRes := httptest.NewRecorder()
@@ -38,7 +52,7 @@ func TestAgentFilesIgnoreHeartbeat(t *testing.T) {
 	if writeRes.Code != http.StatusBadRequest {
 		t.Fatalf("write status = %d, want 400; body = %s", writeRes.Code, writeRes.Body.String())
 	}
-	data, err := os.ReadFile(filepath.Join(root, "HEARTBEAT.md"))
+	data, err = os.ReadFile(filepath.Join(root, "HEARTBEAT.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

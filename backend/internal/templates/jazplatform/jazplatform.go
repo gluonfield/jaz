@@ -1,7 +1,7 @@
 // Package jazplatform renders the Jaz extension shared by every agent on the
 // platform. Every injected surface is named explicitly in jazplatform.tmpl:
-// runtime context, AGENTS.md, SOUL.md, memory horizons, daily pages, and
-// skills.
+// runtime context, AGENTS.md, SOUL.md, INTERNAL.md, memory horizons, daily
+// pages, and skills.
 package jazplatform
 
 import (
@@ -35,6 +35,7 @@ type RuntimePaths struct {
 	Root             string
 	AgentsPath       string
 	SoulPath         string
+	InternalPath     string
 	SkillsPath       string
 	SessionsPath     string
 	DefaultWorkspace string
@@ -53,6 +54,7 @@ type Data struct {
 	Device          string
 	RuntimePaths    RuntimePaths
 	Soul            string
+	Internal        string
 	ArtifactSurface string
 	Memory          *MemoryData
 	Connections     []connections.AgentConnection

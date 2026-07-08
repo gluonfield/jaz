@@ -25,7 +25,7 @@ func TestRenderRulesOnly(t *testing.T) {
 			t.Fatalf("missing %q in:\n%s", want, prompt)
 		}
 	}
-	for _, forbidden := range []string{"Directory guide:", "runtime state", "default workspace", "Date:", "Time:", "Timezone:", "Weekday:", "Current working directory:", "## Jaz platform", "## memory", "## AGENTS.md", "## SOUL.md", "<available_skills>"} {
+	for _, forbidden := range []string{"Directory guide:", "runtime state", "default workspace", "Date:", "Time:", "Timezone:", "Weekday:", "Current working directory:", "## Jaz platform", "## memory", "## AGENTS.md", "## SOUL.md", "## INTERNAL.md", "<available_skills>"} {
 		if strings.Contains(prompt, forbidden) {
 			t.Fatalf("agent prompt must not contain platform content %q:\n%s", forbidden, prompt)
 		}

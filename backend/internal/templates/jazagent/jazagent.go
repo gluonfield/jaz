@@ -1,7 +1,7 @@
 // Package jazagent renders native Jaz's operating prompt: identity and
 // delegation rules for the built-in coordinator. Everything shared with other
-// agents (runtime paths, AGENTS.md, SOUL.md, memory, skills) lives in
-// jazplatform.
+// agents (runtime paths, AGENTS.md, SOUL.md, INTERNAL.md, memory, skills) lives
+// in jazplatform.
 package jazagent
 
 import (
