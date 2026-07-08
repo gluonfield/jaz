@@ -448,6 +448,7 @@ func TestQueuedACPDrainSendsAttachments(t *testing.T) {
 	workspace := t.TempDir()
 	srv := &Server{Store: store, Workspace: workspace}
 	attachment := uploadTestAttachment(t, srv.Handler(), session.ID, "image.png", "image-bytes")
+	metadata := readTestAttachmentMetadata(t, workspace, session.ID, attachment.ID)
 	session.QueuedMessages = []storage.QueuedMessage{
 		storage.NewQueuedMessage("inspect this", []string{attachment.ID}),
 	}
@@ -467,8 +468,8 @@ func TestQueuedACPDrainSendsAttachments(t *testing.T) {
 	if len(sent.Attachments) != 1 {
 		t.Fatalf("attachments = %#v", sent.Attachments)
 	}
-	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != attachment.ServerPath {
-		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
+	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != metadata.ServerPath {
+		t.Fatalf("sent attachment = %#v, want server path %q", got, metadata.ServerPath)
 	}
 }
 
@@ -822,6 +823,7 @@ func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
 	workspace := t.TempDir()
 	srv := &Server{Store: store, Workspace: workspace}
 	attachment := uploadTestAttachment(t, srv.Handler(), session.ID, "image.png", "image-bytes")
+	metadata := readTestAttachmentMetadata(t, workspace, session.ID, attachment.ID)
 	session.Status = storage.StatusRunning
 	message := storage.NewQueuedMessage("inspect this", []string{attachment.ID})
 	message.ID = "queue-test-0"
@@ -848,8 +850,8 @@ func TestSessionQueueSteerSendsAttachmentsForRunningACP(t *testing.T) {
 	if len(sent.Attachments) != 1 {
 		t.Fatalf("attachments = %#v", sent.Attachments)
 	}
-	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != attachment.ServerPath {
-		t.Fatalf("sent attachment = %#v, want %#v", got, attachment)
+	if got := sent.Attachments[0]; got.ID != attachment.ID || got.URI != "" || got.ServerPath != metadata.ServerPath {
+		t.Fatalf("sent attachment = %#v, want server path %q", got, metadata.ServerPath)
 	}
 	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
 		return len(loaded.QueuedMessages) == 0 && loaded.PendingSteer == nil && loaded.Status == storage.StatusRunning

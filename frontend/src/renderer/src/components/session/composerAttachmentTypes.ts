@@ -7,20 +7,18 @@ export type ComposerAttachment = {
   uri?: string
   mime_type?: string
   size?: number
-  server_path?: string
   file?: File
   uploading?: boolean
   error?: string
 }
 
 export function uploadedAttachment(item: ComposerAttachment): Attachment | null {
-  if (item.uploading || item.error || !item.id || !item.uri) return null
+  if (item.uploading || item.error || !item.id) return null
   return {
     id: item.id,
     name: item.name,
-    uri: item.uri,
+    ...(item.uri ? { uri: item.uri } : {}),
     ...(item.mime_type ? { mime_type: item.mime_type } : {}),
     ...(typeof item.size === 'number' && Number.isFinite(item.size) ? { size: item.size } : {}),
-    ...(item.server_path ? { server_path: item.server_path } : {}),
   }
 }

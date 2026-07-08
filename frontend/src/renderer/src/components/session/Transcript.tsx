@@ -114,6 +114,7 @@ export const Transcript = memo(function Transcript({
   messages,
   events,
   sessionId,
+  attachmentSessionId = sessionId,
   groupTurns = false,
   working = false,
   findActive = false,
@@ -126,6 +127,7 @@ export const Transcript = memo(function Transcript({
   messages: ChatMessage[]
   events: SessionEvent[]
   sessionId?: string
+  attachmentSessionId?: string
   groupTurns?: boolean
   working?: boolean
   findActive?: boolean
@@ -184,6 +186,7 @@ export const Transcript = memo(function Transcript({
               message={item.message}
               showAssistantCopy={showAssistantCopy}
               onArtifactPrompt={onArtifactPrompt}
+              attachmentSessionId={attachmentSessionId}
             />
           </div>
         )

@@ -302,6 +302,10 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return
 	}
+	if id, ok := strings.CutPrefix(action, "attachments/"); ok {
+		s.handleAttachmentContent(w, r, session, id)
+		return
+	}
 	switch action {
 	case "messages":
 		s.writeSessionMessages(w, r, session)

@@ -1,4 +1,3 @@
-import { FileText } from 'lucide-react'
 import { memo } from 'react'
 import type { ChatMessage, MessageBlock } from '@/lib/api/types'
 import { browserAnnotationFromJSON } from '@/lib/messageContext'
@@ -6,20 +5,13 @@ import type { ComposerContext } from '@/lib/messageContext'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { MentionText } from './mentions'
+import { MessageAttachments, type MessageAttachment } from './MessageAttachments'
 import { MessageContexts } from './MessageContexts'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCallCard } from './ToolCallCard'
 import { isArtifactToolName, isHiddenToolName } from './toolVisibility'
 
 type ToolBlock = Extract<MessageBlock, { type: 'tool' }>
-export interface BubbleAttachment {
-  id: string
-  name: string
-  uri?: string
-  mime_type?: string
-  size?: number
-  server_path?: string
-}
 
 function messageText(message: ChatMessage): string {
   // Each text block is a separate utterance; join as paragraphs so block
@@ -69,47 +61,23 @@ function isVisibleToolBlock(block: MessageBlock): block is Extract<MessageBlock,
   return block.type === 'tool' && !isHiddenToolName(block.name)
 }
 
-function formatAttachmentSize(size?: number): string {
-  if (!size) return ''
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function MessageAttachments({ attachments }: { attachments: BubbleAttachment[] }) {
-  if (!attachments.length) return null
-  return (
-    <div className="mt-2 flex flex-wrap gap-1">
-      {attachments.map((attachment) => (
-        <span
-          key={attachment.id}
-          className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
-          title={attachment.server_path ?? attachment.uri}
-        >
-          <FileText size={13} className="shrink-0 text-ink-3" />
-          <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
-          <span className="shrink-0 text-ink-3">{formatAttachmentSize(attachment.size)}</span>
-        </span>
-      ))}
-    </div>
-  )
-}
-
 export function UserBubble({
   text,
   contexts = [],
   attachments = [],
+  attachmentSessionId,
 }: {
   text: string
   contexts?: ComposerContext[]
-  attachments?: BubbleAttachment[]
+  attachments?: MessageAttachment[]
+  attachmentSessionId?: string
 }) {
   return (
     <div className="flex justify-end">
       <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
         <MessageContexts contexts={contexts} />
         <MentionText text={text} />
-        <MessageAttachments attachments={attachments} />
+        <MessageAttachments attachments={attachments} attachmentSessionId={attachmentSessionId} />
       </div>
     </div>
   )
@@ -159,10 +127,12 @@ export const Bubble = memo(function Bubble({
   message,
   showAssistantCopy = true,
   onArtifactPrompt,
+  attachmentSessionId,
 }: {
   message: ChatMessage
   showAssistantCopy?: boolean
   onArtifactPrompt?: (text: string) => void
+  attachmentSessionId?: string
 }) {
   switch (message.role) {
     case 'user':
@@ -171,6 +141,7 @@ export const Bubble = memo(function Bubble({
           text={messageText(message)}
           contexts={messageContexts(message)}
           attachments={message.blocks?.filter((block) => block.type === 'attachment') ?? []}
+          attachmentSessionId={attachmentSessionId}
         />
       )
     case 'assistant': {

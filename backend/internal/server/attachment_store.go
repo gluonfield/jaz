@@ -146,11 +146,20 @@ func safeAttachmentName(name string) string {
 }
 
 func attachmentMimeType(uploaded, name string) string {
-	if uploaded = strings.TrimSpace(uploaded); uploaded != "" {
+	uploaded = strings.TrimSpace(uploaded)
+	uploadedType := uploaded
+	if mediaType, _, err := mime.ParseMediaType(uploaded); err == nil {
+		uploadedType = mediaType
+	}
+	byExt := mime.TypeByExtension(filepath.Ext(name))
+	if uploaded != "" && !strings.EqualFold(uploadedType, "application/octet-stream") {
 		return uploaded
 	}
-	if byExt := mime.TypeByExtension(filepath.Ext(name)); byExt != "" {
+	if byExt != "" {
 		return byExt
+	}
+	if uploaded != "" {
+		return uploaded
 	}
 	return "application/octet-stream"
 }

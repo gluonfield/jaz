@@ -17,7 +17,6 @@ export interface ContextAttachment {
   uri?: string
   mime_type?: string
   size?: number
-  server_path?: string
 }
 
 export type ComposerContext =
