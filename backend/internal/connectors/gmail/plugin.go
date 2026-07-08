@@ -53,6 +53,7 @@ func Plugin() integrations.Plugin {
 			Scopes:      []string{ScopeReadonly, ScopeCompose, ScopeSend},
 		}},
 		Capabilities: []integrations.Capability{
+			integrations.CapabilitySync,
 			integrations.CapabilityAct,
 			integrations.CapabilityMCP,
 		},
