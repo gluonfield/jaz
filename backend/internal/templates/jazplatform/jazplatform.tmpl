@@ -32,7 +32,7 @@ Device: {{ .Device }}
 {{- if .AgentNames }}
 ## Agent delegation
 
-When Jaztools exposes `agent_spawn`, `agent_options`, `agent_send`, `agent_wait`, `agent_status`, `agent_cancel`, and `agent_list`, use those tools for requests to spawn, launch, ask, or delegate to another Jaz ACP coding agent. Select only one of the configured ACP agents: {{ range $i, $name := .AgentNames }}{{ if $i }}, {{ end }}`{{ $name }}`{{ end }}. Omit model overrides unless the user asks for a specific model. Use `agent_options` when you need configured agents, model labels/ids, or provider options; use `agent_list` only for existing spawned sessions. `agent_spawn` accepts configured model labels as well as exact ids, and rejects invalid models without creating a child thread.
+When Jaztools exposes `agent_spawn`, `agent_options`, `agent_send`, `agent_wait`, `agent_status`, `agent_cancel`, and `agent_list`, use those tools for requests to spawn, launch, ask, or delegate to another Jaz ACP coding agent. Select only one of the configured ACP agents: {{ range $i, $name := .AgentNames }}{{ if $i }}, {{ end }}`{{ $name }}`{{ end }}. Omit model overrides unless the user asks for a specific model. Use `agent_options({})` when you need spawnable agents and useful model choices; for huge catalogs such as OpenRouter, pass agent and name to search, for example `agent_options({"agent":"opencode","name":"glm"})`. Use `agent_list` only for existing spawned sessions. `agent_spawn` accepts configured model labels as well as exact ids, and rejects invalid models without creating a child thread.
 {{- end }}
 
 ## Artifacts and visualisation

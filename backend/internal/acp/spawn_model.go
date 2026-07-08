@@ -15,7 +15,15 @@ func (m *Manager) resolveAgentModelAlias(agent string, cfg AgentConfig) string {
 	}
 	key := modelAliasKey(model)
 	openRouterNative := cfg.UsesProvider() && strings.EqualFold(strings.TrimSpace(cfg.ModelProvider), provider.ProviderOpenRouter)
-	for _, candidate := range m.cfg.ModelCatalog.AgentModels(agent) {
+	candidates := m.cfg.ModelCatalog.AgentModels(agent)
+	if cfg.UsesProvider() {
+		scoped, err := m.cfg.ModelCatalog.AgentModelsForProvider(agent, cfg.ModelProvider)
+		if err != nil {
+			return model
+		}
+		candidates = scoped
+	}
+	for _, candidate := range candidates {
 		if key == modelAliasKey(candidate.Value) ||
 			key == modelAliasKey(candidate.Label) ||
 			key == modelAliasKey(candidate.OpenRouterID) {

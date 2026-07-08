@@ -27,7 +27,7 @@ type MCPService interface {
 	Cancel(context.Context, string) (Job, error)
 	List() []Job
 	Agents() []string
-	AgentOptions(AgentOptionsRequest) AgentOptionsOutput
+	AgentOptions(AgentOptionsRequest) (AgentOptionsOutput, error)
 }
 
 type MCPTools struct {
@@ -40,9 +40,9 @@ func NewMCPTools(service MCPService) *MCPTools {
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
 	agentNames := t.availableAgents()
-	description := "Create an idle Jaz ACP agent session. Send work with agent_send. Omit model unless the user asks for a specific model; use agent_options to inspect configured agents and model/provider options."
+	description := "Create an idle Jaz ACP agent session. Send work with agent_send. Omit model unless the user asks for a specific model; use agent_options({}) to inspect spawnable agents and useful model choices."
 	if len(agentNames) > 0 {
-		description = "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with agent_send. Omit model unless the user asks for a specific model; use agent_options to inspect configured agents and model/provider options."
+		description = "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with agent_send. Omit model unless the user asks for a specific model; use agent_options({}) to inspect spawnable agents and useful model choices."
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentSpawn,
@@ -73,7 +73,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentOptions,
 		Title:       "List spawnable ACP agent options",
-		Description: "List configured Jaz ACP agents and their model/provider options. Pass agent to inspect one agent; pass name to filter model names or ids.",
+		Description: "List spawnable Jaz ACP agents and useful model choices. Call with empty input for the default shortlist. For huge provider catalogs such as OpenRouter, pass agent and name to search model names or ids.",
 	}, t.Options)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentList,
@@ -178,7 +178,8 @@ type MCPOptionsInput struct {
 }
 
 func (t *MCPTools) Options(_ context.Context, _ *mcp.CallToolRequest, input MCPOptionsInput) (*mcp.CallToolResult, AgentOptionsOutput, error) {
-	return nil, t.Service.AgentOptions(AgentOptionsRequest{Agent: input.Agent, Name: input.Name}), nil
+	out, err := t.Service.AgentOptions(AgentOptionsRequest{Agent: input.Agent, Name: input.Name})
+	return nil, out, err
 }
 
 type MCPListOutput struct {

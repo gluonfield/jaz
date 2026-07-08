@@ -29,7 +29,7 @@ type input struct {
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
 		"agent_spawn",
-		"Create an idle ACP-backed agent session, such as codex, claude, grok, opencode, or antigravity. Use acp_agent or agent_name to choose the agent; empty uses the default selectable agent. This only creates the session; send tasks with agent_send and choose wait=true or wait=false per task. Omit model unless the user asks for a specific model; use agent_options to inspect configured agents and model/provider options. Invalid models fail without creating a child thread. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
+		"Create an idle ACP-backed agent session, such as codex, claude, grok, opencode, or antigravity. Use acp_agent or agent_name to choose the agent; empty uses the default selectable agent. This only creates the session; send tasks with agent_send and choose wait=true or wait=false per task. Omit model unless the user asks for a specific model; use agent_options({}) to inspect spawnable agents and useful model choices. Invalid models fail without creating a child thread. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
 		true,
 		helpers.GenerateSchema[input](),
 	)

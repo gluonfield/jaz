@@ -82,7 +82,7 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			name:     "opencode-openrouter-style",
 			agent:    acp.AgentOpenCode,
 			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter}}},
-			model:    "openai/gpt-5.4-mini",
+			model:    "z-ai/glm-5.2",
 			effort:   "xhigh",
 			allowed:  []string{"low", "medium", "high", "xhigh", "max"},
 		},

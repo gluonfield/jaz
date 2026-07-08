@@ -16,51 +16,104 @@ type AgentOptionsRequest struct {
 }
 
 type AgentOptionsOutput struct {
-	Agents       []string                `json:"agents"`
-	AgentOptions map[string]AgentOptions `json:"agent_options,omitempty"`
+	Agents []AgentSpawnOptions `json:"agents"`
 }
 
-func (m *Manager) AgentOptions(req AgentOptionsRequest) AgentOptionsOutput {
+type AgentSpawnOptions struct {
+	Name                   string             `json:"name"`
+	DefaultModel           string             `json:"default_model,omitempty"`
+	DefaultModelProvider   string             `json:"default_model_provider,omitempty"`
+	DefaultReasoningEffort string             `json:"default_reasoning_effort,omitempty"`
+	ReasoningEfforts       []string           `json:"reasoning_efforts,omitempty"`
+	Models                 []AgentModelOption `json:"models,omitempty"`
+	ModelSearch            *AgentModelSearch  `json:"model_search,omitempty"`
+}
+
+type AgentModelOption struct {
+	Model         string `json:"model"`
+	Label         string `json:"label,omitempty"`
+	ModelProvider string `json:"model_provider,omitempty"`
+	ContextLength int    `json:"context_length,omitempty"`
+}
+
+type AgentModelSearch struct {
+	Provider string `json:"provider"`
+	Limit    int    `json:"limit"`
+	Use      string `json:"use"`
+}
+
+func (m *Manager) AgentOptions(req AgentOptionsRequest) (AgentOptionsOutput, error) {
 	agent := CanonicalAgentName(req.Agent)
-	agents := SelectableAgentNames(m.Agents())
+	names, err := m.agents.EnabledAgentNames()
+	if err != nil {
+		return AgentOptionsOutput{}, err
+	}
+	agents := SelectableAgentNames(names)
 	if agent != "" {
 		agents = filterAgentNames(agents, agent)
 	}
-	return AgentOptionsOutput{
-		Agents:       agents,
-		AgentOptions: m.agentOptions(agents, req.Name),
+	options, err := m.agentOptions(agents, req.Name)
+	if err != nil {
+		return AgentOptionsOutput{}, err
 	}
+	return AgentOptionsOutput{Agents: options}, nil
 }
 
-func (m *Manager) agentOptions(agents []string, query string) map[string]AgentOptions {
-	out := make(map[string]AgentOptions, len(agents))
+func (m *Manager) agentOptions(agents []string, query string) ([]AgentSpawnOptions, error) {
+	out := make([]AgentSpawnOptions, 0, len(agents))
 	for _, agent := range agents {
 		cfg, ok, err := m.configuredAgent(agent)
-		if err != nil || !ok {
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
 			continue
 		}
-		option := AgentOptionsForConfig(agent, cfg)
-		option.ModelProviderIDs = m.agentModelProviderIDs(agent, cfg)
-		if m.cfg.ModelCatalog != nil {
-			option.Models = m.agentModelOptions(agent, cfg, query)
+		option := AgentSpawnOptions{
+			Name:                   agent,
+			DefaultModel:           strings.TrimSpace(cfg.Model),
+			DefaultModelProvider:   strings.TrimSpace(cfg.ModelProvider),
+			DefaultReasoningEffort: strings.TrimSpace(cfg.ReasoningEffort),
+			ReasoningEfforts:       reasoningEffortValues(agentPolicyForAgent(agent).reasoningEffortOptions()),
 		}
-		out[agent] = option
+		if m.cfg.ModelCatalog != nil {
+			models, err := m.agentModelOptions(agent, cfg, query)
+			if err != nil {
+				return nil, err
+			}
+			option.Models = models
+			if m.agentSupportsModelProvider(agent, cfg, provider.ProviderOpenRouter) {
+				option.ModelSearch = &AgentModelSearch{
+					Provider: provider.ProviderOpenRouter,
+					Limit:    agentOptionsProviderModelLimit,
+					Use:      `agent_options({"agent":"` + agent + `","name":"<model name or provider>"})`,
+				}
+			}
+		}
+		out = append(out, option)
 	}
-	return out
+	return out, nil
 }
 
-func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string) []modelcatalog.Model {
-	models := filterModels(m.cfg.ModelCatalog.AgentModels(agent), query)
+func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string) ([]AgentModelOption, error) {
+	catalogModels, err := m.cfg.ModelCatalog.AgentModelsForProvider(agent, cfg.ModelProvider)
+	if err != nil {
+		return nil, err
+	}
+	models := modelOptionsForCatalogModels(cfg, filterModels(catalogModels, query), "")
 	if !m.agentSupportsModelProvider(agent, cfg, provider.ProviderOpenRouter) || strings.TrimSpace(query) == "" {
-		return models
+		return models, nil
 	}
 	providerModels, err := m.cfg.ModelCatalog.ProviderModels(provider.ProviderOpenRouter)
 	if err != nil {
-		return models
+		if len(models) == 0 {
+			return nil, err
+		}
+		return models, nil
 	}
 	seen := map[string]struct{}{}
 	for _, model := range models {
-		seen[model.Value] = struct{}{}
+		seen[model.Model] = struct{}{}
 	}
 	for _, model := range filterModels(providerModels, query) {
 		if len(models) >= agentOptionsProviderModelLimit {
@@ -69,10 +122,30 @@ func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string)
 		if _, ok := seen[model.Value]; ok {
 			continue
 		}
-		models = append(models, model)
+		models = append(models, modelOptionForCatalogModel(cfg, model, provider.ProviderOpenRouter))
 		seen[model.Value] = struct{}{}
 	}
-	return models
+	return models, nil
+}
+
+func modelOptionsForCatalogModels(cfg AgentConfig, models []modelcatalog.Model, sourceProvider string) []AgentModelOption {
+	out := make([]AgentModelOption, 0, len(models))
+	for _, model := range models {
+		out = append(out, modelOptionForCatalogModel(cfg, model, sourceProvider))
+	}
+	return out
+}
+
+func modelOptionForCatalogModel(cfg AgentConfig, model modelcatalog.Model, sourceProvider string) AgentModelOption {
+	option := AgentModelOption{
+		Model:         strings.TrimSpace(model.Value),
+		Label:         strings.TrimSpace(model.Label),
+		ContextLength: model.ContextLength,
+	}
+	if providerID := strings.TrimSpace(sourceProvider); providerID != "" && !strings.EqualFold(providerID, strings.TrimSpace(cfg.ModelProvider)) {
+		option.ModelProvider = providerID
+	}
+	return option
 }
 
 func (m *Manager) agentSupportsModelProvider(agent string, cfg AgentConfig, providerID string) bool {

@@ -93,12 +93,16 @@ func (s fakeACPService) Agents() []string {
 	return []string{acp.AgentCodex, acp.AgentJaz}
 }
 
-func (s fakeACPService) AgentOptions(req acp.AgentOptionsRequest) acp.AgentOptionsOutput {
+func (s fakeACPService) AgentOptions(req acp.AgentOptionsRequest) (acp.AgentOptionsOutput, error) {
 	agents := acp.SelectableAgentNames(s.Agents())
 	if req.Agent != "" && acp.CanonicalAgentName(req.Agent) == acp.AgentCodex {
 		agents = []string{acp.AgentCodex}
 	}
-	return acp.AgentOptionsOutput{Agents: agents}
+	out := acp.AgentOptionsOutput{Agents: make([]acp.AgentSpawnOptions, 0, len(agents))}
+	for _, agent := range agents {
+		out.Agents = append(out.Agents, acp.AgentSpawnOptions{Name: agent})
+	}
+	return out, nil
 }
 
 func (fakeBrowserBackend) Call(context.Context, browserworker.ActionInput) (browserworker.ActionOutput, error) {

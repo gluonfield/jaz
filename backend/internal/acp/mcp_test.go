@@ -9,7 +9,6 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
-	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
@@ -52,17 +51,19 @@ func (s *fakeMCPService) Agents() []string {
 	return []string{AgentCodex, AgentJaz}
 }
 
-func (s *fakeMCPService) AgentOptions(req AgentOptionsRequest) AgentOptionsOutput {
+func (s *fakeMCPService) AgentOptions(req AgentOptionsRequest) (AgentOptionsOutput, error) {
 	agents := SelectableAgentNames(s.Agents())
 	if req.Agent != "" {
 		agents = filterAgentNames(agents, CanonicalAgentName(req.Agent))
 	}
-	return AgentOptionsOutput{
-		Agents: agents,
-		AgentOptions: map[string]AgentOptions{
-			AgentCodex: {Models: []modelcatalog.Model{{Value: "gpt-5.5", Label: "GPT-5.5"}}},
-		},
+	out := AgentOptionsOutput{Agents: make([]AgentSpawnOptions, 0, len(agents))}
+	for _, agent := range agents {
+		out.Agents = append(out.Agents, AgentSpawnOptions{
+			Name:   agent,
+			Models: []AgentModelOption{{Model: "gpt-5.5", Label: "GPT-5.5"}},
+		})
 	}
+	return out, nil
 }
 
 func TestMCPSpawnAcceptsAgentNameAliasAndModelOverrides(t *testing.T) {
@@ -219,11 +220,11 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 		t.Fatal(err)
 	}
 	options := structuredContent[AgentOptionsOutput](t, optionsCall)
-	if len(options.Agents) != 1 || options.Agents[0] != AgentCodex {
+	if len(options.Agents) != 1 || options.Agents[0].Name != AgentCodex {
 		t.Fatalf("option agents = %#v", options.Agents)
 	}
-	if options.AgentOptions[AgentCodex].Models[0].Value != "gpt-5.5" {
-		t.Fatalf("option models = %#v", options.AgentOptions[AgentCodex].Models)
+	if options.Agents[0].Models[0].Model != "gpt-5.5" {
+		t.Fatalf("option models = %#v", options.Agents[0].Models)
 	}
 }
 

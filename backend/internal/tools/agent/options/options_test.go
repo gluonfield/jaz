@@ -18,4 +18,8 @@ func TestDefinitionExposesAgentAndNameFilters(t *testing.T) {
 			t.Fatalf("schema missing %s: %#v", name, properties)
 		}
 	}
+	required, _ := params["required"].([]string)
+	if len(required) != 0 {
+		t.Fatalf("agent_options should allow an empty call, required = %#v", params["required"])
+	}
 }
