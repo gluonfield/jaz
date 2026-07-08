@@ -23,12 +23,14 @@ func TestContentChunksWithoutMessageIDPersist(t *testing.T) {
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = sessionevents.New()
 	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: "test-agent", ACPSession: "acp-session"}}
+	job.startTurn(CompletionInline, false, false)
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
 
 	updates := []map[string]any{
 		{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "hello"}},
 		{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "thinking"}},
+		{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": " hard"}},
 	}
 	for _, update := range updates {
 		_, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
@@ -53,12 +55,13 @@ func TestContentChunksWithoutMessageIDPersist(t *testing.T) {
 	}
 	if stored[0].Type != sessionevents.TypeACPMessage ||
 		stored[0].Content != "hello" ||
-		stored[0].ACP.TextRunID != "" {
+		stored[0].ACP.TextRunID == "" {
 		t.Fatalf("stored message event = %#v", stored[0])
 	}
 	if stored[1].Type != sessionevents.TypeACPThought ||
-		stored[1].ACP.Thought != "thinking" ||
-		stored[1].ACP.TextRunID != "" {
+		stored[1].ACP.Thought != "thinking hard" ||
+		stored[1].ACP.TextRunID == "" ||
+		stored[1].ACP.TextRunID == stored[0].ACP.TextRunID {
 		t.Fatalf("stored thought event = %#v", stored[1])
 	}
 	if got := manager.jobsByID[session.ID].Assistant; got != "hello" {
