@@ -264,13 +264,13 @@ function ACPAgentRow({
     <SettingsCard className="overflow-hidden">
       {/* Collapsed header: the whole row toggles expand; the Switch stays live so
           an agent can be enabled/disabled without opening its details. */}
-      <div className="group flex items-center gap-3 px-3 py-3">
+      <div className="group flex items-center gap-3 pr-3">
         <button
           type="button"
           onClick={() => setExpanded((open) => !open)}
           aria-expanded={expanded}
           aria-label={`${expanded ? 'Collapse' : 'Expand'} ${agentLabel(agent)}`}
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pl-3 text-left"
         >
           <ChevronDown
             size={15}
