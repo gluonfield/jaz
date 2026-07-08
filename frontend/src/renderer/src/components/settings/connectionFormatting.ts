@@ -2,8 +2,8 @@ import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/
 import { hasTime, relativeTime } from '@/lib/format/time'
 
 export function accountAddress(account: IntegrationConnectionAccount): string {
-  if (account.account_id) return account.account_id
   if (account.account_name) return account.account_name
+  if (account.account_id) return account.account_id
   if (account.alias && account.alias !== 'default') return account.alias
   return ''
 }
