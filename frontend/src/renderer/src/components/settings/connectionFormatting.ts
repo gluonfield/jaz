@@ -33,7 +33,11 @@ export function pluginCanConnect(plugin: IntegrationPlugin): boolean {
   return plugin.implementation.status === 'available'
 }
 
-function statusLabel(status: string): string {
+export function categoryLabel(value?: string): string {
+  return value ? statusLabel(value) : 'Integration'
+}
+
+export function statusLabel(status: string): string {
   return status
     .split('_')
     .filter(Boolean)
