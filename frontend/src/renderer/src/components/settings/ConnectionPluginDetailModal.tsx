@@ -72,11 +72,18 @@ function ConnectButton({
   connecting: boolean
   onConnect: () => void
 }) {
+  if (pluginInternal(plugin)) {
+    return (
+      <span className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium text-ink-2 ring-1 ring-border">
+        <Check size={14} />
+        Built in
+      </span>
+    )
+  }
   const sessionAuth = plugin.auth[0]?.kind === 'session'
   const available = pluginCanConnect(plugin)
   const connected = plugin.connection?.status === 'connected'
   let Icon = sessionAuth ? QrCode : Plug
-  if (pluginInternal(plugin)) Icon = Check
   if (available && connected && plugin.multi_account) Icon = Plus
   if (connecting) Icon = Loader2
 

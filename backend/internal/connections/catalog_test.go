@@ -39,13 +39,4 @@ func TestNilCatalogIsEmpty(t *testing.T) {
 	if _, ok := catalog.Plugin("gmail"); ok {
 		t.Fatal("nil catalog returned plugin")
 	}
-	if catalog.HasInternalPlugin() {
-		t.Fatal("nil catalog reported internal plugin")
-	}
-}
-
-func TestCatalogHasInternalPlugin(t *testing.T) {
-	if !NewCatalog().HasInternalPlugin() {
-		t.Fatal("catalog missing internal plugin")
-	}
 }

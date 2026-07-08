@@ -25,7 +25,7 @@ export function SearchField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        aria-label={placeholder}
+        aria-label={placeholder.replace(/…$/, '')}
         className={`w-full rounded-full bg-ink/10 pl-8 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 ${value ? 'pr-9' : 'pr-3'} ${className}`}
       />
       {value ? (

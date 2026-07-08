@@ -34,8 +34,8 @@ func Plugin() integrations.Plugin {
 			integrations.CapabilityAct,
 			integrations.CapabilityMCP,
 		},
-		// Display metadata mirroring the thread-surface tools registered by
-		// internal/jaztools; keep names in sync when tools change there.
+		// Thread-surface tool metadata; pinned to the live jaztools
+		// registrations by that package's plugin sync test.
 		Tools: []integrations.PluginTool{
 			{Name: "memory_search", Description: "Search Jaz's persistent memory and return cited results.", Capability: integrations.CapabilityAct, Risk: integrations.ActionRiskRead},
 			{Name: "memory_get_page", Description: "Read a memory page's raw markdown.", Capability: integrations.CapabilityAct, Risk: integrations.ActionRiskRead},

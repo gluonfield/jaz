@@ -41,20 +41,6 @@ func (c *Catalog) ListPlugins() []integrations.Plugin {
 	return out
 }
 
-// HasInternalPlugin reports whether the catalog declares Jaz's built-in tool
-// surface; MCP wiring exposes the jaztools server only when it does.
-func (c *Catalog) HasInternalPlugin() bool {
-	if c == nil {
-		return false
-	}
-	for _, plugin := range c.plugins {
-		if plugin.Internal() {
-			return true
-		}
-	}
-	return false
-}
-
 func (c *Catalog) Plugin(id string) (integrations.Plugin, bool) {
 	if c == nil {
 		return integrations.Plugin{}, false

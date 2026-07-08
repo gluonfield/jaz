@@ -105,7 +105,7 @@ func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, erro
 	var out []AgentConnection
 	for _, plugin := range plugins {
 		providerID := plugin.Provider.ID
-		if providerID == "" {
+		if providerID == "" || plugin.Internal() {
 			continue
 		}
 		accounts, err := s.store.ListConnections(ctx, providerID)

@@ -17,7 +17,6 @@ import (
 
 type acpMCPServerReader struct {
 	base        mcpconfig.ServerReader
-	catalog     *connections.Catalog
 	proxyURL    string
 	jaztoolsURL string
 }
@@ -31,12 +30,7 @@ func (r acpMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
 	if hasEnabledUserMCPServer(servers) && r.proxyURL != "" {
 		out = append(out, mcpruntime.ProxyServerConfig(r.proxyURL))
 	}
-	// The jaztools server also carries the memory/browser worker surfaces, so
-	// removing the internal plugin from the catalog strips those sessions too.
-	if r.catalog.HasInternalPlugin() {
-		out = append(out, jaztools.ServerConfig(r.jaztoolsURL))
-	}
-	return out, nil
+	return append(out, jaztools.ServerConfig(r.jaztoolsURL)), nil
 }
 
 func hasEnabledUserMCPServer(servers []mcpconfig.Server) bool {
@@ -49,21 +43,12 @@ func hasEnabledUserMCPServer(servers []mcpconfig.Server) bool {
 }
 
 func NewACPMCPServerReader(store *sqlitestore.Store, catalog *connections.Catalog, jaz *jaztools.Service, urls serverconfig.URLs) mcpconfig.ServerReader {
-	return acpMCPServerReader{
-		base:        connectionMCPServerReader{store: store, catalog: catalog},
-		catalog:     catalog,
-		proxyURL:    urls.MCPProxy,
-		jaztoolsURL: jaz.URL(),
-	}
+	return acpMCPServerReader{base: connectionMCPServerReader{store: store, catalog: catalog}, proxyURL: urls.MCPProxy, jaztoolsURL: jaz.URL()}
 }
 
 func NewMCPManager(store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, logger *log.Logger) *mcpruntime.Manager {
 	reader := connectionMCPServerReader{store: store, catalog: catalog}
-	var opts []mcpruntime.Option
-	if catalog.HasInternalPlugin() {
-		opts = append(opts, mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server))
-	}
-	return mcpruntime.NewManager(reader, store, registry, logger, opts...)
+	return mcpruntime.NewManager(reader, store, registry, logger, mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server))
 }
 
 type connectionTokenStore interface {
