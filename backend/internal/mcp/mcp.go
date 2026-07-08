@@ -23,10 +23,7 @@ import (
 )
 
 const (
-	RegistryGroup = "mcp"
-	// BuiltinRegistryGroup holds tools from in-process builtin servers
-	// (jaztools). They are Jaz's own surface, so they register under their
-	// bare names instead of the mcp_<server>_ prefix remote tools get.
+	RegistryGroup        = "mcp"
 	BuiltinRegistryGroup = "builtin"
 	maxToolNameLen       = 64
 	remoteStatusTimeout  = 25 * time.Second
@@ -252,28 +249,28 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 		}
 		next[result.server.ID] = result.session
 		builtin := m.hasLocalServer(result.server.ID)
+		kept := result.session.tools[:0]
 		for i := range result.session.tools {
 			rt := result.session.tools[i]
 			var name string
 			if builtin {
-				name = m.builtinToolName(rt.remoteName, usedNames)
+				name = m.builtinToolName(result.server, rt.remoteName, usedNames)
 				if name == "" {
-					// A directly registered native tool owns this name;
-					// the builtin variant would be a duplicate.
 					continue
 				}
 			} else {
 				name = mappedToolName(result.server, rt.remoteName, usedNames)
 			}
 			rt.definition = tools.Function(name, rt.description, false, rt.inputSchema)
-			result.session.tools[i] = rt
+			kept = append(kept, rt)
 			if builtin {
 				builtinTools = append(builtinTools, rt)
 			} else {
 				remoteTools = append(remoteTools, rt)
 			}
 		}
-		statuses[result.server.ID] = statusWithTools(result.status, result.session.tools)
+		result.session.tools = kept
+		statuses[result.server.ID] = statusWithTools(result.status, kept)
 	}
 
 	m.mu.Lock()
@@ -285,20 +282,18 @@ func (m *Manager) refreshServerList(ctx context.Context, seq uint64, servers []m
 	old := m.sessions
 	m.sessions = next
 	m.statuses = statuses
-	m.mu.Unlock()
 	m.registry.SetGroup(BuiltinRegistryGroup, builtinTools)
 	m.registry.SetGroup(RegistryGroup, remoteTools)
+	m.mu.Unlock()
 
 	closeSessions(old)
 }
 
-// builtinToolName exposes an in-process server tool under its bare name.
-// Returns "" when a tool registered outside the manager's groups already
-// owns the name — the native registration stays canonical.
-func (m *Manager) builtinToolName(remote string, used map[string]string) string {
-	source := "builtin:" + remote
+func (m *Manager) builtinToolName(server mcpconfig.Server, remote string, used map[string]string) string {
+	source := server.ID + ":" + remote
 	name := clampToolName(sanitizeToolName(remote), source)
 	if existing, ok := used[name]; ok && existing != source {
+		m.log.Warn("builtin tool name collision", "tool", name, "server", server.Name, "kept", existing)
 		return ""
 	}
 	if m.registry.HasOutside(name, RegistryGroup, BuiltinRegistryGroup) {

@@ -556,11 +556,60 @@ func TestBuiltinServerToolsUseBareNamesAndYieldToNativeTools(t *testing.T) {
 		t.Fatal("builtin tool registered under mcp-prefixed name")
 	}
 
+	manager.RefreshLocal(context.Background())
+	if _, ok := registry.Get("memory_search"); !ok {
+		t.Fatal("builtin tool lost on second refresh")
+	}
+
 	manager.Close()
 	if _, ok := registry.Get("agent_spawn"); !ok {
 		t.Fatal("native tool removed by manager close")
 	}
 	if _, ok := registry.Get("memory_search"); ok {
 		t.Fatal("builtin group not removed by manager close")
+	}
+}
+
+func TestBuiltinServersDoNotShareToolNames(t *testing.T) {
+	newServer := func(reply string) *mcpsdk.Server {
+		server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: reply, Version: "test"}, nil)
+		mcpsdk.AddTool(server, &mcpsdk.Tool{
+			Name:        "echo",
+			Description: reply,
+		}, func(ctx context.Context, req *mcpsdk.CallToolRequest, input echoInput) (*mcpsdk.CallToolResult, map[string]string, error) {
+			return &mcpsdk.CallToolResult{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: reply}}}, nil, nil
+		})
+		return server
+	}
+	first := newServer("first")
+	second := newServer("second")
+
+	registry := tools.NewRegistry()
+	manager := NewManager(&testStore{}, nil, registry, log.New(io.Discard), WithBuiltinServerProvider(mcpconfig.Server{
+		ID:      "alpha",
+		Name:    "alpha",
+		Enabled: true,
+	}, func() *mcpsdk.Server { return first }), WithBuiltinServerProvider(mcpconfig.Server{
+		ID:      "beta",
+		Name:    "beta",
+		Enabled: true,
+	}, func() *mcpsdk.Server { return second }))
+	manager.RefreshLocal(context.Background())
+	defer manager.Close()
+
+	if _, ok := registry.Get("echo"); !ok {
+		t.Fatal("echo not registered")
+	}
+	count := 0
+	for _, def := range registry.Definitions() {
+		if tools.DefinitionName(def) == "echo" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("echo registered %d times, want 1", count)
+	}
+	if manager.Status("alpha").ToolCount+manager.Status("beta").ToolCount != 1 {
+		t.Fatalf("statuses = %#v %#v, want one tool total", manager.Status("alpha"), manager.Status("beta"))
 	}
 }

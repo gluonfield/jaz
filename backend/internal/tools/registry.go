@@ -48,8 +48,6 @@ func (r *Registry) RemoveGroup(group string) {
 	r.removeGroupLocked(group)
 }
 
-// HasOutside reports whether name is registered by something other than the
-// given groups - a direct registration those groups must not clobber.
 func (r *Registry) HasOutside(name string, groups ...string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
