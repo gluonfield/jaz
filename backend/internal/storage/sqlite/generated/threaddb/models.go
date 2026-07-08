@@ -44,4 +44,5 @@ type Thread struct {
 	PendingSteerMessage   string         `json:"pending_steer_message"`
 	Unread                int64          `json:"unread"`
 	Goal                  string         `json:"goal"`
+	ManualTitle           int64          `json:"manual_title"`
 }

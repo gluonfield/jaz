@@ -26,6 +26,7 @@ type Querier interface {
 	UpdateGoal(ctx context.Context, arg UpdateGoalParams) error
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpdateSessionTitle(ctx context.Context, arg UpdateSessionTitleParams) error
+	UpdateSessionTitleFromRuntime(ctx context.Context, arg UpdateSessionTitleFromRuntimeParams) (int64, error)
 	UpsertSession(ctx context.Context, arg UpsertSessionParams) error
 }
 
