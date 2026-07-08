@@ -291,8 +291,10 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
     ? approvalPlanSurfaceFromEvent(latestPlanDecisionEvent)
     : undefined
   const planDecisionAt = Date.parse(latestPlanDecisionEvent?.at ?? '')
-  const panelProgressEvent = settledTranscriptEvents.findLast((event) =>
-    Boolean(progressSurfaceFromEvent(event) && taskSurfaceBelongsToSession(event, session.id)),
+  // The latest plan signal wins: a turn start clears a leftover plan by
+  // publishing an explicit empty one, which yields no surface below.
+  const panelProgressEvent = settledTranscriptEvents.findLast(
+    (event) => hasProgressSignal(event) && taskSurfaceBelongsToSession(event, session.id),
   )
   // Progress lives in the side panel, never in the thread; only a proposed
   // plan that needs the user's approval stays inline. Errors are

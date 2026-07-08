@@ -230,7 +230,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 				AwaitingApproval: true,
 			}
 			if len(job.Plan) > 0 {
-				job.Plan = []sessionevents.PlanEntry{}
+				job.Plan = sessionevents.PlanCleared
 				publishACP = true
 			}
 			break
@@ -242,7 +242,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 				job.turn.planProposal = nil
 			}
 			if len(job.Plan) > 0 {
-				job.Plan = []sessionevents.PlanEntry{}
+				job.Plan = sessionevents.PlanCleared
 				publishACP = true
 			}
 			break

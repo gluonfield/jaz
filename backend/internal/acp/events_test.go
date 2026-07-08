@@ -468,3 +468,37 @@ func TestResolveDanglingToolCallsDoesNotRefreshLastToolAt(t *testing.T) {
 		t.Fatal("LastEventAt was not updated for cleanup event")
 	}
 }
+
+func TestStartTurnPublishesPlanClear(t *testing.T) {
+	job := &jobState{Job: Job{
+		ID:   "session-1",
+		Plan: []sessionevents.PlanEntry{{Content: "Inspect sources", Status: "in_progress"}},
+	}}
+	job.startTurn(CompletionInline, false, false)
+
+	raw, err := json.Marshal(EventFromJob(job.Snapshot()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var event map[string]any
+	if err := json.Unmarshal(raw, &event); err != nil {
+		t.Fatal(err)
+	}
+	plan, ok := event["plan"].([]any)
+	if !ok || len(plan) != 0 {
+		t.Fatalf("turn-start event plan = %#v, want explicit empty clear", event["plan"])
+	}
+
+	job.startTurn(CompletionInline, false, false)
+	raw, err = json.Marshal(EventFromJob(job.Snapshot()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	event = map[string]any{}
+	if err := json.Unmarshal(raw, &event); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := event["plan"]; ok {
+		t.Fatalf("plan-less turn start carries a plan signal: %s", raw)
+	}
+}
