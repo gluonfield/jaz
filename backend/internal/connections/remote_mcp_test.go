@@ -10,7 +10,7 @@ import (
 
 func TestRemoteMCPConnectorCreatesAndUpdatesDeployinkServer(t *testing.T) {
 	store := &remoteMCPStore{}
-	connector := NewRemoteMCPConnector(store, nil)
+	connector := NewRemoteMCPConnector(store)
 
 	start, err := connector.Connect(context.Background(), deployink.Plugin())
 	if err != nil {
@@ -42,7 +42,7 @@ func TestRemoteMCPConnectorPreservesExistingServerAuthConfig(t *testing.T) {
 		Headers:           []mcpconfig.Header{{Name: "X-Team", Value: "platform"}},
 		OAuth:             mcpconfig.OAuthConfig{ClientID: "ink-client", Issuer: deployink.RemoteMCPURL},
 	}}}
-	connector := NewRemoteMCPConnector(store, nil)
+	connector := NewRemoteMCPConnector(store)
 
 	start, err := connector.Connect(context.Background(), deployink.Plugin())
 	if err != nil {
@@ -70,7 +70,7 @@ func TestRemoteMCPConnectorReportsConnectionFromMCPServer(t *testing.T) {
 		URL:       deployink.RemoteMCPURL,
 		Enabled:   true,
 	}}}
-	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store, nil))
+	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store))
 
 	plugin, ok, err := service.Plugin(context.Background(), deployink.ProviderID)
 	if err != nil || !ok {
@@ -92,7 +92,7 @@ func TestRemoteMCPConnectorReportsDisabledServerAsNotConnected(t *testing.T) {
 		Transport: mcpconfig.TransportStreamableHTTP,
 		URL:       deployink.RemoteMCPURL,
 	}}}
-	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store, nil))
+	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store))
 
 	plugin, ok, err := service.Plugin(context.Background(), deployink.ProviderID)
 	if err != nil || !ok {
@@ -111,10 +111,14 @@ func TestRemoteMCPConnectorDisconnectDeletesPluginServer(t *testing.T) {
 		URL:       deployink.RemoteMCPURL,
 		Enabled:   true,
 	}}}
-	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store, nil))
+	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store))
 
-	if err := service.DisconnectAccount(context.Background(), "mcp_deployink"); err != nil {
+	result, err := service.DisconnectAccount(context.Background(), "mcp_deployink")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !result.MCPServersChanged {
+		t.Fatalf("result = %#v, want MCPServersChanged", result)
 	}
 	if len(store.servers) != 0 {
 		t.Fatalf("servers = %#v", store.servers)

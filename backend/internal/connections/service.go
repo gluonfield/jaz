@@ -24,6 +24,10 @@ type SessionDisconnecter interface {
 	Disconnect(context.Context, integrations.Connection) error
 }
 
+type DisconnectResult struct {
+	MCPServersChanged bool
+}
+
 type Service struct {
 	catalog       *Catalog
 	store         Store
@@ -68,36 +72,36 @@ func (s *Service) Plugin(ctx context.Context, id string) (integrations.Plugin, b
 	return plugin, true, err
 }
 
-func (s *Service) DisconnectAccount(ctx context.Context, id string) error {
+func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectResult, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return ErrConnectionNotFound
+		return DisconnectResult{}, ErrConnectionNotFound
 	}
 	connection, ok, err := s.store.LoadConnection(ctx, id)
 	if err != nil {
-		return err
+		return DisconnectResult{}, err
 	}
 	if !ok {
 		if disconnected, remoteErr := s.remoteMCP.Disconnect(ctx, id, s.catalog); remoteErr != nil {
-			return remoteErr
+			return DisconnectResult{}, remoteErr
 		} else if disconnected {
-			return nil
+			return DisconnectResult{MCPServersChanged: true}, nil
 		}
-		return ErrConnectionNotFound
+		return DisconnectResult{}, ErrConnectionNotFound
 	}
 	ok, err = s.store.DeleteConnection(ctx, id)
 	if err != nil {
-		return err
+		return DisconnectResult{}, err
 	}
 	if !ok {
-		return ErrConnectionNotFound
+		return DisconnectResult{}, ErrConnectionNotFound
 	}
 	if disconnecter := s.disconnecters[connection.Provider]; disconnecter != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), disconnectCleanupTimeout)
 		defer cancel()
-		return disconnecter.Disconnect(cleanupCtx, connection)
+		return DisconnectResult{}, disconnecter.Disconnect(cleanupCtx, connection)
 	}
-	return nil
+	return DisconnectResult{}, nil
 }
 
 func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {

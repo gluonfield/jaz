@@ -14,7 +14,14 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/widgets"
+	"go.uber.org/fx"
 )
+
+func TestServeFxGraphValidates(t *testing.T) {
+	if err := fx.ValidateApp(serveOptions(nil)...); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestFinishLoopFromACPRejectsUnpublishedWidgetRun(t *testing.T) {
 	loopService, widgetService, widgetPublisher, store, loop, run := newWidgetLoopFinishTest(t, "thread-unpublished")

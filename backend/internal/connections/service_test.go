@@ -166,8 +166,12 @@ func TestServiceDisconnectAccount(t *testing.T) {
 	}
 	disconnecter := &fakeSessionDisconnecter{provider: gmailconnector.ProviderID}
 	service := NewService(NewCatalog(), &store, nil, disconnecter)
-	if err := service.DisconnectAccount(context.Background(), " gmail:personal "); err != nil {
+	result, err := service.DisconnectAccount(context.Background(), " gmail:personal ")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if result.MCPServersChanged {
+		t.Fatalf("result = %#v, want no MCP server change", result)
 	}
 	if len(store.connections) != 0 {
 		t.Fatalf("connections = %#v", store.connections)
@@ -175,7 +179,7 @@ func TestServiceDisconnectAccount(t *testing.T) {
 	if disconnecter.connection.ID != "gmail:personal" {
 		t.Fatalf("disconnecter connection = %#v", disconnecter.connection)
 	}
-	if err := service.DisconnectAccount(context.Background(), "gmail:missing"); !errors.Is(err, ErrConnectionNotFound) {
+	if _, err := service.DisconnectAccount(context.Background(), "gmail:missing"); !errors.Is(err, ErrConnectionNotFound) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -192,7 +196,7 @@ func TestServiceDisconnectCleanupSurvivesCanceledRequest(t *testing.T) {
 	store.afterDelete = cancel
 	service := NewService(NewCatalog(), &store, nil, disconnecter)
 
-	if err := service.DisconnectAccount(ctx, "telegram:personal"); err != nil {
+	if _, err := service.DisconnectAccount(ctx, "telegram:personal"); err != nil {
 		t.Fatal(err)
 	}
 	if disconnecter.ctxErr != nil {

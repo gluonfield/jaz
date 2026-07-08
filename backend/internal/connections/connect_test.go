@@ -49,10 +49,11 @@ func TestConnectServiceStartsChatQRProviders(t *testing.T) {
 	), nil)
 
 	for _, provider := range []string{telegram.ProviderID, whatsapp.ProviderID} {
-		start, err := service.Start(context.Background(), provider, "")
+		result, err := service.Start(context.Background(), provider, "")
 		if err != nil {
 			t.Fatalf("%s start err = %v", provider, err)
 		}
+		start := result.Start
 		if start.Type != "qr" || start.QR == nil || start.QR.Provider != provider || start.QR.Code == "" {
 			t.Fatalf("%s start = %#v", provider, start)
 		}
@@ -68,14 +69,18 @@ func TestConnectServiceRejectsUnknownProvider(t *testing.T) {
 
 func TestConnectServiceAddsRemoteMCPServer(t *testing.T) {
 	store := &remoteMCPStore{}
-	service := NewConnectService(NewCatalog(), nil, nil, NewRemoteMCPConnector(store, nil))
+	service := NewConnectService(NewCatalog(), nil, nil, NewRemoteMCPConnector(store))
 
-	start, err := service.Start(context.Background(), deployink.ProviderID, "")
+	result, err := service.Start(context.Background(), deployink.ProviderID, "")
 	if err != nil {
 		t.Fatal(err)
 	}
+	start := result.Start
 	if start.Type != "mcp" || start.MCP == nil || start.MCP.URL != deployink.RemoteMCPURL {
 		t.Fatalf("start = %#v", start)
+	}
+	if !result.MCPServersChanged {
+		t.Fatalf("result = %#v, want MCPServersChanged", result)
 	}
 	if len(store.servers) != 1 {
 		t.Fatalf("servers = %#v", store.servers)
