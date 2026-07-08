@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Eye, FileText, Image as ImageIcon, ImageOff, LoaderCircle } from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
 import { sessionAttachmentUrl } from '@/lib/api/sessions'
 
 const RENDERABLE_IMAGE_MIME_TYPES = new Set([
@@ -64,39 +65,37 @@ function ImageAttachment({
   attachment: MessageAttachment
   attachmentSessionId?: string
 }) {
-  const [show, setShow] = useState(false)
+  const [open, setOpen] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const src = attachmentContentUrl(attachment, attachmentSessionId)
   if (attachment.uploading) return <ImageAttachmentPreview attachment={attachment} status="Uploading" uploading />
   if (!src || unavailable) return <ImageAttachmentPreview attachment={attachment} status="Unavailable" unavailable />
-  if (!show) return <ImageAttachmentPreview attachment={attachment} onShow={() => setShow(true)} />
   return (
-    <figure className="min-w-0 max-w-full">
-      <img
+    <>
+      <ImageAttachmentPreview
+        attachment={attachment}
         src={src}
-        alt={attachment.name}
-        loading="lazy"
-        decoding="async"
+        onOpen={() => setOpen(true)}
         onError={() => setUnavailable(true)}
-        className="block max-h-[360px] max-w-full rounded-[8px] bg-bg object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
       />
-      <figcaption className="mt-1 flex max-w-full items-center gap-1.5 text-xs text-ink-3">
-        <span className="truncate text-ink-2">{attachment.name}</span>
-        <span className="shrink-0">{attachmentStatus(attachment)}</span>
-      </figcaption>
-    </figure>
+      <ImageAttachmentModal attachment={attachment} src={src} open={open} onClose={() => setOpen(false)} />
+    </>
   )
 }
 
 function ImageAttachmentPreview({
   attachment,
-  onShow,
+  src,
+  onOpen,
+  onError,
   status = formatAttachmentSize(attachment.size),
   unavailable = false,
   uploading = false,
 }: {
   attachment: MessageAttachment
-  onShow?: () => void
+  src?: string
+  onOpen?: () => void
+  onError?: () => void
   status?: string
   unavailable?: boolean
   uploading?: boolean
@@ -104,16 +103,27 @@ function ImageAttachmentPreview({
   const content = (
     <>
       <div className="relative grid aspect-[4/3] place-items-center overflow-hidden bg-surface-2">
-        <div className="relative grid size-7 place-items-center rounded-[6px] bg-bg/70 text-ink-3 shadow-sm ring-1 ring-border/70">
-          {uploading ? (
-            <LoaderCircle size={15} className="animate-spin" aria-hidden />
-          ) : unavailable ? (
-            <ImageOff size={15} aria-hidden />
-          ) : (
-            <ImageIcon size={15} aria-hidden />
-          )}
-        </div>
-        {onShow ? (
+        {src ? (
+          <img
+            src={src}
+            alt={attachment.name}
+            loading="lazy"
+            decoding="async"
+            onError={onError}
+            className="size-full object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
+          />
+        ) : (
+          <div className="relative grid size-7 place-items-center rounded-[6px] bg-bg/70 text-ink-3 shadow-sm ring-1 ring-border/70">
+            {uploading ? (
+              <LoaderCircle size={15} className="animate-spin" aria-hidden />
+            ) : unavailable ? (
+              <ImageOff size={15} aria-hidden />
+            ) : (
+              <ImageIcon size={15} aria-hidden />
+            )}
+          </div>
+        )}
+        {onOpen ? (
           <span className="absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-bg/90 text-ink shadow-sm ring-1 ring-border/70">
             <Eye size={10} aria-hidden />
           </span>
@@ -127,7 +137,7 @@ function ImageAttachmentPreview({
     </>
   )
 
-  if (!onShow) {
+  if (!onOpen) {
     return (
       <div
         className="w-28 max-w-full overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70"
@@ -141,13 +151,43 @@ function ImageAttachmentPreview({
   return (
     <button
       type="button"
-      aria-label={`Show ${attachment.name}`}
+      aria-label={`Open ${attachment.name}`}
       title={attachmentTitle(attachment)}
       className="w-28 max-w-full cursor-pointer overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70 transition-[background-color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
-      onClick={onShow}
+      onClick={onOpen}
     >
       {content}
     </button>
+  )
+}
+
+function ImageAttachmentModal({
+  attachment,
+  src,
+  open,
+  onClose,
+}: {
+  attachment: MessageAttachment
+  src: string
+  open: boolean
+  onClose: () => void
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={attachment.name} size="xl" chromeless>
+      <figure className="flex max-h-[calc(100dvh-3rem)] min-h-0 flex-col bg-black/90">
+        <div className="grid min-h-0 flex-1 place-items-center p-3 sm:p-4">
+          <img
+            src={src}
+            alt={attachment.name}
+            className="max-h-[calc(100dvh-7rem)] max-w-full rounded-[8px] object-contain outline outline-1 -outline-offset-1 outline-white/10"
+          />
+        </div>
+        <figcaption className="flex min-h-9 items-center gap-2 px-3 py-2 text-[12px] text-white/70 sm:px-4">
+          <span className="min-w-0 flex-1 truncate text-white/85">{attachment.name}</span>
+          <span className="shrink-0 tabular-nums">{attachmentStatus(attachment)}</span>
+        </figcaption>
+      </figure>
+    </Modal>
   )
 }
 
