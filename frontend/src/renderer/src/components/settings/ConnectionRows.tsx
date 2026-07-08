@@ -103,7 +103,7 @@ function ConnectionRow({
   action: ReactNode
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-card bg-surface px-4 py-3 transition-colors duration-150 hover:bg-surface-2">
+    <div className="flex max-w-[560px] items-center gap-3 rounded-card bg-surface px-4 py-3 transition-colors duration-150 hover:bg-surface-2">
       <button
         type="button"
         onClick={onOpen}
