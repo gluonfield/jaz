@@ -42,11 +42,14 @@ func connectionFromDevice(device *store.Device) (integrations.Connection, bool) 
 	}, true
 }
 
+// account_name renders everywhere as the account's display identity
+// (settings rows, confirm dialogs, agent prompts), so a device without a push
+// or business name must not leak its raw phone number there.
 func redactedPhone(phone string) string {
 	if len(phone) <= 4 {
-		return "..." + phone
+		return "…" + phone
 	}
-	return "..." + phone[len(phone)-4:]
+	return "…" + phone[len(phone)-4:]
 }
 
 func whatsappContactRecord(connection integrations.Connection, jid waTypes.JID, contact waTypes.ContactInfo) integrations.Record {

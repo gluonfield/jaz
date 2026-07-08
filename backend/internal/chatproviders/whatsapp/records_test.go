@@ -17,7 +17,7 @@ func TestConnectionFromDeviceNeverExposesRawPhoneAsName(t *testing.T) {
 	if unnamed.AccountID != "447598490355" {
 		t.Fatalf("account id = %q", unnamed.AccountID)
 	}
-	if unnamed.AccountName != "...0355" {
+	if unnamed.AccountName != "…0355" {
 		t.Fatalf("account name = %q, want redacted phone", unnamed.AccountName)
 	}
 
