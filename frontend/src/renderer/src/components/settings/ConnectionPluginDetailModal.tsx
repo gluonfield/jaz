@@ -1,4 +1,4 @@
-import { ArrowUp, Check, Loader2, Plug, Plus, QrCode } from 'lucide-react'
+import { ArrowUp, Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
@@ -6,7 +6,6 @@ import {
   categoryLabel,
   pluginActionLabel,
   pluginCanConnect,
-  pluginInternal,
   titleCase,
 } from './connectionFormatting'
 import { PluginGlyph } from './ConnectionPluginVisuals'
@@ -72,14 +71,6 @@ function ConnectButton({
   connecting: boolean
   onConnect: () => void
 }) {
-  if (pluginInternal(plugin)) {
-    return (
-      <span className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium text-ink-2 ring-1 ring-border">
-        <Check size={14} />
-        Built in
-      </span>
-    )
-  }
   const sessionAuth = plugin.auth[0]?.kind === 'session'
   const available = pluginCanConnect(plugin)
   const connected = plugin.connection?.status === 'connected'
@@ -216,8 +207,6 @@ function developerLabel(plugin: IntegrationPlugin): string {
 
 function authDescription(kind?: string): string {
   switch (kind) {
-    case 'internal':
-      return 'Built in, no sign-in'
     case 'oauth':
       return 'Browser sign-in'
     case 'session':

@@ -6,7 +6,6 @@ import { DitherArt, DitherTerrain, DitherWordmark } from '@/components/launch/Di
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
 import { connectionPluginsQuery } from '@/lib/api/connections'
-import { pluginInternal } from '@/components/settings/connectionFormatting'
 import { completeOnboarding, onboardingQuery, onboardingStateQuery } from '@/lib/api/onboarding'
 import { cloneAgentSettings, compactKeys, prepareACPAgent, startACPAuthLogin } from '@/lib/api/settings'
 import type { ACPAgentAuth, AgentSettings, OnboardingStatus } from '@/lib/api/types'
@@ -93,9 +92,7 @@ function OnboardingScreen({
   )
   // Only for the connections slide's action label; shares the list's cache.
   const plugins = useQuery(connectionPluginsQuery)
-  const anyConnected = (plugins.data ?? []).some(
-    (plugin) => !pluginInternal(plugin) && plugin.connection?.status === 'connected',
-  )
+  const anyConnected = (plugins.data ?? []).some((plugin) => plugin.connection?.status === 'connected')
 
   useEffect(() => {
     setDraft(draftFromStatus(status))
