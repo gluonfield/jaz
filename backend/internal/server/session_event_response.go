@@ -21,6 +21,11 @@ func sessionEventResponses(events []sessionevents.Event) []sessionEventResponse 
 func sessionEventResponseFrom(event sessionevents.Event) sessionEventResponse {
 	publicGoal := goal.PublicStateFrom(event.Goal)
 	event.Goal = nil
+	if event.SideChat != nil && len(event.SideChat.Attachments) > 0 {
+		sideChat := *event.SideChat
+		sideChat.Attachments = messagePayloadAttachmentsResponse(sideChat.Attachments)
+		event.SideChat = &sideChat
+	}
 	return sessionEventResponse{
 		Event: event,
 		Goal:  publicGoal,

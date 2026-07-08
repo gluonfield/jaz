@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Eye, FileText, Image as ImageIcon } from 'lucide-react'
+import { Eye, FileText, Image as ImageIcon, ImageOff, LoaderCircle } from 'lucide-react'
 import { sessionAttachmentUrl } from '@/lib/api/sessions'
 
 const RENDERABLE_IMAGE_MIME_TYPES = new Set([
@@ -67,9 +67,9 @@ function ImageAttachment({
   const [show, setShow] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
   const src = attachmentContentUrl(attachment, attachmentSessionId)
-  if (!src || attachment.uploading) return <FileAttachmentPill attachment={attachment} />
-  if (unavailable) return <UnavailableAttachmentPill attachment={attachment} />
-  if (!show) return <ImageAttachmentPill attachment={attachment} onShow={() => setShow(true)} />
+  if (attachment.uploading) return <ImageAttachmentPreview attachment={attachment} status="Uploading" uploading />
+  if (!src || unavailable) return <ImageAttachmentPreview attachment={attachment} status="Unavailable" unavailable />
+  if (!show) return <ImageAttachmentPreview attachment={attachment} onShow={() => setShow(true)} />
   return (
     <figure className="min-w-0 max-w-full">
       <img
@@ -88,44 +88,67 @@ function ImageAttachment({
   )
 }
 
-function UnavailableAttachmentPill({ attachment }: { attachment: MessageAttachment }) {
-  return (
-    <span
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
-      title="Attachment file is no longer available on the server"
-    >
-      <ImageIcon size={13} className="shrink-0 text-ink-3" />
-      <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
-      <span className="shrink-0 text-ink-3">Unavailable</span>
-    </span>
-  )
-}
-
-function ImageAttachmentPill({
+function ImageAttachmentPreview({
   attachment,
   onShow,
+  status = formatAttachmentSize(attachment.size),
+  unavailable = false,
+  uploading = false,
 }: {
   attachment: MessageAttachment
-  onShow: () => void
+  onShow?: () => void
+  status?: string
+  unavailable?: boolean
+  uploading?: boolean
 }) {
-  return (
-    <span
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
-      title={attachmentTitle(attachment)}
-    >
-      <ImageIcon size={13} className="shrink-0 text-ink-3" />
-      <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
-      <span className="shrink-0 text-ink-3">{formatAttachmentSize(attachment.size)}</span>
-      <button
-        type="button"
-        aria-label={`Show ${attachment.name}`}
-        title={`Show ${attachment.name}`}
-        className="ml-0.5 inline-flex size-5 items-center justify-center rounded-full bg-surface-2 text-ink transition-colors hover:bg-border"
-        onClick={onShow}
+  const content = (
+    <>
+      <div className="relative grid aspect-[4/3] min-h-[120px] place-items-center overflow-hidden bg-surface-2">
+        <div className="relative grid size-12 place-items-center rounded-[8px] bg-bg/70 text-ink-3 shadow-sm ring-1 ring-border/70">
+          {uploading ? (
+            <LoaderCircle size={24} className="animate-spin" aria-hidden />
+          ) : unavailable ? (
+            <ImageOff size={24} aria-hidden />
+          ) : (
+            <ImageIcon size={24} aria-hidden />
+          )}
+        </div>
+        {onShow ? (
+          <span className="absolute top-2 right-2 inline-flex h-7 items-center gap-1.5 rounded-full bg-bg/90 px-2.5 text-[11px] font-medium text-ink shadow-sm ring-1 ring-border/70">
+            <Eye size={12} aria-hidden />
+            Show
+          </span>
+        ) : null}
+      </div>
+      <div className="flex min-w-0 items-center gap-1.5 px-2.5 py-2 text-xs">
+        <ImageIcon size={13} className="shrink-0 text-ink-3" aria-hidden />
+        <span className="min-w-0 flex-1 truncate text-ink">{attachment.name}</span>
+        {status ? <span className="shrink-0 text-ink-3">{status}</span> : null}
+      </div>
+    </>
+  )
+
+  if (!onShow) {
+    return (
+      <div
+        className="w-64 max-w-full overflow-hidden rounded-[10px] bg-bg text-left shadow-sm ring-1 ring-border/70"
+        title={unavailable ? 'Attachment file is no longer available on the server' : attachmentTitle(attachment)}
       >
-        <Eye size={12} aria-hidden />
-      </button>
-    </span>
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      aria-label={`Show ${attachment.name}`}
+      title={attachmentTitle(attachment)}
+      className="w-64 max-w-full cursor-pointer overflow-hidden rounded-[10px] bg-bg text-left shadow-sm ring-1 ring-border/70 transition-[background-color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
+      onClick={onShow}
+    >
+      {content}
+    </button>
   )
 }
 
