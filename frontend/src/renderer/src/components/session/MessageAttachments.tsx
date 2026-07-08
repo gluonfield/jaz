@@ -103,25 +103,25 @@ function ImageAttachmentPreview({
 }) {
   const content = (
     <>
-      <div className="relative grid aspect-[4/3] min-h-[120px] place-items-center overflow-hidden bg-surface-2">
-        <div className="relative grid size-12 place-items-center rounded-[8px] bg-bg/70 text-ink-3 shadow-sm ring-1 ring-border/70">
+      <div className="relative grid aspect-[4/3] place-items-center overflow-hidden bg-surface-2">
+        <div className="relative grid size-9 place-items-center rounded-[7px] bg-bg/70 text-ink-3 shadow-sm ring-1 ring-border/70">
           {uploading ? (
-            <LoaderCircle size={24} className="animate-spin" aria-hidden />
+            <LoaderCircle size={19} className="animate-spin" aria-hidden />
           ) : unavailable ? (
-            <ImageOff size={24} aria-hidden />
+            <ImageOff size={19} aria-hidden />
           ) : (
-            <ImageIcon size={24} aria-hidden />
+            <ImageIcon size={19} aria-hidden />
           )}
         </div>
         {onShow ? (
-          <span className="absolute top-2 right-2 inline-flex h-7 items-center gap-1.5 rounded-full bg-bg/90 px-2.5 text-[11px] font-medium text-ink shadow-sm ring-1 ring-border/70">
-            <Eye size={12} aria-hidden />
+          <span className="absolute top-1.5 right-1.5 inline-flex h-6 items-center gap-1 rounded-full bg-bg/90 px-2 text-[10px] font-medium text-ink shadow-sm ring-1 ring-border/70">
+            <Eye size={11} aria-hidden />
             Show
           </span>
         ) : null}
       </div>
-      <div className="flex min-w-0 items-center gap-1.5 px-2.5 py-2 text-xs">
-        <ImageIcon size={13} className="shrink-0 text-ink-3" aria-hidden />
+      <div className="flex min-w-0 items-center gap-1.5 px-2 py-1.5 text-[11px]">
+        <ImageIcon size={12} className="shrink-0 text-ink-3" aria-hidden />
         <span className="min-w-0 flex-1 truncate text-ink">{attachment.name}</span>
         {status ? <span className="shrink-0 text-ink-3">{status}</span> : null}
       </div>
@@ -131,7 +131,7 @@ function ImageAttachmentPreview({
   if (!onShow) {
     return (
       <div
-        className="w-64 max-w-full overflow-hidden rounded-[10px] bg-bg text-left shadow-sm ring-1 ring-border/70"
+        className="w-40 max-w-full overflow-hidden rounded-[9px] bg-bg text-left shadow-sm ring-1 ring-border/70"
         title={unavailable ? 'Attachment file is no longer available on the server' : attachmentTitle(attachment)}
       >
         {content}
@@ -144,7 +144,7 @@ function ImageAttachmentPreview({
       type="button"
       aria-label={`Show ${attachment.name}`}
       title={attachmentTitle(attachment)}
-      className="w-64 max-w-full cursor-pointer overflow-hidden rounded-[10px] bg-bg text-left shadow-sm ring-1 ring-border/70 transition-[background-color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
+      className="w-40 max-w-full cursor-pointer overflow-hidden rounded-[9px] bg-bg text-left shadow-sm ring-1 ring-border/70 transition-[background-color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
       onClick={onShow}
     >
       {content}
