@@ -1,10 +1,15 @@
-import { ChevronRight, Loader2, Unplug } from 'lucide-react'
+import { Loader2, Unplug } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import { SettingsCard } from './SettingsCard'
 import { accountAddress, accountSyncLabel } from './connectionFormatting'
 import { PluginIcon } from './ConnectionPluginVisuals'
+
+// Shared by the section grids and the loading skeleton so they can't drift.
+// lg (not sm) because the settings pane is viewport minus a 272px sidebar:
+// three columns only fit once the window is genuinely wide.
+export const connectionsGridClass = 'grid grid-cols-2 gap-2 lg:grid-cols-3'
 
 export function ConnectionSection({
   title,
@@ -16,7 +21,7 @@ export function ConnectionSection({
   return (
     <section>
       <p className="mb-2 text-[12px] font-medium text-ink-2">{title}</p>
-      <div className="grid grid-cols-1 gap-2">{children}</div>
+      <div className={connectionsGridClass}>{children}</div>
     </section>
   )
 }
@@ -32,30 +37,36 @@ export function ExistingConnectionCard({
   disconnecting: boolean
   onDisconnect: () => void
 }) {
-  const address = accountAddress(account)
+  const detail = accountAddress(account) || account.id
   const sync = accountSyncLabel(account)
-  const detail = address || account.id
   const maskDetail = shouldMaskAccountDetail(plugin, account)
 
   return (
-    <SettingsCard className="grid h-full grid-cols-1 gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <ConnectionSummary
-        plugin={plugin}
-        title={plugin.name}
-        detail={maskDetail ? <MaskedAccountDetail value={detail} /> : detail}
-        detailTitle={maskDetail ? 'Account hidden until hover or focus' : detail}
-        meta={sync}
-      />
-      <Button
-        variant="danger"
-        size="sm"
-        disabled={disconnecting}
-        onClick={onDisconnect}
-        className="sm:justify-self-end"
+    <SettingsCard className="group relative flex h-full flex-col items-center px-3 pb-4 pt-5 text-center">
+      <span
+        className={`absolute right-1 top-1 transition-opacity duration-150 ${disconnecting ? '' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100'}`}
       >
-        {disconnecting ? <Loader2 size={13} className="animate-spin" /> : <Unplug size={13} />}
-        {disconnecting ? 'Disconnecting' : 'Disconnect'}
-      </Button>
+        <IconButton
+          variant="danger"
+          aria-label={`Disconnect ${plugin.name} ${detail}`}
+          disabled={disconnecting}
+          onClick={onDisconnect}
+        >
+          {disconnecting ? <Loader2 size={14} className="animate-spin" /> : <Unplug size={14} />}
+        </IconButton>
+      </span>
+      <TileIdentity plugin={plugin} />
+      <p
+        className="mt-0.5 w-full truncate text-[12px] leading-5 text-ink-2"
+        title={maskDetail ? undefined : detail}
+      >
+        {maskDetail ? <MaskedAccountDetail value={detail} /> : detail}
+      </p>
+      {sync ? (
+        <p className="mt-0.5 w-full truncate text-[11px] leading-4 text-ink-3" title={sync}>
+          {sync}
+        </p>
+      ) : null}
     </SettingsCard>
   )
 }
@@ -92,53 +103,21 @@ export function ConnectionPluginCard({
     <button
       type="button"
       onClick={onOpen}
-      className="group grid h-full w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-card bg-surface px-3 py-3 text-left transition-colors duration-150 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      title={plugin.description}
+      className="flex h-full w-full cursor-pointer flex-col items-center rounded-card bg-surface px-3 py-5 text-center transition-[background-color,scale] duration-150 hover:bg-surface-2 active:scale-[0.97]"
     >
-      <ConnectionSummary
-        plugin={plugin}
-        title={plugin.name}
-        detail={plugin.description}
-        detailTitle={plugin.description}
-      />
-      <ChevronRight
-        size={14}
-        className="shrink-0 text-ink-3 transition-transform duration-150 group-hover:translate-x-0.5 group-hover:text-ink-2"
-      />
+      <TileIdentity plugin={plugin} />
     </button>
   )
 }
 
-function ConnectionSummary({
-  plugin,
-  title,
-  detail,
-  detailTitle,
-  meta,
-}: {
-  plugin: IntegrationPlugin
-  title: string
-  detail?: ReactNode
-  detailTitle?: string
-  meta?: string
-}) {
+function TileIdentity({ plugin }: { plugin: IntegrationPlugin }) {
   return (
-    <div className="flex min-w-0 items-start gap-3">
-      <PluginIcon plugin={plugin} compact />
-      <div className="min-w-0">
-        <p className="truncate text-[13px] font-medium text-ink" title={title}>
-          {title}
-        </p>
-        {detail ? (
-          <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-ink-2" title={detailTitle}>
-            {detail}
-          </p>
-        ) : null}
-        {meta ? (
-          <p className="mt-0.5 truncate text-[11px] leading-4 text-ink-3" title={meta}>
-            {meta}
-          </p>
-        ) : null}
-      </div>
-    </div>
+    <>
+      <PluginIcon plugin={plugin} />
+      <p className="mt-2.5 w-full truncate text-[13px] font-medium text-ink" title={plugin.name}>
+        {plugin.name}
+      </p>
+    </>
   )
 }
