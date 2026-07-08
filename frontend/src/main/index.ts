@@ -21,6 +21,7 @@ import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } fro
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { canGrantAppPermission } from './permissions'
+import { attachPreviewFindShortcuts } from './previewFind'
 import { setupLauncher, teardownLauncher } from './spotlight'
 import { createUpdateController } from './updater'
 
@@ -229,6 +230,7 @@ function openPreviewURL(url: string, contents: WebContents): void {
 app.on('web-contents-created', (_event, contents) => {
   contents.once('destroyed', () => previewURLTargets.delete(contents.id))
   attachBrowserNavigationShortcuts(contents)
+  attachPreviewFindShortcuts(contents)
   attachContextMenu(contents)
   attachExternalOpenHandler(contents)
   attachPreviewNavigationGuard(contents)

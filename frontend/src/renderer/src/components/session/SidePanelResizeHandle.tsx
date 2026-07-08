@@ -29,6 +29,8 @@ export function SidePanelResizeHandle({
     cleanupRef.current?.()
     const startX = event.clientX
     const startWidth = width
+    const handle = event.currentTarget
+    const pointerId = event.pointerId
     const previousCursor = document.body.style.cursor
     const previousUserSelect = document.body.style.userSelect
     let stopped = false
@@ -45,17 +47,23 @@ export function SidePanelResizeHandle({
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', stop)
       window.removeEventListener('pointercancel', stop)
+      window.removeEventListener('blur', stop)
+      handle.removeEventListener('lostpointercapture', stop)
+      if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId)
       cleanupRef.current = null
       onResizeEnd()
     }
 
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+    handle.setPointerCapture(pointerId)
     onResizeStart()
     cleanupRef.current = stop
+    handle.addEventListener('lostpointercapture', stop, { once: true })
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', stop, { once: true })
     window.addEventListener('pointercancel', stop, { once: true })
+    window.addEventListener('blur', stop, { once: true })
   }
 
   const resizeByKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {

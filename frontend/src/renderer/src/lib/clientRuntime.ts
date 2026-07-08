@@ -40,6 +40,7 @@ export interface ClientRuntime {
   onOpenRoute?: (handler: (path: string) => void) => () => void
   onOpenPreviewURL?: (handler: (url: string) => void) => () => void
   onBrowserNavigation?: (handler: (direction: BrowserNavigationDirection) => void) => () => void
+  onPreviewFindShortcut?: (handler: () => void) => () => void
 }
 
 function webDefaultApiBaseUrl(): string {
@@ -81,6 +82,7 @@ function createRuntime(): ClientRuntime {
       onOpenRoute: electron.onOpenRoute,
       onOpenPreviewURL: electron.onOpenPreviewURL,
       onBrowserNavigation: electron.onBrowserNavigation,
+      onPreviewFindShortcut: electron.onPreviewFindShortcut,
     }
   }
   return {
