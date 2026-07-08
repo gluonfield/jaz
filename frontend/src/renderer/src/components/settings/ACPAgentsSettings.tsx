@@ -390,16 +390,18 @@ function ACPAgentRow({
             />
           </SettingsRow>
 
-          <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
-            <Select
-              value={normalizedReasoningEffort}
-              options={reasoningOptions}
-              disabled={disabled}
-              onChange={(reasoning_effort) => update({ reasoning_effort })}
-              aria-label={`${agentLabel(agent)} reasoning effort`}
-              className={rowControlClass}
-            />
-          </SettingsRow>
+          {reasoningOptions.length > 0 ? (
+            <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
+              <Select
+                value={normalizedReasoningEffort}
+                options={reasoningOptions}
+                disabled={disabled}
+                onChange={(reasoning_effort) => update({ reasoning_effort })}
+                aria-label={`${agentLabel(agent)} reasoning effort`}
+                className={rowControlClass}
+              />
+            </SettingsRow>
+          ) : null}
 
           {requiresCommand ? (
             <>
