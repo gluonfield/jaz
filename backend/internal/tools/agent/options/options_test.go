@@ -14,12 +14,15 @@ func TestDefinitionExposesAgentAndNameFilters(t *testing.T) {
 	params := map[string]any(def.GetFunction().Parameters)
 	properties, _ := params["properties"].(map[string]any)
 	for _, name := range []string{"agent", "name"} {
-		if _, ok := properties[name]; !ok {
+		property, ok := properties[name].(map[string]any)
+		if !ok {
 			t.Fatalf("schema missing %s: %#v", name, properties)
 		}
+		if description, _ := property["description"].(string); description == "" {
+			t.Fatalf("schema property %s has no description", name)
+		}
 	}
-	required, _ := params["required"].([]string)
-	if len(required) != 0 {
+	if required, ok := params["required"].([]any); ok && len(required) != 0 {
 		t.Fatalf("agent_options should allow an empty call, required = %#v", params["required"])
 	}
 }
