@@ -31,7 +31,7 @@ func connectionFromDevice(device *store.Device) (integrations.Connection, bool) 
 	if accountID == "" {
 		accountID = jid.String()
 	}
-	accountName := firstNonEmpty(device.PushName, device.BusinessName, accountID)
+	accountName := firstNonEmpty(device.PushName, device.BusinessName, redactedPhone(accountID))
 	return integrations.Connection{
 		ID:          whatsappconnector.ProviderID + ":" + integrations.NormalizeAlias(jid.String()),
 		Provider:    whatsappconnector.ProviderID,
@@ -40,6 +40,13 @@ func connectionFromDevice(device *store.Device) (integrations.Connection, bool) 
 		Alias:       integrations.DefaultAlias(accountName, accountID),
 		Scopes:      []string{"contacts", "messages", "send"},
 	}, true
+}
+
+func redactedPhone(phone string) string {
+	if len(phone) <= 4 {
+		return "..." + phone
+	}
+	return "..." + phone[len(phone)-4:]
 }
 
 func whatsappContactRecord(connection integrations.Connection, jid waTypes.JID, contact waTypes.ContactInfo) integrations.Record {
