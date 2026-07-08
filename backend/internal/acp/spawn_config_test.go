@@ -154,8 +154,31 @@ func TestSpawnConfigKeepsDefaultModelWhenCodexUsesOpenAIAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ModelProvider != CodexProviderOpenAIAPIKey || cfg.Model != "gpt-5.4-mini" {
+	if cfg.ModelProvider != CodexProviderOpenAIAPIKey || cfg.Model != modelprovider.DefaultOpenAIModel {
 		t.Fatalf("unexpected codex provider override %#v", cfg)
+	}
+}
+
+func TestSpawnConfigResolvesModelLabelsWithinConfiguredProvider(t *testing.T) {
+	manager := &Manager{
+		cfg: Config{ModelCatalog: modelcatalog.NewService(nil)},
+		agents: AgentCatalog{
+			AgentOpenCode: {
+				Command:                 AgentOpenCode,
+				ProviderMode:            AgentProviderModeAgentDefaults,
+				ModelProviderCapability: modelprovider.CapabilityOpenCode,
+				ModelProvider:           modelprovider.ProviderOpenAI,
+				Model:                   modelprovider.DefaultOpenAIModel,
+			},
+		},
+	}
+
+	_, cfg, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentOpenCode, Model: "GPT-5.5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Model != "gpt-5.5" {
+		t.Fatalf("model label resolved outside configured provider: %#v", cfg)
 	}
 }
 

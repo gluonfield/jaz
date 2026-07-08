@@ -33,6 +33,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	assertOrder(t, system,
 		"You are Jaz",
 		"agent_spawn only starts a session",
+		"Omit model overrides unless the user asks for a specific model",
 		"## Jaz platform",
 		"Current working directory:",
 		"## AGENTS.md\n\nalways cite sources",
@@ -91,7 +92,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if strings.Contains(acp, "You are Jaz") {
 		t.Fatalf("acp extension must carry no coordinator identity:\n%s", acp)
 	}
-	for _, want := range []string{"## Agent delegation", "`agent_spawn`", "configured ACP agents: `codex`, `claude`"} {
+	for _, want := range []string{"## Agent delegation", "`agent_spawn`", "`agent_options`", "configured ACP agents: `codex`, `claude`"} {
 		if !strings.Contains(acp, want) {
 			t.Fatalf("acp extension missing delegation guidance %q:\n%s", want, acp)
 		}

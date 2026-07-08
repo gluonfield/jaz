@@ -29,6 +29,9 @@ type ReasoningEffortOption struct {
 type AgentOptions struct {
 	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
 	Models           []modelcatalog.Model    `json:"models,omitempty"`
+	DefaultModel     string                  `json:"default_model,omitempty"`
+	DefaultProvider  string                  `json:"default_model_provider,omitempty"`
+	DefaultEffort    string                  `json:"default_reasoning_effort,omitempty"`
 	Local            bool                    `json:"local"`
 	ProviderMode     string                  `json:"provider_mode,omitempty"`
 	ModelProviderIDs []string                `json:"model_provider_ids,omitempty"`
@@ -656,6 +659,9 @@ func configuredReasoningEffort(value string) string {
 func AgentOptionsForConfig(name string, cfg AgentConfig) AgentOptions {
 	options := AgentOptions{
 		ReasoningEfforts: agentPolicyForAgent(CanonicalAgentName(name)).reasoningEffortOptions(),
+		DefaultModel:     strings.TrimSpace(cfg.Model),
+		DefaultProvider:  strings.TrimSpace(cfg.ModelProvider),
+		DefaultEffort:    strings.TrimSpace(cfg.ReasoningEffort),
 	}
 	if options.ReasoningEfforts == nil {
 		options.ReasoningEfforts = []ReasoningEffortOption{}

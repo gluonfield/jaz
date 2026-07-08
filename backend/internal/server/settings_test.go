@@ -233,7 +233,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if got.ACP["opencode"].Enabled ||
 		got.ACP["opencode"].Command != `npx -y opencode-ai@1.17.7 acp` ||
 		got.ACP["opencode"].ModelProvider != "openrouter" ||
-		got.ACP["opencode"].Model != "openai/gpt-5.4-mini" {
+		got.ACP["opencode"].Model != "z-ai/glm-5.2" {
 		t.Fatalf("unexpected opencode defaults %#v", got.ACP["opencode"])
 	}
 	if !hasReasoningEffort(got.ACPOptions["claude"].ReasoningEfforts, "ultracode") ||

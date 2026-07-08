@@ -51,6 +51,21 @@ func (s *fakeMCPService) Agents() []string {
 	return []string{AgentCodex, AgentJaz}
 }
 
+func (s *fakeMCPService) AgentOptions(req AgentOptionsRequest) (AgentOptionsOutput, error) {
+	agents := SelectableAgentNames(s.Agents())
+	if req.Agent != "" {
+		agents = filterAgentNames(agents, CanonicalAgentName(req.Agent))
+	}
+	out := AgentOptionsOutput{Agents: make([]AgentSpawnOptions, 0, len(agents))}
+	for _, agent := range agents {
+		out.Agents = append(out.Agents, AgentSpawnOptions{
+			Name:   agent,
+			Models: []AgentModelOption{{Model: "gpt-5.5", Label: "GPT-5.5"}},
+		})
+	}
+	return out, nil
+}
+
 func TestMCPSpawnAcceptsAgentNameAliasAndModelOverrides(t *testing.T) {
 	service := &fakeMCPService{}
 	tools := NewMCPTools(service)
@@ -107,6 +122,27 @@ func TestMCPAvailableAgentsDoesNotInventFallbacks(t *testing.T) {
 	agents := NewMCPTools(&fakeMCPService{agents: []string{}}).availableAgents()
 	if len(agents) != 0 {
 		t.Fatalf("agents = %#v, want none", agents)
+	}
+}
+
+func TestMCPAdvertisesAgentOptionsSeparatelyFromAgentList(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1.0.0"}, nil)
+	NewMCPTools(&fakeMCPService{}).AddTo(server)
+	session, closeSession := connectMCPClient(t, server)
+	defer closeSession()
+
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, tool := range tools.Tools {
+		names[tool.Name] = true
+	}
+	for _, name := range []string{MCPToolAgentOptions, MCPToolAgentList} {
+		if !names[name] {
+			t.Fatalf("missing tool %s in %#v", name, names)
+		}
 	}
 }
 
@@ -174,6 +210,21 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	}
 	if list.Sessions[0].ModelProvider != AgentClaude || list.Sessions[0].ReasoningEffort != "xhigh" {
 		t.Fatalf("list model metadata = %#v", list.Sessions[0])
+	}
+
+	optionsCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      MCPToolAgentOptions,
+		Arguments: map[string]any{"agent": AgentCodex, "name": "gpt"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := structuredContent[AgentOptionsOutput](t, optionsCall)
+	if len(options.Agents) != 1 || options.Agents[0].Name != AgentCodex {
+		t.Fatalf("option agents = %#v", options.Agents)
+	}
+	if options.Agents[0].Models[0].Model != "gpt-5.5" {
+		t.Fatalf("option models = %#v", options.Agents[0].Models)
 	}
 }
 

@@ -93,6 +93,18 @@ func (s fakeACPService) Agents() []string {
 	return []string{acp.AgentCodex, acp.AgentJaz}
 }
 
+func (s fakeACPService) AgentOptions(req acp.AgentOptionsRequest) (acp.AgentOptionsOutput, error) {
+	agents := acp.SelectableAgentNames(s.Agents())
+	if req.Agent != "" && acp.CanonicalAgentName(req.Agent) == acp.AgentCodex {
+		agents = []string{acp.AgentCodex}
+	}
+	out := acp.AgentOptionsOutput{Agents: make([]acp.AgentSpawnOptions, 0, len(agents))}
+	for _, agent := range agents {
+		out.Agents = append(out.Agents, acp.AgentSpawnOptions{Name: agent})
+	}
+	return out, nil
+}
+
 func (fakeBrowserBackend) Call(context.Context, browserworker.ActionInput) (browserworker.ActionOutput, error) {
 	return browserworker.ActionOutput{Status: "ok", Text: "fake browser"}, nil
 }
@@ -191,7 +203,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		"gmail_get_profile", "gmail_search_threads", "gmail_read_thread", "gmail_create_draft", "gmail_create_reply_draft", "gmail_send_draft", "gmail_update_draft", "gmail_list_drafts", "gmail_read_attachment",
 		"whatsapp_search", "whatsapp_send_message", "telegram_search", "telegram_send_message",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
-		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_list",
+		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_options", "agent_list",
 		"create_goal", "get_goal", "update_goal",
 		"visualise_read_me", "visualise_show_widget",
 	} {
@@ -572,7 +584,6 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 	if hasTool(t, widget, "agent_spawn") {
 		t.Fatal("widget server advertised agent_spawn before agents were configured")
 	}
-
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
 	if !hasTool(t, widget, "agent_spawn") {
 		t.Fatal("widget server did not advertise agent_spawn after agents were configured")
