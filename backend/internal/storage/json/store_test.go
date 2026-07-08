@@ -52,6 +52,45 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 }
 
+// Slugs are assigned once at creation; saves persist them verbatim so the
+// mirror never rescans session metadata to re-derive uniqueness.
+func TestSaveSessionPersistsSlugVerbatim(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "alpha", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for range 3 {
+		if err := store.SaveSession(session); err != nil {
+			t.Fatal(err)
+		}
+		session, err = store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if session.Slug != "alpha" {
+		t.Fatalf("slug drifted to %q after repeated saves", session.Slug)
+	}
+
+	session.Slug = "Custom Slug"
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Slug != "Custom Slug" {
+		t.Fatalf("slug = %q, want caller value persisted verbatim", saved.Slug)
+	}
+}
+
 func TestDefaultSlugIgnoresACPAgent(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

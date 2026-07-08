@@ -173,11 +173,6 @@ func (s *Store) saveSession(session storage.Session) error {
 		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
 	}
 	session.UpdatedAt = time.Now().UTC()
-	slug, err := s.uniqueSlug(session.Slug, session.ID)
-	if err != nil {
-		return err
-	}
-	session.Slug = slug
 	if err := s.EnsureSession(session.ID); err != nil {
 		return err
 	}
