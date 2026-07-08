@@ -95,7 +95,8 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   unread,
-  goal
+  goal,
+  manual_title
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -140,6 +141,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.PendingSteerMessage,
 		&i.Unread,
 		&i.Goal,
+		&i.ManualTitle,
 	)
 	return i, err
 }
@@ -238,7 +240,8 @@ SELECT
   mcp_server_policy,
   pending_steer_message,
   unread,
-  goal
+  goal,
+  manual_title
 FROM threads
 `
 
@@ -287,6 +290,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.PendingSteerMessage,
 			&i.Unread,
 			&i.Goal,
+			&i.ManualTitle,
 		); err != nil {
 			return nil, err
 		}
@@ -508,7 +512,9 @@ func (q *Queries) UpdateSessionStatus(ctx context.Context, arg UpdateSessionStat
 
 const updateSessionTitle = `-- name: UpdateSessionTitle :exec
 UPDATE threads
-SET title = ?1
+SET
+  title = ?1,
+  manual_title = 1
 WHERE id = ?2
 `
 
@@ -522,11 +528,33 @@ func (q *Queries) UpdateSessionTitle(ctx context.Context, arg UpdateSessionTitle
 	return err
 }
 
+const updateSessionTitleFromRuntime = `-- name: UpdateSessionTitleFromRuntime :execrows
+UPDATE threads
+SET
+  title = ?1,
+  manual_title = 0
+WHERE id = ?2 AND manual_title = 0
+`
+
+type UpdateSessionTitleFromRuntimeParams struct {
+	Title sql.NullString `json:"title"`
+	ID    string         `json:"id"`
+}
+
+func (q *Queries) UpdateSessionTitleFromRuntime(ctx context.Context, arg UpdateSessionTitleFromRuntimeParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateSessionTitleFromRuntime, arg.Title, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const upsertSession = `-- name: UpsertSession :exec
 INSERT INTO threads (
   id,
   slug,
   title,
+  manual_title,
   parent_id,
   status,
   runtime,
@@ -594,11 +622,13 @@ INSERT INTO threads (
   ?32,
   ?33,
   ?34,
-  ?35
+  ?35,
+  ?36
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
   title = excluded.title,
+  manual_title = excluded.manual_title,
   parent_id = excluded.parent_id,
   status = excluded.status,
   error = excluded.error,
@@ -637,6 +667,7 @@ type UpsertSessionParams struct {
 	ID                    string         `json:"id"`
 	Slug                  string         `json:"slug"`
 	Title                 sql.NullString `json:"title"`
+	ManualTitle           int64          `json:"manual_title"`
 	ParentID              sql.NullString `json:"parent_id"`
 	Status                string         `json:"status"`
 	Runtime               string         `json:"runtime"`
@@ -676,6 +707,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.ID,
 		arg.Slug,
 		arg.Title,
+		arg.ManualTitle,
 		arg.ParentID,
 		arg.Status,
 		arg.Runtime,
