@@ -143,7 +143,10 @@ func queryAuthAllowed(r *http.Request) bool {
 	if !ok || sessionRef == "" {
 		return false
 	}
-	return action == "events" || action == "terminal" || (action == "file" && rawSessionFileRequested(r))
+	return action == "events" ||
+		action == "terminal" ||
+		strings.HasPrefix(action, "attachments/") ||
+		(action == "file" && rawSessionFileRequested(r))
 }
 
 func bearerToken(header string) string {
