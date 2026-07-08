@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -27,6 +28,7 @@ func TestACPMCPServerReaderUsesProxyForUserServersAndDirectJazTools(t *testing.T
 			URL:     "https://docs.example.com/mcp",
 			Enabled: true,
 		}}},
+		catalog:     connections.NewCatalog(),
 		proxyURL:    "http://127.0.0.1:5299/mcp/proxy",
 		jaztoolsURL: "http://127.0.0.1:5299/mcp/jaztools",
 	}
@@ -66,6 +68,7 @@ func TestACPMCPServerReaderOmitsProxyWithoutEnabledUserServers(t *testing.T) {
 			URL:     "https://docs.example.com/mcp",
 			Enabled: false,
 		}}},
+		catalog:     connections.NewCatalog(),
 		proxyURL:    "http://127.0.0.1:5299/mcp/proxy",
 		jaztoolsURL: "http://127.0.0.1:5299/mcp/jaztools",
 	}
@@ -76,6 +79,21 @@ func TestACPMCPServerReaderOmitsProxyWithoutEnabledUserServers(t *testing.T) {
 	}
 	if len(servers) != 1 || servers[0].ID != jaztools.ServerID {
 		t.Fatalf("servers = %#v, want only jaztools", servers)
+	}
+}
+
+func TestACPMCPServerReaderOmitsJazToolsWithoutInternalPlugin(t *testing.T) {
+	reader := acpMCPServerReader{
+		base:        testMCPReader{},
+		jaztoolsURL: "http://127.0.0.1:5299/mcp/jaztools",
+	}
+
+	servers, err := reader.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 0 {
+		t.Fatalf("servers = %#v, want none", servers)
 	}
 }
 

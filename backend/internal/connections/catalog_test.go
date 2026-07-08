@@ -9,10 +9,10 @@ import (
 func TestCatalogIncludesGmail(t *testing.T) {
 	catalog := NewCatalog()
 	plugins := catalog.ListPlugins()
-	if len(plugins) != 6 {
+	if len(plugins) != 7 {
 		t.Fatalf("plugins = %#v", plugins)
 	}
-	for _, id := range []string{"deployink", "gmail", "google_calendar", "slack", "telegram", "whatsapp"} {
+	for _, id := range []string{"deployink", "gmail", "google_calendar", "jaz", "slack", "telegram", "whatsapp"} {
 		plugin, ok := catalog.Plugin(id)
 		if !ok || plugin.ID != id {
 			t.Fatalf("%s plugin = %#v ok=%v", id, plugin, ok)
@@ -38,5 +38,14 @@ func TestNilCatalogIsEmpty(t *testing.T) {
 	}
 	if _, ok := catalog.Plugin("gmail"); ok {
 		t.Fatal("nil catalog returned plugin")
+	}
+	if catalog.HasInternalPlugin() {
+		t.Fatal("nil catalog reported internal plugin")
+	}
+}
+
+func TestCatalogHasInternalPlugin(t *testing.T) {
+	if !NewCatalog().HasInternalPlugin() {
+		t.Fatal("catalog missing internal plugin")
 	}
 }

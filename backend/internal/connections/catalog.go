@@ -7,6 +7,7 @@ import (
 	"github.com/wins/jaz/backend/internal/connectors/calendar"
 	"github.com/wins/jaz/backend/internal/connectors/deployink"
 	"github.com/wins/jaz/backend/internal/connectors/gmail"
+	"github.com/wins/jaz/backend/internal/connectors/jaz"
 	"github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
@@ -22,6 +23,7 @@ func NewCatalog() *Catalog {
 		calendar.Plugin(),
 		deployink.Plugin(),
 		gmail.Plugin(),
+		jaz.Plugin(),
 		slack.Plugin(),
 		telegram.Plugin(),
 		whatsapp.Plugin(),
@@ -37,6 +39,20 @@ func (c *Catalog) ListPlugins() []integrations.Plugin {
 		return strings.Compare(a.Name, b.Name)
 	})
 	return out
+}
+
+// HasInternalPlugin reports whether the catalog declares Jaz's built-in tool
+// surface; MCP wiring exposes the jaztools server only when it does.
+func (c *Catalog) HasInternalPlugin() bool {
+	if c == nil {
+		return false
+	}
+	for _, plugin := range c.plugins {
+		if plugin.Internal() {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Catalog) Plugin(id string) (integrations.Plugin, bool) {

@@ -2,7 +2,7 @@ import { CheckCircle2, LoaderCircle } from 'lucide-react'
 import { useMemo } from 'react'
 import { ConnectionQRModal } from '@/components/settings/ConnectionQRModal'
 import { PluginIcon } from '@/components/settings/ConnectionPluginVisuals'
-import { accountAddress, pluginActionLabel, pluginCanConnect } from '@/components/settings/connectionFormatting'
+import { accountAddress, pluginActionLabel, pluginCanConnect, pluginInternal } from '@/components/settings/connectionFormatting'
 import { useConnectionSignIn } from '@/components/settings/useConnectionSignIn'
 import { Button } from '@/components/ui/Button'
 import { SkeletonRows } from '@/components/ui/Skeleton'
@@ -92,7 +92,7 @@ function ConnectionRow({
 
 function orderPlugins(plugins: IntegrationPlugin[]): IntegrationPlugin[] {
   const rank = new Map(PLUGIN_PRIORITY.map((id, index) => [id, index]))
-  return [...plugins].sort((a, b) => {
+  return plugins.filter((plugin) => !pluginInternal(plugin)).sort((a, b) => {
     const left = rank.get(a.id) ?? Number.MAX_SAFE_INTEGER
     const right = rank.get(b.id) ?? Number.MAX_SAFE_INTEGER
     if (left !== right) return left - right

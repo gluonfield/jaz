@@ -1,8 +1,14 @@
-import { ArrowUp, Loader2, Plug, Plus, QrCode } from 'lucide-react'
+import { ArrowUp, Check, Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
-import { categoryLabel, pluginActionLabel, pluginCanConnect, titleCase } from './connectionFormatting'
+import {
+  categoryLabel,
+  pluginActionLabel,
+  pluginCanConnect,
+  pluginInternal,
+  titleCase,
+} from './connectionFormatting'
 import { PluginGlyph } from './ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
@@ -70,6 +76,7 @@ function ConnectButton({
   const available = pluginCanConnect(plugin)
   const connected = plugin.connection?.status === 'connected'
   let Icon = sessionAuth ? QrCode : Plug
+  if (pluginInternal(plugin)) Icon = Check
   if (available && connected && plugin.multi_account) Icon = Plus
   if (connecting) Icon = Loader2
 
@@ -202,6 +209,8 @@ function developerLabel(plugin: IntegrationPlugin): string {
 
 function authDescription(kind?: string): string {
   switch (kind) {
+    case 'internal':
+      return 'Built in, no sign-in'
     case 'oauth':
       return 'Browser sign-in'
     case 'session':
