@@ -20,7 +20,7 @@ func TestPluginDescribesGmailConnection(t *testing.T) {
 	}
 	if !slices.Contains(plugin.Capabilities, integrations.CapabilityAct) ||
 		!slices.Contains(plugin.Capabilities, integrations.CapabilityMCP) ||
-		slices.Contains(plugin.Capabilities, integrations.CapabilitySync) ||
+		!slices.Contains(plugin.Capabilities, integrations.CapabilitySync) ||
 		len(plugin.SourceLanes) != 0 {
 		t.Fatalf("capabilities = %#v source_lanes = %#v", plugin.Capabilities, plugin.SourceLanes)
 	}

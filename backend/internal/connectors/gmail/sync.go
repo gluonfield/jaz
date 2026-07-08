@@ -133,8 +133,7 @@ func (c APIClient) incrementalMessages(ctx context.Context, connection integrati
 	}
 	var list historyList
 	if err := c.get(ctx, "gmail/v1/users/me/history", q, &list); err != nil {
-		var apiErr APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == 404 {
+		if isAPIStatus(err, 404) {
 			cursor = SyncCursor{}
 			next, encodeErr := EncodeSyncCursor(cursor)
 			if encodeErr != nil {
@@ -164,6 +163,9 @@ func (c APIClient) messageRecords(ctx context.Context, connection integrations.C
 	receivedAt := time.Now().UTC()
 	for _, id := range ids {
 		content, err := c.messageContent(ctx, id)
+		if isAPIStatus(err, 404) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -177,6 +179,11 @@ func (c APIClient) messageRecords(ctx context.Context, connection integrations.C
 		records = append(records, record)
 	}
 	return records, nil
+}
+
+func isAPIStatus(err error, status int) bool {
+	var apiErr APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == status
 }
 
 func (c APIClient) messageContent(ctx context.Context, id string) (MessageContent, error) {

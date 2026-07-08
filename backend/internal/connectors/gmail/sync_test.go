@@ -67,3 +67,45 @@ func TestObserveIncrementalDropsNoiseMessages(t *testing.T) {
 		t.Fatalf("records = %#v", result.Records)
 	}
 }
+
+func TestObserveIncrementalSkipsMissingMessages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/gmail/v1/users/me/history":
+			_, _ = w.Write([]byte(`{"historyId":"h2","history":[{"messagesAdded":[
+				{"message":{"id":"gone"}},
+				{"message":{"id":"real"}}
+			]}]}`))
+		case "/gmail/v1/users/me/messages/gone":
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"message":"Requested entity was not found."}}`))
+		case "/gmail/v1/users/me/messages/real":
+			_, _ = w.Write([]byte(`{"id":"real","labelIds":["CATEGORY_PERSONAL"],"payload":{"headers":[{"name":"Subject","value":"Hello"}]}}`))
+		default:
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cursor, err := EncodeSyncCursor(SyncCursor{BackfillComplete: true, HistoryID: "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).Observe(context.Background(), integrations.ObserveRequest{
+		Connection: integrations.Connection{ID: "conn_1", AccountID: "augustinas@example.com"},
+		Cursor:     cursor,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Records) != 1 || result.Records[0].ExternalID != "real" {
+		t.Fatalf("records = %#v", result.Records)
+	}
+	next, err := DecodeSyncCursor(result.Cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.HistoryID != "h2" {
+		t.Fatalf("cursor = %#v", next)
+	}
+}
