@@ -667,7 +667,7 @@ func (m *Manager) Wait(ctx context.Context, req WaitRequest) (Job, error) {
 		return job.Snapshot(), nil
 	}
 	if req.Timeout <= 0 {
-		req.Timeout = 30 * time.Second
+		req.Timeout = 10 * time.Minute
 	}
 	timer := time.NewTimer(req.Timeout)
 	defer timer.Stop()

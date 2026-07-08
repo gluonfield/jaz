@@ -244,6 +244,7 @@ export interface IntegrationRemoteMCP {
   status: string
   requires?: string[]
   oauth_secrets: boolean
+  token_auth?: boolean
 }
 
 export interface IntegrationTool {
@@ -321,9 +322,14 @@ export interface ConnectionQRStart {
 }
 
 export interface ConnectionStart {
-  type: 'oauth' | 'qr'
+  type: 'oauth' | 'qr' | 'mcp'
   auth_url?: string
   qr?: ConnectionQRStart
+  mcp?: {
+    server_id: string
+    name: string
+    url: string
+  }
 }
 
 export interface ConnectionQRStatus {

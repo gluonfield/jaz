@@ -503,7 +503,6 @@ func TestToolCallUpdateCapturesLivenessState(t *testing.T) {
 				"toolCallId":    "exec-1",
 				"title":         "go test ./...",
 				"status":        "in_progress",
-				"rawInput":      map[string]any{"cmd": "go test ./..."},
 				"_meta": map[string]any{
 					"terminal_info": map[string]any{"terminal_id": "exec-1", "cwd": "/repo"},
 				},

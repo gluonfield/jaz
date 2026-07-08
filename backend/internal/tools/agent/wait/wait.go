@@ -15,7 +15,7 @@ type Tool struct {
 
 type input struct {
 	Session        string `json:"session" jsonschema_description:"Spawned session id or slug."`
-	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema_description:"Maximum seconds to wait. Defaults to 30."`
+	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema_description:"Maximum seconds to wait. Defaults to 600. On timeout returns the current snapshot with state still running."`
 }
 
 func (t *Tool) Definition() tools.Definition {

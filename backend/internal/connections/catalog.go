@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/connectors/calendar"
+	"github.com/wins/jaz/backend/internal/connectors/deployink"
 	"github.com/wins/jaz/backend/internal/connectors/gmail"
 	"github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
@@ -19,6 +20,7 @@ type Catalog struct {
 func NewCatalog() *Catalog {
 	return &Catalog{plugins: []integrations.Plugin{
 		calendar.Plugin(),
+		deployink.Plugin(),
 		gmail.Plugin(),
 		slack.Plugin(),
 		telegram.Plugin(),

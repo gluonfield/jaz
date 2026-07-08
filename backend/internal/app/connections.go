@@ -8,6 +8,7 @@ import (
 	googleconnector "github.com/wins/jaz/backend/internal/connectors/google"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/integrationingest"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -36,12 +37,16 @@ func NewConnectionQRService(providers ConnectionQRProviders) *connections.QRServ
 	return connections.NewQRService(providers.Providers...)
 }
 
-func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService) *connections.ConnectService {
-	return connections.NewConnectService(catalog, oauth, qr)
+func NewConnectionRemoteMCPConnector(store *sqlitestore.Store, manager *mcpruntime.Manager) *connections.RemoteMCPConnector {
+	return connections.NewRemoteMCPConnector(store, manager)
 }
 
-func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, disconnecters ConnectionSessionDisconnecters) *connections.Service {
-	return connections.NewService(catalog, store, disconnecters.Disconnecters...)
+func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService, remoteMCP *connections.RemoteMCPConnector) *connections.ConnectService {
+	return connections.NewConnectService(catalog, oauth, qr, remoteMCP)
+}
+
+func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, remoteMCP *connections.RemoteMCPConnector, disconnecters ConnectionSessionDisconnecters) *connections.Service {
+	return connections.NewService(catalog, store, remoteMCP, disconnecters.Disconnecters...)
 }
 
 func NewGmailMCPTools(store *sqlitestore.Store, raw integrationingest.RawWriter) *connections.GmailMCPTools {

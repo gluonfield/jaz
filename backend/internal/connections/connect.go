@@ -8,19 +8,21 @@ import (
 )
 
 type ConnectStart struct {
-	Type    string   `json:"type"`
-	AuthURL string   `json:"auth_url,omitempty"`
-	QR      *QRStart `json:"qr,omitempty"`
+	Type    string          `json:"type"`
+	AuthURL string          `json:"auth_url,omitempty"`
+	QR      *QRStart        `json:"qr,omitempty"`
+	MCP     *RemoteMCPStart `json:"mcp,omitempty"`
 }
 
 type ConnectService struct {
-	catalog *Catalog
-	oauth   *OAuthService
-	qr      *QRService
+	catalog   *Catalog
+	oauth     *OAuthService
+	qr        *QRService
+	remoteMCP *RemoteMCPConnector
 }
 
-func NewConnectService(catalog *Catalog, oauth *OAuthService, qr *QRService) *ConnectService {
-	return &ConnectService{catalog: catalog, oauth: oauth, qr: qr}
+func NewConnectService(catalog *Catalog, oauth *OAuthService, qr *QRService, remoteMCP *RemoteMCPConnector) *ConnectService {
+	return &ConnectService{catalog: catalog, oauth: oauth, qr: qr, remoteMCP: remoteMCP}
 }
 
 func (s *ConnectService) Start(ctx context.Context, pluginID, redirectURL string) (ConnectStart, error) {
@@ -56,6 +58,18 @@ func (s *ConnectService) Start(ctx context.Context, pluginID, redirectURL string
 			return ConnectStart{}, err
 		}
 		return ConnectStart{Type: "qr", QR: &start}, nil
+	case integrations.AuthKindRemoteMCP:
+		if plugin.Implementation.Status != "available" {
+			return ConnectStart{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
+		}
+		if s.remoteMCP == nil {
+			return ConnectStart{}, fmt.Errorf("connection plugin %q does not support remote MCP here", pluginID)
+		}
+		start, err := s.remoteMCP.Connect(ctx, plugin)
+		if err != nil {
+			return ConnectStart{}, err
+		}
+		return ConnectStart{Type: "mcp", MCP: &start}, nil
 	default:
 		if plugin.Implementation.Status != "available" {
 			return ConnectStart{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)

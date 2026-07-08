@@ -56,13 +56,15 @@ export function SessionErrorNotice({
       </div>
       <p className="mt-1.5 whitespace-pre-wrap [overflow-wrap:break-word] text-[13px] leading-[1.55] text-ink select-text">{message}</p>
       {action ? (
-        <div className="mt-3 flex">
+        <div className="mt-2.5 flex">
+          {/* Hang the button into the card padding so its icon aligns flush with
+              the message text; the hover fill keeps breathing room from the ring. */}
           <Button
             size="md"
             onClick={action.onClick}
             disabled={action.disabled}
             title={action.title ?? action.label}
-            className="min-h-10 px-3.5"
+            className="-ml-3"
           >
             {action.icon}
             {action.label}
