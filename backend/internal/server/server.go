@@ -65,6 +65,7 @@ type MCPRuntime interface {
 type ModelCatalog interface {
 	ValidateReasoningEffort(agent, providerID, model, effort string) error
 	AgentModels(agent string) []modelcatalog.Model
+	ProviderModels(id string) ([]modelcatalog.Model, error)
 }
 
 type ACPAdapterStatusReader interface {

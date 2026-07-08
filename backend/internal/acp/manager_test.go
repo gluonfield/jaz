@@ -15,6 +15,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -1018,6 +1019,56 @@ func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
 	if !strings.Contains(err.Error(), "available model ids: default, sonnet") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	sessions, err := store.ListSessions(storage.SessionFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("unsupported model created sessions: %#v", sessions)
+	}
+}
+
+func TestManagerSpawnAcceptsConfiguredClaudeModelLabel(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:         t.TempDir(),
+		Workspace:    t.TempDir(),
+		ModelCatalog: modelcatalog.NewService(nil),
+		Agents: map[string]acp.AgentConfig{
+			"claude": {
+				Command:         os.Args[0],
+				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+				Model:           "opus-4.8",
+				ReasoningEffort: "xhigh",
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "default,sonnet",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "default",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-opus-label"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Model != "default" {
+		t.Fatalf("claude model = %q, want default", session.Model)
+	}
 }
 
 func TestManagerUsesCodexModelAndEffortConfigOptions(t *testing.T) {
@@ -1069,8 +1120,9 @@ func TestManagerUsesCodexProviderNativeModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
+		Root:         t.TempDir(),
+		Workspace:    t.TempDir(),
+		ModelCatalog: modelcatalog.NewService(nil),
 		Agents: map[string]acp.AgentConfig{
 			"codex": {
 				Command:         os.Args[0],

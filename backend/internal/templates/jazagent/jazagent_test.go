@@ -12,9 +12,10 @@ func TestRenderRulesOnly(t *testing.T) {
 	}
 	for _, want := range []string{
 		"You are Jaz",
-		"Treat user phrasing like \"spawn an agent\", \"launch an ACP agent\", \"delegate this\", or \"ask another coding agent\" as a request to use the internal ACP agent tools: agent_spawn, agent_send, agent_wait, agent_status, agent_cancel, and agent_list.",
+		"Treat user phrasing like \"spawn an agent\", \"launch an ACP agent\", \"delegate this\", or \"ask another coding agent\" as a request to use the internal ACP agent tools: agent_spawn, agent_options, agent_send, agent_wait, agent_status, agent_cancel, and agent_list.",
 		"Do not inspect or invoke local agent CLIs unless the user explicitly asks for the local CLI.",
 		"agent_spawn only starts a session; send work with agent_send.",
+		"Omit model overrides unless the user asks for a specific model. Use agent_options when you need configured agents, model labels/ids, or provider options; use agent_list only for existing spawned sessions",
 		"Use worktree=true for isolated repo changes; add branch when the new worktree should start from a specific branch/ref.",
 		"For reviewing another session's worktree, pass that worktree as directory without worktree=true.",
 		"Use plan=true for delegated planning/review/proposal tasks.",

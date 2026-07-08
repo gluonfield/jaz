@@ -1073,6 +1073,9 @@ export interface ReasoningEffortOption {
 export interface ACPAgentOptions {
   reasoning_efforts: ReasoningEffortOption[]
   models?: ModelCatalogEntry[]
+  default_model?: string
+  default_model_provider?: string
+  default_reasoning_effort?: string
   local: boolean
   provider_mode?: 'agent_defaults'
   model_provider_ids?: string[]

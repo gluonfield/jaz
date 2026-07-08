@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	MCPToolAgentSpawn  = "agent_spawn"
-	MCPToolAgentSend   = "agent_send"
-	MCPToolAgentStatus = "agent_status"
-	MCPToolAgentWait   = "agent_wait"
-	MCPToolAgentCancel = "agent_cancel"
-	MCPToolAgentList   = "agent_list"
+	MCPToolAgentSpawn   = "agent_spawn"
+	MCPToolAgentSend    = "agent_send"
+	MCPToolAgentStatus  = "agent_status"
+	MCPToolAgentWait    = "agent_wait"
+	MCPToolAgentCancel  = "agent_cancel"
+	MCPToolAgentList    = "agent_list"
+	MCPToolAgentOptions = "agent_options"
 )
 
 type MCPService interface {
@@ -26,6 +27,7 @@ type MCPService interface {
 	Cancel(context.Context, string) (Job, error)
 	List() []Job
 	Agents() []string
+	AgentOptions(AgentOptionsRequest) AgentOptionsOutput
 }
 
 type MCPTools struct {
@@ -38,9 +40,9 @@ func NewMCPTools(service MCPService) *MCPTools {
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
 	agentNames := t.availableAgents()
-	description := "Create an idle Jaz ACP agent session. Send work with agent_send."
+	description := "Create an idle Jaz ACP agent session. Send work with agent_send. Omit model unless the user asks for a specific model; use agent_options to inspect configured agents and model/provider options."
 	if len(agentNames) > 0 {
-		description = "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with agent_send."
+		description = "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with agent_send. Omit model unless the user asks for a specific model; use agent_options to inspect configured agents and model/provider options."
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentSpawn,
@@ -69,9 +71,14 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 		Description: "Cancel a spawned Jaz ACP agent session's current turn.",
 	}, t.Cancel)
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        MCPToolAgentOptions,
+		Title:       "List spawnable ACP agent options",
+		Description: "List configured Jaz ACP agents and their model/provider options. Pass agent to inspect one agent; pass name to filter model names or ids.",
+	}, t.Options)
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolAgentList,
-		Title:       "List ACP agents",
-		Description: "List active spawned Jaz ACP agent sessions and configured agent names.",
+		Title:       "List spawned ACP sessions",
+		Description: "List active spawned Jaz ACP agent sessions.",
 	}, t.List)
 }
 
@@ -165,18 +172,23 @@ func (t *MCPTools) Cancel(ctx context.Context, _ *mcp.CallToolRequest, input MCP
 	return nil, job, err
 }
 
-type MCPListInput struct{}
-
-type MCPListOutput struct {
-	Agents   []string `json:"agents"`
-	Sessions []Job    `json:"sessions"`
+type MCPOptionsInput struct {
+	Agent string `json:"agent,omitempty"`
+	Name  string `json:"name,omitempty"`
 }
 
-func (t *MCPTools) List(context.Context, *mcp.CallToolRequest, MCPListInput) (*mcp.CallToolResult, MCPListOutput, error) {
-	return nil, MCPListOutput{
-		Agents:   t.availableAgents(),
-		Sessions: t.Service.List(),
-	}, nil
+func (t *MCPTools) Options(_ context.Context, _ *mcp.CallToolRequest, input MCPOptionsInput) (*mcp.CallToolResult, AgentOptionsOutput, error) {
+	return nil, t.Service.AgentOptions(AgentOptionsRequest{Agent: input.Agent, Name: input.Name}), nil
+}
+
+type MCPListOutput struct {
+	Sessions []Job `json:"sessions"`
+}
+
+type MCPListInput struct{}
+
+func (t *MCPTools) List(_ context.Context, _ *mcp.CallToolRequest, _ MCPListInput) (*mcp.CallToolResult, MCPListOutput, error) {
+	return nil, MCPListOutput{Sessions: t.Service.List()}, nil
 }
 
 func spawnInputSchema(agents []string) map[string]any {
