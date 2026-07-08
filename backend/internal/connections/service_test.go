@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	jazconnector "github.com/wins/jaz/backend/internal/connectors/jaz"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -19,6 +20,17 @@ func TestServiceReportsGmailConnectionState(t *testing.T) {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
 	if plugin.Connection == nil || plugin.Connection.Status != integrations.PluginConnectionStatusNotConnected || len(plugin.Connection.Accounts) != 0 {
+		t.Fatalf("connection = %#v", plugin.Connection)
+	}
+}
+
+func TestServiceReportsInternalPluginConnected(t *testing.T) {
+	service := NewService(NewCatalog(), &serviceStore{}, nil)
+	plugin, ok, err := service.Plugin(context.Background(), jazconnector.ProviderID)
+	if err != nil || !ok {
+		t.Fatalf("plugin ok=%v err=%v", ok, err)
+	}
+	if plugin.Connection == nil || plugin.Connection.Status != integrations.PluginConnectionStatusConnected || len(plugin.Connection.Accounts) != 0 {
 		t.Fatalf("connection = %#v", plugin.Connection)
 	}
 }
