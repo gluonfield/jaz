@@ -493,17 +493,8 @@ func (s *Server) acpProbeConfig(name string, defaults agentsettings.AgentDefault
 	cfg, _ := s.acpAgentCatalog().Agent(name)
 	command := ""
 	if cfg.RequiresCommand() {
-		command = strings.TrimSpace(defaults.ACP[name].Command)
-		if command != "" {
-			executable, args, err := agentsettings.ParseCommandLine(command)
-			if err != nil {
-				return acp.AgentConfig{}, command, err
-			}
-			cfg.Command = executable
-			cfg.Args = args
-		} else {
-			command = agentsettings.CommandLine(cfg.Command, cfg.Args)
-		}
+		// The launch command is catalog-owned, not user settings.
+		command = agentsettings.CommandLine(cfg.Command, cfg.Args)
 	}
 	defaultModelProvider := strings.TrimSpace(cfg.ModelProvider)
 	cfg.ModelProvider = strings.TrimSpace(defaults.ACP[name].ModelProvider)

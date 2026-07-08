@@ -1024,7 +1024,6 @@ export interface ProviderInput {
 
 export interface ACPAgentDefaults {
   enabled: boolean
-  command?: string
   model_provider?: string
   model?: string
   reasoning_effort?: string
@@ -1084,7 +1083,6 @@ export interface ACPAgentOptions {
   model_provider_ids?: string[]
   model_providers?: ModelProviderOption[]
   auth_provider_id?: string
-  requires_command: boolean
   supports_auth: boolean
 }
 

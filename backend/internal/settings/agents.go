@@ -19,7 +19,6 @@ const (
 
 type ACPAgentDefaults struct {
 	Enabled         bool                `json:"enabled"`
-	Command         string              `json:"command,omitempty"`
 	ModelProvider   string              `json:"model_provider,omitempty"`
 	Model           string              `json:"model,omitempty"`
 	ReasoningEffort string              `json:"reasoning_effort,omitempty"`
@@ -45,10 +44,8 @@ func AgentDefaultsFromCatalog(catalog acp.AgentCatalog) AgentDefaults {
 	seed.ACP = map[string]ACPAgentDefaults{}
 	for _, name := range catalog.Names() {
 		agent, _ := catalog.Agent(name)
-		command := CommandLine(agent.Command, agent.Args)
 		seed.ACP[name] = ACPAgentDefaults{
-			Enabled:         defaultACPAgentEnabled(name, agent, command),
-			Command:         command,
+			Enabled:         defaultACPAgentEnabled(name, agent),
 			ModelProvider:   strings.TrimSpace(agent.ModelProvider),
 			Model:           strings.TrimSpace(agent.Model),
 			ReasoningEffort: strings.TrimSpace(agent.ReasoningEffort),
@@ -58,14 +55,14 @@ func AgentDefaultsFromCatalog(catalog acp.AgentCatalog) AgentDefaults {
 	return seed
 }
 
-func defaultACPAgentEnabled(name string, agent acp.AgentConfig, command string) bool {
+func defaultACPAgentEnabled(name string, agent acp.AgentConfig) bool {
 	if agent.Local || strings.TrimSpace(agent.URL) != "" {
 		return true
 	}
 	if _, ok := acp.AgentAPIKey(name); ok {
 		return false
 	}
-	return strings.TrimSpace(command) != ""
+	return CommandLine(agent.Command, agent.Args) != ""
 }
 
 func LoadAgentDefaults(store storage.SettingsStorage) (AgentDefaults, error) {
@@ -245,20 +242,6 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog, valid
 		if err != nil {
 			return AgentDefaults{}, err
 		}
-		command := ""
-		if base.RequiresCommand() {
-			command = strings.TrimSpace(current.Command)
-			if current.Enabled && command == "" {
-				return AgentDefaults{}, fmt.Errorf("acp agent %q command is required when enabled", name)
-			}
-			if current.Enabled && command != "" {
-				if executable, _, err := ParseCommandLine(command); err != nil {
-					return AgentDefaults{}, fmt.Errorf("acp agent %q command: %w", name, err)
-				} else if executable == "" {
-					return AgentDefaults{}, fmt.Errorf("acp agent %q command is required when enabled", name)
-				}
-			}
-		}
 		modelProvider := strings.TrimSpace(current.ModelProvider)
 		model := strings.TrimSpace(current.Model)
 		if base.UsesModelProvider() {
@@ -277,7 +260,6 @@ func NormalizeAgentDefaults(input AgentDefaults, catalog acp.AgentCatalog, valid
 		}
 		next.ACP[name] = ACPAgentDefaults{
 			Enabled:         current.Enabled,
-			Command:         command,
 			ModelProvider:   modelProvider,
 			Model:           model,
 			ReasoningEffort: effort,
@@ -309,11 +291,6 @@ func MergeAgentDefaults(stored, seed AgentDefaults, agentNames []string) AgentDe
 }
 
 func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentDefaults {
-	if strings.TrimSpace(seed.Command) == "" {
-		stored.Command = ""
-	} else if strings.TrimSpace(stored.Command) == "" {
-		stored.Command = seed.Command
-	}
 	if auth, err := acp.NormalizeAgentAuthConfig(name, stored.Auth); err == nil {
 		stored.Auth = auth
 	} else {
@@ -392,20 +369,8 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 	if !ok || !agent.Enabled {
 		return acp.AgentConfig{}, false, nil
 	}
-	if cfg.RequiresCommand() {
-		command := strings.TrimSpace(agent.Command)
-		if command == "" {
-			return acp.AgentConfig{}, false, fmt.Errorf("acp agent %q command is required when enabled", name)
-		}
-		executable, args, err := ParseCommandLine(command)
-		if err != nil {
-			return acp.AgentConfig{}, false, fmt.Errorf("acp agent %q command: %w", name, err)
-		}
-		if executable == "" {
-			return acp.AgentConfig{}, false, fmt.Errorf("acp agent %q command is required when enabled", name)
-		}
-		cfg.Command, cfg.Args = executable, args
-	}
+	// cfg already carries the catalog's launch command/args; the launch command is
+	// catalog-owned, never user settings.
 	defaultModelProvider := strings.TrimSpace(cfg.ModelProvider)
 	cfg.ModelProvider = strings.TrimSpace(agent.ModelProvider)
 	cfg.Model = strings.TrimSpace(agent.Model)
@@ -432,10 +397,6 @@ func (s *ACPConfigSource) EnabledAgentNames() ([]string, error) {
 		agent, ok := defaults.ACP[name]
 		if !ok || !agent.Enabled {
 			continue
-		}
-		base, _ := s.catalog.Agent(name)
-		if strings.TrimSpace(agent.Command) == "" && base.RequiresCommand() {
-			return nil, fmt.Errorf("acp agent %q command is required when enabled", name)
 		}
 		names = append(names, name)
 	}

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, CircleAlert, KeyRound, LoaderCircle, LogIn, Terminal } from 'lucide-react'
+import { CheckCircle2, ChevronDown, CircleAlert, KeyRound, LoaderCircle, LogIn } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
@@ -40,14 +40,10 @@ import { useModelReasoningState } from '@/lib/modelReasoning'
 import { keys } from '@/lib/query/keys'
 import { modelSettingsReasoningEffortOptions, supportedReasoningEffort } from '@/lib/reasoningEfforts'
 
-const inputClass =
-  'h-7 w-full rounded-full bg-ink/10 px-3 text-[12px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 disabled:opacity-50'
-
 const rowControlClass = 'w-full md:w-[320px]'
 type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
 const emptyACPAgent: AgentSettingsData['acp'][string] = {
   enabled: false,
-  command: '',
   model_provider: '',
   model: '',
   reasoning_effort: '',
@@ -75,18 +71,6 @@ function loginAuth(agent: string, current: ACPAuthDraft): ACPAuthDraft {
   if (agent === 'antigravity') return { mode: 'existing_cli' }
   if (agent === 'grok' || current?.mode === 'jaz_profile') return current
   return { mode: 'jaz_profile', path: '' }
-}
-
-function agentRequiresCommand(settings: AgentSettingsData, agent: string): boolean {
-  return settings.acp_options?.[agent]?.requires_command ?? true
-}
-
-function hasEnabledACPWithoutCommand(settings: AgentSettingsData): boolean {
-  return settings.agents.some((agent) => {
-    if (!agentRequiresCommand(settings, agent)) return false
-    const current = settings.acp[agent]
-    return acpAgentEnabled(settings, agent) && (current?.command ?? '').trim() === ''
-  })
 }
 
 function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
@@ -142,7 +126,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
 
-  const invalid = draft ? hasEnabledACPWithoutCommand(draft) || hasInvalidACPProvider(draft) : true
+  const invalid = draft ? hasInvalidACPProvider(draft) : true
   const canSave = draft != null && !invalid && dirty && !save.isPending
 
   return (
@@ -208,7 +192,6 @@ function ACPAgentRow({
   const current = settings.acp[agent] ?? emptyACPAgent
   const authStatus = settings.acp_auth?.[agent]
   const options = settings.acp_options?.[agent]
-  const requiresCommand = options?.requires_command ?? true
   const supportsAuth = options?.supports_auth ?? true
   const usesModelProvider = acpUsesModelProvider(settings, agent)
   const providerOptions = selectableACPModelProviders(settings, agent)
@@ -225,7 +208,6 @@ function ACPAgentRow({
         ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
         : 'Select a provider before enabling.'
   const [expanded, setExpanded] = useState(false)
-  const [commandOpen, setCommandOpen] = useState(requiresCommand && (current.command ?? '').trim() === '')
   const reasoningModel = (current.model ?? '').trim() || selectedProvider?.default_model || ''
   const { modelSuggestions, modelsLoading, reasoningOptions } = useModelReasoningState({
     settings,
@@ -251,10 +233,6 @@ function ACPAgentRow({
     }
     onChange(normalizeACPAgentEnabled(nextSettings, agent))
   }, [agent, current, onChange, settings])
-  useEffect(() => {
-    if (requiresCommand && checked && (current.command ?? '').trim() === '') setCommandOpen(true)
-  }, [checked, current.command, requiresCommand])
-
   useEffect(() => {
     if (reasoningEffort !== normalizedReasoningEffort) {
       update({ reasoning_effort: normalizedReasoningEffort })
@@ -397,41 +375,6 @@ function ACPAgentRow({
               className={rowControlClass}
             />
           </SettingsRow>
-        ) : null}
-
-        {requiresCommand ? (
-          <>
-            <SettingsRow title="Command" description="Advanced startup command for this ACP client.">
-              <Button
-                variant="ghost"
-                size="md"
-                active={commandOpen}
-                aria-expanded={commandOpen}
-                disabled={disabled}
-                onClick={() => setCommandOpen((open) => !open)}
-                className="w-full md:w-auto md:justify-self-end"
-              >
-                <Terminal size={13} />
-                {commandOpen ? 'Hide command' : 'Edit command'}
-                <ChevronDown
-                  size={13}
-                  className={`transition-transform duration-150 ${commandOpen ? 'rotate-180' : ''}`}
-                />
-              </Button>
-            </SettingsRow>
-
-            {commandOpen ? (
-              <label className="block border-t border-border/70 px-3 py-3">
-                <span className="mb-1 block text-[11px] text-ink-3">Startup command</span>
-                <input
-                  value={current.command ?? ''}
-                  disabled={disabled}
-                  onChange={(event) => update({ command: event.target.value })}
-                  className={`${inputClass} font-mono`}
-                />
-              </label>
-            ) : null}
-          </>
         ) : null}
       </Collapse>
     </SettingsCard>
