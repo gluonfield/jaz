@@ -28,8 +28,10 @@ function acpReasoningEffortOptions(
   settings: AgentSettings | undefined,
   agent: string,
 ): ReasoningEffortOption[] {
-  const options = settings?.acp_options?.[agent]?.reasoning_efforts
-  return options?.length ? options : REASONING_EFFORT_OPTIONS
+  // An explicit empty list means the agent has no reasoning efforts of its own —
+  // e.g. Antigravity, whose thinking level is baked into the model name. Honor
+  // that; only fall back to a generic list when the agent's options haven't loaded.
+  return settings?.acp_options?.[agent]?.reasoning_efforts ?? REASONING_EFFORT_OPTIONS
 }
 
 export function reasoningEffortLabel(
