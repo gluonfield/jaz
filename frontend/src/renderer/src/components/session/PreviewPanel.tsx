@@ -21,9 +21,16 @@ import {
   clearBrowserAnnotationCapture,
   isBrowserAnnotationCancelled,
 } from './browserAnnotationCapture'
+import { PreviewFindBar } from './PreviewFindBar'
 import { SidePanelShell } from './SidePanelShell'
-import type { PreviewNavigationEvent, PreviewWebviewElement } from './previewWebview'
+import {
+  isPreviewWebviewPending,
+  previewWebviewErrorMessage,
+  type PreviewNavigationEvent,
+  type PreviewWebviewElement,
+} from './previewWebview'
 import type { PreviewTarget } from './previewTarget'
+import { usePreviewFindControls } from './usePreviewFindControls'
 
 export const PREVIEW_PANEL_WIDTH = 640
 
@@ -54,6 +61,12 @@ export function PreviewPanel({
   const [canGoForward, setCanGoForward] = useState(false)
   const [annotating, setAnnotating] = useState(false)
   const [error, setError] = useState('')
+  const find = usePreviewFindControls({
+    webview,
+    webviewReady,
+    canUseWebview,
+    onError: setError,
+  })
 
   useEffect(() => {
     targetRef.current = target
@@ -107,7 +120,7 @@ export function PreviewPanel({
           setWebviewReady(false)
           setCanGoBack(false)
           setCanGoForward(false)
-          if (!isWebviewPending(err)) setError(webviewErrorMessage(err))
+          if (!isPreviewWebviewPending(err)) setError(previewWebviewErrorMessage(err))
         }
       }
       if (next) {
@@ -181,7 +194,7 @@ export function PreviewPanel({
       setWebviewReady(false)
       setCanGoBack(false)
       setCanGoForward(false)
-      if (!isWebviewPending(err)) setError(webviewErrorMessage(err))
+      if (!isPreviewWebviewPending(err)) setError(previewWebviewErrorMessage(err))
     }
   }
 
@@ -194,7 +207,7 @@ export function PreviewPanel({
       const capture = await captureBrowserAnnotation(webview, onUploadAttachment)
       if (capture) onAddBrowserAnnotation(capture.annotation, capture.screenshot)
     } catch (err) {
-      if (!isBrowserAnnotationCancelled(err)) setError(webviewErrorMessage(err))
+      if (!isBrowserAnnotationCancelled(err)) setError(previewWebviewErrorMessage(err))
     } finally {
       setAnnotating(false)
       await clearBrowserAnnotationCapture(webview)
@@ -219,7 +232,7 @@ export function PreviewPanel({
   const canAnnotate = canUseWebview && !!onAddBrowserAnnotation
 
   return (
-    <SidePanelShell width={PREVIEW_PANEL_WIDTH}>
+    <SidePanelShell width={PREVIEW_PANEL_WIDTH} onKeyDownCapture={find.handleKeyDownCapture}>
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -295,7 +308,8 @@ export function PreviewPanel({
       {error ? (
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
       ) : null}
-      <div className="min-h-0 flex-1 bg-bg">
+      <div className="relative min-h-0 flex-1 bg-bg">
+        <PreviewFindBar find={find} />
         {resolvedSourceUrl && canUseWebview ? (
           <webview
             ref={bindWebview}
@@ -325,13 +339,4 @@ export function PreviewPanel({
       </div>
     </SidePanelShell>
   )
-}
-
-function isWebviewPending(error: unknown): boolean {
-  const message = webviewErrorMessage(error)
-  return message.includes('WebView must be attached') || message.includes('dom-ready')
-}
-
-function webviewErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

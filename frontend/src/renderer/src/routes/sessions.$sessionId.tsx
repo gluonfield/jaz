@@ -452,6 +452,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           {isMobile && sidePanel.open ? (
             <div className="fixed inset-0 z-scrim" aria-hidden onClick={() => sidePanel.toggle()} />
           ) : null}
+          {sidePanel.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
           <div className="relative h-full min-w-0 flex-1">
             <div ref={attachScroll} className="h-full overflow-y-auto" onScroll={onThreadScroll}>
