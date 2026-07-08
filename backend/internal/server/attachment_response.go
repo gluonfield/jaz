@@ -3,6 +3,7 @@ package server
 import (
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/messagepayload"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -36,11 +37,29 @@ func messageRecordsResponse(records []storage.Message) []storage.Message {
 			block := &out[i].Blocks[j]
 			if block.Type == storage.BlockTypeAttachment {
 				block.ServerPath = ""
-				if strings.HasPrefix(strings.ToLower(strings.TrimSpace(block.URI)), "file:") {
-					block.URI = ""
-				}
+				block.URI = displayAttachmentURI(block.URI)
 			}
 		}
 	}
 	return out
+}
+
+func messagePayloadAttachmentsResponse(attachments []messagepayload.Attachment) []messagepayload.Attachment {
+	if len(attachments) == 0 {
+		return nil
+	}
+	out := make([]messagepayload.Attachment, len(attachments))
+	copy(out, attachments)
+	for i := range out {
+		out[i].ServerPath = ""
+		out[i].URI = displayAttachmentURI(out[i].URI)
+	}
+	return out
+}
+
+func displayAttachmentURI(uri string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(uri)), "file:") {
+		return ""
+	}
+	return uri
 }
