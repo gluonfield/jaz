@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
-import { SkeletonRows } from '@/components/ui/Skeleton'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { disconnectConnectionAccount } from '@/lib/api/connections'
 import { keys } from '@/lib/query/keys'
@@ -10,6 +10,7 @@ import {
   ConnectionSection,
   ConnectionPluginCard,
   ExistingConnectionCard,
+  connectionsGridClass,
 } from './ConnectionCards'
 import { ConnectionPluginDetailModal } from './ConnectionPluginDetailModal'
 import { ConnectionQRModal } from './ConnectionQRModal'
@@ -45,7 +46,6 @@ export function ConnectionsSettings() {
   )
   const hasConnectedAccounts = connectedAccounts.length > 0
   const hasCatalogPlugins = sortedPlugins.length > 0
-  const hasVisibleConnections = hasConnectedAccounts || hasCatalogPlugins
   const disconnectAccount = (account: IntegrationConnectionAccount) => {
     const label = accountAddress(account) || account.id
     if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
@@ -62,10 +62,14 @@ export function ConnectionsSettings() {
 
       <div className="mt-4">
         {plugins.isPending ? (
-          <SkeletonRows count={3} />
+          <div className={connectionsGridClass}>
+            {Array.from({ length: 6 }, (_, i) => (
+              <Skeleton key={i} className="h-[104px] rounded-card" />
+            ))}
+          </div>
         ) : plugins.isError ? (
           <p className="py-2 text-[13px] text-danger">{plugins.error.message}</p>
-        ) : !hasVisibleConnections ? (
+        ) : !hasCatalogPlugins ? (
           <p className="rounded-card bg-surface px-3 py-3 text-[13px] text-ink-3">
             No first-party connections are available yet.
           </p>
@@ -73,7 +77,7 @@ export function ConnectionsSettings() {
           <>
             <div className="space-y-5">
               {hasConnectedAccounts ? (
-                <ConnectionSection title="Existing connections">
+                <ConnectionSection title="Connected">
                   <AnimatedList>
                     {connectedAccounts.map(({ plugin, account }) => (
                       <AnimatedListItem key={account.id}>
@@ -90,7 +94,7 @@ export function ConnectionsSettings() {
               ) : null}
 
               {hasCatalogPlugins ? (
-                <ConnectionSection title="Add connection">
+                <ConnectionSection title="Available">
                   <AnimatedList>
                     {sortedPlugins.map((plugin) => (
                       <AnimatedListItem key={plugin.id}>
