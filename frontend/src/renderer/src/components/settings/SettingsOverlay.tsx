@@ -1,8 +1,9 @@
-import { ArrowLeft, PanelLeft, Search } from 'lucide-react'
+import { ArrowLeft, PanelLeft } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
+import { SearchField } from '@/components/ui/SearchField'
 import { dismissOnEmptyTap } from '@/lib/dom/drawer'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
@@ -120,20 +121,12 @@ export function SettingsOverlay({
             </div>
 
             <div className="px-3 pb-3">
-              <div className="relative">
-                <Search
-                  size={14}
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3"
-                />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Search settings…"
-                  aria-label="Search settings"
-                  className="h-8 w-full rounded-full bg-ink/10 pl-8 pr-3 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25 max-sm:h-11 max-sm:pl-9 max-sm:text-[15px]"
-                />
-              </div>
+              <SearchField
+                value={query}
+                onChange={setQuery}
+                placeholder="Search settings…"
+                className="h-8 max-sm:h-11 max-sm:pl-9 max-sm:text-[15px]"
+              />
             </div>
 
             <nav className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-3 pb-3">

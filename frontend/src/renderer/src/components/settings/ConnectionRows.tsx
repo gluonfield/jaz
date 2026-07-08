@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import {
-  accountAddress,
+  accountLabel,
   accountSyncLabel,
   pluginActionLabel,
   pluginCanConnect,
@@ -18,8 +18,8 @@ export function ConnectionSection({
 }) {
   return (
     <section>
-      <p className="mb-2 text-[13px] font-medium text-ink">{title}</p>
-      <div className="space-y-2">{children}</div>
+      <p className="border-b border-border/60 pb-2 text-[13px] font-medium text-ink">{title}</p>
+      <div className="-mx-3 mt-1 grid grid-cols-1 gap-x-2 lg:grid-cols-2">{children}</div>
     </section>
   )
 }
@@ -37,8 +37,7 @@ export function ConnectedAccountRow({
   onOpen: () => void
   onDisconnect: () => void
 }) {
-  const address = accountAddress(account) || account.id
-  const subtitle = [address, accountSyncLabel(account)].filter(Boolean).join(' · ')
+  const subtitle = [accountLabel(account), accountSyncLabel(account)].filter(Boolean).join(' · ')
 
   return (
     <ConnectionRow
@@ -103,7 +102,7 @@ function ConnectionRow({
   action: ReactNode
 }) {
   return (
-    <div className="flex max-w-[560px] items-center gap-3 rounded-card bg-surface px-4 py-3 transition-colors duration-150 hover:bg-surface-2">
+    <div className="flex items-center gap-3 rounded-card px-3 py-2.5 transition-colors duration-150 hover:bg-surface">
       <button
         type="button"
         onClick={onOpen}

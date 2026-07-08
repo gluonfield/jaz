@@ -8,6 +8,12 @@ export function accountAddress(account: IntegrationConnectionAccount): string {
   return ''
 }
 
+// Never-empty display identity for an account; accountAddress keeps its
+// empty-string contract for callers that hide unlabelable accounts.
+export function accountLabel(account: IntegrationConnectionAccount): string {
+  return accountAddress(account) || account.id
+}
+
 export function accountSyncLabel(account: IntegrationConnectionAccount): string {
   if (!hasTime(account.last_synced_at)) return ''
   const value = relativeTime(account.last_synced_at)
@@ -21,7 +27,7 @@ export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean
   if (connecting) return 'Connecting'
   const sessionAuth = plugin.auth[0]?.kind === 'session'
   const remoteMCPAuth = plugin.auth[0]?.kind === 'remote_mcp'
-  if (!pluginCanConnect(plugin)) return statusLabel(plugin.implementation.status)
+  if (!pluginCanConnect(plugin)) return titleCase(plugin.implementation.status)
   if (plugin.connection?.status === 'connected' && plugin.multi_account) return 'Add account'
   if (plugin.connection?.status === 'connected') return 'Reconnect'
   if (sessionAuth) return 'QR sign in'
@@ -34,11 +40,11 @@ export function pluginCanConnect(plugin: IntegrationPlugin): boolean {
 }
 
 export function categoryLabel(value?: string): string {
-  return value ? statusLabel(value) : 'Integration'
+  return value ? titleCase(value) : 'Integration'
 }
 
-export function statusLabel(status: string): string {
-  return status
+export function titleCase(value: string): string {
+  return value
     .split('_')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
