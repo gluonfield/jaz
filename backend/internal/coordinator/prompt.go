@@ -17,15 +17,15 @@ import (
 
 // PromptFiles are the agent prompt files read from the jaz root directory,
 // in the order they are rendered into the coordinator system prompt.
-var PromptFiles = []string{"AGENTS.md", "SOUL.md"}
+var PromptFiles = []string{"AGENTS.md", "SOUL.md", "INTERNAL.md"}
 
 func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
 	return prompt(context.Background(), root, workspace, memoryRoot, skillsPrompt, nil, nil, visualize.SurfaceChat, time.Now())
 }
 
 // prompt joins the two layers: the Jaz agent prompt (identity and operating
-// rules) and the platform prompt (runtime context, AGENTS.md, SOUL.md, memory,
-// skills) that every agent in Jaz shares.
+// rules) and the platform prompt (runtime context, AGENTS.md, SOUL.md,
+// INTERNAL.md, memory, skills) that every agent in Jaz shares.
 func prompt(ctx context.Context, root, workspace, memoryRoot, skillsPrompt string, connections []connections.AgentConnection, agentNames []string, surface visualize.Surface, now time.Time) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
 		workspace = defaultWorkspace(root)
@@ -50,16 +50,20 @@ func defaultWorkspace(root string) string {
 }
 
 // platformPrompt renders the jaz extension shared by all agents: runtime
-// context, prompt files, connected-account paths, the memory protocol with live
-// horizons, and the skills catalog.
+// context, AGENTS.md, SOUL.md, INTERNAL.md, connected-account paths, the memory
+// protocol with live horizons, and the skills catalog.
 func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skillsPrompt string, connections []connections.AgentConnection, agentNames []string, surface visualize.Surface, now time.Time) (string, error) {
-	// AGENTS.md and SOUL.md always render — an empty section tells every
-	// agent the file exists and is editable, instead of silently vanishing.
+	// These prompt files always render — an empty section tells every agent the
+	// file exists and is editable, instead of silently vanishing.
 	agents, err := ReadPromptFile(root, "AGENTS.md")
 	if err != nil {
 		return "", err
 	}
 	soul, err := ReadPromptFile(root, "SOUL.md")
+	if err != nil {
+		return "", err
+	}
+	internal, err := ReadPromptFile(root, "INTERNAL.md")
 	if err != nil {
 		return "", err
 	}
@@ -79,6 +83,7 @@ func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skill
 		Device:          sessioncontext.ClientPlatform(ctx),
 		RuntimePaths:    runtimePaths(root, workspace),
 		Soul:            orEmpty(soul),
+		Internal:        orEmpty(internal),
 		ArtifactSurface: string(visualize.NormalizeSurface(string(surface))),
 		Memory:          memory,
 		Connections:     connections,
@@ -87,10 +92,7 @@ func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skill
 }
 
 func runtimePaths(root, workspace string) jazplatform.RuntimePaths {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		root = "~/.jaz"
-	}
+	root = displayRoot(root)
 	defaultWorkspacePath := strings.TrimSpace(workspace)
 	if defaultWorkspacePath == "" {
 		defaultWorkspacePath = defaultWorkspace(root)
@@ -99,11 +101,20 @@ func runtimePaths(root, workspace string) jazplatform.RuntimePaths {
 		Root:             root,
 		AgentsPath:       filepath.Join(root, "AGENTS.md"),
 		SoulPath:         filepath.Join(root, "SOUL.md"),
+		InternalPath:     filepath.Join(root, "INTERNAL.md"),
 		SkillsPath:       filepath.Join(root, "skills"),
 		SessionsPath:     filepath.Join(root, "sessions"),
 		DefaultWorkspace: defaultWorkspacePath,
 		WorktreesPath:    filepath.Join(defaultWorkspacePath, ".worktrees"),
 	}
+}
+
+func displayRoot(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "~/.jaz"
+	}
+	return root
 }
 
 // ReadPromptFile reads a single prompt file from root, returning "" when the

@@ -16,6 +16,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	memoryRoot := t.TempDir()
 	write(t, root, "AGENTS.md", "always cite sources")
 	write(t, root, "SOUL.md", "be direct")
+	write(t, root, "INTERNAL.md", "collapse stale layers")
 	write(t, memoryRoot, "LONG_TERM.md", "- Goal: $5m through agent products.")
 	write(t, memoryRoot, "SHORT_TERM.md", "- Focus: jaz memory system.")
 	skillDir := filepath.Join(root, "skills", "deploy")
@@ -38,6 +39,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"Current working directory:",
 		"## AGENTS.md\n\nalways cite sources",
 		"## SOUL.md\n\nbe direct",
+		"## INTERNAL.md",
+		"collapse stale layers",
 		"## Agent delegation",
 		"configured ACP agents: `codex`, `claude`",
 		"## Artifacts and visualisation",
@@ -62,6 +65,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"Now: ":               1,
 		"## AGENTS.md":        1,
 		"## SOUL.md":          1,
+		"## INTERNAL.md":      1,
 		"Capture as you go":   1,
 	} {
 		if got := strings.Count(system, marker); got != want {
@@ -121,6 +125,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	}
 	for _, want := range []string{
 		"## AGENTS.md\n\nalways cite sources",
+		"## INTERNAL.md",
+		"collapse stale layers",
 		"## Agent delegation",
 		"agent_spawn",
 		"## Artifacts and visualisation",
