@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -143,7 +144,7 @@ func WorkerAgentModel(agent string, defaults AgentDefaults) string {
 	case acp.AgentClaude:
 		return "default"
 	case acp.AgentGrok:
-		return "grok-composer-2.5-fast"
+		return modelcatalog.DefaultGrokModel
 	case acp.AgentOpenCode:
 		switch strings.TrimSpace(defaults.ACP[acp.AgentOpenCode].ModelProvider) {
 		case provider.ProviderOpenAI:
@@ -295,6 +296,9 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		stored.Auth = auth
 	} else {
 		stored.Auth = seed.Auth
+	}
+	if name == acp.AgentGrok && strings.TrimSpace(stored.Model) == "grok-build" {
+		stored.Model = seed.Model
 	}
 	if strings.TrimSpace(seed.ModelProvider) != "" {
 		cfg := acp.AgentConfig{

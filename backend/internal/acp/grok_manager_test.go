@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -70,7 +71,7 @@ func TestManagerFailsGrokModelOverrideWhenItCannotApplyStartupArgs(t *testing.T)
 			"grok": {
 				Command: os.Args[0],
 				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:   "grok-build",
+				Model:   modelcatalog.DefaultGrokModel,
 				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
 			},
 		},

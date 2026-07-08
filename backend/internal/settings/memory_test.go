@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -74,7 +75,7 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 		{
 			name:    "grok",
 			agent:   acp.AgentGrok,
-			model:   "grok-composer-2.5-fast",
+			model:   modelcatalog.DefaultGrokModel,
 			effort:  "xhigh",
 			allowed: []string{"low", "medium", "high", "xhigh"},
 		},

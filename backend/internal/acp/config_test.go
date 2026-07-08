@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/managedtool"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
@@ -1223,7 +1224,7 @@ func TestProbeReadinessRequiresGrokAuth(t *testing.T) {
 }
 
 func TestProbeReadinessRejectsURLBackedGrokModelOverride(t *testing.T) {
-	ready := ProbeReadiness(AgentGrok, AgentConfig{URL: "http://127.0.0.1:9999", Model: "grok-build"}, t.TempDir(), nil)
+	ready := ProbeReadiness(AgentGrok, AgentConfig{URL: "http://127.0.0.1:9999", Model: modelcatalog.DefaultGrokModel}, t.TempDir(), nil)
 	if ready.Available || !strings.Contains(ready.Reason, "URL-backed Grok") {
 		t.Fatalf("ready = %#v", ready)
 	}
@@ -1342,12 +1343,12 @@ func TestProcessCommandAddsGrokModelArg(t *testing.T) {
 	_, args, err := processCommand("grok", AgentConfig{
 		Command: "grok",
 		Args:    []string{"agent", "stdio"},
-		Model:   "grok-build",
+		Model:   modelcatalog.DefaultGrokModel,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(args, " ") != "agent --always-approve --model grok-build stdio" {
+	if strings.Join(args, " ") != "agent --always-approve --model grok-4.5 stdio" {
 		t.Fatalf("args = %#v", args)
 	}
 }
@@ -1356,7 +1357,7 @@ func TestProcessCommandRejectsAmbiguousGrokModelArg(t *testing.T) {
 	_, _, err := processCommand("grok", AgentConfig{
 		Command: "grok",
 		Args:    []string{"agent", "--model=custom", "stdio"},
-		Model:   "grok-build",
+		Model:   modelcatalog.DefaultGrokModel,
 	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "model is ambiguous") {
 		t.Fatalf("error = %v", err)

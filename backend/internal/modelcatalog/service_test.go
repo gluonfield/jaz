@@ -216,6 +216,21 @@ func TestServiceAgentModelsIncludesAntigravityModels(t *testing.T) {
 	}
 }
 
+func TestServiceAgentModelsIncludesCurrentGrokModels(t *testing.T) {
+	models := NewService(nil).AgentModels("grok")
+	got := make([]string, 0, len(models))
+	for _, model := range models {
+		got = append(got, model.Value)
+	}
+	want := []string{
+		DefaultGrokModel,
+		"grok-composer-2.5-fast",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("grok models = %#v, want %#v", got, want)
+	}
+}
+
 func TestServiceAgentModelsForProviderScopesOpenCodeModels(t *testing.T) {
 	service := NewService(nil)
 	models, err := service.AgentModelsForProvider("opencode", provider.ProviderOpenRouter)

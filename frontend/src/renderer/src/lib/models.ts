@@ -172,7 +172,7 @@ function contextWindowHeuristic(model?: string, acpAgent?: string): number | nul
   if (id.startsWith('ollama/')) return 128_000
   if (/claude|sonnet|haiku|opus|fable/.test(id)) return 200_000
   if (/gpt-5|codex/.test(id)) return 400_000
-  if (/grok-build/.test(id)) return 512_000
+  if (/grok-4\.5|grok-build/.test(id)) return 512_000
   if (/grok|composer/.test(id)) return 200_000
   if (/gemini/.test(id)) return 1_000_000
   return null

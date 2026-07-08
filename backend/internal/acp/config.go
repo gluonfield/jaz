@@ -302,7 +302,7 @@ func BuiltinAgents() AgentCatalog {
 				"--always-approve",
 				"stdio",
 			},
-			Model:           "grok-build",
+			Model:           modelcatalog.DefaultGrokModel,
 			ReasoningEffort: DefaultAgentReasoningEffort(AgentGrok),
 		},
 		AgentOpenCode: {

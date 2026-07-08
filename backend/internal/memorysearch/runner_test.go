@@ -10,6 +10,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -156,7 +157,7 @@ func TestSearchMemorySpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
 	}{
 		{name: "codex", agent: acp.AgentCodex, model: "gpt-5.4-mini", effort: "xhigh"},
 		{name: "claude", agent: acp.AgentClaude, model: "default", effort: "xhigh"},
-		{name: "grok", agent: acp.AgentGrok, model: "grok-composer-2.5-fast", effort: "xhigh"},
+		{name: "grok", agent: acp.AgentGrok, model: modelcatalog.DefaultGrokModel, effort: "xhigh"},
 		{name: "opencode-openrouter-style", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter},
 		}}, model: "z-ai/glm-5.2", effort: "xhigh"},
