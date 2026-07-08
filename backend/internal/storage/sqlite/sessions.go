@@ -113,6 +113,27 @@ func (s *Store) UpdateSessionTitle(id, title string) error {
 	return nil
 }
 
+func (s *Store) UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error) {
+	s.mu.Lock()
+	updated, err := threaddb.New(s.db).UpdateSessionTitleFromRuntime(context.Background(), threaddb.UpdateSessionTitleFromRuntimeParams{
+		Title: nullDBString(title),
+		ID:    id,
+	})
+	if err != nil {
+		s.mu.Unlock()
+		return storage.Session{}, false, err
+	}
+	session, err := s.loadSessionLocked(id)
+	s.mu.Unlock()
+	if err != nil {
+		return storage.Session{}, false, err
+	}
+	if updated > 0 {
+		s.mirrorSession(session)
+	}
+	return session, updated > 0, nil
+}
+
 func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error {
 	now := time.Now().UTC()
 	params := threaddb.UpdateSessionStatusParams{
@@ -246,6 +267,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		ID:                    session.ID,
 		Slug:                  session.Slug,
 		Title:                 nullDBString(session.Title),
+		ManualTitle:           boolInt(session.ManualTitle),
 		ParentID:              nullDBString(session.ParentID),
 		Status:                session.Status,
 		Runtime:               session.Runtime,
@@ -298,6 +320,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		ID:              row.ID,
 		Slug:            row.Slug,
 		Title:           row.Title.String,
+		ManualTitle:     row.ManualTitle != 0,
 		ParentID:        row.ParentID.String,
 		Status:          row.Status,
 		Error:           row.Error.String,

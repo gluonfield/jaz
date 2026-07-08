@@ -239,12 +239,31 @@ func (s *Store) UpdateSessionTitle(id, title string) error {
 	return s.updateSessionTitleLocked(id, title)
 }
 
+func (s *Store) UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return storage.Session{}, false, err
+	}
+	if session.ManualTitle {
+		return session, false, nil
+	}
+	session.Title = title
+	session.ManualTitle = false
+	if err := s.saveSession(session); err != nil {
+		return storage.Session{}, false, err
+	}
+	return session, true, nil
+}
+
 func (s *Store) updateSessionTitleLocked(id, title string) error {
 	session, err := s.loadSessionByID(id)
 	if err != nil {
 		return err
 	}
 	session.Title = title
+	session.ManualTitle = true
 	return s.saveSession(session)
 }
 

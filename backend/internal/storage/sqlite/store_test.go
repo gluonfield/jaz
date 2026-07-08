@@ -245,6 +245,37 @@ func TestUpdateSessionTitleDoesNotCascadeToChildren(t *testing.T) {
 	}
 }
 
+func TestRuntimeTitleDoesNotOverwriteManualTitle(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "runtime-title", Title: "Fallback title"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, accepted, err := store.UpdateSessionTitleFromRuntime(session.ID, "Runtime title")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !accepted || updated.Title != "Runtime title" || updated.ManualTitle {
+		t.Fatalf("runtime update = %#v accepted=%v", updated, accepted)
+	}
+
+	if err := store.UpdateSessionTitle(session.ID, "Manual title"); err != nil {
+		t.Fatal(err)
+	}
+	updated, accepted, err = store.UpdateSessionTitleFromRuntime(session.ID, "Another runtime title")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted || updated.Title != "Manual title" || !updated.ManualTitle {
+		t.Fatalf("manual title overwritten: %#v accepted=%v", updated, accepted)
+	}
+}
+
 func setSessionTimes(t *testing.T, store *Store, session storage.Session, updatedAt, lastAttentionAt time.Time) {
 	t.Helper()
 	store.mu.Lock()

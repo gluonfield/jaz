@@ -116,6 +116,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	m.recordRawUsage(job, raw)
 	var activity *storage.ActivityEntry
 	var title string
+	var currentTitle string
 	var publishACP bool
 	var messageChunk string
 	var messageID string
@@ -265,10 +266,9 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		publishACP = job.Modes.CurrentModeID != string(event.CurrentModeID)
 		job.Modes.CurrentModeID = string(event.CurrentModeID)
 	case acpschema.SessionInfoSessionUpdate:
-		if nextTitle := strings.TrimSpace(event.Title); nextTitle != "" && nextTitle != job.Title {
-			job.Title = nextTitle
+		if nextTitle := strings.TrimSpace(event.Title); nextTitle != "" {
+			currentTitle = job.Title
 			title = nextTitle
-			publishACP = true
 		}
 	}
 	job.UpdatedAt = now
@@ -283,9 +283,11 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		m.touchJobAttention(job)
 	}
 	if title != "" {
-		if session, err := m.store.LoadSession(sessionID); err == nil {
-			session.Title = title
-			_ = m.store.SaveSession(session)
+		if session, updated, err := m.store.UpdateSessionTitleFromRuntime(sessionID, title); err == nil {
+			job.mu.Lock()
+			job.Title = session.Title
+			job.mu.Unlock()
+			publishACP = updated && session.Title != currentTitle
 		}
 	}
 	if messageChunk != "" && !bufferMessage {

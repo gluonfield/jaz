@@ -48,6 +48,7 @@ type Store interface {
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
 	SaveSession(storage.Session) error
+	UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error)
 	TouchSessionAttention(string) error
 	storage.MessageAppender
 	storage.SessionEventAppender
