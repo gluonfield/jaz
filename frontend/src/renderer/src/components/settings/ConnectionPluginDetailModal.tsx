@@ -2,7 +2,7 @@ import { ArrowUp, Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
-import { categoryLabel, pluginActionLabel, pluginCanConnect, statusLabel } from './connectionFormatting'
+import { categoryLabel, pluginActionLabel, pluginCanConnect, titleCase } from './connectionFormatting'
 import { PluginGlyph } from './ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
@@ -191,13 +191,13 @@ function capabilityLabel(value: string): string {
     case 'browser':
       return 'Browser'
     default:
-      return statusLabel(value)
+      return titleCase(value)
   }
 }
 
 function developerLabel(plugin: IntegrationPlugin): string {
   if (plugin.implementation.owner === 'jaz') return 'Jaz'
-  return statusLabel(plugin.implementation.owner)
+  return titleCase(plugin.implementation.owner)
 }
 
 function authDescription(kind?: string): string {

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import {
-  accountAddress,
+  accountLabel,
   accountSyncLabel,
   pluginActionLabel,
   pluginCanConnect,
@@ -37,8 +37,7 @@ export function ConnectedAccountRow({
   onOpen: () => void
   onDisconnect: () => void
 }) {
-  const address = accountAddress(account) || account.id
-  const subtitle = [address, accountSyncLabel(account)].filter(Boolean).join(' · ')
+  const subtitle = [accountLabel(account), accountSyncLabel(account)].filter(Boolean).join(' · ')
 
   return (
     <ConnectionRow
@@ -103,7 +102,7 @@ function ConnectionRow({
   action: ReactNode
 }) {
   return (
-    <div className="flex h-full items-center gap-3 rounded-card px-3 py-2.5 transition-colors duration-150 hover:bg-surface">
+    <div className="flex items-center gap-3 rounded-card px-3 py-2.5 transition-colors duration-150 hover:bg-surface">
       <button
         type="button"
         onClick={onOpen}

@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
-import { IconButton } from '@/components/ui/IconButton'
+import { SearchField } from '@/components/ui/SearchField'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { disconnectConnectionAccount } from '@/lib/api/connections'
@@ -15,7 +13,7 @@ import {
 } from './ConnectionRows'
 import { ConnectionPluginDetailModal } from './ConnectionPluginDetailModal'
 import { ConnectionQRModal } from './ConnectionQRModal'
-import { accountAddress, categoryLabel } from './connectionFormatting'
+import { accountLabel, categoryLabel } from './connectionFormatting'
 import { useConnectionSignIn } from './useConnectionSignIn'
 
 export function ConnectionsSettings() {
@@ -48,7 +46,7 @@ export function ConnectionsSettings() {
     [sortedPlugins],
   )
   const visibleAccounts = connectedAccounts.filter(({ plugin, account }) =>
-    matchesQuery(query, plugin, accountAddress(account)),
+    matchesQuery(query, plugin, accountLabel(account)),
   )
   const catalogGroups = useMemo(() => {
     const groups = new Map<string, IntegrationPlugin[]>()
@@ -62,8 +60,7 @@ export function ConnectionsSettings() {
       .map(([category, items]) => ({ category, items }))
   }, [sortedPlugins, query])
   const disconnectAccount = (account: IntegrationConnectionAccount) => {
-    const label = accountAddress(account) || account.id
-    if (window.confirm(`Disconnect ${label}?`)) disconnect.mutate(account.id)
+    if (window.confirm(`Disconnect ${accountLabel(account)}?`)) disconnect.mutate(account.id)
   }
 
   return (
@@ -86,47 +83,26 @@ export function ConnectionsSettings() {
           </p>
         ) : (
           <>
-            <div className="relative">
-              <Search
-                size={14}
-                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3"
-              />
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search connections…"
-                aria-label="Search connections"
-                className="h-9 w-full rounded-full bg-ink/10 pl-8 pr-9 text-[13px] text-ink outline-none transition duration-150 placeholder:text-ink-3 focus:bg-ink/15 focus:ring-1 focus:ring-ink/25"
-              />
-              {search ? (
-                <IconButton
-                  size="xs"
-                  aria-label="Clear search"
-                  onClick={() => setSearch('')}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2"
-                >
-                  <X size={12} />
-                </IconButton>
-              ) : null}
-            </div>
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder="Search connections…"
+              className="h-9"
+            />
 
             <div className="mt-5 space-y-6">
               {visibleAccounts.length > 0 ? (
                 <ConnectionSection title="Connected">
-                  <AnimatedList>
-                    {visibleAccounts.map(({ plugin, account }) => (
-                      <AnimatedListItem key={account.id}>
-                        <ConnectedAccountRow
-                          plugin={plugin}
-                          account={account}
-                          disconnecting={disconnect.isPending && disconnect.variables === account.id}
-                          onOpen={() => setSelectedPluginID(plugin.id)}
-                          onDisconnect={() => disconnectAccount(account)}
-                        />
-                      </AnimatedListItem>
-                    ))}
-                  </AnimatedList>
+                  {visibleAccounts.map(({ plugin, account }) => (
+                    <ConnectedAccountRow
+                      key={account.id}
+                      plugin={plugin}
+                      account={account}
+                      disconnecting={disconnect.isPending && disconnect.variables === account.id}
+                      onOpen={() => setSelectedPluginID(plugin.id)}
+                      onDisconnect={() => disconnectAccount(account)}
+                    />
+                  ))}
                 </ConnectionSection>
               ) : null}
 
@@ -173,11 +149,12 @@ export function ConnectionsSettings() {
   )
 }
 
-function matchesQuery(query: string, plugin: IntegrationPlugin, extra = ''): boolean {
+function matchesQuery(query: string, plugin: IntegrationPlugin, accountText = ''): boolean {
   if (!query) return true
   return (
     plugin.name.toLowerCase().includes(query) ||
     (plugin.description ?? '').toLowerCase().includes(query) ||
-    extra.toLowerCase().includes(query)
+    categoryLabel(plugin.category).toLowerCase().includes(query) ||
+    accountText.toLowerCase().includes(query)
   )
 }
