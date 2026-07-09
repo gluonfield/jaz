@@ -139,23 +139,46 @@ func TestSpawnConfigReasoningEffortNoneAndDefault(t *testing.T) {
 	}
 }
 
-func TestSpawnConfigKeepsDefaultModelWhenCodexUsesOpenAIAPIKey(t *testing.T) {
-	manager := &Manager{agents: AgentCatalog{
-		AgentCodex: AgentConfig{
-			Command:       AgentCodex,
-			ProviderMode:  AgentProviderModeAgentDefaults,
-			ModelProvider: modelprovider.ProviderOpenAI,
+func TestSpawnConfigUsesCodexOpenAIDefaultModelForOpenAIProviders(t *testing.T) {
+	tests := []struct {
+		name               string
+		configuredProvider string
+		requestProvider    string
+		wantProvider       string
+	}{
+		{
+			name:               "api key",
+			configuredProvider: modelprovider.ProviderOpenAI,
+			requestProvider:    CodexProviderOpenAIAPIKey,
+			wantProvider:       CodexProviderOpenAIAPIKey,
 		},
-	}}
-	_, cfg, _, err := manager.spawnConfig(SpawnRequest{
-		ACPAgent:      AgentCodex,
-		ModelProvider: CodexProviderOpenAIAPIKey,
-	})
-	if err != nil {
-		t.Fatal(err)
+		{
+			name:               "oauth",
+			configuredProvider: modelprovider.ProviderOpenRouter,
+			requestProvider:    modelprovider.ProviderOpenAI,
+			wantProvider:       modelprovider.ProviderOpenAI,
+		},
 	}
-	if cfg.ModelProvider != CodexProviderOpenAIAPIKey || cfg.Model != modelprovider.DefaultOpenAIModel {
-		t.Fatalf("unexpected codex provider override %#v", cfg)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager := &Manager{agents: AgentCatalog{
+				AgentCodex: AgentConfig{
+					Command:       AgentCodex,
+					ProviderMode:  AgentProviderModeAgentDefaults,
+					ModelProvider: tt.configuredProvider,
+				},
+			}}
+			_, cfg, _, err := manager.spawnConfig(SpawnRequest{
+				ACPAgent:      AgentCodex,
+				ModelProvider: tt.requestProvider,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.ModelProvider != tt.wantProvider || cfg.Model != CodexOpenAIDefaultModel {
+				t.Fatalf("unexpected codex provider override %#v", cfg)
+			}
+		})
 	}
 }
 
@@ -173,11 +196,11 @@ func TestSpawnConfigResolvesModelLabelsWithinConfiguredProvider(t *testing.T) {
 		},
 	}
 
-	_, cfg, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentOpenCode, Model: "GPT-5.5"})
+	_, cfg, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentOpenCode, Model: "GPT-5.6 Terra"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Model != "gpt-5.5" {
+	if cfg.Model != modelprovider.OpenAIModelGPT56Terra {
 		t.Fatalf("model label resolved outside configured provider: %#v", cfg)
 	}
 }

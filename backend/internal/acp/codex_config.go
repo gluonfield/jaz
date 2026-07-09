@@ -7,7 +7,10 @@ import (
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 )
 
-const CodexProviderOpenAIAPIKey = "openai-api-key"
+const (
+	CodexProviderOpenAIAPIKey = "openai-api-key"
+	CodexOpenAIDefaultModel   = modelprovider.OpenAIModelGPT56Sol
+)
 
 func codexProvider(modelProvider string, providers map[string]modelprovider.ModelProviderConfig) (modelprovider.ModelProvider, bool) {
 	id := strings.ToLower(strings.TrimSpace(modelProvider))
@@ -21,6 +24,7 @@ func codexProvider(modelProvider string, providers map[string]modelprovider.Mode
 		}
 		meta.ID = CodexProviderOpenAIAPIKey
 		meta.Label = "OpenAI API key"
+		meta.DefaultModel = CodexOpenAIDefaultModel
 		return meta, true
 	}
 	meta, ok := modelprovider.RunnableModelProviderByID(id)

@@ -87,7 +87,7 @@ func TestSearchMemorySpawnsRestrictedSearchSession(t *testing.T) {
 	if manager.spawn.ACPAgent != acp.AgentCodex {
 		t.Fatalf("agent = %q", manager.spawn.ACPAgent)
 	}
-	if manager.spawn.Model != "gpt-5.4-mini" || manager.spawn.ReasoningEffort != "xhigh" {
+	if manager.spawn.Model != acp.CodexOpenAIDefaultModel || manager.spawn.ReasoningEffort != "xhigh" {
 		t.Fatalf("model/effort = %q/%q", manager.spawn.Model, manager.spawn.ReasoningEffort)
 	}
 	if manager.spawn.SourceType != storage.SourceMemorySearch || manager.spawn.SourceID != stamp {
@@ -155,7 +155,7 @@ func TestSearchMemorySpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
 		model    string
 		effort   string
 	}{
-		{name: "codex", agent: acp.AgentCodex, model: "gpt-5.4-mini", effort: "xhigh"},
+		{name: "codex", agent: acp.AgentCodex, model: acp.CodexOpenAIDefaultModel, effort: "xhigh"},
 		{name: "claude", agent: acp.AgentClaude, model: "default", effort: "xhigh"},
 		{name: "grok", agent: acp.AgentGrok, model: modelcatalog.DefaultGrokModel, effort: "xhigh"},
 		{name: "opencode-openrouter-style", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{

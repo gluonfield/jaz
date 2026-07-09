@@ -75,6 +75,10 @@ var claudeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), b
 	ReasoningEffortOption{Value: claudeReasoningEffortUltracode, Label: "Ultracode"},
 )
 
+var codexReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), baseReasoningEffortOptions...),
+	ReasoningEffortOption{Value: "max", Label: "Max"},
+)
+
 var openCodeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), baseReasoningEffortOptions...),
 	ReasoningEffortOption{Value: "max", Label: "Max"},
 )
@@ -96,7 +100,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			effortInModelSuffix: true,
 			providerInLaunch:    true,
 			modelValidationKind: modelValidationNone,
-			effortOptions:       baseReasoningEffortOptions,
+			effortOptions:       codexReasoningEffortOptions,
 		}
 	case AgentGrok:
 		return agentPolicy{
@@ -716,7 +720,7 @@ func modelHasReasoningEffort(model string) bool {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(model[i+1:])) {
-	case "minimal", "low", "medium", "high", "xhigh":
+	case "minimal", "low", "medium", "high", "xhigh", "max":
 		return true
 	default:
 		return false

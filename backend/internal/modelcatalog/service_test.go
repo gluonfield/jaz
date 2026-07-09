@@ -122,16 +122,30 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(models) == 0 || models[0].Value != "gpt-5.5" {
+	if len(models) == 0 || models[0].Value != provider.OpenAIModelGPT56Sol {
 		t.Fatalf("unexpected models %#v", models)
 	}
-	if models[0].ReasoningEfforts != nil {
+	values := map[string]Model{}
+	for _, model := range models {
+		values[model.Value] = model
+	}
+	for _, value := range []string{provider.OpenAIModelGPT56Sol, provider.OpenAIModelGPT56Terra, provider.OpenAIModelGPT56Luna, "gpt-5.5", provider.DefaultOpenAIModel} {
+		if _, ok := values[value]; !ok {
+			t.Fatalf("OpenAI catalog missing %s: %#v", value, models)
+		}
+	}
+	if values[provider.OpenAIModelGPT56Sol].OpenRouterID != "openai/gpt-5.6-sol" ||
+		values[provider.OpenAIModelGPT56Terra].ContextLength != 1050000 ||
+		values[provider.OpenAIModelGPT56Luna].ContextLength != 400000 {
+		t.Fatalf("unexpected GPT-5.6 metadata %#v", values)
+	}
+	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max" {
 		t.Fatalf("efforts before the catalog loads = %#v", models[0].ReasoningEfforts)
 	}
 
 	warmed := warmOpenRouterTestService(t, `{"data":[{
-		"id":"openai/gpt-5.5",
-		"name":"OpenAI: GPT-5.5",
+		"id":"openai/gpt-5.6-sol",
+		"name":"OpenAI: GPT-5.6 Sol",
 		"reasoning":{"supported_efforts":["xhigh","high","medium","low","none"],"default_effort":"medium"}
 	}]}`)
 	models, err = warmed.ProviderModels(codexOpenAIAPIKeyProvider)
@@ -152,6 +166,9 @@ func TestServiceValidatesHarnessReasoningBeforeCatalogLoads(t *testing.T) {
 		t.Fatal("expected claude minimal reasoning to fail")
 	}
 	if err := service.ValidateReasoningEffort("codex", "openrouter", "openai/gpt-5.5", "xhigh"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ValidateReasoningEffort("codex", "openai", provider.OpenAIModelGPT56Sol, "max"); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.ValidateReasoningEffort("codex", "openrouter", "openai/gpt-5.5", "max"); err == nil {

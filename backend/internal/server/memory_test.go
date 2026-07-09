@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
@@ -179,7 +180,7 @@ func TestMemoryAgentSetting(t *testing.T) {
 	if status.Agent != "codex" || !status.Enabled {
 		t.Fatalf("unexpected memory agent status %#v", status)
 	}
-	if status.Model != "" || status.DefaultModel != "gpt-5.4-mini" || status.DefaultReasoningEffort != "xhigh" {
+	if status.Model != "" || status.DefaultModel != acp.CodexOpenAIDefaultModel || status.DefaultReasoningEffort != "xhigh" {
 		t.Fatalf("unexpected memory worker defaults %#v", status)
 	}
 

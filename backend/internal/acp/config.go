@@ -336,7 +336,7 @@ func codexBuiltinAgent() AgentConfig {
 		ModelProviderCapability: provider.CapabilityCodex,
 		ModelProvider:           provider.ProviderOpenAI,
 		AuthProviderID:          provider.ProviderOpenAI,
-		Model:                   "gpt-5.5",
+		Model:                   CodexOpenAIDefaultModel,
 		ReasoningEffort:         DefaultAgentReasoningEffort(AgentCodex),
 	}
 }

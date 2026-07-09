@@ -95,6 +95,9 @@ func TestCodexBuiltinAgentUsesManagedAdapter(t *testing.T) {
 	if cfg.Command != "" || cfg.ManagedAdapter != "codex" {
 		t.Fatalf("cfg = %#v, want managed adapter", cfg)
 	}
+	if cfg.Model != modelprovider.OpenAIModelGPT56Sol {
+		t.Fatalf("model = %q, want %q", cfg.Model, modelprovider.OpenAIModelGPT56Sol)
+	}
 	args := strings.Join(cfg.ManagedAdapterArgs, "\n")
 	if !strings.Contains(args, `sandbox_mode="danger-full-access"`) {
 		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)

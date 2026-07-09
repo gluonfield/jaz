@@ -17,6 +17,10 @@ const (
 	DefaultOpenRouterModel = "z-ai/glm-5.2"
 	DefaultOpenAIModel     = "gpt-5.4-mini"
 
+	OpenAIModelGPT56Sol   = "gpt-5.6-sol"
+	OpenAIModelGPT56Terra = "gpt-5.6-terra"
+	OpenAIModelGPT56Luna  = "gpt-5.6-luna"
+
 	CapabilityJaz      = "jaz"
 	CapabilityOpenCode = "opencode"
 	CapabilityCodex    = "codex"

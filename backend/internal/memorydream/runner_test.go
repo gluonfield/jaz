@@ -66,7 +66,7 @@ func TestRunDreamSpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
 		model    string
 		effort   string
 	}{
-		{name: "codex", agent: acp.AgentCodex, model: "gpt-5.4-mini", effort: "xhigh"},
+		{name: "codex", agent: acp.AgentCodex, model: acp.CodexOpenAIDefaultModel, effort: "xhigh"},
 		{name: "claude", agent: acp.AgentClaude, model: "default", effort: "xhigh"},
 		{name: "grok", agent: acp.AgentGrok, model: modelcatalog.DefaultGrokModel, effort: "xhigh"},
 		{name: "opencode-openrouter-style", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
