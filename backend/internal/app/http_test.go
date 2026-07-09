@@ -190,7 +190,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}, nil),
 		ConnectionOAuth: oauth,
 		ConnectionQR:    qr,
-		ConnectionStart: connections.NewConnectService(catalog, oauth, qr, nil),
+		ConnectionStart: connections.NewConnectService(catalog, oauth, qr, nil, nil),
 		Preview:         previewapi.NewHandler(),
 	})
 	found := map[string]bool{}

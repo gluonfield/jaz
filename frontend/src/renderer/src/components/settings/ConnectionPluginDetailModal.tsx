@@ -126,15 +126,18 @@ function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
   return (
     <section>
       <SectionLabel count={tools.length}>Tools</SectionLabel>
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
         {tools.map((tool) => (
-          <span
+          <div
             key={tool.name}
-            className="rounded-full px-3 py-1.5 text-[12px] text-ink-2 ring-1 ring-border"
+            className="rounded-card bg-surface px-3 py-2 ring-1 ring-border/60"
             title={tool.name}
           >
-            {formatToolName(tool.name)}
-          </span>
+            <p className="truncate text-[12px] font-medium text-ink">{formatToolName(tool.name)}</p>
+            <p className="mt-0.5 line-clamp-2 text-[12px] leading-5 text-ink-2">
+              {tool.description}
+            </p>
+          </div>
         ))}
       </div>
     </section>
@@ -142,7 +145,7 @@ function ToolsSection({ tools }: { tools: IntegrationTool[] }) {
 }
 
 function formatToolName(name: string): string {
-  const spaced = name.replace(/_/g, ' ').trim()
+  const spaced = name.replace(/_/g, ' ')
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
@@ -192,7 +195,7 @@ function capabilityLabel(value: string): string {
     case 'materialize':
       return 'Memory'
     case 'mcp':
-      return 'MCP tools'
+      return 'Agent tools'
     case 'browser':
       return 'Browser'
     default:
@@ -213,6 +216,8 @@ function authDescription(kind?: string): string {
       return 'QR sign-in'
     case 'remote_mcp':
       return 'Remote MCP'
+    case 'mcp_connection':
+      return 'Browser sign-in'
     case 'browser_local':
       return 'Local browser'
     default:

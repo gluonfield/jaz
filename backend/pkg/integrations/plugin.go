@@ -3,11 +3,12 @@ package integrations
 type AuthKind string
 
 const (
-	AuthKindOAuth        AuthKind = "oauth"
-	AuthKindSession      AuthKind = "session"
-	AuthKindBridge       AuthKind = "bridge"
-	AuthKindRemoteMCP    AuthKind = "remote_mcp"
-	AuthKindBrowserLocal AuthKind = "browser_local"
+	AuthKindOAuth         AuthKind = "oauth"
+	AuthKindSession       AuthKind = "session"
+	AuthKindBridge        AuthKind = "bridge"
+	AuthKindRemoteMCP     AuthKind = "remote_mcp"
+	AuthKindMCPConnection AuthKind = "mcp_connection"
+	AuthKindBrowserLocal  AuthKind = "browser_local"
 )
 
 type Capability string
@@ -96,6 +97,20 @@ type RemoteMCP struct {
 	// TokenAuth means a connected account is served by proxying this remote MCP
 	// server with the stored user token as a bearer credential.
 	TokenAuth bool `json:"token_auth,omitempty"`
+}
+
+func (p Plugin) PrimaryAuthKind() AuthKind {
+	if len(p.Auth) == 0 {
+		return ""
+	}
+	return p.Auth[0].Kind
+}
+
+func (p Plugin) UsesConnectionMCP() bool {
+	if p.RemoteMCP == nil {
+		return false
+	}
+	return p.PrimaryAuthKind() == AuthKindMCPConnection || p.RemoteMCP.TokenAuth
 }
 
 type PluginTool struct {

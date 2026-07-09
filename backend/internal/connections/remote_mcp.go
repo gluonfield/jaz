@@ -135,10 +135,9 @@ func remoteMCPServerInput(plugin integrations.Plugin) (mcpconfig.ServerInput, er
 }
 
 func remoteMCPConnectionPlugin(plugin integrations.Plugin) bool {
-	return len(plugin.Auth) > 0 &&
-		plugin.Auth[0].Kind == integrations.AuthKindRemoteMCP &&
+	return plugin.PrimaryAuthKind() == integrations.AuthKindRemoteMCP &&
 		plugin.RemoteMCP != nil &&
-		!plugin.RemoteMCP.TokenAuth
+		!plugin.UsesConnectionMCP()
 }
 
 func remoteMCPStart(server mcpconfig.Server) RemoteMCPStart {

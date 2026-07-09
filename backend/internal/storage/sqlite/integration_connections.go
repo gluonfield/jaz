@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"time"
 
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	connectiondb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationconnections"
 	cursordb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationcursors"
 	oauthdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationoauth"
@@ -104,6 +105,9 @@ func (s *Store) DeleteConnection(ctx context.Context, id string) (bool, error) {
 		return false, err
 	}
 	if err := oauthdb.New(s.db).WithTx(tx).DeleteToken(ctx, id); err != nil {
+		return false, err
+	}
+	if err := oauthdb.New(s.db).WithTx(tx).DeleteToken(ctx, mcpconfig.OAuthConnectionID(id)); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/connections"
+	"github.com/wins/jaz/backend/internal/connectors/deployink"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -30,12 +31,12 @@ func (f fakeConnectionTokenStore) LoadToken(_ context.Context, id string) (integ
 	return token, ok, nil
 }
 
-func slackReader(store fakeConnectionTokenStore) connectionMCPServerReader {
+func connectionReader(store fakeConnectionTokenStore) connectionMCPServerReader {
 	return connectionMCPServerReader{store: store, catalog: connections.NewCatalog()}
 }
 
 func TestConnectionMCPServerReaderInjectsTokenBackedSlack(t *testing.T) {
-	reader := slackReader(fakeConnectionTokenStore{
+	reader := connectionReader(fakeConnectionTokenStore{
 		connections: map[string][]integrations.Connection{
 			"slack": {{ID: "slack:acme-u1", Provider: "slack", Alias: "acme-augustinas"}},
 		},
@@ -59,7 +60,7 @@ func TestConnectionMCPServerReaderInjectsTokenBackedSlack(t *testing.T) {
 }
 
 func TestConnectionMCPServerReaderSkipsSlackWithoutToken(t *testing.T) {
-	reader := slackReader(fakeConnectionTokenStore{
+	reader := connectionReader(fakeConnectionTokenStore{
 		connections: map[string][]integrations.Connection{
 			"slack": {{ID: "slack:acme-u1", Provider: "slack"}},
 		},
@@ -74,8 +75,36 @@ func TestConnectionMCPServerReaderSkipsSlackWithoutToken(t *testing.T) {
 	}
 }
 
-func TestConnectionMCPServerReaderIgnoresProvidersWithoutTokenAuth(t *testing.T) {
-	reader := slackReader(fakeConnectionTokenStore{
+func TestConnectionMCPServerReaderInjectsOAuthBackedDeployink(t *testing.T) {
+	connectionID := "deployink:mcp-deployink-com"
+	reader := connectionReader(fakeConnectionTokenStore{
+		connections: map[string][]integrations.Connection{
+			deployink.ProviderID: {{
+				ID:          connectionID,
+				Provider:    deployink.ProviderID,
+				AccountName: deployink.ProviderName,
+			}},
+		},
+	})
+
+	servers, err := reader.ListMCPServers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != 1 {
+		t.Fatalf("servers = %#v", servers)
+	}
+	got := servers[0]
+	if got.ID != connectionID || got.URL != deployink.RemoteMCPURL || got.Name != deployink.ProviderName || !got.Enabled {
+		t.Fatalf("server = %#v", got)
+	}
+	if len(got.Headers) != 0 {
+		t.Fatalf("headers = %#v", got.Headers)
+	}
+}
+
+func TestConnectionMCPServerReaderIgnoresProvidersWithoutConnectionBackedMCP(t *testing.T) {
+	reader := connectionReader(fakeConnectionTokenStore{
 		connections: map[string][]integrations.Connection{
 			"gmail": {{ID: "gmail:default", Provider: "gmail"}},
 		},

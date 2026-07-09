@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/tools"
+	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
 type testStore struct {
@@ -121,6 +123,24 @@ func TestCompleteAuthorizationReturnsFinalFailureStatus(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for authorization failure")
+	}
+}
+
+func TestAuthorizationHookFailureRollsBackToken(t *testing.T) {
+	store := newMemTokenStore()
+	tokenID := mcpconfig.OAuthConnectionID("srv-hook")
+	if err := store.SaveToken(context.Background(), tokenID, integrationoauth.Token{AccessToken: "access"}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(&testStore{}, store, tools.NewRegistry(), log.New(io.Discard))
+	err := manager.runAuthorizationHook(context.Background(), "srv-hook", func(context.Context) error {
+		return errors.New("save connection")
+	})
+	if err == nil || !strings.Contains(err.Error(), "save connection") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, ok, err := store.LoadToken(context.Background(), tokenID); err != nil || ok {
+		t.Fatalf("token after failed hook ok=%v err=%v", ok, err)
 	}
 }
 

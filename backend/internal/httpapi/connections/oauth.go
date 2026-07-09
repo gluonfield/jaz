@@ -10,6 +10,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/httpapi"
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 )
 
 // OAuthCallbackPath is the shared redirect target for every OAuth provider; the
@@ -36,7 +37,10 @@ func NewConnectHandler(connect *connections.ConnectService, oauth *connections.O
 }
 
 func (h ConnectHandler) Start(w http.ResponseWriter, r *http.Request) {
-	result, err := h.Connect.Start(r.Context(), r.PathValue("id"), h.callbackURL(r))
+	result, err := h.Connect.Start(r.Context(), r.PathValue("id"), connections.StartOptions{
+		OAuthRedirectURL: h.callbackURL(r),
+		MCPRedirectURL:   h.mcpCallbackURL(r),
+	})
 	if err != nil {
 		if errors.Is(err, connections.ErrQRProviderUnavailable) {
 			httpapi.WriteError(w, http.StatusServiceUnavailable, err)
@@ -117,6 +121,14 @@ func (h ConnectHandler) callbackURL(r *http.Request) string {
 		base = httpapi.RequestBaseURL(r)
 	}
 	return base + OAuthCallbackPath
+}
+
+func (h ConnectHandler) mcpCallbackURL(r *http.Request) string {
+	base := h.CallbackBaseURL
+	if base == "" {
+		base = httpapi.RequestBaseURL(r)
+	}
+	return base + mcpconfig.OAuthCallbackPath
 }
 
 func writeCallbackHTML(w http.ResponseWriter, status int, title, message string, autoClose bool) {

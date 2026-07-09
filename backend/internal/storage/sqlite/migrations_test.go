@@ -234,6 +234,62 @@ func TestNormalizeCodexNativeProviderMigrationRepairsLegacyRows(t *testing.T) {
 	}
 }
 
+func TestRemoveDeployinkMCPServersMigration(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	for _, stmt := range []string{
+		`CREATE TABLE mcp_servers (id TEXT PRIMARY KEY, url TEXT NOT NULL)`,
+		`CREATE TABLE integration_oauth_tokens (connection_id TEXT PRIMARY KEY, token_json TEXT NOT NULL, updated_at_ms INTEGER NOT NULL)`,
+		`INSERT INTO mcp_servers VALUES ('deployink', 'https://mcp.deployink.com')`,
+		`INSERT INTO mcp_servers VALUES ('deployink_legacy', 'https://mcp.ml.ink/mcp')`,
+		`INSERT INTO mcp_servers VALUES ('docs', 'https://mcp.example.com')`,
+		`INSERT INTO integration_oauth_tokens VALUES ('mcp:deployink', '{}', 1)`,
+		`INSERT INTO integration_oauth_tokens VALUES ('mcp:deployink_legacy', '{}', 1)`,
+		`INSERT INTO integration_oauth_tokens VALUES ('mcp:docs', '{}', 1)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := sqliteMigrations.ReadFile("migrations/0039_remove_deployink_mcp_servers.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	up := strings.SplitN(string(raw), "-- +goose Down", 2)[0]
+	if _, err := db.Exec(up); err != nil {
+		t.Fatal(err)
+	}
+
+	for table, query := range map[string]string{
+		"mcp_servers":              `SELECT COUNT(*) FROM mcp_servers WHERE id LIKE 'deployink%'`,
+		"integration_oauth_tokens": `SELECT COUNT(*) FROM integration_oauth_tokens WHERE connection_id LIKE 'mcp:deployink%'`,
+	} {
+		var got int
+		if err := db.QueryRow(query).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != 0 {
+			t.Fatalf("%s legacy deployink rows = %d, want 0", table, got)
+		}
+	}
+	for table, query := range map[string]string{
+		"mcp_servers":              `SELECT COUNT(*) FROM mcp_servers WHERE id = 'docs'`,
+		"integration_oauth_tokens": `SELECT COUNT(*) FROM integration_oauth_tokens WHERE connection_id = 'mcp:docs'`,
+	} {
+		var got int
+		if err := db.QueryRow(query).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != 1 {
+			t.Fatalf("%s preserved rows = %d, want 1", table, got)
+		}
+	}
+}
+
 func TestSearchDocTablesDoNotDuplicateIndexedText(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
