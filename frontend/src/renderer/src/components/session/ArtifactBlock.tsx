@@ -98,11 +98,13 @@ export const ArtifactBlock = memo(function ArtifactBlock({
     )
   }
 
+  const displayError = executionError || error
+
   return (
     <div className="w-full">
-      {executionError ? (
+      {displayError ? (
         <pre className="m-0 whitespace-pre-wrap bg-danger-soft px-3 py-2 font-mono text-[12px] text-danger">
-          {executionError}
+          {displayError}
         </pre>
       ) : pending ? (
         <div className="flex min-h-10 items-center gap-1.5 px-3 py-2 text-[11px] text-ink-3">
@@ -120,11 +122,6 @@ export const ArtifactBlock = memo(function ArtifactBlock({
           className="block w-full border-0 bg-transparent"
         />
       )}
-      {error && !executionError ? (
-        <div className="border-t border-border bg-danger-soft px-3 py-1.5 font-mono text-[11px] text-danger">
-          {error}
-        </div>
-      ) : null}
     </div>
   )
 })
