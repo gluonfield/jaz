@@ -8,6 +8,7 @@ import (
 	googleconnector "github.com/wins/jaz/backend/internal/connectors/google"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/integrationingest"
+	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
@@ -40,8 +41,12 @@ func NewConnectionRemoteMCPConnector(store *sqlitestore.Store) *connections.Remo
 	return connections.NewRemoteMCPConnector(store)
 }
 
-func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService, remoteMCP *connections.RemoteMCPConnector) *connections.ConnectService {
-	return connections.NewConnectService(catalog, oauth, qr, remoteMCP)
+func NewConnectionMCPConnector(store *sqlitestore.Store, manager *mcpruntime.Manager) *connections.MCPConnectionConnector {
+	return connections.NewMCPConnectionConnector(store, manager)
+}
+
+func NewConnectionConnectService(catalog *connections.Catalog, oauth *connections.OAuthService, qr *connections.QRService, remoteMCP *connections.RemoteMCPConnector, mcpConnection *connections.MCPConnectionConnector) *connections.ConnectService {
+	return connections.NewConnectService(catalog, oauth, qr, remoteMCP, mcpConnection)
 }
 
 func NewConnectionService(catalog *connections.Catalog, store *sqlitestore.Store, remoteMCP *connections.RemoteMCPConnector, disconnecters ConnectionSessionDisconnecters) *connections.Service {

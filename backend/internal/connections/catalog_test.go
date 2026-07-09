@@ -29,6 +29,15 @@ func TestCatalogIncludesGmail(t *testing.T) {
 	if deployink.Icon.Kind != integrations.PluginIconKindAsset || deployink.Icon.Value != "ink" {
 		t.Fatalf("deployink icon = %#v", deployink.Icon)
 	}
+	if len(deployink.Auth) == 0 || deployink.Auth[0].Kind != integrations.AuthKindMCPConnection {
+		t.Fatalf("deployink auth = %#v", deployink.Auth)
+	}
+	if deployink.RemoteMCP == nil || !deployink.UsesConnectionMCP() || deployink.RemoteMCP.TokenAuth {
+		t.Fatalf("deployink remote mcp = %#v", deployink.RemoteMCP)
+	}
+	if len(deployink.Tools) == 0 {
+		t.Fatal("deployink tools missing")
+	}
 }
 
 func TestNilCatalogIsEmpty(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -102,6 +103,10 @@ func TestDeleteConnectionDeletesTokenAndConnection(t *testing.T) {
 	if err := store.SaveOAuthConnection(context.Background(), token, connection); err != nil {
 		t.Fatal(err)
 	}
+	hiddenToken := integrationoauth.Token{AccessToken: "mcp-access", RefreshToken: "mcp-refresh", Scopes: []string{"mcp"}}
+	if err := store.SaveToken(context.Background(), mcpconfig.OAuthConnectionID(connection.ID), hiddenToken); err != nil {
+		t.Fatal(err)
+	}
 	cursor := integrations.Cursor{Kind: "gmail.sync", Value: json.RawMessage(`{"history_id":"h1"}`)}
 	if err := store.SaveIntegrationCursor(context.Background(), connection.ID, cursor); err != nil {
 		t.Fatal(err)
@@ -115,6 +120,9 @@ func TestDeleteConnectionDeletesTokenAndConnection(t *testing.T) {
 	}
 	if _, ok, err := store.LoadToken(context.Background(), connection.ID); err != nil || ok {
 		t.Fatalf("token after delete ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := store.LoadToken(context.Background(), mcpconfig.OAuthConnectionID(connection.ID)); err != nil || ok {
+		t.Fatalf("hidden mcp token after delete ok=%v err=%v", ok, err)
 	}
 	if _, ok, err := store.LoadIntegrationCursor(context.Background(), connection.ID, cursor.Kind); err != nil || ok {
 		t.Fatalf("cursor after delete ok=%v err=%v", ok, err)

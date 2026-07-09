@@ -19,26 +19,33 @@ type ConnectResult struct {
 	MCPServersChanged bool
 }
 
+type StartOptions struct {
+	OAuthRedirectURL string
+	MCPRedirectURL   string
+}
+
 type ConnectService struct {
-	catalog   *Catalog
-	oauth     *OAuthService
-	qr        *QRService
-	remoteMCP *RemoteMCPConnector
+	catalog       *Catalog
+	oauth         *OAuthService
+	qr            *QRService
+	remoteMCP     *RemoteMCPConnector
+	mcpConnection *MCPConnectionConnector
 }
 
-func NewConnectService(catalog *Catalog, oauth *OAuthService, qr *QRService, remoteMCP *RemoteMCPConnector) *ConnectService {
-	return &ConnectService{catalog: catalog, oauth: oauth, qr: qr, remoteMCP: remoteMCP}
+func NewConnectService(catalog *Catalog, oauth *OAuthService, qr *QRService, remoteMCP *RemoteMCPConnector, mcpConnection *MCPConnectionConnector) *ConnectService {
+	return &ConnectService{catalog: catalog, oauth: oauth, qr: qr, remoteMCP: remoteMCP, mcpConnection: mcpConnection}
 }
 
-func (s *ConnectService) Start(ctx context.Context, pluginID, redirectURL string) (ConnectResult, error) {
+func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartOptions) (ConnectResult, error) {
 	plugin, ok := s.catalog.Plugin(pluginID)
 	if !ok {
 		return ConnectResult{}, fmt.Errorf("connection plugin %q is not available", pluginID)
 	}
-	if len(plugin.Auth) == 0 {
+	authKind := plugin.PrimaryAuthKind()
+	if authKind == "" {
 		return ConnectResult{}, fmt.Errorf("connection plugin %q has no sign-in method", pluginID)
 	}
-	switch plugin.Auth[0].Kind {
+	switch authKind {
 	case integrations.AuthKindOAuth:
 		if plugin.Implementation.Status != "available" {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
@@ -46,7 +53,7 @@ func (s *ConnectService) Start(ctx context.Context, pluginID, redirectURL string
 		if s.oauth == nil {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q does not support OAuth here", pluginID)
 		}
-		start, err := s.oauth.Start(ctx, pluginID, redirectURL)
+		start, err := s.oauth.Start(ctx, pluginID, opts.OAuthRedirectURL)
 		if err != nil {
 			return ConnectResult{}, err
 		}
@@ -75,10 +82,22 @@ func (s *ConnectService) Start(ctx context.Context, pluginID, redirectURL string
 			return ConnectResult{}, err
 		}
 		return ConnectResult{Start: ConnectStart{Type: "mcp", MCP: &start}, MCPServersChanged: true}, nil
+	case integrations.AuthKindMCPConnection:
+		if plugin.Implementation.Status != "available" {
+			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
+		}
+		if s.mcpConnection == nil {
+			return ConnectResult{}, fmt.Errorf("connection plugin %q does not support MCP-backed sign-in here", pluginID)
+		}
+		start, err := s.mcpConnection.Connect(ctx, plugin, opts.MCPRedirectURL)
+		if err != nil {
+			return ConnectResult{}, err
+		}
+		return ConnectResult{Start: ConnectStart{Type: "oauth", AuthURL: start.AuthURL}}, nil
 	default:
 		if plugin.Implementation.Status != "available" {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
 		}
-		return ConnectResult{}, fmt.Errorf("connection plugin %q uses unsupported sign-in method %q", pluginID, plugin.Auth[0].Kind)
+		return ConnectResult{}, fmt.Errorf("connection plugin %q uses unsupported sign-in method %q", pluginID, authKind)
 	}
 }

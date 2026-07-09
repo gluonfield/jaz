@@ -16,7 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-const mcpOAuthCallbackPath = "/v1/mcp/oauth/callback"
+const mcpOAuthCallbackPath = mcpconfig.OAuthCallbackPath
 
 type mcpStore interface {
 	mcpconfig.Store

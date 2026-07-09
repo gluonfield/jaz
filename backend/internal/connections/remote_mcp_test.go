@@ -4,26 +4,27 @@ import (
 	"context"
 	"testing"
 
-	"github.com/wins/jaz/backend/internal/connectors/deployink"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestRemoteMCPConnectorCreatesAndUpdatesDeployinkServer(t *testing.T) {
+func TestRemoteMCPConnectorCreatesAndUpdatesPluginServer(t *testing.T) {
 	store := &remoteMCPStore{}
 	connector := NewRemoteMCPConnector(store)
 
-	start, err := connector.Connect(context.Background(), deployink.Plugin())
+	plugin := remoteMCPPlugin()
+	start, err := connector.Connect(context.Background(), plugin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if start.ServerID == "" || start.Name != deployink.ProviderName || start.URL != deployink.RemoteMCPURL {
+	if start.ServerID == "" || start.Name != plugin.Name || start.URL != plugin.RemoteMCP.URL {
 		t.Fatalf("start = %#v", start)
 	}
 	if len(store.servers) != 1 || !store.servers[0].Enabled {
 		t.Fatalf("servers = %#v", store.servers)
 	}
 
-	second, err := connector.Connect(context.Background(), deployink.Plugin())
+	second, err := connector.Connect(context.Background(), plugin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,46 +34,49 @@ func TestRemoteMCPConnectorCreatesAndUpdatesDeployinkServer(t *testing.T) {
 }
 
 func TestRemoteMCPConnectorPreservesExistingServerAuthConfig(t *testing.T) {
+	plugin := remoteMCPPlugin()
 	store := &remoteMCPStore{servers: []mcpconfig.Server{{
-		ID:                "mcp_deployink",
+		ID:                "mcp_docs",
 		Name:              "Ink",
 		Transport:         mcpconfig.TransportStreamableHTTP,
-		URL:               deployink.RemoteMCPURL + "/",
+		URL:               plugin.RemoteMCP.URL + "/",
 		BearerTokenEnvVar: "INK_API_KEY",
 		Headers:           []mcpconfig.Header{{Name: "X-Team", Value: "platform"}},
-		OAuth:             mcpconfig.OAuthConfig{ClientID: "ink-client", Issuer: deployink.RemoteMCPURL},
+		OAuth:             mcpconfig.OAuthConfig{ClientID: "ink-client", Issuer: plugin.RemoteMCP.URL},
 	}}}
 	connector := NewRemoteMCPConnector(store)
 
-	start, err := connector.Connect(context.Background(), deployink.Plugin())
+	start, err := connector.Connect(context.Background(), plugin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if start.ServerID != "mcp_deployink" || start.Name != deployink.ProviderName {
+	if start.ServerID != "mcp_docs" || start.Name != plugin.Name {
 		t.Fatalf("start = %#v", start)
 	}
 	server := store.servers[0]
-	if !server.Enabled || server.Name != deployink.ProviderName || server.URL != deployink.RemoteMCPURL+"/" {
+	if !server.Enabled || server.Name != plugin.Name || server.URL != plugin.RemoteMCP.URL+"/" {
 		t.Fatalf("server = %#v", server)
 	}
 	if server.BearerTokenEnvVar != "INK_API_KEY" ||
 		len(server.Headers) != 1 || server.Headers[0].Name != "X-Team" ||
-		server.OAuth.ClientID != "ink-client" || server.OAuth.Issuer != deployink.RemoteMCPURL {
+		server.OAuth.ClientID != "ink-client" || server.OAuth.Issuer != plugin.RemoteMCP.URL {
 		t.Fatalf("server auth config = %#v", server)
 	}
 }
 
 func TestRemoteMCPConnectorReportsConnectionFromMCPServer(t *testing.T) {
+	plugin := remoteMCPPlugin()
+	catalog := &Catalog{plugins: []integrations.Plugin{plugin}}
 	store := &remoteMCPStore{servers: []mcpconfig.Server{{
-		ID:        "mcp_deployink",
-		Name:      deployink.ProviderName,
+		ID:        "mcp_docs",
+		Name:      plugin.Name,
 		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       deployink.RemoteMCPURL,
+		URL:       plugin.RemoteMCP.URL,
 		Enabled:   true,
 	}}}
-	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store))
+	service := NewService(catalog, &serviceStore{}, NewRemoteMCPConnector(store))
 
-	plugin, ok, err := service.Plugin(context.Background(), deployink.ProviderID)
+	plugin, ok, err := service.Plugin(context.Background(), plugin.ID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
@@ -80,21 +84,23 @@ func TestRemoteMCPConnectorReportsConnectionFromMCPServer(t *testing.T) {
 		t.Fatalf("connection = %#v", plugin.Connection)
 	}
 	account := plugin.Connection.Accounts[0]
-	if account.ID != "mcp_deployink" || account.Provider != deployink.ProviderID || account.AccountID != deployink.RemoteMCPURL {
+	if account.ID != "mcp_docs" || account.Provider != "docs" || account.AccountID != plugin.RemoteMCP.URL {
 		t.Fatalf("account = %#v", account)
 	}
 }
 
 func TestRemoteMCPConnectorReportsDisabledServerAsNotConnected(t *testing.T) {
+	plugin := remoteMCPPlugin()
+	catalog := &Catalog{plugins: []integrations.Plugin{plugin}}
 	store := &remoteMCPStore{servers: []mcpconfig.Server{{
-		ID:        "mcp_deployink",
-		Name:      deployink.ProviderName,
+		ID:        "mcp_docs",
+		Name:      plugin.Name,
 		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       deployink.RemoteMCPURL,
+		URL:       plugin.RemoteMCP.URL,
 	}}}
-	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store))
+	service := NewService(catalog, &serviceStore{}, NewRemoteMCPConnector(store))
 
-	plugin, ok, err := service.Plugin(context.Background(), deployink.ProviderID)
+	plugin, ok, err := service.Plugin(context.Background(), plugin.ID)
 	if err != nil || !ok {
 		t.Fatalf("plugin ok=%v err=%v", ok, err)
 	}
@@ -104,16 +110,18 @@ func TestRemoteMCPConnectorReportsDisabledServerAsNotConnected(t *testing.T) {
 }
 
 func TestRemoteMCPConnectorDisconnectDeletesPluginServer(t *testing.T) {
+	plugin := remoteMCPPlugin()
+	catalog := &Catalog{plugins: []integrations.Plugin{plugin}}
 	store := &remoteMCPStore{servers: []mcpconfig.Server{{
-		ID:        "mcp_deployink",
-		Name:      deployink.ProviderName,
+		ID:        "mcp_docs",
+		Name:      plugin.Name,
 		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       deployink.RemoteMCPURL,
+		URL:       plugin.RemoteMCP.URL,
 		Enabled:   true,
 	}}}
-	service := NewService(NewCatalog(), &serviceStore{}, NewRemoteMCPConnector(store))
+	service := NewService(catalog, &serviceStore{}, NewRemoteMCPConnector(store))
 
-	result, err := service.DisconnectAccount(context.Background(), "mcp_deployink")
+	result, err := service.DisconnectAccount(context.Background(), "mcp_docs")
 	if err != nil {
 		t.Fatal(err)
 	}

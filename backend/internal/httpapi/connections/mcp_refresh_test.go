@@ -14,10 +14,11 @@ import (
 	"github.com/wins/jaz/backend/pkg/integrations"
 )
 
-func TestConnectStartRefreshesMCPWhenServerChanges(t *testing.T) {
+func TestConnectStartDoesNotLeakMCPConnectionInternals(t *testing.T) {
 	refresher := newTestMCPRefresher()
-	store := &remoteMCPStore{}
-	service := core.NewConnectService(core.NewCatalog(), nil, nil, core.NewRemoteMCPConnector(store))
+	store := &connectionStore{}
+	authorizer := &mcpConnectionAuthorizer{authURL: "https://deployink.com/oauth"}
+	service := core.NewConnectService(core.NewCatalog(), nil, nil, nil, core.NewMCPConnectionConnector(store, authorizer))
 	handler := NewConnectHandler(service, nil, nil, refresher, "")
 	req := httptest.NewRequest(http.MethodPost, "/v1/connections/plugins/deployink/connect", nil)
 	req.SetPathValue("id", deployink.ProviderID)
@@ -31,22 +32,24 @@ func TestConnectStartRefreshesMCPWhenServerChanges(t *testing.T) {
 	if strings.Contains(res.Body.String(), "MCPServersChanged") {
 		t.Fatalf("internal change flag leaked in response: %s", res.Body.String())
 	}
-	refresher.wait(t)
+	if strings.Contains(res.Body.String(), "mcp") {
+		t.Fatalf("MCP implementation leaked in response: %s", res.Body.String())
+	}
+	refresher.notCalled(t)
 }
 
-func TestPluginDisconnectRefreshesMCPWhenServerChanges(t *testing.T) {
+func TestPluginDisconnectRefreshesMCPWhenConnectionBackedMCPChanges(t *testing.T) {
 	refresher := newTestMCPRefresher()
-	store := &remoteMCPStore{servers: []mcpconfig.Server{{
-		ID:        "mcp_deployink",
-		Name:      deployink.ProviderName,
-		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       deployink.RemoteMCPURL,
-		Enabled:   true,
-	}}}
-	service := core.NewService(core.NewCatalog(), connectionStore{}, core.NewRemoteMCPConnector(store))
+	store := connectionStore{connection: integrations.Connection{
+		ID:          "deployink:mcp-deployink-com",
+		Provider:    deployink.ProviderID,
+		AccountID:   deployink.RemoteMCPURL,
+		AccountName: deployink.ProviderName,
+	}}
+	service := core.NewService(core.NewCatalog(), &store, nil)
 	handler := NewPluginHandler(service, refresher)
-	req := httptest.NewRequest(http.MethodDelete, "/v1/connections/accounts/mcp_deployink", nil)
-	req.SetPathValue("id", "mcp_deployink")
+	req := httptest.NewRequest(http.MethodDelete, "/v1/connections/accounts/deployink:mcp-deployink-com", nil)
+	req.SetPathValue("id", "deployink:mcp-deployink-com")
 	res := httptest.NewRecorder()
 
 	handler.Disconnect(res, req)
@@ -81,61 +84,53 @@ func (r *testMCPRefresher) wait(t *testing.T) {
 	}
 }
 
-type connectionStore struct{}
+func (r *testMCPRefresher) notCalled(t *testing.T) {
+	t.Helper()
+	select {
+	case <-r.called:
+		t.Fatal("unexpected MCP refresh")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
 
-func (connectionStore) LoadConnection(context.Context, string) (integrations.Connection, bool, error) {
+type connectionStore struct {
+	connection  integrations.Connection
+	connections []integrations.Connection
+}
+
+func (s *connectionStore) SaveConnection(_ context.Context, connection integrations.Connection) error {
+	s.connections = append(s.connections, connection)
+	return nil
+}
+
+func (s *connectionStore) LoadConnection(_ context.Context, id string) (integrations.Connection, bool, error) {
+	if s.connection.ID == id {
+		return s.connection, true, nil
+	}
 	return integrations.Connection{}, false, nil
 }
 
-func (connectionStore) ListConnections(context.Context, string) ([]integrations.Connection, error) {
+func (s *connectionStore) ListConnections(_ context.Context, provider string) ([]integrations.Connection, error) {
+	if s.connection.Provider == provider {
+		return []integrations.Connection{s.connection}, nil
+	}
 	return nil, nil
 }
 
-func (connectionStore) DeleteConnection(context.Context, string) (bool, error) {
-	return false, nil
-}
-
-type remoteMCPStore struct {
-	servers []mcpconfig.Server
-	nextID  int
-}
-
-func (s *remoteMCPStore) ListMCPServers() ([]mcpconfig.Server, error) {
-	return append([]mcpconfig.Server(nil), s.servers...), nil
-}
-
-func (s *remoteMCPStore) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, error) {
-	s.nextID++
-	server := mcpconfig.Server{
-		ID:        "mcp_test",
-		Name:      input.Name,
-		Transport: mcpconfig.TransportStreamableHTTP,
-		URL:       input.URL,
-		Enabled:   input.Enabled,
+func (s *connectionStore) DeleteConnection(_ context.Context, id string) (bool, error) {
+	if s.connection.ID != id {
+		return false, nil
 	}
-	s.servers = append(s.servers, server)
-	return server, nil
+	s.connection = integrations.Connection{}
+	return true, nil
 }
 
-func (s *remoteMCPStore) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconfig.Server, error) {
-	for i := range s.servers {
-		if s.servers[i].ID != id {
-			continue
-		}
-		s.servers[i].Name = input.Name
-		s.servers[i].URL = input.URL
-		s.servers[i].Enabled = input.Enabled
-		return s.servers[i], nil
-	}
-	return s.CreateMCPServer(input)
+type mcpConnectionAuthorizer struct {
+	authURL      string
+	onAuthorized func(context.Context) error
 }
 
-func (s *remoteMCPStore) DeleteMCPServer(id string) error {
-	for i := range s.servers {
-		if s.servers[i].ID == id {
-			s.servers = append(s.servers[:i], s.servers[i+1:]...)
-			return nil
-		}
-	}
-	return nil
+func (a *mcpConnectionAuthorizer) AuthorizeWithHook(_ context.Context, _ mcpconfig.Server, _ mcpconfig.AuthorizeOptions, onAuthorized func(context.Context) error) mcpconfig.ServerStatus {
+	a.onAuthorized = onAuthorized
+	return mcpconfig.ServerStatus{Status: "needs_auth", AuthURL: a.authURL}
 }

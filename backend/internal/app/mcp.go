@@ -57,10 +57,6 @@ type connectionTokenStore interface {
 	LoadToken(context.Context, string) (integrationoauth.Token, bool, error)
 }
 
-// connectionMCPServerReader augments stored MCP servers with connection-backed
-// servers. Any connected provider whose plugin declares a token-authenticated
-// RemoteMCP is exposed by proxying that server with the stored user token, so no
-// user-managed server row is needed.
 type connectionMCPServerReader struct {
 	store   connectionTokenStore
 	catalog *connections.Catalog
@@ -74,10 +70,10 @@ func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) 
 	ctx := context.Background()
 	for _, plugin := range r.catalog.ListPlugins() {
 		remote := plugin.RemoteMCP
-		if remote == nil || !remote.TokenAuth {
+		if remote == nil || !plugin.UsesConnectionMCP() {
 			continue
 		}
-		backed, err := r.tokenBackedServers(ctx, plugin.Provider.ID, remote.URL)
+		backed, err := r.connectionBackedServers(ctx, plugin, remote.URL)
 		if err != nil {
 			return nil, err
 		}
@@ -86,13 +82,27 @@ func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) 
 	return servers, nil
 }
 
-func (r connectionMCPServerReader) tokenBackedServers(ctx context.Context, providerID, url string) ([]mcpconfig.Server, error) {
+func (r connectionMCPServerReader) connectionBackedServers(ctx context.Context, plugin integrations.Plugin, url string) ([]mcpconfig.Server, error) {
+	providerID := plugin.Provider.ID
+	if providerID == "" {
+		providerID = plugin.ID
+	}
 	accounts, err := r.store.ListConnections(ctx, providerID)
 	if err != nil {
 		return nil, err
 	}
 	var out []mcpconfig.Server
 	for _, account := range accounts {
+		if plugin.PrimaryAuthKind() == integrations.AuthKindMCPConnection {
+			out = append(out, mcpconfig.Server{
+				ID:        account.ID,
+				Name:      remoteServerName(account),
+				Transport: mcpconfig.TransportStreamableHTTP,
+				URL:       url,
+				Enabled:   true,
+			})
+			continue
+		}
 		token, ok, err := r.store.LoadToken(ctx, account.ID)
 		if err != nil {
 			return nil, err

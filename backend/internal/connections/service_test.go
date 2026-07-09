@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
+	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
 	"github.com/wins/jaz/backend/pkg/integrations"
@@ -181,6 +182,25 @@ func TestServiceDisconnectAccount(t *testing.T) {
 	}
 	if _, err := service.DisconnectAccount(context.Background(), "gmail:missing"); !errors.Is(err, ErrConnectionNotFound) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestServiceDisconnectConnectionBackedMCPRefreshesTools(t *testing.T) {
+	store := serviceStore{
+		connections: []integrations.Connection{{
+			ID:       "slack:acme-u1",
+			Provider: slackconnector.ProviderID,
+			Alias:    "acme",
+		}},
+	}
+	service := NewService(NewCatalog(), &store, nil)
+
+	result, err := service.DisconnectAccount(context.Background(), "slack:acme-u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.MCPServersChanged {
+		t.Fatalf("result = %#v, want MCP server change", result)
 	}
 }
 
