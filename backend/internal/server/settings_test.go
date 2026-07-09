@@ -187,9 +187,10 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 			ProviderMode     string   `json:"provider_mode"`
 			ModelProviderIDs []string `json:"model_provider_ids"`
 			ModelProviders   []struct {
-				ID         string `json:"id"`
-				Label      string `json:"label"`
-				Configured bool   `json:"configured"`
+				ID           string `json:"id"`
+				Label        string `json:"label"`
+				DefaultModel string `json:"default_model"`
+				Configured   bool   `json:"configured"`
 			} `json:"model_providers"`
 			AuthProviderID string `json:"auth_provider_id"`
 			SupportsAuth   bool   `json:"supports_auth"`
@@ -206,8 +207,13 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("providers = %#v", got.Providers)
 	}
 	if got.ACP["codex"].Enabled ||
-		got.ACP["codex"].Model != "gpt-5.5" {
+		got.ACP["codex"].Model != provider.OpenAIModelGPT56Sol {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
+	}
+	if !hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Sol, "none,minimal,low,medium,high,xhigh,max") ||
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Terra, "none,minimal,low,medium,high,xhigh,max") ||
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Luna, "none,minimal,low,medium,high,xhigh,max") {
+		t.Fatalf("codex model options missing GPT-5.6 family %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
 		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter" {
@@ -215,8 +221,10 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||
 		got.ACPOptions["codex"].ModelProviders[0].Label != "OpenAI OAuth" ||
+		got.ACPOptions["codex"].ModelProviders[0].DefaultModel != acp.CodexOpenAIDefaultModel ||
 		got.ACPOptions["codex"].ModelProviders[1].ID != acp.CodexProviderOpenAIAPIKey ||
-		got.ACPOptions["codex"].ModelProviders[1].Label != "OpenAI API key" {
+		got.ACPOptions["codex"].ModelProviders[1].Label != "OpenAI API key" ||
+		got.ACPOptions["codex"].ModelProviders[1].DefaultModel != acp.CodexOpenAIDefaultModel {
 		t.Fatalf("unexpected codex model providers %#v", got.ACPOptions["codex"].ModelProviders)
 	}
 	if got.ACP["grok"].Enabled ||
@@ -232,6 +240,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("unexpected opencode defaults %#v", got.ACP["opencode"])
 	}
 	if !hasReasoningEffort(got.ACPOptions["claude"].ReasoningEfforts, "ultracode") ||
+		!hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "max") ||
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}

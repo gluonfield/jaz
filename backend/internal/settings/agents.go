@@ -140,7 +140,7 @@ func WorkerAgentModel(agent string, defaults AgentDefaults) string {
 		if strings.TrimSpace(defaults.ACP[acp.AgentCodex].ModelProvider) == provider.ProviderOpenRouter {
 			return provider.DefaultOpenRouterModel
 		}
-		return provider.DefaultOpenAIModel
+		return acp.CodexOpenAIDefaultModel
 	case acp.AgentClaude:
 		return "default"
 	case acp.AgentGrok:

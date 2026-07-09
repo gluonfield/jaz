@@ -41,7 +41,7 @@ window.__JAZ_DEFAULTS__ = {
   // These pre-select the model/effort for a fresh thread; a choice the user makes
   // in that thread wins, and an omitted field falls back to Settings → Agents.
   // agents: {
-  //   codex:    { model: 'gpt-5.5', reasoningEffort: 'high' },
+  //   codex:    { model: 'gpt-5.6-sol', reasoningEffort: 'high' },
   //   claude:   { reasoningEffort: 'max' },
   //   opencode: { model: 'anthropic/claude-sonnet-4-6' },
   // },

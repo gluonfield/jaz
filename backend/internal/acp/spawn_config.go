@@ -81,6 +81,9 @@ func (m *Manager) defaultSpawnAgent() (string, error) {
 
 func agentProviderDefaultModel(agent, id string, providers map[string]provider.ModelProviderConfig) string {
 	if CanonicalAgentName(agent) == AgentCodex {
+		if strings.EqualFold(strings.TrimSpace(id), provider.ProviderOpenAI) {
+			return CodexOpenAIDefaultModel
+		}
 		if meta, ok := codexProvider(id, providers); ok {
 			return strings.TrimSpace(meta.DefaultModel)
 		}

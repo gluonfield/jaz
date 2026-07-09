@@ -17,8 +17,8 @@ Run the server binary directly on the server:
 `jaz serve` and `jaz server` remain compatibility aliases for `jaz`.
 
 Agent defaults are stored in the database and edited from Settings > Agents.
-The built-in Jaz ACP agent defaults to OpenRouter with
-`openai/gpt-5.4-mini`.
+Codex defaults to OpenAI OAuth with `gpt-5.6-sol`; OpenCode defaults to
+OpenRouter with `z-ai/glm-5.2`.
 
 Put the OpenRouter key in `.env` or your shell:
 

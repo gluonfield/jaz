@@ -61,7 +61,7 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 		{
 			name:    "codex",
 			agent:   acp.AgentCodex,
-			model:   "gpt-5.4-mini",
+			model:   acp.CodexOpenAIDefaultModel,
 			effort:  "xhigh",
 			allowed: []string{"low", "medium", "high", "xhigh"},
 		},

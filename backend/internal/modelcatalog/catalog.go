@@ -53,16 +53,23 @@ func withUltracode(efforts []string) []string {
 
 var (
 	codexHarnessEfforts  = []string{"none", "minimal", "low", "medium", "high", "xhigh"}
+	codexGPT56Efforts    = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
 	claudeHarnessEfforts = []string{"low", "medium", "high", "xhigh", "max", "ultracode"}
 	openAIModels         = []Model{
-		{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
+		{Value: provider.OpenAIModelGPT56Sol, Label: "GPT-5.6 Sol", Description: "Frontier capability", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-sol", ReasoningEfforts: codexGPT56Efforts},
+		{Value: provider.OpenAIModelGPT56Terra, Label: "GPT-5.6 Terra", Description: "Balanced capability and cost", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-terra", ReasoningEfforts: codexGPT56Efforts},
+		{Value: provider.OpenAIModelGPT56Luna, Label: "GPT-5.6 Luna", Description: "Efficient high-volume workloads", ContextLength: 400000, OpenRouterID: "openai/gpt-5.6-luna", ReasoningEfforts: codexGPT56Efforts},
+		{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Previous frontier model", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
 		{Value: provider.DefaultOpenAIModel, Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
 		{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Tuned for coding", ContextLength: 400000},
 	}
 	agentModels = map[string][]Model{
 		"codex": {
-			{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
+			{Value: provider.OpenAIModelGPT56Sol, Label: "GPT-5.6 Sol", Description: "Frontier capability", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-sol", ReasoningEfforts: codexGPT56Efforts},
+			{Value: provider.OpenAIModelGPT56Terra, Label: "GPT-5.6 Terra", Description: "Balanced capability and cost", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-terra", ReasoningEfforts: codexGPT56Efforts},
+			{Value: provider.OpenAIModelGPT56Luna, Label: "GPT-5.6 Luna", Description: "Efficient high-volume workloads", ContextLength: 400000, OpenRouterID: "openai/gpt-5.6-luna", ReasoningEfforts: codexGPT56Efforts},
 			{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Account-gated research preview", ContextLength: 400000},
+			{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Previous frontier model", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
 			{Value: "gpt-5.4", Label: "GPT-5.4", Description: "Strong coding model", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4"},
 			{Value: provider.DefaultOpenAIModel, Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
 		},
@@ -89,8 +96,11 @@ var (
 		},
 		"opencode": {
 			{Value: provider.DefaultOpenRouterModel, Label: "GLM 5.2", Description: "Default OpenRouter coding model", ContextLength: 1048576},
+			{Value: "openai/" + provider.OpenAIModelGPT56Terra, Label: "GPT-5.6 Terra", Description: "Balanced capability and cost", ContextLength: 1050000},
+			{Value: "openai/" + provider.OpenAIModelGPT56Sol, Label: "GPT-5.6 Sol", Description: "Frontier capability", ContextLength: 1050000},
+			{Value: "openai/" + provider.OpenAIModelGPT56Luna, Label: "GPT-5.6 Luna", Description: "Efficient high-volume workloads", ContextLength: 400000},
 			{Value: "openai/gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000},
-			{Value: "openai/gpt-5.5", Label: "GPT-5.5", Description: "Most capable", ContextLength: 1050000},
+			{Value: "openai/gpt-5.5", Label: "GPT-5.5", Description: "Previous frontier model", ContextLength: 1050000},
 			{Value: "deepseek/deepseek-v4-flash", Label: "DeepSeek V4 Flash", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
 			{Value: "xiaomi/mimo-v2.5", Label: "MiMo-V2.5", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
 			{Value: "minimax/minimax-m3", Label: "MiniMax M3", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
