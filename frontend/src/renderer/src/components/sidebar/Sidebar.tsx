@@ -650,7 +650,7 @@ export function Sidebar({
           that should dismiss the full-screen drawer, so drop it there. */}
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3 max-sm:gap-6 max-sm:p-4">
+      <nav className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3 max-sm:gap-6 max-sm:p-4">
         <div className="flex flex-col gap-0.5 max-sm:gap-1">
           <Link
             to="/new"

@@ -59,7 +59,7 @@ export function CodeDiffPanel({
           <X size={15} />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">
         {changes.isPending ? (
           <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
             <LoaderCircle size={13} className="animate-spin" aria-hidden />

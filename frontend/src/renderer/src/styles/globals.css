@@ -173,6 +173,33 @@
   scrollbar-width: thin;
 }
 
+.scrollbar-quiet {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.scrollbar-quiet:hover,
+.scrollbar-quiet:focus-within {
+  scrollbar-color: color-mix(in oklab, var(--color-ink-3) 55%, transparent) transparent;
+}
+.scrollbar-quiet::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scrollbar-quiet::-webkit-scrollbar-track,
+.scrollbar-quiet::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.scrollbar-quiet::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-color: transparent;
+  background-clip: content-box;
+}
+.scrollbar-quiet:hover::-webkit-scrollbar-thumb,
+.scrollbar-quiet:focus-within::-webkit-scrollbar-thumb {
+  background-color: color-mix(in oklab, var(--color-ink-3) 55%, transparent);
+}
+
 /* Rendered markdown: compact, token-based typography for chat and file previews. */
 :where(.chat-prose, .file-prose) {
   min-width: 0;

@@ -13,7 +13,7 @@ export function SidePanelShell({
   onKeyDownCapture?: KeyboardEventHandler<HTMLElement>
   children: ReactNode
 }) {
-  const sizing = variant === 'fill' ? 'min-h-0 flex-1 overflow-hidden' : 'max-h-full overflow-y-auto'
+  const sizing = variant === 'fill' ? 'min-h-0 flex-1 overflow-hidden' : 'scrollbar-quiet max-h-full overflow-y-auto'
   return (
     // Phone: ignore the fixed per-view width and fill the full-screen overlay
     // (the inline width still drives the docked desktop column).

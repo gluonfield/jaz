@@ -455,7 +455,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           {sidePanel.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
           <div className="relative h-full min-w-0 flex-1">
-            <div ref={attachScroll} className="h-full overflow-y-auto" onScroll={onThreadScroll}>
+            <div ref={attachScroll} className="scrollbar-quiet h-full overflow-y-auto" onScroll={onThreadScroll}>
               <div
                 ref={threadFind.rootRef}
                 className={`${THREAD_COLUMN_CLASS} pt-2`}
