@@ -38,11 +38,14 @@ type onboardingACPProbe struct {
 }
 
 type onboardingACPAdapterStatus struct {
-	Adapter  string `json:"adapter"`
-	Version  string `json:"version,omitempty"`
-	Platform string `json:"platform,omitempty"`
-	State    string `json:"state"`
-	Message  string `json:"message,omitempty"`
+	Adapter         string `json:"adapter"`
+	Version         string `json:"version,omitempty"`
+	Platform        string `json:"platform,omitempty"`
+	State           string `json:"state"`
+	Message         string `json:"message,omitempty"`
+	BytesDownloaded int64  `json:"bytes_downloaded,omitempty"`
+	BytesTotal      int64  `json:"bytes_total,omitempty"`
+	ProgressPercent int    `json:"progress_percent,omitempty"`
 }
 
 type onboardingRequest struct {
@@ -278,11 +281,14 @@ func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapter
 		status = s.ACPAdapters.Status(adapter)
 	}
 	return &onboardingACPAdapterStatus{
-		Adapter:  status.Adapter,
-		Version:  status.Version,
-		Platform: status.Platform,
-		State:    status.State,
-		Message:  status.Message,
+		Adapter:         status.Adapter,
+		Version:         status.Version,
+		Platform:        status.Platform,
+		State:           status.State,
+		Message:         status.Message,
+		BytesDownloaded: status.BytesDownloaded,
+		BytesTotal:      status.BytesTotal,
+		ProgressPercent: status.ProgressPercent,
 	}
 }
 
