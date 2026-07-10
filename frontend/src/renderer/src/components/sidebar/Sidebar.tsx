@@ -652,7 +652,7 @@ export function Sidebar({
           that should dismiss the full-screen drawer, so drop it there. */}
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
-      <div className="flex shrink-0 flex-col gap-0.5 px-3 pt-3 pb-4 max-sm:gap-1 max-sm:p-4 max-sm:pb-5">
+      <div className="flex shrink-0 flex-col gap-0.5 px-3 max-sm:gap-1 max-sm:px-4">
         <Link
           to="/new"
           className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
