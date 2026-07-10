@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -12,7 +12,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { modelProviderRequiresKey, providerHidden, providerKeyUrl } from '@/lib/agentRuntimes'
+import { modelProviderRequiresKey, providerHidden } from '@/lib/agentRuntimes'
 import { createProvider, deleteProvider, getProviderStatuses, updateProvider } from '@/lib/api/providers'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
@@ -188,9 +188,9 @@ export function AgentProvidersSettings() {
   )
 }
 
-// One row in the providers list: a collapsed header with the brand mark, a
-// connection pill and a check, expanding to the key field. Custom providers get
-// an edit/remove footer; built-ins are key-only.
+// One row in the providers list: a collapsed header with the brand mark and
+// connection state, expanding to the key field. Custom providers get an
+// edit/remove footer; built-ins are key-only.
 function ProviderRow({
   provider,
   keyDraft,
@@ -220,7 +220,6 @@ function ProviderRow({
     : !needsKey && statusPending
       ? 'checking'
       : 'disconnected'
-  const keyUrl = providerKeyUrl(provider.id)
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -237,7 +236,7 @@ function ProviderRow({
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-[13.5px] font-medium text-ink">{provider.label}</span>
-            <ProviderPill state={state} />
+            {state === 'connected' ? null : <ProviderPill state={state} />}
           </span>
           {provider.base_url ? (
             <span className="truncate font-mono text-[11px] text-ink-3">
@@ -286,16 +285,6 @@ function ProviderRow({
                     className="font-mono text-[12px]"
                     aria-label={`${provider.label} API key`}
                   />
-                  {keyUrl ? (
-                    <button
-                      type="button"
-                      onClick={() => window.open(keyUrl, '_blank', 'noopener,noreferrer')}
-                      className="inline-flex w-fit items-center gap-1 text-[12px] text-primary transition-colors duration-150 hover:text-primary-strong"
-                    >
-                      Where do I find my {provider.label} key?
-                      <ExternalLink size={12} />
-                    </button>
-                  ) : null}
                   {remote ? (
                     <p className="text-pretty text-[12px] text-ink-3">
                       API keys can only be added from the machine running jaz.
