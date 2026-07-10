@@ -249,7 +249,7 @@ function ACPAgentRow({
           onClick={() => setExpanded((open) => !open)}
           aria-expanded={expanded}
           aria-label={`${expanded ? 'Collapse' : 'Expand'} ${agentLabel(agent)}`}
-          className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pl-3 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 text-left"
         >
           <ChevronDown
             size={15}
@@ -280,7 +280,7 @@ function ACPAgentRow({
 
       <Collapse open={expanded}>
         {showAuthPanel ? (
-          <div className="border-t border-border/70 px-3 py-3">
+          <div className="border-t border-border/70 px-3 py-2.5">
             {/* Auth is never gated by the Enabled toggle: you must be able to connect
                 an agent you skipped in onboarding. Connecting it turns it on.
                 Provider-backed agents inherit their key from the linked Model
@@ -335,7 +335,7 @@ function ACPAgentRow({
               />
             </SettingsRow>
             {selectedProviderNativeAuth ? null : (
-              <div className="border-t border-border/70 px-3 py-3">
+              <div className="border-t border-border/70 px-3 py-2.5">
                 <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
               </div>
             )}
@@ -546,7 +546,7 @@ function SettingsRow({
   children: ReactNode
 }) {
   return (
-    <div className="grid grid-cols-1 gap-2 border-t border-border/70 px-3 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] md:items-center">
+    <div className="grid grid-cols-1 gap-2 border-t border-border/70 px-3 py-2.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] md:items-center">
       <div className="min-w-0">
         <p className="text-[13px] font-medium text-ink">{title}</p>
         <p className="mt-0.5 text-[12px] text-ink-3">{description}</p>

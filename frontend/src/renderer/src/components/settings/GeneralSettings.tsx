@@ -8,8 +8,8 @@ export function GeneralSettings() {
   const [experimentalEnabled, setExperimentalEnabled] = useExperimentalFeaturesEnabled()
 
   return (
-    <section className="py-5">
-      <div className="space-y-5">
+    <section className="py-4">
+      <div className="space-y-4">
         <section>
           <div>
             <p className="text-sm font-medium text-ink">Features</p>
@@ -17,7 +17,7 @@ export function GeneralSettings() {
           </div>
 
           <SettingsCard className="mt-4 overflow-hidden">
-            <div className="grid grid-cols-1 gap-2 px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+            <div className="grid grid-cols-1 gap-2 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-ink">Enable experimental features</p>
                 <p className="mt-0.5 text-[12px] text-ink-3">
@@ -44,7 +44,7 @@ export function GeneralSettings() {
           </div>
 
           <SettingsCard className="mt-4 overflow-hidden">
-            <div className="grid grid-cols-1 gap-2 px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+            <div className="grid grid-cols-1 gap-2 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-ink">Share telemetry</p>
                 <p className="mt-0.5 text-[12px] text-ink-3">

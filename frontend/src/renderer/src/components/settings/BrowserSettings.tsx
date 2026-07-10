@@ -71,7 +71,7 @@ export function BrowserSettings() {
 
   if (status.isPending) {
     return (
-      <section className="py-5">
+      <section className="py-4">
         <Skeleton className="mb-4 h-7 w-40" />
         <Skeleton className="mb-4 h-28" />
         <Skeleton className="h-40" />
@@ -113,7 +113,7 @@ export function BrowserSettings() {
   const endpoint = extensionEndpoint()
 
   return (
-    <section className="py-5">
+    <section className="py-4">
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-ink">Browser</h1>
@@ -132,7 +132,7 @@ export function BrowserSettings() {
         </div>
       </header>
 
-      <SettingsCard className="mt-4 px-4 py-3">
+      <SettingsCard className="mt-4 px-4 py-2.5">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-ink">Browser backend</p>
@@ -158,7 +158,7 @@ export function BrowserSettings() {
         </div>
       </SettingsCard>
 
-      <SettingsCard className="mt-4 px-4 py-3">
+      <SettingsCard className="mt-4 px-4 py-2.5">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-ink">Browser worker agent</p>
@@ -182,7 +182,7 @@ export function BrowserSettings() {
       </SettingsCard>
 
       <SettingsCard className="mt-4 overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
           <div>
             <p className="text-[13px] font-medium text-ink">Chrome extension</p>
             <p className="mt-0.5 text-[12px] text-ink-2">
@@ -210,7 +210,7 @@ export function BrowserSettings() {
           </div>
         </div>
 
-        <dl className="grid grid-cols-1 gap-x-4 gap-y-3 px-4 py-3 text-[12px] md:grid-cols-[140px_minmax(0,1fr)]">
+        <dl className="grid grid-cols-1 gap-x-4 gap-y-3 px-4 py-2.5 text-[12px] md:grid-cols-[140px_minmax(0,1fr)]">
           {endpoint ? (
             <>
               <dt className="text-ink-3">Endpoint</dt>

@@ -231,7 +231,7 @@ export function MemorySettings() {
   const memoryEffort = memory.reasoning_effort ?? ''
 
   return (
-    <div className="flex flex-col gap-5 py-5">
+    <div className="flex flex-col gap-4 py-4">
       <header>
         <h1 className="text-lg font-semibold text-ink">Memory</h1>
         <p className="mt-0.5 text-[13px] text-ink-2">Saved context for future agent sessions.</p>
@@ -314,7 +314,7 @@ export function MemorySettings() {
           <section>
             <SectionHeader title="Status" />
             <SettingsCard className="mt-3">
-              <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-col gap-3 px-4 py-2.5 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="text-[13px] font-medium text-ink">{summary.label}</p>
@@ -431,7 +431,7 @@ export function MemorySettings() {
           ) : null}
         </div>
       ) : (
-        <SettingsCard className="px-4 py-4">
+        <SettingsCard className="px-4 py-3">
           <p className="text-[13px] font-medium text-ink">Memory is off</p>
           <p className="mt-0.5 text-[12px] text-ink-2">Agents will not receive saved memory.</p>
         </SettingsCard>
@@ -455,7 +455,7 @@ function MemorySettingsRow({
 }) {
   return (
     <div
-      className={`grid grid-cols-1 gap-2 border-t border-border/70 px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] md:items-center ${
+      className={`grid grid-cols-1 gap-2 border-t border-border/70 px-4 py-2.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_minmax(220px,320px)] md:items-center ${
         disabled ? 'opacity-50' : ''
       }`}
     >
@@ -512,7 +512,7 @@ function SourceQueueStatus({
   const active = queue.pending > 0 || queue.processing > 0
   const status = queue.error ? 'Needs attention' : active ? queueActivity(queue) : 'Idle'
   return (
-    <div className="min-w-0 px-4 py-3">
+    <div className="min-w-0 px-4 py-2.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <span className="flex items-center gap-1.5 text-[12px] font-medium text-ink">
@@ -573,7 +573,7 @@ function MaintenanceAction({
   children: ReactNode
 }) {
   return (
-    <div className="grid grid-cols-1 gap-2 border-t border-border/70 px-4 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className="grid grid-cols-1 gap-2 border-t border-border/70 px-4 py-2.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
         <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink">
           {title}

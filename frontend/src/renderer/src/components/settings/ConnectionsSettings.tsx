@@ -64,7 +64,7 @@ export function ConnectionsSettings() {
   }
 
   return (
-    <section className="py-5">
+    <section className="py-4">
       <div>
         <p className="text-sm font-medium text-ink">Connections</p>
         <p className="mt-0.5 text-[13px] text-ink-2">
@@ -90,7 +90,7 @@ export function ConnectionsSettings() {
               className="h-9"
             />
 
-            <div className="mt-5 space-y-6">
+            <div className="mt-4 space-y-5">
               {visibleAccounts.length > 0 ? (
                 <ConnectionSection title="Connected">
                   {visibleAccounts.map(({ plugin, account }) => (
