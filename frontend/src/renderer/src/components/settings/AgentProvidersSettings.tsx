@@ -229,7 +229,7 @@ function ProviderRow({
         type="button"
         aria-expanded={expanded}
         onClick={() => setExpanded((open) => !open)}
-        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-150 hover:bg-surface-2/50"
+        className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2/50"
       >
         <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-bg text-ink">
           <ProviderLogo provider={provider.icon || provider.id} />

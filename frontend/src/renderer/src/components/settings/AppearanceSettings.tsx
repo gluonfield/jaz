@@ -73,7 +73,7 @@ function Row({
   children: ReactNode
 }) {
   return (
-    <div className="grid grid-cols-1 gap-2 border-t border-border px-3 py-3 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className="grid grid-cols-1 gap-2 border-t border-border px-3 py-2.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <div className="min-w-0">
         <p className="text-[13px] font-medium text-ink">{title}</p>
         {description ? <p className="mt-0.5 text-[12px] text-ink-3">{description}</p> : null}
@@ -187,7 +187,7 @@ export function AppearanceSettings() {
   const { settings, setAppearance } = useAppearance()
 
   return (
-    <section className="py-5">
+    <section className="py-4">
       <p className="text-sm font-medium text-ink">Appearance</p>
 
       <div className="mt-4">
@@ -198,7 +198,7 @@ export function AppearanceSettings() {
         <ThemeConfigPreview />
       </div>
 
-      <SettingsCard className="mt-6 overflow-hidden">
+      <SettingsCard className="mt-5 overflow-hidden">
         <Row
           title="Animated effects"
           description="The rainbow glow around the composer, shimmer dots, and particle fields. Off swaps the composer glow for a calm border."
@@ -237,7 +237,7 @@ export function AppearanceSettings() {
         </Row>
       </SettingsCard>
 
-      <div className="mt-8 flex items-end justify-between gap-3">
+      <div className="mt-6 flex items-end justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-ink">Color theme</p>
           <p className="mt-0.5 text-[13px] text-ink-2">
@@ -259,7 +259,7 @@ export function AppearanceSettings() {
         <ThemeModeCard mode="dark" />
       </div>
 
-      <div className="mt-8">
+      <div className="mt-6">
         <p className="text-sm font-medium text-ink">Fonts</p>
         <p className="mt-0.5 text-[13px] text-ink-2">
           Pick from the fonts installed on your system, or type any family name. Leave blank for the
@@ -287,7 +287,7 @@ export function AppearanceSettings() {
         </Row>
       </SettingsCard>
 
-      <div className="mt-8">
+      <div className="mt-6">
         <p className="text-sm font-medium text-ink">Transcript</p>
         <p className="mt-0.5 text-[13px] text-ink-2">How an agent&apos;s work shows up in the conversation.</p>
       </div>

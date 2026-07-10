@@ -44,7 +44,7 @@ export function UsageSettings() {
   const pricing = useMemo(() => buildPricingIndex(openRouter.data ?? []), [openRouter.data])
 
   return (
-    <section className="py-5">
+    <section className="py-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-ink">Usage</p>
@@ -69,7 +69,7 @@ export function UsageSettings() {
 
 function UsageSkeleton() {
   return (
-    <SettingsCard className="mt-4 p-4">
+    <SettingsCard className="mt-4 p-3.5">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => (
           <Skeleton key={index} className="h-12" />
@@ -123,7 +123,7 @@ function UsagePanel({
   }, [agentSettings, chartDays, pricing])
 
   return (
-    <SettingsCard className="mt-4 p-4">
+    <SettingsCard className="mt-4 p-3.5">
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-control bg-border/70 md:grid-cols-4">
         <UsageStat label="Last 7 days" value={formatTokens(totalUsageTokens(last7))} detail="total tokens" />
         <UsageStat label="Last 30 days" value={formatTokens(totalUsageTokens(last30))} detail="total tokens" />
@@ -131,7 +131,7 @@ function UsagePanel({
         <UsageStat label="Cache hit rate" value={cacheHitLabel} detail="of input + cache" />
       </div>
 
-      <div className="mt-5 min-w-0 rounded-control bg-bg/45 px-3 py-3">
+      <div className="mt-4 min-w-0 rounded-control bg-bg/45 px-3 py-2.5">
         <div className="mb-2 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-[12px] font-medium text-ink">
             <ChartNoAxesColumn size={14} className="text-ink-3" />

@@ -14,7 +14,7 @@ import { keys } from '@/lib/query/keys'
 
 export function ArchivedThreadsSettings() {
   return (
-    <section className="py-5">
+    <section className="py-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-ink">Archived threads</p>

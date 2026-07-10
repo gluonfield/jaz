@@ -52,7 +52,7 @@ export function DevicesSettings() {
   const busy = approve.isPending || reject.isPending || revoke.isPending
 
   return (
-    <section className="py-5">
+    <section className="py-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-ink">Devices</p>
@@ -70,7 +70,7 @@ export function DevicesSettings() {
         ) : devices.isError ? (
           <p className="py-2 text-[13px] text-danger">{devices.error.message}</p>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {pending.length > 0 ? (
               <DeviceGroup title="Pending approval">
                 {pending.map((pairing) => (
@@ -260,7 +260,7 @@ function PendingRow({
   onReject: () => void
 }) {
   return (
-    <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <DeviceSummary device={pairing.device} detail={`Requested ${formatDate(pairing.created_at)}`} />
       <div className="flex items-center gap-1.5 md:justify-self-end">
         <Button size="sm" variant="primary" disabled={busy} onClick={onApprove}>
@@ -296,7 +296,7 @@ function DeviceRow({
       : 'Not seen yet'
 
   return (
-    <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <DeviceSummary device={device} detail={detail} current={current} />
       {!revoked ? (
         <div className="flex items-center gap-1.5 md:justify-self-end">
