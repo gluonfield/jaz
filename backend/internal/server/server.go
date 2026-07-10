@@ -340,6 +340,12 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, se
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		if pending := session.PendingSteer; pending != nil && len(records) > 0 {
+			last := records[len(records)-1]
+			if last.Role == "user" && last.Content == pending.Text && !last.CreatedAt.Before(session.LastAttentionAt) {
+				session.PendingSteer = nil
+			}
+		}
 		messages = messageRecordsResponse(records)
 	} else {
 		loaded, err := s.Store.LoadMessages(session.ID)

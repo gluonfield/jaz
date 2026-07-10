@@ -99,14 +99,14 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 		return Job{}, err
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
+	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
+	m.touchJobAttention(job)
 	if opts.transcript == sendTranscriptUserMessage {
 		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
 			m.log.Error("append user message failed", "session", job.ID, "error", err)
 		}
 	}
-	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
-	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
-	m.touchJobAttention(job)
 	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.Snapshot())
 	if local != nil {
@@ -166,10 +166,10 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, ErrPromptQueueingUnsupported
 	}
 	handoff := m.cancelPendingPermissionsForSteer(job, done)
+	m.touchJobAttention(job)
 	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
 		m.log.Error("append user message failed", "session", job.ID, "error", err)
 	}
-	m.touchJobAttention(job)
 	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.Snapshot())
 	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, promptReq)
