@@ -33,6 +33,8 @@ import { looksLikeOpaqueToolID, type ProviderSubagentView } from '@/lib/provider
 import type { SendMessageHandler } from '@/lib/sendMessage'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
+import { modalDialogOpen } from '@/lib/dom/modal'
+import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { keys } from '@/lib/query/keys'
 import { agentLabel } from '@/lib/agentLabel'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
@@ -367,6 +369,29 @@ function ActionRow({
   spin?: boolean
   children: ReactNode
 }) {
+  const [queueHovered, setQueueHovered] = useState(false)
+  useWindowEvent(
+    'keydown',
+    (event) => {
+      const target = event.target
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.key !== 'q' ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        modalDialogOpen() ||
+        (target instanceof HTMLElement &&
+          (target.isContentEditable || target.matches('input, textarea, select')))
+      ) {
+        return
+      }
+      event.preventDefault()
+      onQueue?.()
+    },
+    Boolean(onQueue && queueHovered && !queueDisabled),
+  )
   const content = (
     <>
       <Icon size={13} className={`shrink-0 text-ink-3 ${spin ? 'animate-spin' : ''}`} />
@@ -387,7 +412,11 @@ function ActionRow({
     )
   }
   return (
-    <div className="group/action-row flex h-7 w-full items-center rounded-full text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-within:bg-surface-2 focus-within:text-ink">
+    <div
+      onMouseEnter={() => setQueueHovered(true)}
+      onMouseLeave={() => setQueueHovered(false)}
+      className="group/action-row flex h-7 w-full items-center rounded-full text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-within:bg-surface-2 focus-within:text-ink"
+    >
       <button
         type="button"
         onClick={onClick}
