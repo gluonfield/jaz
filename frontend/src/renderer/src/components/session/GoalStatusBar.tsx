@@ -34,21 +34,22 @@ export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
   const tokenProgress = goalTokenProgress(goal)
 
   return (
-    <motion.div
-      layout={!reduceMotion}
-      transition={{ layout: { duration: 0.3, ease: [0.2, 0, 0, 1] } }}
-      className="mb-2 rounded-[8px] bg-primary-soft/70 px-3 py-1.5 text-[13px] shadow-sm ring-1 ring-primary/20"
-    >
+    <div className="mb-2 rounded-[8px] bg-primary-soft/70 px-3 py-1.5 text-[13px] shadow-sm ring-1 ring-primary/20">
       <button
         type="button"
         className="flex w-full min-w-0 items-center gap-3 text-left transition-transform duration-150 active:scale-[0.99]"
         aria-expanded={expanded}
         onClick={() => setExpanded((value) => !value)}
       >
-        <div className={`min-w-0 flex-1 leading-5 ${expanded ? 'break-words' : 'truncate'}`}>
+        <motion.div
+          initial={false}
+          animate={{ height: expanded ? 'auto' : 20 }}
+          transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: [0.2, 0, 0, 1] }}
+          className="min-w-0 flex-1 overflow-hidden break-words leading-5"
+        >
           <span className="mr-2 font-medium text-primary-strong">{label}</span>
           {objective ? <span className="text-ink-2">{objective}</span> : null}
-        </div>
+        </motion.div>
         {objective ? (
           <ChevronDown
             className={`size-4 shrink-0 text-primary-strong/70 transition-transform ${reduceMotion ? 'duration-0' : 'duration-300 ease-out'} ${expanded ? 'rotate-180' : ''}`}
@@ -59,9 +60,9 @@ export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
       <AnimatePresence initial={false}>
         {expanded ? (
           <motion.div
-            initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -4 }}
-            animate={reduceMotion ? { opacity: 1 } : { height: 'auto', opacity: 1, y: 0 }}
-            exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -2 }}
+            initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            animate={reduceMotion ? { opacity: 1 } : { height: 'auto', opacity: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
             transition={reduceMotion ? { duration: 0.12 } : { duration: 0.3, ease: [0.2, 0, 0, 1] }}
             className="overflow-hidden"
           >
@@ -69,7 +70,7 @@ export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </motion.div>
+    </div>
   )
 }
 
