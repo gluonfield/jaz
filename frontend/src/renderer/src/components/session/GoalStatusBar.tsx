@@ -5,19 +5,21 @@ import { useEffect, useRef, useState } from 'react'
 import type { GoalEvent } from '@/lib/api/types'
 
 const numberFormatter = new Intl.NumberFormat()
+type NumberRoll = { direction: number; delay: number }
+
 const numberRoll: Variants = {
-  enter: (direction: number) => ({ opacity: 0, y: `${direction * 80}%`, filter: 'blur(2px)' }),
-  center: {
+  enter: ({ direction }: NumberRoll) => ({ opacity: 0, y: `${direction * 80}%`, filter: 'blur(2px)' }),
+  center: ({ delay }: NumberRoll) => ({
     opacity: 1,
     y: '0%',
     filter: 'blur(0px)',
-    transition: { duration: 0.28, ease: [0.2, 0, 0, 1] },
-  },
-  exit: (direction: number) => ({
+    transition: { duration: 0.7, delay, ease: [0.2, 0, 0, 1] },
+  }),
+  exit: ({ direction, delay }: NumberRoll) => ({
     opacity: 0,
     y: `${direction * -65}%`,
     filter: 'blur(2px)',
-    transition: { duration: 0.18, ease: 'easeIn' },
+    transition: { duration: 0.5, delay: delay / 2, ease: 'easeIn' },
   }),
 }
 
@@ -91,6 +93,7 @@ function RollingNumber({ value }: { value: number }) {
   const previous = useRef(value)
   const reduceMotion = useReducedMotion()
   const formatted = numberFormatter.format(value)
+  const characters = [...formatted]
   const direction = value < previous.current ? -1 : 1
 
   useEffect(() => {
@@ -100,20 +103,53 @@ function RollingNumber({ value }: { value: number }) {
   if (reduceMotion) return formatted
 
   return (
-    <span className="relative inline-grid overflow-hidden align-bottom tabular-nums">
+    <span className="relative inline-grid align-bottom tabular-nums">
       <span className="sr-only">{formatted}</span>
-      <AnimatePresence initial={false} custom={direction}>
+      <span className="inline-flex" aria-hidden="true">
+        {characters.map((character, index) => {
+          const place = characters.length - index
+          const delay = characters.length > 1 ? ((place - 1) / (characters.length - 1)) * 0.3 : 0
+          if (character < '0' || character > '9') return <span key={place}>{character}</span>
+          return (
+            <RollingDigit
+              key={place}
+              value={value}
+              character={character}
+              direction={direction}
+              delay={delay}
+            />
+          )
+        })}
+      </span>
+    </span>
+  )
+}
+
+function RollingDigit({
+  value,
+  character,
+  direction,
+  delay,
+}: {
+  value: number
+  character: string
+  direction: number
+  delay: number
+}) {
+  const roll = { direction, delay }
+  return (
+    <span className="relative inline-grid overflow-hidden align-bottom">
+      <AnimatePresence initial={false} custom={roll}>
         <motion.span
           key={value}
-          aria-hidden="true"
           className="col-start-1 row-start-1 block"
-          custom={direction}
+          custom={roll}
           variants={numberRoll}
           initial="enter"
           animate="center"
           exit="exit"
         >
-          {formatted}
+          {character}
         </motion.span>
       </AnimatePresence>
     </span>
