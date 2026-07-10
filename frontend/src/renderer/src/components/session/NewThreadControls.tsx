@@ -166,13 +166,14 @@ export function ModelSelect({
     >
       <div className="w-[260px]">
         {providers && providers.length > 1 && onProviderChange ? (
-          <div className="px-1 pt-1">
+          <div className="flex items-center justify-between gap-2 px-2 pt-1 pb-0.5">
+            <span className="text-[11px] text-ink-3">Provider</span>
             <Select
               value={provider ?? providers[0].value}
               options={providers}
               onChange={onProviderChange}
               aria-label="Provider"
-              className="w-full"
+              className="min-w-[140px] max-w-[180px]"
             />
           </div>
         ) : null}
@@ -188,7 +189,7 @@ export function ModelSelect({
                 onChange(typed)
               }
             }}
-            className="h-7 min-w-0 flex-1 rounded-full bg-ink/10 px-2.5 text-[12px] text-ink outline-none placeholder:text-ink-3 focus:bg-ink/15"
+            className="h-7 w-full rounded-full bg-ink/10 px-2.5 text-[12px] text-ink outline-none transition-colors duration-150 placeholder:text-ink-3 focus:bg-ink/15"
           />
         </div>
         <div className={`${showEffortSlider ? 'max-h-[180px]' : 'max-h-[240px]'} overflow-y-auto`}>
