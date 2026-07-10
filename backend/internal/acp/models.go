@@ -77,6 +77,7 @@ var claudeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), b
 
 var codexReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), baseReasoningEffortOptions...),
 	ReasoningEffortOption{Value: "max", Label: "Max"},
+	ReasoningEffortOption{Value: "ultra", Label: "Ultra"},
 )
 
 var openCodeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil), baseReasoningEffortOptions...),

@@ -139,8 +139,15 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 		values[provider.OpenAIModelGPT56Luna].ContextLength != 400000 {
 		t.Fatalf("unexpected GPT-5.6 metadata %#v", values)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max" {
+	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max,ultra" {
 		t.Fatalf("efforts before the catalog loads = %#v", models[0].ReasoningEfforts)
+	}
+	apiModels, err := NewService(nil).ProviderModels(provider.ProviderOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(apiModels[0].ReasoningEfforts, ","), "ultra") {
+		t.Fatalf("generic OpenAI API catalog must not advertise Codex Ultra: %#v", apiModels[0].ReasoningEfforts)
 	}
 
 	warmed := warmOpenRouterTestService(t, `{"data":[{
@@ -152,7 +159,7 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "none,low,medium,high,xhigh" {
+	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max,ultra" {
 		t.Fatalf("reasoning efforts = %#v", models[0].ReasoningEfforts)
 	}
 }
@@ -171,8 +178,14 @@ func TestServiceValidatesHarnessReasoningBeforeCatalogLoads(t *testing.T) {
 	if err := service.ValidateReasoningEffort("codex", "openai", provider.OpenAIModelGPT56Sol, "max"); err != nil {
 		t.Fatal(err)
 	}
+	if err := service.ValidateReasoningEffort("codex", "openai", provider.OpenAIModelGPT56Sol, "ultra"); err != nil {
+		t.Fatal(err)
+	}
 	if err := service.ValidateReasoningEffort("codex", "openrouter", "openai/gpt-5.5", "max"); err == nil {
 		t.Fatal("expected codex max reasoning to fail")
+	}
+	if err := service.ValidateReasoningEffort("opencode", "openai", provider.OpenAIModelGPT56Sol, "ultra"); err == nil {
+		t.Fatal("expected generic OpenAI provider Ultra reasoning to fail")
 	}
 }
 

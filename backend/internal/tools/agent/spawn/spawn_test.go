@@ -22,7 +22,10 @@ func TestDefinitionExposesAgentAndModelSelectors(t *testing.T) {
 	}
 	effort, _ := properties["reasoning_effort"].(map[string]any)
 	effortEnum, _ := effort["enum"].([]any)
-	if len(effortEnum) == 0 || !slices.Contains(effortEnum, any("xhigh")) || !slices.Contains(effortEnum, any("ultracode")) {
+	if len(effortEnum) == 0 ||
+		!slices.Contains(effortEnum, any("xhigh")) ||
+		!slices.Contains(effortEnum, any("ultra")) ||
+		!slices.Contains(effortEnum, any("ultracode")) {
 		t.Fatalf("reasoning_effort enum = %#v", effort["enum"])
 	}
 	if tools.DefinitionName(def) != "agent_spawn" {

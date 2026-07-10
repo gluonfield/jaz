@@ -106,7 +106,10 @@ func TestSpawnInputSchemaAdvertisesAgentEnums(t *testing.T) {
 	}
 	effort, _ := properties["reasoning_effort"].(map[string]any)
 	effortEnum, _ := effort["enum"].([]string)
-	if len(effortEnum) == 0 || !slices.Contains(effortEnum, "xhigh") || !slices.Contains(effortEnum, "ultracode") {
+	if len(effortEnum) == 0 ||
+		!slices.Contains(effortEnum, "xhigh") ||
+		!slices.Contains(effortEnum, "ultra") ||
+		!slices.Contains(effortEnum, "ultracode") {
 		t.Fatalf("reasoning_effort enum = %#v", effort["enum"])
 	}
 }

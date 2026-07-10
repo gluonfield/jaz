@@ -58,8 +58,10 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 		return nil, fmt.Errorf("unknown model provider %q", id)
 	}
 	switch strings.TrimSpace(meta.ID) {
-	case provider.ProviderOpenAI, codexOpenAIAPIKeyProvider:
+	case provider.ProviderOpenAI:
 		return s.enrichReasoning(cloneModels(openAIModels)), nil
+	case codexOpenAIAPIKeyProvider:
+		return withStaticReasoningEfforts(s.enrichReasoning(cloneModels(openAIModels)), agentModels["codex"]), nil
 	case provider.ProviderOpenRouter:
 		models, ok := s.providerModelSnapshot(meta)
 		if !ok {
@@ -77,7 +79,10 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 func (s *Service) AgentModels(agent string) []Model {
 	agent = strings.ToLower(strings.TrimSpace(agent))
 	models := s.enrichReasoning(cloneModels(agentModels[agent]))
-	if agent == "claude" {
+	switch agent {
+	case "codex":
+		models = withStaticReasoningEfforts(models, agentModels[agent])
+	case "claude":
 		for i := range models {
 			models[i].ReasoningEfforts = withUltracode(models[i].ReasoningEfforts)
 		}
@@ -257,4 +262,44 @@ func (s *Service) setProviderModels(meta provider.ModelProvider, models []Model)
 
 func modelCatalogKey(meta provider.ModelProvider) string {
 	return strings.TrimSpace(meta.ID) + " " + strings.TrimRight(strings.TrimSpace(meta.BaseURL), "/")
+}
+
+func withStaticReasoningEfforts(models, source []Model) []Model {
+	for i := range models {
+		sourceModel, ok := staticReasoningSource(source, models[i])
+		if !ok || sourceModel.ReasoningEfforts == nil {
+			continue
+		}
+		models[i].ReasoningEfforts = withReasoningEfforts(models[i].ReasoningEfforts, sourceModel.ReasoningEfforts...)
+	}
+	return models
+}
+
+func staticReasoningSource(models []Model, target Model) (Model, bool) {
+	if strings.TrimSpace(target.Value) != "" {
+		if model, ok := findModel(models, target.Value); ok {
+			return model, true
+		}
+	}
+	if strings.TrimSpace(target.OpenRouterID) != "" {
+		return findModel(models, target.OpenRouterID)
+	}
+	return Model{}, false
+}
+
+func withReasoningEfforts(efforts []string, values ...string) []string {
+	out := cloneStrings(efforts)
+	seen := map[string]struct{}{}
+	for _, effort := range out {
+		seen[effort] = struct{}{}
+	}
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		out = append(out, value)
+		seen[value] = struct{}{}
+	}
+	sortReasoningEfforts(out)
+	return out
 }

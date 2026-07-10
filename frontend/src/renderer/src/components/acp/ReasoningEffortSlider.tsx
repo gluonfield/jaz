@@ -30,7 +30,7 @@ export function ReasoningEffortSlider({
   if (index < 0) index = Math.floor((options.length - 1) / 2)
 
   const shown = options[previewIndex ?? index]
-  const ultra = shown?.value === 'ultracode'
+  const ultra = isUltraEffort(shown?.value)
 
   const indexFromPointer = (clientX: number): number => {
     const rect = trackRef.current?.getBoundingClientRect()
@@ -58,7 +58,7 @@ export function ReasoningEffortSlider({
           <span
             key={option.value}
             className={`absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full ${
-              option.value === 'ultracode' ? 'bg-primary' : 'bg-ink/25'
+              isUltraEffort(option.value) ? 'bg-primary' : 'bg-ink/25'
             }`}
             style={{ left: stopPosition(i, options.length) }}
           />
@@ -93,6 +93,10 @@ export function ReasoningEffortSlider({
       </div>
     </div>
   )
+}
+
+function isUltraEffort(value: string | undefined): boolean {
+  return value === 'ultra' || value === 'ultracode'
 }
 
 const CELL = 5

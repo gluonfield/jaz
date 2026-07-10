@@ -92,6 +92,24 @@ func TestNormalizeAgentDefaultsRejectsClaudeOnlyReasoningForOtherACPAgents(t *te
 	}
 }
 
+func TestNormalizeAgentDefaultsAllowsCodexUltra(t *testing.T) {
+	builtin := acp.BuiltinAgents()
+	catalog := acp.AgentCatalog{acp.AgentCodex: builtin[acp.AgentCodex]}
+	input := AgentDefaultsFromCatalog(catalog)
+	codex := input.ACP[acp.AgentCodex]
+	codex.Model = acp.CodexOpenAIDefaultModel
+	codex.ReasoningEffort = "ultra"
+	input.ACP[acp.AgentCodex] = codex
+
+	normalized, err := NormalizeAgentDefaults(input, catalog, modelcatalog.NewService(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalized.ACP[acp.AgentCodex].ReasoningEffort != "ultra" {
+		t.Fatalf("codex effort = %q, want ultra", normalized.ACP[acp.AgentCodex].ReasoningEffort)
+	}
+}
+
 func TestNormalizeAgentDefaultsRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
 	input := testAgentDefaultsSeed()
 	claude := input.ACP["claude"]

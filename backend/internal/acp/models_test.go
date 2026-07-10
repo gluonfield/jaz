@@ -101,7 +101,9 @@ func TestNormalizeAgentReasoningEffort(t *testing.T) {
 		{AgentClaude, "max", "max", false},
 		{AgentClaude, "ultracode", "ultracode", false},
 		{AgentCodex, "max", "max", false},
+		{AgentCodex, "ultra", "ultra", false},
 		{AgentGrok, "ultracode", "", true},
+		{AgentGrok, "ultra", "", true},
 		{AgentOpenCode, "medium", "medium", false},
 		{AgentOpenCode, "max", "max", false},
 	}

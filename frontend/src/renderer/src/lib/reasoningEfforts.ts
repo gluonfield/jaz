@@ -10,6 +10,7 @@ const REASONING_LABELS: Record<string, string> = {
   high: 'High',
   xhigh: 'Extra high',
   max: 'Max',
+  ultra: 'Ultra',
   ultracode: 'Ultracode',
 }
 
