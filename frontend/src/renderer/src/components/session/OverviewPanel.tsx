@@ -403,7 +403,7 @@ function ActionRow({
         title={queueHint ?? `Queue ${stringChildren(children)}`}
         disabled={queueDisabled}
         onClick={onQueue}
-        className="mr-1 grid size-5 shrink-0 scale-90 cursor-pointer place-items-center rounded-full bg-bg text-[10px] font-semibold text-ink-3 opacity-0 shadow-sm transition-[opacity,transform,background-color,color] duration-150 group-hover/action-row:scale-100 group-hover/action-row:opacity-100 hover:bg-primary-soft hover:text-primary focus-visible:scale-100 focus-visible:opacity-100 active:scale-[0.96] disabled:cursor-default disabled:hover:bg-bg disabled:hover:text-ink-3"
+        className="mr-1 grid h-5 w-7 shrink-0 scale-90 cursor-pointer place-items-center rounded-[6px] bg-bg text-[10px] font-semibold text-ink-3 opacity-0 shadow-sm ring-1 ring-border/70 transition-[opacity,transform,background-color,color] duration-150 group-hover/action-row:scale-100 group-hover/action-row:opacity-100 hover:bg-primary-soft hover:text-primary focus-visible:scale-100 focus-visible:opacity-100 active:scale-[0.96] disabled:cursor-default disabled:hover:bg-bg disabled:hover:text-ink-3"
       >
         Q
       </button>
