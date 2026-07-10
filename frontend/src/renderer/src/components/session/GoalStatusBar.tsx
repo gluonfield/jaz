@@ -25,6 +25,7 @@ const numberRoll: Variants = {
 
 export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
   const [expanded, setExpanded] = useState(false)
+  const reduceMotion = useReducedMotion()
 
   if (!goal) return null
 
@@ -33,7 +34,11 @@ export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
   const tokenProgress = goalTokenProgress(goal)
 
   return (
-    <div className="mb-2 rounded-[8px] bg-primary-soft/70 px-3 py-1.5 text-[13px] shadow-sm ring-1 ring-primary/20">
+    <motion.div
+      layout={!reduceMotion}
+      transition={{ layout: { duration: 0.3, ease: [0.2, 0, 0, 1] } }}
+      className="mb-2 rounded-[8px] bg-primary-soft/70 px-3 py-1.5 text-[13px] shadow-sm ring-1 ring-primary/20"
+    >
       <button
         type="button"
         className="flex w-full min-w-0 items-center gap-3 text-left transition-transform duration-150 active:scale-[0.99]"
@@ -46,13 +51,25 @@ export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
         </div>
         {objective ? (
           <ChevronDown
-            className={`size-4 shrink-0 text-primary-strong/70 transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`}
+            className={`size-4 shrink-0 text-primary-strong/70 transition-transform ${reduceMotion ? 'duration-0' : 'duration-300 ease-out'} ${expanded ? 'rotate-180' : ''}`}
             aria-hidden="true"
           />
         ) : null}
       </button>
-      {expanded ? <GoalTokens goal={goal} progress={tokenProgress} /> : null}
-    </div>
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.div
+            initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -4 }}
+            animate={reduceMotion ? { opacity: 1 } : { height: 'auto', opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -2 }}
+            transition={reduceMotion ? { duration: 0.12 } : { duration: 0.3, ease: [0.2, 0, 0, 1] }}
+            className="overflow-hidden"
+          >
+            <GoalTokens goal={goal} progress={tokenProgress} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
   )
 }
 
