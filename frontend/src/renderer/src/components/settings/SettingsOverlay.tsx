@@ -1,10 +1,16 @@
 import { ArrowLeft, PanelLeft } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
 import { SearchField } from '@/components/ui/SearchField'
 import { dismissOnEmptyTap } from '@/lib/dom/drawer'
+import {
+  consumeEscapeKey,
+  createEscapeLayerID,
+  isTopEscapeLayer,
+  pushEscapeLayer,
+} from '@/lib/dom/escapeLayers'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
@@ -44,6 +50,8 @@ export function SettingsOverlay({
   const isMobile = useIsMobile()
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const [query, setQuery] = useState('')
+  const escapeLayerID = useRef<string | null>(null)
+  if (!escapeLayerID.current) escapeLayerID.current = createEscapeLayerID('settings')
   // Phone: the nav is a full-screen drawer over the content rather than a fixed
   // column. It opens first (so a section is picked), then dismisses to reveal it.
   const [navOpen, setNavOpen] = useState(true)
@@ -55,16 +63,21 @@ export function SettingsOverlay({
     if (!open) return
     setQuery('')
     setNavOpen(true)
+    const layerID = escapeLayerID.current
+    if (!layerID) return
+    const unregisterLayer = pushEscapeLayer(layerID)
     const previouslyFocused = document.activeElement as HTMLElement | null
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (!isTopEscapeLayer(layerID)) return
       if (document.querySelector('[data-escape-surface]')) return
-      event.stopPropagation()
+      consumeEscapeKey(event)
       onClose()
     }
     document.addEventListener('keydown', onKey, true)
     return () => {
       document.removeEventListener('keydown', onKey, true)
+      unregisterLayer()
       previouslyFocused?.focus?.()
     }
   }, [open, onClose])
