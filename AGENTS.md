@@ -2,6 +2,7 @@
 
 - Use Go 1.26.
 - Keep code and JSON minimal. Each line of code should fight for its existence; every field and line must earn its place.
+- Prefer implementations that reduce total code over ones that add more. Adding lines is a cost to justify; a good fix often deletes code, collapses branches, or moves an invariant to the layer that already owns it.
 - Trim strings at real input boundaries only: user input, config files, env vars, HTTP payloads, CLI args, and persisted loose text. Do not sprinkle `strings.TrimSpace` over internal constants, typed IDs, enum values, or values that have already crossed a validation boundary.
 - When there's an opportunity for dramatic simplification or restructuring, bring it up. Favor "code judo" moves that delete layers, unify shapes, collapse special cases, or make the design inevitable over incremental patches.
 - Bug fixes should first look for deletion or correction of the underlying contract. A solution that only adds branches, flags, helpers, or UI glue is suspicious; prefer removing stale paths, collapsing duplicated state, or moving behavior to the owning layer before adding code.
