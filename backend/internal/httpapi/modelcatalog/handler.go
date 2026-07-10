@@ -3,14 +3,13 @@ package modelcatalog
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/wins/jaz/backend/internal/httpapi"
 	catalog "github.com/wins/jaz/backend/internal/modelcatalog"
 )
 
 type Service interface {
-	ProviderModels(id string) ([]catalog.Model, error)
+	ProviderModelsWithAgentCapabilities(agent, providerID string) ([]catalog.Model, error)
 }
 
 type Handler struct {
@@ -26,8 +25,9 @@ func NewHandler(service Service) Handler {
 }
 
 func (h Handler) ProviderModels(w http.ResponseWriter, r *http.Request) {
-	id := strings.ToLower(strings.TrimSpace(r.PathValue("provider")))
-	models, err := h.Service.ProviderModels(id)
+	id := r.PathValue("provider")
+	agent := r.URL.Query().Get("agent")
+	models, err := h.Service.ProviderModelsWithAgentCapabilities(agent, id)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, catalog.ErrCatalogUnavailable) {

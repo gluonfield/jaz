@@ -128,6 +128,10 @@ jobs:
         working-directory: frontend
         run: bun install --frozen-lockfile
 
+      - name: Test frontend
+        working-directory: frontend
+        run: bun run test
+
       - name: Import Apple certificate
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}

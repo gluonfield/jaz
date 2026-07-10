@@ -16,6 +16,7 @@
     "preview": "electron-vite preview",
     "preview:web": "vite preview --config vite.web.config.ts",
     "dev:web": "vite --config vite.web.config.ts",
+    "test": "bun test",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },

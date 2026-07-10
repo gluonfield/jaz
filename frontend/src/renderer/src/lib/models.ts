@@ -2,7 +2,7 @@ import { queryOptions, useQuery } from '@tanstack/react-query'
 import { get } from './api/client'
 import { agentSettingsQuery } from './api/settings'
 import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, Session } from './api/types'
-import { keys } from './query/keys'
+import { modelProviderModelsRequest } from './modelProviderRequest'
 
 // USD per token, parsed from OpenRouter's string pricing fields.
 export interface ModelPricing {
@@ -79,14 +79,12 @@ export function modelSuggestionsForProvider(
   return []
 }
 
-export function modelProviderModelsQuery(provider: string | undefined) {
-  const id = provider ?? ''
+export function modelProviderModelsQuery(provider: string | undefined, agent: string) {
+  const request = modelProviderModelsRequest(provider, agent)
   return queryOptions({
-    queryKey: keys.modelProviderModels(id),
+    queryKey: request.queryKey,
     queryFn: async (): Promise<ModelSuggestion[]> => {
-      const body = await get<{ models?: ModelCatalogEntry[] }>(
-        `/v1/model-providers/${encodeURIComponent(id)}/models`,
-      )
+      const body = await get<{ models?: ModelCatalogEntry[] }>(request.path)
       return modelSuggestionsFromCatalog(body.models ?? [])
     },
     staleTime: 60 * 60 * 1000,
@@ -94,7 +92,7 @@ export function modelProviderModelsQuery(provider: string | undefined) {
   })
 }
 
-export const openRouterModelsQuery = modelProviderModelsQuery('openrouter')
+export const openRouterModelsQuery = modelProviderModelsQuery('openrouter', '')
 
 function modelSuggestionsFromCatalog(models: ModelCatalogEntry[]): ModelSuggestion[] {
   return models.map((model) => ({
