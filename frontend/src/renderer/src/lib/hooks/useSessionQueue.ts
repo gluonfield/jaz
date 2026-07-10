@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef } from 'react'
 import { useToast } from '@/components/ui/toast'
-import { mutateSessionQueue, type QueueMutation, uploadSessionAttachment } from '@/lib/api/sessions'
-import type { QueuedMessage, QueuedMessageInput, Session, SessionMessages } from '@/lib/api/types'
+import { mutateSessionQueue, type QueueMutation } from '@/lib/api/sessions'
+import type { Session, SessionMessages } from '@/lib/api/types'
+import { useQueueAppender } from '@/lib/hooks/useQueueAppender'
 import { keys } from '@/lib/query/keys'
-import { preparedSendMessage, type SendMessageHandler, type SendMessageOptions } from '@/lib/sendMessage'
-import { normalizeBrowserAnnotation } from '@/lib/messageContext'
+import { normalizeQueuedMessagesForDisplay } from '@/lib/sessionQueue'
+import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
 
 export function useSessionQueue({
   sessionId,
@@ -23,7 +24,7 @@ export function useSessionQueue({
   const queryClient = useQueryClient()
   const toast = useToast()
   const mutationChain = useRef<Promise<unknown>>(Promise.resolve())
-  const queuedPrompts = normalizeQueuedPrompts(session?.queued_messages ?? [])
+  const queuedPrompts = normalizeQueuedMessagesForDisplay(session?.queued_messages ?? [])
   const running = isSessionRunning({ session, acpState, streaming })
 
   useEffect(() => {
@@ -54,29 +55,14 @@ export function useSessionQueue({
     toast(`Queue update failed: ${(error as Error).message}`, 'danger')
   }, [toast])
 
+  const { queuePrompt, queueAction } = useQueueAppender(sessionId, mutateQueue)
+
   const send = useCallback((text: string, options: SendMessageOptions = {}) => {
     if (running) {
-      return (async () => {
-        const uploaded = options.files?.length
-          ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
-          : []
-        const prepared = preparedSendMessage(options, uploaded)
-        const prompt = normalizeQueuedPrompt({
-          text,
-          contexts: prepared.contexts,
-          attachment_ids: prepared.attachmentIds,
-          plan_requested: options.planRequested,
-          goal_requested: options.goalRequested,
-        })
-        if (!prompt) return
-        await mutateQueue({ op: 'append', message: prompt })
-      })().catch((error) => {
-        showQueueError(error)
-        throw error
-      })
+      return queuePrompt(text, options)
     }
     return onSend(text, options)
-  }, [mutateQueue, onSend, running, sessionId, showQueueError])
+  }, [onSend, queuePrompt, running])
 
   const deletePrompt = useCallback((id: string) => {
     void mutateQueue({ op: 'delete', id }).catch(showQueueError)
@@ -110,6 +96,8 @@ export function useSessionQueue({
     sessionRunning: running,
     steerDisabled: false,
     onSend: send,
+    onQueuePrompt: queuePrompt,
+    onQueueAction: queueAction,
     onSteerQueuedPrompt: steerPrompt,
     onDeleteQueuedPrompt: deletePrompt,
     onEditQueuedPrompt: editPrompt,
@@ -131,45 +119,4 @@ function isSessionRunning({
       session?.status === 'running' ||
       (session?.runtime === 'acp' && ['running', 'starting'].includes(acpState ?? '')),
   )
-}
-
-function normalizeQueuedPrompts(prompts: QueuedMessage[]): QueuedMessage[] {
-  return prompts.flatMap((prompt, index) => {
-    const normalized = normalizeQueuedPrompt(prompt)
-    if (!normalized) return []
-    return [{ ...normalized, id: normalized.id?.trim() || `legacy-${index}` }]
-  })
-}
-
-function normalizeQueuedPrompt(prompt: QueuedMessageInput): QueuedMessageInput | null {
-  const text = prompt.text.trim()
-  const contexts = normalizeContexts(prompt.contexts)
-  const legacyQuotes = (prompt.quotes ?? []).map((quote) => quote.trim()).filter(Boolean)
-  const attachmentIds = (prompt.attachment_ids ?? []).map((id) => id.trim()).filter(Boolean)
-  if (!text && contexts.length === 0 && legacyQuotes.length === 0 && attachmentIds.length === 0) {
-    return null
-  }
-  return {
-    ...(prompt.id?.trim() ? { id: prompt.id.trim() } : {}),
-    text,
-    ...(contexts.length || legacyQuotes.length
-      ? { contexts: [...legacyQuotes.map((text) => ({ type: 'selection' as const, text })), ...contexts] }
-      : {}),
-    ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
-    ...(prompt.plan_requested ? { plan_requested: true } : {}),
-    ...(prompt.goal_requested ? { goal_requested: true } : {}),
-  }
-}
-
-function normalizeContexts(contexts: QueuedMessageInput['contexts'] = []): NonNullable<QueuedMessageInput['contexts']> {
-  return contexts.flatMap<NonNullable<QueuedMessageInput['contexts']>[number]>((context) => {
-    if (context.type === 'selection') {
-      const text = context.text?.trim()
-      if (!text) return []
-      return [{ type: 'selection' as const, text, comment: context.comment?.trim() || undefined }]
-    }
-    if (context.type !== 'browser_annotation' || !context.browser_annotation) return []
-    const annotation = normalizeBrowserAnnotation(context.browser_annotation)
-    return annotation ? [{ type: 'browser_annotation' as const, browser_annotation: annotation }] : []
-  })
 }

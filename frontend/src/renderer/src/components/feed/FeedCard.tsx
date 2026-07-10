@@ -15,6 +15,7 @@ import { toLayoutRect } from '@/lib/dom/zoom'
 import { markThreadSeen } from '@/lib/api/feed'
 import { sessionMessagesQuery, setSessionArchived } from '@/lib/api/sessions'
 import type { FeedItem, Session } from '@/lib/api/types'
+import { useQueueAppender } from '@/lib/hooks/useQueueAppender'
 import { relativeTime } from '@/lib/format/time'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
@@ -259,6 +260,7 @@ function FeedOverview({
 }) {
   const reducedMotion = useReducedMotion()
   const [rect, setRect] = useState<DOMRect | null>(null)
+  const { queuePrompt, queueAction } = useQueueAppender(session.id)
 
   // The card lives in a scroll container, so the panel is portalled out and
   // pinned with fixed coordinates. The card can move without resizing or
@@ -302,6 +304,8 @@ function FeedOverview({
         progress={view.panelProgress}
         working={session.status === 'running'}
         onSend={onSend}
+        onQueuePrompt={queuePrompt}
+        onQueueAction={queueAction}
       />
     </motion.div>,
     document.body,

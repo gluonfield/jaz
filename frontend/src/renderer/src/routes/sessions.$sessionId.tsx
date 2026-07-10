@@ -648,6 +648,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
               onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
               onSend={queue.onSend}
+              onQueuePrompt={queue.onQueuePrompt}
+              onQueueAction={queue.onQueueAction}
               onSendSideChat={handleSideChatSend}
               onClose={sidePanel.toggle}
             />

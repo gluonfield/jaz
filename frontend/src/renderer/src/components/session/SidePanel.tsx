@@ -1,4 +1,4 @@
-import type { Attachment, Session, SessionEvent } from '@/lib/api/types'
+import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
@@ -41,6 +41,8 @@ export function SidePanel({
   onAddBrowserAnnotation,
   onUploadAttachment,
   onSend,
+  onQueuePrompt,
+  onQueueAction,
   onSendSideChat,
   onClose,
 }: {
@@ -60,6 +62,8 @@ export function SidePanel({
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onSend: SendMessageHandler
+  onQueuePrompt: SendMessageHandler
+  onQueueAction: (action: QueuedAction, label: string) => Promise<void>
   onSendSideChat: (sideChatID: string, message: string, options?: SendMessageOptions) => Promise<void>
   onClose: () => void
 }) {
@@ -83,6 +87,8 @@ export function SidePanel({
           spawnedThreads={spawnedThreads}
           working={working}
           onSend={onSend}
+          onQueuePrompt={onQueuePrompt}
+          onQueueAction={onQueueAction}
         />
       )
     case 'diff':
@@ -118,6 +124,8 @@ export function SidePanel({
           spawnedThreads={spawnedThreads}
           working={working}
           onSend={onSend}
+          onQueuePrompt={onQueuePrompt}
+          onQueueAction={onQueueAction}
         />
       )
   }

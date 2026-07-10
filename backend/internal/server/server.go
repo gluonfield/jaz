@@ -424,24 +424,14 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if action == "archive" || action == "unarchive" {
-		if err := s.Store.SetArchived(session.ID, action == "archive"); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if action == "archive" {
-			s.setSessionUnread(session.ID, false)
-		}
-		session, err = s.Store.LoadSession(session.ID)
+		archived := action == "archive"
+		session, err = s.setSessionArchivedState(session.ID, archived)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		if action == "archive" {
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				defer cancel()
-				s.PruneManagedWorktrees(ctx)
-			}()
+		if archived {
+			s.pruneManagedWorktreesSoon()
 		}
 		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return

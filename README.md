@@ -13,6 +13,14 @@
 A personal AI on machines you own — any agent, loops that run overnight, boards,
 memory, and git control. Client/server split, always-on, open source end to end.
 
+## Guiding Principles
+
+- Use the major coding agents. Frontier labs are investing heavily in coding agents and benchmarks. Jaz should reuse that work, not reinvent it.
+- Bring your existing Pro plans. Carry Claude and Codex plans forward, with API-key support and open-source agents alongside them.
+- Unified memory that you control and can export.
+- Connect core apps. Telegram, WhatsApp, Gmail, Calendar, and Slack should plug into the same owned context.
+- Open source.
+
 ## Download
 [<img width="280" height="60" alt="download-macos" src="https://github.com/user-attachments/assets/1a702cd1-fe55-4ed0-ab99-4e42ca4d4c8f" /><svg xmlns="http://www.w3.org/2000/svg" width="280" height="60" viewBox="0 0 280 60" role="img" aria-label="Download for macOS">
   <rect x="0.5" y="0.5" width="279" height="59" rx="13" fill="#1d1d1f" stroke="#3a3a3c" stroke-width="1"/>

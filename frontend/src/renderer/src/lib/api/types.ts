@@ -126,6 +126,7 @@ export interface ThreadSearchResult {
 export interface QueuedMessage {
   id: string
   text: string
+  action?: QueuedAction
   contexts?: MessageContextInput[]
   quotes?: string[]
   attachment_ids?: string[]
@@ -134,6 +135,16 @@ export interface QueuedMessage {
 }
 
 export type QueuedMessageInput = Omit<QueuedMessage, 'id'> & { id?: string }
+
+export type QueuedAction =
+  | 'archive'
+  | 'unarchive'
+  | 'compact'
+  | 'repo/commit'
+  | 'repo/push'
+  | 'repo/merge'
+  | 'repo/merge-from-main'
+  | 'repo/restore-worktree'
 
 // Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).
 // git=false means "no cwd or not a git repo".
