@@ -49,7 +49,7 @@ export function useCommandPaletteItems({
       {
         id: 'new-thread',
         kind: 'command',
-        title: 'New Thread',
+        title: 'New task',
         icon: SquarePen,
         shortcut: 'N',
         run: () => {

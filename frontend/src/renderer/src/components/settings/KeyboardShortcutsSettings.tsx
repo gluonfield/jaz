@@ -8,8 +8,8 @@ interface Shortcut {
 
 const SHORTCUTS: Shortcut[] = [
   {
-    command: 'New thread',
-    description: 'Start a new conversation.',
+    command: 'New task',
+    description: 'Start a new task.',
     keys: ['⌘', 'N'],
   },
   {
