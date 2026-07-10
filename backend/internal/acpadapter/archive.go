@@ -17,7 +17,7 @@ import (
 )
 
 func (m *Manager) installArchive(ctx context.Context, spec adapterSpec) error {
-	body, err := m.download(ctx, spec)
+	body, err := m.download(ctx, spec, spec.URL)
 	if err != nil {
 		return err
 	}
@@ -36,6 +36,22 @@ func (m *Manager) installArchive(ctx context.Context, spec adapterSpec) error {
 	if err := extractArchive(body, tmp); err != nil {
 		return err
 	}
+	for _, file := range spec.Files {
+		body, err := m.download(ctx, spec, file.URL)
+		if err != nil {
+			return err
+		}
+		if err := verifySHA256(body, file.SHA256); err != nil {
+			return fmt.Errorf("verify %s adapter runtime %s: %w", spec.Adapter, filepath.Base(file.Path), err)
+		}
+		rel, err := filepath.Rel(spec.Root, file.Path)
+		if err != nil || !cleanRelative(filepath.ToSlash(rel)) {
+			return fmt.Errorf("adapter runtime path escapes install root")
+		}
+		if err := extractArchiveFile(body, file.Source, filepath.Join(tmp, rel)); err != nil {
+			return err
+		}
+	}
 	if err := chmodLaunchFiles(tmp, spec); err != nil {
 		return err
 	}
@@ -43,8 +59,8 @@ func (m *Manager) installArchive(ctx context.Context, spec adapterSpec) error {
 	return os.Rename(tmp, spec.Root)
 }
 
-func (m *Manager) download(ctx context.Context, spec adapterSpec) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, spec.URL, nil)
+func (m *Manager) download(ctx context.Context, spec adapterSpec, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -121,31 +137,59 @@ func extractArchive(body []byte, dst string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			mode := os.FileMode(header.Mode).Perm()
-			if mode == 0 {
-				mode = 0o644
-			}
-			out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(out, tr); err != nil {
-				_ = out.Close()
-				return err
-			}
-			if err := out.Close(); err != nil {
+			if err := writeArchiveFile(target, tr, header.Mode); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func chmodLaunchFiles(tmpRoot string, spec adapterSpec) error {
-	paths := []string{spec.Command}
-	for _, value := range spec.Env {
-		paths = append(paths, value)
+func extractArchiveFile(body []byte, source, target string) error {
+	gz, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return err
 	}
-	for _, value := range paths {
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			return fmt.Errorf("adapter runtime archive is missing %q", source)
+		}
+		if err != nil {
+			return err
+		}
+		name := path.Clean(header.Name)
+		if !cleanRelative(name) {
+			return fmt.Errorf("adapter archive contains unsafe path %q", header.Name)
+		}
+		if name == source && header.Typeflag == tar.TypeReg {
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			return writeArchiveFile(target, tr, header.Mode)
+		}
+	}
+}
+
+func writeArchiveFile(target string, in io.Reader, mode int64) error {
+	perm := os.FileMode(mode).Perm()
+	if perm == 0 {
+		perm = 0o644
+	}
+	out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+func chmodLaunchFiles(tmpRoot string, spec adapterSpec) error {
+	for _, value := range spec.executables() {
 		rel, err := filepath.Rel(spec.Root, value)
 		if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
 			return fmt.Errorf("adapter launch path escapes install root")

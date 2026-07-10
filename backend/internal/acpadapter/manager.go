@@ -3,6 +3,7 @@ package acpadapter
 import (
 	"context"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -122,11 +123,9 @@ func (m *Manager) Prepare(ctx context.Context, name string) error {
 }
 
 func (m *Manager) installed(spec adapterSpec) bool {
-	if !fileExists(spec.Command) {
-		return false
-	}
-	for _, value := range spec.Env {
-		if !fileExists(value) {
+	for _, path := range spec.executables() {
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() || (!strings.HasPrefix(spec.Platform, "win32-") && info.Mode().Perm()&0o111 == 0) {
 			return false
 		}
 	}

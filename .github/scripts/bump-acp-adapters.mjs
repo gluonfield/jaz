@@ -11,6 +11,9 @@ const spec = JSON.parse(readFileSync(specPath, "utf8"));
 
 const bumps = [];
 for (const [name, adapter] of Object.entries(spec.adapters)) {
+  if (adapter.runtime?.length) {
+    continue;
+  }
   const latest = latestTag(adapter.repo);
   if (!latest || latest === adapter.tag) {
     continue;
