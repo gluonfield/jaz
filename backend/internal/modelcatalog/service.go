@@ -58,10 +58,8 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 		return nil, fmt.Errorf("unknown model provider %q", id)
 	}
 	switch strings.TrimSpace(meta.ID) {
-	case provider.ProviderOpenAI:
+	case provider.ProviderOpenAI, codexOpenAIAPIKeyProvider:
 		return s.enrichReasoning(cloneModels(openAIModels)), nil
-	case codexOpenAIAPIKeyProvider:
-		return withStaticReasoningEfforts(s.enrichReasoning(cloneModels(openAIModels)), agentModels["codex"]), nil
 	case provider.ProviderOpenRouter:
 		models, ok := s.providerModelSnapshot(meta)
 		if !ok {
@@ -74,6 +72,14 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 		}
 		return []Model{}, nil
 	}
+}
+
+func (s *Service) ProviderModelsForAgent(agent, providerID string) ([]Model, error) {
+	models, err := s.ProviderModels(providerID)
+	if err != nil {
+		return nil, err
+	}
+	return withStaticReasoningEfforts(models, agentModels[agent]), nil
 }
 
 func (s *Service) AgentModels(agent string) []Model {

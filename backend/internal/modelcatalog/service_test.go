@@ -139,15 +139,8 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 		values[provider.OpenAIModelGPT56Luna].ContextLength != 400000 {
 		t.Fatalf("unexpected GPT-5.6 metadata %#v", values)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max,ultra" {
+	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max" {
 		t.Fatalf("efforts before the catalog loads = %#v", models[0].ReasoningEfforts)
-	}
-	apiModels, err := NewService(nil).ProviderModels(provider.ProviderOpenAI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(strings.Join(apiModels[0].ReasoningEfforts, ","), "ultra") {
-		t.Fatalf("generic OpenAI API catalog must not advertise Codex Ultra: %#v", apiModels[0].ReasoningEfforts)
 	}
 
 	warmed := warmOpenRouterTestService(t, `{"data":[{
@@ -155,12 +148,31 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 		"name":"OpenAI: GPT-5.6 Sol",
 		"reasoning":{"supported_efforts":["xhigh","high","medium","low","none"],"default_effort":"medium"}
 	}]}`)
-	models, err = warmed.ProviderModels(codexOpenAIAPIKeyProvider)
+	models, err = warmed.ProviderModelsForAgent("codex", codexOpenAIAPIKeyProvider)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max,ultra" {
 		t.Fatalf("reasoning efforts = %#v", models[0].ReasoningEfforts)
+	}
+}
+
+func TestServiceProviderModelsForAgentOverlaysCodexReasoning(t *testing.T) {
+	service := NewService(nil)
+	models, err := service.ProviderModelsForAgent("codex", provider.ProviderOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max,ultra" {
+		t.Fatalf("codex efforts = %#v", models[0].ReasoningEfforts)
+	}
+
+	models, err = service.ProviderModelsForAgent("opencode", provider.ProviderOpenAI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(models[0].ReasoningEfforts, ","), "ultra") {
+		t.Fatalf("generic OpenAI efforts = %#v", models[0].ReasoningEfforts)
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 )
 
 type Service interface {
-	ProviderModels(id string) ([]catalog.Model, error)
+	ProviderModelsForAgent(agent, providerID string) ([]catalog.Model, error)
 }
 
 type Handler struct {
@@ -27,7 +27,8 @@ func NewHandler(service Service) Handler {
 
 func (h Handler) ProviderModels(w http.ResponseWriter, r *http.Request) {
 	id := strings.ToLower(strings.TrimSpace(r.PathValue("provider")))
-	models, err := h.Service.ProviderModels(id)
+	agent := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("agent")))
+	models, err := h.Service.ProviderModelsForAgent(agent, id)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, catalog.ErrCatalogUnavailable) {

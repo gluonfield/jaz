@@ -35,7 +35,7 @@ export function useModelReasoningState({
   settingsMode?: boolean
 }): ModelReasoningState {
   const providerModels = useQuery({
-    ...modelProviderModelsQuery(provider),
+    ...modelProviderModelsQuery(provider, agent),
     enabled: usesProvider && Boolean(provider),
   })
   const modelSuggestions = usesProvider

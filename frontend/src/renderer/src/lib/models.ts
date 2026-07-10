@@ -79,13 +79,14 @@ export function modelSuggestionsForProvider(
   return []
 }
 
-export function modelProviderModelsQuery(provider: string | undefined) {
+export function modelProviderModelsQuery(provider: string | undefined, agent = '') {
   const id = provider ?? ''
   return queryOptions({
-    queryKey: keys.modelProviderModels(id),
+    queryKey: keys.modelProviderModels(id, agent),
     queryFn: async (): Promise<ModelSuggestion[]> => {
+      const query = agent ? `?agent=${encodeURIComponent(agent)}` : ''
       const body = await get<{ models?: ModelCatalogEntry[] }>(
-        `/v1/model-providers/${encodeURIComponent(id)}/models`,
+        `/v1/model-providers/${encodeURIComponent(id)}/models${query}`,
       )
       return modelSuggestionsFromCatalog(body.models ?? [])
     },
