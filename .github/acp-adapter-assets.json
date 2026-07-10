@@ -2,47 +2,38 @@
   "adapters": {
     "codex": {
       "repo": "gluonfield/codex-acp",
-      "tag": "v0.16.20",
-      "version": "0.16.20",
-      "runtime": [{
-        "repo": "openai/codex",
-        "tag": "rust-v0.144.0",
-        "path": "codex-code-mode-host",
-        "assets": {
-          "darwin-arm64": {
-            "name": "codex-code-mode-host-aarch64-apple-darwin.tar.gz",
-            "source": "codex-code-mode-host-aarch64-apple-darwin"
-          },
-          "darwin-x64": {
-            "name": "codex-code-mode-host-x86_64-apple-darwin.tar.gz",
-            "source": "codex-code-mode-host-x86_64-apple-darwin"
-          },
-          "linux-arm64": {
-            "name": "codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz",
-            "source": "codex-code-mode-host-aarch64-unknown-linux-musl"
-          },
-          "linux-x64": {
-            "name": "codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz",
-            "source": "codex-code-mode-host-x86_64-unknown-linux-musl"
-          }
-        }
-      }],
+      "tag": "v0.16.21",
+      "version": "0.16.21",
       "assets": {
         "darwin-arm64": {
-          "name": "codex-acp-0.16.20-aarch64-apple-darwin.tar.gz",
-          "binary": "codex-acp"
+          "name": "codex-acp-0.16.21-aarch64-apple-darwin.tar.gz",
+          "binary": "codex-acp",
+          "env": {"CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"}
         },
         "darwin-x64": {
-          "name": "codex-acp-0.16.20-x86_64-apple-darwin.tar.gz",
-          "binary": "codex-acp"
+          "name": "codex-acp-0.16.21-x86_64-apple-darwin.tar.gz",
+          "binary": "codex-acp",
+          "env": {"CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"}
         },
         "linux-arm64": {
-          "name": "codex-acp-0.16.20-aarch64-unknown-linux-gnu.tar.gz",
-          "binary": "codex-acp"
+          "name": "codex-acp-0.16.21-aarch64-unknown-linux-gnu.tar.gz",
+          "binary": "codex-acp",
+          "env": {"CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"}
         },
         "linux-x64": {
-          "name": "codex-acp-0.16.20-x86_64-unknown-linux-gnu.tar.gz",
-          "binary": "codex-acp"
+          "name": "codex-acp-0.16.21-x86_64-unknown-linux-gnu.tar.gz",
+          "binary": "codex-acp",
+          "env": {"CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"}
+        },
+        "win32-arm64": {
+          "name": "codex-acp-0.16.21-aarch64-pc-windows-msvc.tar.gz",
+          "binary": "codex-acp.exe",
+          "env": {"CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"}
+        },
+        "win32-x64": {
+          "name": "codex-acp-0.16.21-x86_64-pc-windows-msvc.tar.gz",
+          "binary": "codex-acp.exe",
+          "env": {"CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"}
         }
       }
     },

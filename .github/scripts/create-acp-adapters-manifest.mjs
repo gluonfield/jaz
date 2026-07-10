@@ -10,7 +10,6 @@ const manifest = {
   adapters: {},
 };
 const archiveChecks = [];
-const releases = new Map();
 
 for (const [name, adapter] of Object.entries(spec.adapters)) {
   assertConsistent(name, adapter);
@@ -22,15 +21,17 @@ for (const [name, adapter] of Object.entries(spec.adapters)) {
       throw new Error(`${adapter.repo}@${adapter.tag} is missing ${wanted.name}`);
     }
     const sha256 = digestSHA256(asset);
-    const files = (adapter.runtime || []).map((file) => manifestFile(file, platform));
     manifest.adapters[name].assets[platform] = {
       url: asset.url,
       sha256,
       binary: wanted.binary,
       ...(wanted.env ? { env: wanted.env } : {}),
-      ...(files.length ? { files } : {}),
     };
-    archiveChecks.push(assertArchiveContains(asset.url, wanted.binary, `${name} ${platform}`));
+    archiveChecks.push(assertArchiveContains(
+      asset.url,
+      [wanted.binary, ...Object.values(wanted.env || {})],
+      `${name} ${platform}`,
+    ));
   }
 }
 
@@ -51,46 +52,15 @@ function assertConsistent(name, adapter) {
     if (!wanted.name.includes(version)) {
       throw new Error(`${name} ${platform}: asset "${wanted.name}" does not embed version "${version}"`);
     }
-    const paths = new Set([wanted.binary]);
-    for (const file of adapter.runtime || []) {
-      if (!file.assets?.[platform]) {
-        throw new Error(`${name} ${platform}: runtime file "${file.path}" has no asset`);
-      }
-      if (paths.has(file.path)) {
-        throw new Error(`${name} ${platform}: runtime path "${file.path}" is duplicated`);
-      }
-      paths.add(file.path);
-    }
   }
-}
-
-function manifestFile(file, platform) {
-  const source = file.assets[platform];
-  const asset = releaseAssetMap(file.repo, file.tag).get(source.name);
-  if (!asset) {
-    throw new Error(`${file.repo}@${file.tag} is missing ${source.name}`);
-  }
-  archiveChecks.push(assertArchiveContains(asset.url, source.source, source.name));
-  return {
-    url: asset.url,
-    sha256: digestSHA256(asset),
-    source: source.source,
-    path: file.path,
-  };
 }
 
 function releaseAssetMap(repo, tag) {
-  const key = `${repo}@${tag}`;
-  if (releases.has(key)) {
-    return releases.get(key);
-  }
   const raw = execFileSync("gh", ["release", "view", tag, "--repo", repo, "--json", "assets"], {
     encoding: "utf8",
   });
   const release = JSON.parse(raw);
-  const assets = new Map(release.assets.map((asset) => [asset.name, asset]));
-  releases.set(key, assets);
-  return assets;
+  return new Map(release.assets.map((asset) => [asset.name, asset]));
 }
 
 function digestSHA256(asset) {
@@ -100,11 +70,12 @@ function digestSHA256(asset) {
   return asset.digest.slice("sha256:".length);
 }
 
-async function assertArchiveContains(url, want, label) {
+async function assertArchiveContains(url, paths, label) {
   const response = await fetch(url);
   if (!response.ok || !response.body) {
     throw new Error(`${label}: cannot inspect published archive: ${response.status} ${response.statusText}`);
   }
+  const missing = new Set(paths);
   const reader = response.body.pipeThrough(new DecompressionStream("gzip")).getReader();
   let buffered = Buffer.alloc(0);
   for (;;) {
@@ -113,15 +84,18 @@ async function assertArchiveContains(url, want, label) {
     const name = tarString(header, 0, 100);
     const prefix = tarString(header, 345, 155);
     const type = header[156];
-    if ((type === 0 || type === 48) && (prefix ? `${prefix}/${name}` : name) === want) {
-      await reader.cancel();
-      return;
+    if (type === 0 || type === 48) {
+      missing.delete(prefix ? `${prefix}/${name}` : name);
+      if (missing.size === 0) {
+        await reader.cancel();
+        return;
+      }
     }
     const size = Number.parseInt(tarString(header, 124, 12).trim() || "0", 8);
     if (!Number.isSafeInteger(size) || !(await discard(Math.ceil(size / 512) * 512))) break;
   }
   await reader.cancel();
-  throw new Error(`${label}: published archive is missing required file "${want}"`);
+  throw new Error(`${label}: published archive is missing required file: ${[...missing].join(", ")}`);
 
   async function take(length) {
     while (buffered.length < length) {

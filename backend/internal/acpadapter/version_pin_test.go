@@ -16,16 +16,10 @@ type adapterAssetSpec struct {
 		Repo    string `json:"repo"`
 		Tag     string `json:"tag"`
 		Version string `json:"version"`
-		Runtime []struct {
-			Path   string `json:"path"`
-			Assets map[string]struct {
-				Name   string `json:"name"`
-				Source string `json:"source"`
-			} `json:"assets"`
-		} `json:"runtime"`
-		Assets map[string]struct {
-			Name   string `json:"name"`
-			Binary string `json:"binary"`
+		Assets  map[string]struct {
+			Name   string            `json:"name"`
+			Binary string            `json:"binary"`
+			Env    map[string]string `json:"env"`
 		} `json:"assets"`
 	} `json:"adapters"`
 }
@@ -66,17 +60,24 @@ func TestAdapterAssetSpecIsInternallyConsistent(t *testing.T) {
 			if strings.TrimSpace(asset.Binary) == "" {
 				t.Errorf("adapter %q %s: missing binary name", name, platform)
 			}
-			paths := map[string]bool{asset.Binary: true}
-			for _, file := range entry.Runtime {
-				runtimeAsset, ok := file.Assets[platform]
-				if !ok || strings.TrimSpace(runtimeAsset.Name) == "" || strings.TrimSpace(runtimeAsset.Source) == "" || strings.TrimSpace(file.Path) == "" {
-					t.Errorf("adapter %q %s: incomplete runtime file", name, platform)
+			for key, path := range asset.Env {
+				if strings.TrimSpace(key) == "" || strings.TrimSpace(path) == "" {
+					t.Errorf("adapter %q %s: incomplete environment path", name, platform)
 				}
-				if paths[file.Path] {
-					t.Errorf("adapter %q %s: duplicate runtime path %q", name, platform, file.Path)
-				}
-				paths[file.Path] = true
 			}
+		}
+	}
+}
+
+func TestCodexAssetsDeclareCodeModeHost(t *testing.T) {
+	codex := loadAdapterAssetSpec(t).Adapters["codex"]
+	for platform, asset := range codex.Assets {
+		want := "codex-code-mode-host"
+		if strings.HasPrefix(platform, "win32-") {
+			want += ".exe"
+		}
+		if got := asset.Env["CODEX_CODE_MODE_HOST_PATH"]; got != want {
+			t.Errorf("codex %s host = %q, want %q", platform, got, want)
 		}
 	}
 }

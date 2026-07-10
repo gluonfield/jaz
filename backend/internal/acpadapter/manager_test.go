@@ -23,7 +23,7 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	if err != nil {
 		t.Skip(err)
 	}
-	body := testTarball(t, map[string]string{"bin/tool": "ok", "bin/claude": "sdk"})
+	body := testTarballMode(t, map[string]string{"bin/tool": "ok", "bin/claude": "sdk"}, 0o644)
 	sum := sha256.Sum256(body)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -37,7 +37,15 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	}))
 	defer server.Close()
 
-	manager := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client())
+	root := t.TempDir()
+	incomplete := filepath.Join(root, "acp", "managed", "adapters", "claude", "1.2.3", platform, "bin", "tool")
+	if err := os.MkdirAll(filepath.Dir(incomplete), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(incomplete, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewForTest(root, server.URL+"/manifest.json", server.Client())
 	launch, err := manager.ResolveAdapter(context.Background(), "claude")
 	if err != nil {
 		t.Fatal(err)
@@ -48,6 +56,15 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	if got := launch.Env["CLAUDE_CODE_EXECUTABLE"]; filepath.Base(got) != "claude" {
 		t.Fatalf("claude executable env = %q", got)
 	}
+	for _, executable := range []string{launch.Command, launch.Env["CLAUDE_CODE_EXECUTABLE"]} {
+		info, err := os.Stat(executable)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o111 == 0 {
+			t.Fatalf("mode for %s = %v, want executable", executable, info.Mode().Perm())
+		}
+	}
 	got, err := os.ReadFile(launch.Command)
 	if err != nil {
 		t.Fatal(err)
@@ -57,83 +74,6 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	}
 	status := manager.Status("claude")
 	if status.State != StateReady || status.Version != "1.2.3" || status.Platform != platform {
-		t.Fatalf("status = %#v", status)
-	}
-}
-
-func TestResolveAdapterInstallsRequiredRuntimeFile(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
-	adapter := testTarball(t, map[string]string{"codex-acp": "adapter"})
-	host := testTarballMode(t, map[string]string{"codex-code-mode-host-aarch64-apple-darwin": "host"}, 0o644)
-	adapterSum := sha256.Sum256(adapter)
-	hostSum := sha256.Sum256(host)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_, _ = fmt.Fprintf(w, `{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"codex-acp","files":[{"url":"%s","sha256":"%x","source":"codex-code-mode-host-aarch64-apple-darwin","path":"codex-code-mode-host"}]}}}}}`, platform, serverURL(r, "/codex.tgz"), adapterSum, serverURL(r, "/host.tgz"), hostSum)
-		case "/codex.tgz":
-			_, _ = w.Write(adapter)
-		case "/host.tgz":
-			_, _ = w.Write(host)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	root := t.TempDir()
-	incomplete := filepath.Join(root, "acp", "managed", "adapters", "codex", "1.2.3", platform, "codex-acp")
-	if err := os.MkdirAll(filepath.Dir(incomplete), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(incomplete, []byte("old"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	launch, err := NewForTest(root, server.URL+"/manifest.json", server.Client()).ResolveAdapter(context.Background(), "codex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	hostPath := filepath.Join(filepath.Dir(launch.Command), "codex-code-mode-host")
-	info, err := os.Stat(hostPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm()&0o111 == 0 {
-		t.Fatalf("runtime mode = %v, want executable", info.Mode().Perm())
-	}
-}
-
-func TestResolveAdapterRejectsMissingRequiredRuntimeFile(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
-	adapter := testTarball(t, map[string]string{"codex-acp": "adapter"})
-	host := testTarball(t, map[string]string{"other": "host"})
-	adapterSum := sha256.Sum256(adapter)
-	hostSum := sha256.Sum256(host)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_, _ = fmt.Fprintf(w, `{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"codex-acp","files":[{"url":"%s","sha256":"%x","source":"codex-code-mode-host","path":"codex-code-mode-host"}]}}}}}`, platform, serverURL(r, "/codex.tgz"), adapterSum, serverURL(r, "/host.tgz"), hostSum)
-		case "/codex.tgz":
-			_, _ = w.Write(adapter)
-		case "/host.tgz":
-			_, _ = w.Write(host)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	manager := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client())
-	if _, err := manager.ResolveAdapter(context.Background(), "codex"); err == nil || !strings.Contains(err.Error(), `missing "codex-code-mode-host"`) {
-		t.Fatalf("error = %v", err)
-	}
-	if status := manager.Status("codex"); status.State != StateFailed {
 		t.Fatalf("status = %#v", status)
 	}
 }
