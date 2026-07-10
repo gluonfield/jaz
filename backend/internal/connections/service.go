@@ -96,12 +96,15 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 	if !ok {
 		return DisconnectResult{}, ErrConnectionNotFound
 	}
+	usesConnectionMCP := s.providerUsesConnectionMCP(connection.Provider)
 	if disconnecter := s.disconnecters[connection.Provider]; disconnecter != nil {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), disconnectCleanupTimeout)
 		defer cancel()
-		return DisconnectResult{}, disconnecter.Disconnect(cleanupCtx, connection)
+		if err := disconnecter.Disconnect(cleanupCtx, connection); err != nil {
+			return DisconnectResult{}, err
+		}
 	}
-	return DisconnectResult{}, nil
+	return DisconnectResult{MCPServersChanged: usesConnectionMCP}, nil
 }
 
 func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {
@@ -153,6 +156,11 @@ func (s *Service) withConnection(ctx context.Context, plugin integrations.Plugin
 	}
 	plugin.Connection = &connection
 	return plugin, nil
+}
+
+func (s *Service) providerUsesConnectionMCP(provider string) bool {
+	plugin, ok := s.catalog.Plugin(provider)
+	return ok && plugin.UsesConnectionMCP()
 }
 
 func accountLabel(connection integrations.Connection) string {

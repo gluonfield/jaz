@@ -40,7 +40,7 @@ export function ConnectionQRModal({
     <Modal
       open
       onClose={onClose}
-      title={`${plugin.name} QR sign in`}
+      title={`Connect ${plugin.name}`}
       description={`Scan with ${plugin.name} on your phone.`}
       icon={<PluginGlyph plugin={plugin} size={18} />}
       size="lg"

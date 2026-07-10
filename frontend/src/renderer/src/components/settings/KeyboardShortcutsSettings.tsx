@@ -8,8 +8,8 @@ interface Shortcut {
 
 const SHORTCUTS: Shortcut[] = [
   {
-    command: 'New thread',
-    description: 'Start a new conversation.',
+    command: 'New task',
+    description: 'Start a new task.',
     keys: ['⌘', 'N'],
   },
   {
@@ -52,7 +52,7 @@ const SHORTCUTS: Shortcut[] = [
 
 export function KeyboardShortcutsSettings() {
   return (
-    <section className="py-5">
+    <section className="py-4">
       <div>
         <p className="text-sm font-medium text-ink">Keyboard shortcuts</p>
         <p className="mt-0.5 text-[13px] text-ink-2">Built-in shortcuts for common actions.</p>
@@ -67,7 +67,7 @@ export function KeyboardShortcutsSettings() {
           {SHORTCUTS.map((shortcut) => (
             <div
               key={shortcut.command}
-              className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-3"
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2.5"
             >
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-ink">{shortcut.command}</p>

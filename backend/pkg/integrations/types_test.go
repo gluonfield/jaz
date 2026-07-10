@@ -31,3 +31,40 @@ func TestSourceSlugKeepsReadablePrefixAndStableHash(t *testing.T) {
 		t.Fatalf("source slug = %q", got)
 	}
 }
+
+func TestPluginUsesConnectionMCP(t *testing.T) {
+	cases := map[string]struct {
+		plugin Plugin
+		want   bool
+	}{
+		"no remote": {},
+		"generic remote mcp": {
+			plugin: Plugin{
+				Auth:      []AuthOption{{Kind: AuthKindRemoteMCP}},
+				RemoteMCP: &RemoteMCP{URL: "https://mcp.example.com"},
+			},
+		},
+		"bearer token backed mcp": {
+			plugin: Plugin{
+				Auth:      []AuthOption{{Kind: AuthKindOAuth}},
+				RemoteMCP: &RemoteMCP{URL: "https://mcp.example.com", TokenAuth: true},
+			},
+			want: true,
+		},
+		"mcp oauth backed connection": {
+			plugin: Plugin{
+				Auth:      []AuthOption{{Kind: AuthKindMCPConnection}},
+				RemoteMCP: &RemoteMCP{URL: "https://mcp.example.com"},
+			},
+			want: true,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := tc.plugin.UsesConnectionMCP(); got != tc.want {
+				t.Fatalf("UsesConnectionMCP() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

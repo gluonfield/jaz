@@ -355,7 +355,7 @@ export type QueueMutation =
 
 export async function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
   const session = await post<Session>(`/v1/sessions/${id}/queue`, mutation)
-  if (mutation.op === 'append') {
+  if (mutation.op === 'append' && !mutation.message.action) {
     telemetry.messageSent({
       queued: true,
       planRequested: Boolean(mutation.message.plan_requested),

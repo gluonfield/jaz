@@ -73,7 +73,7 @@ export function SettingsSection({
   children: ReactNode
 }) {
   return (
-    <section className="py-5">
+    <section className="py-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-ink">{title}</p>
@@ -84,7 +84,7 @@ export function SettingsSection({
           {saving ? 'Saving...' : 'Save changes'}
         </Button>
       </div>
-      <div className="mt-4">{children}</div>
+      <div className="mt-3">{children}</div>
     </section>
   )
 }

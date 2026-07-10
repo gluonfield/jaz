@@ -26,3 +26,13 @@ func (s *Server) validateQueuedPrompt(session storage.Session, prompt storage.Qu
 	}
 	return nil
 }
+
+func (s *Server) validateQueuedMessage(session storage.Session, message storage.QueuedMessage) error {
+	if !message.IsAction() {
+		return s.validateQueuedPrompt(session, message)
+	}
+	if s.canStartQueuedAction(session, message.Action) {
+		return nil
+	}
+	return queueInputError{fmt.Sprintf("queued action %q cannot be queued for this session", message.Action)}
+}

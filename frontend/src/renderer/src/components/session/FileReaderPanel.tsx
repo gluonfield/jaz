@@ -78,7 +78,7 @@ export function FileReaderPanel({
           {inputError}
         </p>
       ) : null}
-      <div className={`min-h-0 flex-1 bg-bg ${pdf ? 'overflow-hidden' : 'overflow-auto'}`}>
+      <div className={`min-h-0 flex-1 bg-bg ${pdf ? 'overflow-hidden' : 'scrollbar-quiet overflow-auto'}`}>
         {!filePath ? (
           <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
             No file selected.

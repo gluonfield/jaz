@@ -219,6 +219,160 @@ func TestSessionQueueActionAppendsAttachmentIDs(t *testing.T) {
 	}
 }
 
+func TestSessionQueueActionRunsQueuedArchiveWhenIdle(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "queue-archive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{Store: store}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"action":"archive","text":"Archive thread"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
+		return loaded.Archived && loaded.Status == storage.StatusIdle && len(loaded.QueuedMessages) == 0
+	})
+	if !loaded.Archived {
+		t.Fatalf("session was not archived: %#v", loaded)
+	}
+}
+
+func TestSessionQueueActionRunsQueuedArchiveAfterRunningTurn(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "queue-archive-running",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "codex",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.Status = storage.StatusRunning
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeACPManager{job: acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateRunning,
+	}}
+	srv := &Server{Store: store, ACP: manager}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"action":"archive","text":"Archive thread"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Archived || queuedTexts(loaded.QueuedMessages) != "Archive thread" {
+		t.Fatalf("queued archive ran before turn finished: %#v", loaded)
+	}
+
+	manager.job.State = acp.StateIdle
+	srv.HandleACPTurnFinished(context.Background(), acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateIdle,
+	})
+
+	loaded = waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
+		return loaded.Archived && loaded.Status == storage.StatusIdle && len(loaded.QueuedMessages) == 0
+	})
+	if !loaded.Archived {
+		t.Fatalf("session was not archived after turn finished: %#v", loaded)
+	}
+}
+
+func TestSessionQueueRejectsUnsupportedQueuedAction(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "queue-unsupported-action",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:      storage.RuntimeACP,
+			Agent:     "grok",
+			SessionID: "acp-session",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{Store: store, ACP: &fakeACPManager{job: acp.Job{
+		ID:    session.ID,
+		Slug:  session.Slug,
+		State: acp.StateIdle,
+	}}}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"action":"compact","text":"Compact"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.QueuedMessages) != 0 {
+		t.Fatalf("queue = %#v, want empty", loaded.QueuedMessages)
+	}
+}
+
+func TestSessionQueueRejectsRepoActionWithoutWorkingDirectory(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "queue-repo-action-no-cwd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{Store: store}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", strings.NewReader(`{"op":"append","message":{"action":"repo/commit","text":"Commit changes"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, req)
+
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.QueuedMessages) != 0 {
+		t.Fatalf("queue = %#v, want empty", loaded.QueuedMessages)
+	}
+}
+
 func TestSessionQueueAttentionFollowsUserSendNotQueueEdits(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

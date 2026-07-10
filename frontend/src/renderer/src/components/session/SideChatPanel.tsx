@@ -142,7 +142,7 @@ export function SideChatPanel({
             </IconButton>
           </div>
         </div>
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
+        <div ref={scrollRef} className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto bg-bg px-4 py-4">
           <div className="flex min-h-full flex-col justify-end">
             <Transcript
               messages={transcriptMessages}
@@ -166,6 +166,7 @@ export function SideChatPanel({
             placeholder="Ask in side chat"
             draftStorageKey={`side-chat:${sideChatID}`}
             fileRoot={fileRoot}
+            attachmentSessionId={sessionId}
             onSend={submit}
             onUploadAttachment={onUploadAttachment}
             onTextChange={() => {

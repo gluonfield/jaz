@@ -1,7 +1,7 @@
 package mcpconfig
 
-import "strings"
+const OAuthCallbackPath = "/v1/mcp/oauth/callback"
 
 func OAuthConnectionID(serverID string) string {
-	return "mcp:" + strings.TrimSpace(serverID)
+	return "mcp:" + serverID
 }

@@ -38,6 +38,13 @@ func (m *memTokenStore) SaveToken(_ context.Context, id string, t integrationoau
 	return nil
 }
 
+func (m *memTokenStore) DeleteToken(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.tokens, id)
+	return nil
+}
+
 // mockAuthServer serves the OAuth discovery, registration, and token endpoints an
 // MCP server's authorization server would, so we can exercise the full flow.
 func mockAuthServer(t *testing.T) *httptest.Server {

@@ -1,10 +1,16 @@
 import { ArrowLeft, PanelLeft } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
 import { SearchField } from '@/components/ui/SearchField'
 import { dismissOnEmptyTap } from '@/lib/dom/drawer'
+import {
+  consumeEscapeKey,
+  createEscapeLayerID,
+  isTopEscapeLayer,
+  pushEscapeLayer,
+} from '@/lib/dom/escapeLayers'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { ACPAgentsSettings } from './ACPAgentsSettings'
 import { AgentProvidersSettings } from './AgentProvidersSettings'
@@ -44,6 +50,8 @@ export function SettingsOverlay({
   const isMobile = useIsMobile()
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
   const [query, setQuery] = useState('')
+  const escapeLayerID = useRef<string | null>(null)
+  if (!escapeLayerID.current) escapeLayerID.current = createEscapeLayerID('settings')
   // Phone: the nav is a full-screen drawer over the content rather than a fixed
   // column. It opens first (so a section is picked), then dismisses to reveal it.
   const [navOpen, setNavOpen] = useState(true)
@@ -55,16 +63,21 @@ export function SettingsOverlay({
     if (!open) return
     setQuery('')
     setNavOpen(true)
+    const layerID = escapeLayerID.current
+    if (!layerID) return
+    const unregisterLayer = pushEscapeLayer(layerID)
     const previouslyFocused = document.activeElement as HTMLElement | null
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      if (!isTopEscapeLayer(layerID)) return
       if (document.querySelector('[data-escape-surface]')) return
-      event.stopPropagation()
+      consumeEscapeKey(event)
       onClose()
     }
     document.addEventListener('keydown', onKey, true)
     return () => {
       document.removeEventListener('keydown', onKey, true)
+      unregisterLayer()
       previouslyFocused?.focus?.()
     }
   }, [open, onClose])
@@ -99,11 +112,11 @@ export function SettingsOverlay({
           >
             <div className={`h-[52px] shrink-0 ${isMobile ? '' : 'titlebar-drag'}`} />
 
-            <div className="px-3 pb-2">
+            <div className="px-3 pb-1.5">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
+                className="flex w-full items-center gap-2 rounded-full px-2.5 py-1 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
               >
                 <ArrowLeft size={15} className="text-ink-3 max-sm:size-[18px]" />
                 <span className="flex-1">Back to jaz</span>
@@ -111,7 +124,7 @@ export function SettingsOverlay({
             </div>
 
             {/* The backend these settings apply to — switch above everything. */}
-            <div className="px-3 pb-3">
+            <div className="px-3 pb-2.5">
               <BackendSwitcher
                 onConnectServer={() => {
                   onClose()
@@ -120,7 +133,7 @@ export function SettingsOverlay({
               />
             </div>
 
-            <div className="px-3 pb-3">
+            <div className="px-3 pb-2.5">
               <SearchField
                 value={query}
                 onChange={setQuery}
@@ -129,7 +142,7 @@ export function SettingsOverlay({
               />
             </div>
 
-            <nav className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-3 pb-3">
+            <nav className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-3 pb-2.5">
               {items.map((item) => {
                 const Icon = item.icon
                 const selected = item.id === current.id
@@ -141,7 +154,7 @@ export function SettingsOverlay({
                       onSectionChange(item.id)
                       if (isMobile) setNavOpen(false)
                     }}
-                    className={`flex items-center gap-2 rounded-full px-2.5 py-1.5 text-left text-[13px] transition-colors duration-150 max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px] ${
+                    className={`flex items-center gap-2 rounded-full px-2.5 py-1 text-left text-[13px] transition-colors duration-150 max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px] ${
                       selected
                         ? 'bg-primary-soft font-medium text-ink'
                         : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
@@ -186,7 +199,7 @@ export function SettingsOverlay({
                     <SectionContent section={current.id} onNavigate={onSectionChange} />
                   ) : (
                     <div className="h-full overflow-y-auto">
-                      <div className="mx-auto max-w-[760px] px-10 pb-12 max-sm:px-4">
+                      <div className="mx-auto max-w-[760px] px-10 pb-8 max-sm:px-4">
                         <SectionContent section={current.id} onNavigate={onSectionChange} />
                       </div>
                     </div>

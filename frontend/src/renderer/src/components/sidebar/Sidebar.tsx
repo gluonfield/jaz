@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { GripVertical, Inbox, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, type Transition, useDragControls } from 'motion/react'
-import { type PointerEvent as ReactPointerEvent, useMemo, useState } from 'react'
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
 import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
 import { LoopModal } from '@/components/loops/LoopModal'
@@ -26,6 +26,8 @@ import { SessionRow } from './SessionRow'
 const SIDEBAR_LOOP_LIMIT = 6
 const PROJECT_SESSION_LIMIT = 5
 const DEFAULT_SESSION_LIMIT = 5
+const MORE_ACTION_CLASS =
+  'flex h-8 items-center rounded-full px-2.5 text-[13px] text-ink-3 opacity-80 transition-[background-color,color,opacity] duration-150 hover:bg-surface-2 hover:text-ink hover:opacity-100 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
 
 const ROW_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 34 }
 
@@ -271,8 +273,8 @@ function ProjectGroup({
           to="/new"
           search={{ project: group.key }}
           className="-mt-1 grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100"
-          aria-label={`New thread in ${group.label}`}
-          title={`New thread in ${group.label}`}
+          aria-label={`New task in ${group.label}`}
+          title={`New task in ${group.label}`}
         >
           <SquarePen size={13} />
         </Link>
@@ -282,7 +284,7 @@ function ProjectGroup({
         <button
           type="button"
           onClick={onExpand}
-          className="mt-1 rounded-full px-2.5 py-1 text-left text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+          className={MORE_ACTION_CLASS}
         >
           Show more
         </button>
@@ -312,9 +314,9 @@ function UngroupedSessionsBlock({
       {block.total > DEFAULT_SESSION_LIMIT ? (
         <Link
           to="/sessions"
-          className="mt-1 block rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+          className={MORE_ACTION_CLASS}
           activeOptions={{ exact: true }}
-          activeProps={{ className: 'bg-primary-soft!' }}
+          activeProps={{ className: 'bg-primary-soft! opacity-100!' }}
         >
           Show all threads
         </Link>
@@ -384,7 +386,7 @@ function SessionsSection({ open }: { open: boolean }) {
   }
 
   return (
-    <section>
+    <section className="shrink-0">
       {sessions.isPending || projects.isPending ? (
         <SkeletonRows count={4} />
       ) : sessions.isError ? (
@@ -468,7 +470,7 @@ function LoopsSection() {
   const visibleLoops = loops.data?.slice(0, SIDEBAR_LOOP_LIMIT) ?? []
 
   return (
-    <section>
+    <section className="shrink-0">
       <div className="flex items-center justify-between pr-1">
         <Link
           to="/loops"
@@ -520,9 +522,9 @@ function LoopsSection() {
           {loops.data.length > SIDEBAR_LOOP_LIMIT ? (
             <Link
               to="/loops"
-              className="mt-1 rounded-full px-2.5 py-1 text-[13px] text-primary transition-colors duration-150 hover:bg-surface-2"
+              className={MORE_ACTION_CLASS}
               activeOptions={{ exact: true }}
-              activeProps={{ className: 'bg-primary-soft!' }}
+              activeProps={{ className: 'bg-primary-soft! opacity-100!' }}
             >
               Show all loops
             </Link>
@@ -555,7 +557,7 @@ function BoardsSection() {
   }
 
   return (
-    <section>
+    <section className="shrink-0">
       <div className="flex items-center justify-between pr-1">
         <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 max-sm:text-[13px]">Boards</p>
         <IconButton
@@ -629,6 +631,41 @@ export function Sidebar({
   onOpenSettings: () => void
   onOpenConnect: () => void
 }) {
+  const navRef = useRef<HTMLElement | null>(null)
+  const [navEdge, setNavEdge] = useState({ scrollable: false, scrolled: false })
+  const updateNavEdge = useCallback(() => {
+    const nav = navRef.current
+    const scrollable = Boolean(nav && nav.scrollHeight - nav.clientHeight > 1)
+    const scrolled = Boolean(scrollable && nav && nav.scrollTop > 1)
+    setNavEdge((current) =>
+      current.scrollable === scrollable && current.scrolled === scrolled
+        ? current
+        : { scrollable, scrolled },
+    )
+  }, [])
+
+  useEffect(() => {
+    updateNavEdge()
+    const nav = navRef.current
+    if (!nav) return
+
+    const resizeObserver = new ResizeObserver(updateNavEdge)
+    resizeObserver.observe(nav)
+    const mutationObserver = new MutationObserver(updateNavEdge)
+    mutationObserver.observe(nav, { childList: true, subtree: true })
+    window.addEventListener('resize', updateNavEdge)
+    const frame = window.requestAnimationFrame(updateNavEdge)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.removeEventListener('resize', updateNavEdge)
+      mutationObserver.disconnect()
+      resizeObserver.disconnect()
+    }
+  }, [updateNavEdge])
+
+  const showNavEdge = navEdge.scrollable && navEdge.scrolled
+
   return (
     <aside
       // Phone: the drawer is full-screen (CSS overrides the inline column width).
@@ -650,21 +687,35 @@ export function Sidebar({
           that should dismiss the full-screen drawer, so drop it there. */}
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
-      <nav className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3 max-sm:gap-6 max-sm:p-4">
-        <div className="flex flex-col gap-0.5 max-sm:gap-1">
-          <Link
-            to="/new"
-            className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
-            activeProps={{ className: 'bg-primary-soft!' }}
-          >
-            <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
-            <span className="flex-1">New Thread</span>
-            <KeyboardShortcut value="N" className="max-sm:hidden" />
-          </Link>
+      <div className="flex shrink-0 flex-col gap-0.5 px-3 max-sm:gap-1 max-sm:px-4">
+        <Link
+          to="/new"
+          className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
+          activeProps={{ className: 'bg-primary-soft!' }}
+        >
+          <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
+          <span className="flex-1">New task</span>
+          <KeyboardShortcut value="N" className="max-sm:hidden" />
+        </Link>
 
-          <FeedLink />
-        </div>
+        <FeedLink />
+      </div>
 
+      <div
+        aria-hidden
+        className={`pointer-events-none relative z-[1] h-0 shrink-0 transition-opacity duration-150 ${
+          showNavEdge ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <div className="h-px bg-border/70" />
+        <div className="absolute inset-x-0 top-px h-5 bg-gradient-to-b from-[var(--sidebar-material-bg)] to-transparent" />
+      </div>
+
+      <nav
+        ref={navRef}
+        onScroll={updateNavEdge}
+        className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 max-sm:gap-6 max-sm:px-4"
+      >
         <SessionsSection open={open} />
 
         <LoopsSection />
@@ -672,13 +723,13 @@ export function Sidebar({
         <BoardsSection />
       </nav>
 
-      <div className="flex shrink-0 flex-col gap-1.5 border-t border-border p-3">
+      <div className="flex shrink-0 flex-col gap-0.5 border-t border-border px-3 py-1.5">
         <UpdatePanel />
         <ConnectionFooterButton onOpenConnect={onOpenConnect} />
         <button
           type="button"
           onClick={onOpenSettings}
-          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
+          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2 max-sm:text-[15px]"
         >
           <Settings size={15} className="text-ink-2 max-sm:size-[18px]" />
           <span className="flex-1 text-left">Settings</span>

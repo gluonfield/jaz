@@ -27,7 +27,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { compactSession, setSessionArchived } from '@/lib/api/sessions'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
-import type { RepoInfo, Session } from '@/lib/api/types'
+import type { QueuedAction, RepoInfo, Session } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import { looksLikeOpaqueToolID, type ProviderSubagentView } from '@/lib/providerSubagents'
 import type { SendMessageHandler } from '@/lib/sendMessage'
@@ -50,6 +50,8 @@ export function OverviewPanel({
   spawnedThreads,
   working,
   onSend,
+  onQueuePrompt,
+  onQueueAction,
 }: {
   session: Session
   progress?: TaskSurface
@@ -57,6 +59,8 @@ export function OverviewPanel({
   spawnedThreads: SpawnedThreadView[]
   working: boolean
   onSend: SendMessageHandler
+  onQueuePrompt: SendMessageHandler
+  onQueueAction: (action: QueuedAction, label: string) => Promise<void>
 }) {
   const repo = useRepoActions(session)
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
@@ -65,8 +69,15 @@ export function OverviewPanel({
       {spawnedThreads.length ? <ThreadsSection threads={spawnedThreads} /> : null}
       {subagents.length ? <SubagentsSection subagents={subagents} /> : null}
       {progress ? <ProgressSection progress={progress} working={working} /> : null}
-      {showGit ? <GitSection repo={repo} /> : null}
-      <ManageSection session={session} repo={repo} working={working} onSend={onSend} />
+      {showGit ? <GitSection repo={repo} onQueueAction={onQueueAction} /> : null}
+      <ManageSection
+        session={session}
+        repo={repo}
+        working={working}
+        onSend={onSend}
+        onQueuePrompt={onQueuePrompt}
+        onQueueAction={onQueueAction}
+      />
     </SidePanelShell>
   )
 }
@@ -338,30 +349,70 @@ function firstText(...values: Array<string | undefined>): string {
 function ActionRow({
   icon: Icon,
   onClick,
+  onQueue,
   disabled,
+  queueDisabled,
   hint,
+  queueHint,
   spin,
   children,
 }: {
   icon: LucideIcon
   onClick: () => void
+  onQueue?: () => void
   disabled?: boolean
+  queueDisabled?: boolean
   hint?: string
+  queueHint?: string
   spin?: boolean
   children: ReactNode
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={hint}
-      className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 enabled:hover:text-ink disabled:opacity-50"
-    >
+  const content = (
+    <>
       <Icon size={13} className={`shrink-0 text-ink-3 ${spin ? 'animate-spin' : ''}`} />
       <span className="min-w-0 flex-1 truncate">{children}</span>
-    </button>
+    </>
   )
+  if (!onQueue) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={hint}
+        className="flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-surface-2 enabled:hover:text-ink disabled:opacity-50"
+      >
+        {content}
+      </button>
+    )
+  }
+  return (
+    <div className="group/action-row flex h-7 w-full items-center rounded-full text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-within:bg-surface-2 focus-within:text-ink">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={hint}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-full pl-2.5 text-left enabled:cursor-pointer disabled:opacity-50"
+      >
+        {content}
+      </button>
+      <button
+        type="button"
+        aria-label={`Queue ${stringChildren(children)}`}
+        title={queueHint ?? `Queue ${stringChildren(children)}`}
+        disabled={queueDisabled}
+        onClick={onQueue}
+        className="mr-1 grid size-5 shrink-0 scale-90 cursor-pointer place-items-center rounded-full bg-bg text-[10px] font-semibold text-ink-3 opacity-0 shadow-sm transition-[opacity,transform,background-color,color] duration-150 group-hover/action-row:scale-100 group-hover/action-row:opacity-100 hover:bg-primary-soft hover:text-primary focus-visible:scale-100 focus-visible:opacity-100 active:scale-[0.96] disabled:cursor-default disabled:hover:bg-bg disabled:hover:text-ink-3"
+      >
+        Q
+      </button>
+    </div>
+  )
+}
+
+function stringChildren(children: ReactNode): string {
+  return typeof children === 'string' ? children : 'action'
 }
 
 function ProgressSection({ progress, working }: { progress: TaskSurface; working: boolean }) {
@@ -410,11 +461,15 @@ function ManageSection({
   repo,
   working,
   onSend,
+  onQueuePrompt,
+  onQueueAction,
 }: {
   session: Session
   repo: ReturnType<typeof useRepoActions>
   working: boolean
   onSend: SendMessageHandler
+  onQueuePrompt: SendMessageHandler
+  onQueueAction: (action: QueuedAction, label: string) => Promise<void>
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
@@ -447,7 +502,12 @@ function ManageSection({
       queryClient.invalidateQueries({ queryKey: keys.archivedSessions })
     },
   })
-  const sendCodeReview = async () => {
+  const queueAction = (action: QueuedAction, label: string) => {
+    void onQueueAction(action, label)
+      .then(() => toast(`Queued ${label}`))
+      .catch(() => undefined)
+  }
+  const sendCodeReview = async (queued = false) => {
     let catalog = skills.data ?? []
     let skill = catalog.find((candidate) => candidate.name === CODE_REVIEW_SKILL)
     if (!skill) {
@@ -459,7 +519,12 @@ function ManageSection({
       return
     }
     try {
-      await onSend(codeReviewPrompt(skill))
+      if (queued) {
+        await onQueuePrompt(codeReviewPrompt(skill))
+        toast('Queued Code Review')
+      } else {
+        await onSend(codeReviewPrompt(skill))
+      }
     } catch {
       return
     }
@@ -477,6 +542,9 @@ function ManageSection({
           disabled={repo.busy !== null || skills.isFetching}
           hint="Review this session's code changes"
           onClick={() => void sendCodeReview()}
+          onQueue={() => void sendCodeReview(true)}
+          queueDisabled={skills.isFetching}
+          queueHint="Queue Code Review"
         >
           Code Review
         </ActionRow>
@@ -488,6 +556,9 @@ function ManageSection({
           disabled={working || compact.isPending}
           hint="Compact this thread's context"
           onClick={() => compact.mutate()}
+          onQueue={() => queueAction('compact', 'Compact')}
+          queueDisabled={compact.isPending}
+          queueHint="Queue Compact"
         >
           {compact.isPending ? 'Compacting…' : 'Compact'}
         </ActionRow>
@@ -498,6 +569,14 @@ function ManageSection({
         disabled={archive.isPending}
         hint={session.archived ? 'Restores this thread and its children' : 'Archives this thread and its children'}
         onClick={() => archive.mutate(!session.archived)}
+        onQueue={() =>
+          queueAction(
+            session.archived ? 'unarchive' : 'archive',
+            session.archived ? 'Unarchive thread' : 'Archive thread',
+          )
+        }
+        queueDisabled={archive.isPending}
+        queueHint={session.archived ? 'Queue Unarchive thread' : 'Queue Archive thread'}
       >
         {session.archived ? 'Unarchive thread' : 'Archive thread'}
       </ActionRow>
@@ -528,12 +607,24 @@ function codeReviewPrompt(skill: SkillInfo): string {
   return encodeMention('$', skill.name, skill.path)
 }
 
-function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
+function GitSection({
+  repo,
+  onQueueAction,
+}: {
+  repo: ReturnType<typeof useRepoActions>
+  onQueueAction: (action: QueuedAction, label: string) => Promise<void>
+}) {
   const { info, busy, web, branch, branchPath } = repo
   const branchLabel = branch || 'detached'
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reduceMotion = useReducedMotion()
+  const toast = useToast()
+  const queueAction = (action: QueuedAction, label: string) => {
+    void onQueueAction(action, label)
+      .then(() => toast(`Queued ${label}`))
+      .catch(() => undefined)
+  }
 
   useEffect(() => {
     setCopied(false)
@@ -563,6 +654,9 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
           disabled={busy !== null || !info.worktree_restorable}
           hint={info.worktree_restorable ? 'Restores the saved session branch' : 'Saved branch is unavailable'}
           onClick={() => void repo.restore()}
+          onQueue={() => queueAction('repo/restore-worktree', 'Restore worktree')}
+          queueDisabled={busy !== null || !info.worktree_restorable}
+          queueHint="Queue Restore worktree"
         >
           {busy === 'restore' ? 'Restoring…' : 'Restore worktree'}
         </ActionRow>
@@ -632,6 +726,9 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
             disabled={busy !== null}
             hint="Commits everything, message from the session title"
             onClick={() => void repo.commit()}
+            onQueue={() => queueAction('repo/commit', 'Commit changes')}
+            queueDisabled={busy !== null}
+            queueHint="Queue Commit changes"
           >
             {busy === 'commit' ? 'Committing…' : 'Commit changes'}
           </ActionRow>
@@ -643,6 +740,9 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
             spin={busy === 'push'}
             disabled={busy !== null}
             onClick={() => void repo.push()}
+            onQueue={() => queueAction('repo/push', 'Push branch')}
+            queueDisabled={busy !== null}
+            queueHint="Queue Push branch"
           >
             {busy === 'push' ? 'Pushing…' : 'Push branch'}
           </ActionRow>
@@ -654,6 +754,9 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
             disabled={busy !== null}
             hint={`Commits this session's work, then merges the latest ${updateBranch} into this worktree`}
             onClick={() => void repo.update()}
+            onQueue={() => queueAction('repo/merge-from-main', `Update from ${updateBranch}`)}
+            queueDisabled={busy !== null}
+            queueHint={`Queue Update from ${updateBranch}`}
           >
             {busy === 'update' ? 'Updating…' : `Update from ${updateBranch}`}
           </ActionRow>
@@ -665,6 +768,9 @@ function GitSection({ repo }: { repo: ReturnType<typeof useRepoActions> }) {
             disabled={busy !== null}
             hint={`Commits this session's work and hands its branch off to ${info.main_branch}`}
             onClick={() => void repo.merge()}
+            onQueue={() => queueAction('repo/merge', `Hand off to ${info.main_branch}`)}
+            queueDisabled={busy !== null}
+            queueHint={`Queue Hand off to ${info.main_branch}`}
           >
             {busy === 'merge' ? 'Handing off…' : `Hand off to ${info.main_branch}`}
           </ActionRow>

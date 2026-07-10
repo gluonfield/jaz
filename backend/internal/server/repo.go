@@ -111,18 +111,15 @@ func isHexRev(s string) bool {
 // (git push -u) and returns the refreshed repo state. "Create pull request"
 // calls this first when the branch has no upstream yet.
 func (s *Server) handleSessionRepoPush(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	cwd, ok := sessionCwd(w, session)
-	if !ok {
-		return
-	}
 	// Pushes go over the network; give them room without hanging forever.
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	if err := gitinfo.Push(ctx, cwd); err != nil {
+	info, err := s.pushSessionRepo(ctx, session)
+	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, cwd))
+	writeJSON(w, http.StatusOK, info)
 }
 
 type repoCommitRequest struct {
@@ -133,94 +130,133 @@ type repoCommitRequest struct {
 // working directory. The message defaults to the session title — in a
 // worktree the only changes are this session's work, so the title names it.
 func (s *Server) handleSessionRepoCommit(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	cwd, ok := sessionCwd(w, session)
-	if !ok {
-		return
-	}
 	var req repoCommitRequest
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
-	message := firstNonEmpty(strings.TrimSpace(req.Message), strings.TrimSpace(session.Title), "jaz session changes")
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	if err := gitinfo.CommitAll(ctx, cwd, message); err != nil {
+	info, err := s.commitSessionRepo(ctx, session, req.Message)
+	if err != nil {
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, cwd))
+	writeJSON(w, http.StatusOK, info)
 }
 
 // handleSessionRepoMerge commits the worktree's outstanding work on its
 // branch and merges that branch into the repo's main checkout.
 func (s *Server) handleSessionRepoMerge(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	cwd, ok := sessionCwd(w, session)
-	if !ok {
-		return
-	}
 	var req repoCommitRequest
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
-	message := firstNonEmpty(strings.TrimSpace(req.Message), strings.TrimSpace(session.Title), "jaz session changes")
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	root, err := gitinfo.MergeIntoMain(ctx, cwd, message)
+	root, info, err := s.mergeSessionRepo(ctx, session, req.Message)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"cwd":  root,
-		"info": gitinfo.Inspect(ctx, cwd),
+		"info": info,
 	})
 }
 
 func (s *Server) handleSessionRepoMergeFromMain(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	cwd, ok := sessionCwd(w, session)
-	if !ok {
-		return
-	}
 	var req repoCommitRequest
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&req)
 	}
-	message := firstNonEmpty(strings.TrimSpace(req.Message), strings.TrimSpace(session.Title), "jaz session changes")
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	if err := gitinfo.MergeFromMain(ctx, cwd, message); err != nil {
+	info, err := s.mergeFromMainSessionRepo(ctx, session, req.Message)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, cwd))
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (s *Server) handleSessionRepoRestoreWorktree(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	worktree, ok := s.managedWorktree(session)
-	if !ok {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("session is not on a managed worktree"))
-		return
-	}
-	if _, err := os.Stat(worktree.Cwd); err == nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, worktree.Cwd))
-		return
-	} else if !os.IsNotExist(err) {
-		writeError(w, http.StatusBadRequest, err)
-		return
-	}
-	if worktree.ProjectPath == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("session has no project path to restore from"))
-		return
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
 	defer cancel()
-	if err := s.ensureManagedWorktree(ctx, session); err != nil {
+	info, err := s.restoreSessionWorktree(ctx, session)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, gitinfo.Inspect(ctx, worktree.Cwd))
+	writeJSON(w, http.StatusOK, info)
+}
+
+func (s *Server) pushSessionRepo(ctx context.Context, session storage.Session) (gitinfo.Info, error) {
+	cwd, err := sessionCwdValue(session)
+	if err != nil {
+		return gitinfo.Info{}, err
+	}
+	if err := gitinfo.Push(ctx, cwd); err != nil {
+		return gitinfo.Info{}, err
+	}
+	return gitinfo.Inspect(ctx, cwd), nil
+}
+
+func (s *Server) commitSessionRepo(ctx context.Context, session storage.Session, rawMessage string) (gitinfo.Info, error) {
+	cwd, err := sessionCwdValue(session)
+	if err != nil {
+		return gitinfo.Info{}, err
+	}
+	message := repoCommitMessage(session, rawMessage)
+	if err := gitinfo.CommitAll(ctx, cwd, message); err != nil {
+		return gitinfo.Info{}, err
+	}
+	return gitinfo.Inspect(ctx, cwd), nil
+}
+
+func (s *Server) mergeSessionRepo(ctx context.Context, session storage.Session, rawMessage string) (string, gitinfo.Info, error) {
+	cwd, err := sessionCwdValue(session)
+	if err != nil {
+		return "", gitinfo.Info{}, err
+	}
+	root, err := gitinfo.MergeIntoMain(ctx, cwd, repoCommitMessage(session, rawMessage))
+	if err != nil {
+		return "", gitinfo.Info{}, err
+	}
+	return root, gitinfo.Inspect(ctx, cwd), nil
+}
+
+func (s *Server) mergeFromMainSessionRepo(ctx context.Context, session storage.Session, rawMessage string) (gitinfo.Info, error) {
+	cwd, err := sessionCwdValue(session)
+	if err != nil {
+		return gitinfo.Info{}, err
+	}
+	if err := gitinfo.MergeFromMain(ctx, cwd, repoCommitMessage(session, rawMessage)); err != nil {
+		return gitinfo.Info{}, err
+	}
+	return gitinfo.Inspect(ctx, cwd), nil
+}
+
+func (s *Server) restoreSessionWorktree(ctx context.Context, session storage.Session) (gitinfo.Info, error) {
+	worktree, ok := s.managedWorktree(session)
+	if !ok {
+		return gitinfo.Info{}, fmt.Errorf("session is not on a managed worktree")
+	}
+	if _, err := os.Stat(worktree.Cwd); err == nil {
+		return gitinfo.Inspect(ctx, worktree.Cwd), nil
+	} else if !os.IsNotExist(err) {
+		return gitinfo.Info{}, err
+	}
+	if worktree.ProjectPath == "" {
+		return gitinfo.Info{}, fmt.Errorf("session has no project path to restore from")
+	}
+	if err := s.ensureManagedWorktree(ctx, session); err != nil {
+		return gitinfo.Info{}, err
+	}
+	return gitinfo.Inspect(ctx, worktree.Cwd), nil
+}
+
+func repoCommitMessage(session storage.Session, raw string) string {
+	return firstNonEmpty(strings.TrimSpace(raw), strings.TrimSpace(session.Title), "jaz session changes")
 }
 
 func (s *Server) PruneManagedWorktrees(ctx context.Context) {
@@ -417,10 +453,18 @@ func optionalCwd(session storage.Session) string {
 }
 
 func sessionCwd(w http.ResponseWriter, session storage.Session) (string, bool) {
-	cwd := optionalCwd(session)
-	if cwd == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("session has no working directory"))
+	cwd, err := sessionCwdValue(session)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return "", false
 	}
 	return cwd, true
+}
+
+func sessionCwdValue(session storage.Session) (string, error) {
+	cwd := optionalCwd(session)
+	if cwd == "" {
+		return "", fmt.Errorf("session has no working directory")
+	}
+	return cwd, nil
 }

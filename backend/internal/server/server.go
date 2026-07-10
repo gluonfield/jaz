@@ -340,6 +340,12 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, se
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		if pending := session.PendingSteer; pending != nil && len(records) > 0 {
+			last := records[len(records)-1]
+			if last.Role == "user" && last.Content == pending.Text && !last.CreatedAt.Before(session.LastAttentionAt) {
+				session.PendingSteer = nil
+			}
+		}
 		messages = messageRecordsResponse(records)
 	} else {
 		loaded, err := s.Store.LoadMessages(session.ID)
@@ -424,24 +430,14 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if action == "archive" || action == "unarchive" {
-		if err := s.Store.SetArchived(session.ID, action == "archive"); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if action == "archive" {
-			s.setSessionUnread(session.ID, false)
-		}
-		session, err = s.Store.LoadSession(session.ID)
+		archived := action == "archive"
+		session, err = s.setSessionArchivedState(session.ID, archived)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		if action == "archive" {
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				defer cancel()
-				s.PruneManagedWorktrees(ctx)
-			}()
+		if archived {
+			s.pruneManagedWorktreesSoon()
 		}
 		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
 		return

@@ -10,6 +10,7 @@ type QueuedMessage struct {
 	ID            string            `json:"id,omitempty"`
 	Text          string            `json:"text"`
 	Kind          QueuedMessageKind `json:"kind,omitempty"`
+	Action        QueuedAction      `json:"action,omitempty"`
 	Contexts      []MessageContext  `json:"contexts,omitempty"`
 	Quotes        []string          `json:"quotes,omitempty"`
 	AttachmentIDs []string          `json:"attachment_ids,omitempty"`
@@ -22,6 +23,19 @@ type QueuedMessageKind string
 const (
 	QueuedMessageKindPublic   QueuedMessageKind = ""
 	QueuedMessageKindInternal QueuedMessageKind = "internal"
+)
+
+type QueuedAction string
+
+const (
+	QueuedActionArchive             QueuedAction = "archive"
+	QueuedActionUnarchive           QueuedAction = "unarchive"
+	QueuedActionCompact             QueuedAction = "compact"
+	QueuedActionRepoCommit          QueuedAction = "repo/commit"
+	QueuedActionRepoPush            QueuedAction = "repo/push"
+	QueuedActionRepoMerge           QueuedAction = "repo/merge"
+	QueuedActionRepoMergeFromMain   QueuedAction = "repo/merge-from-main"
+	QueuedActionRepoRestoreWorktree QueuedAction = "repo/restore-worktree"
 )
 
 func NormalizeQueuedMessages(messages []QueuedMessage) []QueuedMessage {
@@ -80,8 +94,18 @@ func legacyQueuedMessageID(index int, seen map[string]bool) string {
 
 func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.ID = strings.TrimSpace(message.ID)
-	message.Kind = normalizeQueuedMessageKind(message.Kind)
+	message.Action = normalizeQueuedAction(message.Action)
 	message.Text = strings.TrimSpace(message.Text)
+	if message.Action != "" {
+		message.Kind = QueuedMessageKindPublic
+		message.Contexts = nil
+		message.Quotes = nil
+		message.AttachmentIDs = nil
+		message.PlanRequested = false
+		message.GoalRequested = false
+		return message, true
+	}
+	message.Kind = normalizeQueuedMessageKind(message.Kind)
 	message.Contexts = NormalizeMessageContexts(append(SelectionContexts(message.Quotes), message.Contexts...))
 	message.Quotes = nil
 	message.AttachmentIDs = normalizeNonEmpty(message.AttachmentIDs)
@@ -114,7 +138,12 @@ func (message QueuedMessage) IsInternal() bool {
 	return message.Kind == QueuedMessageKindInternal
 }
 
+func (message QueuedMessage) IsAction() bool {
+	return message.Action != ""
+}
+
 func (message QueuedMessage) AsInternal() QueuedMessage {
+	message.Action = ""
 	message.Kind = QueuedMessageKindInternal
 	return message
 }
@@ -131,6 +160,26 @@ func normalizeQueuedMessageKind(kind QueuedMessageKind) QueuedMessageKind {
 	default:
 		return QueuedMessageKindPublic
 	}
+}
+
+func normalizeQueuedAction(action QueuedAction) QueuedAction {
+	switch action {
+	case QueuedActionArchive,
+		QueuedActionUnarchive,
+		QueuedActionCompact,
+		QueuedActionRepoCommit,
+		QueuedActionRepoPush,
+		QueuedActionRepoMerge,
+		QueuedActionRepoMergeFromMain,
+		QueuedActionRepoRestoreWorktree:
+		return action
+	default:
+		return ""
+	}
+}
+
+func ValidQueuedAction(action QueuedAction) bool {
+	return normalizeQueuedAction(action) != ""
 }
 
 func normalizeNonEmpty(values []string) []string {

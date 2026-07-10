@@ -288,7 +288,7 @@ function RootLayout() {
                 <TitlebarActionsOutlet />
               </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">
               <Outlet />
             </div>
           </main>

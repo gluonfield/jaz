@@ -1,4 +1,15 @@
-import { Check, CornerDownRight, GripVertical, MessageSquareQuote, Paperclip, Pencil, Target, Trash2, X } from 'lucide-react'
+import {
+  Check,
+  CornerDownRight,
+  GripVertical,
+  MessageSquareQuote,
+  Paperclip,
+  Pencil,
+  Target,
+  Trash2,
+  X,
+  Zap,
+} from 'lucide-react'
 import { AnimatePresence, motion, Reorder, useDragControls } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import type { QueuedMessage } from '@/lib/api/types'
@@ -138,6 +149,7 @@ function QueuedRow({
   // Drag is initiated only from the grip handle so the action buttons and selectable
   // text stay interactive (a row-wide drag listener would swallow their clicks).
   const controls = useDragControls()
+  const queuedAction = Boolean(item.action)
 
   return (
     <Reorder.Item
@@ -185,10 +197,19 @@ function QueuedRow({
         />
       ) : (
         <div className="flex min-w-0 items-center gap-1.5">
-          <CornerDownRight className="size-3.5 shrink-0 text-ink-3" aria-hidden />
+          {queuedAction ? (
+            <Zap className="size-3.5 shrink-0 text-primary" aria-hidden />
+          ) : (
+            <CornerDownRight className="size-3.5 shrink-0 text-ink-3" aria-hidden />
+          )}
           <p className="truncate text-[13px] text-ink-2 select-text">
             <MentionText text={item.text} />
           </p>
+          {queuedAction ? (
+            <span className="inline-flex shrink-0 rounded-full bg-primary-soft px-1.5 py-0.5 text-[11px] font-medium text-primary">
+              Action
+            </span>
+          ) : null}
           {(item.contexts?.length ?? item.quotes?.length ?? 0) > 0 ? (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-bg px-1.5 py-0.5 text-[11px] tabular-nums text-ink-3">
               <MessageSquareQuote size={11} aria-hidden />
@@ -241,30 +262,34 @@ function QueuedRow({
           </>
         ) : (
           <>
+            {!queuedAction ? (
+              <>
+                <motion.button
+                  type="button"
+                  disabled={steerDisabled}
+                  onClick={onSteer}
+                  whileTap={{ scale: 0.97 }}
+                  className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-control px-1.5 text-[11px] font-medium text-ink-2 transition-colors duration-150 hover:bg-primary-soft hover:text-primary disabled:cursor-default disabled:opacity-45"
+                >
+                  <CornerDownRight size={13} />
+                  Steer
+                </motion.button>
+                <motion.button
+                  type="button"
+                  aria-label="Edit queued prompt"
+                  title="Edit queued prompt"
+                  onClick={onStartEdit}
+                  whileTap={{ scale: 0.92 }}
+                  className="grid size-6 cursor-pointer place-items-center rounded-full text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                >
+                  <Pencil size={14} />
+                </motion.button>
+              </>
+            ) : null}
             <motion.button
               type="button"
-              disabled={steerDisabled}
-              onClick={onSteer}
-              whileTap={{ scale: 0.97 }}
-              className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-control px-1.5 text-[11px] font-medium text-ink-2 transition-colors duration-150 hover:bg-primary-soft hover:text-primary disabled:cursor-default disabled:opacity-45"
-            >
-              <CornerDownRight size={13} />
-              Steer
-            </motion.button>
-            <motion.button
-              type="button"
-              aria-label="Edit queued prompt"
-              title="Edit queued prompt"
-              onClick={onStartEdit}
-              whileTap={{ scale: 0.92 }}
-              className="grid size-6 cursor-pointer place-items-center rounded-full text-ink-3 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-            >
-              <Pencil size={14} />
-            </motion.button>
-            <motion.button
-              type="button"
-              aria-label="Delete queued prompt"
-              title="Delete queued prompt"
+              aria-label={queuedAction ? 'Delete queued action' : 'Delete queued prompt'}
+              title={queuedAction ? 'Delete queued action' : 'Delete queued prompt'}
               onClick={onDelete}
               whileTap={{ scale: 0.92 }}
               className="grid size-6 cursor-pointer place-items-center rounded-full text-ink-3 transition-colors duration-150 hover:bg-danger-soft hover:text-danger"
@@ -287,6 +312,7 @@ function queueSignature(prompts: QueuedMessage[]): string {
     prompts.map((prompt) => [
       prompt.id,
       prompt.text,
+      prompt.action ?? '',
       prompt.contexts ?? prompt.quotes ?? [],
       prompt.attachment_ids ?? [],
       prompt.plan_requested ?? false,

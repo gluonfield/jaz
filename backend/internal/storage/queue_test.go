@@ -67,6 +67,53 @@ func TestQueuedMessageAllowsAttachmentWithoutText(t *testing.T) {
 	}
 }
 
+func TestQueuedActionRoundTrip(t *testing.T) {
+	raw, err := MarshalQueuedMessages([]QueuedMessage{{
+		Text:          " Archive thread ",
+		Action:        QueuedActionArchive,
+		Contexts:      []MessageContext{{Type: ContextTypeSelection, Text: "ignored"}},
+		AttachmentIDs: []string{"ignored"},
+		PlanRequested: true,
+		GoalRequested: true,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := UnmarshalQueuedMessages(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	got := messages[0]
+	if got.Kind != QueuedMessageKindPublic || got.Action != QueuedActionArchive || got.Text != "Archive thread" {
+		t.Fatalf("action = %#v", got)
+	}
+	if len(got.Contexts) != 0 || len(got.AttachmentIDs) != 0 || got.PlanRequested || got.GoalRequested {
+		t.Fatalf("queued action kept prompt fields: %#v", got)
+	}
+}
+
+func TestQueuedActionWithoutTextDoesNotInventDisplayText(t *testing.T) {
+	raw, err := MarshalQueuedMessages([]QueuedMessage{{
+		Action: QueuedActionRepoMergeFromMain,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := UnmarshalQueuedMessages(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	if messages[0].Action != QueuedActionRepoMergeFromMain || messages[0].Text != "" {
+		t.Fatalf("action = %#v, want action with empty display text", messages[0])
+	}
+}
+
 func TestQueuedMessageBrowserAnnotationsRoundTripAndTrim(t *testing.T) {
 	raw, err := MarshalQueuedMessages([]QueuedMessage{{
 		Text: "ask",

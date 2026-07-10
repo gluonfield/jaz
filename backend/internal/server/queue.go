@@ -43,7 +43,7 @@ func (s *Server) handleQueueAction(w http.ResponseWriter, r *http.Request, sessi
 	}
 	s.publishMessagesChanged(session.ID)
 	writeJSON(w, http.StatusOK, canonicalSessionResponse(updated))
-	if updated.Status == storage.StatusIdle && len(updated.QueuedMessages) > 0 && s.canStartQueuedPrompt(updated) {
+	if updated.Status == storage.StatusIdle && len(updated.QueuedMessages) > 0 && s.canStartQueuedTurn(updated) {
 		s.drainQueueSoon(updated.ID)
 	}
 }
@@ -62,7 +62,7 @@ func (s *Server) mutateSessionQueue(sessionID string, req queueRequest) (storage
 		return storage.Session{}, err
 	}
 	if req.op() == "append" && len(queue) > 0 {
-		if err := s.validateQueuedPrompt(session, queue[len(queue)-1]); err != nil {
+		if err := s.validateQueuedMessage(session, queue[len(queue)-1]); err != nil {
 			return storage.Session{}, err
 		}
 	}
@@ -107,6 +107,9 @@ func applyQueueMutation(queue []storage.QueuedMessage, req queueRequest) ([]stor
 	switch req.op() {
 	case "append":
 		message := req.Message
+		if message.Action != "" && !storage.ValidQueuedAction(message.Action) {
+			return queue, queueInputError{"unknown queued action"}
+		}
 		message.ID = ""
 		message = message.AsPublic()
 		msgs := storage.NormalizeQueuedMessages([]storage.QueuedMessage{message})
@@ -279,6 +282,18 @@ func (s *Server) drainQueuedPrompt(ctx context.Context, sessionID string) {
 		return
 	}
 	s.publishMessagesChanged(session.ID)
+	if prompt.IsAction() {
+		async, err := s.startQueuedAction(ctx, session, *prompt)
+		if err != nil {
+			s.logger().Error("queued action failed", "session", session.ID, "action", prompt.Action, "error", err)
+			s.restoreQueuedPrompt(session.ID, *prompt, 0, err.Error())
+			return
+		}
+		if !async {
+			s.finishQueuedAction(session.ID, prompt.Action)
+		}
+		return
+	}
 	if err := s.startQueuedPrompt(ctx, session, *prompt); err != nil {
 		s.logger().Error("queued prompt start failed", "session", session.ID, "error", err)
 		s.restoreQueuedPrompt(session.ID, *prompt, 0, err.Error())
@@ -344,18 +359,18 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 
 	index := nextQueuedPromptIndex(prompts)
 	prompt := prompts[index]
-	if err := s.validateQueuedPrompt(session, prompt); err != nil {
+	if err := s.validateQueuedMessage(session, prompt); err != nil {
 		return storage.Session{}, nil, false, err
 	}
 	session.QueuedMessages = s.assignQueuedMessageIDs(removeQueuedPrompt(prompts, index))
 	markSessionRunning(&session)
-	if session.Title == "" && !prompt.IsInternal() {
+	if session.Title == "" && !prompt.IsInternal() && !prompt.IsAction() {
 		session.Title = titleFromMessage(prompt.Text)
 	}
 	if err := s.Store.SaveSession(session); err != nil {
 		return storage.Session{}, nil, false, err
 	}
-	if !prompt.IsInternal() {
+	if !prompt.IsInternal() && !prompt.IsAction() {
 		s.maybeGenerateSessionTitle(session, prompt.Text)
 	}
 	return session, &prompt, true, nil
@@ -441,6 +456,9 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 	}
 
 	prompt := publicQueue[index]
+	if prompt.IsAction() {
+		return steeredQueuedPrompt{}, queueInputError{"queued actions cannot be steered"}
+	}
 	if err := s.validateQueuedPrompt(session, prompt); err != nil {
 		return steeredQueuedPrompt{}, err
 	}
@@ -553,7 +571,22 @@ func (s *Server) canStartQueuedPrompt(session storage.Session) bool {
 	}
 }
 
+func (s *Server) canStartQueuedTurn(session storage.Session) bool {
+	prompts := storage.CanonicalQueuedMessages(session.QueuedMessages)
+	if len(prompts) == 0 {
+		return false
+	}
+	prompt := prompts[nextQueuedPromptIndex(prompts)]
+	if prompt.IsAction() {
+		return s.canStartQueuedAction(session, prompt.Action)
+	}
+	return s.canStartQueuedPrompt(session)
+}
+
 func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session, prompt storage.QueuedMessage) error {
+	if prompt.IsAction() {
+		return fmt.Errorf("queued action reached prompt runner")
+	}
 	if err := s.validateGoalRequest(session, prompt.GoalRequested); err != nil {
 		return err
 	}

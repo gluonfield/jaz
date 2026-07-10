@@ -455,7 +455,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           {sidePanel.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
           <div className="relative h-full min-w-0 flex-1">
-            <div ref={attachScroll} className="h-full overflow-y-auto" onScroll={onThreadScroll}>
+            <div ref={attachScroll} className="scrollbar-quiet h-full overflow-y-auto" onScroll={onThreadScroll}>
               <div
                 ref={threadFind.rootRef}
                 className={`${THREAD_COLUMN_CLASS} pt-2`}
@@ -592,6 +592,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     steerDisabled={queue.steerDisabled}
                     draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
                     fileRoot={session.runtime_ref?.cwd}
+                    attachmentSessionId={session.id}
                     contexts={composerContexts.contexts}
                     onRemoveContext={composerContexts.removeContext}
                     onClearContexts={composerContexts.clearContexts}
@@ -648,6 +649,8 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
               onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
               onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
               onSend={queue.onSend}
+              onQueuePrompt={queue.onQueuePrompt}
+              onQueueAction={queue.onQueueAction}
               onSendSideChat={handleSideChatSend}
               onClose={sidePanel.toggle}
             />
