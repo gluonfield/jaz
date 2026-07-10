@@ -78,6 +78,7 @@ export function ComposerCard({
   clearOnSend = true,
   leftSlot,
   fileRoot,
+  attachmentSessionId,
   contexts = [],
   onSend,
   onStop,
@@ -108,6 +109,7 @@ export function ComposerCard({
   /** server-side directory the @-mention file picker indexes (a project path,
       session cwd, or '' for the workspace root). undefined disables files */
   fileRoot?: string
+  attachmentSessionId?: string
   /** text selections and browser annotations attached to the next message */
   contexts?: ComposerContext[]
   onSend: SendMessageHandler
@@ -334,7 +336,11 @@ export function ComposerCard({
             ))}
           </div>
         ) : null}
-        <ComposerAttachmentList attachments={attachmentDraft.attachments} onRemove={attachmentDraft.removeAttachment} />
+        <ComposerAttachmentList
+          attachments={attachmentDraft.attachments}
+          attachmentSessionId={attachmentSessionId}
+          onRemove={attachmentDraft.removeAttachment}
+        />
         <MentionTextarea
           mention={mention}
           placeholder={placeholder}
@@ -497,6 +503,7 @@ export function Composer({
   steerDisabled,
   draftStorageKey,
   fileRoot,
+  attachmentSessionId,
   contexts,
   onSend,
   onStop,
@@ -523,6 +530,7 @@ export function Composer({
   draftStorageKey?: string
   /** directory the @-mention file picker indexes; undefined disables files */
   fileRoot?: string
+  attachmentSessionId?: string
   contexts?: ComposerContext[]
   onSend: SendMessageHandler
   onStop: () => void
@@ -567,6 +575,7 @@ export function Composer({
         draftStorageKey={draftStorageKey}
         draftStorage="local"
         fileRoot={fileRoot}
+        attachmentSessionId={attachmentSessionId}
         contexts={contexts}
         onSend={onSend}
         onStop={onStop}

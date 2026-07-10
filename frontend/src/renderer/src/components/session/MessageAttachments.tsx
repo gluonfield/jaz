@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { Eye, FileText, Image as ImageIcon, ImageOff, LoaderCircle } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { sessionAttachmentUrl } from '@/lib/api/sessions'
@@ -21,7 +21,9 @@ export interface MessageAttachment {
   uri?: string
   mime_type?: string
   size?: number
+  file?: File
   uploading?: boolean
+  error?: string
 }
 
 export function MessageAttachments({
@@ -39,8 +41,8 @@ export function MessageAttachments({
       {images.length ? (
         <div className="flex max-w-full flex-wrap gap-2">
           {images.map((attachment, index) => (
-            <ImageAttachment
-              key={attachment.id ?? `${attachment.name}-${index}`}
+            <ImageAttachmentTile
+              key={attachmentKey(attachment, index)}
               attachment={attachment}
               attachmentSessionId={attachmentSessionId}
             />
@@ -50,7 +52,7 @@ export function MessageAttachments({
       {files.length ? (
         <div className="flex flex-wrap gap-1">
           {files.map((attachment, index) => (
-            <FileAttachmentPill key={attachment.id ?? `${attachment.name}-${index}`} attachment={attachment} />
+            <FileAttachmentPill key={attachmentKey(attachment, index)} attachment={attachment} />
           ))}
         </div>
       ) : null}
@@ -58,7 +60,7 @@ export function MessageAttachments({
   )
 }
 
-function ImageAttachment({
+export function ImageAttachmentTile({
   attachment,
   attachmentSessionId,
 }: {
@@ -67,12 +69,20 @@ function ImageAttachment({
 }) {
   const [open, setOpen] = useState(false)
   const [unavailable, setUnavailable] = useState(false)
-  const src = attachmentContentUrl(attachment, attachmentSessionId)
-  if (attachment.uploading) return <ImageAttachmentPreview attachment={attachment} status="Uploading" uploading />
+  const objectUrl = useObjectUrl(attachment.file)
+  const src = objectUrl || attachmentContentUrl(attachment, attachmentSessionId)
+  if (attachment.uploading && !src) {
+    return <ImageAttachmentPreview attachment={attachment} status="Uploading" uploading />
+  }
   if (!src || unavailable) return <ImageAttachmentPreview attachment={attachment} status="Unavailable" unavailable />
   return (
     <>
-      <ImageAttachmentPreview attachment={attachment} onOpen={() => setOpen(true)} />
+      <ImageAttachmentPreview
+        attachment={attachment}
+        status={attachmentStatus(attachment)}
+        uploading={attachment.uploading}
+        onOpen={() => setOpen(true)}
+      />
       <ImageAttachmentModal
         attachment={attachment}
         src={src}
@@ -82,6 +92,20 @@ function ImageAttachment({
       />
     </>
   )
+}
+
+function useObjectUrl(file?: File): string {
+  const [url, setUrl] = useState('')
+  useLayoutEffect(() => {
+    if (!file) {
+      setUrl('')
+      return
+    }
+    const next = URL.createObjectURL(file)
+    setUrl(next)
+    return () => URL.revokeObjectURL(next)
+  }, [file])
+  return url
 }
 
 function ImageAttachmentPreview({
@@ -194,6 +218,7 @@ function FileAttachmentPill({ attachment }: { attachment: MessageAttachment }) {
 }
 
 function attachmentStatus(attachment: MessageAttachment): string {
+  if (attachment.error) return 'Failed'
   return attachment.uploading ? 'Uploading' : formatAttachmentSize(attachment.size)
 }
 
@@ -203,7 +228,7 @@ function attachmentContentUrl(attachment: MessageAttachment, attachmentSessionId
   return ''
 }
 
-function isImageAttachment(attachment: MessageAttachment): boolean {
+export function isImageAttachment(attachment: MessageAttachment): boolean {
   const mime = attachment.mime_type?.split(';', 1)[0]?.trim().toLowerCase() ?? ''
   return RENDERABLE_IMAGE_MIME_TYPES.has(mime) || /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(attachment.name)
 }
@@ -217,4 +242,8 @@ function formatAttachmentSize(size?: number): string {
 
 function attachmentTitle(attachment: MessageAttachment): string {
   return attachment.uri ?? attachment.name
+}
+
+function attachmentKey(attachment: MessageAttachment, index: number): string {
+  return attachment.id ?? `${attachment.name}-${index}`
 }

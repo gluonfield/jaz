@@ -166,6 +166,7 @@ export function SideChatPanel({
             placeholder="Ask in side chat"
             draftStorageKey={`side-chat:${sideChatID}`}
             fileRoot={fileRoot}
+            attachmentSessionId={sessionId}
             onSend={submit}
             onUploadAttachment={onUploadAttachment}
             onTextChange={() => {

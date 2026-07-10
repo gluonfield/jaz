@@ -5,7 +5,12 @@ import {
   loadAttachmentDraft,
   saveAttachmentDraft,
 } from '@/components/session/composerAttachmentDraftStore'
-import { uploadedAttachment, type ComposerAttachment } from '@/components/session/composerAttachmentTypes'
+import {
+  pendingUploadFile,
+  uploadedAttachment,
+  withUploadedAttachment,
+  type ComposerAttachment,
+} from '@/components/session/composerAttachmentTypes'
 
 export type { ComposerAttachment } from '@/components/session/composerAttachmentTypes'
 
@@ -67,11 +72,15 @@ export function useComposerAttachments({
     commitAttachments([...attachmentsRef.current, ...items])
     if (!onUploadAttachment) return
     for (const item of items) {
-      void onUploadAttachment(item.file!).then(
+      const file = pendingUploadFile(item)
+      if (!file) continue
+      void onUploadAttachment(file).then(
         (attachment) => {
           if (!mountedRef.current) return
           commitAttachments(attachmentsRef.current.map((current) =>
-            current.localId === item.localId ? { ...attachment, localId: item.localId } : current,
+            current.localId === item.localId
+              ? withUploadedAttachment(current, attachment)
+              : current,
           ))
         },
         (error) => {
@@ -100,7 +109,10 @@ export function useComposerAttachments({
     removeAttachment,
     clearAttachments,
     busy: attachments.some((attachment) => attachment.uploading || attachment.error),
-    files: attachments.flatMap((attachment) => attachment.file ? [attachment.file] : []),
+    files: attachments.flatMap((attachment) => {
+      const file = pendingUploadFile(attachment)
+      return file ? [file] : []
+    }),
     uploaded: attachments.flatMap((attachment) => {
       const uploaded = uploadedAttachment(attachment)
       return uploaded ? [uploaded] : []
