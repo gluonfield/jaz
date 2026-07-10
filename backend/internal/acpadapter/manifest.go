@@ -28,6 +28,14 @@ type manifestAsset struct {
 	SHA256 string            `json:"sha256"`
 	Binary string            `json:"binary"`
 	Env    map[string]string `json:"env,omitempty"`
+	Files  []manifestFile    `json:"files,omitempty"`
+}
+
+type manifestFile struct {
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256"`
+	Source string `json:"source"`
+	Path   string `json:"path"`
 }
 
 func manifestURLForVersion(version string) string {
@@ -94,6 +102,14 @@ func (m *Manager) resolveSpec(ctx context.Context, name string) (adapterSpec, er
 			continue
 		}
 		spec.Env[key] = resolveArchivePath(root, value)
+	}
+	for _, file := range asset.Files {
+		spec.Files = append(spec.Files, adapterFile{
+			URL:    file.URL,
+			SHA256: file.SHA256,
+			Source: file.Source,
+			Path:   resolveArchivePath(root, file.Path),
+		})
 	}
 	return spec, nil
 }
@@ -272,10 +288,21 @@ func validateManifestAsset(adapter, version string, asset manifestAsset) error {
 	if !cleanRelative(asset.Binary) {
 		return fmt.Errorf("managed acp adapter %q manifest binary path is invalid", adapter)
 	}
+	paths := map[string]bool{strings.TrimSpace(asset.Binary): true}
 	for key, value := range asset.Env {
 		if strings.TrimSpace(key) == "" || !cleanRelative(value) {
 			return fmt.Errorf("managed acp adapter %q manifest env path is invalid", adapter)
 		}
+	}
+	for _, file := range asset.Files {
+		if strings.TrimSpace(file.URL) == "" || strings.TrimSpace(file.SHA256) == "" || !cleanRelative(file.Source) || !cleanRelative(file.Path) {
+			return fmt.Errorf("managed acp adapter %q manifest runtime file is invalid", adapter)
+		}
+		path := strings.TrimSpace(file.Path)
+		if paths[path] {
+			return fmt.Errorf("managed acp adapter %q manifest runtime path %q is duplicated", adapter, path)
+		}
+		paths[path] = true
 	}
 	return nil
 }

@@ -6,22 +6,54 @@
         "darwin-arm64": {
           "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.20/codex-acp-0.16.20-aarch64-apple-darwin.tar.gz",
           "sha256": "2fd6bd4f7505c5bdfd2c0169452c0a027ad6b8974cd5bad2fd7a1c8c0eaa70a1",
-          "binary": "codex-acp"
+          "binary": "codex-acp",
+          "files": [
+            {
+              "url": "https://github.com/openai/codex/releases/download/rust-v0.144.0/codex-code-mode-host-aarch64-apple-darwin.tar.gz",
+              "sha256": "6cf9282430befe541369c7cb2804604a7f0dd9416f3a3241e3676db22022a246",
+              "source": "codex-code-mode-host-aarch64-apple-darwin",
+              "path": "codex-code-mode-host"
+            }
+          ]
         },
         "darwin-x64": {
           "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.20/codex-acp-0.16.20-x86_64-apple-darwin.tar.gz",
           "sha256": "6fbfe04c07ab3bc095b3962f4e9e1307c4a1faba6de9e2a6bd6a38c50e7941f8",
-          "binary": "codex-acp"
+          "binary": "codex-acp",
+          "files": [
+            {
+              "url": "https://github.com/openai/codex/releases/download/rust-v0.144.0/codex-code-mode-host-x86_64-apple-darwin.tar.gz",
+              "sha256": "6fd2b21d9737f90d9cd047da717d378e58009c0c069b5ecd4fb86ebcfef52d1f",
+              "source": "codex-code-mode-host-x86_64-apple-darwin",
+              "path": "codex-code-mode-host"
+            }
+          ]
         },
         "linux-arm64": {
           "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.20/codex-acp-0.16.20-aarch64-unknown-linux-gnu.tar.gz",
           "sha256": "f8852f3d5f98eab87148546fcc91710f2bc31c253977a27629989882e287dd9c",
-          "binary": "codex-acp"
+          "binary": "codex-acp",
+          "files": [
+            {
+              "url": "https://github.com/openai/codex/releases/download/rust-v0.144.0/codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz",
+              "sha256": "2ab25695f61ac23a71e467425322a1f197ea52e9da9aa8e0cbc339d661c6d16a",
+              "source": "codex-code-mode-host-aarch64-unknown-linux-musl",
+              "path": "codex-code-mode-host"
+            }
+          ]
         },
         "linux-x64": {
           "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.20/codex-acp-0.16.20-x86_64-unknown-linux-gnu.tar.gz",
           "sha256": "9539905cab0b428be13544d5df9daafad9767ec4b59a87fae94356a19fa68435",
-          "binary": "codex-acp"
+          "binary": "codex-acp",
+          "files": [
+            {
+              "url": "https://github.com/openai/codex/releases/download/rust-v0.144.0/codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz",
+              "sha256": "26d9c65c5a947c2bf489513ef7f81e027b0c96dc15e2781de6eed5e02a18993d",
+              "source": "codex-code-mode-host-x86_64-unknown-linux-musl",
+              "path": "codex-code-mode-host"
+            }
+          ]
         }
       }
     },
