@@ -53,7 +53,7 @@ function Trigger({ url, name, dot, onClick }: { url: string; name: string; dot: 
       type="button"
       onClick={onClick}
       title={url}
-      className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
+      className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2"
     >
       <span className="min-w-0 flex-1 truncate text-left">{name}</span>
       <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />

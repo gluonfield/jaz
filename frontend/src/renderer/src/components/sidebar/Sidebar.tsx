@@ -652,21 +652,21 @@ export function Sidebar({
           that should dismiss the full-screen drawer, so drop it there. */}
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
-      <nav className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-3 pt-3 max-sm:gap-6 max-sm:p-4">
-        <div className="flex shrink-0 flex-col gap-0.5 max-sm:gap-1">
-          <Link
-            to="/new"
-            className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
-            activeProps={{ className: 'bg-primary-soft!' }}
-          >
-            <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
-            <span className="flex-1">New Thread</span>
-            <KeyboardShortcut value="N" className="max-sm:hidden" />
-          </Link>
+      <div className="flex shrink-0 flex-col gap-0.5 px-3 pt-3 pb-4 max-sm:gap-1 max-sm:p-4 max-sm:pb-5">
+        <Link
+          to="/new"
+          className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
+          activeProps={{ className: 'bg-primary-soft!' }}
+        >
+          <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
+          <span className="flex-1">New Thread</span>
+          <KeyboardShortcut value="N" className="max-sm:hidden" />
+        </Link>
 
-          <FeedLink />
-        </div>
+        <FeedLink />
+      </div>
 
+      <nav className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 pb-3 max-sm:gap-6 max-sm:px-4 max-sm:pb-4">
         <SessionsSection open={open} />
 
         <LoopsSection />
@@ -674,13 +674,13 @@ export function Sidebar({
         <BoardsSection />
       </nav>
 
-      <div className="flex shrink-0 flex-col gap-1.5 border-t border-border p-3">
+      <div className="flex shrink-0 flex-col gap-0.5 border-t border-border px-3 py-2">
         <UpdatePanel />
         <ConnectionFooterButton onOpenConnect={onOpenConnect} />
         <button
           type="button"
           onClick={onOpenSettings}
-          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
+          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2 max-sm:text-[15px]"
         >
           <Settings size={15} className="text-ink-2 max-sm:size-[18px]" />
           <span className="flex-1 text-left">Settings</span>
