@@ -28,8 +28,6 @@ export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean
   const sessionAuth = plugin.auth[0]?.kind === 'session'
   const remoteMCPAuth = plugin.auth[0]?.kind === 'remote_mcp'
   if (!pluginCanConnect(plugin)) return titleCase(plugin.implementation.status)
-  if (plugin.connection?.status === 'connected' && plugin.multi_account) return 'Add account'
-  if (plugin.connection?.status === 'connected') return 'Reconnect'
   if (sessionAuth) return 'QR sign in'
   if (remoteMCPAuth) return 'Add MCP server'
   return 'Connect'
