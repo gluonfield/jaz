@@ -137,6 +137,54 @@ func TestExtensionBridgeAcceptsLegacyOptionalActions(t *testing.T) {
 	}
 }
 
+func TestExtensionBridgeIgnoresHeartbeat(t *testing.T) {
+	bridge := NewExtensionBridge(nil, nil)
+	server := httptest.NewServer(bridge)
+	t.Cleanup(server.Close)
+	ws, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ws.Close() })
+	if err := ws.WriteJSON(map[string]any{
+		"type":         "hello",
+		"protocol":     ExtensionProtocol,
+		"extension_id": "ext-1",
+		"capabilities": map[string]any{"actions": SupportedExtensionActions()},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	waitForConnected(t, bridge)
+	if err := ws.WriteJSON(map[string]any{"type": "heartbeat"}); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var req extensionCall
+		if err := ws.ReadJSON(&req); err != nil {
+			t.Errorf("read call: %v", err)
+			return
+		}
+		if err := ws.WriteJSON(extensionResult{
+			ID:     req.ID,
+			Type:   "result",
+			OK:     true,
+			Output: extensionWireOutput{Status: "ok", Text: "still connected"},
+		}); err != nil {
+			t.Errorf("write result: %v", err)
+		}
+	}()
+	out, err := bridge.Call(context.Background(), ActionInput{Action: "status"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-done
+	if out.Text != "still connected" {
+		t.Fatalf("out = %#v", out)
+	}
+}
+
 func TestExtensionBridgeKeepsSocketInactiveUntilHello(t *testing.T) {
 	fallback := &fallbackBackend{}
 	bridge := NewExtensionBridge(fallback, func() bool { return false })
