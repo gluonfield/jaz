@@ -25,10 +25,8 @@ export function accountSyncLabel(account: IntegrationConnectionAccount): string 
 
 export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean): string {
   if (connecting) return 'Connecting'
-  const sessionAuth = plugin.auth[0]?.kind === 'session'
   const remoteMCPAuth = plugin.auth[0]?.kind === 'remote_mcp'
   if (!pluginCanConnect(plugin)) return titleCase(plugin.implementation.status)
-  if (sessionAuth) return 'QR sign in'
   if (remoteMCPAuth) return 'Add MCP server'
   return 'Connect'
 }
