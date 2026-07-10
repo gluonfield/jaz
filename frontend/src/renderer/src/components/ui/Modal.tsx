@@ -4,6 +4,12 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { IconButton } from '@/components/ui/IconButton'
+import {
+  consumeEscapeKey,
+  createEscapeLayerID,
+  isTopEscapeLayer,
+  pushEscapeLayer,
+} from '@/lib/dom/escapeLayers'
 
 const SIZES = {
   sm: 'max-w-md',
@@ -42,6 +48,8 @@ export function Modal({
 }) {
   const reduce = useReducedMotion()
   const panelRef = useRef<HTMLDivElement>(null)
+  const escapeLayerID = useRef<string | null>(null)
+  if (!escapeLayerID.current) escapeLayerID.current = createEscapeLayerID('modal')
 
   // Auto-focus the first field only as the modal opens. Keeping this off the
   // onClose dependency stops re-renders (e.g. typing) from yanking focus back.
@@ -56,13 +64,17 @@ export function Modal({
 
   useEffect(() => {
     if (!open) return
+    const layerID = escapeLayerID.current
+    if (!layerID) return
+    const unregisterLayer = pushEscapeLayer(layerID)
     const onKey = (event: KeyboardEvent) => {
+      if (!isTopEscapeLayer(layerID)) return
       if (event.key === 'Escape') {
         // An open transient surface inside the panel (popover menu, mention
         // suggestions) owns Escape — it dismisses itself via its own listener,
         // and the modal only closes on the next press.
         if (panelRef.current?.querySelector('[data-escape-surface]')) return
-        event.stopPropagation()
+        consumeEscapeKey(event)
         onClose()
         return
       }
@@ -85,7 +97,10 @@ export function Modal({
       }
     }
     document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
+    return () => {
+      document.removeEventListener('keydown', onKey, true)
+      unregisterLayer()
+    }
   }, [open, onClose])
 
   return createPortal(
