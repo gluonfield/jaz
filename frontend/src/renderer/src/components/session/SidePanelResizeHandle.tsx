@@ -86,9 +86,9 @@ export function SidePanelResizeHandle({
       title="Drag to resize side panel"
       onPointerDown={startResize}
       onKeyDown={resizeByKeyboard}
-      className="group absolute inset-y-0 left-0 z-shell hidden w-4 cursor-col-resize touch-none outline-none sm:block"
+      className="group absolute inset-y-0 left-0 z-shell hidden w-4 cursor-col-resize touch-none items-stretch justify-center outline-none sm:flex"
     >
-      <span className="absolute inset-y-3 left-0 w-px rounded-full bg-transparent transition-colors duration-150 group-hover:bg-primary/50 group-focus-visible:bg-primary" />
+      <span className="my-3 w-px rounded-full bg-transparent transition-colors duration-150 group-hover:bg-primary/50 group-focus-visible:bg-primary" />
     </div>
   )
 }
