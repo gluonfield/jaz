@@ -170,6 +170,7 @@ export function FeedCard({
                   streaming={false}
                   placeholder="Reply…"
                   draftStorageKey={`feed:${item.id}`}
+                  attachmentSessionId={item.id}
                   onSend={sendDeferred}
                   onTextChange={cancel}
                 />

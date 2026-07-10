@@ -592,6 +592,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     steerDisabled={queue.steerDisabled}
                     draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
                     fileRoot={session.runtime_ref?.cwd}
+                    attachmentSessionId={session.id}
                     contexts={composerContexts.contexts}
                     onRemoveContext={composerContexts.removeContext}
                     onClearContexts={composerContexts.clearContexts}
