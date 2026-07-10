@@ -65,7 +65,7 @@ type SessionPromptExtensionResolver func(storage.Session) (promptmodule.Modules,
 type ModelCatalog interface {
 	ValidateReasoningEffort(agent, providerID, model, effort string) error
 	AgentModels(agent string) []modelcatalog.Model
-	AgentModelsForProvider(agent, providerID string) ([]modelcatalog.Model, error)
+	CuratedAgentModelsForProvider(agent, providerID string) ([]modelcatalog.Model, error)
 	ProviderModels(id string) ([]modelcatalog.Model, error)
 }
 

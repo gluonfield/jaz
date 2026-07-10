@@ -96,7 +96,7 @@ func (m *Manager) agentOptions(agents []string, query string) ([]AgentSpawnOptio
 }
 
 func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string) ([]AgentModelOption, error) {
-	catalogModels, err := m.cfg.ModelCatalog.AgentModelsForProvider(agent, cfg.ModelProvider)
+	catalogModels, err := m.cfg.ModelCatalog.CuratedAgentModelsForProvider(agent, cfg.ModelProvider)
 	if err != nil {
 		return nil, err
 	}

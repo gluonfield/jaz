@@ -74,7 +74,8 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 	}
 }
 
-func (s *Service) ProviderModelsForAgent(agent, providerID string) ([]Model, error) {
+func (s *Service) ProviderModelsWithAgentCapabilities(agent, providerID string) ([]Model, error) {
+	agent = strings.ToLower(strings.TrimSpace(agent))
 	models, err := s.ProviderModels(providerID)
 	if err != nil {
 		return nil, err
@@ -96,7 +97,7 @@ func (s *Service) AgentModels(agent string) []Model {
 	return models
 }
 
-func (s *Service) AgentModelsForProvider(agent, providerID string) ([]Model, error) {
+func (s *Service) CuratedAgentModelsForProvider(agent, providerID string) ([]Model, error) {
 	agent = strings.ToLower(strings.TrimSpace(agent))
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	if agent == "opencode" && providerID != "" && providerID != provider.ProviderOpenRouter {

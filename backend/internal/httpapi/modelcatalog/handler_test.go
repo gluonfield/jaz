@@ -28,8 +28,8 @@ func TestProviderModelsReturnsUnavailableWhenCatalogIsNotWarm(t *testing.T) {
 
 func TestProviderModelsScopesReasoningToAgent(t *testing.T) {
 	handler := NewHandler(catalog.NewService(nil))
-	req := httptest.NewRequest(http.MethodGet, "/v1/model-providers/openai/models?agent=codex", nil)
-	req.SetPathValue("provider", provider.ProviderOpenAI)
+	req := httptest.NewRequest(http.MethodGet, "/v1/model-providers/openai/models?agent=%20Codex%20", nil)
+	req.SetPathValue("provider", " OpenAI ")
 	res := httptest.NewRecorder()
 
 	handler.ProviderModels(res, req)

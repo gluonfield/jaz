@@ -148,7 +148,7 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 		"name":"OpenAI: GPT-5.6 Sol",
 		"reasoning":{"supported_efforts":["xhigh","high","medium","low","none"],"default_effort":"medium"}
 	}]}`)
-	models, err = warmed.ProviderModelsForAgent("codex", codexOpenAIAPIKeyProvider)
+	models, err = warmed.ProviderModelsWithAgentCapabilities("codex", codexOpenAIAPIKeyProvider)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,9 +157,9 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	}
 }
 
-func TestServiceProviderModelsForAgentOverlaysCodexReasoning(t *testing.T) {
+func TestServiceProviderModelsWithAgentCapabilitiesOverlaysCodexReasoning(t *testing.T) {
 	service := NewService(nil)
-	models, err := service.ProviderModelsForAgent("codex", provider.ProviderOpenAI)
+	models, err := service.ProviderModelsWithAgentCapabilities(" Codex ", provider.ProviderOpenAI)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestServiceProviderModelsForAgentOverlaysCodexReasoning(t *testing.T) {
 		t.Fatalf("codex efforts = %#v", models[0].ReasoningEfforts)
 	}
 
-	models, err = service.ProviderModelsForAgent("opencode", provider.ProviderOpenAI)
+	models, err = service.ProviderModelsWithAgentCapabilities("opencode", provider.ProviderOpenAI)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,9 +273,9 @@ func TestServiceAgentModelsIncludesCurrentGrokModels(t *testing.T) {
 	}
 }
 
-func TestServiceAgentModelsForProviderScopesOpenCodeModels(t *testing.T) {
+func TestServiceCuratedAgentModelsForProviderScopesOpenCodeModels(t *testing.T) {
 	service := NewService(nil)
-	models, err := service.AgentModelsForProvider("opencode", provider.ProviderOpenRouter)
+	models, err := service.CuratedAgentModelsForProvider("opencode", provider.ProviderOpenRouter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +283,7 @@ func TestServiceAgentModelsForProviderScopesOpenCodeModels(t *testing.T) {
 		t.Fatalf("opencode/openrouter models = %#v", models)
 	}
 
-	models, err = service.AgentModelsForProvider("opencode", provider.ProviderOpenAI)
+	models, err = service.CuratedAgentModelsForProvider("opencode", provider.ProviderOpenAI)
 	if err != nil {
 		t.Fatal(err)
 	}
