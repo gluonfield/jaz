@@ -13,6 +13,11 @@ const SHORTCUTS: Shortcut[] = [
     keys: ['⌘', 'N'],
   },
   {
+    command: 'Open Settings',
+    description: 'Open the Settings window.',
+    keys: ['⌘', ','],
+  },
+  {
     command: 'Toggle sidebar',
     description: 'Show or hide the sidebar.',
     keys: ['⌘', 'S'],

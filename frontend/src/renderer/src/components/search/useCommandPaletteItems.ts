@@ -72,6 +72,7 @@ export function useCommandPaletteItems({
         kind: 'command',
         title: 'Settings',
         icon: Settings2,
+        shortcut: ',',
         run: () => {
           onOpenChange(false)
           onOpenSettings()

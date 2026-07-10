@@ -224,7 +224,8 @@ function RootLayout() {
 
   // Cmd+S toggles the sidebar — unless something closer (the agent-file
   // editor's save keymap) already claimed the event. Cmd+N starts a thread.
-  // Cmd+K toggles the command palette. Cmd+[ / Cmd+] follow browser history.
+  // Cmd+K toggles the command palette. Cmd+, opens Settings. Cmd+[ / Cmd+]
+  // follow browser history.
   useWindowEvent('keydown', (e) => {
     if (e.defaultPrevented) return
     const navigation = browserNavigationDirection(e)
@@ -235,7 +236,14 @@ function RootLayout() {
     }
     if (!(e.metaKey || e.ctrlKey)) return
     const key = e.key.toLowerCase()
-    if (!e.shiftKey && e.key.toLowerCase() === 's') {
+    if (!e.shiftKey && !e.altKey && key === ',') {
+      e.preventDefault()
+      setCommandOpen(false)
+      setConnectOpen(false)
+      openSettings()
+      return
+    }
+    if (!e.shiftKey && key === 's') {
       e.preventDefault()
       setSidebarOpen((open) => !open)
     }
