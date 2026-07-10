@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { Modal } from '@/components/ui/Modal'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
+import { Select } from '@/components/ui/Select'
 import { agentLabel } from '@/lib/agentLabel'
 import { addProject, deleteProject, listFilesystemDirs, projectsQuery, type Project } from '@/lib/api/sessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
@@ -164,28 +165,18 @@ export function ModelSelect({
       }
     >
       <div className="w-[260px]">
-        <div className="flex gap-1 px-1 pt-1 pb-1.5">
-          {providers && providers.length > 1 && onProviderChange ? (
-            <div className="relative w-28 shrink-0">
-              {/* The shared Select portals outside this already-portalled Popover. */}
-              <select
-                value={provider ?? providers[0]?.value ?? ''}
-                aria-label="Provider"
-                onChange={(event) => onProviderChange(event.target.value)}
-                className="h-7 w-full cursor-pointer appearance-none truncate rounded-full bg-ink/10 pl-2.5 pr-6 text-[12px] text-ink outline-none transition-colors duration-150 hover:bg-ink/15 focus:bg-ink/15"
-              >
-                {providers.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={12}
-                className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-ink-3"
-              />
-            </div>
-          ) : null}
+        {providers && providers.length > 1 && onProviderChange ? (
+          <div className="px-1 pt-1">
+            <Select
+              value={provider ?? providers[0].value}
+              options={providers}
+              onChange={onProviderChange}
+              aria-label="Provider"
+              className="w-full"
+            />
+          </div>
+        ) : null}
+        <div className="px-1 pt-1 pb-1.5">
           <input
             ref={inputRef}
             value={query}
