@@ -103,6 +103,7 @@ export function Select({
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
         aria-label={ariaLabel}
+        data-escape-surface={open ? '' : undefined}
         onClick={() => {
           if (open) {
             closeMenu(false)
@@ -140,6 +141,8 @@ export function Select({
               id={listboxId}
               role="listbox"
               aria-label={ariaLabel}
+              // Keep inside presses from reaching an enclosing surface's outside-click listener.
+              onMouseDown={(event) => event.stopPropagation()}
               onKeyDown={(e) => {
                 switch (e.key) {
                   case 'ArrowDown':
@@ -162,6 +165,10 @@ export function Select({
                   case ' ':
                     e.preventDefault()
                     chooseOption(activeIndex)
+                    break
+                  case 'Escape':
+                    e.stopPropagation()
+                    closeMenu()
                     break
                 }
               }}

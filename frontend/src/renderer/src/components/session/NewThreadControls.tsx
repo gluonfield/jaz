@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { Modal } from '@/components/ui/Modal'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
+import { Select } from '@/components/ui/Select'
 import { agentLabel } from '@/lib/agentLabel'
 import { addProject, deleteProject, listFilesystemDirs, projectsQuery, type Project } from '@/lib/api/sessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
@@ -89,8 +90,7 @@ export function RuntimeSelect({
 }
 
 // Picks the model for a new thread: curated suggestions for the chosen
-// agent/provider plus free-text entry for anything else. A provider section
-// appears for provider-backed ACP agents.
+// agent/provider plus free-text entry for anything else.
 export function ModelSelect({
   value,
   suggestions,
@@ -166,21 +166,22 @@ export function ModelSelect({
     >
       <div className="w-[260px]">
         {providers && providers.length > 1 && onProviderChange ? (
-          <>
-            <p className="px-2 pt-1 pb-0.5 text-[11px] text-ink-3">Provider</p>
-            {providers.map((p) => (
-              <MenuRow key={p.value} selected={p.value === provider} onClick={() => onProviderChange(p.value)}>
-                {p.label}
-              </MenuRow>
-            ))}
-            <div className="my-1 border-t border-border" />
-          </>
+          <div className="flex items-center justify-between gap-2 px-2 pt-1 pb-0.5">
+            <span className="text-[11px] text-ink-3">Provider</span>
+            <Select
+              value={provider ?? providers[0].value}
+              options={providers}
+              onChange={onProviderChange}
+              aria-label="Provider"
+              className="min-w-[140px] max-w-[180px]"
+            />
+          </div>
         ) : null}
         <div className="px-1 pt-1 pb-1.5">
           <input
             ref={inputRef}
             value={query}
-            placeholder="Search or type a model id…"
+            placeholder="Search models…"
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && typed !== '') {
@@ -188,22 +189,10 @@ export function ModelSelect({
                 onChange(typed)
               }
             }}
-            className="h-7 w-full rounded-full bg-ink/10 px-2.5 text-[12px] text-ink outline-none placeholder:text-ink-3 focus:bg-ink/15"
+            className="h-7 w-full rounded-full bg-ink/10 px-2.5 text-[12px] text-ink outline-none transition-colors duration-150 placeholder:text-ink-3 focus:bg-ink/15"
           />
         </div>
-        {/* Shorter list when the provider/effort sections stack around it, so
-            the popover stays inside the window above a centered composer. */}
-        <div
-          className={`${
-            providers && providers.length > 1
-              ? showEffortSlider
-                ? 'max-h-[110px]'
-                : 'max-h-[170px]'
-              : showEffortSlider
-                ? 'max-h-[180px]'
-                : 'max-h-[240px]'
-          } overflow-y-auto`}
-        >
+        <div className={`${showEffortSlider ? 'max-h-[180px]' : 'max-h-[240px]'} overflow-y-auto`}>
           {typedIsNew ? (
             <MenuRow selected={typed === value} onClick={() => onChange(typed)}>
               Use “{typed}”
@@ -216,22 +205,9 @@ export function ModelSelect({
             </div>
           ) : filtered.length > 0 ? (
             filtered.map((s) => (
-              <button
-                key={s.value}
-                type="button"
-                onClick={() => onChange(s.value)}
-                className={`flex w-full items-start gap-2 rounded-[8px] px-2 py-1 text-left transition-colors duration-150 hover:bg-surface-2 ${
-                  s.value === value ? 'text-ink' : 'text-ink-2'
-                }`}
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px]">{s.label}</span>
-                  {s.description ? (
-                    <span className="mt-0.5 block truncate text-[11px] text-ink-3">{s.description}</span>
-                  ) : null}
-                </span>
-                {s.value === value ? <Check size={13} className="mt-1 shrink-0 text-primary" /> : null}
-              </button>
+              <MenuRow key={s.value} selected={s.value === value} onClick={() => onChange(s.value)}>
+                {s.label}
+              </MenuRow>
             ))
           ) : !typedIsNew ? (
             <div className="px-2 py-1 text-[13px] text-ink-3">No matching models.</div>
