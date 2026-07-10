@@ -30,12 +30,12 @@ type Service struct {
 
 type CreateInput struct {
 	Objective   string `json:"objective" jsonschema:"concise goal objective"`
-	TokenBudget *int64 `json:"token_budget,omitempty" jsonschema:"optional token budget for this goal"`
+	TokenBudget *int64 `json:"token_budget,omitempty" jsonschema:"optional budget in uncached input plus output tokens"`
 }
 
 type UpdateInput struct {
 	Status      string `json:"status" jsonschema:"active, blocked, complete"`
-	TokenBudget *int64 `json:"token_budget,omitempty" jsonschema:"optional replacement token budget"`
+	TokenBudget *int64 `json:"token_budget,omitempty" jsonschema:"optional replacement budget in uncached input plus output tokens"`
 }
 
 type refreshScope struct {
@@ -276,13 +276,18 @@ func (s *Service) tokensBetween(sessionID string, start, end time.Time) int64 {
 		if !end.IsZero() && event.CreatedAt.After(end) {
 			continue
 		}
-		if event.Usage.TotalTokens > 0 {
-			total += event.Usage.TotalTokens
-			continue
-		}
-		total += event.Usage.ComponentTotal()
+		total += goalTokens(event.Usage)
 	}
 	return total
+}
+
+func goalTokens(usage storage.Usage) int64 {
+	// Goal budgets track uncached input plus output; cached writes remain part of input.
+	input := usage.InputTokens
+	if input == 0 {
+		input = max(usage.TotalTokens-usage.OutputTokens, 0)
+	}
+	return max(input-usage.CachedInputTokens, 0) + max(usage.OutputTokens, 0)
 }
 
 func (s *Service) now() time.Time {

@@ -74,7 +74,7 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 	return err
 }
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, *processStderrTail, error) {
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, mcpServerPolicy string) (jsonrpc.MessageConn, *processStderrTail, error) {
 	if cfg.URL != "" {
 		opts := []streamhttp.ClientOption{}
 		parsed, err := url.Parse(cfg.URL)
@@ -107,6 +107,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
+	cfg.Args = argsForLaunchPolicy(name, cfg.Args, mcpServerPolicy)
 	command, args, err := processCommand(name, cfg, m.providers())
 	if err != nil {
 		return nil, nil, err

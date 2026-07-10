@@ -10,13 +10,14 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestManagerRoutesCodexGoalThroughJazTools(t *testing.T) {
+func TestManagerCodexGoalRequestDisablesNativeGoalsAndPromptsForJazTools(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	manager := newFakeCodexManager(t, store, t.TempDir(), map[string]string{
-		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": `create_goal`,
+		"JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED": "1",
+		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS":      `create_goal`,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

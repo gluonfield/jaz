@@ -3,6 +3,7 @@ package acp_test
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -13,9 +14,21 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
 
+var fakeCodexConfigs = map[string]bool{}
+
+func init() {
+	flag.Func("c", "Codex config override", func(value string) error {
+		fakeCodexConfigs[value] = true
+		return nil
+	})
+}
+
 func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
 		return
+	}
+	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" && !fakeCodexConfigs["features.goals=false"] {
+		t.Fatalf("Codex config = %#v, want features.goals=false", fakeCodexConfigs)
 	}
 	if msg := os.Getenv("JAZ_FAKE_ACP_EXIT_BEFORE_INIT"); msg != "" {
 		_, _ = fmt.Fprintln(os.Stderr, msg)

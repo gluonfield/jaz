@@ -11,7 +11,7 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestRefreshActiveCountsGoalTokensFromUsageEvents(t *testing.T) {
+func TestRefreshActiveExcludesCachedInputFromGoalTokens(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -21,7 +21,7 @@ func TestRefreshActiveCountsGoalTokensFromUsageEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	budget := int64(1000)
+	budget := int64(10_000)
 	service := New(store, sessionevents.New())
 	state, err := service.Create(context.Background(), session.ID, CreateInput{
 		Objective:   "ship goal accounting",
@@ -33,22 +33,35 @@ func TestRefreshActiveCountsGoalTokensFromUsageEvents(t *testing.T) {
 	if state.TokensUsed != 0 {
 		t.Fatalf("tokens_used after create = %d, want 0", state.TokensUsed)
 	}
-	if err := store.AddUsage(session.ID, storage.Usage{InputTokens: 100, OutputTokens: 25}); err != nil {
+	if err := store.AddUsage(session.ID, storage.Usage{
+		InputTokens:           200_264,
+		CachedInputTokens:     196_352,
+		OutputTokens:          372,
+		ReasoningOutputTokens: 257,
+		TotalTokens:           200_636,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	state, err = service.RefreshActive(context.Background(), session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.TokensUsed != 125 || state.RemainingTokens == nil || *state.RemainingTokens != 875 {
-		t.Fatalf("goal tokens = %#v, want 125 used / 875 remaining", state)
+	if state.TokensUsed != 4_284 || state.RemainingTokens == nil || *state.RemainingTokens != 5_716 {
+		t.Fatalf("goal tokens = %#v, want 4,284 used / 5,716 remaining", state)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Goal == nil || loaded.Goal.TokensUsed != 125 {
+	if loaded.Goal == nil || loaded.Goal.TokensUsed != 4_284 {
 		t.Fatalf("stored goal = %#v", loaded.Goal)
+	}
+}
+
+func TestGoalTokensInfersMissingInputFromTotal(t *testing.T) {
+	usage := storage.Usage{TotalTokens: 1_000, CachedInputTokens: 400, OutputTokens: 100}
+	if got := goalTokens(usage); got != 600 {
+		t.Fatalf("goal tokens = %d, want 600", got)
 	}
 }
 

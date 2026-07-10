@@ -333,7 +333,7 @@ func (r fakeAdapterResolver) ResolveAdapter(context.Context, string) (acp.Adapte
 	return r.launch, nil
 }
 
-func TestManagerSpawnsManagedAdapterAgent(t *testing.T) {
+func TestManagerSpawnsManagedCodexAdapterWithNativeGoalsDisabled(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -346,10 +346,11 @@ func TestManagerSpawnsManagedAdapterAgent(t *testing.T) {
 			Args:    []string{"-test.run=TestFakeACPAgentProcess"},
 		}},
 		Agents: map[string]acp.AgentConfig{
-			"fake": {
+			acp.AgentCodex: {
 				ManagedAdapter: "fake",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT": "1",
+					"JAZ_FAKE_ACP_AGENT":                       "1",
+					"JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED": "1",
 				},
 			},
 		},
@@ -357,7 +358,7 @@ func TestManagerSpawnsManagedAdapterAgent(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "managed-fake"})
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "managed-codex"})
 	if err != nil {
 		t.Fatal(err)
 	}

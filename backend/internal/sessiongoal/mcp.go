@@ -37,7 +37,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolGet,
 		Title:       "Get goal",
-		Description: "Return the active Jaz goal with tokens_used, token_budget, remaining_tokens, and time_used_seconds computed by Jaz.",
+		Description: "Return the active Jaz goal with tokens_used, token_budget, remaining_tokens, and time_used_seconds computed by Jaz. Goal tokens are uncached input plus output.",
 	}, t.Get)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolUpdate,
