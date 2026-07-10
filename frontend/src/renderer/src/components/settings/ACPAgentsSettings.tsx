@@ -243,19 +243,21 @@ function ACPAgentRow({
     <SettingsCard className="overflow-hidden">
       {/* Collapsed header: the whole row toggles expand; the Switch stays live so
           an agent can be enabled/disabled without opening its details. */}
-      <div className="group flex items-center gap-3 pr-3">
+      <div className="group flex items-center gap-3 pr-3 transition-colors duration-150 hover:bg-surface-2/50 focus-within:bg-surface-2/50">
         <button
           type="button"
           onClick={() => setExpanded((open) => !open)}
           aria-expanded={expanded}
           aria-label={`${expanded ? 'Collapse' : 'Expand'} ${agentLabel(agent)}`}
-          className="flex min-w-0 flex-1 items-center gap-2.5 py-2.5 pl-3 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2.5 py-2 pl-3 text-left"
         >
           <ChevronDown
             size={15}
             className={`shrink-0 text-ink-3 transition-transform duration-150 group-hover:text-ink ${expanded ? '' : '-rotate-90'}`}
           />
-          <AgentAvatar agent={agent} size={16} />
+          <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-bg text-ink">
+            <AgentAvatar agent={agent} size={18} />
+          </span>
           <span className="min-w-0">
             <span className="block truncate text-[13px] font-medium text-ink" title={agent}>
               {agentLabel(agent)}
