@@ -1135,6 +1135,9 @@ export interface OnboardingACPAdapterStatus {
   platform?: string
   state: 'missing' | 'downloading' | 'ready' | 'failed' | 'unsupported'
   message?: string
+  bytes_downloaded?: number
+  bytes_total?: number
+  progress_percent?: number
 }
 
 export interface OnboardingManagedToolStatus {

@@ -20,14 +20,17 @@ const (
 )
 
 type Status struct {
-	Adapter    string
-	Version    string
-	Platform   string
-	Path       string
-	State      string
-	Message    string
-	StartedAt  time.Time
-	FinishedAt time.Time
+	Adapter         string
+	Version         string
+	Platform        string
+	Path            string
+	State           string
+	Message         string
+	BytesDownloaded int64
+	BytesTotal      int64
+	ProgressPercent int
+	StartedAt       time.Time
+	FinishedAt      time.Time
 }
 
 type Manager struct {
@@ -143,6 +146,19 @@ func (m *Manager) setStatus(adapter string, status Status) {
 	m.status[adapter] = status
 }
 
+func (m *Manager) setDownloadProgress(spec adapterSpec, downloaded, total int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	status, ok := m.status[spec.Adapter]
+	if !ok || status.State != StateDownloading || status.Version != spec.Version || status.Platform != spec.Platform {
+		return
+	}
+	status.BytesDownloaded = downloaded
+	status.BytesTotal = total
+	status.ProgressPercent = progressPercent(downloaded, total)
+	m.status[spec.Adapter] = status
+}
+
 func (m *Manager) setResolveErrorStatus(adapter string, err error) {
 	platform, platformErr := platformKey(runtime.GOOS, runtime.GOARCH)
 	state := StateFailed
@@ -203,4 +219,15 @@ func displayName(adapter string) string {
 	default:
 		return adapter
 	}
+}
+
+func progressPercent(downloaded, total int64) int {
+	if downloaded <= 0 || total <= 0 {
+		return 0
+	}
+	percent := int(downloaded * 100 / total)
+	if percent > 100 {
+		return 100
+	}
+	return percent
 }

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { Segmented } from '@/components/ui/Segmented'
 import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
-import type { ACPAuthLogin, OnboardingACPProbe } from '@/lib/api/types'
+import type { ACPAuthLogin, OnboardingACPAdapterStatus, OnboardingACPProbe } from '@/lib/api/types'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { onboardingEase } from './OnboardingParts'
 
@@ -135,6 +135,7 @@ function AgentCard({
   const method = canKey && !canLogin ? 'key' : !canKey ? 'login' : chosen
   const actionable = state === 'action'
   const canPrepare = hasManagedInstall(probe) && !installReady(probe)
+  const adapterProgress = state === 'downloading' ? adapterDownloadProgress(probe.managed_adapter) : undefined
   const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
   const missingLabel = companionAppBlocked ? `Needs ${onboardingAgentLabel(probe.agent)}` : undefined
   let missingDetail = ''
@@ -183,7 +184,9 @@ function AgentCard({
             <span className="truncate text-[13.5px] font-medium text-ink">
               {onboardingAgentLabel(probe.agent)}
             </span>
-            {state !== 'ready' ? <StatePill state={state} label={missingLabel} /> : null}
+            {state !== 'ready' ? (
+              <StatePill state={state} label={missingLabel} progressPercent={adapterProgress?.percent} />
+            ) : null}
           </span>
           {state === 'ready' ? (
             <CheckCircle2 size={17} className="shrink-0 text-primary" />
@@ -194,8 +197,32 @@ function AgentCard({
             />
           ) : null}
         </button>
-        {missingDetail ? (
-          <p className="px-3 pb-2 text-pretty text-[12px] leading-relaxed text-ink-3">{missingDetail}</p>
+        {missingDetail || adapterProgress ? (
+          <div className="px-3 pb-2">
+            {missingDetail ? (
+              <p className="text-pretty text-[12px] leading-relaxed text-ink-3">{missingDetail}</p>
+            ) : null}
+            {adapterProgress ? (
+              <div className={`flex items-center gap-2 ${missingDetail ? 'mt-1.5' : ''}`}>
+                <div
+                  className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2"
+                  role="progressbar"
+                  aria-label={`${onboardingAgentLabel(probe.agent)} adapter download`}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={adapterProgress.percent}
+                >
+                  <div
+                    className="h-full rounded-full bg-accent transition-[width] duration-200"
+                    style={{ width: `${adapterProgress.percent}%` }}
+                  />
+                </div>
+                <span className="w-10 shrink-0 text-right text-[11px] font-medium text-ink-3">
+                  {adapterProgress.label}
+                </span>
+              </div>
+            ) : null}
+          </div>
         ) : null}
         {canPrepare ? (
           <div className="px-3 pb-3">
@@ -211,7 +238,7 @@ function AgentCard({
                 <Download size={14} />
               )}
               {preparePending || state === 'downloading'
-                ? `Downloading ${onboardingAgentLabel(probe.agent)}`
+                ? `Downloading ${onboardingAgentLabel(probe.agent)}${adapterProgress ? ` ${adapterProgress.label}` : ''}`
                 : `Download ${onboardingAgentLabel(probe.agent)}`}
             </Button>
           </div>
@@ -289,7 +316,15 @@ function AgentCard({
   )
 }
 
-function StatePill({ state, label }: { state: AgentState; label?: string }) {
+function StatePill({
+  state,
+  label,
+  progressPercent,
+}: {
+  state: AgentState
+  label?: string
+  progressPercent?: number
+}) {
   const tone =
     state === 'ready'
       ? 'bg-primary-soft text-primary-strong'
@@ -303,7 +338,9 @@ function StatePill({ state, label }: { state: AgentState; label?: string }) {
       : state === 'missing'
         ? 'Not installed'
         : state === 'downloading'
-          ? 'Downloading'
+          ? progressPercent === undefined
+            ? 'Downloading'
+            : `Downloading ${progressPercent}%`
           : state === 'failed'
             ? 'Download failed'
             : 'Needs sign-in')
@@ -312,4 +349,19 @@ function StatePill({ state, label }: { state: AgentState; label?: string }) {
       {text}
     </span>
   )
+}
+
+function adapterDownloadProgress(adapter?: OnboardingACPAdapterStatus): { percent: number; label: string } | undefined {
+  if (!adapter || adapter.state !== 'downloading') return undefined
+  let percent = finitePercent(adapter.progress_percent)
+  if (percent === undefined && adapter.bytes_total && adapter.bytes_downloaded !== undefined) {
+    percent = finitePercent((adapter.bytes_downloaded / adapter.bytes_total) * 100)
+  }
+  if (percent === undefined) return undefined
+  return { percent, label: `${percent}%` }
+}
+
+function finitePercent(value?: number): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return Math.max(0, Math.min(100, Math.round(value)))
 }

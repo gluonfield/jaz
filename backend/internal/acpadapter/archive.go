@@ -17,7 +17,7 @@ import (
 )
 
 func (m *Manager) installArchive(ctx context.Context, spec adapterSpec) error {
-	body, err := m.download(ctx, spec.URL)
+	body, err := m.download(ctx, spec)
 	if err != nil {
 		return err
 	}
@@ -43,8 +43,8 @@ func (m *Manager) installArchive(ctx context.Context, spec adapterSpec) error {
 	return os.Rename(tmp, spec.Root)
 }
 
-func (m *Manager) download(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (m *Manager) download(ctx context.Context, spec adapterSpec) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, spec.URL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,28 @@ func (m *Manager) download(ctx context.Context, url string) ([]byte, error) {
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download adapter: %s", res.Status)
 	}
-	return io.ReadAll(res.Body)
+	total := res.ContentLength
+	if total < 0 {
+		total = 0
+	}
+	m.setDownloadProgress(spec, 0, total)
+	var body bytes.Buffer
+	buf := make([]byte, 32*1024)
+	var downloaded int64
+	for {
+		n, readErr := res.Body.Read(buf)
+		if n > 0 {
+			body.Write(buf[:n])
+			downloaded += int64(n)
+			m.setDownloadProgress(spec, downloaded, total)
+		}
+		if readErr == io.EOF {
+			return body.Bytes(), nil
+		}
+		if readErr != nil {
+			return nil, readErr
+		}
+	}
 }
 
 func verifySHA256(body []byte, wantHex string) error {

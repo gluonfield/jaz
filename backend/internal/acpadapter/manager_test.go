@@ -13,7 +13,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T) {
@@ -56,6 +58,82 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	status := manager.Status("claude")
 	if status.State != StateReady || status.Version != "1.2.3" || status.Platform != platform {
 		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestResolveAdapterReportsDownloadProgress(t *testing.T) {
+	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Skip(err)
+	}
+	body := testTarball(t, map[string]string{"bin/tool": strings.Repeat("ok", 1024)})
+	sum := sha256.Sum256(body)
+	firstChunk := len(body) / 2
+	wroteFirst := make(chan struct{})
+	continueDownload := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseDownload := func() {
+		releaseOnce.Do(func() {
+			close(continueDownload)
+		})
+	}
+	defer releaseDownload()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/manifest.json":
+			_, _ = fmt.Fprintf(w, `{"adapters":{"claude":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"bin/tool"}}}}}`, platform, serverURL(r, "/claude.tgz"), sum)
+		case "/claude.tgz":
+			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+			_, _ = w.Write(body[:firstChunk])
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			close(wroteFirst)
+			<-continueDownload
+			_, _ = w.Write(body[firstChunk:])
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	manager := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client())
+	done := make(chan error, 1)
+	go func() {
+		_, err := manager.ResolveAdapter(context.Background(), "claude")
+		done <- err
+	}()
+
+	select {
+	case <-wroteFirst:
+	case <-time.After(2 * time.Second):
+		t.Fatal("adapter archive download did not start")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		status := manager.Status("claude")
+		if status.State == StateDownloading && status.BytesDownloaded > 0 {
+			if status.BytesDownloaded >= int64(len(body)) || status.BytesTotal != int64(len(body)) {
+				t.Fatalf("progress bytes = downloaded %d total %d, want partial total %d", status.BytesDownloaded, status.BytesTotal, len(body))
+			}
+			if status.ProgressPercent <= 0 || status.ProgressPercent >= 100 {
+				t.Fatalf("progress percent = %d, want partial", status.ProgressPercent)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status never reported progress: %#v", manager.Status("claude"))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	releaseDownload()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("adapter download did not finish")
 	}
 }
 
