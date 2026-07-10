@@ -1,9 +1,25 @@
 import { ChevronDown } from 'lucide-react'
-import { useState } from 'react'
+import { AnimatePresence, motion, type Variants, useReducedMotion } from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { GoalEvent } from '@/lib/api/types'
 
 const numberFormatter = new Intl.NumberFormat()
+const numberRoll: Variants = {
+  enter: (direction: number) => ({ opacity: 0, y: `${direction * 80}%`, filter: 'blur(2px)' }),
+  center: {
+    opacity: 1,
+    y: '0%',
+    filter: 'blur(0px)',
+    transition: { duration: 0.28, ease: [0.2, 0, 0, 1] },
+  },
+  exit: (direction: number) => ({
+    opacity: 0,
+    y: `${direction * -65}%`,
+    filter: 'blur(2px)',
+    transition: { duration: 0.18, ease: 'easeIn' },
+  }),
+}
 
 export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
   const [expanded, setExpanded] = useState(false)
@@ -58,7 +74,7 @@ function GoalTokens({
           />
         </div>
         <span className="shrink-0 text-[12px] tabular-nums text-ink-3">
-          {numberFormatter.format(progress.used)} / {numberFormatter.format(progress.budget)}
+          <RollingNumber value={progress.used} /> / <RollingNumber value={progress.budget} />
         </span>
       </div>
     )
@@ -66,8 +82,41 @@ function GoalTokens({
   if (goal.tokens_used == null) return null
   return (
     <div className="mt-2 text-[12px] tabular-nums text-ink-3">
-      {numberFormatter.format(goal.tokens_used)} goal tokens
+      <RollingNumber value={goal.tokens_used} /> goal tokens
     </div>
+  )
+}
+
+function RollingNumber({ value }: { value: number }) {
+  const previous = useRef(value)
+  const reduceMotion = useReducedMotion()
+  const formatted = numberFormatter.format(value)
+  const direction = value < previous.current ? -1 : 1
+
+  useEffect(() => {
+    previous.current = value
+  }, [value])
+
+  if (reduceMotion) return formatted
+
+  return (
+    <span className="relative inline-grid overflow-hidden align-bottom tabular-nums">
+      <span className="sr-only">{formatted}</span>
+      <AnimatePresence initial={false} custom={direction}>
+        <motion.span
+          key={value}
+          aria-hidden="true"
+          className="col-start-1 row-start-1 block"
+          custom={direction}
+          variants={numberRoll}
+          initial="enter"
+          animate="center"
+          exit="exit"
+        >
+          {formatted}
+        </motion.span>
+      </AnimatePresence>
+    </span>
   )
 }
 
