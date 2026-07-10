@@ -10,7 +10,7 @@ interface Toast {
   tone: 'ok' | 'danger'
 }
 
-const TOAST_AUTO_DISMISS_MS = 10_000
+const TOAST_AUTO_DISMISS_MS = 3_000
 const actionClass =
   'relative grid size-8 shrink-0 place-items-center rounded-full text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]'
 const toastMotion = {

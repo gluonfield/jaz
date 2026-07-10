@@ -532,9 +532,7 @@ function ManageSection({
     },
   })
   const queueAction = (action: QueuedAction, label: string) => {
-    void onQueueAction(action, label)
-      .then(() => toast(`Queued ${label}`))
-      .catch(() => undefined)
+    void onQueueAction(action, label).catch(() => undefined)
   }
   const sendCodeReview = async (queued = false) => {
     let catalog = skills.data ?? []
@@ -550,7 +548,6 @@ function ManageSection({
     try {
       if (queued) {
         await onQueuePrompt(codeReviewPrompt(skill))
-        toast('Queued Code Review')
       } else {
         await onSend(codeReviewPrompt(skill))
       }
@@ -648,11 +645,8 @@ function GitSection({
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reduceMotion = useReducedMotion()
-  const toast = useToast()
   const queueAction = (action: QueuedAction, label: string) => {
-    void onQueueAction(action, label)
-      .then(() => toast(`Queued ${label}`))
-      .catch(() => undefined)
+    void onQueueAction(action, label).catch(() => undefined)
   }
 
   useEffect(() => {
