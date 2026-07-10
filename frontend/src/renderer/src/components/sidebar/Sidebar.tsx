@@ -674,7 +674,7 @@ export function Sidebar({
         <BoardsSection />
       </nav>
 
-      <div className="flex shrink-0 flex-col gap-0.5 border-t border-border px-3">
+      <div className="flex shrink-0 flex-col gap-0.5 border-t border-border px-3 py-1">
         <UpdatePanel />
         <ConnectionFooterButton onOpenConnect={onOpenConnect} />
         <button
