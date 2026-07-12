@@ -86,7 +86,7 @@ func toolUpdateSnapshot(fields toolUpdateFields) sessionevents.ACPToolCall {
 		ID:        string(fields.ID),
 		Title:     fields.Title,
 		Kind:      kindString(fields.Kind),
-		ToolName:  metaToolName(fields.Meta),
+		ToolName:  normalizedToolName(fields.Meta, fields.Kind, fields.RawInput),
 		Content:   normalizeToolContent(fields.Content),
 		Locations: normalizeToolLocations(fields.Locations),
 		RawInput:  boundedRawInput(fields.RawInput),
@@ -149,19 +149,24 @@ func normalizeToolLocations(locations []acpschema.ToolCallLocation) []sessioneve
 	return out
 }
 
-// metaToolName recovers the underlying tool name from the ACP _meta bag. Claude
-// exposes it as _meta.claudeCode.toolName, which lets the UI tell WebSearch from
-// WebFetch (both arrive as kind "fetch"). Agents that omit it fall back to kind.
-func metaToolName(meta map[string]any) string {
-	if meta == nil {
-		return ""
-	}
+func normalizedToolName(meta map[string]any, kind *acpschema.ToolKind, rawInput json.RawMessage) string {
 	if cc, ok := meta["claudeCode"].(map[string]any); ok {
-		if name, ok := cc["toolName"].(string); ok {
+		if name, ok := cc["toolName"].(string); ok && name != "" {
 			return name
 		}
 	}
-	return ""
+	if kind == nil || *kind != acpschema.ToolKindFetch {
+		return ""
+	}
+	var input struct {
+		Action struct {
+			Type string `json:"type"`
+		} `json:"action"`
+	}
+	if json.Unmarshal(rawInput, &input) == nil && input.Action.Type == "search" {
+		return "WebSearch"
+	}
+	return "WebFetch"
 }
 
 func normalizeToolContent(items []acpschema.ToolCallContent) []sessionevents.ACPToolContent {
