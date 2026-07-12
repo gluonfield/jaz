@@ -33,7 +33,8 @@ func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 			{"id":"openai/gpt-5.6-sol","name":"OpenAI: GPT-5.6 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-5.6-terra","name":"OpenAI: GPT-5.6 Terra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-5.6-luna","name":"OpenAI: GPT-5.6 Luna","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
-			{"id":"openai/gpt-5.5","name":"OpenAI: GPT-5.5","reasoning":{"supported_efforts":["high","low"]}},
+			{"id":"openai/gpt-5.5","name":"OpenAI: GPT-5.5","reasoning":{"supported_efforts":["high","medium","low"]}},
+			{"id":"anthropic/claude-opus-4.8","name":"Anthropic: Claude Opus 4.8","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"]}},
 			{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
 			{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
 		]}`))
@@ -184,8 +185,10 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 				Label string `json:"label"`
 			} `json:"reasoning_efforts"`
 			Models []struct {
-				Value            string   `json:"value"`
-				ReasoningEfforts []string `json:"reasoning_efforts"`
+				Value     string `json:"value"`
+				Reasoning struct {
+					Efforts []string `json:"efforts"`
+				} `json:"reasoning"`
 			} `json:"models"`
 			Local            bool     `json:"local"`
 			ProviderMode     string   `json:"provider_mode"`
@@ -586,11 +589,13 @@ func hasReasoningEffort(options []struct {
 }
 
 func hasModelReasoningEfforts(models []struct {
-	Value            string   `json:"value"`
-	ReasoningEfforts []string `json:"reasoning_efforts"`
+	Value     string `json:"value"`
+	Reasoning struct {
+		Efforts []string `json:"efforts"`
+	} `json:"reasoning"`
 }, value, efforts string) bool {
 	for _, model := range models {
-		if model.Value == value && strings.Join(model.ReasoningEfforts, ",") == efforts {
+		if model.Value == value && strings.Join(model.Reasoning.Efforts, ",") == efforts {
 			return true
 		}
 	}
@@ -729,7 +734,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 			ReasoningEffort: "low",
 		},
 	})
-	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, AgentCatalog: catalog}).Handler()
+	handler := (&Server{ModelCatalog: warmedModelCatalog(t), Store: store, AgentCatalog: catalog}).Handler()
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil)
 	getRes := httptest.NewRecorder()

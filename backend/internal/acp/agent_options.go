@@ -4,7 +4,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 )
 
@@ -29,14 +28,11 @@ type AgentSpawnOptions struct {
 }
 
 type AgentModelOption struct {
-	Model                  string                            `json:"model"`
-	Label                  string                            `json:"label,omitempty"`
-	ModelProvider          string                            `json:"model_provider,omitempty"`
-	ContextLength          int                               `json:"context_length,omitempty"`
-	ReasoningEfforts       []string                          `json:"reasoning_efforts"`
-	ReasoningEffortsKnown  bool                              `json:"reasoning_efforts_known"`
-	ReasoningEffortScope   modelcatalog.ReasoningEffortScope `json:"reasoning_effort_scope,omitempty"`
-	ReasoningDefaultEffort string                            `json:"reasoning_default_effort,omitempty"`
+	Model         string                `json:"model"`
+	Label         string                `json:"label,omitempty"`
+	ModelProvider string                `json:"model_provider,omitempty"`
+	ContextLength int                   `json:"context_length,omitempty"`
+	Reasoning     ReasoningCapabilities `json:"reasoning"`
 }
 
 type AgentModelSearch struct {
@@ -106,14 +102,13 @@ func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string)
 	if !m.agentSupportsModelProvider(agent, cfg, provider.ProviderOpenRouter) || strings.TrimSpace(query) == "" {
 		return models, nil
 	}
-	providerModels, err := m.cfg.ModelCatalog.ProviderModels(provider.ProviderOpenRouter)
+	providerModels, err := (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).ProviderModels(agent, provider.ProviderOpenRouter)
 	if err != nil {
 		if len(models) == 0 {
 			return nil, err
 		}
 		return models, nil
 	}
-	providerModels = resolveModelCapabilities(agent, providerModels, "")
 	seen := map[string]struct{}{}
 	for _, model := range models {
 		seen[model.Model] = struct{}{}
@@ -131,7 +126,7 @@ func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string)
 	return models, nil
 }
 
-func modelOptionsForCatalogModels(cfg AgentConfig, models []modelcatalog.Model, sourceProvider string) []AgentModelOption {
+func modelOptionsForCatalogModels(cfg AgentConfig, models []AgentModel, sourceProvider string) []AgentModelOption {
 	out := make([]AgentModelOption, 0, len(models))
 	for _, model := range models {
 		out = append(out, modelOptionForCatalogModel(cfg, model, sourceProvider))
@@ -139,15 +134,12 @@ func modelOptionsForCatalogModels(cfg AgentConfig, models []modelcatalog.Model, 
 	return out
 }
 
-func modelOptionForCatalogModel(cfg AgentConfig, model modelcatalog.Model, sourceProvider string) AgentModelOption {
+func modelOptionForCatalogModel(cfg AgentConfig, model AgentModel, sourceProvider string) AgentModelOption {
 	option := AgentModelOption{
-		Model:                  strings.TrimSpace(model.Value),
-		Label:                  strings.TrimSpace(model.Label),
-		ContextLength:          model.ContextLength,
-		ReasoningEfforts:       append([]string(nil), model.ReasoningEfforts...),
-		ReasoningEffortsKnown:  model.ReasoningEffortsKnown,
-		ReasoningEffortScope:   model.ReasoningEffortScope,
-		ReasoningDefaultEffort: model.ReasoningDefaultEffort,
+		Model:         strings.TrimSpace(model.Value),
+		Label:         strings.TrimSpace(model.Label),
+		ContextLength: model.ContextLength,
+		Reasoning:     model.Reasoning,
 	}
 	if providerID := strings.TrimSpace(sourceProvider); providerID != "" && !strings.EqualFold(providerID, strings.TrimSpace(cfg.ModelProvider)) {
 		option.ModelProvider = providerID
@@ -227,12 +219,12 @@ func filterAgentNames(agents []string, agent string) []string {
 	return nil
 }
 
-func filterModels(models []modelcatalog.Model, query string) []modelcatalog.Model {
+func filterModels(models []AgentModel, query string) []AgentModel {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if query == "" {
 		return models
 	}
-	out := []modelcatalog.Model{}
+	out := []AgentModel{}
 	for _, model := range models {
 		if modelMatches(model, query) {
 			out = append(out, model)
@@ -241,7 +233,7 @@ func filterModels(models []modelcatalog.Model, query string) []modelcatalog.Mode
 	return out
 }
 
-func modelMatches(model modelcatalog.Model, query string) bool {
+func modelMatches(model AgentModel, query string) bool {
 	return strings.Contains(strings.ToLower(model.Value), query) ||
 		strings.Contains(strings.ToLower(model.Label), query) ||
 		strings.Contains(strings.ToLower(model.Description), query) ||

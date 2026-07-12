@@ -1,7 +1,7 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import { get } from './api/client'
 import { agentSettingsQuery } from './api/settings'
-import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, Session } from './api/types'
+import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, ModelReasoningCapabilities, Session } from './api/types'
 import { modelProviderModelsRequest } from './modelProviderRequest'
 
 // USD per token, parsed from OpenRouter's string pricing fields.
@@ -19,11 +19,7 @@ export interface ModelSuggestion {
   contextLength?: number
   pricing?: ModelPricing
   openRouterId?: string
-  reasoningEfforts?: string[] | null
-  reasoningEffortsKnown?: boolean
-  reasoningEffortScope?: 'provider' | 'agent'
-  reasoningDefaultEffort?: string
-  reasoningMandatory?: boolean
+  reasoning: ModelReasoningCapabilities
 }
 
 export function acpAgentModelSuggestions(
@@ -76,7 +72,12 @@ export function modelSuggestionsForProvider(
   if (!provider) return []
   if (providerModels.length > 0) return providerModels
   if (provider.default_model) {
-    return [{ value: provider.default_model, label: provider.default_model, description: provider.label }]
+    return [{
+      value: provider.default_model,
+      label: provider.default_model,
+      description: provider.label,
+      reasoning: { status: 'unavailable' },
+    }]
   }
   return []
 }
@@ -90,9 +91,8 @@ export function modelProviderModelsQuery(provider: string | undefined, agent: st
       return modelSuggestionsFromCatalog(body.models ?? [])
     },
     staleTime: 60 * 60 * 1000,
-    retry: 1,
-    refetchInterval: (query) =>
-      query.state.data?.some((model) => !model.reasoningEffortsKnown && model.openRouterId) ? 1000 : false,
+    retry: 5,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
   })
 }
 
@@ -113,16 +113,10 @@ function modelSuggestionsFromCatalog(models: ModelCatalogEntry[]): ModelSuggesti
         }
       : undefined,
     openRouterId: model.openrouter_id,
-    reasoningEfforts:
-      model.reasoning_efforts === null
-        ? null
-        : Array.isArray(model.reasoning_efforts)
-          ? model.reasoning_efforts
-          : undefined,
-    reasoningEffortsKnown: model.reasoning_efforts_known,
-    reasoningEffortScope: model.reasoning_effort_scope,
-    reasoningDefaultEffort: model.reasoning_default_effort,
-    reasoningMandatory: model.reasoning_mandatory,
+    reasoning: {
+      ...model.reasoning,
+      efforts: model.reasoning.efforts ? [...model.reasoning.efforts] : undefined,
+    },
   }))
 }
 

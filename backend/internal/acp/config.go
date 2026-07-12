@@ -69,7 +69,6 @@ type ProviderModelCatalog interface {
 type ModelCatalog interface {
 	ProviderModelCatalog
 	AgentModels(agent string) []modelcatalog.Model
-	CuratedAgentModelsForProvider(agent, providerID string) ([]modelcatalog.Model, error)
 }
 
 func promptWithModules(base string, modules promptmodule.Modules) string {

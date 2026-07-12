@@ -8,9 +8,7 @@ import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import { createSessionInput, NEW_SESSION_AGENT_KEY } from '@/lib/newSessionConfig'
 import {
-  effectiveReasoningEffort,
   inheritedReasoningEffortOverride,
-  supportedReasoningEffort,
 } from '@/lib/reasoningEfforts'
 
 export function useNewThreadControls() {
@@ -50,7 +48,14 @@ export function useNewThreadControls() {
   const selectedModel = modelOverride ?? model.defaultModel
   const requestedEffort = effortOverride ?? model.defaultEffort
 
-  const { modelSuggestions, modelsLoading, reasoningOptions: effortOptions } = useModelReasoningState({
+  const {
+    modelSuggestions,
+    modelsLoading,
+    reasoningOptions: effortOptions,
+    effectiveReasoningEffort: effort,
+    reasoningEffortSupported,
+    reasoningPending,
+  } = useModelReasoningState({
     settings: agentSettings,
     agent: runtime,
     model: selectedModel,
@@ -59,13 +64,11 @@ export function useNewThreadControls() {
     provider,
     selectedProvider,
   })
-  const effort = effectiveReasoningEffort(requestedEffort, effortOptions)
-
   useEffect(() => {
-    if (effortOverride != null && !supportedReasoningEffort(effortOverride, effortOptions)) {
+    if (effortOverride != null && !reasoningEffortSupported) {
       setEffortOverride(null)
     }
-  }, [effortOptions, effortOverride])
+  }, [effortOverride, reasoningEffortSupported])
 
   const composer = composerConfig()
 
@@ -83,6 +86,7 @@ export function useNewThreadControls() {
     model: selectedModel,
     modelSuggestions,
     modelsLoading,
+    reasoningPending,
     usesProvider,
     providers: usesProvider ? runtimeProviders.map((p) => ({ value: p.id, label: p.label })) : undefined,
     provider: usesProvider ? provider : undefined,

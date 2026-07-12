@@ -3,6 +3,8 @@ package acp_test
 import (
 	"context"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +34,24 @@ func (s staticPrompt) ACPPromptForContext(_ context.Context, _, _ string) (strin
 }
 
 type cwdPrompt struct{}
+
+func warmedManagerModelCatalog(t *testing.T) *modelcatalog.Service {
+	t.Helper()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"anthropic/claude-opus-4.8","reasoning":{"supported_efforts":["xhigh"]}},
+			{"id":"openai/gpt-5.5","reasoning":{"supported_efforts":["xhigh"]}}
+		]}`))
+	}))
+	t.Cleanup(upstream.Close)
+	service := modelcatalog.NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		provider.ProviderOpenRouter: {BaseURL: upstream.URL},
+	}))
+	if err := service.Warm(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	return service
+}
 
 func (cwdPrompt) ACPPromptForContext(_ context.Context, cwd, _ string) (string, error) {
 	return "cwd: " + cwd, nil
@@ -1037,7 +1057,7 @@ func TestManagerSpawnAcceptsConfiguredClaudeModelLabel(t *testing.T) {
 	manager := acp.NewManager(store, acp.Config{
 		Root:         t.TempDir(),
 		Workspace:    t.TempDir(),
-		ModelCatalog: modelcatalog.NewService(nil),
+		ModelCatalog: warmedManagerModelCatalog(t),
 		Agents: map[string]acp.AgentConfig{
 			"claude": {
 				Command:         os.Args[0],
@@ -1123,7 +1143,7 @@ func TestManagerUsesCodexProviderNativeModel(t *testing.T) {
 	manager := acp.NewManager(store, acp.Config{
 		Root:         t.TempDir(),
 		Workspace:    t.TempDir(),
-		ModelCatalog: modelcatalog.NewService(nil),
+		ModelCatalog: warmedManagerModelCatalog(t),
 		Agents: map[string]acp.AgentConfig{
 			"codex": {
 				Command:         os.Args[0],

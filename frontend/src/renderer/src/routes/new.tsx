@@ -92,6 +92,10 @@ function NewSessionPage() {
       toast('Connect an agent in Settings before starting a session.', 'danger')
       return
     }
+    if (controls.reasoningPending) {
+      toast('Model capabilities are still loading. Try again in a moment.', 'danger')
+      return
+    }
     setCreating(true)
     try {
       const session = await createSession(controls.sessionConfig({ directory, worktree }, title))

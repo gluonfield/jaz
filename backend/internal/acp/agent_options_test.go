@@ -49,7 +49,7 @@ func TestAgentOptionsReportsModelScopedReasoningEfforts(t *testing.T) {
 		t.Fatal(err)
 	}
 	model := out.Agents[0].Models[0]
-	if !model.ReasoningEffortsKnown || strings.Join(model.ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh" {
+	if model.Reasoning.Status != modelcatalog.ReasoningReady || strings.Join(model.Reasoning.Efforts, ",") != "none,minimal,low,medium,high,xhigh" {
 		t.Fatalf("model reasoning = %#v", model)
 	}
 }

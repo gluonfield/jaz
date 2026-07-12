@@ -227,7 +227,7 @@ export function MemorySettings() {
   ).filter((option) => option.value !== '')
   const defaultMemoryEffort =
     memory.default_reasoning_effort ||
-    modelSuggestionFor(modelSuggestions, effectiveMemoryModel)?.reasoningDefaultEffort
+    modelSuggestionFor(modelSuggestions, effectiveMemoryModel)?.reasoning.default_effort
   const memoryEffort = memory.reasoning_effort ?? ''
 
   return (

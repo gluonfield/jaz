@@ -220,7 +220,7 @@ export function ModelSelect({
               <ReasoningEffortSlider
                 options={effortStops}
                 value={effortValue}
-                defaultValue={selectedSuggestion?.reasoningDefaultEffort}
+                defaultValue={selectedSuggestion?.reasoning.default_effort}
                 onChange={onEffortChange}
               />
             </div>

@@ -115,6 +115,10 @@ function LauncherPage() {
       setError('Connect an agent in Settings before starting a session.')
       return
     }
+    if (controls.reasoningPending) {
+      setError('Model capabilities are still loading. Try again in a moment.')
+      return
+    }
     setSending(true)
     setError('')
     try {

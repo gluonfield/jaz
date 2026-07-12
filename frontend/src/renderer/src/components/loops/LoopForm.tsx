@@ -6,10 +6,7 @@ import { boardsQuery } from '@/lib/api/boards'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
 import { useModelReasoningState } from '@/lib/modelReasoning'
-import {
-  effectiveReasoningEffort,
-  supportedReasoningEffort,
-} from '@/lib/reasoningEfforts'
+import { supportedReasoningEffort } from '@/lib/reasoningEfforts'
 import { BoardAssignmentPicker } from './BoardAssignmentPicker'
 import { LoopExamplesPicker } from './LoopExamplesPicker'
 import type { LoopDraft } from './loopDraft'
@@ -211,7 +208,13 @@ function LoopPromptCard({
   const model = draft.model || defaultModel
   const requestedEffort = draft.reasoningEffort || runtimeModel.defaultEffort
 
-  const { modelSuggestions, modelsLoading, reasoningOptions: effortOptions } = useModelReasoningState({
+  const {
+    modelSuggestions,
+    modelsLoading,
+    reasoningOptions: effortOptions,
+    effectiveReasoningEffort: reasoningEffort,
+    reasoningEffortSupported,
+  } = useModelReasoningState({
     settings: agentSettings,
     agent: draft.runtime,
     model,
@@ -220,10 +223,8 @@ function LoopPromptCard({
     provider,
     selectedProvider,
   })
-  const reasoningEffort = effectiveReasoningEffort(requestedEffort, effortOptions)
-
   useEffect(() => {
-    if (draft.reasoningEffort && !supportedReasoningEffort(draft.reasoningEffort, effortOptions)) {
+    if (draft.reasoningEffort && !reasoningEffortSupported) {
       set({ reasoningEffort: '' })
       return
     }
@@ -235,7 +236,7 @@ function LoopPromptCard({
     ) {
       set({ reasoningEffort: 'none' })
     }
-  }, [draft.reasoningEffort, effortOptions, runtimeModel.defaultEffort, set])
+  }, [draft.reasoningEffort, effortOptions, reasoningEffortSupported, runtimeModel.defaultEffort, set])
 
   return (
     <div>

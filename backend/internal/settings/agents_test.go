@@ -105,7 +105,8 @@ func TestNormalizeAgentDefaultsAllowsCodexUltra(t *testing.T) {
 	codex.ReasoningEffort = "ultra"
 	input.ACP[acp.AgentCodex] = codex
 
-	normalized, err := NormalizeAgentDefaults(input, catalog, acp.ModelCapabilities{Catalog: modelcatalog.NewService(nil)})
+	service := warmSettingsModelCatalog(t, `{"data":[{"id":"openai/gpt-5.6-sol","reasoning":{"supported_efforts":["xhigh","high","medium","low"]}}]}`)
+	normalized, err := NormalizeAgentDefaults(input, catalog, acp.ModelCapabilities{Catalog: service})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,21 +122,27 @@ func TestNormalizeAgentDefaultsRejectsModelSpecificUnsupportedReasoning(t *testi
 	claude.ReasoningEffort = "minimal"
 	input.ACP["claude"] = claude
 
+	service := warmSettingsModelCatalog(t, `{"data":[{"id":"anthropic/claude-sonnet-5","reasoning":{"supported_efforts":["max","high","medium","low"]}}]}`)
+
+	_, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), acp.ModelCapabilities{Catalog: service})
+	if err == nil || !strings.Contains(err.Error(), `reasoning effort "minimal" is not supported for claude model "sonnet"`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func warmSettingsModelCatalog(t *testing.T, body string) *modelcatalog.Service {
+	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"data":[{"id":"anthropic/claude-sonnet-5","reasoning":{"supported_efforts":["max","high","medium","low"]}}]}`))
+		_, _ = w.Write([]byte(body))
 	}))
-	defer upstream.Close()
+	t.Cleanup(upstream.Close)
 	service := modelcatalog.NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
 		provider.ProviderOpenRouter: {BaseURL: upstream.URL},
 	}))
 	if err := service.Warm(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
-	_, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), acp.ModelCapabilities{Catalog: service})
-	if err == nil || !strings.Contains(err.Error(), `reasoning effort "minimal" is not supported for claude model "sonnet"`) {
-		t.Fatalf("err = %v", err)
-	}
+	return service
 }
 
 func TestNormalizeAgentDefaultsSplitsOpenCodeProviderModel(t *testing.T) {

@@ -2,12 +2,14 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
@@ -63,7 +65,7 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		normalized, err := agentsettings.NormalizeAgentDefaults(input.AgentDefaults, s.selectableACPAgentCatalog(), acp.ModelCapabilities{Catalog: s.ModelCatalog})
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
+			writeError(w, agentSettingsValidationStatus(err), err)
 			return
 		}
 		if status, err := s.applyRuntimeKeyUpdates(r, input.ProviderKeys, input.ACPKeys); err != nil {
@@ -83,6 +85,13 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
 	}
+}
+
+func agentSettingsValidationStatus(err error) int {
+	if errors.Is(err, modelcatalog.ErrCatalogUnavailable) {
+		return http.StatusServiceUnavailable
+	}
+	return http.StatusBadRequest
 }
 
 func (s *Server) loadAgentSettings(store storage.SettingsStorage) (agentsettings.AgentDefaults, error) {

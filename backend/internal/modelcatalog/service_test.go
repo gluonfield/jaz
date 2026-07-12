@@ -52,8 +52,8 @@ func TestServiceReturnsStartupOpenRouterCatalog(t *testing.T) {
 			models[0].Pricing.Output != 0.000015 {
 			t.Fatalf("unexpected models %#v", models)
 		}
-		if strings.Join(models[0].ReasoningEfforts, ",") != "low,medium,high,max" {
-			t.Fatalf("reasoning efforts = %#v", models[0].ReasoningEfforts)
+		if strings.Join(models[0].Reasoning.Efforts, ",") != "low,medium,high,max" {
+			t.Fatalf("reasoning efforts = %#v", models[0].Reasoning.Efforts)
 		}
 	}
 	if requests != 1 {
@@ -138,8 +138,8 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 		values[provider.OpenAIModelGPT56Luna].ContextLength != 400000 {
 		t.Fatalf("unexpected GPT-5.6 metadata %#v", values)
 	}
-	if models[0].ReasoningEfforts != nil {
-		t.Fatalf("reasoning efforts loaded without OpenRouter = %#v", models[0].ReasoningEfforts)
+	if models[0].Reasoning.Status != ReasoningPending {
+		t.Fatalf("reasoning status = %q", models[0].Reasoning.Status)
 	}
 
 	warmed := warmOpenRouterTestService(t, `{"data":[{
@@ -151,8 +151,8 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "none,low,medium,high,xhigh" {
-		t.Fatalf("reasoning efforts = %#v", models[0].ReasoningEfforts)
+	if strings.Join(models[0].Reasoning.Efforts, ",") != "none,low,medium,high,xhigh" {
+		t.Fatalf("reasoning efforts = %#v", models[0].Reasoning.Efforts)
 	}
 }
 
@@ -162,8 +162,8 @@ func TestServiceDoesNotInventReasoningBeforeCatalogLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if models[0].ReasoningEfforts != nil {
-		t.Fatalf("codex reasoning efforts loaded without OpenRouter = %#v", models[0].ReasoningEfforts)
+	if models[0].Reasoning.Status != ReasoningPending {
+		t.Fatalf("reasoning status = %q", models[0].Reasoning.Status)
 	}
 }
 
@@ -179,17 +179,17 @@ func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 	for _, model := range models {
 		efforts[model.Value] = model
 	}
-	if strings.Join(efforts["sonnet"].ReasoningEfforts, ",") != "low,medium,high,max" {
-		t.Fatalf("sonnet efforts = %#v", efforts["sonnet"].ReasoningEfforts)
+	if strings.Join(efforts["sonnet"].Reasoning.Efforts, ",") != "low,medium,high,max" {
+		t.Fatalf("sonnet efforts = %#v", efforts["sonnet"].Reasoning.Efforts)
 	}
-	if strings.Join(efforts["default"].ReasoningEfforts, ",") != "low,medium,high,xhigh,max" {
-		t.Fatalf("default efforts = %#v", efforts["default"].ReasoningEfforts)
+	if strings.Join(efforts["default"].Reasoning.Efforts, ",") != "low,medium,high,xhigh,max" {
+		t.Fatalf("default efforts = %#v", efforts["default"].Reasoning.Efforts)
 	}
-	if efforts["default"].ReasoningDefaultEffort != "medium" || !efforts["default"].ReasoningMandatory {
+	if efforts["default"].Reasoning.DefaultEffort != "medium" || !efforts["default"].Reasoning.Mandatory {
 		t.Fatalf("default reasoning metadata = %#v", efforts["default"])
 	}
-	if efforts["haiku"].ReasoningEfforts == nil || len(efforts["haiku"].ReasoningEfforts) != 0 {
-		t.Fatalf("haiku efforts = %#v", efforts["haiku"].ReasoningEfforts)
+	if efforts["haiku"].Reasoning.Efforts == nil || len(efforts["haiku"].Reasoning.Efforts) != 0 {
+		t.Fatalf("haiku efforts = %#v", efforts["haiku"].Reasoning.Efforts)
 	}
 }
 
@@ -226,32 +226,6 @@ func TestServiceAgentModelsIncludesCurrentGrokModels(t *testing.T) {
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("grok models = %#v, want %#v", got, want)
-	}
-}
-
-func TestServiceCuratedAgentModelsForProviderScopesOpenCodeModels(t *testing.T) {
-	service := NewService(nil)
-	models, err := service.CuratedAgentModelsForProvider("opencode", provider.ProviderOpenRouter)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(models) == 0 || models[0].Value != provider.DefaultOpenRouterModel {
-		t.Fatalf("opencode/openrouter models = %#v", models)
-	}
-
-	models, err = service.CuratedAgentModelsForProvider("opencode", provider.ProviderOpenAI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	values := map[string]bool{}
-	for _, model := range models {
-		values[model.Value] = true
-	}
-	if !values[provider.DefaultOpenAIModel] {
-		t.Fatalf("opencode/openai models missing default: %#v", models)
-	}
-	if values[provider.DefaultOpenRouterModel] {
-		t.Fatalf("opencode/openai leaked OpenRouter model: %#v", models)
 	}
 }
 

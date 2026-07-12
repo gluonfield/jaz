@@ -76,16 +76,17 @@ func fetchOpenRouterModels(ctx context.Context, baseURL string) ([]Model, error)
 			continue
 		}
 		out = append(out, Model{
-			Value:                  id,
-			Label:                  openRouterModelLabel(model.Name, id),
-			Description:            id,
-			ContextLength:          model.ContextLength,
-			Pricing:                parseOpenRouterPricing(model.Pricing),
-			ReasoningEfforts:       cleanOpenRouterReasoningEfforts(model.Reasoning),
-			ReasoningEffortsKnown:  true,
-			ReasoningEffortScope:   ReasoningEffortScopeProvider,
-			ReasoningDefaultEffort: openRouterDefaultEffort(model.Reasoning),
-			ReasoningMandatory:     model.Reasoning != nil && model.Reasoning.Mandatory,
+			Value:         id,
+			Label:         openRouterModelLabel(model.Name, id),
+			Description:   id,
+			ContextLength: model.ContextLength,
+			Pricing:       parseOpenRouterPricing(model.Pricing),
+			Reasoning: Reasoning{
+				Status:        ReasoningReady,
+				Efforts:       cleanOpenRouterReasoningEfforts(model.Reasoning),
+				DefaultEffort: openRouterDefaultEffort(model.Reasoning),
+				Mandatory:     model.Reasoning != nil && model.Reasoning.Mandatory,
+			},
 		})
 	}
 	return out, nil

@@ -74,7 +74,7 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CODEX_HOME", codexHome)
-	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
+	handler := (&Server{ModelCatalog: warmedModelCatalog(t),
 		Store: store,
 		Root:  root,
 		AgentCatalog: acp.AgentCatalog{

@@ -1021,11 +1021,15 @@ export interface ModelCatalogEntry {
   context_length?: number
   pricing?: ModelPricing
   openrouter_id?: string
-  reasoning_efforts?: string[] | null
-  reasoning_efforts_known: boolean
-  reasoning_effort_scope?: 'provider' | 'agent'
-  reasoning_default_effort?: string
-  reasoning_mandatory?: boolean
+  reasoning: ModelReasoningCapabilities
+}
+
+export interface ModelReasoningCapabilities {
+  status: 'pending' | 'ready' | 'unavailable'
+  scope?: 'provider' | 'agent'
+  efforts?: string[]
+  default_effort?: string
+  mandatory?: boolean
 }
 
 /** Editable fields for creating or updating a custom model provider. */

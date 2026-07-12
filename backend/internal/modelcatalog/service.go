@@ -68,7 +68,7 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 		return models, nil
 	default:
 		if model := strings.TrimSpace(meta.DefaultModel); model != "" {
-			return []Model{{Value: model, Label: model}}, nil
+			return []Model{{Value: model, Label: model, Reasoning: Reasoning{Status: ReasoningUnavailable}}}, nil
 		}
 		return []Model{}, nil
 	}
@@ -77,15 +77,6 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 func (s *Service) AgentModels(agent string) []Model {
 	agent = strings.ToLower(strings.TrimSpace(agent))
 	return s.enrichReasoning(cloneModels(agentModels[agent]))
-}
-
-func (s *Service) CuratedAgentModelsForProvider(agent, providerID string) ([]Model, error) {
-	agent = strings.ToLower(strings.TrimSpace(agent))
-	providerID = strings.ToLower(strings.TrimSpace(providerID))
-	if agent == "opencode" && providerID != "" && providerID != provider.ProviderOpenRouter {
-		return s.ProviderModels(providerID)
-	}
-	return s.AgentModels(agent), nil
 }
 
 func (s *Service) enrichReasoning(models []Model) []Model {
@@ -98,22 +89,15 @@ func (s *Service) enrichReasoning(models []Model) []Model {
 		byID[source.Value] = source
 	}
 	for i := range models {
-		id := models[i].OpenRouterID
-		if id == "" && strings.Contains(models[i].Value, "/") {
-			id = models[i].Value
-		}
-		if id == "" {
+		if models[i].Reasoning.Status != ReasoningPending {
 			continue
 		}
-		source, ok := byID[id]
+		source, ok := byID[models[i].OpenRouterID]
 		if !ok {
+			models[i].Reasoning.Status = ReasoningUnavailable
 			continue
 		}
-		models[i].ReasoningEfforts = source.ReasoningEfforts
-		models[i].ReasoningEffortsKnown = source.ReasoningEffortsKnown
-		models[i].ReasoningEffortScope = source.ReasoningEffortScope
-		models[i].ReasoningDefaultEffort = source.ReasoningDefaultEffort
-		models[i].ReasoningMandatory = source.ReasoningMandatory
+		models[i].Reasoning = source.Reasoning
 	}
 	return models
 }

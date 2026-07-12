@@ -56,36 +56,42 @@ export function modelReasoningEffortOptions(
   agent: string,
   model: string,
   suggestions: ModelSuggestion[],
-  requested = '',
 ): ReasoningEffortOption[] {
-  const agentOptions = acpReasoningEffortOptions(settings, agent)
-  const values = modelReasoningEfforts(model, suggestions)
-  if (values === null) return pendingReasoningOptions(requested, false)
-  if (values === undefined) return agentOptions
-  if (values.length === 0) return [NO_REASONING_EFFORT_OPTION]
-  return dedupeReasoningOptions([
-    { value: '', label: 'Default' },
-    ...values.map(reasoningOption),
-  ])
+  return reasoningOptions(settings, agent, model, suggestions, false)
 }
 
-export function modelSettingsReasoningEffortOptions(
+export interface ModelReasoningSelection {
+  options: ReasoningEffortOption[]
+  effectiveEffort: string
+  supported: boolean
+  pending: boolean
+}
+
+export function modelReasoningSelection(
   settings: AgentSettings | undefined,
   agent: string,
   model: string,
   suggestions: ModelSuggestion[],
-  requested = '',
-): ReasoningEffortOption[] {
-  const agentOptions = acpReasoningEffortOptions(settings, agent)
-  const values = modelReasoningEfforts(model, suggestions)
-  if (values === null) return pendingReasoningOptions(requested, true)
-  if (values === undefined) return settingsReasoningOptions(agentOptions)
-  return settingsReasoningOptions([
-    { value: '', label: 'None' },
-    ...values
-      .filter((value) => value !== 'none')
-      .map(reasoningOption),
-  ])
+  requested: string,
+  settingsMode: boolean,
+  fallbackStatus: 'pending' | 'ready' | 'unavailable',
+): ModelReasoningSelection {
+  const suggestion = modelSuggestionFor(suggestions, model)
+  const status = suggestion?.reasoning.status ?? fallbackStatus
+  const options = reasoningOptions(settings, agent, model, suggestions, settingsMode, fallbackStatus)
+  const effort = requested.trim()
+  if (status === 'pending') {
+    return { options, effectiveEffort: effort, supported: true, pending: effort !== '' }
+  }
+  if (status === 'unavailable') {
+    return { options, effectiveEffort: '', supported: effort === '', pending: false }
+  }
+  return {
+    options,
+    effectiveEffort: effectiveReasoningEffort(effort, options),
+    supported: supportedReasoningEffort(effort, options),
+    pending: false,
+  }
 }
 
 export function supportedReasoningEffort(value: string, options: ReasoningEffortOption[]): boolean {
@@ -111,19 +117,28 @@ export function inheritedReasoningEffortOverride(
   return options.some((option) => option.value === 'none') ? 'none' : null
 }
 
-function modelReasoningEfforts(
+function reasoningOptions(
+  settings: AgentSettings | undefined,
+  agent: string,
   model: string,
   suggestions: ModelSuggestion[],
-): string[] | null | undefined {
+  settingsMode: boolean,
+  fallbackStatus: 'pending' | 'ready' | 'unavailable' = 'ready',
+): ReasoningEffortOption[] {
   const suggestion = modelSuggestionFor(suggestions, model)
-  if (!suggestion) return undefined
-  return suggestion.reasoningEffortsKnown ? (suggestion.reasoningEfforts ?? []) : null
-}
-
-function pendingReasoningOptions(value: string, settingsMode: boolean): ReasoningEffortOption[] {
-  const effort = value.trim()
-  if (effort !== '') return [reasoningOption(effort)]
-  return [{ value: '', label: settingsMode ? 'None' : 'Default' }]
+  if (!suggestion) {
+    if (fallbackStatus !== 'ready') return []
+    const agentOptions = acpReasoningEffortOptions(settings, agent)
+    return settingsMode ? settingsReasoningOptions(agentOptions) : agentOptions
+  }
+  if (suggestion.reasoning.status !== 'ready') return []
+  const values = suggestion.reasoning.efforts ?? []
+  if (!settingsMode && values.length === 0) return [NO_REASONING_EFFORT_OPTION]
+  const options = [
+    { value: '', label: settingsMode ? 'None' : 'Default' },
+    ...values.filter((value) => !settingsMode || value !== 'none').map(reasoningOption),
+  ]
+  return settingsMode ? settingsReasoningOptions(options) : dedupeReasoningOptions(options)
 }
 
 function reasoningOption(value: string): ReasoningEffortOption {

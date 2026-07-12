@@ -18,7 +18,7 @@ type Handler struct {
 }
 
 type providerModelsResponse struct {
-	Models []catalog.Model `json:"models"`
+	Models []acp.AgentModel `json:"models"`
 }
 
 func NewHandler(service Service) Handler {
@@ -36,6 +36,12 @@ func (h Handler) ProviderModels(w http.ResponseWriter, r *http.Request) {
 		}
 		httpapi.WriteError(w, status, err)
 		return
+	}
+	for _, model := range models {
+		if model.Reasoning.Status == catalog.ReasoningPending {
+			httpapi.WriteError(w, http.StatusServiceUnavailable, catalog.ErrCatalogUnavailable)
+			return
+		}
 	}
 	httpapi.WriteJSON(w, http.StatusOK, providerModelsResponse{Models: models})
 }

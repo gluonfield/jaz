@@ -64,7 +64,6 @@ type MCPRuntime interface {
 
 type ModelCatalog interface {
 	AgentModels(agent string) []modelcatalog.Model
-	CuratedAgentModelsForProvider(agent, providerID string) ([]modelcatalog.Model, error)
 	ProviderModels(id string) ([]modelcatalog.Model, error)
 }
 

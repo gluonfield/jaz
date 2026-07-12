@@ -6,15 +6,15 @@ import {
   modelSuggestionsForProvider,
   type ModelSuggestion,
 } from './models'
-import {
-  modelReasoningEffortOptions,
-  modelSettingsReasoningEffortOptions,
-} from './reasoningEfforts'
+import { modelReasoningSelection } from './reasoningEfforts'
 
 export interface ModelReasoningState {
   modelSuggestions: ModelSuggestion[]
   modelsLoading: boolean
   reasoningOptions: ReasoningEffortOption[]
+  effectiveReasoningEffort: string
+  reasoningEffortSupported: boolean
+  reasoningPending: boolean
 }
 
 export function useModelReasoningState({
@@ -43,12 +43,22 @@ export function useModelReasoningState({
   const modelSuggestions = usesProvider
     ? modelSuggestionsForProvider(selectedProvider, providerModels.data ?? [])
     : acpAgentModelSuggestions(settings, agent)
-  const reasoningOptions = settingsMode
-    ? modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions, reasoningEffort)
-    : modelReasoningEffortOptions(settings, agent, model, modelSuggestions, reasoningEffort)
+  const capabilitiesPending = usesProvider && providerModels.data === undefined && providerModels.isFetching
+  const reasoning = modelReasoningSelection(
+    settings,
+    agent,
+    model,
+    capabilitiesPending ? [] : modelSuggestions,
+    reasoningEffort,
+    settingsMode,
+    capabilitiesPending ? 'pending' : usesProvider ? 'unavailable' : 'ready',
+  )
   return {
     modelSuggestions,
     modelsLoading: providerModels.isLoading,
-    reasoningOptions,
+    reasoningOptions: reasoning.options,
+    effectiveReasoningEffort: reasoning.effectiveEffort,
+    reasoningEffortSupported: reasoning.supported,
+    reasoningPending: reasoning.pending,
   }
 }

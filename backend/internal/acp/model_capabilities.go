@@ -3,43 +3,84 @@ package acp
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 )
 
+var ErrReasoningCapabilitiesUnavailable = errors.New("reasoning capabilities are unavailable")
+
+type ReasoningScope string
+
+const (
+	ReasoningScopeProvider ReasoningScope = "provider"
+	ReasoningScopeAgent    ReasoningScope = "agent"
+)
+
+type ReasoningCapabilities struct {
+	Status        modelcatalog.ReasoningStatus `json:"status"`
+	Scope         ReasoningScope               `json:"scope,omitempty"`
+	Efforts       []string                     `json:"efforts,omitempty"`
+	DefaultEffort string                       `json:"default_effort,omitempty"`
+	Mandatory     bool                         `json:"mandatory,omitempty"`
+}
+
+type AgentModel struct {
+	Value         string                `json:"value"`
+	Label         string                `json:"label"`
+	Description   string                `json:"description,omitempty"`
+	ContextLength int                   `json:"context_length,omitempty"`
+	Pricing       *modelcatalog.Pricing `json:"pricing,omitempty"`
+	OpenRouterID  string                `json:"openrouter_id,omitempty"`
+	Reasoning     ReasoningCapabilities `json:"reasoning"`
+}
+
 type ModelCapabilities struct {
 	Catalog ModelCatalog
 }
 
-func (c ModelCapabilities) AgentModels(agent string) []modelcatalog.Model {
-	return resolveModelCapabilities(agent, c.Catalog.AgentModels(agent), modelcatalog.ReasoningEffortScopeAgent)
+func (c ModelCapabilities) AgentModels(agent string) []AgentModel {
+	return resolveModelCapabilities(agent, c.Catalog.AgentModels(agent), true)
 }
 
-func (c ModelCapabilities) AgentModelsForProvider(agent, providerID string) ([]modelcatalog.Model, error) {
-	models, err := c.Catalog.CuratedAgentModelsForProvider(agent, providerID)
-	if err != nil {
-		return nil, err
+func (c ModelCapabilities) AgentModelsForProvider(agent, providerID string) ([]AgentModel, error) {
+	if !usesCuratedModels(agent, providerID) {
+		return c.ProviderModels(agent, providerID)
 	}
-	fallbackScope := modelcatalog.ReasoningEffortScopeAgent
-	if CanonicalAgentName(agent) == AgentOpenCode && !strings.EqualFold(providerID, provider.ProviderOpenRouter) {
-		fallbackScope = ""
-	}
-	return resolveModelCapabilities(agent, models, fallbackScope), nil
+	return resolveModelCapabilities(agent, c.Catalog.AgentModels(agent), agentReasoningFallback(agent, providerID)), nil
 }
 
-func (c ModelCapabilities) ProviderModels(agent, providerID string) ([]modelcatalog.Model, error) {
+func usesCuratedModels(agent, providerID string) bool {
+	providerID = strings.ToLower(strings.TrimSpace(providerID))
+	if providerID == "" {
+		return true
+	}
+	switch CanonicalAgentName(agent) {
+	case AgentCodex:
+		return providerID == provider.ProviderOpenAI || providerID == CodexProviderOpenAIAPIKey || providerID == provider.ProviderOpenRouter
+	case AgentOpenCode:
+		return providerID == provider.ProviderOpenRouter
+	}
+	return false
+}
+
+func (c ModelCapabilities) ProviderModels(agent, providerID string) ([]AgentModel, error) {
 	return ProviderModelCapabilities(c.Catalog, agent, providerID)
 }
 
-func ProviderModelCapabilities(catalog ProviderModelCatalog, agent, providerID string) ([]modelcatalog.Model, error) {
+func ProviderModelCapabilities(catalog ProviderModelCatalog, agent, providerID string) ([]AgentModel, error) {
 	models, err := catalog.ProviderModels(providerID)
 	if err != nil {
 		return nil, err
 	}
-	return resolveModelCapabilities(agent, models, ""), nil
+	return resolveModelCapabilities(agent, models, agentReasoningFallback(agent, providerID)), nil
+}
+
+func agentReasoningFallback(agent, providerID string) bool {
+	providerID = strings.ToLower(strings.TrimSpace(providerID))
+	return providerID == "" || CanonicalAgentName(agent) == AgentCodex &&
+		(providerID == provider.ProviderOpenAI || providerID == CodexProviderOpenAIAPIKey)
 }
 
 func (c ModelCapabilities) ValidateReasoningEffort(agent, providerID, model, effort string) error {
@@ -47,56 +88,72 @@ func (c ModelCapabilities) ValidateReasoningEffort(agent, providerID, model, eff
 	if effort == "" {
 		return nil
 	}
-	if found, ok := findCapabilityModel(c.AgentModels(agent), model); ok && found.ReasoningEffortsKnown {
-		return validateModelReasoningEffort(agent, model, effort, found.ReasoningEfforts)
-	}
+	var (
+		models []AgentModel
+		err    error
+	)
 	if strings.TrimSpace(providerID) == "" {
+		models = c.AgentModels(agent)
+	} else {
+		models, err = c.ProviderModels(agent, providerID)
+		if err != nil {
+			return err
+		}
+	}
+	found, ok := findCapabilityModel(models, model)
+	if !ok && strings.TrimSpace(providerID) == "" && agentPolicyForAgent(agent).supportsReasoningEffort(effort) {
 		return nil
 	}
-	models, err := c.ProviderModels(agent, providerID)
-	if errors.Is(err, modelcatalog.ErrCatalogUnavailable) {
-		return nil
+	if !ok || found.Reasoning.Status == modelcatalog.ReasoningUnavailable {
+		return fmt.Errorf("%w for %s model %q", ErrReasoningCapabilitiesUnavailable, strings.TrimSpace(agent), displayModel(model))
 	}
-	if err != nil {
-		return err
+	if found.Reasoning.Status == modelcatalog.ReasoningPending {
+		return modelcatalog.ErrCatalogUnavailable
 	}
-	if found, ok := findCapabilityModel(models, model); ok && found.ReasoningEffortsKnown {
-		return validateModelReasoningEffort(agent, model, effort, found.ReasoningEfforts)
-	}
-	return nil
+	return validateModelReasoningEffort(agent, model, effort, found.Reasoning.Efforts)
 }
 
-func resolveModelCapabilities(agent string, models []modelcatalog.Model, fallbackScope modelcatalog.ReasoningEffortScope) []modelcatalog.Model {
+func resolveModelCapabilities(agent string, models []modelcatalog.Model, agentFallback bool) []AgentModel {
 	agent = CanonicalAgentName(agent)
-	policy := agentPolicyForAgent(agent)
-	supported := reasoningEffortValues(policy.reasoningEffortOptions())
-	for i := range models {
-		model := &models[i]
-		if !model.ReasoningEffortsKnown {
-			if fallbackScope == "" || model.OpenRouterID != "" || strings.Contains(model.Value, "/") {
-				model.ReasoningEfforts = nil
-				continue
+	supported := reasoningEffortValues(agentPolicyForAgent(agent).reasoningEffortOptions())
+	out := make([]AgentModel, 0, len(models))
+	for _, model := range models {
+		resolved := AgentModel{
+			Value:         model.Value,
+			Label:         model.Label,
+			Description:   model.Description,
+			ContextLength: model.ContextLength,
+			Pricing:       model.Pricing,
+			OpenRouterID:  model.OpenRouterID,
+			Reasoning: ReasoningCapabilities{
+				Status: model.Reasoning.Status,
+			},
+		}
+		switch model.Reasoning.Status {
+		case modelcatalog.ReasoningReady:
+			resolved.Reasoning.Scope = ReasoningScopeProvider
+			resolved.Reasoning.Efforts = intersectReasoningEfforts(model.Reasoning.Efforts, supported)
+			resolved.Reasoning.DefaultEffort = model.Reasoning.DefaultEffort
+			resolved.Reasoning.Mandatory = model.Reasoning.Mandatory
+			if agent == AgentCodex && isCodexUltraModel(model) {
+				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, "ultra")
 			}
-			model.ReasoningEfforts = append([]string(nil), supported...)
-			model.ReasoningEffortsKnown = true
-			model.ReasoningEffortScope = fallbackScope
-			continue
+			if agent == AgentClaude && containsReasoningEffort(resolved.Reasoning.Efforts, "xhigh") {
+				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
+			}
+			if !containsReasoningEffort(resolved.Reasoning.Efforts, resolved.Reasoning.DefaultEffort) {
+				resolved.Reasoning.DefaultEffort = ""
+			}
+		case modelcatalog.ReasoningUnavailable:
+			if agentFallback && model.OpenRouterID == "" {
+				resolved.Reasoning.Status = modelcatalog.ReasoningReady
+				resolved.Reasoning.Scope = ReasoningScopeAgent
+				resolved.Reasoning.Efforts = append([]string(nil), supported...)
+			}
 		}
-		if model.ReasoningEffortScope == "" {
-			model.ReasoningEffortScope = modelcatalog.ReasoningEffortScopeProvider
-		}
-		model.ReasoningEfforts = intersectReasoningEfforts(model.ReasoningEfforts, supported)
-		if agent == AgentCodex && isCodexUltraModel(*model) {
-			model.ReasoningEfforts = addReasoningEffort(model.ReasoningEfforts, "ultra")
-		}
-		if agent == AgentClaude && containsReasoningEffort(model.ReasoningEfforts, "xhigh") {
-			model.ReasoningEfforts = addReasoningEffort(model.ReasoningEfforts, claudeReasoningEffortUltracode)
-		}
-		if model.ReasoningDefaultEffort != "" && !containsReasoningEffort(model.ReasoningEfforts, model.ReasoningDefaultEffort) {
-			model.ReasoningDefaultEffort = ""
-		}
+		out = append(out, resolved)
 	}
-	return models
+	return out
 }
 
 func isCodexUltraModel(model modelcatalog.Model) bool {
@@ -134,9 +191,7 @@ func addReasoningEffort(values []string, value string) []string {
 	if containsReasoningEffort(values, value) {
 		return values
 	}
-	values = append(values, value)
-	sort.SliceStable(values, func(i, j int) bool { return reasoningEffortRank(values[i]) < reasoningEffortRank(values[j]) })
-	return values
+	return append(values, value)
 }
 
 func containsReasoningEffort(values []string, value string) bool {
@@ -148,16 +203,7 @@ func containsReasoningEffort(values []string, value string) bool {
 	return false
 }
 
-func reasoningEffortRank(value string) int {
-	for i, current := range []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "ultracode"} {
-		if current == value {
-			return i
-		}
-	}
-	return 100
-}
-
-func findCapabilityModel(models []modelcatalog.Model, value string) (modelcatalog.Model, bool) {
+func findCapabilityModel(models []AgentModel, value string) (AgentModel, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" && len(models) > 0 {
 		return models[0], true
@@ -167,19 +213,22 @@ func findCapabilityModel(models []modelcatalog.Model, value string) (modelcatalo
 			return model, true
 		}
 	}
-	return modelcatalog.Model{}, false
+	return AgentModel{}, false
 }
 
 func validateModelReasoningEffort(agent, model, effort string, supported []string) error {
 	if containsReasoningEffort(supported, effort) {
 		return nil
 	}
-	model = strings.TrimSpace(model)
-	if model == "" {
-		model = "default"
-	}
 	if len(supported) == 0 {
-		return fmt.Errorf("reasoning effort %q is not supported for %s model %q", effort, strings.TrimSpace(agent), model)
+		return fmt.Errorf("reasoning effort %q is not supported for %s model %q", effort, strings.TrimSpace(agent), displayModel(model))
 	}
-	return fmt.Errorf("reasoning effort %q is not supported for %s model %q; valid values are %s", effort, strings.TrimSpace(agent), model, strings.Join(supported, ", "))
+	return fmt.Errorf("reasoning effort %q is not supported for %s model %q; valid values are %s", effort, strings.TrimSpace(agent), displayModel(model), strings.Join(supported, ", "))
+}
+
+func displayModel(model string) string {
+	if model = strings.TrimSpace(model); model != "" {
+		return model
+	}
+	return "default"
 }

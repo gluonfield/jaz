@@ -11,7 +11,6 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 
-	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 )
 
@@ -28,7 +27,7 @@ type ReasoningEffortOption struct {
 
 type AgentOptions struct {
 	ReasoningEfforts []ReasoningEffortOption `json:"reasoning_efforts"`
-	Models           []modelcatalog.Model    `json:"models,omitempty"`
+	Models           []AgentModel            `json:"models,omitempty"`
 	DefaultModel     string                  `json:"default_model,omitempty"`
 	DefaultProvider  string                  `json:"default_model_provider,omitempty"`
 	DefaultEffort    string                  `json:"default_reasoning_effort,omitempty"`

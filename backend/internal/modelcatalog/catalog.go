@@ -13,25 +13,29 @@ type Pricing struct {
 	CacheWrite float64 `json:"cache_write"`
 }
 
-type ReasoningEffortScope string
+type ReasoningStatus string
 
 const (
-	ReasoningEffortScopeProvider ReasoningEffortScope = "provider"
-	ReasoningEffortScopeAgent    ReasoningEffortScope = "agent"
+	ReasoningUnavailable ReasoningStatus = "unavailable"
+	ReasoningPending     ReasoningStatus = "pending"
+	ReasoningReady       ReasoningStatus = "ready"
 )
 
+type Reasoning struct {
+	Status        ReasoningStatus
+	Efforts       []string
+	DefaultEffort string
+	Mandatory     bool
+}
+
 type Model struct {
-	Value                  string               `json:"value"`
-	Label                  string               `json:"label"`
-	Description            string               `json:"description,omitempty"`
-	ContextLength          int                  `json:"context_length,omitempty"`
-	Pricing                *Pricing             `json:"pricing,omitempty"`
-	OpenRouterID           string               `json:"openrouter_id,omitempty"`
-	ReasoningEfforts       []string             `json:"reasoning_efforts"`
-	ReasoningEffortsKnown  bool                 `json:"reasoning_efforts_known"`
-	ReasoningEffortScope   ReasoningEffortScope `json:"reasoning_effort_scope,omitempty"`
-	ReasoningDefaultEffort string               `json:"reasoning_default_effort,omitempty"`
-	ReasoningMandatory     bool                 `json:"reasoning_mandatory,omitempty"`
+	Value         string    `json:"value"`
+	Label         string    `json:"label"`
+	Description   string    `json:"description,omitempty"`
+	ContextLength int       `json:"context_length,omitempty"`
+	Pricing       *Pricing  `json:"pricing,omitempty"`
+	OpenRouterID  string    `json:"openrouter_id,omitempty"`
+	Reasoning     Reasoning `json:"-"`
 }
 
 var reasoningEffortRank = map[string]int{
@@ -87,18 +91,18 @@ var (
 			{Value: "GPT-OSS 120B (Medium)", Label: "GPT-OSS 120B", Description: "Medium"},
 		},
 		"opencode": {
-			{Value: provider.DefaultOpenRouterModel, Label: "GLM 5.2", Description: "Default OpenRouter coding model", ContextLength: 1048576},
-			{Value: "openai/" + provider.OpenAIModelGPT56Terra, Label: "GPT-5.6 Terra", Description: "Balanced capability and cost", ContextLength: 1050000},
-			{Value: "openai/" + provider.OpenAIModelGPT56Sol, Label: "GPT-5.6 Sol", Description: "Frontier capability", ContextLength: 1050000},
-			{Value: "openai/" + provider.OpenAIModelGPT56Luna, Label: "GPT-5.6 Luna", Description: "Efficient high-volume workloads", ContextLength: 400000},
-			{Value: "openai/gpt-5.4-mini", Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000},
-			{Value: "openai/gpt-5.5", Label: "GPT-5.5", Description: "Previous frontier model", ContextLength: 1050000},
-			{Value: "deepseek/deepseek-v4-flash", Label: "DeepSeek V4 Flash", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
-			{Value: "xiaomi/mimo-v2.5", Label: "MiMo-V2.5", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
-			{Value: "minimax/minimax-m3", Label: "MiniMax M3", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
-			{Value: "deepseek/deepseek-v4-pro", Label: "DeepSeek V4 Pro", Description: "Popular OpenRouter coding model", ContextLength: 1048576},
-			{Value: "tencent/hy3-preview", Label: "Hy3 preview", Description: "Popular OpenRouter coding model", ContextLength: 262144},
-			{Value: "stepfun/step-3.7-flash", Label: "Step 3.7 Flash", Description: "Popular OpenRouter coding model", ContextLength: 256000},
+			openRouterAgentModel(provider.DefaultOpenRouterModel, "GLM 5.2", "Default OpenRouter coding model", 1048576),
+			openRouterAgentModel("openai/"+provider.OpenAIModelGPT56Terra, "GPT-5.6 Terra", "Balanced capability and cost", 1050000),
+			openRouterAgentModel("openai/"+provider.OpenAIModelGPT56Sol, "GPT-5.6 Sol", "Frontier capability", 1050000),
+			openRouterAgentModel("openai/"+provider.OpenAIModelGPT56Luna, "GPT-5.6 Luna", "Efficient high-volume workloads", 400000),
+			openRouterAgentModel("openai/gpt-5.4-mini", "GPT-5.4 Mini", "Fast and inexpensive", 400000),
+			openRouterAgentModel("openai/gpt-5.5", "GPT-5.5", "Previous frontier model", 1050000),
+			openRouterAgentModel("deepseek/deepseek-v4-flash", "DeepSeek V4 Flash", "Popular OpenRouter coding model", 1048576),
+			openRouterAgentModel("xiaomi/mimo-v2.5", "MiMo-V2.5", "Popular OpenRouter coding model", 1048576),
+			openRouterAgentModel("minimax/minimax-m3", "MiniMax M3", "Popular OpenRouter coding model", 1048576),
+			openRouterAgentModel("deepseek/deepseek-v4-pro", "DeepSeek V4 Pro", "Popular OpenRouter coding model", 1048576),
+			openRouterAgentModel("tencent/hy3-preview", "Hy3 preview", "Popular OpenRouter coding model", 262144),
+			openRouterAgentModel("stepfun/step-3.7-flash", "Step 3.7 Flash", "Popular OpenRouter coding model", 256000),
 		},
 	}
 )
@@ -112,12 +116,22 @@ func cloneModels(models []Model) []Model {
 }
 
 func cloneModel(model Model) Model {
-	model.ReasoningEfforts = cloneStrings(model.ReasoningEfforts)
+	if model.Reasoning.Status == "" {
+		model.Reasoning.Status = ReasoningUnavailable
+		if model.OpenRouterID != "" {
+			model.Reasoning.Status = ReasoningPending
+		}
+	}
+	model.Reasoning.Efforts = cloneStrings(model.Reasoning.Efforts)
 	if model.Pricing != nil {
 		pricing := *model.Pricing
 		model.Pricing = &pricing
 	}
 	return model
+}
+
+func openRouterAgentModel(value, label, description string, contextLength int) Model {
+	return Model{Value: value, Label: label, Description: description, ContextLength: contextLength, OpenRouterID: value}
 }
 
 func cloneStrings(values []string) []string {
