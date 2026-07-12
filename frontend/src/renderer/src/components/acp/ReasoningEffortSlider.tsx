@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 
-const THUMB = 28
+const THUMB = 32
 
 function stopPosition(index: number, count: number): string {
   if (count <= 1) return '50%'
@@ -82,11 +82,11 @@ export function ReasoningEffortSlider({
           onChange={(e) => onChange(options[Number(e.target.value)]?.value ?? '')}
           className={`absolute inset-0 w-full cursor-pointer appearance-none bg-transparent outline-none
             [&::-webkit-slider-runnable-track]:h-7
-            [&::-webkit-slider-thumb]:mt-1 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-7
-            [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-[6px]
+            [&::-webkit-slider-thumb]:-mt-0.5 [&::-webkit-slider-thumb]:size-8
+            [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full
             [&::-webkit-slider-thumb]:transition-[background-color,box-shadow] [&::-webkit-slider-thumb]:duration-150
-            [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:appearance-none
-            [&::-moz-range-thumb]:rounded-[6px] [&::-moz-range-thumb]:border-0 ${
+            [&::-moz-range-thumb]:size-8 [&::-moz-range-thumb]:appearance-none
+            [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 ${
               ultra
                 ? `[&::-webkit-slider-thumb]:bg-primary
                    [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.35),0_0_12px_var(--color-primary)]
