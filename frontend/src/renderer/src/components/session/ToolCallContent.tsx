@@ -1,6 +1,7 @@
 import { ChevronRight, ExternalLink, Globe, Search } from 'lucide-react'
 import { memo, useState } from 'react'
 import type { ACPToolCall, ACPToolContent } from '@/lib/api/types'
+import { toolCallCategory, toolNameKey } from '@/components/session/toolCallCategory'
 
 interface WebResult {
   url: string
@@ -59,10 +60,6 @@ function readField(value: unknown, key: string): string {
   return ''
 }
 
-function toolNameKey(name?: string): string {
-  return (name ?? '').toLowerCase().replace(/[\s_-]/g, '')
-}
-
 function toolNameLabel(name?: string): string {
   const key = toolNameKey(name)
   if (!key) return ''
@@ -105,50 +102,6 @@ function fetchURL(call: ACPToolCall): string {
     }
   }
   return ''
-}
-
-// webToolVariant resolves whether a call is a web search or a single page fetch.
-// tool_name is the reliable signal (Claude sets WebSearch/WebFetch); other
-// agents only give kind — and Claude even tags both web tools as "fetch" — so we
-// fall back to result shape and the title verb.
-function webToolVariant(call: ACPToolCall): 'search' | 'fetch' | null {
-  const name = toolNameKey(call.tool_name)
-  if (name === 'websearch') return 'search'
-  if (name === 'webfetch') return 'fetch'
-  const kind = (call.kind ?? '').toLowerCase()
-  if (kind !== 'fetch' && kind !== 'search') return null
-  // A filesystem search/listing also reports kind 'search'; require a real URL.
-  const results = parseWebResults(call.content)
-  const urlInTitle = /https?:\/\//i.test(call.title ?? '')
-  if (!results.length && !urlInTitle) return null
-  if (results.length > 1) return 'search'
-  if (/search/i.test(call.title ?? '')) return 'search'
-  return kind === 'search' ? 'search' : 'fetch'
-}
-
-export function toolCallCategory(call: ACPToolCall): string {
-  const web = webToolVariant(call)
-  if (web === 'search') return 'web_search'
-  if (web === 'fetch') return 'web_fetch'
-  const name = toolNameKey(call.tool_name)
-  if (name === 'bash') return 'command'
-  if (name === 'read' || name === 'notebookread' || name === 'ls') return 'read'
-  if (name === 'grep' || name === 'glob') return 'search'
-  if (name === 'edit' || name === 'multiedit' || name === 'write' || name === 'notebookedit') {
-    return 'edit'
-  }
-  const kind = (call.kind ?? '').toLowerCase()
-  if (kind === 'edit' || kind === 'delete' || kind === 'move') return 'edit'
-  if (kind === 'read') return 'read'
-  if (kind === 'search') return 'search'
-  if (kind === 'execute') return 'command'
-  const title = call.title ?? call.id
-  if (/^edit\s/i.test(title)) return 'edit'
-  if (/^read\s/i.test(title)) return 'read'
-  if (/^search\s/i.test(title)) return 'search'
-  if (/^view image\s/i.test(title)) return 'image'
-  if (/^(command\s+-v|npx\s|npm\s|bun\s|go\s|git\s|python3?\s|tidy\s|wc\s|rg\s)/i.test(title)) return 'command'
-  return 'tool'
 }
 
 function previewText(content?: ACPToolContent[]): string {

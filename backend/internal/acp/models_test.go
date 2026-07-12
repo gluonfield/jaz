@@ -121,11 +121,14 @@ func TestNormalizeAgentReasoningEffort(t *testing.T) {
 	}
 }
 
-func TestDefaultAgentReasoningEffortPrefersXHighWhenSupported(t *testing.T) {
-	for _, agent := range []string{AgentCodex, AgentClaude, AgentGrok, AgentOpenCode} {
+func TestDefaultAgentReasoningEffort(t *testing.T) {
+	for _, agent := range []string{AgentCodex, AgentClaude, AgentOpenCode} {
 		if got := DefaultAgentReasoningEffort(agent); got != "xhigh" {
 			t.Fatalf("%s default effort = %q, want xhigh", agent, got)
 		}
+	}
+	if got := DefaultAgentReasoningEffort(AgentGrok); got != "high" {
+		t.Fatalf("grok default effort = %q, want high", got)
 	}
 	if got := DefaultAgentReasoningEffort(AgentAntigravity); got != "" {
 		t.Fatalf("antigravity default effort = %q, want empty", got)

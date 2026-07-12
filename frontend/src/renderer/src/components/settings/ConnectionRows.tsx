@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui/Button'
+import { Loader2, Plus, X } from 'lucide-react'
+import { IconButton } from '@/components/ui/IconButton'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import {
   accountLabel,
@@ -38,6 +39,7 @@ export function ConnectedAccountRow({
   onDisconnect: () => void
 }) {
   const subtitle = [accountLabel(account), accountSyncLabel(account)].filter(Boolean).join(' · ')
+  const actionLabel = disconnecting ? 'Disconnecting' : 'Disconnect'
 
   return (
     <ConnectionRow
@@ -45,15 +47,20 @@ export function ConnectedAccountRow({
       subtitle={subtitle}
       onOpen={onOpen}
       action={
-        <Button
+        <IconButton
           variant="danger"
-          size="sm"
-          className="ring-1 ring-border"
+          size="xs"
           disabled={disconnecting}
           onClick={onDisconnect}
+          aria-label={`${actionLabel} ${plugin.name}`}
+          title={actionLabel}
         >
-          {disconnecting ? 'Disconnecting' : 'Disconnect'}
-        </Button>
+          {disconnecting ? (
+            <Loader2 size={13} className="animate-spin" aria-hidden />
+          ) : (
+            <X size={14} aria-hidden />
+          )}
+        </IconButton>
       }
     />
   )
@@ -70,21 +77,27 @@ export function PluginCatalogRow({
   onOpen: () => void
   onConnect: () => void
 }) {
+  const actionLabel = pluginActionLabel(plugin, connecting)
+
   return (
     <ConnectionRow
       plugin={plugin}
       subtitle={plugin.description}
       onOpen={onOpen}
       action={
-        <Button
-          variant="secondary"
-          size="sm"
-          className="ring-1 ring-border"
+        <IconButton
+          size="xs"
           disabled={!pluginCanConnect(plugin) || connecting}
           onClick={onConnect}
+          aria-label={`${actionLabel} ${plugin.name}`}
+          title={actionLabel}
         >
-          {pluginActionLabel(plugin, connecting)}
-        </Button>
+          {connecting ? (
+            <Loader2 size={13} className="animate-spin" aria-hidden />
+          ) : (
+            <Plus size={14} aria-hidden />
+          )}
+        </IconButton>
       }
     />
   )

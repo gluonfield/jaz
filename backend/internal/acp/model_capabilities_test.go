@@ -39,15 +39,27 @@ func TestModelCapabilitiesAddsCodexUltraWithoutInventingMinimal(t *testing.T) {
 }
 
 func TestModelCapabilitiesUsesAgentScopedGrokEfforts(t *testing.T) {
-	models := (ModelCapabilities{Catalog: modelcatalog.NewService(nil)}).AgentModels(AgentGrok)
-	if len(models) == 0 || models[0].Reasoning.Status != modelcatalog.ReasoningReady {
+	capabilities := ModelCapabilities{Catalog: modelcatalog.NewService(nil)}
+	models := capabilities.AgentModels(AgentGrok)
+	if len(models) != 2 || models[0].Reasoning.Status != modelcatalog.ReasoningReady {
 		t.Fatalf("models = %#v", models)
 	}
-	if got := strings.Join(models[0].Reasoning.Efforts, ","); got != "none,minimal,low,medium,high,xhigh" {
+	if got := strings.Join(models[0].Reasoning.Efforts, ","); got != "low,medium,high" {
 		t.Fatalf("reasoning efforts = %q", got)
 	}
-	if models[0].Reasoning.Scope != ReasoningScopeAgent {
+	if models[0].Reasoning.Scope != ReasoningScopeAgent || models[0].Reasoning.DefaultEffort != defaultGrokReasoningEffort {
 		t.Fatalf("reasoning scope = %q", models[0].Reasoning.Scope)
+	}
+	if models[1].Value != modelcatalog.GrokComposerModel || models[1].Reasoning.Status != modelcatalog.ReasoningReady || len(models[1].Reasoning.Efforts) != 0 {
+		t.Fatalf("composer reasoning = %#v", models[1])
+	}
+	if err := capabilities.ValidateReasoningEffort(AgentGrok, "", modelcatalog.DefaultGrokModel, "high"); err != nil {
+		t.Fatal(err)
+	}
+	for model, effort := range map[string]string{modelcatalog.DefaultGrokModel: "xhigh", modelcatalog.GrokComposerModel: "high"} {
+		if err := capabilities.ValidateReasoningEffort(AgentGrok, "", model, effort); err == nil {
+			t.Fatalf("expected %s reasoning effort %q to fail", model, effort)
+		}
 	}
 }
 

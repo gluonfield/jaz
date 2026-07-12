@@ -48,7 +48,7 @@ func (c ModelCapabilities) AgentModelsForProvider(agent, providerID string) ([]A
 	if !usesCuratedModels(agent, providerID) {
 		return c.ProviderModels(agent, providerID)
 	}
-	return resolveModelCapabilities(agent, c.Catalog.AgentModels(agent), agentReasoningFallback(agent, providerID)), nil
+	return resolveModelCapabilities(agent, c.Catalog.AgentModels(agent), usesAgentReasoningCapabilities(agent, providerID)), nil
 }
 
 func usesCuratedModels(agent, providerID string) bool {
@@ -74,10 +74,10 @@ func ProviderModelCapabilities(catalog ProviderModelCatalog, agent, providerID s
 	if err != nil {
 		return nil, err
 	}
-	return resolveModelCapabilities(agent, models, agentReasoningFallback(agent, providerID)), nil
+	return resolveModelCapabilities(agent, models, usesAgentReasoningCapabilities(agent, providerID)), nil
 }
 
-func agentReasoningFallback(agent, providerID string) bool {
+func usesAgentReasoningCapabilities(agent, providerID string) bool {
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	return providerID == "" || CanonicalAgentName(agent) == AgentCodex &&
 		(providerID == provider.ProviderOpenAI || providerID == CodexProviderOpenAIAPIKey)
@@ -113,7 +113,7 @@ func (c ModelCapabilities) ValidateReasoningEffort(agent, providerID, model, eff
 	return validateModelReasoningEffort(agent, model, effort, found.Reasoning.Efforts)
 }
 
-func resolveModelCapabilities(agent string, models []modelcatalog.Model, agentFallback bool) []AgentModel {
+func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAgentCapabilities bool) []AgentModel {
 	agent = CanonicalAgentName(agent)
 	supported := reasoningEffortValues(agentPolicyForAgent(agent).reasoningEffortOptions())
 	out := make([]AgentModel, 0, len(models))
@@ -145,15 +145,32 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, agentFa
 				resolved.Reasoning.DefaultEffort = ""
 			}
 		case modelcatalog.ReasoningUnavailable:
-			if agentFallback && model.OpenRouterID == "" {
-				resolved.Reasoning.Status = modelcatalog.ReasoningReady
-				resolved.Reasoning.Scope = ReasoningScopeAgent
-				resolved.Reasoning.Efforts = append([]string(nil), supported...)
+			if allowAgentCapabilities && model.OpenRouterID == "" {
+				resolved.Reasoning = agentReasoningCapabilities(agent, model, supported)
 			}
 		}
 		out = append(out, resolved)
 	}
 	return out
+}
+
+func agentReasoningCapabilities(agent string, model modelcatalog.Model, supported []string) ReasoningCapabilities {
+	capabilities := ReasoningCapabilities{
+		Status:  modelcatalog.ReasoningReady,
+		Scope:   ReasoningScopeAgent,
+		Efforts: append([]string(nil), supported...),
+	}
+	if agent != AgentGrok {
+		return capabilities
+	}
+	switch model.Value {
+	case modelcatalog.DefaultGrokModel:
+		capabilities.Efforts = []string{"low", "medium", defaultGrokReasoningEffort}
+		capabilities.DefaultEffort = defaultGrokReasoningEffort
+	case modelcatalog.GrokComposerModel:
+		capabilities.Efforts = []string{}
+	}
+	return capabilities
 }
 
 func isCodexUltraModel(model modelcatalog.Model) bool {

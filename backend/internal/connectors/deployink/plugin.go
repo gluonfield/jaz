@@ -12,7 +12,7 @@ func Plugin() integrations.Plugin {
 	return integrations.Plugin{
 		ID:          ProviderID,
 		Name:        ProviderName,
-		Description: "Deploy and manage Ink services, databases, DNS, logs, and project resources.",
+		Description: "Deploy any app to the cloud. Run frontends, backends, and workers in any language, and provision databases.",
 		Examples: []string{
 			"Deploy this app to Ink",
 			"Show my failing deployments and recent logs",

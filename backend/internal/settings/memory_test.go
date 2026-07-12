@@ -24,14 +24,17 @@ func TestDefaultWorkerAgentPriority(t *testing.T) {
 	}
 }
 
-func TestWorkerAgentReasoningEffortUsesXHighWhenAvailable(t *testing.T) {
+func TestWorkerAgentReasoningEffortUsesAgentDefault(t *testing.T) {
 	defaults := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter},
 	}}
-	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentGrok, acp.AgentOpenCode} {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentOpenCode} {
 		if got := WorkerAgentReasoningEffort(agent, defaults); got != "xhigh" {
 			t.Fatalf("%s effort = %q, want xhigh", agent, got)
 		}
+	}
+	if got := WorkerAgentReasoningEffort(acp.AgentGrok, defaults); got != "high" {
+		t.Fatalf("grok effort = %q, want high", got)
 	}
 	for _, agent := range []string{acp.AgentAntigravity} {
 		if got := WorkerAgentReasoningEffort(agent, defaults); got != "" {
@@ -76,8 +79,8 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			name:    "grok",
 			agent:   acp.AgentGrok,
 			model:   modelcatalog.DefaultGrokModel,
-			effort:  "xhigh",
-			allowed: []string{"low", "medium", "high", "xhigh"},
+			effort:  "high",
+			allowed: []string{"low", "medium", "high"},
 		},
 		{
 			name:     "opencode-openrouter-style",

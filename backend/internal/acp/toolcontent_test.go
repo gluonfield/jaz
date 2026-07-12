@@ -94,6 +94,29 @@ func TestToolUpdateMergeSemantics(t *testing.T) {
 	}
 }
 
+func TestToolUpdateNormalizesCodexWebToolNames(t *testing.T) {
+	fetch := acpschema.ToolKindFetch
+	for _, test := range []struct {
+		raw  string
+		want string
+	}{
+		{`{"action":{"type":"search"}}`, "WebSearch"},
+		{`{"action":{"type":"open_page"}}`, "WebFetch"},
+		{`{"action":{"type":"find_in_page"}}`, "WebFetch"},
+		{`{}`, "WebFetch"},
+	} {
+		call := toolUpdateSnapshot(toolUpdateFields{Kind: &fetch, RawInput: json.RawMessage(test.raw)})
+		if call.ToolName != test.want {
+			t.Fatalf("tool name for %s = %q, want %q", test.raw, call.ToolName, test.want)
+		}
+	}
+	search := acpschema.ToolKindSearch
+	call := toolUpdateSnapshot(toolUpdateFields{Kind: &search, RawInput: json.RawMessage(`{"action":{"type":"search"}}`)})
+	if call.ToolName != "" {
+		t.Fatalf("filesystem search tool name = %q, want empty", call.ToolName)
+	}
+}
+
 func TestToolUpdateCapturesRuntimeMetadata(t *testing.T) {
 	now := time.Now().UTC()
 	status := acpschema.ToolCallStatusInProgress

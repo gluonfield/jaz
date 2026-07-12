@@ -215,7 +215,7 @@ func TestMergeAgentDefaultsDropsInvalidGrokAuthProfile(t *testing.T) {
 	}
 }
 
-func TestMergeAgentDefaultsMigratesRetiredGrokBuildModel(t *testing.T) {
+func TestMergeAgentDefaultsMigratesRetiredGrokDefaults(t *testing.T) {
 	seed := testAgentDefaultsSeed()
 	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{}}
 	for name, agent := range seed.ACP {
@@ -223,11 +223,15 @@ func TestMergeAgentDefaultsMigratesRetiredGrokBuildModel(t *testing.T) {
 	}
 	grok := stored.ACP[acp.AgentGrok]
 	grok.Model = "grok-build"
+	grok.ReasoningEffort = "xhigh"
 	stored.ACP[acp.AgentGrok] = grok
 
 	merged := MergeAgentDefaults(stored, seed, agentNames(seed))
 
 	if merged.ACP[acp.AgentGrok].Model != seed.ACP[acp.AgentGrok].Model {
 		t.Fatalf("grok model = %q, want %q", merged.ACP[acp.AgentGrok].Model, seed.ACP[acp.AgentGrok].Model)
+	}
+	if merged.ACP[acp.AgentGrok].ReasoningEffort != "high" {
+		t.Fatalf("grok reasoning effort = %q, want high", merged.ACP[acp.AgentGrok].ReasoningEffort)
 	}
 }

@@ -235,10 +235,12 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("unexpected codex model providers %#v", got.ACPOptions["codex"].ModelProviders)
 	}
 	if got.ACP["grok"].Enabled ||
-		got.ACP["grok"].Model != modelcatalog.DefaultGrokModel {
+		got.ACP["grok"].Model != modelcatalog.DefaultGrokModel ||
+		got.ACP["grok"].ReasoningEffort != acp.DefaultAgentReasoningEffort(acp.AgentGrok) {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
 	}
-	if !hasModelReasoningEfforts(got.ACPOptions["grok"].Models, modelcatalog.DefaultGrokModel, "none,minimal,low,medium,high,xhigh") {
+	if !hasModelReasoningEfforts(got.ACPOptions["grok"].Models, modelcatalog.DefaultGrokModel, "low,medium,high") ||
+		!hasModelReasoningEfforts(got.ACPOptions["grok"].Models, modelcatalog.GrokComposerModel, "") {
 		t.Fatalf("grok model options missing default %#v", got.ACPOptions["grok"].Models)
 	}
 	if got.ACP["opencode"].Enabled ||

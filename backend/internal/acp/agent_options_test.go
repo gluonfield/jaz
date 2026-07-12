@@ -48,9 +48,17 @@ func TestAgentOptionsReportsModelScopedReasoningEfforts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := out.Agents[0].Models[0]
-	if model.Reasoning.Status != modelcatalog.ReasoningReady || strings.Join(model.Reasoning.Efforts, ",") != "none,minimal,low,medium,high,xhigh" {
-		t.Fatalf("model reasoning = %#v", model)
+	models := out.Agents[0].Models
+	if len(models) != 2 || models[0].Model != modelcatalog.DefaultGrokModel || models[1].Model != modelcatalog.GrokComposerModel {
+		t.Fatalf("models = %#v", models)
+	}
+	if models[0].Reasoning.Status != modelcatalog.ReasoningReady ||
+		strings.Join(models[0].Reasoning.Efforts, ",") != "low,medium,high" ||
+		models[0].Reasoning.DefaultEffort != defaultGrokReasoningEffort {
+		t.Fatalf("grok reasoning = %#v", models[0].Reasoning)
+	}
+	if models[1].Reasoning.Status != modelcatalog.ReasoningReady || len(models[1].Reasoning.Efforts) != 0 {
+		t.Fatalf("composer reasoning = %#v", models[1].Reasoning)
 	}
 }
 
