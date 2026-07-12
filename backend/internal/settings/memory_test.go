@@ -33,10 +33,7 @@ func TestWorkerAgentReasoningEffortUsesAgentDefault(t *testing.T) {
 			t.Fatalf("%s effort = %q, want xhigh", agent, got)
 		}
 	}
-	if got := WorkerAgentReasoningEffort(acp.AgentGrok, defaults); got != "high" {
-		t.Fatalf("grok effort = %q, want high", got)
-	}
-	for _, agent := range []string{acp.AgentAntigravity} {
+	for _, agent := range []string{acp.AgentGrok, acp.AgentAntigravity} {
 		if got := WorkerAgentReasoningEffort(agent, defaults); got != "" {
 			t.Fatalf("%s effort = %q, want default", agent, got)
 		}
@@ -76,11 +73,9 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			allowed: []string{"low", "medium", "high", "xhigh", "max", "ultracode"},
 		},
 		{
-			name:    "grok",
-			agent:   acp.AgentGrok,
-			model:   modelcatalog.DefaultGrokModel,
-			effort:  "high",
-			allowed: []string{"low", "medium", "high"},
+			name:  "grok",
+			agent: acp.AgentGrok,
+			model: modelcatalog.DefaultGrokModel,
 		},
 		{
 			name:     "opencode-openrouter-style",
@@ -154,6 +149,10 @@ func TestMemorySettingsWorkerOverrides(t *testing.T) {
 	}
 	if got := settings.WorkerReasoningEffort(defaults); got != "low" {
 		t.Fatalf("override effort = %q, want low", got)
+	}
+	settings = MemorySettings{Agent: acp.AgentGrok, Model: "grok-composer-2.5-fast"}
+	if got := settings.WorkerReasoningEffort(defaults); got != "" {
+		t.Fatalf("composer effort = %q, want model default", got)
 	}
 }
 

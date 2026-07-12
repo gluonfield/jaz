@@ -19,7 +19,6 @@ const sessionConfigModel = "model"
 const sessionConfigReasoningEffort = "reasoning_effort"
 const claudeSessionConfigEffort = "effort"
 const claudeReasoningEffortUltracode = "ultracode"
-const defaultGrokReasoningEffort = "high"
 
 type ReasoningEffortOption struct {
 	Value string `json:"value"`
@@ -683,8 +682,6 @@ func NormalizeAgentReasoningEffort(agentName, value string) (string, error) {
 
 func DefaultAgentReasoningEffort(agentName string) string {
 	switch agentName = CanonicalAgentName(agentName); agentName {
-	case AgentGrok:
-		return defaultGrokReasoningEffort
 	case AgentCodex, AgentClaude, AgentOpenCode:
 	default:
 		return ""

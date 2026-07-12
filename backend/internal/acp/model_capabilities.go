@@ -11,6 +11,8 @@ import (
 
 var ErrReasoningCapabilitiesUnavailable = errors.New("reasoning capabilities are unavailable")
 
+const defaultGrokReasoningEffort = "high"
+
 type ReasoningScope string
 
 const (

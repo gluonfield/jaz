@@ -127,13 +127,7 @@ func TestDefaultAgentReasoningEffort(t *testing.T) {
 			t.Fatalf("%s default effort = %q, want xhigh", agent, got)
 		}
 	}
-	if got := DefaultAgentReasoningEffort(AgentGrok); got != "high" {
-		t.Fatalf("grok default effort = %q, want high", got)
-	}
-	if got := DefaultAgentReasoningEffort(AgentAntigravity); got != "" {
-		t.Fatalf("antigravity default effort = %q, want empty", got)
-	}
-	for _, agent := range []string{"", "custom"} {
+	for _, agent := range []string{"", "custom", AgentGrok, AgentAntigravity} {
 		if got := DefaultAgentReasoningEffort(agent); got != "" {
 			t.Fatalf("%q default effort = %q, want empty", agent, got)
 		}

@@ -215,7 +215,7 @@ func TestMergeAgentDefaultsDropsInvalidGrokAuthProfile(t *testing.T) {
 	}
 }
 
-func TestMergeAgentDefaultsMigratesRetiredGrokDefaults(t *testing.T) {
+func TestMergeAgentDefaultsMigratesRetiredGrokBuildModel(t *testing.T) {
 	seed := testAgentDefaultsSeed()
 	stored := AgentDefaults{ACP: map[string]ACPAgentDefaults{}}
 	for name, agent := range seed.ACP {
@@ -223,7 +223,6 @@ func TestMergeAgentDefaultsMigratesRetiredGrokDefaults(t *testing.T) {
 	}
 	grok := stored.ACP[acp.AgentGrok]
 	grok.Model = "grok-build"
-	grok.ReasoningEffort = "xhigh"
 	stored.ACP[acp.AgentGrok] = grok
 
 	merged := MergeAgentDefaults(stored, seed, agentNames(seed))
@@ -231,7 +230,32 @@ func TestMergeAgentDefaultsMigratesRetiredGrokDefaults(t *testing.T) {
 	if merged.ACP[acp.AgentGrok].Model != seed.ACP[acp.AgentGrok].Model {
 		t.Fatalf("grok model = %q, want %q", merged.ACP[acp.AgentGrok].Model, seed.ACP[acp.AgentGrok].Model)
 	}
-	if merged.ACP[acp.AgentGrok].ReasoningEffort != "high" {
-		t.Fatalf("grok reasoning effort = %q, want high", merged.ACP[acp.AgentGrok].ReasoningEffort)
+}
+
+func TestACPConfigSourceClearsRetiredGrokReasoningEffort(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := testAgentDefaultsSeed()
+	stored := testAgentDefaultsSeed()
+	grok := stored.ACP[acp.AgentGrok]
+	grok.Enabled = true
+	grok.Model = "grok-composer-2.5-fast"
+	grok.ReasoningEffort = "xhigh"
+	stored.ACP[acp.AgentGrok] = grok
+	if _, err := SaveAgentDefaults(store, stored); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureAgentDefaults(store, seed); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, ok, err := NewACPConfigSource(store, acp.BuiltinAgents(), acp.ModelCapabilities{Catalog: modelcatalog.NewService(nil)}).AgentConfig(acp.AgentGrok)
+	if err != nil || !ok {
+		t.Fatalf("grok config: ok=%v err=%v", ok, err)
+	}
+	if cfg.Model != grok.Model || cfg.ReasoningEffort != "" {
+		t.Fatalf("grok config = %#v, want Composer without an effort", cfg)
 	}
 }

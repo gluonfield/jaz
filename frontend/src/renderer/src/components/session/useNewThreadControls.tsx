@@ -97,7 +97,10 @@ export function useNewThreadControls() {
       setModelOverride(null)
       setEffortOverride(null)
     },
-    setModel: (next: string) => setModelOverride(next),
+    setModel: (next: string) => {
+      setModelOverride(next)
+      setEffortOverride(null)
+    },
     effort,
     effortOptions,
     setEffort: (next: string) => setEffortOverride(next === '' ? null : next),
