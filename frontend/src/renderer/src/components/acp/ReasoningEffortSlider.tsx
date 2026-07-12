@@ -43,7 +43,7 @@ export function ReasoningEffortSlider({
     <div className={disabled ? 'pointer-events-none opacity-60' : ''}>
       <p className="text-[13px] text-ink-3">
         Effort{' '}
-        <span className={`font-semibold ${ultra ? 'text-primary' : 'text-ink'}`}>
+        <span className={`font-semibold ${ultra ? 'jaz-gradient' : 'text-ink'}`}>
           {shown?.label ?? 'Default'}
         </span>
       </p>
@@ -53,12 +53,16 @@ export function ReasoningEffortSlider({
         onMouseMove={(e) => setPreviewIndex(indexFromPointer(e.clientX))}
         onMouseLeave={() => setPreviewIndex(null)}
       >
-        <div className="absolute inset-0 rounded-[10px] bg-ink/10" />
+        <div
+          className={`absolute inset-0 rounded-[10px] bg-ink/10 ${ultra ? 'effort-ultra-track' : ''}`}
+        />
         {options.map((option, i) => (
           <span
             key={option.value}
             className={`absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full ${
-              isUltraEffort(option.value) ? 'bg-primary' : 'bg-ink/25'
+              isUltraEffort(option.value)
+                ? 'bg-primary shadow-[0_0_6px_var(--color-primary)]'
+                : 'bg-ink/25'
             }`}
             style={{ left: stopPosition(i, options.length) }}
           />
@@ -76,15 +80,21 @@ export function ReasoningEffortSlider({
           aria-valuetext={shown?.label}
           disabled={disabled}
           onChange={(e) => onChange(options[Number(e.target.value)]?.value ?? '')}
-          className="absolute inset-0 w-full cursor-pointer appearance-none bg-transparent outline-none
+          className={`absolute inset-0 w-full cursor-pointer appearance-none bg-transparent outline-none
             [&::-webkit-slider-runnable-track]:h-7
             [&::-webkit-slider-thumb]:mt-1 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:w-7
             [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-[6px]
-            [&::-webkit-slider-thumb]:bg-ink/90 hover:[&::-webkit-slider-thumb]:bg-ink
-            [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.35)]
-            [&::-webkit-slider-thumb]:transition-colors [&::-webkit-slider-thumb]:duration-150
+            [&::-webkit-slider-thumb]:transition-[background-color,box-shadow] [&::-webkit-slider-thumb]:duration-150
             [&::-moz-range-thumb]:h-5 [&::-moz-range-thumb]:w-7 [&::-moz-range-thumb]:appearance-none
-            [&::-moz-range-thumb]:rounded-[6px] [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-ink/90"
+            [&::-moz-range-thumb]:rounded-[6px] [&::-moz-range-thumb]:border-0 ${
+              ultra
+                ? `[&::-webkit-slider-thumb]:bg-primary
+                   [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.35),0_0_12px_var(--color-primary)]
+                   [&::-moz-range-thumb]:bg-primary`
+                : `[&::-webkit-slider-thumb]:bg-ink/90 hover:[&::-webkit-slider-thumb]:bg-ink
+                   [&::-webkit-slider-thumb]:shadow-[0_1px_3px_rgba(0,0,0,0.35)]
+                   [&::-moz-range-thumb]:bg-ink/90`
+            }`}
         />
       </div>
       <div className="mt-1 flex items-baseline justify-between text-[12px] text-ink-3">
@@ -108,9 +118,9 @@ type DitherCell = {
   nx: number
   need: number
   ramp: number
-  color: number
   phase: number
   speed: number
+  spark: number
 }
 
 function cssToRgb(css: string): [number, number, number] {
@@ -124,16 +134,17 @@ function cssToRgb(css: string): [number, number, number] {
   return [r, g, b]
 }
 
-function ditherPalette(): string[] {
-  const [r, g, b] = cssToRgb(
-    getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim(),
-  )
-  const shade = (k: number) => {
-    const target = k < 0 ? 0 : 255
-    const mix = (c: number) => Math.round(c + (target - c) * Math.abs(k))
-    return `rgb(${mix(r)} ${mix(g)} ${mix(b)})`
+function ditherPalette(): { base: string[]; bright: string[] } {
+  const styles = getComputedStyle(document.documentElement)
+  const base: string[] = []
+  const bright: string[] = []
+  for (let i = 1; i <= 5; i++) {
+    const [r, g, b] = cssToRgb(styles.getPropertyValue(`--color-rainbow-${i}`).trim())
+    base.push(`rgb(${r} ${g} ${b})`)
+    const lift = (c: number) => Math.round(c + (255 - c) * 0.65)
+    bright.push(`rgb(${lift(r)} ${lift(g)} ${lift(b)})`)
   }
-  return [shade(-0.3), shade(0), shade(0.35), shade(0.8)]
+  return { base, bright }
 }
 
 function buildCells(width: number, height: number): DitherCell[] {
@@ -144,16 +155,16 @@ function buildCells(width: number, height: number): DitherCell[] {
   for (let c = 0; c < cols; c++) {
     const nx = (c + 0.5) / cols
     for (let r = 0; r < rows; r++) {
-      if (Math.random() > 0.1 + 0.9 * Math.pow(nx, 1.1)) continue
+      if (Math.random() > 0.55 + 0.45 * nx) continue
       cells.push({
         x: c * CELL + (CELL - PIXEL) / 2,
         y: offY + r * CELL + (CELL - PIXEL) / 2,
         nx,
         need: (1 - nx) * 0.85 + Math.random() * 0.13,
-        ramp: 0.3 + 0.7 * Math.pow(nx, 1.3),
-        color: Math.min(3, Math.floor((nx * 0.75 + Math.random() * 0.55) * 4)),
+        ramp: 0.5 + 0.5 * Math.pow(nx, 1.2),
         phase: Math.random() * Math.PI * 2,
         speed: 1 + Math.random() * 2.2,
+        spark: 0,
       })
     }
   }
@@ -177,7 +188,7 @@ function UltracodeDither({ active }: { active: boolean }) {
     let width = 0
     let height = 0
     let cells: DitherCell[] = []
-    let palette: string[] = []
+    let palette = { base: [] as string[], bright: [] as string[] }
     const size = () => {
       const rect = canvas.getBoundingClientRect()
       if (!rect.width || !rect.height) return false
@@ -192,19 +203,42 @@ function UltracodeDither({ active }: { active: boolean }) {
       return true
     }
 
-    const draw = (t: number) => {
+    const draw = (t: number, dt: number) => {
       ctx.clearRect(0, 0, width, height)
       for (const cell of cells) {
         const front = Math.max(0, Math.min(1, (state.wave * 1.04 - cell.need) * 6))
         if (front <= 0.01) continue
         const flow = state.reduced
           ? 1
-          : 0.6 +
-            0.3 * Math.sin(cell.nx * 14 + t * 3.4 + cell.phase * 0.5) +
-            0.1 * Math.sin(t * cell.speed + cell.phase)
-        ctx.globalAlpha = front * cell.ramp * flow
-        ctx.fillStyle = palette[cell.color]
-        ctx.fillRect(cell.x, cell.y, PIXEL, PIXEL)
+          : 0.72 +
+            0.2 * Math.sin(cell.nx * 14 + t * 3.4 + cell.phase * 0.5) +
+            0.08 * Math.sin(t * cell.speed + cell.phase)
+        let pulse = 0
+        if (!state.reduced) {
+          const s = (((t * 0.55 - cell.nx * 1.15 + cell.phase * 0.03) % 1) + 1) % 1
+          pulse = Math.exp(-14 * s * s)
+          if (cell.spark > 0) cell.spark = Math.max(0, cell.spark - dt * 2.6)
+          else if (Math.random() < dt * (0.015 + 0.1 * cell.nx)) cell.spark = 1
+        }
+        const hue = (((cell.nx * 1.7 - t * 0.16) % 1) + 1) % 1
+        const heat = pulse * 1.4 + cell.spark
+        const fill = (heat > 0.55 ? palette.bright : palette.base)[
+          Math.min(4, Math.floor(hue * 5))
+        ]
+        ctx.fillStyle = fill
+        ctx.globalAlpha = Math.min(
+          1,
+          front * cell.ramp * flow * (1 + 1.3 * pulse) + cell.spark * 0.9,
+        )
+        if (cell.spark > 0.25) {
+          const grow = 1.5 * cell.spark
+          ctx.shadowColor = fill
+          ctx.shadowBlur = 8 * cell.spark
+          ctx.fillRect(cell.x - grow, cell.y - grow, PIXEL + grow * 2, PIXEL + grow * 2)
+          ctx.shadowBlur = 0
+        } else {
+          ctx.fillRect(cell.x, cell.y, PIXEL, PIXEL)
+        }
       }
       ctx.globalAlpha = 1
     }
@@ -227,7 +261,7 @@ function UltracodeDither({ active }: { active: boolean }) {
         ctx.clearRect(0, 0, width, height)
         return
       }
-      draw(ms / 1000)
+      draw(ms / 1000, dt)
       state.raf = state.reduced ? 0 : requestAnimationFrame(frame)
     }
     state.raf = requestAnimationFrame(frame)
