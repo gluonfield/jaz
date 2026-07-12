@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"testing"
 
 	catalog "github.com/wins/jaz/backend/internal/modelcatalog"
@@ -26,7 +25,7 @@ func TestProviderModelsReturnsUnavailableWhenCatalogIsNotWarm(t *testing.T) {
 	}
 }
 
-func TestProviderModelsScopesReasoningToAgent(t *testing.T) {
+func TestProviderModelsDoesNotInventReasoningBeforeCatalogIsWarm(t *testing.T) {
 	handler := NewHandler(catalog.NewService(nil))
 	req := httptest.NewRequest(http.MethodGet, "/v1/model-providers/openai/models?agent=%20Codex%20", nil)
 	req.SetPathValue("provider", " OpenAI ")
@@ -41,7 +40,7 @@ func TestProviderModelsScopesReasoningToAgent(t *testing.T) {
 	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
-	if len(body.Models) == 0 || !slices.Contains(body.Models[0].ReasoningEfforts, "ultra") {
+	if len(body.Models) == 0 || body.Models[0].ReasoningEfforts != nil {
 		t.Fatalf("models = %#v", body.Models)
 	}
 }

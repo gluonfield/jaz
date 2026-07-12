@@ -99,7 +99,7 @@ func TestAgentOptionsScopesOpenCodeModelsToConfiguredProvider(t *testing.T) {
 }
 
 func TestAgentOptionsSearchesOpenRouterWithNameFilter(t *testing.T) {
-	catalog := warmAgentOptionsOpenRouterCatalog(t)
+	catalog := warmOpenRouterCatalog(t)
 	manager := &Manager{
 		cfg: Config{ModelCatalog: catalog},
 		agents: AgentCatalog{
@@ -174,12 +174,13 @@ func TestAgentOptionsSearchReturnsOpenRouterCatalogErrorWhenNoCuratedMatch(t *te
 	}
 }
 
-func warmAgentOptionsOpenRouterCatalog(t *testing.T) *modelcatalog.Service {
+func warmOpenRouterCatalog(t *testing.T) *modelcatalog.Service {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
 			{"id":"z-ai/glm-5.2","name":"Z.AI: GLM 5.2"},
-			{"id":"qwen/qwen3-coder","name":"Qwen: Qwen3 Coder"}
+			{"id":"qwen/qwen3-coder","name":"Qwen: Qwen3 Coder"},
+			{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","high","medium","low"]}}
 		]}`))
 	}))
 	t.Cleanup(upstream.Close)

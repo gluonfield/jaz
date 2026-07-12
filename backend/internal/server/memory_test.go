@@ -16,7 +16,6 @@ import (
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/memoryservice"
-	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
@@ -68,7 +67,7 @@ func testMemoryServer(t *testing.T) (*Server, *fakeMemoryScheduler) {
 		Store:                 store,
 		Memory:                svc,
 		JazTools:              tools,
-		ModelCatalog:          modelcatalog.NewService(nil),
+		ModelCatalog:          warmedModelCatalog(t),
 		SourceProjectionQueue: sourceProjectionQueue,
 		MemorySourceQueue:     memorySourceQueue,
 	}, scheduler

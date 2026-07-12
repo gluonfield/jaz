@@ -30,6 +30,10 @@ func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
+			{"id":"openai/gpt-5.6-sol","name":"OpenAI: GPT-5.6 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
+			{"id":"openai/gpt-5.6-terra","name":"OpenAI: GPT-5.6 Terra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
+			{"id":"openai/gpt-5.6-luna","name":"OpenAI: GPT-5.6 Luna","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
+			{"id":"openai/gpt-5.5","name":"OpenAI: GPT-5.5","reasoning":{"supported_efforts":["high","low"]}},
 			{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
 			{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
 		]}`))
@@ -210,9 +214,9 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["codex"].Model != provider.OpenAIModelGPT56Sol {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
 	}
-	if !hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Sol, "none,minimal,low,medium,high,xhigh,max,ultra") ||
-		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Terra, "none,minimal,low,medium,high,xhigh,max,ultra") ||
-		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Luna, "none,minimal,low,medium,high,xhigh,max,ultra") {
+	if !hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Sol, "none,low,medium,high,xhigh,max,ultra") ||
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Terra, "none,low,medium,high,xhigh,max,ultra") ||
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Luna, "none,low,medium,high,xhigh,max,ultra") {
 		t.Fatalf("codex model options missing GPT-5.6 family %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||

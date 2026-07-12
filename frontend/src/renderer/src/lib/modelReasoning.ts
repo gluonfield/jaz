@@ -7,6 +7,7 @@ import {
   type ModelSuggestion,
 } from './models'
 import {
+  modelReasoningEffortsLoaded,
   modelReasoningEffortOptions,
   modelSettingsReasoningEffortOptions,
 } from './reasoningEfforts'
@@ -14,6 +15,7 @@ import {
 export interface ModelReasoningState {
   modelSuggestions: ModelSuggestion[]
   modelsLoading: boolean
+  reasoningLoaded: boolean
   reasoningOptions: ReasoningEffortOption[]
 }
 
@@ -41,12 +43,18 @@ export function useModelReasoningState({
   const modelSuggestions = usesProvider
     ? modelSuggestionsForProvider(selectedProvider, providerModels.data ?? [])
     : acpAgentModelSuggestions(settings, agent)
-  const reasoningOptions = settingsMode
-    ? modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions)
-    : modelReasoningEffortOptions(settings, agent, model, modelSuggestions)
+  const reasoningLoaded =
+    (!usesProvider || providerModels.data !== undefined) &&
+    modelReasoningEffortsLoaded(model, modelSuggestions)
+  const reasoningOptions = reasoningLoaded
+    ? settingsMode
+      ? modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions)
+      : modelReasoningEffortOptions(settings, agent, model, modelSuggestions)
+    : []
   return {
     modelSuggestions,
     modelsLoading: providerModels.isLoading,
+    reasoningLoaded,
     reasoningOptions,
   }
 }
