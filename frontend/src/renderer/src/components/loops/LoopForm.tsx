@@ -210,7 +210,12 @@ function LoopPromptCard({
   const defaultModel = runtimeModel.defaultModel
   const model = draft.model || defaultModel
 
-  const { modelSuggestions, modelsLoading, reasoningOptions: effortOptions } = useModelReasoningState({
+  const {
+    modelSuggestions,
+    modelsLoading,
+    reasoningLoaded,
+    reasoningOptions: effortOptions,
+  } = useModelReasoningState({
     settings: agentSettings,
     agent: draft.runtime,
     model,
@@ -218,12 +223,13 @@ function LoopPromptCard({
     provider,
     selectedProvider,
   })
-  const reasoningEffort = effectiveReasoningEffort(
-    draft.reasoningEffort || runtimeModel.defaultEffort,
-    effortOptions,
-  )
+  const requestedEffort = draft.reasoningEffort || runtimeModel.defaultEffort
+  const reasoningEffort = reasoningLoaded
+    ? effectiveReasoningEffort(requestedEffort, effortOptions)
+    : requestedEffort
 
   useEffect(() => {
+    if (!reasoningLoaded) return
     if (draft.reasoningEffort && !supportedReasoningEffort(draft.reasoningEffort, effortOptions)) {
       set({ reasoningEffort: '' })
       return
@@ -236,7 +242,7 @@ function LoopPromptCard({
     ) {
       set({ reasoningEffort: 'none' })
     }
-  }, [draft.reasoningEffort, effortOptions, runtimeModel.defaultEffort, set])
+  }, [draft.reasoningEffort, effortOptions, reasoningLoaded, runtimeModel.defaultEffort, set])
 
   return (
     <div>

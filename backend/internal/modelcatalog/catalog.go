@@ -52,23 +52,19 @@ func withUltracode(efforts []string) []string {
 }
 
 var (
-	codexHarnessEfforts    = []string{"none", "minimal", "low", "medium", "high", "xhigh"}
-	openAIReasoningEfforts = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
-	codexUltraEfforts      = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}
-	claudeHarnessEfforts   = []string{"low", "medium", "high", "xhigh", "max", "ultracode"}
-	openAIModels           = []Model{
-		{Value: provider.OpenAIModelGPT56Sol, Label: "GPT-5.6 Sol", Description: "Frontier capability", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-sol", ReasoningEfforts: openAIReasoningEfforts},
-		{Value: provider.OpenAIModelGPT56Terra, Label: "GPT-5.6 Terra", Description: "Balanced capability and cost", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-terra", ReasoningEfforts: openAIReasoningEfforts},
-		{Value: provider.OpenAIModelGPT56Luna, Label: "GPT-5.6 Luna", Description: "Efficient high-volume workloads", ContextLength: 400000, OpenRouterID: "openai/gpt-5.6-luna", ReasoningEfforts: openAIReasoningEfforts},
+	openAIModels = []Model{
+		{Value: provider.OpenAIModelGPT56Sol, Label: "GPT-5.6 Sol", Description: "Frontier capability", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-sol"},
+		{Value: provider.OpenAIModelGPT56Terra, Label: "GPT-5.6 Terra", Description: "Balanced capability and cost", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-terra"},
+		{Value: provider.OpenAIModelGPT56Luna, Label: "GPT-5.6 Luna", Description: "Efficient high-volume workloads", ContextLength: 400000, OpenRouterID: "openai/gpt-5.6-luna"},
 		{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Previous frontier model", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
 		{Value: provider.DefaultOpenAIModel, Label: "GPT-5.4 Mini", Description: "Fast and inexpensive", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4-mini"},
 		{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Tuned for coding", ContextLength: 400000},
 	}
 	agentModels = map[string][]Model{
 		"codex": {
-			{Value: provider.OpenAIModelGPT56Sol, Label: "GPT-5.6 Sol", Description: "Frontier capability", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-sol", ReasoningEfforts: codexUltraEfforts},
-			{Value: provider.OpenAIModelGPT56Terra, Label: "GPT-5.6 Terra", Description: "Balanced capability and cost", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-terra", ReasoningEfforts: codexUltraEfforts},
-			{Value: provider.OpenAIModelGPT56Luna, Label: "GPT-5.6 Luna", Description: "Efficient high-volume workloads", ContextLength: 400000, OpenRouterID: "openai/gpt-5.6-luna", ReasoningEfforts: codexUltraEfforts},
+			{Value: provider.OpenAIModelGPT56Sol, Label: "GPT-5.6 Sol", Description: "Frontier capability", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-sol"},
+			{Value: provider.OpenAIModelGPT56Terra, Label: "GPT-5.6 Terra", Description: "Balanced capability and cost", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.6-terra"},
+			{Value: provider.OpenAIModelGPT56Luna, Label: "GPT-5.6 Luna", Description: "Efficient high-volume workloads", ContextLength: 400000, OpenRouterID: "openai/gpt-5.6-luna"},
 			{Value: "gpt-5.3-codex-spark", Label: "GPT-5.3 Codex Spark", Description: "Account-gated research preview", ContextLength: 400000},
 			{Value: "gpt-5.5", Label: "GPT-5.5", Description: "Previous frontier model", ContextLength: 1050000, OpenRouterID: "openai/gpt-5.5"},
 			{Value: "gpt-5.4", Label: "GPT-5.4", Description: "Strong coding model", ContextLength: 400000, OpenRouterID: "openai/gpt-5.4"},

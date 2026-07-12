@@ -1,11 +1,15 @@
 package settings
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/provider"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
@@ -117,7 +121,18 @@ func TestNormalizeAgentDefaultsRejectsModelSpecificUnsupportedReasoning(t *testi
 	claude.ReasoningEffort = "minimal"
 	input.ACP["claude"] = claude
 
-	_, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), modelcatalog.NewService(nil))
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":[{"id":"anthropic/claude-sonnet-5","reasoning":{"supported_efforts":["max","high","medium","low"]}}]}`))
+	}))
+	defer upstream.Close()
+	service := modelcatalog.NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		provider.ProviderOpenRouter: {BaseURL: upstream.URL},
+	}))
+	if err := service.Warm(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), service)
 	if err == nil || !strings.Contains(err.Error(), `reasoning effort "minimal" is not supported for claude model "sonnet"`) {
 		t.Fatalf("err = %v", err)
 	}

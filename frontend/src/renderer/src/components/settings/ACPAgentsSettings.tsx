@@ -38,7 +38,11 @@ import type {
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import { keys } from '@/lib/query/keys'
-import { modelSettingsReasoningEffortOptions, supportedReasoningEffort } from '@/lib/reasoningEfforts'
+import {
+  modelReasoningEffortsLoaded,
+  modelSettingsReasoningEffortOptions,
+  supportedReasoningEffort,
+} from '@/lib/reasoningEfforts'
 
 const rowControlClass = 'w-full md:w-[320px]'
 type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
@@ -209,7 +213,7 @@ function ACPAgentRow({
         : 'Select a provider before enabling.'
   const [expanded, setExpanded] = useState(false)
   const reasoningModel = (current.model ?? '').trim() || selectedProvider?.default_model || ''
-  const { modelSuggestions, modelsLoading, reasoningOptions } = useModelReasoningState({
+  const { modelSuggestions, modelsLoading, reasoningLoaded, reasoningOptions } = useModelReasoningState({
     settings,
     agent,
     model: reasoningModel,
@@ -219,7 +223,7 @@ function ACPAgentRow({
     settingsMode: true,
   })
   const reasoningEffort = current.reasoning_effort ?? ''
-  const normalizedReasoningEffort = supportedReasoningEffort(reasoningEffort, reasoningOptions)
+  const normalizedReasoningEffort = !reasoningLoaded || supportedReasoningEffort(reasoningEffort, reasoningOptions)
     ? reasoningEffort
     : ''
   const update = useCallback((next: Partial<typeof current>) => {
@@ -234,10 +238,10 @@ function ACPAgentRow({
     onChange(normalizeACPAgentEnabled(nextSettings, agent))
   }, [agent, current, onChange, settings])
   useEffect(() => {
-    if (reasoningEffort !== normalizedReasoningEffort) {
+    if (reasoningLoaded && reasoningEffort !== normalizedReasoningEffort) {
       update({ reasoning_effort: normalizedReasoningEffort })
     }
-  }, [normalizedReasoningEffort, reasoningEffort, update])
+  }, [normalizedReasoningEffort, reasoningEffort, reasoningLoaded, update])
 
   return (
     <SettingsCard className="overflow-hidden">
@@ -352,9 +356,10 @@ function ACPAgentRow({
             disabled={disabled}
             onChange={(model) => {
               const nextOptions = modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions)
+              const nextReasoningLoaded = modelReasoningEffortsLoaded(model, modelSuggestions)
               update({
                 model,
-                reasoning_effort: supportedReasoningEffort(reasoningEffort, nextOptions)
+                reasoning_effort: !nextReasoningLoaded || supportedReasoningEffort(reasoningEffort, nextOptions)
                   ? reasoningEffort
                   : '',
               })

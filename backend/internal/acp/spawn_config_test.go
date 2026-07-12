@@ -207,7 +207,7 @@ func TestSpawnConfigResolvesModelLabelsWithinConfiguredProvider(t *testing.T) {
 
 func TestSpawnConfigRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
 	manager := &Manager{
-		cfg: Config{ModelCatalog: modelcatalog.NewService(nil)},
+		cfg: Config{ModelCatalog: warmOpenRouterCatalog(t)},
 		agents: AgentCatalog{
 			AgentClaude: {Command: AgentClaude, Model: "sonnet", ReasoningEffort: "minimal"},
 		},

@@ -139,8 +139,8 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 		values[provider.OpenAIModelGPT56Luna].ContextLength != 400000 {
 		t.Fatalf("unexpected GPT-5.6 metadata %#v", values)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max" {
-		t.Fatalf("efforts before the catalog loads = %#v", models[0].ReasoningEfforts)
+	if models[0].ReasoningEfforts != nil {
+		t.Fatalf("reasoning efforts loaded without OpenRouter = %#v", models[0].ReasoningEfforts)
 	}
 
 	warmed := warmOpenRouterTestService(t, `{"data":[{
@@ -152,19 +152,24 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max,ultra" {
+	if strings.Join(models[0].ReasoningEfforts, ",") != "none,low,medium,high,xhigh,ultra" {
 		t.Fatalf("reasoning efforts = %#v", models[0].ReasoningEfforts)
+	}
+	for _, effort := range []string{"minimal", "max"} {
+		if err := warmed.ValidateReasoningEffort("codex", provider.ProviderOpenAI, provider.OpenAIModelGPT56Sol, effort); err == nil {
+			t.Fatalf("expected OpenRouter to exclude %s reasoning", effort)
+		}
 	}
 }
 
-func TestServiceProviderModelsWithAgentCapabilitiesOverlaysCodexReasoning(t *testing.T) {
+func TestServiceDoesNotInventCodexReasoningBeforeCatalogLoads(t *testing.T) {
 	service := NewService(nil)
 	models, err := service.ProviderModelsWithAgentCapabilities(" Codex ", provider.ProviderOpenAI)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh,max,ultra" {
-		t.Fatalf("codex efforts = %#v", models[0].ReasoningEfforts)
+	if models[0].ReasoningEfforts != nil {
+		t.Fatalf("codex reasoning efforts loaded without OpenRouter = %#v", models[0].ReasoningEfforts)
 	}
 
 	models, err = service.ProviderModelsWithAgentCapabilities("opencode", provider.ProviderOpenAI)
@@ -176,28 +181,15 @@ func TestServiceProviderModelsWithAgentCapabilitiesOverlaysCodexReasoning(t *tes
 	}
 }
 
-func TestServiceValidatesHarnessReasoningBeforeCatalogLoads(t *testing.T) {
+func TestServiceDoesNotInventReasoningBeforeCatalogLoads(t *testing.T) {
 	service := NewService(nil)
-	if err := service.ValidateReasoningEffort("claude", "", "sonnet", "max"); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ValidateReasoningEffort("claude", "", "sonnet", "minimal"); err == nil {
-		t.Fatal("expected claude minimal reasoning to fail")
-	}
-	if err := service.ValidateReasoningEffort("codex", "openrouter", "openai/gpt-5.5", "xhigh"); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ValidateReasoningEffort("codex", "openai", provider.OpenAIModelGPT56Sol, "max"); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ValidateReasoningEffort("codex", "openai", provider.OpenAIModelGPT56Sol, "ultra"); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ValidateReasoningEffort("codex", "openrouter", "openai/gpt-5.5", "max"); err == nil {
-		t.Fatal("expected codex max reasoning to fail")
-	}
-	if err := service.ValidateReasoningEffort("opencode", "openai", provider.OpenAIModelGPT56Sol, "ultra"); err == nil {
-		t.Fatal("expected generic OpenAI provider Ultra reasoning to fail")
+	for _, input := range []struct{ agent, provider, model, effort string }{
+		{"claude", "", "sonnet", "minimal"},
+		{"codex", "openrouter", "openai/gpt-5.5", "xhigh"},
+	} {
+		if err := service.ValidateReasoningEffort(input.agent, input.provider, input.model, input.effort); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -299,7 +291,7 @@ func TestServiceCuratedAgentModelsForProviderScopesOpenCodeModels(t *testing.T) 
 	}
 }
 
-func TestServiceDoesNotBorrowProviderReasoningForHarnessAgents(t *testing.T) {
+func TestServiceUsesProviderReasoningForHarnessAgents(t *testing.T) {
 	service := warmOpenRouterTestService(t, `{"data":[{
 		"id":"z-ai/glm-5.2",
 		"name":"Z.AI: GLM 5.2",
@@ -309,8 +301,8 @@ func TestServiceDoesNotBorrowProviderReasoningForHarnessAgents(t *testing.T) {
 	if err := service.ValidateReasoningEffort("codex", "openrouter", "z-ai/glm-5.2", "low"); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ValidateReasoningEffort("codex", "openrouter", "z-ai/glm-5.2", "max"); err == nil {
-		t.Fatal("expected codex max reasoning to fail")
+	if err := service.ValidateReasoningEffort("codex", "openrouter", "z-ai/glm-5.2", "max"); err != nil {
+		t.Fatal(err)
 	}
 }
 

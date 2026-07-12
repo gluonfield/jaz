@@ -49,7 +49,12 @@ export function useNewThreadControls() {
   const { usesProvider, providers: runtimeProviders, provider, selectedProvider } = model
   const selectedModel = modelOverride ?? model.defaultModel
 
-  const { modelSuggestions, modelsLoading, reasoningOptions: effortOptions } = useModelReasoningState({
+  const {
+    modelSuggestions,
+    modelsLoading,
+    reasoningLoaded,
+    reasoningOptions: effortOptions,
+  } = useModelReasoningState({
     settings: agentSettings,
     agent: runtime,
     model: selectedModel,
@@ -57,13 +62,17 @@ export function useNewThreadControls() {
     provider,
     selectedProvider,
   })
-  const effort = effectiveReasoningEffort(effortOverride ?? model.defaultEffort, effortOptions)
+  const requestedEffort = effortOverride ?? model.defaultEffort
+  const effort = reasoningLoaded
+    ? effectiveReasoningEffort(requestedEffort, effortOptions)
+    : requestedEffort
 
   useEffect(() => {
+    if (!reasoningLoaded) return
     if (effortOverride != null && !supportedReasoningEffort(effortOverride, effortOptions)) {
       setEffortOverride(null)
     }
-  }, [effortOptions, effortOverride])
+  }, [effortOptions, effortOverride, reasoningLoaded])
 
   const composer = composerConfig()
 
