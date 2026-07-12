@@ -9,24 +9,20 @@ import (
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 )
 
-type Service interface {
-	ProviderModels(providerID string) ([]modelcatalog.Model, error)
-}
-
 type Handler struct {
-	Service Service
+	Service acp.ModelCatalog
 }
 
 type providerModelsResponse struct {
 	Models []acp.AgentModel `json:"models"`
 }
 
-func NewHandler(service Service) Handler {
+func NewHandler(service acp.ModelCatalog) Handler {
 	return Handler{Service: service}
 }
 
 func (h Handler) ProviderModels(w http.ResponseWriter, r *http.Request) {
-	models, err := acp.ProviderModelCapabilities(h.Service, r.URL.Query().Get("agent"), r.PathValue("provider"))
+	models, err := (acp.ModelCapabilities{Catalog: h.Service}).ProviderModels(r.URL.Query().Get("agent"), r.PathValue("provider"))
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, modelcatalog.ErrCatalogUnavailable) {

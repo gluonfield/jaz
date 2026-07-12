@@ -5,7 +5,13 @@ import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, Session } f
 import { modelProviderModelsRequest } from './modelProviderRequest'
 import { modelSuggestionFor, type ModelSuggestion } from './modelSuggestion'
 
-export { modelSuggestionFor, type ModelPricing, type ModelSuggestion } from './modelSuggestion'
+export {
+  filterModelSuggestions,
+  modelSuggestionFor,
+  modelSuggestionLabel,
+  type ModelPricing,
+  type ModelSuggestion,
+} from './modelSuggestion'
 
 export function acpAgentModelSuggestions(
   settings: AgentSettings | undefined,
@@ -78,6 +84,7 @@ function modelSuggestionsFromCatalog(models: ModelCatalogEntry[]): ModelSuggesti
   return models.map((model) => ({
     value: model.value,
     label: model.label,
+    aliases: model.aliases ? [...model.aliases] : undefined,
     description: model.description,
     contextLength: model.context_length || undefined,
     pricing: model.pricing
@@ -94,21 +101,6 @@ function modelSuggestionsFromCatalog(models: ModelCatalogEntry[]): ModelSuggesti
       efforts: model.reasoning.efforts ? [...model.reasoning.efforts] : undefined,
     },
   }))
-}
-
-export function filterModelSuggestions(
-  suggestions: ModelSuggestion[],
-  query: string,
-): ModelSuggestion[] {
-  const needle = query.trim().toLowerCase()
-  if (!needle) return suggestions
-  return suggestions.filter(
-    (s) => s.value.toLowerCase().includes(needle) || s.label.toLowerCase().includes(needle),
-  )
-}
-
-export function modelSuggestionLabel(suggestions: ModelSuggestion[], value: string): string {
-  return suggestions.find((s) => s.value === value)?.label ?? value
 }
 
 // Context window for a session, by precedence: the runtime-reported size

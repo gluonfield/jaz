@@ -1017,6 +1017,7 @@ export interface ModelPricing {
 export interface ModelCatalogEntry {
   value: string
   label: string
+  aliases?: string[]
   description?: string
   context_length?: number
   pricing?: ModelPricing

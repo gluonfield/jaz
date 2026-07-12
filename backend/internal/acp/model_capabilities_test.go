@@ -93,6 +93,33 @@ func TestModelCapabilitiesValidatesSelectedProviderBeforeAgentCatalog(t *testing
 	}
 }
 
+func TestModelCapabilitiesAddsCuratedAliasesToProviderModels(t *testing.T) {
+	catalog := capabilityCatalog{
+		agents: map[string][]modelcatalog.Model{AgentCodex: {{
+			Value:        provider.OpenAIModelGPT56Sol,
+			Label:        "GPT-5.6 Sol",
+			OpenRouterID: "openai/gpt-5.6-sol",
+		}}},
+		providers: map[string][]modelcatalog.Model{provider.ProviderOpenRouter: {{
+			Value: "openai/gpt-5.6-sol",
+			Reasoning: modelcatalog.Reasoning{
+				Status:  modelcatalog.ReasoningReady,
+				Efforts: []string{"high"},
+			},
+		}}},
+	}
+	models, err := (ModelCapabilities{Catalog: catalog}).ProviderModels(AgentCodex, provider.ProviderOpenRouter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || strings.Join(models[0].Aliases, ",") != "gpt-5.6-sol,GPT-5.6 Sol" {
+		t.Fatalf("models = %#v", models)
+	}
+	if err := (ModelCapabilities{Catalog: catalog}).ValidateReasoningEffort(AgentCodex, provider.ProviderOpenRouter, provider.OpenAIModelGPT56Sol, "high"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestModelCapabilitiesAddsClaudeUltracodeOnlyToXhighModels(t *testing.T) {
 	catalog := capabilityCatalog{agents: map[string][]modelcatalog.Model{
 		AgentClaude: {

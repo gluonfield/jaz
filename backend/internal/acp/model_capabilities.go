@@ -29,6 +29,7 @@ type ReasoningCapabilities struct {
 type AgentModel struct {
 	Value         string                `json:"value"`
 	Label         string                `json:"label"`
+	Aliases       []string              `json:"aliases,omitempty"`
 	Description   string                `json:"description,omitempty"`
 	ContextLength int                   `json:"context_length,omitempty"`
 	Pricing       *modelcatalog.Pricing `json:"pricing,omitempty"`
@@ -66,15 +67,42 @@ func usesCuratedModels(agent, providerID string) bool {
 }
 
 func (c ModelCapabilities) ProviderModels(agent, providerID string) ([]AgentModel, error) {
-	return ProviderModelCapabilities(c.Catalog, agent, providerID)
-}
-
-func ProviderModelCapabilities(catalog ProviderModelCatalog, agent, providerID string) ([]AgentModel, error) {
-	models, err := catalog.ProviderModels(providerID)
+	models, err := c.Catalog.ProviderModels(providerID)
 	if err != nil {
 		return nil, err
 	}
-	return resolveModelCapabilities(agent, models, usesAgentReasoningCapabilities(agent, providerID)), nil
+	resolved := resolveModelCapabilities(agent, models, usesAgentReasoningCapabilities(agent, providerID))
+	addModelAliases(resolved, c.Catalog.AgentModels(agent))
+	return resolved, nil
+}
+
+func addModelAliases(models []AgentModel, curated []modelcatalog.Model) {
+	for i := range models {
+		id := modelIdentity(models[i].Value, models[i].OpenRouterID)
+		for _, candidate := range curated {
+			if id != modelIdentity(candidate.Value, candidate.OpenRouterID) {
+				continue
+			}
+			models[i].Aliases = addModelAlias(models[i].Aliases, models[i].Value, candidate.Value)
+			models[i].Aliases = addModelAlias(models[i].Aliases, models[i].Value, candidate.Label)
+			models[i].Aliases = addModelAlias(models[i].Aliases, models[i].Value, candidate.OpenRouterID)
+		}
+	}
+}
+
+func modelIdentity(value, openRouterID string) string {
+	if openRouterID != "" {
+		return strings.ToLower(strings.TrimSpace(openRouterID))
+	}
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func addModelAlias(aliases []string, value, alias string) []string {
+	alias = strings.TrimSpace(alias)
+	if alias == "" || alias == value || containsString(aliases, alias) {
+		return aliases
+	}
+	return append(aliases, alias)
 }
 
 func usesAgentReasoningCapabilities(agent, providerID string) bool {
@@ -138,10 +166,10 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 			if agent == AgentCodex && isCodexUltraModel(model) {
 				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, "ultra")
 			}
-			if agent == AgentClaude && containsReasoningEffort(resolved.Reasoning.Efforts, "xhigh") {
+			if agent == AgentClaude && containsString(resolved.Reasoning.Efforts, "xhigh") {
 				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
 			}
-			if !containsReasoningEffort(resolved.Reasoning.Efforts, resolved.Reasoning.DefaultEffort) {
+			if !containsString(resolved.Reasoning.Efforts, resolved.Reasoning.DefaultEffort) {
 				resolved.Reasoning.DefaultEffort = ""
 			}
 		case modelcatalog.ReasoningUnavailable:
@@ -205,13 +233,13 @@ func intersectReasoningEfforts(values, supported []string) []string {
 }
 
 func addReasoningEffort(values []string, value string) []string {
-	if containsReasoningEffort(values, value) {
+	if containsString(values, value) {
 		return values
 	}
 	return append(values, value)
 }
 
-func containsReasoningEffort(values []string, value string) bool {
+func containsString(values []string, value string) bool {
 	for _, current := range values {
 		if current == value {
 			return true
@@ -226,7 +254,7 @@ func findCapabilityModel(models []AgentModel, value string) (AgentModel, bool) {
 		return models[0], true
 	}
 	for _, model := range models {
-		if model.Value == value || model.OpenRouterID == value {
+		if model.Value == value || model.OpenRouterID == value || containsString(model.Aliases, value) {
 			return model, true
 		}
 	}
@@ -234,7 +262,7 @@ func findCapabilityModel(models []AgentModel, value string) (AgentModel, bool) {
 }
 
 func validateModelReasoningEffort(agent, model, effort string, supported []string) error {
-	if containsReasoningEffort(supported, effort) {
+	if containsString(supported, effort) {
 		return nil
 	}
 	if len(supported) == 0 {

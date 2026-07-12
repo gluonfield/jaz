@@ -42,6 +42,7 @@ function cloneACPOptions(options: AgentSettings['acp_options']): AgentSettings['
         reasoning_efforts: [...(value.reasoning_efforts ?? [])],
         models: value.models?.map((model) => ({
           ...model,
+          aliases: model.aliases ? [...model.aliases] : undefined,
           reasoning: {
             ...model.reasoning,
             efforts: model.reasoning.efforts ? [...model.reasoning.efforts] : undefined,

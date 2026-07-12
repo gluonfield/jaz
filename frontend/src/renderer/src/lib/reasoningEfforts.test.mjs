@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { filterModelSuggestions, modelSuggestionLabel } from './modelSuggestion'
 import { modelReasoningSelection } from './reasoningEfforts'
 
 const input = {
@@ -51,6 +52,28 @@ describe('modelReasoningSelection', () => {
 
     expect(modelReasoningSelection({ ...input, catalog }).supported).toBeTrue()
     expect(modelReasoningSelection({ ...input, requested: 'minimal', catalog }).supported).toBeFalse()
+  })
+
+  test('uses server-provided aliases across providers', () => {
+    const suggestions = [{
+      value: 'openai/gpt-test',
+      label: 'Test',
+      aliases: ['gpt-test'],
+      reasoning: { status: 'ready', efforts: ['high'] },
+    }]
+    const selection = modelReasoningSelection({
+      ...input,
+      catalog: {
+        status: 'ready',
+        unknownModel: 'unavailable',
+        suggestions,
+      },
+    })
+
+    expect(selection.supported).toBeTrue()
+    expect(selection.effectiveEffort).toBe('high')
+    expect(modelSuggestionLabel(suggestions, 'gpt-test')).toBe('Test')
+    expect(filterModelSuggestions(suggestions, 'gpt-test')).toEqual(suggestions)
   })
 
   test('preserves effort when a ready catalog still marks the model pending', () => {
