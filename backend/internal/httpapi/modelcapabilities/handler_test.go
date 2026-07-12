@@ -1,16 +1,16 @@
-package modelcatalog
+package modelcapabilities
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	catalog "github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 )
 
 func TestProviderModelsReturnsUnavailableWhenCatalogIsNotWarm(t *testing.T) {
-	handler := NewHandler(catalog.NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
+	handler := NewHandler(modelcatalog.NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
 		provider.ProviderOpenRouter: {},
 	})))
 	req := httptest.NewRequest(http.MethodGet, "/v1/model-providers/openrouter/models", nil)
@@ -25,7 +25,7 @@ func TestProviderModelsReturnsUnavailableWhenCatalogIsNotWarm(t *testing.T) {
 }
 
 func TestProviderModelsReturnsUnavailableBeforeReasoningCatalogIsWarm(t *testing.T) {
-	handler := NewHandler(catalog.NewService(nil))
+	handler := NewHandler(modelcatalog.NewService(nil))
 	req := httptest.NewRequest(http.MethodGet, "/v1/model-providers/openai/models?agent=%20Codex%20", nil)
 	req.SetPathValue("provider", " OpenAI ")
 	res := httptest.NewRecorder()

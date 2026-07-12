@@ -1,41 +1,17 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import { get } from './api/client'
 import { agentSettingsQuery } from './api/settings'
-import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, ModelReasoningCapabilities, Session } from './api/types'
+import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, Session } from './api/types'
 import { modelProviderModelsRequest } from './modelProviderRequest'
+import { modelSuggestionFor, type ModelSuggestion } from './modelSuggestion'
 
-// USD per token, parsed from OpenRouter's string pricing fields.
-export interface ModelPricing {
-  input: number
-  output: number
-  cacheRead: number
-  cacheWrite: number
-}
-
-export interface ModelSuggestion {
-  value: string
-  label: string
-  description?: string
-  contextLength?: number
-  pricing?: ModelPricing
-  openRouterId?: string
-  reasoning: ModelReasoningCapabilities
-}
+export { modelSuggestionFor, type ModelPricing, type ModelSuggestion } from './modelSuggestion'
 
 export function acpAgentModelSuggestions(
   settings: AgentSettings | undefined,
   agent: string,
 ): ModelSuggestion[] {
   return modelSuggestionsFromCatalog(settings?.acp_options?.[agent]?.models ?? [])
-}
-
-// '' resolves to the first suggestion — the model an unset value runs as.
-export function modelSuggestionFor(
-  suggestions: ModelSuggestion[],
-  value: string,
-): ModelSuggestion | undefined {
-  const raw = value.trim()
-  return raw ? suggestions.find((s) => s.value === raw) : suggestions[0]
 }
 
 function usageCatalogEntry(

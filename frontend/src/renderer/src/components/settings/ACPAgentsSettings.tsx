@@ -38,7 +38,6 @@ import type {
 import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import { keys } from '@/lib/query/keys'
-import { modelReasoningSelection } from '@/lib/reasoningEfforts'
 
 const rowControlClass = 'w-full md:w-[320px]'
 type ACPAuthDraft = AgentSettingsData['acp'][string]['auth']
@@ -210,7 +209,13 @@ function ACPAgentRow({
   const [expanded, setExpanded] = useState(false)
   const reasoningModel = (current.model ?? '').trim() || selectedProvider?.default_model || ''
   const reasoningEffort = current.reasoning_effort ?? ''
-  const { modelSuggestions, modelsLoading, reasoningOptions, reasoningEffortSupported } = useModelReasoningState({
+  const {
+    modelSuggestions,
+    modelsLoading,
+    reasoningOptions,
+    reasoningEffortSupported,
+    reasoningForModel,
+  } = useModelReasoningState({
     settings,
     agent,
     model: reasoningModel,
@@ -350,15 +355,7 @@ function ACPAgentRow({
             loading={modelsLoading}
             disabled={disabled}
             onChange={(model) => {
-              const nextReasoning = modelReasoningSelection(
-                settings,
-                agent,
-                model,
-                modelsLoading ? [] : modelSuggestions,
-                reasoningEffort,
-                true,
-                modelsLoading ? 'pending' : usesModelProvider ? 'unavailable' : 'ready',
-              )
+              const nextReasoning = reasoningForModel(model, reasoningEffort)
               update({
                 model,
                 reasoning_effort: nextReasoning.supported ? reasoningEffort : '',

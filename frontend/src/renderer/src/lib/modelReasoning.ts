@@ -6,7 +6,11 @@ import {
   modelSuggestionsForProvider,
   type ModelSuggestion,
 } from './models'
-import { modelReasoningSelection } from './reasoningEfforts'
+import {
+  modelReasoningSelection,
+  type ModelReasoningCatalog,
+  type ModelReasoningSelection,
+} from './reasoningEfforts'
 
 export interface ModelReasoningState {
   modelSuggestions: ModelSuggestion[]
@@ -14,7 +18,9 @@ export interface ModelReasoningState {
   reasoningOptions: ReasoningEffortOption[]
   effectiveReasoningEffort: string
   reasoningEffortSupported: boolean
-  reasoningPending: boolean
+  reasoningStatus: ModelReasoningSelection['status']
+  reasoningBlocked: boolean
+  reasoningForModel: (model: string, effort: string) => ModelReasoningSelection
 }
 
 export function useModelReasoningState({
@@ -43,22 +49,30 @@ export function useModelReasoningState({
   const modelSuggestions = usesProvider
     ? modelSuggestionsForProvider(selectedProvider, providerModels.data ?? [])
     : acpAgentModelSuggestions(settings, agent)
-  const capabilitiesPending = usesProvider && providerModels.data === undefined && providerModels.isFetching
-  const reasoning = modelReasoningSelection(
+  const catalog: ModelReasoningCatalog = !usesProvider
+    ? { status: 'ready', suggestions: modelSuggestions, unknownModel: 'ready' }
+    : providerModels.data !== undefined
+      ? { status: 'ready', suggestions: modelSuggestions, unknownModel: 'unavailable' }
+      : providerModels.isError
+        ? { status: 'error' }
+        : { status: 'pending' }
+  const reasoningForModel = (nextModel: string, effort: string) => modelReasoningSelection({
     settings,
     agent,
-    model,
-    capabilitiesPending ? [] : modelSuggestions,
-    reasoningEffort,
+    model: nextModel,
+    requested: effort,
     settingsMode,
-    capabilitiesPending ? 'pending' : usesProvider ? 'unavailable' : 'ready',
-  )
+    catalog,
+  })
+  const reasoning = reasoningForModel(model, reasoningEffort)
   return {
     modelSuggestions,
     modelsLoading: providerModels.isLoading,
     reasoningOptions: reasoning.options,
     effectiveReasoningEffort: reasoning.effectiveEffort,
     reasoningEffortSupported: reasoning.supported,
-    reasoningPending: reasoning.pending,
+    reasoningStatus: reasoning.status,
+    reasoningBlocked: reasoning.blocked,
+    reasoningForModel,
   }
 }

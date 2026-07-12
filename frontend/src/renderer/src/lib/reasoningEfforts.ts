@@ -1,5 +1,5 @@
 import type { AgentSettings, ReasoningEffortOption } from './api/types'
-import { modelSuggestionFor, type ModelSuggestion } from './models'
+import { modelSuggestionFor, type ModelSuggestion } from './modelSuggestion'
 
 const REASONING_LABELS: Record<string, string> = {
   '': 'Default',
@@ -64,33 +64,58 @@ export interface ModelReasoningSelection {
   options: ReasoningEffortOption[]
   effectiveEffort: string
   supported: boolean
-  pending: boolean
+  status: 'pending' | 'error' | 'ready'
+  blocked: boolean
 }
 
-export function modelReasoningSelection(
-  settings: AgentSettings | undefined,
-  agent: string,
-  model: string,
-  suggestions: ModelSuggestion[],
-  requested: string,
-  settingsMode: boolean,
-  fallbackStatus: 'pending' | 'ready' | 'unavailable',
-): ModelReasoningSelection {
-  const suggestion = modelSuggestionFor(suggestions, model)
-  const status = suggestion?.reasoning.status ?? fallbackStatus
-  const options = reasoningOptions(settings, agent, model, suggestions, settingsMode, fallbackStatus)
+export type ModelReasoningCatalog =
+  | { status: 'pending' | 'error' }
+  | {
+      status: 'ready'
+      suggestions: ModelSuggestion[]
+      unknownModel: 'ready' | 'unavailable'
+    }
+
+export function modelReasoningSelection({
+  settings,
+  agent,
+  model,
+  requested,
+  settingsMode,
+  catalog,
+}: {
+  settings: AgentSettings | undefined
+  agent: string
+  model: string
+  requested: string
+  settingsMode: boolean
+  catalog: ModelReasoningCatalog
+}): ModelReasoningSelection {
   const effort = requested.trim()
-  if (status === 'pending') {
-    return { options, effectiveEffort: effort, supported: true, pending: effort !== '' }
+  if (catalog.status !== 'ready') {
+    return {
+      options: [],
+      effectiveEffort: effort,
+      supported: true,
+      status: catalog.status,
+      blocked: effort !== '',
+    }
   }
-  if (status === 'unavailable') {
-    return { options, effectiveEffort: '', supported: effort === '', pending: false }
+  const suggestion = modelSuggestionFor(catalog.suggestions, model)
+  const capabilityStatus = suggestion?.reasoning.status ?? catalog.unknownModel
+  if (capabilityStatus === 'pending') {
+    return { options: [], effectiveEffort: effort, supported: true, status: 'pending', blocked: effort !== '' }
   }
+  if (capabilityStatus === 'unavailable') {
+    return { options: [], effectiveEffort: '', supported: effort === '', status: 'ready', blocked: false }
+  }
+  const options = reasoningOptions(settings, agent, model, catalog.suggestions, settingsMode)
   return {
     options,
     effectiveEffort: effectiveReasoningEffort(effort, options),
     supported: supportedReasoningEffort(effort, options),
-    pending: false,
+    status: 'ready',
+    blocked: false,
   }
 }
 
@@ -123,11 +148,9 @@ function reasoningOptions(
   model: string,
   suggestions: ModelSuggestion[],
   settingsMode: boolean,
-  fallbackStatus: 'pending' | 'ready' | 'unavailable' = 'ready',
 ): ReasoningEffortOption[] {
   const suggestion = modelSuggestionFor(suggestions, model)
   if (!suggestion) {
-    if (fallbackStatus !== 'ready') return []
     const agentOptions = acpReasoningEffortOptions(settings, agent)
     return settingsMode ? settingsReasoningOptions(agentOptions) : agentOptions
   }

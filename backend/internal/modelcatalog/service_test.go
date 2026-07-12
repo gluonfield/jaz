@@ -197,6 +197,9 @@ func TestServiceAgentModelsIncludesAntigravityModels(t *testing.T) {
 	models := NewService(nil).AgentModels("antigravity")
 	got := make([]string, 0, len(models))
 	for _, model := range models {
+		if model.Reasoning.Status != ReasoningUnavailable {
+			t.Fatalf("antigravity reasoning status = %q", model.Reasoning.Status)
+		}
 		got = append(got, model.Value)
 	}
 	want := []string{
@@ -219,6 +222,9 @@ func TestServiceAgentModelsIncludesCurrentGrokModels(t *testing.T) {
 	models := service.AgentModels("grok")
 	got := make([]string, 0, len(models))
 	for _, model := range models {
+		if model.Reasoning.Status != ReasoningUnavailable {
+			t.Fatalf("grok reasoning status = %q", model.Reasoning.Status)
+		}
 		got = append(got, model.Value)
 	}
 	want := []string{

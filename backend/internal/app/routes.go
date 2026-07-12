@@ -11,7 +11,7 @@ import (
 	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
-	modelcatalogapi "github.com/wins/jaz/backend/internal/httpapi/modelcatalog"
+	modelcapabilitiesapi "github.com/wins/jaz/backend/internal/httpapi/modelcapabilities"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
@@ -45,18 +45,18 @@ type routeDeps struct {
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := usageRoutes(deps.Usage)
 	routes = append(routes, feedRoutes(deps.Feed)...)
-	routes = append(routes, modelCatalogRoutes(deps.ModelCatalog)...)
+	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.MCP, deps.Config)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Config, string(deps.AuthKey), deps.Jaz.Devices.DisablePairing)
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
 
-func modelCatalogRoutes(catalog *modelcatalog.Service) server.Routes {
+func modelCapabilityRoutes(catalog *modelcatalog.Service) server.Routes {
 	if catalog == nil {
 		return nil
 	}
-	handler := modelcatalogapi.NewHandler(catalog)
+	handler := modelcapabilitiesapi.NewHandler(catalog)
 	return server.Routes{
 		{
 			Pattern: "GET /v1/model-providers/{provider}/models",
