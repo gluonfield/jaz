@@ -251,7 +251,8 @@ func TestServiceAgentModelsIncludesAntigravityModels(t *testing.T) {
 }
 
 func TestServiceAgentModelsIncludesCurrentGrokModels(t *testing.T) {
-	models := NewService(nil).AgentModels("grok")
+	service := NewService(nil)
+	models := service.AgentModels("grok")
 	got := make([]string, 0, len(models))
 	for _, model := range models {
 		got = append(got, model.Value)
@@ -262,6 +263,20 @@ func TestServiceAgentModelsIncludesCurrentGrokModels(t *testing.T) {
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("grok models = %#v, want %#v", got, want)
+	}
+	if strings.Join(models[0].ReasoningEfforts, ",") != "low,medium,high" || models[0].ReasoningDefaultEffort != "high" {
+		t.Fatalf("grok reasoning = %#v / %q", models[0].ReasoningEfforts, models[0].ReasoningDefaultEffort)
+	}
+	if models[1].ReasoningEfforts == nil || len(models[1].ReasoningEfforts) != 0 {
+		t.Fatalf("composer reasoning = %#v, want explicit unsupported", models[1].ReasoningEfforts)
+	}
+	if err := service.ValidateReasoningEffort("grok", "", DefaultGrokModel, "high"); err != nil {
+		t.Fatal(err)
+	}
+	for model, effort := range map[string]string{DefaultGrokModel: "xhigh", "grok-composer-2.5-fast": "high"} {
+		if err := service.ValidateReasoningEffort("grok", "", model, effort); err == nil {
+			t.Fatalf("expected %s reasoning effort %q to fail", model, effort)
+		}
 	}
 }
 

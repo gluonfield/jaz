@@ -29,7 +29,10 @@ var reasoningEffortRank = map[string]int{
 	"none": 0, "minimal": 1, "low": 2, "medium": 3, "high": 4, "xhigh": 5, "max": 6, "ultra": 7, "ultracode": 8,
 }
 
-const DefaultGrokModel = "grok-4.5"
+const (
+	DefaultGrokModel           = "grok-4.5"
+	DefaultGrokReasoningEffort = "high"
+)
 
 func sortReasoningEfforts(efforts []string) {
 	sort.SliceStable(efforts, func(i, j int) bool {
@@ -78,8 +81,8 @@ var (
 			{Value: "haiku", Label: "Haiku 4.5", Description: "Fastest for quick answers", ContextLength: 200000, OpenRouterID: "anthropic/claude-haiku-4.5"},
 		},
 		"grok": {
-			{Value: DefaultGrokModel, Label: "Grok 4.5", Description: "Default Grok model", ContextLength: 512000},
-			{Value: "grok-composer-2.5-fast", Label: "Composer 2.5", Description: "Cursor's coding model", ContextLength: 200000},
+			{Value: DefaultGrokModel, Label: "Grok 4.5", Description: "Default Grok model", ContextLength: 512000, ReasoningEfforts: []string{"low", "medium", DefaultGrokReasoningEffort}, ReasoningDefaultEffort: DefaultGrokReasoningEffort},
+			{Value: "grok-composer-2.5-fast", Label: "Composer 2.5", Description: "Cursor's coding model", ContextLength: 200000, ReasoningEfforts: []string{}},
 		},
 		"antigravity": {
 			{Value: "Gemini 3.5 Flash (Medium)", Label: "Gemini 3.5 Flash", Description: "Medium"},
