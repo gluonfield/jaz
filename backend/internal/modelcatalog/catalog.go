@@ -31,7 +31,7 @@ var reasoningEffortRank = map[string]int{
 
 const (
 	DefaultGrokModel           = "grok-4.5"
-	DefaultGrokReasoningEffort = "high"
+	defaultGrokReasoningEffort = "high"
 )
 
 func sortReasoningEfforts(efforts []string) {
@@ -81,7 +81,7 @@ var (
 			{Value: "haiku", Label: "Haiku 4.5", Description: "Fastest for quick answers", ContextLength: 200000, OpenRouterID: "anthropic/claude-haiku-4.5"},
 		},
 		"grok": {
-			{Value: DefaultGrokModel, Label: "Grok 4.5", Description: "Default Grok model", ContextLength: 512000, ReasoningEfforts: []string{"low", "medium", DefaultGrokReasoningEffort}, ReasoningDefaultEffort: DefaultGrokReasoningEffort},
+			{Value: DefaultGrokModel, Label: "Grok 4.5", Description: "Default Grok model", ContextLength: 512000, ReasoningEfforts: []string{"low", "medium", defaultGrokReasoningEffort}, ReasoningDefaultEffort: defaultGrokReasoningEffort},
 			{Value: "grok-composer-2.5-fast", Label: "Composer 2.5", Description: "Cursor's coding model", ContextLength: 200000, ReasoningEfforts: []string{}},
 		},
 		"antigravity": {
