@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Loader2, Minus, Plus } from 'lucide-react'
+import { Loader2, LogOut, Plus } from 'lucide-react'
 import { IconButton } from '@/components/ui/IconButton'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import {
@@ -58,7 +58,7 @@ export function ConnectedAccountRow({
           {disconnecting ? (
             <Loader2 size={13} className="animate-spin" aria-hidden />
           ) : (
-            <Minus size={14} aria-hidden />
+            <LogOut size={14} aria-hidden />
           )}
         </IconButton>
       }
