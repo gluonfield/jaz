@@ -21,6 +21,11 @@ Device: {{ .Device }}
 - {{ .RuntimePaths.DefaultWorkspace }}: default workspace.
 - {{ .RuntimePaths.WorktreesPath }}: ACP worktrees.
 
+The prompt files are writable persistent state, not read-only context. Their absolute paths are above. Edit the owning file directly when the destination is clear, preserve unrelated content, and do not claim an update unless the write succeeded:
+- `AGENTS.md` contains the user's standing rules. Change it when the user explicitly asks to add, revise, or remove a standing instruction.
+- `SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`. Change it when the user explicitly asks to evolve the assistant's personality, voice, or values.
+- `INTERNAL.md` belongs to the agent. Proactively keep compact, durable lessons about how to work better or anything else important to the agent.
+
 ## AGENTS.md
 
 {{ .Agents }}
