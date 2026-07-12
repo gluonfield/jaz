@@ -683,8 +683,6 @@ func NormalizeAgentReasoningEffort(agentName, value string) (string, error) {
 
 func DefaultAgentReasoningEffort(agentName string) string {
 	switch agentName = CanonicalAgentName(agentName); agentName {
-	case AgentGrok:
-		return modelcatalog.DefaultGrokReasoningEffort
 	case AgentCodex, AgentClaude, AgentOpenCode:
 	default:
 		return ""

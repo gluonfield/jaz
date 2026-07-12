@@ -245,6 +245,31 @@ func TestMemoryAgentSetting(t *testing.T) {
 	}
 }
 
+func TestMemoryGrokComposerUsesModelDefaultEffort(t *testing.T) {
+	srv, _ := testMemoryServer(t)
+	if _, err := jazsettings.SaveAgentDefaults(srv.Store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
+		acp.AgentGrok: {Enabled: true},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/memory", strings.NewReader(`{
+		"agent":"grok",
+		"model":"grok-composer-2.5-fast"
+	}`)))
+	if res.Code != http.StatusOK {
+		t.Fatalf("set Composer memory worker = %d, body = %s", res.Code, res.Body.String())
+	}
+	var status memoryStatusResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Model != "grok-composer-2.5-fast" || status.ReasoningEffort != "" || status.DefaultReasoningEffort != "" {
+		t.Fatalf("unexpected Composer memory worker %#v", status)
+	}
+}
+
 func TestMemoryHorizonWriteAndReindex(t *testing.T) {
 	srv, _ := testMemoryServer(t)
 	handler := srv.Handler()
