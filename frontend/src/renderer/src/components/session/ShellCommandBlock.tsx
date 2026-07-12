@@ -1,7 +1,7 @@
 import { LoaderCircle } from 'lucide-react'
 import { memo } from 'react'
 import type { ACPToolCall, ACPToolContent } from '@/lib/api/types'
-import { toolCallCategory } from './ToolCallContent'
+import { toolCallCategory } from '@/components/session/toolCallCategory'
 import { normalized } from './TranscriptUtils'
 
 const RUNNING_STATUSES = new Set(['pending', 'in_progress', 'in-progress', 'running'])

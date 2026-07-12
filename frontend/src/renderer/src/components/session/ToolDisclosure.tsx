@@ -1,10 +1,11 @@
 import { ChevronRight, LoaderCircle } from 'lucide-react'
 import { memo, useState, type ReactNode } from 'react'
+import { toolCallCategory } from '@/components/session/toolCallCategory'
 import type { ACPToolCall } from '@/lib/api/types'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
-import { hasToolCallDetail, ToolCallDetail, toolCallCategory } from './ToolCallContent'
+import { hasToolCallDetail, ToolCallDetail } from './ToolCallContent'
 import { normalized } from './TranscriptUtils'
 
 interface ToolGroup {
