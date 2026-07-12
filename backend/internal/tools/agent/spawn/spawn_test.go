@@ -1,7 +1,6 @@
 package spawn
 
 import (
-	"slices"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/tools"
@@ -21,12 +20,8 @@ func TestDefinitionExposesAgentAndModelSelectors(t *testing.T) {
 		}
 	}
 	effort, _ := properties["reasoning_effort"].(map[string]any)
-	effortEnum, _ := effort["enum"].([]any)
-	if len(effortEnum) == 0 ||
-		!slices.Contains(effortEnum, any("xhigh")) ||
-		!slices.Contains(effortEnum, any("ultra")) ||
-		!slices.Contains(effortEnum, any("ultracode")) {
-		t.Fatalf("reasoning_effort enum = %#v", effort["enum"])
+	if _, ok := effort["enum"]; ok {
+		t.Fatalf("reasoning_effort must be model-scoped, got global enum %#v", effort["enum"])
 	}
 	if tools.DefinitionName(def) != "agent_spawn" {
 		t.Fatalf("tool name = %q", tools.DefinitionName(def))

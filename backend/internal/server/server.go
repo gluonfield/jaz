@@ -63,8 +63,8 @@ type MCPRuntime interface {
 }
 
 type ModelCatalog interface {
-	ValidateReasoningEffort(agent, providerID, model, effort string) error
 	AgentModels(agent string) []modelcatalog.Model
+	CuratedAgentModelsForProvider(agent, providerID string) ([]modelcatalog.Model, error)
 	ProviderModels(id string) ([]modelcatalog.Model, error)
 }
 

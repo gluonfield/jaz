@@ -39,7 +39,6 @@ import { useACPLoginPolling } from '@/lib/hooks/useACPLoginPolling'
 import { useModelReasoningState } from '@/lib/modelReasoning'
 import { keys } from '@/lib/query/keys'
 import {
-  modelReasoningEffortsLoaded,
   modelSettingsReasoningEffortOptions,
   supportedReasoningEffort,
 } from '@/lib/reasoningEfforts'
@@ -213,19 +212,18 @@ function ACPAgentRow({
         : 'Select a provider before enabling.'
   const [expanded, setExpanded] = useState(false)
   const reasoningModel = (current.model ?? '').trim() || selectedProvider?.default_model || ''
-  const { modelSuggestions, modelsLoading, reasoningLoaded, reasoningOptions } = useModelReasoningState({
+  const reasoningEffort = current.reasoning_effort ?? ''
+  const { modelSuggestions, modelsLoading, reasoningOptions } = useModelReasoningState({
     settings,
     agent,
     model: reasoningModel,
+    reasoningEffort,
     usesProvider: usesModelProvider,
     provider: current.model_provider,
     selectedProvider,
     settingsMode: true,
   })
-  const reasoningEffort = current.reasoning_effort ?? ''
-  const normalizedReasoningEffort = !reasoningLoaded || supportedReasoningEffort(reasoningEffort, reasoningOptions)
-    ? reasoningEffort
-    : ''
+  const normalizedReasoningEffort = supportedReasoningEffort(reasoningEffort, reasoningOptions) ? reasoningEffort : ''
   const update = useCallback((next: Partial<typeof current>) => {
     const value = { ...current, ...next }
     const nextSettings = {
@@ -238,10 +236,10 @@ function ACPAgentRow({
     onChange(normalizeACPAgentEnabled(nextSettings, agent))
   }, [agent, current, onChange, settings])
   useEffect(() => {
-    if (reasoningLoaded && reasoningEffort !== normalizedReasoningEffort) {
+    if (reasoningEffort !== normalizedReasoningEffort) {
       update({ reasoning_effort: normalizedReasoningEffort })
     }
-  }, [normalizedReasoningEffort, reasoningEffort, reasoningLoaded, update])
+  }, [normalizedReasoningEffort, reasoningEffort, update])
 
   return (
     <SettingsCard className="overflow-hidden">
@@ -355,13 +353,10 @@ function ACPAgentRow({
             loading={modelsLoading}
             disabled={disabled}
             onChange={(model) => {
-              const nextOptions = modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions)
-              const nextReasoningLoaded = modelReasoningEffortsLoaded(model, modelSuggestions)
+              const nextOptions = modelSettingsReasoningEffortOptions(settings, agent, model, modelSuggestions, reasoningEffort)
               update({
                 model,
-                reasoning_effort: !nextReasoningLoaded || supportedReasoningEffort(reasoningEffort, nextOptions)
-                  ? reasoningEffort
-                  : '',
+                reasoning_effort: supportedReasoningEffort(reasoningEffort, nextOptions) ? reasoningEffort : '',
               })
             }}
             aria-label={`${agentLabel(agent)} model`}

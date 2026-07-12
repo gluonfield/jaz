@@ -61,7 +61,7 @@ func (s *Server) handleAgentSettings(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		normalized, err := agentsettings.NormalizeAgentDefaults(input.AgentDefaults, s.selectableACPAgentCatalog(), s.ModelCatalog)
+		normalized, err := agentsettings.NormalizeAgentDefaults(input.AgentDefaults, s.selectableACPAgentCatalog(), acp.ModelCapabilities{Catalog: s.ModelCatalog})
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
@@ -174,7 +174,7 @@ func (s *Server) acpOptions(catalog acp.AgentCatalog, agentNames []string, provi
 	for _, name := range agentNames {
 		cfg, _ := catalog.Agent(name)
 		option := acp.AgentOptionsForConfig(name, cfg)
-		option.Models = s.ModelCatalog.AgentModels(name)
+		option.Models = (acp.ModelCapabilities{Catalog: s.ModelCatalog}).AgentModels(name)
 		if cfg.UsesModelProvider() {
 			modelProviders := compatibleModelProviders(name, cfg.ModelProviderCapability, providers)
 			option.ModelProviderIDs = modelProviderIDs(modelProviders)

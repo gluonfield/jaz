@@ -213,7 +213,7 @@ func (s *Server) normalizeMemorySettingsInput(store storage.SettingsStorage, inp
 	if settings.ReasoningEffort != "" {
 		provider := agentSettings.ACP[settings.Agent].ModelProvider
 		model := settings.WorkerModel(agentSettings)
-		if err := s.ModelCatalog.ValidateReasoningEffort(settings.Agent, provider, model, settings.ReasoningEffort); err != nil {
+		if err := (acp.ModelCapabilities{Catalog: s.ModelCatalog}).ValidateReasoningEffort(settings.Agent, provider, model, settings.ReasoningEffort); err != nil {
 			if input.ReasoningEffort != nil {
 				return jazsettings.MemorySettings{}, err
 			}

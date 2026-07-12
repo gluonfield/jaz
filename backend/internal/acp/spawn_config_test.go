@@ -206,14 +206,19 @@ func TestSpawnConfigResolvesModelLabelsWithinConfiguredProvider(t *testing.T) {
 }
 
 func TestSpawnConfigRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
-	manager := &Manager{
-		cfg: Config{ModelCatalog: warmOpenRouterCatalog(t)},
-		agents: AgentCatalog{
-			AgentClaude: {Command: AgentClaude, Model: "sonnet", ReasoningEffort: "minimal"},
-		},
-	}
-	_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentClaude})
-	if err == nil || !strings.Contains(err.Error(), `reasoning effort "minimal" is not supported for claude model "sonnet"`) {
-		t.Fatalf("err = %v", err)
+	for _, input := range []struct{ agent, model string }{
+		{AgentClaude, "sonnet"},
+		{AgentCodex, modelprovider.OpenAIModelGPT56Sol},
+	} {
+		manager := &Manager{
+			cfg: Config{ModelCatalog: warmOpenRouterCatalog(t)},
+			agents: AgentCatalog{
+				input.agent: {Command: input.agent, Model: input.model, ReasoningEffort: "minimal"},
+			},
+		}
+		_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: input.agent})
+		if err == nil || !strings.Contains(err.Error(), `reasoning effort "minimal" is not supported for `+input.agent+` model "`+input.model+`"`) {
+			t.Fatalf("err = %v", err)
+		}
 	}
 }

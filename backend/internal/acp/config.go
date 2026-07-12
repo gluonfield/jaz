@@ -62,11 +62,14 @@ type SystemPromptModules interface {
 
 type SessionPromptExtensionResolver func(storage.Session) (promptmodule.Modules, error)
 
+type ProviderModelCatalog interface {
+	ProviderModels(id string) ([]modelcatalog.Model, error)
+}
+
 type ModelCatalog interface {
-	ValidateReasoningEffort(agent, providerID, model, effort string) error
+	ProviderModelCatalog
 	AgentModels(agent string) []modelcatalog.Model
 	CuratedAgentModelsForProvider(agent, providerID string) ([]modelcatalog.Model, error)
-	ProviderModels(id string) ([]modelcatalog.Model, error)
 }
 
 func promptWithModules(base string, modules promptmodule.Modules) string {

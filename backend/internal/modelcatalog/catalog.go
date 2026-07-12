@@ -13,16 +13,25 @@ type Pricing struct {
 	CacheWrite float64 `json:"cache_write"`
 }
 
+type ReasoningEffortScope string
+
+const (
+	ReasoningEffortScopeProvider ReasoningEffortScope = "provider"
+	ReasoningEffortScopeAgent    ReasoningEffortScope = "agent"
+)
+
 type Model struct {
-	Value                  string   `json:"value"`
-	Label                  string   `json:"label"`
-	Description            string   `json:"description,omitempty"`
-	ContextLength          int      `json:"context_length,omitempty"`
-	Pricing                *Pricing `json:"pricing,omitempty"`
-	OpenRouterID           string   `json:"openrouter_id,omitempty"`
-	ReasoningEfforts       []string `json:"reasoning_efforts"`
-	ReasoningDefaultEffort string   `json:"reasoning_default_effort,omitempty"`
-	ReasoningMandatory     bool     `json:"reasoning_mandatory,omitempty"`
+	Value                  string               `json:"value"`
+	Label                  string               `json:"label"`
+	Description            string               `json:"description,omitempty"`
+	ContextLength          int                  `json:"context_length,omitempty"`
+	Pricing                *Pricing             `json:"pricing,omitempty"`
+	OpenRouterID           string               `json:"openrouter_id,omitempty"`
+	ReasoningEfforts       []string             `json:"reasoning_efforts"`
+	ReasoningEffortsKnown  bool                 `json:"reasoning_efforts_known"`
+	ReasoningEffortScope   ReasoningEffortScope `json:"reasoning_effort_scope,omitempty"`
+	ReasoningDefaultEffort string               `json:"reasoning_default_effort,omitempty"`
+	ReasoningMandatory     bool                 `json:"reasoning_mandatory,omitempty"`
 }
 
 var reasoningEffortRank = map[string]int{
@@ -35,20 +44,6 @@ func sortReasoningEfforts(efforts []string) {
 	sort.SliceStable(efforts, func(i, j int) bool {
 		return reasoningEffortRank[efforts[i]] < reasoningEffortRank[efforts[j]]
 	})
-}
-
-func withUltracode(efforts []string) []string {
-	hasXhigh := false
-	for _, effort := range efforts {
-		if effort == "ultracode" {
-			return efforts
-		}
-		hasXhigh = hasXhigh || effort == "xhigh"
-	}
-	if !hasXhigh {
-		return efforts
-	}
-	return append(efforts, "ultracode")
 }
 
 var (

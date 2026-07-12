@@ -36,6 +36,24 @@ func TestAgentOptionsIncludesConfiguredModelOptions(t *testing.T) {
 	}
 }
 
+func TestAgentOptionsReportsModelScopedReasoningEfforts(t *testing.T) {
+	manager := &Manager{
+		cfg: Config{ModelCatalog: modelcatalog.NewService(nil)},
+		agents: AgentCatalog{
+			AgentGrok: {Model: modelcatalog.DefaultGrokModel},
+		},
+	}
+
+	out, err := manager.AgentOptions(AgentOptionsRequest{Agent: AgentGrok})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := out.Agents[0].Models[0]
+	if !model.ReasoningEffortsKnown || strings.Join(model.ReasoningEfforts, ",") != "none,minimal,low,medium,high,xhigh" {
+		t.Fatalf("model reasoning = %#v", model)
+	}
+}
+
 func TestAgentOptionsIncludesCuratedOpenRouterModelsWithoutNameFilter(t *testing.T) {
 	manager := &Manager{
 		cfg: Config{ModelCatalog: modelcatalog.NewService(nil)},
@@ -178,6 +196,7 @@ func warmOpenRouterCatalog(t *testing.T) *modelcatalog.Service {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
+			{"id":"openai/gpt-5.6-sol","name":"OpenAI: GPT-5.6 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"]}},
 			{"id":"z-ai/glm-5.2","name":"Z.AI: GLM 5.2"},
 			{"id":"qwen/qwen3-coder","name":"Qwen: Qwen3 Coder"},
 			{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","high","medium","low"]}}

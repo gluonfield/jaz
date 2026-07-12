@@ -24,16 +24,19 @@ type AgentSpawnOptions struct {
 	DefaultModel           string             `json:"default_model,omitempty"`
 	DefaultModelProvider   string             `json:"default_model_provider,omitempty"`
 	DefaultReasoningEffort string             `json:"default_reasoning_effort,omitempty"`
-	ReasoningEfforts       []string           `json:"reasoning_efforts,omitempty"`
 	Models                 []AgentModelOption `json:"models,omitempty"`
 	ModelSearch            *AgentModelSearch  `json:"model_search,omitempty"`
 }
 
 type AgentModelOption struct {
-	Model         string `json:"model"`
-	Label         string `json:"label,omitempty"`
-	ModelProvider string `json:"model_provider,omitempty"`
-	ContextLength int    `json:"context_length,omitempty"`
+	Model                  string                            `json:"model"`
+	Label                  string                            `json:"label,omitempty"`
+	ModelProvider          string                            `json:"model_provider,omitempty"`
+	ContextLength          int                               `json:"context_length,omitempty"`
+	ReasoningEfforts       []string                          `json:"reasoning_efforts"`
+	ReasoningEffortsKnown  bool                              `json:"reasoning_efforts_known"`
+	ReasoningEffortScope   modelcatalog.ReasoningEffortScope `json:"reasoning_effort_scope,omitempty"`
+	ReasoningDefaultEffort string                            `json:"reasoning_default_effort,omitempty"`
 }
 
 type AgentModelSearch struct {
@@ -74,7 +77,6 @@ func (m *Manager) agentOptions(agents []string, query string) ([]AgentSpawnOptio
 			DefaultModel:           strings.TrimSpace(cfg.Model),
 			DefaultModelProvider:   strings.TrimSpace(cfg.ModelProvider),
 			DefaultReasoningEffort: strings.TrimSpace(cfg.ReasoningEffort),
-			ReasoningEfforts:       reasoningEffortValues(agentPolicyForAgent(agent).reasoningEffortOptions()),
 		}
 		if m.cfg.ModelCatalog != nil {
 			models, err := m.agentModelOptions(agent, cfg, query)
@@ -96,7 +98,7 @@ func (m *Manager) agentOptions(agents []string, query string) ([]AgentSpawnOptio
 }
 
 func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string) ([]AgentModelOption, error) {
-	catalogModels, err := m.cfg.ModelCatalog.CuratedAgentModelsForProvider(agent, cfg.ModelProvider)
+	catalogModels, err := (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).AgentModelsForProvider(agent, cfg.ModelProvider)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +113,7 @@ func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string)
 		}
 		return models, nil
 	}
+	providerModels = resolveModelCapabilities(agent, providerModels, "")
 	seen := map[string]struct{}{}
 	for _, model := range models {
 		seen[model.Model] = struct{}{}
@@ -138,9 +141,13 @@ func modelOptionsForCatalogModels(cfg AgentConfig, models []modelcatalog.Model, 
 
 func modelOptionForCatalogModel(cfg AgentConfig, model modelcatalog.Model, sourceProvider string) AgentModelOption {
 	option := AgentModelOption{
-		Model:         strings.TrimSpace(model.Value),
-		Label:         strings.TrimSpace(model.Label),
-		ContextLength: model.ContextLength,
+		Model:                  strings.TrimSpace(model.Value),
+		Label:                  strings.TrimSpace(model.Label),
+		ContextLength:          model.ContextLength,
+		ReasoningEfforts:       append([]string(nil), model.ReasoningEfforts...),
+		ReasoningEffortsKnown:  model.ReasoningEffortsKnown,
+		ReasoningEffortScope:   model.ReasoningEffortScope,
+		ReasoningDefaultEffort: model.ReasoningDefaultEffort,
 	}
 	if providerID := strings.TrimSpace(sourceProvider); providerID != "" && !strings.EqualFold(providerID, strings.TrimSpace(cfg.ModelProvider)) {
 		option.ModelProvider = providerID

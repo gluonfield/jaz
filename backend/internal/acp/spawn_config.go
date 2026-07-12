@@ -59,7 +59,7 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	}
 	cfg.Model = m.resolveAgentModelAlias(req.ACPAgent, cfg)
 	if m.cfg.ModelCatalog != nil {
-		if err := m.cfg.ModelCatalog.ValidateReasoningEffort(req.ACPAgent, cfg.ModelProvider, cfg.Model, effort); err != nil {
+		if err := (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).ValidateReasoningEffort(req.ACPAgent, cfg.ModelProvider, cfg.Model, effort); err != nil {
 			return SpawnRequest{}, AgentConfig{}, "", err
 		}
 	}

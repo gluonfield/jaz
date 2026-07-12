@@ -82,6 +82,8 @@ func fetchOpenRouterModels(ctx context.Context, baseURL string) ([]Model, error)
 			ContextLength:          model.ContextLength,
 			Pricing:                parseOpenRouterPricing(model.Pricing),
 			ReasoningEfforts:       cleanOpenRouterReasoningEfforts(model.Reasoning),
+			ReasoningEffortsKnown:  true,
+			ReasoningEffortScope:   ReasoningEffortScopeProvider,
 			ReasoningDefaultEffort: openRouterDefaultEffort(model.Reasoning),
 			ReasoningMandatory:     model.Reasoning != nil && model.Reasoning.Mandatory,
 		})

@@ -74,30 +74,9 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 	}
 }
 
-func (s *Service) ProviderModelsWithAgentCapabilities(agent, providerID string) ([]Model, error) {
-	agent = strings.ToLower(strings.TrimSpace(agent))
-	models, err := s.ProviderModels(providerID)
-	if err != nil {
-		return nil, err
-	}
-	if agent == "codex" {
-		models = withCodexHarnessReasoning(models)
-	}
-	return models, nil
-}
-
 func (s *Service) AgentModels(agent string) []Model {
 	agent = strings.ToLower(strings.TrimSpace(agent))
-	models := s.enrichReasoning(cloneModels(agentModels[agent]))
-	switch agent {
-	case "codex":
-		models = withCodexHarnessReasoning(models)
-	case "claude":
-		for i := range models {
-			models[i].ReasoningEfforts = withUltracode(models[i].ReasoningEfforts)
-		}
-	}
-	return models
+	return s.enrichReasoning(cloneModels(agentModels[agent]))
 }
 
 func (s *Service) CuratedAgentModelsForProvider(agent, providerID string) ([]Model, error) {
@@ -119,14 +98,20 @@ func (s *Service) enrichReasoning(models []Model) []Model {
 		byID[source.Value] = source
 	}
 	for i := range models {
-		if models[i].OpenRouterID == "" {
+		id := models[i].OpenRouterID
+		if id == "" && strings.Contains(models[i].Value, "/") {
+			id = models[i].Value
+		}
+		if id == "" {
 			continue
 		}
-		source, ok := byID[models[i].OpenRouterID]
+		source, ok := byID[id]
 		if !ok {
 			continue
 		}
 		models[i].ReasoningEfforts = source.ReasoningEfforts
+		models[i].ReasoningEffortsKnown = source.ReasoningEffortsKnown
+		models[i].ReasoningEffortScope = source.ReasoningEffortScope
 		models[i].ReasoningDefaultEffort = source.ReasoningDefaultEffort
 		models[i].ReasoningMandatory = source.ReasoningMandatory
 	}
@@ -139,73 +124,6 @@ func (s *Service) openRouterModels() ([]Model, bool) {
 		return nil, false
 	}
 	return s.providerModelSnapshot(meta)
-}
-
-func (s *Service) ValidateReasoningEffort(agent, providerID, model, effort string) error {
-	effort = strings.ToLower(strings.TrimSpace(effort))
-	if effort == "" {
-		return nil
-	}
-	efforts, ok, err := s.reasoningEfforts(agent, providerID, model)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
-	}
-	for _, allowed := range efforts {
-		if effort == allowed {
-			return nil
-		}
-	}
-	model = strings.TrimSpace(model)
-	if model == "" {
-		model = "default"
-	}
-	if len(efforts) == 0 {
-		return fmt.Errorf("reasoning effort %q is not supported for %s model %q", effort, strings.TrimSpace(agent), model)
-	}
-	return fmt.Errorf("reasoning effort %q is not supported for %s model %q; valid values are %s", effort, strings.TrimSpace(agent), model, strings.Join(efforts, ", "))
-}
-
-func (s *Service) reasoningEfforts(agent, providerID, model string) ([]string, bool, error) {
-	agent = strings.ToLower(strings.TrimSpace(agent))
-	if model, ok := findModel(s.AgentModels(agent), model); ok {
-		if model.ReasoningEfforts != nil {
-			return cloneStrings(model.ReasoningEfforts), true, nil
-		}
-	}
-	providerID = strings.TrimSpace(providerID)
-	if providerID == codexOpenAIAPIKeyProvider {
-		providerID = provider.ProviderOpenAI
-	}
-	if providerID == "" {
-		return nil, false, nil
-	}
-	models, err := s.ProviderModelsWithAgentCapabilities(agent, providerID)
-	if errors.Is(err, ErrCatalogUnavailable) && agent == "codex" {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	if found, ok := findModel(models, model); ok && found.ReasoningEfforts != nil {
-		return cloneStrings(found.ReasoningEfforts), true, nil
-	}
-	return nil, false, nil
-}
-
-func findModel(models []Model, value string) (Model, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" && len(models) > 0 {
-		return models[0], true
-	}
-	for _, model := range models {
-		if model.Value == value || model.OpenRouterID == value {
-			return model, true
-		}
-	}
-	return Model{}, false
 }
 
 func (s *Service) providerMeta(id string) (provider.ModelProvider, bool) {
@@ -257,34 +175,4 @@ func (s *Service) setProviderModels(meta provider.ModelProvider, models []Model)
 
 func modelCatalogKey(meta provider.ModelProvider) string {
 	return strings.TrimSpace(meta.ID) + " " + strings.TrimRight(strings.TrimSpace(meta.BaseURL), "/")
-}
-
-func withCodexHarnessReasoning(models []Model) []Model {
-	for i := range models {
-		if models[i].ReasoningEfforts == nil {
-			continue
-		}
-		id := models[i].OpenRouterID
-		if id == "" {
-			id = models[i].Value
-		}
-		switch id {
-		case provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Sol,
-			provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Terra,
-			provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Luna:
-			models[i].ReasoningEfforts = withReasoningEffort(models[i].ReasoningEfforts, "ultra")
-		}
-	}
-	return models
-}
-
-func withReasoningEffort(efforts []string, value string) []string {
-	for _, effort := range efforts {
-		if effort == value {
-			return efforts
-		}
-	}
-	out := append(cloneStrings(efforts), value)
-	sortReasoningEfforts(out)
-	return out
 }

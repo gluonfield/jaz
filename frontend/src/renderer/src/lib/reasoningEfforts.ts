@@ -56,15 +56,16 @@ export function modelReasoningEffortOptions(
   agent: string,
   model: string,
   suggestions: ModelSuggestion[],
+  requested = '',
 ): ReasoningEffortOption[] {
   const agentOptions = acpReasoningEffortOptions(settings, agent)
   const values = modelReasoningEfforts(model, suggestions)
-  if (values === null) return []
+  if (values === null) return pendingReasoningOptions(requested, false)
   if (values === undefined) return agentOptions
   if (values.length === 0) return [NO_REASONING_EFFORT_OPTION]
   return dedupeReasoningOptions([
     { value: '', label: 'Default' },
-    ...harnessSupported(values, agentOptions).map(reasoningOption),
+    ...values.map(reasoningOption),
   ])
 }
 
@@ -73,22 +74,18 @@ export function modelSettingsReasoningEffortOptions(
   agent: string,
   model: string,
   suggestions: ModelSuggestion[],
+  requested = '',
 ): ReasoningEffortOption[] {
   const agentOptions = acpReasoningEffortOptions(settings, agent)
   const values = modelReasoningEfforts(model, suggestions)
-  if (values === null) return []
+  if (values === null) return pendingReasoningOptions(requested, true)
   if (values === undefined) return settingsReasoningOptions(agentOptions)
   return settingsReasoningOptions([
     { value: '', label: 'None' },
-    ...harnessSupported(values, agentOptions)
+    ...values
       .filter((value) => value !== 'none')
       .map(reasoningOption),
   ])
-}
-
-function harnessSupported(values: string[], agentOptions: ReasoningEffortOption[]): string[] {
-  const supported = new Set(agentOptions.map((option) => option.value))
-  return values.filter((value) => value === 'none' || supported.has(value))
 }
 
 export function supportedReasoningEffort(value: string, options: ReasoningEffortOption[]): boolean {
@@ -114,17 +111,19 @@ export function inheritedReasoningEffortOverride(
   return options.some((option) => option.value === 'none') ? 'none' : null
 }
 
-export function modelReasoningEffortsLoaded(model: string, suggestions: ModelSuggestion[]): boolean {
-  return modelReasoningEfforts(model, suggestions) !== null
-}
-
 function modelReasoningEfforts(
   model: string,
   suggestions: ModelSuggestion[],
 ): string[] | null | undefined {
   const suggestion = modelSuggestionFor(suggestions, model)
   if (!suggestion) return undefined
-  return suggestion.reasoningEfforts ?? null
+  return suggestion.reasoningEffortsKnown ? (suggestion.reasoningEfforts ?? []) : null
+}
+
+function pendingReasoningOptions(value: string, settingsMode: boolean): ReasoningEffortOption[] {
+  const effort = value.trim()
+  if (effort !== '') return [reasoningOption(effort)]
+  return [{ value: '', label: settingsMode ? 'None' : 'Default' }]
 }
 
 function reasoningOption(value: string): ReasoningEffortOption {

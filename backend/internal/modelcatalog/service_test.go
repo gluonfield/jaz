@@ -2,7 +2,6 @@ package modelcatalog
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -148,52 +147,27 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 		"name":"OpenAI: GPT-5.6 Sol",
 		"reasoning":{"supported_efforts":["xhigh","high","medium","low","none"],"default_effort":"medium"}
 	}]}`)
-	models, err = warmed.ProviderModelsWithAgentCapabilities("codex", codexOpenAIAPIKeyProvider)
+	models, err = warmed.ProviderModels(codexOpenAIAPIKeyProvider)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(models[0].ReasoningEfforts, ",") != "none,low,medium,high,xhigh,ultra" {
+	if strings.Join(models[0].ReasoningEfforts, ",") != "none,low,medium,high,xhigh" {
 		t.Fatalf("reasoning efforts = %#v", models[0].ReasoningEfforts)
-	}
-	for _, effort := range []string{"minimal", "max"} {
-		if err := warmed.ValidateReasoningEffort("codex", provider.ProviderOpenAI, provider.OpenAIModelGPT56Sol, effort); err == nil {
-			t.Fatalf("expected OpenRouter to exclude %s reasoning", effort)
-		}
 	}
 }
 
-func TestServiceDoesNotInventCodexReasoningBeforeCatalogLoads(t *testing.T) {
+func TestServiceDoesNotInventReasoningBeforeCatalogLoads(t *testing.T) {
 	service := NewService(nil)
-	models, err := service.ProviderModelsWithAgentCapabilities(" Codex ", provider.ProviderOpenAI)
+	models, err := service.ProviderModels(provider.ProviderOpenAI)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if models[0].ReasoningEfforts != nil {
 		t.Fatalf("codex reasoning efforts loaded without OpenRouter = %#v", models[0].ReasoningEfforts)
 	}
-
-	models, err = service.ProviderModelsWithAgentCapabilities("opencode", provider.ProviderOpenAI)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(strings.Join(models[0].ReasoningEfforts, ","), "ultra") {
-		t.Fatalf("generic OpenAI efforts = %#v", models[0].ReasoningEfforts)
-	}
 }
 
-func TestServiceDoesNotInventReasoningBeforeCatalogLoads(t *testing.T) {
-	service := NewService(nil)
-	for _, input := range []struct{ agent, provider, model, effort string }{
-		{"claude", "", "sonnet", "minimal"},
-		{"codex", "openrouter", "openai/gpt-5.5", "xhigh"},
-	} {
-		if err := service.ValidateReasoningEffort(input.agent, input.provider, input.model, input.effort); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-func TestServiceAgentModelsFollowOpenRouterReasoning(t *testing.T) {
+func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 	service := warmOpenRouterTestService(t, `{"data":[
 		{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","high","medium","low"],"default_effort":"medium"}},
 		{"id":"anthropic/claude-opus-4.8","name":"Anthropic: Claude Opus 4.8","reasoning":{"mandatory":true,"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
@@ -208,7 +182,7 @@ func TestServiceAgentModelsFollowOpenRouterReasoning(t *testing.T) {
 	if strings.Join(efforts["sonnet"].ReasoningEfforts, ",") != "low,medium,high,max" {
 		t.Fatalf("sonnet efforts = %#v", efforts["sonnet"].ReasoningEfforts)
 	}
-	if strings.Join(efforts["default"].ReasoningEfforts, ",") != "low,medium,high,xhigh,max,ultracode" {
+	if strings.Join(efforts["default"].ReasoningEfforts, ",") != "low,medium,high,xhigh,max" {
 		t.Fatalf("default efforts = %#v", efforts["default"].ReasoningEfforts)
 	}
 	if efforts["default"].ReasoningDefaultEffort != "medium" || !efforts["default"].ReasoningMandatory {
@@ -216,16 +190,6 @@ func TestServiceAgentModelsFollowOpenRouterReasoning(t *testing.T) {
 	}
 	if efforts["haiku"].ReasoningEfforts == nil || len(efforts["haiku"].ReasoningEfforts) != 0 {
 		t.Fatalf("haiku efforts = %#v", efforts["haiku"].ReasoningEfforts)
-	}
-
-	if err := service.ValidateReasoningEffort("claude", "", "sonnet", "xhigh"); err == nil {
-		t.Fatal("expected xhigh to follow the live catalog and fail for sonnet")
-	}
-	if err := service.ValidateReasoningEffort("claude", "", "haiku", "low"); err == nil {
-		t.Fatal("expected haiku reasoning to fail")
-	}
-	if err := service.ValidateReasoningEffort("claude", "", "default", "ultracode"); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -288,47 +252,6 @@ func TestServiceCuratedAgentModelsForProviderScopesOpenCodeModels(t *testing.T) 
 	}
 	if values[provider.DefaultOpenRouterModel] {
 		t.Fatalf("opencode/openai leaked OpenRouter model: %#v", models)
-	}
-}
-
-func TestServiceUsesProviderReasoningForHarnessAgents(t *testing.T) {
-	service := warmOpenRouterTestService(t, `{"data":[{
-		"id":"z-ai/glm-5.2",
-		"name":"Z.AI: GLM 5.2",
-		"reasoning":{"supported_efforts":["max","high","low"]}
-	}]}`)
-
-	if err := service.ValidateReasoningEffort("codex", "openrouter", "z-ai/glm-5.2", "low"); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ValidateReasoningEffort("codex", "openrouter", "z-ai/glm-5.2", "max"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestServiceFallsThroughStaticModelsWithoutReasoningToProviderCatalog(t *testing.T) {
-	service := warmOpenRouterTestService(t, `{"data":[{
-		"id":"openai/gpt-5.5",
-		"name":"OpenAI: GPT-5.5",
-		"reasoning":{"supported_efforts":["high","low"]}
-	}]}`)
-
-	if err := service.ValidateReasoningEffort("opencode", "openrouter", "openai/gpt-5.5", "high"); err != nil {
-		t.Fatal(err)
-	}
-	if err := service.ValidateReasoningEffort("opencode", "openrouter", "openai/gpt-5.5", "max"); err == nil {
-		t.Fatal("expected opencode max reasoning to fail for provider catalog without max")
-	}
-}
-
-func TestServiceValidationFailsWhenOpenRouterCatalogIsUnavailable(t *testing.T) {
-	service := NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
-		provider.ProviderOpenRouter: {},
-	}))
-
-	err := service.ValidateReasoningEffort("opencode", "openrouter", "openai/gpt-5.5", "high")
-	if !errors.Is(err, ErrCatalogUnavailable) {
-		t.Fatalf("err = %v, want ErrCatalogUnavailable", err)
 	}
 }
 

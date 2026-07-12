@@ -105,7 +105,7 @@ func TestNormalizeAgentDefaultsAllowsCodexUltra(t *testing.T) {
 	codex.ReasoningEffort = "ultra"
 	input.ACP[acp.AgentCodex] = codex
 
-	normalized, err := NormalizeAgentDefaults(input, catalog, modelcatalog.NewService(nil))
+	normalized, err := NormalizeAgentDefaults(input, catalog, acp.ModelCapabilities{Catalog: modelcatalog.NewService(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestNormalizeAgentDefaultsRejectsModelSpecificUnsupportedReasoning(t *testi
 		t.Fatal(err)
 	}
 
-	_, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), service)
+	_, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), acp.ModelCapabilities{Catalog: service})
 	if err == nil || !strings.Contains(err.Error(), `reasoning effort "minimal" is not supported for claude model "sonnet"`) {
 		t.Fatalf("err = %v", err)
 	}

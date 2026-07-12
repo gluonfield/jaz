@@ -1022,6 +1022,8 @@ export interface ModelCatalogEntry {
   pricing?: ModelPricing
   openrouter_id?: string
   reasoning_efforts?: string[] | null
+  reasoning_efforts_known: boolean
+  reasoning_effort_scope?: 'provider' | 'agent'
   reasoning_default_effort?: string
   reasoning_mandatory?: boolean
 }

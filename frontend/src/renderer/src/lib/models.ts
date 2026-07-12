@@ -20,6 +20,8 @@ export interface ModelSuggestion {
   pricing?: ModelPricing
   openRouterId?: string
   reasoningEfforts?: string[] | null
+  reasoningEffortsKnown?: boolean
+  reasoningEffortScope?: 'provider' | 'agent'
   reasoningDefaultEffort?: string
   reasoningMandatory?: boolean
 }
@@ -90,10 +92,7 @@ export function modelProviderModelsQuery(provider: string | undefined, agent: st
     staleTime: 60 * 60 * 1000,
     retry: 1,
     refetchInterval: (query) =>
-      (provider === 'openai' || provider === 'openai-api-key') &&
-      query.state.data?.[0]?.reasoningEfforts === null
-        ? 1000
-        : false,
+      query.state.data?.some((model) => !model.reasoningEffortsKnown && model.openRouterId) ? 1000 : false,
   })
 }
 
@@ -120,6 +119,8 @@ function modelSuggestionsFromCatalog(models: ModelCatalogEntry[]): ModelSuggesti
         : Array.isArray(model.reasoning_efforts)
           ? model.reasoning_efforts
           : undefined,
+    reasoningEffortsKnown: model.reasoning_efforts_known,
+    reasoningEffortScope: model.reasoning_effort_scope,
     reasoningDefaultEffort: model.reasoning_default_effort,
     reasoningMandatory: model.reasoning_mandatory,
   }))

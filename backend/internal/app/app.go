@@ -218,7 +218,7 @@ func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
 }
 
 func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog, modelCatalog *modelcatalog.Service, tools *managedtool.Manager) acp.AgentConfigSource {
-	source := agentsettings.NewACPConfigSource(store, catalog, modelCatalog)
+	source := agentsettings.NewACPConfigSource(store, catalog, acp.ModelCapabilities{Catalog: modelCatalog})
 	return managedToolAgentConfigSource{source: source, tools: tools}
 }
 
