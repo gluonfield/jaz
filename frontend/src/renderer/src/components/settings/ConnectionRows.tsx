@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Link2, Loader2, Unlink2 } from 'lucide-react'
+import { Loader2, Minus, Plus } from 'lucide-react'
 import { IconButton } from '@/components/ui/IconButton'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
 import {
@@ -49,17 +49,16 @@ export function ConnectedAccountRow({
       action={
         <IconButton
           variant="danger"
-          size="sm"
-          className="relative text-ink-2 after:absolute after:-inset-1.5 after:content-['']"
+          size="xs"
           disabled={disconnecting}
           onClick={onDisconnect}
           aria-label={`${actionLabel} ${plugin.name}`}
           title={actionLabel}
         >
           {disconnecting ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden />
+            <Loader2 size={13} className="animate-spin" aria-hidden />
           ) : (
-            <Unlink2 size={14} aria-hidden />
+            <Minus size={14} aria-hidden />
           )}
         </IconButton>
       }
@@ -87,17 +86,16 @@ export function PluginCatalogRow({
       onOpen={onOpen}
       action={
         <IconButton
-          size="sm"
-          className="relative text-ink-2 after:absolute after:-inset-1.5 after:content-['']"
+          size="xs"
           disabled={!pluginCanConnect(plugin) || connecting}
           onClick={onConnect}
           aria-label={`${actionLabel} ${plugin.name}`}
           title={actionLabel}
         >
           {connecting ? (
-            <Loader2 size={14} className="animate-spin" aria-hidden />
+            <Loader2 size={13} className="animate-spin" aria-hidden />
           ) : (
-            <Link2 size={14} aria-hidden />
+            <Plus size={14} aria-hidden />
           )}
         </IconButton>
       }
