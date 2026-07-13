@@ -30,6 +30,23 @@ func TestCodexProviderArgsOpenRouter(t *testing.T) {
 	}
 }
 
+func TestCodexProviderArgsOllama(t *testing.T) {
+	want := []string{"-c", `model_provider="ollama"`}
+	if args := codexProviderArgs(AgentConfig{ModelProvider: modelprovider.ProviderOllama}, nil); !slices.Equal(args, want) {
+		t.Fatalf("ollama args mismatch\n got: %v\nwant: %v", args, want)
+	}
+}
+
+func TestProbeAgentAuthAcceptsNoAuthCodexProvider(t *testing.T) {
+	status := ProbeAgentAuthWithProviders(AgentCodex, AgentConfig{
+		ProviderMode:  AgentProviderModeAgentDefaults,
+		ModelProvider: modelprovider.ProviderOllama,
+	}, t.TempDir(), nil, nil)
+	if !status.Authenticated || status.AuthKind != AuthKindNone || status.AuthEvidence != "no_api_key_required" {
+		t.Fatalf("ollama auth = %#v", status)
+	}
+}
+
 func TestCodexProviderArgsOpenAIAPIKey(t *testing.T) {
 	args := codexProviderArgs(AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, nil)
 	want := []string{
@@ -60,6 +77,24 @@ func TestCodexProviderArgsCustomProvider(t *testing.T) {
 	}
 	if !slices.Equal(args, want) {
 		t.Fatalf("custom provider args mismatch\n got: %v\nwant: %v", args, want)
+	}
+}
+
+func TestCodexProviderArgsNoAuthCustomProvider(t *testing.T) {
+	args := codexProviderArgs(
+		AgentConfig{ModelProvider: "local"},
+		map[string]modelprovider.ModelProviderConfig{
+			"local": {Type: "openai-compatible", Label: "Local", BaseURL: "http://localhost:11434/v1"},
+		},
+	)
+	want := []string{
+		"-c", `model_provider="local"`,
+		"-c", `model_providers.local.name="Local"`,
+		"-c", `model_providers.local.base_url="http://localhost:11434/v1"`,
+		"-c", `model_providers.local.wire_api="responses"`,
+	}
+	if !slices.Equal(args, want) {
+		t.Fatalf("local provider args mismatch\n got: %v\nwant: %v", args, want)
 	}
 }
 

@@ -2,16 +2,8 @@ import { agentDefault } from './jazDefaults'
 import type { AgentSettings, ModelProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
-// Providers without first-class support yet — kept in the catalog for the runtime
-// but hidden from selection and the settings providers list. Remove an id here
-// once the provider is ready to surface in the UI.
-const HIDDEN_PROVIDERS = new Set(['ollama'])
 const HIDDEN_AGENTS = new Set(['jaz'])
 const AUTH_REQUIRED_AGENTS = new Set(['codex', 'claude', 'grok', 'opencode', 'antigravity'])
-
-export function providerHidden(id: string): boolean {
-  return HIDDEN_PROVIDERS.has(id)
-}
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter((agent) => selectableACPAgent(agent) && acpAgentEnabled(settings, agent))
@@ -32,14 +24,12 @@ export function selectableACPModelProviders(
 ): ModelProviderOption[] {
   if (!acpUsesModelProvider(settings, agent)) return []
   const configuredOptions = settings?.acp_options?.[agent]?.model_providers
-  if (configuredOptions) {
-    return configuredOptions.filter((provider) => !providerHidden(provider.id))
-  }
+  if (configuredOptions) return configuredOptions
   const ids = settings?.acp_options?.[agent]?.model_provider_ids ?? []
   const byID = new Map((settings?.providers ?? []).map((provider) => [provider.id, provider]))
   const providers = ids
     .map((id) => byID.get(id))
-    .filter((provider): provider is ModelProviderOption => Boolean(provider && !providerHidden(provider.id)))
+    .filter((provider): provider is ModelProviderOption => Boolean(provider))
   return orderedACPModelProviders(settings, agent, providers)
 }
 

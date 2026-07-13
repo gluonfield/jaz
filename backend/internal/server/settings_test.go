@@ -223,7 +223,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("codex model options missing GPT-5.6 family %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
-		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter" {
+		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter,ollama" {
 		t.Fatalf("unexpected codex provider options %#v", got.ACPOptions["codex"])
 	}
 	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||

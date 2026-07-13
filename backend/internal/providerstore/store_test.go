@@ -68,6 +68,9 @@ func TestCreateGetUpdateDelete(t *testing.T) {
 	if upd.Label != "Groq Cloud" || upd.DefaultModel != "llama-3.1-70b" {
 		t.Fatalf("update did not apply: %#v", upd)
 	}
+	if cfg := upd.Config(); cfg.DefaultModel != "llama-3.1-70b" {
+		t.Fatalf("config default_model = %q", cfg.DefaultModel)
+	}
 	if upd.ID != "groq" || upd.APIKeyEnv != rec.APIKeyEnv {
 		t.Fatal("id changed or remote api_key_env was not stable across updates")
 	}

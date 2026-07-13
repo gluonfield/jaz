@@ -2,6 +2,7 @@ package modelcatalog
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -113,6 +114,48 @@ func TestServiceWarmFetchesOpenRouterCatalogOnceUnderConcurrency(t *testing.T) {
 	}
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("upstream requests = %d, want 1", got)
+	}
+}
+
+func TestServiceFetchesOllamaModels(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" || r.URL.RawQuery != "" {
+			http.Error(w, "unexpected request", http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"qwen3.6:latest","object":"model","created":1783060111,"owned_by":"library"},
+			{"id":""}
+		]}`))
+	}))
+	defer upstream.Close()
+
+	service := NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		provider.ProviderOllama: {BaseURL: upstream.URL + "/v1"},
+	}))
+	models, err := service.ProviderModels(provider.ProviderOllama)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].Value != "qwen3.6:latest" || models[0].Label != "qwen3.6:latest" {
+		t.Fatalf("unexpected models %#v", models)
+	}
+	if models[0].Reasoning.Status != ReasoningUnavailable {
+		t.Fatalf("reasoning status = %q", models[0].Reasoning.Status)
+	}
+}
+
+func TestServiceReportsUnavailableOllamaCatalog(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "down", http.StatusServiceUnavailable)
+	}))
+	defer upstream.Close()
+
+	service := NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		provider.ProviderOllama: {BaseURL: upstream.URL + "/v1"},
+	}))
+	if _, err := service.ProviderModels(provider.ProviderOllama); !errors.Is(err, ErrCatalogUnavailable) {
+		t.Fatalf("error = %v, want catalog unavailable", err)
 	}
 }
 

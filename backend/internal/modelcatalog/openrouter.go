@@ -2,13 +2,11 @@ package modelcatalog
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/wins/jaz/backend/internal/provider"
 )
 
 var openRouterReasoningEfforts = map[string]struct{}{
@@ -47,26 +45,12 @@ type openRouterReasoning struct {
 }
 
 func fetchOpenRouterModels(ctx context.Context, baseURL string) ([]Model, error) {
-	endpoint, err := providerModelsURL(baseURL)
+	endpoint, err := openRouterModelsURL(baseURL)
 	if err != nil {
 		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return nil, fmt.Errorf("model provider models request failed: %d", res.StatusCode)
 	}
 	var body openRouterModelResponse
-	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+	if err := fetchModelCatalog(ctx, endpoint, &body); err != nil {
 		return nil, err
 	}
 	out := make([]Model, 0, len(body.Data))
@@ -92,12 +76,15 @@ func fetchOpenRouterModels(ctx context.Context, baseURL string) ([]Model, error)
 	return out, nil
 }
 
-func providerModelsURL(baseURL string) (string, error) {
-	raw := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	if raw == "" {
-		raw = "https://openrouter.ai/api/v1"
+func openRouterModelsURL(baseURL string) (string, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = "https://openrouter.ai/api/v1"
 	}
-	u, err := url.Parse(raw + "/models")
+	endpoint, err := provider.ModelsURL(baseURL)
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(endpoint)
 	if err != nil {
 		return "", err
 	}

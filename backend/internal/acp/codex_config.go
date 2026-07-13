@@ -27,7 +27,7 @@ func codexProvider(modelProvider string, providers map[string]modelprovider.Mode
 		meta.DefaultModel = CodexOpenAIDefaultModel
 		return meta, true
 	}
-	meta, ok := modelprovider.RunnableModelProviderByID(id)
+	meta, ok := modelprovider.ModelProviderByID(id)
 	if !ok {
 		meta = modelprovider.ModelProvider{ID: id}
 	}
@@ -47,17 +47,22 @@ func codexProviderKeyID(id string) string {
 
 func codexProviderArgs(cfg AgentConfig, providers map[string]modelprovider.ModelProviderConfig) []string {
 	meta, ok := codexProvider(cfg.ModelProvider, providers)
+	if ok && meta.ID == modelprovider.ProviderOllama {
+		return []string{"-c", `model_provider="ollama"`}
+	}
 	baseURL := strings.TrimSpace(meta.BaseURL)
 	envKey := strings.TrimSpace(meta.APIKeyEnv)
-	if !ok || baseURL == "" || envKey == "" {
+	if !ok || baseURL == "" {
 		return nil
 	}
 	table := "model_providers." + meta.ID
-	return []string{
+	args := []string{
 		"-c", fmt.Sprintf("model_provider=%q", meta.ID),
 		"-c", fmt.Sprintf("%s.name=%q", table, firstNonEmpty(strings.TrimSpace(meta.Label), meta.ID)),
 		"-c", fmt.Sprintf("%s.base_url=%q", table, baseURL),
-		"-c", fmt.Sprintf("%s.env_key=%q", table, envKey),
-		"-c", table + `.wire_api="responses"`,
 	}
+	if envKey != "" {
+		args = append(args, "-c", fmt.Sprintf("%s.env_key=%q", table, envKey))
+	}
+	return append(args, "-c", table+`.wire_api="responses"`)
 }

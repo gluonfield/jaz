@@ -67,6 +67,13 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 		}
 		return models, nil
 	default:
+		if meta.OpenAICompatible && !meta.RequiresAPIKey {
+			models, err := fetchOpenAICompatibleModels(context.Background(), meta.BaseURL)
+			if err != nil {
+				return nil, fmt.Errorf("%w for %q: %w", ErrCatalogUnavailable, meta.ID, err)
+			}
+			return models, nil
+		}
 		if model := strings.TrimSpace(meta.DefaultModel); model != "" {
 			return []Model{{Value: model, Label: model, Reasoning: Reasoning{Status: ReasoningUnavailable}}}, nil
 		}

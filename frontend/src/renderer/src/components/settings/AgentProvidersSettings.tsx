@@ -12,7 +12,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { modelProviderRequiresKey, providerHidden } from '@/lib/agentRuntimes'
+import { modelProviderRequiresKey } from '@/lib/agentRuntimes'
 import { createProvider, deleteProvider, getProviderStatuses, updateProvider } from '@/lib/api/providers'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
@@ -120,7 +120,7 @@ export function AgentProvidersSettings() {
     setProviderDraft(null)
   }
 
-  const providers = (draft?.providers ?? []).filter((provider) => !providerHidden(provider.id))
+  const providers = draft?.providers ?? []
   const canSave = draft != null && providerKeyDirty && !save.isPending
 
   return (

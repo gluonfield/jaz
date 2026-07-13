@@ -203,6 +203,8 @@ func resolveCodexProviderAuth(meta modelprovider.ModelProvider, root string, env
 		value = codexProviderKeyValue(root, env, keyEnv)
 	}
 	switch {
+	case !meta.RequiresAPIKey:
+		status.markAuthenticated("no_api_key_required", AuthKindNone)
 	case keyEnv != "" && value != "":
 		status.APIKey = AgentAPIKeySpec{SourceEnv: keyEnv, TargetEnv: keyEnv}
 		status.APIKeyValue = value

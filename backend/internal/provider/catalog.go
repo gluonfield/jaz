@@ -41,13 +41,14 @@ type ModelProvider struct {
 }
 
 type ModelProviderConfig struct {
-	Type      string
-	Label     string
-	BaseURL   string
-	APIKey    string
-	APIKeyEnv string
-	OpenCode  bool
-	Codex     bool
+	Type         string
+	Label        string
+	BaseURL      string
+	APIKey       string
+	APIKeyEnv    string
+	DefaultModel string
+	OpenCode     bool
+	Codex        bool
 }
 
 func ModelProviders() []ModelProvider {
@@ -81,6 +82,7 @@ func ModelProviders() []ModelProvider {
 			Label:            "Ollama",
 			BaseURL:          "http://localhost:11434/v1",
 			OpenCode:         true,
+			Codex:            true,
 			OpenAICompatible: true,
 		},
 	}
@@ -132,6 +134,9 @@ func ApplyModelProviderConfig(meta ModelProvider, cfg ModelProviderConfig) Model
 	if strings.TrimSpace(cfg.BaseURL) != "" {
 		meta.BaseURL = cfg.BaseURL
 	}
+	if strings.TrimSpace(cfg.DefaultModel) != "" {
+		meta.DefaultModel = cfg.DefaultModel
+	}
 	if strings.TrimSpace(cfg.APIKeyEnv) != "" {
 		meta.APIKeyEnv = cfg.APIKeyEnv
 	}
@@ -163,6 +168,7 @@ func ModelProviderConfigPresent(cfg ModelProviderConfig) bool {
 		strings.TrimSpace(cfg.Label) != "" ||
 		strings.TrimSpace(cfg.BaseURL) != "" ||
 		strings.TrimSpace(cfg.APIKey) != "" ||
+		strings.TrimSpace(cfg.DefaultModel) != "" ||
 		cfg.OpenCode ||
 		cfg.Codex
 }
@@ -188,6 +194,20 @@ func BaseURLIsLoopback(raw string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+func ModelsURL(raw string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid provider url %q", raw)
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/models"
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String(), nil
 }
 
 func (p ModelProvider) SupportsCapability(capability string) bool {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -56,7 +55,7 @@ func (s *Server) handleProviderStatuses(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) modelProviderConnectionStatuses(ctx context.Context) []modelProviderConnectionStatus {
-	inputs := s.modelProviderStatusInputs()
+	inputs := s.resolvedModelProviders()
 	out := make([]modelProviderConnectionStatus, len(inputs))
 	var wg sync.WaitGroup
 	for i, input := range inputs {
@@ -89,24 +88,12 @@ func (s *Server) modelProviderConnectionStatus(ctx context.Context, input resolv
 	return modelProviderStatusConnected
 }
 
-func (s *Server) modelProviderStatusInputs() []resolvedModelProvider {
-	resolved := s.resolvedModelProviders()
-	out := make([]resolvedModelProvider, 0, len(resolved))
-	for _, input := range resolved {
-		if !input.Meta.Implemented && !provider.ModelProviderConfigPresent(input.Config) {
-			continue
-		}
-		out = append(out, input)
-	}
-	return out
-}
-
 type httpDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
 func probeOpenAICompatibleProvider(ctx context.Context, client httpDoer, baseURL string) error {
-	endpoint, err := openAICompatibleModelsURL(baseURL)
+	endpoint, err := provider.ModelsURL(baseURL)
 	if err != nil {
 		return err
 	}
@@ -126,18 +113,4 @@ func probeOpenAICompatibleProvider(ctx context.Context, client httpDoer, baseURL
 		return fmt.Errorf("models endpoint returned %d", resp.StatusCode)
 	}
 	return nil
-}
-
-func openAICompatibleModelsURL(raw string) (string, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil {
-		return "", err
-	}
-	if parsed.Scheme == "" || parsed.Host == "" {
-		return "", fmt.Errorf("invalid provider url %q", raw)
-	}
-	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/models"
-	parsed.RawQuery = ""
-	parsed.Fragment = ""
-	return parsed.String(), nil
 }

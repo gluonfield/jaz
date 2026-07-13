@@ -53,12 +53,13 @@ func (p CustomProvider) Config() provider.ModelProviderConfig {
 		keyEnv = ""
 	}
 	return provider.ModelProviderConfig{
-		Type:      APITypeOpenAICompatible,
-		Label:     p.Label,
-		BaseURL:   p.BaseURL,
-		APIKeyEnv: keyEnv,
-		OpenCode:  true,
-		Codex:     true,
+		Type:         APITypeOpenAICompatible,
+		Label:        p.Label,
+		BaseURL:      p.BaseURL,
+		APIKeyEnv:    keyEnv,
+		DefaultModel: p.DefaultModel,
+		OpenCode:     true,
+		Codex:        true,
 	}
 }
 
