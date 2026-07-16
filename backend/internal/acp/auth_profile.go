@@ -70,7 +70,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		mode = AuthModeAuto
 		path = ""
 	}
-	if mode == AuthModeAuto {
+	if mode == AuthModeAuto || name == AgentClaude && mode == AuthModeJazProfile {
 		path = ""
 	}
 	if name == AgentGrok {
@@ -242,13 +242,10 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 	configuredExisting := firstNonEmpty(existingAuthPath(auth), cfg.Env["CLAUDE_CONFIG_DIR"], env["CLAUDE_CONFIG_DIR"], os.Getenv("CLAUDE_CONFIG_DIR"))
 	existing := expandAuthPath(firstNonEmpty(configuredExisting, defaultHomePath(".claude")))
 	jaz := layout.ACPClaudeConfig
-	if auth.Mode == AuthModeJazProfile && strings.TrimSpace(auth.Path) != "" {
-		jaz = expandAuthPath(auth.Path)
-	}
 	mode := auth.Mode
 	if mode == AuthModeAuto || mode == "" {
 		mode = AuthModeJazProfile
-		if claudeAuthFileAvailable(jaz) {
+		if claudeAuthFailureRecorded(jaz) || claudeAuthFileAvailable(jaz) {
 			mode = AuthModeJazProfile
 		} else if claudeAccountAuthAvailable(cfg.Env) || claudeAccountAuthAvailable(env) || claudeAuthFileAvailable(existing) {
 			mode = AuthModeExistingCLI
@@ -275,13 +272,16 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 	accountAuthConfigured := source == AuthModeExistingCLI &&
 		(claudeAccountAuthAvailable(cfg.Env) || claudeAccountAuthAvailable(env))
 	apiKeyConfigured := status.resolveAPIKey(AgentClaude, root, env)
+	rejectedLogin := source == AuthModeJazProfile && path != "" && claudeAuthFailureRecorded(path)
 	switch {
 	case accountAuthConfigured:
 		status.markAuthenticated("env", AuthKindOAuth)
-	case path != "" && claudeAuthFileAvailable(path):
+	case path != "" && !rejectedLogin && claudeAuthFileAvailable(path):
 		status.markAuthenticated("claude_json", AuthKindOAuth)
 	case apiKeyConfigured:
 		status.markAuthenticated("api_key_env", AuthKindAPIKey)
+	case rejectedLogin:
+		status.Reason = "Claude rejected the saved login; reconnect Claude"
 	case source == AuthModeExistingCLI && configuredExisting == "":
 		status.markAuthenticated("existing_cli", AuthKindOAuth)
 	default:
@@ -483,15 +483,11 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 	if info, err := os.Stat(storagePath); err == nil && info.IsDir() {
 		return nil
 	}
+	if name == AgentClaude {
+		return removeClaudeProfileCredentials(filepath.Dir(storagePath))
+	}
 	if err := os.Remove(storagePath); err != nil && !os.IsNotExist(err) {
 		return err
-	}
-	// Claude can keep a sibling .credentials.json next to .claude.json.
-	if name == AgentClaude {
-		creds := filepath.Join(filepath.Dir(storagePath), ".credentials.json")
-		if err := os.Remove(creds); err != nil && !os.IsNotExist(err) {
-			return err
-		}
 	}
 	// agy stores its OAuth token in the OS keyring; the file is a fallback copy.
 	// Best-effort: headless hosts have no keyring and agy uses the file there.

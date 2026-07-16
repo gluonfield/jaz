@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
@@ -26,6 +27,14 @@ func init() {
 func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
 		return
+	}
+	if path := os.Getenv("JAZ_FAKE_ACP_START_LOG"); path != "" {
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = fmt.Fprintln(file, os.Getpid())
+		_ = file.Close()
 	}
 	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" && !fakeCodexConfigs["features.goals=false"] {
 		t.Fatalf("Codex config = %#v, want features.goals=false", fakeCodexConfigs)
@@ -279,10 +288,18 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			currentEffort = req.Value
 			sendResult(conn, msg, map[string]any{})
 		case "session/prompt":
+			if os.Getenv("JAZ_FAKE_ACP_PROMPT_DELAY") == "1" {
+				time.Sleep(200 * time.Millisecond)
+			}
 			var promptReq struct {
 				Meta map[string]any `json:"_meta"`
 			}
 			_ = json.Unmarshal(msg.Params, &promptReq)
+			if os.Getenv("JAZ_FAKE_ACP_AUTH_REQUIRED") == "1" {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError("Authentication required", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
 			if pendingPrompt != nil && os.Getenv("JAZ_FAKE_ACP_PROMPT_QUEUEING") == "1" {
 				sendResult(conn, pendingPrompt, map[string]any{"stopReason": "end_turn"})
 				pendingPrompt = nil

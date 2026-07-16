@@ -43,8 +43,10 @@ type jobState struct {
 	Job
 
 	mu                     sync.RWMutex
+	sendMu                 sync.Mutex
 	turnMu                 sync.Mutex
 	promptQueueing         bool
+	processPerTurn         bool
 	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
 	pendingToolUpdateByID  map[string]sessionevents.ACPToolCall
@@ -100,8 +102,8 @@ func jobFromSession(session storage.Session, agentName, acpSessionID, cwd, state
 	}
 }
 
-func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, modes ModeState) *jobState {
-	job := &jobState{Job: jobFromSession(session, agentName, acpSessionID, cwd, StateIdle)}
+func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, modes ModeState, processPerTurn bool) *jobState {
+	job := &jobState{Job: jobFromSession(session, agentName, acpSessionID, cwd, StateIdle), processPerTurn: processPerTurn}
 	now := time.Now().UTC()
 	job.Modes = modes
 	job.UpdatedAt = now

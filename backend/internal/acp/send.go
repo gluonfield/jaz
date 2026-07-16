@@ -64,31 +64,35 @@ func (m *Manager) Compact(ctx context.Context, req CompactRequest) (Job, error) 
 }
 
 func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (Job, error) {
-	job, err := m.job(req.Session)
-	if err == nil && m.serveErr(job.ID) != nil {
-		job.mu.RLock()
-		running := job.State == StateRunning || job.State == StateStarting
-		job.mu.RUnlock()
-		if !running {
-			m.teardown(job.ID)
-			job, err = m.resume(ctx, req.Session)
-		}
-	}
-	if err != nil {
-		if job, err = m.resume(ctx, req.Session); err != nil {
-			return Job{}, err
-		}
-	}
-	if opts.requireCompactSupport && !AgentSupportsCompact(job.ACPAgent) {
-		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
-	}
 	if !storage.HasMessageContent(req.Message, req.Contexts, req.Attachments) {
 		return Job{}, fmt.Errorf("message is required")
 	}
-	job.mu.RLock()
-	state := job.State
-	job.mu.RUnlock()
-	if state == StateRunning || state == StateStarting {
+	job, err := m.job(req.Session)
+	if err != nil {
+		job, err = m.resume(ctx, req.Session)
+	}
+	if err != nil {
+		return Job{}, err
+	}
+	for {
+		if job.turnDone() != nil {
+			return Job{}, fmt.Errorf("session %s is already running", job.Slug)
+		}
+		processReleased := job.processPerTurn && m.peer(job.ID) == nil
+		if m.serveErr(job.ID) == nil && !processReleased {
+			break
+		}
+		job, err = m.restart(ctx, job)
+		if err != nil {
+			return Job{}, err
+		}
+	}
+	job.sendMu.Lock()
+	defer job.sendMu.Unlock()
+	if opts.requireCompactSupport && !AgentSupportsCompact(job.ACPAgent) {
+		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
+	}
+	if job.turnDone() != nil {
 		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
 	}
 	local := m.localAgent(job.ACPAgent)

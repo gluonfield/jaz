@@ -143,12 +143,14 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 		return
 	}
 	turn.closeFirstPromptSent()
+	process := m.detachProcessAfterTurn(job)
 	job.turn = nil
 	completion := turn.completion
 	planRequested := turn.planRequested
 	planProposal := clonePlanEvent(turn.planProposal)
 	parentVisible := job.ParentVisible
 	job.mu.Unlock()
+	m.closeDetachedProcess(job, process)
 	m.cancelPendingPermissions(job.ID)
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
@@ -266,6 +268,7 @@ func (m *Manager) failTurn(job *jobState, err error) {
 			err = serveErr
 		}
 		message := acpTurnErrorMessage(err)
+		m.recordRuntimeAuthFailure(job, message)
 		job.setState(StateFailed, "", message)
 		m.log.Error("acp turn failed", "session", job.ID, "error", err)
 	}

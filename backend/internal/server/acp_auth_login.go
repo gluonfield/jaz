@@ -172,7 +172,7 @@ func (s *Server) runACPAuthLogin(ctx context.Context, agent string, auth acp.Age
 		Status:    "running",
 		StartedAt: time.Now().UTC(),
 	}
-	if err := acp.PrepareAgentLoginInvocation(agent, auth, invocation); err != nil {
+	if err := acp.PrepareAgentLoginInvocation(agent, auth, s.runtimeRoot(), invocation); err != nil {
 		return nil, err
 	}
 	cmdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpAuthLoginTimeout)
