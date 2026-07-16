@@ -1,51 +1,51 @@
 {
   "adapters": {
     "codex": {
-      "version": "0.16.21",
+      "version": "0.16.22",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.21/codex-acp-0.16.21-aarch64-apple-darwin.tar.gz",
-          "sha256": "f2ab0da5740c979e3775aa9b1046ef110856da30cb1082bba1b8cdae1161be1b",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.22/codex-acp-0.16.22-aarch64-apple-darwin.tar.gz",
+          "sha256": "0a17e469d79e16701952f593ecbfff28dee275331631ac88391b204c0281a34b",
           "binary": "codex-acp",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.21/codex-acp-0.16.21-x86_64-apple-darwin.tar.gz",
-          "sha256": "6cd304b91d5d8cd0ec23ecf93ea4873310be067f300a40e368431e8a90545dd0",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.22/codex-acp-0.16.22-x86_64-apple-darwin.tar.gz",
+          "sha256": "a79e2e4161a26ded10dcb92c0d5921905e135d45ba2d19a0eb53f7bb1371e89d",
           "binary": "codex-acp",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.21/codex-acp-0.16.21-aarch64-unknown-linux-gnu.tar.gz",
-          "sha256": "aef373fb6413e2466e5141eb600caaf2f2a58db14fef81228d5c1b846bdf55f8",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.22/codex-acp-0.16.22-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "566bf1aa1c13ad01d3f712e095d5bae326b578aebe940a83f27dc67f4712ed3e",
           "binary": "codex-acp",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.21/codex-acp-0.16.21-x86_64-unknown-linux-gnu.tar.gz",
-          "sha256": "ec423240bed4f51a790b18e6113b114aef145ab577ae0715acffdd13d66fd98e",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.22/codex-acp-0.16.22-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "0f380f78fced1e696edae3fc18cc841e26e44c06be8f5689216c7d4b3e1dffbb",
           "binary": "codex-acp",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.21/codex-acp-0.16.21-aarch64-pc-windows-msvc.tar.gz",
-          "sha256": "742477a4103b6193666832ebb5356452bced2f06a8ac790d865bcec368439ec6",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.22/codex-acp-0.16.22-aarch64-pc-windows-msvc.tar.gz",
+          "sha256": "f86b461c434eef4966b43fac2a4761137eaea5d353af8dc558e5277b4c2a38bc",
           "binary": "codex-acp.exe",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"
           }
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.21/codex-acp-0.16.21-x86_64-pc-windows-msvc.tar.gz",
-          "sha256": "421de40ae09847c224530b4e80211b4f56ef794ead4e71da4eee6d38d4d4d195",
+          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.22/codex-acp-0.16.22-x86_64-pc-windows-msvc.tar.gz",
+          "sha256": "146402eac7072f958f94149e1b763a475f139dc43f168b947852e4a398d747a2",
           "binary": "codex-acp.exe",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"
