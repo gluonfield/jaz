@@ -13,6 +13,7 @@ import (
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
@@ -60,7 +61,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	var publicRoutes server.PublicRoutes
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(Config{}, RuntimeAuthKey("secret")),
+		fx.Supply(Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
 		HTTPModule(),
@@ -73,11 +74,9 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "GET /v1/usage/models")
 	requireRoute(t, routes, "GET /v1/feed")
 	requireRoute(t, routes, "/v1/preview/")
-	if len(publicRoutes) != 2 ||
+	if len(publicRoutes) != 1 ||
 		publicRoutes[0].Match == nil ||
-		publicRoutes[0].Handler == nil ||
-		publicRoutes[1].Match == nil ||
-		publicRoutes[1].Handler == nil {
+		publicRoutes[0].Handler == nil {
 		t.Fatalf("publicRoutes = %#v", publicRoutes)
 	}
 }
@@ -93,7 +92,7 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 		Usage:   usagecore.NewService(fakeUsageStore{}),
 		Devices: deviceauth.New(store),
 		AuthKey: RuntimeAuthKey("secret"),
-		Preview: previewapi.NewHandler(),
+		Preview: testPreviewHandler(t),
 	})
 	var foundRevoke bool
 	var foundConnection bool
@@ -129,7 +128,7 @@ func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 			Jaz:     Config{Devices: DevicesConfig{DisablePairing: disable}},
 			Devices: deviceauth.New(store),
 			AuthKey: RuntimeAuthKey("secret"),
-			Preview: previewapi.NewHandler(),
+			Preview: testPreviewHandler(t),
 		})
 		for _, route := range routes {
 			switch route.Pattern {
@@ -154,7 +153,7 @@ func TestNewRoutesIncludesBrowserExtensionRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),
 		Browser: browserworker.NewExtensionBridge(nil, nil),
-		Preview: previewapi.NewHandler(),
+		Preview: testPreviewHandler(t),
 	})
 	for _, route := range routes {
 		if route.Pattern == "GET /v1/browser/extension" && route.Handler != nil {
@@ -168,7 +167,7 @@ func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:           usagecore.NewService(fakeUsageStore{}),
 		BrowserSettings: &BrowserSettingsHandler{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})},
-		Preview:         previewapi.NewHandler(),
+		Preview:         testPreviewHandler(t),
 	})
 	found := map[string]bool{}
 	for _, route := range routes {
@@ -191,7 +190,7 @@ func TestNewRoutesIncludesConnectionPluginRoutes(t *testing.T) {
 		ConnectionOAuth: oauth,
 		ConnectionQR:    qr,
 		ConnectionStart: connections.NewConnectService(catalog, oauth, qr, nil, nil),
-		Preview:         previewapi.NewHandler(),
+		Preview:         testPreviewHandler(t),
 	})
 	found := map[string]bool{}
 	for _, route := range routes {
@@ -225,7 +224,7 @@ func TestNewRoutesKeepsConnectionStartRoutesIndependent(t *testing.T) {
 		Usage:           usagecore.NewService(fakeUsageStore{}),
 		Connections:     connections.NewService(catalog, fakeConnectionOAuthStore{}, nil),
 		ConnectionOAuth: oauth,
-		Preview:         previewapi.NewHandler(),
+		Preview:         testPreviewHandler(t),
 	})
 	for _, route := range routes {
 		if route.Pattern == "GET /v1/connections/oauth/callback" && route.Handler != nil {
@@ -241,7 +240,7 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 	var store *sqlitestore.Store
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}),
+		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}, serverconfig.Config{}),
 		fx.Provide(NewStore, NewRuntimeAuthKey),
 		HTTPModule(),
 		fx.Populate(&routes, &publicRoutes, &store),
@@ -253,7 +252,7 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 
 	requireRoute(t, routes, "GET /v1/feed")
 	requireRoute(t, routes, "/v1/preview/")
-	if len(publicRoutes) != 2 {
+	if len(publicRoutes) != 1 {
 		t.Fatalf("publicRoutes = %#v", publicRoutes)
 	}
 	for _, route := range routes {
@@ -261,6 +260,15 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 			t.Fatalf("nil handler in routes = %#v", routes)
 		}
 	}
+}
+
+func testPreviewHandler(t *testing.T) *previewapi.Handler {
+	t.Helper()
+	handler, err := previewapi.NewHandler(serverconfig.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return handler
 }
 
 func requireRoute(t *testing.T, routes server.Routes, pattern string) {

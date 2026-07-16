@@ -13,8 +13,9 @@ const (
 )
 
 type Config struct {
-	Addr      string
-	PublicURL string
+	Addr               string
+	PublicURL          string
+	PreviewURLTemplate string
 }
 
 type URLs struct {

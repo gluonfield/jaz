@@ -23,6 +23,16 @@ func TestServeFxGraphValidates(t *testing.T) {
 	}
 }
 
+func TestParseServeConfigIncludesPreviewURLTemplate(t *testing.T) {
+	cfg, err := parseServeConfig(serveArgs{Args: []string{"--preview-url-template", " https://{id}.preview.example.test "}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PreviewURLTemplate != "https://{id}.preview.example.test" {
+		t.Fatalf("preview URL template = %q", cfg.PreviewURLTemplate)
+	}
+}
+
 func TestFinishLoopFromACPRejectsUnpublishedWidgetRun(t *testing.T) {
 	loopService, widgetService, widgetPublisher, store, loop, run := newWidgetLoopFinishTest(t, "thread-unpublished")
 

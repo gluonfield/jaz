@@ -73,6 +73,7 @@ JAZ_LOG=info
 HOME=/var/lib/jaz
 JAZ_ADDR=:5299
 JAZ_PUBLIC_URL=https://jaz.example.com
+JAZ_PREVIEW_URL_TEMPLATE=https://{id}.preview.example.com
 ```
 
 Add `/etc/systemd/system/jaz.service`:
@@ -88,7 +89,7 @@ User=jaz
 Group=jaz
 WorkingDirectory=/var/lib/jaz
 EnvironmentFile=/etc/jaz/jaz.env
-ExecStart=/opt/jaz/bin/jaz --addr ${JAZ_ADDR} --public-url ${JAZ_PUBLIC_URL}
+ExecStart=/opt/jaz/bin/jaz --addr ${JAZ_ADDR} --public-url ${JAZ_PUBLIC_URL} --preview-url-template ${JAZ_PREVIEW_URL_TEMPLATE}
 Restart=on-failure
 RestartSec=2
 KillSignal=SIGINT
@@ -151,6 +152,47 @@ ufw allow 5299/tcp comment "Jaz backend"
 Prefer putting Caddy, nginx, or a tunnel in front of the backend for TLS instead of exposing plain HTTP. Keep runtime state under `/var/lib/jaz`; do not depend on paths from any client machine being visible to the server or agents.
 
 The backend is API-only. It does not serve the React web app or static assets.
+
+### Remote web previews
+
+Agent-started web servers bind to the backend machine, so remote clients must never open their own `localhost`. Jaz registers loopback-only targets through the authenticated `POST /v1/preview/proxies` endpoint and returns a random, eight-hour capability URL on an isolated origin. The capability host forwards ordinary HTTP methods and WebSocket upgrades used by development servers such as Vite. Jaz strips Authorization, cookies, device headers, Origin, and Referer before the request reaches the preview process.
+
+Set `--preview-url-template` to an origin containing `{id}` exactly once in its hostname, for example:
+
+```text
+https://{id}.preview.example.com
+```
+
+The template is explicit: Jaz never derives it from `--public-url`. It must use HTTP or HTTPS and cannot contain credentials, a path, query, or fragment. A remote backend without this setting rejects preview registration with an actionable error. Local Electron development keeps working without it through isolated `jaz-preview-<id>.localhost` origins.
+
+The deployment must provide all of the following for the template:
+
+- Wildcard DNS for `*.preview.example.com` pointing to the same reverse proxy or tunnel as the Jaz backend.
+- A TLS certificate covering `*.preview.example.com` when the template uses HTTPS.
+- A wildcard virtual-host or tunnel ingress rule that forwards the hostname unchanged to the Jaz backend.
+- HTTP upgrade forwarding so preview WebSockets and Vite HMR reach Jaz's reverse proxy.
+
+For a locally managed Cloudflare Tunnel, the matching ingress shape is:
+
+```yaml
+ingress:
+  - hostname: jaz.example.com
+    service: http://localhost:5299
+  - hostname: "*.preview.example.com"
+    service: http://localhost:5299
+  - service: http_status:404
+```
+
+Create a proxied wildcard DNS record for `*.preview.example.com` targeting the tunnel, and ensure Cloudflare edge certificate coverage includes that exact wildcard. Then validate routing before restarting `cloudflared`:
+
+```sh
+cloudflared tunnel ingress validate
+cloudflared tunnel ingress rule https://0123456789abcdef0123456789abcdef.preview.example.com/.well-known/jaz-preview
+dig +short 0123456789abcdef0123456789abcdef.preview.example.com
+curl -i https://0123456789abcdef0123456789abcdef.preview.example.com/.well-known/jaz-preview
+```
+
+The rule command must select the wildcard Jaz service, DNS must resolve, and HTTPS must complete without a certificate error. An unregistered hostname may be rejected by Jaz authentication, but it must not return the tunnel's catch-all response. Browser and native mobile clients probe the registered capability origin before rendering, so incomplete DNS, TLS, or ingress configuration is shown as a preview error rather than a blank frame.
 
 ## Configuration
 

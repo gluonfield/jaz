@@ -178,10 +178,13 @@ func parseServeConfig(args serveArgs) (serverconfig.Config, error) {
 	fs := flag.NewFlagSet("jaz", flag.ContinueOnError)
 	addr := fs.String("addr", ":5299", "HTTP listen address")
 	publicURL := fs.String("public-url", "", "URL shown to Jaz clients")
+	previewURLTemplate := fs.String("preview-url-template", "", "isolated preview origin URL containing {id}")
 	if err := fs.Parse(args.Args); err != nil {
 		return serverconfig.Config{}, err
 	}
-	return serverconfig.New(*addr, *publicURL), nil
+	cfg := serverconfig.New(*addr, *publicURL)
+	cfg.PreviewURLTemplate = strings.TrimSpace(*previewURLTemplate)
+	return cfg, nil
 }
 
 func newMemoryService(cfg app.Config, memory *jazmem.Memory, store *sqlitestore.Store, logger *log.Logger, urls serverconfig.URLs) *memoryservice.Service {

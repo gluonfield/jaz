@@ -157,8 +157,7 @@ func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler,
 
 func NewPublicRoutes(handler *previewapi.Handler) server.PublicRoutes {
 	return server.PublicRoutes{
-		{Match: previewapi.IsPublicPathRequest, Handler: handler},
-		{Match: previewapi.IsPublicHostRequest, Handler: handler},
+		{Match: handler.IsPublicHostRequest, Handler: handler},
 	}
 }
 

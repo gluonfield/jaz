@@ -14,97 +14,57 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/httpapi"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
-const pathPrefix = "/v1/preview/"
-const hostPrefix = "jaz-preview-"
+const probePath = "/.well-known/jaz-preview"
 const proxyTTL = 8 * time.Hour
 
 type Handler struct {
-	mu       sync.RWMutex
-	proxies  map[string]proxyEntry
-	proxyIDs map[string]string
+	mu              sync.RWMutex
+	proxiesByOrigin map[string]proxyEntry
+	proxiesByHost   map[string]proxyEntry
+	originTemplate  *originTemplate
 }
 
 type proxyEntry struct {
+	id        string
 	origin    *url.URL
+	host      string
 	expiresAt time.Time
 }
 
-func NewHandler() *Handler {
-	return &Handler{proxies: make(map[string]proxyEntry), proxyIDs: make(map[string]string)}
+func NewHandler(config serverconfig.Config) (*Handler, error) {
+	template, err := parseOriginTemplate(config.PreviewURLTemplate)
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{
+		proxiesByOrigin: make(map[string]proxyEntry),
+		proxiesByHost:   make(map[string]proxyEntry),
+		originTemplate:  template,
+	}, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if id, ok := HostID(r.Host); ok {
-		h.serveProxyID(w, r, id, r.URL.EscapedPath())
+	if proxy, ok := h.lookup(r.Host); ok {
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.EscapedPath() == probePath {
+			serveProbe(w)
+			return
+		}
+		h.proxy(w, r, proxy.origin, r.URL.EscapedPath())
 		return
 	}
 	if r.Method == http.MethodPost && r.URL.EscapedPath() == "/v1/preview/proxies" {
 		h.createProxy(w, r)
 		return
 	}
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		httpapi.WriteError(w, http.StatusMethodNotAllowed, fmt.Errorf("method not allowed"))
-		return
-	}
-	rest, err := previewRest(r)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusNotFound, err)
-		return
-	}
-	switch {
-	case strings.HasPrefix(rest, "p/"):
-		h.servePathProxy(w, r, strings.TrimPrefix(rest, "p/"))
-	default:
-		httpapi.WriteError(w, http.StatusNotFound, fmt.Errorf("not found"))
-	}
+	httpapi.WriteError(w, http.StatusNotFound, fmt.Errorf("not found"))
 }
 
-func previewRest(r *http.Request) (string, error) {
-	escaped := r.URL.EscapedPath()
-	if !strings.HasPrefix(escaped, pathPrefix) {
-		return "", fmt.Errorf("not found")
-	}
-	rest := strings.TrimPrefix(escaped, pathPrefix)
-	if rest == "" {
-		return "", fmt.Errorf("not found")
-	}
-	return rest, nil
-}
-
-func IsPublicHostRequest(r *http.Request) bool {
-	_, ok := HostID(r.Host)
+func (h *Handler) IsPublicHostRequest(r *http.Request) bool {
+	_, ok := h.lookup(r.Host)
 	return ok
-}
-
-func IsPublicPathRequest(r *http.Request) bool {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		return false
-	}
-	return strings.HasPrefix(r.URL.EscapedPath(), "/v1/preview/p/")
-}
-
-func HostID(hostport string) (string, bool) {
-	host := hostport
-	if parsed, _, err := net.SplitHostPort(hostport); err == nil {
-		host = parsed
-	}
-	label, _, ok := strings.Cut(strings.ToLower(strings.Trim(host, "[]")), ".")
-	if !ok || !strings.HasPrefix(label, hostPrefix) {
-		return "", false
-	}
-	id := strings.TrimPrefix(label, hostPrefix)
-	if id == "" {
-		return "", false
-	}
-	for _, c := range id {
-		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
-			return "", false
-		}
-	}
-	return id, true
 }
 
 type createProxyRequest struct {
@@ -112,8 +72,7 @@ type createProxyRequest struct {
 }
 
 type createProxyResponse struct {
-	URL         string `json:"url"`
-	FallbackURL string `json:"fallback_url"`
+	URL string `json:"url"`
 }
 
 func (h *Handler) createProxy(w http.ResponseWriter, r *http.Request) {
@@ -132,8 +91,9 @@ func (h *Handler) createProxy(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	h.mu.Lock()
 	h.pruneLocked(now)
-	id := h.proxyIDs[key]
-	if id == "" {
+	previous, ok := h.proxiesByOrigin[key]
+	id := previous.id
+	if !ok {
 		var err error
 		id, err = randomID()
 		if err != nil {
@@ -142,15 +102,36 @@ func (h *Handler) createProxy(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	h.proxies[id] = proxyEntry{origin: origin, expiresAt: now.Add(proxyTTL)}
-	h.proxyIDs[key] = id
-	h.mu.Unlock()
-	fallback := pathProxyURL(r, id, target)
-	resp := createProxyResponse{URL: hostProxyURL(r, id, target), FallbackURL: fallback}
-	if resp.URL == "" {
-		resp.URL = fallback
+	source, err := h.previewURL(r, id, target)
+	if err != nil {
+		h.mu.Unlock()
+		httpapi.WriteError(w, http.StatusServiceUnavailable, err)
+		return
 	}
-	httpapi.WriteJSON(w, http.StatusOK, resp)
+	host, err := previewHost(source)
+	if err != nil {
+		h.mu.Unlock()
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if previous.host != "" && previous.host != host {
+		delete(h.proxiesByHost, previous.host)
+	}
+	proxy := proxyEntry{id: id, origin: origin, host: host, expiresAt: now.Add(proxyTTL)}
+	h.proxiesByOrigin[key] = proxy
+	h.proxiesByHost[host] = proxy
+	h.mu.Unlock()
+	httpapi.WriteJSON(w, http.StatusOK, createProxyResponse{URL: source})
+}
+
+func (h *Handler) previewURL(r *http.Request, id string, target *url.URL) (string, error) {
+	if h.originTemplate != nil {
+		return h.originTemplate.previewURL(id, target), nil
+	}
+	if source, ok := localPreviewURL(r, id, target); ok {
+		return source, nil
+	}
+	return "", fmt.Errorf("remote preview origin is not configured; set --preview-url-template to an isolated origin containing {id}")
 }
 
 func randomID() (string, error) {
@@ -192,113 +173,51 @@ func proxyOriginURL(target *url.URL) *url.URL {
 	return &url.URL{Scheme: target.Scheme, Host: target.Host}
 }
 
-func (h *Handler) proxyOrigin(id string) (*url.URL, bool) {
+func (h *Handler) lookup(host string) (proxyEntry, bool) {
 	now := time.Now()
+	host = canonicalHost(host)
 	h.mu.RLock()
-	entry, ok := h.proxies[id]
+	entry, ok := h.proxiesByHost[host]
 	h.mu.RUnlock()
 	if !ok {
-		return nil, false
+		return proxyEntry{}, false
 	}
 	if now.After(entry.expiresAt) {
 		h.mu.Lock()
-		if latest, ok := h.proxies[id]; ok && now.After(latest.expiresAt) {
-			h.deleteProxyLocked(id, latest.origin)
+		entry, ok = h.proxiesByHost[host]
+		if ok && now.After(entry.expiresAt) {
+			h.deleteProxyLocked(entry)
+			ok = false
 		}
 		h.mu.Unlock()
-		return nil, false
+		if !ok {
+			return proxyEntry{}, false
+		}
 	}
 	copy := *entry.origin
-	return &copy, true
+	entry.origin = &copy
+	return entry, true
 }
 
 func (h *Handler) pruneLocked(now time.Time) {
-	for id, entry := range h.proxies {
+	for _, entry := range h.proxiesByOrigin {
 		if now.After(entry.expiresAt) {
-			h.deleteProxyLocked(id, entry.origin)
+			h.deleteProxyLocked(entry)
 		}
 	}
 }
 
-func (h *Handler) deleteProxyLocked(id string, origin *url.URL) {
-	delete(h.proxies, id)
-	if h.proxyIDs[origin.String()] == id {
-		delete(h.proxyIDs, origin.String())
-	}
+func (h *Handler) deleteProxyLocked(proxy proxyEntry) {
+	delete(h.proxiesByHost, proxy.host)
+	delete(h.proxiesByOrigin, proxy.origin.String())
 }
 
-func hostProxyURL(r *http.Request, id string, target *url.URL) string {
-	base, err := url.Parse(httpapi.RequestBaseURL(r))
-	if err != nil || base.Host == "" {
-		return ""
-	}
-	host, port := splitHostPort(base.Host)
-	host = previewBaseHost(host)
-	if host == "" {
-		return ""
-	}
-	base.Host = hostPrefix + id + "." + host
-	if port != "" {
-		base.Host = net.JoinHostPort(base.Host, port)
-	}
-	base.Path = target.EscapedPath()
-	base.RawQuery = target.RawQuery
-	base.Fragment = target.Fragment
-	return base.String()
-}
-
-func pathProxyURL(r *http.Request, id string, target *url.URL) string {
-	base, err := url.Parse(httpapi.RequestBaseURL(r))
-	if err != nil {
-		return ""
-	}
-	base.Path = "/v1/preview/p/" + id + target.EscapedPath()
-	base.RawQuery = target.RawQuery
-	base.Fragment = target.Fragment
-	return base.String()
-}
-
-func splitHostPort(hostport string) (string, string) {
-	host, port, err := net.SplitHostPort(hostport)
-	if err == nil {
-		return host, port
-	}
-	return strings.Trim(hostport, "[]"), ""
-}
-
-func previewBaseHost(host string) string {
-	host = strings.Trim(host, "[]")
-	if host == "" {
-		return ""
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() {
-			return "localhost"
-		}
-		return ""
-	}
-	return host
-}
-
-func (h *Handler) servePathProxy(w http.ResponseWriter, r *http.Request, tail string) {
-	id, suffix, ok := strings.Cut(tail, "/")
-	if id == "" {
-		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("proxy id is required"))
-		return
-	}
-	if !ok {
-		suffix = ""
-	}
-	h.serveProxyID(w, r, id, "/"+suffix)
-}
-
-func (h *Handler) serveProxyID(w http.ResponseWriter, r *http.Request, id, escapedPath string) {
-	target, ok := h.proxyOrigin(id)
-	if !ok {
-		httpapi.WriteError(w, http.StatusNotFound, fmt.Errorf("preview proxy not found"))
-		return
-	}
-	h.proxy(w, r, target, escapedPath)
+func serveProbe(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Expose-Headers", "X-Jaz-Preview")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-Jaz-Preview", "ready")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, target *url.URL, escapedPath string) {
@@ -317,17 +236,41 @@ func (h *Handler) proxy(w http.ResponseWriter, r *http.Request, target *url.URL,
 			}
 			out.URL.RawQuery = r.URL.RawQuery
 			out.Host = target.Host
-			out.Header.Del("Authorization")
-			out.Header.Del("Cookie")
-			out.Header.Del("Origin")
-			out.Header.Del("Referer")
-			out.Header.Del("X-Jaz-Client-Platform")
+			stripCredentials(out.Header)
+		},
+		ModifyResponse: func(response *http.Response) error {
+			rewriteLocation(response, target, httpapi.RequestBaseURL(r))
+			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			httpapi.WriteError(w, http.StatusBadGateway, err)
 		},
 	}
 	proxy.ServeHTTP(w, r)
+}
+
+func stripCredentials(header http.Header) {
+	for name := range header {
+		lower := strings.ToLower(name)
+		if lower == "authorization" || lower == "proxy-authorization" || lower == "cookie" || lower == "origin" || lower == "referer" || strings.HasPrefix(lower, "x-jaz-") {
+			header.Del(name)
+		}
+	}
+}
+
+func rewriteLocation(response *http.Response, target *url.URL, publicOrigin string) {
+	raw := response.Header.Get("Location")
+	location, err := url.Parse(raw)
+	if err != nil || location.Host == "" || !strings.EqualFold(location.Host, target.Host) || (location.Scheme != "" && !strings.EqualFold(location.Scheme, target.Scheme)) {
+		return
+	}
+	public, err := url.Parse(publicOrigin)
+	if err != nil || public.Scheme == "" || public.Host == "" {
+		return
+	}
+	location.Scheme = public.Scheme
+	location.Host = public.Host
+	response.Header.Set("Location", location.String())
 }
 
 func loopbackHost(host string) bool {

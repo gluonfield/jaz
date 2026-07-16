@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
-import { previewDisplayUrl, resolvePreviewSource, shouldProxyPreview, takePreviewFallbackSource } from '@/lib/api/preview'
+import { previewDisplayUrl, resolvePreviewSource, shouldProxyPreview } from '@/lib/api/preview'
 import type { Attachment } from '@/lib/api/types'
 import { clientRuntime } from '@/lib/clientRuntime'
 import type { BrowserAnnotation } from '@/lib/messageContext'
@@ -89,7 +89,11 @@ export function PreviewPanel({
         if (!cancelled) setResolvedSourceUrl(source)
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err.message || 'Preview failed to load.')
+        if (!cancelled) {
+          setLoading(false)
+          setWebviewReady(false)
+          setError(err.message || 'Preview failed to load.')
+        }
       })
     return () => {
       cancelled = true
@@ -148,12 +152,6 @@ export function PreviewPanel({
     const fail = (event: PreviewNavigationEvent) => {
       setLoading(false)
       if (event.errorCode === -3 || event.isMainFrame === false) return
-      const fallback = takePreviewFallbackSource(resolvedSourceUrl)
-      if (fallback) {
-        setError('')
-        setResolvedSourceUrl(fallback)
-        return
-      }
       setError(event.errorDescription || 'Preview failed to load.')
       sync(event)
     }
