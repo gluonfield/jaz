@@ -8,13 +8,22 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
 
 type codexLoginConfig struct {
 	CredentialsStore string `toml:"cli_auth_credentials_store"`
 }
 
-func PrepareAgentLoginInvocation(name string, auth AgentAuthConfig, invocation AgentLoginInvocation) error {
+func PrepareAgentLoginInvocation(name string, auth AgentAuthConfig, root string, invocation AgentLoginInvocation) error {
+	name = CanonicalAgentName(name)
+	claudeConfigDir := ""
+	if name == AgentClaude && auth.Mode == AuthModeJazProfile {
+		claudeConfigDir = invocation.Env["CLAUDE_CONFIG_DIR"]
+		if claudeConfigDir != runtimefiles.New(root).ACPClaudeConfig {
+			return fmt.Errorf("refusing to clear non-Jaz Claude profile %s", claudeConfigDir)
+		}
+	}
 	for key, dir := range invocation.Env {
 		dir = strings.TrimSpace(dir)
 		if dir == "" {
@@ -34,10 +43,13 @@ func PrepareAgentLoginInvocation(name string, auth AgentAuthConfig, invocation A
 			return fmt.Errorf("prepare login workspace %s: %w", cwd, err)
 		}
 	}
-	if CanonicalAgentName(name) == AgentCodex && auth.Mode == AuthModeJazProfile {
+	if name == AgentCodex && auth.Mode == AuthModeJazProfile {
 		if err := ensureCodexFileCredentialConfig(invocation.Env["CODEX_HOME"]); err != nil {
 			return err
 		}
+	}
+	if claudeConfigDir != "" {
+		return removeClaudeProfileCredentials(claudeConfigDir)
 	}
 	return nil
 }

@@ -112,7 +112,7 @@ func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, c
 }
 
 func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *jobState {
-	return newIdleJob(session, agentName, session.ID, cwd, localModeState())
+	return newIdleJob(session, agentName, session.ID, cwd, localModeState(), false)
 }
 
 func localModeState() ModeState {

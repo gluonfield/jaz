@@ -435,7 +435,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ac.close()
 		return fail(err)
 	}
-	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes)
+	job := newIdleJob(session, req.ACPAgent, string(acpSession.response.SessionID), absCwd, modes, claudeProcessPerTurn(req.ACPAgent, cfg))
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	ac.trackPromptSends(job)
 	m.addJob(job, ac.conn, ac.peer, ac.cancel)
@@ -477,6 +477,20 @@ func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, a
 func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	m.resumeMu.Lock()
 	defer m.resumeMu.Unlock()
+	return m.resumeLocked(ctx, ref)
+}
+
+func (m *Manager) restart(ctx context.Context, stale *jobState) (*jobState, error) {
+	m.resumeMu.Lock()
+	defer m.resumeMu.Unlock()
+	if current := m.jobByID(stale.ID); current != nil && current != stale {
+		return current, nil
+	}
+	m.teardown(stale.ID)
+	return m.resumeLocked(ctx, stale.ID)
+}
+
+func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, error) {
 	if job, err := m.job(ref); err == nil {
 		return job, nil
 	}
@@ -560,7 +574,7 @@ func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
 	if sessionChanged {
 		_ = m.store.SaveSession(session)
 	}
-	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
+	job := newIdleJob(session, agentName, acpSessionID, cwd, modes, claudeProcessPerTurn(agentName, cfg))
 	job.ParentVisible = state.ParentVisible
 	job.LastEventAt = firstNonZeroTime(state.LastEventAt, state.UpdatedAt)
 	job.LastToolAt = state.LastToolAt
@@ -660,10 +674,7 @@ func (m *Manager) Wait(ctx context.Context, req WaitRequest) (Job, error) {
 		return Job{}, err
 	}
 	done := job.turnDone()
-	job.mu.RLock()
-	state := job.State
-	job.mu.RUnlock()
-	if state != StateRunning && state != StateStarting {
+	if done == nil {
 		return job.Snapshot(), nil
 	}
 	if req.Timeout <= 0 {
@@ -809,37 +820,6 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 	}
 	m.publishOrderedACPEvents(cancelled, events...)
 	return cancelled, nil
-}
-
-func (m *Manager) teardown(id string) {
-	if job := m.jobByID(id); job != nil {
-		m.withACPTranscriptBarrier(job.Snapshot(), nil)
-	}
-	m.transcriptBuffers.delete(id)
-	m.mu.Lock()
-	job := m.jobsByID[id]
-	conn := m.connsByID[id]
-	peer := m.peersByID[id]
-	cancel := m.cancelByID[id]
-	delete(m.jobsByID, id)
-	delete(m.connsByID, id)
-	delete(m.peersByID, id)
-	delete(m.cancelByID, id)
-	delete(m.serveErrByID, id)
-	if job != nil {
-		delete(m.jobsBySlug, job.Slug)
-		delete(m.jobsByACP, job.ACPSession)
-	}
-	m.mu.Unlock()
-	if peer != nil {
-		_ = peer.Close()
-	}
-	if conn != nil {
-		_ = conn.Close()
-	}
-	if cancel != nil {
-		cancel()
-	}
 }
 
 func (m *Manager) List() []Job {

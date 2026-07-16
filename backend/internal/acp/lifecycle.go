@@ -6,6 +6,16 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 )
 
+type detachedAgentProcess struct {
+	conn   jsonrpc.MessageConn
+	peer   *jsonrpc.Peer
+	cancel context.CancelFunc
+}
+
+func claudeProcessPerTurn(name string, cfg AgentConfig) bool {
+	return CanonicalAgentName(name) == AgentClaude && cfg.URL == "" && !cfg.Local
+}
+
 func (m *Manager) Close() {
 	m.mu.Lock()
 	cancels := make([]context.CancelFunc, 0, len(m.cancelByID))
@@ -63,5 +73,66 @@ func (m *Manager) Close() {
 		}
 		m.withACPTranscriptBarrier(job.Snapshot(), nil)
 		m.transcriptBuffers.delete(job.ID)
+	}
+}
+
+func (m *Manager) detachProcessAfterTurn(job *jobState) *detachedAgentProcess {
+	if !job.processPerTurn {
+		return nil
+	}
+	m.mu.Lock()
+	process := &detachedAgentProcess{
+		conn:   m.connsByID[job.ID],
+		peer:   m.peersByID[job.ID],
+		cancel: m.cancelByID[job.ID],
+	}
+	delete(m.connsByID, job.ID)
+	delete(m.peersByID, job.ID)
+	delete(m.cancelByID, job.ID)
+	m.mu.Unlock()
+	return process
+}
+
+func (m *Manager) closeDetachedProcess(job *jobState, process *detachedAgentProcess) {
+	if process == nil {
+		return
+	}
+	m.withACPTranscriptBarrier(job.Snapshot(), nil)
+	m.transcriptBuffers.delete(job.ID)
+	closeAgentProcess(process.peer, process.conn, process.cancel)
+}
+
+func (m *Manager) teardown(id string) {
+	if job := m.jobByID(id); job != nil {
+		m.withACPTranscriptBarrier(job.Snapshot(), nil)
+	}
+	m.transcriptBuffers.delete(id)
+	m.mu.Lock()
+	job := m.jobsByID[id]
+	conn := m.connsByID[id]
+	peer := m.peersByID[id]
+	cancel := m.cancelByID[id]
+	delete(m.jobsByID, id)
+	delete(m.connsByID, id)
+	delete(m.peersByID, id)
+	delete(m.cancelByID, id)
+	delete(m.serveErrByID, id)
+	if job != nil {
+		delete(m.jobsBySlug, job.Slug)
+		delete(m.jobsByACP, job.ACPSession)
+	}
+	m.mu.Unlock()
+	closeAgentProcess(peer, conn, cancel)
+}
+
+func closeAgentProcess(peer *jsonrpc.Peer, conn jsonrpc.MessageConn, cancel context.CancelFunc) {
+	if peer != nil {
+		_ = peer.Close()
+	}
+	if conn != nil {
+		_ = conn.Close()
+	}
+	if cancel != nil {
+		cancel()
 	}
 }
