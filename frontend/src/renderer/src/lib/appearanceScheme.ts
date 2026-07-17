@@ -35,9 +35,17 @@ const scheme = (accent: string, background: string, foreground: string, contrast
 // Named example schemes. Each carries a light and dark variant; the per-mode
 // preset pickers apply the matching variant to that mode only. The first entry
 // ("Jaz") is the default — equal to it, schemeCss emits no override, so the
-// stock globals.css tokens rule.
+// stock globals.css tokens rule. "Codex" is the exact stock chrome theme from
+// ChatGPT.app (surface/ink/accent/contrast); paste a Copy theme string for any
+// custom Codex combination.
 export const THEME_PRESETS: readonly ThemePreset[] = [
   { id: 'jaz', label: 'Jaz', light: scheme('#3b5bdb', '#eef0f5', '#2a2e3a', 45), dark: scheme('#8aa6ff', '#1b1d24', '#edf0f5', 55) },
+  // Exact defaults reverse-engineered from Codex desktop chromeTheme he.light/he.dark.
+  { id: 'codex', label: 'Codex', light: scheme('#339cff', '#ffffff', '#1a1c1f', 45), dark: scheme('#339cff', '#181818', '#ffffff', 60) },
+  // Explicit chromeTheme seeds shipped with Codex code themes (not VS Code guesses).
+  { id: 'linear', label: 'Linear', light: scheme('#5e6ad2', '#fcfcfd', '#1b1b1b', 45), dark: scheme('#606acc', '#0f0f11', '#e3e4e6', 60) },
+  { id: 'raycast', label: 'Raycast', light: scheme('#ff6363', '#ffffff', '#030303', 45), dark: scheme('#ff6363', '#101010', '#fefefe', 60) },
+  { id: 'vercel', label: 'Vercel', light: scheme('#006aff', '#ffffff', '#171717', 40), dark: scheme('#006efe', '#000000', '#ededed', 50) },
   { id: 'catppuccin', label: 'Catppuccin', light: scheme('#8839ef', '#eff1f5', '#4c4f69', 45), dark: scheme('#cba6f7', '#1e1e2e', '#cdd6f4', 55) },
   { id: 'github', label: 'GitHub', light: scheme('#0969da', '#ffffff', '#1f2328', 42), dark: scheme('#2f81f7', '#0d1117', '#e6edf3', 52) },
   { id: 'gruvbox', label: 'Gruvbox', light: scheme('#af3a03', '#fbf1c7', '#3c3836', 50), dark: scheme('#fe8019', '#282828', '#ebdbb2', 55) },

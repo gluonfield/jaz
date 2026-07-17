@@ -1,6 +1,7 @@
 import { motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { Switch } from '@/components/ui/Switch'
+import { useToast } from '@/components/ui/toast'
 import { FONT_SCALES, useAppearance } from '@/lib/appearance'
 import {
   applyPreset,
@@ -11,6 +12,12 @@ import {
   THEME_PRESETS,
   useScheme,
 } from '@/lib/appearanceScheme'
+import { writeClipboard } from '@/lib/clipboard'
+import {
+  CodexThemeParseError,
+  exportCodexThemeString,
+  parseCodexThemeString,
+} from '@/lib/codexTheme'
 import { FontPicker } from './FontPicker'
 import { SettingsCard } from './SettingsCard'
 import { ThemeConfigPreview } from './ThemeConfigPreview'
@@ -132,36 +139,122 @@ function ColorField({
 }
 
 // Per-mode editor: a preset picker plus the three colors and contrast that every
-// other token is derived from (see lib/appearanceScheme.ts).
+// other token is derived from (see lib/appearanceScheme.ts). Import/Copy speak
+// Codex desktop's `codex-theme-v1:` share strings so a theme copied in Codex
+// pastes here as the exact same accent/background/foreground/contrast.
 function ThemeModeCard({ mode }: { mode: keyof ModeSchemes }) {
   const schemes = useScheme()
+  const toast = useToast()
   const s = schemes[mode]
   const presetId = THEME_PRESETS.find((p) => sameScheme(p[mode], s))?.id ?? 'custom'
+  const [importOpen, setImportOpen] = useState(false)
+  const [importText, setImportText] = useState('')
+  const label = mode === 'light' ? 'Light' : 'Dark'
+
+  const copyTheme = async () => {
+    const ok = await writeClipboard(exportCodexThemeString(s, mode))
+    if (ok) toast(`${label} theme copied`)
+    else toast(`Couldn't copy ${label.toLowerCase()} theme`, 'danger')
+  }
+
+  const importTheme = () => {
+    try {
+      const { scheme } = parseCodexThemeString(importText, mode)
+      setMode(mode, scheme)
+      setImportOpen(false)
+      setImportText('')
+      toast(`${label} theme imported`)
+    } catch (err) {
+      const msg =
+        err instanceof CodexThemeParseError
+          ? err.message
+          : `Couldn't import ${label.toLowerCase()} theme`
+      toast(msg, 'danger')
+    }
+  }
+
   return (
     <SettingsCard className="overflow-hidden">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2.5">
         <p className="text-[13px] font-medium text-ink">{mode === 'light' ? 'Light theme' : 'Dark theme'}</p>
-        <select
-          value={presetId}
-          aria-label={`${mode} theme preset`}
-          onChange={(e) => {
-            const preset = THEME_PRESETS.find((p) => p.id === e.target.value)
-            if (preset) applyPreset(mode, preset)
-          }}
-          className="cursor-pointer rounded-control bg-surface-2 px-2 py-1 text-[13px] text-ink outline-none ring-1 ring-border/60 focus:ring-1 focus:ring-primary"
-        >
-          {presetId === 'custom' ? (
-            <option value="custom" disabled>
-              Custom
-            </option>
-          ) : null}
-          {THEME_PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              setImportOpen((v) => !v)
+              setImportText('')
+            }}
+            aria-label={`Import ${mode} theme`}
+            className="cursor-pointer rounded-control px-2 py-1 text-[12px] text-ink-2 outline-none ring-1 ring-border/60 hover:bg-surface-2 hover:text-ink"
+          >
+            Import
+          </button>
+          <button
+            type="button"
+            onClick={() => void copyTheme()}
+            aria-label={`Copy ${mode} theme`}
+            className="cursor-pointer rounded-control px-2 py-1 text-[12px] text-ink-2 outline-none ring-1 ring-border/60 hover:bg-surface-2 hover:text-ink"
+          >
+            Copy theme
+          </button>
+          <select
+            value={presetId}
+            aria-label={`${mode} theme preset`}
+            onChange={(e) => {
+              const preset = THEME_PRESETS.find((p) => p.id === e.target.value)
+              if (preset) applyPreset(mode, preset)
+            }}
+            className="cursor-pointer rounded-control bg-surface-2 px-2 py-1 text-[13px] text-ink outline-none ring-1 ring-border/60 focus:ring-1 focus:ring-primary"
+          >
+            {presetId === 'custom' ? (
+              <option value="custom" disabled>
+                Custom
+              </option>
+            ) : null}
+            {THEME_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
+      {importOpen ? (
+        <div className="space-y-2 border-b border-border px-3 py-2.5">
+          <p className="text-[12px] text-ink-3">
+            Paste a Codex <span className="font-mono">codex-theme-v1:</span> share string (Appearance
+            → Copy theme).
+          </p>
+          <textarea
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            spellCheck={false}
+            rows={3}
+            aria-label={`${mode} theme share string`}
+            placeholder={`codex-theme-v1:{"variant":"${mode}",…}`}
+            className="w-full resize-y rounded-control bg-surface-2 px-2.5 py-2 font-mono text-[11px] text-ink outline-none ring-1 ring-border/60 focus:ring-1 focus:ring-primary"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setImportOpen(false)
+                setImportText('')
+              }}
+              className="cursor-pointer rounded-control px-2.5 py-1 text-[12px] text-ink-3 hover:text-ink"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={importTheme}
+              className="cursor-pointer rounded-full bg-primary px-3 py-1 text-[12px] font-medium text-on-primary hover:bg-primary-strong"
+            >
+              Import theme
+            </button>
+          </div>
+        </div>
+      ) : null}
       <ColorField title="Accent" value={s.accent} onChange={(accent) => setMode(mode, { accent })} />
       <ColorField title="Background" value={s.background} onChange={(background) => setMode(mode, { background })} />
       <ColorField title="Foreground" value={s.foreground} onChange={(foreground) => setMode(mode, { foreground })} />
@@ -241,8 +334,9 @@ export function AppearanceSettings() {
         <div>
           <p className="text-sm font-medium text-ink">Color theme</p>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            Start from a preset or set the accent, background, and foreground for light and dark
-            independently. Every other color is derived from these.
+            Start from a preset, set the accent, background, and foreground for light and dark
+            independently, or import a theme copied from Codex (Copy theme). Every other color is
+            derived from these four values.
           </p>
         </div>
         <button
