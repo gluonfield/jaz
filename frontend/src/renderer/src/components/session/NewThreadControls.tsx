@@ -133,10 +133,12 @@ export function ModelSelect({
   const typed = query.trim()
   const typedIsNew = typed !== '' && !suggestions.some((s) => s.value === typed)
   const label = value === '' ? 'Model' : modelSuggestionLabel(suggestions, value)
-  const effortValue = effort ?? ''
-  const effortLabel = reasoningEffortLabel(effortValue, effortOptions)
-  const effortStops = effortOptions.filter((option) => option.value !== '')
   const selectedSuggestion = modelSuggestionFor(suggestions, value)
+  const effortStops = effortOptions.filter((option) => option.value !== '')
+  // An unset effort still reasons at the model's own default (e.g. Grok's "high"),
+  // so surface that here — matching the slider, which anchors on default_effort too.
+  const effortValue = (effort ?? '') || selectedSuggestion?.reasoning.default_effort || ''
+  const effortLabel = reasoningEffortLabel(effortValue, effortOptions)
   const showEffortSlider = Boolean(onEffortChange) && effortStops.length > 1
   const description = `Model: ${value === '' ? 'default' : label}${
     effortValue ? `, reasoning effort: ${effortLabel}` : ''

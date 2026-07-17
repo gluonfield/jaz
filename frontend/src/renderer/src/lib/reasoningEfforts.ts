@@ -133,15 +133,6 @@ export function effectiveReasoningEffort(
   return options.some((option) => option.value === 'none') ? 'none' : ''
 }
 
-export function inheritedReasoningEffortOverride(
-  inherited: string,
-  options: ReasoningEffortOption[],
-): string | null {
-  const effort = inherited.trim()
-  if (effort === '' || supportedReasoningEffort(effort, options)) return null
-  return options.some((option) => option.value === 'none') ? 'none' : null
-}
-
 function reasoningOptions(
   settings: AgentSettings | undefined,
   agent: string,

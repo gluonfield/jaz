@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { filterModelSuggestions, modelSuggestionLabel } from './modelSuggestion'
-import { modelReasoningSelection } from './reasoningEfforts'
+import { effectiveReasoningEffort, modelReasoningSelection } from './reasoningEfforts'
 
 const input = {
   settings: undefined,
@@ -90,5 +90,29 @@ describe('modelReasoningSelection', () => {
     expect(selection.supported).toBeTrue()
     expect(selection.status).toBe('pending')
     expect(selection.blocked).toBeTrue()
+  })
+})
+
+describe('effectiveReasoningEffort', () => {
+  // Provider models (e.g. OpenRouter kimi-k3) expose Default + their efforts, never a
+  // 'none' sentinel. A stale inherited effort the model does not support must clamp to
+  // '' — this is the single value the composer both shows and launches, so a leftover
+  // 'xhigh' never reaches the backend as an unsupported reasoning_effort.
+  const providerOnlyMax = [
+    { value: '', label: 'Default' },
+    { value: 'max', label: 'Max' },
+  ]
+
+  test('clamps an unsupported effort to Default when no none option exists', () => {
+    expect(effectiveReasoningEffort('xhigh', providerOnlyMax)).toBe('')
+  })
+
+  test('passes a supported effort through unchanged', () => {
+    expect(effectiveReasoningEffort('max', providerOnlyMax)).toBe('max')
+    expect(effectiveReasoningEffort('', providerOnlyMax)).toBe('')
+  })
+
+  test('clamps to none when the model offers an explicit none option', () => {
+    expect(effectiveReasoningEffort('xhigh', [{ value: 'none', label: 'None' }])).toBe('none')
   })
 })

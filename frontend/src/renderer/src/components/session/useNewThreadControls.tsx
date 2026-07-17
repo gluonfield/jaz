@@ -6,10 +6,7 @@ import type { CreateSessionInput } from '@/lib/api/sessions'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { composerConfig } from '@/lib/jazDefaults'
 import { useModelReasoningState } from '@/lib/modelReasoning'
-import { createSessionInput, NEW_SESSION_AGENT_KEY } from '@/lib/newSessionConfig'
-import {
-  inheritedReasoningEffortOverride,
-} from '@/lib/reasoningEfforts'
+import { NEW_SESSION_AGENT_KEY } from '@/lib/newSessionConfig'
 
 export function useNewThreadControls() {
   const settingsQuery = useQuery(agentSettingsQuery)
@@ -104,19 +101,18 @@ export function useNewThreadControls() {
     effort,
     effortOptions,
     setEffort: (next: string) => setEffortOverride(next === '' ? null : next),
-    sessionConfig: (extra: { directory: string; worktree: boolean }, title?: string): CreateSessionInput =>
-      createSessionInput(
-        agentSettings,
-        {
-          agent: runtime,
-          ...extra,
-          providerOverride,
-          modelOverride,
-          effortOverride:
-            effortOverride ?? inheritedReasoningEffortOverride(model.defaultEffort, effortOptions),
-        },
-        title,
-      ),
+    // The launched config IS the resolved config shown in the UI — same model,
+    // provider, and clamped effort — so display and launch cannot diverge.
+    sessionConfig: (extra: { directory: string; worktree: boolean }, title?: string): CreateSessionInput => ({
+      ...(title ? { title } : {}),
+      runtime: 'acp',
+      agent: runtime,
+      directory: extra.directory,
+      worktree: extra.worktree,
+      ...(usesProvider && provider ? { model_provider: provider } : {}),
+      ...(selectedModel ? { model: selectedModel } : {}),
+      ...(effort ? { reasoning_effort: effort } : {}),
+    }),
   }
 }
 
