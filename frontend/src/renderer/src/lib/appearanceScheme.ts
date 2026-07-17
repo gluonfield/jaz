@@ -42,7 +42,8 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
   { id: 'jaz', label: 'Jaz', light: scheme('#3b5bdb', '#eef0f5', '#2a2e3a', 45), dark: scheme('#8aa6ff', '#1b1d24', '#edf0f5', 55) },
   // Exact defaults reverse-engineered from Codex desktop chromeTheme he.light/he.dark.
   { id: 'codex', label: 'Codex', light: scheme('#339cff', '#ffffff', '#1a1c1f', 45), dark: scheme('#339cff', '#181818', '#ffffff', 60) },
-  // Explicit chromeTheme seeds shipped with Codex code themes (not VS Code guesses).
+  // Explicit chrome seeds from Codex code themes (ChatGPT.app asar).
+  { id: 'ayu', label: 'Ayu', light: scheme('#f29718', '#fcfcfc', '#5c6166', 45), dark: scheme('#e6b450', '#10141c', '#bfbdb6', 60) },
   { id: 'linear', label: 'Linear', light: scheme('#5e6ad2', '#fcfcfd', '#1b1b1b', 45), dark: scheme('#606acc', '#0f0f11', '#e3e4e6', 60) },
   { id: 'raycast', label: 'Raycast', light: scheme('#ff6363', '#ffffff', '#030303', 45), dark: scheme('#ff6363', '#101010', '#fefefe', 60) },
   { id: 'vercel', label: 'Vercel', light: scheme('#006aff', '#ffffff', '#171717', 40), dark: scheme('#006efe', '#000000', '#ededed', 50) },
