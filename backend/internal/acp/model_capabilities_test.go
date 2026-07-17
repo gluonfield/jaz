@@ -38,7 +38,7 @@ func TestModelCapabilitiesAddsCodexUltraWithoutInventingMinimal(t *testing.T) {
 	}
 }
 
-func TestCodexUltraModelsExcludeLuna(t *testing.T) {
+func TestCodexUltraModelsUseExplicitAllowlist(t *testing.T) {
 	for _, test := range []struct {
 		model string
 		want  bool
@@ -62,6 +62,14 @@ func TestCodexUltraModelsExcludeLuna(t *testing.T) {
 	models := (ModelCapabilities{Catalog: capabilityCatalog{agents: map[string][]modelcatalog.Model{AgentCodex: {luna}}}}).AgentModels(AgentCodex)
 	if got := strings.Join(models[0].Reasoning.Efforts, ","); got != "max" {
 		t.Fatalf("Luna reasoning efforts = %q", got)
+	}
+	spark := modelcatalog.Model{
+		Value:     "gpt-5.3-codex-spark",
+		Reasoning: modelcatalog.Reasoning{Status: modelcatalog.ReasoningUnavailable},
+	}
+	models = (ModelCapabilities{Catalog: capabilityCatalog{agents: map[string][]modelcatalog.Model{AgentCodex: {spark}}}}).AgentModels(AgentCodex)
+	if containsString(models[0].Reasoning.Efforts, "ultra") {
+		t.Fatalf("non-allowlisted fallback efforts = %v", models[0].Reasoning.Efforts)
 	}
 }
 

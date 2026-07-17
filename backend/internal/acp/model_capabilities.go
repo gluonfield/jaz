@@ -166,6 +166,15 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 			resolved.Reasoning.Efforts = intersectReasoningEfforts(model.Reasoning.Efforts, supported)
 			resolved.Reasoning.DefaultEffort = model.Reasoning.DefaultEffort
 			resolved.Reasoning.Mandatory = model.Reasoning.Mandatory
+			if agent == AgentClaude && containsString(resolved.Reasoning.Efforts, "xhigh") {
+				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
+			}
+		case modelcatalog.ReasoningUnavailable:
+			if allowAgentCapabilities && model.OpenRouterID == "" {
+				resolved.Reasoning = agentReasoningCapabilities(agent, model, supported)
+			}
+		}
+		if resolved.Reasoning.Status == modelcatalog.ReasoningReady {
 			if agent == AgentCodex {
 				if isCodexUltraModel(model) {
 					resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, "ultra")
@@ -173,15 +182,8 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 					resolved.Reasoning.Efforts = slices.DeleteFunc(resolved.Reasoning.Efforts, func(value string) bool { return value == "ultra" })
 				}
 			}
-			if agent == AgentClaude && containsString(resolved.Reasoning.Efforts, "xhigh") {
-				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
-			}
 			if !containsString(resolved.Reasoning.Efforts, resolved.Reasoning.DefaultEffort) {
 				resolved.Reasoning.DefaultEffort = ""
-			}
-		case modelcatalog.ReasoningUnavailable:
-			if allowAgentCapabilities && model.OpenRouterID == "" {
-				resolved.Reasoning = agentReasoningCapabilities(agent, model, supported)
 			}
 		}
 		out = append(out, resolved)

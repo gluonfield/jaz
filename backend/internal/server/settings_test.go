@@ -219,7 +219,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if !hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Sol, "none,low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Terra, "none,low,medium,high,xhigh,max,ultra") ||
-		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Luna, "none,low,medium,high,xhigh,max,ultra") {
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Luna, "none,low,medium,high,xhigh,max") {
 		t.Fatalf("codex model options missing GPT-5.6 family %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
