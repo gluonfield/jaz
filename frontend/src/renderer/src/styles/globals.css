@@ -116,9 +116,9 @@
 
 /* Dark theme — cobalt-tinted charcoal. Surfaces grow *lighter* as they come
  * forward (inverse of the light theme); the primary lifts to a light cobalt
- * with dark on-primary text. The rainbow ramp lifts a little to stay vivid.
- * Specificity (:root.dark) clears Tailwind's :root layer. */
-:root.dark {
+ * with dark on-primary text. :where keeps the defaults below the user's
+ * :root.dark Appearance overrides, even when those load first. */
+:root:where(.dark) {
   color-scheme: dark;
 
   --color-bg: oklch(0.208 0.007 262);
