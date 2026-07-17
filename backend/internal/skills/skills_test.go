@@ -238,7 +238,7 @@ func TestSyncRemoteLeavesUserOwnedSkill(t *testing.T) {
 	}
 }
 
-func TestInstallMissingToCopiesMissingSkillsAndLeavesExistingDirs(t *testing.T) {
+func TestInstallToCopiesMissingSkillsAndLeavesExistingDirs(t *testing.T) {
 	root := t.TempDir()
 	dst := t.TempDir()
 	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
@@ -249,7 +249,7 @@ func TestInstallMissingToCopiesMissingSkillsAndLeavesExistingDirs(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	if err := InstallMissingTo(root, dst); err != nil {
+	if err := InstallTo(root, dst); err != nil {
 		t.Fatal(err)
 	}
 
@@ -265,7 +265,7 @@ func TestInstallMissingToCopiesMissingSkillsAndLeavesExistingDirs(t *testing.T) 
 	}
 
 	writeFile(t, filepath.Join(root, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Updated\n---\nnew body")
-	if err := InstallMissingTo(root, dst); err != nil {
+	if err := InstallTo(root, dst); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
@@ -277,7 +277,35 @@ func TestInstallMissingToCopiesMissingSkillsAndLeavesExistingDirs(t *testing.T) 
 	}
 }
 
-func TestInstallMissingToSkipsExistingSkillConflictsAndLeavesOrphans(t *testing.T) {
+func TestInstallToRefreshesManagedSkills(t *testing.T) {
+	root := t.TempDir()
+	dst := t.TempDir()
+	writeSkill(t, root, "alpha", "alpha", "First")
+	if err := saveSyncState(root, map[string]managedSkill{
+		"alpha": {Source: firstPartySkillSource, Name: "alpha", SHA256: "first"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+
+	writeSkill(t, root, "alpha", "alpha", "Updated")
+	writeFile(t, filepath.Join(dst, "alpha", "stale.md"), "stale")
+	if err := InstallTo(root, dst); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
+	if err != nil || !strings.Contains(string(data), "Updated") {
+		t.Fatalf("managed skill = %q, %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "alpha", "stale.md")); !os.IsNotExist(err) {
+		t.Fatalf("stale managed file remains: %v", err)
+	}
+}
+
+func TestInstallToSkipsExistingSkillConflictsAndLeavesOrphans(t *testing.T) {
 	root := t.TempDir()
 	dst := t.TempDir()
 	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
@@ -285,7 +313,7 @@ func TestInstallMissingToSkipsExistingSkillConflictsAndLeavesOrphans(t *testing.
 	writeFile(t, filepath.Join(dst, "alpha", "SKILL.md"), "user-owned")
 	writeFile(t, filepath.Join(dst, "orphan", "SKILL.md"), "user-owned orphan")
 
-	if err := InstallMissingTo(root, dst); err != nil {
+	if err := InstallTo(root, dst); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dst, "stale", "SKILL.md")); err != nil {
@@ -295,7 +323,7 @@ func TestInstallMissingToSkipsExistingSkillConflictsAndLeavesOrphans(t *testing.
 	if err := os.RemoveAll(filepath.Join(root, "skills", "stale")); err != nil {
 		t.Fatal(err)
 	}
-	if err := InstallMissingTo(root, dst); err != nil {
+	if err := InstallTo(root, dst); err != nil {
 		t.Fatal(err)
 	}
 
@@ -314,7 +342,7 @@ func TestInstallMissingToSkipsExistingSkillConflictsAndLeavesOrphans(t *testing.
 	}
 }
 
-func TestInstallMissingToToleratesConcurrentMissingSkillCopies(t *testing.T) {
+func TestInstallToToleratesConcurrentMissingSkillCopies(t *testing.T) {
 	root := t.TempDir()
 	dst := t.TempDir()
 	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
@@ -325,7 +353,7 @@ func TestInstallMissingToToleratesConcurrentMissingSkillCopies(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs <- InstallMissingTo(root, dst)
+			errs <- InstallTo(root, dst)
 		}()
 	}
 	wg.Wait()

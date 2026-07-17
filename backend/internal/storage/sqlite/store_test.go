@@ -731,7 +731,7 @@ func TestBackfillMissingThreadErrorsFromFailedToolResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call := provider.FunctionToolCall("call_1", "agent_send", `{"session":"codex"}`)
+	call := provider.FunctionToolCall("call_1", "acp_session_send", `{"session":"codex"}`)
 	if err := store.SaveMessages(session.ID, []provider.Message{
 		provider.UserMessage("ask codex"),
 		provider.AssistantMessage("", []provider.ToolCall{call}),
@@ -752,7 +752,7 @@ func TestBackfillMissingThreadErrorsFromFailedToolResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Error != "agent_send failed: context canceled" {
+	if loaded.Error != "acp_session_send failed: context canceled" {
 		t.Fatalf("error = %q", loaded.Error)
 	}
 }

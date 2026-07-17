@@ -14,12 +14,12 @@ type Tool struct {
 }
 
 type input struct {
-	Session        string `json:"session" jsonschema_description:"Spawned session id or slug."`
+	Session        string `json:"session" jsonschema_description:"External ACP session id or slug."`
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema_description:"Maximum seconds to wait. Defaults to 600. On timeout returns the current snapshot with state still running."`
 }
 
 func (t *Tool) Definition() tools.Definition {
-	return tools.Function("agent_wait", "Wait for a spawned ACP agent session to finish its current turn.", true, helpers.GenerateSchema[input]())
+	return tools.Function(acp.ToolACPSessionWait, "Wait for an external ACP session to finish its current turn.", true, helpers.GenerateSchema[input]())
 }
 
 func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {

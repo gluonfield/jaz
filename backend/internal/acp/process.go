@@ -408,7 +408,7 @@ func preserveRuntimeHome(env map[string]string) {
 }
 
 func (m *Manager) installAgentSkills(agent, root, dst string) {
-	if err := skills.InstallMissingTo(root, dst); err != nil {
+	if err := skills.InstallTo(root, dst); err != nil {
 		m.log.Warn("install acp skills failed", "agent", agent, "path", dst, "error", err)
 	}
 }

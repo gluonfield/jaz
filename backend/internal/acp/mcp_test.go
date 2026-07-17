@@ -142,7 +142,7 @@ func TestMCPAdvertisesAgentOptionsSeparatelyFromAgentList(t *testing.T) {
 	for _, tool := range tools.Tools {
 		names[tool.Name] = true
 	}
-	for _, name := range []string{MCPToolAgentOptions, MCPToolAgentList} {
+	for _, name := range []string{ToolACPAgentOptions, ToolACPSessionList} {
 		if !names[name] {
 			t.Fatalf("missing tool %s in %#v", name, names)
 		}
@@ -183,7 +183,7 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	session, closeSession := connectMCPClient(t, server)
 	defer closeSession()
 
-	for _, name := range []string{MCPToolAgentStatus, MCPToolAgentWait, MCPToolAgentCancel} {
+	for _, name := range []string{ToolACPSessionStatus, ToolACPSessionWait, ToolACPSessionCancel} {
 		call, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      name,
 			Arguments: map[string]any{"session": "child"},
@@ -203,7 +203,7 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 		}
 	}
 
-	listCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: MCPToolAgentList})
+	listCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: ToolACPSessionList})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	}
 
 	optionsCall, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      MCPToolAgentOptions,
+		Name:      ToolACPAgentOptions,
 		Arguments: map[string]any{"agent": AgentCodex, "name": "gpt"},
 	})
 	if err != nil {

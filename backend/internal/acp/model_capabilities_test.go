@@ -38,6 +38,33 @@ func TestModelCapabilitiesAddsCodexUltraWithoutInventingMinimal(t *testing.T) {
 	}
 }
 
+func TestCodexUltraModelsExcludeLuna(t *testing.T) {
+	for _, test := range []struct {
+		model string
+		want  bool
+	}{
+		{provider.OpenAIModelGPT56Sol, true},
+		{provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Terra, true},
+		{provider.OpenAIModelGPT56Luna, false},
+		{provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Luna, false},
+	} {
+		if got := isCodexUltraModel(modelcatalog.Model{Value: test.model}); got != test.want {
+			t.Fatalf("isCodexUltraModel(%q) = %v, want %v", test.model, got, test.want)
+		}
+	}
+	luna := modelcatalog.Model{
+		Value: provider.OpenAIModelGPT56Luna,
+		Reasoning: modelcatalog.Reasoning{
+			Status:  modelcatalog.ReasoningReady,
+			Efforts: []string{"max", "ultra"},
+		},
+	}
+	models := (ModelCapabilities{Catalog: capabilityCatalog{agents: map[string][]modelcatalog.Model{AgentCodex: {luna}}}}).AgentModels(AgentCodex)
+	if got := strings.Join(models[0].Reasoning.Efforts, ","); got != "max" {
+		t.Fatalf("Luna reasoning efforts = %q", got)
+	}
+}
+
 func TestModelCapabilitiesUsesAgentScopedGrokEfforts(t *testing.T) {
 	capabilities := ModelCapabilities{Catalog: modelcatalog.NewService(nil)}
 	models := capabilities.AgentModels(AgentGrok)
