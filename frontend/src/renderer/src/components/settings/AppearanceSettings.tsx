@@ -254,7 +254,7 @@ export function AppearanceSettings() {
         </button>
       </div>
 
-      <div className="mt-4 space-y-4">
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <ThemeModeCard mode="light" />
         <ThemeModeCard mode="dark" />
       </div>
