@@ -16,7 +16,7 @@ type output struct {
 }
 
 func (t *Tool) Definition() tools.Definition {
-	return tools.Function("agent_list", "List active spawned ACP agent sessions.", true, map[string]any{
+	return tools.Function(acp.ToolACPSessionList, "List active external ACP sessions.", true, map[string]any{
 		"type":                 "object",
 		"properties":           map[string]any{},
 		"required":             []string{},

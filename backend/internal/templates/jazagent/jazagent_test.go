@@ -12,10 +12,11 @@ func TestRenderRulesOnly(t *testing.T) {
 	}
 	for _, want := range []string{
 		"You are Jaz",
-		"Treat user phrasing like \"spawn an agent\", \"launch an ACP agent\", \"delegate this\", or \"ask another coding agent\" as a request to use the internal ACP agent tools: agent_spawn, agent_options, agent_send, agent_wait, agent_status, agent_cancel, and agent_list.",
+		"Use the external ACP session tools only when the user explicitly asks to run work in a separate ACP session: acp_session_create, acp_agent_options, acp_session_send, acp_session_wait, acp_session_status, acp_session_cancel, and acp_session_list.",
+		"Merely discussing or reviewing an ACP harness does not authorize a separate session.",
 		"Do not inspect or invoke local agent CLIs unless the user explicitly asks for the local CLI.",
-		"agent_spawn only starts a session; send work with agent_send.",
-		"Omit model overrides unless the user asks for a specific model. Use agent_options({}) when you need spawnable agents and useful model choices",
+		"acp_session_create only creates an external session; send work with acp_session_send.",
+		"Omit model overrides unless the user asks for a specific model. Use acp_agent_options({}) when you need available harnesses and useful model choices",
 		"Use worktree=true for isolated repo changes; add branch when the new worktree should start from a specific branch/ref.",
 		"For reviewing another session's worktree, pass that worktree as directory without worktree=true.",
 		"Use plan=true for delegated planning/review/proposal tasks.",

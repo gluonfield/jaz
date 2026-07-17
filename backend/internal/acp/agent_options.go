@@ -84,7 +84,7 @@ func (m *Manager) agentOptions(agents []string, query string) ([]AgentSpawnOptio
 				option.ModelSearch = &AgentModelSearch{
 					Provider: provider.ProviderOpenRouter,
 					Limit:    agentOptionsProviderModelLimit,
-					Use:      `agent_options({"agent":"` + agent + `","name":"<model name or provider>"})`,
+					Use:      `acp_agent_options({"agent":"` + agent + `","name":"<model name or provider>"})`,
 				}
 			}
 		}

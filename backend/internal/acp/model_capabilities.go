@@ -3,6 +3,7 @@ package acp
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -165,8 +166,12 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 			resolved.Reasoning.Efforts = intersectReasoningEfforts(model.Reasoning.Efforts, supported)
 			resolved.Reasoning.DefaultEffort = model.Reasoning.DefaultEffort
 			resolved.Reasoning.Mandatory = model.Reasoning.Mandatory
-			if agent == AgentCodex && isCodexUltraModel(model) {
-				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, "ultra")
+			if agent == AgentCodex {
+				if isCodexUltraModel(model) {
+					resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, "ultra")
+				} else {
+					resolved.Reasoning.Efforts = slices.DeleteFunc(resolved.Reasoning.Efforts, func(value string) bool { return value == "ultra" })
+				}
 			}
 			if agent == AgentClaude && containsString(resolved.Reasoning.Efforts, "xhigh") {
 				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
@@ -211,10 +216,8 @@ func isCodexUltraModel(model modelcatalog.Model) bool {
 	switch id {
 	case provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Sol,
 		provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Terra,
-		provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Luna,
 		provider.OpenAIModelGPT56Sol,
-		provider.OpenAIModelGPT56Terra,
-		provider.OpenAIModelGPT56Luna:
+		provider.OpenAIModelGPT56Terra:
 		return true
 	}
 	return false

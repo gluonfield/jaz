@@ -13,11 +13,11 @@ type Tool struct {
 }
 
 type input struct {
-	Session string `json:"session" jsonschema_description:"Spawned session id or slug."`
+	Session string `json:"session" jsonschema_description:"External ACP session id or slug."`
 }
 
 func (t *Tool) Definition() tools.Definition {
-	return tools.Function("agent_cancel", "Cancel a spawned ACP agent session's current turn.", true, helpers.GenerateSchema[input]())
+	return tools.Function(acp.ToolACPSessionCancel, "Cancel an external ACP session's current turn.", true, helpers.GenerateSchema[input]())
 }
 
 func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
