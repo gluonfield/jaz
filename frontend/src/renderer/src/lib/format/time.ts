@@ -15,6 +15,14 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return shortDate(iso)
 }
 
+// Sidebar recency cue: only meaningful while the chat is fresh, so past
+// `maxDays` the label is dropped and the row goes quiet.
+export function recentTime(iso: string, maxDays = 3, now = Date.now()): string {
+  const then = new Date(iso).getTime()
+  if (!Number.isFinite(then) || then <= 0 || now - then >= maxDays * DAY) return ''
+  return relativeTime(iso, now)
+}
+
 // "Jun 16" — the app's standard compact calendar label.
 export function shortDate(iso: string): string {
   const date = new Date(iso)

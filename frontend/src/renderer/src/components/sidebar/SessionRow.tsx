@@ -9,7 +9,7 @@ import { Modal } from '@/components/ui/Modal'
 import { ContextMenu, MenuRow } from '@/components/ui/Popover'
 import { setSessionArchived, setSessionPinned, setSessionTitle } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
-import { relativeTime } from '@/lib/format/time'
+import { recentTime } from '@/lib/format/time'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { RuntimeBadge } from './RuntimeBadge'
@@ -58,6 +58,7 @@ export function SessionRow({
   showRuntimeBadge?: boolean
 }) {
   const shortcut = shortcutMode && shortcutIndex ? shortcutIndex : undefined
+  const timeLabel = recentTime(session.last_attention_at || session.updated_at)
   const [rename, setRename] = useState<null | 'inline' | 'modal'>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const menuTriggers = useContextMenuTrigger(setMenu)
@@ -84,7 +85,7 @@ export function SessionRow({
         {inlineEditing ? (
           <RenameField session={session} onDone={() => setRename(null)} />
         ) : (
-          <span className="min-w-0 flex-1 truncate" title={sessionLabel(session)}>
+          <span className="min-w-0 flex-1 truncate-fade" title={sessionLabel(session)}>
             {sessionLabel(session)}
           </span>
         )}
@@ -101,15 +102,15 @@ export function SessionRow({
           >
             <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-running" />
           </span>
-        ) : (
+        ) : timeLabel ? (
           <span
             className={`min-w-8 shrink-0 text-right text-[11px] tabular-nums ${
               shortcutMode ? 'text-ink-3' : 'text-ink-3 group-hover:hidden'
             }`}
           >
-            {relativeTime(session.last_attention_at || session.updated_at)}
+            {timeLabel}
           </span>
-        )}
+        ) : null}
         {shortcutMode || inlineEditing ? null : (
           <>
             <PinButton session={session} />

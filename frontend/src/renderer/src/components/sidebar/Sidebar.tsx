@@ -29,6 +29,10 @@ const DEFAULT_SESSION_LIMIT = 5
 const MORE_ACTION_CLASS =
   'flex h-8 items-center rounded-full px-2.5 text-[13px] text-ink-3 opacity-80 transition-[background-color,color,opacity] duration-150 hover:bg-surface-2 hover:text-ink hover:opacity-100 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
 
+// Group headings (Pinned, project names) share one anchor style so they stay
+// stronger than the chat rows beneath them.
+const SECTION_HEADING_CLASS = 'pb-1 text-[13px] font-semibold text-ink max-sm:text-[15px]'
+
 const ROW_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 34 }
 
 type SessionProjectGroup = {
@@ -265,7 +269,7 @@ function ProjectGroup({
           >
             <GripVertical size={13} />
           </button>
-          <p className="min-w-0 truncate pb-1 text-[11px] font-medium text-ink-3 max-sm:text-[13px]" title={group.label}>
+          <p className={`min-w-0 truncate ${SECTION_HEADING_CLASS}`} title={group.label}>
             {group.label}
           </p>
         </div>
@@ -397,9 +401,7 @@ function SessionsSection({ open }: { open: boolean }) {
         <div className="flex flex-col gap-3">
           {pinnedBlock ? (
             <div>
-              <p className="px-2 pb-1 text-[11px] font-semibold tracking-wide text-ink-3 max-sm:text-[13px]">
-                {pinnedBlock.label}
-              </p>
+              <p className={`px-2 ${SECTION_HEADING_CLASS}`}>{pinnedBlock.label}</p>
               <SessionRows items={pinnedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
             </div>
           ) : null}
@@ -449,17 +451,17 @@ function FeedLink() {
       className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
       activeProps={{ className: 'bg-primary-soft!' }}
     >
-      <span className="relative grid size-[18px] shrink-0 place-items-center">
+      <span className="grid size-[18px] shrink-0 place-items-center">
         <Inbox size={15} className="text-ink-2 max-sm:size-[18px]" />
-        {count > 0 ? (
-          // A div (not span): the sidebar force-colors span text to --color-ink in
-          // dark mode, which would erase the count on the bg-ink bubble.
-          <div className="absolute top-0 right-0 inline-flex h-[14px] min-w-[14px] translate-x-[35%] -translate-y-[25%] items-center justify-center rounded-full bg-ink px-1 text-[9px] font-semibold leading-none tabular-nums text-bg">
-            {label}
-          </div>
-        ) : null}
       </span>
       <span className="flex-1">Feed</span>
+      {count > 0 ? (
+        // A div (not span): the sidebar force-colors span text to --color-ink in
+        // dark mode, which would erase the count on the bg-ink bubble.
+        <div className="inline-flex h-[14px] min-w-[14px] items-center justify-center rounded-full bg-ink px-1 text-[9px] font-semibold leading-none tabular-nums text-bg">
+          {label}
+        </div>
+      ) : null}
     </Link>
   )
 }
@@ -697,8 +699,6 @@ export function Sidebar({
           <span className="flex-1">New task</span>
           <KeyboardShortcut value="N" className="max-sm:hidden" />
         </Link>
-
-        <FeedLink />
       </div>
 
       <div
@@ -716,6 +716,8 @@ export function Sidebar({
         onScroll={updateNavEdge}
         className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 max-sm:gap-6 max-sm:px-4"
       >
+        <FeedLink />
+
         <SessionsSection open={open} />
 
         <LoopsSection />

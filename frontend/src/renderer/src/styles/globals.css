@@ -78,6 +78,17 @@
 
 }
 
+/* Single-line label that dissolves its overflow into a fade rather than the
+ * default ellipsis. On a flex-1 label short text ends before the fade edge so
+ * it stays fully opaque; only text that runs long gets softened. */
+@utility truncate-fade {
+  --fade-edge: 0.75rem;
+  overflow: hidden;
+  white-space: nowrap;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--fade-edge)), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--fade-edge)), transparent);
+}
+
 @utility z-dropdown {
   z-index: var(--z-dropdown);
 }
