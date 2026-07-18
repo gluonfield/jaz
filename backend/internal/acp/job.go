@@ -69,7 +69,7 @@ type activeTurn struct {
 	firstPromptSentClosed bool
 	promptHandoff         chan struct{}
 	promptCalls           int
-	planProposal          *sessionevents.PlanEvent
+	planDocument          string
 }
 
 type ModeState struct {
