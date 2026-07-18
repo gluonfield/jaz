@@ -110,8 +110,8 @@ function BoardPage() {
         prev ? { ...prev, board: { ...prev.board, name } } : prev,
       )
     },
-    // keys.boards is a prefix of boardDetail, so this refreshes the sidebar
-    // list and this page in one invalidation.
+    // keys.boards is a prefix of boardDetail, so this refreshes the boards
+    // index page and this page in one invalidation.
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.boards }),
   })
 
