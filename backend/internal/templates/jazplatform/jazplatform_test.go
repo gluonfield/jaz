@@ -56,6 +56,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	prompt = normalizeNewlines(prompt)
 	assertOrder(t, prompt,
 		"## Jaz platform",
+		"## Structured progress",
+		"Do not batch status changes at the end.",
 		"Date: June 16, 2026",
 		"Time: 12:34:56 BST",
 		"Timezone: BST (UTC+01:00)",

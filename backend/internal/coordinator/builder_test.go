@@ -109,6 +109,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
+		"Structured plan updates are user-visible live progress, even outside Plan mode.",
 		"Date: ",
 		"Time: ",
 		"Timezone: ",
