@@ -8,7 +8,7 @@ import { Collapse } from '@/components/ui/Collapse'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { feedQuery } from '@/lib/api/feed'
-import { activeRunStatus, loopsQuery } from '@/lib/api/loops'
+import { activeRunStatus, loopsQuery, TONE_DOT } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
 import { useShowModelIcons } from '@/lib/appearance'
 import { modalDialogOpen } from '@/lib/dom/modal'
@@ -546,9 +546,9 @@ function LoopsLink() {
       label="Loops"
       badge={
         running ? (
-          <span title="A loop is running" className="size-1.5 shrink-0 animate-pulse rounded-full bg-running" />
+          <span title="A loop is running" className={`size-1.5 shrink-0 rounded-full ${TONE_DOT.running}`} />
         ) : failed ? (
-          <span title="A loop failed" className="size-1.5 shrink-0 rounded-full bg-danger" />
+          <span title="A loop failed" className={`size-1.5 shrink-0 rounded-full ${TONE_DOT.failed}`} />
         ) : null
       }
     />
@@ -633,15 +633,12 @@ export function Sidebar({
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
       <div className="flex shrink-0 flex-col px-3 pb-px max-sm:px-4">
-        <Link
+        <NavLink
           to="/new"
-          className={NAV_LINK_CLASS}
-          activeProps={{ className: 'bg-primary-soft!' }}
-        >
-          <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
-          <span className="flex-1">New task</span>
-          <KeyboardShortcut value="N" className="max-sm:hidden" />
-        </Link>
+          icon={<SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />}
+          label="New task"
+          badge={<KeyboardShortcut value="N" className="max-sm:hidden" />}
+        />
       </div>
 
       <div

@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router'
-import type { LoopCreatedEvent } from '@/lib/api/types'
 import { compactSchedule } from '@/components/loops/schedule'
+import { TONE_DOT } from '@/lib/api/loops'
+import type { LoopCreatedEvent } from '@/lib/api/types'
 
 function nextRunLabel(iso?: string): string {
   if (!iso) return ''
@@ -29,7 +30,7 @@ export function LoopCreatedCard({ loop }: { loop: LoopCreatedEvent }) {
       <div className="flex items-center justify-between gap-3">
         <span className="text-[12px] text-ink-3">Loop scheduled</span>
         <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-3">
-          <span className={`size-1.5 rounded-full ${paused ? 'bg-ink-3/40' : 'bg-primary'}`} aria-hidden />
+          <span className={`size-1.5 rounded-full ${TONE_DOT[paused ? 'paused' : 'active']}`} aria-hidden />
           {paused ? 'Paused' : 'Active'}
         </span>
       </div>

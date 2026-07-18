@@ -2,7 +2,7 @@ import { queryOptions } from '@tanstack/react-query'
 import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
 import { del, get, patch, post } from './client'
-import type { Loop, LoopRun } from './types'
+import type { Loop, LoopRun, LoopRunStatus } from './types'
 
 export interface LoopInput {
   name?: string
@@ -21,7 +21,27 @@ export interface LoopInput {
   board_ids?: string[]
 }
 
-export const activeRunStatus = (status?: string) => status === 'starting' || status === 'running'
+export const activeRunStatus = (status?: LoopRunStatus) => status === 'starting' || status === 'running'
+
+// Shared loop status → indicator model: loop-level dots, pills, and the
+// legend key off these tones. Per-run dots (ok/cancelled/skipped) stay local.
+export type LoopTone = 'failed' | 'running' | 'paused' | 'active'
+
+export const loopTone = (lastRunStatus?: LoopRunStatus, status?: Loop['status']): LoopTone =>
+  lastRunStatus === 'error'
+    ? 'failed'
+    : activeRunStatus(lastRunStatus)
+      ? 'running'
+      : status === 'paused'
+        ? 'paused'
+        : 'active'
+
+export const TONE_DOT: Record<LoopTone, string> = {
+  failed: 'bg-danger',
+  running: 'bg-running animate-pulse',
+  paused: 'bg-ink-3/40',
+  active: 'bg-primary',
+}
 
 export const loopsQuery = queryOptions({
   queryKey: keys.loops,
