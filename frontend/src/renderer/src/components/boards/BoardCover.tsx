@@ -1,68 +1,40 @@
 import { useQuery } from '@tanstack/react-query'
-import { motion, useReducedMotion } from 'motion/react'
-import { SCANLINE_BACKGROUND, SCANLINE_MASK } from '@/components/ui/rainbow'
 import { boardDetailQuery } from '@/lib/api/boards'
 import { activeRunStatus } from '@/lib/api/loops'
 import type { Board, BoardItem } from '@/lib/api/types'
 
-// Rows shown before the miniature crops; tall boards fade below the fold.
-const COVER_ROW_CAP = 4
+// A deliberately simple preview: the board's first widgets in reading order on
+// a uniform grid. Real layouts can overlap, so the cover never mirrors x/y/w/h.
+const COVER_TILES = 6
 
-// A real miniature of the board: its actual widget layout at postage-stamp
-// scale, so every card previews exactly the board it opens.
 export function BoardCover({ board }: { board: Board }) {
-  const reduce = useReducedMotion()
   // The index only needs a snapshot; the detail page owns live polling.
   const detail = useQuery({ ...boardDetailQuery(board.id), refetchInterval: false })
-  const items = detail.data?.items ?? []
-  const cols = board.grid_cols > 0 ? board.grid_cols : 6
-  const rows = Math.min(COVER_ROW_CAP, Math.max(2, ...items.map((item) => item.y + item.h)))
+  const tiles = [...(detail.data?.items ?? [])]
+    .sort((a, b) => a.y - b.y || a.x - b.x)
+    .slice(0, COVER_TILES)
   return (
-    <motion.div
+    <div
       aria-hidden
-      whileHover={reduce ? undefined : 'hover'}
       className="relative overflow-hidden rounded-card bg-bg p-2.5 ring-1 ring-border/60 transition-[box-shadow,--tw-ring-color] duration-200 group-hover:shadow-[0_10px_28px_-14px_rgb(0_0_0/0.3)] group-hover:ring-primary/35"
       style={{
         backgroundImage: 'radial-gradient(var(--color-border) 1px, transparent 1px)',
         backgroundSize: '14px 14px',
       }}
     >
-      <div className="aspect-[16/9.2] overflow-hidden">
-        {items.length > 0 ? (
-          <div
-            className="grid h-full gap-1.5"
-            style={{
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-              gridAutoRows: `${100 / rows}%`,
-            }}
-          >
-            {items.map((item) => (
-              <CoverTile key={item.widget_id} item={item} />
-            ))}
-          </div>
-        ) : detail.isPending ? (
-          <div className="grid h-full grid-cols-3 grid-rows-2 gap-1.5">
-            <div className="col-span-2 animate-pulse rounded-[5px] bg-surface" />
-            <div className="animate-pulse rounded-[5px] bg-surface" />
-            <div className="animate-pulse rounded-[5px] bg-surface" />
-          </div>
-        ) : (
-          <div className="grid h-full place-items-center">
-            <span className="rounded-[5px] border border-dashed border-border px-2 py-1 text-[10px] text-ink-3">
-              Empty board
-            </span>
-          </div>
-        )}
+      <div className="grid aspect-[16/9.2] grid-cols-3 grid-rows-2 gap-1.5">
+        {detail.isPending
+          ? [0, 1, 2].map((i) => <div key={i} className="animate-pulse rounded-[5px] bg-surface" />)
+          : tiles.map((item) => <CoverTile key={item.widget_id} item={item} />)}
       </div>
-      <motion.div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: SCANLINE_BACKGROUND, maskImage: SCANLINE_MASK, WebkitMaskImage: SCANLINE_MASK, x: '-60%', opacity: 0 }}
-        variants={{
-          hover: { x: ['-60%', '60%'], opacity: [0, 0.85, 0.85, 0], transition: { duration: 0.6, ease: 'easeInOut' } },
-        }}
-      />
-    </motion.div>
+      {detail.data && tiles.length === 0 ? (
+        <div className="absolute inset-0 grid place-items-center">
+          <span className="rounded-[5px] border border-dashed border-border px-2 py-1 text-[10px] text-ink-3">
+            Empty board
+          </span>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -76,10 +48,7 @@ function CoverTile({ item }: { item: BoardItem }) {
           ? 'bg-ink-3/40'
           : 'bg-primary'
   return (
-    <div
-      style={{ gridColumn: `${item.x + 1} / span ${item.w}`, gridRow: `${item.y + 1} / span ${item.h}` }}
-      className="flex min-h-0 flex-col overflow-hidden rounded-[5px] bg-surface p-1.5"
-    >
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-[5px] bg-surface p-1.5">
       <div className="flex shrink-0 items-center gap-1">
         <span className={`size-1 shrink-0 rounded-full ${dot}`} />
         <span className="min-w-0 truncate text-[9px] font-medium leading-tight text-ink-2">
@@ -88,7 +57,7 @@ function CoverTile({ item }: { item: BoardItem }) {
       </div>
       <div className="mt-1.5 flex min-h-0 flex-col gap-1 overflow-hidden">
         <span className="h-1 w-4/5 rounded-full bg-ink/10" />
-        {item.h > 1 ? <span className="h-1 w-3/5 rounded-full bg-ink/10" /> : null}
+        <span className="h-1 w-3/5 rounded-full bg-ink/10" />
       </div>
     </div>
   )

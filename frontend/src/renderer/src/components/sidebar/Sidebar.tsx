@@ -489,8 +489,10 @@ function SessionsSection({ open }: { open: boolean }) {
   )
 }
 
+// Same row metrics as SessionRow (h-8 / max-sm:h-11, 1px gaps) so the rail
+// reads as one rhythm from New task down through the chat lists.
 const NAV_LINK_CLASS =
-  'group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]'
+  'group flex h-8 items-center gap-2 rounded-full px-2.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
 
 function NavLink({
   to,
@@ -630,10 +632,10 @@ export function Sidebar({
           that should dismiss the full-screen drawer, so drop it there. */}
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
-      <div className="flex shrink-0 flex-col gap-0.5 px-3 max-sm:gap-1 max-sm:px-4">
+      <div className="flex shrink-0 flex-col px-3 pb-px max-sm:px-4">
         <Link
           to="/new"
-          className="group flex items-center gap-2 rounded-full px-2.5 py-1.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
+          className={NAV_LINK_CLASS}
           activeProps={{ className: 'bg-primary-soft!' }}
         >
           <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
@@ -657,7 +659,7 @@ export function Sidebar({
         onScroll={updateNavEdge}
         className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 max-sm:gap-6 max-sm:px-4"
       >
-        <div className="flex flex-col gap-0.5 max-sm:gap-1">
+        <div className="flex flex-col gap-px">
           <FeedLink />
           <LoopsLink />
           <NavLink
