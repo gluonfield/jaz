@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Circle, LoaderCircle } from 'lucide-react'
+import { Check, ChevronDown, Circle, CircleCheck, LoaderCircle } from 'lucide-react'
 import { memo, useState } from 'react'
 import { useOverflowing } from '@/lib/hooks/useOverflowing'
 import { taskStepState, type TaskStepState, type TaskSurface } from '@/lib/taskSurface'
@@ -8,6 +8,8 @@ import { MessageMarkdown } from './MessageMarkdown'
 
 export function TaskStepIcon({ state, active }: { state: TaskStepState; active: boolean }) {
   switch (state) {
+    case 'completed':
+      return <CircleCheck size={14} className="text-primary" strokeWidth={2.25} aria-hidden />
     case 'active':
       return (
         <LoaderCircle
