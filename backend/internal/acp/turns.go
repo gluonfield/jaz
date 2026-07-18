@@ -147,7 +147,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	job.turn = nil
 	completion := turn.completion
 	planRequested := turn.planRequested
-	planProposal := clonePlanEvent(turn.planProposal)
+	planDocument := turn.planDocument
 	parentVisible := job.ParentVisible
 	job.mu.Unlock()
 	m.closeDetachedProcess(job, process)
@@ -155,8 +155,11 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
-		if snapshot.State == StateIdle && planTurnDefersResult(planRequested, snapshot.ACPAgent) {
-			m.publishPlanTurnResult(snapshot, planProposal)
+		if snapshot.State == StateIdle && planDocument != "" {
+			m.publishPlanEvent(snapshot, sessionevents.PlanEvent{
+				Explanation:      planDocument,
+				AwaitingApproval: true,
+			})
 		}
 		m.compactSessionEvents(snapshot.ID)
 		m.touchAttention(surfaceSessionIDs(&snapshot)...)
