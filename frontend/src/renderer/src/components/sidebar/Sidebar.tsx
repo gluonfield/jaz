@@ -50,7 +50,7 @@ type SessionSections = {
 
 type SessionDisplayBlock =
   | { kind: 'pinned'; key: 'pinned'; label: 'Pinned'; items: SessionListItem[] }
-  | { kind: 'project'; key: string; group: SessionProjectGroup; items: SessionListItem[] }
+  | { kind: 'project'; key: string; group: SessionProjectGroup; items: SessionListItem[]; collapsed: boolean }
   | { kind: 'ungrouped'; key: 'ungrouped'; items: SessionListItem[]; total: number }
 
 function explicitSessionProjectPath(item: SessionListItem): string {
@@ -150,8 +150,7 @@ function storeCollapsedProjects(paths: Set<string>): void {
   }
 }
 
-function visibleProjectItems(group: SessionProjectGroup, showAll: boolean, collapsed: boolean): SessionListItem[] {
-  if (collapsed) return []
+function projectSessionSlice(group: SessionProjectGroup, showAll: boolean): SessionListItem[] {
   return showAll ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
 }
 
@@ -177,7 +176,8 @@ function sessionDisplayBlocks(
     kind: 'project',
     key: group.key,
     group,
-    items: visibleProjectItems(group, showAllProjects.has(group.key), collapsedProjects.has(group.key)),
+    items: projectSessionSlice(group, showAllProjects.has(group.key)),
+    collapsed: collapsedProjects.has(group.key),
   }))
   if (ungrouped.length) {
     const ungroupedBlock: SessionDisplayBlock = {
@@ -395,7 +395,10 @@ function SessionsSection({ open }: { open: boolean }) {
   )
   const hasSessions = blocks.length > 0
   const shortcutItems = useMemo(
-    () => blocks.flatMap((block) => block.items).slice(0, 9),
+    () =>
+      blocks
+        .flatMap((block) => block.kind === 'project' && block.collapsed ? [] : block.items)
+        .slice(0, 9),
     [blocks],
   )
   const shortcutByID = useMemo(
@@ -469,7 +472,7 @@ function SessionsSection({ open }: { open: boolean }) {
                     key={block.key}
                     group={block.group}
                     items={block.items}
-                    collapsed={collapsedProjects.has(block.key)}
+                    collapsed={block.collapsed}
                     onToggle={() => toggleProject(block.key)}
                     onShowMore={() => expandProject(block.key)}
                     onReorderEnd={commitReorder}
