@@ -116,18 +116,26 @@ function PaletteRow({
 
 export function CommandRow({
   item,
+  active,
   ...row
 }: {
   item: PaletteCommand
 } & Omit<PaletteRowProps, 'className' | 'children'>) {
   const Icon = item.icon
   return (
-    <PaletteRow {...row} className="min-h-[34px] items-center py-1.5">
+    <PaletteRow {...row} active={active} className="min-h-[34px] items-center py-1.5">
       {Icon ? (
-        <Icon size={16} className="shrink-0 text-ink-3 transition-colors group-hover:text-ink-2" />
+        <Icon
+          size={16}
+          className={`shrink-0 transition-colors group-hover:text-ink-2 ${
+            active ? 'text-ink-2' : 'text-ink-3'
+          }`}
+        />
       ) : null}
       <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{item.title}</span>
-      {item.shortcut ? <KeyboardShortcut value={item.shortcut} className="bg-surface-2" /> : null}
+      {item.shortcut ? (
+        <KeyboardShortcut value={item.shortcut} className="border-transparent bg-surface-2" />
+      ) : null}
     </PaletteRow>
   )
 }
