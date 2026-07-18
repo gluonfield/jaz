@@ -77,7 +77,7 @@ function asNullableFont(v: unknown): string | null {
 
 function mergeChrome(partial: Partial<CodexChromeTheme> | undefined, base: CodexChromeTheme): CodexChromeTheme {
   const p = partial ?? {}
-  const sc = p.semanticColors ?? {}
+  const sc: Partial<CodexChromeTheme['semanticColors']> = p.semanticColors ?? {}
   return {
     accent: isHex(p.accent) ? normalizeHex(p.accent) : base.accent,
     contrast: clampContrast(p.contrast, base.contrast),
