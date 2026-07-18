@@ -11,7 +11,7 @@ import (
 
 var installMu sync.Mutex
 
-func InstallMissingTo(root, dstRoot string) error {
+func InstallTo(root, dstRoot string) error {
 	installMu.Lock()
 	defer installMu.Unlock()
 
@@ -26,12 +26,38 @@ func InstallMissingTo(root, dstRoot string) error {
 	if err := os.MkdirAll(dstRoot, 0o755); err != nil {
 		return err
 	}
+	managed, err := loadSyncState(root)
+	if err != nil {
+		return err
+	}
 	for _, skill := range catalog.Skills {
-		if err := installMissingSkill(filepath.Dir(skill.Path), filepath.Join(dstRoot, filepath.Base(filepath.Dir(skill.Path)))); err != nil {
+		src := filepath.Dir(skill.Path)
+		dst := filepath.Join(dstRoot, filepath.Base(src))
+		if managed[skill.Name].Source == firstPartySkillSource {
+			err = replaceSkill(src, dst)
+		} else {
+			err = installMissingSkill(src, dst)
+		}
+		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func replaceSkill(src, dst string) error {
+	tmp, err := os.MkdirTemp(filepath.Dir(dst), "."+filepath.Base(dst)+"-install-")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+	if err := copyDir(src, tmp); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		return err
+	}
+	return os.Rename(tmp, dst)
 }
 
 func installMissingSkill(src, dst string) error {

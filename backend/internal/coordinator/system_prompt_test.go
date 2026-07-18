@@ -33,7 +33,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 
 	assertOrder(t, system,
 		"You are Jaz",
-		"agent_spawn only starts a session",
+		"jazagent_spawn only creates a Jaz agent session",
 		"Omit model overrides unless the user asks for a specific model",
 		"## Jaz platform",
 		"Current working directory:",
@@ -41,8 +41,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## SOUL.md\n\nbe direct",
 		"## INTERNAL.md",
 		"collapse stale layers",
-		"## Agent delegation",
-		"configured ACP agents: `codex`, `claude`",
+		"## Jaz agent sessions",
+		"one of: `codex`, `claude`",
 		"## Artifacts and visualisation",
 		"Few-shot trace:",
 		"## memory",
@@ -96,7 +96,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	if strings.Contains(acp, "You are Jaz") {
 		t.Fatalf("acp extension must carry no coordinator identity:\n%s", acp)
 	}
-	for _, want := range []string{"## Agent delegation", "`agent_spawn`", "`agent_options`", "configured ACP agents: `codex`, `claude`"} {
+	for _, want := range []string{"## Jaz agent sessions", "`jazagent_spawn`", "`jazagent_options`", "one of: `codex`, `claude`"} {
 		if !strings.Contains(acp, want) {
 			t.Fatalf("acp extension missing delegation guidance %q:\n%s", want, acp)
 		}
@@ -127,8 +127,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## AGENTS.md\n\nalways cite sources",
 		"## INTERNAL.md",
 		"collapse stale layers",
-		"## Agent delegation",
-		"agent_spawn",
+		"## Jaz agent sessions",
+		"jazagent_spawn",
 		"## Artifacts and visualisation",
 		"visualise_read_me",
 		"Finish with the output contract for the current surface",

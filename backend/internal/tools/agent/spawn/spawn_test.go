@@ -23,7 +23,7 @@ func TestDefinitionExposesAgentAndModelSelectors(t *testing.T) {
 	if _, ok := effort["enum"]; ok {
 		t.Fatalf("reasoning_effort must be model-scoped, got global enum %#v", effort["enum"])
 	}
-	if tools.DefinitionName(def) != "agent_spawn" {
+	if tools.DefinitionName(def) != "jazagent_spawn" {
 		t.Fatalf("tool name = %q", tools.DefinitionName(def))
 	}
 }

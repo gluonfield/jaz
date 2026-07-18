@@ -150,15 +150,6 @@ func installRemoteArchive(root string, skill RemoteSkill, archive []byte, sha st
 		return fmt.Errorf("archive skill name does not match manifest name %q", name)
 	}
 
-	tmp, err := os.MkdirTemp(userRoot, "."+name+"-install-")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.RemoveAll(tmp) }()
-	if err := copyDir(skillRoot, tmp); err != nil {
-		return err
-	}
-
 	dest := filepath.Join(userRoot, name)
 	installMu.Lock()
 	defer installMu.Unlock()
@@ -170,10 +161,7 @@ func installRemoteArchive(root string, skill RemoteSkill, archive []byte, sha st
 	if err != nil || !replace {
 		return err
 	}
-	if err := os.RemoveAll(dest); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, dest); err != nil {
+	if err := replaceSkill(skillRoot, dest); err != nil {
 		return err
 	}
 	state[name] = managedSkill{

@@ -18,7 +18,7 @@ type input struct {
 }
 
 func (t *Tool) Definition() tools.Definition {
-	return tools.Function("agent_options", "List spawnable ACP agents and useful model choices. Call agent_options({}) for the default shortlist. For huge provider catalogs such as OpenRouter, pass agent and name to search model names or ids.", true, helpers.GenerateSchema[input]())
+	return tools.Function(acp.ToolJazAgentOptions, "List available Jaz agents and useful model choices. Call jazagent_options({}) for the default shortlist. For huge provider catalogs such as OpenRouter, pass agent and name to search model names or ids.", true, helpers.GenerateSchema[input]())
 }
 
 func (t *Tool) Execute(_ context.Context, inputs map[string]any) (tools.Result, error) {

@@ -150,7 +150,7 @@ func TestAgentOptionsSearchesOpenRouterWithNameFilter(t *testing.T) {
 	}
 
 	if modelValues(unfiltered.Agents[0].Models).contains("qwen/qwen3-coder") {
-		t.Fatalf("unfiltered OpenRouter provider catalog leaked into agent_options: %#v", unfiltered.Agents[0].Models)
+		t.Fatalf("unfiltered OpenRouter provider catalog leaked into jazagent_options: %#v", unfiltered.Agents[0].Models)
 	}
 
 	filtered, err := manager.AgentOptions(AgentOptionsRequest{Agent: AgentOpenCode, Name: "glm"})

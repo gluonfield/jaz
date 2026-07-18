@@ -8,7 +8,7 @@ import (
 
 func TestDefinitionExposesAgentAndNameFilters(t *testing.T) {
 	def := (&Tool{}).Definition()
-	if tools.DefinitionName(def) != "agent_options" {
+	if tools.DefinitionName(def) != "jazagent_options" {
 		t.Fatalf("tool name = %q", tools.DefinitionName(def))
 	}
 	params := map[string]any(def.GetFunction().Parameters)
@@ -23,6 +23,6 @@ func TestDefinitionExposesAgentAndNameFilters(t *testing.T) {
 		}
 	}
 	if required, ok := params["required"].([]any); ok && len(required) != 0 {
-		t.Fatalf("agent_options should allow an empty call, required = %#v", params["required"])
+		t.Fatalf("jazagent_options should allow an empty call, required = %#v", params["required"])
 	}
 }

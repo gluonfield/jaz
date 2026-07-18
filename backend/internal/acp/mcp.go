@@ -9,16 +9,6 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
 
-const (
-	MCPToolAgentSpawn   = "agent_spawn"
-	MCPToolAgentSend    = "agent_send"
-	MCPToolAgentStatus  = "agent_status"
-	MCPToolAgentWait    = "agent_wait"
-	MCPToolAgentCancel  = "agent_cancel"
-	MCPToolAgentList    = "agent_list"
-	MCPToolAgentOptions = "agent_options"
-)
-
 type MCPService interface {
 	Spawn(context.Context, SpawnRequest) (SpawnResult, error)
 	Send(context.Context, SendRequest) (Job, error)
@@ -40,45 +30,45 @@ func NewMCPTools(service MCPService) *MCPTools {
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
 	agentNames := t.availableAgents()
-	description := "Create an idle Jaz ACP agent session. Send work with agent_send. Omit model unless the user asks for a specific model; use agent_options({}) to inspect spawnable agents and useful model choices."
+	description := "Create an idle Jaz agent session. Send work with jazagent_send. Omit model unless the user asks for a specific model; use jazagent_options({}) to inspect available agents and useful model choices."
 	if len(agentNames) > 0 {
-		description = "Create an idle Jaz ACP agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with agent_send. Omit model unless the user asks for a specific model; use agent_options({}) to inspect spawnable agents and useful model choices."
+		description = "Create an idle Jaz agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with jazagent_send. Omit model unless the user asks for a specific model; use jazagent_options({}) to inspect available agents and useful model choices."
 	}
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        MCPToolAgentSpawn,
-		Title:       "Spawn ACP agent",
+		Name:        ToolJazAgentSpawn,
+		Title:       "Spawn Jaz agent",
 		Description: description,
 		InputSchema: spawnInputSchema(agentNames),
 	}, t.Spawn)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        MCPToolAgentSend,
-		Title:       "Send ACP agent task",
-		Description: "Send a follow-up instruction to an idle Jaz ACP thread by thread id, thread slug, or active ACP session id. Selected @thread mentions expose a usable thread id.",
+		Name:        ToolJazAgentSend,
+		Title:       "Send Jaz agent task",
+		Description: "Send an instruction to an idle Jaz agent session by thread id, thread slug, or active session id. Selected @thread mentions expose a usable thread id.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        MCPToolAgentStatus,
-		Title:       "Get ACP agent status",
-		Description: "Get status and recent progress for a Jaz ACP thread by thread id, thread slug, or active ACP session id.",
+		Name:        ToolJazAgentStatus,
+		Title:       "Get Jaz agent status",
+		Description: "Get status and recent progress for a Jaz agent session by thread id, thread slug, or active session id.",
 	}, t.Status)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        MCPToolAgentWait,
-		Title:       "Wait for ACP agent",
-		Description: "Wait for a spawned Jaz ACP agent session to finish its current turn.",
+		Name:        ToolJazAgentWait,
+		Title:       "Wait for Jaz agent",
+		Description: "Wait for a Jaz agent session to finish its current turn.",
 	}, t.Wait)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        MCPToolAgentCancel,
-		Title:       "Cancel ACP agent",
-		Description: "Cancel a spawned Jaz ACP agent session's current turn.",
+		Name:        ToolJazAgentCancel,
+		Title:       "Cancel Jaz agent",
+		Description: "Cancel a Jaz agent session's current turn.",
 	}, t.Cancel)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        MCPToolAgentOptions,
-		Title:       "List spawnable ACP agent options",
-		Description: "List spawnable Jaz ACP agents and useful model choices. Call with empty input for the default shortlist. For huge provider catalogs such as OpenRouter, pass agent and name to search model names or ids.",
+		Name:        ToolJazAgentOptions,
+		Title:       "List Jaz agent options",
+		Description: "List available Jaz agents and useful model choices. Call with empty input for the default shortlist. For huge provider catalogs such as OpenRouter, pass agent and name to search model names or ids.",
 	}, t.Options)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        MCPToolAgentList,
-		Title:       "List spawned ACP sessions",
-		Description: "List active spawned Jaz ACP agent sessions.",
+		Name:        ToolJazAgentList,
+		Title:       "List Jaz agents",
+		Description: "List active Jaz agent sessions.",
 	}, t.List)
 }
 
@@ -220,11 +210,11 @@ func spawnInputSchema(agents []string) map[string]any {
 			},
 			"slug": map[string]any{
 				"type":        "string",
-				"description": "Stable human-readable handle for the spawned session.",
+				"description": "Stable human-readable handle for the external session.",
 			},
 			"title": map[string]any{
 				"type":        "string",
-				"description": "Optional display title for the spawned session.",
+				"description": "Optional display title for the external session.",
 			},
 			"directory": map[string]any{
 				"type":        "string",

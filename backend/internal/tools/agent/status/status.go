@@ -13,11 +13,11 @@ type Tool struct {
 }
 
 type input struct {
-	Session string `json:"session" jsonschema_description:"Spawned session id or slug."`
+	Session string `json:"session" jsonschema_description:"Jaz agent session id or slug."`
 }
 
 func (t *Tool) Definition() tools.Definition {
-	return tools.Function("agent_status", "Get status and recent progress for a spawned ACP agent session.", true, helpers.GenerateSchema[input]())
+	return tools.Function(acp.ToolJazAgentStatus, "Get status and recent progress for a Jaz agent session.", true, helpers.GenerateSchema[input]())
 }
 
 func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {

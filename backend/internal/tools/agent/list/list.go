@@ -16,7 +16,7 @@ type output struct {
 }
 
 func (t *Tool) Definition() tools.Definition {
-	return tools.Function("agent_list", "List active spawned ACP agent sessions.", true, map[string]any{
+	return tools.Function(acp.ToolJazAgentList, "List active Jaz agent sessions.", true, map[string]any{
 		"type":                 "object",
 		"properties":           map[string]any{},
 		"required":             []string{},

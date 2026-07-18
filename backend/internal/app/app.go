@@ -86,8 +86,8 @@ type SkillsConfig struct {
 }
 
 const (
-	defaultSkillsManifestURL    = "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.98/manifest.json"
-	defaultSkillsManifestSHA256 = "90349ae67d6c535ee1ec9f86e858f9822eeab62e1228b012a05c8fdc783d261d"
+	defaultSkillsManifestURL    = "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.100/manifest.json"
+	defaultSkillsManifestSHA256 = "0f6423d8c864a3ddda5f3124b142ff99945e03e8d2d9371c61b761129e47095d"
 )
 
 type VoiceConfig struct {
@@ -655,13 +655,13 @@ func newTTS(cfg VoiceConfig) (voice.TTS, error) {
 
 func NewAgent(cfg Config, modelProvider provider.Provider, registry *tools.Registry) *agent.Agent {
 	return &agent.Agent{
-		Provider:   modelProvider,
-		Tools:      registry,
+		Provider: modelProvider,
+		Tools:    registry,
 		DeferTools: func(name string) bool {
 			return registry.InGroup(mcpruntime.RegistryGroup, name) ||
 				registry.InGroup(mcpruntime.BuiltinRegistryGroup, name)
 		},
-		MaxTurns:   agent.DefaultMaxTurns,
+		MaxTurns: agent.DefaultMaxTurns,
 	}
 }
 
