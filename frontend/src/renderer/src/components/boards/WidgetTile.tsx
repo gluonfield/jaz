@@ -16,24 +16,24 @@ import {
   reportWidgetLayout,
   type WidgetLayoutReport,
 } from '@/lib/api/boards'
-import { runLoopNow } from '@/lib/api/loops'
+import { activeRunStatus, runLoopNow, TONE_DOT } from '@/lib/api/loops'
 import type { BoardItem } from '@/lib/api/types'
 import { buildArtifactDocument, buildArtifactThemeCSS } from '@/lib/artifacts'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { hasTime, relativeTime } from '@/lib/format/time'
 
 function TileStatusDot({ item }: { item: BoardItem }) {
-  if (item.loop_last_run_status === 'running' || item.loop_last_run_status === 'starting') {
-    return <span title="Running" className="size-1.5 shrink-0 animate-pulse rounded-full bg-running" />
+  if (activeRunStatus(item.loop_last_run_status)) {
+    return <span title="Running" className={`size-1.5 shrink-0 rounded-full ${TONE_DOT.running}`} />
   }
   if (item.loop_last_run_status === 'error') {
-    return <span title="Last run failed" className="size-1.5 shrink-0 rounded-full bg-danger" />
+    return <span title="Last run failed" className={`size-1.5 shrink-0 rounded-full ${TONE_DOT.failed}`} />
   }
   if (item.last_error) {
     return (
       <span
         title={`Widget error: ${item.last_error}`}
-        className="size-1.5 shrink-0 rounded-full bg-danger"
+        className={`size-1.5 shrink-0 rounded-full ${TONE_DOT.failed}`}
       />
     )
   }

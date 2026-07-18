@@ -9,7 +9,7 @@ import { DashedCta } from '@/components/ui/DashedCta'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { agentLabel } from '@/lib/agentLabel'
-import { loopsQuery } from '@/lib/api/loops'
+import { loopTone, loopsQuery, TONE_DOT, type LoopTone } from '@/lib/api/loops'
 import type { Loop } from '@/lib/api/types'
 import { hasTime, relativeTime, shortDate } from '@/lib/format/time'
 
@@ -103,20 +103,15 @@ function LoopRow({ loop }: { loop: Loop }) {
   )
 }
 
-const LEGEND: Array<{ label: string; dot: string }> = [
-  { label: 'active', dot: 'bg-primary' },
-  { label: 'running', dot: 'bg-running animate-pulse' },
-  { label: 'failed', dot: 'bg-danger' },
-  { label: 'paused', dot: 'bg-ink-3/40' },
-]
+const LEGEND: LoopTone[] = ['active', 'running', 'failed', 'paused']
 
 function DotLegend() {
   return (
     <div className="mt-4 flex items-center gap-4 px-3">
-      {LEGEND.map(({ label, dot }) => (
-        <span key={label} className="flex items-center gap-1.5 text-[11px] text-ink-3">
-          <span className={`size-1.5 shrink-0 rounded-full ${dot}`} />
-          {label}
+      {LEGEND.map((tone) => (
+        <span key={tone} className="flex items-center gap-1.5 text-[11px] text-ink-3">
+          <span className={`size-1.5 shrink-0 rounded-full ${TONE_DOT[tone]}`} />
+          {tone}
         </span>
       ))}
     </div>
@@ -124,13 +119,5 @@ function DotLegend() {
 }
 
 function StatusDot({ loop }: { loop: Loop }) {
-  const color =
-    loop.last_run_status === 'error'
-      ? 'bg-danger'
-      : loop.last_run_status === 'running' || loop.last_run_status === 'starting'
-        ? 'bg-running animate-pulse'
-        : loop.status === 'paused'
-          ? 'bg-ink-3/40'
-          : 'bg-primary'
-  return <span className={`size-2 shrink-0 rounded-full ${color}`} />
+  return <span className={`size-2 shrink-0 rounded-full ${TONE_DOT[loopTone(loop.last_run_status, loop.status)]}`} />
 }

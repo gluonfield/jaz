@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { boardDetailQuery } from '@/lib/api/boards'
-import { activeRunStatus } from '@/lib/api/loops'
+import { loopTone, TONE_DOT } from '@/lib/api/loops'
 import type { Board, BoardItem } from '@/lib/api/types'
 
 // A deliberately simple preview: the board's first widgets in reading order on
@@ -16,37 +16,29 @@ export function BoardCover({ board }: { board: Board }) {
   return (
     <div
       aria-hidden
-      className="relative overflow-hidden rounded-card bg-bg p-2.5 ring-1 ring-border/60 transition-[box-shadow,--tw-ring-color] duration-200 group-hover:shadow-[0_10px_28px_-14px_rgb(0_0_0/0.3)] group-hover:ring-primary/35"
+      className="overflow-hidden rounded-card bg-bg p-2.5 ring-1 ring-border/60 transition-shadow duration-200 group-hover:shadow-[0_10px_28px_-14px_rgb(0_0_0/0.3)] group-hover:ring-primary/35"
       style={{
         backgroundImage: 'radial-gradient(var(--color-border) 1px, transparent 1px)',
         backgroundSize: '14px 14px',
       }}
     >
       <div className="grid aspect-[16/9.2] grid-cols-3 grid-rows-2 gap-1.5">
-        {detail.isPending
-          ? [0, 1, 2].map((i) => <div key={i} className="animate-pulse rounded-[5px] bg-surface" />)
-          : tiles.map((item) => <CoverTile key={item.widget_id} item={item} />)}
-      </div>
-      {detail.data && tiles.length === 0 ? (
-        <div className="absolute inset-0 grid place-items-center">
-          <span className="rounded-[5px] border border-dashed border-border px-2 py-1 text-[10px] text-ink-3">
-            Empty board
+        {detail.isPending ? (
+          [0, 1, 2].map((i) => <div key={i} className="animate-pulse rounded-[5px] bg-surface" />)
+        ) : tiles.length > 0 ? (
+          tiles.map((item) => <CoverTile key={item.widget_id} item={item} />)
+        ) : (
+          <span className="col-span-full row-span-full place-self-center rounded-[5px] border border-dashed border-border px-2 py-1 text-[10px] text-ink-3">
+            {detail.isError ? 'Preview unavailable' : 'Empty board'}
           </span>
-        </div>
-      ) : null}
+        )}
+      </div>
     </div>
   )
 }
 
 function CoverTile({ item }: { item: BoardItem }) {
-  const dot =
-    item.loop_last_run_status === 'error' || item.last_error
-      ? 'bg-danger'
-      : activeRunStatus(item.loop_last_run_status)
-        ? 'bg-running animate-pulse'
-        : item.loop_status === 'paused'
-          ? 'bg-ink-3/40'
-          : 'bg-primary'
+  const dot = TONE_DOT[item.last_error ? 'failed' : loopTone(item.loop_last_run_status, item.loop_status)]
   return (
     <div className="flex min-h-0 flex-col overflow-hidden rounded-[5px] bg-surface p-1.5">
       <div className="flex shrink-0 items-center gap-1">

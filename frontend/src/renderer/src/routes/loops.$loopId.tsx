@@ -11,7 +11,7 @@ import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
-import { deleteLoop, loopDetailQuery, runLoopNow } from '@/lib/api/loops'
+import { deleteLoop, loopDetailQuery, loopTone, runLoopNow, type LoopTone } from '@/lib/api/loops'
 import type { Loop, LoopRun } from '@/lib/api/types'
 import { fullTime, hasTime, relativeTime, shortDate } from '@/lib/format/time'
 import { keys } from '@/lib/query/keys'
@@ -199,25 +199,17 @@ function LoopDetail({
   )
 }
 
-const PILL = {
+const PILL: Record<LoopTone, string> = {
   failed: 'bg-danger-soft text-danger',
   running: 'bg-running/15 text-running',
   paused: 'bg-surface-2 text-ink-3',
   active: 'bg-primary-soft text-primary-strong',
-} as const
+}
 
 function StatusPill({ loop }: { loop: Loop }) {
-  const tone =
-    loop.last_run_status === 'error'
-      ? 'failed'
-      : loop.last_run_status === 'running' || loop.last_run_status === 'starting'
-        ? 'running'
-        : loop.status === 'paused'
-          ? 'paused'
-          : 'active'
-  const label = tone === 'failed' ? 'failed' : tone
+  const tone = loopTone(loop.last_run_status, loop.status)
   return (
-    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${PILL[tone]}`}>{label}</span>
+    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${PILL[tone]}`}>{tone}</span>
   )
 }
 
@@ -260,7 +252,7 @@ function RunStatusDot({ status }: { status: LoopRun['status'] }) {
         ? 'bg-danger'
         : status === 'running' || status === 'starting'
           ? 'bg-running animate-pulse'
-          : 'bg-ink-3/50'
+          : 'bg-ink-3/40'
   return <span title={status} className={`size-1.5 shrink-0 rounded-full ${color}`} />
 }
 
