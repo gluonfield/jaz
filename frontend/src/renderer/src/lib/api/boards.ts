@@ -1,9 +1,8 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
 import { apiFetch, del, get, patch, post } from './client'
+import { activeRunStatus } from './loops'
 import type { Board, BoardItem } from './types'
-
-const activeRunStatus = (status?: string) => status === 'starting' || status === 'running'
 
 export const boardsQuery = queryOptions({
   queryKey: keys.boards,

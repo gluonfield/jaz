@@ -21,7 +21,7 @@ export interface LoopInput {
   board_ids?: string[]
 }
 
-const activeRunStatus = (status?: string) => status === 'starting' || status === 'running'
+export const activeRunStatus = (status?: string) => status === 'starting' || status === 'running'
 
 export const loopsQuery = queryOptions({
   queryKey: keys.loops,
