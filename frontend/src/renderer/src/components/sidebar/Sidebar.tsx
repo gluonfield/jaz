@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { GripVertical, Inbox, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
+import { ChevronDown, GripVertical, Inbox, Plus, Settings, SquarePen, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BoardModal } from '@/components/boards/BoardModal'
 import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
 import { LoopModal } from '@/components/loops/LoopModal'
+import { Collapse } from '@/components/ui/Collapse'
 import { IconButton } from '@/components/ui/IconButton'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
@@ -26,6 +27,7 @@ import { SessionRow } from './SessionRow'
 const SIDEBAR_LOOP_LIMIT = 6
 const PROJECT_SESSION_LIMIT = 5
 const DEFAULT_SESSION_LIMIT = 5
+const COLLAPSED_PROJECTS_KEY = 'jaz.sidebar.collapsedProjects'
 const MORE_ACTION_CLASS =
   'flex h-8 items-center rounded-full px-2.5 text-[13px] text-ink-3 opacity-80 transition-[background-color,color,opacity] duration-150 hover:bg-surface-2 hover:text-ink hover:opacity-100 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
 
@@ -131,8 +133,26 @@ function applyDragOrder(groups: SessionProjectGroup[], order: string[] | null): 
   return [...groups].sort((a, b) => (rank.get(a.key) ?? order.length) - (rank.get(b.key) ?? order.length))
 }
 
-function visibleProjectItems(group: SessionProjectGroup, expanded: boolean): SessionListItem[] {
-  return expanded ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
+function storedCollapsedProjects(): Set<string> {
+  try {
+    const paths: unknown = JSON.parse(localStorage.getItem(COLLAPSED_PROJECTS_KEY) ?? '[]')
+    return new Set(Array.isArray(paths) ? paths.filter((path): path is string => typeof path === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function storeCollapsedProjects(paths: Set<string>): void {
+  try {
+    localStorage.setItem(COLLAPSED_PROJECTS_KEY, JSON.stringify([...paths]))
+  } catch {
+    // This preference should never break the sidebar when storage is unavailable.
+  }
+}
+
+function visibleProjectItems(group: SessionProjectGroup, showAll: boolean, collapsed: boolean): SessionListItem[] {
+  if (collapsed) return []
+  return showAll ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
 }
 
 function sessionListItemTime(item: SessionListItem): number {
@@ -148,7 +168,8 @@ function sessionDisplayBlocks(
   pinnedItems: SessionListItem[],
   groups: SessionProjectGroup[],
   ungrouped: SessionListItem[],
-  expandedProjects: Set<string>,
+  showAllProjects: Set<string>,
+  collapsedProjects: Set<string>,
 ): SessionDisplayBlock[] {
   const blocks: SessionDisplayBlock[] = []
   if (pinnedItems.length) blocks.push({ kind: 'pinned', key: 'pinned', label: 'Pinned', items: pinnedItems })
@@ -156,7 +177,7 @@ function sessionDisplayBlocks(
     kind: 'project',
     key: group.key,
     group,
-    items: visibleProjectItems(group, expandedProjects.has(group.key)),
+    items: visibleProjectItems(group, showAllProjects.has(group.key), collapsedProjects.has(group.key)),
   }))
   if (ungrouped.length) {
     const ungroupedBlock: SessionDisplayBlock = {
@@ -166,7 +187,7 @@ function sessionDisplayBlocks(
       total: ungrouped.length,
     }
     const time = sessionListItemsTime(ungrouped)
-    const index = projectBlocks.findIndex((block) => time > sessionListItemsTime(block.items))
+    const index = groups.findIndex((group) => time > sessionListItemsTime(group.items))
     if (index === -1) projectBlocks.push(ungroupedBlock)
     else projectBlocks.splice(index, 0, ungroupedBlock)
   }
@@ -233,14 +254,18 @@ function SessionRows({
 function ProjectGroup({
   group,
   items,
-  onExpand,
+  collapsed,
+  onToggle,
+  onShowMore,
   onReorderEnd,
   shortcutByID,
   shortcutMode,
 }: {
   group: SessionProjectGroup
   items: SessionListItem[]
-  onExpand: () => void
+  collapsed: boolean
+  onToggle: () => void
+  onShowMore: () => void
   onReorderEnd: () => void
   shortcutByID: Map<string, number>
   shortcutMode: boolean
@@ -256,7 +281,7 @@ function ProjectGroup({
       dragControls={dragControls}
       onDragEnd={onReorderEnd}
     >
-      <div className="group/project flex items-center justify-between pr-1">
+      <div className="group/project flex h-8 items-center justify-between pr-1 max-sm:h-11">
         <div className="flex min-w-0 flex-1 items-center">
           {/* -ml-3 hangs the grip in the nav's left padding so the project
               name stays aligned with the Loops/Boards labels */}
@@ -269,9 +294,22 @@ function ProjectGroup({
           >
             <GripVertical size={13} />
           </button>
-          <p className={`min-w-0 truncate ${SECTION_HEADING_CLASS}`} title={group.label}>
-            {group.label}
-          </p>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${group.label}`}
+            className="flex h-full min-w-0 flex-1 items-center rounded-full text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+          >
+            <span className={`min-w-0 flex-1 truncate ${SECTION_HEADING_CLASS}`} title={group.label}>
+              {group.label}
+            </span>
+            <ChevronDown
+              size={13}
+              className={`-mt-1 mr-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
+              aria-hidden
+            />
+          </button>
         </div>
         <Link
           to="/new"
@@ -283,16 +321,18 @@ function ProjectGroup({
           <SquarePen size={13} />
         </Link>
       </div>
-      <SessionRows items={items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
-      {items.length < group.items.length ? (
-        <button
-          type="button"
-          onClick={onExpand}
-          className={MORE_ACTION_CLASS}
-        >
-          Show more
-        </button>
-      ) : null}
+      <Collapse open={!collapsed}>
+        <SessionRows items={items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
+        {items.length < group.items.length ? (
+          <button
+            type="button"
+            onClick={onShowMore}
+            className={MORE_ACTION_CLASS}
+          >
+            Show more
+          </button>
+        ) : null}
+      </Collapse>
     </Reorder.Item>
   )
 }
@@ -338,7 +378,9 @@ function SessionsSection({ open }: { open: boolean }) {
     (sessions.data ?? []).filter((item) => !item.session.pinned),
     projects.data ?? [],
   )
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
+  const [showAllProjects, setShowAllProjects] = useState<Set<string>>(() => new Set())
+  const [collapsedProjects, setCollapsedProjects] = useState(storedCollapsedProjects)
+  useEffect(() => storeCollapsedProjects(collapsedProjects), [collapsedProjects])
   // Group keys in their live mid-drag order; null while no drag is happening.
   const [dragOrder, setDragOrder] = useState<string[] | null>(null)
   const reorder = useMutation({
@@ -348,8 +390,8 @@ function SessionsSection({ open }: { open: boolean }) {
   })
   const groups = applyDragOrder(sections.groups, dragOrder)
   const blocks = useMemo(
-    () => sessionDisplayBlocks(pinnedItems, groups, sections.ungrouped, expandedProjects),
-    [expandedProjects, groups, pinnedItems, sections.ungrouped],
+    () => sessionDisplayBlocks(pinnedItems, groups, sections.ungrouped, showAllProjects, collapsedProjects),
+    [collapsedProjects, groups, pinnedItems, sections.ungrouped, showAllProjects],
   )
   const hasSessions = blocks.length > 0
   const shortcutItems = useMemo(
@@ -367,9 +409,17 @@ function SessionsSection({ open }: { open: boolean }) {
   const sessionBlocks = blocks.filter((block) => block.kind !== 'pinned')
 
   const expandProject = (key: string) =>
-    setExpandedProjects((current) => {
+    setShowAllProjects((current) => {
       const next = new Set(current)
       next.add(key)
+      return next
+    })
+
+  const toggleProject = (key: string) =>
+    setCollapsedProjects((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
 
@@ -419,7 +469,9 @@ function SessionsSection({ open }: { open: boolean }) {
                     key={block.key}
                     group={block.group}
                     items={block.items}
-                    onExpand={() => expandProject(block.key)}
+                    collapsed={collapsedProjects.has(block.key)}
+                    onToggle={() => toggleProject(block.key)}
+                    onShowMore={() => expandProject(block.key)}
                     onReorderEnd={commitReorder}
                     shortcutByID={shortcutByID}
                     shortcutMode={shortcutMode}
