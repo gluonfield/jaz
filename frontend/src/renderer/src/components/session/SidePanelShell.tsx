@@ -24,7 +24,7 @@ export function SidePanelShell({
       className="flex h-full shrink-0 flex-col bg-bg p-2 max-sm:w-full!"
     >
       <div
-        className={`flex flex-col rounded-[14px] bg-surface shadow-[var(--shadow-raised)] ring-1 ring-border ${sizing} ${className}`}
+        className={`flex flex-col rounded-[14px] bg-surface shadow-sm ring-1 ring-border ${sizing} ${className}`}
       >
         {children}
       </div>
