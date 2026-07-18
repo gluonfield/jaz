@@ -13,14 +13,14 @@ type Tool struct {
 }
 
 type input struct {
-	Session string `json:"session" jsonschema_description:"External ACP session id or slug."`
+	Session string `json:"session" jsonschema_description:"Jaz agent session id or slug."`
 	Message string `json:"message" jsonschema_description:"Follow-up instruction to send."`
 	Wait    bool   `json:"wait,omitempty" jsonschema_description:"Wait for this turn to finish before returning. Use for short commands; defaults to false."`
 	Plan    bool   `json:"plan,omitempty" jsonschema_description:"Set true when asking the ACP agent to make, propose, review, or revise a plan. Leave false when sending an approved plan for execution. This is the only way to request ACP plan mode from a Jaz session."`
 }
 
 func (t *Tool) Definition() tools.Definition {
-	return tools.Function(acp.ToolACPSessionSend, "Send an instruction to an idle external ACP session. Set plan=true when the external session should use ACP plan mode; set wait=true for short requests where the result should come back synchronously.", true, helpers.GenerateSchema[input]())
+	return tools.Function(acp.ToolJazAgentSend, "Send an instruction to an idle Jaz agent session. Set plan=true when the session should use plan mode; set wait=true for short requests where the result should come back synchronously.", true, helpers.GenerateSchema[input]())
 }
 
 func (t *Tool) Execute(ctx context.Context, inputs map[string]any) (tools.Result, error) {
