@@ -301,12 +301,12 @@ function ProjectGroup({
             aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${group.label}`}
             className="flex h-full min-w-0 flex-1 items-center rounded-full text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
           >
-            <span className={`min-w-0 flex-1 truncate ${SECTION_HEADING_CLASS}`} title={group.label}>
+            <span className={`min-w-0 truncate ${SECTION_HEADING_CLASS}`} title={group.label}>
               {group.label}
             </span>
             <ChevronDown
               size={13}
-              className={`-mt-1 mr-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
+              className={`-mt-1 ml-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
               aria-hidden
             />
           </button>
