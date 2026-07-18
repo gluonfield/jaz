@@ -87,10 +87,13 @@ export function CommandPalette({
     if (!open) setQuery('')
   }, [open])
 
+  // Snap focus to the top result the instant the query changes (not the
+  // debounced value, which would leave the highlight on a stale row for ~140ms)
+  // and again whenever async results arrive and resize the list.
   useEffect(() => {
     if (!open) return
     setActiveIndex(0)
-  }, [debouncedQuery, items.length, open])
+  }, [query, items.length, open])
 
   useEffect(() => {
     if (!open) return
