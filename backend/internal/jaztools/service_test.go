@@ -203,7 +203,7 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 		"gmail_get_profile", "gmail_search_threads", "gmail_read_thread", "gmail_create_draft", "gmail_create_reply_draft", "gmail_send_draft", "gmail_update_draft", "gmail_list_drafts", "gmail_read_attachment",
 		"whatsapp_search", "whatsapp_send_message", "telegram_search", "telegram_send_message",
 		"loop_list", "loop_get", "loop_create", "loop_update", "loop_run", "loop_delete",
-		"acp_session_create", "acp_session_send", "acp_session_status", "acp_session_wait", "acp_session_cancel", "acp_agent_options", "acp_session_list",
+		"jazagent_spawn", "jazagent_send", "jazagent_status", "jazagent_wait", "jazagent_cancel", "jazagent_options", "jazagent_list",
 		"create_goal", "get_goal", "update_goal",
 		"visualise_read_me", "visualise_show_widget",
 	} {
@@ -211,7 +211,10 @@ func TestUnifiedServerMemoryAndLoopTools(t *testing.T) {
 			t.Fatalf("missing tool %s in %#v", name, names)
 		}
 	}
-	for _, name := range []string{"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_options", "agent_list"} {
+	for _, name := range []string{
+		"agent_spawn", "agent_send", "agent_status", "agent_wait", "agent_cancel", "agent_options", "agent_list",
+		"acp_session_create", "acp_session_send", "acp_session_status", "acp_session_wait", "acp_session_cancel", "acp_agent_options", "acp_session_list",
+	} {
 		if names[name] {
 			t.Fatalf("legacy external-agent tool %s still advertised", name)
 		}
@@ -474,8 +477,8 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if hasTool(t, base, "visualise_publish_widget") {
 		t.Fatal("base server advertised visualise_publish_widget")
 	}
-	if !hasTool(t, base, "acp_session_create") {
-		t.Fatal("base server did not advertise acp_session_create")
+	if !hasTool(t, base, "jazagent_spawn") {
+		t.Fatal("base server did not advertise jazagent_spawn")
 	}
 	widget, closeWidget := connectClient(t, service.server(widgetSurface))
 	defer closeWidget()
@@ -485,8 +488,8 @@ func TestPublishWidgetToolOnlyAdvertisedForWidgetSurfaceSessions(t *testing.T) {
 	if hasTool(t, widget, "visualise_show_widget") {
 		t.Fatal("widget server advertised thread artifact renderer")
 	}
-	if !hasTool(t, widget, "acp_session_create") {
-		t.Fatal("widget server did not advertise acp_session_create")
+	if !hasTool(t, widget, "jazagent_spawn") {
+		t.Fatal("widget server did not advertise jazagent_spawn")
 	}
 	if !hasTool(t, widget, "visualise_publish_widget") {
 		t.Fatal("widget server did not advertise visualise_publish_widget")
@@ -550,7 +553,7 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 			t.Fatalf("source worker surface missing %s", name)
 		}
 	}
-	for _, name := range []string{"acp_session_create", "thread_context", "google_calendar_get_events", "gmail_search_threads", "loop_list", "visualise_read_me"} {
+	for _, name := range []string{"jazagent_spawn", "thread_context", "google_calendar_get_events", "gmail_search_threads", "loop_list", "visualise_read_me"} {
 		if hasTool(t, source, name) {
 			t.Fatalf("source worker surface must not advertise %s", name)
 		}
@@ -586,16 +589,16 @@ func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 
 	widget, closeWidget := connectClient(t, service.server(widgetSurface))
 	defer closeWidget()
-	if hasTool(t, widget, "acp_session_create") {
-		t.Fatal("widget server advertised acp_session_create before agents were configured")
+	if hasTool(t, widget, "jazagent_spawn") {
+		t.Fatal("widget server advertised jazagent_spawn before agents were configured")
 	}
 	service.SetAgents(fakeACPService{spawned: make(chan acp.SpawnRequest, 1)})
-	if !hasTool(t, widget, "acp_session_create") {
-		t.Fatal("widget server did not advertise acp_session_create after agents were configured")
+	if !hasTool(t, widget, "jazagent_spawn") {
+		t.Fatal("widget server did not advertise jazagent_spawn after agents were configured")
 	}
 }
 
-func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
+func TestJazAgentSpawnToolSchemaAndAlias(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -626,20 +629,20 @@ func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
 
 	session, closeSession := connectClient(t, service.Server())
 	defer closeSession()
-	tool := findTool(t, session, "acp_session_create")
+	tool := findTool(t, session, "jazagent_spawn")
 	if tool == nil {
-		t.Fatal("acp_session_create not advertised")
+		t.Fatal("jazagent_spawn not advertised")
 	}
 	schema, _ := tool.InputSchema.(map[string]any)
 	properties, _ := schema["properties"].(map[string]any)
 	for _, name := range []string{"acp_agent", "agent_name", "model_provider", "model", "reasoning_effort"} {
 		if _, ok := properties[name]; !ok {
-			t.Fatalf("acp_session_create schema missing %s: %#v", name, properties)
+			t.Fatalf("jazagent_spawn schema missing %s: %#v", name, properties)
 		}
 	}
 
 	call, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name: "acp_session_create",
+		Name: "jazagent_spawn",
 		Arguments: map[string]any{
 			"agent_name":       acp.AgentCodex,
 			"slug":             "child",
@@ -652,7 +655,7 @@ func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
 		t.Fatal(err)
 	}
 	if call.IsError {
-		t.Fatalf("acp_session_create returned error: %#v", call)
+		t.Fatalf("jazagent_spawn returned error: %#v", call)
 	}
 	select {
 	case req := <-agentService.spawned:
@@ -660,7 +663,7 @@ func TestAgentSpawnToolSchemaAndAlias(t *testing.T) {
 			t.Fatalf("spawn request = %#v", req)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("acp_session_create did not reach ACP service")
+		t.Fatal("jazagent_spawn did not reach ACP service")
 	}
 }
 
@@ -715,7 +718,7 @@ func TestSearchWorkerSurfaceOnlyAdvertisesRawMemoryTools(t *testing.T) {
 			t.Fatalf("worker server missing %s", name)
 		}
 	}
-	for _, name := range []string{"memory_search", "memory_get_page", "thread_context", "loop_list", "acp_session_create", "visualise_read_me", "visualise_show_widget", "visualise_publish_widget"} {
+	for _, name := range []string{"memory_search", "memory_get_page", "thread_context", "loop_list", "jazagent_spawn", "visualise_read_me", "visualise_show_widget", "visualise_publish_widget"} {
 		if hasTool(t, worker, name) {
 			t.Fatalf("worker server advertised %s", name)
 		}
@@ -860,7 +863,7 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 			t.Fatalf("worker server missing %s", name)
 		}
 	}
-	for _, name := range []string{"memory_search", "acp_session_create", "create_goal", "visualise_read_me"} {
+	for _, name := range []string{"memory_search", "jazagent_spawn", "create_goal", "visualise_read_me"} {
 		if hasTool(t, worker, name) {
 			t.Fatalf("worker server advertised %s", name)
 		}

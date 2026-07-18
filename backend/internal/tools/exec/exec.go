@@ -86,7 +86,7 @@ type ExecCommandTool struct {
 func (t *ExecCommandTool) Definition() tools.Definition {
 	return tools.Function(
 		"exec_command",
-		"Runs a local shell command. Do not use when the user explicitly asks for a separate named ACP harness such as codex, claude, or grok; use acp_session_create instead.",
+		"Runs a local shell command. Do not use when the user explicitly asks for a separate Jaz agent such as codex, claude, or grok; use jazagent_spawn instead.",
 		false,
 		tools.ObjectSchema(map[string]any{
 			"cmd":               tools.StringSchema("Shell command to execute."),

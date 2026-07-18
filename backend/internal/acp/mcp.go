@@ -30,45 +30,45 @@ func NewMCPTools(service MCPService) *MCPTools {
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
 	agentNames := t.availableAgents()
-	description := "Create an idle external ACP session. Send work with acp_session_send. Omit model unless the user asks for a specific model; use acp_agent_options({}) to inspect available harnesses and useful model choices."
+	description := "Create an idle Jaz agent session. Send work with jazagent_send. Omit model unless the user asks for a specific model; use jazagent_options({}) to inspect available agents and useful model choices."
 	if len(agentNames) > 0 {
-		description = "Create an idle external ACP session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with acp_session_send. Omit model unless the user asks for a specific model; use acp_agent_options({}) to inspect available harnesses and useful model choices."
+		description = "Create an idle Jaz agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with jazagent_send. Omit model unless the user asks for a specific model; use jazagent_options({}) to inspect available agents and useful model choices."
 	}
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolACPSessionCreate,
-		Title:       "Create external ACP session",
+		Name:        ToolJazAgentSpawn,
+		Title:       "Spawn Jaz agent",
 		Description: description,
 		InputSchema: spawnInputSchema(agentNames),
 	}, t.Spawn)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolACPSessionSend,
-		Title:       "Send external ACP session task",
-		Description: "Send an instruction to an idle external ACP session by thread id, thread slug, or active ACP session id. Selected @thread mentions expose a usable thread id.",
+		Name:        ToolJazAgentSend,
+		Title:       "Send Jaz agent task",
+		Description: "Send an instruction to an idle Jaz agent session by thread id, thread slug, or active session id. Selected @thread mentions expose a usable thread id.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolACPSessionStatus,
-		Title:       "Get external ACP session status",
-		Description: "Get status and recent progress for an external ACP session by thread id, thread slug, or active ACP session id.",
+		Name:        ToolJazAgentStatus,
+		Title:       "Get Jaz agent status",
+		Description: "Get status and recent progress for a Jaz agent session by thread id, thread slug, or active session id.",
 	}, t.Status)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolACPSessionWait,
-		Title:       "Wait for external ACP session",
-		Description: "Wait for an external ACP session to finish its current turn.",
+		Name:        ToolJazAgentWait,
+		Title:       "Wait for Jaz agent",
+		Description: "Wait for a Jaz agent session to finish its current turn.",
 	}, t.Wait)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolACPSessionCancel,
-		Title:       "Cancel external ACP session",
-		Description: "Cancel an external ACP session's current turn.",
+		Name:        ToolJazAgentCancel,
+		Title:       "Cancel Jaz agent",
+		Description: "Cancel a Jaz agent session's current turn.",
 	}, t.Cancel)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolACPAgentOptions,
-		Title:       "List external ACP harness options",
-		Description: "List available external ACP harnesses and useful model choices. Call with empty input for the default shortlist. For huge provider catalogs such as OpenRouter, pass agent and name to search model names or ids.",
+		Name:        ToolJazAgentOptions,
+		Title:       "List Jaz agent options",
+		Description: "List available Jaz agents and useful model choices. Call with empty input for the default shortlist. For huge provider catalogs such as OpenRouter, pass agent and name to search model names or ids.",
 	}, t.Options)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolACPSessionList,
-		Title:       "List external ACP sessions",
-		Description: "List active external ACP sessions.",
+		Name:        ToolJazAgentList,
+		Title:       "List Jaz agents",
+		Description: "List active Jaz agent sessions.",
 	}, t.List)
 }
 

@@ -123,7 +123,7 @@ func TestBuilderACPPrompt(t *testing.T) {
 		"be kind",
 		"## INTERNAL.md",
 		"prefer direct fixes",
-		"separate ACP session using one of: `codex`",
+		"separate Jaz agent session using one of: `codex`",
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
 		"<name>deploy</name>",
