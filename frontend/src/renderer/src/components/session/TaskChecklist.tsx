@@ -1,27 +1,11 @@
-import { Check, ChevronDown, Circle, CircleCheck, LoaderCircle } from 'lucide-react'
+import { Check, ChevronDown } from 'lucide-react'
 import { memo, useState } from 'react'
 import { useOverflowing } from '@/lib/hooks/useOverflowing'
-import { taskStepState, type TaskStepState, type TaskSurface } from '@/lib/taskSurface'
+import { taskStepState, type TaskSurface } from '@/lib/taskSurface'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
 import { MessageMarkdown } from './MessageMarkdown'
-
-export function TaskStepIcon({ state, active }: { state: TaskStepState; active: boolean }) {
-  switch (state) {
-    case 'completed':
-      return <CircleCheck size={14} className="text-primary" strokeWidth={2.25} aria-hidden />
-    case 'active':
-      return (
-        <LoaderCircle
-          size={14}
-          className={`text-running ${active ? 'animate-spin' : ''}`}
-          aria-hidden
-        />
-      )
-    default:
-      return <Circle size={14} className="text-ink-3" aria-hidden />
-  }
-}
+import { TaskStepIcon } from './TaskStepIcon'
 
 export const TaskChecklist = memo(function TaskChecklist({
   surface,
@@ -82,7 +66,7 @@ export const TaskChecklist = memo(function TaskChecklist({
                 >
                   {showSteps ? (
                     <span className="mt-[3px] shrink-0" title={state}>
-                      <TaskStepIcon state={state ?? 'pending'} active={active} />
+                      <TaskStepIcon state={state ?? 'pending'} animate={active} />
                     </span>
                   ) : null}
                   <div

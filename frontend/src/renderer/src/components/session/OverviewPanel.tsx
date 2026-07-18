@@ -40,7 +40,7 @@ import { agentLabel } from '@/lib/agentLabel'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { SidePanelShell } from './SidePanelShell'
 import { encodeMention } from './mentionCodec'
-import { TaskStepIcon } from './TaskChecklist'
+import { TaskStepIcon } from './TaskStepIcon'
 import { useRepoActions } from './useRepoActions'
 
 export const OVERVIEW_PANEL_WIDTH = 300
@@ -468,7 +468,7 @@ function ProgressSection({ progress, working }: { progress: TaskSurface; working
               >
                 {showSteps ? (
                   <span className="mt-[2px] shrink-0" title={state}>
-                    <TaskStepIcon state={state ?? 'pending'} active={working} />
+                    <TaskStepIcon state={state ?? 'pending'} animate={working} />
                   </span>
                 ) : null}
                 <span className={`min-w-0 flex-1 ${state === 'completed' ? 'opacity-50' : ''}`}>
