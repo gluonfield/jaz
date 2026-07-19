@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react'
 import { AnimatePresence, motion, type Variants, useReducedMotion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 
+import { Collapse } from '@/components/ui/Collapse'
 import type { GoalEvent } from '@/lib/api/types'
 
 const numberFormatter = new Intl.NumberFormat()
@@ -57,19 +58,9 @@ export function GoalStatusBar({ goal }: { goal?: GoalEvent }) {
           />
         ) : null}
       </button>
-      <AnimatePresence initial={false}>
-        {expanded ? (
-          <motion.div
-            initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            animate={reduceMotion ? { opacity: 1 } : { height: 'auto', opacity: 1 }}
-            exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={reduceMotion ? { duration: 0.12 } : { duration: 0.3, ease: [0.2, 0, 0, 1] }}
-            className="overflow-hidden"
-          >
-            <GoalTokens goal={goal} progress={tokenProgress} />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      <Collapse open={expanded}>
+        <GoalTokens goal={goal} progress={tokenProgress} />
+      </Collapse>
     </div>
   )
 }
@@ -86,7 +77,7 @@ function GoalTokens({
       <div className="mt-2 flex items-center gap-2">
         <div
           className="h-1.5 flex-1 overflow-hidden rounded-full bg-bg/80 shadow-inner"
-          aria-label={`${numberFormatter.format(progress.used)} of ${numberFormatter.format(progress.budget)} goal tokens used`}
+          aria-label={`${numberFormatter.format(progress.used)} goal tokens used; ${numberFormatter.format(progress.budget)} automatic-continuation token limit`}
         >
           <div
             className="h-full rounded-full bg-primary transition-[width] duration-150"
@@ -94,7 +85,7 @@ function GoalTokens({
           />
         </div>
         <span className="shrink-0 text-[12px] tabular-nums text-ink-3">
-          <RollingNumber value={progress.used} /> / <RollingNumber value={progress.budget} />
+          <RollingNumber value={progress.used} /> used · <RollingNumber value={progress.budget} /> auto-continue limit
         </span>
       </div>
     )
@@ -185,7 +176,7 @@ function goalStatusLabel(status?: string): string {
     case 'blocked':
       return 'Goal blocked'
     case 'budgetLimited':
-      return 'Goal budget limited'
+      return 'Goal auto-continue limit reached'
     case 'usageLimited':
       return 'Goal usage limited'
     default:
