@@ -21,6 +21,7 @@ import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } fro
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { canGrantAppPermission } from './permissions'
+import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
 import { setupLauncher, teardownLauncher } from './spotlight'
 import { createUpdateController } from './updater'
@@ -32,11 +33,13 @@ const DARK_BG = '#1d1f24'
 const APP_NAME = 'Jaz'
 
 app.setName(APP_NAME)
+app.setAppUserModelId('dev.wins.jaz')
 installMainDiagnostics()
 
 let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
+const threadNotifications = createThreadNotificationMonitor(openInMain)
 
 function installApplicationMenu(): void {
   if (process.platform !== 'darwin') return
@@ -374,6 +377,9 @@ app.whenReady().then(() => {
   ipcMain.handle('jaz:start-local-backend', () => startLocalBackend())
   ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
   ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())
+  ipcMain.handle('jaz:configure-thread-notifications', (_event, config) =>
+    threadNotifications.configure(config),
+  )
   updates.registerIpc()
 
   ipcMain.on('jaz:open-board-window', (_event, boardId) => {
@@ -430,6 +436,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  threadNotifications.stop()
   teardownLauncher()
   stopLocalBackend('before_quit')
 })

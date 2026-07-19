@@ -82,10 +82,24 @@ func (s *Store) SaveSession(session storage.Session) error {
 func (s *Store) SetArchived(id string, archived bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return threaddb.New(s.db).SetArchived(context.Background(), threaddb.SetArchivedParams{
-		Archived: boolInt(archived),
-		ID:       id,
-	})
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	q := threaddb.New(tx)
+	ids, err := q.ListSessionSubtree(ctx, id)
+	if err == nil {
+		err = q.SetArchived(ctx, threaddb.SetArchivedParams{
+			Archived: boolInt(archived),
+			Ids:      ids,
+		})
+	}
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SetPinned(id string, pinned bool) error {
@@ -148,6 +162,22 @@ func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt
 	}
 	s.mu.Lock()
 	err := threaddb.New(s.db).UpdateSessionStatus(context.Background(), params)
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if current, err := s.LoadSession(id); err == nil {
+		s.mirrorSession(current)
+	}
+	return nil
+}
+
+func (s *Store) CompleteSession(id string, completedAt time.Time) error {
+	s.mu.Lock()
+	err := threaddb.New(s.db).CompleteSession(context.Background(), threaddb.CompleteSessionParams{
+		CompletedAtMs: timeToMs(completedAt),
+		ID:            id,
+	})
 	s.mu.Unlock()
 	if err != nil {
 		return err

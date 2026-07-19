@@ -156,6 +156,13 @@ type FeedItem struct {
 	ReplyAt   time.Time
 }
 
+type FeedCompletion struct {
+	ID          string
+	Slug        string
+	Title       string
+	CompletedAt time.Time
+}
+
 func MarkSessionAttention(session *Session, at time.Time) {
 	if at.IsZero() {
 		at = time.Now().UTC()

@@ -45,4 +45,5 @@ type Thread struct {
 	Unread                int64          `json:"unread"`
 	Goal                  string         `json:"goal"`
 	ManualTitle           int64          `json:"manual_title"`
+	LastCompletedAtMs     int64          `json:"last_completed_at_ms"`
 }

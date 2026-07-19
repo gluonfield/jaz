@@ -13,6 +13,8 @@ type SessionStore interface {
 	EnsureSession(id string) error
 	LoadSession(ref string) (Session, error)
 	SaveSession(session Session) error
+	CompleteSession(id string, completedAt time.Time) error
+	SetThreadUnread(id string, unread bool) error
 	TouchSessionAttention(id string) error
 	SetArchived(id string, archived bool) error
 	SetPinned(id string, pinned bool) error
@@ -75,7 +77,7 @@ type UsageEventStore interface {
 
 type FeedStore interface {
 	LoadFeed() ([]FeedItem, error)
-	SetThreadUnread(id string, unread bool) error
+	LoadFeedCompletions() ([]FeedCompletion, error)
 }
 
 type Store interface {

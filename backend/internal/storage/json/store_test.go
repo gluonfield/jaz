@@ -52,6 +52,66 @@ func TestSessionsHaveStableUniqueSlugsAndRootListing(t *testing.T) {
 	}
 }
 
+func TestCompletionUnreadLifecycle(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "completed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CompleteSession(session.ID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetThreadUnread(session.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Unread {
+		t.Fatalf("completed session remained unread: %#v", loaded)
+	}
+}
+
+func TestArchiveClearsUnreadForSessionAndChildren(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.CreateSession(storage.CreateSession{Slug: "child", ParentID: parent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grandchild, err := store.CreateSession(storage.CreateSession{Slug: "grandchild", ParentID: child.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{parent.ID, child.ID, grandchild.ID} {
+		if err := store.CompleteSession(id, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.SetArchived(parent.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{parent.ID, child.ID, grandchild.ID} {
+		archived, err := store.LoadSession(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !archived.Archived || archived.Unread {
+			t.Fatalf("archived session retained unread state: %#v", archived)
+		}
+	}
+}
+
 // Slugs are assigned once at creation; saves persist them verbatim so the
 // mirror never rescans session metadata to re-derive uniqueness.
 func TestSaveSessionPersistsSlugVerbatim(t *testing.T) {

@@ -1,4 +1,5 @@
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
+import type { ThreadNotificationConfig } from '../../../shared/notifications'
 import type { UpdateStatus } from '../../../shared/update'
 
 export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5299'
@@ -28,6 +29,7 @@ export interface ClientRuntime {
     model_identifier: string
     app_version: string
   }>
+  configureThreadNotifications?: (config: ThreadNotificationConfig) => Promise<boolean>
   getUpdateStatus?: () => Promise<UpdateStatus>
   installUpdate?: () => Promise<{ ok: boolean; error?: string }>
   onUpdateStatus?: (handler: (status: UpdateStatus) => void) => () => void
@@ -70,6 +72,7 @@ function createRuntime(): ClientRuntime {
       startLocalBackend: electron.startLocalBackend,
       getDeviceIdentity: electron.getDeviceIdentity,
       getDeviceMetadata: electron.getDeviceMetadata,
+      configureThreadNotifications: electron.configureThreadNotifications,
       getUpdateStatus: electron.getUpdateStatus,
       installUpdate: electron.installUpdate,
       onUpdateStatus: electron.onUpdateStatus,
