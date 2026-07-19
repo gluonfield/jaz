@@ -266,7 +266,7 @@ func (s *Store) UpdateSessionTitleFromRuntime(id, title string) (storage.Session
 	if err != nil {
 		return storage.Session{}, false, err
 	}
-	if session.ManualTitle {
+	if session.ManualTitle || session.TitleLocked {
 		return session, false, nil
 	}
 	session.Title = title

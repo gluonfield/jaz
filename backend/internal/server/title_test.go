@@ -181,6 +181,66 @@ func TestGeneratedSessionTitlePreservesManualTitle(t *testing.T) {
 	}
 }
 
+func TestShouldGenerateTitleOnlyFromFirstMessageThenLocks(t *testing.T) {
+	first := storage.Session{Title: titleFromMessage("Fix the OAuth callback route")}
+	if !shouldGenerateTitleFromMessage(first, "Fix the OAuth callback route", nil) {
+		t.Fatal("first message placeholder should still generate a title")
+	}
+	locked := storage.Session{Title: "OAuth Callback Fix", TitleLocked: true}
+	if shouldGenerateTitleFromMessage(locked, "continue", nil) {
+		t.Fatal("a locked title must never regenerate, even with empty history")
+	}
+	generated := storage.Session{Title: "OAuth Callback Fix"}
+	if shouldGenerateTitleFromMessage(generated, "continue", nil) {
+		t.Fatal("a later message must not replace an existing non-placeholder title")
+	}
+	manual := storage.Session{Title: "My Title", ManualTitle: true}
+	if shouldGenerateTitleFromMessage(manual, "My Title", nil) {
+		t.Fatal("a manual title must never regenerate")
+	}
+}
+
+func TestGeneratedSessionTitleLocksTitle(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "lock-on-generate",
+		Title:   "Fix the redirect",
+		Runtime: storage.RuntimeACP,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{
+		Store: store,
+		ACP:   &fakeACPManager{utilityText: `{"title":"Redirect State Fix"}`},
+	}
+
+	server.generateAndSaveSessionTitle(context.Background(), session, "Fix the redirect")
+
+	locked, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if locked.Title != "Redirect State Fix" || !locked.TitleLocked {
+		t.Fatalf("title/locked = %q/%v, want generated and locked", locked.Title, locked.TitleLocked)
+	}
+	// A runtime title push must not override the locked title.
+	if _, updated, err := store.UpdateSessionTitleFromRuntime(session.ID, "Runtime Title"); err != nil || updated {
+		t.Fatalf("runtime title override updated=%v err=%v, want no update", updated, err)
+	}
+	final, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if final.Title != "Redirect State Fix" {
+		t.Fatalf("title = %q, want unchanged locked title", final.Title)
+	}
+}
+
 func waitForSessionTitle(t *testing.T, store storage.SessionStore, sessionID, want string) {
 	t.Helper()
 	deadline := time.After(10 * time.Second)

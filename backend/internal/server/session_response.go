@@ -34,6 +34,7 @@ func canonicalSessionResponse(session storage.Session) sessionResponse {
 func canonicalSession(session storage.Session) storage.Session {
 	session.QueuedMessages = storage.PublicQueuedMessages(session.QueuedMessages)
 	session.ManualTitle = false
+	session.TitleLocked = false
 	if session.PendingSteer != nil && session.PendingSteer.IsInternal() {
 		session.PendingSteer = nil
 	}
