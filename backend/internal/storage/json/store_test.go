@@ -286,56 +286,6 @@ func TestDailyIgnoresImportedSessionUsageFallback(t *testing.T) {
 	}
 }
 
-func TestSaveACPStateUpdatesSessionStatus(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "acp", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.SaveACPState(session.ID, storage.ACPState{State: "running"}); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusRunning {
-		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusRunning)
-	}
-
-	if err := store.SaveACPState(session.ID, storage.ACPState{State: "failed", Error: "codex failed"}); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err = store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusError {
-		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusError)
-	}
-	if loaded.Error != "codex failed" {
-		t.Fatalf("error = %q, want %q", loaded.Error, "codex failed")
-	}
-
-	if err := store.SaveACPState(session.ID, storage.ACPState{State: "idle"}); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err = store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusIdle {
-		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusIdle)
-	}
-	if loaded.Error != "" {
-		t.Fatalf("error = %q, want empty", loaded.Error)
-	}
-}
-
 func TestMessagesUseJSONL(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -447,5 +397,92 @@ func TestSessionEventsUseJSONL(t *testing.T) {
 	}
 	if len(loaded) != 2 || loaded[0].Seq != 2 || loaded[1].Seq != 3 {
 		t.Fatalf("events after seq 1 = %#v", loaded)
+	}
+}
+
+func TestSessionEventsCompleteSparseProviderSubagentSnapshots(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "provider-updates"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := sessionevents.ProviderSubagentProjectionKey(session.ID, sessionevents.ProviderSubagentEvent{Provider: "codex", ID: "worker"})
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type:          sessionevents.TypeProviderSubagent,
+		ProjectionKey: key,
+		ProviderSubagent: &sessionevents.ProviderSubagentEvent{
+			Provider: "codex", ID: "worker", Name: "Newton", Task: "audit", Status: "running",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type:          sessionevents.TypeProviderSubagent,
+		ProjectionKey: key,
+		ProviderSubagent: &sessionevents.ProviderSubagentEvent{
+			Provider: "codex", ID: "worker", Status: "completed",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := stored[len(stored)-1].ProviderSubagent
+	if last == nil || last.Name != "Newton" || last.Task != "audit" || last.Status != "completed" {
+		t.Fatalf("stored provider projection = %#v", stored)
+	}
+}
+
+func TestAssignedSessionEventAppendDoesNotReadHistory(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "assigned-events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(store.sessionDir(session.ID), "events.jsonl")
+	if err := os.WriteFile(path, []byte("not-json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Seq: 9, Type: "acp_message", Content: "new"}); err != nil {
+		t.Fatalf("append assigned event: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"seq":9`) {
+		t.Fatalf("assigned event was not appended: %s", data)
+	}
+}
+
+func TestUnassignedSessionEventFollowsHighestSequence(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "event-sequence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Seq: 9, Type: "acp_message", Content: "assigned"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Type: "acp_message", Content: "next"}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 2 || loaded[1].Seq != 10 {
+		t.Fatalf("events = %#v, want second sequence 10", loaded)
 	}
 }

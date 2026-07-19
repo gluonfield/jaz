@@ -1,86 +1,76 @@
 -- name: ListSessions :many
+SELECT *
+FROM threads
+WHERE archived = sqlc.arg(filter_archived)
+  AND (sqlc.arg(filter_include_children) OR parent_id IS NULL OR parent_id = '')
+  AND (NOT sqlc.arg(filter_root_only) OR parent_id IS NULL OR parent_id = '')
+  AND (NOT sqlc.arg(filter_parent_only) OR COALESCE(parent_id, '') = sqlc.arg(filter_parent_id))
+  AND (sqlc.arg(filter_parent_id) = '' OR COALESCE(parent_id, '') = sqlc.arg(filter_parent_id))
+  AND (sqlc.arg(filter_runtime) = '' OR runtime = sqlc.arg(filter_runtime))
+  AND (sqlc.arg(filter_source_type) = '' OR COALESCE(source_type, '') = sqlc.arg(filter_source_type))
+  AND (sqlc.arg(filter_source_id) = '' OR COALESCE(source_id, '') = sqlc.arg(filter_source_id))
+  AND (
+    sqlc.arg(filter_source_type) <> ''
+    OR sqlc.arg(filter_source_id) <> ''
+    OR sqlc.arg(filter_include_sourced)
+    OR COALESCE(source_type, '') = ''
+  )
+  AND (sqlc.arg(filter_updated_since_ms) = 0 OR updated_at_ms > sqlc.arg(filter_updated_since_ms))
+ORDER BY last_attention_at_ms DESC, id
+LIMIT CASE WHEN sqlc.arg(filter_limit) > 0 THEN sqlc.arg(filter_limit) ELSE -1 END;
+
+-- name: ListChildSessions :many
+SELECT *
+FROM threads
+WHERE parent_id = sqlc.arg(filter_parent_id)
+  AND archived = sqlc.arg(filter_archived)
+  AND (sqlc.arg(filter_runtime) = '' OR runtime = sqlc.arg(filter_runtime))
+  AND (sqlc.arg(filter_source_type) = '' OR COALESCE(source_type, '') = sqlc.arg(filter_source_type))
+  AND (sqlc.arg(filter_source_id) = '' OR COALESCE(source_id, '') = sqlc.arg(filter_source_id))
+  AND (
+    sqlc.arg(filter_source_type) <> ''
+    OR sqlc.arg(filter_source_id) <> ''
+    OR sqlc.arg(filter_include_sourced)
+    OR COALESCE(source_type, '') = ''
+  )
+  AND (sqlc.arg(filter_updated_since_ms) = 0 OR updated_at_ms > sqlc.arg(filter_updated_since_ms))
+ORDER BY last_attention_at_ms DESC, id
+LIMIT CASE WHEN sqlc.arg(filter_limit) > 0 THEN sqlc.arg(filter_limit) ELSE -1 END;
+
+-- name: LoadTranscriptSessions :many
 SELECT
   id,
   slug,
   title,
   parent_id,
   status,
-  error,
-  runtime,
   acp_agent,
   acp_session_id,
   cwd,
+  error,
   model_provider,
   model,
   reasoning_effort,
-  input_tokens,
-  cached_input_tokens,
-  output_tokens,
-  reasoning_output_tokens,
-  total_tokens,
-  queued_messages,
-  source_type,
-  source_id,
-  archived,
   created_at_ms,
   updated_at_ms,
-  context_tokens,
-  context_window_tokens,
-  cached_write_tokens,
-  project_path,
-  last_attention_at_ms,
-  pinned,
-  artifact_surface,
-  mcp_server_policy,
-  pending_steer_message,
-  unread,
-  goal,
-  manual_title,
-  last_completed_at_ms,
-  title_locked
-FROM threads;
+  CAST((
+    COALESCE(parent_id, '') = sqlc.arg(parent_id)
+    AND archived = 0
+    AND runtime = 'acp'
+    AND COALESCE(source_type, '') = ''
+  ) AS INTEGER) AS direct_child
+FROM threads
+WHERE (
+    parent_id = sqlc.arg(parent_id)
+    AND archived = 0
+    AND runtime = 'acp'
+    AND COALESCE(source_type, '') = ''
+  )
+  OR id IN (sqlc.slice('ids'))
+ORDER BY last_attention_at_ms DESC, id;
 
 -- name: GetSession :one
-SELECT
-  id,
-  slug,
-  title,
-  parent_id,
-  status,
-  error,
-  runtime,
-  acp_agent,
-  acp_session_id,
-  cwd,
-  model_provider,
-  model,
-  reasoning_effort,
-  input_tokens,
-  cached_input_tokens,
-  output_tokens,
-  reasoning_output_tokens,
-  total_tokens,
-  queued_messages,
-  source_type,
-  source_id,
-  archived,
-  created_at_ms,
-  updated_at_ms,
-  context_tokens,
-  context_window_tokens,
-  cached_write_tokens,
-  project_path,
-  last_attention_at_ms,
-  pinned,
-  artifact_surface,
-  mcp_server_policy,
-  pending_steer_message,
-  unread,
-  goal,
-  manual_title,
-  last_completed_at_ms,
-  title_locked
-FROM threads
+SELECT * FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
 
@@ -295,14 +285,6 @@ SET
   updated_at_ms = sqlc.arg(updated_at_ms)
 WHERE id = sqlc.arg(id);
 
--- name: UpdateACPState :exec
-UPDATE threads
-SET
-  status = sqlc.arg(status),
-  error = sqlc.narg(error),
-  updated_at_ms = sqlc.arg(updated_at_ms)
-WHERE id = sqlc.arg(id);
-
 -- name: AddUsage :exec
 UPDATE threads SET
   input_tokens = input_tokens + sqlc.arg(input_tokens),
@@ -340,4 +322,13 @@ WHERE status = sqlc.arg(status)
 -- name: SetThreadError :exec
 UPDATE threads
 SET error = sqlc.narg(error)
+WHERE id = sqlc.arg(id);
+-- name: GetTranscriptRevision :one
+SELECT transcript_revision
+FROM threads
+WHERE id = sqlc.arg(id);
+
+-- name: AdvanceTranscriptRevision :exec
+UPDATE threads
+SET transcript_revision = transcript_revision + 1
 WHERE id = sqlc.arg(id);

@@ -17,8 +17,6 @@ import (
 const emptyMCPEnvHeadersJSON = "[]"
 
 func (s *Store) ListMCPServers() ([]mcpconfig.Server, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows, err := mcpdb.New(s.db).ListMCPServers(context.Background())
 	if err != nil {
 		return nil, err
@@ -35,8 +33,6 @@ func (s *Store) ListMCPServers() ([]mcpconfig.Server, error) {
 }
 
 func (s *Store) LoadMCPServer(id string) (mcpconfig.Server, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := mcpdb.New(s.db).GetMCPServer(context.Background(), id)
 	if err != nil {
 		return mcpconfig.Server{}, mcpServerError(err)
@@ -66,7 +62,7 @@ func (s *Store) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, 
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err = mcpdb.New(s.db).CreateMCPServer(context.Background(), mcpdb.CreateMCPServerParams{
 		ID:                server.ID,
 		Name:              server.Name,
@@ -80,7 +76,7 @@ func (s *Store) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, 
 		CreatedAtMs:       timeToMs(server.CreatedAt),
 		UpdatedAtMs:       timeToMs(server.UpdatedAt),
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
@@ -97,8 +93,8 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 		return mcpconfig.Server{}, err
 	}
 	now := time.Now().UTC()
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return mcpconfig.Server{}, err
@@ -143,8 +139,8 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 }
 
 func (s *Store) DeleteMCPServer(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return err
@@ -166,13 +162,13 @@ func (s *Store) DeleteMCPServer(id string) error {
 }
 
 func (s *Store) SetMCPServerEnabled(id string, enabled bool) (mcpconfig.Server, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	changed, err := mcpdb.New(s.db).SetMCPServerEnabled(context.Background(), mcpdb.SetMCPServerEnabledParams{
 		Enabled:     boolInt(enabled),
 		UpdatedAtMs: timeToMs(time.Now().UTC()),
 		ID:          id,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}

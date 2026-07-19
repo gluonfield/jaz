@@ -17,8 +17,6 @@ func (s *Store) LoadSetting(namespace, key string) (storage.Setting, error) {
 	if err != nil {
 		return storage.Setting{}, err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := settingsdb.New(s.db).GetSetting(context.Background(), settingsdb.GetSettingParams{
 		Namespace: namespace,
 		Key:       key,
@@ -39,7 +37,7 @@ func (s *Store) SaveSetting(namespace, key string, value json.RawMessage) (stora
 		return storage.Setting{}, fmt.Errorf("setting %s/%s value must be valid JSON", namespace, key)
 	}
 	now := time.Now().UTC()
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err = settingsdb.New(s.db).UpsertSetting(context.Background(), settingsdb.UpsertSettingParams{
 		Namespace:   namespace,
 		Key:         key,
@@ -47,7 +45,7 @@ func (s *Store) SaveSetting(namespace, key string, value json.RawMessage) (stora
 		CreatedAtMs: timeToMs(now),
 		UpdatedAtMs: timeToMs(now),
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return storage.Setting{}, err
 	}
@@ -59,8 +57,8 @@ func (s *Store) DeleteSetting(namespace, key string) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	changed, err := settingsdb.New(s.db).DeleteSetting(context.Background(), settingsdb.DeleteSettingParams{
 		Namespace: namespace,
 		Key:       key,
@@ -79,8 +77,6 @@ func (s *Store) ListSettings(namespace string) ([]storage.Setting, error) {
 	if namespace == "" {
 		return nil, fmt.Errorf("setting namespace is required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows, err := settingsdb.New(s.db).ListSettings(context.Background(), namespace)
 	if err != nil {
 		return nil, err

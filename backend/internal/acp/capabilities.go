@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"fmt"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 )
@@ -12,6 +13,18 @@ func promptQueueingSupported(raw json.RawMessage) bool {
 		return false
 	}
 	return metaPromptQueueing(resp.AgentCapabilities.Meta)
+}
+
+func loadSessionSupported(raw json.RawMessage) bool {
+	var resp acpschema.InitializeResponse
+	return json.Unmarshal(raw, &resp) == nil && resp.AgentCapabilities != nil && resp.AgentCapabilities.LoadSession
+}
+
+func validateProcessLifecycle(agent string, cfg AgentConfig, raw json.RawMessage) error {
+	if turnScopedAgentProcess(cfg) && !loadSessionSupported(raw) {
+		return fmt.Errorf("managed ACP agent %q requires session/load support", CanonicalAgentName(agent))
+	}
+	return nil
 }
 
 func metaPromptQueueing(meta map[string]any) bool {

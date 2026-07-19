@@ -18,8 +18,6 @@ func (s *Store) NewRunID() string {
 }
 
 func (s *Store) LoadLoop(id string) (loops.Loop, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := loopdb.New(s.db).GetLoop(context.Background(), id)
 	if err != nil {
 		return loops.Loop{}, err
@@ -28,8 +26,6 @@ func (s *Store) LoadLoop(id string) (loops.Loop, error) {
 }
 
 func (s *Store) ListLoops() ([]loops.Loop, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows, err := loopdb.New(s.db).ListLoops(context.Background(), loops.StatusDeleted)
 	if err != nil {
 		return nil, err
@@ -42,8 +38,6 @@ func (s *Store) ListLoops() ([]loops.Loop, error) {
 }
 
 func (s *Store) ListRuns(loopID string, limit int) ([]loops.Run, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if limit <= 0 {
 		limit = 20
 	}
@@ -62,8 +56,6 @@ func (s *Store) ListRuns(loopID string, limit int) ([]loops.Run, error) {
 }
 
 func (s *Store) LoadRun(id string) (loops.Run, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := loopdb.New(s.db).GetRun(context.Background(), id)
 	if err != nil {
 		return loops.Run{}, err
@@ -75,8 +67,6 @@ func (s *Store) LoadRunByThread(threadID string) (loops.Run, bool, error) {
 	if threadID == "" {
 		return loops.Run{}, false, nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := loopdb.New(s.db).GetLatestRunByThread(context.Background(), nullDBString(threadID))
 	if err == sql.ErrNoRows {
 		return loops.Run{}, false, nil
@@ -88,8 +78,6 @@ func (s *Store) LoadRunByThread(threadID string) (loops.Run, bool, error) {
 }
 
 func (s *Store) ListDueLoopIDs(now time.Time) ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return loopdb.New(s.db).ListDueLoopIDs(context.Background(), loopdb.ListDueLoopIDsParams{
 		ActiveStatus: loops.StatusActive,
 		NowMs:        loopTimeToMs(now),
@@ -97,8 +85,6 @@ func (s *Store) ListDueLoopIDs(now time.Time) ([]string, error) {
 }
 
 func (s *Store) ListActiveRunIDs() ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return loopdb.New(s.db).ListActiveRunIDs(context.Background(), loopdb.ListActiveRunIDsParams{
 		StartingStatus: loops.RunStatusStarting,
 		RunningStatus:  loops.RunStatusRunning,
@@ -106,8 +92,6 @@ func (s *Store) ListActiveRunIDs() ([]string, error) {
 }
 
 func (s *Store) HasActiveRun(loopID string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	_, err := loopdb.New(s.db).GetActiveRunIDForLoop(context.Background(), loopdb.GetActiveRunIDForLoopParams{
 		LoopID:         loopID,
 		StartingStatus: loops.RunStatusStarting,
@@ -120,14 +104,14 @@ func (s *Store) HasActiveRun(loopID string) (bool, error) {
 }
 
 func (s *Store) SaveLoop(loop loops.Loop) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return upsertLoop(context.Background(), loopdb.New(s.db), loop)
 }
 
 func (s *Store) SaveRun(run loops.Run) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return upsertRun(context.Background(), loopdb.New(s.db), run)
 }
 
@@ -135,8 +119,8 @@ func (s *Store) SaveLoops(items []loops.Loop) error {
 	if len(items) == 0 {
 		return nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return s.withLoopTxLocked(func(q *loopdb.Queries) error {
 		for _, loop := range items {
 			if err := upsertLoop(context.Background(), q, loop); err != nil {
@@ -148,8 +132,8 @@ func (s *Store) SaveLoops(items []loops.Loop) error {
 }
 
 func (s *Store) SaveLoopAndRun(loop loops.Loop, run loops.Run) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return s.withLoopTxLocked(func(q *loopdb.Queries) error {
 		if err := upsertRun(context.Background(), q, run); err != nil {
 			return err
@@ -159,8 +143,8 @@ func (s *Store) SaveLoopAndRun(loop loops.Loop, run loops.Run) error {
 }
 
 func (s *Store) SaveRunAndLoop(run loops.Run, loop *loops.Loop) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return s.withLoopTxLocked(func(q *loopdb.Queries) error {
 		if err := upsertRun(context.Background(), q, run); err != nil {
 			return err

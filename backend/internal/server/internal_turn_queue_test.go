@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -49,7 +50,7 @@ func TestSessionQueueActionPreservesInternalMessages(t *testing.T) {
 	if len(loaded.QueuedMessages) != 3 || !loaded.QueuedMessages[0].IsInternal() || queuedTexts(loaded.QueuedMessages) != "child result|second|first" {
 		t.Fatalf("stored queue = %#v, want hidden internal preserved before reordered public prompts", loaded.QueuedMessages)
 	}
-	if public := canonicalSessionResponse(loaded).QueuedMessages; queuedTexts(public) != "second|first" {
+	if public := sessionview.Public(loaded).QueuedMessages; queuedTexts(public) != "second|first" {
 		t.Fatalf("public queue = %#v, want reordered public prompts only", public)
 	}
 }
@@ -143,7 +144,7 @@ func TestInternalTurnQueuesWhileParentRunningAndStaysHidden(t *testing.T) {
 	if len(loaded.QueuedMessages) != 2 || !loaded.QueuedMessages[0].IsInternal() || loaded.QueuedMessages[0].Text != "child result" {
 		t.Fatalf("stored queue = %#v, want internal child result before public prompt", loaded.QueuedMessages)
 	}
-	if public := canonicalSessionResponse(loaded).QueuedMessages; queuedTexts(public) != "public prompt" {
+	if public := sessionview.Public(loaded).QueuedMessages; queuedTexts(public) != "public prompt" {
 		t.Fatalf("public queue = %#v, want only public prompt", public)
 	}
 	manager.mu.Lock()

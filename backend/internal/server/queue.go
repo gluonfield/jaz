@@ -11,6 +11,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/goal"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -33,7 +34,7 @@ func (s *Server) handleQueueAction(w http.ResponseWriter, r *http.Request, sessi
 			writeQueueError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, canonicalSessionResponse(updated))
+		writeJSON(w, http.StatusOK, sessionview.Public(updated))
 		return
 	}
 	updated, err := s.mutateSessionQueue(session.ID, req)
@@ -42,7 +43,7 @@ func (s *Server) handleQueueAction(w http.ResponseWriter, r *http.Request, sessi
 		return
 	}
 	s.publishMessagesChanged(session.ID)
-	writeJSON(w, http.StatusOK, canonicalSessionResponse(updated))
+	writeJSON(w, http.StatusOK, sessionview.Public(updated))
 	if updated.Status == storage.StatusIdle && len(updated.QueuedMessages) > 0 && s.canStartQueuedTurn(updated) {
 		s.drainQueueSoon(updated.ID)
 	}
@@ -236,7 +237,14 @@ func (s *Server) drainQueueSoon(sessionID string) {
 	if strings.TrimSpace(sessionID) == "" {
 		return
 	}
-	go s.drainQueuedPrompt(context.Background(), sessionID)
+	session, prompt, ok, err := s.claimNextTurn(sessionID)
+	if err != nil {
+		s.logger().Error("next turn claim failed", "session", sessionID, "error", err)
+		return
+	}
+	if ok {
+		go s.runClaimedTurn(context.Background(), session, prompt)
+	}
 }
 
 func (s *Server) StartInternalTurn(_ context.Context, sessionID, message string) error {
@@ -278,6 +286,10 @@ func (s *Server) drainQueuedPrompt(ctx context.Context, sessionID string) {
 	if !ok {
 		return
 	}
+	s.runClaimedTurn(ctx, session, prompt)
+}
+
+func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, prompt *storage.QueuedMessage) {
 	if prompt == nil {
 		s.startGoalContinuation(ctx, session)
 		return

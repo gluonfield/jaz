@@ -2,7 +2,9 @@ package sessionevents
 
 import (
 	"sort"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type transcriptItem struct {
@@ -15,109 +17,67 @@ type TextChunkCompaction struct {
 	DeleteSeqs []int64
 }
 
+func SplitTextEvent(event Event, maxBytes int) []Event {
+	if maxBytes <= 0 || !isACPTextEvent(event) {
+		return []Event{event}
+	}
+	text := acpTextChunk(event)
+	if len(text) <= maxBytes {
+		return []Event{event}
+	}
+	parts := make([]Event, 0, len(text)/maxBytes+1)
+	for len(text) > 0 {
+		end := min(maxBytes, len(text))
+		for end < len(text) && end > 0 && !utf8.RuneStart(text[end]) {
+			end--
+		}
+		if end == 0 {
+			_, end = utf8.DecodeRuneInString(text)
+		}
+		part := event
+		part.Seq = 0
+		if event.Type == TypeACPMessage {
+			part.Content = text[:end]
+		} else {
+			acp := *event.ACP
+			acp.Thought = text[:end]
+			part.ACP = &acp
+		}
+		parts = append(parts, part)
+		text = text[end:]
+	}
+	return parts
+}
+
+func SplitTextEvents(events []Event, maxBytes int) ([]Event, []int) {
+	expanded := make([]Event, 0, len(events))
+	last := make([]int, len(events))
+	for i, event := range events {
+		expanded = append(expanded, SplitTextEvent(event, maxBytes)...)
+		last[i] = len(expanded) - 1
+	}
+	return expanded, last
+}
+
 func CompactTranscript(events []Event) []Event {
 	if len(events) == 0 {
 		return nil
 	}
-	mergedText := compactACPTextRuns(dedupeBySeq(events), false)
-	items := make([]transcriptItem, 0, len(mergedText))
-	byKey := map[string]int{}
-	for _, item := range mergedText {
-		event := item.event
-		key := transcriptCoalesceKey(event)
-		if key != "" {
-			if idx, ok := byKey[key]; ok {
-				items[idx].event = mergeCoalescedEvent(items[idx].event, event)
-				continue
-			}
-			byKey[key] = len(items)
-		}
-		items = append(items, transcriptItem{event: event, index: item.index})
+	projector := NewProjector()
+	for _, event := range dedupeBySeq(events) {
+		projector.Apply(event)
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		return transcriptItemLess(items[i], items[j])
-	})
-	out := make([]Event, 0, len(items))
-	for _, item := range items {
-		out = append(out, item.event)
-	}
-	return out
-}
-
-func mergeCoalescedEvent(prev, next Event) Event {
-	if prev.Type == TypeProviderSubagent && next.Type == TypeProviderSubagent && prev.ProviderSubagent != nil && next.ProviderSubagent != nil {
-		subagent := mergeProviderSubagentEvent(*prev.ProviderSubagent, *next.ProviderSubagent)
-		next.ProviderSubagent = &subagent
-		next.Content = ""
-	}
-	return next
-}
-
-func mergeProviderSubagentEvent(prev, next ProviderSubagentEvent) ProviderSubagentEvent {
-	if next.Provider == "" {
-		next.Provider = prev.Provider
-	}
-	if next.ThreadID == "" {
-		next.ThreadID = prev.ThreadID
-	}
-	if next.ParentID == "" {
-		next.ParentID = prev.ParentID
-	}
-	if next.Name == "" {
-		next.Name = prev.Name
-	}
-	if next.Task == "" {
-		next.Task = prev.Task
-	}
-	if next.Role == "" {
-		next.Role = prev.Role
-	}
-	if next.Status == "" {
-		next.Status = prev.Status
-	}
-	if next.Summary == "" {
-		next.Summary = prev.Summary
-	}
-	if next.Prompt == "" {
-		next.Prompt = prev.Prompt
-	}
-	if next.Model == "" {
-		next.Model = prev.Model
-	}
-	if next.ReasoningEffort == "" {
-		next.ReasoningEffort = prev.ReasoningEffort
-	}
-	if next.StartedAtMs == 0 {
-		next.StartedAtMs = prev.StartedAtMs
-	}
-	if next.CompletedAtMs == 0 {
-		next.CompletedAtMs = prev.CompletedAtMs
-	}
-	return next
+	return projector.Events()
 }
 
 func CompactTextChunks(events []Event) []Event {
-	compacted, _ := compactTextChunks(events)
-	return compacted
-}
-
-func CompactTextChunkRuns(events []Event) []TextChunkCompaction {
-	_, runs := compactTextChunks(events)
-	return runs
-}
-
-func compactTextChunks(events []Event) ([]Event, []TextChunkCompaction) {
 	if len(events) == 0 {
-		return nil, nil
+		return nil
 	}
-	items := compactACPTextRuns(dedupeBySeq(events), true)
+	items := compactACPTextRuns(dedupeBySeq(events))
 	out := make([]Event, 0, len(items))
-	runs := make([]TextChunkCompaction, 0)
 	for _, item := range items {
 		out = append(out, item.event)
-		if item.event.Seq != 0 && len(item.deleteSeqs) > 0 {
-			runs = append(runs, TextChunkCompaction{Event: item.event, DeleteSeqs: item.deleteSeqs})
-		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		return transcriptItemLess(
@@ -125,48 +85,91 @@ func compactTextChunks(events []Event) ([]Event, []TextChunkCompaction) {
 			transcriptItem{event: out[j], index: j},
 		)
 	})
-	sort.SliceStable(runs, func(i, j int) bool {
-		return transcriptItemLess(
-			transcriptItem{event: runs[i].Event, index: i},
-			transcriptItem{event: runs[j].Event, index: j},
-		)
-	})
-	return out, runs
+	return out
+}
+
+func CompactTextSegments(events []Event, maxBytes int) []TextChunkCompaction {
+	var segments []TextChunkCompaction
+	var open *compactedTextItem
+	openBytes := 0
+	flush := func() {
+		if open == nil {
+			return
+		}
+		if len(open.chunks) > 1 {
+			text := strings.Join(open.chunks, "")
+			if open.event.Type == TypeACPMessage {
+				open.event.Content = text
+			} else {
+				acp := *open.event.ACP
+				acp.Thought = text
+				open.event.ACP = &acp
+			}
+		}
+		segments = append(segments, TextChunkCompaction{Event: open.event, DeleteSeqs: open.deleteSeqs})
+		open = nil
+		openBytes = 0
+	}
+	for _, event := range dedupeBySeq(events) {
+		if !isACPTextEvent(event) {
+			if open != nil && !keepsACPTextStreamOpen(open.event, event) {
+				flush()
+			}
+			continue
+		}
+		chunk := acpTextChunk(event)
+		if open != nil {
+			merged, ok := mergeACPTextEvent(open.event, open.lastSeq, event)
+			if ok && (maxBytes <= 0 || openBytes+len(chunk) <= maxBytes) {
+				if open.event.Seq != 0 && event.Seq != 0 {
+					open.deleteSeqs = append(open.deleteSeqs, open.event.Seq)
+				}
+				open.event = merged
+				open.lastSeq = event.Seq
+				open.chunks = append(open.chunks, chunk)
+				openBytes += len(chunk)
+				continue
+			}
+			flush()
+		}
+		open = &compactedTextItem{event: event, lastSeq: event.Seq, chunks: []string{chunk}}
+		openBytes = len(chunk)
+	}
+	flush()
+	return segments
+}
+
+func NeedsStorageCompaction(event Event) bool {
+	return isProjectableACPTextEvent(event)
 }
 
 type compactedTextItem struct {
 	event      Event
 	index      int
 	lastSeq    int64
+	chunks     []string
 	deleteSeqs []int64
 }
 
-func compactACPTextRuns(events []Event, trackDeletes bool) []compactedTextItem {
+func compactACPTextRuns(events []Event) []compactedTextItem {
 	items := make([]compactedTextItem, 0, len(events))
 	openTextIndex := -1
-	lastSeqBySession := map[string]int64{}
 	for sourceIndex, event := range events {
-		if sequenceGap(lastSeqBySession[event.SessionID], event.Seq) {
-			openTextIndex = -1
-		}
-		if event.Seq != 0 {
-			lastSeqBySession[event.SessionID] = event.Seq
-		}
 		if isACPTextEvent(event) {
 			if openTextIndex >= 0 {
 				last := &items[openTextIndex]
 				if merged, ok := mergeACPTextEvent(last.event, last.lastSeq, event); ok {
-					if trackDeletes && last.event.Seq != 0 && event.Seq != 0 {
-						last.deleteSeqs = append(last.deleteSeqs, last.event.Seq)
-					}
 					last.event = merged
+					last.chunks = append(last.chunks, acpTextChunk(event))
 					if event.Seq != 0 {
 						last.lastSeq = event.Seq
 					}
 					continue
 				}
 			}
-			items = append(items, compactedTextItem{event: event, index: sourceIndex, lastSeq: event.Seq})
+			items = append(items, compactedTextItem{
+				event: event, index: sourceIndex, lastSeq: event.Seq, chunks: []string{acpTextChunk(event)},
+			})
 			openTextIndex = len(items) - 1
 			continue
 		}
@@ -175,78 +178,77 @@ func compactACPTextRuns(events []Event, trackDeletes bool) []compactedTextItem {
 			openTextIndex = -1
 		}
 	}
+	for i := range items {
+		if len(items[i].chunks) < 2 {
+			continue
+		}
+		text := strings.Join(items[i].chunks, "")
+		if items[i].event.Type == TypeACPMessage {
+			items[i].event.Content = text
+		} else {
+			acp := *items[i].event.ACP
+			acp.Thought = text
+			items[i].event.ACP = &acp
+		}
+	}
 	return items
 }
 
-func dedupeBySeq(events []Event) []Event {
-	out := make([]Event, 0, len(events))
-	type seqKey struct {
-		sessionID string
-		seq       int64
+func acpTextChunk(event Event) string {
+	if event.Type == TypeACPThought {
+		return event.ACP.Thought
 	}
-	bySeq := map[seqKey]int{}
-	for _, event := range events {
-		if event.Seq == 0 {
-			out = append(out, event)
-			continue
-		}
-		key := seqKey{sessionID: event.SessionID, seq: event.Seq}
-		if idx, ok := bySeq[key]; ok {
-			out[idx] = event
-			continue
-		}
-		bySeq[key] = len(out)
-		out = append(out, event)
-	}
-	return out
+	return event.Content
 }
 
-func mergeACPTextEvent(prev Event, prevLastSeq int64, event Event) (Event, bool) {
-	if !canMergeACPTextEvent(prev, prevLastSeq, event) {
+func mergeACPTextEvent(previous Event, previousSeq int64, next Event) (Event, bool) {
+	if !canMergeACPTextEvent(previous, previousSeq, next) {
 		return Event{}, false
 	}
-	merged := prev
-	if event.Seq != 0 {
-		merged.Seq = event.Seq
+	merged := previous
+	if next.Seq != 0 {
+		merged.Seq = next.Seq
 	}
-	if !event.At.IsZero() {
-		merged.At = event.At
+	if !next.At.IsZero() {
+		merged.At = next.At
 	}
-	if event.Type == TypeACPMessage {
-		merged.Content += event.Content
+	acp := *previous.ACP
+	if next.ACP.State != "" {
+		acp.State = next.ACP.State
 	}
-	if prev.ACP != nil {
-		acp := *prev.ACP
-		if event.ACP.State != "" {
-			acp.State = event.ACP.State
-		}
-		if event.ACP.StopReason != "" {
-			acp.StopReason = event.ACP.StopReason
-		}
-		if event.ACP.Error != "" {
-			acp.Error = event.ACP.Error
-		}
-		if event.Type == TypeACPThought {
-			acp.Thought += event.ACP.Thought
-		}
-		merged.ACP = &acp
+	if next.ACP.StopReason != "" {
+		acp.StopReason = next.ACP.StopReason
 	}
+	if next.ACP.Error != "" {
+		acp.Error = next.ACP.Error
+	}
+	merged.ACP = &acp
 	return merged, true
+}
+
+func canMergeACPTextEvent(previous Event, previousSeq int64, next Event) bool {
+	if !isACPTextEvent(previous) || !isACPTextEvent(next) || previous.Type != next.Type {
+		return false
+	}
+	if previous.SessionID != next.SessionID || previous.ACP.ID != next.ACP.ID {
+		return false
+	}
+	if previous.ACP.TextRunID == "" || previous.ACP.TextRunID != next.ACP.TextRunID {
+		return false
+	}
+	return next.Seq == 0 || previousSeq == 0 || next.Seq > previousSeq
 }
 
 func isACPTextEvent(event Event) bool {
 	return event.ACP != nil && (event.Type == TypeACPMessage || event.Type == TypeACPThought)
 }
 
-func sequenceGap(prevSeq, seq int64) bool {
-	return prevSeq != 0 && seq != 0 && seq != prevSeq+1
+func isProjectableACPTextEvent(event Event) bool {
+	return isACPTextEvent(event) && event.ACP.TextRunID != ""
 }
 
 func keepsACPTextStreamOpen(text Event, event Event) bool {
-	if text.ACP == nil {
-		return false
-	}
-	if event.SessionID != text.SessionID {
+	if text.ACP == nil || event.SessionID != text.SessionID {
 		return false
 	}
 	if event.ACP != nil && event.ACP.ID == text.ACP.ID {
@@ -277,66 +279,27 @@ func acpStatusKeepsTextStreamOpen(acp *ACPEvent) bool {
 	}
 }
 
-func canMergeACPTextEvent(prev Event, prevLastSeq int64, event Event) bool {
-	if prev.ACP == nil || event.ACP == nil {
-		return false
+func dedupeBySeq(events []Event) []Event {
+	out := make([]Event, 0, len(events))
+	type seqKey struct {
+		sessionID string
+		seq       int64
 	}
-	if prev.Type != event.Type {
-		return false
-	}
-	if event.Type != TypeACPMessage && event.Type != TypeACPThought {
-		return false
-	}
-	if prev.SessionID != event.SessionID {
-		return false
-	}
-	if prev.ACP.ID != event.ACP.ID {
-		return false
-	}
-	if event.Seq != 0 && prevLastSeq != 0 && event.Seq <= prevLastSeq {
-		return false
-	}
-	if prev.ACP.TextRunID != "" || event.ACP.TextRunID != "" {
-		return prev.ACP.TextRunID != "" && prev.ACP.TextRunID == event.ACP.TextRunID
-	}
-	return false
-}
-
-func transcriptCoalesceKey(event Event) string {
-	if event.Type == "plan_update" && event.Plan != nil {
-		return "plan_update:" + event.SessionID
-	}
-	if event.Type == "proposed_plan" && event.Plan != nil {
-		return "proposed_plan:" + event.SessionID
-	}
-	if event.Type == TypeGoalUpdate && event.Goal != nil {
-		return "goal_update:" + event.SessionID
-	}
-	if event.Type == TypeGoalClear {
-		return "goal_update:" + event.SessionID
-	}
-	if event.ACP != nil && event.ACP.ID != "" && event.ACP.Plan != nil {
-		return "acp_plan:" + event.ACP.ID
-	}
-	if event.Type == "acp" && event.ACP != nil && event.ACP.ID != "" {
-		if len(event.ACP.ToolCalls) > 0 {
-			return "acp_tools:" + event.ACP.ID
+	bySeq := map[seqKey]int{}
+	for _, event := range events {
+		if event.Seq == 0 {
+			out = append(out, event)
+			continue
 		}
-		if event.ACP.Error != "" {
-			return "acp_error:" + event.ACP.ID
+		key := seqKey{sessionID: event.SessionID, seq: event.Seq}
+		if idx, ok := bySeq[key]; ok {
+			out[idx] = event
+			continue
 		}
-		return "acp_status:" + event.ACP.ID
+		bySeq[key] = len(out)
+		out = append(out, event)
 	}
-	if event.Type == "acp_tool" && event.ACP != nil && event.ACP.ID != "" && len(event.ACP.ToolCalls) > 0 && event.ACP.ToolCalls[0].ID != "" {
-		return "acp_tool:" + event.ACP.ID + ":" + event.ACP.ToolCalls[0].ID
-	}
-	if event.Type == TypeProviderSubagent && event.ProviderSubagent != nil && event.ProviderSubagent.ID != "" {
-		return "provider_subagent:" + event.ProviderSubagent.Provider + ":" + event.ProviderSubagent.ID
-	}
-	if (event.Type == "permission_request" || event.Type == "permission_response") && event.Permission != nil && event.Permission.ID != "" {
-		return event.Type + ":" + event.Permission.ID
-	}
-	return ""
+	return out
 }
 
 func transcriptItemLess(a, b transcriptItem) bool {

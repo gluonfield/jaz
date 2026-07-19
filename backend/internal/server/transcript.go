@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/threads"
 )
@@ -33,7 +34,7 @@ func (s *Server) writeSessionTranscript(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	response := map[string]any{
-		"session":  canonicalSessionResponse(session),
+		"session":  sessionview.Public(session),
 		"messages": threads.TranscriptFromRecords(records, maxToolChars),
 	}
 	if counts := threads.ToolCounts(records); len(counts) > 0 {

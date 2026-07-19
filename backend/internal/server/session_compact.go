@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -17,7 +18,7 @@ func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request, se
 		writeError(w, http.StatusBadRequest, fmt.Errorf("compact is only available for acp sessions"))
 		return
 	}
-	if !sessionSupportsCompact(session) {
+	if !sessionview.SupportsCompact(session) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("compact is not available for this session"))
 		return
 	}

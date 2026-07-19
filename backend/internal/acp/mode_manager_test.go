@@ -28,6 +28,7 @@ func TestManagerRestoresClaudeBaselineModeAfterPlan(t *testing.T) {
 				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":        "1",
+					"JAZ_FAKE_ACP_LOAD":         "1",
 					"JAZ_FAKE_ACP_CLAUDE_MODES": "1",
 				},
 			},

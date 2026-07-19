@@ -1,12 +1,14 @@
 package storage
 
 import (
+	"errors"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/media"
-	"github.com/wins/jaz/backend/internal/sessionevents"
 )
+
+var ErrSessionNotFound = errors.New("session not found")
 
 const (
 	RuntimeACP = "acp"
@@ -204,43 +206,6 @@ type Message struct {
 	Reasoning string    `json:"reasoning,omitempty"`
 	Blocks    []Block   `json:"blocks"`
 	CreatedAt time.Time `json:"created_at"`
-}
-
-type ActivityEntry struct {
-	ID     string    `json:"id,omitempty"`
-	Kind   string    `json:"kind"`
-	Text   string    `json:"text,omitempty"`
-	Status string    `json:"status,omitempty"`
-	At     time.Time `json:"at"`
-}
-
-type ACPState struct {
-	ID              string                        `json:"id"`
-	Slug            string                        `json:"slug"`
-	Title           string                        `json:"title,omitempty"`
-	ParentID        string                        `json:"parent_id,omitempty"`
-	ACPAgent        string                        `json:"acp_agent"`
-	ACPSession      string                        `json:"acp_session"`
-	Cwd             string                        `json:"cwd,omitempty"`
-	ModelProvider   string                        `json:"model_provider,omitempty"`
-	Model           string                        `json:"model,omitempty"`
-	ReasoningEffort string                        `json:"reasoning_effort,omitempty"`
-	State           string                        `json:"state"`
-	StopReason      string                        `json:"stop_reason,omitempty"`
-	Assistant       string                        `json:"assistant,omitempty"`
-	Thought         string                        `json:"thought,omitempty"`
-	Plan            []sessionevents.ACPPlanEntry  `json:"plan,omitempty"`
-	ToolCalls       []sessionevents.ACPToolCall   `json:"tool_calls,omitempty"`
-	Permissions     []sessionevents.ACPPermission `json:"permissions,omitempty"`
-	Modes           sessionevents.ACPModeState    `json:"modes,omitempty"`
-	Error           string                        `json:"error,omitempty"`
-	GoalRequested   bool                          `json:"goal_requested,omitempty"`
-	ActiveOperation string                        `json:"active_operation,omitempty"`
-	ParentVisible   bool                          `json:"parent_visible,omitempty"`
-	CreatedAt       time.Time                     `json:"created_at"`
-	UpdatedAt       time.Time                     `json:"updated_at"`
-	LastEventAt     time.Time                     `json:"last_event_at,omitzero"`
-	LastToolAt      time.Time                     `json:"last_tool_at,omitzero"`
 }
 
 type CreateSession struct {

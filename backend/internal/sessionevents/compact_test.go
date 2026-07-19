@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 var compactBaseTime = time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
@@ -66,6 +67,99 @@ func TestCompactTranscriptMergesACPTextWithSameRunID(t *testing.T) {
 	}
 }
 
+func TestProjectorOwnsAppendAndBoundaryIdentity(t *testing.T) {
+	projector := NewProjector()
+	first := projector.Apply(compactACPTextRun(1, TypeACPMessage, "Hel", "message:m1", compactACPState("thread", "running")))
+	delta := projector.Apply(compactACPTextRun(2, TypeACPMessage, "lo", "message:m1", compactACPState("thread", "running")))
+	projector.Apply(compactACP(3, "acp", "", compactACPState("thread", "idle")))
+	afterBoundary := projector.Apply(compactACPTextRun(4, TypeACPMessage, "again", "message:m1", compactACPState("thread", "running")))
+
+	if first.ProjectionKey == "" || first.ProjectionOp != ProjectionAppend {
+		t.Fatalf("first projection = %#v", first)
+	}
+	if delta.ProjectionKey != first.ProjectionKey || delta.ProjectionOp != ProjectionAppend {
+		t.Fatalf("delta projection = %#v, first = %#v", delta, first)
+	}
+	if afterBoundary.ProjectionKey == first.ProjectionKey {
+		t.Fatalf("terminal boundary reused projection identity %q", first.ProjectionKey)
+	}
+	events := projector.Events()
+	if len(events) != 3 || events[0].Content != "Hello" || events[2].Content != "again" {
+		t.Fatalf("projected events = %#v", events)
+	}
+}
+
+func TestAnnotatorExpandsSparseProviderSubagentUpdates(t *testing.T) {
+	annotator := Annotator{}
+	first := annotator.Annotate(Event{
+		SessionID: "thread", Type: TypeProviderSubagent,
+		ProviderSubagent: &ProviderSubagentEvent{Provider: "codex", ID: "worker", Name: "Newton", Task: "audit", Status: "running"},
+	})
+	next := annotator.Annotate(Event{
+		SessionID: "thread", Type: TypeProviderSubagent,
+		ProviderSubagent: &ProviderSubagentEvent{Provider: "codex", ID: "worker", Status: "completed"},
+	})
+	if first.ProjectionKey == "" || next.ProjectionOp != ProjectionReplace {
+		t.Fatalf("projection metadata = %#v, %#v", first, next)
+	}
+	if next.ProviderSubagent.Name != "Newton" || next.ProviderSubagent.Task != "audit" || next.ProviderSubagent.Status != "completed" {
+		t.Fatalf("expanded update = %#v", next.ProviderSubagent)
+	}
+}
+
+func TestAnnotatorKeepsProviderStateAcrossUnrelatedACPStatus(t *testing.T) {
+	annotator := Annotator{}
+	annotator.Annotate(Event{
+		SessionID: "parent", Type: TypeProviderSubagent,
+		ProviderSubagent: &ProviderSubagentEvent{Provider: "codex", ID: "worker", Name: "Newton", Task: "audit", Status: "running"},
+	})
+	annotator.Annotate(Event{
+		SessionID: "parent", Type: "acp",
+		ACP: &ACPEvent{ID: "other-child", ParentID: "parent", State: "idle"},
+	})
+	next := annotator.Annotate(Event{
+		SessionID: "parent", Type: TypeProviderSubagent,
+		ProviderSubagent: &ProviderSubagentEvent{Provider: "codex", ID: "worker", Summary: "still working"},
+	})
+	if next.ProviderSubagent.Name != "Newton" || next.ProviderSubagent.Task != "audit" {
+		t.Fatalf("unrelated status erased provider state: %#v", next.ProviderSubagent)
+	}
+}
+
+func TestLatestACPTurnUsesTerminalStatusesAsDurableBoundaries(t *testing.T) {
+	events := []Event{
+		compactACP(1, TypeACPMessage, "old", compactACPState("thread", "running")),
+		compactACP(2, "acp", "", compactACPState("thread", "idle")),
+		compactACPTextRun(3, TypeACPMessage, "new ", "message:new", compactACPState("thread", "running")),
+		compactACPTextRun(4, TypeACPMessage, "answer", "message:new", compactACPState("thread", "running")),
+		compactACP(5, "acp", "", compactACPState("thread", "idle")),
+	}
+	got := LatestACPTurn(events, "thread")
+	if len(got) != 2 || got[0].Content != "new answer" || got[1].ACP == nil || got[1].ACP.State != "idle" {
+		t.Fatalf("latest turn = %#v", got)
+	}
+}
+
+func TestAnnotatorGivesRestartedTextRunsDistinctKeysAtTheSameTime(t *testing.T) {
+	annotator := Annotator{}
+	at := time.Unix(100, 0)
+	first := annotator.Annotate(Event{
+		SessionID: "thread", Type: TypeACPMessage, Content: "before", At: at,
+		ACP: &ACPEvent{ID: "thread", TextRunID: "message:one", State: "running"},
+	})
+	annotator.Annotate(Event{
+		SessionID: "thread", Type: "acp", At: at,
+		ACP: &ACPEvent{ID: "thread", State: "idle"},
+	})
+	after := annotator.Annotate(Event{
+		SessionID: "thread", Type: TypeACPMessage, Content: "after", At: at,
+		ACP: &ACPEvent{ID: "thread", TextRunID: "message:one", State: "running"},
+	})
+	if first.ProjectionKey == after.ProjectionKey {
+		t.Fatalf("restarted run reused projection key %q", first.ProjectionKey)
+	}
+}
+
 func TestCompactTranscriptDoesNotMergeACPTextWithoutRunID(t *testing.T) {
 	got := CompactTranscript([]Event{
 		compactACP(1, "acp_message", "Hel", compactACPState("thread", "running")),
@@ -77,6 +171,28 @@ func TestCompactTranscriptDoesNotMergeACPTextWithoutRunID(t *testing.T) {
 	}
 	if got[0].Content != "Hel" || got[1].Content != "lo" {
 		t.Fatalf("events merged without run id: %#v", got)
+	}
+}
+
+func TestSplitTextEventPreservesUTF8AndProjection(t *testing.T) {
+	event := Event{
+		SessionID: "thread", Type: TypeACPMessage, Content: "aé🙂b",
+		ACP:           &ACPEvent{ID: "agent", TextRunID: "message:one"},
+		ProjectionKey: "text:one", ProjectionOp: ProjectionAppend,
+	}
+	parts := SplitTextEvent(event, 4)
+	if len(parts) < 2 {
+		t.Fatalf("parts = %#v", parts)
+	}
+	var joined string
+	for _, part := range parts {
+		if !utf8.ValidString(part.Content) || len(part.Content) > 4 || part.ProjectionKey != event.ProjectionKey || part.ProjectionOp != ProjectionAppend {
+			t.Fatalf("part = %#v", part)
+		}
+		joined += part.Content
+	}
+	if joined != event.Content {
+		t.Fatalf("joined = %q, want %q", joined, event.Content)
 	}
 }
 
@@ -124,10 +240,6 @@ func TestCompactTextChunksKeepsHiddenOwnStatusAsTextBoundary(t *testing.T) {
 		t.Fatalf("second message = %#v", got[3])
 	}
 
-	runs := CompactTextChunkRuns(events)
-	if len(runs) != 0 {
-		t.Fatalf("runs = %#v, want none", runs)
-	}
 }
 
 func TestCompactTextChunksKeepsToolSeparatedMessages(t *testing.T) {
@@ -161,16 +273,6 @@ func TestCompactTextChunksKeepsToolSeparatedMessages(t *testing.T) {
 	}
 	if got[4].Seq != 8 || got[4].Content != "gap" {
 		t.Fatalf("gap event should not merge: %#v", got[4])
-	}
-	runs := CompactTextChunkRuns(events)
-	if len(runs) != 2 {
-		t.Fatalf("runs = %d, want 2: %#v", len(runs), runs)
-	}
-	if runs[0].Event.Seq != 2 || runs[0].Event.Content != "Hello" || len(runs[0].DeleteSeqs) != 1 || runs[0].DeleteSeqs[0] != 1 {
-		t.Fatalf("first run = %#v", runs[0])
-	}
-	if runs[1].Event.Seq != 6 || runs[1].Event.Content != "Done.Next" || len(runs[1].DeleteSeqs) != 1 || runs[1].DeleteSeqs[0] != 5 {
-		t.Fatalf("second run = %#v", runs[1])
 	}
 }
 
@@ -221,6 +323,20 @@ func TestCompactTranscriptDoesNotSplitWordsAcrossToolEvents(t *testing.T) {
 	}
 }
 
+func TestCompactTranscriptDoesNotSplitWordsAcrossCoalescedToolGap(t *testing.T) {
+	toolACP := compactACPState("thread", "running")
+	toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
+	got := CompactTranscript([]Event{
+		compactACPTextRun(1, "acp_message", "message chunks, t", "message:m1", compactACPState("thread", "running")),
+		compactACP(3, "acp_tool", "", toolACP),
+		compactACPTextRun(4, "acp_message", "ool calls", "message:m1", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 2 || got[1].Content != "message chunks, tool calls" {
+		t.Fatalf("compacted events = %#v", got)
+	}
+}
+
 func TestCompactTranscriptKeepsTaskSurfaceAsTextBoundary(t *testing.T) {
 	planACP := compactACPState("thread", "running")
 	planACP.Plan = []PlanEntry{{Content: "Inspect files", Status: "completed"}}
@@ -235,6 +351,20 @@ func TestCompactTranscriptKeepsTaskSurfaceAsTextBoundary(t *testing.T) {
 	}
 	if got[0].Content != "before" || got[2].Content != "after" {
 		t.Fatalf("messages crossed task surface: %#v", got)
+	}
+}
+
+func TestCompactTranscriptKeepsTaskSurfaceBetweenOneTextRun(t *testing.T) {
+	planACP := compactACPState("thread", "running")
+	planACP.Plan = []PlanEntry{{Content: "Inspect files", Status: "completed"}}
+	got := CompactTranscript([]Event{
+		compactACPTextRun(1, TypeACPMessage, "before", "message:m1", compactACPState("thread", "running")),
+		compactACP(2, "acp", "", planACP),
+		compactACPTextRun(3, TypeACPMessage, "after", "message:m1", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 3 || got[0].Content != "before" || got[1].Type != "acp" || got[2].Content != "after" {
+		t.Fatalf("compacted events = %#v", got)
 	}
 }
 
@@ -329,6 +459,33 @@ func TestCompactTranscriptCoalescesSemanticUpdates(t *testing.T) {
 	}
 	if got[3].Type != "permission_request" || got[4].Type != "permission_response" {
 		t.Fatalf("permission events = %#v", got[3:])
+	}
+}
+
+func TestPermissionEventsRemainDistinctTranscriptHistory(t *testing.T) {
+	for _, eventType := range []string{"permission_request", "permission_response"} {
+		event := EnsureStatelessProjection(Event{
+			SessionID: "thread",
+			Type:      eventType,
+			Permission: &ACPPermission{
+				ID: "perm-1",
+			},
+		})
+		if event.ProjectionKey != "" {
+			t.Fatalf("%s received projection key %q", eventType, event.ProjectionKey)
+		}
+		if key := StorageCoalesceKey(event); key != "" {
+			t.Fatalf("%s received storage key %q", eventType, key)
+		}
+	}
+}
+
+func TestStoragePreservesTerminalTurnBoundaries(t *testing.T) {
+	terminal := EnsureStatelessProjection(Event{
+		SessionID: "thread", Type: "acp", ACP: &ACPEvent{ID: "thread", State: "idle"},
+	})
+	if key := StorageCoalesceKey(terminal); key != "" {
+		t.Fatalf("terminal status lost its turn boundary to storage key %q", key)
 	}
 }
 

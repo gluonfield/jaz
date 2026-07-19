@@ -20,6 +20,25 @@ func (q *Queries) DeleteMessagesByThread(ctx context.Context, threadID string) e
 	return err
 }
 
+const getMessageTime = `-- name: GetMessageTime :one
+SELECT created_at_ms
+FROM messages
+WHERE thread_id = ?1
+  AND seq = ?2
+`
+
+type GetMessageTimeParams struct {
+	ThreadID string `json:"thread_id"`
+	Seq      int64  `json:"seq"`
+}
+
+func (q *Queries) GetMessageTime(ctx context.Context, arg GetMessageTimeParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getMessageTime, arg.ThreadID, arg.Seq)
+	var created_at_ms int64
+	err := row.Scan(&created_at_ms)
+	return created_at_ms, err
+}
+
 const insertMessage = `-- name: InsertMessage :exec
 INSERT INTO messages (
   thread_id,
@@ -61,6 +80,62 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) er
 		arg.CreatedAtMs,
 	)
 	return err
+}
+
+const listMessageRangeSizes = `-- name: ListMessageRangeSizes :many
+SELECT
+  seq,
+  role,
+  created_at_ms,
+  LENGTH(CAST(content AS BLOB))
+    + COALESCE(LENGTH(CAST(reasoning AS BLOB)), 0)
+    + LENGTH(CAST(blocks AS BLOB)) AS bytes
+FROM messages
+WHERE thread_id = ?1
+  AND seq >= ?2
+  AND (?3 = 0 OR seq < ?3)
+ORDER BY seq DESC
+`
+
+type ListMessageRangeSizesParams struct {
+	ThreadID  string      `json:"thread_id"`
+	StartSeq  int64       `json:"start_seq"`
+	BeforeSeq interface{} `json:"before_seq"`
+}
+
+type ListMessageRangeSizesRow struct {
+	Seq         int64  `json:"seq"`
+	Role        string `json:"role"`
+	CreatedAtMs int64  `json:"created_at_ms"`
+	Bytes       int64  `json:"bytes"`
+}
+
+func (q *Queries) ListMessageRangeSizes(ctx context.Context, arg ListMessageRangeSizesParams) ([]ListMessageRangeSizesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMessageRangeSizes, arg.ThreadID, arg.StartSeq, arg.BeforeSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMessageRangeSizesRow{}
+	for rows.Next() {
+		var i ListMessageRangeSizesRow
+		if err := rows.Scan(
+			&i.Seq,
+			&i.Role,
+			&i.CreatedAtMs,
+			&i.Bytes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listMessagesByThread = `-- name: ListMessagesByThread :many
@@ -106,4 +181,114 @@ func (q *Queries) ListMessagesByThread(ctx context.Context, threadID string) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const listMessagesByThreadRange = `-- name: ListMessagesByThreadRange :many
+SELECT
+  thread_id,
+  seq,
+  role,
+  content,
+  reasoning,
+  blocks,
+  created_at_ms
+FROM messages
+WHERE thread_id = ?1
+  AND seq >= ?2
+  AND (?3 = 0 OR seq < ?3)
+ORDER BY seq
+`
+
+type ListMessagesByThreadRangeParams struct {
+	ThreadID  string      `json:"thread_id"`
+	StartSeq  int64       `json:"start_seq"`
+	BeforeSeq interface{} `json:"before_seq"`
+}
+
+func (q *Queries) ListMessagesByThreadRange(ctx context.Context, arg ListMessagesByThreadRangeParams) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByThreadRange, arg.ThreadID, arg.StartSeq, arg.BeforeSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ThreadID,
+			&i.Seq,
+			&i.Role,
+			&i.Content,
+			&i.Reasoning,
+			&i.Blocks,
+			&i.CreatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listUserMessageBoundaries = `-- name: ListUserMessageBoundaries :many
+SELECT seq, created_at_ms
+FROM messages
+WHERE thread_id = ?1
+  AND role = 'user'
+  AND (?2 = 0 OR seq < ?2)
+ORDER BY seq DESC
+LIMIT ?3
+`
+
+type ListUserMessageBoundariesParams struct {
+	ThreadID   string      `json:"thread_id"`
+	BeforeSeq  interface{} `json:"before_seq"`
+	LimitCount int64       `json:"limit_count"`
+}
+
+type ListUserMessageBoundariesRow struct {
+	Seq         int64 `json:"seq"`
+	CreatedAtMs int64 `json:"created_at_ms"`
+}
+
+func (q *Queries) ListUserMessageBoundaries(ctx context.Context, arg ListUserMessageBoundariesParams) ([]ListUserMessageBoundariesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUserMessageBoundaries, arg.ThreadID, arg.BeforeSeq, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUserMessageBoundariesRow{}
+	for rows.Next() {
+		var i ListUserMessageBoundariesRow
+		if err := rows.Scan(&i.Seq, &i.CreatedAtMs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const nextMessageSeq = `-- name: NextMessageSeq :one
+SELECT COALESCE(MAX(seq), 0) + 1 AS seq
+FROM messages
+WHERE thread_id = ?1
+`
+
+func (q *Queries) NextMessageSeq(ctx context.Context, threadID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, nextMessageSeq, threadID)
+	var seq int64
+	err := row.Scan(&seq)
+	return seq, err
 }

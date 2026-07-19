@@ -11,9 +11,7 @@ import (
 )
 
 func (s *Store) ListDevices() ([]storage.Device, error) {
-	s.mu.Lock()
 	rows, err := devicequeries.New(s.db).ListDevices(context.Background())
-	s.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -25,16 +23,12 @@ func (s *Store) ListDevices() ([]storage.Device, error) {
 }
 
 func (s *Store) CountApprovedDevices() (int, error) {
-	s.mu.Lock()
 	count, err := devicequeries.New(s.db).CountApprovedDevices(context.Background())
-	s.mu.Unlock()
 	return int(count), err
 }
 
 func (s *Store) LoadDeviceByTokenHash(hash string) (storage.Device, error) {
-	s.mu.Lock()
 	row, err := devicequeries.New(s.db).GetDeviceByTokenHash(context.Background(), hash)
-	s.mu.Unlock()
 	if err != nil {
 		return storage.Device{}, deviceError(err)
 	}
@@ -42,9 +36,7 @@ func (s *Store) LoadDeviceByTokenHash(hash string) (storage.Device, error) {
 }
 
 func (s *Store) LoadDevice(id string) (storage.Device, error) {
-	s.mu.Lock()
 	row, err := devicequeries.New(s.db).GetDevice(context.Background(), id)
-	s.mu.Unlock()
 	if err != nil {
 		return storage.Device{}, deviceError(err)
 	}
@@ -52,7 +44,7 @@ func (s *Store) LoadDevice(id string) (storage.Device, error) {
 }
 
 func (s *Store) SavePairingDevice(input storage.SavePairingDevice) (storage.Device, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := devicequeries.New(s.db).SavePairingDevice(context.Background(), devicequeries.SavePairingDeviceParams{
 		ID:              input.ID,
 		Name:            input.Name,
@@ -67,7 +59,7 @@ func (s *Store) SavePairingDevice(input storage.SavePairingDevice) (storage.Devi
 		UserAgent:       input.UserAgent,
 		AppVersion:      input.AppVersion,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return storage.Device{}, err
 	}
@@ -75,10 +67,10 @@ func (s *Store) SavePairingDevice(input storage.SavePairingDevice) (storage.Devi
 }
 
 func (s *Store) SaveApprovedDevice(input storage.SaveApprovedDevice) (storage.Device, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Device{}, err
 	}
 	q := devicequeries.New(s.db).WithTx(tx)
@@ -99,7 +91,7 @@ func (s *Store) SaveApprovedDevice(input storage.SaveApprovedDevice) (storage.De
 		AppVersion:      input.AppVersion,
 	}); err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Device{}, err
 	}
 	if _, err := q.RejectPendingPairingRequestsForDevice(context.Background(), devicequeries.RejectPendingPairingRequestsForDeviceParams{
@@ -107,37 +99,37 @@ func (s *Store) SaveApprovedDevice(input storage.SaveApprovedDevice) (storage.De
 		RejectedAtMs: timeToMs(input.ApprovedAt),
 	}); err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Device{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Device{}, err
 	}
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	return s.LoadDevice(input.ID)
 }
 
 func (s *Store) UpdateDeviceSeen(id, ip, userAgent string, at time.Time) error {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	_, err := devicequeries.New(s.db).UpdateDeviceSeen(context.Background(), devicequeries.UpdateDeviceSeenParams{
 		ID:           id,
 		LastSeenAtMs: timeToMs(at),
 		LastSeenIp:   ip,
 		UserAgent:    userAgent,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	return err
 }
 
 func (s *Store) ApproveDevice(id string, at time.Time) (storage.Device, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	changed, err := devicequeries.New(s.db).ApproveDevice(context.Background(), devicequeries.ApproveDeviceParams{
 		ID:           id,
 		TokenHash:    "",
 		ApprovedAtMs: timeToMs(at),
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return storage.Device{}, err
 	}
@@ -148,12 +140,12 @@ func (s *Store) ApproveDevice(id string, at time.Time) (storage.Device, error) {
 }
 
 func (s *Store) RevokeDevice(id string, at time.Time) (storage.Device, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	changed, err := devicequeries.New(s.db).RevokeDevice(context.Background(), devicequeries.RevokeDeviceParams{
 		ID:          id,
 		RevokedAtMs: timeToMs(at),
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return storage.Device{}, err
 	}
@@ -164,10 +156,10 @@ func (s *Store) RevokeDevice(id string, at time.Time) (storage.Device, error) {
 }
 
 func (s *Store) CreateDevicePairing(input storage.CreateDevicePairing) (storage.DevicePairing, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
 	q := devicequeries.New(s.db).WithTx(tx)
@@ -176,7 +168,7 @@ func (s *Store) CreateDevicePairing(input storage.CreateDevicePairing) (storage.
 		RejectedAtMs: timeToMs(input.CreatedAt),
 	}); err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
 	err = q.CreatePairingRequest(context.Background(), devicequeries.CreatePairingRequestParams{
@@ -189,22 +181,20 @@ func (s *Store) CreateDevicePairing(input storage.CreateDevicePairing) (storage.
 	})
 	if err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	pairing, _, err := s.LoadDevicePairing(input.ID)
 	return pairing, err
 }
 
 func (s *Store) LoadDevicePairing(id string) (storage.DevicePairing, string, error) {
-	s.mu.Lock()
 	row, err := devicequeries.New(s.db).GetPairingRequest(context.Background(), id)
-	s.mu.Unlock()
 	if err != nil {
 		return storage.DevicePairing{}, "", deviceError(err)
 	}
@@ -212,9 +202,7 @@ func (s *Store) LoadDevicePairing(id string) (storage.DevicePairing, string, err
 }
 
 func (s *Store) ListDevicePairings() ([]storage.DevicePairing, error) {
-	s.mu.Lock()
 	rows, err := devicequeries.New(s.db).ListPairingRequests(context.Background())
-	s.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -226,98 +214,98 @@ func (s *Store) ListDevicePairings() ([]storage.DevicePairing, error) {
 }
 
 func (s *Store) ApproveDevicePairing(id string, at time.Time) (storage.DevicePairing, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
 	q := devicequeries.New(s.db).WithTx(tx)
 	pairing, err := q.GetPairingRequest(context.Background(), id)
 	if err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, deviceError(err)
 	}
 	if pairing.Status != storage.PairingStatusPending {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, fmt.Errorf("pairing request not pending: %s", id)
 	}
 	approvedAt := timeToMs(at)
 	if changed, err := q.ApproveDevice(context.Background(), devicequeries.ApproveDeviceParams{ID: pairing.DeviceID, TokenHash: pairing.SecretHash, ApprovedAtMs: approvedAt}); err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	} else if changed == 0 {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, fmt.Errorf("device not found: %s", pairing.DeviceID)
 	}
 	if changed, err := q.ApprovePairingRequest(context.Background(), devicequeries.ApprovePairingRequestParams{ID: id, ApprovedAtMs: approvedAt}); err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	} else if changed == 0 {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, fmt.Errorf("pairing request not pending: %s", id)
 	}
 	if _, err := q.RejectOtherPendingPairingRequests(context.Background(), devicequeries.RejectOtherPendingPairingRequestsParams{ID: id, DeviceID: pairing.DeviceID, RejectedAtMs: approvedAt}); err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	loaded, _, err := s.LoadDevicePairing(id)
 	return loaded, err
 }
 
 func (s *Store) RejectDevicePairing(id string, at time.Time) (storage.DevicePairing, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
 	q := devicequeries.New(s.db).WithTx(tx)
 	pairing, err := q.GetPairingRequest(context.Background(), id)
 	if err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, deviceError(err)
 	}
 	if pairing.Status != storage.PairingStatusPending {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, fmt.Errorf("pairing request not pending: %s", id)
 	}
 	rejectedAt := timeToMs(at)
 	if changed, err := q.RejectPairingRequest(context.Background(), devicequeries.RejectPairingRequestParams{ID: id, RejectedAtMs: rejectedAt}); err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	} else if changed == 0 {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, fmt.Errorf("pairing request not pending: %s", id)
 	}
 	if pairing.DeviceStatus == storage.DeviceStatusPending {
 		if _, err := q.RevokeDevice(context.Background(), devicequeries.RevokeDeviceParams{ID: pairing.DeviceID, RevokedAtMs: rejectedAt}); err != nil {
 			_ = tx.Rollback()
-			s.mu.Unlock()
+			s.writeMu.Unlock()
 			return storage.DevicePairing{}, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
 	}
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	loaded, _, err := s.LoadDevicePairing(id)
 	return loaded, err
 }

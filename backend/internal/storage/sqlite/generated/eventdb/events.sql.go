@@ -8,19 +8,50 @@ package eventdb
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
-const countSessionEvents = `-- name: CountSessionEvents :one
-SELECT COUNT(*)
-FROM session_events
-WHERE thread_id = ?1
+const advanceSessionEventRevision = `-- name: AdvanceSessionEventRevision :exec
+UPDATE threads
+SET event_revision = event_revision + 1,
+    event_compaction_version = CASE
+      WHEN ?1 THEN 0
+      ELSE event_compaction_version
+    END
+WHERE id = ?2
 `
 
-func (q *Queries) CountSessionEvents(ctx context.Context, threadID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countSessionEvents, threadID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type AdvanceSessionEventRevisionParams struct {
+	CompactionPending int64  `json:"compaction_pending"`
+	ThreadID          string `json:"thread_id"`
+}
+
+func (q *Queries) AdvanceSessionEventRevision(ctx context.Context, arg AdvanceSessionEventRevisionParams) error {
+	_, err := q.db.ExecContext(ctx, advanceSessionEventRevision, arg.CompactionPending, arg.ThreadID)
+	return err
+}
+
+const completeSessionEventCompaction = `-- name: CompleteSessionEventCompaction :execrows
+UPDATE threads
+SET event_compaction_version = 1
+WHERE id = ?1
+  AND event_compaction_version = 0
+  AND event_revision = ?2
+  AND status <> ?3
+`
+
+type CompleteSessionEventCompactionParams struct {
+	ThreadID      string `json:"thread_id"`
+	EventRevision int64  `json:"event_revision"`
+	RunningStatus string `json:"running_status"`
+}
+
+func (q *Queries) CompleteSessionEventCompaction(ctx context.Context, arg CompleteSessionEventCompactionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, completeSessionEventCompaction, arg.ThreadID, arg.EventRevision, arg.RunningStatus)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteSessionEvent = `-- name: DeleteSessionEvent :exec
@@ -38,10 +69,427 @@ func (q *Queries) DeleteSessionEvent(ctx context.Context, arg DeleteSessionEvent
 	return err
 }
 
+const deleteSessionEventByCoalesceKey = `-- name: DeleteSessionEventByCoalesceKey :execrows
+DELETE FROM session_events
+WHERE thread_id = ?1 AND coalesce_key = ?2
+`
+
+type DeleteSessionEventByCoalesceKeyParams struct {
+	ThreadID    string `json:"thread_id"`
+	CoalesceKey string `json:"coalesce_key"`
+}
+
+func (q *Queries) DeleteSessionEventByCoalesceKey(ctx context.Context, arg DeleteSessionEventByCoalesceKeyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteSessionEventByCoalesceKey, arg.ThreadID, arg.CoalesceKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteSessionEvents = `-- name: DeleteSessionEvents :exec
+DELETE FROM session_events
+WHERE thread_id = ?1 AND seq IN (/*SLICE:seqs*/?)
+`
+
+type DeleteSessionEventsParams struct {
+	ThreadID string  `json:"thread_id"`
+	Seqs     []int64 `json:"seqs"`
+}
+
+func (q *Queries) DeleteSessionEvents(ctx context.Context, arg DeleteSessionEventsParams) error {
+	query := deleteSessionEvents
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ThreadID)
+	if len(arg.Seqs) > 0 {
+		for _, v := range arg.Seqs {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:seqs*/?", strings.Repeat(",?", len(arg.Seqs))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:seqs*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
+const getSessionEventByCoalesceKey = `-- name: GetSessionEventByCoalesceKey :one
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = ?1 AND coalesce_key = ?2
+`
+
+type GetSessionEventByCoalesceKeyParams struct {
+	ThreadID    string `json:"thread_id"`
+	CoalesceKey string `json:"coalesce_key"`
+}
+
+type GetSessionEventByCoalesceKeyRow struct {
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) GetSessionEventByCoalesceKey(ctx context.Context, arg GetSessionEventByCoalesceKeyParams) (GetSessionEventByCoalesceKeyRow, error) {
+	row := q.db.QueryRowContext(ctx, getSessionEventByCoalesceKey, arg.ThreadID, arg.CoalesceKey)
+	var i GetSessionEventByCoalesceKeyRow
+	err := row.Scan(
+		&i.ThreadID,
+		&i.Seq,
+		&i.ProjectionKey,
+		&i.ProjectionOp,
+		&i.Type,
+		&i.Content,
+		&i.Acp,
+		&i.Plan,
+		&i.Permission,
+		&i.CreatedAtMs,
+	)
+	return i, err
+}
+
+const getSessionEventCompactionState = `-- name: GetSessionEventCompactionState :one
+SELECT event_compaction_version, event_revision, status
+FROM threads
+WHERE id = ?1
+`
+
+type GetSessionEventCompactionStateRow struct {
+	EventCompactionVersion int64  `json:"event_compaction_version"`
+	EventRevision          int64  `json:"event_revision"`
+	Status                 string `json:"status"`
+}
+
+func (q *Queries) GetSessionEventCompactionState(ctx context.Context, threadID string) (GetSessionEventCompactionStateRow, error) {
+	row := q.db.QueryRowContext(ctx, getSessionEventCompactionState, threadID)
+	var i GetSessionEventCompactionStateRow
+	err := row.Scan(&i.EventCompactionVersion, &i.EventRevision, &i.Status)
+	return i, err
+}
+
+const hasPendingSessionEventCompaction = `-- name: HasPendingSessionEventCompaction :one
+SELECT EXISTS (
+  SELECT 1
+  FROM threads
+  WHERE event_compaction_version = 0
+    AND status <> ?1
+)
+`
+
+func (q *Queries) HasPendingSessionEventCompaction(ctx context.Context, runningStatus string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasPendingSessionEventCompaction, runningStatus)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const latestSessionEventSeq = `-- name: LatestSessionEventSeq :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) AS seq
+FROM session_events
+WHERE thread_id = ?1
+`
+
+func (q *Queries) LatestSessionEventSeq(ctx context.Context, threadID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, latestSessionEventSeq, threadID)
+	var seq int64
+	err := row.Scan(&seq)
+	return seq, err
+}
+
+const listLatestACPTurn = `-- name: ListLatestACPTurn :many
+WITH boundary AS (
+  SELECT seq
+  FROM session_events
+  WHERE thread_id = ?1
+    AND type = 'acp'
+    AND json_extract(acp, '$.id') = ?1
+    AND json_extract(acp, '$.state') IN ('idle', 'failed', 'cancelled')
+  ORDER BY seq DESC
+  LIMIT 1 OFFSET 1
+)
+SELECT
+  events.thread_id,
+  events.seq,
+  events.projection_key,
+  events.projection_op,
+  events.type,
+  events.content,
+  events.acp,
+  events.plan,
+  events.permission,
+  events.created_at_ms
+FROM session_events AS events
+WHERE events.thread_id = ?1
+  AND events.seq > COALESCE((SELECT boundary.seq FROM boundary), 0)
+ORDER BY events.seq
+`
+
+type ListLatestACPTurnRow struct {
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) ListLatestACPTurn(ctx context.Context, threadID string) ([]ListLatestACPTurnRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLatestACPTurn, threadID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLatestACPTurnRow{}
+	for rows.Next() {
+		var i ListLatestACPTurnRow
+		if err := rows.Scan(
+			&i.ThreadID,
+			&i.Seq,
+			&i.ProjectionKey,
+			&i.ProjectionOp,
+			&i.Type,
+			&i.Content,
+			&i.Acp,
+			&i.Plan,
+			&i.Permission,
+			&i.CreatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionEventCompactionPage = `-- name: ListSessionEventCompactionPage :many
+SELECT
+  thread_id,
+  seq,
+  coalesce_key,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = ?1
+  AND seq > ?2
+ORDER BY seq
+LIMIT ?3
+`
+
+type ListSessionEventCompactionPageParams struct {
+	ThreadID   string `json:"thread_id"`
+	AfterSeq   int64  `json:"after_seq"`
+	LimitCount int64  `json:"limit_count"`
+}
+
+type ListSessionEventCompactionPageRow struct {
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	CoalesceKey   string         `json:"coalesce_key"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) ListSessionEventCompactionPage(ctx context.Context, arg ListSessionEventCompactionPageParams) ([]ListSessionEventCompactionPageRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionEventCompactionPage, arg.ThreadID, arg.AfterSeq, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionEventCompactionPageRow{}
+	for rows.Next() {
+		var i ListSessionEventCompactionPageRow
+		if err := rows.Scan(
+			&i.ThreadID,
+			&i.Seq,
+			&i.CoalesceKey,
+			&i.ProjectionKey,
+			&i.ProjectionOp,
+			&i.Type,
+			&i.Content,
+			&i.Acp,
+			&i.Plan,
+			&i.Permission,
+			&i.CreatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionEventPage = `-- name: ListSessionEventPage :many
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = ?1
+  AND (?2 = 0 OR seq < ?2)
+ORDER BY seq DESC
+LIMIT ?3
+`
+
+type ListSessionEventPageParams struct {
+	ThreadID   string      `json:"thread_id"`
+	BeforeSeq  interface{} `json:"before_seq"`
+	LimitCount int64       `json:"limit_count"`
+}
+
+type ListSessionEventPageRow struct {
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) ListSessionEventPage(ctx context.Context, arg ListSessionEventPageParams) ([]ListSessionEventPageRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionEventPage, arg.ThreadID, arg.BeforeSeq, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionEventPageRow{}
+	for rows.Next() {
+		var i ListSessionEventPageRow
+		if err := rows.Scan(
+			&i.ThreadID,
+			&i.Seq,
+			&i.ProjectionKey,
+			&i.ProjectionOp,
+			&i.Type,
+			&i.Content,
+			&i.Acp,
+			&i.Plan,
+			&i.Permission,
+			&i.CreatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSessionEventPageSizes = `-- name: ListSessionEventPageSizes :many
+SELECT
+  seq,
+  LENGTH(CAST(content AS BLOB))
+    + COALESCE(LENGTH(CAST(acp AS BLOB)), 0)
+    + COALESCE(LENGTH(CAST(plan AS BLOB)), 0)
+    + COALESCE(LENGTH(CAST(permission AS BLOB)), 0) AS bytes
+FROM session_events
+WHERE thread_id = ?1
+  AND (?2 = 0 OR seq < ?2)
+ORDER BY seq DESC
+LIMIT ?3
+`
+
+type ListSessionEventPageSizesParams struct {
+	ThreadID   string      `json:"thread_id"`
+	BeforeSeq  interface{} `json:"before_seq"`
+	LimitCount int64       `json:"limit_count"`
+}
+
+type ListSessionEventPageSizesRow struct {
+	Seq   int64 `json:"seq"`
+	Bytes int64 `json:"bytes"`
+}
+
+func (q *Queries) ListSessionEventPageSizes(ctx context.Context, arg ListSessionEventPageSizesParams) ([]ListSessionEventPageSizesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionEventPageSizes, arg.ThreadID, arg.BeforeSeq, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSessionEventPageSizesRow{}
+	for rows.Next() {
+		var i ListSessionEventPageSizesRow
+		if err := rows.Scan(&i.Seq, &i.Bytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessionEvents = `-- name: ListSessionEvents :many
 SELECT
   thread_id,
   seq,
+  coalesce_key,
+  projection_key,
+  projection_op,
   type,
   content,
   acp,
@@ -54,14 +502,17 @@ ORDER BY seq
 `
 
 type ListSessionEventsRow struct {
-	ThreadID    string         `json:"thread_id"`
-	Seq         int64          `json:"seq"`
-	Type        string         `json:"type"`
-	Content     string         `json:"content"`
-	Acp         sql.NullString `json:"acp"`
-	Plan        sql.NullString `json:"plan"`
-	Permission  sql.NullString `json:"permission"`
-	CreatedAtMs int64          `json:"created_at_ms"`
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	CoalesceKey   string         `json:"coalesce_key"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
 }
 
 func (q *Queries) ListSessionEvents(ctx context.Context, threadID string) ([]ListSessionEventsRow, error) {
@@ -76,6 +527,9 @@ func (q *Queries) ListSessionEvents(ctx context.Context, threadID string) ([]Lis
 		if err := rows.Scan(
 			&i.ThreadID,
 			&i.Seq,
+			&i.CoalesceKey,
+			&i.ProjectionKey,
+			&i.ProjectionOp,
 			&i.Type,
 			&i.Content,
 			&i.Acp,
@@ -100,6 +554,8 @@ const listSessionEventsAfter = `-- name: ListSessionEventsAfter :many
 SELECT
   thread_id,
   seq,
+  projection_key,
+  projection_op,
   type,
   content,
   acp,
@@ -118,14 +574,16 @@ type ListSessionEventsAfterParams struct {
 }
 
 type ListSessionEventsAfterRow struct {
-	ThreadID    string         `json:"thread_id"`
-	Seq         int64          `json:"seq"`
-	Type        string         `json:"type"`
-	Content     string         `json:"content"`
-	Acp         sql.NullString `json:"acp"`
-	Plan        sql.NullString `json:"plan"`
-	Permission  sql.NullString `json:"permission"`
-	CreatedAtMs int64          `json:"created_at_ms"`
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
 }
 
 func (q *Queries) ListSessionEventsAfter(ctx context.Context, arg ListSessionEventsAfterParams) ([]ListSessionEventsAfterRow, error) {
@@ -140,6 +598,8 @@ func (q *Queries) ListSessionEventsAfter(ctx context.Context, arg ListSessionEve
 		if err := rows.Scan(
 			&i.ThreadID,
 			&i.Seq,
+			&i.ProjectionKey,
+			&i.ProjectionOp,
 			&i.Type,
 			&i.Content,
 			&i.Acp,
@@ -164,6 +624,8 @@ const listSessionEventsAfterTime = `-- name: ListSessionEventsAfterTime :many
 SELECT
   thread_id,
   seq,
+  projection_key,
+  projection_op,
   type,
   content,
   acp,
@@ -182,14 +644,16 @@ type ListSessionEventsAfterTimeParams struct {
 }
 
 type ListSessionEventsAfterTimeRow struct {
-	ThreadID    string         `json:"thread_id"`
-	Seq         int64          `json:"seq"`
-	Type        string         `json:"type"`
-	Content     string         `json:"content"`
-	Acp         sql.NullString `json:"acp"`
-	Plan        sql.NullString `json:"plan"`
-	Permission  sql.NullString `json:"permission"`
-	CreatedAtMs int64          `json:"created_at_ms"`
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
 }
 
 func (q *Queries) ListSessionEventsAfterTime(ctx context.Context, arg ListSessionEventsAfterTimeParams) ([]ListSessionEventsAfterTimeRow, error) {
@@ -204,6 +668,8 @@ func (q *Queries) ListSessionEventsAfterTime(ctx context.Context, arg ListSessio
 		if err := rows.Scan(
 			&i.ThreadID,
 			&i.Seq,
+			&i.ProjectionKey,
+			&i.ProjectionOp,
 			&i.Type,
 			&i.Content,
 			&i.Acp,
@@ -224,6 +690,22 @@ func (q *Queries) ListSessionEventsAfterTime(ctx context.Context, arg ListSessio
 	return items, nil
 }
 
+const nextSessionEventCompaction = `-- name: NextSessionEventCompaction :one
+SELECT id
+FROM threads
+WHERE event_compaction_version = 0
+  AND status <> ?1
+ORDER BY event_revision DESC, updated_at_ms
+LIMIT 1
+`
+
+func (q *Queries) NextSessionEventCompaction(ctx context.Context, runningStatus string) (string, error) {
+	row := q.db.QueryRowContext(ctx, nextSessionEventCompaction, runningStatus)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const nextSessionEventSeq = `-- name: NextSessionEventSeq :one
 SELECT COALESCE(MAX(seq), 0) + 1 AS seq
 FROM session_events
@@ -237,10 +719,80 @@ func (q *Queries) NextSessionEventSeq(ctx context.Context, threadID string) (int
 	return seq, err
 }
 
+const setSessionEventCoalesceKey = `-- name: SetSessionEventCoalesceKey :exec
+UPDATE session_events
+SET coalesce_key = ?1
+WHERE thread_id = ?2 AND seq = ?3
+`
+
+type SetSessionEventCoalesceKeyParams struct {
+	CoalesceKey string `json:"coalesce_key"`
+	ThreadID    string `json:"thread_id"`
+	Seq         int64  `json:"seq"`
+}
+
+func (q *Queries) SetSessionEventCoalesceKey(ctx context.Context, arg SetSessionEventCoalesceKeyParams) error {
+	_, err := q.db.ExecContext(ctx, setSessionEventCoalesceKey, arg.CoalesceKey, arg.ThreadID, arg.Seq)
+	return err
+}
+
+const setSessionEventProjection = `-- name: SetSessionEventProjection :exec
+UPDATE session_events
+SET coalesce_key = ?1,
+    projection_key = ?2,
+    projection_op = ?3
+WHERE thread_id = ?4 AND seq = ?5
+`
+
+type SetSessionEventProjectionParams struct {
+	CoalesceKey   string `json:"coalesce_key"`
+	ProjectionKey string `json:"projection_key"`
+	ProjectionOp  string `json:"projection_op"`
+	ThreadID      string `json:"thread_id"`
+	Seq           int64  `json:"seq"`
+}
+
+func (q *Queries) SetSessionEventProjection(ctx context.Context, arg SetSessionEventProjectionParams) error {
+	_, err := q.db.ExecContext(ctx, setSessionEventProjection,
+		arg.CoalesceKey,
+		arg.ProjectionKey,
+		arg.ProjectionOp,
+		arg.ThreadID,
+		arg.Seq,
+	)
+	return err
+}
+
+const skipSessionEventCompaction = `-- name: SkipSessionEventCompaction :execrows
+UPDATE threads
+SET event_compaction_version = 2
+WHERE id = ?1
+  AND event_compaction_version = 0
+  AND event_revision = ?2
+  AND status <> ?3
+`
+
+type SkipSessionEventCompactionParams struct {
+	ThreadID      string `json:"thread_id"`
+	EventRevision int64  `json:"event_revision"`
+	RunningStatus string `json:"running_status"`
+}
+
+func (q *Queries) SkipSessionEventCompaction(ctx context.Context, arg SkipSessionEventCompactionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, skipSessionEventCompaction, arg.ThreadID, arg.EventRevision, arg.RunningStatus)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const upsertSessionEvent = `-- name: UpsertSessionEvent :exec
 INSERT INTO session_events (
   thread_id,
   seq,
+  coalesce_key,
+  projection_key,
+  projection_op,
   type,
   content,
   acp,
@@ -255,9 +807,15 @@ INSERT INTO session_events (
   ?5,
   ?6,
   ?7,
-  ?8
+  ?8,
+  ?9,
+  ?10,
+  ?11
 )
 ON CONFLICT(thread_id, seq) DO UPDATE SET
+  coalesce_key = excluded.coalesce_key,
+  projection_key = excluded.projection_key,
+  projection_op = excluded.projection_op,
   type = excluded.type,
   content = excluded.content,
   acp = excluded.acp,
@@ -267,20 +825,26 @@ ON CONFLICT(thread_id, seq) DO UPDATE SET
 `
 
 type UpsertSessionEventParams struct {
-	ThreadID    string         `json:"thread_id"`
-	Seq         int64          `json:"seq"`
-	Type        string         `json:"type"`
-	Content     string         `json:"content"`
-	Acp         sql.NullString `json:"acp"`
-	Plan        sql.NullString `json:"plan"`
-	Permission  sql.NullString `json:"permission"`
-	CreatedAtMs int64          `json:"created_at_ms"`
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	CoalesceKey   string         `json:"coalesce_key"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
 }
 
 func (q *Queries) UpsertSessionEvent(ctx context.Context, arg UpsertSessionEventParams) error {
 	_, err := q.db.ExecContext(ctx, upsertSessionEvent,
 		arg.ThreadID,
 		arg.Seq,
+		arg.CoalesceKey,
+		arg.ProjectionKey,
+		arg.ProjectionOp,
 		arg.Type,
 		arg.Content,
 		arg.Acp,

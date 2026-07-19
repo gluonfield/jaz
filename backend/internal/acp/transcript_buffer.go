@@ -2,6 +2,7 @@ package acp
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,7 +13,7 @@ const acpTranscriptFlushInterval = 100 * time.Millisecond
 
 type acpTranscriptRun struct {
 	eventType         string
-	content           string
+	chunks            []string
 	upstreamMessageID string
 	textRunID         string
 }
@@ -40,7 +41,7 @@ func (m *Manager) queueACPMessage(job *jobState, content string) {
 }
 
 func (m *Manager) queueACPMessageWithID(job *jobState, content string, upstreamMessageID string) {
-	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_message", content: content, upstreamMessageID: upstreamMessageID})
+	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_message", chunks: []string{content}, upstreamMessageID: upstreamMessageID})
 }
 
 func (m *Manager) queueACPThought(job *jobState, content string) {
@@ -48,11 +49,11 @@ func (m *Manager) queueACPThought(job *jobState, content string) {
 }
 
 func (m *Manager) queueACPThoughtWithID(job *jobState, content string, upstreamMessageID string) {
-	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_thought", content: content, upstreamMessageID: upstreamMessageID})
+	m.queueACPTranscript(job, acpTranscriptRun{eventType: "acp_thought", chunks: []string{content}, upstreamMessageID: upstreamMessageID})
 }
 
 func (m *Manager) queueACPTranscript(job *jobState, run acpTranscriptRun) {
-	if run.content == "" {
+	if len(run.chunks) == 0 || run.chunks[0] == "" {
 		return
 	}
 	if job == nil {
@@ -69,7 +70,7 @@ func (m *Manager) queueACPTranscript(job *jobState, run acpTranscriptRun) {
 	buffer.queue(m, run, turnKey)
 }
 
-func (m *Manager) withACPTranscriptBarrier(job Job, publish func()) {
+func (m *Manager) withACPTranscriptBarrier(job eventView, publish func()) {
 	if job.ID == "" {
 		if publish != nil {
 			publish()
@@ -129,7 +130,7 @@ func (b *acpTranscriptBuffer) queue(m *Manager, run acpTranscriptRun, turnKey st
 	defer b.mu.Unlock()
 	run.textRunID = b.textRunIDLocked(run.eventType, run.upstreamMessageID, turnKey)
 	if n := len(b.runs); n > 0 && run.textRunID != "" && b.runs[n-1].eventType == run.eventType && b.runs[n-1].textRunID == run.textRunID {
-		b.runs[n-1].content += run.content
+		b.runs[n-1].chunks = append(b.runs[n-1].chunks, run.chunks...)
 	} else {
 		b.runs = append(b.runs, run)
 	}
@@ -178,7 +179,7 @@ func (b *acpTranscriptBuffer) textRunIDLocked(eventType, upstreamMessageID, turn
 	return b.currentRunID
 }
 
-func (b *acpTranscriptBuffer) withBarrier(m *Manager, job Job, publish func()) {
+func (b *acpTranscriptBuffer) withBarrier(m *Manager, job eventView, publish func()) {
 	b.publishMu.Lock()
 	defer b.publishMu.Unlock()
 	runs := b.drainBarrier()
@@ -195,9 +196,9 @@ func (b *acpTranscriptBuffer) flushTimer(m *Manager) {
 	if len(runs) == 0 {
 		return
 	}
-	var job Job
+	var job eventView
 	if live := m.jobByID(b.sessionID); live != nil {
-		job = live.Snapshot()
+		job = live.eventView()
 	}
 	m.publishACPTranscriptRuns(job, runs)
 }
@@ -226,15 +227,15 @@ func (b *acpTranscriptBuffer) drainLocked() []acpTranscriptRun {
 	return runs
 }
 
-func (m *Manager) publishACPTranscriptRuns(job Job, runs []acpTranscriptRun) {
+func (m *Manager) publishACPTranscriptRuns(job eventView, runs []acpTranscriptRun) {
 	if job.ID == "" || len(runs) == 0 {
 		return
 	}
-	m.saveACPState(job)
-	for _, sessionID := range childSessionIDs(&job) {
+	for _, sessionID := range childSessionIDs(job) {
 		events := make([]sessionevents.Event, 0, len(runs))
-		envelope := acpTranscriptEnvelope(job)
+		envelope := acpEventEnvelope(job)
 		for _, run := range runs {
+			content := strings.Join(run.chunks, "")
 			acp := *envelope
 			event := sessionevents.Event{
 				SessionID: sessionID,
@@ -243,9 +244,9 @@ func (m *Manager) publishACPTranscriptRuns(job Job, runs []acpTranscriptRun) {
 				At:        time.Now().UTC(),
 			}
 			if run.eventType == "acp_thought" {
-				event.ACP.Thought = run.content
+				event.ACP.Thought = content
 			} else {
-				event.Content = run.content
+				event.Content = content
 			}
 			event.ACP.TextRunID = run.textRunID
 			events = append(events, event)

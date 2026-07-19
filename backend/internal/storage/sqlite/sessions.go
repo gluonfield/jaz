@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -14,7 +13,7 @@ import (
 )
 
 func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 
 	now := time.Now().UTC()
 	session := storage.Session{
@@ -39,15 +38,15 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 	}
 	slug, err := s.uniqueSlugLocked(session.Slug, "")
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Session{}, err
 	}
 	session.Slug = slug
 	if err := s.saveSessionLocked(session, false); err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Session{}, err
 	}
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	s.mirrorSession(session)
 	return session, nil
 }
@@ -60,28 +59,29 @@ func (s *Store) EnsureSession(id string) error {
 }
 
 func (s *Store) LoadSession(ref string) (storage.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.loadSessionLocked(ref)
+	return s.loadSession(ref)
 }
 
 func (s *Store) SaveSession(session storage.Session) error {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := s.saveSessionLocked(session, true)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
 	if current, err := s.LoadSession(session.ID); err == nil {
 		s.mirrorSession(current)
 	}
+	if session.Status != storage.StatusRunning {
+		s.notifySessionEventCompaction()
+	}
 	return nil
 }
 
 // SetArchived archives or restores a session together with its children.
 func (s *Store) SetArchived(id string, archived bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -103,8 +103,8 @@ func (s *Store) SetArchived(id string, archived bool) error {
 }
 
 func (s *Store) SetPinned(id string, pinned bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return threaddb.New(s.db).SetPinned(context.Background(), threaddb.SetPinnedParams{
 		Pinned: boolInt(pinned),
 		ID:     id,
@@ -112,12 +112,12 @@ func (s *Store) SetPinned(id string, pinned bool) error {
 }
 
 func (s *Store) UpdateSessionTitle(id, title string) error {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).UpdateSessionTitle(context.Background(), threaddb.UpdateSessionTitleParams{
 		Title: nullDBString(title),
 		ID:    id,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -128,17 +128,17 @@ func (s *Store) UpdateSessionTitle(id, title string) error {
 }
 
 func (s *Store) UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	updated, err := threaddb.New(s.db).UpdateSessionTitleFromRuntime(context.Background(), threaddb.UpdateSessionTitleFromRuntimeParams{
 		Title: nullDBString(title),
 		ID:    id,
 	})
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Session{}, false, err
 	}
-	session, err := s.loadSessionLocked(id)
-	s.mu.Unlock()
+	session, err := s.loadSession(id)
+	s.writeMu.Unlock()
 	if err != nil {
 		return storage.Session{}, false, err
 	}
@@ -160,66 +160,127 @@ func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt
 	if !attentionAt.IsZero() {
 		params.TouchAttention = 1
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).UpdateSessionStatus(context.Background(), params)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
 	if current, err := s.LoadSession(id); err == nil {
 		s.mirrorSession(current)
+	}
+	if status != storage.StatusRunning {
+		s.notifySessionEventCompaction()
 	}
 	return nil
 }
 
 func (s *Store) CompleteSession(id string, completedAt time.Time) error {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).CompleteSession(context.Background(), threaddb.CompleteSessionParams{
 		CompletedAtMs: timeToMs(completedAt),
 		ID:            id,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
 	if current, err := s.LoadSession(id); err == nil {
 		s.mirrorSession(current)
 	}
+	s.notifySessionEventCompaction()
 	return nil
 }
 
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.listSessions(context.Background(), filter)
+}
 
-	rows, err := threaddb.New(s.db).ListSessions(context.Background())
+func (s *Store) listSessions(ctx context.Context, filter storage.SessionFilter) ([]storage.Session, error) {
+	q := threaddb.New(s.db)
+	params := sessionListParams(filter)
+	var (
+		rows []threaddb.Thread
+		err  error
+	)
+	if filter.ParentOnly && filter.ParentID != "" {
+		rows, err = q.ListChildSessions(ctx, threaddb.ListChildSessionsParams{
+			FilterParentID:       params.FilterParentID,
+			FilterArchived:       params.FilterArchived,
+			FilterRuntime:        params.FilterRuntime,
+			FilterSourceType:     params.FilterSourceType,
+			FilterSourceID:       params.FilterSourceID,
+			FilterIncludeSourced: params.FilterIncludeSourced,
+			FilterUpdatedSinceMs: params.FilterUpdatedSinceMs,
+			FilterLimit:          params.FilterLimit,
+		})
+	} else {
+		rows, err = q.ListSessions(ctx, params)
+	}
 	if err != nil {
 		return nil, err
 	}
-
-	var sessions []storage.Session
+	sessions := make([]storage.Session, 0, len(rows))
 	for _, row := range rows {
 		session, err := sessionFromDB(row)
 		if err != nil {
 			return nil, err
 		}
-		if !storage.SessionMatchesFilter(session, filter) {
-			continue
-		}
 		sessions = append(sessions, session)
 	}
-	sort.Slice(sessions, func(i, j int) bool {
-		left := storage.SessionAttentionAt(sessions[i])
-		right := storage.SessionAttentionAt(sessions[j])
-		if left.Equal(right) {
-			return sessions[i].ID < sessions[j].ID
-		}
-		return left.After(right)
-	})
-	if filter.Limit > 0 && len(sessions) > filter.Limit {
-		sessions = sessions[:filter.Limit]
-	}
 	return sessions, nil
+}
+
+func (s *Store) LoadTranscriptSessions(ctx context.Context, parentID string, ids []string) (storage.TranscriptSessions, error) {
+	wanted := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wanted[id] = struct{}{}
+	}
+	queryIDs := append([]string(nil), ids...)
+	rows, err := threaddb.New(s.db).LoadTranscriptSessions(ctx, threaddb.LoadTranscriptSessionsParams{
+		ParentID: nullDBString(parentID), Ids: queryIDs,
+	})
+	if err != nil {
+		return storage.TranscriptSessions{}, err
+	}
+	related := storage.TranscriptSessions{}
+	for _, row := range rows {
+		session := storage.TranscriptSession{
+			ID: row.ID, Slug: row.Slug, Title: row.Title.String, ParentID: row.ParentID.String,
+			Status: row.Status, ACPAgent: row.AcpAgent.String,
+			ACPSession: row.AcpSessionID.String, Cwd: row.Cwd.String, Error: row.Error.String,
+			ModelProvider: row.ModelProvider.String, Model: row.Model.String,
+			ReasoningEffort: row.ReasoningEffort.String,
+			CreatedAt:       msToTime(row.CreatedAtMs), UpdatedAt: msToTime(row.UpdatedAtMs),
+		}
+		if row.DirectChild != 0 {
+			related.Children = append(related.Children, session)
+		}
+		if _, ok := wanted[session.ID]; ok {
+			related.References = append(related.References, session)
+		}
+	}
+	return related, nil
+}
+
+func sessionListParams(filter storage.SessionFilter) threaddb.ListSessionsParams {
+	updatedSinceMs := int64(0)
+	if !filter.UpdatedSince.IsZero() {
+		updatedSinceMs = timeToMs(filter.UpdatedSince)
+	}
+	return threaddb.ListSessionsParams{
+		FilterArchived:        boolInt(filter.Archived),
+		FilterIncludeChildren: boolInt(filter.IncludeChildren),
+		FilterRootOnly:        boolInt(filter.RootOnly),
+		FilterParentOnly:      boolInt(filter.ParentOnly),
+		FilterParentID:        sql.NullString{String: filter.ParentID, Valid: true},
+		FilterRuntime:         filter.Runtime,
+		FilterSourceType:      filter.SourceType,
+		FilterSourceID:        filter.SourceID,
+		FilterIncludeSourced:  boolInt(filter.IncludeSourced),
+		FilterUpdatedSinceMs:  updatedSinceMs,
+		FilterLimit:           int64(filter.Limit),
+	}
 }
 
 func (s *Store) LastRootSession() (storage.Session, error) {
@@ -233,12 +294,15 @@ func (s *Store) LastRootSession() (storage.Session, error) {
 	return sessions[0], nil
 }
 
-func (s *Store) loadSessionLocked(ref string) (storage.Session, error) {
+func (s *Store) loadSession(ref string) (storage.Session, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return storage.Session{}, fmt.Errorf("session id or slug is required")
 	}
 	row, err := threaddb.New(s.db).GetSession(context.Background(), ref)
+	if err == sql.ErrNoRows {
+		return storage.Session{}, fmt.Errorf("%w: %s", storage.ErrSessionNotFound, ref)
+	}
 	if err != nil {
 		return storage.Session{}, err
 	}
@@ -407,13 +471,13 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 
 func (s *Store) TouchSessionAttention(id string) error {
 	now := time.Now().UTC()
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).TouchSessionAttention(context.Background(), threaddb.TouchSessionAttentionParams{
 		UpdatedAtMs:       timeToMs(now),
 		LastAttentionAtMs: timeToMs(now),
 		ID:                id,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -425,12 +489,12 @@ func (s *Store) TouchSessionAttention(id string) error {
 
 // Scoped to the thread, not cascaded to children like SetArchived/SetPinned.
 func (s *Store) SetThreadUnread(id string, unread bool) error {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).SetThreadUnread(context.Background(), threaddb.SetThreadUnreadParams{
 		Unread: boolInt(unread),
 		ID:     id,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}

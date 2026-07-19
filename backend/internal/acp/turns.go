@@ -60,11 +60,11 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
 		return
 	}
-	m.withACPTranscriptBarrier(job.Snapshot(), nil)
+	m.withACPTranscriptBarrier(job.eventView(), nil)
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, req)
 	if err != nil {
 		if jsonrpc.IsClosed(err) && !errors.Is(err, context.Canceled) {
-			m.setServeErr(peer, err)
+			err = m.waitServeErr(peer, err)
 		}
 		m.failPromptCall(done, job, err)
 		return
@@ -117,7 +117,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	job.UpdatedAt = time.Now().UTC()
 	job.mu.Unlock()
 	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
-	m.publishACPStatus(job.Snapshot())
+	m.publishACPStatus(job.eventView())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
 }
@@ -146,26 +146,27 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 		return
 	}
 	turn.closeFirstPromptSent()
-	process := m.detachProcessAfterTurn(job)
+	processLease := turn.processLease
+	turn.processLease = nil
 	job.turn = nil
 	completion := turn.completion
 	planRequested := turn.planRequested
 	planDocument := turn.planDocument
 	parentVisible := job.ParentVisible
 	job.mu.Unlock()
-	m.closeDetachedProcess(job, process)
+	processLease.Release()
 	m.cancelPendingPermissions(job.ID)
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
+	event := eventViewFromJob(snapshot)
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
 		if snapshot.State == StateIdle && planDocument != "" {
-			m.publishPlanEvent(snapshot, sessionevents.PlanEvent{
+			m.publishPlanEvent(event, sessionevents.PlanEvent{
 				Explanation:      planDocument,
 				AwaitingApproval: true,
 			})
 		}
-		m.compactSessionEvents(snapshot.ID)
-		m.touchAttention(surfaceSessionIDs(&snapshot)...)
+		m.touchAttention(surfaceSessionIDs(event)...)
 	}
 	if m.TurnFinished != nil {
 		m.TurnFinished(context.Background(), snapshot)
@@ -176,6 +177,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
 		go m.Done(context.Background(), snapshot)
 	}
+	m.discardTurnResultWhenReleased(job)
 }
 
 func (m *Manager) attachmentResourceResolver(job *jobState) (attachmentResourceResolver, error) {
@@ -278,7 +280,7 @@ func (m *Manager) failTurn(job *jobState, err error) {
 		job.setState(StateFailed, "", message)
 		m.log.Error("acp turn failed", "session", job.ID, "error", err)
 	}
-	m.publishACPStatus(job.Snapshot())
+	m.publishACPStatus(job.eventView())
 }
 
 func acpTurnErrorMessage(err error) string {
@@ -344,21 +346,6 @@ func jsonErrorMessage(raw json.RawMessage) string {
 	return strings.TrimSpace(payload.Message)
 }
 
-func (m *Manager) compactSessionEvents(sessionID string) {
-	compactor, ok := m.store.(storage.SessionEventCompactor)
-	if !ok {
-		return
-	}
-	removed, err := compactor.CompactSessionEvents(sessionID)
-	if err != nil {
-		m.log.Error("compact session events failed", "session", sessionID, "error", err)
-		return
-	}
-	if removed > 0 {
-		m.log.Debug("compacted session events", "session", sessionID, "removed", removed)
-	}
-}
-
 // A cancelled or failed turn leaves the agent's in-flight tool calls without
 // terminal updates; resolve them so they don't render as running forever.
 func (m *Manager) resolveDanglingToolCalls(job *jobState) {
@@ -394,14 +381,7 @@ func (m *Manager) resolveDanglingToolCalls(job *jobState) {
 	job.mu.Unlock()
 	m.log.Info("resolved dangling tool calls", "session", sessionID, "count", len(updated), "status", status)
 	for _, call := range updated {
-		_ = m.store.UpsertActivity(sessionID, storage.ActivityEntry{
-			ID:     call.ID,
-			Kind:   "tool",
-			Text:   firstNonEmpty(call.Title, call.ID),
-			Status: call.Status,
-			At:     time.Now().UTC(),
-		})
-		m.publishACPTool(job.Snapshot(), call)
+		m.publishACPTool(job.eventView(), call)
 	}
 }
 

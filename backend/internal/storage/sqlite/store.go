@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -16,11 +18,39 @@ import (
 )
 
 type Store struct {
-	root          string
-	db            *sql.DB
-	searchQueries search.Querier
-	mirror        *jsonstore.Store
-	mu            sync.Mutex
+	root           string
+	db             *sql.DB
+	searchQueries  search.Querier
+	exportMirror   sessionExportMirror
+	writeMu        writeMutex
+	eventPlanner   eventCompactionPlanner
+	compactionWake chan struct{}
+}
+
+type writeMutex struct {
+	mu      sync.Mutex
+	waiting atomic.Int64
+}
+
+func (m *writeMutex) Lock() {
+	m.waiting.Add(1)
+	m.mu.Lock()
+	m.waiting.Add(-1)
+}
+
+func (m *writeMutex) Unlock() {
+	m.mu.Unlock()
+}
+
+func (m *writeMutex) tryMaintenanceLock() bool {
+	if m.waiting.Load() > 0 || !m.mu.TryLock() {
+		return false
+	}
+	if m.waiting.Load() == 0 {
+		return true
+	}
+	m.mu.Unlock()
+	return false
 }
 
 func DefaultRoot() string {
@@ -35,22 +65,23 @@ func New(root string) (*Store, error) {
 	if root == "" {
 		root = DefaultRoot()
 	}
-	store := &Store{root: root}
+	store := &Store{root: root, compactionWake: make(chan struct{}, 1)}
 	for _, dir := range []string{store.RootDir(), store.SessionsDir(), store.WorkspacesDir()} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, err
 		}
 	}
-	mirror, err := jsonstore.New(root)
+	exportMirror, err := jsonstore.New(root)
 	if err != nil {
 		return nil, err
 	}
-	store.mirror = mirror
-	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite"))
+	store.exportMirror = exportMirror
+	db, err := sql.Open("sqlite", sqliteDSN(filepath.Join(root, "jaz.sqlite")))
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
 	store.db = db
 	store.searchQueries = search.New(db)
 	if err := store.configure(); err != nil {
@@ -70,6 +101,16 @@ func New(root string) (*Store, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+func sqliteDSN(path string) string {
+	u := url.URL{Scheme: "file", Path: path}
+	query := u.Query()
+	for _, pragma := range []string{"foreign_keys(1)", "synchronous(NORMAL)", "busy_timeout(5000)"} {
+		query.Add("_pragma", pragma)
+	}
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 func (s *Store) Close() error {

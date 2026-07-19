@@ -324,17 +324,14 @@ func (s *Server) liveACPSessions() map[string]struct{} {
 	if s.ACP == nil {
 		return nil
 	}
-	jobs := s.ACP.List()
-	if len(jobs) == 0 {
+	refs := s.ACP.LiveSessionRefs()
+	if len(refs) == 0 {
 		return nil
 	}
-	live := make(map[string]struct{}, len(jobs)*2)
-	for _, job := range jobs {
-		if job.ID != "" {
-			live[job.ID] = struct{}{}
-		}
-		if job.Slug != "" {
-			live[job.Slug] = struct{}{}
+	live := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		if ref != "" {
+			live[ref] = struct{}{}
 		}
 	}
 	return live

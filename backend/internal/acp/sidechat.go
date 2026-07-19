@@ -42,15 +42,6 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 		return fmt.Errorf("message is required")
 	}
 	job, err := m.job(req.Session)
-	if err == nil && m.serveErr(job.ID) != nil {
-		job.mu.RLock()
-		running := job.State == StateRunning || job.State == StateStarting
-		job.mu.RUnlock()
-		if !running {
-			m.teardown(job.ID)
-			job, err = m.resume(ctx, req.Session)
-		}
-	}
 	if err != nil {
 		if job, err = m.resume(ctx, req.Session); err != nil {
 			return err
@@ -59,6 +50,11 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 	if CanonicalAgentName(job.ACPAgent) != AgentCodex {
 		return fmt.Errorf("side chat requires a codex acp session")
 	}
+	job, processLease, err := m.acquireSessionProcess(ctx, job)
+	if err != nil {
+		return err
+	}
+	defer processLease.Release()
 	peer := m.peer(job.ID)
 	if peer == nil {
 		return fmt.Errorf("acp peer is not active")
@@ -76,7 +72,7 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 		return err
 	}
 	scope := sideChatScope{ID: sideChatID, Command: sideChatCommand, ParentSessionID: job.ID}
-	m.publishSideChatUserMessage(job.Snapshot(), scope, message, contexts, req.Attachments)
+	m.publishSideChatUserMessage(job.eventView(), scope, message, contexts, req.Attachments)
 
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, acpschema.PromptRequest{
 		SessionID: acpschema.SessionID(job.ACPSession),
@@ -84,7 +80,7 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 		Meta:      sideChatMeta(scope),
 	})
 	if err != nil {
-		m.publishSideChatMessage(job.Snapshot(), scope, "error", err.Error(), "error")
+		m.publishSideChatMessage(job.eventView(), scope, "error", err.Error(), "error")
 		return err
 	}
 	m.recordRawUsage(job, raw)
@@ -98,14 +94,14 @@ func (m *Manager) applySideChatUpdate(job *jobState, update acpschema.DecodedSes
 		if !ok {
 			return false
 		}
-		m.publishSideChatMessage(job.Snapshot(), scope, "assistant", contentText(event.Content), "running")
+		m.publishSideChatMessage(job.eventView(), scope, "assistant", contentText(event.Content), "running")
 		return true
 	case acpschema.AgentThoughtChunkUpdate:
 		scope, ok := sideChatScopeFromMeta(event.Meta, job.ID)
 		if !ok {
 			return false
 		}
-		m.publishSideChatMessage(job.Snapshot(), scope, "thought", contentText(event.Content), "running")
+		m.publishSideChatMessage(job.eventView(), scope, "thought", contentText(event.Content), "running")
 		return true
 	case acpschema.ToolCallSessionUpdate:
 		scope, ok := sideChatScopeFromMeta(event.Meta, job.ID)
@@ -116,7 +112,7 @@ func (m *Manager) applySideChatUpdate(job *jobState, update acpschema.DecodedSes
 		if event.Status != nil {
 			status = string(*event.Status)
 		}
-		m.publishSideChatMessage(job.Snapshot(), scope, "tool", firstNonEmpty(event.Title, string(event.ToolCallID)), status)
+		m.publishSideChatMessage(job.eventView(), scope, "tool", firstNonEmpty(event.Title, string(event.ToolCallID)), status)
 		return true
 	case acpschema.ToolCallUpdateSessionUpdate:
 		scope, ok := sideChatScopeFromMeta(event.Meta, job.ID)
@@ -127,22 +123,22 @@ func (m *Manager) applySideChatUpdate(job *jobState, update acpschema.DecodedSes
 		if event.Status != nil {
 			status = string(*event.Status)
 		}
-		m.publishSideChatMessage(job.Snapshot(), scope, "tool", firstNonEmpty(event.Title, string(event.ToolCallID)), status)
+		m.publishSideChatMessage(job.eventView(), scope, "tool", firstNonEmpty(event.Title, string(event.ToolCallID)), status)
 		return true
 	default:
 		return false
 	}
 }
 
-func (m *Manager) publishSideChatMessage(job Job, scope sideChatScope, role, content, status string) {
+func (m *Manager) publishSideChatMessage(job eventView, scope sideChatScope, role, content, status string) {
 	m.publishSideChatEvent(job, scope, role, content, status, nil, nil)
 }
 
-func (m *Manager) publishSideChatUserMessage(job Job, scope sideChatScope, content string, contexts []storage.MessageContext, attachments []storage.Attachment) {
+func (m *Manager) publishSideChatUserMessage(job eventView, scope sideChatScope, content string, contexts []storage.MessageContext, attachments []storage.Attachment) {
 	m.publishSideChatEvent(job, scope, "user", content, "", storage.NormalizeMessageContexts(contexts), attachments)
 }
 
-func (m *Manager) publishSideChatEvent(job Job, scope sideChatScope, role, content, status string, contexts []storage.MessageContext, attachments []storage.Attachment) {
+func (m *Manager) publishSideChatEvent(job eventView, scope sideChatScope, role, content, status string, contexts []storage.MessageContext, attachments []storage.Attachment) {
 	if strings.TrimSpace(scope.ID) == "" {
 		return
 	}

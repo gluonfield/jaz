@@ -6,16 +6,12 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
-func (m *Manager) publishPlanEvent(job Job, plan sessionevents.PlanEvent) {
-	acp := EventFromJob(job)
-	acp.Assistant = ""
-	acp.Thought = ""
+func (m *Manager) publishPlanEvent(job eventView, plan sessionevents.PlanEvent) {
+	acp := eventFromView(job)
 	acp.Plan = nil
-	acp.ToolCalls = nil
-	acp.Permissions = nil
 
-	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&job)))
-	for _, sessionID := range surfaceSessionIDs(&job) {
+	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(job)))
+	for _, sessionID := range surfaceSessionIDs(job) {
 		events = append(events, sessionevents.Event{
 			SessionID: sessionID,
 			Type:      "proposed_plan",

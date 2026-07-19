@@ -28,7 +28,7 @@ func (s *Store) backfillMissingThreadErrors() error {
 	}
 
 	for _, id := range ids {
-		records, err := s.loadMessageRecordsLocked(id)
+		records, err := s.loadMessageRecords(id)
 		if err != nil {
 			return err
 		}

@@ -12,57 +12,106 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestManagerReleasesClaudeProcessAfterEachTurn(t *testing.T) {
-	startLog := filepath.Join(t.TempDir(), "starts")
-	manager, spawned := newClaudeTestManager(t, t.TempDir(), map[string]string{
-		"JAZ_FAKE_ACP_LOAD":         "1",
-		"JAZ_FAKE_ACP_PROMPT_DELAY": "1",
-		"JAZ_FAKE_ACP_START_LOG":    startLog,
-	})
+func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
+	for _, agent := range []string{acp.AgentClaude, acp.AgentCodex, acp.AgentGrok} {
+		t.Run(agent, func(t *testing.T) {
+			startLog := filepath.Join(t.TempDir(), "starts")
+			manager, spawned := newNamedProcessTestManager(t, t.TempDir(), agent, map[string]string{
+				"JAZ_FAKE_ACP_LOAD":         "1",
+				"JAZ_FAKE_ACP_PROMPT_DELAY": "1",
+				"JAZ_FAKE_ACP_START_LOG":    startLog,
+			})
 
-	ctx := context.Background()
-	sent, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline})
+			ctx := context.Background()
+			sent, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ref := sent.ACPSession
+			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: ref, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
+				t.Fatalf("first turn = %#v, %v", job, err)
+			}
+			if _, err := manager.Send(ctx, acp.SendRequest{Session: ref}); err == nil {
+				t.Fatal("empty turn unexpectedly started")
+			}
+
+			start := make(chan struct{})
+			errs := make(chan error, 2)
+			for _, message := range []string{"second-a", "second-b"} {
+				go func() {
+					<-start
+					_, err := manager.Send(ctx, acp.SendRequest{Session: ref, Message: message, Completion: acp.CompletionInline})
+					errs <- err
+				}()
+			}
+			close(start)
+			succeeded := 0
+			for range 2 {
+				if err := <-errs; err == nil {
+					succeeded++
+				} else if !strings.Contains(err.Error(), "already running") {
+					t.Fatal(err)
+				}
+			}
+			if succeeded != 1 {
+				t.Fatalf("successful concurrent sends = %d, want 1", succeeded)
+			}
+			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: ref, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
+				t.Fatalf("second turn = %#v, %v", job, err)
+			}
+			data, err := os.ReadFile(startLog)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if starts := len(strings.Fields(string(data))); starts != 3 {
+				t.Fatalf("process starts = %d, want one validation process plus one per turn; log=%q", starts, data)
+			}
+		})
+	}
+}
+
+func TestManagerRejectsManagedAgentWithoutSessionLoad(t *testing.T) {
+	startLog := filepath.Join(t.TempDir(), "starts")
+	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := sent.ACPSession
-	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: ref, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
-		t.Fatalf("first turn = %#v, %v", job, err)
-	}
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: ref}); err == nil {
-		t.Fatal("empty turn unexpectedly started")
-	}
-
-	start := make(chan struct{})
-	errs := make(chan error, 2)
-	for _, message := range []string{"second-a", "second-b"} {
-		go func() {
-			<-start
-			_, err := manager.Send(ctx, acp.SendRequest{Session: ref, Message: message, Completion: acp.CompletionInline})
-			errs <- err
-		}()
-	}
-	close(start)
-	succeeded := 0
-	for range 2 {
-		if err := <-errs; err == nil {
-			succeeded++
-		} else if !strings.Contains(err.Error(), "already running") {
-			t.Fatal(err)
-		}
-	}
-	if succeeded != 1 {
-		t.Fatalf("successful concurrent sends = %d, want 1", succeeded)
-	}
-	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: ref, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
-		t.Fatalf("second turn = %#v, %v", job, err)
+	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentGrok, map[string]string{
+		"JAZ_FAKE_ACP_START_LOG": startLog,
+		"JAZ_FAKE_ACP_LOAD":      "0",
+	}, "", "")
+	t.Cleanup(manager.Close)
+	_, err = manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: acp.AgentGrok, Slug: "grok-process-test"})
+	if err == nil || !strings.Contains(err.Error(), "requires session/load") {
+		t.Fatalf("spawn error = %v", err)
 	}
 	data, err := os.ReadFile(startLog)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if starts := len(strings.Fields(string(data))); starts != 2 {
-		t.Fatalf("Claude process starts = %d, want one per turn; log=%q", starts, data)
+	if starts := len(strings.Fields(string(data))); starts != 1 {
+		t.Fatalf("process starts = %d, want capability probe only; log=%q", starts, data)
+	}
+}
+
+func TestManagerReleasesManagedProcessAfterIdleSideChat(t *testing.T) {
+	startLog := filepath.Join(t.TempDir(), "starts")
+	manager, spawned := newNamedProcessTestManager(t, t.TempDir(), acp.AgentCodex, map[string]string{
+		"JAZ_FAKE_ACP_START_LOG": startLog,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, id := range []string{"side-1", "side-2"} {
+		if err := manager.SendSideChat(ctx, acp.SideChatRequest{Session: spawned.SessionID, ID: id, Message: "check"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := os.ReadFile(startLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if starts := len(strings.Fields(string(data))); starts != 3 {
+		t.Fatalf("process starts = %d, want one validation process plus one per side chat; log=%q", starts, data)
 	}
 }
 
@@ -100,14 +149,18 @@ func TestManagerRecordsClaudeRuntimeAuthFailure(t *testing.T) {
 }
 
 func newClaudeTestManager(t *testing.T, root string, env map[string]string) (*acp.Manager, acp.SpawnResult) {
+	return newNamedProcessTestManager(t, root, acp.AgentClaude, env)
+}
+
+func newNamedProcessTestManager(t *testing.T, root, agent string, env map[string]string) (*acp.Manager, acp.SpawnResult) {
 	t.Helper()
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentClaude, env, "", "")
+	manager := newFakeNamedAgentManagerWithOptions(t, store, root, agent, env, "", "")
 	t.Cleanup(manager.Close)
-	spawned, err := manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: acp.AgentClaude, Slug: "claude-test"})
+	spawned, err := manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: agent, Slug: agent + "-process-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

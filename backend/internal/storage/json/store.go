@@ -134,7 +134,7 @@ func (s *Store) LoadSession(ref string) (storage.Session, error) {
 		}
 	}
 	if len(matches) == 0 {
-		return storage.Session{}, fmt.Errorf("session not found: %s", ref)
+		return storage.Session{}, fmt.Errorf("%w: %s", storage.ErrSessionNotFound, ref)
 	}
 	if len(matches) > 1 {
 		ids := make([]string, 0, len(matches))
@@ -483,11 +483,15 @@ func (s *Store) saveMessages(id string, messages []provider.Message) error {
 	if err := s.EnsureSession(id); err != nil {
 		return err
 	}
+	path := filepath.Join(s.sessionDir(id), "messages.jsonl")
+	if _, err := os.Stat(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	lines, err := marshalMessagesJSONL(messages)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "messages.jsonl"), lines, 0o644); err != nil {
+	if err := os.WriteFile(path, lines, 0o644); err != nil {
 		return err
 	}
 	s.touchSession(id)
@@ -540,125 +544,6 @@ func (s *Store) touchSession(id string) {
 		session.UpdatedAt = time.Now().UTC()
 		_ = s.saveSession(session)
 	}
-}
-
-func (s *Store) LoadActivity(id string) ([]storage.ActivityEntry, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.loadActivity(id)
-}
-
-func (s *Store) loadActivity(id string) ([]storage.ActivityEntry, error) {
-	path := filepath.Join(s.sessionDir(id), "activity.json")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var activity []storage.ActivityEntry
-	if err := stdjson.Unmarshal(data, &activity); err != nil {
-		return nil, err
-	}
-	return activity, nil
-}
-
-func (s *Store) SaveActivity(id string, activity []storage.ActivityEntry) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.saveActivity(id, activity)
-}
-
-func (s *Store) UpsertActivity(id string, entry storage.ActivityEntry) error {
-	if entry.At.IsZero() {
-		entry.At = time.Now().UTC()
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	activity, err := s.loadActivity(id)
-	if err != nil {
-		return err
-	}
-	if entry.ID != "" {
-		for i := range activity {
-			if activity[i].ID == entry.ID {
-				activity[i] = entry
-				return s.saveActivity(id, activity)
-			}
-		}
-	}
-	return s.saveActivity(id, append(activity, entry))
-}
-
-func (s *Store) saveActivity(id string, activity []storage.ActivityEntry) error {
-	if err := s.EnsureSession(id); err != nil {
-		return err
-	}
-	data, err := stdjson.MarshalIndent(activity, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "activity.json"), data, 0o644); err != nil {
-		return err
-	}
-	if session, err := s.loadSessionByID(id); err == nil {
-		session.UpdatedAt = time.Now().UTC()
-		_ = s.saveSession(session)
-	}
-	return nil
-}
-
-func (s *Store) LoadACPState(id string) (storage.ACPState, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	path := filepath.Join(s.sessionDir(id), "acp_state.json")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return storage.ACPState{}, fmt.Errorf("acp state not found: %s", id)
-	}
-	if err != nil {
-		return storage.ACPState{}, err
-	}
-	var state storage.ACPState
-	if err := stdjson.Unmarshal(data, &state); err != nil {
-		return storage.ACPState{}, err
-	}
-	return state, nil
-}
-
-func (s *Store) SaveACPState(id string, state storage.ACPState) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.EnsureSession(id); err != nil {
-		return err
-	}
-	if state.ID == "" {
-		state.ID = id
-	}
-	if state.UpdatedAt.IsZero() {
-		state.UpdatedAt = time.Now().UTC()
-	}
-	data, err := stdjson.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "acp_state.json"), data, 0o644); err != nil {
-		return err
-	}
-	if session, err := s.loadSessionByID(id); err == nil {
-		session.UpdatedAt = state.UpdatedAt
-		if status := storage.SessionStatusForACPState(state.State); status != "" {
-			session.Status = status
-			if status == storage.StatusError {
-				session.Error = state.Error
-			} else {
-				session.Error = ""
-			}
-		}
-		_ = s.saveSession(session)
-	}
-	return nil
 }
 
 func (s *Store) sessionDir(id string) string {

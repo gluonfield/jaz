@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -33,11 +34,9 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
+	resumeSeq := afterSeq
+	replay := make([]sessionevents.Event, 0, len(stored))
+	legacyProjection := false
 	for _, event := range stored {
 		if event.Seq > afterSeq {
 			afterSeq = event.Seq
@@ -47,6 +46,39 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 		if !ok {
 			continue
 		}
+		legacyProjection = legacyProjection || sessionevents.NeedsProjection(event)
+		replay = append(replay, event)
+	}
+	if legacyProjection {
+		all := stored
+		if resumeSeq > 0 {
+			var loadErr error
+			all, loadErr = s.Store.LoadSessionEvents(sessionID)
+			if loadErr != nil {
+				writeError(w, http.StatusInternalServerError, loadErr)
+				return
+			}
+		}
+		projector := sessionevents.NewProjector()
+		for _, event := range all {
+			if display, visible := storage.GoalDisplayEvent(event); visible {
+				projector.Apply(display)
+			}
+		}
+		replay = replay[:0]
+		for _, event := range projector.Events() {
+			if event.Seq > resumeSeq {
+				event.ProjectionOp = sessionevents.ProjectionReplace
+				replay = append(replay, event)
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+	for _, event := range replay {
 		if mobile {
 			event = mobileSessionEvent(event)
 		}
@@ -64,6 +96,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 		if !ok {
 			continue
 		}
+		event = sessionevents.EnsureStatelessProjection(event)
 		if mobile {
 			event = mobileSessionEvent(event)
 		}
@@ -102,7 +135,7 @@ func parseEventSeq(raw string) (int64, error) {
 }
 
 func writeSessionEventSSE(w http.ResponseWriter, flusher http.Flusher, event sessionevents.Event) {
-	data, err := json.Marshal(sessionEventResponseFrom(event))
+	data, err := json.Marshal(sessionview.Event(event))
 	if err != nil {
 		return
 	}

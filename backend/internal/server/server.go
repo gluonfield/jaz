@@ -29,6 +29,7 @@ import (
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/sourcequeue"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -48,7 +49,9 @@ type ACPManager interface {
 	Steer(context.Context, acp.SteerRequest) (acp.Job, error)
 	SendSideChat(context.Context, acp.SideChatRequest) error
 	Status(string) (acp.Job, error)
-	List() []acp.Job
+	StreamStatus(string) (acp.StreamView, error)
+	RetainStream(string) func()
+	LiveSessionRefs() []string
 	RunUtilityPrompt(context.Context, acp.UtilityPromptRequest) (string, error)
 	Agents() []string
 	AnswerInteractive(context.Context, acp.InteractiveAnswer) error
@@ -245,7 +248,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+		writeJSON(w, http.StatusOK, sessionview.Public(session))
 		return
 	}
 	limit := 0
@@ -277,7 +280,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"sessions": canonicalSessionResponses(sessions)})
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": sessionview.Responses(sessions)})
 }
 
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
@@ -293,7 +296,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !hasAction {
-		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+		writeJSON(w, http.StatusOK, sessionview.Public(session))
 		return
 	}
 	if id, ok := strings.CutPrefix(action, "attachments/"); ok {
@@ -301,8 +304,6 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch action {
-	case "messages":
-		s.writeSessionMessages(w, r, session)
 	case "events":
 		s.streamSessionEvents(w, r, session.ID)
 	case "transcript":
@@ -320,89 +321,6 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, fmt.Errorf("not found"))
 	}
-}
-
-// writeSessionMessages serves the thread page's full hydration payload:
-// persisted messages, activity, transcript events, and ACP state.
-func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	mobile := requestClientPlatform(r) == "mobile"
-	var messages any
-	if recordStore, ok := s.Store.(messageRecordStore); ok {
-		records, err := recordStore.LoadMessageRecords(session.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if pending := session.PendingSteer; pending != nil && len(records) > 0 {
-			last := records[len(records)-1]
-			if last.Role == "user" && last.Content == pending.Text && !last.CreatedAt.Before(session.LastAttentionAt) {
-				session.PendingSteer = nil
-			}
-		}
-		messages = messageRecordsResponse(records)
-	} else {
-		loaded, err := s.Store.LoadMessages(session.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		messages = loaded
-	}
-	var activity []storage.ActivityEntry
-	if !mobile {
-		var err error
-		activity, err = s.Store.LoadActivity(session.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-	}
-	transcriptEvents, err := s.Store.LoadSessionEvents(session.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	transcriptEvents = storage.GoalDisplayEvents(transcriptEvents)
-	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
-	if mobile {
-		transcriptEvents = mobileSessionEvents(transcriptEvents)
-	}
-	children, childPermissions := s.acpChildSnapshots(session.ID)
-	if mobile {
-		children = mobileACPStates(children)
-	}
-	var acpSnapshot storage.ACPState
-	var hasACPSnapshot bool
-	if session.Runtime == storage.RuntimeACP {
-		acpSnapshot, hasACPSnapshot = s.acpSnapshot(session)
-		if status := storage.SessionStatusForACPState(acpSnapshot.State); session.Status == storage.StatusRunning && status != "" {
-			session.Status = status
-		}
-	}
-	if mobile && hasACPSnapshot {
-		acpSnapshot = mobileACPState(acpSnapshot)
-	}
-	resp := map[string]any{
-		"session":  canonicalSessionResponse(session),
-		"messages": messages,
-		"events":   sessionEventResponses(transcriptEvents),
-	}
-	if !mobile {
-		resp["activity"] = activity
-	}
-	if meta := s.acpMeta(transcriptEvents, session, children); len(meta) > 0 {
-		resp["acp_meta"] = meta
-	}
-	if hasACPSnapshot {
-		applyACPStateResponse(resp, acpSnapshot)
-	}
-	if len(children) > 0 {
-		resp["acp_children"] = children
-	}
-	if len(childPermissions) > 0 {
-		resp["acp_child_permissions"] = childPermissions
-	}
-	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
@@ -432,7 +350,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		if archived {
 			s.pruneManagedWorktreesSoon()
 		}
-		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+		writeJSON(w, http.StatusOK, sessionview.Public(session))
 		return
 	}
 	if action == "pin" || action == "unpin" {
@@ -445,10 +363,14 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+		writeJSON(w, http.StatusOK, sessionview.Public(session))
 		return
 	}
 	if action == "seen" {
+		if !session.Unread {
+			writeJSON(w, http.StatusOK, sessionview.Public(session))
+			return
+		}
 		if err := s.Store.SetThreadUnread(session.ID, false); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -458,7 +380,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+		writeJSON(w, http.StatusOK, sessionview.Public(session))
 		return
 	}
 	if action == "rename" {
@@ -481,7 +403,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+		writeJSON(w, http.StatusOK, sessionview.Public(session))
 		return
 	}
 	if action == "attachments" {
@@ -574,7 +496,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	turn := acpStreamTurnFromRequest(req)
 	if turn.compact() {
-		if !sessionSupportsCompact(session) {
+		if !sessionview.SupportsCompact(session) {
 			writeError(w, http.StatusBadRequest, fmt.Errorf("compact is not available for this session"))
 			return
 		}

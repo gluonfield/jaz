@@ -9,12 +9,27 @@ import (
 )
 
 type Querier interface {
-	CountSessionEvents(ctx context.Context, threadID string) (int64, error)
+	AdvanceSessionEventRevision(ctx context.Context, arg AdvanceSessionEventRevisionParams) error
+	CompleteSessionEventCompaction(ctx context.Context, arg CompleteSessionEventCompactionParams) (int64, error)
 	DeleteSessionEvent(ctx context.Context, arg DeleteSessionEventParams) error
+	DeleteSessionEventByCoalesceKey(ctx context.Context, arg DeleteSessionEventByCoalesceKeyParams) (int64, error)
+	DeleteSessionEvents(ctx context.Context, arg DeleteSessionEventsParams) error
+	GetSessionEventByCoalesceKey(ctx context.Context, arg GetSessionEventByCoalesceKeyParams) (GetSessionEventByCoalesceKeyRow, error)
+	GetSessionEventCompactionState(ctx context.Context, threadID string) (GetSessionEventCompactionStateRow, error)
+	HasPendingSessionEventCompaction(ctx context.Context, runningStatus string) (bool, error)
+	LatestSessionEventSeq(ctx context.Context, threadID string) (int64, error)
+	ListLatestACPTurn(ctx context.Context, threadID string) ([]ListLatestACPTurnRow, error)
+	ListSessionEventCompactionPage(ctx context.Context, arg ListSessionEventCompactionPageParams) ([]ListSessionEventCompactionPageRow, error)
+	ListSessionEventPage(ctx context.Context, arg ListSessionEventPageParams) ([]ListSessionEventPageRow, error)
+	ListSessionEventPageSizes(ctx context.Context, arg ListSessionEventPageSizesParams) ([]ListSessionEventPageSizesRow, error)
 	ListSessionEvents(ctx context.Context, threadID string) ([]ListSessionEventsRow, error)
 	ListSessionEventsAfter(ctx context.Context, arg ListSessionEventsAfterParams) ([]ListSessionEventsAfterRow, error)
 	ListSessionEventsAfterTime(ctx context.Context, arg ListSessionEventsAfterTimeParams) ([]ListSessionEventsAfterTimeRow, error)
+	NextSessionEventCompaction(ctx context.Context, runningStatus string) (string, error)
 	NextSessionEventSeq(ctx context.Context, threadID string) (int64, error)
+	SetSessionEventCoalesceKey(ctx context.Context, arg SetSessionEventCoalesceKeyParams) error
+	SetSessionEventProjection(ctx context.Context, arg SetSessionEventProjectionParams) error
+	SkipSessionEventCompaction(ctx context.Context, arg SkipSessionEventCompactionParams) (int64, error)
 	UpsertSessionEvent(ctx context.Context, arg UpsertSessionEventParams) error
 }
 

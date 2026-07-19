@@ -4,7 +4,7 @@
 // call per data change.
 import type { ACPPermission, ACPToolCall, ChatMessage, SessionEvent } from '@/lib/api/types'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
-import { isParentChildACPEvent, mergeACPTextEvents, sessionEventCoalesceKey } from '@/lib/sessionEvents'
+import { isParentChildACPEvent, sessionEventCoalesceKey } from '@/lib/sessionEvents'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
 
 export type TimelineItem =
@@ -51,32 +51,6 @@ function hasVisibleACPSurface(event: SessionEvent): boolean {
       hasTaskSurface ||
       hasWorkingStatusSurface(event),
   )
-}
-
-function combineVisibleACPText(items: TimelineItem[]): TimelineItem[] {
-  const out: TimelineItem[] = []
-  for (const item of items) {
-    const prev = out.at(-1)
-    const merged =
-      prev?.kind === 'event' && item.kind === 'event' && adjacentSessionEvents(prev.event, item.event)
-        ? mergeACPTextEvents(prev.event, item.event)
-        : undefined
-    if (merged && prev?.kind === 'event' && item.kind === 'event') {
-      out[out.length - 1] = {
-        ...prev,
-        event: merged,
-        eventIndex: item.eventIndex,
-        at: item.at,
-      }
-      continue
-    }
-    out.push(item)
-  }
-  return out
-}
-
-function adjacentSessionEvents(prev: SessionEvent, event: SessionEvent): boolean {
-  return prev.session_id === event.session_id && (!prev.seq || !event.seq || event.seq === prev.seq + 1)
 }
 
 function itemTime(value: string | undefined): number {
@@ -384,7 +358,7 @@ export function buildTimeline(
   }
 
   const visibleMessages = messages.filter((message) => message.role === 'user' || message.role === 'assistant')
-  const merged = groupToolRuns(combineVisibleACPText(mergeTimeline(visibleMessages, renderedEvents)))
+  const merged = groupToolRuns(mergeTimeline(visibleMessages, renderedEvents))
   // Live state isn't history: pending questions and working status anchor at
   // the bottom; an answered question returns to its chronological spot.
   const isPendingCard = (item: TimelineItem) =>

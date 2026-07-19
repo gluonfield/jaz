@@ -3,7 +3,6 @@ package acp
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -45,7 +44,7 @@ func (m *Manager) createElicitation(ctx context.Context, raw json.RawMessage) (j
 		toolCallID = string(*req.ToolCallID)
 	}
 	permission := sessionevents.ACPPermission{
-		ID:         fmt.Sprintf("perm-%d", atomicAddPermission(&m.permissionSeq)),
+		ID:         newPermissionID(),
 		SessionID:  sessionID,
 		Title:      "Clarifying questions",
 		ToolCallID: toolCallID,

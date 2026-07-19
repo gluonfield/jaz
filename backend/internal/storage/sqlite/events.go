@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	stdjson "encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -13,41 +15,30 @@ import (
 )
 
 func (s *Store) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
-	s.mu.Lock()
-	events, err := s.loadSessionEventsLocked(id)
-	s.mu.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	if len(events) > 0 || s.mirror == nil {
-		return events, nil
-	}
-	return s.mirror.LoadSessionEvents(id)
+	return s.loadSessionEvents(id)
 }
 
 func (s *Store) LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error) {
 	if afterSeq <= 0 {
 		return s.LoadSessionEvents(id)
 	}
-	s.mu.Lock()
-	events, err := s.loadSessionEventsAfterLocked(id, afterSeq)
-	fallbackToMirror := false
-	if err == nil && len(events) == 0 && s.mirror != nil {
-		count, countErr := eventdb.New(s.db).CountSessionEvents(context.Background(), id)
-		if countErr != nil {
-			err = countErr
-		} else {
-			fallbackToMirror = count == 0
-		}
-	}
-	s.mu.Unlock()
+	return s.loadSessionEventsAfter(id, afterSeq)
+}
+
+func (s *Store) LoadLatestACPTurn(ctx context.Context, id string) ([]sessionevents.Event, error) {
+	rows, err := eventdb.New(s.db).ListLatestACPTurn(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if fallbackToMirror {
-		return s.mirror.LoadSessionEventsAfter(id, afterSeq)
+	events := make([]sessionevents.Event, 0, len(rows))
+	for _, row := range rows {
+		event, decodeErr := eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		events = append(events, event)
 	}
-	return events, nil
+	return sessionevents.CompactTranscript(events), nil
 }
 
 func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) error {
@@ -66,19 +57,49 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 			return err
 		}
 	}
-	s.mu.Lock()
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	expanded, last := sessionevents.SplitTextEvents(events, storage.MaxTextEventBytes)
+	s.writeMu.Lock()
+	compactionPending, appendErr := s.appendSessionEvents(context.Background(), id, now, goalProjection.Seen, goalRaw, expanded)
+	s.writeMu.Unlock()
+	if appendErr != nil {
+		return appendErr
+	}
+	for i := range events {
+		stored := expanded[last[i]]
+		events[i].Seq = stored.Seq
+		events[i].At = stored.At
+		events[i].SessionID = stored.SessionID
+		events[i].ProjectionKey = stored.ProjectionKey
+		events[i].ProjectionOp = stored.ProjectionOp
+		if stored.Type == sessionevents.TypeProviderSubagent {
+			events[i].ProviderSubagent = stored.ProviderSubagent
+			events[i].Content = stored.Content
+		}
+	}
+	if compactionPending {
+		s.notifySessionEventCompaction()
+	}
+	if goalProjection.Seen {
+		if session, loadErr := s.LoadSession(id); loadErr == nil {
+			s.mirrorSession(session)
+		}
+	}
+	return nil
+}
+
+func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Time, goalSeen bool, goalRaw string, events []sessionevents.Event) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		s.mu.Unlock()
-		return err
+		return false, err
 	}
 	defer tx.Rollback()
 	eventq := eventdb.New(tx)
 	threadq := threaddb.New(tx)
-	nextSeq, err := eventq.NextSessionEventSeq(context.Background(), id)
+	var compactionPending int64
+	historyChanged := false
+	nextSeq, err := eventq.NextSessionEventSeq(ctx, id)
 	if err != nil {
-		s.mu.Unlock()
-		return err
+		return false, err
 	}
 	// Mutate in place so callers see the assigned Seq/At after the append.
 	for i := range events {
@@ -92,76 +113,66 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 			events[i].Seq = nextSeq
 			nextSeq++
 		}
-		if err := insertSessionEvent(eventq, events[i]); err != nil {
-			s.mu.Unlock()
-			return err
+		events[i] = sessionevents.EnsureStatelessProjection(events[i])
+		if sessionevents.NeedsStorageCompaction(events[i]) {
+			compactionPending = 1
 		}
-	}
-	if goalProjection.Seen {
-		err = threadq.UpdateGoal(context.Background(), threaddb.UpdateGoalParams{Goal: goalRaw, UpdatedAtMs: timeToMs(now), ID: id})
-	} else {
-		err = threadq.TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id})
-	}
-	if err != nil {
-		s.mu.Unlock()
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		s.mu.Unlock()
-		return err
-	}
-	s.mu.Unlock()
-	if s.mirror != nil {
-		mirrored := append([]sessionevents.Event(nil), events...)
-		_ = s.mirror.AppendSessionEvents(id, mirrored...)
-	}
-	return nil
-}
-
-func (s *Store) CompactSessionEvents(id string) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-	q := eventdb.New(tx)
-	rows, err := q.ListSessionEvents(context.Background(), id)
-	if err != nil {
-		return 0, err
-	}
-	events := make([]sessionevents.Event, 0, len(rows))
-	for _, row := range rows {
-		event, err := eventFromDB(row)
-		if err != nil {
-			return 0, err
-		}
-		events = append(events, event)
-	}
-	runs := sessionevents.CompactTextChunkRuns(events)
-	if len(runs) == 0 {
-		return 0, nil
-	}
-	removed := 0
-	for _, run := range runs {
-		if err := insertSessionEvent(q, run.Event); err != nil {
-			return 0, err
-		}
-		for _, seq := range run.DeleteSeqs {
-			if err := q.DeleteSessionEvent(context.Background(), eventdb.DeleteSessionEventParams{ThreadID: id, Seq: seq}); err != nil {
-				return 0, err
+		coalesceKey := sessionevents.StorageCoalesceKey(events[i])
+		if coalesceKey != "" {
+			if sessionevents.NeedsProviderSubagentSnapshot(events[i]) {
+				previous, loadErr := eventq.GetSessionEventByCoalesceKey(ctx, eventdb.GetSessionEventByCoalesceKeyParams{
+					ThreadID:    events[i].SessionID,
+					CoalesceKey: coalesceKey,
+				})
+				if loadErr == nil {
+					stored, decodeErr := eventFromDBFields(previous.ThreadID, previous.Seq, previous.ProjectionKey, previous.ProjectionOp, previous.Type, previous.Content, previous.Acp, previous.Plan, previous.Permission, previous.CreatedAtMs)
+					if decodeErr != nil {
+						return false, decodeErr
+					}
+					events[i] = sessionevents.CompleteProviderSubagentSnapshot(stored, events[i])
+				} else if !errors.Is(loadErr, sql.ErrNoRows) {
+					return false, loadErr
+				}
 			}
-			removed++
+			deleted, err := eventq.DeleteSessionEventByCoalesceKey(ctx, eventdb.DeleteSessionEventByCoalesceKeyParams{
+				ThreadID:    events[i].SessionID,
+				CoalesceKey: coalesceKey,
+			})
+			if err != nil {
+				return false, err
+			}
+			historyChanged = historyChanged || deleted > 0
+		}
+		if err := insertSessionEvent(ctx, eventq, events[i], coalesceKey); err != nil {
+			return false, err
+		}
+	}
+	if goalSeen {
+		err = threadq.UpdateGoal(ctx, threaddb.UpdateGoalParams{Goal: goalRaw, UpdatedAtMs: timeToMs(now), ID: id})
+	} else {
+		err = threadq.TouchThread(ctx, threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id})
+	}
+	if err != nil {
+		return false, err
+	}
+	if err := eventq.AdvanceSessionEventRevision(ctx, eventdb.AdvanceSessionEventRevisionParams{
+		CompactionPending: compactionPending,
+		ThreadID:          id,
+	}); err != nil {
+		return false, err
+	}
+	if historyChanged {
+		if err := threadq.AdvanceTranscriptRevision(ctx, id); err != nil {
+			return false, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, err
+		return false, err
 	}
-	return removed, nil
+	return compactionPending != 0, nil
 }
 
-func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error) {
+func (s *Store) loadSessionEvents(id string) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListSessionEvents(context.Background(), id)
 	if err != nil {
 		return nil, err
@@ -177,7 +188,7 @@ func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error
 	return events, nil
 }
 
-func (s *Store) loadSessionEventsAfterTimeLocked(id string, afterMs int64) ([]sessionevents.Event, error) {
+func (s *Store) loadSessionEventsAfterTime(id string, afterMs int64) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListSessionEventsAfterTime(context.Background(), eventdb.ListSessionEventsAfterTimeParams{
 		ThreadID: id,
 		AfterMs:  afterMs,
@@ -187,7 +198,7 @@ func (s *Store) loadSessionEventsAfterTimeLocked(id string, afterMs int64) ([]se
 	}
 	events := make([]sessionevents.Event, 0, len(rows))
 	for _, row := range rows {
-		event, err := eventFromDBFields(row.ThreadID, row.Seq, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+		event, err := eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
 		if err != nil {
 			return nil, err
 		}
@@ -196,7 +207,7 @@ func (s *Store) loadSessionEventsAfterTimeLocked(id string, afterMs int64) ([]se
 	return events, nil
 }
 
-func (s *Store) loadSessionEventsAfterLocked(id string, afterSeq int64) ([]sessionevents.Event, error) {
+func (s *Store) loadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListSessionEventsAfter(context.Background(), eventdb.ListSessionEventsAfterParams{
 		ThreadID: id,
 		AfterSeq: afterSeq,
@@ -215,7 +226,7 @@ func (s *Store) loadSessionEventsAfterLocked(id string, afterSeq int64) ([]sessi
 	return events, nil
 }
 
-func insertSessionEvent(q *eventdb.Queries, event sessionevents.Event) error {
+func insertSessionEvent(ctx context.Context, q *eventdb.Queries, event sessionevents.Event, coalesceKey string) error {
 	rawACP, err := marshalOptionalJSON(event.ACP)
 	if err != nil {
 		return err
@@ -228,33 +239,41 @@ func insertSessionEvent(q *eventdb.Queries, event sessionevents.Event) error {
 	if err != nil {
 		return err
 	}
-	return q.UpsertSessionEvent(context.Background(), eventdb.UpsertSessionEventParams{
-		ThreadID:    event.SessionID,
-		Seq:         event.Seq,
-		Type:        event.Type,
-		Content:     event.StorageContent(),
-		Acp:         rawACP,
-		Plan:        rawPlan,
-		Permission:  rawPermission,
-		CreatedAtMs: timeToMs(event.At),
+	if size := sessionEventFieldSize(event.StorageContent(), rawACP, rawPlan, rawPermission); size > storage.MaxSessionEventBytes {
+		return fmt.Errorf("session event is %d bytes; limit is %d", size, storage.MaxSessionEventBytes)
+	}
+	return q.UpsertSessionEvent(ctx, eventdb.UpsertSessionEventParams{
+		ThreadID:      event.SessionID,
+		Seq:           event.Seq,
+		CoalesceKey:   coalesceKey,
+		ProjectionKey: event.ProjectionKey,
+		ProjectionOp:  event.ProjectionOp,
+		Type:          event.Type,
+		Content:       event.StorageContent(),
+		Acp:           rawACP,
+		Plan:          rawPlan,
+		Permission:    rawPermission,
+		CreatedAtMs:   timeToMs(event.At),
 	})
 }
 
 func eventFromDB(row eventdb.ListSessionEventsRow) (sessionevents.Event, error) {
-	return eventFromDBFields(row.ThreadID, row.Seq, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+	return eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
 }
 
 func eventAfterFromDB(row eventdb.ListSessionEventsAfterRow) (sessionevents.Event, error) {
-	return eventFromDBFields(row.ThreadID, row.Seq, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+	return eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
 }
 
-func eventFromDBFields(threadID string, seq int64, typ string, content string, acpRaw sql.NullString, planRaw sql.NullString, permissionRaw sql.NullString, createdAtMs int64) (sessionevents.Event, error) {
+func eventFromDBFields(threadID string, seq int64, projectionKey, projectionOp, typ string, content string, acpRaw sql.NullString, planRaw sql.NullString, permissionRaw sql.NullString, createdAtMs int64) (sessionevents.Event, error) {
 	event := sessionevents.Event{
-		SessionID: threadID,
-		Seq:       seq,
-		Type:      typ,
-		Content:   content,
-		At:        msToTime(createdAtMs),
+		SessionID:     threadID,
+		Seq:           seq,
+		ProjectionKey: projectionKey,
+		ProjectionOp:  projectionOp,
+		Type:          typ,
+		Content:       content,
+		At:            msToTime(createdAtMs),
 	}
 	if acpRaw.Valid && acpRaw.String != "" && acpRaw.String != "null" {
 		var acp sessionevents.ACPEvent

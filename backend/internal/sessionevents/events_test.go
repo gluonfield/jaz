@@ -75,11 +75,17 @@ func TestACPEventSlimForStorageDropsRepeatedMetadata(t *testing.T) {
 
 	slim := event.SlimForStorage()
 
+	if !(&Event{Type: "acp", ACP: event}).NeedsStorageSlimming() {
+		t.Fatal("repeated metadata was not recognized as storage debt")
+	}
 	if slim.Title != "" || slim.ModelProvider != "" || slim.Model != "" || slim.ReasoningEffort != "" {
 		t.Fatalf("slim metadata = %#v", slim)
 	}
 	if slim.Slug != event.Slug || slim.Agent != event.Agent || slim.SessionID != event.SessionID {
 		t.Fatalf("slim identity = %#v", slim)
+	}
+	if (&Event{Type: "acp", ACP: slim}).NeedsStorageSlimming() {
+		t.Fatalf("slim event still reports storage debt: %#v", slim)
 	}
 }
 

@@ -12,9 +12,9 @@ func (m *Manager) publishGoalClear(job *jobState) {
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.mu.Unlock()
-	snapshot := job.Snapshot()
-	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&snapshot)))
-	for _, sessionID := range surfaceSessionIDs(&snapshot) {
+	snapshot := job.eventView()
+	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(snapshot)))
+	for _, sessionID := range surfaceSessionIDs(snapshot) {
 		events = append(events, sessionevents.Event{
 			SessionID: sessionID,
 			Type:      sessionevents.TypeGoalClear,

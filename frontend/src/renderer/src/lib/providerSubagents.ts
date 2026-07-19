@@ -10,11 +10,10 @@ export function providerSubagentsFromEvents(events: SessionEvent[]): ProviderSub
   for (const event of events) {
     if (event.type !== 'provider_subagent' || !event.provider_subagent?.id) continue
     const subagent = event.provider_subagent
-    const key = `${subagent.provider ?? ''}:${subagent.id}`
-    const prev = byKey.get(key)
+    const key = providerSubagentKey(event)
+    if (!key) continue
     byKey.set(key, {
-      ...(prev ?? {}),
-      ...mergeProviderSubagentEvent(prev, subagent),
+      ...subagent,
       key,
       updated_at: event.at,
     })
@@ -27,9 +26,7 @@ export function providerSubagentsFromEvents(events: SessionEvent[]): ProviderSub
 }
 
 function providerSubagentKey(event: SessionEvent): string {
-  const subagent = event.provider_subagent
-  if (!subagent?.id) return ''
-  return `${subagent.provider ?? ''}:${subagent.id}`
+  return event.projection_key ?? ''
 }
 
 export function looksLikeOpaqueToolID(text: string): boolean {
@@ -76,28 +73,6 @@ export function applyProviderToolTitleFallbacks(events: SessionEvent[]): Session
     if (!changed) return event
     return { ...event, acp: event.acp ? { ...event.acp, tool_calls: nextCalls } : event.acp }
   })
-}
-
-export function mergeProviderSubagentEvent(
-  prev: ProviderSubagentEvent | undefined,
-  next: ProviderSubagentEvent,
-): ProviderSubagentEvent {
-  return {
-    ...next,
-    provider: next.provider || prev?.provider,
-    thread_id: next.thread_id || prev?.thread_id,
-    parent_id: next.parent_id || prev?.parent_id,
-    name: next.name || prev?.name,
-    task: next.task || prev?.task,
-    role: next.role || prev?.role,
-    status: next.status || prev?.status,
-    summary: next.summary || prev?.summary,
-    prompt: next.prompt || prev?.prompt,
-    model: next.model || prev?.model,
-    reasoning_effort: next.reasoning_effort || prev?.reasoning_effort,
-    started_at_ms: next.started_at_ms ?? prev?.started_at_ms,
-    completed_at_ms: next.completed_at_ms ?? prev?.completed_at_ms,
-  }
 }
 
 function subagentActiveRank(subagent: ProviderSubagentView): number {

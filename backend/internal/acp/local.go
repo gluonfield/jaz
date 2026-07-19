@@ -112,7 +112,7 @@ func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, c
 }
 
 func (m *Manager) newLocalJob(session storage.Session, agentName, cwd string) *jobState {
-	return newIdleJob(session, agentName, session.ID, cwd, localModeState(), false)
+	return newIdleJob(session, agentName, session.ID, cwd, localModeState())
 }
 
 func localModeState() ModeState {
@@ -136,8 +136,7 @@ func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd stri
 	}
 	job := m.newLocalJob(session, agentName, cwd)
 	job.systemPromptExtensions = systemPromptExtensions.Strings()
-	m.addJob(job, nil, nil, nil)
-	m.saveACPState(job.Snapshot())
+	m.addJob(job, nil)
 	m.log.Info("spawned local agent session", "agent", job.ACPAgent, "session", job.ID)
 	return SpawnResult{
 		Status:    "created",
@@ -151,11 +150,7 @@ func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd stri
 }
 
 func (m *Manager) resumeLocalSession(session storage.Session, agentName string, cfg AgentConfig) (*jobState, error) {
-	var state storage.ACPState
-	if loader, ok := m.store.(acpStateLoader); ok {
-		state, _ = loader.LoadACPState(session.ID)
-	}
-	cwd := firstNonEmpty(session.RuntimeRef.Cwd, state.Cwd)
+	cwd := session.RuntimeRef.Cwd
 	if cwd == "" {
 		var err error
 		if cwd, err = m.resolveCwd(cfg.Cwd); err != nil {
@@ -180,12 +175,12 @@ func (m *Manager) resumeLocalSession(session storage.Session, agentName string, 
 		changed = true
 	}
 	if changed {
-		_ = m.store.SaveSession(session)
+		if err := m.store.SaveSession(session); err != nil {
+			return nil, fmt.Errorf("persist resumed local session: %w", err)
+		}
 	}
 	job := m.newLocalJob(session, agentName, cwd)
-	job.ParentVisible = state.ParentVisible
-	m.addJob(job, nil, nil, nil)
-	m.saveACPState(job.Snapshot())
+	m.addJob(job, nil)
 	m.log.Info("resumed local agent session", "agent", job.ACPAgent, "session", job.ID)
 	return job, nil
 }
@@ -206,8 +201,11 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 		return
 	}
 	runCtx, cancel := context.WithCancel(ctx)
-	m.setCancelFunc(job.ID, cancel)
-	defer m.clearCancelFunc(job.ID, cancel)
+	if !job.setTurnCancel(done, cancel) {
+		cancel()
+		return
+	}
+	defer job.clearTurnCancel(done)
 	defer cancel()
 
 	finalState := StateFailed
@@ -280,7 +278,7 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 	} else {
 		job.setState(StateFailed, "", finalError)
 	}
-	m.publishACPStatus(job.Snapshot())
+	m.publishACPStatus(job.eventView())
 	m.finishTurn(done, job)
 }
 
@@ -290,7 +288,7 @@ func (m *Manager) applyLocalMessage(job *jobState, chunk string) {
 	}
 	job.mu.Lock()
 	now := time.Now().UTC()
-	job.Assistant = appendACPText(job.Assistant, chunk)
+	job.appendAssistantLocked(chunk)
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.mu.Unlock()
@@ -303,7 +301,7 @@ func (m *Manager) applyLocalThought(job *jobState, chunk string) {
 	}
 	job.mu.Lock()
 	now := time.Now().UTC()
-	job.Thought = appendACPText(job.Thought, chunk)
+	job.appendThoughtLocked(chunk)
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.mu.Unlock()
@@ -328,13 +326,6 @@ func (m *Manager) applyLocalToolCall(job *jobState, call provider.ToolCall) {
 		RawInput: boundedRawInput(json.RawMessage(provider.ToolCallArguments(call))),
 	}
 	snapshot, tool := m.updateLocalTool(job, next)
-	_ = m.store.UpsertActivity(job.ID, storage.ActivityEntry{
-		ID:     tool.ID,
-		Kind:   "tool",
-		Text:   firstNonEmpty(tool.Title, tool.ID),
-		Status: tool.Status,
-		At:     time.Now().UTC(),
-	})
 	m.publishACPTool(snapshot, tool)
 }
 
@@ -360,17 +351,10 @@ func (m *Manager) applyLocalToolResult(job *jobState, title, result, errText str
 		return
 	}
 	snapshot, tool := m.updateLocalTool(job, sessionevents.ACPToolCall{ID: id, Status: status, Content: localToolContent(result, errText)})
-	_ = m.store.UpsertActivity(job.ID, storage.ActivityEntry{
-		ID:     tool.ID,
-		Kind:   "tool",
-		Text:   firstNonEmpty(tool.Title, tool.ID),
-		Status: tool.Status,
-		At:     time.Now().UTC(),
-	})
 	m.publishACPTool(snapshot, tool)
 }
 
-func (m *Manager) updateLocalTool(job *jobState, next sessionevents.ACPToolCall) (Job, sessionevents.ACPToolCall) {
+func (m *Manager) updateLocalTool(job *jobState, next sessionevents.ACPToolCall) (eventView, sessionevents.ACPToolCall) {
 	job.mu.Lock()
 	now := time.Now().UTC()
 	current := job.toolByID[next.ID]
@@ -385,7 +369,7 @@ func (m *Manager) updateLocalTool(job *jobState, next sessionevents.ACPToolCall)
 	job.LastEventAt = now
 	job.LastToolAt = now
 	job.mu.Unlock()
-	snapshot := job.Snapshot()
+	snapshot := job.eventView()
 	return snapshot, current
 }
 
@@ -401,23 +385,4 @@ func localToolContent(result, errText string) []sessionevents.ACPToolContent {
 		return nil
 	}
 	return []sessionevents.ACPToolContent{{Type: "text", Text: clampToolText(text)}}
-}
-
-func (m *Manager) setCancelFunc(id string, cancel context.CancelFunc) {
-	m.mu.Lock()
-	m.cancelByID[id] = cancel
-	m.mu.Unlock()
-}
-
-func (m *Manager) clearCancelFunc(id string, cancel context.CancelFunc) {
-	m.mu.Lock()
-	delete(m.cancelByID, id)
-	m.mu.Unlock()
-}
-
-func (m *Manager) cancelFunc(id string) context.CancelFunc {
-	m.mu.RLock()
-	cancel := m.cancelByID[id]
-	m.mu.RUnlock()
-	return cancel
 }

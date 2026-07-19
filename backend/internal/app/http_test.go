@@ -57,11 +57,17 @@ func (fakeConnectionOAuthStore) DeleteConnection(context.Context, string) (bool,
 }
 
 func TestHTTPModuleProvidesRoute(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	manager := acp.NewManager(store, acp.Config{}, nil)
 	var routes server.Routes
 	var publicRoutes server.PublicRoutes
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}),
+		fx.Supply(Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
 		HTTPModule(),
@@ -74,6 +80,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "GET /v1/usage/models")
 	requireRoute(t, routes, "GET /v1/feed")
 	requireRoute(t, routes, "GET /v1/feed/completions")
+	requireRoute(t, routes, "GET /v1/sessions/{session}/messages")
 	requireRoute(t, routes, "/v1/preview/")
 	if len(publicRoutes) != 1 ||
 		publicRoutes[0].Match == nil ||
@@ -243,6 +250,9 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 		fx.NopLogger,
 		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}, serverconfig.Config{}),
 		fx.Provide(NewStore, NewRuntimeAuthKey),
+		fx.Provide(func(store *sqlitestore.Store) *acp.Manager {
+			return acp.NewManager(store, acp.Config{}, nil)
+		}),
 		HTTPModule(),
 		fx.Populate(&routes, &publicRoutes, &store),
 	)

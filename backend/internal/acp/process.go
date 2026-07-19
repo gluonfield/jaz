@@ -29,9 +29,10 @@ const (
 )
 
 type processStderrTail struct {
-	mu   sync.Mutex
-	text string
-	done chan struct{}
+	mu      sync.Mutex
+	text    string
+	waitErr error
+	done    chan struct{}
 }
 
 func newProcessStderrTail() *processStderrTail {
@@ -48,17 +49,20 @@ func (t *processStderrTail) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (t *processStderrTail) close() {
+func (t *processStderrTail) close(waitErr error) {
+	t.mu.Lock()
+	t.waitErr = waitErr
+	t.mu.Unlock()
 	close(t.done)
 }
 
-func (t *processStderrTail) String() string {
+func (t *processStderrTail) snapshot() (string, error) {
 	if t == nil {
-		return ""
+		return "", nil
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return strings.TrimSpace(t.text)
+	return strings.TrimSpace(t.text), t.waitErr
 }
 
 func withProcessStderr(err error, stderr *processStderrTail) error {
@@ -68,7 +72,14 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	if detail := stderr.String(); detail != "" {
+	detail, waitErr := stderr.snapshot()
+	if waitErr != nil && detail != "" {
+		return fmt.Errorf("%w: process exited: %v: %s", err, waitErr, detail)
+	}
+	if waitErr != nil {
+		return fmt.Errorf("%w: process exited: %v", err, waitErr)
+	}
+	if detail != "" {
 		return fmt.Errorf("%w: %s", err, detail)
 	}
 	return err
@@ -138,15 +149,14 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	}
 	if err := process.started(); err != nil {
 		_ = process.terminate()
-		_ = cmd.Wait()
-		stderr.close()
+		stderr.close(cmd.Wait())
 		return nil, stderr, fmt.Errorf("prepare acp agent %q process: %w", name, err)
 	}
 	conn := stdio.New(stdout, stdin)
 	go func() {
-		_ = cmd.Wait()
+		waitErr := cmd.Wait()
 		_ = process.terminate()
-		stderr.close()
+		stderr.close(waitErr)
 		_ = conn.Close()
 	}()
 	return conn, stderr, nil

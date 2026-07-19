@@ -86,65 +86,59 @@ func TestManagerFailsGrokModelOverrideWhenItCannotApplyStartupArgs(t *testing.T)
 }
 
 func TestManagerRebuildsPromptExtensionsWhenResumingGrokLoopRun(t *testing.T) {
-	for name, loadSupported := range map[string]bool{"via session/load": true, "via fresh session": false} {
-		t.Run(name, func(t *testing.T) {
-			store, err := jsonstore.New(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			root := t.TempDir()
-			marker := "RESUMED_LOOP_WIDGET_PROMPT"
-			env := map[string]string{
-				"JAZ_FAKE_ACP_AGENT":          "1",
-				"JAZ_FAKE_ACP_RULES_CONTAINS": marker,
-			}
-			if loadSupported {
-				env["JAZ_FAKE_ACP_LOAD"] = "1"
-			}
-			manager := func() *acp.Manager {
-				return acp.NewManager(store, acp.Config{
-					Root:      root,
-					Workspace: t.TempDir(),
-					ResumePrompt: func(session storage.Session) (promptmodule.Modules, error) {
-						if session.SourceType != storage.SourceLoopRun || session.SourceID != "run-1" {
-							return nil, nil
-						}
-						return promptmodule.New(marker), nil
-					},
-					Agents: map[string]acp.AgentConfig{
-						acp.AgentGrok: {
-							Command: os.Args[0],
-							Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-							Env:     env,
-						},
-					},
-				}, log.New(io.Discard))
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			first := manager()
-			spawned, err := first.Spawn(ctx, acp.SpawnRequest{
-				ACPAgent:               acp.AgentGrok,
-				Slug:                   "grok-loop-run",
-				SourceType:             storage.SourceLoopRun,
-				SourceID:               "run-1",
-				ArtifactSurface:        "widget",
-				SystemPromptExtensions: promptmodule.New(marker),
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			first.Close()
-
-			second := manager()
-			if _, err := second.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "after restart", Completion: acp.CompletionInline}); err != nil {
-				t.Fatalf("send after restart: %v", err)
-			}
-			if _, err := second.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _, _ = second.Cancel(context.Background(), spawned.SessionID) }()
-		})
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
+	root := t.TempDir()
+	marker := "RESUMED_LOOP_WIDGET_PROMPT"
+	env := map[string]string{
+		"JAZ_FAKE_ACP_AGENT":          "1",
+		"JAZ_FAKE_ACP_LOAD":           "1",
+		"JAZ_FAKE_ACP_RULES_CONTAINS": marker,
+	}
+	manager := func() *acp.Manager {
+		return acp.NewManager(store, acp.Config{
+			Root:      root,
+			Workspace: t.TempDir(),
+			ResumePrompt: func(session storage.Session) (promptmodule.Modules, error) {
+				if session.SourceType != storage.SourceLoopRun || session.SourceID != "run-1" {
+					return nil, nil
+				}
+				return promptmodule.New(marker), nil
+			},
+			Agents: map[string]acp.AgentConfig{
+				acp.AgentGrok: {
+					Command: os.Args[0],
+					Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+					Env:     env,
+				},
+			},
+		}, log.New(io.Discard))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	first := manager()
+	spawned, err := first.Spawn(ctx, acp.SpawnRequest{
+		ACPAgent:               acp.AgentGrok,
+		Slug:                   "grok-loop-run",
+		SourceType:             storage.SourceLoopRun,
+		SourceID:               "run-1",
+		ArtifactSurface:        "widget",
+		SystemPromptExtensions: promptmodule.New(marker),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+
+	second := manager()
+	if _, err := second.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "after restart", Completion: acp.CompletionInline}); err != nil {
+		t.Fatalf("send after restart: %v", err)
+	}
+	if _, err := second.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = second.Cancel(context.Background(), spawned.SessionID) }()
 }

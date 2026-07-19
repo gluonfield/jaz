@@ -20,9 +20,7 @@ func (s *Store) LoadMessages(id string) ([]provider.Message, error) {
 }
 
 func (s *Store) LoadMessageRecords(id string) ([]storage.Message, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.loadMessageRecordsLocked(id)
+	return s.loadMessageRecords(id)
 }
 
 func (s *Store) SaveMessages(id string, messages []provider.Message) error {
@@ -30,9 +28,9 @@ func (s *Store) SaveMessages(id string, messages []provider.Message) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err = s.replaceMessagesLocked(id, records)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -49,9 +47,9 @@ func (s *Store) SaveMessagesWithReasoningAndMedia(id string, messages []provider
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err = s.replaceMessagesLocked(id, records)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -68,14 +66,14 @@ func (s *Store) AppendMessages(id string, messages ...provider.Message) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err = s.appendMessageRecordsLocked(id, next, now)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
-	if s.mirror != nil {
-		_ = s.mirror.AppendMessages(id, messages...)
+	if s.exportMirror != nil {
+		_ = s.exportMirror.AppendMessages(id, messages...)
 	}
 	return nil
 }
@@ -85,32 +83,21 @@ func (s *Store) AppendMessageRecords(id string, records ...storage.Message) erro
 		return nil
 	}
 	now := time.Now().UTC()
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := s.appendMessageRecordsLocked(id, records, now)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
-	if s.mirror != nil {
+	if s.exportMirror != nil {
 		if messages, err := providerMessagesFromRecords(records); err == nil {
-			_ = s.mirror.AppendMessages(id, messages...)
+			_ = s.exportMirror.AppendMessages(id, messages...)
 		}
 	}
 	return nil
 }
 
 func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message, now time.Time) error {
-	existing, err := s.loadMessageRecordsLocked(id)
-	if err != nil {
-		return err
-	}
-	for i := range records {
-		records[i].ThreadID = id
-		records[i].Seq = int64(len(existing) + i + 1)
-		if records[i].CreatedAt.IsZero() {
-			records[i].CreatedAt = now.Add(time.Duration(i+1) * time.Millisecond)
-		}
-	}
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return err
@@ -118,6 +105,17 @@ func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message,
 	defer tx.Rollback()
 	messageq := messagedb.New(tx)
 	threadq := threaddb.New(tx)
+	nextSeq, err := messageq.NextMessageSeq(context.Background(), id)
+	if err != nil {
+		return err
+	}
+	for i := range records {
+		records[i].ThreadID = id
+		records[i].Seq = nextSeq + int64(i)
+		if records[i].CreatedAt.IsZero() {
+			records[i].CreatedAt = now.Add(time.Duration(i+1) * time.Millisecond)
+		}
+	}
 	for _, record := range records {
 		if err := insertMessage(messageq, record); err != nil {
 			return err
@@ -129,7 +127,7 @@ func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message,
 	return tx.Commit()
 }
 
-func (s *Store) loadMessageRecordsLocked(id string) ([]storage.Message, error) {
+func (s *Store) loadMessageRecords(id string) ([]storage.Message, error) {
 	rows, err := messagedb.New(s.db).ListMessagesByThread(context.Background(), id)
 	if err != nil {
 		return nil, err
@@ -146,7 +144,7 @@ func (s *Store) loadMessageRecordsLocked(id string) ([]storage.Message, error) {
 }
 
 func (s *Store) replaceMessagesLocked(id string, records []storage.Message) error {
-	existing, err := s.loadMessageRecordsLocked(id)
+	existing, err := s.loadMessageRecords(id)
 	if err != nil {
 		return err
 	}
@@ -176,6 +174,9 @@ func (s *Store) replaceMessagesLocked(id string, records []storage.Message) erro
 		}
 	}
 	if err := threadq.TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id}); err != nil {
+		return err
+	}
+	if err := threadq.AdvanceTranscriptRevision(context.Background(), id); err != nil {
 		return err
 	}
 	return tx.Commit()
