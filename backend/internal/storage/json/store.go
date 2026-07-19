@@ -185,22 +185,47 @@ func (s *Store) saveSession(session storage.Session) error {
 
 // SetArchived archives or restores a session together with its children.
 func (s *Store) SetArchived(id string, archived bool) error {
-	session, err := s.loadSessionByID(id)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.loadSessionByID(id); err != nil {
+		return err
+	}
+	filter := storage.SessionFilter{IncludeChildren: true, IncludeSourced: true}
+	sessions, err := s.listSessionsLocked(filter)
 	if err != nil {
 		return err
 	}
-	session.Archived = archived
-	if err := s.saveSession(session); err != nil {
-		return err
-	}
-	children, err := s.ListSessions(storage.SessionFilter{ParentID: id, ParentOnly: true, Archived: !archived})
+	filter.Archived = true
+	archivedSessions, err := s.listSessionsLocked(filter)
 	if err != nil {
 		return err
 	}
-	for _, child := range children {
-		child.Archived = archived
-		if err := s.saveSession(child); err != nil {
+	sessions = append(sessions, archivedSessions...)
+	children := make(map[string][]storage.Session, len(sessions))
+	for _, session := range sessions {
+		children[session.ParentID] = append(children[session.ParentID], session)
+	}
+	seen := make(map[string]bool, len(sessions))
+	for stack := []string{id}; len(stack) > 0; {
+		current := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[current] {
+			continue
+		}
+		seen[current] = true
+		session, err := s.loadSessionByID(current)
+		if err != nil {
 			return err
+		}
+		session.Archived = archived
+		if archived {
+			session.Unread = false
+		}
+		if err := s.saveSession(session); err != nil {
+			return err
+		}
+		for _, child := range children[current] {
+			stack = append(stack, child.ID)
 		}
 	}
 	return nil
@@ -278,6 +303,31 @@ func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt
 	if !attentionAt.IsZero() {
 		storage.MarkSessionAttention(&session, attentionAt)
 	}
+	return s.saveSession(session)
+}
+
+func (s *Store) CompleteSession(id string, completedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	session.Status = storage.StatusIdle
+	session.Error = ""
+	session.Unread = true
+	storage.MarkSessionAttention(&session, completedAt)
+	return s.saveSession(session)
+}
+
+func (s *Store) SetThreadUnread(id string, unread bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	session.Unread = unread
 	return s.saveSession(session)
 }
 

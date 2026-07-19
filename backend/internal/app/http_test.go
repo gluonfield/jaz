@@ -32,7 +32,7 @@ type fakeFeedStore struct{}
 
 func (fakeFeedStore) LoadFeed() ([]storage.FeedItem, error) { return nil, nil }
 
-func (fakeFeedStore) SetThreadUnread(string, bool) error { return nil }
+func (fakeFeedStore) LoadFeedCompletions() ([]storage.FeedCompletion, error) { return nil, nil }
 
 type fakeConnectionOAuthStore struct{}
 
@@ -73,6 +73,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "GET /v1/usage/daily")
 	requireRoute(t, routes, "GET /v1/usage/models")
 	requireRoute(t, routes, "GET /v1/feed")
+	requireRoute(t, routes, "GET /v1/feed/completions")
 	requireRoute(t, routes, "/v1/preview/")
 	if len(publicRoutes) != 1 ||
 		publicRoutes[0].Match == nil ||

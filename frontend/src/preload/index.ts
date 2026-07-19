@@ -4,6 +4,7 @@ import {
   type BrowserNavigationDirection,
 } from '../shared/browserNavigation'
 import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
+import type { ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
@@ -33,6 +34,8 @@ contextBridge.exposeInMainWorld('jaz', {
     model_identifier: string
     app_version: string
   }> => ipcRenderer.invoke('jaz:get-device-metadata'),
+  configureThreadNotifications: (config: ThreadNotificationConfig): Promise<boolean> =>
+    ipcRenderer.invoke('jaz:configure-thread-notifications', config),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('jaz:get-update-status'),
   installUpdate: (): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('jaz:install-update'),

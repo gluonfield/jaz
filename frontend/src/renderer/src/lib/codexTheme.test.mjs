@@ -67,6 +67,16 @@ describe('parseCodexThemeString', () => {
     expect(share.theme.opaqueWindows).toBe(false)
   })
 
+  test('falls back cleanly for malformed nested chrome fields', () => {
+    const raw = `${CODEX_THEME_PREFIX}${JSON.stringify({
+      codeThemeId: 'codex',
+      variant: 'dark',
+      theme: { fonts: [], semanticColors: 'invalid' },
+    })}`
+    const { share } = parseCodexThemeString(raw, 'dark')
+    expect(share.theme).toEqual(CODEX_DEFAULT_CHROME.dark)
+  })
+
   test('rejects wrong variant when expected', () => {
     const raw = `${CODEX_THEME_PREFIX}${JSON.stringify(sampleShare)}`
     expect(() => parseCodexThemeString(raw, 'light')).toThrow(CodexThemeParseError)

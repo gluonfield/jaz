@@ -35,7 +35,8 @@ SELECT
   pending_steer_message,
   unread,
   goal,
-  manual_title
+  manual_title,
+  last_completed_at_ms
 FROM threads;
 
 -- name: GetSession :one
@@ -75,7 +76,8 @@ SELECT
   pending_steer_message,
   unread,
   goal,
-  manual_title
+  manual_title,
+  last_completed_at_ms
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;
@@ -205,10 +207,22 @@ ON CONFLICT(id) DO UPDATE SET
   unread = excluded.unread,
   goal = excluded.goal;
 
+-- name: ListSessionSubtree :many
+WITH RECURSIVE subtree(id) AS (
+  SELECT threads.id FROM threads WHERE threads.id = sqlc.arg(id)
+  UNION
+  SELECT threads.id
+  FROM threads
+  JOIN subtree ON threads.parent_id = subtree.id
+)
+SELECT subtree.id FROM subtree;
+
 -- name: SetArchived :exec
 UPDATE threads
-SET archived = sqlc.arg(archived)
-WHERE id = sqlc.arg(id) OR parent_id = sqlc.arg(id);
+SET
+  archived = sqlc.arg(archived),
+  unread = CASE WHEN sqlc.arg(archived) != 0 THEN 0 ELSE unread END
+WHERE id IN (sqlc.slice('ids'));
 
 -- name: SetPinned :exec
 UPDATE threads
@@ -239,6 +253,17 @@ SET
     WHEN CAST(sqlc.arg(touch_attention) AS INTEGER) != 0 THEN sqlc.arg(last_attention_at_ms)
     ELSE last_attention_at_ms
   END
+WHERE id = sqlc.arg(id);
+
+-- name: CompleteSession :exec
+UPDATE threads
+SET
+  status = 'idle',
+  error = NULL,
+  unread = 1,
+  updated_at_ms = sqlc.arg(completed_at_ms),
+  last_attention_at_ms = sqlc.arg(completed_at_ms),
+  last_completed_at_ms = sqlc.arg(completed_at_ms)
 WHERE id = sqlc.arg(id);
 
 -- name: TouchThread :exec

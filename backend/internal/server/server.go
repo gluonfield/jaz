@@ -154,12 +154,6 @@ type messageRecordStore interface {
 	LoadMessageRecords(string) ([]storage.Message, error)
 }
 
-func (s *Server) setSessionUnread(id string, unread bool) {
-	if feed, ok := s.Store.(storage.FeedStore); ok {
-		_ = feed.SetThreadUnread(id, unread)
-	}
-}
-
 type reasoningMessageStore interface {
 	SaveMessagesWithReasoning(string, []provider.Message, map[int]string) error
 }
@@ -455,7 +449,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if action == "seen" {
-		s.setSessionUnread(session.ID, false)
+		if err := s.Store.SetThreadUnread(session.ID, false); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 		session, err = s.Store.LoadSession(session.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)

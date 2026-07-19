@@ -1,15 +1,48 @@
 import { Switch } from '@/components/ui/Switch'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { useTelemetryEnabled } from '@/lib/telemetry/useTelemetryEnabled'
+import { useThreadNotificationsEnabled } from '@/lib/notificationSettings'
 import { SettingsCard } from './SettingsCard'
 import { useExperimentalFeaturesEnabled } from './sections'
 
 export function GeneralSettings() {
   const [telemetryEnabled, setTelemetryEnabled] = useTelemetryEnabled()
+  const [threadNotificationsEnabled, setThreadNotificationsEnabled] =
+    useThreadNotificationsEnabled()
   const [experimentalEnabled, setExperimentalEnabled] = useExperimentalFeaturesEnabled()
 
   return (
     <section className="py-4">
       <div className="space-y-4">
+        {clientRuntime.configureThreadNotifications && (
+          <section>
+            <div>
+              <p className="text-sm font-medium text-ink">Notifications</p>
+              <p className="mt-0.5 text-[13px] text-ink-2">
+                Choose when Jaz can get your attention.
+              </p>
+            </div>
+
+            <SettingsCard className="mt-4 overflow-hidden">
+              <div className="grid grid-cols-1 gap-2 px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-ink">Thread finished</p>
+                  <p className="mt-0.5 text-[12px] text-ink-3">
+                    Show a system notification when a thread finishes and Jaz isn't focused.
+                  </p>
+                </div>
+                <div className="md:justify-self-end">
+                  <Switch
+                    checked={threadNotificationsEnabled}
+                    onChange={setThreadNotificationsEnabled}
+                    aria-label="Notify when a thread finishes"
+                  />
+                </div>
+              </div>
+            </SettingsCard>
+          </section>
+        )}
+
         <section>
           <div>
             <p className="text-sm font-medium text-ink">Features</p>

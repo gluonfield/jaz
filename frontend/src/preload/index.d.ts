@@ -1,6 +1,7 @@
 export {}
 
 import type { BrowserNavigationDirection } from '../shared/browserNavigation'
+import type { ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 
 declare global {
@@ -18,6 +19,7 @@ declare global {
         model_identifier: string
         app_version: string
       }>
+      configureThreadNotifications: (config: ThreadNotificationConfig) => Promise<boolean>
       getUpdateStatus: () => Promise<UpdateStatus>
       installUpdate: () => Promise<{ ok: boolean; error?: string }>
       onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void

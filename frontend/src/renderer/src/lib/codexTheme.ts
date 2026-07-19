@@ -75,24 +75,36 @@ function asNullableFont(v: unknown): string | null {
   return t.length > 0 ? t : null
 }
 
-function mergeChrome(partial: Partial<CodexChromeTheme> | undefined, base: CodexChromeTheme): CodexChromeTheme {
-  const p = partial ?? {}
-  const sc: Partial<CodexChromeTheme['semanticColors']> = p.semanticColors ?? {}
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function mergeChrome(partial: Record<string, unknown>, base: CodexChromeTheme): CodexChromeTheme {
+  const fonts = asRecord(partial.fonts)
+  const semanticColors = asRecord(partial.semanticColors)
   return {
-    accent: isHex(p.accent) ? normalizeHex(p.accent) : base.accent,
-    contrast: clampContrast(p.contrast, base.contrast),
+    accent: isHex(partial.accent) ? normalizeHex(partial.accent) : base.accent,
+    contrast: clampContrast(partial.contrast, base.contrast),
     fonts: {
-      code: asNullableFont(p.fonts?.code) ?? base.fonts.code,
-      ui: asNullableFont(p.fonts?.ui) ?? base.fonts.ui,
+      code: asNullableFont(fonts?.code) ?? base.fonts.code,
+      ui: asNullableFont(fonts?.ui) ?? base.fonts.ui,
     },
-    ink: isHex(p.ink) ? normalizeHex(p.ink) : base.ink,
-    opaqueWindows: typeof p.opaqueWindows === 'boolean' ? p.opaqueWindows : base.opaqueWindows,
+    ink: isHex(partial.ink) ? normalizeHex(partial.ink) : base.ink,
+    opaqueWindows:
+      typeof partial.opaqueWindows === 'boolean' ? partial.opaqueWindows : base.opaqueWindows,
     semanticColors: {
-      diffAdded: isHex(sc.diffAdded) ? normalizeHex(sc.diffAdded) : base.semanticColors.diffAdded,
-      diffRemoved: isHex(sc.diffRemoved) ? normalizeHex(sc.diffRemoved) : base.semanticColors.diffRemoved,
-      skill: isHex(sc.skill) ? normalizeHex(sc.skill) : base.semanticColors.skill,
+      diffAdded: isHex(semanticColors?.diffAdded)
+        ? normalizeHex(semanticColors.diffAdded)
+        : base.semanticColors.diffAdded,
+      diffRemoved: isHex(semanticColors?.diffRemoved)
+        ? normalizeHex(semanticColors.diffRemoved)
+        : base.semanticColors.diffRemoved,
+      skill: isHex(semanticColors?.skill)
+        ? normalizeHex(semanticColors.skill)
+        : base.semanticColors.skill,
     },
-    surface: isHex(p.surface) ? normalizeHex(p.surface) : base.surface,
+    surface: isHex(partial.surface) ? normalizeHex(partial.surface) : base.surface,
   }
 }
 
@@ -154,10 +166,10 @@ export function parseCodexThemeString(
   } catch {
     throw new CodexThemeParseError('Invalid theme JSON')
   }
-  if (!parsed || typeof parsed !== 'object') {
+  const obj = asRecord(parsed)
+  if (!obj) {
     throw new CodexThemeParseError('Invalid theme payload')
   }
-  const obj = parsed as Record<string, unknown>
   const variant = obj.variant
   if (variant !== 'light' && variant !== 'dark') {
     throw new CodexThemeParseError('Missing theme variant')
@@ -168,11 +180,11 @@ export function parseCodexThemeString(
   if (typeof obj.codeThemeId !== 'string' || obj.codeThemeId.length === 0) {
     throw new CodexThemeParseError('Missing code theme id')
   }
-  const themeRaw = obj.theme
-  if (!themeRaw || typeof themeRaw !== 'object') {
+  const themeRaw = asRecord(obj.theme)
+  if (!themeRaw) {
     throw new CodexThemeParseError('Missing theme colors')
   }
-  const theme = mergeChrome(themeRaw as Partial<CodexChromeTheme>, CODEX_DEFAULT_CHROME[variant])
+  const theme = mergeChrome(themeRaw, CODEX_DEFAULT_CHROME[variant])
   const share: CodexThemeShare = {
     codeThemeId: obj.codeThemeId,
     theme,

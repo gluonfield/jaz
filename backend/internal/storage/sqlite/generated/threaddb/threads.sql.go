@@ -8,6 +8,7 @@ package threaddb
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const addUsage = `-- name: AddUsage :exec
@@ -59,6 +60,28 @@ func (q *Queries) AddUsage(ctx context.Context, arg AddUsageParams) error {
 	return err
 }
 
+const completeSession = `-- name: CompleteSession :exec
+UPDATE threads
+SET
+  status = 'idle',
+  error = NULL,
+  unread = 1,
+  updated_at_ms = ?1,
+  last_attention_at_ms = ?1,
+  last_completed_at_ms = ?1
+WHERE id = ?2
+`
+
+type CompleteSessionParams struct {
+	CompletedAtMs int64  `json:"completed_at_ms"`
+	ID            string `json:"id"`
+}
+
+func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams) error {
+	_, err := q.db.ExecContext(ctx, completeSession, arg.CompletedAtMs, arg.ID)
+	return err
+}
+
 const getSession = `-- name: GetSession :one
 SELECT
   id,
@@ -96,7 +119,8 @@ SELECT
   pending_steer_message,
   unread,
   goal,
-  manual_title
+  manual_title,
+  last_completed_at_ms
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -142,6 +166,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.Unread,
 		&i.Goal,
 		&i.ManualTitle,
+		&i.LastCompletedAtMs,
 	)
 	return i, err
 }
@@ -204,6 +229,40 @@ func (q *Queries) ListErrorThreadIDsWithoutError(ctx context.Context, status str
 	return items, nil
 }
 
+const listSessionSubtree = `-- name: ListSessionSubtree :many
+WITH RECURSIVE subtree(id) AS (
+  SELECT threads.id FROM threads WHERE threads.id = ?1
+  UNION
+  SELECT threads.id
+  FROM threads
+  JOIN subtree ON threads.parent_id = subtree.id
+)
+SELECT subtree.id FROM subtree
+`
+
+func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionSubtree, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessions = `-- name: ListSessions :many
 SELECT
   id,
@@ -241,7 +300,8 @@ SELECT
   pending_steer_message,
   unread,
   goal,
-  manual_title
+  manual_title,
+  last_completed_at_ms
 FROM threads
 `
 
@@ -291,6 +351,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.Unread,
 			&i.Goal,
 			&i.ManualTitle,
+			&i.LastCompletedAtMs,
 		); err != nil {
 			return nil, err
 		}
@@ -334,17 +395,30 @@ func (q *Queries) ResetRunningThreads(ctx context.Context, arg ResetRunningThrea
 
 const setArchived = `-- name: SetArchived :exec
 UPDATE threads
-SET archived = ?1
-WHERE id = ?2 OR parent_id = ?2
+SET
+  archived = ?1,
+  unread = CASE WHEN ?1 != 0 THEN 0 ELSE unread END
+WHERE id IN (/*SLICE:ids*/?)
 `
 
 type SetArchivedParams struct {
-	Archived int64  `json:"archived"`
-	ID       string `json:"id"`
+	Archived int64    `json:"archived"`
+	Ids      []string `json:"ids"`
 }
 
 func (q *Queries) SetArchived(ctx context.Context, arg SetArchivedParams) error {
-	_, err := q.db.ExecContext(ctx, setArchived, arg.Archived, arg.ID)
+	query := setArchived
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Archived)
+	if len(arg.Ids) > 0 {
+		for _, v := range arg.Ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
 	return err
 }
 

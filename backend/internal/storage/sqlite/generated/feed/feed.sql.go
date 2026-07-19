@@ -69,3 +69,48 @@ func (q *Queries) ListFeed(ctx context.Context) ([]ListFeedRow, error) {
 	}
 	return items, nil
 }
+
+const listFeedCompletions = `-- name: ListFeedCompletions :many
+SELECT id, slug, title, last_completed_at_ms
+FROM threads
+WHERE archived = 0
+  AND unread = 1
+  AND COALESCE(source_type, '') = ''
+  AND last_completed_at_ms != 0
+ORDER BY last_completed_at_ms DESC
+`
+
+type ListFeedCompletionsRow struct {
+	ID                string         `json:"id"`
+	Slug              string         `json:"slug"`
+	Title             sql.NullString `json:"title"`
+	LastCompletedAtMs int64          `json:"last_completed_at_ms"`
+}
+
+func (q *Queries) ListFeedCompletions(ctx context.Context) ([]ListFeedCompletionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listFeedCompletions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListFeedCompletionsRow{}
+	for rows.Next() {
+		var i ListFeedCompletionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Title,
+			&i.LastCompletedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
