@@ -19,6 +19,7 @@ import (
 
 const (
 	codexPlanKindMetaKey  = "codex.plan_kind"
+	codexPlanKindProgress = "progress"
 	codexPlanKindProposal = "proposal"
 )
 
@@ -227,15 +228,19 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 				Priority: string(entry.Priority),
 			})
 		}
-		acceptProposal := job.turn != nil && acceptsACPPlanProposal(job.turn.planRequested, job.ACPAgent)
-		if acceptProposal {
-			job.turn.planDocument = ""
-		}
 		planKind, _ := event.Meta[codexPlanKindMetaKey].(string)
-		if planKind == codexPlanKindProposal {
-			if acceptProposal && len(plan) == 1 {
-				job.turn.planDocument = strings.TrimSpace(plan[0].Content)
+		if job.turn != nil && job.turn.planRequested {
+			switch planKind {
+			case codexPlanKindProposal:
+				job.turn.planDocument = ""
+				if len(plan) == 1 {
+					job.turn.planDocument = strings.TrimSpace(plan[0].Content)
+				}
+			case codexPlanKindProgress:
+				job.turn.planDocument = ""
 			}
+		}
+		if planKind == codexPlanKindProposal {
 			if len(job.Plan) > 0 {
 				job.Plan = sessionevents.PlanCleared
 				publishACP = true
@@ -243,7 +248,12 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			break
 		}
 		var ok bool
-		plan, ok = sessionevents.NormalizeProgressEntries(plan)
+		switch planKind {
+		case codexPlanKindProgress:
+			plan, ok = sessionevents.NormalizePlanEntries(plan)
+		case "":
+			plan, ok = sessionevents.NormalizeProgressEntries(plan)
+		}
 		if !ok {
 			if len(job.Plan) > 0 {
 				job.Plan = sessionevents.PlanCleared

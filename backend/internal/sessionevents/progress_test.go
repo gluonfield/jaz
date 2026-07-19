@@ -2,8 +2,8 @@ package sessionevents
 
 import "testing"
 
-func TestNormalizeProgressEntryContentRejectsBareMarkdownHeading(t *testing.T) {
-	if content, ok := NormalizeProgressEntryContent("#"); ok {
-		t.Fatalf("accepted content %q", content)
+func TestNormalizeProgressEntriesRejectsBareMarkdownHeading(t *testing.T) {
+	if entries, ok := NormalizeProgressEntries([]PlanEntry{{Content: "#"}}); ok {
+		t.Fatalf("accepted entries %#v", entries)
 	}
 }

@@ -14,12 +14,6 @@ var baselineModePriority = map[string][]string{
 
 var defaultBaselineModePriority = []string{"full-access", "yolo", "always-approve"}
 
-// acceptsACPPlanProposal reports whether a plan document from ACP owns approval
-// for this turn. Claude uses ExitPlanMode approval instead.
-func acceptsACPPlanProposal(planRequested bool, agent string) bool {
-	return planRequested && CanonicalAgentName(agent) != AgentClaude
-}
-
 func preferredBaselineModeID(agent string, modes []acpschema.SessionMode) string {
 	if ids, ok := baselineModePriority[CanonicalAgentName(agent)]; ok {
 		return firstSessionMode(modes, ids)

@@ -8,28 +8,30 @@ import (
 
 const maxProgressEntryContentRunes = 240
 
-func NormalizeProgressEntries(entries []PlanEntry) ([]PlanEntry, bool) {
+func NormalizePlanEntries(entries []PlanEntry) ([]PlanEntry, bool) {
 	out := make([]PlanEntry, 0, len(entries))
 	for _, entry := range entries {
-		content, ok := NormalizeProgressEntryContent(entry.Content)
-		if !ok {
+		entry.Content = strings.TrimSpace(entry.Content)
+		if entry.Content == "" {
 			return nil, false
 		}
-		entry.Content = content
 		out = append(out, entry)
 	}
 	return out, true
 }
 
-func NormalizeProgressEntryContent(content string) (string, bool) {
-	text := strings.TrimSpace(content)
-	if text == "" || utf8.RuneCountInString(text) > maxProgressEntryContentRunes || strings.ContainsAny(text, "\r\n") {
-		return "", false
+func NormalizeProgressEntries(entries []PlanEntry) ([]PlanEntry, bool) {
+	out, ok := NormalizePlanEntries(entries)
+	if !ok {
+		return nil, false
 	}
-	if looksLikeMarkdownBlock(text) {
-		return "", false
+	for _, entry := range out {
+		if utf8.RuneCountInString(entry.Content) > maxProgressEntryContentRunes ||
+			strings.ContainsAny(entry.Content, "\r\n") || looksLikeMarkdownBlock(entry.Content) {
+			return nil, false
+		}
 	}
-	return text, true
+	return out, true
 }
 
 func looksLikeMarkdownBlock(text string) bool {
