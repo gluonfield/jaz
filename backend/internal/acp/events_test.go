@@ -80,8 +80,12 @@ func TestRecordAndPublishSlimsStoredCopy(t *testing.T) {
 		Type:      "acp",
 		ACP: &sessionevents.ACPEvent{
 			ID: session.ID, Slug: "main", Title: "a very long first prompt", Agent: "codex",
-			Modes: modes,
-			Plan:  []sessionevents.PlanEntry{{Content: "step"}},
+			Assistant:   "large accumulated answer",
+			Thought:     "large accumulated reasoning",
+			Modes:       modes,
+			Plan:        []sessionevents.PlanEntry{{Content: "step"}},
+			ToolCalls:   []sessionevents.ACPToolCall{{ID: "tool-1"}},
+			Permissions: []sessionevents.ACPPermission{{ID: "permission-1"}},
 		},
 	})
 
@@ -107,6 +111,9 @@ func TestRecordAndPublishSlimsStoredCopy(t *testing.T) {
 	// Plan approval reads current/plan mode ids from the event.
 	if stored[1].ACP.Modes.CurrentModeID != "plan" || stored[1].ACP.Modes.PlanModeID != "plan" {
 		t.Fatalf("plan-bearing event lost its mode ids: %+v", stored[1].ACP.Modes)
+	}
+	if stored[1].ACP.Assistant != "" || stored[1].ACP.Thought != "" || stored[1].ACP.ToolCalls != nil || stored[1].ACP.Permissions != nil {
+		t.Fatalf("stored status event repeated transcript state: %+v", stored[1].ACP)
 	}
 
 	select {
@@ -168,7 +175,7 @@ func TestTranscriptChunksFlushBeforeStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.Assistant != "Hello" || state.State != StateIdle {
+	if state.Assistant != "" || state.State != StateIdle {
 		t.Fatalf("state = %#v", state)
 	}
 
@@ -181,6 +188,25 @@ func TestTranscriptChunksFlushBeforeStatus(t *testing.T) {
 		t.Fatalf("second live event = %#v", second)
 	}
 	assertTranscriptBufferIdle(t, manager, session.ID)
+}
+
+func TestACPStorageStateExcludesTranscript(t *testing.T) {
+	state := acpStorageState(Job{
+		ID:          "thread",
+		State:       StateRunning,
+		Assistant:   "answer",
+		Thought:     "reasoning",
+		Plan:        []sessionevents.PlanEntry{{Content: "inspect"}},
+		ToolCalls:   []sessionevents.ACPToolCall{{ID: "tool-1", RawOutput: []byte(`"large"`)}},
+		Permissions: []sessionevents.ACPPermission{{ID: "permission-1"}},
+	})
+
+	if state.Assistant != "" || state.Thought != "" || state.Plan != nil || state.ToolCalls != nil || state.Permissions != nil {
+		t.Fatalf("storage state repeated transcript data: %#v", state)
+	}
+	if state.ID != "thread" || state.State != StateRunning {
+		t.Fatalf("storage state lost runtime metadata: %#v", state)
+	}
 }
 
 func TestTranscriptChunksFlushOnTimerWhileRunning(t *testing.T) {
@@ -221,12 +247,8 @@ func TestTranscriptChunksFlushOnTimerWhileRunning(t *testing.T) {
 	if len(stored) != 1 || stored[0].Type != "acp_message" || stored[0].Content != "live text" {
 		t.Fatalf("stored events = %#v", stored)
 	}
-	state, err := store.LoadACPState(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.State != StateRunning || state.Assistant != "live text" {
-		t.Fatalf("state = %#v", state)
+	if state, err := store.LoadACPState(session.ID); err == nil {
+		t.Fatalf("text flush rewrote acp state: %#v", state)
 	}
 	assertTranscriptBufferIdle(t, manager, session.ID)
 }
@@ -499,8 +521,8 @@ func TestInactiveStatusClearsStoredPermissions(t *testing.T) {
 	if len(status.Permissions) != 0 {
 		t.Fatalf("inactive status kept stale permissions: %#v", status.Permissions)
 	}
-	if len(status.ToolCalls) != 1 || status.LastToolAt.IsZero() {
-		t.Fatalf("inactive diagnostics lost tool state: %#v", status)
+	if len(status.ToolCalls) != 0 || status.LastToolAt.IsZero() {
+		t.Fatalf("inactive status = %#v", status)
 	}
 }
 
@@ -574,5 +596,23 @@ func TestStartTurnPublishesPlanClear(t *testing.T) {
 	}
 	if _, ok := event["plan"]; ok {
 		t.Fatalf("plan-less turn start carries a plan signal: %s", raw)
+	}
+}
+
+func TestEventFromJobExcludesDedicatedTranscriptFields(t *testing.T) {
+	event := EventFromJob(Job{
+		ID:          "session-1",
+		Assistant:   "answer",
+		Thought:     "reasoning",
+		Plan:        []sessionevents.PlanEntry{{Content: "inspect"}},
+		ToolCalls:   []sessionevents.ACPToolCall{{ID: "tool-1"}},
+		Permissions: []sessionevents.ACPPermission{{ID: "permission-1"}},
+	})
+
+	if event.Assistant != "" || event.Thought != "" || event.ToolCalls != nil || event.Permissions != nil {
+		t.Fatalf("event repeated dedicated transcript fields: %#v", event)
+	}
+	if len(event.Plan) != 1 || event.Plan[0].Content != "inspect" {
+		t.Fatalf("event lost plan state: %#v", event.Plan)
 	}
 }

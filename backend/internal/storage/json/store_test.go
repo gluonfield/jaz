@@ -276,6 +276,126 @@ func TestSaveACPStateUpdatesSessionStatus(t *testing.T) {
 	}
 }
 
+func TestSaveACPStateDoesNotDuplicateTranscript(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "acp-state", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := storage.ACPState{
+		State:       "running",
+		Assistant:   "live answer",
+		Thought:     "live thought",
+		Plan:        []sessionevents.PlanEntry{{Content: "live plan"}},
+		ToolCalls:   []sessionevents.ACPToolCall{{ID: "tool-1", RawOutput: []byte("large output")}},
+		Permissions: []sessionevents.ACPPermission{{ID: "permission-1"}},
+	}
+	if err := store.SaveACPState(session.ID, state); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadACPState(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Assistant != "" || loaded.Thought != "" || loaded.Plan != nil || loaded.ToolCalls != nil || loaded.Permissions != nil {
+		t.Fatalf("stored state retained transcript copies: %#v", loaded)
+	}
+	state.State = "idle"
+	if err := store.SaveACPState(session.ID, state); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadACPState(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Assistant != "" || loaded.Thought != "" || loaded.Plan != nil || loaded.ToolCalls != nil || loaded.Permissions != nil {
+		t.Fatalf("inactive state retained transcript copies: %#v", loaded)
+	}
+}
+
+func TestCompactACPStatesRewritesLegacyTranscriptCopies(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "legacy-acp-state", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := storage.ACPState{
+		ID:    session.ID,
+		State: "idle",
+		ToolCalls: []sessionevents.ACPToolCall{{
+			ID:        "tool-1",
+			RawOutput: stdjson.RawMessage(`"` + strings.Repeat("x", largeACPStateBytes) + `"`),
+		}},
+	}
+	raw, err := stdjson.MarshalIndent(legacy, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(store.sessionDir(session.ID), "acp_state.json")
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files, removed, err := store.CompactACPStates(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files != 1 || removed <= 0 {
+		t.Fatalf("compaction = %d files, %d bytes", files, removed)
+	}
+	state, err := store.LoadACPState(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ToolCalls != nil || state.ID != session.ID || state.State != "idle" {
+		t.Fatalf("state = %#v", state)
+	}
+}
+
+func TestCompactACPStatesContinuesPastCorruptFile(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	corrupt, err := store.CreateSession(storage.CreateSession{Slug: "a-corrupt-state", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	healthy, err := store.CreateSession(storage.CreateSession{Slug: "z-healthy-state", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	large := strings.Repeat("x", largeACPStateBytes)
+	if err := os.WriteFile(filepath.Join(store.sessionDir(corrupt.ID), "acp_state.json"), []byte("{"+large), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	legacy := storage.ACPState{ID: healthy.ID, State: "idle", Assistant: large}
+	raw, err := stdjson.Marshal(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(store.sessionDir(healthy.ID), "acp_state.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, removed, err := store.CompactACPStates(t.Context())
+	if err == nil || files != 1 || removed <= 0 {
+		t.Fatalf("compaction = %d files, %d bytes, %v", files, removed, err)
+	}
+	state, err := store.LoadACPState(healthy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Assistant != "" || state.ID != healthy.ID {
+		t.Fatalf("healthy state = %#v", state)
+	}
+}
+
 func TestMessagesUseJSONL(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -387,5 +507,54 @@ func TestSessionEventsUseJSONL(t *testing.T) {
 	}
 	if len(loaded) != 2 || loaded[0].Seq != 2 || loaded[1].Seq != 3 {
 		t.Fatalf("events after seq 1 = %#v", loaded)
+	}
+}
+
+func TestAssignedSessionEventAppendDoesNotReadHistory(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "assigned-events"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(store.sessionDir(session.ID), "events.jsonl")
+	if err := os.WriteFile(path, []byte("not-json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Seq: 9, Type: "acp_message", Content: "new"}); err != nil {
+		t.Fatalf("append assigned event: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"seq":9`) {
+		t.Fatalf("assigned event was not appended: %s", data)
+	}
+}
+
+func TestUnassignedSessionEventFollowsHighestSequence(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "event-sequence"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Seq: 9, Type: "acp_message", Content: "assigned"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Type: "acp_message", Content: "next"}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded) != 2 || loaded[1].Seq != 10 {
+		t.Fatalf("events = %#v, want second sequence 10", loaded)
 	}
 }

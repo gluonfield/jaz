@@ -501,14 +501,6 @@ export interface WidgetSummary {
   updated_at: string
 }
 
-export interface ActivityEntry {
-  id?: string
-  kind: string
-  text?: string
-  status?: string
-  at: string
-}
-
 export interface ToolCallJSON {
   id: string
   type: 'function'
@@ -563,7 +555,6 @@ export type ACPMeta = Record<
 export interface SessionMessages {
   session: Session
   messages: ChatMessage[]
-  activity: ActivityEntry[]
   events?: SessionEvent[]
   acp_meta?: ACPMeta
   acp_state?: string

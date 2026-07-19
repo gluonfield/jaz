@@ -10,8 +10,6 @@ import (
 )
 
 func (s *Store) LoadFeed() ([]storage.FeedItem, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	q := feed.New(s.db)
 	ctx := context.Background()
 	rows, err := q.ListFeed(ctx)
@@ -24,7 +22,7 @@ func (s *Store) LoadFeed() ([]storage.FeedItem, error) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := s.loadSessionEventsAfterTimeLocked(row.ID, promptAt)
+		events, err := s.loadSessionEventsAfterTime(row.ID, promptAt)
 		if err != nil {
 			return nil, err
 		}

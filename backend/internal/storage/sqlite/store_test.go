@@ -278,8 +278,8 @@ func TestRuntimeTitleDoesNotOverwriteManualTitle(t *testing.T) {
 
 func setSessionTimes(t *testing.T, store *Store, session storage.Session, updatedAt, lastAttentionAt time.Time) {
 	t.Helper()
-	store.mu.Lock()
-	defer store.mu.Unlock()
+	store.writeMu.Lock()
+	defer store.writeMu.Unlock()
 	session.UpdatedAt = updatedAt
 	session.LastAttentionAt = lastAttentionAt
 	if err := store.saveSessionLocked(session, false); err != nil {
@@ -617,7 +617,7 @@ func TestSaveACPStateMirrorsStateAndUpdatesSessionStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.State != "running" || state.Assistant != "working" {
+	if state.State != "running" || state.Assistant != "" {
 		t.Fatalf("state = %#v", state)
 	}
 	loaded, err := store.LoadSession(session.ID)

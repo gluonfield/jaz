@@ -198,14 +198,6 @@ type Message struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type ActivityEntry struct {
-	ID     string    `json:"id,omitempty"`
-	Kind   string    `json:"kind"`
-	Text   string    `json:"text,omitempty"`
-	Status string    `json:"status,omitempty"`
-	At     time.Time `json:"at"`
-}
-
 type ACPState struct {
 	ID              string                        `json:"id"`
 	Slug            string                        `json:"slug"`
@@ -233,6 +225,15 @@ type ACPState struct {
 	UpdatedAt       time.Time                     `json:"updated_at"`
 	LastEventAt     time.Time                     `json:"last_event_at,omitzero"`
 	LastToolAt      time.Time                     `json:"last_tool_at,omitzero"`
+}
+
+func (state ACPState) WithoutTranscript() ACPState {
+	state.Assistant = ""
+	state.Thought = ""
+	state.Plan = nil
+	state.ToolCalls = nil
+	state.Permissions = nil
+	return state
 }
 
 type CreateSession struct {

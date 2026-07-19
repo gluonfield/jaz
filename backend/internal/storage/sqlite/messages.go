@@ -20,9 +20,7 @@ func (s *Store) LoadMessages(id string) ([]provider.Message, error) {
 }
 
 func (s *Store) LoadMessageRecords(id string) ([]storage.Message, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.loadMessageRecordsLocked(id)
+	return s.loadMessageRecords(id)
 }
 
 func (s *Store) SaveMessages(id string, messages []provider.Message) error {
@@ -30,9 +28,9 @@ func (s *Store) SaveMessages(id string, messages []provider.Message) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err = s.replaceMessagesLocked(id, records)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -49,9 +47,9 @@ func (s *Store) SaveMessagesWithReasoningAndMedia(id string, messages []provider
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err = s.replaceMessagesLocked(id, records)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -68,9 +66,9 @@ func (s *Store) AppendMessages(id string, messages ...provider.Message) error {
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err = s.appendMessageRecordsLocked(id, next, now)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -85,9 +83,9 @@ func (s *Store) AppendMessageRecords(id string, records ...storage.Message) erro
 		return nil
 	}
 	now := time.Now().UTC()
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := s.appendMessageRecordsLocked(id, records, now)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -100,7 +98,7 @@ func (s *Store) AppendMessageRecords(id string, records ...storage.Message) erro
 }
 
 func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message, now time.Time) error {
-	existing, err := s.loadMessageRecordsLocked(id)
+	existing, err := s.loadMessageRecords(id)
 	if err != nil {
 		return err
 	}
@@ -129,7 +127,7 @@ func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message,
 	return tx.Commit()
 }
 
-func (s *Store) loadMessageRecordsLocked(id string) ([]storage.Message, error) {
+func (s *Store) loadMessageRecords(id string) ([]storage.Message, error) {
 	rows, err := messagedb.New(s.db).ListMessagesByThread(context.Background(), id)
 	if err != nil {
 		return nil, err
@@ -146,7 +144,7 @@ func (s *Store) loadMessageRecordsLocked(id string) ([]storage.Message, error) {
 }
 
 func (s *Store) replaceMessagesLocked(id string, records []storage.Message) error {
-	existing, err := s.loadMessageRecordsLocked(id)
+	existing, err := s.loadMessageRecords(id)
 	if err != nil {
 		return err
 	}

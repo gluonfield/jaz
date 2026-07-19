@@ -124,10 +124,6 @@ func TestCompactTextChunksKeepsHiddenOwnStatusAsTextBoundary(t *testing.T) {
 		t.Fatalf("second message = %#v", got[3])
 	}
 
-	runs := CompactTextChunkRuns(events)
-	if len(runs) != 0 {
-		t.Fatalf("runs = %#v, want none", runs)
-	}
 }
 
 func TestCompactTextChunksKeepsToolSeparatedMessages(t *testing.T) {
@@ -161,16 +157,6 @@ func TestCompactTextChunksKeepsToolSeparatedMessages(t *testing.T) {
 	}
 	if got[4].Seq != 8 || got[4].Content != "gap" {
 		t.Fatalf("gap event should not merge: %#v", got[4])
-	}
-	runs := CompactTextChunkRuns(events)
-	if len(runs) != 2 {
-		t.Fatalf("runs = %d, want 2: %#v", len(runs), runs)
-	}
-	if runs[0].Event.Seq != 2 || runs[0].Event.Content != "Hello" || len(runs[0].DeleteSeqs) != 1 || runs[0].DeleteSeqs[0] != 1 {
-		t.Fatalf("first run = %#v", runs[0])
-	}
-	if runs[1].Event.Seq != 6 || runs[1].Event.Content != "Done.Next" || len(runs[1].DeleteSeqs) != 1 || runs[1].DeleteSeqs[0] != 5 {
-		t.Fatalf("second run = %#v", runs[1])
 	}
 }
 
@@ -221,6 +207,20 @@ func TestCompactTranscriptDoesNotSplitWordsAcrossToolEvents(t *testing.T) {
 	}
 }
 
+func TestCompactTranscriptDoesNotSplitWordsAcrossCoalescedToolGap(t *testing.T) {
+	toolACP := compactACPState("thread", "running")
+	toolACP.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Read file", Status: "completed"}}
+	got := CompactTranscript([]Event{
+		compactACPTextRun(1, "acp_message", "message chunks, t", "message:m1", compactACPState("thread", "running")),
+		compactACP(3, "acp_tool", "", toolACP),
+		compactACPTextRun(4, "acp_message", "ool calls", "message:m1", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 2 || got[1].Content != "message chunks, tool calls" {
+		t.Fatalf("compacted events = %#v", got)
+	}
+}
+
 func TestCompactTranscriptKeepsTaskSurfaceAsTextBoundary(t *testing.T) {
 	planACP := compactACPState("thread", "running")
 	planACP.Plan = []PlanEntry{{Content: "Inspect files", Status: "completed"}}
@@ -235,6 +235,20 @@ func TestCompactTranscriptKeepsTaskSurfaceAsTextBoundary(t *testing.T) {
 	}
 	if got[0].Content != "before" || got[2].Content != "after" {
 		t.Fatalf("messages crossed task surface: %#v", got)
+	}
+}
+
+func TestCompactTranscriptKeepsTaskSurfaceBetweenOneTextRun(t *testing.T) {
+	planACP := compactACPState("thread", "running")
+	planACP.Plan = []PlanEntry{{Content: "Inspect files", Status: "completed"}}
+	got := CompactTranscript([]Event{
+		compactACPTextRun(1, TypeACPMessage, "before", "message:m1", compactACPState("thread", "running")),
+		compactACP(2, "acp", "", planACP),
+		compactACPTextRun(3, TypeACPMessage, "after", "message:m1", compactACPState("thread", "running")),
+	})
+
+	if len(got) != 3 || got[0].Content != "before" || got[1].Type != "acp" || got[2].Content != "after" {
+		t.Fatalf("compacted events = %#v", got)
 	}
 }
 

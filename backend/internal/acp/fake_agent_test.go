@@ -96,7 +96,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				}
 			}
 			capabilities := map[string]any{
-				"loadSession": os.Getenv("JAZ_FAKE_ACP_LOAD") == "1",
+				"loadSession": os.Getenv("JAZ_FAKE_ACP_LOAD") != "0",
 			}
 			if os.Getenv("JAZ_FAKE_ACP_MCP_HTTP") == "1" {
 				capabilities["mcpCapabilities"] = map[string]any{"http": true}
@@ -312,6 +312,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if strings.Contains(string(msg.Params), "break transport") {
 				_, _ = fmt.Fprintln(os.Stdout, "not-json")
 				os.Exit(0)
+			}
+			if strings.Contains(string(msg.Params), "close transport") {
+				os.Exit(0)
+			}
+			if strings.Contains(string(msg.Params), "crash transport") {
+				_, _ = fmt.Fprintln(os.Stderr, "fake runtime crash")
+				os.Exit(7)
 			}
 			if err := validateFakePromptContains(msg.Params); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))

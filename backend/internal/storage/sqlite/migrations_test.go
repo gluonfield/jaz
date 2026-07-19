@@ -38,9 +38,23 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	if !columns["memory_path"] {
 		t.Fatal("migration did not add loops.memory_path")
 	}
+	columns, err = tableColumns(store.db, "threads")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !columns["event_compaction_version"] || !columns["event_revision"] {
+		t.Fatal("migration did not add session event compaction state")
+	}
+	indexes, err := indexNames(store.db, "threads")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !indexes["idx_threads_event_compaction_pending"] {
+		t.Fatal("migration did not add pending event compaction index")
+	}
 }
 
-func TestSessionEventsUsePrimaryKeyIndexOnly(t *testing.T) {
+func TestSessionEventsUseRequiredIndexes(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -56,6 +70,9 @@ func TestSessionEventsUsePrimaryKeyIndexOnly(t *testing.T) {
 	}
 	if !indexes["sqlite_autoindex_session_events_1"] {
 		t.Fatal("session_events primary key index is missing")
+	}
+	if !indexes["idx_session_events_coalesce"] {
+		t.Fatal("session_events coalescing index is missing")
 	}
 	var plan string
 	if err := store.db.QueryRow(`

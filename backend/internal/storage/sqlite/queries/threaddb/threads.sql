@@ -35,7 +35,9 @@ SELECT
   pending_steer_message,
   unread,
   goal,
-  manual_title
+  manual_title,
+  event_compaction_version,
+  event_revision
 FROM threads;
 
 -- name: GetSession :one
@@ -75,7 +77,9 @@ SELECT
   pending_steer_message,
   unread,
   goal,
-  manual_title
+  manual_title,
+  event_compaction_version,
+  event_revision
 FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)
 LIMIT 1;

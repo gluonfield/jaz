@@ -18,8 +18,6 @@ func (s *Store) LoadIntegrationCursor(ctx context.Context, connectionID, kind st
 	if connectionID == "" || kind == "" {
 		return integrations.Cursor{}, false, nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := cursordb.New(s.db).LoadCursor(ctx, cursordb.LoadCursorParams{
 		ConnectionID: connectionID,
 		Kind:         kind,
@@ -45,8 +43,8 @@ func (s *Store) SaveIntegrationCursor(ctx context.Context, connectionID string, 
 	if len(cursor.Value) == 0 {
 		cursor.Value = json.RawMessage(`{}`)
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return cursordb.New(s.db).SaveCursor(ctx, cursordb.SaveCursorParams{
 		ConnectionID: connectionID,
 		Kind:         cursor.Kind,

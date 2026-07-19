@@ -65,6 +65,10 @@ export function sessionEventCoalesceKey(event: SessionEvent): string {
   return textRunEventKey(event) || taskSurfaceKey(event) || inPlaceEventKey(event) || ''
 }
 
+function replaceableEventKey(event: SessionEvent): string {
+  return taskSurfaceKey(event) || inPlaceEventKey(event) || ''
+}
+
 export function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): SessionEvent[] {
   if (event.seq) {
     const seqIndex = prev.findIndex((item) => item.seq === event.seq && item.session_id === event.session_id)
@@ -74,15 +78,15 @@ export function mergeSessionEvent(prev: SessionEvent[], event: SessionEvent): Se
       return next
     }
   }
-  const merged = mergeAdjacentACPText(prev.at(-1), event)
-  if (merged) {
+  const textIndex = findOpenACPTextIndex(prev, event)
+  if (textIndex !== -1) {
     const next = [...prev]
-    next[next.length - 1] = merged
+    next[textIndex] = mergeACPTextEvents(next[textIndex], event)!
     return next
   }
-  const key = sessionEventCoalesceKey(event)
+  const key = replaceableEventKey(event)
   if (!key) return [...prev, event]
-  const index = prev.findIndex((item) => sessionEventCoalesceKey(item) === key)
+  const index = prev.findIndex((item) => replaceableEventKey(item) === key)
   if (index === -1) return [...prev, event]
   const next = [...prev]
   next[index] = mergeCoalescedSessionEvent(next[index], event)
@@ -108,8 +112,8 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
   }
   const byKey = new Map<string, number>()
   const indexed: { event: SessionEvent; index: number }[] = []
-  deduped.forEach((event, sourceIndex) => {
-    const key = sessionEventCoalesceKey(event)
+  compactACPTextEvents(deduped).forEach((event, sourceIndex) => {
+    const key = replaceableEventKey(event)
     const slot = key ? byKey.get(key) : undefined
     if (slot === undefined) {
       if (key) byKey.set(key, indexed.length)
@@ -135,8 +139,6 @@ export function coalesceSessionEvents(events: SessionEvent[]): SessionEvent[] {
 }
 
 function mergeCoalescedSessionEvent(prev: SessionEvent, next: SessionEvent): SessionEvent {
-  const mergedText = mergeACPTextEvents(prev, next)
-  if (mergedText) return mergedText
   if (prev.type === 'provider_subagent' && next.type === 'provider_subagent' && next.provider_subagent) {
     return {
       ...next,
@@ -146,11 +148,36 @@ function mergeCoalescedSessionEvent(prev: SessionEvent, next: SessionEvent): Ses
   return next
 }
 
-function mergeAdjacentACPText(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {
-  if (!prev?.seq || !event.seq || event.seq === prev.seq + 1) {
-    return mergeACPTextEvents(prev, event)
+function compactACPTextEvents(events: SessionEvent[]): SessionEvent[] {
+  const compacted: SessionEvent[] = []
+  let openTextIndex = -1
+  for (const event of events) {
+    if (isACPTextEvent(event)) {
+      const merged = openTextIndex === -1 ? undefined : mergeACPTextEvents(compacted[openTextIndex], event)
+      if (merged) {
+        compacted[openTextIndex] = merged
+      } else {
+        compacted.push(event)
+        openTextIndex = compacted.length - 1
+      }
+      continue
+    }
+    compacted.push(event)
+    if (openTextIndex !== -1 && !keepsACPTextOpen(compacted[openTextIndex], event)) {
+      openTextIndex = -1
+    }
   }
-  return undefined
+  return compacted
+}
+
+function findOpenACPTextIndex(events: SessionEvent[], next: SessionEvent): number {
+  if (!isACPTextEvent(next)) return -1
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (isACPTextEvent(event)) return canMergeACPText(event, next) ? index : -1
+    if (!keepsACPTextOpen(next, event)) return -1
+  }
+  return -1
 }
 
 export function mergeACPTextEvents(prev: SessionEvent | undefined, event: SessionEvent): SessionEvent | undefined {
@@ -188,10 +215,29 @@ function canMergeACPText(prev: SessionEvent | undefined, event: SessionEvent): b
   if (prev.type !== event.type) return false
   if (event.type !== 'acp_message' && event.type !== 'acp_thought') return false
   if (prev.session_id !== event.session_id || prev.acp.id !== event.acp.id) return false
-  if (prev.acp.text_run_id || event.acp.text_run_id) {
-    return Boolean(prev.acp.text_run_id && prev.acp.text_run_id === event.acp.text_run_id)
+  return Boolean(prev.acp.text_run_id && prev.acp.text_run_id === event.acp.text_run_id)
+}
+
+function isACPTextEvent(event: SessionEvent): boolean {
+  return Boolean(event.acp && (event.type === 'acp_message' || event.type === 'acp_thought'))
+}
+
+function keepsACPTextOpen(text: SessionEvent, event: SessionEvent): boolean {
+  if (!text.acp || text.session_id !== event.session_id) return false
+  if (event.acp?.id === text.acp.id) {
+    if (event.type === 'acp_tool') return true
+    if (event.type === 'acp') return acpStatusKeepsTextOpen(event)
   }
-  return false
+  return event.type === 'provider_subagent' && event.provider_subagent?.parent_id === text.acp.id
+}
+
+function acpStatusKeepsTextOpen(event: SessionEvent): boolean {
+  const acp = event.acp
+  if (!acp || acp.error) return false
+  if (acp.assistant || acp.thought || acp.plan?.length || acp.tool_calls?.length || acp.permissions?.length || acp.goal_requested) {
+    return false
+  }
+  return !acp.state || acp.state === 'starting' || acp.state === 'running'
 }
 
 function preferredDuplicateEvent(existing: SessionEvent, incoming: SessionEvent): SessionEvent {

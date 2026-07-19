@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -20,7 +21,8 @@ type Store struct {
 	db            *sql.DB
 	searchQueries search.Querier
 	mirror        *jsonstore.Store
-	mu            sync.Mutex
+	writeMu       sync.Mutex
+	eventPlanner  legacyEventPlanner
 }
 
 func DefaultRoot() string {
@@ -46,11 +48,12 @@ func New(root string) (*Store, error) {
 		return nil, err
 	}
 	store.mirror = mirror
-	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite"))
+	db, err := sql.Open("sqlite", sqliteDSN(filepath.Join(root, "jaz.sqlite")))
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(8)
+	db.SetMaxIdleConns(8)
 	store.db = db
 	store.searchQueries = search.New(db)
 	if err := store.configure(); err != nil {
@@ -70,6 +73,16 @@ func New(root string) (*Store, error) {
 		return nil, err
 	}
 	return store, nil
+}
+
+func sqliteDSN(path string) string {
+	u := url.URL{Scheme: "file", Path: path}
+	query := u.Query()
+	for _, pragma := range []string{"foreign_keys(1)", "synchronous(NORMAL)", "busy_timeout(5000)"} {
+		query.Add("_pragma", pragma)
+	}
+	u.RawQuery = query.Encode()
+	return u.String()
 }
 
 func (s *Store) Close() error {

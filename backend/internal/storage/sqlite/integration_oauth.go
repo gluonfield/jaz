@@ -11,8 +11,6 @@ import (
 )
 
 func (s *Store) LoadToken(ctx context.Context, connectionID string) (integrationoauth.Token, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	data, err := oauthdb.New(s.db).LoadToken(ctx, connectionID)
 	if err == sql.ErrNoRows {
 		return integrationoauth.Token{}, false, nil
@@ -32,8 +30,8 @@ func (s *Store) SaveToken(ctx context.Context, connectionID string, token integr
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return oauthdb.New(s.db).SaveToken(ctx, oauthdb.SaveTokenParams{
 		ConnectionID: connectionID,
 		TokenJson:    data,
@@ -50,7 +48,7 @@ func tokenJSON(token integrationoauth.Token) (string, error) {
 }
 
 func (s *Store) DeleteToken(ctx context.Context, connectionID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return oauthdb.New(s.db).DeleteToken(ctx, connectionID)
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/sessionevents"
-	"github.com/wins/jaz/backend/internal/storage"
 )
 
 func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {
@@ -114,7 +113,6 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		return
 	}
 	m.recordRawUsage(job, raw)
-	var activity *storage.ActivityEntry
 	var title string
 	var currentTitle string
 	var publishACP bool
@@ -153,24 +151,20 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			call.StartedAt = now
 		}
 		mergeToolCall(&call, src)
+		if exists && job.toolByID[src.ID].EqualTranscript(call) {
+			return
+		}
 		job.toolByID[src.ID] = call
 		job.ToolCalls = sortedToolCalls(job.toolByID)
 		job.LastToolAt = now
 		toolEvent = &call
-		activity = &storage.ActivityEntry{
-			ID:     call.ID,
-			Kind:   "tool",
-			Text:   firstNonEmpty(call.Title, call.ID),
-			Status: call.Status,
-			At:     now,
-		}
 	}
 	if m.applySideChatUpdate(job, update) {
 		return
 	}
 	subagentUpdate := providerSubagentFromUpdate(job.ACPAgent, update)
 	if subagentUpdate.subagent != nil {
-		m.publishProviderSubagent(job.Snapshot(), *subagentUpdate.subagent)
+		m.publishProviderSubagent(job.eventSnapshot(), *subagentUpdate.subagent)
 	}
 	if subagentUpdate.consume {
 		return
@@ -180,7 +174,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	case acpschema.AgentMessageChunkUpdate:
 		messageChunk = contentText(event.Content)
 		messageID = event.MessageID
-		job.Assistant = appendACPText(job.Assistant, messageChunk)
+		job.appendAssistantLocked(messageChunk)
 		bufferMessage = job.turn != nil && planTurnDefersResult(job.turn.planRequested, job.ACPAgent)
 		if messageChunk != "" {
 			job.savedAssistantLen = len(job.Assistant)
@@ -188,7 +182,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	case acpschema.AgentThoughtChunkUpdate:
 		thoughtChunk = contentText(event.Content)
 		thoughtMessageID = event.MessageID
-		job.Thought = appendACPText(job.Thought, thoughtChunk)
+		job.appendThoughtLocked(thoughtChunk)
 	case acpschema.ToolCallSessionUpdate:
 		recordTool(toolUpdateSnapshot(toolUpdateFields{
 			ID:        event.ToolCallID,
@@ -276,9 +270,6 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	sessionID := job.ID
 	job.mu.Unlock()
 
-	if activity != nil {
-		_ = m.store.UpsertActivity(sessionID, *activity)
-	}
 	if attention {
 		m.touchJobAttention(job)
 	}
@@ -297,10 +288,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		m.queueACPThoughtWithID(job, thoughtChunk, thoughtMessageID)
 	}
 	if toolEvent != nil {
-		m.publishACPTool(job.Snapshot(), *toolEvent)
+		m.publishACPTool(job.eventSnapshot(), *toolEvent)
 	}
 	if publishACP {
-		m.publishACP(job.Snapshot())
+		m.publishACP(job.eventSnapshot())
 	}
 }
 
@@ -313,16 +304,6 @@ func contentText(raw acpschema.ContentBlock) string {
 		return text.Text
 	}
 	return ""
-}
-
-func appendACPText(existing, chunk string) string {
-	if chunk == "" {
-		return existing
-	}
-	if existing == "" {
-		return chunk
-	}
-	return existing + chunk
 }
 
 func sortedToolCalls(in map[string]sessionevents.ACPToolCall) []sessionevents.ACPToolCall {

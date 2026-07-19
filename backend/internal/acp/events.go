@@ -475,7 +475,7 @@ func (m *Manager) removeJobPermission(job *jobState, requestID string) {
 }
 
 func (m *Manager) publishPermission(job *jobState, permission sessionevents.ACPPermission, eventType string) {
-	snapshot := job.Snapshot()
+	snapshot := job.eventSnapshot()
 	if eventType == "permission_request" {
 		m.touchJobAttention(job)
 	}
@@ -488,11 +488,11 @@ func (m *Manager) publishPermission(job *jobState, permission sessionevents.ACPP
 			At:         time.Now().UTC(),
 		})
 	}
-	m.publishACPStateAndEvents(snapshot, events...)
+	m.publishOrderedACPEvents(snapshot, events...)
 }
 
 func (m *Manager) touchJobAttention(job *jobState) {
-	snapshot := job.Snapshot()
+	snapshot := job.eventSnapshot()
 	m.touchAttention(surfaceSessionIDs(&snapshot)...)
 }
 
@@ -525,12 +525,11 @@ func (m *Manager) publishACP(job Job) {
 			At:        time.Now().UTC(),
 		})
 	}
-	parentACP := parentSurfaceACP(acp)
 	for _, sessionID := range parentSessionIDs(&job) {
 		events = append(events, sessionevents.Event{
 			SessionID: sessionID,
 			Type:      "acp",
-			ACP:       parentACP,
+			ACP:       acp,
 			At:        time.Now().UTC(),
 		})
 	}
@@ -539,11 +538,7 @@ func (m *Manager) publishACP(job Job) {
 
 func (m *Manager) publishACPStatus(job Job) {
 	acp := EventFromJob(job)
-	acp.Assistant = ""
-	acp.Thought = ""
 	acp.Plan = nil
-	acp.ToolCalls = nil
-	acp.Permissions = nil
 	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&job)))
 	for _, sessionID := range surfaceSessionIDs(&job) {
 		events = append(events, sessionevents.Event{
@@ -556,20 +551,19 @@ func (m *Manager) publishACPStatus(job Job) {
 	m.publishACPStateAndEvents(job, events...)
 }
 
-func (m *Manager) publishACPMessage(job Job, content string) {
-	m.publishACPTranscriptEvent(job, "acp_message", content, nil)
-}
-
-func (m *Manager) publishACPThought(job Job, content string) {
-	m.publishACPTranscriptEvent(job, "acp_thought", "", func(event *sessionevents.ACPEvent) {
-		event.Thought = content
-	})
-}
-
 func (m *Manager) publishACPTool(job Job, call sessionevents.ACPToolCall) {
-	m.publishACPTranscriptEvent(job, "acp_tool", "", func(event *sessionevents.ACPEvent) {
-		event.ToolCalls = CloneToolCalls([]sessionevents.ACPToolCall{call})
-	})
+	acp := acpEventEnvelope(job)
+	acp.ToolCalls = CloneToolCalls([]sessionevents.ACPToolCall{call})
+	events := make([]sessionevents.Event, 0, len(childSessionIDs(&job)))
+	for _, sessionID := range childSessionIDs(&job) {
+		events = append(events, sessionevents.Event{
+			SessionID: sessionID,
+			Type:      "acp_tool",
+			ACP:       acp,
+			At:        time.Now().UTC(),
+		})
+	}
+	m.publishOrderedACPEvents(job, events...)
 }
 
 func (m *Manager) publishProviderSubagent(job Job, subagent sessionevents.ProviderSubagentEvent) {
@@ -589,24 +583,6 @@ func (m *Manager) publishProviderSubagent(job Job, subagent sessionevents.Provid
 		})
 	}
 	m.publishOrderedACPEvents(job, events...)
-}
-
-func (m *Manager) publishACPTranscriptEvent(job Job, eventType, content string, customize func(*sessionevents.ACPEvent)) {
-	acp := acpTranscriptEnvelope(job)
-	if customize != nil {
-		customize(acp)
-	}
-	events := make([]sessionevents.Event, 0, len(childSessionIDs(&job)))
-	for _, sessionID := range childSessionIDs(&job) {
-		events = append(events, sessionevents.Event{
-			SessionID: sessionID,
-			Type:      eventType,
-			Content:   content,
-			ACP:       acp,
-			At:        time.Now().UTC(),
-		})
-	}
-	m.publishACPStateAndEvents(job, events...)
 }
 
 func (m *Manager) publishACPStateAndEvents(job Job, events ...sessionevents.Event) {
@@ -648,9 +624,7 @@ func (m *Manager) recordAndPublishEventsDirect(sessionID string, events []sessio
 		if events[i].At.IsZero() {
 			events[i].At = now
 		}
-		stored := events[i]
-		stored.ACP = events[i].ACP.SlimForStorage()
-		storedEvents[i] = stored
+		storedEvents[i] = events[i].SlimForStorage()
 	}
 	if sessionID != "" {
 		_ = m.store.AppendSessionEvents(sessionID, storedEvents...)
@@ -694,10 +668,6 @@ func acpStorageState(job Job) storage.ACPState {
 		ReasoningEffort: job.ReasoningEffort,
 		State:           job.State,
 		StopReason:      job.StopReason,
-		Assistant:       job.Assistant,
-		Thought:         job.Thought,
-		Plan:            clonePlanEntries(job.Plan),
-		ToolCalls:       CloneToolCalls(job.ToolCalls),
 		Modes:           acpModeEvent(job.Modes),
 		Error:           job.Error,
 		GoalRequested:   job.GoalRequested,
@@ -711,32 +681,12 @@ func acpStorageState(job Job) storage.ACPState {
 }
 
 func EventFromJob(job Job) *sessionevents.ACPEvent {
-	return &sessionevents.ACPEvent{
-		ID:              job.ID,
-		Slug:            job.Slug,
-		Title:           job.Title,
-		ParentID:        job.ParentID,
-		Agent:           job.ACPAgent,
-		SessionID:       job.ACPSession,
-		ModelProvider:   job.ModelProvider,
-		Model:           job.Model,
-		ReasoningEffort: job.ReasoningEffort,
-		State:           job.State,
-		StopReason:      job.StopReason,
-		Assistant:       job.Assistant,
-		Thought:         job.Thought,
-		Error:           job.Error,
-		GoalRequested:   job.GoalRequested,
-		Modes:           acpModeEvent(job.Modes),
-		Plan:            clonePlanEntries(job.Plan),
-		ToolCalls:       CloneToolCalls(job.ToolCalls),
-		Permissions:     clonePermissions(job.Permissions),
-		LastEventAt:     job.LastEventAt,
-		LastToolAt:      job.LastToolAt,
-	}
+	event := acpEventEnvelope(job)
+	event.Plan = clonePlanEntries(job.Plan)
+	return event
 }
 
-func acpTranscriptEnvelope(job Job) *sessionevents.ACPEvent {
+func acpEventEnvelope(job Job) *sessionevents.ACPEvent {
 	return &sessionevents.ACPEvent{
 		ID:              job.ID,
 		Slug:            job.Slug,
@@ -789,18 +739,6 @@ func parentSessionIDs(job *Job) []string {
 
 func surfaceSessionIDs(job *Job) []string {
 	return append(childSessionIDs(job), parentSessionIDs(job)...)
-}
-
-func parentSurfaceACP(acp *sessionevents.ACPEvent) *sessionevents.ACPEvent {
-	if acp == nil {
-		return nil
-	}
-	out := *acp
-	out.Assistant = ""
-	out.Thought = ""
-	out.ToolCalls = nil
-	out.Permissions = nil
-	return &out
 }
 
 func atomicAddPermission(seq *uint64) uint64 {

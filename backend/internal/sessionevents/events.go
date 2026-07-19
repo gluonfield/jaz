@@ -211,6 +211,20 @@ func (e Event) StorageContent() string {
 	return e.Content
 }
 
+func (e Event) SlimForStorage() Event {
+	e.ACP = e.ACP.SlimForStorage()
+	if e.Type != "acp" || e.ACP == nil {
+		return e
+	}
+	acp := *e.ACP
+	acp.Assistant = ""
+	acp.Thought = ""
+	acp.ToolCalls = nil
+	acp.Permissions = nil
+	e.ACP = &acp
+	return e
+}
+
 type ACPEvent struct {
 	ID              string          `json:"id"`
 	Slug            string          `json:"slug"`

@@ -506,7 +506,6 @@ export const sessionMessagesQuery = (id: string) =>
       return {
         ...data,
         messages: data.messages ?? [],
-        activity: data.activity ?? [],
         events: hydrateEventLabels(data),
       }
     },

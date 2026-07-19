@@ -492,73 +492,6 @@ func (s *Store) touchSession(id string) {
 	}
 }
 
-func (s *Store) LoadActivity(id string) ([]storage.ActivityEntry, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.loadActivity(id)
-}
-
-func (s *Store) loadActivity(id string) ([]storage.ActivityEntry, error) {
-	path := filepath.Join(s.sessionDir(id), "activity.json")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var activity []storage.ActivityEntry
-	if err := stdjson.Unmarshal(data, &activity); err != nil {
-		return nil, err
-	}
-	return activity, nil
-}
-
-func (s *Store) SaveActivity(id string, activity []storage.ActivityEntry) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.saveActivity(id, activity)
-}
-
-func (s *Store) UpsertActivity(id string, entry storage.ActivityEntry) error {
-	if entry.At.IsZero() {
-		entry.At = time.Now().UTC()
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	activity, err := s.loadActivity(id)
-	if err != nil {
-		return err
-	}
-	if entry.ID != "" {
-		for i := range activity {
-			if activity[i].ID == entry.ID {
-				activity[i] = entry
-				return s.saveActivity(id, activity)
-			}
-		}
-	}
-	return s.saveActivity(id, append(activity, entry))
-}
-
-func (s *Store) saveActivity(id string, activity []storage.ActivityEntry) error {
-	if err := s.EnsureSession(id); err != nil {
-		return err
-	}
-	data, err := stdjson.MarshalIndent(activity, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "activity.json"), data, 0o644); err != nil {
-		return err
-	}
-	if session, err := s.loadSessionByID(id); err == nil {
-		session.UpdatedAt = time.Now().UTC()
-		_ = s.saveSession(session)
-	}
-	return nil
-}
-
 func (s *Store) LoadACPState(id string) (storage.ACPState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -574,12 +507,13 @@ func (s *Store) LoadACPState(id string) (storage.ACPState, error) {
 	if err := stdjson.Unmarshal(data, &state); err != nil {
 		return storage.ACPState{}, err
 	}
-	return state, nil
+	return state.WithoutTranscript(), nil
 }
 
 func (s *Store) SaveACPState(id string, state storage.ACPState) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	state = state.WithoutTranscript()
 	if err := s.EnsureSession(id); err != nil {
 		return err
 	}
@@ -593,7 +527,7 @@ func (s *Store) SaveACPState(id string, state storage.ACPState) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "acp_state.json"), data, 0o644); err != nil {
+	if err := writeACPState(filepath.Join(s.sessionDir(id), "acp_state.json"), data); err != nil {
 		return err
 	}
 	if session, err := s.loadSessionByID(id); err == nil {

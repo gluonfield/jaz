@@ -329,44 +329,40 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeSessionMessages serves the thread page's full hydration payload:
-// persisted messages, activity, transcript events, and ACP state.
+// persisted messages, transcript events, and ACP state.
 func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, session storage.Session) {
 	mobile := requestClientPlatform(r) == "mobile"
 	var messages any
-	if recordStore, ok := s.Store.(messageRecordStore); ok {
-		records, err := recordStore.LoadMessageRecords(session.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
+	var transcriptEvents []sessionevents.Event
+	var records []storage.Message
+	var messagesErr, eventsErr error
+	var loads sync.WaitGroup
+	loads.Add(2)
+	go func() {
+		defer loads.Done()
+		if recordStore, ok := s.Store.(messageRecordStore); ok {
+			records, messagesErr = recordStore.LoadMessageRecords(session.ID)
+			messages = messageRecordsResponse(records)
 			return
 		}
-		if pending := session.PendingSteer; pending != nil && len(records) > 0 {
-			last := records[len(records)-1]
-			if last.Role == "user" && last.Content == pending.Text && !last.CreatedAt.Before(session.LastAttentionAt) {
-				session.PendingSteer = nil
-			}
-		}
-		messages = messageRecordsResponse(records)
-	} else {
-		loaded, err := s.Store.LoadMessages(session.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		messages = loaded
-	}
-	var activity []storage.ActivityEntry
-	if !mobile {
-		var err error
-		activity, err = s.Store.LoadActivity(session.ID)
+		messages, messagesErr = s.Store.LoadMessages(session.ID)
+	}()
+	go func() {
+		defer loads.Done()
+		transcriptEvents, eventsErr = s.Store.LoadSessionEvents(session.ID)
+	}()
+	loads.Wait()
+	for _, err := range []error{messagesErr, eventsErr} {
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
 	}
-	transcriptEvents, err := s.Store.LoadSessionEvents(session.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	if pending := session.PendingSteer; pending != nil && len(records) > 0 {
+		last := records[len(records)-1]
+		if last.Role == "user" && last.Content == pending.Text && !last.CreatedAt.Before(session.LastAttentionAt) {
+			session.PendingSteer = nil
+		}
 	}
 	transcriptEvents = storage.GoalDisplayEvents(transcriptEvents)
 	transcriptEvents = sessionevents.CompactTranscript(transcriptEvents)
@@ -392,9 +388,6 @@ func (s *Server) writeSessionMessages(w http.ResponseWriter, r *http.Request, se
 		"session":  canonicalSessionResponse(session),
 		"messages": messages,
 		"events":   sessionEventResponses(transcriptEvents),
-	}
-	if !mobile {
-		resp["activity"] = activity
 	}
 	if meta := s.acpMeta(transcriptEvents, session, children); len(meta) > 0 {
 		resp["acp_meta"] = meta

@@ -235,8 +235,7 @@ func inactiveACPStateResponse(state storage.ACPState) storage.ACPState {
 	}
 	state.GoalRequested = false
 	state.ActiveOperation = ""
-	state.Permissions = nil
-	return state
+	return state.WithoutTranscript()
 }
 
 func acpJobState(job acp.Job) storage.ACPState {

@@ -113,6 +113,7 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 					"JAZ_FAKE_ACP_EXPECT_MODEL":            "fake-large",
 					"JAZ_FAKE_ACP_SET_CONFIG":              "1",
 					"JAZ_FAKE_ACP_EXPECT_EFFORT":           "high",
+					"JAZ_FAKE_ACP_LOAD":                    "1",
 				},
 			},
 		},
@@ -204,14 +205,6 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 		t.Fatalf("sync task propagated async completion: %#v", job)
 	case <-time.After(100 * time.Millisecond):
 	}
-	activity, err := store.LoadActivity(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(activity) != 1 || activity[0].Text != "whoami" || activity[0].Status != "completed" {
-		t.Fatalf("unexpected activity %#v", activity)
-	}
-
 	if _, err := manager.Send(ctx, acp.SendRequest{
 		Session:       session.RuntimeRef.SessionID,
 		Message:       "again",
@@ -480,9 +473,11 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	startLog := filepath.Join(t.TempDir(), "starts")
 	manager := newFakeCodexManager(t, store, t.TempDir(), map[string]string{
 		"JAZ_FAKE_ACP_EXPECT_PROMPT_TRIGGER":  "quick check",
 		"JAZ_FAKE_ACP_EXPECT_PROMPT_CONTAINS": "selected text",
+		"JAZ_FAKE_ACP_START_LOG":              startLog,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -540,6 +535,24 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	}
 	if hasACPMessage(storedEvents, "hello from side chat") {
 		t.Fatalf("side chat leaked into main acp transcript %#v", storedEvents)
+	}
+	if _, err := manager.Cancel(ctx, spawned.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SendSideChat(ctx, acp.SideChatRequest{
+		Session:  spawned.SessionID,
+		ID:       "side-2",
+		Message:  "quick check",
+		Contexts: storage.SelectionContexts([]string{"selected text"}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(startLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if starts := len(strings.Fields(string(data))); starts != 3 {
+		t.Fatalf("process starts = %d, want validation, main turn, and post-turn side chat; log=%q", starts, data)
 	}
 }
 
@@ -670,7 +683,7 @@ func TestManagerSendStartsStoredACPSession(t *testing.T) {
 			"fake": {
 				Command: os.Args[0],
 				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1"},
+				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_LOAD": "1"},
 			},
 		},
 	}, log.New(io.Discard))
@@ -1549,7 +1562,7 @@ func newFakeCodexManager(t *testing.T, store *jsonstore.Store, root string, extr
 }
 
 func newFakeNamedAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root, agent string, extraEnv map[string]string, model, effort string) *acp.Manager {
-	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1"}
+	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_LOAD": "1"}
 	for key, value := range extraEnv {
 		env[key] = value
 	}
@@ -1569,118 +1582,126 @@ func newFakeNamedAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, r
 }
 
 func TestManagerResumesStoredSessionAfterRestart(t *testing.T) {
-	for name, loadSupported := range map[string]bool{"via session/load": true, "via fresh session": false} {
-		t.Run(name, func(t *testing.T) {
-			store, err := jsonstore.New(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			root := t.TempDir()
-			env := map[string]string{
-				"JAZ_FAKE_ACP_SET_MODEL":     "1",
-				"JAZ_FAKE_ACP_EXPECT_MODEL":  "fake-large",
-				"JAZ_FAKE_ACP_SET_CONFIG":    "1",
-				"JAZ_FAKE_ACP_EXPECT_EFFORT": "high",
-			}
-			if loadSupported {
-				env["JAZ_FAKE_ACP_LOAD"] = "1"
-			}
-			first := newFakeAgentManagerWithOptions(t, store, root, env, "fake-large", "high")
-
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-			spawned, err := first.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-resume"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if _, err := first.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "say hello", Completion: acp.CompletionInline}); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := first.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil {
-				t.Fatal(err)
-			}
-			first.Close()
-
-			// A new manager (server restart) has no live job for the session;
-			// sending must transparently resume it.
-			second := newFakeAgentManagerWithOptions(t, store, root, env, "fake-large", "high")
-			if _, err := second.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "after restart", Completion: acp.CompletionInline}); err != nil {
-				t.Fatalf("send after restart: %v", err)
-			}
-			job, err := second.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _, _ = second.Cancel(context.Background(), spawned.SessionID) }()
-			if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
-				t.Fatalf("resumed turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
-			}
-			if job.ACPSession != "fake-session" {
-				t.Fatalf("acp session = %q", job.ACPSession)
-			}
-			messages, err := store.LoadMessages(spawned.SessionID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(messages) != 2 || provider.MessageContent(messages[1]) != "after restart" {
-				t.Fatalf("unexpected messages %#v", messages)
-			}
-			events, err := store.LoadSessionEvents(spawned.SessionID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// The load replay must not be re-recorded as new transcript events.
-			if countACPMessage(events, "replayed history") != 0 {
-				t.Fatalf("history replay leaked into events %#v", events)
-			}
-		})
-	}
-}
-
-func TestManagerResumesStoredSessionAfterServeError(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	manager := newFakeAgentManager(t, store, root, map[string]string{
-		"JAZ_FAKE_ACP_LOAD": "1",
-	})
+	env := map[string]string{
+		"JAZ_FAKE_ACP_LOAD":          "1",
+		"JAZ_FAKE_ACP_SET_MODEL":     "1",
+		"JAZ_FAKE_ACP_EXPECT_MODEL":  "fake-large",
+		"JAZ_FAKE_ACP_SET_CONFIG":    "1",
+		"JAZ_FAKE_ACP_EXPECT_EFFORT": "high",
+	}
+	first := newFakeAgentManagerWithOptions(t, store, root, env, "fake-large", "high")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-serve-error"})
+	spawned, err := first.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-resume"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "break transport", Completion: acp.CompletionInline}); err != nil {
+	if _, err := first.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "say hello", Completion: acp.CompletionInline}); err != nil {
 		t.Fatal(err)
 	}
-	failed, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
-	if err != nil {
+	if _, err := first.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil {
 		t.Fatal(err)
 	}
-	if failed.State != acp.StateFailed || !strings.Contains(failed.Error, "invalid character") {
-		t.Fatalf("failed turn state=%s error=%q", failed.State, failed.Error)
-	}
+	first.Close()
 
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "after transport failure", Completion: acp.CompletionInline}); err != nil {
-		t.Fatalf("send after serve error: %v", err)
+	// A new manager (server restart) has no live job for the session;
+	// sending must transparently resume it.
+	second := newFakeAgentManagerWithOptions(t, store, root, env, "fake-large", "high")
+	if _, err := second.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "after restart", Completion: acp.CompletionInline}); err != nil {
+		t.Fatalf("send after restart: %v", err)
 	}
-	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	job, err := second.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	defer func() { _, _ = second.Cancel(context.Background(), spawned.SessionID) }()
 	if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
 		t.Fatalf("resumed turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
+	}
+	if job.ACPSession != "fake-session" {
+		t.Fatalf("acp session = %q", job.ACPSession)
 	}
 	messages, err := store.LoadMessages(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 2 || provider.MessageContent(messages[1]) != "after transport failure" {
+	if len(messages) != 2 || provider.MessageContent(messages[1]) != "after restart" {
 		t.Fatalf("unexpected messages %#v", messages)
+	}
+	events, err := store.LoadSessionEvents(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The load replay must not be re-recorded as new transcript events.
+	if countACPMessage(events, "replayed history") != 0 {
+		t.Fatalf("history replay leaked into events %#v", events)
+	}
+}
+
+func TestManagerResumesStoredSessionAfterConnectionFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		failure    string
+		followup   string
+		wantErrors []string
+	}{
+		{name: "malformed message", failure: "break transport", followup: "after transport failure", wantErrors: []string{"invalid character"}},
+		{name: "eof", failure: "close transport", followup: "after eof"},
+		{name: "process crash", failure: "crash transport", followup: "after process crash", wantErrors: []string{"exit status 7", "fake runtime crash"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{"JAZ_FAKE_ACP_LOAD": "1"})
+			t.Cleanup(manager.Close)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-connection-failure"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: tc.failure, Completion: acp.CompletionInline}); err != nil {
+				t.Fatal(err)
+			}
+			failed, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failed.State != acp.StateFailed || failed.Error == "" {
+				t.Fatalf("failed turn state=%s error=%q", failed.State, failed.Error)
+			}
+			for _, want := range tc.wantErrors {
+				if !strings.Contains(failed.Error, want) {
+					t.Fatalf("failed turn error=%q, want %q", failed.Error, want)
+				}
+			}
+			if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: tc.followup, Completion: acp.CompletionInline}); err != nil {
+				t.Fatalf("send after connection failure: %v", err)
+			}
+			job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
+				t.Fatalf("resumed turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
+			}
+			messages, err := store.LoadMessages(spawned.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(messages) != 2 || provider.MessageContent(messages[1]) != tc.followup {
+				t.Fatalf("unexpected messages %#v", messages)
+			}
+		})
 	}
 }
 

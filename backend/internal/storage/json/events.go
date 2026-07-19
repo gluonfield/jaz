@@ -58,11 +58,24 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 	if err := s.EnsureSession(id); err != nil {
 		return err
 	}
-	existing, err := s.loadSessionEvents(id)
-	if err != nil {
-		return err
+	nextSeq := int64(1)
+	needsSeq := false
+	for _, event := range events {
+		if event.Seq == 0 {
+			needsSeq = true
+		} else if event.Seq >= nextSeq {
+			nextSeq = event.Seq + 1
+		}
 	}
-	nextSeq := int64(len(existing) + 1)
+	if needsSeq {
+		existing, err := s.loadSessionEvents(id)
+		if err != nil {
+			return err
+		}
+		for _, event := range existing {
+			nextSeq = max(nextSeq, event.Seq+1)
+		}
+	}
 	now := time.Now().UTC()
 	for i := range events {
 		if events[i].SessionID == "" {

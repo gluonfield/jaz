@@ -96,7 +96,9 @@ SELECT
   pending_steer_message,
   unread,
   goal,
-  manual_title
+  manual_title,
+  event_compaction_version,
+  event_revision
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -142,6 +144,8 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.Unread,
 		&i.Goal,
 		&i.ManualTitle,
+		&i.EventCompactionVersion,
+		&i.EventRevision,
 	)
 	return i, err
 }
@@ -241,7 +245,9 @@ SELECT
   pending_steer_message,
   unread,
   goal,
-  manual_title
+  manual_title,
+  event_compaction_version,
+  event_revision
 FROM threads
 `
 
@@ -291,6 +297,8 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.Unread,
 			&i.Goal,
 			&i.ManualTitle,
+			&i.EventCompactionVersion,
+			&i.EventRevision,
 		); err != nil {
 			return nil, err
 		}

@@ -10,17 +10,38 @@ import (
 	"database/sql"
 )
 
-const countSessionEvents = `-- name: CountSessionEvents :one
-SELECT COUNT(*)
-FROM session_events
-WHERE thread_id = ?1
+const advanceSessionEventRevision = `-- name: AdvanceSessionEventRevision :exec
+UPDATE threads
+SET event_revision = event_revision + 1
+WHERE id = ?1
 `
 
-func (q *Queries) CountSessionEvents(ctx context.Context, threadID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countSessionEvents, threadID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+func (q *Queries) AdvanceSessionEventRevision(ctx context.Context, threadID string) error {
+	_, err := q.db.ExecContext(ctx, advanceSessionEventRevision, threadID)
+	return err
+}
+
+const completeSessionEventCompaction = `-- name: CompleteSessionEventCompaction :execrows
+UPDATE threads
+SET event_compaction_version = 1
+WHERE id = ?1
+  AND event_compaction_version = 0
+  AND event_revision = ?2
+  AND status <> ?3
+`
+
+type CompleteSessionEventCompactionParams struct {
+	ThreadID      string `json:"thread_id"`
+	EventRevision int64  `json:"event_revision"`
+	RunningStatus string `json:"running_status"`
+}
+
+func (q *Queries) CompleteSessionEventCompaction(ctx context.Context, arg CompleteSessionEventCompactionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, completeSessionEventCompaction, arg.ThreadID, arg.EventRevision, arg.RunningStatus)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const deleteSessionEvent = `-- name: DeleteSessionEvent :exec
@@ -36,6 +57,55 @@ type DeleteSessionEventParams struct {
 func (q *Queries) DeleteSessionEvent(ctx context.Context, arg DeleteSessionEventParams) error {
 	_, err := q.db.ExecContext(ctx, deleteSessionEvent, arg.ThreadID, arg.Seq)
 	return err
+}
+
+const deleteSessionEventByCoalesceKey = `-- name: DeleteSessionEventByCoalesceKey :exec
+DELETE FROM session_events
+WHERE thread_id = ?1 AND coalesce_key = ?2
+`
+
+type DeleteSessionEventByCoalesceKeyParams struct {
+	ThreadID    string `json:"thread_id"`
+	CoalesceKey string `json:"coalesce_key"`
+}
+
+func (q *Queries) DeleteSessionEventByCoalesceKey(ctx context.Context, arg DeleteSessionEventByCoalesceKeyParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSessionEventByCoalesceKey, arg.ThreadID, arg.CoalesceKey)
+	return err
+}
+
+const getSessionEventCompactionState = `-- name: GetSessionEventCompactionState :one
+SELECT event_compaction_version, event_revision, status
+FROM threads
+WHERE id = ?1
+`
+
+type GetSessionEventCompactionStateRow struct {
+	EventCompactionVersion int64  `json:"event_compaction_version"`
+	EventRevision          int64  `json:"event_revision"`
+	Status                 string `json:"status"`
+}
+
+func (q *Queries) GetSessionEventCompactionState(ctx context.Context, threadID string) (GetSessionEventCompactionStateRow, error) {
+	row := q.db.QueryRowContext(ctx, getSessionEventCompactionState, threadID)
+	var i GetSessionEventCompactionStateRow
+	err := row.Scan(&i.EventCompactionVersion, &i.EventRevision, &i.Status)
+	return i, err
+}
+
+const hasLegacySessionEventThreads = `-- name: HasLegacySessionEventThreads :one
+SELECT EXISTS (
+  SELECT 1
+  FROM threads
+  WHERE event_compaction_version = 0
+)
+`
+
+func (q *Queries) HasLegacySessionEventThreads(ctx context.Context) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasLegacySessionEventThreads)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const listSessionEvents = `-- name: ListSessionEvents :many
@@ -224,6 +294,22 @@ func (q *Queries) ListSessionEventsAfterTime(ctx context.Context, arg ListSessio
 	return items, nil
 }
 
+const nextLegacySessionEventThread = `-- name: NextLegacySessionEventThread :one
+SELECT id
+FROM threads
+WHERE event_compaction_version = 0
+  AND status <> ?1
+ORDER BY event_revision DESC, updated_at_ms
+LIMIT 1
+`
+
+func (q *Queries) NextLegacySessionEventThread(ctx context.Context, runningStatus string) (string, error) {
+	row := q.db.QueryRowContext(ctx, nextLegacySessionEventThread, runningStatus)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const nextSessionEventSeq = `-- name: NextSessionEventSeq :one
 SELECT COALESCE(MAX(seq), 0) + 1 AS seq
 FROM session_events
@@ -237,10 +323,51 @@ func (q *Queries) NextSessionEventSeq(ctx context.Context, threadID string) (int
 	return seq, err
 }
 
+const setSessionEventCoalesceKey = `-- name: SetSessionEventCoalesceKey :exec
+UPDATE session_events
+SET coalesce_key = ?1
+WHERE thread_id = ?2 AND seq = ?3
+`
+
+type SetSessionEventCoalesceKeyParams struct {
+	CoalesceKey string `json:"coalesce_key"`
+	ThreadID    string `json:"thread_id"`
+	Seq         int64  `json:"seq"`
+}
+
+func (q *Queries) SetSessionEventCoalesceKey(ctx context.Context, arg SetSessionEventCoalesceKeyParams) error {
+	_, err := q.db.ExecContext(ctx, setSessionEventCoalesceKey, arg.CoalesceKey, arg.ThreadID, arg.Seq)
+	return err
+}
+
+const skipSessionEventCompaction = `-- name: SkipSessionEventCompaction :execrows
+UPDATE threads
+SET event_compaction_version = 2
+WHERE id = ?1
+  AND event_compaction_version = 0
+  AND event_revision = ?2
+  AND status <> ?3
+`
+
+type SkipSessionEventCompactionParams struct {
+	ThreadID      string `json:"thread_id"`
+	EventRevision int64  `json:"event_revision"`
+	RunningStatus string `json:"running_status"`
+}
+
+func (q *Queries) SkipSessionEventCompaction(ctx context.Context, arg SkipSessionEventCompactionParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, skipSessionEventCompaction, arg.ThreadID, arg.EventRevision, arg.RunningStatus)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const upsertSessionEvent = `-- name: UpsertSessionEvent :exec
 INSERT INTO session_events (
   thread_id,
   seq,
+  coalesce_key,
   type,
   content,
   acp,
@@ -255,9 +382,11 @@ INSERT INTO session_events (
   ?5,
   ?6,
   ?7,
-  ?8
+  ?8,
+  ?9
 )
 ON CONFLICT(thread_id, seq) DO UPDATE SET
+  coalesce_key = excluded.coalesce_key,
   type = excluded.type,
   content = excluded.content,
   acp = excluded.acp,
@@ -269,6 +398,7 @@ ON CONFLICT(thread_id, seq) DO UPDATE SET
 type UpsertSessionEventParams struct {
 	ThreadID    string         `json:"thread_id"`
 	Seq         int64          `json:"seq"`
+	CoalesceKey string         `json:"coalesce_key"`
 	Type        string         `json:"type"`
 	Content     string         `json:"content"`
 	Acp         sql.NullString `json:"acp"`
@@ -281,6 +411,7 @@ func (q *Queries) UpsertSessionEvent(ctx context.Context, arg UpsertSessionEvent
 	_, err := q.db.ExecContext(ctx, upsertSessionEvent,
 		arg.ThreadID,
 		arg.Seq,
+		arg.CoalesceKey,
 		arg.Type,
 		arg.Content,
 		arg.Acp,

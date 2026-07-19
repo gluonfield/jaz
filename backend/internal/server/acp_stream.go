@@ -28,6 +28,10 @@ type acpStreamTurn struct {
 	GoalRequested bool
 }
 
+type acpStreamStatusReader interface {
+	StreamStatus(string) (acp.Job, error)
+}
+
 func acpStreamTurnFromRequest(req streamRequest) acpStreamTurn {
 	turn := acpStreamTurn{
 		Kind:          acpTurnPrompt,
@@ -92,6 +96,10 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	emittedAssistant := 0
 	emittedThought := 0
 	seenTools := map[string]struct{}{}
+	status := s.ACP.Status
+	if reader, ok := s.ACP.(acpStreamStatusReader); ok {
+		status = reader.StreamStatus
+	}
 	ticker := time.NewTicker(120 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -112,7 +120,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		case <-clientCtx.Done():
 			return
 		case <-ticker.C:
-			job, err = s.ACP.Status(session.ID)
+			job, err = status(session.ID)
 			if err != nil {
 				s.setSessionError(session, err.Error())
 				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})

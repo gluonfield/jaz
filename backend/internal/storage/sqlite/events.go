@@ -13,41 +13,14 @@ import (
 )
 
 func (s *Store) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
-	s.mu.Lock()
-	events, err := s.loadSessionEventsLocked(id)
-	s.mu.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	if len(events) > 0 || s.mirror == nil {
-		return events, nil
-	}
-	return s.mirror.LoadSessionEvents(id)
+	return s.loadSessionEvents(id)
 }
 
 func (s *Store) LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error) {
 	if afterSeq <= 0 {
 		return s.LoadSessionEvents(id)
 	}
-	s.mu.Lock()
-	events, err := s.loadSessionEventsAfterLocked(id, afterSeq)
-	fallbackToMirror := false
-	if err == nil && len(events) == 0 && s.mirror != nil {
-		count, countErr := eventdb.New(s.db).CountSessionEvents(context.Background(), id)
-		if countErr != nil {
-			err = countErr
-		} else {
-			fallbackToMirror = count == 0
-		}
-	}
-	s.mu.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	if fallbackToMirror {
-		return s.mirror.LoadSessionEventsAfter(id, afterSeq)
-	}
-	return events, nil
+	return s.loadSessionEventsAfter(id, afterSeq)
 }
 
 func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) error {
@@ -66,18 +39,30 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 			return err
 		}
 	}
-	s.mu.Lock()
-	tx, err := s.db.BeginTx(context.Background(), nil)
+	s.writeMu.Lock()
+	err = s.appendSessionEvents(context.Background(), id, now, goalProjection.Seen, goalRaw, events)
+	s.writeMu.Unlock()
 	if err != nil {
-		s.mu.Unlock()
+		return err
+	}
+	if goalProjection.Seen {
+		if session, loadErr := s.LoadSession(id); loadErr == nil {
+			s.mirrorSession(session)
+		}
+	}
+	return nil
+}
+
+func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Time, goalSeen bool, goalRaw string, events []sessionevents.Event) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	eventq := eventdb.New(tx)
 	threadq := threaddb.New(tx)
-	nextSeq, err := eventq.NextSessionEventSeq(context.Background(), id)
+	nextSeq, err := eventq.NextSessionEventSeq(ctx, id)
 	if err != nil {
-		s.mu.Unlock()
 		return err
 	}
 	// Mutate in place so callers see the assigned Seq/At after the append.
@@ -92,76 +77,34 @@ func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) er
 			events[i].Seq = nextSeq
 			nextSeq++
 		}
-		if err := insertSessionEvent(eventq, events[i]); err != nil {
-			s.mu.Unlock()
+		coalesceKey := sessionevents.StorageCoalesceKey(events[i])
+		if coalesceKey != "" {
+			if err := eventq.DeleteSessionEventByCoalesceKey(ctx, eventdb.DeleteSessionEventByCoalesceKeyParams{
+				ThreadID:    events[i].SessionID,
+				CoalesceKey: coalesceKey,
+			}); err != nil {
+				return err
+			}
+		}
+		if err := insertSessionEvent(ctx, eventq, events[i], coalesceKey); err != nil {
 			return err
 		}
 	}
-	if goalProjection.Seen {
-		err = threadq.UpdateGoal(context.Background(), threaddb.UpdateGoalParams{Goal: goalRaw, UpdatedAtMs: timeToMs(now), ID: id})
+	if goalSeen {
+		err = threadq.UpdateGoal(ctx, threaddb.UpdateGoalParams{Goal: goalRaw, UpdatedAtMs: timeToMs(now), ID: id})
 	} else {
-		err = threadq.TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id})
+		err = threadq.TouchThread(ctx, threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id})
 	}
 	if err != nil {
-		s.mu.Unlock()
 		return err
 	}
-	if err := tx.Commit(); err != nil {
-		s.mu.Unlock()
+	if err := eventq.AdvanceSessionEventRevision(ctx, id); err != nil {
 		return err
 	}
-	s.mu.Unlock()
-	if s.mirror != nil {
-		mirrored := append([]sessionevents.Event(nil), events...)
-		_ = s.mirror.AppendSessionEvents(id, mirrored...)
-	}
-	return nil
+	return tx.Commit()
 }
 
-func (s *Store) CompactSessionEvents(id string) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	tx, err := s.db.BeginTx(context.Background(), nil)
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-	q := eventdb.New(tx)
-	rows, err := q.ListSessionEvents(context.Background(), id)
-	if err != nil {
-		return 0, err
-	}
-	events := make([]sessionevents.Event, 0, len(rows))
-	for _, row := range rows {
-		event, err := eventFromDB(row)
-		if err != nil {
-			return 0, err
-		}
-		events = append(events, event)
-	}
-	runs := sessionevents.CompactTextChunkRuns(events)
-	if len(runs) == 0 {
-		return 0, nil
-	}
-	removed := 0
-	for _, run := range runs {
-		if err := insertSessionEvent(q, run.Event); err != nil {
-			return 0, err
-		}
-		for _, seq := range run.DeleteSeqs {
-			if err := q.DeleteSessionEvent(context.Background(), eventdb.DeleteSessionEventParams{ThreadID: id, Seq: seq}); err != nil {
-				return 0, err
-			}
-			removed++
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
-	}
-	return removed, nil
-}
-
-func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error) {
+func (s *Store) loadSessionEvents(id string) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListSessionEvents(context.Background(), id)
 	if err != nil {
 		return nil, err
@@ -177,7 +120,7 @@ func (s *Store) loadSessionEventsLocked(id string) ([]sessionevents.Event, error
 	return events, nil
 }
 
-func (s *Store) loadSessionEventsAfterTimeLocked(id string, afterMs int64) ([]sessionevents.Event, error) {
+func (s *Store) loadSessionEventsAfterTime(id string, afterMs int64) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListSessionEventsAfterTime(context.Background(), eventdb.ListSessionEventsAfterTimeParams{
 		ThreadID: id,
 		AfterMs:  afterMs,
@@ -196,7 +139,7 @@ func (s *Store) loadSessionEventsAfterTimeLocked(id string, afterMs int64) ([]se
 	return events, nil
 }
 
-func (s *Store) loadSessionEventsAfterLocked(id string, afterSeq int64) ([]sessionevents.Event, error) {
+func (s *Store) loadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListSessionEventsAfter(context.Background(), eventdb.ListSessionEventsAfterParams{
 		ThreadID: id,
 		AfterSeq: afterSeq,
@@ -215,7 +158,7 @@ func (s *Store) loadSessionEventsAfterLocked(id string, afterSeq int64) ([]sessi
 	return events, nil
 }
 
-func insertSessionEvent(q *eventdb.Queries, event sessionevents.Event) error {
+func insertSessionEvent(ctx context.Context, q *eventdb.Queries, event sessionevents.Event, coalesceKey string) error {
 	rawACP, err := marshalOptionalJSON(event.ACP)
 	if err != nil {
 		return err
@@ -228,9 +171,10 @@ func insertSessionEvent(q *eventdb.Queries, event sessionevents.Event) error {
 	if err != nil {
 		return err
 	}
-	return q.UpsertSessionEvent(context.Background(), eventdb.UpsertSessionEventParams{
+	return q.UpsertSessionEvent(ctx, eventdb.UpsertSessionEventParams{
 		ThreadID:    event.SessionID,
 		Seq:         event.Seq,
+		CoalesceKey: coalesceKey,
 		Type:        event.Type,
 		Content:     event.StorageContent(),
 		Acp:         rawACP,

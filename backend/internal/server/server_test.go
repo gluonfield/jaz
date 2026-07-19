@@ -748,6 +748,16 @@ func TestSessionMessagesTreatsStoredACPStateAsInactive(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type: "acp",
+		ACP: &sessionevents.ACPEvent{
+			ID:    session.ID,
+			State: acp.StateRunning,
+			Plan:  []sessionevents.ACPPlanEntry{{Content: "Inspect current page", Status: "completed"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
 	res := httptest.NewRecorder()
@@ -762,6 +772,7 @@ func TestSessionMessagesTreatsStoredACPStateAsInactive(t *testing.T) {
 		ACPState       string                        `json:"acp_state"`
 		ACPPlan        []sessionevents.ACPPlanEntry  `json:"acp_plan"`
 		ACPPermissions []sessionevents.ACPPermission `json:"acp_permissions"`
+		Events         []sessionevents.Event         `json:"events"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -769,8 +780,11 @@ func TestSessionMessagesTreatsStoredACPStateAsInactive(t *testing.T) {
 	if got.Session.Status != storage.StatusIdle || got.ACPState != acp.StateIdle {
 		t.Fatalf("status = %q, acp_state = %q", got.Session.Status, got.ACPState)
 	}
-	if len(got.ACPPlan) != 1 || got.ACPPlan[0].Content != "Inspect current page" {
-		t.Fatalf("plan = %#v", got.ACPPlan)
+	if len(got.ACPPlan) != 0 {
+		t.Fatalf("inactive snapshot repeated plan: %#v", got.ACPPlan)
+	}
+	if len(got.Events) != 1 || got.Events[0].ACP == nil || len(got.Events[0].ACP.Plan) != 1 {
+		t.Fatalf("stored plan events = %#v", got.Events)
 	}
 	if len(got.ACPPermissions) != 0 {
 		t.Fatalf("permissions = %#v", got.ACPPermissions)

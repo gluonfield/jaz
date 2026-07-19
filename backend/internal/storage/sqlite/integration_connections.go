@@ -15,8 +15,6 @@ import (
 )
 
 func (s *Store) LoadConnection(ctx context.Context, id string) (integrations.Connection, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := connectiondb.New(s.db).LoadConnection(ctx, id)
 	if err == sql.ErrNoRows {
 		return integrations.Connection{}, false, nil
@@ -29,8 +27,6 @@ func (s *Store) LoadConnection(ctx context.Context, id string) (integrations.Con
 }
 
 func (s *Store) ListConnections(ctx context.Context, provider string) ([]integrations.Connection, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows, err := connectiondb.New(s.db).ListConnectionsByProvider(ctx, provider)
 	if err != nil {
 		return nil, err
@@ -51,8 +47,8 @@ func (s *Store) SaveConnection(ctx context.Context, connection integrations.Conn
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return connectiondb.New(s.db).SaveConnection(ctx, params)
 }
 
@@ -66,8 +62,8 @@ func (s *Store) SaveOAuthConnection(ctx context.Context, token integrationoauth.
 	if err != nil {
 		return err
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -87,8 +83,8 @@ func (s *Store) SaveOAuthConnection(ctx context.Context, token integrationoauth.
 }
 
 func (s *Store) DeleteConnection(ctx context.Context, id string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err

@@ -17,8 +17,8 @@ func (s *Store) NewWidgetID() string {
 // whose loop is gone or soft-deleted. Orphan placements are invisible on the
 // board but still occupy grid cells, blocking placement and drags.
 func (s *Store) PurgeOrphanWidgets() (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	ctx := context.Background()
 	q := widgetdb.New(s.db)
 	deleted := string(loops.StatusDeleted)
@@ -37,8 +37,6 @@ func (s *Store) NewBoardID() string {
 }
 
 func (s *Store) LoadWidget(id string) (widgets.Widget, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := widgetdb.New(s.db).GetWidget(context.Background(), id)
 	if err != nil {
 		return widgets.Widget{}, err
@@ -47,8 +45,6 @@ func (s *Store) LoadWidget(id string) (widgets.Widget, error) {
 }
 
 func (s *Store) LoadWidgetByLoop(loopID string) (widgets.Widget, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := widgetdb.New(s.db).GetWidgetByLoop(context.Background(), loopID)
 	if err == sql.ErrNoRows {
 		return widgets.Widget{}, false, nil
@@ -60,8 +56,6 @@ func (s *Store) LoadWidgetByLoop(loopID string) (widgets.Widget, bool, error) {
 }
 
 func (s *Store) ListWidgets() ([]widgets.Widget, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows, err := widgetdb.New(s.db).ListWidgets(context.Background())
 	if err != nil {
 		return nil, err
@@ -74,8 +68,8 @@ func (s *Store) ListWidgets() ([]widgets.Widget, error) {
 }
 
 func (s *Store) SaveWidget(widget widgets.Widget) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return widgetdb.New(s.db).UpsertWidget(context.Background(), upsertWidgetParams(widget))
 }
 
@@ -94,8 +88,8 @@ func upsertWidgetParams(widget widgets.Widget) widgetdb.UpsertWidgetParams {
 }
 
 func (s *Store) InsertWidgetVersion(version widgets.Version) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return widgetdb.New(s.db).InsertWidgetVersion(context.Background(), insertWidgetVersionParams(version))
 }
 
@@ -103,8 +97,8 @@ func (s *Store) InsertWidgetVersion(version widgets.Version) error {
 // snapshot in one transaction: a widget must never point at a version that
 // was not written.
 func (s *Store) SaveWidgetWithVersion(widget widgets.Widget, version widgets.Version) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -132,8 +126,6 @@ func insertWidgetVersionParams(version widgets.Version) widgetdb.InsertWidgetVer
 }
 
 func (s *Store) LoadWidgetVersion(widgetID string, version int) (widgets.Version, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := widgetdb.New(s.db).GetWidgetVersion(context.Background(), widgetdb.GetWidgetVersionParams{
 		WidgetID: widgetID,
 		Version:  int64(version),
@@ -151,8 +143,8 @@ func (s *Store) LoadWidgetVersion(widgetID string, version int) (widgets.Version
 }
 
 func (s *Store) PruneOldWidgetVersions(widgetID string, currentVersion, keepOld int) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return widgetdb.New(s.db).PruneWidgetVersions(context.Background(), widgetdb.PruneWidgetVersionsParams{
 		WidgetID:       widgetID,
 		MaxKeepVersion: int64(currentVersion - keepOld - 1),
@@ -160,8 +152,8 @@ func (s *Store) PruneOldWidgetVersions(widgetID string, currentVersion, keepOld 
 }
 
 func (s *Store) SaveBoard(board widgets.Board) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return widgetdb.New(s.db).UpsertBoard(context.Background(), widgetdb.UpsertBoardParams{
 		ID:           board.ID,
 		Name:         board.Name,
@@ -176,8 +168,6 @@ func (s *Store) SaveBoard(board widgets.Board) error {
 }
 
 func (s *Store) LoadBoard(id string) (widgets.Board, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := widgetdb.New(s.db).GetBoard(context.Background(), id)
 	if err != nil {
 		return widgets.Board{}, err
@@ -186,8 +176,6 @@ func (s *Store) LoadBoard(id string) (widgets.Board, error) {
 }
 
 func (s *Store) DefaultBoard() (widgets.Board, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := widgetdb.New(s.db).GetDefaultBoard(context.Background())
 	if err == sql.ErrNoRows {
 		return widgets.Board{}, false, nil
@@ -199,8 +187,6 @@ func (s *Store) DefaultBoard() (widgets.Board, bool, error) {
 }
 
 func (s *Store) ListBoards() ([]widgets.Board, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows, err := widgetdb.New(s.db).ListBoards(context.Background())
 	if err != nil {
 		return nil, err
@@ -213,14 +199,14 @@ func (s *Store) ListBoards() ([]widgets.Board, error) {
 }
 
 func (s *Store) DeleteBoard(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return widgetdb.New(s.db).DeleteBoard(context.Background(), id)
 }
 
 func (s *Store) SavePlacement(placement widgets.Placement) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return widgetdb.New(s.db).UpsertBoardWidget(context.Background(), widgetdb.UpsertBoardWidgetParams{
 		BoardID:     placement.BoardID,
 		WidgetID:    placement.WidgetID,
@@ -235,8 +221,6 @@ func (s *Store) SavePlacement(placement widgets.Placement) error {
 }
 
 func (s *Store) LoadPlacement(boardID, widgetID string) (widgets.Placement, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	row, err := widgetdb.New(s.db).GetBoardWidget(context.Background(), widgetdb.GetBoardWidgetParams{
 		BoardID:  boardID,
 		WidgetID: widgetID,
@@ -251,8 +235,8 @@ func (s *Store) LoadPlacement(boardID, widgetID string) (widgets.Placement, bool
 }
 
 func (s *Store) DeletePlacement(boardID, widgetID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return widgetdb.New(s.db).DeleteBoardWidget(context.Background(), widgetdb.DeleteBoardWidgetParams{
 		BoardID:  boardID,
 		WidgetID: widgetID,
@@ -260,14 +244,10 @@ func (s *Store) DeletePlacement(boardID, widgetID string) error {
 }
 
 func (s *Store) ListBoardsForWidget(widgetID string) ([]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	return widgetdb.New(s.db).ListBoardsForWidget(context.Background(), widgetID)
 }
 
 func (s *Store) ListPlacements(boardID string) ([]widgets.Placement, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows, err := widgetdb.New(s.db).ListAllPlacements(context.Background(), boardID)
 	if err != nil {
 		return nil, err
@@ -280,8 +260,6 @@ func (s *Store) ListPlacements(boardID string) ([]widgets.Placement, error) {
 }
 
 func (s *Store) ListBoardItems(boardID string) ([]widgets.BoardItem, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	rows, err := widgetdb.New(s.db).ListBoardItems(context.Background(), widgetdb.ListBoardItemsParams{
 		BoardID:       boardID,
 		DeletedStatus: loops.StatusDeleted,

@@ -11,9 +11,7 @@ import (
 )
 
 func (s *Store) UsageEventsSince(since time.Time) ([]storage.UsageEvent, error) {
-	s.mu.Lock()
 	rows, err := usagequeries.New(s.db).ListUsageEventsSince(context.Background(), timeToMs(since.In(time.UTC)))
-	s.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}

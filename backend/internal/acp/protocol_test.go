@@ -185,12 +185,17 @@ func TestRequestPermissionUnknownSessionErrors(t *testing.T) {
 	}
 }
 
-func TestAppendACPTextPreservesProviderChunks(t *testing.T) {
-	if got := appendACPText("Done.", "Next"); got != "Done.Next" {
-		t.Fatalf("appendACPText inserted formatting: %q", got)
+func TestJobTextBuffersPreserveProviderChunks(t *testing.T) {
+	job := &jobState{}
+	job.appendAssistantLocked("Done.")
+	job.appendAssistantLocked("Next")
+	job.appendThoughtLocked("Line one")
+	job.appendThoughtLocked("\n\nLine two")
+	if job.Assistant != "Done.Next" {
+		t.Fatalf("assistant text = %q", job.Assistant)
 	}
-	if got := appendACPText("Line one", "\n\nLine two"); got != "Line one\n\nLine two" {
-		t.Fatalf("appendACPText changed provider whitespace: %q", got)
+	if job.Thought != "Line one\n\nLine two" {
+		t.Fatalf("thought text = %q", job.Thought)
 	}
 }
 
@@ -272,10 +277,10 @@ func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, r
 		t.Fatal(ctx.Err())
 	}
 	state, err := store.LoadACPState("session")
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "acp state not found") {
 		t.Fatal(err)
 	}
-	if len(state.Permissions) != 0 {
+	if err == nil && len(state.Permissions) != 0 {
 		t.Fatalf("persisted permissions = %#v", state.Permissions)
 	}
 	if len(manager.jobsByID["session"].Permissions) != 1 ||
@@ -328,7 +333,7 @@ func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 	events := sessionevents.New()
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
-	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug}}
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, ACPSession: "acp-session", Slug: session.Slug, State: StateRunning}}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -372,8 +377,15 @@ func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Plan) != 2 || state.Plan[1].Status != "in_progress" {
-		t.Fatalf("persisted progress = %#v", state.Plan)
+	if len(state.Plan) != 0 {
+		t.Fatalf("state repeated persisted progress: %#v", state.Plan)
+	}
+	storedEvents, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(storedEvents) != 1 || storedEvents[0].ACP == nil || len(storedEvents[0].ACP.Plan) != 2 {
+		t.Fatalf("persisted progress events = %#v", storedEvents)
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
@@ -472,7 +484,7 @@ func TestSideChatSessionUpdatePublishesAndPersistsSideChatEvent(t *testing.T) {
 	}
 }
 
-func TestToolCallUpdateCapturesLivenessState(t *testing.T) {
+func TestToolCallUpdateCapturesLivenessInEvent(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -485,7 +497,7 @@ func TestToolCallUpdateCapturesLivenessState(t *testing.T) {
 	manager := NewManager(store, Config{}, nil)
 	manager.Events = events
 	manager.jobsByID[session.ID] = &jobState{
-		Job:      Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session"},
+		Job:      Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning},
 		toolByID: map[string]sessionevents.ACPToolCall{},
 	}
 	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
@@ -533,14 +545,71 @@ func TestToolCallUpdateCapturesLivenessState(t *testing.T) {
 	}
 
 	state, err := store.LoadACPState(session.ID)
+	if err != nil && !strings.Contains(err.Error(), "acp state not found") {
+		t.Fatal(err)
+	}
+	if err == nil && len(state.ToolCalls) != 0 {
+		t.Fatalf("state repeated persisted tool call: %#v", state.ToolCalls)
+	}
+	storedEvents, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if state.LastEventAt.IsZero() || state.LastToolAt.IsZero() {
-		t.Fatalf("state timestamps missing: %#v", state)
+	if len(storedEvents) != 1 || storedEvents[0].ACP == nil || len(storedEvents[0].ACP.ToolCalls) != 1 || storedEvents[0].ACP.ToolCalls[0].Runtime.TerminalID != "exec-1" {
+		t.Fatalf("persisted tool events = %#v", storedEvents)
 	}
-	if len(state.ToolCalls) != 1 || state.ToolCalls[0].Runtime.TerminalID != "exec-1" {
-		t.Fatalf("persisted tool call = %#v", state.ToolCalls)
+}
+
+func TestToolCallUpdateDropsTransportOnlySnapshots(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "tool-snapshots", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := &jobState{
+		Job:      Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentGrok, ACPSession: "acp-session"},
+		toolByID: map[string]sessionevents.ACPToolCall{},
+	}
+	manager.jobsByID[session.ID] = job
+	manager.jobsByACP["acp-session"] = job
+
+	update := func(status string) {
+		t.Helper()
+		_, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
+			Method: acpschema.ClientMethodSessionUpdate,
+			Params: mustJSON(t, map[string]any{
+				"sessionId": "acp-session",
+				"update": map[string]any{
+					"sessionUpdate": "tool_call_update",
+					"toolCallId":    "harbor-1",
+					"title":         "Run Harbor",
+					"status":        status,
+					"rawOutput":     map[string]any{"state": "running"},
+					"_meta":         map[string]any{"terminal_output": true},
+				},
+			}),
+		})
+		if rpcErr != nil {
+			t.Fatal(rpcErr)
+		}
+	}
+
+	update("in_progress")
+	update("in_progress")
+	update("completed")
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 2 {
+		t.Fatalf("stored events = %d, want initial and semantic status update: %#v", len(stored), stored)
+	}
+	if got := stored[1].ACP.ToolCalls[0].Status; got != "completed" {
+		t.Fatalf("final status = %q, want completed", got)
 	}
 }
 

@@ -200,14 +200,6 @@ func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertActivity(session.ID, storage.ActivityEntry{
-		ID:     "tool-1",
-		Kind:   "tool",
-		Text:   "activity entry not rendered by mobile",
-		Status: "completed",
-	}); err != nil {
-		t.Fatal(err)
-	}
 	if err := store.SaveACPState(session.ID, storage.ACPState{
 		ID:         session.ID,
 		Slug:       session.Slug,
@@ -232,7 +224,6 @@ func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
 	for _, forbidden := range []string{
 		"very large tool result",
 		"expensive command input",
-		"activity entry not rendered",
 	} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("mobile response contains stripped payload %q: %s", forbidden, body)
@@ -241,9 +232,6 @@ func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(res.Body.Bytes(), &raw); err != nil {
 		t.Fatal(err)
-	}
-	if _, ok := raw["activity"]; ok {
-		t.Fatalf("mobile response includes activity: %s", raw["activity"])
 	}
 	var got struct {
 		Events       []sessionevents.Event       `json:"events"`
@@ -262,15 +250,8 @@ func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
 	if len(eventCall.Content) != 0 || len(eventCall.RawInput) != 0 || !eventCall.Runtime.IsZero() || eventCall.Kind != "" || eventCall.ToolName != "" {
 		t.Fatalf("event tool call retained heavy fields: %#v", eventCall)
 	}
-	if len(got.ACPToolCalls) != 1 {
-		t.Fatalf("acp_tool_calls = %#v", got.ACPToolCalls)
-	}
-	stateCall := got.ACPToolCalls[0]
-	if stateCall.ID != heavyCall.ID || stateCall.Title != heavyCall.Title || stateCall.Status != heavyCall.Status {
-		t.Fatalf("state tool call summary = %#v", stateCall)
-	}
-	if len(stateCall.Content) != 0 || len(stateCall.RawInput) != 0 || !stateCall.Runtime.IsZero() || stateCall.Kind != "" || stateCall.ToolName != "" {
-		t.Fatalf("state tool call retained heavy fields: %#v", stateCall)
+	if len(got.ACPToolCalls) != 0 {
+		t.Fatalf("inactive snapshot repeated transcript tools: %#v", got.ACPToolCalls)
 	}
 }
 

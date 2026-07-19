@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,7 +47,6 @@ type jobState struct {
 	sendMu                 sync.Mutex
 	turnMu                 sync.Mutex
 	promptQueueing         bool
-	processPerTurn         bool
 	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
 	pendingToolUpdateByID  map[string]sessionevents.ACPToolCall
@@ -55,7 +55,17 @@ type jobState struct {
 	lastUsageDelta         storage.Usage
 	lastUsageDeltaSet      bool
 	systemPromptExtensions promptmodule.Modules
+	assistantText          strings.Builder
+	thoughtText            strings.Builder
 }
+
+type jobSnapshotKind uint8
+
+const (
+	eventJobSnapshot jobSnapshotKind = iota
+	streamJobSnapshot
+	fullJobSnapshot
+)
 
 type activeTurn struct {
 	done                  chan struct{}
@@ -70,6 +80,8 @@ type activeTurn struct {
 	promptHandoff         chan struct{}
 	promptCalls           int
 	planProposal          *sessionevents.PlanEvent
+	processLease          *processLease
+	cancel                context.CancelFunc
 }
 
 type ModeState struct {
@@ -102,8 +114,8 @@ func jobFromSession(session storage.Session, agentName, acpSessionID, cwd, state
 	}
 }
 
-func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, modes ModeState, processPerTurn bool) *jobState {
-	job := &jobState{Job: jobFromSession(session, agentName, acpSessionID, cwd, StateIdle), processPerTurn: processPerTurn}
+func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, modes ModeState) *jobState {
+	job := &jobState{Job: jobFromSession(session, agentName, acpSessionID, cwd, StateIdle)}
 	now := time.Now().UTC()
 	job.Modes = modes
 	job.UpdatedAt = now
@@ -114,9 +126,21 @@ func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, mo
 }
 
 func (j *jobState) Snapshot() Job {
+	return j.snapshot(fullJobSnapshot)
+}
+
+func (j *jobState) eventSnapshot() Job {
+	return j.snapshot(eventJobSnapshot)
+}
+
+func (j *jobState) streamSnapshot() Job {
+	return j.snapshot(streamJobSnapshot)
+}
+
+func (j *jobState) snapshot(kind jobSnapshotKind) Job {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	return Job{
+	snapshot := Job{
 		ID:              j.ID,
 		Slug:            j.Slug,
 		Title:           j.Title,
@@ -129,11 +153,7 @@ func (j *jobState) Snapshot() Job {
 		ReasoningEffort: j.ReasoningEffort,
 		State:           j.State,
 		StopReason:      j.StopReason,
-		Assistant:       j.Assistant,
-		Thought:         j.Thought,
 		Plan:            clonePlanEntries(j.Plan),
-		ToolCalls:       CloneToolCalls(j.ToolCalls),
-		Permissions:     clonePermissions(j.Permissions),
 		Modes:           j.Modes.Clone(),
 		Error:           j.Error,
 		GoalRequested:   j.turn != nil && j.turn.goalRequested && (j.State == StateRunning || j.State == StateStarting),
@@ -144,6 +164,21 @@ func (j *jobState) Snapshot() Job {
 		LastEventAt:     j.LastEventAt,
 		LastToolAt:      j.LastToolAt,
 	}
+	if kind != eventJobSnapshot {
+		snapshot.Assistant = j.Assistant
+		snapshot.Thought = j.Thought
+	}
+	if kind == streamJobSnapshot {
+		snapshot.ToolCalls = make([]sessionevents.ACPToolCall, 0, len(j.ToolCalls))
+		for _, call := range j.ToolCalls {
+			snapshot.ToolCalls = append(snapshot.ToolCalls, sessionevents.ACPToolCall{ID: call.ID, Title: call.Title})
+		}
+	}
+	if kind == fullJobSnapshot {
+		snapshot.ToolCalls = CloneToolCalls(j.ToolCalls)
+		snapshot.Permissions = clonePermissions(j.Permissions)
+	}
+	return snapshot
 }
 
 func clonePlanEntries(in []sessionevents.PlanEntry) []sessionevents.PlanEntry {
@@ -186,6 +221,8 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.State = StateRunning
 	j.Assistant = ""
 	j.Thought = ""
+	j.assistantText.Reset()
+	j.thoughtText.Reset()
 	if len(j.Plan) > 0 {
 		j.Plan = sessionevents.PlanCleared
 	} else {
@@ -215,6 +252,22 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.LastEventAt = now
 	j.LastToolAt = time.Time{}
 	return j.turn.done
+}
+
+func (j *jobState) appendAssistantLocked(chunk string) {
+	if j.assistantText.Len() == 0 && j.Assistant != "" {
+		j.assistantText.WriteString(j.Assistant)
+	}
+	j.assistantText.WriteString(chunk)
+	j.Assistant = j.assistantText.String()
+}
+
+func (j *jobState) appendThoughtLocked(chunk string) {
+	if j.thoughtText.Len() == 0 && j.Thought != "" {
+		j.thoughtText.WriteString(j.Thought)
+	}
+	j.thoughtText.WriteString(chunk)
+	j.Thought = j.thoughtText.String()
 }
 
 func (j *jobState) turnDone() chan struct{} {
@@ -266,6 +319,38 @@ func (j *jobState) cancelReason() (string, bool) {
 		return j.turn.cancelReason, true
 	}
 	return StopReasonCancelled, true
+}
+
+func (j *jobState) setTurnCancel(done chan struct{}, cancel context.CancelFunc) bool {
+	j.mu.Lock()
+	if j.turn == nil || j.turn.done != done {
+		j.mu.Unlock()
+		return false
+	}
+	j.turn.cancel = cancel
+	requested := j.turn.cancelRequested
+	j.mu.Unlock()
+	if requested {
+		cancel()
+	}
+	return true
+}
+
+func (j *jobState) clearTurnCancel(done chan struct{}) {
+	j.mu.Lock()
+	if j.turn != nil && j.turn.done == done {
+		j.turn.cancel = nil
+	}
+	j.mu.Unlock()
+}
+
+func (j *jobState) turnCancel() context.CancelFunc {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if j.turn == nil {
+		return nil
+	}
+	return j.turn.cancel
 }
 
 func (j *jobState) addPromptCall(parentVisible bool) (chan struct{}, bool) {

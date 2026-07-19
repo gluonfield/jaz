@@ -14,7 +14,7 @@ import (
 )
 
 func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 
 	now := time.Now().UTC()
 	session := storage.Session{
@@ -39,15 +39,15 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 	}
 	slug, err := s.uniqueSlugLocked(session.Slug, "")
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Session{}, err
 	}
 	session.Slug = slug
 	if err := s.saveSessionLocked(session, false); err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Session{}, err
 	}
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	s.mirrorSession(session)
 	return session, nil
 }
@@ -60,15 +60,13 @@ func (s *Store) EnsureSession(id string) error {
 }
 
 func (s *Store) LoadSession(ref string) (storage.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.loadSessionLocked(ref)
+	return s.loadSession(ref)
 }
 
 func (s *Store) SaveSession(session storage.Session) error {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := s.saveSessionLocked(session, true)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -80,8 +78,8 @@ func (s *Store) SaveSession(session storage.Session) error {
 
 // SetArchived archives or restores a session together with its children.
 func (s *Store) SetArchived(id string, archived bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return threaddb.New(s.db).SetArchived(context.Background(), threaddb.SetArchivedParams{
 		Archived: boolInt(archived),
 		ID:       id,
@@ -89,8 +87,8 @@ func (s *Store) SetArchived(id string, archived bool) error {
 }
 
 func (s *Store) SetPinned(id string, pinned bool) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	return threaddb.New(s.db).SetPinned(context.Background(), threaddb.SetPinnedParams{
 		Pinned: boolInt(pinned),
 		ID:     id,
@@ -98,12 +96,12 @@ func (s *Store) SetPinned(id string, pinned bool) error {
 }
 
 func (s *Store) UpdateSessionTitle(id, title string) error {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).UpdateSessionTitle(context.Background(), threaddb.UpdateSessionTitleParams{
 		Title: nullDBString(title),
 		ID:    id,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -114,17 +112,17 @@ func (s *Store) UpdateSessionTitle(id, title string) error {
 }
 
 func (s *Store) UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error) {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	updated, err := threaddb.New(s.db).UpdateSessionTitleFromRuntime(context.Background(), threaddb.UpdateSessionTitleFromRuntimeParams{
 		Title: nullDBString(title),
 		ID:    id,
 	})
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return storage.Session{}, false, err
 	}
-	session, err := s.loadSessionLocked(id)
-	s.mu.Unlock()
+	session, err := s.loadSession(id)
+	s.writeMu.Unlock()
 	if err != nil {
 		return storage.Session{}, false, err
 	}
@@ -146,9 +144,9 @@ func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt
 	if !attentionAt.IsZero() {
 		params.TouchAttention = 1
 	}
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).UpdateSessionStatus(context.Background(), params)
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -159,9 +157,6 @@ func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt
 }
 
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	rows, err := threaddb.New(s.db).ListSessions(context.Background())
 	if err != nil {
 		return nil, err
@@ -203,7 +198,7 @@ func (s *Store) LastRootSession() (storage.Session, error) {
 	return sessions[0], nil
 }
 
-func (s *Store) loadSessionLocked(ref string) (storage.Session, error) {
+func (s *Store) loadSession(ref string) (storage.Session, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return storage.Session{}, fmt.Errorf("session id or slug is required")
@@ -375,13 +370,13 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 
 func (s *Store) TouchSessionAttention(id string) error {
 	now := time.Now().UTC()
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).TouchSessionAttention(context.Background(), threaddb.TouchSessionAttentionParams{
 		UpdatedAtMs:       timeToMs(now),
 		LastAttentionAtMs: timeToMs(now),
 		ID:                id,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}
@@ -393,12 +388,12 @@ func (s *Store) TouchSessionAttention(id string) error {
 
 // Scoped to the thread, not cascaded to children like SetArchived/SetPinned.
 func (s *Store) SetThreadUnread(id string, unread bool) error {
-	s.mu.Lock()
+	s.writeMu.Lock()
 	err := threaddb.New(s.db).SetThreadUnread(context.Background(), threaddb.SetThreadUnreadParams{
 		Unread: boolInt(unread),
 		ID:     id,
 	})
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}

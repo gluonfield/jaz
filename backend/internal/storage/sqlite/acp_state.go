@@ -17,6 +17,13 @@ func (s *Store) LoadACPState(id string) (storage.ACPState, error) {
 	return s.mirror.LoadACPState(id)
 }
 
+func (s *Store) CompactACPStates(ctx context.Context) (int, int64, error) {
+	if s.mirror == nil {
+		return 0, 0, nil
+	}
+	return s.mirror.CompactACPStates(ctx)
+}
+
 func (s *Store) SaveACPState(id string, state storage.ACPState) error {
 	if id == "" {
 		return fmt.Errorf("session id is empty")
@@ -36,8 +43,8 @@ func (s *Store) SaveACPState(id string, state storage.ACPState) error {
 	if status == storage.StatusError {
 		errorMessage = state.Error
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	q := threaddb.New(s.db)
 	if status == "" {
 		return q.TouchThread(context.Background(), threaddb.TouchThreadParams{
@@ -58,7 +65,7 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 		return nil
 	}
 	now := time.Now().UTC()
-	s.mu.Lock()
+	s.writeMu.Lock()
 	total := usage.TotalTokens
 	if total == 0 {
 		total = usage.ComponentTotal()
@@ -70,7 +77,7 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return err
 	}
 	q := threaddb.New(tx)
@@ -85,11 +92,11 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	}
 	if err != nil {
 		_ = tx.Rollback()
-		s.mu.Unlock()
+		s.writeMu.Unlock()
 		return err
 	}
 	err = tx.Commit()
-	s.mu.Unlock()
+	s.writeMu.Unlock()
 	if err != nil {
 		return err
 	}

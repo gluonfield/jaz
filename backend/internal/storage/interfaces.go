@@ -36,16 +36,6 @@ type MessageRecordAppender interface {
 	AppendMessageRecords(id string, messages ...Message) error
 }
 
-type ActivityStore interface {
-	LoadActivity(id string) ([]ActivityEntry, error)
-	SaveActivity(id string, activity []ActivityEntry) error
-	ActivityUpserter
-}
-
-type ActivityUpserter interface {
-	UpsertActivity(id string, entry ActivityEntry) error
-}
-
 type SessionEventReader interface {
 	LoadSessionEvents(id string) ([]sessionevents.Event, error)
 	LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error)
@@ -53,10 +43,6 @@ type SessionEventReader interface {
 
 type SessionEventAppender interface {
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
-}
-
-type SessionEventCompactor interface {
-	CompactSessionEvents(id string) (int, error)
 }
 
 type SessionEventStore interface {
@@ -81,7 +67,6 @@ type FeedStore interface {
 type Store interface {
 	SessionStore
 	MessageStore
-	ActivityStore
 	SessionEventStore
 	ACPStateStore
 	SettingsStorage

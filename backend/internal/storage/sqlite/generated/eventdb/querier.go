@@ -9,12 +9,19 @@ import (
 )
 
 type Querier interface {
-	CountSessionEvents(ctx context.Context, threadID string) (int64, error)
+	AdvanceSessionEventRevision(ctx context.Context, threadID string) error
+	CompleteSessionEventCompaction(ctx context.Context, arg CompleteSessionEventCompactionParams) (int64, error)
 	DeleteSessionEvent(ctx context.Context, arg DeleteSessionEventParams) error
+	DeleteSessionEventByCoalesceKey(ctx context.Context, arg DeleteSessionEventByCoalesceKeyParams) error
+	GetSessionEventCompactionState(ctx context.Context, threadID string) (GetSessionEventCompactionStateRow, error)
+	HasLegacySessionEventThreads(ctx context.Context) (bool, error)
 	ListSessionEvents(ctx context.Context, threadID string) ([]ListSessionEventsRow, error)
 	ListSessionEventsAfter(ctx context.Context, arg ListSessionEventsAfterParams) ([]ListSessionEventsAfterRow, error)
 	ListSessionEventsAfterTime(ctx context.Context, arg ListSessionEventsAfterTimeParams) ([]ListSessionEventsAfterTimeRow, error)
+	NextLegacySessionEventThread(ctx context.Context, runningStatus string) (string, error)
 	NextSessionEventSeq(ctx context.Context, threadID string) (int64, error)
+	SetSessionEventCoalesceKey(ctx context.Context, arg SetSessionEventCoalesceKeyParams) error
+	SkipSessionEventCompaction(ctx context.Context, arg SkipSessionEventCompactionParams) (int64, error)
 	UpsertSessionEvent(ctx context.Context, arg UpsertSessionEventParams) error
 }
 
