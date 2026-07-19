@@ -1,3 +1,5 @@
+import { isPreviewProxyTargetHostname } from '../../../../shared/preview'
+
 export type PreviewProxyResponse = {
   url: string
 }
@@ -19,7 +21,7 @@ export async function preparePreviewProxySource(
     throw new Error(remotePreviewError)
   }
   if (!['http:', 'https:'].includes(source.protocol)) throw new Error(remotePreviewError)
-  if (isLoopbackHostname(source.hostname)) return proxy.url
+  if (isLocalPreviewHostname(source.hostname)) return proxy.url
   const probe = new URL('/.well-known/jaz-preview', source)
 
   const controller = new AbortController()
@@ -43,13 +45,6 @@ export async function preparePreviewProxySource(
   }
 }
 
-export function isLoopbackHostname(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
-  return (
-    host === 'localhost' ||
-    host.endsWith('.localhost') ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    /^127(?:\.\d{1,3}){3}$/.test(host)
-  )
+function isLocalPreviewHostname(hostname: string): boolean {
+  return isPreviewProxyTargetHostname(hostname) || hostname.toLowerCase().endsWith('.localhost')
 }

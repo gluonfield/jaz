@@ -11,11 +11,11 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
-import { previewDisplayUrl, resolvePreviewSource, shouldProxyPreview } from '@/lib/api/preview'
+import { previewDisplayUrl, resolvePreviewSource } from '@/lib/api/preview'
 import type { Attachment } from '@/lib/api/types'
 import { clientRuntime } from '@/lib/clientRuntime'
 import type { BrowserAnnotation } from '@/lib/messageContext'
-import { normalizePreviewURL } from '../../../../shared/preview'
+import { normalizePreviewURL, shouldProxyPreview } from '../../../../shared/preview'
 import {
   captureBrowserAnnotation,
   clearBrowserAnnotationCapture,

@@ -1,5 +1,6 @@
 import { post } from './client'
-import { isLoopbackHostname, preparePreviewProxySource, type PreviewProxyResponse } from './previewSource'
+import { shouldProxyPreview } from '../../../../shared/preview'
+import { preparePreviewProxySource, type PreviewProxyResponse } from './previewSource'
 
 const previewHosts = new Map<string, string>()
 
@@ -34,13 +35,4 @@ function rememberProxy(original: string, source: string): void {
   }
   const originalOrigin = originalURL.origin
   previewHosts.set(sourceURL.host, originalOrigin)
-}
-
-export function shouldProxyPreview(value: string): boolean {
-  try {
-    const parsed = new URL(value)
-    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && isLoopbackHostname(parsed.hostname)
-  } catch {
-    return false
-  }
 }

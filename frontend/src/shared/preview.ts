@@ -19,13 +19,13 @@ function previewURL(value: string): URL | null {
 
 function isLoopbackInput(value: string): boolean {
   try {
-    return isLoopbackHost(new URL(`http://${value}`).hostname)
+    return isPreviewProxyTargetHostname(new URL(`http://${value}`).hostname)
   } catch {
     return false
   }
 }
 
-function isLoopbackHost(hostname: string): boolean {
+export function isPreviewProxyTargetHostname(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
   return (
     host === 'localhost' ||
@@ -33,6 +33,11 @@ function isLoopbackHost(hostname: string): boolean {
     host === '::1' ||
     /^127(?:\.\d{1,3}){3}$/.test(host)
   )
+}
+
+export function shouldProxyPreview(value: string): boolean {
+  const parsed = previewURL(value)
+  return parsed !== null && isPreviewProxyTargetHostname(parsed.hostname)
 }
 
 const DEFAULT_PREVIEW_PATTERNS = ['localhost', '127\\.0\\.0\\.1']
