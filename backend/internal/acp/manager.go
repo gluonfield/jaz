@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"sync"
@@ -255,7 +254,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	peer := jsonrpc.NewPeer(promptTracker, handler)
 	go func() {
 		err := peer.Serve(runCtx)
-		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, io.EOF) {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			m.setServeErr(peer, err)
 		}
 	}()
@@ -907,6 +906,10 @@ func (m *Manager) setServeErr(peer *jsonrpc.Peer, err error) {
 	for candidateID, candidate := range m.peersByID {
 		if candidate == peer {
 			id = candidateID
+			if m.serveErrByID[id] != nil {
+				m.mu.Unlock()
+				return
+			}
 			m.serveErrByID[id] = err
 			job = m.jobsByID[id]
 			break

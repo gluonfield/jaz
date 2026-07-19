@@ -63,6 +63,9 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 	m.withACPTranscriptBarrier(job.Snapshot(), nil)
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, req)
 	if err != nil {
+		if jsonrpc.IsClosed(err) && !errors.Is(err, context.Canceled) {
+			m.setServeErr(peer, err)
+		}
 		m.failPromptCall(done, job, err)
 		return
 	}

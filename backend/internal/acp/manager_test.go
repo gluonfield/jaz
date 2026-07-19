@@ -1637,50 +1637,58 @@ func TestManagerResumesStoredSessionAfterRestart(t *testing.T) {
 	}
 }
 
-func TestManagerResumesStoredSessionAfterServeError(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := t.TempDir()
-	manager := newFakeAgentManager(t, store, root, map[string]string{
-		"JAZ_FAKE_ACP_LOAD": "1",
-	})
+func TestManagerResumesStoredSessionAfterConnectionFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		failure   string
+		followup  string
+		wantError string
+	}{
+		{name: "malformed message", failure: "break transport", followup: "after transport failure", wantError: "invalid character"},
+		{name: "eof", failure: "close transport", followup: "after eof"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{"JAZ_FAKE_ACP_LOAD": "1"})
+			t.Cleanup(manager.Close)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-serve-error"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "break transport", Completion: acp.CompletionInline}); err != nil {
-		t.Fatal(err)
-	}
-	failed, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if failed.State != acp.StateFailed || !strings.Contains(failed.Error, "invalid character") {
-		t.Fatalf("failed turn state=%s error=%q", failed.State, failed.Error)
-	}
-
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "after transport failure", Completion: acp.CompletionInline}); err != nil {
-		t.Fatalf("send after serve error: %v", err)
-	}
-	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
-		t.Fatalf("resumed turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
-	}
-	messages, err := store.LoadMessages(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(messages) != 2 || provider.MessageContent(messages[1]) != "after transport failure" {
-		t.Fatalf("unexpected messages %#v", messages)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-connection-failure"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: tc.failure, Completion: acp.CompletionInline}); err != nil {
+				t.Fatal(err)
+			}
+			failed, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failed.State != acp.StateFailed || failed.Error == "" || !strings.Contains(failed.Error, tc.wantError) {
+				t.Fatalf("failed turn state=%s error=%q", failed.State, failed.Error)
+			}
+			if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: tc.followup, Completion: acp.CompletionInline}); err != nil {
+				t.Fatalf("send after connection failure: %v", err)
+			}
+			job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if job.State != acp.StateIdle || job.Assistant != "hello from fake agent" {
+				t.Fatalf("resumed turn state=%s assistant=%q error=%q", job.State, job.Assistant, job.Error)
+			}
+			messages, err := store.LoadMessages(spawned.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(messages) != 2 || provider.MessageContent(messages[1]) != tc.followup {
+				t.Fatalf("unexpected messages %#v", messages)
+			}
+		})
 	}
 }
 
