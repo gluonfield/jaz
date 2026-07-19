@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,65 +13,21 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestCodexPlanRequestedTextDoesNotPublishProposedPlan(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "plain-plan-text", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := sessionevents.New()
-	manager := NewManager(store, Config{}, nil)
-	manager.Events = events
-	job := &jobState{
-		Job: Job{
-			ID:         session.ID,
-			ACPAgent:   AgentCodex,
-			ACPSession: "acp-session",
-			Cwd:        t.TempDir(),
-		},
-		toolByID: map[string]sessionevents.ACPToolCall{},
-	}
-	manager.jobsByID[session.ID] = job
-	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, true, false)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	sub := events.Subscribe(ctx, session.ID)
-
-	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
-		Method: acpschema.ClientMethodSessionUpdate,
-		Params: mustJSON(t, map[string]any{
-			"sessionId": "acp-session",
-			"update": map[string]any{
-				"sessionUpdate": "agent_message_chunk",
-				"messageId":     "codex-plan-proposal",
-				"content": map[string]any{
-					"type": "text",
-					"text": "Proposed plan:\n- Inspect the current app structure.\n- Build the dinosaur page.\n- Run the relevant checks.",
-				},
-			},
-		}),
-	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
-	}
-	assertNoEvent(t, sub)
-
-	job.setState(StateIdle, "", "")
-	manager.finishTurn(done, job)
-	assertNoEvent(t, sub)
+type planTurnFixture struct {
+	manager *Manager
+	job     *jobState
+	done    chan struct{}
+	ctx     context.Context
+	events  <-chan sessionevents.Event
 }
 
-func TestCodexPlanRequestedPreambleDoesNotPublishProposedPlan(t *testing.T) {
+func newPlanTurnFixture(t *testing.T, agent string) planTurnFixture {
+	t.Helper()
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "preamble-plan-text", Runtime: storage.RuntimeACP})
+	session, err := store.CreateSession(storage.CreateSession{Slug: "plan-turn", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +37,7 @@ func TestCodexPlanRequestedPreambleDoesNotPublishProposedPlan(t *testing.T) {
 	job := &jobState{
 		Job: Job{
 			ID:         session.ID,
-			ACPAgent:   AgentCodex,
+			ACPAgent:   agent,
 			ACPSession: "acp-session",
 			Cwd:        t.TempDir(),
 		},
@@ -91,86 +48,106 @@ func TestCodexPlanRequestedPreambleDoesNotPublishProposedPlan(t *testing.T) {
 	done := job.startTurn(CompletionInline, true, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	sub := events.Subscribe(ctx, session.ID)
+	t.Cleanup(cancel)
+	return planTurnFixture{manager: manager, job: job, done: done, ctx: ctx, events: events.Subscribe(ctx, session.ID)}
+}
 
-	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+func (f planTurnFixture) update(t *testing.T, update map[string]any) {
+	t.Helper()
+	_, rpcErr := f.manager.handleJSONRPC(f.ctx, jsonrpc.Request{
 		Method: acpschema.ClientMethodSessionUpdate,
 		Params: mustJSON(t, map[string]any{
 			"sessionId": "acp-session",
-			"update": map[string]any{
-				"sessionUpdate": "agent_message_chunk",
-				"messageId":     "codex-plan-preamble",
-				"content": map[string]any{
-					"type": "text",
-					"text": "I’ll first check what’s in the current workspace so the plan fits the actual project shape.",
-				},
-			},
+			"update":    update,
 		}),
 	})
 	if rpcErr != nil {
 		t.Fatal(rpcErr)
 	}
-	assertNoEvent(t, sub)
+}
 
-	job.setState(StateIdle, "", "")
-	manager.finishTurn(done, job)
-	assertNoEvent(t, sub)
+func (f planTurnFixture) finish() {
+	f.job.setState(StateIdle, "", "")
+	f.manager.finishTurn(f.done, f.job)
+}
+
+func TestCodexPlanRequestedTextStreamsWithoutBecomingProposedPlan(t *testing.T) {
+	f := newPlanTurnFixture(t, AgentCodex)
+
+	f.update(t, map[string]any{
+		"sessionUpdate": "agent_message_chunk",
+		"messageId":     "codex-plan-proposal",
+		"content": map[string]any{
+			"type": "text",
+			"text": "Proposed plan:\n- Inspect the current app structure.\n- Build the dinosaur page.\n- Run the relevant checks.",
+		},
+	})
+	event := receiveEvent(t, f.events)
+	if event.Type != "acp_message" || event.Content != "Proposed plan:\n- Inspect the current app structure.\n- Build the dinosaur page.\n- Run the relevant checks." {
+		t.Fatalf("message event = %#v", event)
+	}
+
+	f.finish()
+	assertNoEvent(t, f.events)
+}
+
+func TestCodexPlanRequestedTextPrecedesClarifyingQuestion(t *testing.T) {
+	f := newPlanTurnFixture(t, AgentCodex)
+
+	f.update(t, map[string]any{
+		"sessionUpdate": "agent_message_chunk",
+		"messageId":     "codex-plan-preamble",
+		"content": map[string]any{
+			"type": "text",
+			"text": "I’ll first check what’s in the current workspace so the plan fits the actual project shape.",
+		},
+	})
+	f.manager.publishPermission(f.job, sessionevents.ACPPermission{
+		ID:     "question",
+		Title:  "Clarifying question",
+		Status: "pending",
+	}, "permission_request")
+
+	message := receiveEvent(t, f.events)
+	if message.Type != "acp_message" || message.Content != "I’ll first check what’s in the current workspace so the plan fits the actual project shape." {
+		t.Fatalf("message event = %#v", message)
+	}
+	question := receiveEvent(t, f.events)
+	if question.Type != "permission_request" || question.Permission == nil || question.Permission.ID != "question" {
+		t.Fatalf("permission event = %#v", question)
+	}
+
+	f.finish()
+	assertNoEvent(t, f.events)
 }
 
 func TestCodexPlanRequestedPlanDocumentPublishesProposedPlan(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "plan-document", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := sessionevents.New()
-	manager := NewManager(store, Config{}, nil)
-	manager.Events = events
-	job := &jobState{
-		Job: Job{
-			ID:         session.ID,
-			ACPAgent:   AgentCodex,
-			ACPSession: "acp-session",
-			Cwd:        t.TempDir(),
-		},
-		toolByID: map[string]sessionevents.ACPToolCall{},
-	}
-	manager.jobsByID[session.ID] = job
-	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, true, false)
+	f := newPlanTurnFixture(t, AgentCodex)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	sub := events.Subscribe(ctx, session.ID)
-
-	planText := "# Plan\n\n- Inspect the current app structure.\n- Build the dinosaur page.\n- Run the relevant checks."
-	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
-		Method: acpschema.ClientMethodSessionUpdate,
-		Params: mustJSON(t, map[string]any{
-			"sessionId": "acp-session",
-			"update": map[string]any{
-				"sessionUpdate": "plan",
-				"entries": []map[string]any{{
-					"content":  planText,
-					"status":   "completed",
-					"priority": "medium",
-				}},
-			},
-		}),
+	f.update(t, map[string]any{
+		"sessionUpdate": "agent_message_chunk",
+		"messageId":     "codex-plan-context",
+		"content":       map[string]any{"type": "text", "text": "The repository inspection is complete."},
 	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
+	message := receiveEvent(t, f.events)
+	if message.Type != "acp_message" || message.Content != "The repository inspection is complete." {
+		t.Fatalf("message event = %#v", message)
 	}
-	assertNoEvent(t, sub)
 
-	job.setState(StateIdle, "", "")
-	manager.finishTurn(done, job)
+	planText := "Implement the scoped fix and run the relevant checks."
+	f.update(t, map[string]any{
+		"sessionUpdate": "plan",
+		"_meta":         map[string]any{codexPlanKindMetaKey: codexPlanKindProposal},
+		"entries": []map[string]any{{
+			"content":  planText,
+			"status":   "completed",
+			"priority": "medium",
+		}},
+	})
+	assertNoEvent(t, f.events)
 
-	proposal := receiveEvent(t, sub)
+	f.finish()
+	proposal := receiveEvent(t, f.events)
 	if proposal.Type != "proposed_plan" || proposal.Plan == nil || !proposal.Plan.AwaitingApproval {
 		t.Fatalf("proposal event = %#v", proposal)
 	}
@@ -179,70 +156,84 @@ func TestCodexPlanRequestedPlanDocumentPublishesProposedPlan(t *testing.T) {
 	}
 }
 
-func TestPlanRequestedProgressPublishesProposedPlan(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "structured-plan", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := sessionevents.New()
-	manager := NewManager(store, Config{}, nil)
-	manager.Events = events
-	job := &jobState{
-		Job: Job{
-			ID:         session.ID,
-			ACPAgent:   AgentCodex,
-			ACPSession: "acp-session",
-			Cwd:        t.TempDir(),
-		},
-		toolByID: map[string]sessionevents.ACPToolCall{},
-	}
-	manager.jobsByID[session.ID] = job
-	manager.jobsByACP["acp-session"] = job
-	done := job.startTurn(CompletionInline, true, false)
+func TestLocalPlanRequestedTextStreamsLive(t *testing.T) {
+	f := newPlanTurnFixture(t, AgentJaz)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	sub := events.Subscribe(ctx, session.ID)
+	f.manager.applyLocalMessage(f.job, "Here is what I found before proposing the plan.")
+	event := receiveEvent(t, f.events)
+	if event.Type != "acp_message" || event.Content != "Here is what I found before proposing the plan." {
+		t.Fatalf("message event = %#v", event)
+	}
+}
 
-	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
-		Method: acpschema.ClientMethodSessionUpdate,
-		Params: mustJSON(t, map[string]any{
-			"sessionId": "acp-session",
-			"update": map[string]any{
-				"sessionUpdate": "plan",
-				"entries": []map[string]any{
-					{"content": "Inspect request", "priority": "high", "status": "completed"},
-					{"content": "Wait for approval", "priority": "medium", "status": "in_progress"},
-				},
-			},
-		}),
+func TestPlanRequestedProgressDoesNotBecomeProposedPlan(t *testing.T) {
+	f := newPlanTurnFixture(t, AgentCodex)
+
+	f.update(t, map[string]any{
+		"sessionUpdate": "plan",
+		"_meta":         map[string]any{codexPlanKindMetaKey: codexPlanKindProposal},
+		"entries":       []map[string]any{{"content": "# Plan\n\n- Stale draft", "status": "completed"}},
 	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
-	}
-	progress := receiveEvent(t, sub)
+	assertNoEvent(t, f.events)
+	f.update(t, map[string]any{
+		"sessionUpdate": "plan",
+		"_meta":         map[string]any{codexPlanKindMetaKey: "progress"},
+		"entries": []map[string]any{
+			{"content": "Inspect request", "priority": "high", "status": "completed"},
+			{"content": "Wait for approval", "priority": "medium", "status": "in_progress"},
+		},
+	})
+	progress := receiveEvent(t, f.events)
 	if progress.Type != "acp" || progress.ACP == nil || len(progress.ACP.Plan) != 2 {
 		t.Fatalf("progress event = %#v", progress)
 	}
-
-	job.setState(StateIdle, "", "")
-	manager.finishTurn(done, job)
-
-	proposal := receiveEvent(t, sub)
-	if proposal.Type != "proposed_plan" || proposal.Plan == nil || !proposal.Plan.AwaitingApproval {
-		t.Fatalf("proposal event = %#v", proposal)
+	f.update(t, map[string]any{
+		"sessionUpdate": "agent_message_chunk",
+		"messageId":     "codex-final-plan",
+		"content":       map[string]any{"type": "text", "text": "The final implementation plan is ready."},
+	})
+	message := receiveEvent(t, f.events)
+	if message.Type != "acp_message" || message.Content != "The final implementation plan is ready." {
+		t.Fatalf("message event = %#v", message)
 	}
-	if len(proposal.Plan.Plan) != 2 ||
-		proposal.Plan.Plan[0].Content != "Inspect request" ||
-		proposal.Plan.Plan[1].Content != "Wait for approval" {
-		t.Fatalf("proposal plan = %#v", proposal.Plan)
-	}
-	if proposal.ACP == nil || proposal.ACP.Plan != nil {
-		t.Fatalf("proposal acp envelope should not carry progress plan: %#v", proposal.ACP)
+
+	f.finish()
+	assertNoEvent(t, f.events)
+}
+
+func TestPlanRequestedUntypedDocumentDoesNotBecomeProposedPlan(t *testing.T) {
+	f := newPlanTurnFixture(t, AgentCodex)
+
+	f.update(t, map[string]any{
+		"sessionUpdate": "plan",
+		"entries":       []map[string]any{{"content": "# Plan\n\n- Untyped draft", "status": "completed"}},
+	})
+	assertNoEvent(t, f.events)
+
+	f.finish()
+	assertNoEvent(t, f.events)
+}
+
+func TestPlanRequestedDocumentShapedProgressDoesNotBecomeProposedPlan(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		content string
+	}{
+		{name: "multiline", content: "Inspect the project\nwhile preserving the current transport contract."},
+		{name: "long", content: strings.Repeat("Inspect the existing transport contract. ", 10)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newPlanTurnFixture(t, AgentCodex)
+			f.update(t, map[string]any{
+				"sessionUpdate": "plan",
+				"_meta":         map[string]any{codexPlanKindMetaKey: "progress"},
+				"entries":       []map[string]any{{"content": test.content, "status": "in_progress"}},
+			})
+			assertNoEvent(t, f.events)
+
+			f.finish()
+			assertNoEvent(t, f.events)
+		})
 	}
 }
 
@@ -250,50 +241,14 @@ func TestPlanRequestedProgressPublishesProposedPlan(t *testing.T) {
 // streams its plan and implementation text live rather than buffering the turn
 // for a synthesized proposed_plan.
 func TestClaudePlanRequestedStreamsAssistantTextLive(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "claude-plan-live", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := sessionevents.New()
-	manager := NewManager(store, Config{}, nil)
-	manager.Events = events
-	job := &jobState{
-		Job: Job{
-			ID:         session.ID,
-			ACPAgent:   AgentClaude,
-			ACPSession: "acp-session",
-			Cwd:        t.TempDir(),
-		},
-		toolByID: map[string]sessionevents.ACPToolCall{},
-	}
-	manager.jobsByID[session.ID] = job
-	manager.jobsByACP["acp-session"] = job
-	job.startTurn(CompletionInline, true, false)
+	f := newPlanTurnFixture(t, AgentClaude)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	sub := events.Subscribe(ctx, session.ID)
-
-	_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
-		Method: acpschema.ClientMethodSessionUpdate,
-		Params: mustJSON(t, map[string]any{
-			"sessionId": "acp-session",
-			"update": map[string]any{
-				"sessionUpdate": "agent_message_chunk",
-				"messageId":     "claude-plan-text",
-				"content":       map[string]any{"type": "text", "text": "Here is the plan I propose."},
-			},
-		}),
+	f.update(t, map[string]any{
+		"sessionUpdate": "agent_message_chunk",
+		"messageId":     "claude-plan-text",
+		"content":       map[string]any{"type": "text", "text": "Here is the plan I propose."},
 	})
-	if rpcErr != nil {
-		t.Fatal(rpcErr)
-	}
-
-	event := receiveEvent(t, sub)
+	event := receiveEvent(t, f.events)
 	if event.Type != "acp_message" || event.Content != "Here is the plan I propose." {
 		t.Fatalf("expected live acp_message during claude plan turn, got %#v", event)
 	}

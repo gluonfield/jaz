@@ -80,10 +80,24 @@ func (s *Store) SaveSession(session storage.Session) error {
 func (s *Store) SetArchived(id string, archived bool) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return threaddb.New(s.db).SetArchived(context.Background(), threaddb.SetArchivedParams{
-		Archived: boolInt(archived),
-		ID:       id,
-	})
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	q := threaddb.New(tx)
+	ids, err := q.ListSessionSubtree(ctx, id)
+	if err == nil {
+		err = q.SetArchived(ctx, threaddb.SetArchivedParams{
+			Archived: boolInt(archived),
+			Ids:      ids,
+		})
+	}
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SetPinned(id string, pinned bool) error {
@@ -146,6 +160,22 @@ func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt
 	}
 	s.writeMu.Lock()
 	err := threaddb.New(s.db).UpdateSessionStatus(context.Background(), params)
+	s.writeMu.Unlock()
+	if err != nil {
+		return err
+	}
+	if current, err := s.LoadSession(id); err == nil {
+		s.mirrorSession(current)
+	}
+	return nil
+}
+
+func (s *Store) CompleteSession(id string, completedAt time.Time) error {
+	s.writeMu.Lock()
+	err := threaddb.New(s.db).CompleteSession(context.Background(), threaddb.CompleteSessionParams{
+		CompletedAtMs: timeToMs(completedAt),
+		ID:            id,
+	})
 	s.writeMu.Unlock()
 	if err != nil {
 		return err
@@ -263,6 +293,7 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		Slug:                  session.Slug,
 		Title:                 nullDBString(session.Title),
 		ManualTitle:           boolInt(session.ManualTitle),
+		TitleLocked:           boolInt(session.TitleLocked),
 		ParentID:              nullDBString(session.ParentID),
 		Status:                session.Status,
 		Runtime:               session.Runtime,
@@ -316,6 +347,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		Slug:            row.Slug,
 		Title:           row.Title.String,
 		ManualTitle:     row.ManualTitle != 0,
+		TitleLocked:     row.TitleLocked != 0,
 		ParentID:        row.ParentID.String,
 		Status:          row.Status,
 		Error:           row.Error.String,

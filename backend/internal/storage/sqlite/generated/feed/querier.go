@@ -11,6 +11,7 @@ import (
 type Querier interface {
 	LastUserPromptAt(ctx context.Context, threadID string) (int64, error)
 	ListFeed(ctx context.Context) ([]ListFeedRow, error)
+	ListFeedCompletions(ctx context.Context) ([]ListFeedCompletionsRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

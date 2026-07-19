@@ -66,10 +66,15 @@ func modelCapabilityRoutes(catalog *modelcatalog.Service) server.Routes {
 }
 
 func feedRoutes(feed feedcore.Service) server.Routes {
+	handler := feedapi.NewHandler(feed)
 	return server.Routes{
 		{
 			Pattern: "GET /v1/feed",
-			Handler: feedapi.NewListHandler(feed),
+			Handler: httpHandlerFunc(handler.List),
+		},
+		{
+			Pattern: "GET /v1/feed/completions",
+			Handler: httpHandlerFunc(handler.Completions),
 		},
 	}
 }

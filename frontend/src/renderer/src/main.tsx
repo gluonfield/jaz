@@ -10,6 +10,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BackendTransition } from './components/connection/BackendTransition'
 import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScreen'
+import { ThreadNotifications } from '@/components/notifications/ThreadNotifications'
 import { devPreview } from './lib/devPreview'
 import { OnboardingGate } from './components/onboarding/OnboardingGate'
 import { installFileDropGuard } from './components/ui/FileDrop'
@@ -87,6 +88,7 @@ function App() {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      {clientRuntime.windowKind === 'main' ? <ThreadNotifications /> : null}
       <App />
     </QueryClientProvider>
   </StrictMode>,

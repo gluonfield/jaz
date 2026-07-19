@@ -8,6 +8,7 @@ package threaddb
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const addUsage = `-- name: AddUsage :exec
@@ -59,6 +60,28 @@ func (q *Queries) AddUsage(ctx context.Context, arg AddUsageParams) error {
 	return err
 }
 
+const completeSession = `-- name: CompleteSession :exec
+UPDATE threads
+SET
+  status = 'idle',
+  error = NULL,
+  unread = 1,
+  updated_at_ms = ?1,
+  last_attention_at_ms = ?1,
+  last_completed_at_ms = ?1
+WHERE id = ?2
+`
+
+type CompleteSessionParams struct {
+	CompletedAtMs int64  `json:"completed_at_ms"`
+	ID            string `json:"id"`
+}
+
+func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams) error {
+	_, err := q.db.ExecContext(ctx, completeSession, arg.CompletedAtMs, arg.ID)
+	return err
+}
+
 const getSession = `-- name: GetSession :one
 SELECT
   id,
@@ -97,6 +120,8 @@ SELECT
   unread,
   goal,
   manual_title,
+  last_completed_at_ms,
+  title_locked,
   event_compaction_version,
   event_revision
 FROM threads
@@ -144,6 +169,8 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.Unread,
 		&i.Goal,
 		&i.ManualTitle,
+		&i.LastCompletedAtMs,
+		&i.TitleLocked,
 		&i.EventCompactionVersion,
 		&i.EventRevision,
 	)
@@ -208,6 +235,40 @@ func (q *Queries) ListErrorThreadIDsWithoutError(ctx context.Context, status str
 	return items, nil
 }
 
+const listSessionSubtree = `-- name: ListSessionSubtree :many
+WITH RECURSIVE subtree(id) AS (
+  SELECT threads.id FROM threads WHERE threads.id = ?1
+  UNION
+  SELECT threads.id
+  FROM threads
+  JOIN subtree ON threads.parent_id = subtree.id
+)
+SELECT subtree.id FROM subtree
+`
+
+func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionSubtree, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessions = `-- name: ListSessions :many
 SELECT
   id,
@@ -246,6 +307,8 @@ SELECT
   unread,
   goal,
   manual_title,
+  last_completed_at_ms,
+  title_locked,
   event_compaction_version,
   event_revision
 FROM threads
@@ -297,6 +360,8 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.Unread,
 			&i.Goal,
 			&i.ManualTitle,
+			&i.LastCompletedAtMs,
+			&i.TitleLocked,
 			&i.EventCompactionVersion,
 			&i.EventRevision,
 		); err != nil {
@@ -342,17 +407,30 @@ func (q *Queries) ResetRunningThreads(ctx context.Context, arg ResetRunningThrea
 
 const setArchived = `-- name: SetArchived :exec
 UPDATE threads
-SET archived = ?1
-WHERE id = ?2 OR parent_id = ?2
+SET
+  archived = ?1,
+  unread = CASE WHEN ?1 != 0 THEN 0 ELSE unread END
+WHERE id IN (/*SLICE:ids*/?)
 `
 
 type SetArchivedParams struct {
-	Archived int64  `json:"archived"`
-	ID       string `json:"id"`
+	Archived int64    `json:"archived"`
+	Ids      []string `json:"ids"`
 }
 
 func (q *Queries) SetArchived(ctx context.Context, arg SetArchivedParams) error {
-	_, err := q.db.ExecContext(ctx, setArchived, arg.Archived, arg.ID)
+	query := setArchived
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Archived)
+	if len(arg.Ids) > 0 {
+		for _, v := range arg.Ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
 	return err
 }
 
@@ -541,7 +619,7 @@ UPDATE threads
 SET
   title = ?1,
   manual_title = 0
-WHERE id = ?2 AND manual_title = 0
+WHERE id = ?2 AND manual_title = 0 AND title_locked = 0
 `
 
 type UpdateSessionTitleFromRuntimeParams struct {
@@ -563,6 +641,7 @@ INSERT INTO threads (
   slug,
   title,
   manual_title,
+  title_locked,
   parent_id,
   status,
   runtime,
@@ -631,12 +710,14 @@ INSERT INTO threads (
   ?33,
   ?34,
   ?35,
-  ?36
+  ?36,
+  ?37
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
   title = excluded.title,
   manual_title = excluded.manual_title,
+  title_locked = excluded.title_locked,
   parent_id = excluded.parent_id,
   status = excluded.status,
   error = excluded.error,
@@ -676,6 +757,7 @@ type UpsertSessionParams struct {
 	Slug                  string         `json:"slug"`
 	Title                 sql.NullString `json:"title"`
 	ManualTitle           int64          `json:"manual_title"`
+	TitleLocked           int64          `json:"title_locked"`
 	ParentID              sql.NullString `json:"parent_id"`
 	Status                string         `json:"status"`
 	Runtime               string         `json:"runtime"`
@@ -716,6 +798,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Slug,
 		arg.Title,
 		arg.ManualTitle,
+		arg.TitleLocked,
 		arg.ParentID,
 		arg.Status,
 		arg.Runtime,

@@ -8,7 +8,7 @@ import (
 const jazGoalPrompt = `<jaz_goal_mode>
 Goal mode is active for this turn.
 Before doing substantive work, call get_goal. If no active goal exists, call create_goal with the concise objective you will pursue. Do not copy the raw user message unless it is already the exact objective.
-Set token_budget only when you can state a useful token budget. Jaz tracks tokens_used as uncached input plus output from usage events after create_goal.
+Set token_budget only when the user explicitly provided a token budget for this goal. Never estimate or invent one. The budget limits automatic continuation after a turn; it does not interrupt a turn already in progress. Jaz tracks tokens_used as uncached input plus output from usage events after create_goal.
 Use get_goal when you need current goal usage. When the objective is achieved, call update_goal with status "complete"; if progress is impossible without user input or an external change, call update_goal with status "blocked".
 </jaz_goal_mode>`
 

@@ -11,9 +11,6 @@ func (s *Server) setSessionArchivedState(sessionID string, archived bool) (stora
 	if err := s.Store.SetArchived(sessionID, archived); err != nil {
 		return storage.Session{}, err
 	}
-	if archived {
-		s.setSessionUnread(sessionID, false)
-	}
 	return s.Store.LoadSession(sessionID)
 }
 

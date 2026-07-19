@@ -144,8 +144,7 @@ export function BoardsStep({
       <span className="text-[12px] text-ink-3">Loading boards…</span>
     ) : boards.isError || (boards.data ?? []).length === 0 ? (
       <p className="text-[12px] text-ink-3">
-        No boards yet — create one with the + next to Boards in the sidebar to give this loop a
-        live widget.
+        No boards yet — create one on the Boards page to give this loop a live widget.
       </p>
     ) : (
       <BoardAssignmentPicker

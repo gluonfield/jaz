@@ -216,11 +216,12 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 		return
 	}
 	turnCompleted := job.State == acp.StateIdle
-	if status := storage.SessionStatusForACPState(job.State); status != "" {
-		s.setSessionStatusWithError(storage.Session{ID: job.ID}, status, job.Error)
-	}
 	if turnCompleted {
-		s.setSessionUnread(job.ID, true)
+		if err := s.Store.CompleteSession(job.ID, time.Now().UTC()); err != nil {
+			s.logger().Error("session completion update failed", "session", job.ID, "error", err)
+		}
+	} else if status := storage.SessionStatusForACPState(job.State); status != "" {
+		s.setSessionStatusWithError(storage.Session{ID: job.ID}, status, job.Error)
 	}
 	s.publishMessagesChanged(job.ID)
 	// The turn's token usage was persisted during the turn; tell open pages to

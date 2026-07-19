@@ -87,10 +87,13 @@ export function CommandPalette({
     if (!open) setQuery('')
   }, [open])
 
+  // Snap focus to the top result the instant the query changes (not the
+  // debounced value, which would leave the highlight on a stale row for ~140ms)
+  // and again whenever async results arrive and resize the list.
   useEffect(() => {
     if (!open) return
     setActiveIndex(0)
-  }, [debouncedQuery, items.length, open])
+  }, [query, items.length, open])
 
   useEffect(() => {
     if (!open) return
@@ -131,7 +134,7 @@ export function CommandPalette({
     <AnimatePresence initial={false}>
       {open ? (
         <motion.div
-          className="fixed inset-0 z-command flex items-center justify-center bg-black/25 px-3 py-[6dvh] backdrop-blur-[1.5px]"
+          className="fixed inset-0 z-command flex items-start justify-center overflow-hidden bg-black/25 px-3 py-[10dvh] backdrop-blur-[1.5px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -178,7 +181,7 @@ export function CommandPalette({
             </motion.div>
 
             <div className="relative flex max-h-[min(590px,76dvh)] flex-col overflow-hidden rounded-[12px] bg-bg shadow-[0_18px_48px_rgba(0,0,0,0.22),0_2px_8px_rgba(0,0,0,0.08)]">
-              <div className="flex items-center gap-2 px-3 py-2.5">
+              <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2.5">
                 <Search size={17} className="shrink-0 text-ink-3" />
                 <input
                   ref={inputRef}

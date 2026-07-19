@@ -22,6 +22,9 @@ func mergeProviderSubagentEvent(prev, next ProviderSubagentEvent) ProviderSubage
 	if next.Name == "" {
 		next.Name = prev.Name
 	}
+	if next.Task == "" {
+		next.Task = prev.Task
+	}
 	if next.Role == "" {
 		next.Role = prev.Role
 	}

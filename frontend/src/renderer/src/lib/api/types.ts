@@ -436,7 +436,7 @@ export interface Loop {
   last_run_at?: string
   last_run_id?: string
   last_run_thread_id?: string
-  last_run_status?: string
+  last_run_status?: LoopRunStatus
   last_error?: string
   created_at: string
   updated_at: string
@@ -480,8 +480,8 @@ export interface BoardItem {
   placed_by: 'llm' | 'user'
   loop_id: string
   loop_name: string
-  loop_status: string
-  loop_last_run_status?: string
+  loop_status: Loop['status']
+  loop_last_run_status?: LoopRunStatus
   loop_last_run_at?: string
   title: string
   current_version: number
@@ -702,6 +702,7 @@ export interface ProviderSubagentEvent {
   thread_id?: string
   parent_id?: string
   name?: string
+  task?: string
   role?: string
   status?: string
   summary?: string

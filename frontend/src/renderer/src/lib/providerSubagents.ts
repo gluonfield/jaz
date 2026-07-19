@@ -88,6 +88,7 @@ export function mergeProviderSubagentEvent(
     thread_id: next.thread_id || prev?.thread_id,
     parent_id: next.parent_id || prev?.parent_id,
     name: next.name || prev?.name,
+    task: next.task || prev?.task,
     role: next.role || prev?.role,
     status: next.status || prev?.status,
     summary: next.summary || prev?.summary,

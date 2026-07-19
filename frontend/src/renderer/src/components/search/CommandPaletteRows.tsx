@@ -99,7 +99,11 @@ function PaletteRow({
       transition={reduceMotion ? { duration: 0.08 } : ITEM_TRANSITION}
       whileTap={reduceMotion ? undefined : { scale: 0.985 }}
       onClick={onSelect}
-      onMouseEnter={onActive}
+      // Select on real pointer movement, not `mouseenter`: as results reflow
+      // under a stationary cursor, Chromium re-fires enter on whatever row lands
+      // under the pointer, which would yank the highlight off the top result.
+      // `mousemove` only fires when the mouse actually moves.
+      onMouseMove={onActive}
       // Selection must snap on keypress, so the highlight has no color
       // transition — fading it would make arrow-nav read as laggy. Hover keeps
       // a hair of fade since the pointer moves continuously.
@@ -116,20 +120,26 @@ function PaletteRow({
 
 export function CommandRow({
   item,
+  active,
   ...row
 }: {
   item: PaletteCommand
 } & Omit<PaletteRowProps, 'className' | 'children'>) {
   const Icon = item.icon
   return (
-    <PaletteRow {...row} className="min-h-[44px] items-center py-2">
+    <PaletteRow {...row} active={active} className="min-h-[34px] items-center py-1.5">
       {Icon ? (
-        <span className="grid size-7 shrink-0 place-items-center rounded-[6px] bg-surface-2 text-ink-2">
-          <Icon size={15} />
-        </span>
+        <Icon
+          size={16}
+          className={`shrink-0 transition-colors group-hover:text-ink-2 ${
+            active ? 'text-ink-2' : 'text-ink-3'
+          }`}
+        />
       ) : null}
       <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{item.title}</span>
-      {item.shortcut ? <KeyboardShortcut value={item.shortcut} className="bg-surface-2" /> : null}
+      {item.shortcut ? (
+        <KeyboardShortcut value={item.shortcut} className="border-transparent bg-surface-2" />
+      ) : null}
     </PaletteRow>
   )
 }

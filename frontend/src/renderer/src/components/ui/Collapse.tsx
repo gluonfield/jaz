@@ -16,7 +16,7 @@ export function Collapse({
 }) {
   return (
     <div
-      className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+      className={`grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
     >
       <div className={`min-h-0 overflow-hidden ${className}`} inert={!open}>
         {children}

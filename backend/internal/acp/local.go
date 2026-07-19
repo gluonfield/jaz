@@ -294,13 +294,9 @@ func (m *Manager) applyLocalMessage(job *jobState, chunk string) {
 	job.mu.Lock()
 	now := time.Now().UTC()
 	job.appendAssistantLocked(chunk)
-	bufferMessage := job.turn != nil && job.turn.planRequested
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.mu.Unlock()
-	if bufferMessage {
-		return
-	}
 	m.queueACPMessage(job, chunk)
 }
 

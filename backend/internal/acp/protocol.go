@@ -16,6 +16,11 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
+const (
+	codexPlanKindMetaKey  = "codex.plan_kind"
+	codexPlanKindProposal = "proposal"
+)
+
 func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {
 	switch req.Method {
 	case acpschema.ClientMethodSessionUpdate:
@@ -118,7 +123,6 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	var publishACP bool
 	var messageChunk string
 	var messageID string
-	var bufferMessage bool
 	var thoughtChunk string
 	var thoughtMessageID string
 	var toolEvent *sessionevents.ACPToolCall
@@ -175,7 +179,6 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		messageChunk = contentText(event.Content)
 		messageID = event.MessageID
 		job.appendAssistantLocked(messageChunk)
-		bufferMessage = job.turn != nil && planTurnDefersResult(job.turn.planRequested, job.ACPAgent)
 		if messageChunk != "" {
 			job.savedAssistantLen = len(job.Assistant)
 		}
@@ -218,11 +221,14 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 				Priority: string(entry.Priority),
 			})
 		}
-		deferPlan := job.turn != nil && planTurnDefersResult(job.turn.planRequested, job.ACPAgent)
-		if planText, ok := sessionevents.NormalizePlanDocumentText(plan); ok && deferPlan {
-			job.turn.planProposal = &sessionevents.PlanEvent{
-				Explanation:      planText,
-				AwaitingApproval: true,
+		acceptProposal := job.turn != nil && acceptsACPPlanProposal(job.turn.planRequested, job.ACPAgent)
+		if acceptProposal {
+			job.turn.planDocument = ""
+		}
+		planKind, _ := event.Meta[codexPlanKindMetaKey].(string)
+		if planKind == codexPlanKindProposal {
+			if acceptProposal && len(plan) == 1 {
+				job.turn.planDocument = strings.TrimSpace(plan[0].Content)
 			}
 			if len(job.Plan) > 0 {
 				job.Plan = sessionevents.PlanCleared
@@ -233,24 +239,11 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		var ok bool
 		plan, ok = sessionevents.NormalizeProgressEntries(plan)
 		if !ok {
-			if deferPlan {
-				job.turn.planProposal = nil
-			}
 			if len(job.Plan) > 0 {
 				job.Plan = sessionevents.PlanCleared
 				publishACP = true
 			}
 			break
-		}
-		if deferPlan {
-			if len(plan) == 0 {
-				job.turn.planProposal = nil
-			} else {
-				job.turn.planProposal = &sessionevents.PlanEvent{
-					Plan:             clonePlanEntries(plan),
-					AwaitingApproval: true,
-				}
-			}
 		}
 		wasEmpty := len(job.Plan) == 0
 		publishACP = !slices.Equal(job.Plan, plan)
@@ -281,7 +274,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			publishACP = updated && session.Title != currentTitle
 		}
 	}
-	if messageChunk != "" && !bufferMessage {
+	if messageChunk != "" {
 		m.queueACPMessageWithID(job, messageChunk, messageID)
 	}
 	if thoughtChunk != "" {

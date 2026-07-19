@@ -36,6 +36,8 @@ SELECT
   unread,
   goal,
   manual_title,
+  last_completed_at_ms,
+  title_locked,
   event_compaction_version,
   event_revision
 FROM threads;
@@ -78,6 +80,8 @@ SELECT
   unread,
   goal,
   manual_title,
+  last_completed_at_ms,
+  title_locked,
   event_compaction_version,
   event_revision
 FROM threads
@@ -102,6 +106,7 @@ INSERT INTO threads (
   slug,
   title,
   manual_title,
+  title_locked,
   parent_id,
   status,
   runtime,
@@ -139,6 +144,7 @@ INSERT INTO threads (
   sqlc.arg(slug),
   sqlc.narg(title),
   sqlc.arg(manual_title),
+  sqlc.arg(title_locked),
   sqlc.narg(parent_id),
   sqlc.arg(status),
   sqlc.arg(runtime),
@@ -176,6 +182,7 @@ ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
   title = excluded.title,
   manual_title = excluded.manual_title,
+  title_locked = excluded.title_locked,
   parent_id = excluded.parent_id,
   status = excluded.status,
   error = excluded.error,
@@ -209,10 +216,22 @@ ON CONFLICT(id) DO UPDATE SET
   unread = excluded.unread,
   goal = excluded.goal;
 
+-- name: ListSessionSubtree :many
+WITH RECURSIVE subtree(id) AS (
+  SELECT threads.id FROM threads WHERE threads.id = sqlc.arg(id)
+  UNION
+  SELECT threads.id
+  FROM threads
+  JOIN subtree ON threads.parent_id = subtree.id
+)
+SELECT subtree.id FROM subtree;
+
 -- name: SetArchived :exec
 UPDATE threads
-SET archived = sqlc.arg(archived)
-WHERE id = sqlc.arg(id) OR parent_id = sqlc.arg(id);
+SET
+  archived = sqlc.arg(archived),
+  unread = CASE WHEN sqlc.arg(archived) != 0 THEN 0 ELSE unread END
+WHERE id IN (sqlc.slice('ids'));
 
 -- name: SetPinned :exec
 UPDATE threads
@@ -231,7 +250,7 @@ UPDATE threads
 SET
   title = sqlc.narg(title),
   manual_title = 0
-WHERE id = sqlc.arg(id) AND manual_title = 0;
+WHERE id = sqlc.arg(id) AND manual_title = 0 AND title_locked = 0;
 
 -- name: UpdateSessionStatus :exec
 UPDATE threads
@@ -243,6 +262,17 @@ SET
     WHEN CAST(sqlc.arg(touch_attention) AS INTEGER) != 0 THEN sqlc.arg(last_attention_at_ms)
     ELSE last_attention_at_ms
   END
+WHERE id = sqlc.arg(id);
+
+-- name: CompleteSession :exec
+UPDATE threads
+SET
+  status = 'idle',
+  error = NULL,
+  unread = 1,
+  updated_at_ms = sqlc.arg(completed_at_ms),
+  last_attention_at_ms = sqlc.arg(completed_at_ms),
+  last_completed_at_ms = sqlc.arg(completed_at_ms)
 WHERE id = sqlc.arg(id);
 
 -- name: TouchThread :exec

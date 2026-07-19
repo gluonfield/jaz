@@ -15,16 +15,19 @@ type sessionTitleResponse struct {
 	Title string `json:"title"`
 }
 
-func shouldGenerateTitleFromMessage(currentTitle, message string, existing []provider.Message) bool {
+func shouldGenerateTitleFromMessage(session storage.Session, message string, existing []provider.Message) bool {
+	if session.ManualTitle || session.TitleLocked {
+		return false
+	}
 	if hasConversationMessages(existing) {
 		return false
 	}
-	currentTitle = strings.TrimSpace(currentTitle)
-	if currentTitle == "" {
+	title := strings.TrimSpace(session.Title)
+	if title == "" {
 		return true
 	}
 	message = strings.TrimSpace(message)
-	return currentTitle == message || currentTitle == titleFromMessage(message)
+	return title == message || title == titleFromMessage(message)
 }
 
 func hasConversationMessages(messages []provider.Message) bool {
@@ -43,7 +46,7 @@ func (s *Server) maybeGenerateSessionTitle(session storage.Session, message stri
 		s.logger().Debug("loading messages before title generation failed", "session", session.ID, "error", err)
 		return
 	}
-	if !shouldGenerateTitleFromMessage(session.Title, message, existing) {
+	if !shouldGenerateTitleFromMessage(session, message, existing) {
 		return
 	}
 	go func() {
@@ -67,10 +70,11 @@ func (s *Server) generateAndSaveSessionTitle(ctx context.Context, session storag
 		s.logger().Debug("loading session after title generation failed", "session", session.ID, "error", err)
 		return session
 	}
-	if current.ManualTitle || current.Title != session.Title {
+	if current.ManualTitle || current.TitleLocked || current.Title != session.Title {
 		return current
 	}
 	current.Title = title
+	current.TitleLocked = true
 	if err := s.Store.SaveSession(current); err != nil {
 		s.logger().Debug("saving generated session title failed", "session", session.ID, "error", err)
 		return session

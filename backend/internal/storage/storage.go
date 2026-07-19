@@ -125,6 +125,7 @@ type Session struct {
 	Slug            string          `json:"slug"`
 	Title           string          `json:"title,omitempty"`
 	ManualTitle     bool            `json:"manual_title,omitempty"`
+	TitleLocked     bool            `json:"title_locked,omitempty"`
 	ParentID        string          `json:"parent_id,omitempty"`
 	Status          string          `json:"status"`
 	Error           string          `json:"error,omitempty"`
@@ -154,6 +155,13 @@ type FeedItem struct {
 	ParentID  string
 	ReplyText string
 	ReplyAt   time.Time
+}
+
+type FeedCompletion struct {
+	ID          string
+	Slug        string
+	Title       string
+	CompletedAt time.Time
 }
 
 func MarkSessionAttention(session *Session, at time.Time) {

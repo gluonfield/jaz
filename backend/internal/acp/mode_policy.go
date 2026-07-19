@@ -14,16 +14,10 @@ var baselineModePriority = map[string][]string{
 
 var defaultBaselineModePriority = []string{"full-access", "yolo", "always-approve"}
 
-// planTurnDefersResult reports whether a plan-requested turn buffers streamed
-// output and publishes a proposed_plan at turn end. Claude surfaces plan
-// approval inline via the ExitPlanMode permission and streams live.
-func planTurnDefersResult(planRequested bool, agent string) bool {
-	switch CanonicalAgentName(agent) {
-	case AgentClaude:
-		return false
-	default:
-		return planRequested
-	}
+// acceptsACPPlanProposal reports whether a plan document from ACP owns approval
+// for this turn. Claude uses ExitPlanMode approval instead.
+func acceptsACPPlanProposal(planRequested bool, agent string) bool {
+	return planRequested && CanonicalAgentName(agent) != AgentClaude
 }
 
 func preferredBaselineModeID(agent string, modes []acpschema.SessionMode) string {

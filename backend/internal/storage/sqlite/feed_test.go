@@ -107,6 +107,62 @@ func TestLoadFeedTracksUnreadFlag(t *testing.T) {
 	}
 }
 
+func TestLoadFeedCompletionsUsesThreadProjection(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "feed-completion", Title: "Done"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetThreadUnread(session.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	items, err := store.LoadFeedCompletions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("attention-only thread appeared as a completion: %#v", items)
+	}
+	if err := store.SetThreadUnread(session.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(session.ID, storage.StatusRunning, "", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+
+	completedAt := time.Date(2026, 7, 18, 10, 0, 0, 0, time.UTC)
+	if err := store.CompleteSession(session.ID, completedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.TouchSessionAttention(session.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err = store.LoadFeedCompletions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != session.ID || items[0].Title != "Done" || !items[0].CompletedAt.Equal(completedAt) {
+		t.Fatalf("completions = %#v", items)
+	}
+
+	if err := store.UpdateSessionStatus(session.ID, storage.StatusRunning, "", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	items, err = store.LoadFeedCompletions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || !items[0].CompletedAt.Equal(completedAt) {
+		t.Fatalf("running thread lost its previous completion: %#v", items)
+	}
+}
+
 func TestLoadFeedConcatenatesLastTurn(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
@@ -199,11 +255,34 @@ func TestLoadFeedExcludesArchived(t *testing.T) {
 	if err := store.SetThreadUnread(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
+	child, err := store.CreateSession(storage.CreateSession{Slug: "feed-archived-child", ParentID: session.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetThreadUnread(child.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	grandchild, err := store.CreateSession(storage.CreateSession{Slug: "feed-archived-grandchild", ParentID: child.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetThreadUnread(grandchild.ID, true); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.SetArchived(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if ids := feedIDs(t, store); contains(ids, session.ID) {
 		t.Fatalf("archived thread should be excluded: %v", ids)
+	}
+	for _, id := range []string{session.ID, child.ID, grandchild.ID} {
+		archived, err := store.LoadSession(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !archived.Archived || archived.Unread {
+			t.Fatalf("archived session retained unread state: %#v", archived)
+		}
 	}
 }
 

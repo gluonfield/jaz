@@ -42,6 +42,23 @@ func (s *Store) LoadFeed() ([]storage.FeedItem, error) {
 	return items, nil
 }
 
+func (s *Store) LoadFeedCompletions() ([]storage.FeedCompletion, error) {
+	rows, err := feed.New(s.db).ListFeedCompletions(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	items := make([]storage.FeedCompletion, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, storage.FeedCompletion{
+			ID:          row.ID,
+			Slug:        row.Slug,
+			Title:       row.Title.String,
+			CompletedAt: msToTime(row.LastCompletedAtMs),
+		})
+	}
+	return items, nil
+}
+
 func lastTurnReply(events []sessionevents.Event) (string, int64) {
 	parts := make([]string, 0)
 	var replyAt int64

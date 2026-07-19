@@ -79,7 +79,7 @@ type activeTurn struct {
 	firstPromptSentClosed bool
 	promptHandoff         chan struct{}
 	promptCalls           int
-	planProposal          *sessionevents.PlanEvent
+	planDocument          string
 	processLease          *processLease
 	cancel                context.CancelFunc
 }
