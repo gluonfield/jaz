@@ -711,6 +711,7 @@ export interface ProviderSubagentEvent {
   thread_id?: string
   parent_id?: string
   name?: string
+  task?: string
   role?: string
   status?: string
   summary?: string

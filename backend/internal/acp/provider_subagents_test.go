@@ -43,7 +43,8 @@ func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 							"provider":  "codex",
 							"id":        "thread-1",
 							"thread_id": "thread-1",
-							"name":      "worker",
+							"name":      "Newton",
+							"task":      "next_rigidity",
 							"status":    "running",
 							"prompt":    "inspect the leak",
 						},
@@ -63,7 +64,8 @@ func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 		}
 		if event.ProviderSubagent.ID != "thread-1" ||
 			event.ProviderSubagent.Provider != AgentCodex ||
-			event.ProviderSubagent.Name != "worker" ||
+			event.ProviderSubagent.Name != "Newton" ||
+			event.ProviderSubagent.Task != "next_rigidity" ||
 			event.ProviderSubagent.Prompt != "inspect the leak" {
 			t.Fatalf("provider subagent = %#v", event.ProviderSubagent)
 		}

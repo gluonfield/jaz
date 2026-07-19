@@ -56,6 +56,7 @@ type ProviderSubagentEvent struct {
 	ThreadID        string `json:"thread_id,omitempty"`
 	ParentID        string `json:"parent_id,omitempty"`
 	Name            string `json:"name,omitempty"`
+	Task            string `json:"task,omitempty"`
 	Role            string `json:"role,omitempty"`
 	Status          string `json:"status,omitempty"`
 	Summary         string `json:"summary,omitempty"`

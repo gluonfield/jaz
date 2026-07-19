@@ -279,7 +279,7 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
   const [expanded, setExpanded] = useState(false)
   const status = SUBAGENT_STATUS[subagentStatus(subagent.status)]
   const title = subagentTitle(subagent)
-  const detail = subagentSummary(subagent.summary)
+  const detail = subagentDetail(subagent, title)
   const prompt = subagent.prompt?.trim() ?? ''
   return (
     <li className="min-w-0 rounded-md">
@@ -326,7 +326,26 @@ function subagentStatus(status: string | undefined): SubagentStatus {
 }
 
 function subagentTitle(subagent: ProviderSubagentView): string {
-  return firstText(subagent.name, subagent.role) || 'Subagent'
+  const name = subagent.name?.trim()
+  const task = subagent.task?.trim()
+  if (name && task && name.toLowerCase() === task.toLowerCase()) return humanizeSubagentTask(task)
+  const displayName = name && /[_-]/.test(name) ? humanizeSubagentTask(name) : name
+  return firstText(displayName, task ? humanizeSubagentTask(task) : undefined, subagent.role) || 'Subagent'
+}
+
+function subagentDetail(subagent: ProviderSubagentView, title: string): string | undefined {
+  const task = subagent.task?.trim()
+  const taskLabel = task ? humanizeSubagentTask(task) : undefined
+  return firstText(
+    taskLabel && taskLabel !== title ? taskLabel : undefined,
+    subagentSummary(subagent.summary),
+    subagent.role?.trim() !== title ? subagent.role : undefined,
+  ) || undefined
+}
+
+function humanizeSubagentTask(task: string): string {
+  const text = task.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return text ? text[0].toUpperCase() + text.slice(1) : task
 }
 
 function subagentSummary(summary: string | undefined): string | undefined {

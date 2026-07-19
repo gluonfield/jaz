@@ -2,46 +2,46 @@
   "adapters": {
     "codex": {
       "repo": "gluonfield/codex-acp",
-      "tag": "v0.16.24",
-      "version": "0.16.24",
+      "tag": "v0.16.25",
+      "version": "0.16.25",
       "assets": {
         "darwin-arm64": {
-          "name": "codex-acp-0.16.24-aarch64-apple-darwin.tar.gz",
+          "name": "codex-acp-0.16.25-aarch64-apple-darwin.tar.gz",
           "binary": "codex-acp",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
         },
         "darwin-x64": {
-          "name": "codex-acp-0.16.24-x86_64-apple-darwin.tar.gz",
+          "name": "codex-acp-0.16.25-x86_64-apple-darwin.tar.gz",
           "binary": "codex-acp",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
         },
         "linux-arm64": {
-          "name": "codex-acp-0.16.24-aarch64-unknown-linux-gnu.tar.gz",
+          "name": "codex-acp-0.16.25-aarch64-unknown-linux-gnu.tar.gz",
           "binary": "codex-acp",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
         },
         "linux-x64": {
-          "name": "codex-acp-0.16.24-x86_64-unknown-linux-gnu.tar.gz",
+          "name": "codex-acp-0.16.25-x86_64-unknown-linux-gnu.tar.gz",
           "binary": "codex-acp",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
         },
         "win32-arm64": {
-          "name": "codex-acp-0.16.24-aarch64-pc-windows-msvc.tar.gz",
+          "name": "codex-acp-0.16.25-aarch64-pc-windows-msvc.tar.gz",
           "binary": "codex-acp.exe",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"
           }
         },
         "win32-x64": {
-          "name": "codex-acp-0.16.24-x86_64-pc-windows-msvc.tar.gz",
+          "name": "codex-acp-0.16.25-x86_64-pc-windows-msvc.tar.gz",
           "binary": "codex-acp.exe",
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"
@@ -82,39 +82,39 @@
     },
     "claude": {
       "repo": "gluonfield/claude-agent-acp",
-      "tag": "v0.57.0-jaz.3",
-      "version": "0.57.0-jaz.3",
+      "tag": "v0.59.0-jaz.1",
+      "version": "0.59.0-jaz.1",
       "assets": {
         "darwin-arm64": {
-          "name": "claude-agent-acp-0.57.0-jaz.3-darwin-arm64.tar.gz",
+          "name": "claude-agent-acp-0.59.0-jaz.1-darwin-arm64.tar.gz",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "darwin-x64": {
-          "name": "claude-agent-acp-0.57.0-jaz.3-darwin-x64.tar.gz",
+          "name": "claude-agent-acp-0.59.0-jaz.1-darwin-x64.tar.gz",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "linux-arm64": {
-          "name": "claude-agent-acp-0.57.0-jaz.3-linux-arm64.tar.gz",
+          "name": "claude-agent-acp-0.59.0-jaz.1-linux-arm64.tar.gz",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "linux-x64": {
-          "name": "claude-agent-acp-0.57.0-jaz.3-linux-x64.tar.gz",
+          "name": "claude-agent-acp-0.59.0-jaz.1-linux-x64.tar.gz",
           "binary": "claude-agent-acp",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude"
           }
         },
         "win32-x64": {
-          "name": "claude-agent-acp-0.57.0-jaz.3-win32-x64.tar.gz",
+          "name": "claude-agent-acp-0.59.0-jaz.1-win32-x64.tar.gz",
           "binary": "claude-agent-acp.exe",
           "env": {
             "CLAUDE_CODE_EXECUTABLE": "claude.exe"
