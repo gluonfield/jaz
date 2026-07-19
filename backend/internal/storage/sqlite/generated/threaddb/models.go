@@ -49,4 +49,5 @@ type Thread struct {
 	TitleLocked            int64          `json:"title_locked"`
 	EventCompactionVersion int64          `json:"event_compaction_version"`
 	EventRevision          int64          `json:"event_revision"`
+	TranscriptRevision     int64          `json:"transcript_revision"`
 }

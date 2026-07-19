@@ -15,6 +15,22 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
+type countingEventStore struct {
+	storage.Store
+	fullLoads  int
+	afterLoads int
+}
+
+func (s *countingEventStore) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
+	s.fullLoads++
+	return s.Store.LoadSessionEvents(id)
+}
+
+func (s *countingEventStore) LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error) {
+	s.afterLoads++
+	return s.Store.LoadSessionEventsAfter(id, afterSeq)
+}
+
 func TestStreamSessionEventsReplaysPersistedEventsAfterSeq(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -49,6 +65,104 @@ func TestStreamSessionEventsReplaysPersistedEventsAfterSeq(t *testing.T) {
 	}
 	if got := res.Header().Get("Content-Type"); got != "text/event-stream" {
 		t.Fatalf("content type = %q", got)
+	}
+}
+
+func TestStreamSessionEventsReplaysProjectedTextAsReplacement(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "projected-events", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := func(content string) sessionevents.Event {
+		return sessionevents.Event{
+			Type:    sessionevents.TypeACPMessage,
+			Content: content,
+			ACP: &sessionevents.ACPEvent{
+				ID: session.ID, Agent: "codex", SessionID: "acp-session", State: acp.StateRunning, TextRunID: "message:one",
+			},
+		}
+	}
+	if err := store.AppendSessionEvents(session.ID, text("Hel"), text("lo")); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := &Server{Store: store, Events: sessionevents.New()}
+	res := streamSessionEventsForTest(t, srv, session.ID, "/v1/sessions/"+session.ID+"/events?after_seq=1", "", "")
+	body := res.Body.String()
+	if !strings.Contains(body, `"content":"Hello"`) || !strings.Contains(body, `"projection_op":"replace"`) {
+		t.Fatalf("projected replay = %s", body)
+	}
+	if !strings.Contains(body, `"projection_key":"acp_text:`) {
+		t.Fatalf("projected replay has no backend identity: %s", body)
+	}
+}
+
+func TestStreamSessionEventsUsesBoundedReplayForProjectedEvents(t *testing.T) {
+	base, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := base.CreateSession(storage.CreateSession{Slug: "bounded-events", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := func(content, op string) sessionevents.Event {
+		return sessionevents.Event{
+			Type: sessionevents.TypeACPMessage, Content: content,
+			ProjectionKey: "acp_text:thread:agent:message:one", ProjectionOp: op,
+			ACP: &sessionevents.ACPEvent{
+				ID: session.ID, Agent: "codex", SessionID: "acp-session", State: acp.StateRunning, TextRunID: "message:one",
+			},
+		}
+	}
+	if err := base.AppendSessionEvents(session.ID, text("Hel", ""), text("lo", sessionevents.ProjectionAppend)); err != nil {
+		t.Fatal(err)
+	}
+	store := &countingEventStore{Store: base}
+	srv := &Server{Store: store, Events: sessionevents.New()}
+	res := streamSessionEventsForTest(t, srv, session.ID, "/v1/sessions/"+session.ID+"/events?after_seq=1", "", "")
+	body := res.Body.String()
+	if store.afterLoads != 1 || store.fullLoads != 0 {
+		t.Fatalf("event loads = after %d, full %d", store.afterLoads, store.fullLoads)
+	}
+	if !strings.Contains(body, `"content":"lo"`) || !strings.Contains(body, `"projection_op":"append"`) {
+		t.Fatalf("bounded replay = %s", body)
+	}
+}
+
+func TestStreamSessionEventsDoesNotReloadInitialLegacyHistory(t *testing.T) {
+	base, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := base.CreateSession(storage.CreateSession{Slug: "legacy-events", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := func(content string) sessionevents.Event {
+		return sessionevents.Event{
+			Type: sessionevents.TypeACPMessage, Content: content,
+			ACP: &sessionevents.ACPEvent{
+				ID: session.ID, State: acp.StateRunning, TextRunID: "message:one",
+			},
+		}
+	}
+	if err := base.AppendSessionEvents(session.ID, text("Hel"), text("lo")); err != nil {
+		t.Fatal(err)
+	}
+	store := &countingEventStore{Store: base}
+	srv := &Server{Store: store, Events: sessionevents.New()}
+	res := streamSessionEventsForTest(t, srv, session.ID, "/v1/sessions/"+session.ID+"/events", "", "")
+
+	if store.afterLoads != 1 || store.fullLoads != 0 {
+		t.Fatalf("event loads = after %d, full %d", store.afterLoads, store.fullLoads)
+	}
+	if !strings.Contains(res.Body.String(), `"content":"Hello"`) {
+		t.Fatalf("projected replay = %s", res.Body.String())
 	}
 }
 

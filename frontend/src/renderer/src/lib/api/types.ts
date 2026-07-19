@@ -555,7 +555,12 @@ export type ACPMeta = Record<
 export interface SessionMessages {
   session: Session
   messages: ChatMessage[]
-  events?: SessionEvent[]
+  events: SessionEvent[]
+  has_earlier: boolean
+  before_message_seq?: number
+  before_event_seq?: number
+  history_revision: number
+  latest_event_seq: number
   acp_meta?: ACPMeta
   acp_state?: string
   acp_assistant?: string
@@ -805,6 +810,8 @@ export interface ACPPermission {
 
 export interface SessionEvent {
   seq?: number
+  projection_key?: string
+  projection_op?: 'append' | 'replace'
   session_id: string
   type: string
   content?: string

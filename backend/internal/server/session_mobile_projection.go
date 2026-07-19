@@ -2,7 +2,6 @@ package server
 
 import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
-	"github.com/wins/jaz/backend/internal/storage"
 )
 
 func mobileSessionEvents(events []sessionevents.Event) []sessionevents.Event {
@@ -23,22 +22,6 @@ func mobileSessionEvent(event sessionevents.Event) sessionevents.Event {
 		event.ACP = &acp
 	}
 	return event
-}
-
-func mobileACPStates(states []storage.ACPState) []storage.ACPState {
-	if len(states) == 0 {
-		return states
-	}
-	out := make([]storage.ACPState, len(states))
-	for i, state := range states {
-		out[i] = mobileACPState(state)
-	}
-	return out
-}
-
-func mobileACPState(state storage.ACPState) storage.ACPState {
-	state.ToolCalls = mobileACPToolCalls(state.ToolCalls)
-	return state
 }
 
 func mobileACPToolCalls(calls []sessionevents.ACPToolCall) []sessionevents.ACPToolCall {

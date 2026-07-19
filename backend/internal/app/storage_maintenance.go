@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	storageMaintenanceYield = 10 * time.Millisecond
+	storageMaintenanceYield = 250 * time.Millisecond
 	storageMaintenanceRetry = time.Second
 	storageMaintenanceIdle  = time.Second
 )
@@ -39,17 +39,16 @@ func StartStorageMaintenance(lc fx.Lifecycle, store *sqlitestore.Store, logger *
 }
 
 type sessionEventMaintenanceStore interface {
-	CompactNextLegacySessionEvents(context.Context) (sqlitestore.SessionEventCompaction, error)
-	HasLegacySessionEventThreads(context.Context) (bool, error)
-	CompactACPStates(context.Context) (int, int64, error)
+	CompactNextSessionEvents(context.Context) (sqlitestore.SessionEventCompaction, error)
+	HasPendingSessionEventCompaction(context.Context) (bool, error)
+	SessionEventCompactionWake() <-chan struct{}
 }
 
 func runStorageMaintenance(ctx context.Context, store sessionEventMaintenanceStore, logger *log.Logger) {
-	compactACPStates(ctx, store, logger)
 	compacted := 0
 	removedTotal := 0
 	for ctx.Err() == nil {
-		result, err := store.CompactNextLegacySessionEvents(ctx)
+		result, err := store.CompactNextSessionEvents(ctx)
 		delay := storageMaintenanceYield
 		switch {
 		case err != nil:
@@ -59,18 +58,23 @@ func runStorageMaintenance(ctx context.Context, store sessionEventMaintenanceSto
 			delay = storageMaintenanceRetry
 		case result.ThreadID == "":
 			if compacted > 0 {
-				logger.Info("compacted legacy session events", "sessions", compacted, "removed", removedTotal)
+				logger.Info("compacted session events", "sessions", compacted, "removed", removedTotal)
 				compacted = 0
 				removedTotal = 0
 			}
-			pending, pendingErr := store.HasLegacySessionEventThreads(ctx)
+			pending, pendingErr := store.HasPendingSessionEventCompaction(ctx)
 			if pendingErr != nil {
 				if ctx.Err() == nil {
 					logger.Warn("session event compaction state failed", "error", pendingErr)
 				}
 				delay = storageMaintenanceRetry
 			} else if !pending {
-				return
+				select {
+				case <-ctx.Done():
+					return
+				case <-store.SessionEventCompactionWake():
+					continue
+				}
 			} else {
 				delay = storageMaintenanceIdle
 			}
@@ -87,18 +91,5 @@ func runStorageMaintenance(ctx context.Context, store sessionEventMaintenanceSto
 			return
 		case <-timer.C:
 		}
-	}
-}
-
-func compactACPStates(ctx context.Context, store sessionEventMaintenanceStore, logger *log.Logger) {
-	states, bytes, err := store.CompactACPStates(ctx)
-	if err != nil {
-		if ctx.Err() == nil {
-			logger.Warn("acp state compaction failed", "error", err)
-		}
-		return
-	}
-	if states > 0 {
-		logger.Info("compacted redundant acp state", "sessions", states, "removed_bytes", bytes)
 	}
 }

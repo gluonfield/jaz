@@ -168,7 +168,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	}
 	subagentUpdate := providerSubagentFromUpdate(job.ACPAgent, update)
 	if subagentUpdate.subagent != nil {
-		m.publishProviderSubagent(job.eventSnapshot(), *subagentUpdate.subagent)
+		m.publishProviderSubagent(job.eventView(), *subagentUpdate.subagent)
 	}
 	if subagentUpdate.consume {
 		return
@@ -281,10 +281,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		m.queueACPThoughtWithID(job, thoughtChunk, thoughtMessageID)
 	}
 	if toolEvent != nil {
-		m.publishACPTool(job.eventSnapshot(), *toolEvent)
+		m.publishACPTool(job.eventView(), *toolEvent)
 	}
 	if publishACP {
-		m.publishACP(job.eventSnapshot())
+		m.publishACP(job.eventView())
 	}
 }
 

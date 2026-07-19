@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -35,7 +36,7 @@ var queuedActionSpecs = map[storage.QueuedAction]queuedActionSpec{
 	storage.QueuedActionCompact: {
 		Async: true,
 		CanStart: func(s *Server, session storage.Session) bool {
-			return s.ACP != nil && sessionSupportsCompact(session)
+			return s.ACP != nil && sessionview.SupportsCompact(session)
 		},
 		Run: func(s *Server, ctx context.Context, session storage.Session) error {
 			return s.startQueuedCompact(ctx, session)
@@ -122,7 +123,7 @@ func (s *Server) startQueuedCompact(ctx context.Context, session storage.Session
 	if session.Runtime != storage.RuntimeACP {
 		return fmt.Errorf("compact is only available for acp sessions")
 	}
-	if !sessionSupportsCompact(session) {
+	if !sessionview.SupportsCompact(session) {
 		return fmt.Errorf("compact is not available for this session")
 	}
 	if s.ACP == nil {

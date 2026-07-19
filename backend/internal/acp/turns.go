@@ -60,7 +60,7 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
 		return
 	}
-	m.withACPTranscriptBarrier(job.eventSnapshot(), nil)
+	m.withACPTranscriptBarrier(job.eventView(), nil)
 	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionPrompt, req)
 	if err != nil {
 		if jsonrpc.IsClosed(err) && !errors.Is(err, context.Canceled) {
@@ -117,7 +117,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	job.UpdatedAt = time.Now().UTC()
 	job.mu.Unlock()
 	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
-	m.publishACPStatus(job.eventSnapshot())
+	m.publishACPStatus(job.eventView())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
 }
@@ -158,14 +158,15 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	m.cancelPendingPermissions(job.ID)
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
+	event := eventViewFromJob(snapshot)
 	if snapshot.State == StateIdle || snapshot.State == StateFailed || snapshot.State == StateCancelled {
 		if snapshot.State == StateIdle && planDocument != "" {
-			m.publishPlanEvent(snapshot, sessionevents.PlanEvent{
+			m.publishPlanEvent(event, sessionevents.PlanEvent{
 				Explanation:      planDocument,
 				AwaitingApproval: true,
 			})
 		}
-		m.touchAttention(surfaceSessionIDs(&snapshot)...)
+		m.touchAttention(surfaceSessionIDs(event)...)
 	}
 	if m.TurnFinished != nil {
 		m.TurnFinished(context.Background(), snapshot)
@@ -176,6 +177,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
 		go m.Done(context.Background(), snapshot)
 	}
+	m.discardTurnResultWhenReleased(job)
 }
 
 func (m *Manager) attachmentResourceResolver(job *jobState) (attachmentResourceResolver, error) {
@@ -278,7 +280,7 @@ func (m *Manager) failTurn(job *jobState, err error) {
 		job.setState(StateFailed, "", message)
 		m.log.Error("acp turn failed", "session", job.ID, "error", err)
 	}
-	m.publishACPStatus(job.eventSnapshot())
+	m.publishACPStatus(job.eventView())
 }
 
 func acpTurnErrorMessage(err error) string {
@@ -379,7 +381,7 @@ func (m *Manager) resolveDanglingToolCalls(job *jobState) {
 	job.mu.Unlock()
 	m.log.Info("resolved dangling tool calls", "session", sessionID, "count", len(updated), "status", status)
 	for _, call := range updated {
-		m.publishACPTool(job.eventSnapshot(), call)
+		m.publishACPTool(job.eventView(), call)
 	}
 }
 

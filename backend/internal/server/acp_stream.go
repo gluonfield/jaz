@@ -28,10 +28,6 @@ type acpStreamTurn struct {
 	GoalRequested bool
 }
 
-type acpStreamStatusReader interface {
-	StreamStatus(string) (acp.Job, error)
-}
-
 func acpStreamTurnFromRequest(req streamRequest) acpStreamTurn {
 	turn := acpStreamTurn{
 		Kind:          acpTurnPrompt,
@@ -68,6 +64,8 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
 	}
+	releaseStream := s.ACP.RetainStream(session.ID)
+	defer releaseStream()
 	startCtx, cancelStart := serverActionContextFrom(clientCtx)
 	var job acp.Job
 	if turn.compact() {
@@ -93,25 +91,22 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		return
 	}
 
+	stream := acp.StreamViewFromJob(job)
 	emittedAssistant := 0
 	emittedThought := 0
 	seenTools := map[string]struct{}{}
-	status := s.ACP.Status
-	if reader, ok := s.ACP.(acpStreamStatusReader); ok {
-		status = reader.StreamStatus
-	}
 	ticker := time.NewTicker(120 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
-		emitACPJob(w, flusher, job, &emittedAssistant, &emittedThought, seenTools)
-		if job.State == acp.StateFailed {
-			s.setSessionError(session, job.Error)
-			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: job.Error})
+		emitACPStream(w, flusher, stream, &emittedAssistant, &emittedThought, seenTools)
+		if stream.State == acp.StateFailed {
+			s.setSessionError(session, stream.Error)
+			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: stream.Error})
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 			return
 		}
-		if isACPTerminal(job.State) {
+		if isACPTerminal(stream.State) {
 			s.setSessionStatus(session, storage.StatusIdle)
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 			return
@@ -120,7 +115,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		case <-clientCtx.Done():
 			return
 		case <-ticker.C:
-			job, err = status(session.ID)
+			stream, err = s.ACP.StreamStatus(session.ID)
 			if err != nil {
 				s.setSessionError(session, err.Error())
 				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
@@ -158,8 +153,8 @@ func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, mess
 	return session, nil
 }
 
-func emitACPJob(w http.ResponseWriter, flusher http.Flusher, job acp.Job, emittedAssistant, emittedThought *int, seenTools map[string]struct{}) {
-	for _, call := range job.ToolCalls {
+func emitACPStream(w http.ResponseWriter, flusher http.Flusher, stream acp.StreamView, emittedAssistant, emittedThought *int, seenTools map[string]struct{}) {
+	for _, call := range stream.Tools {
 		key := firstNonEmpty(call.ID, call.Title)
 		if key == "" {
 			continue
@@ -173,14 +168,14 @@ func emitACPJob(w http.ResponseWriter, flusher http.Flusher, job acp.Job, emitte
 			ToolName: firstNonEmpty(call.Title, call.ID),
 		})
 	}
-	if *emittedAssistant < len(job.Assistant) {
-		delta := job.Assistant[*emittedAssistant:]
-		*emittedAssistant = len(job.Assistant)
+	if *emittedAssistant < len(stream.Assistant) {
+		delta := stream.Assistant[*emittedAssistant:]
+		*emittedAssistant = len(stream.Assistant)
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDelta, Delta: delta})
 	}
-	if *emittedThought < len(job.Thought) {
-		delta := job.Thought[*emittedThought:]
-		*emittedThought = len(job.Thought)
+	if *emittedThought < len(stream.Thought) {
+		delta := stream.Thought[*emittedThought:]
+		*emittedThought = len(stream.Thought)
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamReasoning, Reasoning: delta})
 	}
 }

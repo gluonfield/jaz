@@ -6,6 +6,7 @@ import { apiEmbeddedGetUrl, apiFetch, ApiError, del, get, post, put } from './cl
 import {
   fileKey,
   type Attachment,
+  type ChatMessage,
   type DailyUsage,
   type HealthResponse,
   type QueuedMessageInput,
@@ -479,7 +480,12 @@ export const allSessionsQuery = queryOptions({
 // Stored events carry only the acp session id and slug; session-constant
 // labels arrive once per response in acp_meta. Fold them back onto events here
 // so the rest of the app keeps the single contract: labels live on event.acp.
-function hydrateEventLabels(data: SessionMessages): SessionEvent[] {
+type SessionMessagesResponse = Omit<SessionMessages, 'messages' | 'events'> & {
+  messages: ChatMessage[] | null
+  events: SessionEvent[] | null
+}
+
+function hydrateEventLabels(data: SessionMessagesResponse): SessionEvent[] {
   return (data.events ?? []).map((event) => {
     const named = event.acp ? data.acp_meta?.[event.acp.id] : undefined
     if (!named) return event
@@ -497,18 +503,41 @@ function hydrateEventLabels(data: SessionMessages): SessionEvent[] {
   })
 }
 
+function normalizedSessionMessages(data: SessionMessagesResponse): SessionMessages {
+  return {
+    ...data,
+    messages: data.messages ?? [],
+    events: hydrateEventLabels(data),
+  }
+}
+
+type SessionMessagesPageRequest = {
+  beforeMessageSeq?: number
+  beforeEventSeq?: number
+  historyRevision?: number
+  turns?: number
+}
+
+export async function getSessionMessagesPage(
+  id: string,
+  page: SessionMessagesPageRequest = {},
+  signal?: AbortSignal,
+): Promise<SessionMessages> {
+  const params = new URLSearchParams()
+  if (page.beforeMessageSeq) params.set('before_message_seq', String(page.beforeMessageSeq))
+  if (page.beforeEventSeq) params.set('before_event_seq', String(page.beforeEventSeq))
+  if (page.historyRevision) params.set('history_revision', String(page.historyRevision))
+  if (page.turns) params.set('turns', String(page.turns))
+  const query = params.size ? `?${params.toString()}` : ''
+  return normalizedSessionMessages(
+    await get<SessionMessagesResponse>(`/v1/sessions/${id}/messages${query}`, { signal }),
+  )
+}
+
 export const sessionMessagesQuery = (id: string) =>
   queryOptions({
     queryKey: keys.sessionMessages(id),
-    queryFn: async () => {
-      // Go marshals empty slices as null; normalize once here.
-      const data = await get<SessionMessages>(`/v1/sessions/${id}/messages`)
-      return {
-        ...data,
-        messages: data.messages ?? [],
-        events: hydrateEventLabels(data),
-      }
-    },
+    queryFn: ({ signal }) => getSessionMessagesPage(id, {}, signal),
   })
 
 export const healthQuery = queryOptions({

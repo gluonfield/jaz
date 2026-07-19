@@ -2,14 +2,43 @@ package acp
 
 import (
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/google/uuid"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
+
+func TestPermissionIDsRemainUniqueAcrossManagerLifetimes(t *testing.T) {
+	first := newPermissionID()
+	second := newPermissionID()
+	if first == second {
+		t.Fatalf("permission IDs collided: %q", first)
+	}
+	for _, id := range []string{first, second} {
+		if _, err := uuid.Parse(strings.TrimPrefix(id, "perm-")); err != nil {
+			t.Fatalf("permission ID %q is not restart-safe: %v", id, err)
+		}
+	}
+}
+
+type failOnceEventStore struct {
+	Store
+	fail bool
+}
+
+func (s *failOnceEventStore) AppendSessionEvents(id string, events ...sessionevents.Event) error {
+	if s.fail {
+		s.fail = false
+		return errors.New("injected event append failure")
+	}
+	return s.Store.AppendSessionEvents(id, events...)
+}
 
 func TestPermissionPlanContentExtractsPlan(t *testing.T) {
 	cases := []struct {
@@ -129,6 +158,36 @@ func TestRecordAndPublishSlimsStoredCopy(t *testing.T) {
 	}
 }
 
+func TestRecordAndPublishCommitsProjectionStateWithEventAppend(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "projection-append", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(&failOnceEventStore{Store: store, fail: true}, Config{}, nil)
+	text := func(content string) sessionevents.Event {
+		return sessionevents.Event{
+			SessionID: session.ID,
+			Type:      sessionevents.TypeACPMessage,
+			Content:   content,
+			ACP:       &sessionevents.ACPEvent{ID: session.ID, TextRunID: "message:one", State: StateRunning},
+		}
+	}
+	manager.recordAndPublishDirect(text("lost"))
+	manager.recordAndPublishDirect(text("kept"))
+
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].Content != "kept" || !strings.HasSuffix(stored[0].ProjectionKey, ":1") {
+		t.Fatalf("projection advanced past failed append: %#v", stored)
+	}
+}
+
 func TestTranscriptChunksFlushBeforeStatus(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -156,7 +215,7 @@ func TestTranscriptChunksFlushBeforeStatus(t *testing.T) {
 	job.Assistant = "Hello"
 	manager.queueACPMessageWithID(job, "lo", "message-1")
 	job.State = StateIdle
-	manager.publishACPStatus(job.Snapshot())
+	manager.publishACPStatus(job.eventView())
 
 	stored, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
@@ -171,14 +230,6 @@ func TestTranscriptChunksFlushBeforeStatus(t *testing.T) {
 	if stored[1].Type != "acp" || stored[1].ACP.State != StateIdle || stored[1].Seq != 2 {
 		t.Fatalf("status event = %#v", stored[1])
 	}
-	state, err := store.LoadACPState(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.Assistant != "" || state.State != StateIdle {
-		t.Fatalf("state = %#v", state)
-	}
-
 	first := receiveLiveEvent(t, live)
 	second := receiveLiveEvent(t, live)
 	if first.Type != "acp_message" || first.Content != "Hello" || first.Seq != 1 {
@@ -188,25 +239,6 @@ func TestTranscriptChunksFlushBeforeStatus(t *testing.T) {
 		t.Fatalf("second live event = %#v", second)
 	}
 	assertTranscriptBufferIdle(t, manager, session.ID)
-}
-
-func TestACPStorageStateExcludesTranscript(t *testing.T) {
-	state := acpStorageState(Job{
-		ID:          "thread",
-		State:       StateRunning,
-		Assistant:   "answer",
-		Thought:     "reasoning",
-		Plan:        []sessionevents.PlanEntry{{Content: "inspect"}},
-		ToolCalls:   []sessionevents.ACPToolCall{{ID: "tool-1", RawOutput: []byte(`"large"`)}},
-		Permissions: []sessionevents.ACPPermission{{ID: "permission-1"}},
-	})
-
-	if state.Assistant != "" || state.Thought != "" || state.Plan != nil || state.ToolCalls != nil || state.Permissions != nil {
-		t.Fatalf("storage state repeated transcript data: %#v", state)
-	}
-	if state.ID != "thread" || state.State != StateRunning {
-		t.Fatalf("storage state lost runtime metadata: %#v", state)
-	}
 }
 
 func TestTranscriptChunksFlushOnTimerWhileRunning(t *testing.T) {
@@ -247,9 +279,6 @@ func TestTranscriptChunksFlushOnTimerWhileRunning(t *testing.T) {
 	if len(stored) != 1 || stored[0].Type != "acp_message" || stored[0].Content != "live text" {
 		t.Fatalf("stored events = %#v", stored)
 	}
-	if state, err := store.LoadACPState(session.ID); err == nil {
-		t.Fatalf("text flush rewrote acp state: %#v", state)
-	}
 	assertTranscriptBufferIdle(t, manager, session.ID)
 }
 
@@ -279,9 +308,9 @@ func TestACPTranscriptTextRunSurvivesToolBarrier(t *testing.T) {
 	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex, ACPSession: "acp-session", State: StateRunning}}
 
 	manager.queueACPMessageWithID(job, "message chunks, t", "message-1")
-	manager.publishACPTool(job.Snapshot(), sessionevents.ACPToolCall{ID: "tool-1", Title: "Read file", Status: "completed"})
+	manager.publishACPTool(job.eventView(), sessionevents.ACPToolCall{ID: "tool-1", Title: "Read file", Status: "completed"})
 	manager.queueACPMessageWithID(job, "ool calls", "message-1")
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
 
 	events, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
@@ -300,6 +329,9 @@ func TestACPTranscriptTextRunSurvivesToolBarrier(t *testing.T) {
 	}
 	if events[1].Type != "acp_tool" || events[1].ACP.TextRunID != "" {
 		t.Fatalf("tool event = %#v", events[1])
+	}
+	if events[0].ProjectionKey == "" || events[2].ProjectionKey != events[0].ProjectionKey || events[2].ProjectionOp != sessionevents.ProjectionAppend {
+		t.Fatalf("persisted text projection = %#v, %#v", events[0], events[2])
 	}
 }
 
@@ -320,7 +352,7 @@ func TestACPTranscriptChunksWithoutMessageIDShareTurnRun(t *testing.T) {
 
 	manager.queueACPMessage(job, "message chunks, ")
 	manager.queueACPMessage(job, "stay together")
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
 
 	events, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
@@ -352,7 +384,7 @@ func TestACPTranscriptChunksWithoutMessageIDRunSurvivesTimerFlush(t *testing.T) 
 	manager.queueACPThought(job, "Think")
 	manager.flushACPTranscriptBuffer(manager.transcriptBuffers.get(session.ID, false))
 	manager.queueACPThought(job, "ing")
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
 
 	events, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
@@ -385,10 +417,10 @@ func TestACPTranscriptChunksWithoutMessageIDDoNotCrossTurns(t *testing.T) {
 
 	job.startTurn(CompletionInline, false, false)
 	manager.queueACPThought(job, "first")
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
 	job.startTurn(CompletionInline, false, false)
 	manager.queueACPThought(job, "second")
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
 
 	events, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
@@ -421,9 +453,9 @@ func TestACPTranscriptChunksWithoutMessageIDDoNotCrossToolBarrier(t *testing.T) 
 	manager.jobsByID[session.ID] = job
 
 	manager.queueACPMessage(job, "message chunks, t")
-	manager.publishACPTool(job.Snapshot(), sessionevents.ACPToolCall{ID: "tool-1", Title: "Read file", Status: "completed"})
+	manager.publishACPTool(job.eventView(), sessionevents.ACPToolCall{ID: "tool-1", Title: "Read file", Status: "completed"})
 	manager.queueACPMessage(job, "ool calls")
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
 
 	events, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
@@ -474,7 +506,7 @@ func receiveLiveEvent(t *testing.T, ch <-chan sessionevents.Event) sessionevents
 	return sessionevents.Event{}
 }
 
-func TestInactiveStatusClearsStoredPermissions(t *testing.T) {
+func TestInactiveStatusContainsOnlySessionMetadata(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -490,26 +522,6 @@ func TestInactiveStatusClearsStoredPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lastTool := time.Now().UTC().Add(-time.Minute)
-	if err := store.SaveACPState(session.ID, storage.ACPState{
-		ID:         session.ID,
-		ACPAgent:   AgentCodex,
-		ACPSession: "acp-session",
-		State:      StateRunning,
-		Permissions: []sessionevents.ACPPermission{{
-			ID: "approval-1",
-		}},
-		ToolCalls: []sessionevents.ACPToolCall{{
-			ID:     "tool-1",
-			Title:  "go test ./...",
-			Status: "in_progress",
-		}},
-		LastEventAt: lastTool,
-		LastToolAt:  lastTool,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
 	manager := NewManager(store, Config{}, nil)
 	status, err := manager.Status(session.ID)
 	if err != nil {
@@ -521,7 +533,7 @@ func TestInactiveStatusClearsStoredPermissions(t *testing.T) {
 	if len(status.Permissions) != 0 {
 		t.Fatalf("inactive status kept stale permissions: %#v", status.Permissions)
 	}
-	if len(status.ToolCalls) != 0 || status.LastToolAt.IsZero() {
+	if len(status.ToolCalls) != 0 || !status.LastToolAt.IsZero() {
 		t.Fatalf("inactive status = %#v", status)
 	}
 }

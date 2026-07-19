@@ -13,12 +13,12 @@ import { mergeSessionEvent } from '@/lib/sessionEvents'
 // costs one render per flush, not one per event.
 export function useSessionEvents(
   sessionId: string,
-  snapshotEvents: SessionEvent[] | undefined,
+  latestEventSeq: number | undefined,
   streamingRef?: RefObject<boolean>,
   onEvent?: (event: SessionEvent) => void,
 ): void {
   const queryClient = useQueryClient()
-  const afterSeq = snapshotEvents === undefined ? undefined : maxSessionEventSeq(snapshotEvents)
+  const afterSeq = latestEventSeq
 
   useEffect(() => {
     if (!afterSeq) return
@@ -89,12 +89,4 @@ export function useSessionEvents(
       if (listsTimer !== null) clearTimeout(listsTimer)
     }
   }, [sessionId, afterSeq, queryClient, streamingRef, onEvent])
-}
-
-function maxSessionEventSeq(events: SessionEvent[]): number {
-  let max = 0
-  for (const event of events) {
-    if ((event.seq ?? 0) > max) max = event.seq ?? 0
-  }
-  return max
 }

@@ -72,8 +72,8 @@ func (s *Store) AppendMessages(id string, messages ...provider.Message) error {
 	if err != nil {
 		return err
 	}
-	if s.mirror != nil {
-		_ = s.mirror.AppendMessages(id, messages...)
+	if s.exportMirror != nil {
+		_ = s.exportMirror.AppendMessages(id, messages...)
 	}
 	return nil
 }
@@ -89,26 +89,15 @@ func (s *Store) AppendMessageRecords(id string, records ...storage.Message) erro
 	if err != nil {
 		return err
 	}
-	if s.mirror != nil {
+	if s.exportMirror != nil {
 		if messages, err := providerMessagesFromRecords(records); err == nil {
-			_ = s.mirror.AppendMessages(id, messages...)
+			_ = s.exportMirror.AppendMessages(id, messages...)
 		}
 	}
 	return nil
 }
 
 func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message, now time.Time) error {
-	existing, err := s.loadMessageRecords(id)
-	if err != nil {
-		return err
-	}
-	for i := range records {
-		records[i].ThreadID = id
-		records[i].Seq = int64(len(existing) + i + 1)
-		if records[i].CreatedAt.IsZero() {
-			records[i].CreatedAt = now.Add(time.Duration(i+1) * time.Millisecond)
-		}
-	}
 	tx, err := s.db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return err
@@ -116,6 +105,17 @@ func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message,
 	defer tx.Rollback()
 	messageq := messagedb.New(tx)
 	threadq := threaddb.New(tx)
+	nextSeq, err := messageq.NextMessageSeq(context.Background(), id)
+	if err != nil {
+		return err
+	}
+	for i := range records {
+		records[i].ThreadID = id
+		records[i].Seq = nextSeq + int64(i)
+		if records[i].CreatedAt.IsZero() {
+			records[i].CreatedAt = now.Add(time.Duration(i+1) * time.Millisecond)
+		}
+	}
 	for _, record := range records {
 		if err := insertMessage(messageq, record); err != nil {
 			return err
@@ -174,6 +174,9 @@ func (s *Store) replaceMessagesLocked(id string, records []storage.Message) erro
 		}
 	}
 	if err := threadq.TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id}); err != nil {
+		return err
+	}
+	if err := threadq.AdvanceTranscriptRevision(context.Background(), id); err != nil {
 		return err
 	}
 	return tx.Commit()

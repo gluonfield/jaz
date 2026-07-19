@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -204,7 +205,7 @@ func TestSessionResponseAdvertisesCompactActionForSupportedACPAgents(t *testing.
 		{agent: acp.AgentGrok, want: false},
 	} {
 		t.Run(tc.agent, func(t *testing.T) {
-			resp := canonicalSessionResponse(storage.Session{
+			resp := sessionview.Public(storage.Session{
 				Runtime: storage.RuntimeACP,
 				RuntimeRef: &storage.RuntimeRef{
 					Type:  storage.RuntimeACP,

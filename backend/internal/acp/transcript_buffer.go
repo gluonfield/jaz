@@ -70,7 +70,7 @@ func (m *Manager) queueACPTranscript(job *jobState, run acpTranscriptRun) {
 	buffer.queue(m, run, turnKey)
 }
 
-func (m *Manager) withACPTranscriptBarrier(job Job, publish func()) {
+func (m *Manager) withACPTranscriptBarrier(job eventView, publish func()) {
 	if job.ID == "" {
 		if publish != nil {
 			publish()
@@ -179,7 +179,7 @@ func (b *acpTranscriptBuffer) textRunIDLocked(eventType, upstreamMessageID, turn
 	return b.currentRunID
 }
 
-func (b *acpTranscriptBuffer) withBarrier(m *Manager, job Job, publish func()) {
+func (b *acpTranscriptBuffer) withBarrier(m *Manager, job eventView, publish func()) {
 	b.publishMu.Lock()
 	defer b.publishMu.Unlock()
 	runs := b.drainBarrier()
@@ -196,9 +196,9 @@ func (b *acpTranscriptBuffer) flushTimer(m *Manager) {
 	if len(runs) == 0 {
 		return
 	}
-	var job Job
+	var job eventView
 	if live := m.jobByID(b.sessionID); live != nil {
-		job = live.eventSnapshot()
+		job = live.eventView()
 	}
 	m.publishACPTranscriptRuns(job, runs)
 }
@@ -227,11 +227,11 @@ func (b *acpTranscriptBuffer) drainLocked() []acpTranscriptRun {
 	return runs
 }
 
-func (m *Manager) publishACPTranscriptRuns(job Job, runs []acpTranscriptRun) {
+func (m *Manager) publishACPTranscriptRuns(job eventView, runs []acpTranscriptRun) {
 	if job.ID == "" || len(runs) == 0 {
 		return
 	}
-	for _, sessionID := range childSessionIDs(&job) {
+	for _, sessionID := range childSessionIDs(job) {
 		events := make([]sessionevents.Event, 0, len(runs))
 		envelope := acpEventEnvelope(job)
 		for _, run := range runs {

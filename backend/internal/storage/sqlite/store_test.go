@@ -599,64 +599,6 @@ func TestAddUsageCarriesSessionSourceType(t *testing.T) {
 	}
 }
 
-func TestSaveACPStateMirrorsStateAndUpdatesSessionStatus(t *testing.T) {
-	store, err := New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	session, err := store.CreateSession(storage.CreateSession{Slug: "acp", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := store.SaveACPState(session.ID, storage.ACPState{State: "running", Assistant: "working"}); err != nil {
-		t.Fatal(err)
-	}
-	state, err := store.LoadACPState(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.State != "running" || state.Assistant != "" {
-		t.Fatalf("state = %#v", state)
-	}
-	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusRunning {
-		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusRunning)
-	}
-
-	if err := store.SaveACPState(session.ID, storage.ACPState{State: "failed", Error: "codex failed"}); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err = store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusError {
-		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusError)
-	}
-	if loaded.Error != "codex failed" {
-		t.Fatalf("error = %q, want %q", loaded.Error, "codex failed")
-	}
-
-	if err := store.SaveACPState(session.ID, storage.ACPState{State: "cancelled"}); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err = store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusIdle {
-		t.Fatalf("status = %q, want %q", loaded.Status, storage.StatusIdle)
-	}
-	if loaded.Error != "" {
-		t.Fatalf("error = %q, want empty", loaded.Error)
-	}
-}
-
 func TestSaveMessagesKeepsPendingToolCallUntilResultArrives(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

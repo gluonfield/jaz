@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -67,5 +68,5 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 		writeError(w, http.StatusBadGateway, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, canonicalSessionResponse(session))
+	writeJSON(w, http.StatusOK, sessionview.Public(session))
 }

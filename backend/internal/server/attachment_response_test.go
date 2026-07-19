@@ -5,6 +5,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/messagepayload"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -19,7 +20,7 @@ func TestMessageRecordsResponseStripsServerLocalAttachmentPaths(t *testing.T) {
 		}},
 	}}
 
-	got := messageRecordsResponse(records)
+	got := sessionview.Messages(records)
 	block := got[0].Blocks[0]
 	if block.ServerPath != "" || block.URI != "" {
 		t.Fatalf("attachment block = %#v, want no server-local display resource", block)
@@ -50,7 +51,7 @@ func TestSessionEventResponseStripsSideChatServerLocalAttachmentPaths(t *testing
 		},
 	}
 
-	got := sessionEventResponseFrom(event)
+	got := sessionview.Event(event)
 	attachments := got.Event.SideChat.Attachments
 	if attachments[0].ServerPath != "" || attachments[0].URI != "" {
 		t.Fatalf("file attachment = %#v, want no server-local display resource", attachments[0])

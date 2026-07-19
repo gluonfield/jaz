@@ -36,6 +36,8 @@ type Event struct {
 	SideChat         *SideChatEvent         `json:"side_chat,omitempty"`
 	ProviderSubagent *ProviderSubagentEvent `json:"provider_subagent,omitempty"`
 	At               time.Time              `json:"at"`
+	ProjectionKey    string                 `json:"projection_key,omitempty"`
+	ProjectionOp     string                 `json:"projection_op,omitempty"`
 }
 
 type SideChatEvent struct {
@@ -224,6 +226,20 @@ func (e Event) SlimForStorage() Event {
 	acp.Permissions = nil
 	e.ACP = &acp
 	return e
+}
+
+func (e Event) NeedsStorageSlimming() bool {
+	if e.ACP == nil {
+		return false
+	}
+	acp := e.ACP
+	if acp.Title != "" || acp.ModelProvider != "" || acp.Model != "" || acp.ReasoningEffort != "" || len(acp.Modes.AvailableModes) > 0 {
+		return true
+	}
+	if len(acp.Plan) == 0 && (acp.Modes.CurrentModeID != "" || acp.Modes.PlanModeID != "") {
+		return true
+	}
+	return e.Type == "acp" && (acp.Assistant != "" || acp.Thought != "" || len(acp.ToolCalls) > 0 || len(acp.Permissions) > 0)
 }
 
 type ACPEvent struct {

@@ -128,3 +128,23 @@ func TestSessionSeenActionReportsStorageFailure(t *testing.T) {
 		t.Fatal("failed seen mutation cleared unread state")
 	}
 }
+
+func TestSessionSeenActionSkipsWriteWhenAlreadySeen(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	session, err := store.CreateSession(storage.CreateSession{Slug: "already-seen"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := (&Server{Store: failingUnreadStore{Store: store, err: errors.New("unexpected write")}}).Handler()
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session.ID+"/seen", nil))
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("seen status = %d, body = %s", res.Code, res.Body.String())
+	}
+}

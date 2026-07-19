@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/google/uuid"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
-	"github.com/wins/jaz/backend/internal/storage"
 )
 
 const (
@@ -28,7 +27,7 @@ type InteractiveAnswerValue struct {
 
 func (m *Manager) awaitPermission(ctx context.Context, job *jobState, req acpschema.RequestPermissionRequest) (json.RawMessage, *jsonrpc.Error) {
 	permission := permissionEvent(req)
-	permission.ID = fmt.Sprintf("perm-%d", atomicAddPermission(&m.permissionSeq))
+	permission.ID = newPermissionID()
 	permission.SessionID = string(req.SessionID)
 	permission.Status = "pending"
 
@@ -475,12 +474,12 @@ func (m *Manager) removeJobPermission(job *jobState, requestID string) {
 }
 
 func (m *Manager) publishPermission(job *jobState, permission sessionevents.ACPPermission, eventType string) {
-	snapshot := job.eventSnapshot()
+	snapshot := job.eventView()
 	if eventType == "permission_request" {
 		m.touchJobAttention(job)
 	}
-	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&snapshot)))
-	for _, sessionID := range surfaceSessionIDs(&snapshot) {
+	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(snapshot)))
+	for _, sessionID := range surfaceSessionIDs(snapshot) {
 		events = append(events, sessionevents.Event{
 			SessionID:  sessionID,
 			Type:       eventType,
@@ -491,256 +490,6 @@ func (m *Manager) publishPermission(job *jobState, permission sessionevents.ACPP
 	m.publishOrderedACPEvents(snapshot, events...)
 }
 
-func (m *Manager) touchJobAttention(job *jobState) {
-	snapshot := job.eventSnapshot()
-	m.touchAttention(surfaceSessionIDs(&snapshot)...)
-}
-
-func (m *Manager) touchAttention(sessionIDs ...string) {
-	seen := map[string]bool{}
-	for _, sessionID := range sessionIDs {
-		if sessionID == "" || seen[sessionID] {
-			continue
-		}
-		seen[sessionID] = true
-		_ = m.store.TouchSessionAttention(sessionID)
-	}
-}
-
-func (m *Manager) publishSessionChanged(sessionID string) {
-	if m.Events == nil || sessionID == "" {
-		return
-	}
-	m.Events.Publish(sessionevents.Event{SessionID: sessionID, Type: sessionevents.TypeSession})
-}
-
-func (m *Manager) publishACP(job Job) {
-	acp := EventFromJob(job)
-	events := make([]sessionevents.Event, 0, 2)
-	for _, sessionID := range childSessionIDs(&job) {
-		events = append(events, sessionevents.Event{
-			SessionID: sessionID,
-			Type:      "acp",
-			ACP:       acp,
-			At:        time.Now().UTC(),
-		})
-	}
-	for _, sessionID := range parentSessionIDs(&job) {
-		events = append(events, sessionevents.Event{
-			SessionID: sessionID,
-			Type:      "acp",
-			ACP:       acp,
-			At:        time.Now().UTC(),
-		})
-	}
-	m.publishACPStateAndEvents(job, events...)
-}
-
-func (m *Manager) publishACPStatus(job Job) {
-	acp := EventFromJob(job)
-	acp.Plan = nil
-	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&job)))
-	for _, sessionID := range surfaceSessionIDs(&job) {
-		events = append(events, sessionevents.Event{
-			SessionID: sessionID,
-			Type:      "acp",
-			ACP:       acp,
-			At:        time.Now().UTC(),
-		})
-	}
-	m.publishACPStateAndEvents(job, events...)
-}
-
-func (m *Manager) publishACPTool(job Job, call sessionevents.ACPToolCall) {
-	acp := acpEventEnvelope(job)
-	acp.ToolCalls = CloneToolCalls([]sessionevents.ACPToolCall{call})
-	events := make([]sessionevents.Event, 0, len(childSessionIDs(&job)))
-	for _, sessionID := range childSessionIDs(&job) {
-		events = append(events, sessionevents.Event{
-			SessionID: sessionID,
-			Type:      "acp_tool",
-			ACP:       acp,
-			At:        time.Now().UTC(),
-		})
-	}
-	m.publishOrderedACPEvents(job, events...)
-}
-
-func (m *Manager) publishProviderSubagent(job Job, subagent sessionevents.ProviderSubagentEvent) {
-	if subagent.ID == "" {
-		return
-	}
-	if subagent.Provider == "" {
-		subagent.Provider = CanonicalAgentName(job.ACPAgent)
-	}
-	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(&job)))
-	for _, sessionID := range surfaceSessionIDs(&job) {
-		events = append(events, sessionevents.Event{
-			SessionID:        sessionID,
-			Type:             sessionevents.TypeProviderSubagent,
-			ProviderSubagent: &subagent,
-			At:               time.Now().UTC(),
-		})
-	}
-	m.publishOrderedACPEvents(job, events...)
-}
-
-func (m *Manager) publishACPStateAndEvents(job Job, events ...sessionevents.Event) {
-	m.withACPTranscriptBarrier(job, func() {
-		m.saveACPState(job)
-		m.recordAndPublishEventListDirect(events)
-	})
-}
-
-func (m *Manager) publishOrderedACPEvents(job Job, events ...sessionevents.Event) {
-	m.withACPTranscriptBarrier(job, func() {
-		m.recordAndPublishEventListDirect(events)
-	})
-}
-
-func (m *Manager) recordAndPublishDirect(event sessionevents.Event) {
-	m.recordAndPublishEventListDirect([]sessionevents.Event{event})
-}
-
-func (m *Manager) recordAndPublishEventListDirect(events []sessionevents.Event) {
-	for len(events) > 0 {
-		sessionID := events[0].SessionID
-		n := 1
-		for n < len(events) && events[n].SessionID == sessionID {
-			n++
-		}
-		m.recordAndPublishEventsDirect(sessionID, events[:n])
-		events = events[n:]
-	}
-}
-
-func (m *Manager) recordAndPublishEventsDirect(sessionID string, events []sessionevents.Event) {
-	if len(events) == 0 {
-		return
-	}
-	now := time.Now().UTC()
-	storedEvents := make([]sessionevents.Event, len(events))
-	for i := range events {
-		if events[i].At.IsZero() {
-			events[i].At = now
-		}
-		storedEvents[i] = events[i].SlimForStorage()
-	}
-	if sessionID != "" {
-		_ = m.store.AppendSessionEvents(sessionID, storedEvents...)
-	}
-	if m.Events == nil {
-		return
-	}
-	for i := range events {
-		events[i].Seq = storedEvents[i].Seq
-		m.Events.Publish(events[i])
-	}
-}
-
-type acpStateSaver interface {
-	SaveACPState(string, storage.ACPState) error
-}
-
-type acpStateLoader interface {
-	LoadACPState(string) (storage.ACPState, error)
-}
-
-func (m *Manager) saveACPState(job Job) {
-	store, ok := m.store.(acpStateSaver)
-	if !ok {
-		return
-	}
-	_ = store.SaveACPState(job.ID, acpStorageState(job))
-}
-
-func acpStorageState(job Job) storage.ACPState {
-	return storage.ACPState{
-		ID:              job.ID,
-		Slug:            job.Slug,
-		Title:           job.Title,
-		ParentID:        job.ParentID,
-		ACPAgent:        job.ACPAgent,
-		ACPSession:      job.ACPSession,
-		Cwd:             job.Cwd,
-		ModelProvider:   job.ModelProvider,
-		Model:           job.Model,
-		ReasoningEffort: job.ReasoningEffort,
-		State:           job.State,
-		StopReason:      job.StopReason,
-		Modes:           acpModeEvent(job.Modes),
-		Error:           job.Error,
-		GoalRequested:   job.GoalRequested,
-		ActiveOperation: job.ActiveOperation,
-		ParentVisible:   job.ParentVisible,
-		CreatedAt:       job.CreatedAt,
-		UpdatedAt:       job.UpdatedAt,
-		LastEventAt:     job.LastEventAt,
-		LastToolAt:      job.LastToolAt,
-	}
-}
-
-func EventFromJob(job Job) *sessionevents.ACPEvent {
-	event := acpEventEnvelope(job)
-	event.Plan = clonePlanEntries(job.Plan)
-	return event
-}
-
-func acpEventEnvelope(job Job) *sessionevents.ACPEvent {
-	return &sessionevents.ACPEvent{
-		ID:              job.ID,
-		Slug:            job.Slug,
-		Title:           job.Title,
-		ParentID:        job.ParentID,
-		Agent:           job.ACPAgent,
-		SessionID:       job.ACPSession,
-		ModelProvider:   job.ModelProvider,
-		Model:           job.Model,
-		ReasoningEffort: job.ReasoningEffort,
-		State:           job.State,
-		StopReason:      job.StopReason,
-		Error:           job.Error,
-		GoalRequested:   job.GoalRequested,
-		Modes:           acpModeEvent(job.Modes),
-		LastEventAt:     job.LastEventAt,
-		LastToolAt:      job.LastToolAt,
-	}
-}
-
-func acpModeEvent(modes ModeState) sessionevents.ACPModeState {
-	out := sessionevents.ACPModeState{
-		CurrentModeID:  modes.CurrentModeID,
-		PlanModeID:     modes.PlanModeID,
-		AvailableModes: make([]sessionevents.ACPMode, 0, len(modes.AvailableModes)),
-	}
-	for _, mode := range modes.AvailableModes {
-		out.AvailableModes = append(out.AvailableModes, sessionevents.ACPMode{
-			ID:          mode.ID,
-			Name:        mode.Name,
-			Description: mode.Description,
-		})
-	}
-	return out
-}
-
-func childSessionIDs(job *Job) []string {
-	if job == nil {
-		return nil
-	}
-	return []string{job.ID}
-}
-
-func parentSessionIDs(job *Job) []string {
-	if job == nil || job.ParentID == "" || job.ParentID == job.ID || !job.ParentVisible {
-		return nil
-	}
-	return []string{job.ParentID}
-}
-
-func surfaceSessionIDs(job *Job) []string {
-	return append(childSessionIDs(job), parentSessionIDs(job)...)
-}
-
-func atomicAddPermission(seq *uint64) uint64 {
-	return atomic.AddUint64(seq, 1)
+func newPermissionID() string {
+	return "perm-" + uuid.NewString()
 }

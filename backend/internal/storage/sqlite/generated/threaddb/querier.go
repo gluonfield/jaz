@@ -10,13 +10,17 @@ import (
 
 type Querier interface {
 	AddUsage(ctx context.Context, arg AddUsageParams) error
+	AdvanceTranscriptRevision(ctx context.Context, id string) error
 	CompleteSession(ctx context.Context, arg CompleteSessionParams) error
 	GetSession(ctx context.Context, ref string) (Thread, error)
 	GetThreadIDByID(ctx context.Context, id string) (string, error)
 	GetThreadIDBySlug(ctx context.Context, slug string) (string, error)
+	GetTranscriptRevision(ctx context.Context, id string) (int64, error)
+	ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error)
 	ListErrorThreadIDsWithoutError(ctx context.Context, status string) ([]string, error)
 	ListSessionSubtree(ctx context.Context, id string) ([]string, error)
-	ListSessions(ctx context.Context) ([]Thread, error)
+	ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error)
+	LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
@@ -24,7 +28,6 @@ type Querier interface {
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error
 	TouchThread(ctx context.Context, arg TouchThreadParams) error
-	UpdateACPState(ctx context.Context, arg UpdateACPStateParams) error
 	UpdateGoal(ctx context.Context, arg UpdateGoalParams) error
 	UpdateSessionStatus(ctx context.Context, arg UpdateSessionStatusParams) error
 	UpdateSessionTitle(ctx context.Context, arg UpdateSessionTitleParams) error

@@ -2,6 +2,7 @@ package acp_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,18 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
+
+type failSaveStore struct {
+	acp.Store
+	fail bool
+}
+
+func (s *failSaveStore) SaveSession(session storage.Session) error {
+	if s.fail {
+		return errors.New("injected session save failure")
+	}
+	return s.Store.SaveSession(session)
+}
 
 // staticPrompt is a fixed acp.SystemPromptSource for tests.
 type staticPrompt string
@@ -178,13 +191,6 @@ func TestManagerSpawnsFakeACPAgentAndStoresSession(t *testing.T) {
 	}
 	if session.ModelProvider != "fake" || session.Model != "fake-large" || session.ReasoningEffort != "high" {
 		t.Fatalf("unexpected session model metadata %#v", session)
-	}
-	state, err := store.LoadACPState(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if state.ModelProvider != "fake" || state.Model != "fake-large" || state.ReasoningEffort != "high" {
-		t.Fatalf("unexpected acp state model metadata %#v", state)
 	}
 	messages, err = store.LoadMessages(spawned.SessionID)
 	if err != nil {
@@ -1545,23 +1551,23 @@ func sideChatEvent(events []sessionevents.Event, id, role, content string) *sess
 	return nil
 }
 
-func newFakeAgentManager(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string) *acp.Manager {
+func newFakeAgentManager(t *testing.T, store acp.Store, root string, extraEnv map[string]string) *acp.Manager {
 	return newFakeAgentManagerWithModel(t, store, root, extraEnv, "")
 }
 
-func newFakeAgentManagerWithModel(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string, model string) *acp.Manager {
+func newFakeAgentManagerWithModel(t *testing.T, store acp.Store, root string, extraEnv map[string]string, model string) *acp.Manager {
 	return newFakeAgentManagerWithOptions(t, store, root, extraEnv, model, "")
 }
 
-func newFakeAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string, model, effort string) *acp.Manager {
+func newFakeAgentManagerWithOptions(t *testing.T, store acp.Store, root string, extraEnv map[string]string, model, effort string) *acp.Manager {
 	return newFakeNamedAgentManagerWithOptions(t, store, root, "fake", extraEnv, model, effort)
 }
 
-func newFakeCodexManager(t *testing.T, store *jsonstore.Store, root string, extraEnv map[string]string) *acp.Manager {
+func newFakeCodexManager(t *testing.T, store acp.Store, root string, extraEnv map[string]string) *acp.Manager {
 	return newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, extraEnv, "", "")
 }
 
-func newFakeNamedAgentManagerWithOptions(t *testing.T, store *jsonstore.Store, root, agent string, extraEnv map[string]string, model, effort string) *acp.Manager {
+func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, agent string, extraEnv map[string]string, model, effort string) *acp.Manager {
 	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_LOAD": "1"}
 	for key, value := range extraEnv {
 		env[key] = value
@@ -1644,6 +1650,77 @@ func TestManagerResumesStoredSessionAfterRestart(t *testing.T) {
 	}
 }
 
+func TestManagerResumeFailsWhenNewACPSessionCannotBePersisted(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "resume-save-failure",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: "fake",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failing := &failSaveStore{Store: store, fail: true}
+	manager := newFakeAgentManager(t, failing, t.TempDir(), nil)
+	t.Cleanup(manager.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err = manager.Send(ctx, acp.SendRequest{Session: session.ID, Message: "start", Completion: acp.CompletionInline})
+	if err == nil || !strings.Contains(err.Error(), "injected session save failure") {
+		t.Fatalf("resume error = %v", err)
+	}
+	if jobs := manager.List(); len(jobs) != 0 {
+		t.Fatalf("failed resume installed jobs: %#v", jobs)
+	}
+	stored, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.RuntimeRef.SessionID != "" {
+		t.Fatalf("failed resume persisted ACP session %q", stored.RuntimeRef.SessionID)
+	}
+}
+
+func TestManagerResumeFailsWhenLocalSessionMetadataCannotBePersisted(t *testing.T) {
+	const localAgent = "local_helper"
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "local-resume-save-failure",
+		Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{
+			Type:  storage.RuntimeACP,
+			Agent: localAgent,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	failing := &failSaveStore{Store: store, fail: true}
+	manager := acp.NewManager(failing, acp.Config{
+		Root: t.TempDir(), Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{localAgent: {Local: true, Model: "local-model"}},
+	}, log.New(io.Discard))
+	manager.RegisterLocalAgent(localAgent, localRunner{seen: make(chan acp.LocalAgentRequest, 1)})
+
+	_, err = manager.Send(t.Context(), acp.SendRequest{Session: session.ID, Message: "start"})
+	if err == nil || !strings.Contains(err.Error(), "persist resumed local session") || !strings.Contains(err.Error(), "injected session save failure") {
+		t.Fatalf("resume error = %v", err)
+	}
+	if jobs := manager.List(); len(jobs) != 0 {
+		t.Fatalf("failed local resume installed jobs: %#v", jobs)
+	}
+}
+
 func TestManagerResumesStoredSessionAfterConnectionFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -1711,23 +1788,23 @@ func TestCloseMarksRunningTurnAsServerShutdownWithoutTransportFailure(t *testing
 		t.Fatal(err)
 	}
 	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
-	waitForStoredState := func(sessionID, want string) storage.ACPState {
+	waitForState := func(sessionID, want string) acp.Job {
 		t.Helper()
 		deadline := time.Now().Add(2 * time.Second)
-		var last storage.ACPState
+		var last acp.Job
 		var lastErr error
 		for time.Now().Before(deadline) {
-			last, lastErr = store.LoadACPState(sessionID)
+			last, lastErr = manager.Status(sessionID)
 			if lastErr == nil && last.State == want {
 				return last
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
 		if lastErr != nil {
-			t.Fatalf("stored acp state error = %v", lastErr)
+			t.Fatalf("acp status error = %v", lastErr)
 		}
-		t.Fatalf("stored acp state = %q, want %q", last.State, want)
-		return storage.ACPState{}
+		t.Fatalf("acp status = %q, want %q", last.State, want)
+		return acp.Job{}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -1743,11 +1820,11 @@ func TestCloseMarksRunningTurnAsServerShutdownWithoutTransportFailure(t *testing
 	}); err != nil {
 		t.Fatal(err)
 	}
-	waitForStoredState(spawned.SessionID, acp.StateRunning)
+	waitForState(spawned.SessionID, acp.StateRunning)
 
 	manager.Close()
 
-	state := waitForStoredState(spawned.SessionID, acp.StateCancelled)
+	state := waitForState(spawned.SessionID, acp.StateCancelled)
 	if state.StopReason != acp.StopReasonServerShutdown || state.Error != "" {
 		t.Fatalf("state stop/error = %q/%q, want server_shutdown with no error", state.StopReason, state.Error)
 	}
@@ -1790,7 +1867,7 @@ func TestCloseLeavesIdleTurnIdle(t *testing.T) {
 
 	manager.Close()
 
-	state, err := store.LoadACPState(spawned.SessionID)
+	state, err := manager.Status(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

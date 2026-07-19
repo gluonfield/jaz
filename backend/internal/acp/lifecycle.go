@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type agentProcess struct {
@@ -70,6 +71,8 @@ func (m *Manager) Close() {
 		jobs = append(jobs, job)
 	}
 	m.processes = map[string]*agentProcess{}
+	m.turnReaders = map[string]int{}
+	m.pendingDiscard = map[string]*jobState{}
 	m.mu.Unlock()
 
 	stopping := make([]bool, len(jobs))
@@ -98,8 +101,12 @@ func (m *Manager) Close() {
 	for i, job := range jobs {
 		if stopping[i] {
 			job.setState(StateCancelled, StopReasonServerShutdown, "")
+			if err := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); err != nil {
+				m.log.Error("mark shutdown turn idle", "session", job.ID, "error", err)
+			}
+			m.publishACPStatus(job.eventView())
 		}
-		m.withACPTranscriptBarrier(job.eventSnapshot(), nil)
+		m.withACPTranscriptBarrier(job.eventView(), nil)
 		m.transcriptBuffers.delete(job.ID)
 	}
 }
@@ -170,21 +177,25 @@ func (m *Manager) closeUnusedProcess(job *jobState) {
 }
 
 func (m *Manager) closeProcess(job *jobState, process *agentProcess) {
-	m.withACPTranscriptBarrier(job.eventSnapshot(), nil)
+	m.withACPTranscriptBarrier(job.eventView(), nil)
 	m.transcriptBuffers.delete(job.ID)
 	process.close()
 }
 
 func (m *Manager) teardown(id string) {
 	if job := m.jobByID(id); job != nil {
-		m.withACPTranscriptBarrier(job.eventSnapshot(), nil)
+		m.withACPTranscriptBarrier(job.eventView(), nil)
 	}
 	m.transcriptBuffers.delete(id)
+	m.projectionMu.Lock()
+	delete(m.projections, id)
+	m.projectionMu.Unlock()
 	m.mu.Lock()
 	job := m.jobsByID[id]
 	process := m.processes[id]
 	delete(m.jobsByID, id)
 	delete(m.processes, id)
+	delete(m.pendingDiscard, id)
 	if job != nil {
 		delete(m.jobsBySlug, job.Slug)
 		delete(m.jobsByACP, job.ACPSession)
@@ -252,7 +263,7 @@ func (m *Manager) recordServeErr(id string, process *agentProcess, err error) er
 		return err
 	}
 	job.setState(StateFailed, "", err.Error())
-	m.publishACPStatus(job.eventSnapshot())
+	m.publishACPStatus(job.eventView())
 	return err
 }
 

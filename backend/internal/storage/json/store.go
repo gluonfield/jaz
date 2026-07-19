@@ -134,7 +134,7 @@ func (s *Store) LoadSession(ref string) (storage.Session, error) {
 		}
 	}
 	if len(matches) == 0 {
-		return storage.Session{}, fmt.Errorf("session not found: %s", ref)
+		return storage.Session{}, fmt.Errorf("%w: %s", storage.ErrSessionNotFound, ref)
 	}
 	if len(matches) > 1 {
 		ids := make([]string, 0, len(matches))
@@ -483,11 +483,15 @@ func (s *Store) saveMessages(id string, messages []provider.Message) error {
 	if err := s.EnsureSession(id); err != nil {
 		return err
 	}
+	path := filepath.Join(s.sessionDir(id), "messages.jsonl")
+	if _, err := os.Stat(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	lines, err := marshalMessagesJSONL(messages)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(s.sessionDir(id), "messages.jsonl"), lines, 0o644); err != nil {
+	if err := os.WriteFile(path, lines, 0o644); err != nil {
 		return err
 	}
 	s.touchSession(id)
@@ -540,59 +544,6 @@ func (s *Store) touchSession(id string) {
 		session.UpdatedAt = time.Now().UTC()
 		_ = s.saveSession(session)
 	}
-}
-
-func (s *Store) LoadACPState(id string) (storage.ACPState, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	path := filepath.Join(s.sessionDir(id), "acp_state.json")
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return storage.ACPState{}, fmt.Errorf("acp state not found: %s", id)
-	}
-	if err != nil {
-		return storage.ACPState{}, err
-	}
-	var state storage.ACPState
-	if err := stdjson.Unmarshal(data, &state); err != nil {
-		return storage.ACPState{}, err
-	}
-	return state.WithoutTranscript(), nil
-}
-
-func (s *Store) SaveACPState(id string, state storage.ACPState) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	state = state.WithoutTranscript()
-	if err := s.EnsureSession(id); err != nil {
-		return err
-	}
-	if state.ID == "" {
-		state.ID = id
-	}
-	if state.UpdatedAt.IsZero() {
-		state.UpdatedAt = time.Now().UTC()
-	}
-	data, err := stdjson.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := writeACPState(filepath.Join(s.sessionDir(id), "acp_state.json"), data); err != nil {
-		return err
-	}
-	if session, err := s.loadSessionByID(id); err == nil {
-		session.UpdatedAt = state.UpdatedAt
-		if status := storage.SessionStatusForACPState(state.State); status != "" {
-			session.Status = status
-			if status == storage.StatusError {
-				session.Error = state.Error
-			} else {
-				session.Error = ""
-			}
-		}
-		_ = s.saveSession(session)
-	}
-	return nil
 }
 
 func (s *Store) sessionDir(id string) string {

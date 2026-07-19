@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type transcriptItem struct {
@@ -11,33 +12,62 @@ type transcriptItem struct {
 	index int
 }
 
+type TextChunkCompaction struct {
+	Event      Event
+	DeleteSeqs []int64
+}
+
+func SplitTextEvent(event Event, maxBytes int) []Event {
+	if maxBytes <= 0 || !isACPTextEvent(event) {
+		return []Event{event}
+	}
+	text := acpTextChunk(event)
+	if len(text) <= maxBytes {
+		return []Event{event}
+	}
+	parts := make([]Event, 0, len(text)/maxBytes+1)
+	for len(text) > 0 {
+		end := min(maxBytes, len(text))
+		for end < len(text) && end > 0 && !utf8.RuneStart(text[end]) {
+			end--
+		}
+		if end == 0 {
+			_, end = utf8.DecodeRuneInString(text)
+		}
+		part := event
+		part.Seq = 0
+		if event.Type == TypeACPMessage {
+			part.Content = text[:end]
+		} else {
+			acp := *event.ACP
+			acp.Thought = text[:end]
+			part.ACP = &acp
+		}
+		parts = append(parts, part)
+		text = text[end:]
+	}
+	return parts
+}
+
+func SplitTextEvents(events []Event, maxBytes int) ([]Event, []int) {
+	expanded := make([]Event, 0, len(events))
+	last := make([]int, len(events))
+	for i, event := range events {
+		expanded = append(expanded, SplitTextEvent(event, maxBytes)...)
+		last[i] = len(expanded) - 1
+	}
+	return expanded, last
+}
+
 func CompactTranscript(events []Event) []Event {
 	if len(events) == 0 {
 		return nil
 	}
-	mergedText := compactACPTextRuns(dedupeBySeq(events))
-	items := make([]transcriptItem, 0, len(mergedText))
-	byKey := map[string]int{}
-	for _, item := range mergedText {
-		event := item.event
-		key := projectionCoalesceKey(event)
-		if key != "" {
-			if idx, ok := byKey[key]; ok {
-				items[idx].event = mergeProjectionEvent(items[idx].event, event)
-				continue
-			}
-			byKey[key] = len(items)
-		}
-		items = append(items, transcriptItem{event: event, index: item.index})
+	projector := NewProjector()
+	for _, event := range dedupeBySeq(events) {
+		projector.Apply(event)
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		return transcriptItemLess(items[i], items[j])
-	})
-	out := make([]Event, 0, len(items))
-	for _, item := range items {
-		out = append(out, item.event)
-	}
-	return out
+	return projector.Events()
 }
 
 func CompactTextChunks(events []Event) []Event {
@@ -58,11 +88,67 @@ func CompactTextChunks(events []Event) []Event {
 	return out
 }
 
+func CompactTextSegments(events []Event, maxBytes int) []TextChunkCompaction {
+	var segments []TextChunkCompaction
+	var open *compactedTextItem
+	openBytes := 0
+	flush := func() {
+		if open == nil {
+			return
+		}
+		if len(open.chunks) > 1 {
+			text := strings.Join(open.chunks, "")
+			if open.event.Type == TypeACPMessage {
+				open.event.Content = text
+			} else {
+				acp := *open.event.ACP
+				acp.Thought = text
+				open.event.ACP = &acp
+			}
+		}
+		segments = append(segments, TextChunkCompaction{Event: open.event, DeleteSeqs: open.deleteSeqs})
+		open = nil
+		openBytes = 0
+	}
+	for _, event := range dedupeBySeq(events) {
+		if !isACPTextEvent(event) {
+			if open != nil && !keepsACPTextStreamOpen(open.event, event) {
+				flush()
+			}
+			continue
+		}
+		chunk := acpTextChunk(event)
+		if open != nil {
+			merged, ok := mergeACPTextEvent(open.event, open.lastSeq, event)
+			if ok && (maxBytes <= 0 || openBytes+len(chunk) <= maxBytes) {
+				if open.event.Seq != 0 && event.Seq != 0 {
+					open.deleteSeqs = append(open.deleteSeqs, open.event.Seq)
+				}
+				open.event = merged
+				open.lastSeq = event.Seq
+				open.chunks = append(open.chunks, chunk)
+				openBytes += len(chunk)
+				continue
+			}
+			flush()
+		}
+		open = &compactedTextItem{event: event, lastSeq: event.Seq, chunks: []string{chunk}}
+		openBytes = len(chunk)
+	}
+	flush()
+	return segments
+}
+
+func NeedsStorageCompaction(event Event) bool {
+	return isProjectableACPTextEvent(event)
+}
+
 type compactedTextItem struct {
-	event   Event
-	index   int
-	lastSeq int64
-	chunks  []string
+	event      Event
+	index      int
+	lastSeq    int64
+	chunks     []string
+	deleteSeqs []int64
 }
 
 func compactACPTextRuns(events []Event) []compactedTextItem {
@@ -155,6 +241,10 @@ func canMergeACPTextEvent(previous Event, previousSeq int64, next Event) bool {
 
 func isACPTextEvent(event Event) bool {
 	return event.ACP != nil && (event.Type == TypeACPMessage || event.Type == TypeACPThought)
+}
+
+func isProjectableACPTextEvent(event Event) bool {
+	return isACPTextEvent(event) && event.ACP.TextRunID != ""
 }
 
 func keepsACPTextStreamOpen(text Event, event Event) bool {

@@ -15,6 +15,15 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
+func disconnectTestServer(store *sqlitestore.Store, root, agent string) *Server {
+	return &Server{
+		ModelCatalog: modelcatalog.NewService(nil),
+		Store:        store,
+		Root:         root,
+		AgentCatalog: acp.AgentCatalog{agent: acp.BuiltinAgents()[agent]},
+	}
+}
+
 func TestDisconnectACPAuthRemovesJazOwnedCredentialAndKey(t *testing.T) {
 	// Keep the dev's real ~/.claude and provider env out of the probe.
 	t.Setenv("HOME", t.TempDir())
@@ -31,7 +40,7 @@ func TestDisconnectACPAuthRemovesJazOwnedCredentialAndKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
+	handler := disconnectTestServer(store, root, acp.AgentClaude).Handler()
 
 	// A Jaz-owned (profile) OAuth credential + a Jaz-managed API key.
 	claudeDir := filepath.Join(root, "acp", "claude")
@@ -86,7 +95,7 @@ func TestDisconnectACPAuthOpenCodeKeepsConfigDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
+	handler := disconnectTestServer(store, root, acp.AgentOpenCode).Handler()
 
 	configDir := filepath.Join(root, "acp", "opencode")
 	if err := os.MkdirAll(configDir, 0o700); err != nil {
@@ -141,7 +150,7 @@ func TestDisconnectACPAuthKeepsGlobalConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
+	handler := disconnectTestServer(store, root, acp.AgentClaude).Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/claude/auth/disconnect", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
@@ -197,7 +206,7 @@ func TestDisconnectACPAuthStopsAutoFallbackToGlobalClaudeConfig(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/claude/auth/disconnect", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	res := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler().ServeHTTP(res, req)
+	disconnectTestServer(store, root, acp.AgentClaude).Handler().ServeHTTP(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}

@@ -122,7 +122,7 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 		}
 	}
 	markGoalRequested(job, req.GoalRequested)
-	m.publishACP(job.eventSnapshot())
+	m.publishACP(job.eventView())
 	if local != nil {
 		go m.runLocalPrompt(context.WithoutCancel(ctx), job, local, promptMessage, req.Attachments)
 	} else {
@@ -185,7 +185,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		m.log.Error("append user message failed", "session", job.ID, "error", err)
 	}
 	markGoalRequested(job, req.GoalRequested)
-	m.publishACP(job.eventSnapshot())
+	m.publishACP(job.eventView())
 	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, promptReq)
 	return job.Snapshot(), nil
 }

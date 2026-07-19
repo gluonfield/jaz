@@ -33,6 +33,9 @@ type fakeACPManager struct {
 	steerSupported bool
 	sideErr        error
 	answerErr      error
+	streamRetains  int
+	streamReleases int
+	statusCalls    int
 	job            acp.Job
 	jobs           []acp.Job
 	spawnStore     storage.SessionStore
@@ -175,10 +178,28 @@ func (f *fakeACPManager) SendSideChat(ctx context.Context, req acp.SideChatReque
 }
 
 func (f *fakeACPManager) Status(string) (acp.Job, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.statusCalls++
 	return f.job, nil
 }
 
-func (f *fakeACPManager) List() []acp.Job {
+func (f *fakeACPManager) StreamStatus(string) (acp.StreamView, error) {
+	return acp.StreamViewFromJob(f.job), nil
+}
+
+func (f *fakeACPManager) RetainStream(string) func() {
+	f.mu.Lock()
+	f.streamRetains++
+	f.mu.Unlock()
+	return func() {
+		f.mu.Lock()
+		f.streamReleases++
+		f.mu.Unlock()
+	}
+}
+
+func (f *fakeACPManager) allJobs() []acp.Job {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.jobs != nil {
@@ -188,6 +209,30 @@ func (f *fakeACPManager) List() []acp.Job {
 		return nil
 	}
 	return []acp.Job{f.job}
+}
+
+func (f *fakeACPManager) LiveSessionRefs() []string {
+	jobs := f.allJobs()
+	refs := make([]string, 0, len(jobs)*2)
+	for _, job := range jobs {
+		refs = append(refs, job.ID, job.Slug)
+	}
+	return refs
+}
+
+func (f *fakeACPManager) HydrationJobs(ids []string) map[string]acp.HydrationView {
+	wanted := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wanted[id] = struct{}{}
+	}
+	jobs := make(map[string]acp.HydrationView, len(ids))
+	for _, job := range f.allJobs() {
+		if _, ok := wanted[job.ID]; !ok {
+			continue
+		}
+		jobs[job.ID] = acp.HydrationViewFromJob(job)
+	}
+	return jobs
 }
 
 func (f *fakeACPManager) AnswerInteractive(ctx context.Context, answer acp.InteractiveAnswer) error {

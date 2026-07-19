@@ -10,8 +10,13 @@ import (
 
 type Querier interface {
 	DeleteMessagesByThread(ctx context.Context, threadID string) error
+	GetMessageTime(ctx context.Context, arg GetMessageTimeParams) (int64, error)
 	InsertMessage(ctx context.Context, arg InsertMessageParams) error
+	ListMessageRangeSizes(ctx context.Context, arg ListMessageRangeSizesParams) ([]ListMessageRangeSizesRow, error)
 	ListMessagesByThread(ctx context.Context, threadID string) ([]Message, error)
+	ListMessagesByThreadRange(ctx context.Context, arg ListMessagesByThreadRangeParams) ([]Message, error)
+	ListUserMessageBoundaries(ctx context.Context, arg ListUserMessageBoundariesParams) ([]ListUserMessageBoundariesRow, error)
+	NextMessageSeq(ctx context.Context, threadID string) (int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

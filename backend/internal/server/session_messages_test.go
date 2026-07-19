@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,16 +11,107 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/goal"
+	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
-	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/transcript"
 )
 
-func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
+type blockingTranscriptStore struct {
+	transcript.Store
+	started chan struct{}
+}
+
+func (s *blockingTranscriptStore) LoadTranscriptPage(ctx context.Context, _ string, _ storage.TranscriptPageRequest) (storage.TranscriptPage, error) {
+	close(s.started)
+	<-ctx.Done()
+	return storage.TranscriptPage{}, ctx.Err()
+}
+
+type changedTranscriptStore struct{ transcript.Store }
+
+func (s changedTranscriptStore) LoadTranscriptPage(context.Context, string, storage.TranscriptPageRequest) (storage.TranscriptPage, error) {
+	return storage.TranscriptPage{}, storage.ErrTranscriptChanged
+}
+
+type noLiveTranscript struct{}
+
+func (noLiveTranscript) HydrationJobs([]string) map[string]acp.HydrationView { return nil }
+
+func sessionMessagesHandler(store storage.Store, reader transcript.Store, manager *fakeACPManager) http.Handler {
+	var live transcript.LiveReader = noLiveTranscript{}
+	var runtime ACPManager
+	if manager != nil {
+		live = manager
+		runtime = manager
+	}
+	handler := sessionsapi.NewMessagesHandler(transcript.NewService(reader, live))
+	return (&Server{
+		Store: store,
+		ACP:   runtime,
+		Routes: Routes{{
+			Pattern: "GET /v1/sessions/{session}/messages",
+			Handler: handler,
+		}},
+	}).Handler()
+}
+
+func TestSessionMessagesCancelsTranscriptRead(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Slug: "cancel-hydration", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocking := &blockingTranscriptStore{Store: store, started: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil).WithContext(ctx)
+	res := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		sessionMessagesHandler(store, blocking, nil).ServeHTTP(res, req)
+		close(done)
+	}()
+	<-blocking.started
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cancelled transcript read did not return")
+	}
+}
+
+func TestSessionMessagesReportsChangedHistory(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Slug: "changed-history"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := httptest.NewRecorder()
+	sessionMessagesHandler(store, changedTranscriptStore{Store: store}, nil).ServeHTTP(
+		res,
+		httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil),
+	)
+	if res.Code != http.StatusConflict {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:    "codex-restarted",
 		Runtime: storage.RuntimeACP,
@@ -32,19 +124,6 @@ func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveACPState(session.ID, storage.ACPState{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		ACPAgent:   "codex",
-		ACPSession: "acp-session",
-		State:      acp.StateRunning,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	session, err = store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	session.Status = storage.StatusError
 	session.Error = "Server restarted while this thread was still running."
 	if err := store.SaveSession(session); err != nil {
@@ -54,13 +133,14 @@ func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store, ACP: &fakeACPManager{job: acp.Job{
+	manager := &fakeACPManager{job: acp.Job{
 		ID:         session.ID,
 		Slug:       session.Slug,
 		ACPAgent:   "codex",
 		ACPSession: "acp-session",
 		State:      acp.StateRunning,
-	}}}).Handler().ServeHTTP(res, req)
+	}}
+	sessionMessagesHandler(store, store, manager).ServeHTTP(res, req)
 
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -83,7 +163,7 @@ func TestSessionMessagesErrorSessionOverridesRunningACPSnapshot(t *testing.T) {
 
 func TestCanonicalSessionResponsePublishesPublicGoal(t *testing.T) {
 	budget := int64(100)
-	data, err := json.Marshal(canonicalSessionResponse(storage.Session{
+	data, err := json.Marshal(sessionview.Public(storage.Session{
 		ID:      "thread-1",
 		Runtime: storage.RuntimeACP,
 		Goal: &goal.State{
@@ -117,7 +197,7 @@ func TestCanonicalSessionResponsePublishesPublicGoal(t *testing.T) {
 }
 
 func TestSessionEventResponsePublishesPublicGoal(t *testing.T) {
-	data, err := json.Marshal(sessionEventResponseFrom(sessionevents.Event{
+	data, err := json.Marshal(sessionview.Event(sessionevents.Event{
 		SessionID: "thread-1",
 		Type:      sessionevents.TypeGoalUpdate,
 		Goal: &sessionevents.GoalEvent{
@@ -156,10 +236,11 @@ func goalField(t *testing.T, response []byte) string {
 }
 
 func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:    "codex-mobile",
 		Runtime: storage.RuntimeACP,
@@ -200,22 +281,11 @@ func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveACPState(session.ID, storage.ACPState{
-		ID:         session.ID,
-		Slug:       session.Slug,
-		ACPAgent:   "codex",
-		ACPSession: "acp-session",
-		State:      acp.StateIdle,
-		ToolCalls:  []sessionevents.ACPToolCall{heavyCall},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
 	req.Header.Set("X-Jaz-Client-Platform", "mobile")
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store}).Handler().ServeHTTP(res, req)
+	sessionMessagesHandler(store, store, nil).ServeHTTP(res, req)
 
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -256,10 +326,11 @@ func TestSessionMessagesMobileProjectionStripsHeavyToolPayload(t *testing.T) {
 }
 
 func TestSessionMessagesMobilePreservesPermissionContent(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:    "claude-plan",
 		Runtime: storage.RuntimeACP,
@@ -293,14 +364,15 @@ func TestSessionMessagesMobilePreservesPermissionContent(t *testing.T) {
 	req.Header.Set("X-Jaz-Client-Platform", "mobile")
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store, ACP: &fakeACPManager{job: acp.Job{
+	manager := &fakeACPManager{job: acp.Job{
 		ID:          session.ID,
 		Slug:        session.Slug,
 		ACPAgent:    "claude",
 		ACPSession:  "acp-session",
 		State:       acp.StateRunning,
 		Permissions: []sessionevents.ACPPermission{permission},
-	}}}).Handler().ServeHTTP(res, req)
+	}}
+	sessionMessagesHandler(store, store, manager).ServeHTTP(res, req)
 
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -324,10 +396,11 @@ func TestSessionMessagesMobilePreservesPermissionContent(t *testing.T) {
 }
 
 func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:    "codex-compacting",
 		Runtime: storage.RuntimeACP,
@@ -344,7 +417,7 @@ func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", nil)
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store, ACP: &fakeACPManager{job: acp.Job{
+	manager := &fakeACPManager{job: acp.Job{
 		ID:              session.ID,
 		Slug:            session.Slug,
 		ACPAgent:        "codex",
@@ -352,7 +425,8 @@ func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
 		State:           acp.StateRunning,
 		GoalRequested:   true,
 		ActiveOperation: acp.ActiveOperationCompact,
-	}}}).Handler().ServeHTTP(res, req)
+	}}
+	sessionMessagesHandler(store, store, manager).ServeHTTP(res, req)
 
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -373,10 +447,11 @@ func TestSessionMessagesIncludesActiveOperation(t *testing.T) {
 }
 
 func TestSessionMessagesErrorChildPreservesParentVisibility(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	parent, err := store.CreateSession(storage.CreateSession{
 		Slug:    "parent",
 		Runtime: storage.RuntimeACP,
@@ -398,28 +473,10 @@ func TestSessionMessagesErrorChildPreservesParentVisibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveACPState(child.ID, storage.ACPState{
-		ID:            child.ID,
-		Slug:          child.Slug,
-		Title:         child.Title,
-		ParentID:      parent.ID,
-		ACPAgent:      "codex",
-		ACPSession:    "acp-session",
-		State:         acp.StateRunning,
-		ParentVisible: true,
-		Assistant:     "private child output",
-		Thought:       "private child thought",
-		Plan:          []sessionevents.ACPPlanEntry{{Content: "Inspect current page", Status: "completed"}},
-		ToolCalls:     []sessionevents.ACPToolCall{{ID: "tool-1", Title: "read file"}},
-		Permissions: []sessionevents.ACPPermission{{
-			ID:     "perm-1",
-			Status: "pending",
-		}},
+	if err := store.AppendSessionEvents(parent.ID, sessionevents.Event{
+		Type: "acp",
+		ACP:  &sessionevents.ACPEvent{ID: child.ID, Agent: "codex", SessionID: "acp-session", State: acp.StateRunning},
 	}); err != nil {
-		t.Fatal(err)
-	}
-	child, err = store.LoadSession(child.ID)
-	if err != nil {
 		t.Fatal(err)
 	}
 	child.Status = storage.StatusError
@@ -431,7 +488,7 @@ func TestSessionMessagesErrorChildPreservesParentVisibility(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+parent.ID+"/messages", nil)
 	res := httptest.NewRecorder()
 
-	(&Server{Store: store, ACP: &fakeACPManager{
+	manager := &fakeACPManager{
 		job: acp.Job{State: acp.StateNotRunning},
 		jobs: []acp.Job{{
 			ID:            child.ID,
@@ -443,13 +500,14 @@ func TestSessionMessagesErrorChildPreservesParentVisibility(t *testing.T) {
 			State:         acp.StateRunning,
 			ParentVisible: true,
 		}},
-	}}).Handler().ServeHTTP(res, req)
+	}
+	sessionMessagesHandler(store, store, manager).ServeHTTP(res, req)
 
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 	var got struct {
-		ACPChildren []storage.ACPState `json:"acp_children"`
+		ACPChildren []acp.Job `json:"acp_children"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
@@ -466,5 +524,8 @@ func TestSessionMessagesErrorChildPreservesParentVisibility(t *testing.T) {
 	}
 	if state.Assistant != "" || state.Thought != "" || len(state.Plan) != 0 || len(state.ToolCalls) != 0 || len(state.Permissions) != 0 {
 		t.Fatalf("child transcript leaked into parent response: %#v", state)
+	}
+	if manager.statusCalls != 0 {
+		t.Fatalf("status calls = %d, want none", manager.statusCalls)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -17,12 +18,39 @@ import (
 )
 
 type Store struct {
-	root          string
-	db            *sql.DB
-	searchQueries search.Querier
-	mirror        *jsonstore.Store
-	writeMu       sync.Mutex
-	eventPlanner  legacyEventPlanner
+	root           string
+	db             *sql.DB
+	searchQueries  search.Querier
+	exportMirror   sessionExportMirror
+	writeMu        writeMutex
+	eventPlanner   eventCompactionPlanner
+	compactionWake chan struct{}
+}
+
+type writeMutex struct {
+	mu      sync.Mutex
+	waiting atomic.Int64
+}
+
+func (m *writeMutex) Lock() {
+	m.waiting.Add(1)
+	m.mu.Lock()
+	m.waiting.Add(-1)
+}
+
+func (m *writeMutex) Unlock() {
+	m.mu.Unlock()
+}
+
+func (m *writeMutex) tryMaintenanceLock() bool {
+	if m.waiting.Load() > 0 || !m.mu.TryLock() {
+		return false
+	}
+	if m.waiting.Load() == 0 {
+		return true
+	}
+	m.mu.Unlock()
+	return false
 }
 
 func DefaultRoot() string {
@@ -37,17 +65,17 @@ func New(root string) (*Store, error) {
 	if root == "" {
 		root = DefaultRoot()
 	}
-	store := &Store{root: root}
+	store := &Store{root: root, compactionWake: make(chan struct{}, 1)}
 	for _, dir := range []string{store.RootDir(), store.SessionsDir(), store.WorkspacesDir()} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, err
 		}
 	}
-	mirror, err := jsonstore.New(root)
+	exportMirror, err := jsonstore.New(root)
 	if err != nil {
 		return nil, err
 	}
-	store.mirror = mirror
+	store.exportMirror = exportMirror
 	db, err := sql.Open("sqlite", sqliteDSN(filepath.Join(root, "jaz.sqlite")))
 	if err != nil {
 		return nil, err

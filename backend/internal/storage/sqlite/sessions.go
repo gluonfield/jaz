@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -72,6 +71,9 @@ func (s *Store) SaveSession(session storage.Session) error {
 	}
 	if current, err := s.LoadSession(session.ID); err == nil {
 		s.mirrorSession(current)
+	}
+	if session.Status != storage.StatusRunning {
+		s.notifySessionEventCompaction()
 	}
 	return nil
 }
@@ -167,6 +169,9 @@ func (s *Store) UpdateSessionStatus(id, status, errorMessage string, attentionAt
 	if current, err := s.LoadSession(id); err == nil {
 		s.mirrorSession(current)
 	}
+	if status != storage.StatusRunning {
+		s.notifySessionEventCompaction()
+	}
 	return nil
 }
 
@@ -183,38 +188,99 @@ func (s *Store) CompleteSession(id string, completedAt time.Time) error {
 	if current, err := s.LoadSession(id); err == nil {
 		s.mirrorSession(current)
 	}
+	s.notifySessionEventCompaction()
 	return nil
 }
 
 func (s *Store) ListSessions(filter storage.SessionFilter) ([]storage.Session, error) {
-	rows, err := threaddb.New(s.db).ListSessions(context.Background())
+	return s.listSessions(context.Background(), filter)
+}
+
+func (s *Store) listSessions(ctx context.Context, filter storage.SessionFilter) ([]storage.Session, error) {
+	q := threaddb.New(s.db)
+	params := sessionListParams(filter)
+	var (
+		rows []threaddb.Thread
+		err  error
+	)
+	if filter.ParentOnly && filter.ParentID != "" {
+		rows, err = q.ListChildSessions(ctx, threaddb.ListChildSessionsParams{
+			FilterParentID:       params.FilterParentID,
+			FilterArchived:       params.FilterArchived,
+			FilterRuntime:        params.FilterRuntime,
+			FilterSourceType:     params.FilterSourceType,
+			FilterSourceID:       params.FilterSourceID,
+			FilterIncludeSourced: params.FilterIncludeSourced,
+			FilterUpdatedSinceMs: params.FilterUpdatedSinceMs,
+			FilterLimit:          params.FilterLimit,
+		})
+	} else {
+		rows, err = q.ListSessions(ctx, params)
+	}
 	if err != nil {
 		return nil, err
 	}
-
-	var sessions []storage.Session
+	sessions := make([]storage.Session, 0, len(rows))
 	for _, row := range rows {
 		session, err := sessionFromDB(row)
 		if err != nil {
 			return nil, err
 		}
-		if !storage.SessionMatchesFilter(session, filter) {
-			continue
-		}
 		sessions = append(sessions, session)
 	}
-	sort.Slice(sessions, func(i, j int) bool {
-		left := storage.SessionAttentionAt(sessions[i])
-		right := storage.SessionAttentionAt(sessions[j])
-		if left.Equal(right) {
-			return sessions[i].ID < sessions[j].ID
-		}
-		return left.After(right)
-	})
-	if filter.Limit > 0 && len(sessions) > filter.Limit {
-		sessions = sessions[:filter.Limit]
-	}
 	return sessions, nil
+}
+
+func (s *Store) LoadTranscriptSessions(ctx context.Context, parentID string, ids []string) (storage.TranscriptSessions, error) {
+	wanted := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		wanted[id] = struct{}{}
+	}
+	queryIDs := append([]string(nil), ids...)
+	rows, err := threaddb.New(s.db).LoadTranscriptSessions(ctx, threaddb.LoadTranscriptSessionsParams{
+		ParentID: nullDBString(parentID), Ids: queryIDs,
+	})
+	if err != nil {
+		return storage.TranscriptSessions{}, err
+	}
+	related := storage.TranscriptSessions{}
+	for _, row := range rows {
+		session := storage.TranscriptSession{
+			ID: row.ID, Slug: row.Slug, Title: row.Title.String, ParentID: row.ParentID.String,
+			Status: row.Status, ACPAgent: row.AcpAgent.String,
+			ACPSession: row.AcpSessionID.String, Cwd: row.Cwd.String, Error: row.Error.String,
+			ModelProvider: row.ModelProvider.String, Model: row.Model.String,
+			ReasoningEffort: row.ReasoningEffort.String,
+			CreatedAt:       msToTime(row.CreatedAtMs), UpdatedAt: msToTime(row.UpdatedAtMs),
+		}
+		if row.DirectChild != 0 {
+			related.Children = append(related.Children, session)
+		}
+		if _, ok := wanted[session.ID]; ok {
+			related.References = append(related.References, session)
+		}
+	}
+	return related, nil
+}
+
+func sessionListParams(filter storage.SessionFilter) threaddb.ListSessionsParams {
+	updatedSinceMs := int64(0)
+	if !filter.UpdatedSince.IsZero() {
+		updatedSinceMs = timeToMs(filter.UpdatedSince)
+	}
+	return threaddb.ListSessionsParams{
+		FilterArchived:        boolInt(filter.Archived),
+		FilterIncludeChildren: boolInt(filter.IncludeChildren),
+		FilterRootOnly:        boolInt(filter.RootOnly),
+		FilterParentOnly:      boolInt(filter.ParentOnly),
+		FilterParentID:        sql.NullString{String: filter.ParentID, Valid: true},
+		FilterRuntime:         filter.Runtime,
+		FilterSourceType:      filter.SourceType,
+		FilterSourceID:        filter.SourceID,
+		FilterIncludeSourced:  boolInt(filter.IncludeSourced),
+		FilterUpdatedSinceMs:  updatedSinceMs,
+		FilterLimit:           int64(filter.Limit),
+	}
 }
 
 func (s *Store) LastRootSession() (storage.Session, error) {
@@ -234,6 +300,9 @@ func (s *Store) loadSession(ref string) (storage.Session, error) {
 		return storage.Session{}, fmt.Errorf("session id or slug is required")
 	}
 	row, err := threaddb.New(s.db).GetSession(context.Background(), ref)
+	if err == sql.ErrNoRows {
+		return storage.Session{}, fmt.Errorf("%w: %s", storage.ErrSessionNotFound, ref)
+	}
 	if err != nil {
 		return storage.Session{}, err
 	}

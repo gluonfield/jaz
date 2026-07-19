@@ -62,7 +62,7 @@ func TestAgentMessageChunkMessageIDPersistsTextRunID(t *testing.T) {
 	if rpcErr != nil {
 		t.Fatal(rpcErr)
 	}
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
 
 	stored, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
@@ -276,13 +276,6 @@ func runInteractiveRequestUserInputTest(t *testing.T, metaKey, submitOptionID, r
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 	}
-	state, err := store.LoadACPState("session")
-	if err != nil && !strings.Contains(err.Error(), "acp state not found") {
-		t.Fatal(err)
-	}
-	if err == nil && len(state.Permissions) != 0 {
-		t.Fatalf("persisted permissions = %#v", state.Permissions)
-	}
 	if len(manager.jobsByID["session"].Permissions) != 1 ||
 		len(manager.jobsByID["session"].Permissions[0].Questions) != 1 ||
 		manager.jobsByID["session"].Permissions[0].Questions[0].ID != "audience" {
@@ -373,13 +366,6 @@ func TestPlanSessionUpdatePublishesAndPersistsProgress(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 
-	state, err := store.LoadACPState(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(state.Plan) != 0 {
-		t.Fatalf("state repeated persisted progress: %#v", state.Plan)
-	}
 	storedEvents, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -544,13 +530,6 @@ func TestToolCallUpdateCapturesLivenessInEvent(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 
-	state, err := store.LoadACPState(session.ID)
-	if err != nil && !strings.Contains(err.Error(), "acp state not found") {
-		t.Fatal(err)
-	}
-	if err == nil && len(state.ToolCalls) != 0 {
-		t.Fatalf("state repeated persisted tool call: %#v", state.ToolCalls)
-	}
 	storedEvents, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -827,13 +806,6 @@ func TestPlanSessionUpdateIgnoresMarkdownDocumentEntry(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	state, err := store.LoadACPState(session.ID)
-	if err != nil && !strings.Contains(err.Error(), "acp state not found") {
-		t.Fatal(err)
-	}
-	if err == nil && len(state.Plan) != 0 {
-		t.Fatalf("persisted progress = %#v", state.Plan)
-	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -914,13 +886,6 @@ func TestPlanSessionUpdateInvalidReplacementClearsProgress(t *testing.T) {
 		t.Fatal(ctx.Err())
 	}
 
-	state, err := store.LoadACPState(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(state.Plan) != 0 {
-		t.Fatalf("persisted progress = %#v", state.Plan)
-	}
 }
 
 func TestSessionInfoUpdatePublishesAndPersistsTitle(t *testing.T) {

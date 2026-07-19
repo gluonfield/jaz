@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { usePrefetchQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
 import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
@@ -40,13 +40,14 @@ import {
   answerSessionInteractiveResponse,
   cancelSession,
   sendSessionSideChat,
-  sessionMessagesQuery,
+  sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
 import type { Session, SessionEvent } from '@/lib/api/types'
 import { drawerSlide } from '@/lib/dom/drawer'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
+import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
@@ -159,7 +160,11 @@ const TRANSCRIPT_DOCK_GAP_PX = 20
 function SessionPage({ sessionId, search }: { sessionId: string; search: SessionSearch }) {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const detail = useQuery(sessionMessagesQuery(sessionId))
+  const reportHistoryError = useCallback((message: string) => {
+    toast(`Couldn't load earlier history: ${message}`, 'danger')
+  }, [toast])
+  const detail = useSessionHistory(sessionId, reportHistoryError)
+  usePrefetchQuery(sessionRepoQuery(sessionId))
   const events = useQuery<SessionEvent[]>({
     queryKey: keys.sessionEvents(sessionId),
     queryFn: () => [],
@@ -187,11 +192,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     notifySessionEventError(event)
   }, [notifySessionEventError])
   useEffect(() => setLastSessionEventAt(undefined), [sessionId])
-  useSessionEvents(sessionId, detail.data?.events, streamingRef, handleSessionEvent)
+  useSessionEvents(sessionId, detail.data?.latest_event_seq, streamingRef, handleSessionEvent)
+
+  const { loadingEarlierHistory, loadEarlierHistory } = detail
 
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
   const sentPendingRef = useRef<string | null>(null)
+  const seenRequestedRef = useRef(false)
   const detailSession = detail.data?.session
   const sideChatAvailable = isCodexACPSession(detailSession)
   const sidePanel = useSidePanelState(sideChatAvailable)
@@ -338,12 +346,18 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   }, [detail.isSuccess, handleSend, sessionId])
 
   useEffect(() => {
+    if (seenRequestedRef.current) return
+    seenRequestedRef.current = true
     void markThreadSeen(sessionId).finally(() => queryClient.invalidateQueries({ queryKey: keys.feed }))
   }, [sessionId, queryClient])
 
   useEffect(() => {
     if (!detail.isSuccess || !search.message) return
     const messageSeq = search.message
+    if (!detail.data.messages.some((message) => message.seq === messageSeq)) {
+      if (detail.data.has_earlier && !loadingEarlierHistory) void loadEarlierHistory()
+      return
+    }
     setHighlightedMessageSeq(messageSeq)
     const frame = requestAnimationFrame(() => {
       const target = scrollRef.current?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
@@ -356,7 +370,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
       cancelAnimationFrame(frame)
       window.clearTimeout(timer)
     }
-  }, [detail.isSuccess, detail.data?.messages.length, scrollRef, search.message, sessionId])
+  }, [detail.data, detail.isSuccess, loadEarlierHistory, loadingEarlierHistory, scrollRef, search.message])
 
   const data = detail.data
   const derived = useMemo(
@@ -478,6 +492,9 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                       highlightedSeq={highlightedMessageSeq}
                       errorAction={sessionError ? undefined : continueErrorAction}
                       onArtifactPrompt={queue.onSend}
+                      hasEarlierHistory={detail.data.has_earlier}
+                      loadingEarlierHistory={loadingEarlierHistory}
+                      onLoadEarlierHistory={loadEarlierHistory}
                       tail={
                         isACP ? (
                           <>

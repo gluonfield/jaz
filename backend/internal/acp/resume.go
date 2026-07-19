@@ -74,11 +74,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		}
 		return m.resumeLocalSession(session, agentName, cfg)
 	}
-	var state storage.ACPState
-	if loader, ok := m.store.(acpStateLoader); ok {
-		state, _ = loader.LoadACPState(session.ID)
-	}
-	cwd := firstNonEmpty(session.RuntimeRef.Cwd, state.Cwd)
+	cwd := session.RuntimeRef.Cwd
 	if cwd == "" {
 		if cwd, err = m.resolveCwd(cfg.Cwd); err != nil {
 			return nil, err
@@ -101,7 +97,8 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		ac.close()
 		return nil, err
 	}
-	if acpSessionID != session.RuntimeRef.SessionID {
+	loaded := acpSessionID == session.RuntimeRef.SessionID
+	if !loaded {
 		session.RuntimeRef.SessionID = acpSessionID
 		sessionChanged = true
 	}
@@ -110,18 +107,17 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		sessionChanged = true
 	}
 	if sessionChanged {
-		_ = m.store.SaveSession(session)
+		if err := m.store.SaveSession(session); err != nil {
+			ac.close()
+			return nil, err
+		}
 	}
 	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
-	job.ParentVisible = state.ParentVisible
-	job.LastEventAt = firstNonZeroTime(state.LastEventAt, state.UpdatedAt)
-	job.LastToolAt = state.LastToolAt
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	ac.trackPromptSends(job)
 	m.addJob(job, newAgentProcess(ac, turnScopedAgentProcess(cfg)))
-	m.saveACPState(job.eventSnapshot())
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,
-		"acp_session", acpSessionID, "loaded", acpSessionID == session.RuntimeRef.SessionID)
+		"acp_session", acpSessionID, "loaded", loaded)
 	return job, nil
 }
 

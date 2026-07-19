@@ -1,6 +1,8 @@
 package sqlite
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -64,11 +66,49 @@ func TestSessionEventsPersist(t *testing.T) {
 	if loaded[1].ACP == nil || loaded[1].ACP.ToolCalls[0].Title != "Read file" {
 		t.Fatalf("tool event = %#v", loaded[1])
 	}
+	if loaded[1].ProjectionKey == "" || loaded[1].ProjectionOp != sessionevents.ProjectionReplace {
+		t.Fatalf("tool projection = %#v", loaded[1])
+	}
 	if loaded[2].Plan == nil || loaded[2].Plan.Plan[0].Content != "Run tests" {
 		t.Fatalf("plan event = %#v", loaded[2])
 	}
 	if loaded[3].SideChat == nil || loaded[3].SideChat.Content != "side answer" {
 		t.Fatalf("side chat event = %#v", loaded[3])
+	}
+}
+
+func TestLoadLatestACPTurnUsesBoundedDurableBoundary(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "latest-turn"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal := func() sessionevents.Event {
+		return sessionevents.Event{Type: "acp", ACP: &sessionevents.ACPEvent{ID: session.ID, State: "idle"}}
+	}
+	if err := store.AppendSessionEvents(session.ID,
+		sessionevents.Event{Type: "note", Content: "turn-1"}, terminal(),
+		sessionevents.Event{Type: "note", Content: "turn-2"}, terminal(),
+		sessionevents.Event{Type: "note", Content: "turn-3"},
+	); err != nil {
+		t.Fatal(err)
+	}
+	events, err := store.LoadLatestACPTurn(t.Context(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 3 || events[0].Content != "turn-2" || events[2].Content != "turn-3" {
+		t.Fatalf("latest turn events = %#v", events)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := store.LoadLatestACPTurn(ctx, session.ID); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled load error = %v", err)
 	}
 }
 
@@ -236,6 +276,45 @@ func TestSessionEventsCoalesceSnapshotsAndPreserveTextDeltas(t *testing.T) {
 	}
 	if loaded[len(loaded)-1].Seq != 10 {
 		t.Fatalf("next seq = %d, want 10", loaded[len(loaded)-1].Seq)
+	}
+}
+
+func TestSessionEventsDurablyCompleteSparseProviderSubagentUpdates(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "provider-updates"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := sessionevents.ProviderSubagentProjectionKey(session.ID, sessionevents.ProviderSubagentEvent{Provider: "codex", ID: "worker"})
+	event := func(status string, complete bool) sessionevents.Event {
+		subagent := &sessionevents.ProviderSubagentEvent{Provider: "codex", ID: "worker", Status: status}
+		if complete {
+			subagent.Name = "Newton"
+			subagent.Task = "audit"
+		}
+		return sessionevents.Event{
+			Type:             sessionevents.TypeProviderSubagent,
+			ProjectionKey:    key,
+			ProviderSubagent: subagent,
+		}
+	}
+	if err := store.AppendSessionEvents(session.ID, event("running", true)); err != nil {
+		t.Fatal(err)
+	}
+	// A separate append models a manager restart with no volatile projection state.
+	if err := store.AppendSessionEvents(session.ID, event("completed", false)); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].Seq != 2 || stored[0].ProviderSubagent == nil || stored[0].ProviderSubagent.Name != "Newton" || stored[0].ProviderSubagent.Status != "completed" {
+		t.Fatalf("stored provider projection = %#v", stored)
 	}
 }
 

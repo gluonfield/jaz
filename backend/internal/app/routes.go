@@ -13,6 +13,7 @@ import (
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
 	modelcapabilitiesapi "github.com/wins/jaz/backend/internal/httpapi/modelcapabilities"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
+	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
@@ -40,10 +41,12 @@ type routeDeps struct {
 	ConnectionQR    *connections.QRService         `optional:"true"`
 	MCP             *mcpruntime.Manager            `optional:"true"`
 	Preview         *previewapi.Handler
+	SessionMessages *sessionsapi.MessagesHandler
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
-	routes := usageRoutes(deps.Usage)
+	routes := server.Routes{{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages}}
+	routes = append(routes, usageRoutes(deps.Usage)...)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.MCP, deps.Config)

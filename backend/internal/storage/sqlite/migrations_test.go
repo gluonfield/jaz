@@ -42,7 +42,7 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !columns["event_compaction_version"] || !columns["event_revision"] {
+	if !columns["event_compaction_version"] || !columns["event_revision"] || !columns["transcript_revision"] {
 		t.Fatal("migration did not add session event compaction state")
 	}
 	indexes, err := indexNames(store.db, "threads")
@@ -51,6 +51,13 @@ func TestMigrationsAreIdempotent(t *testing.T) {
 	}
 	if !indexes["idx_threads_event_compaction_pending"] {
 		t.Fatal("migration did not add pending event compaction index")
+	}
+	columns, err = tableColumns(store.db, "session_events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !columns["projection_key"] || !columns["projection_op"] {
+		t.Fatal("migration did not add session event projection metadata")
 	}
 }
 

@@ -52,11 +52,6 @@ type SessionEventStore interface {
 	SessionEventAppender
 }
 
-type ACPStateStore interface {
-	LoadACPState(id string) (ACPState, error)
-	SaveACPState(id string, state ACPState) error
-}
-
 type UsageEventStore interface {
 	UsageEventsSince(since time.Time) ([]UsageEvent, error)
 }
@@ -70,7 +65,6 @@ type Store interface {
 	SessionStore
 	MessageStore
 	SessionEventStore
-	ACPStateStore
 	SettingsStorage
 	UsageEventStore
 }

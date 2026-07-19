@@ -10,6 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
 func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
@@ -80,8 +81,48 @@ func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 	if len(stored) != 1 || stored[0].ProviderSubagent == nil || stored[0].ProviderSubagent.ID != "thread-1" {
 		t.Fatalf("stored events = %#v", stored)
 	}
+	wantKey := sessionevents.ProviderSubagentProjectionKey(session.ID, *stored[0].ProviderSubagent)
+	if stored[0].ProjectionKey != wantKey {
+		t.Fatalf("projection key = %q, want %q", stored[0].ProjectionKey, wantKey)
+	}
 	if got := manager.jobsByID[session.ID].Title; got != "" {
 		t.Fatalf("subagent metadata changed title: %q", got)
+	}
+}
+
+func TestProviderSubagentSparseUpdateAfterManagerRestartPublishesCompleteSnapshot(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "provider-restart", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := eventView{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex}
+	first := NewManager(store, Config{}, nil)
+	first.publishProviderSubagent(view, sessionevents.ProviderSubagentEvent{
+		Provider: AgentCodex, ID: "worker", Name: "Newton", Task: "audit", Status: "running",
+	})
+
+	second := NewManager(store, Config{}, nil)
+	second.Events = sessionevents.New()
+	live := second.Events.Subscribe(t.Context(), session.ID)
+	second.publishProviderSubagent(view, sessionevents.ProviderSubagentEvent{
+		Provider: AgentCodex, ID: "worker", Status: "completed",
+	})
+
+	event := <-live
+	if event.ProviderSubagent == nil || event.ProviderSubagent.Name != "Newton" || event.ProviderSubagent.Task != "audit" || event.ProviderSubagent.Status != "completed" {
+		t.Fatalf("live provider snapshot = %#v", event.ProviderSubagent)
+	}
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].ProviderSubagent == nil || stored[0].ProviderSubagent.Name != "Newton" || stored[0].ProviderSubagent.Task != "audit" {
+		t.Fatalf("stored provider snapshot = %#v", stored)
 	}
 }
 

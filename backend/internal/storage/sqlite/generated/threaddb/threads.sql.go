@@ -60,6 +60,17 @@ func (q *Queries) AddUsage(ctx context.Context, arg AddUsageParams) error {
 	return err
 }
 
+const advanceTranscriptRevision = `-- name: AdvanceTranscriptRevision :exec
+UPDATE threads
+SET transcript_revision = transcript_revision + 1
+WHERE id = ?1
+`
+
+func (q *Queries) AdvanceTranscriptRevision(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, advanceTranscriptRevision, id)
+	return err
+}
+
 const completeSession = `-- name: CompleteSession :exec
 UPDATE threads
 SET
@@ -83,48 +94,7 @@ func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams
 }
 
 const getSession = `-- name: GetSession :one
-SELECT
-  id,
-  slug,
-  title,
-  parent_id,
-  status,
-  error,
-  runtime,
-  acp_agent,
-  acp_session_id,
-  cwd,
-  model_provider,
-  model,
-  reasoning_effort,
-  input_tokens,
-  cached_input_tokens,
-  output_tokens,
-  reasoning_output_tokens,
-  total_tokens,
-  queued_messages,
-  source_type,
-  source_id,
-  archived,
-  created_at_ms,
-  updated_at_ms,
-  context_tokens,
-  context_window_tokens,
-  cached_write_tokens,
-  project_path,
-  last_attention_at_ms,
-  pinned,
-  artifact_surface,
-  mcp_server_policy,
-  pending_steer_message,
-  unread,
-  goal,
-  manual_title,
-  last_completed_at_ms,
-  title_locked,
-  event_compaction_version,
-  event_revision
-FROM threads
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
 `
@@ -173,6 +143,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.TitleLocked,
 		&i.EventCompactionVersion,
 		&i.EventRevision,
+		&i.TranscriptRevision,
 	)
 	return i, err
 }
@@ -203,6 +174,123 @@ func (q *Queries) GetThreadIDBySlug(ctx context.Context, slug string) (string, e
 	var id string
 	err := row.Scan(&id)
 	return id, err
+}
+
+const getTranscriptRevision = `-- name: GetTranscriptRevision :one
+SELECT transcript_revision
+FROM threads
+WHERE id = ?1
+`
+
+func (q *Queries) GetTranscriptRevision(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getTranscriptRevision, id)
+	var transcript_revision int64
+	err := row.Scan(&transcript_revision)
+	return transcript_revision, err
+}
+
+const listChildSessions = `-- name: ListChildSessions :many
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision
+FROM threads
+WHERE parent_id = ?1
+  AND archived = ?2
+  AND (?3 = '' OR runtime = ?3)
+  AND (?4 = '' OR COALESCE(source_type, '') = ?4)
+  AND (?5 = '' OR COALESCE(source_id, '') = ?5)
+  AND (
+    ?4 <> ''
+    OR ?5 <> ''
+    OR ?6
+    OR COALESCE(source_type, '') = ''
+  )
+  AND (?7 = 0 OR updated_at_ms > ?7)
+ORDER BY last_attention_at_ms DESC, id
+LIMIT CASE WHEN ?8 > 0 THEN ?8 ELSE -1 END
+`
+
+type ListChildSessionsParams struct {
+	FilterParentID       sql.NullString `json:"filter_parent_id"`
+	FilterArchived       int64          `json:"filter_archived"`
+	FilterRuntime        interface{}    `json:"filter_runtime"`
+	FilterSourceType     interface{}    `json:"filter_source_type"`
+	FilterSourceID       interface{}    `json:"filter_source_id"`
+	FilterIncludeSourced interface{}    `json:"filter_include_sourced"`
+	FilterUpdatedSinceMs interface{}    `json:"filter_updated_since_ms"`
+	FilterLimit          interface{}    `json:"filter_limit"`
+}
+
+func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error) {
+	rows, err := q.db.QueryContext(ctx, listChildSessions,
+		arg.FilterParentID,
+		arg.FilterArchived,
+		arg.FilterRuntime,
+		arg.FilterSourceType,
+		arg.FilterSourceID,
+		arg.FilterIncludeSourced,
+		arg.FilterUpdatedSinceMs,
+		arg.FilterLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Thread{}
+	for rows.Next() {
+		var i Thread
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Title,
+			&i.ParentID,
+			&i.Status,
+			&i.Error,
+			&i.Runtime,
+			&i.AcpAgent,
+			&i.AcpSessionID,
+			&i.Cwd,
+			&i.ModelProvider,
+			&i.Model,
+			&i.ReasoningEffort,
+			&i.InputTokens,
+			&i.CachedInputTokens,
+			&i.OutputTokens,
+			&i.ReasoningOutputTokens,
+			&i.TotalTokens,
+			&i.QueuedMessages,
+			&i.SourceType,
+			&i.SourceID,
+			&i.Archived,
+			&i.CreatedAtMs,
+			&i.UpdatedAtMs,
+			&i.ContextTokens,
+			&i.ContextWindowTokens,
+			&i.CachedWriteTokens,
+			&i.ProjectPath,
+			&i.LastAttentionAtMs,
+			&i.Pinned,
+			&i.ArtifactSurface,
+			&i.McpServerPolicy,
+			&i.PendingSteerMessage,
+			&i.Unread,
+			&i.Goal,
+			&i.ManualTitle,
+			&i.LastCompletedAtMs,
+			&i.TitleLocked,
+			&i.EventCompactionVersion,
+			&i.EventRevision,
+			&i.TranscriptRevision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listErrorThreadIDsWithoutError = `-- name: ListErrorThreadIDsWithoutError :many
@@ -270,52 +358,55 @@ func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, 
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT
-  id,
-  slug,
-  title,
-  parent_id,
-  status,
-  error,
-  runtime,
-  acp_agent,
-  acp_session_id,
-  cwd,
-  model_provider,
-  model,
-  reasoning_effort,
-  input_tokens,
-  cached_input_tokens,
-  output_tokens,
-  reasoning_output_tokens,
-  total_tokens,
-  queued_messages,
-  source_type,
-  source_id,
-  archived,
-  created_at_ms,
-  updated_at_ms,
-  context_tokens,
-  context_window_tokens,
-  cached_write_tokens,
-  project_path,
-  last_attention_at_ms,
-  pinned,
-  artifact_surface,
-  mcp_server_policy,
-  pending_steer_message,
-  unread,
-  goal,
-  manual_title,
-  last_completed_at_ms,
-  title_locked,
-  event_compaction_version,
-  event_revision
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision
 FROM threads
+WHERE archived = ?1
+  AND (?2 OR parent_id IS NULL OR parent_id = '')
+  AND (NOT ?3 OR parent_id IS NULL OR parent_id = '')
+  AND (NOT ?4 OR COALESCE(parent_id, '') = ?5)
+  AND (?5 = '' OR COALESCE(parent_id, '') = ?5)
+  AND (?6 = '' OR runtime = ?6)
+  AND (?7 = '' OR COALESCE(source_type, '') = ?7)
+  AND (?8 = '' OR COALESCE(source_id, '') = ?8)
+  AND (
+    ?7 <> ''
+    OR ?8 <> ''
+    OR ?9
+    OR COALESCE(source_type, '') = ''
+  )
+  AND (?10 = 0 OR updated_at_ms > ?10)
+ORDER BY last_attention_at_ms DESC, id
+LIMIT CASE WHEN ?11 > 0 THEN ?11 ELSE -1 END
 `
 
-func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
-	rows, err := q.db.QueryContext(ctx, listSessions)
+type ListSessionsParams struct {
+	FilterArchived        int64          `json:"filter_archived"`
+	FilterIncludeChildren interface{}    `json:"filter_include_children"`
+	FilterRootOnly        interface{}    `json:"filter_root_only"`
+	FilterParentOnly      interface{}    `json:"filter_parent_only"`
+	FilterParentID        sql.NullString `json:"filter_parent_id"`
+	FilterRuntime         interface{}    `json:"filter_runtime"`
+	FilterSourceType      interface{}    `json:"filter_source_type"`
+	FilterSourceID        interface{}    `json:"filter_source_id"`
+	FilterIncludeSourced  interface{}    `json:"filter_include_sourced"`
+	FilterUpdatedSinceMs  interface{}    `json:"filter_updated_since_ms"`
+	FilterLimit           interface{}    `json:"filter_limit"`
+}
+
+func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error) {
+	rows, err := q.db.QueryContext(ctx, listSessions,
+		arg.FilterArchived,
+		arg.FilterIncludeChildren,
+		arg.FilterRootOnly,
+		arg.FilterParentOnly,
+		arg.FilterParentID,
+		arg.FilterRuntime,
+		arg.FilterSourceType,
+		arg.FilterSourceID,
+		arg.FilterIncludeSourced,
+		arg.FilterUpdatedSinceMs,
+		arg.FilterLimit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -364,6 +455,113 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.TitleLocked,
 			&i.EventCompactionVersion,
 			&i.EventRevision,
+			&i.TranscriptRevision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const loadTranscriptSessions = `-- name: LoadTranscriptSessions :many
+SELECT
+  id,
+  slug,
+  title,
+  parent_id,
+  status,
+  acp_agent,
+  acp_session_id,
+  cwd,
+  error,
+  model_provider,
+  model,
+  reasoning_effort,
+  created_at_ms,
+  updated_at_ms,
+  CAST((
+    COALESCE(parent_id, '') = ?1
+    AND archived = 0
+    AND runtime = 'acp'
+    AND COALESCE(source_type, '') = ''
+  ) AS INTEGER) AS direct_child
+FROM threads
+WHERE (
+    parent_id = ?1
+    AND archived = 0
+    AND runtime = 'acp'
+    AND COALESCE(source_type, '') = ''
+  )
+  OR id IN (/*SLICE:ids*/?)
+ORDER BY last_attention_at_ms DESC, id
+`
+
+type LoadTranscriptSessionsParams struct {
+	ParentID sql.NullString `json:"parent_id"`
+	Ids      []string       `json:"ids"`
+}
+
+type LoadTranscriptSessionsRow struct {
+	ID              string         `json:"id"`
+	Slug            string         `json:"slug"`
+	Title           sql.NullString `json:"title"`
+	ParentID        sql.NullString `json:"parent_id"`
+	Status          string         `json:"status"`
+	AcpAgent        sql.NullString `json:"acp_agent"`
+	AcpSessionID    sql.NullString `json:"acp_session_id"`
+	Cwd             sql.NullString `json:"cwd"`
+	Error           sql.NullString `json:"error"`
+	ModelProvider   sql.NullString `json:"model_provider"`
+	Model           sql.NullString `json:"model"`
+	ReasoningEffort sql.NullString `json:"reasoning_effort"`
+	CreatedAtMs     int64          `json:"created_at_ms"`
+	UpdatedAtMs     int64          `json:"updated_at_ms"`
+	DirectChild     int64          `json:"direct_child"`
+}
+
+func (q *Queries) LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error) {
+	query := loadTranscriptSessions
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ParentID)
+	if len(arg.Ids) > 0 {
+		for _, v := range arg.Ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(arg.Ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LoadTranscriptSessionsRow{}
+	for rows.Next() {
+		var i LoadTranscriptSessionsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Title,
+			&i.ParentID,
+			&i.Status,
+			&i.AcpAgent,
+			&i.AcpSessionID,
+			&i.Cwd,
+			&i.Error,
+			&i.ModelProvider,
+			&i.Model,
+			&i.ReasoningEffort,
+			&i.CreatedAtMs,
+			&i.UpdatedAtMs,
+			&i.DirectChild,
 		); err != nil {
 			return nil, err
 		}
@@ -514,32 +712,6 @@ type TouchThreadParams struct {
 
 func (q *Queries) TouchThread(ctx context.Context, arg TouchThreadParams) error {
 	_, err := q.db.ExecContext(ctx, touchThread, arg.UpdatedAtMs, arg.ID)
-	return err
-}
-
-const updateACPState = `-- name: UpdateACPState :exec
-UPDATE threads
-SET
-  status = ?1,
-  error = ?2,
-  updated_at_ms = ?3
-WHERE id = ?4
-`
-
-type UpdateACPStateParams struct {
-	Status      string         `json:"status"`
-	Error       sql.NullString `json:"error"`
-	UpdatedAtMs int64          `json:"updated_at_ms"`
-	ID          string         `json:"id"`
-}
-
-func (q *Queries) UpdateACPState(ctx context.Context, arg UpdateACPStateParams) error {
-	_, err := q.db.ExecContext(ctx, updateACPState,
-		arg.Status,
-		arg.Error,
-		arg.UpdatedAtMs,
-		arg.ID,
-	)
 	return err
 }
 

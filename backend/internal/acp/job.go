@@ -40,6 +40,67 @@ type Job struct {
 	LastToolAt      time.Time                     `json:"last_tool_at,omitzero"`
 }
 
+type HydrationView struct {
+	ID              string
+	Slug            string
+	Title           string
+	ParentID        string
+	ACPAgent        string
+	ACPSession      string
+	Cwd             string
+	ModelProvider   string
+	Model           string
+	ReasoningEffort string
+	State           string
+	StopReason      string
+	Plan            []sessionevents.PlanEntry
+	Permissions     []sessionevents.ACPPermission
+	Modes           ModeState
+	Error           string
+	GoalRequested   bool
+	ActiveOperation string
+	ParentVisible   bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	LastEventAt     time.Time
+	LastToolAt      time.Time
+}
+
+type eventView struct {
+	ID              string
+	Slug            string
+	Title           string
+	ParentID        string
+	ACPAgent        string
+	ACPSession      string
+	Cwd             string
+	ModelProvider   string
+	Model           string
+	ReasoningEffort string
+	State           string
+	StopReason      string
+	Plan            []sessionevents.PlanEntry
+	Modes           ModeState
+	Error           string
+	GoalRequested   bool
+	ParentVisible   bool
+	LastEventAt     time.Time
+	LastToolAt      time.Time
+}
+
+type StreamTool struct {
+	ID    string
+	Title string
+}
+
+type StreamView struct {
+	State     string
+	Error     string
+	Assistant string
+	Thought   string
+	Tools     []StreamTool
+}
+
 type jobState struct {
 	Job
 
@@ -54,18 +115,11 @@ type jobState struct {
 	usage                  storage.Usage
 	lastUsageDelta         storage.Usage
 	lastUsageDeltaSet      bool
+	turnResultDiscarded    bool
 	systemPromptExtensions promptmodule.Modules
 	assistantText          strings.Builder
 	thoughtText            strings.Builder
 }
-
-type jobSnapshotKind uint8
-
-const (
-	eventJobSnapshot jobSnapshotKind = iota
-	streamJobSnapshot
-	fullJobSnapshot
-)
 
 type activeTurn struct {
 	done                  chan struct{}
@@ -122,63 +176,106 @@ func newIdleJob(session storage.Session, agentName, acpSessionID, cwd string, mo
 	job.LastEventAt = now
 	job.toolByID = make(map[string]sessionevents.ACPToolCall)
 	job.pendingToolUpdateByID = make(map[string]sessionevents.ACPToolCall)
+	job.turnResultDiscarded = true
 	return job
 }
 
 func (j *jobState) Snapshot() Job {
-	return j.snapshot(fullJobSnapshot)
-}
-
-func (j *jobState) eventSnapshot() Job {
-	return j.snapshot(eventJobSnapshot)
-}
-
-func (j *jobState) streamSnapshot() Job {
-	return j.snapshot(streamJobSnapshot)
-}
-
-func (j *jobState) snapshot(kind jobSnapshotKind) Job {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	snapshot := Job{
-		ID:              j.ID,
-		Slug:            j.Slug,
-		Title:           j.Title,
-		ParentID:        j.ParentID,
-		ACPAgent:        j.ACPAgent,
-		ACPSession:      j.ACPSession,
-		Cwd:             j.Cwd,
-		ModelProvider:   j.ModelProvider,
-		Model:           j.Model,
-		ReasoningEffort: j.ReasoningEffort,
-		State:           j.State,
-		StopReason:      j.StopReason,
-		Plan:            clonePlanEntries(j.Plan),
-		Modes:           j.Modes.Clone(),
-		Error:           j.Error,
-		GoalRequested:   j.turn != nil && j.turn.goalRequested && (j.State == StateRunning || j.State == StateStarting),
-		ActiveOperation: j.ActiveOperation,
-		ParentVisible:   j.ParentVisible,
-		CreatedAt:       j.CreatedAt,
-		UpdatedAt:       j.UpdatedAt,
-		LastEventAt:     j.LastEventAt,
-		LastToolAt:      j.LastToolAt,
-	}
-	if kind != eventJobSnapshot {
-		snapshot.Assistant = j.Assistant
-		snapshot.Thought = j.Thought
-	}
-	if kind == streamJobSnapshot {
-		snapshot.ToolCalls = make([]sessionevents.ACPToolCall, 0, len(j.ToolCalls))
-		for _, call := range j.ToolCalls {
-			snapshot.ToolCalls = append(snapshot.ToolCalls, sessionevents.ACPToolCall{ID: call.ID, Title: call.Title})
-		}
-	}
-	if kind == fullJobSnapshot {
-		snapshot.ToolCalls = CloneToolCalls(j.ToolCalls)
-		snapshot.Permissions = clonePermissions(j.Permissions)
-	}
+	snapshot := j.hydrationViewLocked().Job()
+	snapshot.Assistant = j.Assistant
+	snapshot.Thought = j.Thought
+	snapshot.ToolCalls = CloneToolCalls(j.ToolCalls)
 	return snapshot
+}
+
+func (j *jobState) hydrationView() HydrationView {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.hydrationViewLocked()
+}
+
+func (j *jobState) hydrationViewLocked() HydrationView {
+	view := HydrationViewFromJob(j.Job)
+	view.GoalRequested = j.turn != nil && j.turn.goalRequested && (j.State == StateRunning || j.State == StateStarting)
+	return view
+}
+
+func HydrationViewFromJob(job Job) HydrationView {
+	return HydrationView{
+		ID: job.ID, Slug: job.Slug, Title: job.Title, ParentID: job.ParentID,
+		ACPAgent: job.ACPAgent, ACPSession: job.ACPSession, Cwd: job.Cwd,
+		ModelProvider: job.ModelProvider, Model: job.Model, ReasoningEffort: job.ReasoningEffort,
+		State: job.State, StopReason: job.StopReason, Plan: clonePlanEntries(job.Plan),
+		Permissions: clonePermissions(job.Permissions), Modes: job.Modes.Clone(), Error: job.Error,
+		GoalRequested: job.GoalRequested, ActiveOperation: job.ActiveOperation, ParentVisible: job.ParentVisible,
+		CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt, LastEventAt: job.LastEventAt, LastToolAt: job.LastToolAt,
+	}
+}
+
+func (v HydrationView) Job() Job {
+	return Job{
+		ID: v.ID, Slug: v.Slug, Title: v.Title, ParentID: v.ParentID,
+		ACPAgent: v.ACPAgent, ACPSession: v.ACPSession, Cwd: v.Cwd,
+		ModelProvider: v.ModelProvider, Model: v.Model, ReasoningEffort: v.ReasoningEffort,
+		State: v.State, StopReason: v.StopReason, Plan: clonePlanEntries(v.Plan), Permissions: clonePermissions(v.Permissions),
+		Modes: v.Modes.Clone(), Error: v.Error, GoalRequested: v.GoalRequested,
+		ActiveOperation: v.ActiveOperation, ParentVisible: v.ParentVisible,
+		CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, LastEventAt: v.LastEventAt, LastToolAt: v.LastToolAt,
+	}
+}
+
+func eventViewFromJob(job Job) eventView {
+	return eventView{
+		ID:              job.ID,
+		Slug:            job.Slug,
+		Title:           job.Title,
+		ParentID:        job.ParentID,
+		ACPAgent:        job.ACPAgent,
+		ACPSession:      job.ACPSession,
+		Cwd:             job.Cwd,
+		ModelProvider:   job.ModelProvider,
+		Model:           job.Model,
+		ReasoningEffort: job.ReasoningEffort,
+		State:           job.State,
+		StopReason:      job.StopReason,
+		Plan:            clonePlanEntries(job.Plan),
+		Modes:           job.Modes.Clone(),
+		Error:           job.Error,
+		GoalRequested:   job.GoalRequested,
+		ParentVisible:   job.ParentVisible,
+		LastEventAt:     job.LastEventAt,
+		LastToolAt:      job.LastToolAt,
+	}
+}
+
+func (j *jobState) eventView() eventView {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	view := eventViewFromJob(j.Job)
+	view.GoalRequested = j.turn != nil && j.turn.goalRequested && (j.State == StateRunning || j.State == StateStarting)
+	return view
+}
+
+func (j *jobState) streamView() StreamView {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return StreamViewFromJob(j.Job)
+}
+
+func StreamViewFromJob(job Job) StreamView {
+	view := StreamView{
+		State:     job.State,
+		Error:     job.Error,
+		Assistant: job.Assistant,
+		Thought:   job.Thought,
+		Tools:     make([]StreamTool, 0, len(job.ToolCalls)),
+	}
+	for _, call := range job.ToolCalls {
+		view.Tools = append(view.Tools, StreamTool{ID: call.ID, Title: call.Title})
+	}
+	return view
 }
 
 func clonePlanEntries(in []sessionevents.PlanEntry) []sessionevents.PlanEntry {
@@ -237,6 +334,7 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.usage = storage.Usage{}
 	j.lastUsageDelta = storage.Usage{}
 	j.lastUsageDeltaSet = false
+	j.turnResultDiscarded = false
 	j.turn = &activeTurn{
 		done:            make(chan struct{}),
 		completion:      completion,
@@ -252,6 +350,31 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.LastEventAt = now
 	j.LastToolAt = time.Time{}
 	return j.turn.done
+}
+
+func (j *jobState) discardTurnResult() {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.turn != nil || j.State == StateRunning || j.State == StateStarting {
+		return
+	}
+	j.Assistant = ""
+	j.Thought = ""
+	j.Plan = nil
+	j.ToolCalls = nil
+	j.Permissions = nil
+	j.ActiveOperation = ""
+	j.assistantText.Reset()
+	j.thoughtText.Reset()
+	j.toolByID = nil
+	j.pendingToolUpdateByID = nil
+	j.turnResultDiscarded = true
+}
+
+func (j *jobState) resultDiscarded() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.turnResultDiscarded
 }
 
 func (j *jobState) appendAssistantLocked(chunk string) {

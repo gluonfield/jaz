@@ -76,24 +76,29 @@ function WorkSection({
 function EarlierHistoryButton({
   hiddenCount,
   unit,
+  hasMore,
+  loading,
   onClick,
 }: {
   hiddenCount: number
   unit: string
+  hasMore?: boolean
+  loading?: boolean
   onClick: () => void
 }) {
-  if (hiddenCount <= 0) return null
+  if (hiddenCount <= 0 && !hasMore) return null
   return (
     <div className="flex justify-center">
       <Button
         variant="ghost"
         size="sm"
         className="border border-border bg-bg/90"
-        title={`${hiddenCount} earlier ${unit}`}
+        title={hiddenCount > 0 ? `${hiddenCount} earlier ${unit}` : 'Load earlier history'}
+        disabled={loading}
         onClick={onClick}
       >
         <ChevronDown size={13} className="rotate-180" aria-hidden />
-        Earlier history
+        {loading ? 'Loading…' : 'Earlier history'}
       </Button>
     </div>
   )
@@ -123,6 +128,9 @@ export const Transcript = memo(function Transcript({
   errorAction,
   onApprovePlan,
   onArtifactPrompt,
+  hasEarlierHistory = false,
+  loadingEarlierHistory = false,
+  onLoadEarlierHistory,
 }: {
   messages: ChatMessage[]
   events: SessionEvent[]
@@ -137,6 +145,9 @@ export const Transcript = memo(function Transcript({
   errorAction?: SessionErrorAction
   onApprovePlan?: () => void
   onArtifactPrompt?: (text: string) => void
+  hasEarlierHistory?: boolean
+  loadingEarlierHistory?: boolean
+  onLoadEarlierHistory?: () => Promise<boolean>
 }) {
   const {
     chronological,
@@ -162,11 +173,26 @@ export const Transcript = memo(function Transcript({
     )
   }, [baselineVisibleHistory, historyCount])
 
+  useEffect(() => {
+    if (highlightedSeq) setVisibleHistoryCount(historyCount)
+  }, [highlightedSeq, historyCount])
+
   const historyStart = findActive ? 0 : Math.max(0, historyCount - visibleHistoryCount)
   const hiddenHistoryCount = historyStart
   const visibleChronological = chronological.slice(historyStart)
   const visibleTurns = turns.slice(historyStart)
   const errorActionEventIndex = errorAction ? trailingErrorEventIndex(chronological, anchored) : undefined
+
+  const revealEarlierHistory = () => {
+    if (hiddenHistoryCount > 0) {
+      setVisibleHistoryCount((count) => Math.min(historyCount, count + historyBatchSize))
+      return
+    }
+    if (!onLoadEarlierHistory) return
+    void onLoadEarlierHistory().then((loaded) => {
+      if (loaded) setVisibleHistoryCount(Number.MAX_SAFE_INTEGER)
+    })
+  }
 
   const renderItem = (item: TimelineItem, options: RenderOptions = {}): ReactNode => {
     const showAssistantCopy = options.showAssistantCopy ?? true
@@ -233,9 +259,9 @@ export const Transcript = memo(function Transcript({
         <EarlierHistoryButton
           hiddenCount={hiddenHistoryCount}
           unit="history items"
-          onClick={() =>
-            setVisibleHistoryCount((count) => Math.min(historyCount, count + historyBatchSize))
-          }
+          hasMore={hasEarlierHistory}
+          loading={loadingEarlierHistory}
+          onClick={revealEarlierHistory}
         />
         {visibleChronological.map((item) => renderItem(item))}
         {tail}
@@ -249,9 +275,9 @@ export const Transcript = memo(function Transcript({
       <EarlierHistoryButton
         hiddenCount={hiddenHistoryCount}
         unit="turns"
-        onClick={() =>
-          setVisibleHistoryCount((count) => Math.min(historyCount, count + historyBatchSize))
-        }
+        hasMore={hasEarlierHistory}
+        loading={loadingEarlierHistory}
+        onClick={revealEarlierHistory}
       />
       {visibleTurns.map((turn, visibleTurnIndex) => {
         const turnIndex = historyStart + visibleTurnIndex

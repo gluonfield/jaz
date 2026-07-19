@@ -5,14 +5,20 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
+type sessionExportMirror interface {
+	SaveSession(storage.Session) error
+	SaveMessages(string, []provider.Message) error
+	AppendMessages(string, ...provider.Message) error
+}
+
 func (s *Store) mirrorSession(session storage.Session) {
-	if s.mirror != nil {
-		_ = s.mirror.SaveSession(session)
+	if s.exportMirror != nil {
+		_ = s.exportMirror.SaveSession(session)
 	}
 }
 
 func (s *Store) mirrorMessages(id string, messages []provider.Message) {
-	if s.mirror != nil {
-		_ = s.mirror.SaveMessages(id, messages)
+	if s.exportMirror != nil {
+		_ = s.exportMirror.SaveMessages(id, messages)
 	}
 }

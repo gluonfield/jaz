@@ -18,6 +18,7 @@ func TestBeginACPTurnClearsStaleError(t *testing.T) {
 	defer store.Close()
 	session, err := store.CreateSession(storage.CreateSession{
 		Slug:    "acp-retry",
+		Title:   "Existing thread",
 		Runtime: storage.RuntimeACP,
 	})
 	if err != nil {

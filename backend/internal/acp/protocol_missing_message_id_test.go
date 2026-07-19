@@ -44,7 +44,7 @@ func TestContentChunksWithoutMessageIDPersist(t *testing.T) {
 			t.Fatal(rpcErr)
 		}
 	}
-	manager.withACPTranscriptBarrier(job.Snapshot(), nil)
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
 
 	stored, err := store.LoadSessionEvents(session.ID)
 	if err != nil {
