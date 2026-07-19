@@ -82,3 +82,25 @@ func TestNormalizeStateRejectsNegativeRemainingTokens(t *testing.T) {
 		t.Fatalf("normalized state = %#v, want nil", normalized)
 	}
 }
+
+func TestNormalizeStateMarksReachedBudgetAsLimited(t *testing.T) {
+	budget := int64(100)
+	state := State{
+		Identity: Identity{Objective: "ship it", Status: StatusActive},
+		Budget:   Budget{TokenBudget: &budget, TokensUsed: 100},
+	}
+	normalized := NormalizeState(&state)
+	if normalized == nil || normalized.Status != StatusBudgetLimited || normalized.RemainingTokens == nil || *normalized.RemainingTokens != 0 {
+		t.Fatalf("normalized state = %#v, want budget-limited with no remaining tokens", normalized)
+	}
+	if !Active(normalized) || Continuable(normalized) {
+		t.Fatalf("budget-limited goal active = %t, continuable = %t", Active(normalized), Continuable(normalized))
+	}
+	raised := int64(200)
+	normalized.Status = StatusActive
+	normalized.TokenBudget = &raised
+	normalized = NormalizeState(normalized)
+	if normalized == nil || normalized.Status != StatusActive || !Continuable(normalized) {
+		t.Fatalf("goal after raised budget = %#v, want active and continuable", normalized)
+	}
+}

@@ -32,12 +32,12 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolCreate,
 		Title:       "Create goal",
-		Description: "Create the active Jaz goal for this thread. Call this once at the start of Goal mode with the concise objective you will pursue.",
+		Description: "Create the active Jaz goal for this thread. Call this once at the start of Goal mode with the concise objective you will pursue. Omit token_budget unless the user explicitly provided one.",
 	}, t.Create)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolGet,
 		Title:       "Get goal",
-		Description: "Return the active Jaz goal with tokens_used, token_budget, remaining_tokens, and time_used_seconds computed by Jaz. Goal tokens are uncached input plus output.",
+		Description: "Return the active Jaz goal with tokens_used, the optional automatic-continuation token_budget, remaining_tokens, and time_used_seconds computed by Jaz. Goal tokens are uncached input plus output.",
 	}, t.Get)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        MCPToolUpdate,
