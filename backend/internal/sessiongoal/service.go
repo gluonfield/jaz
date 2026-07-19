@@ -30,12 +30,12 @@ type Service struct {
 
 type CreateInput struct {
 	Objective   string `json:"objective" jsonschema:"concise goal objective"`
-	TokenBudget *int64 `json:"token_budget,omitempty" jsonschema:"optional budget in uncached input plus output tokens"`
+	TokenBudget *int64 `json:"token_budget,omitempty" jsonschema:"user-provided automatic-continuation token limit; omit unless the user explicitly provided it"`
 }
 
 type UpdateInput struct {
 	Status      string `json:"status" jsonschema:"active, blocked, complete"`
-	TokenBudget *int64 `json:"token_budget,omitempty" jsonschema:"optional replacement budget in uncached input plus output tokens"`
+	TokenBudget *int64 `json:"token_budget,omitempty" jsonschema:"user-provided replacement automatic-continuation token limit; omit unless the user explicitly provided it"`
 }
 
 type refreshScope struct {

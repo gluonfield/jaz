@@ -313,6 +313,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_, _ = fmt.Fprintln(os.Stdout, "not-json")
 				os.Exit(0)
 			}
+			if strings.Contains(string(msg.Params), "close transport") {
+				os.Exit(0)
+			}
 			if err := validateFakePromptContains(msg.Params); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)

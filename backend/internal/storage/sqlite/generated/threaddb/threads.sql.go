@@ -120,7 +120,8 @@ SELECT
   unread,
   goal,
   manual_title,
-  last_completed_at_ms
+  last_completed_at_ms,
+  title_locked
 FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
@@ -167,6 +168,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.Goal,
 		&i.ManualTitle,
 		&i.LastCompletedAtMs,
+		&i.TitleLocked,
 	)
 	return i, err
 }
@@ -301,7 +303,8 @@ SELECT
   unread,
   goal,
   manual_title,
-  last_completed_at_ms
+  last_completed_at_ms,
+  title_locked
 FROM threads
 `
 
@@ -352,6 +355,7 @@ func (q *Queries) ListSessions(ctx context.Context) ([]Thread, error) {
 			&i.Goal,
 			&i.ManualTitle,
 			&i.LastCompletedAtMs,
+			&i.TitleLocked,
 		); err != nil {
 			return nil, err
 		}
@@ -607,7 +611,7 @@ UPDATE threads
 SET
   title = ?1,
   manual_title = 0
-WHERE id = ?2 AND manual_title = 0
+WHERE id = ?2 AND manual_title = 0 AND title_locked = 0
 `
 
 type UpdateSessionTitleFromRuntimeParams struct {
@@ -629,6 +633,7 @@ INSERT INTO threads (
   slug,
   title,
   manual_title,
+  title_locked,
   parent_id,
   status,
   runtime,
@@ -697,12 +702,14 @@ INSERT INTO threads (
   ?33,
   ?34,
   ?35,
-  ?36
+  ?36,
+  ?37
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
   title = excluded.title,
   manual_title = excluded.manual_title,
+  title_locked = excluded.title_locked,
   parent_id = excluded.parent_id,
   status = excluded.status,
   error = excluded.error,
@@ -742,6 +749,7 @@ type UpsertSessionParams struct {
 	Slug                  string         `json:"slug"`
 	Title                 sql.NullString `json:"title"`
 	ManualTitle           int64          `json:"manual_title"`
+	TitleLocked           int64          `json:"title_locked"`
 	ParentID              sql.NullString `json:"parent_id"`
 	Status                string         `json:"status"`
 	Runtime               string         `json:"runtime"`
@@ -782,6 +790,7 @@ func (q *Queries) UpsertSession(ctx context.Context, arg UpsertSessionParams) er
 		arg.Slug,
 		arg.Title,
 		arg.ManualTitle,
+		arg.TitleLocked,
 		arg.ParentID,
 		arg.Status,
 		arg.Runtime,

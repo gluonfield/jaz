@@ -14,8 +14,10 @@ import (
 
 func TestGoalPromptUsesJazTools(t *testing.T) {
 	prompt := goalPromptMessage("do the work", true)
-	if !strings.Contains(prompt, "create_goal") || !strings.Contains(prompt, "do the work") {
-		t.Fatalf("goal prompt message = %q", prompt)
+	for _, required := range []string{"create_goal", "do the work", "user explicitly provided", "Never estimate or invent one", "does not interrupt a turn already in progress"} {
+		if !strings.Contains(prompt, required) {
+			t.Fatalf("goal prompt message missing %q: %q", required, prompt)
+		}
 	}
 	if got := goalPromptMessage("do the work", false); got != "do the work" {
 		t.Fatalf("unrequested goal prompt message = %q", got)
