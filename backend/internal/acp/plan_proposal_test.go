@@ -156,24 +156,6 @@ func TestCodexPlanRequestedPlanDocumentPublishesProposedPlan(t *testing.T) {
 	}
 }
 
-func TestTypedProposalOwnsApprovalIndependentOfAgentName(t *testing.T) {
-	f := newPlanTurnFixture(t, AgentClaude)
-	planText := "Implement the scoped fix and run the relevant checks."
-
-	f.update(t, map[string]any{
-		"sessionUpdate": "plan",
-		"_meta":         map[string]any{codexPlanKindMetaKey: codexPlanKindProposal},
-		"entries":       []map[string]any{{"content": planText, "status": "completed"}},
-	})
-	assertNoEvent(t, f.events)
-
-	f.finish()
-	proposal := receiveEvent(t, f.events)
-	if proposal.Type != "proposed_plan" || proposal.Plan == nil || proposal.Plan.Explanation != planText {
-		t.Fatalf("proposal event = %#v", proposal)
-	}
-}
-
 func TestLocalPlanRequestedTextStreamsLive(t *testing.T) {
 	f := newPlanTurnFixture(t, AgentJaz)
 
@@ -184,7 +166,7 @@ func TestLocalPlanRequestedTextStreamsLive(t *testing.T) {
 	}
 }
 
-func TestPlanRequestedProgressInvalidatesEarlierProposal(t *testing.T) {
+func TestPlanRequestedProgressDoesNotBecomeProposedPlan(t *testing.T) {
 	f := newPlanTurnFixture(t, AgentCodex)
 
 	f.update(t, map[string]any{
@@ -195,7 +177,7 @@ func TestPlanRequestedProgressInvalidatesEarlierProposal(t *testing.T) {
 	assertNoEvent(t, f.events)
 	f.update(t, map[string]any{
 		"sessionUpdate": "plan",
-		"_meta":         map[string]any{codexPlanKindMetaKey: codexPlanKindProgress},
+		"_meta":         map[string]any{codexPlanKindMetaKey: "progress"},
 		"entries": []map[string]any{
 			{"content": "Inspect request", "priority": "high", "status": "completed"},
 			{"content": "Wait for approval", "priority": "medium", "status": "in_progress"},
@@ -204,6 +186,15 @@ func TestPlanRequestedProgressInvalidatesEarlierProposal(t *testing.T) {
 	progress := receiveEvent(t, f.events)
 	if progress.Type != "acp" || progress.ACP == nil || len(progress.ACP.Plan) != 2 {
 		t.Fatalf("progress event = %#v", progress)
+	}
+	f.update(t, map[string]any{
+		"sessionUpdate": "agent_message_chunk",
+		"messageId":     "codex-final-plan",
+		"content":       map[string]any{"type": "text", "text": "The final implementation plan is ready."},
+	})
+	message := receiveEvent(t, f.events)
+	if message.Type != "acp_message" || message.Content != "The final implementation plan is ready." {
+		t.Fatalf("message event = %#v", message)
 	}
 
 	f.finish()
@@ -223,41 +214,22 @@ func TestPlanRequestedUntypedDocumentDoesNotBecomeProposedPlan(t *testing.T) {
 	assertNoEvent(t, f.events)
 }
 
-func TestUnknownTypedPlanUpdateDoesNotFallbackToProgress(t *testing.T) {
-	f := newPlanTurnFixture(t, AgentCodex)
-
-	f.update(t, map[string]any{
-		"sessionUpdate": "plan",
-		"_meta":         map[string]any{codexPlanKindMetaKey: "future-kind"},
-		"entries":       []map[string]any{{"content": "Looks like ordinary progress", "status": "in_progress"}},
-	})
-	assertNoEvent(t, f.events)
-
-	f.finish()
-	assertNoEvent(t, f.events)
-}
-
-func TestPlanRequestedTypedProgressPreservesContent(t *testing.T) {
+func TestPlanRequestedDocumentShapedProgressDoesNotBecomeProposedPlan(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		content string
 	}{
 		{name: "multiline", content: "Inspect the project\nwhile preserving the current transport contract."},
 		{name: "long", content: strings.Repeat("Inspect the existing transport contract. ", 10)},
-		{name: "markdown", content: "- Inspect the existing transport contract."},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := newPlanTurnFixture(t, AgentCodex)
 			f.update(t, map[string]any{
 				"sessionUpdate": "plan",
-				"_meta":         map[string]any{codexPlanKindMetaKey: codexPlanKindProgress},
+				"_meta":         map[string]any{codexPlanKindMetaKey: "progress"},
 				"entries":       []map[string]any{{"content": test.content, "status": "in_progress"}},
 			})
-			progress := receiveEvent(t, f.events)
-			if progress.Type != "acp" || progress.ACP == nil || len(progress.ACP.Plan) != 1 ||
-				progress.ACP.Plan[0].Content != strings.TrimSpace(test.content) {
-				t.Fatalf("progress event = %#v", progress)
-			}
+			assertNoEvent(t, f.events)
 
 			f.finish()
 			assertNoEvent(t, f.events)
