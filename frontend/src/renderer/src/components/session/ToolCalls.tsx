@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
 import { ArtifactBlock } from './ArtifactBlock'
 import { ToolDisclosure } from './ToolDisclosure'
-import { toolRunLabel } from './toolPresentation'
 import { isArtifactToolName } from './toolVisibility'
 
 interface ToolCallItem {
@@ -30,7 +29,7 @@ function ToolCallRun({ calls }: { calls: ToolCallItem[] }) {
     raw_input: inputValue(call.args),
     raw_output: call.result,
   }))
-  return <ToolDisclosure label={toolRunLabel(toolCalls)} calls={toolCalls} active={calls.some((call) => call.pending)} />
+  return <ToolDisclosure calls={toolCalls} active={calls.some((call) => call.pending)} />
 }
 
 export function ToolCalls({

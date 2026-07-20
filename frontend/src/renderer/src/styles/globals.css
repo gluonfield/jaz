@@ -214,12 +214,17 @@
 /* Rendered markdown: compact, token-based typography for chat and file previews. */
 :where(.chat-prose, .file-prose) {
   min-width: 0;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  color: var(--color-ink);
+  font-size: var(--prose-font-size, 0.875rem);
+  line-height: var(--prose-line-height, 1.6);
+  color: var(--prose-color, var(--color-ink));
   overflow-wrap: break-word;
   word-break: normal;
   user-select: text;
+}
+.thinking-prose {
+  --prose-font-size: 0.8125rem;
+  --prose-line-height: 1.55;
+  --prose-color: var(--color-ink-3);
 }
 .chat-prose {
   /* width:100% (not just max-width) so the prose fills — and is capped by — its

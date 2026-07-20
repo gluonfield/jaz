@@ -34,9 +34,7 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
         type="button"
         disabled={!expandable}
         aria-expanded={expandable ? open : undefined}
-        onClick={() => {
-          if (expandable) setOpen((value) => !value)
-        }}
+        onClick={() => setOpen((value) => !value)}
         className="-ml-1.5 inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-control px-1.5 text-left text-[13px] text-ink-3 transition-colors duration-150 motion-reduce:transition-none enabled:hover:text-ink-2 disabled:cursor-default"
       >
         <span className="min-w-0 truncate">{label}</span>
@@ -81,11 +79,9 @@ export function ToolStatusLine({
 }
 
 export const ToolDisclosure = memo(function ToolDisclosure({
-  label,
   calls,
   active = false,
 }: {
-  label: string
   calls: ACPToolCall[]
   active?: boolean
 }) {
@@ -94,7 +90,7 @@ export const ToolDisclosure = memo(function ToolDisclosure({
   const showDiff = (call: ACPToolCall) => inlineDiffs && hasInlineDiff(call)
   const showShell = (call: ACPToolCall) => inlineShell && hasInlineShellCommand(call)
   if (!calls.some((call) => showDiff(call) || showShell(call))) {
-    return <ToolRunDisclosure label={label} calls={calls} active={active} />
+    return <ToolRunDisclosure label={toolRunLabel(calls)} calls={calls} active={active} />
   }
 
   const rows: ReactNode[] = []
@@ -135,5 +131,5 @@ export const ToolDisclosure = memo(function ToolDisclosure({
 
 export function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?: boolean }) {
   if (!calls?.length) return null
-  return <ToolDisclosure label={toolRunLabel(calls)} calls={calls} active={active} />
+  return <ToolDisclosure calls={calls} active={active} />
 }
