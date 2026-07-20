@@ -71,7 +71,7 @@ export function SessionLivenessIndicator({
           {stale ? (
             <CircleAlert className="size-3.5 shrink-0" aria-hidden />
           ) : (
-            <span className="live-dot" aria-hidden />
+            <span className="live-tile" aria-hidden />
           )}
           <span className="min-w-0 truncate">{label}</span>
           {detail ? (
