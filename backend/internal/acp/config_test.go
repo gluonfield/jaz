@@ -177,7 +177,6 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 	}{
 		{AgentClaude, map[string]any{"systemPrompt": map[string]any{"append": "jaz prompt"}}},
 		{AgentKimi, map[string]any{"systemPrompt": "jaz prompt"}},
-		{AgentQwen, nil},
 		{AgentGrok, map[string]any{"rules": "jaz prompt"}},
 		{"grok-build", map[string]any{"rules": "jaz prompt"}},
 		{AgentCodex, map[string]any{"systemPrompt": "jaz prompt"}},
@@ -310,7 +309,7 @@ func TestMergeAgentsPreservesCapabilitiesOnPartialOverride(t *testing.T) {
 		t.Fatalf("command override = %q %#v", got.Command, got.Args)
 	}
 	if got.ProviderMode != AgentProviderModeAgentDefaults ||
-		got.ModelProviderCapability != modelprovider.CapabilityOpenCode ||
+		got.ModelProviderCapability != modelprovider.CapabilityChatCompletions ||
 		got.ModelProvider != modelprovider.ProviderOpenRouter {
 		t.Fatalf("capabilities not preserved: %#v", got)
 	}

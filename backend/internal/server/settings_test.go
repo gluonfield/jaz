@@ -231,7 +231,8 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		got.ACP["qwen"].Model != provider.DefaultQwenCodingPlanModel ||
 		got.ACPOptions["qwen"].AuthProviderID != provider.ProviderQwenCodingPlan ||
 		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderModelStudio) ||
-		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderQwenCodingPlanCN) {
+		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderQwenCodingPlanCN) ||
+		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderQwenTokenPlan) {
 		t.Fatalf("unexpected qwen defaults %#v / %#v", got.ACP["qwen"], got.ACPOptions["qwen"])
 	}
 	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||
@@ -468,7 +469,7 @@ func TestAgentSettingsRejectsEnabledProviderBackedACPWithoutProviderKey(t *testi
 			acp.AgentOpenCode: {
 				Command:                 exe,
 				ProviderMode:            acp.AgentProviderModeAgentDefaults,
-				ModelProviderCapability: provider.CapabilityOpenCode,
+				ModelProviderCapability: provider.CapabilityChatCompletions,
 				ModelProvider:           provider.ProviderOpenAI,
 				Model:                   "gpt-5.4-mini",
 			},
@@ -642,14 +643,14 @@ func TestAgentSettingsAPIIncludesCustomProviderForACPAgents(t *testing.T) {
 		acp.AgentCodex: {
 			Command:                 "codex",
 			ProviderMode:            acp.AgentProviderModeAgentDefaults,
-			ModelProviderCapability: provider.CapabilityCodex,
+			ModelProviderCapability: provider.CapabilityResponses,
 			ModelProvider:           "internal",
 			Model:                   "gpt-5.4-mini",
 		},
 		acp.AgentOpenCode: {
 			Command:                 "opencode",
 			ProviderMode:            acp.AgentProviderModeAgentDefaults,
-			ModelProviderCapability: provider.CapabilityOpenCode,
+			ModelProviderCapability: provider.CapabilityChatCompletions,
 			ModelProvider:           "internal",
 			Model:                   "chat",
 		},

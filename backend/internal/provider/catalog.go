@@ -15,20 +15,22 @@ const (
 	ProviderModelStudio      = "modelstudio-us"
 	ProviderQwenCodingPlan   = "qwen-coding-plan"
 	ProviderQwenCodingPlanCN = "qwen-coding-plan-cn"
+	ProviderQwenTokenPlan    = "qwen-token-plan"
 	ProviderMock             = "mock"
 
 	DefaultOpenRouterModel     = "z-ai/glm-5.2"
 	DefaultOpenAIModel         = "gpt-5.4-mini"
 	DefaultModelStudioModel    = "qwen3.7-max"
 	DefaultQwenCodingPlanModel = "qwen3-coder-plus"
+	DefaultQwenTokenPlanModel  = "qwen3.8-max-preview"
 
 	OpenAIModelGPT56Sol   = "gpt-5.6-sol"
 	OpenAIModelGPT56Terra = "gpt-5.6-terra"
 	OpenAIModelGPT56Luna  = "gpt-5.6-luna"
 
-	CapabilityJaz      = "jaz"
-	CapabilityOpenCode = "opencode"
-	CapabilityCodex    = "codex"
+	CapabilityJaz             = "jaz"
+	CapabilityChatCompletions = "chat_completions"
+	CapabilityResponses       = "responses"
 )
 
 type ModelProvider struct {
@@ -117,6 +119,16 @@ func ModelProviders() []ModelProvider {
 			BaseURL:          "https://coding.dashscope.aliyuncs.com/v1",
 			APIKeyEnv:        "JAZ_QWEN_CODING_PLAN_CN_API_KEY",
 			DefaultModel:     DefaultQwenCodingPlanModel,
+			OpenCode:         true,
+			OpenAICompatible: true,
+			RequiresAPIKey:   true,
+		},
+		{
+			ID:               ProviderQwenTokenPlan,
+			Label:            "Qwen Token Plan (China)",
+			BaseURL:          "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+			APIKeyEnv:        "BAILIAN_TOKEN_PLAN_API_KEY",
+			DefaultModel:     DefaultQwenTokenPlanModel,
 			OpenCode:         true,
 			OpenAICompatible: true,
 			RequiresAPIKey:   true,
@@ -250,9 +262,9 @@ func (p ModelProvider) SupportsCapability(capability string) bool {
 	switch strings.TrimSpace(capability) {
 	case CapabilityJaz:
 		return p.Implemented
-	case CapabilityOpenCode:
+	case CapabilityChatCompletions:
 		return p.OpenCode
-	case CapabilityCodex:
+	case CapabilityResponses:
 		return p.Codex
 	default:
 		return false

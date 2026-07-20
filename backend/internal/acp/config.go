@@ -88,8 +88,6 @@ func promptWithModules(base string, modules promptmodule.Modules) string {
 //     instructions; upstream codex-acp ignores _meta entirely.
 //   - kimi (Jaz fork) appends a _meta.systemPrompt string to its native system
 //     prompt without persisting it in conversation history.
-//   - qwen receives the prompt through its native --append-system-prompt launch
-//     option, so it gets no duplicate session metadata.
 //
 // Unknown agents get the codex-style bare string.
 func systemPromptMeta(agent, prompt string) map[string]any {
@@ -98,8 +96,6 @@ func systemPromptMeta(agent, prompt string) map[string]any {
 		return map[string]any{"systemPrompt": map[string]any{"append": prompt}}
 	case AgentGrok:
 		return map[string]any{"rules": prompt}
-	case AgentQwen:
-		return nil
 	default:
 		return map[string]any{"systemPrompt": prompt}
 	}
@@ -313,7 +309,7 @@ func BuiltinAgents() AgentCatalog {
 			ManagedAdapter:          "qwen",
 			ManagedAdapterArgs:      []string{"--acp"},
 			ProviderMode:            AgentProviderModeAgentDefaults,
-			ModelProviderCapability: provider.CapabilityOpenCode,
+			ModelProviderCapability: provider.CapabilityChatCompletions,
 			ModelProvider:           provider.ProviderQwenCodingPlan,
 			AuthProviderID:          provider.ProviderQwenCodingPlan,
 			Model:                   provider.DefaultQwenCodingPlanModel,
@@ -334,7 +330,7 @@ func BuiltinAgents() AgentCatalog {
 			Command:                 "npx",
 			Args:                    []string{"-y", "opencode-ai@1.18.3", "acp"},
 			ProviderMode:            AgentProviderModeAgentDefaults,
-			ModelProviderCapability: provider.CapabilityOpenCode,
+			ModelProviderCapability: provider.CapabilityChatCompletions,
 			ModelProvider:           provider.ProviderOpenRouter,
 			Model:                   provider.DefaultOpenRouterModel,
 			ReasoningEffort:         DefaultAgentReasoningEffort(AgentOpenCode),
@@ -358,7 +354,7 @@ func codexBuiltinAgent() AgentConfig {
 			"-c", `suppress_unstable_features_warning=true`,
 		},
 		ProviderMode:            AgentProviderModeAgentDefaults,
-		ModelProviderCapability: provider.CapabilityCodex,
+		ModelProviderCapability: provider.CapabilityResponses,
 		ModelProvider:           provider.ProviderOpenAI,
 		AuthProviderID:          provider.ProviderOpenAI,
 		Model:                   CodexOpenAIDefaultModel,

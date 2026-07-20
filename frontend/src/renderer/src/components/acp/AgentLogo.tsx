@@ -6,7 +6,7 @@
 // Sourced from the providers' published logos and kept inline so the marks
 // remain crisp at every scale.
 
-import { QwenMark } from './QwenMark'
+import { QwenMark } from '@/components/ui/QwenMark'
 
 type Props = { agent: string; className?: string; size?: number }
 

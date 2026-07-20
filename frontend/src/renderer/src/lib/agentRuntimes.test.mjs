@@ -42,6 +42,7 @@ describe('Qwen provider auth', () => {
       agents: ['qwen'],
       providers: [
         { id: 'qwen-coding-plan', label: 'Qwen Coding Plan', requires_api_key: true },
+        { id: 'qwen-token-plan', label: 'Qwen Token Plan', requires_api_key: true, configured: true },
         { id: 'modelstudio-us', label: 'ModelStudio', requires_api_key: true, configured: true },
       ],
       acp: { qwen: { enabled: false, model_provider: 'qwen-coding-plan' } },
@@ -50,7 +51,7 @@ describe('Qwen provider auth', () => {
           supports_auth: true,
           provider_mode: 'agent_defaults',
           auth_provider_id: 'qwen-coding-plan',
-          model_provider_ids: ['qwen-coding-plan', 'modelstudio-us'],
+          model_provider_ids: ['qwen-coding-plan', 'qwen-token-plan', 'modelstudio-us'],
         },
       },
       acp_auth: { qwen: { authenticated: false } },
@@ -59,6 +60,8 @@ describe('Qwen provider auth', () => {
     settings.acp_auth.qwen.authenticated = true
     expect(acpAgentEnableable(settings, 'qwen')).toBe(true)
     settings.acp_auth.qwen.authenticated = false
+    settings.acp.qwen.model_provider = 'qwen-token-plan'
+    expect(acpAgentEnableable(settings, 'qwen')).toBe(true)
     settings.acp.qwen.model_provider = 'modelstudio-us'
     expect(acpAgentEnableable(settings, 'qwen')).toBe(true)
   })

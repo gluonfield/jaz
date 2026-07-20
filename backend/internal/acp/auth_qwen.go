@@ -23,7 +23,7 @@ func qwenProvider(id string, providers map[string]modelprovider.ModelProviderCon
 	} else if cfg, configured := providers[id]; configured {
 		meta = modelprovider.ApplyModelProviderConfig(meta, cfg)
 	}
-	return meta, meta.SupportsCapability(modelprovider.CapabilityOpenCode)
+	return meta, meta.SupportsCapability(modelprovider.CapabilityChatCompletions)
 }
 
 func resolveQwenAuth(_ AgentAuthConfig, cfg AgentConfig, root string, env map[string]string, providers map[string]modelprovider.ModelProviderConfig) resolvedAgentAuth {
@@ -35,7 +35,7 @@ func resolveQwenAuth(_ AgentAuthConfig, cfg AgentConfig, root string, env map[st
 	}
 	meta, ok := qwenProvider(cfg.ModelProvider, providers)
 	if !ok {
-		status.Reason = "Select an OpenAI-compatible provider for Qwen Code"
+		status.Reason = "Select a Chat Completions provider for Qwen Code"
 		return status
 	}
 	if !meta.RequiresAPIKey {
@@ -87,7 +87,7 @@ func (m *Manager) prepareQwenProcessEnv(root string, cfg AgentConfig, env map[st
 	)
 	providers := m.providers()
 	auth := resolveAgentAuthWithProviders(AgentQwen, cfg, root, env, providers)
-	for _, key := range openCodeProviderEnvNames(providers) {
+	for _, key := range modelProviderEnvNames(providers) {
 		delete(env, key)
 	}
 	delete(env, "OPENAI_API_KEY")
@@ -118,10 +118,10 @@ func qwenLaunchArgs(agent string, args []string, model, systemPrompt string) []s
 	if CanonicalAgentName(agent) != AgentQwen {
 		return args
 	}
-	if model = strings.TrimSpace(model); model != "" && !hasFlag(args, "--model", "-m") {
+	if model != "" && !hasFlag(args, "--model", "-m") {
 		args = append(args, "--model", model)
 	}
-	if systemPrompt = strings.TrimSpace(systemPrompt); systemPrompt != "" && !hasFlag(args, "--append-system-prompt") {
+	if systemPrompt != "" && !hasFlag(args, "--append-system-prompt") {
 		args = append(args, "--append-system-prompt", systemPrompt)
 	}
 	return args

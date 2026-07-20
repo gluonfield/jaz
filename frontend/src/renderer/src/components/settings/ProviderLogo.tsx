@@ -1,5 +1,5 @@
 import { Boxes } from 'lucide-react'
-import { QwenMark } from '@/components/acp/QwenMark'
+import { QwenMark } from '@/components/ui/QwenMark'
 
 // Brand marks for the model providers jaz connects to, drawn monochrome via
 // currentColor so they tint to the design tokens (ink) and read in both themes.
@@ -21,7 +21,7 @@ const SIZES: Record<string, number> = {
 
 function canonical(provider: string): string {
   const slug = provider.trim().toLowerCase()
-  if (slug.startsWith('qwen-coding-plan') || slug.startsWith('modelstudio')) return 'qwen'
+  if (slug.startsWith('qwen-') || slug.startsWith('modelstudio')) return 'qwen'
   return slug
 }
 

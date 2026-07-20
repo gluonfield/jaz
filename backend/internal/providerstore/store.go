@@ -31,6 +31,7 @@ var reservedIDs = map[string]struct{}{
 	provider.ProviderModelStudio:      {},
 	provider.ProviderQwenCodingPlan:   {},
 	provider.ProviderQwenCodingPlanCN: {},
+	provider.ProviderQwenTokenPlan:    {},
 	provider.ProviderMock:             {},
 }
 

@@ -46,7 +46,7 @@ type openCodeReasoningConfig struct {
 }
 
 func (m *Manager) loadOpenCodeProviderEnv(env map[string]string, root string) {
-	for _, key := range openCodeProviderEnvNames(m.providers()) {
+	for _, key := range modelProviderEnvNames(m.providers()) {
 		loadRuntimeEnvKey(env, root, key)
 	}
 	for id, cfg := range m.providers() {
@@ -60,10 +60,10 @@ func (m *Manager) loadOpenCodeProviderEnv(env map[string]string, root string) {
 	}
 }
 
-func openCodeProviderEnvNames(configs map[string]modelprovider.ModelProviderConfig) []string {
+func modelProviderEnvNames(configs map[string]modelprovider.ModelProviderConfig) []string {
 	keys := map[string]struct{}{}
 	for _, provider := range modelprovider.ModelProviders() {
-		if provider.OpenCode && strings.TrimSpace(provider.APIKeyEnv) != "" {
+		if provider.SupportsCapability(modelprovider.CapabilityChatCompletions) && strings.TrimSpace(provider.APIKeyEnv) != "" {
 			keys[provider.APIKeyEnv] = struct{}{}
 			if alias := apiKeyAlias(provider.APIKeyEnv); alias != "" {
 				keys[alias] = struct{}{}

@@ -25,10 +25,8 @@ export function agentLabel(value: string | undefined): string {
     .join(' ')
 }
 
-// The identity provider you actually authenticate against — the OAuth is with
-// the model maker, not the CLI. "claude" (Claude Code) signs in with Anthropic,
-// "codex" with OpenAI, "kimi" with Moonshot AI, "grok" with xAI. Used for
-// "Sign in with …" copy.
+// The service that owns an agent's credentials. Most are OAuth identities;
+// Qwen uses an Alibaba subscription key instead.
 const AUTH_PROVIDERS: Record<string, string> = {
   codex: 'OpenAI',
   claude: 'Anthropic',

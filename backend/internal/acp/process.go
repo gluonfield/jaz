@@ -146,7 +146,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	stderr := newProcessStderrTail()
 	cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
 	if err := cmd.Start(); err != nil {
-		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
+		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, command, err)
 	}
 	if err := process.started(); err != nil {
 		_ = process.terminate()

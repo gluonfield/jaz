@@ -59,18 +59,23 @@ func TestApplyModelProviderConfigAllowsExplicitKeyForNoKeyBuiltin(t *testing.T) 
 
 func TestQwenProviderCompatibilityMatchesWireSupport(t *testing.T) {
 	modelStudio, ok := ModelProviderByID(ProviderModelStudio)
-	if !ok || !modelStudio.SupportsCapability(CapabilityOpenCode) || !modelStudio.SupportsCapability(CapabilityCodex) {
+	if !ok || !modelStudio.SupportsCapability(CapabilityChatCompletions) || !modelStudio.SupportsCapability(CapabilityResponses) {
 		t.Fatalf("ModelStudio capabilities = %#v", modelStudio)
 	}
 	codingPlan, ok := ModelProviderByID(ProviderQwenCodingPlan)
-	if !ok || !codingPlan.SupportsCapability(CapabilityOpenCode) || codingPlan.SupportsCapability(CapabilityCodex) {
+	if !ok || !codingPlan.SupportsCapability(CapabilityChatCompletions) || codingPlan.SupportsCapability(CapabilityResponses) {
 		t.Fatalf("Coding Plan capabilities = %#v", codingPlan)
+	}
+	tokenPlan, ok := ModelProviderByID(ProviderQwenTokenPlan)
+	if !ok || tokenPlan.DefaultModel != DefaultQwenTokenPlanModel ||
+		!tokenPlan.SupportsCapability(CapabilityChatCompletions) || tokenPlan.SupportsCapability(CapabilityResponses) {
+		t.Fatalf("Token Plan capabilities = %#v", tokenPlan)
 	}
 	custom := ApplyModelProviderConfig(ModelProvider{ID: "custom"}, ModelProviderConfig{
 		Type:    "openai-compatible",
 		BaseURL: "https://qwen.example/v1",
 	})
-	if !custom.SupportsCapability(CapabilityOpenCode) {
+	if !custom.SupportsCapability(CapabilityChatCompletions) {
 		t.Fatalf("custom OpenAI-compatible provider must support Qwen: %#v", custom)
 	}
 }

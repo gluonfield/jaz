@@ -56,6 +56,8 @@ type agentPolicy struct {
 	effortInModelSuffix     bool
 	providerInLaunch        bool
 	modelConfiguredAtLaunch bool
+	systemPromptAtLaunch    bool
+	materializesOnPrompt    bool
 	modelValidationKind     modelValidationKind
 	effortOptions           []ReasoningEffortOption
 	ultracodeSetting        bool
@@ -96,12 +98,13 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 		}
 	case AgentCodex:
 		return agentPolicy{
-			modelConfigID:       sessionConfigModel,
-			effortConfigID:      sessionConfigReasoningEffort,
-			effortInModelSuffix: true,
-			providerInLaunch:    true,
-			modelValidationKind: modelValidationNone,
-			effortOptions:       codexReasoningEffortOptions,
+			modelConfigID:        sessionConfigModel,
+			effortConfigID:       sessionConfigReasoningEffort,
+			effortInModelSuffix:  true,
+			providerInLaunch:     true,
+			materializesOnPrompt: true,
+			modelValidationKind:  modelValidationNone,
+			effortOptions:        codexReasoningEffortOptions,
 		}
 	case AgentKimi:
 		return agentPolicy{
@@ -112,6 +115,8 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 		return agentPolicy{
 			providerInLaunch:        true,
 			modelConfiguredAtLaunch: true,
+			systemPromptAtLaunch:    true,
+			materializesOnPrompt:    true,
 			modelValidationKind:     modelValidationNone,
 		}
 	case AgentGrok:

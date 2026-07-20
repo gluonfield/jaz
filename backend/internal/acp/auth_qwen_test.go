@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
@@ -88,6 +89,31 @@ func TestQwenUsesConfiguredModelStudioProviderKey(t *testing.T) {
 	}
 }
 
+func TestQwenUsesTokenPlanForQwen38MaxPreview(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	cfg := BuiltinAgents()[AgentQwen]
+	cfg.ModelProvider = modelprovider.ProviderQwenTokenPlan
+	cfg.Model = modelprovider.DefaultQwenTokenPlanModel
+	manager := NewManager(nil, Config{
+		Root: root,
+		Providers: map[string]modelprovider.ModelProviderConfig{
+			modelprovider.ProviderQwenTokenPlan: {APIKey: "token-plan-key"},
+		},
+	}, nil)
+	env, err := manager.processEnvPrepared(AgentQwen, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["BAILIAN_TOKEN_PLAN_API_KEY"] != "token-plan-key" || env["OPENAI_API_KEY"] != "token-plan-key" {
+		t.Fatalf("Qwen Token Plan key binding = %#v", env)
+	}
+	if env["OPENAI_BASE_URL"] != "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1" ||
+		env["OPENAI_MODEL"] != modelprovider.DefaultQwenTokenPlanModel {
+		t.Fatalf("Qwen Token Plan launch = %#v", env)
+	}
+}
+
 func TestQwenLaunchCarriesModelAndNonPersistedSystemPrompt(t *testing.T) {
 	args := qwenLaunchArgs(AgentQwen, []string{"--acp"}, modelprovider.DefaultModelStudioModel, "Jaz system prompt")
 	want := []string{"--acp", "--model", modelprovider.DefaultModelStudioModel, "--append-system-prompt", "Jaz system prompt"}
@@ -101,5 +127,20 @@ func TestQwenLaunchCarriesModelAndNonPersistedSystemPrompt(t *testing.T) {
 	}
 	if meta != nil {
 		t.Fatalf("Qwen prompt must not be duplicated into session metadata: %#v", meta)
+	}
+}
+
+func TestQwenStartErrorDoesNotExposeSystemPrompt(t *testing.T) {
+	const prompt = "private Jaz memory and instructions"
+	manager := NewManager(nil, Config{}, nil)
+	_, _, err := manager.openConn(context.Background(), AgentQwen, AgentConfig{
+		Command: filepath.Join(t.TempDir(), "missing-qwen"),
+		Args:    []string{"--acp"},
+	}, map[string]string{}, "", "", prompt)
+	if err == nil {
+		t.Fatal("missing Qwen command unexpectedly started")
+	}
+	if strings.Contains(err.Error(), prompt) || strings.Contains(err.Error(), "--append-system-prompt") {
+		t.Fatalf("Qwen start error exposed launch prompt: %v", err)
 	}
 }

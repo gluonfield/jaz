@@ -28,7 +28,7 @@ func validateProcessLifecycle(agent string, cfg AgentConfig, raw json.RawMessage
 }
 
 func sessionMaterializesOnPrompt(agent string, cfg AgentConfig) bool {
-	return turnScopedAgentProcess(cfg) && CanonicalAgentName(agent) == AgentCodex
+	return turnScopedAgentProcess(cfg) && agentPolicyForAgent(agent).materializesOnPrompt
 }
 
 func metaPromptQueueing(meta map[string]any) bool {
