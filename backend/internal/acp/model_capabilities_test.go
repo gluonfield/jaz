@@ -128,6 +128,21 @@ func TestModelCapabilitiesValidatesSelectedProviderBeforeAgentCatalog(t *testing
 	}
 }
 
+func TestModelCapabilitiesPreservesAutomaticProviderReasoning(t *testing.T) {
+	models, err := (ModelCapabilities{Catalog: capabilityCatalog{providers: map[string][]modelcatalog.Model{
+		provider.ProviderOllama: {{
+			Value:     "qwen3.6:latest",
+			Reasoning: modelcatalog.Reasoning{Status: modelcatalog.ReasoningReady, Automatic: true},
+		}},
+	}}}).ProviderModels(AgentCodex, provider.ProviderOllama)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || !models[0].Reasoning.Automatic || models[0].Reasoning.Scope != ReasoningScopeProvider {
+		t.Fatalf("models = %#v", models)
+	}
+}
+
 func TestModelCapabilitiesAddsCuratedAliasesToProviderModels(t *testing.T) {
 	catalog := capabilityCatalog{
 		agents: map[string][]modelcatalog.Model{AgentCodex: {{

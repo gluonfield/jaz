@@ -1030,6 +1030,7 @@ export interface ModelReasoningCapabilities {
   efforts?: string[]
   default_effort?: string
   mandatory?: boolean
+  automatic?: boolean
 }
 
 /** Editable fields for creating or updating a custom model provider. */

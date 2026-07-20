@@ -23,7 +23,7 @@ describe('modelReasoningSelection', () => {
     })
   })
 
-  test('clears effort only after an explicit unavailable capability', () => {
+  test('suppresses the inherited effort after an explicit unavailable capability', () => {
     const selection = modelReasoningSelection({
       ...input,
       catalog: {
@@ -33,7 +33,7 @@ describe('modelReasoningSelection', () => {
       },
     })
 
-    expect(selection.effectiveEffort).toBe('')
+    expect(selection.effectiveEffort).toBe('none')
     expect(selection.supported).toBeFalse()
     expect(selection.status).toBe('ready')
     expect(selection.blocked).toBeFalse()
@@ -52,6 +52,25 @@ describe('modelReasoningSelection', () => {
 
     expect(modelReasoningSelection({ ...input, catalog }).supported).toBeTrue()
     expect(modelReasoningSelection({ ...input, requested: 'minimal', catalog }).supported).toBeFalse()
+  })
+
+  test('lets a thinking model without effort controls use its automatic default', () => {
+    const catalog = {
+      status: 'ready',
+      unknownModel: 'unavailable',
+      suggestions: [{ value: 'gpt-test', label: 'Test', reasoning: { status: 'ready', automatic: true } }],
+    }
+    const selection = modelReasoningSelection({
+      ...input,
+      catalog,
+    })
+
+    expect(selection.options).toEqual([])
+    expect(selection.effectiveEffort).toBe('none')
+    expect(selection.supported).toBeFalse()
+    expect(selection.blocked).toBeFalse()
+
+    expect(modelReasoningSelection({ ...input, requested: 'none', catalog }).supported).toBeTrue()
   })
 
   test('uses server-provided aliases across providers', () => {
@@ -103,8 +122,8 @@ describe('effectiveReasoningEffort', () => {
     { value: 'max', label: 'Max' },
   ]
 
-  test('clamps an unsupported effort to Default when no none option exists', () => {
-    expect(effectiveReasoningEffort('xhigh', providerOnlyMax)).toBe('')
+  test('clears an inherited effort that the selected model cannot accept', () => {
+    expect(effectiveReasoningEffort('xhigh', providerOnlyMax)).toBe('none')
   })
 
   test('passes a supported effort through unchanged', () => {
@@ -112,7 +131,12 @@ describe('effectiveReasoningEffort', () => {
     expect(effectiveReasoningEffort('', providerOnlyMax)).toBe('')
   })
 
-  test('clamps to none when the model offers an explicit none option', () => {
+  test('preserves the explicit clear sentinel regardless of provider options', () => {
+    expect(effectiveReasoningEffort('none', providerOnlyMax)).toBe('none')
     expect(effectiveReasoningEffort('xhigh', [{ value: 'none', label: 'None' }])).toBe('none')
+  })
+
+  test('clamps to none when reasoning is automatic or unavailable', () => {
+    expect(effectiveReasoningEffort('xhigh', [])).toBe('none')
   })
 })

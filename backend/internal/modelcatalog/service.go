@@ -66,6 +66,12 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 			return nil, fmt.Errorf("%w for %q", ErrCatalogUnavailable, provider.ProviderOpenRouter)
 		}
 		return models, nil
+	case provider.ProviderOllama:
+		models, err := fetchOllamaModels(context.Background(), meta.BaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("%w for %q: %w", ErrCatalogUnavailable, meta.ID, err)
+		}
+		return models, nil
 	default:
 		if meta.OpenAICompatible && !meta.RequiresAPIKey {
 			models, err := fetchOpenAICompatibleModels(context.Background(), meta.BaseURL)

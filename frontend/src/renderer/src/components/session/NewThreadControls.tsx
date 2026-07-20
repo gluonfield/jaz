@@ -135,14 +135,19 @@ export function ModelSelect({
   const label = value === '' ? 'Model' : modelSuggestionLabel(suggestions, value)
   const selectedSuggestion = modelSuggestionFor(suggestions, value)
   const effortStops = effortOptions.filter((option) => option.value !== '')
+  const automaticReasoning = selectedSuggestion?.reasoning.automatic === true && effortStops.length === 0
   // An unset effort still reasons at the model's own default (e.g. Grok's "high"),
   // so surface that here — matching the slider, which anchors on default_effort too.
-  const effortValue = (effort ?? '') || selectedSuggestion?.reasoning.default_effort || ''
-  const effortLabel = reasoningEffortLabel(effortValue, effortOptions)
+  const selectedEffort = (effort ?? '') || selectedSuggestion?.reasoning.default_effort || ''
+  const effortValue = effortOptions.some((option) => option.value === selectedEffort) ? selectedEffort : ''
+  const effortLabel = automaticReasoning ? 'Thinking' : reasoningEffortLabel(effortValue, effortOptions)
   const showEffortSlider = Boolean(onEffortChange) && effortStops.length > 1
-  const description = `Model: ${value === '' ? 'default' : label}${
-    effortValue ? `, reasoning effort: ${effortLabel}` : ''
-  }`
+  const reasoningDescription = automaticReasoning
+    ? ', reasoning: automatic'
+    : effortValue
+      ? `, reasoning effort: ${effortLabel}`
+      : ''
+  const description = `Model: ${value === '' ? 'default' : label}${reasoningDescription}`
   return (
     <Popover
       open={open}
@@ -161,7 +166,9 @@ export function ModelSelect({
           onClick={() => setOpen((v) => !v)}
         >
           <span className="truncate">{label}</span>
-          {effortValue ? <span className="shrink-0 text-primary">{effortLabel}</span> : null}
+          {automaticReasoning || effortValue ? (
+            <span className="shrink-0 text-primary">{effortLabel}</span>
+          ) : null}
           <ChevronDown size={13} className="shrink-0" />
         </Button>
       }

@@ -18,7 +18,6 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/managedtool"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
-	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/provider"
 	openaiprovider "github.com/wins/jaz/backend/internal/provider/openai"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
@@ -134,7 +133,7 @@ func TestACPAgentConfigSourcePassesManagedToolPathToAdapter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	source := NewACPAgentConfigSource(store, acp.BuiltinAgents(), modelcatalog.NewService(nil), managedtool.New(root))
+	source := NewACPAgentConfigSource(store, acp.BuiltinAgents(), managedtool.New(root))
 	cfg, ok, err := source.AgentConfig(acp.AgentAntigravity)
 	if err != nil {
 		t.Fatal(err)

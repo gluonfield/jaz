@@ -26,6 +26,7 @@ type Reasoning struct {
 	Efforts       []string
 	DefaultEffort string
 	Mandatory     bool
+	Automatic     bool
 }
 
 type Model struct {

@@ -23,8 +23,6 @@ export const REASONING_EFFORT_OPTIONS: ReasoningEffortOption[] = [
   { value: 'xhigh', label: 'Extra high' },
 ]
 
-const NO_REASONING_EFFORT_OPTION: ReasoningEffortOption = { value: 'none', label: 'None' }
-
 function acpReasoningEffortOptions(
   settings: AgentSettings | undefined,
   agent: string,
@@ -107,7 +105,13 @@ export function modelReasoningSelection({
     return { options: [], effectiveEffort: effort, supported: true, status: 'pending', blocked: effort !== '' }
   }
   if (capabilityStatus === 'unavailable') {
-    return { options: [], effectiveEffort: '', supported: effort === '', status: 'ready', blocked: false }
+    return {
+      options: [],
+      effectiveEffort: 'none',
+      supported: supportedReasoningEffort(effort, []),
+      status: 'ready',
+      blocked: false,
+    }
   }
   const options = reasoningOptions(settings, agent, model, catalog.suggestions, settingsMode)
   return {
@@ -121,7 +125,11 @@ export function modelReasoningSelection({
 
 export function supportedReasoningEffort(value: string, options: ReasoningEffortOption[]): boolean {
   const effort = value.trim()
-  return effort === '' || options.some((option) => option.value === effort)
+  // `none` clears Jaz's inherited session effort; it is valid even when the
+  // provider does not advertise a user-selectable "none" level.
+  return (
+    effort === '' || effort === 'none' || options.some((option) => option.value === effort)
+  )
 }
 
 export function effectiveReasoningEffort(
@@ -129,8 +137,7 @@ export function effectiveReasoningEffort(
   options: ReasoningEffortOption[],
 ): string {
   const effort = requested.trim()
-  if (effort === '' || supportedReasoningEffort(effort, options)) return effort
-  return options.some((option) => option.value === 'none') ? 'none' : ''
+  return supportedReasoningEffort(effort, options) ? effort : 'none'
 }
 
 function reasoningOptions(
@@ -147,7 +154,7 @@ function reasoningOptions(
   }
   if (suggestion.reasoning.status !== 'ready') return []
   const values = suggestion.reasoning.efforts ?? []
-  if (!settingsMode && values.length === 0) return [NO_REASONING_EFFORT_OPTION]
+  if (values.length === 0) return []
   const options = [
     { value: '', label: settingsMode ? 'None' : 'Default' },
     ...values.filter((value) => !settingsMode || value !== 'none').map(reasoningOption),

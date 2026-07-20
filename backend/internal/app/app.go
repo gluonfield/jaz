@@ -217,8 +217,8 @@ func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {
 	return acp.MergeAgents(acp.BuiltinAgents(), cfg.ACP.Agents)
 }
 
-func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog, modelCatalog *modelcatalog.Service, tools *managedtool.Manager) acp.AgentConfigSource {
-	source := agentsettings.NewACPConfigSource(store, catalog, acp.ModelCapabilities{Catalog: modelCatalog})
+func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog, tools *managedtool.Manager) acp.AgentConfigSource {
+	source := agentsettings.NewACPConfigSource(store, catalog)
 	return managedToolAgentConfigSource{source: source, tools: tools}
 }
 

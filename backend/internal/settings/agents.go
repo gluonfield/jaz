@@ -342,17 +342,12 @@ func canonicalizeACPDefaults(in map[string]ACPAgentDefaults) map[string]ACPAgent
 }
 
 type ACPConfigSource struct {
-	store     storage.SettingsStorage
-	catalog   acp.AgentCatalog
-	validator ReasoningEffortValidator
+	store   storage.SettingsStorage
+	catalog acp.AgentCatalog
 }
 
-func NewACPConfigSource(store storage.SettingsStorage, catalog acp.AgentCatalog, validators ...ReasoningEffortValidator) *ACPConfigSource {
-	var validator ReasoningEffortValidator
-	if len(validators) > 0 {
-		validator = validators[0]
-	}
-	return &ACPConfigSource{store: store, catalog: catalog, validator: validator}
+func NewACPConfigSource(store storage.SettingsStorage, catalog acp.AgentCatalog) *ACPConfigSource {
+	return &ACPConfigSource{store: store, catalog: catalog}
 }
 
 func (s *ACPConfigSource) effectiveDefaults() (AgentDefaults, error) {
@@ -387,11 +382,6 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 	cfg.Auth = agent.Auth
 	if cfg.UsesModelProvider() {
 		cfg = cfg.NormalizeProviderModel(defaultModelProvider)
-	}
-	if s.validator != nil {
-		if err := s.validator.ValidateReasoningEffort(name, cfg.ModelProvider, cfg.Model, cfg.ReasoningEffort); err != nil {
-			return acp.AgentConfig{}, false, err
-		}
 	}
 	return cfg, true, nil
 }

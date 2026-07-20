@@ -27,6 +27,7 @@ type ReasoningCapabilities struct {
 	Efforts       []string                     `json:"efforts,omitempty"`
 	DefaultEffort string                       `json:"default_effort,omitempty"`
 	Mandatory     bool                         `json:"mandatory,omitempty"`
+	Automatic     bool                         `json:"automatic,omitempty"`
 }
 
 type AgentModel struct {
@@ -166,6 +167,7 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 			resolved.Reasoning.Efforts = intersectReasoningEfforts(model.Reasoning.Efforts, supported)
 			resolved.Reasoning.DefaultEffort = model.Reasoning.DefaultEffort
 			resolved.Reasoning.Mandatory = model.Reasoning.Mandatory
+			resolved.Reasoning.Automatic = model.Reasoning.Automatic
 			if agent == AgentClaude && containsString(resolved.Reasoning.Efforts, "xhigh") {
 				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
 			}

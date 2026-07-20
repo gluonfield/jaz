@@ -251,7 +251,7 @@ func TestACPConfigSourceClearsRetiredGrokReasoningEffort(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, ok, err := NewACPConfigSource(store, acp.BuiltinAgents(), acp.ModelCapabilities{Catalog: modelcatalog.NewService(nil)}).AgentConfig(acp.AgentGrok)
+	cfg, ok, err := NewACPConfigSource(store, acp.BuiltinAgents()).AgentConfig(acp.AgentGrok)
 	if err != nil || !ok {
 		t.Fatalf("grok config: ok=%v err=%v", ok, err)
 	}

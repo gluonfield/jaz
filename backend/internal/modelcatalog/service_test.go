@@ -2,9 +2,11 @@ package modelcatalog
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -118,15 +120,41 @@ func TestServiceWarmFetchesOpenRouterCatalogOnceUnderConcurrency(t *testing.T) {
 }
 
 func TestServiceFetchesOllamaModels(t *testing.T) {
+	var (
+		shownMu sync.Mutex
+		shown   []string
+	)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/models" || r.URL.RawQuery != "" {
-			http.Error(w, "unexpected request", http.StatusBadRequest)
-			return
+		switch r.URL.Path {
+		case "/v1/models":
+			if r.Method != http.MethodGet || r.URL.RawQuery != "" {
+				http.Error(w, "unexpected models request", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[
+				{"id":"qwen3.6:latest","object":"model","created":1783060111,"owned_by":"library"},
+				{"id":"gemma3:270m"},
+				{"id":""}
+			]}`))
+		case "/api/show":
+			var input struct {
+				Model string `json:"model"`
+			}
+			if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" || json.NewDecoder(r.Body).Decode(&input) != nil {
+				http.Error(w, "unexpected show request", http.StatusBadRequest)
+				return
+			}
+			shownMu.Lock()
+			shown = append(shown, input.Model)
+			shownMu.Unlock()
+			if input.Model == "qwen3.6:latest" {
+				_, _ = w.Write([]byte(`{"capabilities":["completion","thinking","tools"]}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"capabilities":["completion"]}`))
+		default:
+			http.NotFound(w, r)
 		}
-		_, _ = w.Write([]byte(`{"data":[
-			{"id":"qwen3.6:latest","object":"model","created":1783060111,"owned_by":"library"},
-			{"id":""}
-		]}`))
 	}))
 	defer upstream.Close()
 
@@ -137,11 +165,21 @@ func TestServiceFetchesOllamaModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(models) != 1 || models[0].Value != "qwen3.6:latest" || models[0].Label != "qwen3.6:latest" {
+	if len(models) != 2 || models[0].Value != "qwen3.6:latest" || models[0].Label != "qwen3.6:latest" {
 		t.Fatalf("unexpected models %#v", models)
 	}
-	if models[0].Reasoning.Status != ReasoningUnavailable {
-		t.Fatalf("reasoning status = %q", models[0].Reasoning.Status)
+	if models[0].Reasoning.Status != ReasoningReady || !models[0].Reasoning.Automatic || len(models[0].Reasoning.Efforts) != 0 {
+		t.Fatalf("reasoning = %#v", models[0].Reasoning)
+	}
+	if models[1].Reasoning.Status != ReasoningUnavailable {
+		t.Fatalf("non-thinking reasoning status = %q", models[1].Reasoning.Status)
+	}
+	shownMu.Lock()
+	shownModels := slices.Clone(shown)
+	shownMu.Unlock()
+	slices.Sort(shownModels)
+	if !slices.Equal(shownModels, []string{"gemma3:270m", "qwen3.6:latest"}) {
+		t.Fatalf("shown models = %#v", shownModels)
 	}
 }
 
@@ -156,6 +194,24 @@ func TestServiceReportsUnavailableOllamaCatalog(t *testing.T) {
 	}))
 	if _, err := service.ProviderModels(provider.ProviderOllama); !errors.Is(err, ErrCatalogUnavailable) {
 		t.Fatalf("error = %v, want catalog unavailable", err)
+	}
+}
+
+func TestServiceKeepsOllamaModelsWhenShowIsUnavailable(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"local-model"}]}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+
+	models, err := NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		provider.ProviderOllama: {BaseURL: upstream.URL + "/v1"},
+	})).ProviderModels(provider.ProviderOllama)
+	if err != nil || len(models) != 1 || models[0].Reasoning.Status != ReasoningUnavailable {
+		t.Fatalf("models = %#v, err = %v", models, err)
 	}
 }
 

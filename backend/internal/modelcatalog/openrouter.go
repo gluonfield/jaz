@@ -2,6 +2,7 @@ package modelcatalog
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -50,7 +51,7 @@ func fetchOpenRouterModels(ctx context.Context, baseURL string) ([]Model, error)
 		return nil, err
 	}
 	var body openRouterModelResponse
-	if err := fetchModelCatalog(ctx, endpoint, &body); err != nil {
+	if err := fetchJSON(ctx, http.MethodGet, endpoint, nil, &body); err != nil {
 		return nil, err
 	}
 	out := make([]Model, 0, len(body.Data))
