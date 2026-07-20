@@ -215,6 +215,8 @@ func displayName(adapter string) string {
 		return "Codex"
 	case "claude":
 		return "Claude"
+	case "kimi":
+		return "Kimi"
 	default:
 		return adapter
 	}

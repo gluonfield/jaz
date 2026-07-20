@@ -102,6 +102,9 @@ func TestNormalizeAgentReasoningEffort(t *testing.T) {
 		{AgentClaude, "ultracode", "ultracode", false},
 		{AgentCodex, "max", "max", false},
 		{AgentCodex, "ultra", "ultra", false},
+		{AgentKimi, "on", "on", false},
+		{AgentKimi, "off", "off", false},
+		{AgentKimi, "high", "", true},
 		{AgentGrok, "ultracode", "", true},
 		{AgentGrok, "ultra", "", true},
 		{AgentOpenCode, "medium", "medium", false},
@@ -127,7 +130,7 @@ func TestDefaultAgentReasoningEffort(t *testing.T) {
 			t.Fatalf("%s default effort = %q, want xhigh", agent, got)
 		}
 	}
-	for _, agent := range []string{"", "custom", AgentGrok, AgentAntigravity} {
+	for _, agent := range []string{"", "custom", AgentKimi, AgentGrok, AgentAntigravity} {
 		if got := DefaultAgentReasoningEffort(agent); got != "" {
 			t.Fatalf("%q default effort = %q, want empty", agent, got)
 		}

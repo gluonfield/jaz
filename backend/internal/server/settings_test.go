@@ -206,7 +206,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,grok,opencode,antigravity" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasModelProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -251,6 +251,8 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if !hasReasoningEffort(got.ACPOptions["claude"].ReasoningEfforts, "ultracode") ||
 		!hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "max") ||
 		!hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultra") ||
+		!hasReasoningEffort(got.ACPOptions["kimi"].ReasoningEfforts, "on") ||
+		!hasReasoningEffort(got.ACPOptions["kimi"].ReasoningEfforts, "off") ||
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}
@@ -754,7 +756,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,grok,opencode,antigravity,local_helper" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,local_helper" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if _, ok := got.ACP[acp.AgentJaz]; ok {

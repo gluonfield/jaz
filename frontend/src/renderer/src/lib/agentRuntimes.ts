@@ -3,7 +3,7 @@ import type { AgentSettings, ModelProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
 const HIDDEN_AGENTS = new Set(['jaz'])
-const AUTH_REQUIRED_AGENTS = new Set(['codex', 'claude', 'grok', 'opencode', 'antigravity'])
+const AUTH_REQUIRED_AGENTS = new Set(['codex', 'claude', 'kimi', 'grok', 'opencode', 'antigravity'])
 
 export function enabledACPAgents(settings?: AgentSettings): string[] {
   return (settings?.agents ?? []).filter((agent) => selectableACPAgent(agent) && acpAgentEnabled(settings, agent))

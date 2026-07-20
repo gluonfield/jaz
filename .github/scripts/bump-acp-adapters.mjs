@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
 // Bumps .github/acp-adapter-assets.json to the latest release of each adapter
-// repo. Asset filenames embed the version, so a bump rewrites tag, version, and
-// every asset name in lockstep. Writes the spec in place and prints a JSON
+// repo. Versioned asset filenames are rewritten in lockstep; stable names are
+// left alone. Writes the spec in place and prints a JSON
 // summary ({changed, bumps}) for the workflow to act on. Validation that the new
 // assets actually exist is left to create-acp-adapters-manifest.mjs.
 const specPath = process.argv[2] || ".github/acp-adapter-assets.json";
@@ -17,11 +17,13 @@ for (const [name, adapter] of Object.entries(spec.adapters)) {
   }
   const oldVersion = adapter.version;
   const newVersion = latest.replace(/^v/, "");
-  for (const [platform, wanted] of Object.entries(adapter.assets)) {
-    if (!wanted.name.includes(oldVersion)) {
-      throw new Error(`${name} ${platform}: asset "${wanted.name}" does not embed current version "${oldVersion}", cannot bump safely`);
+  if (!adapter.stable_asset_names) {
+    for (const [platform, wanted] of Object.entries(adapter.assets)) {
+      if (!wanted.name.includes(oldVersion)) {
+        throw new Error(`${name} ${platform}: asset "${wanted.name}" does not embed current version "${oldVersion}", cannot bump safely`);
+      }
+      wanted.name = wanted.name.split(oldVersion).join(newVersion);
     }
-    wanted.name = wanted.name.split(oldVersion).join(newVersion);
   }
   adapter.tag = latest;
   adapter.version = newVersion;

@@ -121,6 +121,38 @@
           }
         }
       }
+    },
+    "kimi": {
+      "repo": "gluonfield/kimi-code",
+      "tag": "v0.28.0-jaz.1",
+      "version": "0.28.0-jaz.1",
+      "stable_asset_names": true,
+      "assets": {
+        "darwin-arm64": {
+          "name": "kimi-code-darwin-arm64.zip",
+          "binary": "kimi"
+        },
+        "darwin-x64": {
+          "name": "kimi-code-darwin-x64.zip",
+          "binary": "kimi"
+        },
+        "linux-arm64": {
+          "name": "kimi-code-linux-arm64.zip",
+          "binary": "kimi"
+        },
+        "linux-x64": {
+          "name": "kimi-code-linux-x64.zip",
+          "binary": "kimi"
+        },
+        "win32-arm64": {
+          "name": "kimi-code-win32-arm64.zip",
+          "binary": "kimi.exe"
+        },
+        "win32-x64": {
+          "name": "kimi-code-win32-x64.zip",
+          "binary": "kimi.exe"
+        }
+      }
     }
   }
 }

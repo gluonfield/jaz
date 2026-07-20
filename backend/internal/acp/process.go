@@ -342,6 +342,9 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		delete(env, "ANTHROPIC_API_KEY")
 		auth.BindAPIKeyEnv(env)
 	}
+	if name == AgentKimi {
+		prepareErr = firstError(prepareErr, m.prepareKimiProcessEnv(root, agent, env, prepare))
+	}
 	if name == AgentGrok {
 		processenv.PreserveHost(env,
 			"HTTP_PROXY",

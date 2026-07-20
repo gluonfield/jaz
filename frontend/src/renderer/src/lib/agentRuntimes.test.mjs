@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { selectableACPModelProviders } from './agentRuntimes'
+import { acpAgentEnableable, selectableACPModelProviders } from './agentRuntimes'
 
 describe('selectableACPModelProviders', () => {
   test('surfaces supported local providers', () => {
@@ -19,5 +19,19 @@ describe('selectableACPModelProviders', () => {
       'openai',
       'ollama',
     ])
+  })
+})
+
+describe('Kimi native auth', () => {
+  test('requires its OAuth profile before enablement', () => {
+    const settings = {
+      agents: ['kimi'],
+      acp: { kimi: { enabled: false } },
+      acp_options: { kimi: { supports_auth: true } },
+      acp_auth: { kimi: { authenticated: false } },
+    }
+    expect(acpAgentEnableable(settings, 'kimi')).toBe(false)
+    settings.acp_auth.kimi.authenticated = true
+    expect(acpAgentEnableable(settings, 'kimi')).toBe(true)
   })
 })

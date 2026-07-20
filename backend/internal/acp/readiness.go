@@ -57,15 +57,7 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 		if !auth.Authenticated {
 			return Readiness{Reason: auth.Reason}
 		}
-	case AgentGrok:
-		if !auth.Authenticated {
-			return Readiness{Reason: auth.Reason}
-		}
-	case AgentOpenCode:
-		if !auth.Authenticated {
-			return Readiness{Reason: auth.Reason}
-		}
-	case AgentAntigravity:
+	case AgentKimi, AgentGrok, AgentOpenCode, AgentAntigravity:
 		if !auth.Authenticated {
 			return Readiness{Reason: auth.Reason}
 		}

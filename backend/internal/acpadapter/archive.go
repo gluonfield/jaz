@@ -2,6 +2,7 @@ package acpadapter
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -93,6 +94,13 @@ func verifySHA256(body []byte, wantHex string) error {
 }
 
 func extractArchive(body []byte, dst string) error {
+	if len(body) >= 4 && bytes.Equal(body[:2], []byte("PK")) {
+		return extractZip(body, dst)
+	}
+	return extractTarGzip(body, dst)
+}
+
+func extractTarGzip(body []byte, dst string) error {
 	gz, err := gzip.NewReader(bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -138,6 +146,58 @@ func extractArchive(body []byte, dst string) error {
 			}
 		}
 	}
+}
+
+func extractZip(body []byte, dst string) error {
+	archive, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		return err
+	}
+	for _, file := range archive.File {
+		name := path.Clean(file.Name)
+		if !cleanRelative(name) {
+			return fmt.Errorf("adapter archive contains unsafe path %q", file.Name)
+		}
+		target := filepath.Join(dst, filepath.FromSlash(name))
+		if file.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
+		if !file.Mode().IsRegular() {
+			return fmt.Errorf("adapter archive contains unsupported file %q", file.Name)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		in, err := file.Open()
+		if err != nil {
+			return err
+		}
+		mode := file.Mode().Perm()
+		if mode == 0 {
+			mode = 0o644
+		}
+		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+		if err != nil {
+			_ = in.Close()
+			return err
+		}
+		_, copyErr := io.Copy(out, in)
+		closeOutErr := out.Close()
+		closeInErr := in.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeOutErr != nil {
+			return closeOutErr
+		}
+		if closeInErr != nil {
+			return closeInErr
+		}
+	}
+	return nil
 }
 
 func chmodLaunchFiles(tmpRoot string, spec adapterSpec) error {
