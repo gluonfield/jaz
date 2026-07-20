@@ -52,8 +52,8 @@ func warmedManagerModelCatalog(t *testing.T) *modelcatalog.Service {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
-			{"id":"anthropic/claude-opus-4.8","reasoning":{"supported_efforts":["xhigh"]}},
-			{"id":"openai/gpt-5.5","reasoning":{"supported_efforts":["xhigh"]}}
+			{"id":"anthropic/claude-opus-4.8","context_length":1000000,"reasoning":{"supported_efforts":["xhigh"]}},
+			{"id":"openai/gpt-5.5","context_length":1050000,"architecture":{"input_modalities":["text","image"]},"reasoning":{"supported_efforts":["xhigh"]}}
 		]}`))
 	}))
 	t.Cleanup(upstream.Close)
@@ -1172,10 +1172,11 @@ func TestManagerUsesCodexProviderNativeModel(t *testing.T) {
 				Model:           "openai/gpt-5.5",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "openai/gpt-5.5",
-					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
+					"JAZ_FAKE_ACP_AGENT":                 "1",
+					"JAZ_FAKE_ACP_EXPECT_CODEX_METADATA": "openai/gpt-5.5",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":   "openai/gpt-5.5",
+					"JAZ_FAKE_ACP_SET_CONFIG":            "1",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":         "xhigh",
 				},
 			},
 		},

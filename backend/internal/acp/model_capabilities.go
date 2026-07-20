@@ -31,14 +31,15 @@ type ReasoningCapabilities struct {
 }
 
 type AgentModel struct {
-	Value         string                `json:"value"`
-	Label         string                `json:"label"`
-	Aliases       []string              `json:"aliases,omitempty"`
-	Description   string                `json:"description,omitempty"`
-	ContextLength int                   `json:"context_length,omitempty"`
-	Pricing       *modelcatalog.Pricing `json:"pricing,omitempty"`
-	OpenRouterID  string                `json:"openrouter_id,omitempty"`
-	Reasoning     ReasoningCapabilities `json:"reasoning"`
+	Value           string                `json:"value"`
+	Label           string                `json:"label"`
+	Aliases         []string              `json:"aliases,omitempty"`
+	Description     string                `json:"description,omitempty"`
+	ContextLength   int                   `json:"context_length,omitempty"`
+	InputModalities []string              `json:"-"`
+	Pricing         *modelcatalog.Pricing `json:"pricing,omitempty"`
+	OpenRouterID    string                `json:"openrouter_id,omitempty"`
+	Reasoning       ReasoningCapabilities `json:"reasoning"`
 }
 
 type ModelCapabilities struct {
@@ -151,12 +152,13 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 	out := make([]AgentModel, 0, len(models))
 	for _, model := range models {
 		resolved := AgentModel{
-			Value:         model.Value,
-			Label:         model.Label,
-			Description:   model.Description,
-			ContextLength: model.ContextLength,
-			Pricing:       model.Pricing,
-			OpenRouterID:  model.OpenRouterID,
+			Value:           model.Value,
+			Label:           model.Label,
+			Description:     model.Description,
+			ContextLength:   model.ContextLength,
+			InputModalities: append([]string(nil), model.InputModalities...),
+			Pricing:         model.Pricing,
+			OpenRouterID:    model.OpenRouterID,
 			Reasoning: ReasoningCapabilities{
 				Status: model.Reasoning.Status,
 			},
