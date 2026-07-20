@@ -39,7 +39,6 @@ Ultrathink
 
 https://github.com/user-attachments/assets/16062e29-f4ae-4484-87ca-3a5977fac88b
 
-
 Familiar chat UI
 
 <img width="3358" height="2334" alt="image" src="https://github.com/user-attachments/assets/ab52e8f6-ff3b-450f-895b-027f2faa6481" />
