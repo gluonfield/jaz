@@ -247,9 +247,16 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 }
 
 func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (*agentConn, error) {
+	modelMetadata, err := m.resolveCodexModelMetadata(name, cfg)
+	if err != nil {
+		return nil, err
+	}
 	env, err := m.processEnvPreparedForSurfacePolicy(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err
+	}
+	if modelMetadata != "" {
+		env[codexModelMetadataEnv] = modelMetadata
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
 	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, mcpServerPolicy)

@@ -39,6 +39,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" && !fakeCodexConfigs["features.goals=false"] {
 		t.Fatalf("Codex config = %#v, want features.goals=false", fakeCodexConfigs)
 	}
+	if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_METADATA"); want != "" {
+		var metadata struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal([]byte(os.Getenv("JAZ_CODEX_MODEL_METADATA")), &metadata); err != nil || metadata.ID != want {
+			t.Fatalf("Codex model metadata = %#v, %v; want %q", metadata, err, want)
+		}
+	}
 	if msg := os.Getenv("JAZ_FAKE_ACP_EXIT_BEFORE_INIT"); msg != "" {
 		_, _ = fmt.Fprintln(os.Stderr, msg)
 		os.Exit(2)

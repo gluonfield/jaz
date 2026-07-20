@@ -172,6 +172,7 @@ func applyProbeEnvOverrides(env map[string]string) {
 		env["CLAUDE_CONFIG_DIR"] = value
 	}
 	for _, key := range []string{
+		codexModelMetadataEnv,
 		"ANTHROPIC_API_KEY",
 		"ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL",
