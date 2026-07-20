@@ -4,12 +4,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 
 describe('Kimi agent logo', () => {
-  test('uses the shared monochrome brand-mark path', () => {
+  test('uses the official product asset through the shared brand-mark path', () => {
     expect(hasAgentLogo('kimi')).toBe(true)
     expect(hasAgentLogo('KIMI')).toBe(true)
 
     const html = renderToStaticMarkup(createElement(AgentLogo, { agent: 'kimi' }))
-    expect(html).toContain('viewBox="0 0 24 24"')
-    expect(html).toContain('stroke="currentColor"')
+    expect(html).toContain('<img')
+    expect(html).toContain('kimi-logo')
   })
 })
