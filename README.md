@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/83044eb1-ddcd-4aa3-9173-02f0931d1353
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-D22128?logo=apache&logoColor=white)](LICENSE)
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![Bun](https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white)
@@ -31,6 +35,11 @@ memory, and git control. Client/server split, always-on, open source end to end.
 
 ## Examples
 
+Ultrathink
+
+https://github.com/user-attachments/assets/16062e29-f4ae-4484-87ca-3a5977fac88b
+
+
 Familiar chat UI
 
 <img width="3358" height="2334" alt="image" src="https://github.com/user-attachments/assets/ab52e8f6-ff3b-450f-895b-027f2faa6481" />
@@ -60,7 +69,6 @@ Connect your apps (Slack, Gmail, Google Calendar, WhatsApp, Telegram, [Deployink
 <img width="3834" height="2776" alt="image" src="https://github.com/user-attachments/assets/1b7ad3c9-b6cb-4dcc-9c62-74e8ab0b0c78" />
 
 Side panel
-
 
 https://github.com/user-attachments/assets/de550dc1-75cc-43bb-aca0-f34c99573d47
 
