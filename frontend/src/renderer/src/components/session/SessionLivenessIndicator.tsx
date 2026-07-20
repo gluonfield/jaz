@@ -1,6 +1,7 @@
 import { CircleAlert } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
+import { LivePulse } from '@/components/ui/LivePulse'
 import { agentLabel } from '@/lib/agentLabel'
 import {
   deriveSessionRunSignal,
@@ -65,17 +66,17 @@ export function SessionLivenessIndicator({
           exit={{ opacity: 0, y: 4, scale: 0.98 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
           className={`flex w-fit max-w-full items-center gap-1.5 text-[12px] leading-5 ${
-            stale ? 'text-danger' : 'text-ink-3'
+            stale ? 'text-danger' : 'text-ink-3 live-shimmer'
           }`}
         >
           {stale ? (
             <CircleAlert className="size-3.5 shrink-0" aria-hidden />
           ) : (
-            <span className="live-shimmer-dot" aria-hidden />
+            <LivePulse className="text-running" />
           )}
-          <span className={`min-w-0 truncate ${stale ? '' : 'live-shimmer'}`}>{label}</span>
+          <span className="min-w-0 truncate">{label}</span>
           {detail ? (
-            <span className={`shrink-0 tabular-nums opacity-80 ${stale ? '' : 'live-shimmer'}`}>{detail}</span>
+            <span className="shrink-0 tabular-nums">{detail}</span>
           ) : null}
         </motion.div>
       ) : null}

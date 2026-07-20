@@ -13,7 +13,7 @@ type Tool struct {
 }
 
 type input struct {
-	Agent string `json:"agent,omitempty" jsonschema_description:"Optional ACP agent name to inspect, for example codex, claude, kimi, grok, opencode, or antigravity."`
+	Agent string `json:"agent,omitempty" jsonschema_description:"Optional ACP agent name to inspect, for example codex, claude, kimi, qwen, grok, opencode, or antigravity."`
 	Name  string `json:"name,omitempty" jsonschema_description:"Optional case-insensitive model name or id filter. Use this for large provider catalogs such as OpenRouter."`
 }
 

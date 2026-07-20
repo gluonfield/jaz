@@ -248,12 +248,26 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 }
 
 func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (*agentConn, error) {
+	modelMetadata, err := m.resolveCodexModelMetadata(name, cfg)
+	if err != nil {
+		return nil, err
+	}
 	env, err := m.processEnvPreparedForSurfacePolicy(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
+	if modelMetadata != "" {
+		env[codexModelMetadataEnv] = modelMetadata
+	}
+	launchPrompt := ""
+	if agentPolicyForAgent(name).systemPromptAtLaunch {
+		launchPrompt, err = m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+		if err != nil {
+			return nil, err
+		}
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, mcpServerPolicy)
+	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, mcpServerPolicy, launchPrompt)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -317,6 +331,9 @@ func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig
 }
 
 func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+	if agentPolicyForAgent(agent).systemPromptAtLaunch {
+		return nil, nil
+	}
 	prompt, err := m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err

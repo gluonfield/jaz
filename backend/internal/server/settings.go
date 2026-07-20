@@ -197,7 +197,7 @@ func (s *Server) acpOptions(catalog acp.AgentCatalog, agentNames []string, provi
 }
 
 func compatibleModelProviders(agent, capability string, providers []settingsModelProvider) []settingsModelProvider {
-	if acp.CanonicalAgentName(agent) == acp.AgentCodex && capability == provider.CapabilityCodex {
+	if acp.CanonicalAgentName(agent) == acp.AgentCodex && capability == provider.CapabilityResponses {
 		return codexModelProviders(providers)
 	}
 	out := []settingsModelProvider{}
@@ -228,7 +228,7 @@ func codexModelProviders(providers []settingsModelProvider) []settingsModelProvi
 		if modelProvider.ID == provider.ProviderOpenAI {
 			continue
 		}
-		if modelProvider.SupportsCapability(provider.CapabilityCodex) {
+		if modelProvider.SupportsCapability(provider.CapabilityResponses) {
 			out = append(out, modelProvider)
 		}
 	}
@@ -286,7 +286,7 @@ func enabledACPAgentRequiresAuth(name string, cfg acp.AgentConfig) bool {
 		return false
 	}
 	switch acp.CanonicalAgentName(name) {
-	case acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentGrok, acp.AgentOpenCode:
+	case acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentQwen, acp.AgentGrok, acp.AgentOpenCode:
 		return true
 	default:
 		return false

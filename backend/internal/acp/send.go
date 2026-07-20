@@ -109,6 +109,13 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 		return Job{}, err
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	var prompt acpschema.PromptRequest
+	if local == nil {
+		prompt, err = m.promptRequest(job, goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments)
+		if err != nil {
+			return Job{}, err
+		}
+	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
 	job.mu.Lock()
@@ -126,7 +133,7 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	if local != nil {
 		go m.runLocalPrompt(context.WithoutCancel(ctx), job, local, promptMessage, req.Attachments)
 	} else {
-		go m.runPrompt(context.Background(), job, promptMessage, req.Attachments)
+		go m.runPrompt(context.Background(), job, prompt)
 	}
 	return job.Snapshot(), nil
 }
@@ -159,21 +166,10 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if peer == nil {
 		return Job{}, fmt.Errorf("acp peer is not active")
 	}
-	resolver := localAttachmentResources
-	if len(req.Attachments) > 0 {
-		resolver, err = m.attachmentResourceResolver(job)
-		if err != nil {
-			return Job{}, err
-		}
-	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
-	prompt, err := promptContentBlocks(goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments, resolver)
+	promptReq, err := m.promptRequest(job, goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments)
 	if err != nil {
 		return Job{}, err
-	}
-	promptReq := acpschema.PromptRequest{
-		SessionID: acpschema.SessionID(job.ACPSession),
-		Prompt:    prompt,
 	}
 	done, ok := job.addPromptCall(req.ParentVisible)
 	if !ok {

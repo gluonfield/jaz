@@ -126,7 +126,7 @@ func LoadEffectiveAgentDefaults(store storage.SettingsStorage, catalog acp.Agent
 }
 
 func DefaultWorkerAgent(defaults AgentDefaults) string {
-	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentOpenCode, acp.AgentAntigravity} {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentQwen, acp.AgentOpenCode, acp.AgentAntigravity} {
 		if current, ok := defaults.ACP[agent]; ok && current.Enabled {
 			return agent
 		}
@@ -143,6 +143,8 @@ func WorkerAgentModel(agent string, defaults AgentDefaults) string {
 		return acp.CodexOpenAIDefaultModel
 	case acp.AgentClaude:
 		return "default"
+	case acp.AgentQwen:
+		return strings.TrimSpace(defaults.ACP[acp.AgentQwen].Model)
 	case acp.AgentGrok:
 		return modelcatalog.DefaultGrokModel
 	case acp.AgentOpenCode:

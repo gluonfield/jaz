@@ -189,7 +189,7 @@ func TestSpawnConfigResolvesModelLabelsWithinConfiguredProvider(t *testing.T) {
 			AgentOpenCode: {
 				Command:                 AgentOpenCode,
 				ProviderMode:            AgentProviderModeAgentDefaults,
-				ModelProviderCapability: modelprovider.CapabilityOpenCode,
+				ModelProviderCapability: modelprovider.CapabilityChatCompletions,
 				ModelProvider:           modelprovider.ProviderOpenAI,
 				Model:                   modelprovider.DefaultOpenAIModel,
 			},

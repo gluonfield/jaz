@@ -51,13 +51,16 @@ const (
 )
 
 type agentPolicy struct {
-	modelConfigID       string
-	effortConfigID      string
-	effortInModelSuffix bool
-	providerInLaunch    bool
-	modelValidationKind modelValidationKind
-	effortOptions       []ReasoningEffortOption
-	ultracodeSetting    bool
+	modelConfigID           string
+	effortConfigID          string
+	effortInModelSuffix     bool
+	providerInLaunch        bool
+	modelConfiguredAtLaunch bool
+	systemPromptAtLaunch    bool
+	materializesOnPrompt    bool
+	modelValidationKind     modelValidationKind
+	effortOptions           []ReasoningEffortOption
+	ultracodeSetting        bool
 }
 
 var baseReasoningEffortOptions = []ReasoningEffortOption{
@@ -95,17 +98,26 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 		}
 	case AgentCodex:
 		return agentPolicy{
-			modelConfigID:       sessionConfigModel,
-			effortConfigID:      sessionConfigReasoningEffort,
-			effortInModelSuffix: true,
-			providerInLaunch:    true,
-			modelValidationKind: modelValidationNone,
-			effortOptions:       codexReasoningEffortOptions,
+			modelConfigID:        sessionConfigModel,
+			effortConfigID:       sessionConfigReasoningEffort,
+			effortInModelSuffix:  true,
+			providerInLaunch:     true,
+			materializesOnPrompt: true,
+			modelValidationKind:  modelValidationNone,
+			effortOptions:        codexReasoningEffortOptions,
 		}
 	case AgentKimi:
 		return agentPolicy{
 			modelConfigID:       sessionConfigModel,
 			modelValidationKind: modelValidationNone,
+		}
+	case AgentQwen:
+		return agentPolicy{
+			providerInLaunch:        true,
+			modelConfiguredAtLaunch: true,
+			systemPromptAtLaunch:    true,
+			materializesOnPrompt:    true,
+			modelValidationKind:     modelValidationNone,
 		}
 	case AgentGrok:
 		return agentPolicy{
@@ -114,10 +126,11 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 		}
 	case AgentOpenCode:
 		return agentPolicy{
-			modelConfigID:       sessionConfigModel,
-			effortConfigID:      claudeSessionConfigEffort,
-			modelValidationKind: modelValidationNone,
-			effortOptions:       openCodeReasoningEffortOptions,
+			modelConfigID:           sessionConfigModel,
+			effortConfigID:          claudeSessionConfigEffort,
+			modelConfiguredAtLaunch: true,
+			modelValidationKind:     modelValidationNone,
+			effortOptions:           openCodeReasoningEffortOptions,
 		}
 	case AgentAntigravity:
 		return agentPolicy{
@@ -342,7 +355,7 @@ func (m *Manager) configuredModeState(
 	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
 	model := policy.sessionConfigModel(cfg)
 	modelToSet := model
-	if CanonicalAgentName(agentName) == AgentOpenCode {
+	if policy.modelConfiguredAtLaunch {
 		modelToSet = ""
 	}
 	if _, handled, err := resolveGrokStartupConfig(agentName, cfg); err != nil {

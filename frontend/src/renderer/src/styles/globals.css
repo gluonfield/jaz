@@ -510,11 +510,15 @@
   }
 }
 
-/* Session liveness "working" indicator: the whole line shimmers — a soft
- * light band sweeps the text (background-clip) and the amber status dot in
- * sync. The band lightens toward the page in light mode and toward white in
- * dark mode via --live-shimmer-hi. Seamless loop: size 300% + repeat, so
- * position 300% wraps to 0. */
+/* Session liveness "working" indicator: one soft light band sweeps the whole
+ * line left to right — the class sits on the line container so a single
+ * background is clipped to all of its text (per-span backgrounds would each
+ * run their own sweep, and any child opacity/transform would fall out of
+ * the clip mask and vanish). The leading mark is a tiny ECG trace whose
+ * bright segment beats along the line — a literal live pulse in the running
+ * color. Band highlight lightens toward the page in light mode and toward
+ * white in dark mode via --live-shimmer-hi. Seamless loop: size 300% +
+ * repeat, so position -300% wraps to 0. */
 :root {
   --live-shimmer-hi: color-mix(in oklab, var(--color-ink-3) 30%, var(--color-bg));
 }
@@ -525,34 +529,50 @@
 .live-shimmer {
   background-image: linear-gradient(
     100deg,
-    var(--color-ink-3) 42%,
+    var(--color-ink-3) 45%,
     var(--live-shimmer-hi) 50%,
-    var(--color-ink-3) 58%
+    var(--color-ink-3) 55%
   );
   background-size: 300% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: live-shimmer-sweep 2.4s linear infinite;
+  animation: live-shimmer-sweep 4s linear infinite;
 }
 
-.live-shimmer-dot {
-  width: 3px;
-  height: 3px;
+.live-pulse {
+  width: 16px;
+  height: 12px;
   flex-shrink: 0;
-  background-image: linear-gradient(
-    100deg,
-    var(--color-running) 42%,
-    color-mix(in oklab, var(--color-running) 60%, white) 50%,
-    var(--color-running) 58%
-  );
-  background-size: 300% 100%;
-  animation: live-shimmer-sweep 2.4s linear infinite;
+}
+
+.live-pulse-trace,
+.live-pulse-sweep {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.live-pulse-trace {
+  opacity: 0.3;
+}
+
+.live-pulse-sweep {
+  stroke-dasharray: 6 22;
+  animation: live-pulse-beat 1.5s linear infinite;
+}
+
+@keyframes live-pulse-beat {
+  to {
+    stroke-dashoffset: -28;
+  }
 }
 
 @keyframes live-shimmer-sweep {
   to {
-    background-position: 300% 0;
+    background-position: -300% 0;
   }
 }
 
@@ -560,23 +580,23 @@
   .live-shimmer {
     animation: none;
     background: none;
-    color: inherit;
+    color: var(--color-ink-3);
   }
-  .live-shimmer-dot {
+  .live-pulse-sweep {
     animation: none;
-    background: var(--color-running);
+    opacity: 0;
   }
 }
 
 :root.jaz-no-effects .live-shimmer {
   animation: none;
   background: none;
-  color: inherit;
+  color: var(--color-ink-3);
 }
 
-:root.jaz-no-effects .live-shimmer-dot {
+:root.jaz-no-effects .live-pulse-sweep {
   animation: none;
-  background: var(--color-running);
+  opacity: 0;
 }
 
 /* Ultra effort slider: the track ring breathes while the dither field burns. */

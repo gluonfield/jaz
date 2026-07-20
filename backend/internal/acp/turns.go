@@ -17,7 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, attachments []storage.Attachment) {
+func (m *Manager) runPrompt(ctx context.Context, job *jobState, prompt acpschema.PromptRequest) {
 	job.turnMu.Lock()
 	defer job.turnMu.Unlock()
 
@@ -32,26 +32,7 @@ func (m *Manager) runPrompt(ctx context.Context, job *jobState, message string, 
 		m.finishTurn(done, job)
 		return
 	}
-	resolver := localAttachmentResources
-	var err error
-	if len(attachments) > 0 {
-		resolver, err = m.attachmentResourceResolver(job)
-		if err != nil {
-			m.failTurn(job, err)
-			m.finishTurn(done, job)
-			return
-		}
-	}
-	goalRequested := currentTurnGoalRequested(job, done)
-	prompt, err := promptContentBlocks(goalPromptMessage(message, goalRequested), attachments, resolver)
-	if err != nil {
-		m.failPromptCall(done, job, err)
-		return
-	}
-	m.runPromptCall(ctx, job, done, acpschema.PromptRequest{
-		SessionID: acpschema.SessionID(job.ACPSession),
-		Prompt:    prompt,
-	})
+	m.runPromptCall(ctx, job, done, prompt)
 }
 
 func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan struct{}, req acpschema.PromptRequest) {
@@ -205,6 +186,25 @@ type attachmentResourceResolver struct {
 }
 
 var localAttachmentResources = attachmentResourceResolver{localFiles: true}
+
+func (m *Manager) promptRequest(job *jobState, message string, attachments []storage.Attachment) (acpschema.PromptRequest, error) {
+	resolver := localAttachmentResources
+	if len(attachments) > 0 {
+		var err error
+		resolver, err = m.attachmentResourceResolver(job)
+		if err != nil {
+			return acpschema.PromptRequest{}, err
+		}
+	}
+	prompt, err := promptContentBlocks(message, attachments, resolver)
+	if err != nil {
+		return acpschema.PromptRequest{}, err
+	}
+	return acpschema.PromptRequest{
+		SessionID: acpschema.SessionID(job.ACPSession),
+		Prompt:    prompt,
+	}, nil
+}
 
 func (r attachmentResourceResolver) URI(attachment storage.Attachment) (string, error) {
 	serverPath := strings.TrimSpace(attachment.ServerPath)

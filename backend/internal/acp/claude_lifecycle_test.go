@@ -24,7 +24,7 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 				"JAZ_FAKE_ACP_PROMPT_DELAY": "1",
 				"JAZ_FAKE_ACP_START_LOG":    startLog,
 			}
-			if agent == acp.AgentCodex {
+			if agent == acp.AgentCodex || agent == acp.AgentQwen {
 				env["JAZ_FAKE_ACP_MATERIALIZED_SESSION"] = filepath.Join(stateDir, "session")
 			}
 			manager, spawned := newNamedProcessTestManager(t, t.TempDir(), agent, env)
@@ -124,84 +124,103 @@ func TestManagerReleasesManagedProcessAfterIdleSideChat(t *testing.T) {
 	}
 }
 
-func TestManagerDoesNotReplaceEstablishedCodexSession(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		event bool
-	}{{name: "message"}, {name: "event", event: true}} {
-		t.Run(test.name, func(t *testing.T) {
-			manager, store, spawned := newUnmaterializedCodexTestSession(t)
-			var err error
-			if test.event {
-				err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
-			} else {
-				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+func TestManagerDoesNotReplaceEstablishedLazySession(t *testing.T) {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentQwen} {
+		for _, test := range []struct {
+			name  string
+			event bool
+		}{{name: "message"}, {name: "event", event: true}} {
+			t.Run(agent+"/"+test.name, func(t *testing.T) {
+				manager, store, spawned := newUnmaterializedAgentTestSession(t, agent)
+				var err error
+				if test.event {
+					err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
+				} else {
+					err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = manager.Send(context.Background(), acp.SendRequest{
+					Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline,
+				})
+				if err == nil || !strings.Contains(err.Error(), "-32002") {
+					t.Fatalf("established session error = %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestManagerDoesNotForkEstablishedLazySessionWithoutProviderID(t *testing.T) {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentQwen} {
+		for _, test := range []struct {
+			name  string
+			event bool
+		}{{name: "message"}, {name: "event", event: true}} {
+			t.Run(agent+"/"+test.name, func(t *testing.T) {
+				manager, store, spawned := newFreshAgentTestSession(t, agent)
+				var err error
+				if test.event {
+					err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
+				} else {
+					err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = manager.Send(context.Background(), acp.SendRequest{
+					Session: spawned.SessionID, Message: "continue", Completion: acp.CompletionInline,
+				})
+				if err == nil || !strings.Contains(err.Error(), "provider session id is missing") {
+					t.Fatalf("established session error = %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestManagerDoesNotPersistUnsentLazySession(t *testing.T) {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentQwen} {
+		t.Run(agent, func(t *testing.T) {
+			manager, store, spawned := newFreshAgentTestSession(t, agent)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if _, err := manager.Send(ctx, acp.SendRequest{
+				Session:     spawned.SessionID,
+				Message:     "first",
+				Attachments: []storage.Attachment{{Name: "missing-uri"}},
+				Completion:  acp.CompletionInline,
+			}); err == nil {
+				t.Fatal("invalid attachment unexpectedly started a turn")
 			}
+			session, err := store.LoadSession(spawned.SessionID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, err = manager.Send(context.Background(), acp.SendRequest{
-				Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline,
-			})
-			if err == nil || !strings.Contains(err.Error(), "-32002") {
-				t.Fatalf("established session error = %v", err)
+			if session.RuntimeRef.SessionID != "" {
+				t.Fatalf("unsent ACP session persisted as %q", session.RuntimeRef.SessionID)
+			}
+			if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "retry", Completion: acp.CompletionInline}); err != nil {
+				t.Fatal(err)
+			}
+			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
+				t.Fatalf("retried turn = %#v, %v", job, err)
+			}
+			session, err = store.LoadSession(spawned.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if session.RuntimeRef.SessionID == "" {
+				t.Fatal("sent ACP session was not persisted")
 			}
 		})
 	}
 }
 
-func TestManagerPersistsCodexSessionOnlyAfterPromptSend(t *testing.T) {
-	manager, store, spawned := newUnmaterializedCodexTestSession(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if _, err := manager.Send(ctx, acp.SendRequest{
-		Session:     spawned.SessionID,
-		Message:     "first",
-		Attachments: []storage.Attachment{{Name: "missing-uri"}},
-		Completion:  acp.CompletionInline,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateFailed {
-		t.Fatalf("unsent first turn = %#v, %v", job, err)
-	}
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if session.RuntimeRef.SessionID != "" {
-		t.Fatalf("unsent ACP session persisted as %q", session.RuntimeRef.SessionID)
-	}
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "retry", Completion: acp.CompletionInline}); err != nil {
-		t.Fatal(err)
-	}
-	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
-		t.Fatalf("retried turn = %#v, %v", job, err)
-	}
-	session, err = store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if session.RuntimeRef.SessionID == "" {
-		t.Fatal("sent ACP session was not persisted")
-	}
-}
-
-func newUnmaterializedCodexTestSession(t *testing.T) (*acp.Manager, *jsonstore.Store, acp.SpawnResult) {
+func newUnmaterializedAgentTestSession(t *testing.T, agent string) (*acp.Manager, *jsonstore.Store, acp.SpawnResult) {
 	t.Helper()
-	stateDir := t.TempDir()
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentCodex, map[string]string{
-		"JAZ_FAKE_ACP_MATERIALIZED_SESSION": filepath.Join(stateDir, "session"),
-	}, "", "")
-	t.Cleanup(manager.Close)
-	spawned, err := manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "unmaterialized-codex"})
-	if err != nil {
-		t.Fatal(err)
-	}
+	manager, store, spawned := newFreshAgentTestSession(t, agent)
 	session, err := store.LoadSession(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
@@ -209,6 +228,31 @@ func newUnmaterializedCodexTestSession(t *testing.T) (*acp.Manager, *jsonstore.S
 	session.RuntimeRef.SessionID = "fake-session"
 	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
+	}
+	return manager, store, spawned
+}
+
+func newFreshAgentTestSession(t *testing.T, agent string) (*acp.Manager, *jsonstore.Store, acp.SpawnResult) {
+	t.Helper()
+	stateDir := t.TempDir()
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), agent, map[string]string{
+		"JAZ_FAKE_ACP_MATERIALIZED_SESSION": filepath.Join(stateDir, "session"),
+	}, "", "")
+	t.Cleanup(manager.Close)
+	spawned, err := manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: agent, Slug: "unmaterialized-" + agent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef.SessionID != "" {
+		t.Fatalf("fresh %s session persisted pre-prompt ACP id %q", agent, session.RuntimeRef.SessionID)
 	}
 	return manager, store, spawned
 }

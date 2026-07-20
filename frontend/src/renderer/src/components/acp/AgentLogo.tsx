@@ -1,10 +1,12 @@
-// Brand marks for the coding agents jaz speaks to, drawn monochrome via
-// currentColor so they tint to the design tokens (ink at rest) and read in both
-// themes.
-// Claude = official sunburst, Codex = OpenAI knot, Kimi = official robot mark,
+// Brand marks for the coding agents jaz speaks to. All use currentColor so
+// they read in both themes.
+// Claude = official sunburst, Codex = OpenAI knot, Kimi = adapted official K,
+// Qwen = official knot,
 // Grok = xAI mark, Antigravity = official curved A mark, OpenCode = official square mark.
-// Sourced from the providers' published logos; kept as inline SVG so they load
-// from file:// in the packaged app with no extra request.
+// Sourced from the providers' published logos and kept inline so the marks
+// remain crisp at every scale.
+
+import { QwenMark } from '@/components/ui/QwenMark'
 
 type Props = { agent: string; className?: string; size?: number }
 
@@ -13,7 +15,8 @@ type Props = { agent: string; className?: string; size?: number }
 const SIZES: Record<string, number> = {
   claude: 18,
   codex: 17,
-  kimi: 22,
+  kimi: 17,
+  qwen: 17,
   grok: 16,
   opencode: 15,
   antigravity: 16,
@@ -55,20 +58,15 @@ export function AgentLogo({ agent, className = '', size }: Props) {
 
   if (slug === 'kimi') {
     return (
-      <svg
-        viewBox="0 0 24 24"
-        style={dims}
-        className={cls}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        aria-hidden="true"
-      >
-        <rect x="3" y="4.5" width="18" height="13" rx="2.2" />
-        <rect x="9.6" y="8" width="1.4" height="2.6" rx="0.45" fill="currentColor" stroke="none" />
-        <rect x="15.6" y="8" width="1.4" height="2.6" rx="0.45" fill="currentColor" stroke="none" />
+      <svg viewBox="0 0 80 80" style={dims} className={cls} fill="currentColor" aria-hidden="true">
+        <path d="M6 17 16 16v27h2l27-27h13L37 39l-4 2 1 4 18 13 8 2v12l-12-4-21-17h-3l-8 8v13H6Z" />
+        <path d="M69.5 4C74 4 77 7.5 77 12c0 3.5-3 5-8 5-3.5 0-5-2.5-5-6 0-4 2-6.5 5.5-7Z" />
       </svg>
     )
+  }
+
+  if (slug === 'qwen') {
+    return <QwenMark style={dims} className={cls} />
   }
 
   if (slug === 'grok') {

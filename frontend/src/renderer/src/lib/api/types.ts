@@ -167,14 +167,9 @@ export interface RepoInfo {
   // main checkout is on — the handoff destination.
   is_worktree?: boolean
   main_branch?: string
-  // Source used for worktree updates, usually origin/<main_branch>.
-  update_branch?: string
-  // Commits on update_branch the worktree's branch doesn't have yet — what
+  // Commits on main_branch the worktree's branch doesn't have yet — what
   // "Update from main" would pull in (omitted/0 when up to date).
   behind?: number
-  // True when the backend can attempt a worktree update, including cases where
-  // the remote-tracking ref must be fetched before behind can be known.
-  can_update_from_main?: boolean
   worktree_missing?: boolean
   worktree_restorable?: boolean
   worktree_branch?: string

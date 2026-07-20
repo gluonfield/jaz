@@ -40,7 +40,7 @@ func TestWorkerAgentReasoningEffortUsesAgentDefault(t *testing.T) {
 			t.Fatalf("%s effort = %q, want xhigh", agent, got)
 		}
 	}
-	for _, agent := range []string{acp.AgentKimi, acp.AgentGrok, acp.AgentAntigravity} {
+	for _, agent := range []string{acp.AgentKimi, acp.AgentQwen, acp.AgentGrok, acp.AgentAntigravity} {
 		if got := WorkerAgentReasoningEffort(agent, defaults); got != "" {
 			t.Fatalf("%s effort = %q, want default", agent, got)
 		}
@@ -87,6 +87,12 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 		{
 			name:  "kimi",
 			agent: acp.AgentKimi,
+		},
+		{
+			name:     "qwen",
+			agent:    acp.AgentQwen,
+			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentQwen: {Model: provider.DefaultQwenCodingPlanModel}}},
+			model:    provider.DefaultQwenCodingPlanModel,
 		},
 		{
 			name:     "opencode-openrouter-style",

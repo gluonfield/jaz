@@ -70,7 +70,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		mode = AuthModeAuto
 		path = ""
 	}
-	if mode == AuthModeAuto || (name == AgentClaude || name == AgentKimi) && mode == AuthModeJazProfile {
+	if mode == AuthModeAuto || (name == AgentClaude || name == AgentKimi || name == AgentQwen) && mode == AuthModeJazProfile {
 		path = ""
 	}
 	if name == AgentGrok {
@@ -89,7 +89,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 
 func DisconnectedAuthConfig(name string, current AgentAuthConfig) AgentAuthConfig {
 	switch CanonicalAgentName(name) {
-	case AgentCodex, AgentClaude, AgentKimi, AgentOpenCode:
+	case AgentCodex, AgentClaude, AgentKimi, AgentQwen, AgentOpenCode:
 		return AgentAuthConfig{Mode: AuthModeJazProfile}
 	case AgentAntigravity:
 		return AgentAuthConfig{Mode: AuthModeAuto}
@@ -110,7 +110,7 @@ func LoginAuthConfig(name string, requested AgentAuthConfig) (AgentAuthConfig, e
 	switch CanonicalAgentName(name) {
 	case AgentAntigravity:
 		return AgentAuthConfig{Mode: AuthModeExistingCLI}, nil
-	case AgentCodex, AgentClaude, AgentKimi, AgentOpenCode:
+	case AgentCodex, AgentClaude, AgentKimi, AgentQwen, AgentOpenCode:
 		if auth.Mode == AuthModeJazProfile {
 			return auth, nil
 		}
@@ -137,6 +137,8 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 		return resolveClaudeAuth(auth, cfg, root, env)
 	case AgentKimi:
 		return resolveKimiAuth(auth, cfg, root, env)
+	case AgentQwen:
+		return resolveQwenAuth(auth, cfg, root, env, providers)
 	case AgentGrok:
 		return resolveGrokAuth(auth, cfg, root, env)
 	case AgentOpenCode:
@@ -202,7 +204,7 @@ func resolveCodexProviderAuth(meta modelprovider.ModelProvider, root string, env
 	}
 	value := strings.TrimSpace(providers[codexProviderKeyID(meta.ID)].APIKey)
 	if value == "" && keyEnv != "" {
-		value = codexProviderKeyValue(root, env, keyEnv)
+		value = modelProviderKeyValue(root, env, keyEnv)
 	}
 	switch {
 	case !meta.RequiresAPIKey:
@@ -221,7 +223,7 @@ func resolveCodexProviderAuth(meta modelprovider.ModelProvider, root string, env
 	return status
 }
 
-func codexProviderKeyValue(root string, env map[string]string, keyEnv string) string {
+func modelProviderKeyValue(root string, env map[string]string, keyEnv string) string {
 	for _, name := range []string{keyEnv, apiKeyAlias(keyEnv)} {
 		if strings.TrimSpace(name) == "" {
 			continue
@@ -580,6 +582,8 @@ func resolveAgentAPIKeySpec(name string) (AgentAPIKeySpec, bool) {
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_CLAUDE_API_KEY", TargetEnv: "ANTHROPIC_API_KEY"}, true
 	case AgentGrok:
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_GROK_API_KEY", TargetEnv: "XAI_API_KEY"}, true
+	case AgentQwen:
+		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_QWEN_API_KEY", TargetEnv: "BAILIAN_CODING_PLAN_API_KEY"}, true
 	case AgentOpenCode:
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_OPENCODE_API_KEY", TargetEnv: "OPENROUTER_API_KEY"}, true
 	default:

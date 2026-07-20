@@ -85,7 +85,7 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 	return err
 }
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, mcpServerPolicy string) (jsonrpc.MessageConn, *processStderrTail, error) {
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, mcpServerPolicy, systemPrompt string) (jsonrpc.MessageConn, *processStderrTail, error) {
 	if cfg.URL != "" {
 		opts := []streamhttp.ClientOption{}
 		parsed, err := url.Parse(cfg.URL)
@@ -115,6 +115,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 			env[key] = value
 		}
 	}
+	cfg.Args = qwenLaunchArgs(name, cfg.Args, cfg.ProviderNativeModel(), systemPrompt)
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
@@ -145,7 +146,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	stderr := newProcessStderrTail()
 	cmd.Stderr = io.MultiWriter(os.Stderr, stderr)
 	if err := cmd.Start(); err != nil {
-		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, strings.Join(append([]string{command}, args...), " "), err)
+		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, command, err)
 	}
 	if err := process.started(); err != nil {
 		_ = process.terminate()
@@ -277,6 +278,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	if name == AgentCodex {
+		delete(env, codexModelMetadataEnv)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		codexHome := auth.Config.Path
 		if codexHome != "" {
@@ -344,6 +346,9 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 	}
 	if name == AgentKimi {
 		prepareErr = firstError(prepareErr, m.prepareKimiProcessEnv(root, agent, env, prepare))
+	}
+	if name == AgentQwen {
+		prepareErr = firstError(prepareErr, m.prepareQwenProcessEnv(root, agent, env, prepare))
 	}
 	if name == AgentGrok {
 		processenv.PreserveHost(env,

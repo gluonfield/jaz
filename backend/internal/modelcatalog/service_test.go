@@ -26,7 +26,9 @@ func TestServiceReturnsStartupOpenRouterCatalog(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[{
 			"id":"anthropic/claude-sonnet-4.6",
 			"name":"Anthropic: Claude Sonnet 4.6",
+			"description":"Fast agentic model",
 			"context_length":200000,
+			"architecture":{"input_modalities":["text","image","audio","image"]},
 			"pricing":{"prompt":"0.000003","completion":"0.000015"},
 			"reasoning":{"supported_efforts":["max","high","medium","low"],"default_effort":"medium"}
 		}]}`))
@@ -50,10 +52,14 @@ func TestServiceReturnsStartupOpenRouterCatalog(t *testing.T) {
 		if len(models) != 1 ||
 			models[0].Value != "anthropic/claude-sonnet-4.6" ||
 			models[0].Label != "Claude Sonnet 4.6" ||
+			models[0].Description != "Fast agentic model" ||
 			models[0].ContextLength != 200000 ||
 			models[0].Pricing.Input != 0.000003 ||
 			models[0].Pricing.Output != 0.000015 {
 			t.Fatalf("unexpected models %#v", models)
+		}
+		if strings.Join(models[0].InputModalities, ",") != "text,image" {
+			t.Fatalf("input modalities = %#v", models[0].InputModalities)
 		}
 		if strings.Join(models[0].Reasoning.Efforts, ",") != "low,medium,high,max" {
 			t.Fatalf("reasoning efforts = %#v", models[0].Reasoning.Efforts)

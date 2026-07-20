@@ -309,7 +309,7 @@ func TestMergeAgentsPreservesCapabilitiesOnPartialOverride(t *testing.T) {
 		t.Fatalf("command override = %q %#v", got.Command, got.Args)
 	}
 	if got.ProviderMode != AgentProviderModeAgentDefaults ||
-		got.ModelProviderCapability != modelprovider.CapabilityOpenCode ||
+		got.ModelProviderCapability != modelprovider.CapabilityChatCompletions ||
 		got.ModelProvider != modelprovider.ProviderOpenRouter {
 		t.Fatalf("capabilities not preserved: %#v", got)
 	}

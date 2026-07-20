@@ -6,6 +6,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   codex: 'Codex',
   claude: 'Claude',
   kimi: 'Kimi',
+  qwen: 'Qwen',
   grok: 'Grok',
   opencode: 'OpenCode',
   antigravity: 'Antigravity',
@@ -24,14 +25,13 @@ export function agentLabel(value: string | undefined): string {
     .join(' ')
 }
 
-// The identity provider you actually authenticate against — the OAuth is with
-// the model maker, not the CLI. "claude" (Claude Code) signs in with Anthropic,
-// "codex" with OpenAI, "kimi" with Moonshot AI, "grok" with xAI. Used for
-// "Sign in with …" copy.
+// The service that owns an agent's credentials. Most are OAuth identities;
+// Qwen uses an Alibaba subscription key instead.
 const AUTH_PROVIDERS: Record<string, string> = {
   codex: 'OpenAI',
   claude: 'Anthropic',
   kimi: 'Moonshot AI',
+  qwen: 'Qwen Coding Plan',
   grok: 'xAI',
   opencode: 'OpenRouter',
   antigravity: 'Google AI',
@@ -48,10 +48,30 @@ export function authProviderLabel(value: string | undefined): string {
 const ONBOARDING_NAMES: Record<string, string> = {
   claude: 'Claude Code',
   kimi: 'Kimi Code',
+  qwen: 'Qwen Code',
   antigravity: 'Antigravity',
 }
 
 export function onboardingAgentLabel(value: string | undefined): string {
   const slug = (value || '').trim().toLowerCase().replace(/[\s-]+/g, '_')
   return ONBOARDING_NAMES[slug] ?? agentLabel(value)
+}
+
+export function agentAPIKeyCopy(
+  value: string | undefined,
+  target: string,
+  configured: boolean,
+): { placeholder: string; description: string; connected: string } {
+  if ((value || '').trim().toLowerCase() === 'qwen') {
+    return {
+      placeholder: configured ? 'Already set up' : 'Paste your sk-sp-… subscription key',
+      description: 'Uses your Alibaba Cloud Coding Plan subscription; Qwen OAuth is discontinued.',
+      connected: 'Connected to Qwen Coding Plan',
+    }
+  }
+  return {
+    placeholder: configured ? 'Already set up' : 'Paste an API key',
+    description: `jaz passes this key straight to ${target}.`,
+    connected: 'Connected with an API key',
+  }
 }

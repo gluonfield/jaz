@@ -68,7 +68,7 @@ func TestAgentOptionsIncludesCuratedOpenRouterModelsWithoutNameFilter(t *testing
 		agents: AgentCatalog{
 			AgentOpenCode: {
 				ProviderMode:            AgentProviderModeAgentDefaults,
-				ModelProviderCapability: provider.CapabilityOpenCode,
+				ModelProviderCapability: provider.CapabilityChatCompletions,
 				ModelProvider:           provider.ProviderOpenRouter,
 				Model:                   provider.DefaultOpenRouterModel,
 			},
@@ -104,7 +104,7 @@ func TestAgentOptionsScopesOpenCodeModelsToConfiguredProvider(t *testing.T) {
 		agents: AgentCatalog{
 			AgentOpenCode: {
 				ProviderMode:            AgentProviderModeAgentDefaults,
-				ModelProviderCapability: provider.CapabilityOpenCode,
+				ModelProviderCapability: provider.CapabilityChatCompletions,
 				ModelProvider:           provider.ProviderOpenAI,
 				Model:                   provider.DefaultOpenAIModel,
 			},
@@ -131,13 +131,13 @@ func TestAgentOptionsSearchesOpenRouterWithNameFilter(t *testing.T) {
 		agents: AgentCatalog{
 			AgentCodex: {
 				ProviderMode:            AgentProviderModeAgentDefaults,
-				ModelProviderCapability: provider.CapabilityCodex,
+				ModelProviderCapability: provider.CapabilityResponses,
 				ModelProvider:           provider.ProviderOpenAI,
 				Model:                   "gpt-5.5",
 			},
 			AgentOpenCode: {
 				ProviderMode:            AgentProviderModeAgentDefaults,
-				ModelProviderCapability: provider.CapabilityOpenCode,
+				ModelProviderCapability: provider.CapabilityChatCompletions,
 				ModelProvider:           provider.ProviderOpenRouter,
 				Model:                   provider.DefaultOpenRouterModel,
 			},
@@ -187,7 +187,7 @@ func TestAgentOptionsSearchReturnsOpenRouterCatalogErrorWhenNoCuratedMatch(t *te
 		agents: AgentCatalog{
 			AgentOpenCode: {
 				ProviderMode:            AgentProviderModeAgentDefaults,
-				ModelProviderCapability: provider.CapabilityOpenCode,
+				ModelProviderCapability: provider.CapabilityChatCompletions,
 				ModelProvider:           provider.ProviderOpenRouter,
 				Model:                   provider.DefaultOpenRouterModel,
 			},

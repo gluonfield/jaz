@@ -34,7 +34,7 @@ func TestAgentSettingsEnablesCodexOpenAIAPIKeyWithOpenAIProviderKey(t *testing.T
 			acp.AgentCodex: {
 				Command:                 exe,
 				ProviderMode:            acp.AgentProviderModeAgentDefaults,
-				ModelProviderCapability: provider.CapabilityCodex,
+				ModelProviderCapability: provider.CapabilityResponses,
 				ModelProvider:           provider.ProviderOpenAI,
 				Model:                   "gpt-5.4-mini",
 			},

@@ -15,7 +15,7 @@ import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
-import { agentLabel, authProviderLabel } from '@/lib/agentLabel'
+import { agentAPIKeyCopy, agentLabel, authProviderLabel } from '@/lib/agentLabel'
 import {
   acpAgentEnableable,
   acpAgentEnabled,
@@ -413,6 +413,7 @@ function AgentAuthPanel({
   const apiKeyEnv = status?.api_key?.source_env
   const canKey = Boolean(apiKeyEnv)
   const canLogin = Boolean(status?.login_command && status.login_command_available)
+  const keyCopy = agentAPIKeyCopy(agent, authProviderLabel(agent), Boolean(status?.api_key_configured))
   const hasDraftKey = apiKeyValue.trim().length > 0
   const running = loginPending || loginJob?.status === 'running'
   const [method, setMethod] = useState<'login' | 'key'>(
@@ -461,7 +462,7 @@ function AgentAuthPanel({
           {noKey
             ? 'No provider key required'
             : viaKey
-              ? 'Connected with an API key'
+              ? keyCopy.connected
               : `Connected with your ${authProviderLabel(agent)} account`}
         </span>
         {noKey ? null : (
@@ -508,14 +509,14 @@ function AgentAuthPanel({
             value={apiKeyValue}
             disabled={disabled}
             onChange={(event) => onAPIKeyChange(event.target.value)}
-            placeholder={status?.api_key_configured ? 'Already set up' : 'Paste an API key'}
+            placeholder={keyCopy.placeholder}
             autoComplete="off"
             spellCheck={false}
             className="h-8 rounded-full bg-bg px-3 py-0 font-mono text-[12px]"
             aria-label={`${agentLabel(agent)} API key`}
           />
           <p className="text-[12px] text-ink-3">
-            jaz passes this key straight to {authProviderLabel(agent)}.
+            {keyCopy.description}
           </p>
         </div>
       )}

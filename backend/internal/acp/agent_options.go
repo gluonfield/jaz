@@ -161,7 +161,7 @@ func (m *Manager) agentModelProviderIDs(agent string, cfg AgentConfig) []string 
 		return nil
 	}
 	providers := m.effectiveModelProviders()
-	if CanonicalAgentName(agent) == AgentCodex && cfg.ModelProviderCapability == provider.CapabilityCodex {
+	if CanonicalAgentName(agent) == AgentCodex && cfg.ModelProviderCapability == provider.CapabilityResponses {
 		return codexModelProviderIDs(providers)
 	}
 	ids := []string{}
@@ -203,7 +203,7 @@ func codexModelProviderIDs(providers []provider.ModelProvider) []string {
 		}
 	}
 	for _, modelProvider := range providers {
-		if modelProvider.ID != provider.ProviderOpenAI && modelProvider.SupportsCapability(provider.CapabilityCodex) {
+		if modelProvider.ID != provider.ProviderOpenAI && modelProvider.SupportsCapability(provider.CapabilityResponses) {
 			ids = append(ids, modelProvider.ID)
 		}
 	}

@@ -76,6 +76,15 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		}
 		return m.resumeLocalSession(session, agentName, cfg)
 	}
+	if session.RuntimeRef.SessionID == "" {
+		hasTranscript, err := m.store.HasSessionTranscript(session.ID)
+		if err != nil {
+			return nil, fmt.Errorf("inspect ACP session transcript: %w", err)
+		}
+		if hasTranscript {
+			return nil, fmt.Errorf("cannot safely resume ACP session %s: provider session id is missing for a thread with transcript history", session.ID)
+		}
+	}
 	cwd := session.RuntimeRef.Cwd
 	if cwd == "" {
 		if cwd, err = m.resolveCwd(cfg.Cwd); err != nil {

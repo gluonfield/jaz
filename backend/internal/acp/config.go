@@ -17,6 +17,7 @@ const (
 	AgentCodex       = "codex"
 	AgentClaude      = "claude"
 	AgentKimi        = "kimi"
+	AgentQwen        = "qwen"
 	AgentGrok        = "grok"
 	AgentOpenCode    = "opencode"
 	AgentAntigravity = "antigravity"
@@ -286,6 +287,7 @@ var builtinAgentOrder = []string{
 	AgentCodex,
 	AgentClaude,
 	AgentKimi,
+	AgentQwen,
 	AgentGrok,
 	AgentOpenCode,
 	AgentAntigravity,
@@ -303,6 +305,15 @@ func BuiltinAgents() AgentCatalog {
 			ManagedAdapter:     "kimi",
 			ManagedAdapterArgs: []string{"acp"},
 		},
+		AgentQwen: {
+			ManagedAdapter:          "qwen",
+			ManagedAdapterArgs:      []string{"--acp"},
+			ProviderMode:            AgentProviderModeAgentDefaults,
+			ModelProviderCapability: provider.CapabilityChatCompletions,
+			ModelProvider:           provider.ProviderQwenCodingPlan,
+			AuthProviderID:          provider.ProviderQwenCodingPlan,
+			Model:                   provider.DefaultQwenCodingPlanModel,
+		},
 		AgentGrok: {
 			Command: "grok",
 			Args: []string{
@@ -319,7 +330,7 @@ func BuiltinAgents() AgentCatalog {
 			Command:                 "npx",
 			Args:                    []string{"-y", "opencode-ai@1.18.3", "acp"},
 			ProviderMode:            AgentProviderModeAgentDefaults,
-			ModelProviderCapability: provider.CapabilityOpenCode,
+			ModelProviderCapability: provider.CapabilityChatCompletions,
 			ModelProvider:           provider.ProviderOpenRouter,
 			Model:                   provider.DefaultOpenRouterModel,
 			ReasoningEffort:         DefaultAgentReasoningEffort(AgentOpenCode),
@@ -343,7 +354,7 @@ func codexBuiltinAgent() AgentConfig {
 			"-c", `suppress_unstable_features_warning=true`,
 		},
 		ProviderMode:            AgentProviderModeAgentDefaults,
-		ModelProviderCapability: provider.CapabilityCodex,
+		ModelProviderCapability: provider.CapabilityResponses,
 		ModelProvider:           provider.ProviderOpenAI,
 		AuthProviderID:          provider.ProviderOpenAI,
 		Model:                   CodexOpenAIDefaultModel,
