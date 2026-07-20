@@ -123,6 +123,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			if path := os.Getenv("JAZ_FAKE_ACP_MATERIALIZED_SESSION"); path != "" {
+				if _, err := os.Stat(path); err != nil {
+					resp, _ := jsonrpc.NewErrorResponse(*msg.ID, &jsonrpc.Error{Code: -32002, Message: "Resource not found"})
+					_ = conn.Send(context.Background(), resp)
+					continue
+				}
+			}
 			if err := validateFakeCwdPrompt(req.Cwd, req.Meta); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
@@ -329,6 +336,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("configured reasoning effort was not set", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
+			}
+			if path := os.Getenv("JAZ_FAKE_ACP_MATERIALIZED_SESSION"); path != "" {
+				if err := os.WriteFile(path, []byte("fake-session"), 0o600); err != nil {
+					resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError(err.Error(), nil))
+					_ = conn.Send(context.Background(), resp)
+					continue
+				}
 			}
 			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
 				notify(conn, "session/update", map[string]any{

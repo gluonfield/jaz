@@ -152,6 +152,41 @@ func (s *Store) SaveSession(session storage.Session) error {
 	return s.saveSession(session)
 }
 
+func (s *Store) HasSessionTranscript(id string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, err := s.loadSessionByID(id); err != nil {
+		return false, err
+	}
+	for _, name := range []string{"messages.jsonl", "events.jsonl"} {
+		info, err := os.Stat(filepath.Join(s.sessionDir(id), name))
+		if err == nil && info.Size() > 0 {
+			return true, nil
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
+func (s *Store) ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return false, err
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.SessionID != oldID {
+		return false, nil
+	}
+	session.RuntimeRef.SessionID = newID
+	if err := s.saveSession(session); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) saveSession(session storage.Session) error {
 	session = storage.CanonicalSessionQueue(session)
 	if session.ID == "" {

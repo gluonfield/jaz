@@ -189,6 +189,22 @@ func (q *Queries) GetTranscriptRevision(ctx context.Context, id string) (int64, 
 	return transcript_revision, err
 }
 
+const hasSessionTranscript = `-- name: HasSessionTranscript :one
+SELECT CAST(
+  EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = ?1)
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1)
+AS INTEGER)
+FROM threads
+WHERE threads.id = ?1
+`
+
+func (q *Queries) HasSessionTranscript(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, hasSessionTranscript, id)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const listChildSessions = `-- name: ListChildSessions :many
 SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision
 FROM threads
@@ -574,6 +590,35 @@ func (q *Queries) LoadTranscriptSessions(ctx context.Context, arg LoadTranscript
 		return nil, err
 	}
 	return items, nil
+}
+
+const replaceRuntimeSessionID = `-- name: ReplaceRuntimeSessionID :execrows
+UPDATE threads
+SET
+  acp_session_id = ?1,
+  updated_at_ms = ?2
+WHERE id = ?3
+  AND COALESCE(acp_session_id, '') = ?4
+`
+
+type ReplaceRuntimeSessionIDParams struct {
+	NewSessionID sql.NullString `json:"new_session_id"`
+	UpdatedAtMs  int64          `json:"updated_at_ms"`
+	ID           string         `json:"id"`
+	OldSessionID sql.NullString `json:"old_session_id"`
+}
+
+func (q *Queries) ReplaceRuntimeSessionID(ctx context.Context, arg ReplaceRuntimeSessionIDParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, replaceRuntimeSessionID,
+		arg.NewSessionID,
+		arg.UpdatedAtMs,
+		arg.ID,
+		arg.OldSessionID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const resetRunningThreads = `-- name: ResetRunningThreads :exec

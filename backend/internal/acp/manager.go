@@ -47,7 +47,9 @@ type Store interface {
 	SaveSession(storage.Session) error
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error)
+	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)
 	TouchSessionAttention(string) error
+	storage.SessionTranscriptReader
 	storage.MessageAppender
 	storage.SessionEventStore
 	LoadLatestACPTurn(context.Context, string) ([]sessionevents.Event, error)
@@ -228,9 +230,15 @@ func (c *agentConn) withProcessStderr(err error) error {
 	return withProcessStderr(err, c.stderr)
 }
 
-func (c *agentConn) trackPromptSends(job *jobState) {
+func (c *agentConn) trackPromptSends(job *jobState, onFirst func()) {
 	if c.promptTracker != nil {
-		c.promptTracker.setOnPromptSent(job.markFirstPromptSent)
+		var once sync.Once
+		c.promptTracker.setOnPromptSent(func() {
+			if onFirst != nil {
+				once.Do(onFirst)
+			}
+			job.markFirstPromptSent()
+		})
 	}
 }
 
@@ -431,20 +439,24 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ac.close()
 		return fail(err)
 	}
-	session.RuntimeRef.SessionID = string(acpSession.response.SessionID)
-	session.RuntimeRef.Cwd = absCwd
-	if err := m.store.SaveSession(session); err != nil {
-		ac.close()
-		return fail(err)
+	acpSessionID := string(acpSession.response.SessionID)
+	if sessionMaterializesOnPrompt(req.ACPAgent, cfg) {
+		acpSessionID = ""
+	} else {
+		session.RuntimeRef.SessionID = acpSessionID
+		if err := m.store.SaveSession(session); err != nil {
+			ac.close()
+			return fail(err)
+		}
 	}
 	process := newAgentProcess(ac, turnScopedAgentProcess(cfg))
-	job := newIdleJob(session, req.ACPAgent, session.RuntimeRef.SessionID, absCwd, modes)
+	job := newIdleJob(session, req.ACPAgent, acpSessionID, absCwd, modes)
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	m.addJob(job, process)
 	if process.turnScoped {
 		m.closeUnusedProcess(job)
 	} else {
-		ac.trackPromptSends(job)
+		ac.trackPromptSends(job, nil)
 	}
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
 

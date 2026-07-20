@@ -7,6 +7,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/gluonfield/acp-transport v0.0.0-20260707222133-89e81dff59f0
 	github.com/gluonfield/jazmem v0.0.0-20260629183144-772a456cd714
+	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/gotd/td v0.159.0
@@ -64,7 +65,6 @@ require (
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
-	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/gotd/ige v0.2.2 // indirect
 	github.com/gotd/log v0.1.0 // indirect
 	github.com/gotd/neo v0.1.5 // indirect

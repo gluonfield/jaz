@@ -9,18 +9,25 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
 func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 	for _, agent := range []string{acp.AgentClaude, acp.AgentCodex, acp.AgentGrok} {
 		t.Run(agent, func(t *testing.T) {
-			startLog := filepath.Join(t.TempDir(), "starts")
-			manager, spawned := newNamedProcessTestManager(t, t.TempDir(), agent, map[string]string{
+			stateDir := t.TempDir()
+			startLog := filepath.Join(stateDir, "starts")
+			env := map[string]string{
 				"JAZ_FAKE_ACP_LOAD":         "1",
 				"JAZ_FAKE_ACP_PROMPT_DELAY": "1",
 				"JAZ_FAKE_ACP_START_LOG":    startLog,
-			})
+			}
+			if agent == acp.AgentCodex {
+				env["JAZ_FAKE_ACP_MATERIALIZED_SESSION"] = filepath.Join(stateDir, "session")
+			}
+			manager, spawned := newNamedProcessTestManager(t, t.TempDir(), agent, env)
 
 			ctx := context.Background()
 			sent, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline})
@@ -64,7 +71,7 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 				t.Fatal(err)
 			}
 			if starts := len(strings.Fields(string(data))); starts != 3 {
-				t.Fatalf("process starts = %d, want one validation process plus one per turn; log=%q", starts, data)
+				t.Fatalf("process starts = %d, want one spawn validation plus one per turn; log=%q", starts, data)
 			}
 		})
 	}
@@ -95,9 +102,11 @@ func TestManagerRejectsManagedAgentWithoutSessionLoad(t *testing.T) {
 }
 
 func TestManagerReleasesManagedProcessAfterIdleSideChat(t *testing.T) {
-	startLog := filepath.Join(t.TempDir(), "starts")
+	stateDir := t.TempDir()
+	startLog := filepath.Join(stateDir, "starts")
 	manager, spawned := newNamedProcessTestManager(t, t.TempDir(), acp.AgentCodex, map[string]string{
-		"JAZ_FAKE_ACP_START_LOG": startLog,
+		"JAZ_FAKE_ACP_MATERIALIZED_SESSION": filepath.Join(stateDir, "session"),
+		"JAZ_FAKE_ACP_START_LOG":            startLog,
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -111,8 +120,97 @@ func TestManagerReleasesManagedProcessAfterIdleSideChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	if starts := len(strings.Fields(string(data))); starts != 3 {
-		t.Fatalf("process starts = %d, want one validation process plus one per side chat; log=%q", starts, data)
+		t.Fatalf("process starts = %d, want one spawn validation plus one per side chat; log=%q", starts, data)
 	}
+}
+
+func TestManagerDoesNotReplaceEstablishedCodexSession(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		event bool
+	}{{name: "message"}, {name: "event", event: true}} {
+		t.Run(test.name, func(t *testing.T) {
+			manager, store, spawned := newUnmaterializedCodexTestSession(t)
+			var err error
+			if test.event {
+				err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
+			} else {
+				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = manager.Send(context.Background(), acp.SendRequest{
+				Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline,
+			})
+			if err == nil || !strings.Contains(err.Error(), "-32002") {
+				t.Fatalf("established session error = %v", err)
+			}
+		})
+	}
+}
+
+func TestManagerPersistsCodexSessionOnlyAfterPromptSend(t *testing.T) {
+	manager, store, spawned := newUnmaterializedCodexTestSession(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := manager.Send(ctx, acp.SendRequest{
+		Session:     spawned.SessionID,
+		Message:     "first",
+		Attachments: []storage.Attachment{{Name: "missing-uri"}},
+		Completion:  acp.CompletionInline,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateFailed {
+		t.Fatalf("unsent first turn = %#v, %v", job, err)
+	}
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef.SessionID != "" {
+		t.Fatalf("unsent ACP session persisted as %q", session.RuntimeRef.SessionID)
+	}
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "retry", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
+		t.Fatalf("retried turn = %#v, %v", job, err)
+	}
+	session, err = store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef.SessionID == "" {
+		t.Fatal("sent ACP session was not persisted")
+	}
+}
+
+func newUnmaterializedCodexTestSession(t *testing.T) (*acp.Manager, *jsonstore.Store, acp.SpawnResult) {
+	t.Helper()
+	stateDir := t.TempDir()
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentCodex, map[string]string{
+		"JAZ_FAKE_ACP_MATERIALIZED_SESSION": filepath.Join(stateDir, "session"),
+	}, "", "")
+	t.Cleanup(manager.Close)
+	spawned, err := manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "unmaterialized-codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.RuntimeRef.SessionID = "fake-session"
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	return manager, store, spawned
 }
 
 func TestManagerRecordsClaudeRuntimeAuthFailure(t *testing.T) {
