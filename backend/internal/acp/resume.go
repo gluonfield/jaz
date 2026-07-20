@@ -3,10 +3,12 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
+	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -92,13 +94,17 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		ac.close()
 		return nil, err
 	}
-	acpSessionID, modes, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd, mcpServerPolicy, systemPromptExtensions)
+	acpSessionID, modes, loaded, err := m.restoreACPSession(ctx, ac, agentName, session, cfg, cwd, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		ac.close()
 		return nil, err
 	}
-	loaded := acpSessionID == session.RuntimeRef.SessionID
-	if !loaded {
+	storedACP := session.RuntimeRef.SessionID
+	materializesOnPrompt := !loaded && sessionMaterializesOnPrompt(agentName, cfg)
+	if materializesOnPrompt && storedACP != "" {
+		session.RuntimeRef.SessionID = ""
+		sessionChanged = true
+	} else if !loaded && !materializesOnPrompt {
 		session.RuntimeRef.SessionID = acpSessionID
 		sessionChanged = true
 	}
@@ -114,7 +120,18 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 	}
 	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
-	ac.trackPromptSends(job)
+	var persistSessionID func()
+	if materializesOnPrompt {
+		persistSessionID = func() {
+			updated, err := m.store.ReplaceRuntimeSessionID(session.ID, "", acpSessionID)
+			if err != nil {
+				m.log.Error("persist materialized agent session", "agent", agentName, "session", session.ID, "error", err)
+			} else if !updated {
+				m.log.Error("materialized agent session changed before persistence", "agent", agentName, "session", session.ID)
+			}
+		}
+	}
+	ac.trackPromptSends(job, persistSessionID)
 	m.addJob(job, newAgentProcess(ac, turnScopedAgentProcess(cfg)))
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,
 		"acp_session", acpSessionID, "loaded", loaded)
@@ -134,13 +151,13 @@ func (m *Manager) resumeSystemPromptExtensions(session storage.Session) (promptm
 
 // The job is registered only after session/load returns, so the agent's
 // history replay notifications are dropped, not re-recorded as events.
-func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (string, ModeState, error) {
+func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (string, ModeState, bool, error) {
 	agentName = CanonicalAgentName(agentName)
 	storedID := session.RuntimeRef.SessionID
 	if loadSessionSupported(ac.initRaw) && storedID != "" {
 		meta, err := m.sessionMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
 		if err != nil {
-			return "", ModeState{}, err
+			return "", ModeState{}, false, err
 		}
 		mcpCtx := mcpsession.With(ctx, session.ID)
 		raw, err := ac.peer.Call(mcpCtx, acpschema.AgentMethodSessionLoad, struct {
@@ -157,22 +174,42 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		if err == nil {
 			var resp acpschema.LoadSessionResponse
 			if err := json.Unmarshal(raw, &resp); err != nil {
-				return "", ModeState{}, err
+				return "", ModeState{}, false, err
 			}
 			modes, err := m.configuredModeState(ctx, ac.peer, agentName, newACPSessionInfo(raw, acpschema.NewSessionResponse{
 				SessionID: acpschema.SessionID(storedID),
 				Modes:     resp.Modes,
 			}), cfg)
-			return storedID, modes, err
+			return storedID, modes, true, err
 		}
 		if turnScopedAgentProcess(cfg) {
-			return "", ModeState{}, fmt.Errorf("resume ACP session %s: %w", storedID, err)
+			replaceable, inspectErr := m.replaceableUnmaterializedSession(session, agentName, cfg, err)
+			if inspectErr != nil {
+				return "", ModeState{}, false, inspectErr
+			}
+			if !replaceable {
+				return "", ModeState{}, false, fmt.Errorf("resume ACP session %s: %w", storedID, err)
+			}
+			m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
 		}
 	}
 	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
-		return "", ModeState{}, err
+		return "", ModeState{}, false, err
 	}
 	modes, err := m.configuredModeState(ctx, ac.peer, agentName, acpSession, cfg)
-	return string(acpSession.response.SessionID), modes, err
+	return string(acpSession.response.SessionID), modes, false, err
+}
+
+func (m *Manager) replaceableUnmaterializedSession(session storage.Session, agentName string, cfg AgentConfig, loadErr error) (bool, error) {
+	var rpcErr *jsonrpc.Error
+	if !sessionMaterializesOnPrompt(agentName, cfg) ||
+		!errors.As(loadErr, &rpcErr) || rpcErr.Code != int(acpschema.ErrorCode32002) {
+		return false, nil
+	}
+	hasTranscript, err := m.store.HasSessionTranscript(session.ID)
+	if err != nil {
+		return false, fmt.Errorf("inspect ACP session transcript: %w", err)
+	}
+	return !hasTranscript, nil
 }

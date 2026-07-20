@@ -78,6 +78,29 @@ func (s *Store) SaveSession(session storage.Session) error {
 	return nil
 }
 
+func (s *Store) HasSessionTranscript(id string) (bool, error) {
+	hasTranscript, err := threaddb.New(s.db).HasSessionTranscript(context.Background(), id)
+	return hasTranscript != 0, err
+}
+
+func (s *Store) ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error) {
+	s.writeMu.Lock()
+	updated, err := threaddb.New(s.db).ReplaceRuntimeSessionID(context.Background(), threaddb.ReplaceRuntimeSessionIDParams{
+		NewSessionID: nullDBString(newID),
+		UpdatedAtMs:  timeToMs(time.Now().UTC()),
+		ID:           id,
+		OldSessionID: sql.NullString{String: oldID, Valid: true},
+	})
+	s.writeMu.Unlock()
+	if err != nil || updated == 0 {
+		return false, err
+	}
+	if current, err := s.LoadSession(id); err == nil {
+		s.mirrorSession(current)
+	}
+	return true, nil
+}
+
 // SetArchived archives or restores a session together with its children.
 func (s *Store) SetArchived(id string, archived bool) error {
 	s.writeMu.Lock()

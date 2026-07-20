@@ -155,7 +155,7 @@ func TestResolveAgentSelectorRejectsConflictingAliases(t *testing.T) {
 	}
 }
 
-func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
+func TestMCPAgentJobOutputValidatesToolCallRawJSONObjects(t *testing.T) {
 	job := Job{
 		ID:              "child",
 		Slug:            "physicslab-plan-claude-review",
@@ -175,6 +175,7 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 				"file_path": "/tmp/plan.html",
 				"nested":    map[string]any{"limit": 1},
 			},
+			RawOutput: json.RawMessage(`{"state":"failed","error":"resource not found"}`),
 		}},
 	}
 	service := &fakeMCPService{job: job, list: []Job{job}}
@@ -183,10 +184,14 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	session, closeSession := connectMCPClient(t, server)
 	defer closeSession()
 
-	for _, name := range []string{ToolJazAgentStatus, ToolJazAgentWait, ToolJazAgentCancel} {
+	for _, name := range []string{ToolJazAgentSend, ToolJazAgentStatus, ToolJazAgentWait, ToolJazAgentCancel} {
+		arguments := map[string]any{"session": "child"}
+		if name == ToolJazAgentSend {
+			arguments["message"] = "continue"
+		}
 		call, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      name,
-			Arguments: map[string]any{"session": "child"},
+			Arguments: arguments,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -198,6 +203,7 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 		if nested, ok := output.ToolCalls[0].RawInput["nested"].(map[string]any); !ok || nested["limit"] != float64(1) {
 			t.Fatalf("%s raw_input nested = %#v", name, output.ToolCalls[0].RawInput["nested"])
 		}
+		assertFailedRawOutput(t, name, output.ToolCalls[0].RawOutput)
 		if output.ModelProvider != AgentClaude || output.Model != "claude-opus-4-8" || output.ReasoningEffort != "xhigh" {
 			t.Fatalf("%s model metadata = %#v", name, output)
 		}
@@ -211,6 +217,7 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	if got := list.Sessions[0].ToolCalls[0].RawInput["file_path"]; got != "/tmp/plan.html" {
 		t.Fatalf("list raw_input file_path = %#v", got)
 	}
+	assertFailedRawOutput(t, "list", list.Sessions[0].ToolCalls[0].RawOutput)
 	if list.Sessions[0].ModelProvider != AgentClaude || list.Sessions[0].ReasoningEffort != "xhigh" {
 		t.Fatalf("list model metadata = %#v", list.Sessions[0])
 	}
@@ -228,6 +235,14 @@ func TestMCPAgentJobOutputValidatesToolCallRawInputObject(t *testing.T) {
 	}
 	if options.Agents[0].Models[0].Model != "gpt-5.5" {
 		t.Fatalf("option models = %#v", options.Agents[0].Models)
+	}
+}
+
+func assertFailedRawOutput(t *testing.T, tool string, raw json.RawMessage) {
+	t.Helper()
+	var output map[string]any
+	if err := json.Unmarshal(raw, &output); err != nil || output["state"] != "failed" || output["error"] != "resource not found" {
+		t.Fatalf("%s raw_output = %s, %v", tool, raw, err)
 	}
 }
 

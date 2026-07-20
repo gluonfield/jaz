@@ -13,6 +13,7 @@ type SessionStore interface {
 	EnsureSession(id string) error
 	LoadSession(ref string) (Session, error)
 	SaveSession(session Session) error
+	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)
 	CompleteSession(id string, completedAt time.Time) error
 	SetThreadUnread(id string, unread bool) error
 	TouchSessionAttention(id string) error
@@ -22,6 +23,10 @@ type SessionStore interface {
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	ListSessions(filter SessionFilter) ([]Session, error)
 	LastRootSession() (Session, error)
+}
+
+type SessionTranscriptReader interface {
+	HasSessionTranscript(id string) (bool, error)
 }
 
 type MessageStore interface {
@@ -63,6 +68,7 @@ type FeedStore interface {
 
 type Store interface {
 	SessionStore
+	SessionTranscriptReader
 	MessageStore
 	SessionEventStore
 	SettingsStorage

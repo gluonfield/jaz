@@ -255,6 +255,22 @@ SET
   manual_title = 0
 WHERE id = sqlc.arg(id) AND manual_title = 0 AND title_locked = 0;
 
+-- name: ReplaceRuntimeSessionID :execrows
+UPDATE threads
+SET
+  acp_session_id = sqlc.narg(new_session_id),
+  updated_at_ms = sqlc.arg(updated_at_ms)
+WHERE id = sqlc.arg(id)
+  AND COALESCE(acp_session_id, '') = sqlc.arg(old_session_id);
+
+-- name: HasSessionTranscript :one
+SELECT CAST(
+  EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = sqlc.arg(id))
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id))
+AS INTEGER)
+FROM threads
+WHERE threads.id = sqlc.arg(id);
+
 -- name: UpdateSessionStatus :exec
 UPDATE threads
 SET

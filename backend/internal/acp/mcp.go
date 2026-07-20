@@ -2,9 +2,12 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
+	"reflect"
 	"strings"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
@@ -30,6 +33,7 @@ func NewMCPTools(service MCPService) *MCPTools {
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
 	agentNames := t.availableAgents()
+	jobSchema := mcpOutputSchema[Job]()
 	description := "Create an idle Jaz agent session. Send work with jazagent_send. Omit model unless the user asks for a specific model; use jazagent_options({}) to inspect available agents and useful model choices."
 	if len(agentNames) > 0 {
 		description = "Create an idle Jaz agent session. Use acp_agent or agent_name to choose one of: " + strings.Join(agentNames, ", ") + ". Empty uses the default selectable agent. Send work with jazagent_send. Omit model unless the user asks for a specific model; use jazagent_options({}) to inspect available agents and useful model choices."
@@ -41,24 +45,28 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 		InputSchema: spawnInputSchema(agentNames),
 	}, t.Spawn)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolJazAgentSend,
-		Title:       "Send Jaz agent task",
-		Description: "Send an instruction to an idle Jaz agent session by thread id, thread slug, or active session id. Selected @thread mentions expose a usable thread id.",
+		Name:         ToolJazAgentSend,
+		Title:        "Send Jaz agent task",
+		Description:  "Send an instruction to an idle Jaz agent session by thread id, thread slug, or active session id. Selected @thread mentions expose a usable thread id.",
+		OutputSchema: jobSchema,
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolJazAgentStatus,
-		Title:       "Get Jaz agent status",
-		Description: "Get status and recent progress for a Jaz agent session by thread id, thread slug, or active session id.",
+		Name:         ToolJazAgentStatus,
+		Title:        "Get Jaz agent status",
+		Description:  "Get status and recent progress for a Jaz agent session by thread id, thread slug, or active session id.",
+		OutputSchema: jobSchema,
 	}, t.Status)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolJazAgentWait,
-		Title:       "Wait for Jaz agent",
-		Description: "Wait for a Jaz agent session to finish its current turn.",
+		Name:         ToolJazAgentWait,
+		Title:        "Wait for Jaz agent",
+		Description:  "Wait for a Jaz agent session to finish its current turn.",
+		OutputSchema: jobSchema,
 	}, t.Wait)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolJazAgentCancel,
-		Title:       "Cancel Jaz agent",
-		Description: "Cancel a Jaz agent session's current turn.",
+		Name:         ToolJazAgentCancel,
+		Title:        "Cancel Jaz agent",
+		Description:  "Cancel a Jaz agent session's current turn.",
+		OutputSchema: jobSchema,
 	}, t.Cancel)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolJazAgentOptions,
@@ -66,10 +74,21 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 		Description: "List available Jaz agents and useful model choices. Call with empty input for the default shortlist. For huge provider catalogs such as OpenRouter, pass agent and name to search model names or ids.",
 	}, t.Options)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        ToolJazAgentList,
-		Title:       "List Jaz agents",
-		Description: "List active Jaz agent sessions.",
+		Name:         ToolJazAgentList,
+		Title:        "List Jaz agents",
+		Description:  "List active Jaz agent sessions.",
+		OutputSchema: mcpOutputSchema[MCPListOutput](),
 	}, t.List)
+}
+
+func mcpOutputSchema[T any]() *jsonschema.Schema {
+	schema, err := jsonschema.For[T](&jsonschema.ForOptions{TypeSchemas: map[reflect.Type]*jsonschema.Schema{
+		reflect.TypeFor[json.RawMessage](): {},
+	}})
+	if err != nil {
+		panic(err)
+	}
+	return schema
 }
 
 func (t *MCPTools) availableAgents() []string {
