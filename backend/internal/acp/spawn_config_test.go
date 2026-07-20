@@ -216,6 +216,55 @@ func TestSpawnConfigUsesCodexOpenAIDefaultModelForOpenAIProviders(t *testing.T) 
 	}
 }
 
+func TestSpawnConfigUsesConfiguredProviderDefaultModel(t *testing.T) {
+	for _, agent := range []string{AgentOpenCode, AgentQwen} {
+		t.Run(agent, func(t *testing.T) {
+			manager := &Manager{
+				cfg: Config{Providers: map[string]modelprovider.ModelProviderConfig{
+					"acme": {
+						Type:         "openai-compatible",
+						BaseURL:      "https://acme.test/v1",
+						DefaultModel: "acme-coder",
+						Capabilities: []string{modelprovider.CapabilityChatCompletions},
+					},
+				}},
+				agents: AgentCatalog{agent: {
+					Command:                 agent,
+					ProviderMode:            AgentProviderModeAgentDefaults,
+					ModelProviderCapability: modelprovider.CapabilityChatCompletions,
+					ModelProvider:           modelprovider.ProviderOpenRouter,
+					Model:                   modelprovider.DefaultOpenRouterModel,
+				}},
+			}
+			_, cfg, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: agent, ModelProvider: "acme"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.ModelProvider != "acme" || cfg.Model != "acme-coder" {
+				t.Fatalf("provider switch = %#v", cfg)
+			}
+		})
+	}
+}
+
+func TestSpawnConfigRejectsOpenAIAPIKeyWithoutResponsesCapability(t *testing.T) {
+	manager := &Manager{
+		cfg: Config{Providers: map[string]modelprovider.ModelProviderConfig{
+			modelprovider.ProviderOpenAI: {Capabilities: []string{modelprovider.CapabilityChatCompletions}},
+		}},
+		agents: AgentCatalog{AgentCodex: {
+			Command:                 AgentCodex,
+			ProviderMode:            AgentProviderModeAgentDefaults,
+			ModelProviderCapability: modelprovider.CapabilityResponses,
+			ModelProvider:           modelprovider.ProviderOpenAI,
+		}},
+	}
+	_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentCodex, ModelProvider: CodexProviderOpenAIAPIKey})
+	if err == nil || !strings.Contains(err.Error(), "does not support") {
+		t.Fatalf("Chat-only OpenAI API key override error = %v", err)
+	}
+}
+
 func TestSpawnConfigResolvesModelLabelsWithinConfiguredProvider(t *testing.T) {
 	manager := &Manager{
 		cfg: Config{ModelCatalog: modelcatalog.NewService(nil)},

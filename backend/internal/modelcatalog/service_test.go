@@ -261,6 +261,18 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsOpenAIAPIKeyAliasWithoutResponsesCapability(t *testing.T) {
+	service := NewService(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		provider.ProviderOpenAI: {Capabilities: []string{provider.CapabilityChatCompletions}},
+	}))
+	if _, err := service.ProviderModels(codexOpenAIAPIKeyProvider); err == nil {
+		t.Fatal("Chat-only OpenAI override yielded the Codex API-key catalog")
+	}
+	if models, err := service.ProviderModels(provider.ProviderOpenAI); err != nil || len(models) == 0 {
+		t.Fatalf("native OpenAI catalog = %#v, %v", models, err)
+	}
+}
+
 func TestServiceDoesNotInventReasoningBeforeCatalogLoads(t *testing.T) {
 	service := NewService(nil)
 	models, err := service.ProviderModels(provider.ProviderOpenAI)

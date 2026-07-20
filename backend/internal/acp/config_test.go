@@ -696,7 +696,7 @@ func TestProcessEnvMapsExplicitACPAPIKeysOnlyWhenNeeded(t *testing.T) {
 	}
 }
 
-func TestProcessEnvPassesModelProviderKeysToOpenCode(t *testing.T) {
+func TestProcessEnvBindsOnlySelectedModelProviderKeyToOpenCode(t *testing.T) {
 	root := t.TempDir()
 	if err := runtimeenv.Save(runtimeenv.Path(root), map[string]string{
 		"OPENROUTER_API_KEY": "openrouter-key",
@@ -707,8 +707,8 @@ func TestProcessEnvPassesModelProviderKeysToOpenCode(t *testing.T) {
 
 	env := NewManager(nil, Config{Root: root}, nil).processEnv("opencode", AgentConfig{})
 
-	if env["OPENROUTER_API_KEY"] != "openrouter-key" || env["OPENAI_API_KEY"] != "openai-key" {
-		t.Fatalf("provider keys not passed to opencode: %#v", env)
+	if env["OPENROUTER_API_KEY"] != "openrouter-key" || env["OPENAI_API_KEY"] != "" {
+		t.Fatalf("OpenCode provider key isolation failed: %#v", env)
 	}
 	if env["OPENCODE_CONFIG_DIR"] != filepath.Join(root, "acp", "opencode") {
 		t.Fatalf("OPENCODE_CONFIG_DIR = %q", env["OPENCODE_CONFIG_DIR"])
@@ -993,6 +993,12 @@ func TestProcessEnvWritesCustomOpenCodeProviderConfig(t *testing.T) {
 				BaseURL: "https://llm.internal/v1",
 				APIKey:  "internal-key",
 			},
+			"unused": {
+				Type:      "openai-compatible",
+				BaseURL:   "https://unused.internal/v1",
+				APIKey:    "unused-key",
+				APIKeyEnv: "UNUSED_PROVIDER_KEY",
+			},
 		},
 	}, nil).processEnvPrepared("opencode", AgentConfig{Model: "internal/chat"})
 	if err != nil {
@@ -1000,6 +1006,9 @@ func TestProcessEnvWritesCustomOpenCodeProviderConfig(t *testing.T) {
 	}
 	if env["JAZ_PROVIDER_INTERNAL_API_KEY"] != "internal-key" {
 		t.Fatalf("custom provider key not mapped: %#v", env)
+	}
+	if env["UNUSED_PROVIDER_KEY"] != "" {
+		t.Fatalf("unselected provider key leaked into OpenCode: %#v", env)
 	}
 	var content struct {
 		Provider map[string]struct {
@@ -1032,12 +1041,19 @@ func TestOpenCodeRejectsResponsesOnlyCustomProvider(t *testing.T) {
 		},
 	}
 	manager := NewManager(nil, Config{Providers: providers}, nil)
-	if _, ok := manager.openCodeProviderConfig(map[string]string{}, "internal/chat"); ok {
+	if _, ok := manager.openCodeProviderConfig("internal/chat"); ok {
 		t.Fatal("Responses-only provider yielded OpenCode config")
 	}
 	status := ProbeAgentAuthWithProviders(AgentOpenCode, AgentConfig{Model: "internal/chat"}, t.TempDir(), nil, providers)
 	if status.Authenticated || !strings.Contains(status.Reason, "does not support Chat Completions") {
 		t.Fatalf("auth = %#v", status)
+	}
+	env, err := manager.processEnvPrepared(AgentOpenCode, AgentConfig{Model: "internal/chat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["JAZ_PROVIDER_INTERNAL_API_KEY"] != "" {
+		t.Fatalf("incompatible provider key leaked into OpenCode: %#v", env)
 	}
 }
 

@@ -75,6 +75,28 @@ func TestCodexProviderArgsOpenAIAPIKey(t *testing.T) {
 	}
 }
 
+func TestCodexOpenAIAPIKeyRequiresResponsesCapability(t *testing.T) {
+	providers := map[string]modelprovider.ModelProviderConfig{
+		modelprovider.ProviderOpenAI: {Capabilities: []string{modelprovider.CapabilityChatCompletions}},
+	}
+	if args := codexProviderArgs(AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, providers); args != nil {
+		t.Fatalf("Chat-only OpenAI override yielded Codex Responses args: %#v", args)
+	}
+	resolved := modelprovider.ResolveModelProviders(providers)
+	metas := make([]modelprovider.ModelProvider, 0, len(resolved))
+	for _, modelProvider := range resolved {
+		metas = append(metas, modelProvider.Meta)
+	}
+	ids := codexModelProviderIDs(metas)
+	if !slices.Contains(ids, modelprovider.ProviderOpenAI) || slices.Contains(ids, CodexProviderOpenAIAPIKey) {
+		t.Fatalf("Codex provider aliases = %#v", ids)
+	}
+	status := ProbeAgentAuthWithProviders(AgentCodex, AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, t.TempDir(), nil, providers)
+	if status.Authenticated || status.AuthKind != "" || status.AuthEvidence != "" {
+		t.Fatalf("Chat-only OpenAI override auth = %#v", status)
+	}
+}
+
 func TestCodexProviderArgsCustomProvider(t *testing.T) {
 	args := codexProviderArgs(
 		AgentConfig{ModelProvider: "acme"},
@@ -153,6 +175,21 @@ func TestProcessEnvBindsSelectedCodexProviderKey(t *testing.T) {
 	openai := manager.processEnv("codex", AgentConfig{ModelProvider: modelprovider.ProviderOpenAI})
 	if openai["OPENAI_API_KEY"] != "" || openai["OPENROUTER_API_KEY"] != "" {
 		t.Fatalf("codex default (OAuth) must not receive provider API keys: %#v", openai)
+	}
+}
+
+func TestProcessEnvDoesNotLeakUnselectedProviderKeyToCodex(t *testing.T) {
+	clearHostEnv(t)
+	manager := NewManager(nil, Config{
+		Root: t.TempDir(),
+		Env:  map[string]string{"UNUSED_PROVIDER_KEY": "must-not-leak"},
+		Providers: map[string]modelprovider.ModelProviderConfig{
+			"unused": {Type: "openai-compatible", BaseURL: "https://unused.test/v1", APIKeyEnv: "UNUSED_PROVIDER_KEY", Capabilities: []string{modelprovider.CapabilityResponses}},
+		},
+	}, nil)
+	env := manager.processEnv(AgentCodex, AgentConfig{ModelProvider: modelprovider.ProviderOpenRouter})
+	if env["UNUSED_PROVIDER_KEY"] != "" {
+		t.Fatalf("unselected provider key leaked into Codex: %#v", env)
 	}
 }
 

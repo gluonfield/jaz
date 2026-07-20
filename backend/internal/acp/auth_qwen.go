@@ -12,7 +12,7 @@ import (
 )
 
 func qwenProvider(id string, providers map[string]modelprovider.ModelProviderConfig) (modelprovider.ModelProvider, bool) {
-	meta := resolveModelProvider(id, providers).meta
+	meta := modelprovider.ResolveModelProvider(id, providers).Meta
 	return meta, meta.SupportsCapability(modelprovider.CapabilityChatCompletions)
 }
 
@@ -77,7 +77,7 @@ func (m *Manager) prepareQwenProcessEnv(root string, cfg AgentConfig, env map[st
 	)
 	providers := m.providers()
 	auth := resolveAgentAuthWithProviders(AgentQwen, cfg, root, env, providers)
-	for _, key := range modelProviderEnvNames(providers) {
+	for key := range modelProviderSecretEnvNames(providers) {
 		delete(env, key)
 	}
 	delete(env, "OPENAI_API_KEY")

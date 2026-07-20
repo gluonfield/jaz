@@ -95,3 +95,24 @@ func TestQwenProviderCompatibilityMatchesWireSupport(t *testing.T) {
 		t.Fatalf("explicit provider capabilities lost: %#v", both)
 	}
 }
+
+func TestResolveModelProvidersAppliesConfiguredDefaultsOnce(t *testing.T) {
+	resolved := ResolveModelProviders(map[string]ModelProviderConfig{
+		ProviderModelStudio: {DefaultModel: "qwen-custom"},
+		"acme": {
+			Type:         "openai-compatible",
+			BaseURL:      "https://acme.test/v1",
+			DefaultModel: "acme-coder",
+		},
+	})
+	seen := map[string]ResolvedModelProvider{}
+	for _, modelProvider := range resolved {
+		if _, duplicate := seen[modelProvider.ID]; duplicate {
+			t.Fatalf("duplicate provider %q in %#v", modelProvider.ID, resolved)
+		}
+		seen[modelProvider.ID] = modelProvider
+	}
+	if seen[ProviderModelStudio].Meta.DefaultModel != "qwen-custom" || seen["acme"].Meta.DefaultModel != "acme-coder" {
+		t.Fatalf("resolved providers = %#v", seen)
+	}
+}

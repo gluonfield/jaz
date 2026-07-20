@@ -49,6 +49,18 @@ func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 	return service
 }
 
+func TestCodexModelProvidersGateOpenAIAPIKeyByResponsesCapability(t *testing.T) {
+	openAI, ok := provider.ModelProviderByID(provider.ProviderOpenAI)
+	if !ok {
+		t.Fatal("OpenAI provider missing")
+	}
+	openAI.Capabilities = []string{provider.CapabilityChatCompletions}
+	providers := codexModelProviders([]settingsModelProvider{{ModelProvider: openAI}})
+	if len(providers) != 1 || providers[0].ID != provider.ProviderOpenAI || providers[0].Label != "OpenAI OAuth" {
+		t.Fatalf("Codex providers = %#v", providers)
+	}
+}
+
 func TestMCPServerSettingsAPI(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

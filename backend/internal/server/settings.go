@@ -218,11 +218,13 @@ func codexModelProviders(providers []settingsModelProvider) []settingsModelProvi
 		native.DefaultModel = acp.CodexOpenAIDefaultModel
 		out = append(out, native)
 
-		apiKey := openAI
-		apiKey.ID = acp.CodexProviderOpenAIAPIKey
-		apiKey.Label = "OpenAI API key"
-		apiKey.DefaultModel = acp.CodexOpenAIDefaultModel
-		out = append(out, apiKey)
+		if openAI.SupportsCapability(provider.CapabilityResponses) {
+			apiKey := openAI
+			apiKey.ID = acp.CodexProviderOpenAIAPIKey
+			apiKey.Label = "OpenAI API key"
+			apiKey.DefaultModel = acp.CodexOpenAIDefaultModel
+			out = append(out, apiKey)
+		}
 	}
 	for _, modelProvider := range providers {
 		if modelProvider.ID == provider.ProviderOpenAI {

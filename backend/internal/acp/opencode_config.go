@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
-	"github.com/wins/jaz/backend/internal/runtimeenv"
 )
 
 const openCodeOpenAICompatibleNPM = "@ai-sdk/openai-compatible"
@@ -45,57 +43,6 @@ type openCodeReasoningConfig struct {
 	Effort string `json:"effort,omitempty"`
 }
 
-func (m *Manager) loadOpenCodeProviderEnv(env map[string]string, root string) {
-	for _, key := range modelProviderEnvNames(m.providers()) {
-		loadRuntimeEnvKey(env, root, key)
-	}
-	for id, cfg := range m.providers() {
-		if strings.TrimSpace(cfg.APIKey) == "" {
-			continue
-		}
-		key := openCodeConfiguredProviderEnv(id, cfg)
-		if key != "" && strings.TrimSpace(env[key]) == "" {
-			env[key] = cfg.APIKey
-		}
-	}
-}
-
-func modelProviderEnvNames(configs map[string]modelprovider.ModelProviderConfig) []string {
-	keys := map[string]struct{}{}
-	for _, provider := range modelprovider.ModelProviders() {
-		if provider.SupportsCapability(modelprovider.CapabilityChatCompletions) && strings.TrimSpace(provider.APIKeyEnv) != "" {
-			keys[provider.APIKeyEnv] = struct{}{}
-			if alias := apiKeyAlias(provider.APIKeyEnv); alias != "" {
-				keys[alias] = struct{}{}
-			}
-		}
-	}
-	for id, cfg := range configs {
-		if key := openCodeConfiguredProviderEnv(id, cfg); key != "" {
-			keys[key] = struct{}{}
-			if alias := apiKeyAlias(key); alias != "" {
-				keys[alias] = struct{}{}
-			}
-		}
-	}
-	out := make([]string, 0, len(keys))
-	for key := range keys {
-		out = append(out, key)
-	}
-	sort.Strings(out)
-	return out
-}
-
-func loadRuntimeEnvKey(env map[string]string, root, key string) {
-	key = strings.TrimSpace(key)
-	if key == "" || strings.TrimSpace(env[key]) != "" {
-		return
-	}
-	if value, ok := runtimeenv.Lookup(runtimeenv.Path(root), key); ok {
-		env[key] = value
-	}
-}
-
 func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]string, agent AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) error {
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
 		return nil
@@ -107,7 +54,7 @@ func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]stri
 		content.Instructions = []string{instruction}
 	}
 	model := agent.ProviderQualifiedModel()
-	if providerConfig, ok := m.openCodeProviderConfig(env, model); ok {
+	if providerConfig, ok := m.openCodeProviderConfig(model); ok {
 		providerID := modelprovider.OpenCodeProviderIDFromModel(model)
 		content.Provider = map[string]openCodeProviderConfig{providerID: providerConfig}
 	}
@@ -141,29 +88,26 @@ func (m *Manager) prepareOpenCodeInstructionFile(ctx context.Context, env map[st
 	return path, nil
 }
 
-func (m *Manager) openCodeProviderConfig(env map[string]string, model string) (openCodeProviderConfig, bool) {
+func (m *Manager) openCodeProviderConfig(model string) (openCodeProviderConfig, bool) {
 	providerID, modelID := modelprovider.SplitProviderModel(model)
 	if providerID == "" {
 		return openCodeProviderConfig{}, false
 	}
-	provider := resolveModelProvider(providerID, m.providers())
-	if !provider.meta.SupportsCapability(modelprovider.CapabilityChatCompletions) {
+	provider := modelprovider.ResolveModelProvider(providerID, m.providers())
+	if !provider.Meta.SupportsCapability(modelprovider.CapabilityChatCompletions) {
 		return openCodeProviderConfig{}, false
 	}
-	if !shouldWriteOpenCodeProviderConfig(provider.config, provider.meta, provider.configured, provider.builtIn) {
+	if !shouldWriteOpenCodeProviderConfig(provider.Config, provider.Meta, provider.Configured, provider.BuiltIn) {
 		return openCodeProviderConfig{}, false
 	}
-	baseURL := firstNonEmpty(provider.config.BaseURL, provider.meta.BaseURL)
+	baseURL := firstNonEmpty(provider.Config.BaseURL, provider.Meta.BaseURL)
 	if baseURL == "" {
 		return openCodeProviderConfig{}, false
 	}
-	key := openCodeConfiguredProviderEnv(providerID, provider.config)
-	if strings.TrimSpace(provider.config.APIKey) != "" && key != "" && strings.TrimSpace(env[key]) == "" {
-		env[key] = provider.config.APIKey
-	}
+	key := modelprovider.ConfiguredAPIKeyEnv(providerID, provider.Config)
 	result := openCodeProviderConfig{
 		API:  baseURL,
-		Name: firstNonEmpty(provider.config.Label, provider.meta.Label, providerID),
+		Name: firstNonEmpty(provider.Config.Label, provider.Meta.Label, providerID),
 		NPM:  openCodeOpenAICompatibleNPM,
 	}
 	if key != "" {
@@ -219,8 +163,4 @@ func shouldWriteOpenCodeProviderConfig(cfg modelprovider.ModelProviderConfig, me
 		return true
 	}
 	return false
-}
-
-func openCodeConfiguredProviderEnv(id string, cfg modelprovider.ModelProviderConfig) string {
-	return modelprovider.ConfiguredAPIKeyEnv(id, cfg)
 }

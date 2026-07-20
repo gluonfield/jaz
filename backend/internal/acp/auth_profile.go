@@ -155,6 +155,14 @@ func resolveCodexAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env ma
 		return resolveCodexProviderAuth(meta, root, env, providers)
 	}
 	layout := runtimefiles.New(root)
+	if !codexNativeOpenAIProvider(cfg.ModelProvider) {
+		return resolvedAgentAuth{
+			Config:      AgentAuthConfig{Mode: AuthModeJazProfile, Path: layout.ACPCodexHome},
+			StoragePath: filepath.Join(layout.ACPCodexHome, "auth.json"),
+			Source:      strings.TrimSpace(cfg.ModelProvider),
+			Reason:      fmt.Sprintf("model provider %q does not support Responses required by Codex", strings.TrimSpace(cfg.ModelProvider)),
+		}
+	}
 	existing := expandAuthPath(firstNonEmpty(existingAuthPath(auth), cfg.Env["CODEX_HOME"], env["CODEX_HOME"], os.Getenv("CODEX_HOME"), defaultHomePath(".codex")))
 	jaz := layout.ACPCodexHome
 	if auth.Mode == AuthModeJazProfile && strings.TrimSpace(auth.Path) != "" {
@@ -328,36 +336,42 @@ func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env
 		StoragePath: layout.ACPOpenCodeConfig,
 		Source:      AuthModeJazProfile,
 	}
-	explicit := status.resolveAPIKey(AgentOpenCode, root, env)
 	providerID := openCodeProviderID(cfg.ProviderQualifiedModel())
-	provider := resolveModelProvider(providerID, providers)
-	known := provider.builtIn || provider.configured
-	if known && !provider.meta.SupportsCapability(modelprovider.CapabilityChatCompletions) {
+	provider := modelprovider.ResolveModelProvider(providerID, providers)
+	known := provider.BuiltIn || provider.Configured
+	if known && !provider.Meta.SupportsCapability(modelprovider.CapabilityChatCompletions) {
 		status.Reason = fmt.Sprintf("model provider %q does not support Chat Completions", providerID)
 		return status
 	}
-	keyEnv := strings.TrimSpace(provider.meta.APIKeyEnv)
-	if provider.configured {
-		if customKeyEnv := openCodeConfiguredProviderEnv(providerID, provider.config); customKeyEnv != "" {
+	keyEnv := strings.TrimSpace(provider.Meta.APIKeyEnv)
+	if provider.Configured {
+		if customKeyEnv := modelprovider.ConfiguredAPIKeyEnv(providerID, provider.Config); customKeyEnv != "" {
 			keyEnv = customKeyEnv
 		}
 	}
-	requiresAPIKey := known && provider.meta.RequiresAPIKey
+	explicit := providerID == modelprovider.ProviderOpenRouter && status.resolveAPIKey(AgentOpenCode, root, env)
+	value := ""
+	evidence := ""
+	if keyEnv != "" {
+		value = modelProviderKeyValue(root, env, keyEnv)
+		evidence = strings.ToLower(keyEnv) + "_env"
+	}
+	if value == "" {
+		value = strings.TrimSpace(provider.Config.APIKey)
+		evidence = "configured_provider_key"
+	}
 	switch {
-	case known && !provider.meta.RequiresAPIKey:
+	case known && !provider.Meta.RequiresAPIKey:
 		status.markAuthenticated("no_api_key_required", AuthKindNone)
 	case providerID == modelprovider.ProviderOpenRouter && explicit:
 		status.markAuthenticated("api_key_env", AuthKindAPIKey)
-	case provider.configured && strings.TrimSpace(provider.config.APIKey) != "":
-		status.markAuthenticated("configured_provider_key", AuthKindAPIKey)
+	case keyEnv != "" && value != "":
+		status.APIKey = AgentAPIKeySpec{SourceEnv: keyEnv, TargetEnv: keyEnv}
 		status.APIKeySet = true
-	case keyEnv != "" && providerAPIKeyConfigured(root, env, keyEnv, apiKeyAlias(keyEnv)):
-		status.markAuthenticated(strings.ToLower(keyEnv)+"_env", AuthKindAPIKey)
-		status.APIKeySet = true
-	case provider.configured && !requiresAPIKey:
-		status.markAuthenticated("no_api_key_required", AuthKindNone)
+		status.APIKeyValue = value
+		status.markAuthenticated(evidence, AuthKindAPIKey)
 	default:
-		status.Reason = openCodeAPIKeyReason(providerID, provider.meta, keyEnv, status.APIKey.SourceEnv, known)
+		status.Reason = openCodeAPIKeyReason(providerID, provider.Meta, keyEnv, status.APIKey.SourceEnv, known)
 	}
 	return status
 }
@@ -607,27 +621,6 @@ func explicitAgentAPIKey(name, root string, env map[string]string) (string, bool
 		return value, true
 	}
 	return "", false
-}
-
-func providerAPIKeyConfigured(root string, env map[string]string, canonical string, aliases ...string) bool {
-	if strings.TrimSpace(canonical) == "" {
-		return false
-	}
-	if strings.TrimSpace(env[canonical]) != "" {
-		return true
-	}
-	if value, ok := runtimeenv.Lookup(runtimeenv.Path(root), canonical); ok && strings.TrimSpace(value) != "" {
-		return true
-	}
-	if strings.TrimSpace(os.Getenv(canonical)) != "" {
-		return true
-	}
-	for _, alias := range aliases {
-		if strings.TrimSpace(env[alias]) != "" || strings.TrimSpace(os.Getenv(alias)) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 func codexAuthFileAvailable(home string) bool {

@@ -290,7 +290,8 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	if name == AgentCodex {
 		delete(env, codexModelMetadataEnv)
-		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
+		providers := m.providers()
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, providers)
 		codexHome := auth.Config.Path
 		if codexHome != "" {
 			env["CODEX_HOME"] = codexHome
@@ -303,9 +304,11 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 				m.installAgentSkills(name, root, filepath.Join(codexHome, "skills"))
 			}
 		}
-		for _, key := range []string{"OPENAI_API_KEY", "OPENAI_APIKEY", "OPENROUTER_API_KEY", "OPENROUTER_APIKEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN"} {
+		for key := range modelProviderSecretEnvNames(providers) {
 			delete(env, key)
 		}
+		delete(env, "CODEX_API_KEY")
+		delete(env, "CODEX_ACCESS_TOKEN")
 		auth.BindAPIKeyEnv(env)
 	}
 	if name == AgentClaude {
@@ -388,8 +391,11 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 			"LC_CTYPE",
 			"NO_PROXY",
 		)
-		m.loadOpenCodeProviderEnv(env, root)
-		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
+		providers := m.providers()
+		auth := resolveAgentAuthWithProviders(name, agent, root, env, providers)
+		for key := range modelProviderSecretEnvNames(providers) {
+			delete(env, key)
+		}
 		if strings.TrimSpace(env["OPENCODE_CONFIG_DIR"]) == "" {
 			env["OPENCODE_CONFIG_DIR"] = auth.Config.Path
 		}

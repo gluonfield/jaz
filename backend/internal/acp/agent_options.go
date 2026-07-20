@@ -1,7 +1,6 @@
 package acp
 
 import (
-	"sort"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/provider"
@@ -174,31 +173,24 @@ func (m *Manager) agentModelProviderIDs(agent string, cfg AgentConfig) []string 
 }
 
 func (m *Manager) effectiveModelProviders() []provider.ModelProvider {
-	providerConfig := m.providers()
-	out := provider.ModelProviders()
-	seen := map[string]int{}
-	for i := range out {
-		seen[out[i].ID] = i
-		if cfg, ok := providerConfig[out[i].ID]; ok {
-			out[i] = provider.ApplyModelProviderConfig(out[i], cfg)
+	resolved := provider.ResolveModelProviders(m.providers())
+	out := make([]provider.ModelProvider, 0, len(resolved))
+	for _, modelProvider := range resolved {
+		if modelProvider.BuiltIn || provider.ModelProviderConfigPresent(modelProvider.Config) {
+			out = append(out, modelProvider.Meta)
 		}
 	}
-	extra := []provider.ModelProvider{}
-	for id, cfg := range providerConfig {
-		if _, ok := seen[id]; ok || !provider.ModelProviderConfigPresent(cfg) {
-			continue
-		}
-		extra = append(extra, provider.ApplyModelProviderConfig(provider.ModelProvider{ID: id}, cfg))
-	}
-	sort.Slice(extra, func(i, j int) bool { return extra[i].ID < extra[j].ID })
-	return append(out, extra...)
+	return out
 }
 
 func codexModelProviderIDs(providers []provider.ModelProvider) []string {
 	ids := []string{}
 	for _, modelProvider := range providers {
 		if modelProvider.ID == provider.ProviderOpenAI {
-			ids = append(ids, provider.ProviderOpenAI, CodexProviderOpenAIAPIKey)
+			ids = append(ids, provider.ProviderOpenAI)
+			if modelProvider.SupportsCapability(provider.CapabilityResponses) {
+				ids = append(ids, CodexProviderOpenAIAPIKey)
+			}
 			break
 		}
 	}

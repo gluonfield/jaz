@@ -98,16 +98,10 @@ func (m *Manager) defaultSpawnAgent() (string, error) {
 }
 
 func agentProviderDefaultModel(agent, id string, providers map[string]provider.ModelProviderConfig) string {
-	if CanonicalAgentName(agent) == AgentCodex {
-		if strings.EqualFold(strings.TrimSpace(id), provider.ProviderOpenAI) {
-			return CodexOpenAIDefaultModel
-		}
-		if meta, ok := codexProvider(id, providers); ok {
-			return strings.TrimSpace(meta.DefaultModel)
-		}
+	if CanonicalAgentName(agent) == AgentCodex && codexProviderKeyID(id) == provider.ProviderOpenAI {
+		return CodexOpenAIDefaultModel
 	}
-	meta, _ := provider.ModelProviderByID(id)
-	return strings.TrimSpace(meta.DefaultModel)
+	return strings.TrimSpace(provider.ResolveModelProvider(id, providers).Meta.DefaultModel)
 }
 
 func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort string) (storage.Session, error) {

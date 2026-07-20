@@ -14,18 +14,26 @@ const (
 
 func codexProvider(modelProvider string, providers map[string]modelprovider.ModelProviderConfig) (modelprovider.ModelProvider, bool) {
 	id := strings.ToLower(strings.TrimSpace(modelProvider))
-	if id == "" || id == AgentCodex || id == modelprovider.ProviderOpenAI {
+	if codexNativeOpenAIProvider(id) {
 		return modelprovider.ModelProvider{}, false
 	}
 	if id == CodexProviderOpenAIAPIKey {
-		meta := resolveModelProvider(modelprovider.ProviderOpenAI, providers).meta
+		meta := modelprovider.ResolveModelProvider(modelprovider.ProviderOpenAI, providers).Meta
+		if !meta.SupportsCapability(modelprovider.CapabilityResponses) {
+			return modelprovider.ModelProvider{}, false
+		}
 		meta.ID = CodexProviderOpenAIAPIKey
 		meta.Label = "OpenAI API key"
 		meta.DefaultModel = CodexOpenAIDefaultModel
 		return meta, true
 	}
-	meta := resolveModelProvider(id, providers).meta
+	meta := modelprovider.ResolveModelProvider(id, providers).Meta
 	return meta, meta.SupportsCapability(modelprovider.CapabilityResponses)
+}
+
+func codexNativeOpenAIProvider(id string) bool {
+	id = strings.ToLower(strings.TrimSpace(id))
+	return id == "" || id == AgentCodex || id == modelprovider.ProviderOpenAI
 }
 
 func codexProviderKeyID(id string) string {

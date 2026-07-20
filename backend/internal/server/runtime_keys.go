@@ -43,16 +43,11 @@ func (s *Server) providerKeyUpdates(keys map[string]string) (map[string]string, 
 	updates := map[string]string{}
 	for id, key := range keys {
 		id = strings.TrimSpace(id)
-		cfg := providers[id]
-		meta, ok := provider.ModelProviderByID(id)
-		if !ok {
-			if !provider.ModelProviderConfigPresent(cfg) {
-				return nil, fmt.Errorf("unknown model provider %q", id)
-			}
-			meta = provider.ModelProvider{ID: id}
+		resolved := provider.ResolveModelProvider(id, providers)
+		if !resolved.BuiltIn && !provider.ModelProviderConfigPresent(resolved.Config) {
+			return nil, fmt.Errorf("unknown model provider %q", id)
 		}
-		meta = provider.ApplyModelProviderConfig(meta, cfg)
-		keyEnv := strings.TrimSpace(meta.APIKeyEnv)
+		keyEnv := strings.TrimSpace(resolved.Meta.APIKeyEnv)
 		if keyEnv == "" {
 			return nil, fmt.Errorf("model provider %q has no API key env var", id)
 		}

@@ -135,15 +135,15 @@ func (s *Service) providerMeta(id string) (provider.ModelProvider, bool) {
 	if s != nil && s.Providers != nil {
 		cfg = s.Providers.Providers()
 	}
-	meta, ok := provider.ModelProviderByID(key)
-	if !ok {
-		if !provider.ModelProviderConfigPresent(cfg[key]) {
+	resolved := provider.ResolveModelProvider(key, cfg)
+	if !resolved.BuiltIn && !provider.ModelProviderConfigPresent(resolved.Config) {
+		return provider.ModelProvider{}, false
+	}
+	meta := resolved.Meta
+	if id == codexOpenAIAPIKeyProvider {
+		if !meta.SupportsCapability(provider.CapabilityResponses) {
 			return provider.ModelProvider{}, false
 		}
-		meta = provider.ModelProvider{ID: key}
-	}
-	meta = provider.ApplyModelProviderConfig(meta, cfg[key])
-	if id == codexOpenAIAPIKeyProvider {
 		meta.ID = codexOpenAIAPIKeyProvider
 	}
 	return meta, true
