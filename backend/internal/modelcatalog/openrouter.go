@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -25,11 +26,17 @@ type openRouterModelResponse struct {
 }
 
 type openRouterModel struct {
-	ID            string               `json:"id"`
-	Name          string               `json:"name"`
-	ContextLength int                  `json:"context_length"`
-	Pricing       openRouterPricing    `json:"pricing"`
-	Reasoning     *openRouterReasoning `json:"reasoning"`
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	Description   string                 `json:"description"`
+	ContextLength int                    `json:"context_length"`
+	Architecture  openRouterArchitecture `json:"architecture"`
+	Pricing       openRouterPricing      `json:"pricing"`
+	Reasoning     *openRouterReasoning   `json:"reasoning"`
+}
+
+type openRouterArchitecture struct {
+	InputModalities []string `json:"input_modalities"`
 }
 
 type openRouterPricing struct {
@@ -60,12 +67,17 @@ func fetchOpenRouterModels(ctx context.Context, baseURL string) ([]Model, error)
 		if id == "" {
 			continue
 		}
+		description := strings.TrimSpace(model.Description)
+		if description == "" {
+			description = id
+		}
 		out = append(out, Model{
-			Value:         id,
-			Label:         openRouterModelLabel(model.Name, id),
-			Description:   id,
-			ContextLength: model.ContextLength,
-			Pricing:       parseOpenRouterPricing(model.Pricing),
+			Value:           id,
+			Label:           openRouterModelLabel(model.Name, id),
+			Description:     description,
+			ContextLength:   model.ContextLength,
+			InputModalities: cleanInputModalities(model.Architecture.InputModalities),
+			Pricing:         parseOpenRouterPricing(model.Pricing),
 			Reasoning: Reasoning{
 				Status:        ReasoningReady,
 				Efforts:       cleanOpenRouterReasoningEfforts(model.Reasoning),
@@ -75,6 +87,17 @@ func fetchOpenRouterModels(ctx context.Context, baseURL string) ([]Model, error)
 		})
 	}
 	return out, nil
+}
+
+func cleanInputModalities(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if (value == "text" || value == "image") && !slices.Contains(out, value) {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func openRouterModelsURL(baseURL string) (string, error) {

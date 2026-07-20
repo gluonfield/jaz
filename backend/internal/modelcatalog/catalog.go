@@ -30,13 +30,14 @@ type Reasoning struct {
 }
 
 type Model struct {
-	Value         string    `json:"value"`
-	Label         string    `json:"label"`
-	Description   string    `json:"description,omitempty"`
-	ContextLength int       `json:"context_length,omitempty"`
-	Pricing       *Pricing  `json:"pricing,omitempty"`
-	OpenRouterID  string    `json:"openrouter_id,omitempty"`
-	Reasoning     Reasoning `json:"-"`
+	Value           string    `json:"value"`
+	Label           string    `json:"label"`
+	Description     string    `json:"description,omitempty"`
+	ContextLength   int       `json:"context_length,omitempty"`
+	InputModalities []string  `json:"input_modalities,omitempty"`
+	Pricing         *Pricing  `json:"pricing,omitempty"`
+	OpenRouterID    string    `json:"openrouter_id,omitempty"`
+	Reasoning       Reasoning `json:"-"`
 }
 
 var reasoningEffortRank = map[string]int{
@@ -120,6 +121,7 @@ func cloneModels(models []Model) []Model {
 }
 
 func cloneModel(model Model) Model {
+	model.InputModalities = cloneStrings(model.InputModalities)
 	model.Reasoning.Efforts = cloneStrings(model.Reasoning.Efforts)
 	if model.Pricing != nil {
 		pricing := *model.Pricing

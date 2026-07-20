@@ -278,6 +278,7 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	if name == AgentCodex {
+		delete(env, codexModelMetadataEnv)
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, m.providers())
 		codexHome := auth.Config.Path
 		if codexHome != "" {
