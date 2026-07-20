@@ -4,6 +4,7 @@ import "github.com/wins/jaz/backend/internal/acp"
 
 type acpAuthStatusResponse struct {
 	Authenticated         bool                `json:"authenticated"`
+	Ready                 bool                `json:"ready"`
 	Reason                string              `json:"reason,omitempty"`
 	StoragePath           string              `json:"storage_path,omitempty"`
 	AuthMode              string              `json:"auth_mode,omitempty"`
@@ -20,10 +21,11 @@ type acpAuthStatusResponse struct {
 	RefreshOwner          string              `json:"refresh_owner,omitempty"`
 }
 
-func newACPAuthStatusResponse(auth acp.AgentAuthStatus) acpAuthStatusResponse {
+func newACPAuthStatusResponse(auth acp.AgentAuthStatus, readiness acp.Readiness) acpAuthStatusResponse {
 	return acpAuthStatusResponse{
 		Authenticated:         auth.Authenticated,
-		Reason:                auth.Reason,
+		Ready:                 readiness.Available,
+		Reason:                firstMessage(readiness.Reason, auth.Reason),
 		StoragePath:           auth.StoragePath,
 		AuthMode:              auth.AuthMode,
 		AuthPath:              auth.AuthPath,

@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -19,6 +21,16 @@ type failingUnreadStore struct {
 }
 
 func (s failingUnreadStore) SetThreadUnread(string, bool) error { return s.err }
+
+type completionObservingStore struct {
+	storage.Store
+	called chan string
+}
+
+func (s completionObservingStore) CompleteSession(id string, at time.Time) error {
+	s.called <- id
+	return s.Store.CompleteSession(id, at)
+}
 
 func TestACPTurnFinishedRecordsFeedCompletion(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
@@ -45,6 +57,56 @@ func TestACPTurnFinishedRecordsFeedCompletion(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].ID != session.ID || items[0].CompletedAt.IsZero() {
 		t.Fatalf("completions = %#v", items)
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Status != storage.StatusIdle || !loaded.Unread {
+		t.Fatalf("completed session = %#v", loaded)
+	}
+}
+
+func TestACPTurnFinishedSerializesThroughSessionLock(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "serialized-finish"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(session.ID, storage.StatusRunning, "", session.LastAttentionAt); err != nil {
+		t.Fatal(err)
+	}
+
+	completed := make(chan string, 1)
+	locks := sessionlock.New()
+	release := locks.Lock(session.ID)
+	server := &Server{
+		Store: completionObservingStore{Store: store, called: completed},
+		Locks: locks,
+	}
+	started := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		close(started)
+		server.HandleACPTurnFinished(context.Background(), acp.Job{ID: session.ID, State: acp.StateIdle})
+		close(done)
+	}()
+
+	<-started
+	select {
+	case id := <-completed:
+		t.Fatalf("session %q completed while its lock was blocked", id)
+	case <-time.After(100 * time.Millisecond):
+	}
+	release()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("completion did not finish after the lock was released")
 	}
 	loaded, err := store.LoadSession(session.ID)
 	if err != nil {

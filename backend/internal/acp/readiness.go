@@ -34,6 +34,11 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 		if !auth.Authenticated {
 			return Readiness{Reason: auth.Reason}
 		}
+		if name == AgentKimi {
+			if err := kimiModelConfigReady(auth.AuthPath); err != nil {
+				return Readiness{Reason: err.Error()}
+			}
+		}
 		return Readiness{Available: true}
 	}
 	command, _, err := processCommand(name, cfg, providers)

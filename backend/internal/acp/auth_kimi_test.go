@@ -32,6 +32,41 @@ func TestProbeAgentAuthDetectsKimiOAuthProfile(t *testing.T) {
 	}
 }
 
+func TestProbeReadinessRequiresProvisionedKimiModel(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	home := filepath.Join(root, "acp", "kimi")
+	writeKimiCredential(t, home, `{"access_token":"token"}`)
+	cfg := BuiltinAgents()[AgentKimi]
+
+	if ready := ProbeReadiness(AgentKimi, cfg, root, nil); ready.Available || ready.Reason != errKimiModelNotConfigured.Error() {
+		t.Fatalf("token-only Kimi readiness = %#v", ready)
+	}
+	writeKimiConfig(t, home)
+	if ready := ProbeReadiness(AgentKimi, cfg, root, nil); !ready.Available || ready.Reason != "" {
+		t.Fatalf("configured Kimi readiness = %#v", ready)
+	}
+}
+
+func TestKimiModelConfigRequiresResolvableProvider(t *testing.T) {
+	for name, config := range map[string]string{
+		"malformed":        `not = [toml`,
+		"missing model":    `[providers.kimi]`,
+		"missing alias":    "default_model = \"kimi\"\n[providers.kimi]\n",
+		"missing provider": "default_model = \"kimi\"\n[models.kimi]\nprovider = \"absent\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := kimiModelConfigReady(home); err != errKimiModelNotConfigured {
+				t.Fatalf("config error = %v", err)
+			}
+		})
+	}
+}
+
 func TestProbeAgentAuthUsesExistingKimiProfile(t *testing.T) {
 	clearHostEnv(t)
 	existing := t.TempDir()
@@ -123,6 +158,7 @@ func TestProcessEnvUsesExistingKimiProfile(t *testing.T) {
 	root := t.TempDir()
 	existing := t.TempDir()
 	writeKimiCredential(t, existing, `{"access_token":"token"}`)
+	writeKimiConfig(t, existing)
 
 	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared(AgentKimi, AgentConfig{
 		Auth: AgentAuthConfig{Mode: AuthModeExistingCLI, Path: existing},
@@ -132,6 +168,20 @@ func TestProcessEnvUsesExistingKimiProfile(t *testing.T) {
 	}
 	if env["KIMI_CODE_HOME"] != existing {
 		t.Fatalf("KIMI_CODE_HOME = %q, want %q", env["KIMI_CODE_HOME"], existing)
+	}
+}
+
+func TestProcessEnvRejectsTokenOnlyKimiProfile(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	existing := t.TempDir()
+	writeKimiCredential(t, existing, `{"access_token":"token"}`)
+
+	_, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared(AgentKimi, AgentConfig{
+		Auth: AgentAuthConfig{Mode: AuthModeExistingCLI, Path: existing},
+	})
+	if err != errKimiModelNotConfigured {
+		t.Fatalf("process env error = %v", err)
 	}
 }
 
@@ -161,6 +211,18 @@ func writeKimiCredential(t *testing.T, home, content string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeKimiConfig(t *testing.T, home string) {
+	t.Helper()
+	config := `default_model = "kimi-code/kimi-for-coding"
+[providers."managed:kimi-code"]
+[models."kimi-code/kimi-for-coding"]
+provider = "managed:kimi-code"
+`
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

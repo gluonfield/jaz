@@ -201,11 +201,13 @@ function ACPAgentRow({
   const checked = acpAgentEnabled(settings, agent)
   const enableDescription = providerReady
     ? 'Show this ACP client in agent pickers.'
-    : selectedProviderNativeAuth || (supportsAuth && !usesModelProvider)
-      ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
-      : usesModelProvider && selectedProvider
-        ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
-        : 'Select a provider before enabling.'
+    : authStatus?.authenticated && authStatus.ready === false
+      ? (authStatus.reason ?? `Sign in with ${authProviderLabel(agent)} again.`)
+      : selectedProviderNativeAuth || (supportsAuth && !usesModelProvider)
+        ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
+        : usesModelProvider && selectedProvider
+          ? `Connect ${selectedProvider.label} in Model Providers before enabling.`
+          : 'Select a provider before enabling.'
   const [expanded, setExpanded] = useState(false)
   const reasoningModel = (current.model ?? '').trim() || selectedProvider?.default_model || ''
   const reasoningEffort = current.reasoning_effort ?? ''
@@ -421,7 +423,35 @@ function AgentAuthPanel({
     if (canKey && !canLogin && method === 'login') setMethod('key')
   }, [canKey, canLogin, method])
 
-  // Connected: a clean confirmation + a way to disconnect (or switch method).
+  if (status?.authenticated && status.ready === false) {
+    return (
+      <div className="flex flex-col gap-2 rounded-control bg-bg px-3 py-2.5">
+        <div className="flex items-start gap-2 text-[13px] text-ink">
+          <CircleAlert size={16} className="mt-0.5 shrink-0 text-accent" />
+          <div className="min-w-0">
+            <p className="font-medium">Account connected, setup incomplete</p>
+            <p className="mt-0.5 text-[12px] text-ink-3">
+              {status.reason ?? `Sign in with ${authProviderLabel(agent)} again.`}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {canLogin ? (
+            <Button variant="primary" size="md" disabled={disabled || running} onClick={onStartLogin}>
+              {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
+              {running ? 'Waiting for sign-in…' : 'Sign in again'}
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
+            {disconnecting ? <LoaderCircle size={13} className="animate-spin" /> : null}
+            Disconnect
+          </Button>
+        </div>
+        <AuthLoginStatus job={loginJob} running={running} />
+      </div>
+    )
+  }
+
   if (status?.authenticated) {
     const viaKey = status.auth_kind === 'api_key'
     const noKey = status.auth_kind === 'none'

@@ -388,6 +388,54 @@ func TestAgentSettingsSavesModelProviderKey(t *testing.T) {
 	}
 }
 
+func TestAgentSettingsReportsAuthenticatedKimiWithoutModelAsUnready(t *testing.T) {
+	root := t.TempDir()
+	credential := filepath.Join(root, "acp", "kimi", "credentials", "kimi-code.json")
+	if err := os.MkdirAll(filepath.Dir(credential), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(credential, []byte(`{"access_token":"token"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root}).Handler()
+
+	res := httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	var response struct {
+		ACPAuth map[string]struct {
+			Authenticated bool   `json:"authenticated"`
+			Ready         bool   `json:"ready"`
+			Reason        string `json:"reason"`
+		} `json:"acp_auth"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	status := response.ACPAuth[acp.AgentKimi]
+	if !status.Authenticated || status.Ready || !strings.Contains(status.Reason, "did not finish configuring a model") {
+		t.Fatalf("Kimi auth status = %#v", status)
+	}
+
+	res = httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/v1/settings/agents", jsonReader(t, map[string]any{
+		"acp": map[string]any{"kimi": map[string]any{"enabled": true}},
+	}))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "127.0.0.1:1234"
+	handler.ServeHTTP(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "is not ready") {
+		t.Fatalf("enable status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func TestAgentSettingsRejectsEnabledACPWithoutAuth(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CODEX_HOME", t.TempDir()+"/codex-home")

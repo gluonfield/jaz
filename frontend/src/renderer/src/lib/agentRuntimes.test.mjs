@@ -23,16 +23,20 @@ describe('selectableACPModelProviders', () => {
 })
 
 describe('Kimi native auth', () => {
-  test('requires its OAuth profile before enablement', () => {
+  test('requires a usable model configuration after OAuth', () => {
     const settings = {
       agents: ['kimi'],
       acp: { kimi: { enabled: false } },
       acp_options: { kimi: { supports_auth: true } },
-      acp_auth: { kimi: { authenticated: false } },
+      acp_auth: { kimi: { authenticated: false, ready: false } },
     }
     expect(acpAgentEnableable(settings, 'kimi')).toBe(false)
     settings.acp_auth.kimi.authenticated = true
+    expect(acpAgentEnableable(settings, 'kimi')).toBe(false)
+    settings.acp_auth.kimi.ready = true
     expect(acpAgentEnableable(settings, 'kimi')).toBe(true)
+    settings.acp_auth.kimi.authenticated = false
+    expect(acpAgentEnableable(settings, 'kimi')).toBe(false)
   })
 })
 
@@ -54,10 +58,11 @@ describe('Qwen provider auth', () => {
           model_provider_ids: ['qwen-coding-plan', 'qwen-token-plan', 'modelstudio-us'],
         },
       },
-      acp_auth: { qwen: { authenticated: false } },
+      acp_auth: { qwen: { authenticated: false, ready: false } },
     }
     expect(acpAgentEnableable(settings, 'qwen')).toBe(false)
     settings.acp_auth.qwen.authenticated = true
+    settings.acp_auth.qwen.ready = true
     expect(acpAgentEnableable(settings, 'qwen')).toBe(true)
     settings.acp_auth.qwen.authenticated = false
     settings.acp.qwen.model_provider = 'qwen-token-plan'

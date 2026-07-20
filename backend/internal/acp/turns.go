@@ -64,6 +64,7 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string) {
 	cancelReason, cancelRequested := job.cancelReason()
 	state := StateIdle
+	errMessage := ""
 	if cancelRequested {
 		state = StateCancelled
 		stopReason = cancelReason
@@ -92,15 +93,23 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		return
 	}
 	turn.promptCalls = 0
+	if state == StateIdle && stopReason == StopReasonEndTurn && job.ActiveOperation != ActiveOperationCompact && !hasVisibleTurnResult(job, turn) {
+		state = StateFailed
+		errMessage = "Agent ended the turn without producing a message, plan, or tool activity."
+	}
 	job.State = state
 	job.StopReason = stopReason
-	job.Error = ""
+	job.Error = errMessage
 	job.UpdatedAt = time.Now().UTC()
 	job.mu.Unlock()
 	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
 	m.publishACPStatus(job.eventView())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
+}
+
+func hasVisibleTurnResult(job *jobState, turn *activeTurn) bool {
+	return strings.TrimSpace(job.Assistant) != "" || len(job.ToolCalls) > 0 || len(job.Plan) > 0 || strings.TrimSpace(turn.planDocument) != ""
 }
 
 func (m *Manager) failPromptCall(done chan struct{}, job *jobState, err error) {

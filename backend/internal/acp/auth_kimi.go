@@ -2,12 +2,28 @@ package acp
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
+
+var errKimiModelNotConfigured = errors.New("Kimi sign-in did not finish configuring a model; sign in again")
+
+type kimiConfig struct {
+	DefaultModel    string                    `toml:"default_model"`
+	DefaultProvider string                    `toml:"default_provider"`
+	Providers       map[string]any            `toml:"providers"`
+	Models          map[string]kimiModelAlias `toml:"models"`
+}
+
+type kimiModelAlias struct {
+	Provider string `toml:"provider"`
+}
 
 func resolveKimiAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {
 	jaz := runtimefiles.New(root).ACPKimiHome
@@ -53,6 +69,30 @@ func kimiAuthPath(home string) string {
 	return filepath.Join(home, "credentials", "kimi-code.json")
 }
 
+func kimiModelConfigReady(home string) error {
+	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		return errKimiModelNotConfigured
+	}
+	var cfg kimiConfig
+	if toml.Unmarshal(data, &cfg) != nil {
+		return errKimiModelNotConfigured
+	}
+	modelID := strings.TrimSpace(cfg.DefaultModel)
+	model, ok := cfg.Models[modelID]
+	if modelID == "" || !ok {
+		return errKimiModelNotConfigured
+	}
+	providerID := strings.TrimSpace(model.Provider)
+	if providerID == "" {
+		providerID = strings.TrimSpace(cfg.DefaultProvider)
+	}
+	if _, ok := cfg.Providers[providerID]; providerID == "" || !ok {
+		return errKimiModelNotConfigured
+	}
+	return nil
+}
+
 func (m *Manager) prepareKimiProcessEnv(root string, cfg AgentConfig, env map[string]string, prepare bool) error {
 	processenv.PreserveHost(env,
 		"HTTP_PROXY",
@@ -70,6 +110,11 @@ func (m *Manager) prepareKimiProcessEnv(root string, cfg AgentConfig, env map[st
 	env["KIMI_CODE_HOME"] = auth.Config.Path
 	if !prepare {
 		return nil
+	}
+	if auth.Authenticated {
+		if err := kimiModelConfigReady(auth.Config.Path); err != nil {
+			return err
+		}
 	}
 	m.installAgentSkills(AgentKimi, root, filepath.Join(env["KIMI_CODE_HOME"], "skills"))
 	return nil

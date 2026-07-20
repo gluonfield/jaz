@@ -105,7 +105,8 @@ export function acpAgentEnableable(settings: AgentSettings | undefined, agent: s
 function acpAgentAuthReady(settings: AgentSettings | undefined, agent: string): boolean {
   const options = settings?.acp_options?.[agent]
   if (options?.local || !AUTH_REQUIRED_AGENTS.has(agent)) return true
-  if (settings?.acp_auth?.[agent]?.authenticated) return true
+  const auth = settings?.acp_auth?.[agent]
+  if (auth?.authenticated && auth.ready) return true
   return Boolean(settings?.acp_keys?.[agent]?.trim())
 }
 

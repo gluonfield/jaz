@@ -306,7 +306,13 @@ func (s *Server) verifyACPAuthLogin(agent string, auth acp.AgentAuthConfig) erro
 	cfg.LoginBinDir = s.agentLoginBinDirs(cfg)
 	status := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
 	if status.Authenticated {
-		return nil
+		readiness := acp.ProbeReadinessWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
+		if readiness.Available {
+			return nil
+		}
+		if strings.TrimSpace(readiness.Reason) != "" {
+			return fmt.Errorf("%s", readiness.Reason)
+		}
 	}
 	if strings.TrimSpace(status.Reason) != "" {
 		return fmt.Errorf("%s", status.Reason)
