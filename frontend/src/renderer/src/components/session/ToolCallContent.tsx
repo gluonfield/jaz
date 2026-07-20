@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { memo, useState } from 'react'
+import { Collapse } from '@/components/ui/Collapse'
 import type { ACPToolCall } from '@/lib/api/types'
 import {
   toolCallPresentation,
@@ -149,8 +150,10 @@ export const ToolCallDetail = memo(function ToolCallDetail({ call }: { call: ACP
           />
         ) : null}
       </button>
-      <HumanToolPreview call={call} category={presentation.category} preview={presentation.preview} />
-      <ToolRawDetails open={open && expandable} input={call.raw_input} output={presentation.output} />
+      <Collapse open={open && expandable} className="w-full">
+        <HumanToolPreview call={call} category={presentation.category} preview={presentation.preview} />
+        <ToolRawDetails input={call.raw_input} output={presentation.output} />
+      </Collapse>
     </div>
   )
 })
