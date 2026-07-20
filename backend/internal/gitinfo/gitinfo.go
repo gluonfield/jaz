@@ -44,16 +44,9 @@ type Info struct {
 	// destination.
 	IsWorktree bool   `json:"is_worktree,omitempty"`
 	MainBranch string `json:"main_branch,omitempty"`
-	// UpdateBranch is the source used by "Update from main": origin/<main>
-	// when available, otherwise the local main checkout branch.
-	UpdateBranch string `json:"update_branch,omitempty"`
-	// Behind counts commits on UpdateBranch the worktree's branch doesn't
+	// Behind counts commits on MainBranch the worktree's branch doesn't
 	// have yet — what an update would pull in (0 when up to date).
 	Behind int `json:"behind,omitempty"`
-	// CanUpdateFromMain reports whether the worktree update action should be
-	// available, including remote-backed cases where Behind cannot be known
-	// until the action fetches origin/<main>.
-	CanUpdateFromMain bool `json:"can_update_from_main,omitempty"`
 	// WorktreeMissing reports a managed worktree path that no longer exists.
 	WorktreeMissing bool `json:"worktree_missing,omitempty"`
 	// WorktreeRestorable reports whether the saved session branch can recreate
@@ -84,13 +77,8 @@ func Inspect(ctx context.Context, dir string) Info {
 		info.IsWorktree = true
 		info.MainBranch = branch
 		if branch != "" {
-			source := worktreeUpdateSource(ctx, dir, branch)
-			info.UpdateBranch = source.label
-			if count, err := git(ctx, dir, "rev-list", "--count", "HEAD.."+source.ref); err == nil {
+			if count, err := git(ctx, dir, "rev-list", "--count", "HEAD..refs/heads/"+branch); err == nil {
 				info.Behind, _ = strconv.Atoi(count)
-				info.CanUpdateFromMain = info.Behind > 0
-			} else if source.remote {
-				info.CanUpdateFromMain = true
 			}
 		}
 	}
@@ -249,25 +237,17 @@ func MergeFromMain(ctx context.Context, dir, message string) error {
 	if worktreeBranch == "" {
 		return fmt.Errorf("the worktree is on a detached HEAD")
 	}
-	source := worktreeUpdateSource(ctx, dir, branch)
-	if source.remote {
-		if _, err := git(ctx, dir, "fetch", "origin", branch); err != nil {
-			return fmt.Errorf("fetching %s: %w", source.label, err)
-		}
-		if _, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", source.ref); err != nil {
-			return fmt.Errorf("fetching %s did not create %s: %w", source.label, source.ref, err)
-		}
-	}
+	source := "refs/heads/" + branch
 	if err := CommitAll(ctx, dir, message); err != nil {
 		return err
 	}
-	if count, err := git(ctx, dir, "rev-list", "--count", worktreeBranch+".."+source.ref); err == nil && count == "0" {
-		return fmt.Errorf("nothing to merge — %s already has everything from %s", worktreeBranch, source.label)
+	if count, err := git(ctx, dir, "rev-list", "--count", worktreeBranch+".."+source); err == nil && count == "0" {
+		return fmt.Errorf("nothing to merge — %s already has everything from %s", worktreeBranch, branch)
 	}
-	if _, err := git(ctx, dir, "merge", "--no-edit", source.ref); err != nil {
+	if _, err := git(ctx, dir, "merge", "--no-edit", source); err != nil {
 		// Abort a conflicted merge so the worktree never sits mid-merge.
 		_, _ = git(ctx, dir, "merge", "--abort")
-		return fmt.Errorf("merging %s into %s: %w", source.label, worktreeBranch, err)
+		return fmt.Errorf("merging %s into %s: %w", branch, worktreeBranch, err)
 	}
 	return nil
 }
@@ -359,20 +339,6 @@ func firstRemoteURL(ctx context.Context, dir string) string {
 	name, _, _ := strings.Cut(names, "\n")
 	url, _ := git(ctx, dir, "remote", "get-url", strings.TrimSpace(name))
 	return url
-}
-
-type updateSource struct {
-	label  string
-	ref    string
-	remote bool
-}
-
-func worktreeUpdateSource(ctx context.Context, dir, branch string) updateSource {
-	remote := "refs/remotes/origin/" + branch
-	if _, err := git(ctx, dir, "remote", "get-url", "origin"); err == nil {
-		return updateSource{label: "origin/" + branch, ref: remote, remote: true}
-	}
-	return updateSource{label: branch, ref: "refs/heads/" + branch}
 }
 
 // defaultBranch resolves the remote's default branch: origin/HEAD when the
