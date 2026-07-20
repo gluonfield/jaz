@@ -510,11 +510,13 @@
   }
 }
 
-/* Session liveness "working" indicator: the whole line shimmers — a soft
- * light band sweeps the text (background-clip) and the amber status dot in
- * sync. The band lightens toward the page in light mode and toward white in
- * dark mode via --live-shimmer-hi. Seamless loop: size 300% + repeat, so
- * position 300% wraps to 0. */
+/* Session liveness "working" indicator: one soft light band sweeps the whole
+ * line left to right — the class sits on the line container so a single
+ * background is clipped to all of its text (per-span backgrounds would each
+ * run their own sweep). The amber status dot stays static so there is
+ * exactly one shimmer. Band highlight lightens toward the page in light
+ * mode and toward white in dark mode via --live-shimmer-hi. Seamless loop:
+ * size 300% + repeat, so position -300% wraps to 0. */
 :root {
   --live-shimmer-hi: color-mix(in oklab, var(--color-ink-3) 30%, var(--color-bg));
 }
@@ -540,19 +542,12 @@
   width: 3px;
   height: 3px;
   flex-shrink: 0;
-  background-image: linear-gradient(
-    100deg,
-    var(--color-running) 42%,
-    color-mix(in oklab, var(--color-running) 60%, white) 50%,
-    var(--color-running) 58%
-  );
-  background-size: 300% 100%;
-  animation: live-shimmer-sweep 2.4s linear infinite;
+  background: var(--color-running);
 }
 
 @keyframes live-shimmer-sweep {
   to {
-    background-position: 300% 0;
+    background-position: -300% 0;
   }
 }
 
@@ -560,23 +555,14 @@
   .live-shimmer {
     animation: none;
     background: none;
-    color: inherit;
-  }
-  .live-shimmer-dot {
-    animation: none;
-    background: var(--color-running);
+    color: var(--color-ink-3);
   }
 }
 
 :root.jaz-no-effects .live-shimmer {
   animation: none;
   background: none;
-  color: inherit;
-}
-
-:root.jaz-no-effects .live-shimmer-dot {
-  animation: none;
-  background: var(--color-running);
+  color: var(--color-ink-3);
 }
 
 /* Ultra effort slider: the track ring breathes while the dither field burns. */

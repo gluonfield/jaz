@@ -65,7 +65,7 @@ export function SessionLivenessIndicator({
           exit={{ opacity: 0, y: 4, scale: 0.98 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
           className={`flex w-fit max-w-full items-center gap-1.5 text-[12px] leading-5 ${
-            stale ? 'text-danger' : 'text-ink-3'
+            stale ? 'text-danger' : 'text-ink-3 live-shimmer'
           }`}
         >
           {stale ? (
@@ -73,9 +73,9 @@ export function SessionLivenessIndicator({
           ) : (
             <span className="live-shimmer-dot" aria-hidden />
           )}
-          <span className={`min-w-0 truncate ${stale ? '' : 'live-shimmer'}`}>{label}</span>
+          <span className="min-w-0 truncate">{label}</span>
           {detail ? (
-            <span className={`shrink-0 tabular-nums opacity-80 ${stale ? '' : 'live-shimmer'}`}>{detail}</span>
+            <span className="shrink-0 tabular-nums opacity-80">{detail}</span>
           ) : null}
         </motion.div>
       ) : null}
