@@ -59,6 +59,13 @@ Connect your apps (Slack, Gmail, Google Calendar, WhatsApp, Telegram, [Deployink
 
 <img width="3834" height="2776" alt="image" src="https://github.com/user-attachments/assets/1b7ad3c9-b6cb-4dcc-9c62-74e8ab0b0c78" />
 
+Side panel
+
+
+https://github.com/user-attachments/assets/de550dc1-75cc-43bb-aca0-f34c99573d47
+
+
+
 
 
 
