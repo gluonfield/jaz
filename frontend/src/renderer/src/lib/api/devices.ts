@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '../query/keys'
-import { del, get, post } from './client'
+import { del, get, post, put } from './client'
 import type { Device, DeviceConnectionLink, DeviceList, DevicePairing, PairingPoll } from './types'
 
 export const devicesQuery = queryOptions({
@@ -13,6 +13,10 @@ export const deviceConnectionLinkQuery = queryOptions({
   queryKey: keys.deviceConnectionLink,
   queryFn: () => get<DeviceConnectionLink>('/v1/devices/connection-link'),
 })
+
+export function updateDeviceConnectionLink(publicURL: string): Promise<DeviceConnectionLink> {
+  return put<DeviceConnectionLink>('/v1/devices/connection-link', { public_url: publicURL })
+}
 
 export function approvePairing(id: string): Promise<{ pairing: DevicePairing }> {
   return post<{ pairing: DevicePairing }>(`/v1/devices/pairing-requests/${encodeURIComponent(id)}/approve`)

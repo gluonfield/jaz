@@ -399,6 +399,8 @@ export interface DeviceList {
 
 export interface DeviceConnectionLink {
   url: string
+  base_url: string
+  public_url: string
 }
 
 export interface DeviceRegisterResult {
