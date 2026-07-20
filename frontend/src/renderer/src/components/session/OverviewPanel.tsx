@@ -426,7 +426,6 @@ function GitSection({
     : info.needs_push
       ? { color: 'bg-primary', label: 'Unpushed commits' }
       : { color: 'bg-ok', label: 'Working tree clean' }
-  const updateBranch = info.update_branch || info.main_branch
   return (
     <>
       <section className="flex flex-col gap-0.5">
@@ -498,18 +497,18 @@ function GitSection({
             {busy === 'push' ? 'Pushing…' : 'Push branch'}
           </ActionRow>
         ) : null}
-        {info.is_worktree && updateBranch && info.can_update_from_main ? (
+        {info.is_worktree && info.main_branch && (info.behind ?? 0) > 0 ? (
           <ActionRow
             icon={busy === 'update' ? LoaderCircle : ArrowDownToLine}
             spin={busy === 'update'}
             disabled={busy !== null}
-            hint={`Commits this session's work, then merges the latest ${updateBranch} into this worktree`}
+            hint={`Commits this session's work, then merges the latest ${info.main_branch} into this worktree`}
             onClick={() => void repo.update()}
-            onQueue={() => queueAction('repo/merge-from-main', `Update from ${updateBranch}`)}
+            onQueue={() => queueAction('repo/merge-from-main', `Update from ${info.main_branch}`)}
             queueDisabled={busy !== null}
-            queueHint={`Queue Update from ${updateBranch}`}
+            queueHint={`Queue Update from ${info.main_branch}`}
           >
-            {busy === 'update' ? 'Updating…' : `Update from ${updateBranch}`}
+            {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
           </ActionRow>
         ) : null}
         {canHandoffToMain(info) ? (
