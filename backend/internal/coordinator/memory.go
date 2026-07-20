@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wins/jaz/backend/internal/templates/jazplatform"
 )
@@ -28,9 +29,10 @@ func memoryData(memoryRoot string, now time.Time) (*jazplatform.MemoryData, erro
 		return nil, err
 	}
 	data := &jazplatform.MemoryData{
-		Root:      strings.TrimSpace(memoryRoot),
-		LongTerm:  orEmpty(longTerm),
-		ShortTerm: orEmpty(shortTerm),
+		Root:                strings.TrimSpace(memoryRoot),
+		LongTerm:            orEmpty(longTerm),
+		ShortTerm:           orEmpty(shortTerm),
+		ShortTermCharacters: utf8.RuneCountInString(shortTerm),
 	}
 	data.TodayName = fmt.Sprintf("daily/%s.md", now.Local().Format("2006-01-02"))
 	today, err := ReadPromptFile(memoryRoot, data.TodayName)

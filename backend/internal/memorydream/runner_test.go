@@ -51,6 +51,7 @@ func TestAgentPromptIncludesLongTermPromotionBar(t *testing.T) {
 		"feature decisions",
 		"weak one-off contacts",
 		"SHORT_TERM.md is the active working set",
+		"active working set at or below 5,000 characters",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("agent prompt missing %q:\n%s", want, prompt)

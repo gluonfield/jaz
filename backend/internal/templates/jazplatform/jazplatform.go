@@ -24,11 +24,12 @@ var tmpl = template.Must(template.New("jazplatform").Parse(promptTemplate))
 // so older dailies are not injected. Nil MemoryData means memory is disabled
 // and the whole memory block, protocol included, is omitted.
 type MemoryData struct {
-	Root      string
-	LongTerm  string
-	ShortTerm string
-	TodayName string
-	Today     string
+	Root                string
+	LongTerm            string
+	ShortTerm           string
+	ShortTermCharacters int
+	TodayName           string
+	Today               string
 }
 
 type RuntimePaths struct {

@@ -21,6 +21,7 @@ func TestRenderKeepsPolicyAndSlugBoundaries(t *testing.T) {
 		"Memory root:\n/tmp/memory",
 		"Long-term policy:\nprofile-level memory only",
 		"Short-term policy:\nactive working set only",
+		"active working set at or below 5,000 characters",
 		"Write a run report to dreams/runs/2026-06-17",
 		"Leave uncertain candidates in dreams/review/2026-06-17",
 	} {

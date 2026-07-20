@@ -30,10 +30,11 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		Soul:     "soul",
 		Internal: "prefer deletion fixes",
 		Memory: &MemoryData{
-			LongTerm:  "- Goal: $5m.",
-			ShortTerm: "- Focus: jaz memory.",
-			TodayName: "daily/2026-06-11.md",
-			Today:     "- shipped templates",
+			LongTerm:            "- Goal: $5m.",
+			ShortTerm:           "- Focus: jaz memory.",
+			ShortTermCharacters: 20,
+			TodayName:           "daily/2026-06-11.md",
+			Today:               "- shipped templates",
 		},
 		Connections: []connections.AgentConnection{{
 			ProviderName: "Telegram",
@@ -73,7 +74,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
 		"## INTERNAL.md",
-		"Agent-owned persistent realizations.",
+		"Agent-owned self-realizations only.",
 		"prefer deletion fixes",
 		"## connections",
 		"Connected accounts and agent-relevant memory paths",
@@ -91,6 +92,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"start from the user's question",
 		"available memory search tool",
 		"Capture as you go",
+		"current size is 20/5,000 characters",
 		"Core memory paths:",
 		"`sources/`: cleaned source pages; `sources/email/`, `sources/chat/`, and `sources/agent/` split provider and agent material.",
 		"`dreams/runs/` stores run output and `dreams/review/` stores review queues.",
@@ -107,7 +109,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Launching background work is not delivery",
 		"`AGENTS.md` contains the user's standing rules. Change it when the user explicitly asks",
 		"`SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`",
-		"`INTERNAL.md` belongs to the agent. Proactively keep compact, durable lessons",
+		"`INTERNAL.md` belongs to the agent; its strict self-realization scope",
+		"Never store task- or project-specific facts",
 		"When Jaztools exposes `jazagent_spawn`",
 		"Merely discussing or reviewing one of these agent harnesses does not authorize a separate session",
 		"Omit model overrides unless the user asks for a specific model",
@@ -204,11 +207,11 @@ func TestRenderStandaloneModules(t *testing.T) {
 		t.Fatalf("empty connections = %q err=%v", empty, err)
 	}
 
-	memory, err := RenderMemory(&MemoryData{Root: "/tmp/jaz/memory", LongTerm: "- long", ShortTerm: "- short"})
+	memory, err := RenderMemory(&MemoryData{Root: "/tmp/jaz/memory", LongTerm: "- long", ShortTerm: "- short", ShortTermCharacters: 7})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"## memory", "Core memory paths:", "## memory/LONG_TERM.md\n\n- long", "## memory/SHORT_TERM.md\n\n- short"} {
+	for _, want := range []string{"## memory", "Core memory paths:", "current size is 7/5,000 characters", "## memory/LONG_TERM.md\n\n- long", "## memory/SHORT_TERM.md\n\n- short"} {
 		if !strings.Contains(memory, want) {
 			t.Fatalf("memory prompt missing %q:\n%s", want, memory)
 		}

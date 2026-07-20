@@ -31,10 +31,10 @@ func TestPromptOmitsMissingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "## AGENTS.md\n\n(empty)") || !strings.Contains(prompt, "## SOUL.md\n\n(empty)") || !strings.Contains(prompt, "## INTERNAL.md") || !strings.Contains(prompt, "anything else that you think is important to you") {
+	if !strings.Contains(prompt, "## AGENTS.md\n\n(empty)") || !strings.Contains(prompt, "## SOUL.md\n\n(empty)") || !strings.Contains(prompt, "## INTERNAL.md") || !strings.Contains(prompt, "Agent-owned self-realizations only") {
 		t.Fatalf("missing files must render as (empty) sections:\n%s", prompt)
 	}
-	assertOrder(t, prompt, "## INTERNAL.md", "anything else that you think is important to you", "(empty)")
+	assertOrder(t, prompt, "## INTERNAL.md", "Agent-owned self-realizations only", "(empty)")
 }
 
 func TestPromptIgnoresHeartbeatFile(t *testing.T) {
@@ -74,7 +74,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	memoryRoot := t.TempDir()
 	write(t, root, "AGENTS.md", "agents")
 	write(t, memoryRoot, "LONG_TERM.md", "# Long Term Memory\n\n- Goal: $5m through agent products.")
-	write(t, memoryRoot, "SHORT_TERM.md", "# Short Term Memory\n\n- Focus: jaz memory system.")
+	write(t, memoryRoot, "SHORT_TERM.md", "# Short Term Memory\n\n- Focus: 🧠 memory.")
 	if err := os.MkdirAll(filepath.Join(memoryRoot, "daily"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -89,9 +89,9 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	assertOrder(t, got,
 		"## Jaz platform",
 		"## AGENTS.md",
-		"## memory\n", "Capture as you go",
+		"## memory\n", "Capture as you go", "current size is 39/5,000 characters",
 		"## memory/LONG_TERM.md", "$5m through agent products",
-		"## memory/SHORT_TERM.md", "jaz memory system",
+		"## memory/SHORT_TERM.md", "🧠 memory",
 		"## memory/daily/"+today+".md", "shipped provenance fields",
 	)
 

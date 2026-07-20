@@ -47,6 +47,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"Few-shot trace:",
 		"## memory",
 		"Capture as you go",
+		"current size is 27/5,000 characters",
 		"## memory/LONG_TERM.md\n\n- Goal: $5m through agent products.",
 		"## memory/SHORT_TERM.md\n\n- Focus: jaz memory system.",
 		"## Skills",
