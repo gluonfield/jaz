@@ -37,16 +37,24 @@ func (s *Server) handleQueueAction(w http.ResponseWriter, r *http.Request, sessi
 		writeJSON(w, http.StatusOK, sessionview.Public(updated))
 		return
 	}
-	updated, err := s.mutateSessionQueue(session.ID, req)
+	updated, err := s.updateSessionQueue(session.ID, req)
 	if err != nil {
 		writeQueueError(w, err)
 		return
 	}
-	s.publishMessagesChanged(session.ID)
 	writeJSON(w, http.StatusOK, sessionview.Public(updated))
-	if updated.Status == storage.StatusIdle && len(updated.QueuedMessages) > 0 && s.canStartQueuedTurn(updated) {
-		s.drainQueueSoon(updated.ID)
+}
+
+func (s *Server) updateSessionQueue(sessionID string, req queueRequest) (storage.Session, error) {
+	updated, err := s.mutateSessionQueue(sessionID, req)
+	if err != nil {
+		return storage.Session{}, err
 	}
+	s.publishMessagesChanged(sessionID)
+	if updated.Status == storage.StatusIdle && len(updated.QueuedMessages) > 0 && s.canStartQueuedTurn(updated) {
+		s.drainQueueSoon(sessionID)
+	}
+	return updated, nil
 }
 
 func (s *Server) mutateSessionQueue(sessionID string, req queueRequest) (storage.Session, error) {
@@ -216,13 +224,18 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 	if job.ID == "" {
 		return
 	}
+	unlock := s.lockSession(job.ID)
 	turnCompleted := job.State == acp.StateIdle
+	var completionErr error
 	if turnCompleted {
-		if err := s.Store.CompleteSession(job.ID, time.Now().UTC()); err != nil {
-			s.logger().Error("session completion update failed", "session", job.ID, "error", err)
-		}
+		completionErr = s.Store.CompleteSession(job.ID, time.Now().UTC())
 	} else if status := storage.SessionStatusForACPState(job.State); status != "" {
 		s.setSessionStatusWithError(storage.Session{ID: job.ID}, status, job.Error)
+	}
+	unlock()
+	if completionErr != nil {
+		s.logger().Error("session completion update failed", "session", job.ID, "error", completionErr)
+		return
 	}
 	s.publishMessagesChanged(job.ID)
 	// The turn's token usage was persisted during the turn; tell open pages to

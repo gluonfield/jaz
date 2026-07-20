@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -18,6 +19,8 @@ const (
 	acpTurnPrompt acpTurnKind = iota
 	acpTurnCompact
 )
+
+var errACPTurnRunning = errors.New("session is already running")
 
 type acpStreamTurn struct {
 	Kind          acpTurnKind
@@ -60,6 +63,13 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	}
 	session, err = s.beginACPTurn(clientCtx, session, turnTitle)
 	if err != nil {
+		if !turn.compact() && errors.Is(err, errACPTurnRunning) {
+			err = s.queueACPStreamTurn(session.ID, turn)
+			if err == nil {
+				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
+				return
+			}
+		}
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: err.Error()})
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
@@ -90,6 +100,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 		return
 	}
+	s.publishMessagesChanged(session.ID)
 
 	stream := acp.StreamViewFromJob(job)
 	emittedAssistant := 0
@@ -135,8 +146,8 @@ func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, mess
 		return session, err
 	}
 	session = current
-	if s.sessionRuntimeRunning(session) {
-		return session, fmt.Errorf("session %s is already running", session.Slug)
+	if session.Status == storage.StatusRunning || s.sessionRuntimeRunning(session) {
+		return session, errACPTurnRunning
 	}
 	if err := s.ensureManagedWorktree(ctx, session); err != nil {
 		return session, err
@@ -151,6 +162,24 @@ func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, mess
 	s.maybeGenerateSessionTitle(session, message)
 	s.publishSessionChanged(session.ID)
 	return session, nil
+}
+
+func (s *Server) queueACPStreamTurn(sessionID string, turn acpStreamTurn) error {
+	attachmentIDs := make([]string, 0, len(turn.Attachments))
+	for _, attachment := range turn.Attachments {
+		attachmentIDs = append(attachmentIDs, attachment.ID)
+	}
+	_, err := s.updateSessionQueue(sessionID, queueRequest{
+		Op: "append",
+		Message: storage.QueuedMessage{
+			Text:          turn.Message,
+			Contexts:      turn.Contexts,
+			AttachmentIDs: attachmentIDs,
+			PlanRequested: turn.PlanRequested,
+			GoalRequested: turn.GoalRequested,
+		},
+	})
+	return err
 }
 
 func emitACPStream(w http.ResponseWriter, flusher http.Flusher, stream acp.StreamView, emittedAssistant, emittedThought *int, seenTools map[string]struct{}) {

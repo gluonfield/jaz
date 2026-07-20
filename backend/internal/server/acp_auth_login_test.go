@@ -295,6 +295,34 @@ echo ok
 	assertCodexLoginUsesFileCredentials(t, root)
 }
 
+func TestVerifyKimiLoginRequiresProvisionedModel(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "acp", "kimi")
+	credential := filepath.Join(home, "credentials", "kimi-code.json")
+	if err := os.MkdirAll(filepath.Dir(credential), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(credential, []byte(`{"access_token":"token"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{ModelCatalog: modelcatalog.NewService(nil), Root: root}
+	auth := acp.AgentAuthConfig{Mode: acp.AuthModeJazProfile}
+	if err := server.verifyACPAuthLogin(acp.AgentKimi, auth); err == nil || !strings.Contains(err.Error(), "did not finish configuring a model") {
+		t.Fatalf("token-only login verification error = %v", err)
+	}
+	config := `default_model = "kimi"
+[providers.kimi]
+[models.kimi]
+provider = "kimi"
+`
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.verifyACPAuthLogin(acp.AgentKimi, auth); err != nil {
+		t.Fatalf("configured login verification: %v", err)
+	}
+}
+
 func TestACPAuthLoginRunsGrokWithExistingHome(t *testing.T) {
 	home := t.TempDir()
 	bin := t.TempDir()

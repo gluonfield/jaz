@@ -29,6 +29,7 @@ const (
 )
 
 const (
+	StopReasonEndTurn        = "end_turn"
 	StopReasonCancelled      = "cancelled"
 	StopReasonServerShutdown = "server_shutdown"
 )
