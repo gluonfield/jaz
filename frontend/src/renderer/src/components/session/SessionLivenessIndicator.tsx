@@ -1,7 +1,6 @@
 import { CircleAlert } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
-import { LiveBars } from '@/components/ui/LiveBars'
 import { agentLabel } from '@/lib/agentLabel'
 import {
   deriveSessionRunSignal,
@@ -72,11 +71,11 @@ export function SessionLivenessIndicator({
           {stale ? (
             <CircleAlert className="size-3.5 shrink-0" aria-hidden />
           ) : (
-            <LiveBars className="text-running" />
+            <span className="live-shimmer-dot" aria-hidden />
           )}
-          <span className="min-w-0 truncate">{label}</span>
+          <span className={`min-w-0 truncate ${stale ? '' : 'live-shimmer'}`}>{label}</span>
           {detail ? (
-            <span className="shrink-0 tabular-nums opacity-80">{detail}</span>
+            <span className={`shrink-0 tabular-nums opacity-80 ${stale ? '' : 'live-shimmer'}`}>{detail}</span>
           ) : null}
         </motion.div>
       ) : null}

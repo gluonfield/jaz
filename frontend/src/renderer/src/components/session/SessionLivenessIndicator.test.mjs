@@ -21,9 +21,9 @@ test('live sessions read "Working - live 1s ago"', () => {
   expect(html).not.toContain('Codex is working')
 })
 
-test('live sessions show the breathing bars instead of a spinner', () => {
+test('live sessions shimmer instead of spinning', () => {
   const html = renderIndicator()
-  expect(html).toContain('live-bars')
+  expect(html).toContain('live-shimmer')
   expect(html).not.toContain('animate-spin')
 })
 
@@ -39,5 +39,5 @@ test('stale sessions keep the agent name and alert treatment', () => {
   const html = renderIndicator({ updatedAt: stale })
   expect(html).toContain('Codex is still marked running')
   expect(html).toContain('no updates for 10m')
-  expect(html).not.toContain('live-bars')
+  expect(html).not.toContain('live-shimmer')
 })
