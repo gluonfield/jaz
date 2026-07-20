@@ -2,14 +2,13 @@ import { memo } from 'react'
 import type { ChatMessage, MessageBlock } from '@/lib/api/types'
 import { browserAnnotationFromJSON } from '@/lib/messageContext'
 import type { ComposerContext } from '@/lib/messageContext'
-import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { MentionText } from './mentions'
 import { MessageAttachments, type MessageAttachment } from './MessageAttachments'
 import { MessageContexts } from './MessageContexts'
 import { ThinkingBlock } from './ThinkingBlock'
-import { ToolCallCard } from './ToolCallCard'
-import { isArtifactToolName, isHiddenToolName } from './toolVisibility'
+import { ToolCalls } from './ToolCalls'
+import { isHiddenToolName } from './toolVisibility'
 
 type ToolBlock = Extract<MessageBlock, { type: 'tool' }>
 
@@ -100,25 +99,16 @@ export function AssistantBubble({
     <div className="flex min-w-0 max-w-[var(--prose-max)] flex-col gap-2">
       <ThinkingBlock text={reasoning} />
       {text ? <AssistantMarkdown text={text} showCopy={showCopy} /> : null}
-      {tools.map((block) =>
-        isArtifactToolName(block.name) ? (
-          <ArtifactBlock
-            key={block.id}
-            args={block.input_json}
-            result={block.result}
-            pending={block.result === undefined || block.result === ''}
-            onSendPrompt={onArtifactPrompt}
-          />
-        ) : (
-          <ToolCallCard
-            key={block.id}
-            name={block.name}
-            args={block.input_json}
-            result={block.result}
-            pending={block.result === undefined || block.result === ''}
-          />
-        ),
-      )}
+      <ToolCalls
+        calls={tools.map((block) => ({
+          key: block.id,
+          name: block.name,
+          args: block.input_json,
+          result: block.result,
+          pending: block.result === undefined || block.result === '',
+        }))}
+        onArtifactPrompt={onArtifactPrompt}
+      />
     </div>
   )
 }

@@ -19,15 +19,13 @@ import { SidePanel, type SidePanelView } from '@/components/session/SidePanel'
 import { SidePanelResizeHandle } from '@/components/session/SidePanelResizeHandle'
 import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
-import { ArtifactBlock } from '@/components/session/ArtifactBlock'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ThreadFindBar } from '@/components/session/ThreadFindBar'
 import { TokenStats } from '@/components/session/TokenStats'
-import { ToolCallCard } from '@/components/session/ToolCallCard'
+import { ToolCalls } from '@/components/session/ToolCalls'
 import { Transcript } from '@/components/session/Transcript'
 import { deriveSessionView, isCodexACPSession, sessionEventErrorMessage } from '@/components/session/sessionView'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
-import { isArtifactToolName } from '@/components/session/toolVisibility'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
 import { liveTranscriptMessages, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
@@ -526,25 +524,13 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                               </div>
                             </motion.div>
                             <ThinkingBlock text={live.reasoning} pending={streaming} />
-                            {live.tools.map((tool) =>
-                              isArtifactToolName(tool.name) ? (
-                                <ArtifactBlock
-                                  key={tool.key}
-                                  args={tool.args}
-                                  result={tool.result}
-                                  pending={streaming && tool.result === undefined}
-                                  onSendPrompt={queue.onSend}
-                                />
-                              ) : (
-                                <ToolCallCard
-                                  key={tool.key}
-                                  name={tool.name}
-                                  args={tool.args}
-                                  result={tool.result}
-                                  pending={streaming && tool.result === undefined}
-                                />
-                              ),
-                            )}
+                            <ToolCalls
+                              calls={live.tools.map((tool) => ({
+                                ...tool,
+                                pending: streaming && tool.result === undefined,
+                              }))}
+                              onArtifactPrompt={queue.onSend}
+                            />
                             {live.assistant ? (
                               <MessageMarkdown text={live.assistant} />
                             ) : streaming ? (

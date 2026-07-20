@@ -1,56 +1,13 @@
 import { ChevronRight, LoaderCircle } from 'lucide-react'
 import { memo, useState, type ReactNode } from 'react'
 import { toolCallCategory } from '@/components/session/toolCallCategory'
+import { Collapse } from '@/components/ui/Collapse'
 import type { ACPToolCall } from '@/lib/api/types'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
 import { hasToolCallDetail, ToolCallDetail } from './ToolCallContent'
 import { normalized } from './TranscriptUtils'
-
-interface ToolGroup {
-  key: string
-  label: string
-  calls: ACPToolCall[]
-}
-
-function toolGroupBaseLabel(key: string, count: number): string {
-  const plural = count === 1 ? '' : 's'
-  switch (key) {
-    case 'web_search':
-      return count === 1 ? 'Searched the web' : `Searched the web ${count}×`
-    case 'web_fetch':
-      return `Visited ${count} page${plural}`
-    case 'edit':
-      return `Edited ${count} file${plural}`
-    case 'read':
-      return `Read ${count} file${plural}`
-    case 'search':
-      return `Searched ${count} time${plural}`
-    case 'image':
-      return `Viewed ${count} image${plural}`
-    case 'command':
-      return `Ran ${count} command${plural}`
-    default:
-      return `Used ${count} tool${plural}`
-  }
-}
-
-function groupToolCalls(calls: ACPToolCall[]): ToolGroup[] {
-  const order = ['web_search', 'web_fetch', 'edit', 'read', 'search', 'image', 'command', 'tool']
-  const byKey = new Map<string, ACPToolCall[]>()
-  for (const call of calls) {
-    const key = toolCallCategory(call)
-    byKey.set(key, [...(byKey.get(key) ?? []), call])
-  }
-  return order.flatMap((key) => {
-    const groupCalls = byKey.get(key) ?? []
-    if (!groupCalls.length) return []
-    const failed = groupCalls.filter((call) => normalized(call.status) === 'failed').length
-    const suffix = failed ? `, ${failed} failed` : ''
-    return [{ key, label: `${toolGroupBaseLabel(key, groupCalls.length)}${suffix}`, calls: groupCalls }]
-  })
-}
 
 function isRunningToolStatus(status?: string): boolean {
   return ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(status))
@@ -85,8 +42,6 @@ export function toolRunLabel(calls: ACPToolCall[]): string {
   return failed ? `${label}, ${failed} failed` : label
 }
 
-// The collapsible run summary: a chevron + codex-style phrase that expands to
-// each call's detail. This is the stock rendering for every tool run.
 const ToolRunDisclosure = memo(function ToolRunDisclosure({
   label,
   calls,
@@ -103,7 +58,7 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
   // session is actually working.
   const running = active && calls.some((call) => isRunningToolStatus(call.status))
   return (
-    <div className="flex flex-col items-start gap-1">
+    <div className="flex w-full flex-col items-start">
       <button
         type="button"
         disabled={!expandable}
@@ -111,31 +66,25 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
         onClick={() => {
           if (expandable) setOpen((value) => !value)
         }}
-        className="inline-flex min-h-7 items-center gap-1.5 rounded-full px-1 text-left font-mono text-[12px] text-ink-3 transition-colors enabled:hover:text-ink disabled:cursor-default"
+        className="-ml-2 inline-flex min-h-10 max-w-full items-center gap-1.5 rounded-control px-2 text-left text-[13px] text-ink-3 transition-[background-color,color,transform] duration-150 motion-reduce:transition-none enabled:hover:bg-surface/65 enabled:hover:text-ink-2 enabled:active:scale-[0.96] disabled:cursor-default"
       >
-        <ChevronRight
-          size={12}
-          className={`shrink-0 transition-transform ${!expandable ? 'opacity-30' : open ? 'rotate-90' : ''}`}
-          aria-hidden
-        />
-        {label}
+        <span className="min-w-0 truncate">{label}</span>
         {running ? (
           <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
         ) : null}
+        <ChevronRight
+          size={13}
+          className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${!expandable ? 'opacity-30' : open ? 'rotate-90' : ''}`}
+          aria-hidden
+        />
       </button>
-      {open && expandable ? (
-        <div className="flex w-full max-w-full flex-col gap-1.5 pl-4">
-          {detailCalls.map((call) =>
-            hasInlineDiff(call) ? (
-              <EditDiffBlock key={call.id} call={call} />
-            ) : hasInlineShellCommand(call) ? (
-              <ShellCommandBlock key={call.id} call={call} active={active} />
-            ) : (
-              <ToolCallDetail key={call.id} call={call} />
-            ),
-          )}
+      <Collapse open={open && expandable} className="w-full">
+        <div className="relative w-full py-1 before:absolute before:bottom-6 before:left-[11px] before:top-6 before:w-px before:bg-border/75">
+          {detailCalls.map((call) => (
+            <ToolCallDetail key={call.id} call={call} />
+          ))}
         </div>
-      ) : null}
+      </Collapse>
     </div>
   )
 })
@@ -215,11 +164,5 @@ export const ToolDisclosure = memo(function ToolDisclosure({
 
 export function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?: boolean }) {
   if (!calls?.length) return null
-  return (
-    <div className="flex flex-col items-start gap-1.5">
-      {groupToolCalls(calls).map((group) => (
-        <ToolDisclosure key={group.key} label={group.label} calls={group.calls} active={active} />
-      ))}
-    </div>
-  )
+  return <ToolDisclosure label={toolRunLabel(calls)} calls={calls} active={active} />
 }
