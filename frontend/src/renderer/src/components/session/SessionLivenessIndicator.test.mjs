@@ -21,9 +21,9 @@ test('live sessions read "Working - live 1s ago"', () => {
   expect(html).not.toContain('Codex is working')
 })
 
-test('live sessions show the blooming glyph instead of a spinner', () => {
+test('live sessions show the quiet dots instead of a spinner', () => {
   const html = renderIndicator()
-  expect(html).toContain('live-glyph')
+  expect(html).toContain('live-dots')
   expect(html).not.toContain('animate-spin')
 })
 
@@ -39,5 +39,5 @@ test('stale sessions keep the agent name and alert treatment', () => {
   const html = renderIndicator({ updatedAt: stale })
   expect(html).toContain('Codex is still marked running')
   expect(html).toContain('no updates for 10m')
-  expect(html).not.toContain('live-glyph')
+  expect(html).not.toContain('live-dots')
 })
