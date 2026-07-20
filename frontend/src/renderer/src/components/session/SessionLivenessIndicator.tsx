@@ -71,11 +71,11 @@ export function SessionLivenessIndicator({
           {stale ? (
             <CircleAlert className="size-3.5 shrink-0" aria-hidden />
           ) : (
-            <span className="live-shimmer-dot" aria-hidden />
+            <span className="live-dot" aria-hidden />
           )}
           <span className="min-w-0 truncate">{label}</span>
           {detail ? (
-            <span className="shrink-0 tabular-nums opacity-80">{detail}</span>
+            <span className="shrink-0 tabular-nums">{detail}</span>
           ) : null}
         </motion.div>
       ) : null}
