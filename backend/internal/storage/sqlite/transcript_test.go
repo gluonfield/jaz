@@ -70,6 +70,139 @@ func TestLoadTranscriptPageAdvancesMessageAndEventWindowsTogether(t *testing.T) 
 	}
 }
 
+func TestLoadTranscriptPageAlignsEventBackedMessagesToLoadedTurn(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "aligned-event-transcript"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	for turn := range 15 {
+		if err := store.AppendMessageRecords(session.ID, storage.Message{
+			Role: "user", Content: fmt.Sprintf("prompt-%d", turn), CreatedAt: base.Add(time.Duration(turn) * time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events := make([]sessionevents.Event, 600)
+	for i := range events {
+		events[i] = sessionevents.Event{
+			Type: "note", Content: fmt.Sprintf("event-%d", i),
+			At: base.Add(14*time.Hour + time.Duration(i+1)*time.Second),
+		}
+	}
+	if err := store.AppendSessionEvents(session.ID, events...); err != nil {
+		t.Fatal(err)
+	}
+
+	latest, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{Turns: 14})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(latest.Messages) != 1 || latest.Messages[0].Content != "prompt-14" {
+		t.Fatalf("latest messages = %#v", latest.Messages)
+	}
+	if latest.BeforeMessageSeq != latest.Messages[0].Seq || latest.BeforeEventSeq == 0 || !latest.HasEarlier {
+		t.Fatalf("latest cursors = %#v", latest)
+	}
+
+	earlier, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{
+		BeforeMessageSeq: latest.BeforeMessageSeq,
+		BeforeEventSeq:   latest.BeforeEventSeq,
+		HistoryRevision:  latest.HistoryRevision,
+		Turns:            24,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(earlier.Messages) != 0 || earlier.BeforeMessageSeq != latest.BeforeMessageSeq || earlier.BeforeEventSeq == 0 {
+		t.Fatalf("earlier page = %#v", earlier)
+	}
+}
+
+func TestLoadTranscriptPageAlignsMixedMessageAndEventBackedTurns(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "aligned-mixed-transcript"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	if err := store.AppendMessageRecords(session.ID,
+		storage.Message{Role: "user", Content: "prompt-0", CreatedAt: base},
+		storage.Message{Role: "assistant", Content: "answer-0", CreatedAt: base.Add(time.Second)},
+		storage.Message{Role: "user", Content: "prompt-1", CreatedAt: base.Add(2 * time.Second)},
+		storage.Message{Role: "user", Content: "prompt-2", CreatedAt: base.Add(3 * time.Second)},
+		storage.Message{Role: "assistant", Content: "answer-2", CreatedAt: base.Add(4 * time.Second)},
+		storage.Message{Role: "user", Content: "prompt-3", CreatedAt: base.Add(5 * time.Second)},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type: "note", Content: "answer-3", At: base.Add(6 * time.Second),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{Turns: 14})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"prompt-2", "answer-2", "prompt-3"}
+	if len(page.Messages) != len(want) {
+		t.Fatalf("messages = %#v", page.Messages)
+	}
+	for i, message := range page.Messages {
+		if message.Content != want[i] {
+			t.Fatalf("message %d = %q, want %q", i, message.Content, want[i])
+		}
+	}
+	if page.BeforeMessageSeq != page.Messages[0].Seq || !page.HasEarlier {
+		t.Fatalf("page cursors = %#v", page)
+	}
+}
+
+func TestLoadTranscriptPagePreservesSequenceAcrossNonmonotonicMessageTimes(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "nonmonotonic-message-times"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC)
+	if err := store.AppendMessageRecords(session.ID,
+		storage.Message{Role: "user", Content: "prompt-0", CreatedAt: base},
+		storage.Message{Role: "assistant", Content: "answer-0", CreatedAt: base.Add(time.Second)},
+		storage.Message{Role: "user", Content: "prompt-1", CreatedAt: base.Add(10 * time.Second)},
+		storage.Message{Role: "user", Content: "prompt-2", CreatedAt: base.Add(2 * time.Second)},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		Type: "note", Content: "between", At: base.Add(5 * time.Second),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{Turns: 14})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Messages) != 4 || page.Messages[0].Content != "prompt-0" {
+		t.Fatalf("messages = %#v", page.Messages)
+	}
+}
+
 func TestLoadTranscriptSessionsBatchesChildrenAndReferences(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

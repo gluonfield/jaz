@@ -12,6 +12,7 @@ type Querier interface {
 	DeleteMessagesByThread(ctx context.Context, threadID string) error
 	GetMessageTime(ctx context.Context, arg GetMessageTimeParams) (int64, error)
 	InsertMessage(ctx context.Context, arg InsertMessageParams) error
+	LatestUserMessageBeforeEvent(ctx context.Context, arg LatestUserMessageBeforeEventParams) (LatestUserMessageBeforeEventRow, error)
 	ListMessageRangeSizes(ctx context.Context, arg ListMessageRangeSizesParams) ([]ListMessageRangeSizesRow, error)
 	ListMessagesByThread(ctx context.Context, threadID string) ([]Message, error)
 	ListMessagesByThreadRange(ctx context.Context, arg ListMessagesByThreadRangeParams) ([]Message, error)
