@@ -1,15 +1,18 @@
-// Tiny square-pixel "working" indicator: a 5x5 dither grid where pixels
+// Tiny square-pixel "working" indicator: a 3x3 dither grid where pixels
 // ignite at random positions in random brand/rainbow colors and decay back
 // to a faint resting mosaic — living pixel noise, not a spinner. One
 // interval mutates styles directly (no re-render); motion stops under
 // prefers-reduced-motion or jaz-no-effects, leaving a static dim grid.
+// The resting floor is theme-aware via --live-pixel-rest so the mosaic
+// stays visible on light surfaces.
 
 import { useEffect, useRef } from 'react'
 
-const GRID = 5
+const GRID = 3
+const STEP = 5 // 3px square + 2px gap
 const TICK_MS = 120
-const DECAY = 0.55
-const IGNITE = 0.03
+const DECAY = 0.72
+const IGNITE = 0.07
 const SPARKS = [
   'currentColor',
   'var(--color-rainbow-1)',
@@ -27,6 +30,7 @@ export function LivePixels({ className }: { className?: string }) {
     if (!root) return
     const cells = Array.from(root.children) as HTMLElement[]
     const energy = new Array<number>(cells.length).fill(0)
+    const rest = Number.parseFloat(getComputedStyle(root).getPropertyValue('--live-pixel-rest')) || 0.12
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
     const timer = window.setInterval(() => {
       if (reduced.matches || document.documentElement.classList.contains('jaz-no-effects')) return
@@ -37,7 +41,7 @@ export function LivePixels({ className }: { className?: string }) {
         } else {
           energy[i] *= DECAY
         }
-        cell.style.opacity = (0.12 + 0.88 * energy[i]).toFixed(3)
+        cell.style.opacity = (rest + (1 - rest) * energy[i]).toFixed(3)
       })
     }, TICK_MS)
     return () => window.clearInterval(timer)
@@ -49,7 +53,7 @@ export function LivePixels({ className }: { className?: string }) {
         <span
           key={i}
           className="live-pixel"
-          style={{ left: (i % GRID) * 3, top: Math.floor(i / GRID) * 3 }}
+          style={{ left: (i % GRID) * STEP, top: Math.floor(i / GRID) * STEP }}
         />
       ))}
     </span>

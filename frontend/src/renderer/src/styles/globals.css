@@ -510,23 +510,31 @@
   }
 }
 
-/* Session liveness "working" indicator: a 14px square-pixel grid that
+/* Session liveness "working" indicator: a 13px square-pixel grid that
  * twinkles — LivePixels.tsx ignites random cells in random colors and eases
- * them back to the faint resting mosaic set here. */
+ * them back to the faint resting mosaic set here. The resting floor is
+ * theme-aware: light surfaces need a much stronger floor to stay visible. */
+:root {
+  --live-pixel-rest: 0.3;
+}
+:root:where(.dark) {
+  --live-pixel-rest: 0.14;
+}
+
 .live-pixels {
   position: relative;
   display: inline-block;
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
 }
 
 .live-pixel {
   position: absolute;
-  width: 2px;
-  height: 2px;
+  width: 3px;
+  height: 3px;
   background: currentColor;
-  opacity: 0.12;
+  opacity: var(--live-pixel-rest);
 }
 
 @media (prefers-reduced-motion: reduce) {
