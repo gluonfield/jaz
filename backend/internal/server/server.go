@@ -28,6 +28,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/sourcequeue"
@@ -79,10 +80,6 @@ type ManagedToolStatusReader interface {
 	Prepare(context.Context, string) error
 }
 
-type sessionLocker interface {
-	Lock(string) func()
-}
-
 type Server struct {
 	Agent                *agent.Agent
 	Store                storage.Store
@@ -92,7 +89,7 @@ type Server struct {
 	ACPAdapters          ACPAdapterStatusReader
 	ManagedTools         ManagedToolStatusReader
 	MCP                  MCPRuntime
-	Locks                sessionLocker
+	Locks                *sessionlock.Locks
 	Events               *sessionevents.Bus
 	Loops                *loops.Service
 	Threads              *threads.Service

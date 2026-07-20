@@ -5,12 +5,12 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -30,20 +30,6 @@ type completionObservingStore struct {
 func (s completionObservingStore) CompleteSession(id string, at time.Time) error {
 	s.called <- id
 	return s.Store.CompleteSession(id, at)
-}
-
-type gatedSessionLocker struct {
-	once    sync.Once
-	entered chan string
-	release <-chan struct{}
-}
-
-func (l *gatedSessionLocker) Lock(id string) func() {
-	l.once.Do(func() {
-		l.entered <- id
-		<-l.release
-	})
-	return func() {}
 }
 
 func TestACPTurnFinishedRecordsFeedCompletion(t *testing.T) {
@@ -95,35 +81,28 @@ func TestACPTurnFinishedSerializesThroughSessionLock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entered := make(chan string)
-	release := make(chan struct{})
 	completed := make(chan string, 1)
+	locks := sessionlock.New()
+	release := locks.Lock(session.ID)
 	server := &Server{
 		Store: completionObservingStore{Store: store, called: completed},
-		Locks: &gatedSessionLocker{entered: entered, release: release},
+		Locks: locks,
 	}
+	started := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
+		close(started)
 		server.HandleACPTurnFinished(context.Background(), acp.Job{ID: session.ID, State: acp.StateIdle})
 		close(done)
 	}()
 
-	select {
-	case id := <-entered:
-		if id != session.ID {
-			t.Fatalf("locked session = %q, want %q", id, session.ID)
-		}
-	case id := <-completed:
-		t.Fatalf("session %q completed before acquiring its lock", id)
-	case <-time.After(time.Second):
-		t.Fatal("completion did not acquire the session lock")
-	}
+	<-started
 	select {
 	case id := <-completed:
 		t.Fatalf("session %q completed while its lock was blocked", id)
-	default:
+	case <-time.After(100 * time.Millisecond):
 	}
-	close(release)
+	release()
 	select {
 	case <-done:
 	case <-time.After(time.Second):

@@ -1088,7 +1088,7 @@ export interface ACPAgentAPIKey {
 
 export interface ACPAgentAuthStatus {
   authenticated: boolean
-  ready?: boolean
+  ready: boolean
   reason?: string
   storage_path?: string
   auth_mode?: 'auto' | 'existing_cli' | 'jaz_profile'

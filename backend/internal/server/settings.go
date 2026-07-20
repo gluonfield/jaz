@@ -271,11 +271,9 @@ func (s *Server) validateEnabledACPAgentAuth(defaults agentsettings.AgentDefault
 			reason := firstMessage(auth.Reason, "connect the agent or add an API key")
 			return fmt.Errorf("acp agent %q cannot be enabled without authentication: %s", name, reason)
 		}
-		if strings.TrimSpace(cfg.ManagedAdapter) != "" {
-			readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
-			if !readiness.Available {
-				return fmt.Errorf("acp agent %q is not ready: %s", name, readiness.Reason)
-			}
+		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
+		if !readiness.Available {
+			return fmt.Errorf("acp agent %q is not ready: %s", name, readiness.Reason)
 		}
 	}
 	return nil
