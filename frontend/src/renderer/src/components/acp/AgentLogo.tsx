@@ -1,10 +1,12 @@
-// Brand marks for the coding agents jaz speaks to, drawn monochrome via
-// currentColor so they tint to the design tokens (ink at rest) and read in both
-// themes.
-// Claude = official sunburst, Codex = OpenAI knot, Kimi = official robot mark,
+import kimiLogo from '@/assets/kimi-logo.png'
+
+// Brand marks for the coding agents jaz speaks to. Vector marks use
+// currentColor so they read in both themes; Kimi keeps its official textured
+// app mark.
+// Claude = official sunburst, Codex = OpenAI knot, Kimi = official app mark,
 // Grok = xAI mark, Antigravity = official curved A mark, OpenCode = official square mark.
-// Sourced from the providers' published logos; kept as inline SVG so they load
-// from file:// in the packaged app with no extra request.
+// Sourced from the providers' published logos. Vector marks stay inline; Vite
+// emits Kimi's imported asset into the packaged app.
 
 type Props = { agent: string; className?: string; size?: number }
 
@@ -13,7 +15,7 @@ type Props = { agent: string; className?: string; size?: number }
 const SIZES: Record<string, number> = {
   claude: 18,
   codex: 17,
-  kimi: 22,
+  kimi: 18,
   grok: 16,
   opencode: 15,
   antigravity: 16,
@@ -55,19 +57,7 @@ export function AgentLogo({ agent, className = '', size }: Props) {
 
   if (slug === 'kimi') {
     return (
-      <svg
-        viewBox="0 0 24 24"
-        style={dims}
-        className={cls}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        aria-hidden="true"
-      >
-        <rect x="3" y="4.5" width="18" height="13" rx="2.2" />
-        <rect x="9.6" y="8" width="1.4" height="2.6" rx="0.45" fill="currentColor" stroke="none" />
-        <rect x="15.6" y="8" width="1.4" height="2.6" rx="0.45" fill="currentColor" stroke="none" />
-      </svg>
+      <img src={kimiLogo} alt="" style={dims} className={cls} draggable={false} aria-hidden="true" />
     )
   }
 
