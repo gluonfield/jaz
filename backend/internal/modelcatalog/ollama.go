@@ -21,7 +21,7 @@ type ollamaShowRequest struct {
 func fetchOllamaModels(ctx context.Context, baseURL string) ([]Model, error) {
 	ctx, cancel := context.WithTimeout(ctx, modelCatalogRequestTimeout)
 	defer cancel()
-	models, err := fetchOpenAICompatibleModels(ctx, baseURL)
+	models, err := fetchOpenAICompatibleModels(ctx, baseURL, "")
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func fetchOllamaModels(ctx context.Context, baseURL string) ([]Model, error) {
 			limit <- struct{}{}
 			defer func() { <-limit }()
 			var show ollamaShowResponse
-			if err := fetchJSON(ctx, http.MethodPost, endpoint, ollamaShowRequest{Model: models[i].Value}, &show); err != nil {
+			if err := fetchJSON(ctx, http.MethodPost, endpoint, "", ollamaShowRequest{Model: models[i].Value}, &show); err != nil {
 				return
 			}
 			for _, capability := range show.Capabilities {

@@ -58,7 +58,7 @@ func fetchOpenRouterModels(ctx context.Context, baseURL string) ([]Model, error)
 		return nil, err
 	}
 	var body openRouterModelResponse
-	if err := fetchJSON(ctx, http.MethodGet, endpoint, nil, &body); err != nil {
+	if err := fetchJSON(ctx, http.MethodGet, endpoint, "", nil, &body); err != nil {
 		return nil, err
 	}
 	out := make([]Model, 0, len(body.Data))

@@ -295,8 +295,12 @@ func NewProviderSource(cfg Config, store *sqlitestore.Store) (provider.Source, e
 	return provider.NewSource(cfg.ModelProviders, providerstore.Loader{Store: store})
 }
 
-func NewModelCatalog(providerSource provider.Source) *modelcatalog.Service {
-	return modelcatalog.NewService(providerSource)
+func NewModelCatalog(providerSource provider.Source, store *sqlitestore.Store) *modelcatalog.Service {
+	envPath := runtimeenv.Path(store.RootDir())
+	return modelcatalog.NewServiceWithAPIKeyLookup(providerSource, func(keyEnv string) string {
+		value, _ := runtimeenv.Lookup(envPath, keyEnv)
+		return value
+	})
 }
 
 func StartModelCatalogWarmup(lc fx.Lifecycle, catalog *modelcatalog.Service, logger *log.Logger) {

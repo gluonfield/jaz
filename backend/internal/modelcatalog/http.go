@@ -12,7 +12,7 @@ import (
 
 const modelCatalogRequestTimeout = 10 * time.Second
 
-func fetchJSON(ctx context.Context, method, endpoint string, input, target any) error {
+func fetchJSON(ctx context.Context, method, endpoint, apiKey string, input, target any) error {
 	ctx, cancel := context.WithTimeout(ctx, modelCatalogRequestTimeout)
 	defer cancel()
 	var body io.Reader
@@ -29,6 +29,9 @@ func fetchJSON(ctx context.Context, method, endpoint string, input, target any) 
 	}
 	if input != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

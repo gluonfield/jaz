@@ -19,7 +19,8 @@ type ProviderSource interface {
 }
 
 type Service struct {
-	Providers ProviderSource
+	providers    ProviderSource
+	apiKeyLookup func(string) string
 
 	warmMu         sync.Mutex
 	mu             sync.RWMutex
@@ -27,14 +28,19 @@ type Service struct {
 }
 
 func NewService(providers ProviderSource) *Service {
-	return &Service{Providers: providers}
+	return &Service{providers: providers}
+}
+
+func NewServiceWithAPIKeyLookup(providers ProviderSource, lookup func(string) string) *Service {
+	return &Service{providers: providers, apiKeyLookup: lookup}
 }
 
 func (s *Service) Warm(ctx context.Context) error {
-	meta, ok := s.providerMeta(provider.ProviderOpenRouter)
+	resolved, ok := s.resolvedProvider(provider.ProviderOpenRouter)
 	if !ok {
 		return nil
 	}
+	meta := resolved.Meta
 	key := modelCatalogKey(meta)
 	s.warmMu.Lock()
 	defer s.warmMu.Unlock()
@@ -53,10 +59,11 @@ func (s *Service) Warm(ctx context.Context) error {
 }
 
 func (s *Service) ProviderModels(id string) ([]Model, error) {
-	meta, ok := s.providerMeta(strings.ToLower(strings.TrimSpace(id)))
+	resolved, ok := s.resolvedProvider(strings.ToLower(strings.TrimSpace(id)))
 	if !ok {
 		return nil, fmt.Errorf("unknown model provider %q", id)
 	}
+	meta := resolved.Meta
 	switch strings.TrimSpace(meta.ID) {
 	case provider.ProviderOpenAI, codexOpenAIAPIKeyProvider:
 		return s.enrichReasoning(cloneModels(openAIModels)), nil
@@ -73,12 +80,18 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 		}
 		return models, nil
 	default:
-		if meta.OpenAICompatible && !meta.RequiresAPIKey {
-			models, err := fetchOpenAICompatibleModels(context.Background(), meta.BaseURL)
-			if err != nil {
+		apiKey := resolved.Config.APIKey
+		if strings.TrimSpace(apiKey) == "" && s.apiKeyLookup != nil && meta.APIKeyEnv != "" {
+			apiKey = s.apiKeyLookup(meta.APIKeyEnv)
+		}
+		if meta.OpenAICompatible && (!meta.RequiresAPIKey || apiKey != "") {
+			models, err := fetchOpenAICompatibleModels(context.Background(), meta.BaseURL, apiKey)
+			if err == nil && len(models) > 0 {
+				return models, nil
+			}
+			if strings.TrimSpace(meta.DefaultModel) == "" && err != nil {
 				return nil, fmt.Errorf("%w for %q: %w", ErrCatalogUnavailable, meta.ID, err)
 			}
-			return models, nil
 		}
 		if model := strings.TrimSpace(meta.DefaultModel); model != "" {
 			return []Model{{Value: model, Label: model, Reasoning: Reasoning{Status: ReasoningUnavailable}}}, nil
@@ -116,37 +129,36 @@ func (s *Service) enrichReasoning(models []Model) []Model {
 }
 
 func (s *Service) openRouterModels() ([]Model, bool) {
-	meta, ok := s.providerMeta(provider.ProviderOpenRouter)
+	resolved, ok := s.resolvedProvider(provider.ProviderOpenRouter)
 	if !ok {
 		return nil, false
 	}
-	return s.providerModelSnapshot(meta)
+	return s.providerModelSnapshot(resolved.Meta)
 }
 
-func (s *Service) providerMeta(id string) (provider.ModelProvider, bool) {
+func (s *Service) resolvedProvider(id string) (provider.ResolvedModelProvider, bool) {
 	if id == "" {
-		return provider.ModelProvider{}, false
+		return provider.ResolvedModelProvider{}, false
 	}
 	key := id
 	if id == codexOpenAIAPIKeyProvider {
 		key = provider.ProviderOpenAI
 	}
-	cfg := map[string]provider.ModelProviderConfig{}
-	if s != nil && s.Providers != nil {
-		cfg = s.Providers.Providers()
+	var cfg map[string]provider.ModelProviderConfig
+	if s.providers != nil {
+		cfg = s.providers.Providers()
 	}
 	resolved := provider.ResolveModelProvider(key, cfg)
 	if !resolved.BuiltIn && !provider.ModelProviderConfigPresent(resolved.Config) {
-		return provider.ModelProvider{}, false
+		return provider.ResolvedModelProvider{}, false
 	}
-	meta := resolved.Meta
 	if id == codexOpenAIAPIKeyProvider {
-		if !meta.SupportsCapability(provider.CapabilityResponses) {
-			return provider.ModelProvider{}, false
+		if !resolved.Meta.SupportsCapability(provider.CapabilityResponses) {
+			return provider.ResolvedModelProvider{}, false
 		}
-		meta.ID = codexOpenAIAPIKeyProvider
+		resolved.Meta.ID = codexOpenAIAPIKeyProvider
 	}
-	return meta, true
+	return resolved, true
 }
 
 func (s *Service) providerModelSnapshot(meta provider.ModelProvider) ([]Model, bool) {

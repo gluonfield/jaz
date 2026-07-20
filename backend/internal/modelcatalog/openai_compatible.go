@@ -16,13 +16,13 @@ type openAICompatibleModelsResponse struct {
 	} `json:"data"`
 }
 
-func fetchOpenAICompatibleModels(ctx context.Context, baseURL string) ([]Model, error) {
+func fetchOpenAICompatibleModels(ctx context.Context, baseURL, apiKey string) ([]Model, error) {
 	endpoint, err := provider.ModelsURL(baseURL)
 	if err != nil {
 		return nil, err
 	}
 	var body openAICompatibleModelsResponse
-	if err := fetchJSON(ctx, http.MethodGet, endpoint, nil, &body); err != nil {
+	if err := fetchJSON(ctx, http.MethodGet, endpoint, apiKey, nil, &body); err != nil {
 		return nil, err
 	}
 	out := make([]Model, 0, len(body.Data))

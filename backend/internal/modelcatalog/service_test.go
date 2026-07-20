@@ -203,6 +203,54 @@ func TestServiceReportsUnavailableOllamaCatalog(t *testing.T) {
 	}
 }
 
+func TestServiceFetchesAuthenticatedCustomProviderModels(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/compatible-mode/v1/models" || r.Header.Get("Authorization") != "Bearer qwen-key" {
+			http.Error(w, "unexpected models request", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"qwen3-coder-plus","name":"Qwen3 Coder Plus"},{"id":"qwen3-max"}]}`))
+	}))
+	defer upstream.Close()
+
+	service := NewServiceWithAPIKeyLookup(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		"qwen-cloud": {
+			Type:         "openai-compatible",
+			BaseURL:      upstream.URL + "/compatible-mode/v1",
+			APIKeyEnv:    "JAZ_PROVIDER_QWEN_CLOUD_API_KEY",
+			Capabilities: []string{provider.CapabilityChatCompletions},
+		},
+	}), func(keyEnv string) string {
+		if keyEnv != "JAZ_PROVIDER_QWEN_CLOUD_API_KEY" {
+			t.Fatalf("API key env = %q", keyEnv)
+		}
+		return "qwen-key"
+	})
+	if _, err := service.ProviderModels(provider.ProviderOpenAI); err != nil {
+		t.Fatal(err)
+	}
+	models, err := service.ProviderModels("qwen-cloud")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 2 || models[0].Value != "qwen3-coder-plus" || models[0].Label != "Qwen3 Coder Plus" || models[1].Value != "qwen3-max" {
+		t.Fatalf("models = %#v", models)
+	}
+
+	fallback := NewServiceWithAPIKeyLookup(provider.StaticSource(map[string]provider.ModelProviderConfig{
+		"qwen-cloud": {
+			Type:         "openai-compatible",
+			BaseURL:      upstream.URL + "/compatible-mode/v1",
+			APIKeyEnv:    "JAZ_PROVIDER_QWEN_CLOUD_API_KEY",
+			DefaultModel: "qwen3-coder-plus",
+		},
+	}), func(string) string { return "wrong-key" })
+	models, err = fallback.ProviderModels("qwen-cloud")
+	if err != nil || len(models) != 1 || models[0].Value != "qwen3-coder-plus" {
+		t.Fatalf("fallback models = %#v, error = %v", models, err)
+	}
+}
+
 func TestServiceKeepsOllamaModelsWhenShowIsUnavailable(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
