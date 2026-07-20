@@ -12,11 +12,13 @@ import (
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/serverconfig"
+	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type Handler struct {
 	service      *deviceauth.Service
+	settings     storage.SettingsStorage
 	serverConfig serverconfig.Config
 	authKey      string
 }
@@ -39,7 +41,13 @@ type listResponse struct {
 }
 
 type connectionLinkResponse struct {
-	URL string `json:"url"`
+	URL       string `json:"url"`
+	BaseURL   string `json:"base_url"`
+	PublicURL string `json:"public_url"`
+}
+
+type connectionLinkInput struct {
+	PublicURL *string `json:"public_url"`
 }
 
 type deviceDTO struct {
@@ -70,14 +78,60 @@ type pairingDTO struct {
 	Device     deviceDTO  `json:"device"`
 }
 
-func NewHandler(service *deviceauth.Service, config serverconfig.Config, authKey string) Handler {
-	return Handler{service: service, serverConfig: config, authKey: authKey}
+func NewHandler(service *deviceauth.Service, settings storage.SettingsStorage, config serverconfig.Config, authKey string) Handler {
+	return Handler{service: service, settings: settings, serverConfig: config, authKey: authKey}
 }
 
 func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
+	response, err := h.connectionLink(r)
+	if err != nil {
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, response)
+}
+
+func (h Handler) UpdateConnectionLink(w http.ResponseWriter, r *http.Request) {
+	var input connectionLinkInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	if input.PublicURL == nil {
+		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("public_url is required"))
+		return
+	}
+	if _, err := jazsettings.SaveDeviceSettings(h.settings, jazsettings.DeviceSettings{PublicURL: *input.PublicURL}); err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, jazsettings.ErrInvalidDevicePublicURL) {
+			status = http.StatusBadRequest
+		}
+		httpapi.WriteError(w, status, err)
+		return
+	}
+	response, err := h.connectionLink(r)
+	if err != nil {
+		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, response)
+}
+
+func (h Handler) connectionLink(r *http.Request) (connectionLinkResponse, error) {
+	settings, err := jazsettings.LoadDeviceSettings(h.settings)
+	if err != nil {
+		return connectionLinkResponse{}, err
+	}
 	cfg := h.serverConfig
+	if settings.PublicURL != "" {
+		cfg.PublicURL = settings.PublicURL
+	}
 	cfg.PublicURL = connectionBaseURL(cfg, httpapi.RequestBaseURL(r), firstLocalNetworkIP)
-	httpapi.WriteJSON(w, http.StatusOK, connectionLinkResponse{URL: serverconfig.ClientURL(cfg, h.authKey)})
+	return connectionLinkResponse{
+		URL:       serverconfig.ClientURL(cfg, h.authKey),
+		BaseURL:   serverconfig.ClientBaseURL(cfg),
+		PublicURL: settings.PublicURL,
+	}, nil
 }
 
 func (h Handler) List(w http.ResponseWriter, r *http.Request) {

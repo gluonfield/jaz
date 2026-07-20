@@ -1,20 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, LoaderCircle, MonitorSmartphone, Plus, QrCode, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, Copy, LoaderCircle, MonitorSmartphone, Plus, QrCode, Trash2, X } from 'lucide-react'
 import * as QRCode from 'qrcode'
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
+import { SettingsCard } from './SettingsCard'
 import {
   approvePairing,
   devicesQuery,
   deviceConnectionLinkQuery,
   rejectPairing,
   revokeDevice,
+  updateDeviceConnectionLink,
 } from '@/lib/api/devices'
-import type { Device, DevicePairing } from '@/lib/api/types'
+import type { Device, DeviceConnectionLink, DevicePairing } from '@/lib/api/types'
 import { writeClipboard } from '@/lib/clipboard'
 import { keys } from '@/lib/query/keys'
 
@@ -23,7 +26,7 @@ export function DevicesSettings() {
   const toast = useToast()
   const [addOpen, setAddOpen] = useState(false)
   const devices = useQuery(devicesQuery)
-  const connectionLink = useQuery({ ...deviceConnectionLinkQuery, enabled: addOpen })
+  const connectionLink = useQuery(deviceConnectionLinkQuery)
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.devices })
 
   const approve = useMutation({
@@ -64,7 +67,13 @@ export function DevicesSettings() {
         </Button>
       </div>
 
-      <div className="mt-4">
+      <ConnectionAddressSettings
+        connection={connectionLink.data}
+        loading={connectionLink.isPending}
+        error={connectionLink.error?.message}
+      />
+
+      <div className="mt-5">
         {devices.isPending ? (
           <SkeletonRows count={3} />
         ) : devices.isError ? (
@@ -115,6 +124,7 @@ export function DevicesSettings() {
         open={addOpen}
         onClose={() => setAddOpen(false)}
         connectionUrl={connectionLink.data?.url}
+        connectionBaseUrl={connectionLink.data?.base_url}
         loading={connectionLink.isPending}
         error={connectionLink.error?.message}
       />
@@ -122,16 +132,103 @@ export function DevicesSettings() {
   )
 }
 
+function ConnectionAddressSettings({
+  connection,
+  loading,
+  error,
+}: {
+  connection?: DeviceConnectionLink
+  loading: boolean
+  error?: string
+}) {
+  if (loading) {
+    return (
+      <SettingsCard className="mt-4 px-4 py-3">
+        <SkeletonRows count={1} />
+      </SettingsCard>
+    )
+  }
+  if (error || !connection) {
+    return <p className="mt-4 rounded-card bg-danger-soft px-3 py-3 text-[13px] text-danger">{error}</p>
+  }
+  return <ConnectionAddressEditor key={`${connection.public_url}:${connection.base_url}`} connection={connection} />
+}
+
+function ConnectionAddressEditor({ connection }: { connection: DeviceConnectionLink }) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const initialURL = connection.public_url || connection.base_url
+  const [draft, setDraft] = useState(initialURL)
+  const update = useMutation({
+    mutationFn: updateDeviceConnectionLink,
+    onSuccess: (next) => {
+      queryClient.setQueryData(keys.deviceConnectionLink, next)
+      setDraft(next.public_url || next.base_url)
+      toast('Updated connection address')
+    },
+    onError: (error: Error) => toast(`Couldn't update connection address: ${error.message}`, 'danger'),
+  })
+  const changed = draft.trim() !== initialURL
+  const localOnly = isLocalConnectionAddress(connection.base_url)
+
+  return (
+    <SettingsCard className="mt-4 px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium text-ink">Connection address</p>
+        <p className="mt-0.5 text-pretty text-[12px] text-ink-2">
+          Replace this with the stable HTTPS domain from your tunnel or reverse proxy.
+        </p>
+      </div>
+      <form
+        className="mt-3 flex flex-col gap-2 sm:flex-row"
+        onSubmit={(event) => {
+          event.preventDefault()
+          if (changed) update.mutate(draft)
+        }}
+      >
+        <Input
+          type="text"
+          inputMode="url"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="https://jaz.example.com"
+          disabled={update.isPending}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          className="min-w-0 font-mono text-[12px]"
+          aria-label="Public device connection address"
+        />
+        <Button type="submit" variant="primary" disabled={!changed || update.isPending}>
+          {update.isPending ? <LoaderCircle size={14} className="animate-spin" /> : null}
+          Save
+        </Button>
+      </form>
+      <p className="mt-2 break-all text-[11px] text-ink-3">
+        {connection.public_url ? 'Custom address' : 'Detected automatically'}
+      </p>
+      {localOnly ? (
+        <p className="mt-2 flex items-start gap-1.5 rounded-control bg-accent-soft px-2.5 py-2 text-pretty text-[12px] text-accent-strong">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          This address only works on this machine or local network. Set the public domain before pairing a remote device.
+        </p>
+      ) : null}
+    </SettingsCard>
+  )
+}
+
 function AddDeviceModal({
   open,
   onClose,
   connectionUrl,
+  connectionBaseUrl,
   loading,
   error,
 }: {
   open: boolean
   onClose: () => void
   connectionUrl?: string
+  connectionBaseUrl?: string
   loading: boolean
   error?: string
 }) {
@@ -176,11 +273,36 @@ function AddDeviceModal({
             <p className="text-[12px] leading-relaxed text-ink-3">
               The new device will appear under Pending approval before it can access this backend.
             </p>
+            {isLocalConnectionAddress(connectionBaseUrl) ? (
+              <p className="flex items-start gap-1.5 rounded-control bg-accent-soft px-2.5 py-2 text-pretty text-[12px] text-accent-strong">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                This link is local-only. Set a public connection address in Devices settings for remote devices.
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}
     </Modal>
   )
+}
+
+function isLocalConnectionAddress(value?: string): boolean {
+  if (!value) return false
+  try {
+    const host = new URL(value).hostname.toLowerCase().replace(/^\[|\]$/g, '')
+    if (host === 'localhost' || host === '::1' || host === '0.0.0.0') return true
+    const parts = host.split('.').map(Number)
+    if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return false
+    return (
+      parts[0] === 10 ||
+      parts[0] === 127 ||
+      (parts[0] === 169 && parts[1] === 254) ||
+      (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+      (parts[0] === 192 && parts[1] === 168)
+    )
+  } catch {
+    return false
+  }
 }
 
 function QRCodeImage({ value }: { value: string }) {

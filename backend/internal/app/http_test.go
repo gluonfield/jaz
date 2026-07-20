@@ -68,6 +68,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager),
+		fx.Provide(func() storage.Store { return store }),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
 		HTTPModule(),
@@ -99,11 +100,12 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),
 		Devices: deviceauth.New(store),
+		Store:   store,
 		AuthKey: RuntimeAuthKey("secret"),
 		Preview: testPreviewHandler(t),
 	})
 	var foundRevoke bool
-	var foundConnection bool
+	connectionMethods := map[string]bool{}
 	for _, route := range routes {
 		if route.Pattern == "/v1/devices/" {
 			t.Fatalf("mounted generic device item route")
@@ -111,15 +113,15 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 		if route.Pattern == "DELETE /v1/devices/{id}" && route.Handler != nil {
 			foundRevoke = true
 		}
-		if route.Pattern == "GET /v1/devices/connection-link" && route.Handler != nil {
-			foundConnection = true
+		if (route.Pattern == "GET /v1/devices/connection-link" || route.Pattern == "PUT /v1/devices/connection-link") && route.Handler != nil {
+			connectionMethods[route.Pattern] = true
 		}
 	}
 	if !foundRevoke {
 		t.Fatalf("missing DELETE device revoke route: %#v", routes)
 	}
-	if !foundConnection {
-		t.Fatalf("missing device connection link route: %#v", routes)
+	if len(connectionMethods) != 2 {
+		t.Fatalf("device connection link methods = %#v", connectionMethods)
 	}
 }
 
@@ -135,6 +137,7 @@ func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 			Usage:   usagecore.NewService(fakeUsageStore{}),
 			Jaz:     Config{Devices: DevicesConfig{DisablePairing: disable}},
 			Devices: deviceauth.New(store),
+			Store:   store,
 			AuthKey: RuntimeAuthKey("secret"),
 			Preview: testPreviewHandler(t),
 		})
