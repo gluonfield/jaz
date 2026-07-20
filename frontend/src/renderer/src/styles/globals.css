@@ -536,7 +536,7 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: live-shimmer-sweep 2s linear infinite;
+  animation: live-shimmer-sweep 4s linear infinite;
 }
 
 .live-dot {
