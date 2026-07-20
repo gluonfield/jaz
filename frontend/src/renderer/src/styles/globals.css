@@ -505,31 +505,53 @@
   }
 }
 
-/* Session liveness "working" indicator: a single glyph that blooms through
- * a starburst sequence — LiveGlyph.tsx drives the glyph and color; these
- * rules own the fixed box (so swaps never jitter the row) and the glow at
- * peak bloom. */
-.live-glyph {
-  display: inline-block;
-  width: 14px;
+/* Session liveness "working" indicator: three small square dots with a slow
+ * opacity wave traveling left to right — the brand's square-dot dither
+ * language at its quietest. Color comes from the parent (running amber). */
+.live-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
   flex-shrink: 0;
-  font-size: 12px;
-  line-height: 14px;
-  text-align: center;
 }
 
-.live-glyph-peak {
-  text-shadow: 0 0 8px currentColor;
+.live-dots > span {
+  width: 3px;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.3;
+  animation: live-dots-wave 1.5s ease-in-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .live-glyph-peak {
-    text-shadow: none;
+.live-dots > span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.live-dots > span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes live-dots-wave {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  40% {
+    opacity: 1;
   }
 }
 
-:root.jaz-no-effects .live-glyph-peak {
-  text-shadow: none;
+@media (prefers-reduced-motion: reduce) {
+  .live-dots > span {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+:root.jaz-no-effects .live-dots > span {
+  animation: none;
+  opacity: 0.6;
 }
 
 /* Ultra effort slider: the track ring breathes while the dither field burns. */

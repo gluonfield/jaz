@@ -1,7 +1,7 @@
 import { CircleAlert } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
-import { LiveGlyph } from '@/components/ui/LiveGlyph'
+import { LiveDots } from '@/components/ui/LiveDots'
 import { agentLabel } from '@/lib/agentLabel'
 import {
   deriveSessionRunSignal,
