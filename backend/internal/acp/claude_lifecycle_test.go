@@ -150,7 +150,33 @@ func TestManagerDoesNotReplaceEstablishedCodexSession(t *testing.T) {
 	}
 }
 
-func TestManagerPersistsCodexSessionOnlyAfterPromptSend(t *testing.T) {
+func TestManagerDoesNotForkEstablishedCodexSessionWithoutProviderID(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		event bool
+	}{{name: "message"}, {name: "event", event: true}} {
+		t.Run(test.name, func(t *testing.T) {
+			manager, store, spawned := newFreshCodexTestSession(t)
+			var err error
+			if test.event {
+				err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
+			} else {
+				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = manager.Send(context.Background(), acp.SendRequest{
+				Session: spawned.SessionID, Message: "continue", Completion: acp.CompletionInline,
+			})
+			if err == nil || !strings.Contains(err.Error(), "provider session id is missing") {
+				t.Fatalf("established session error = %v", err)
+			}
+		})
+	}
+}
+
+func TestManagerDoesNotPersistUnsentCodexSession(t *testing.T) {
 	manager, store, spawned := newUnmaterializedCodexTestSession(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -159,11 +185,8 @@ func TestManagerPersistsCodexSessionOnlyAfterPromptSend(t *testing.T) {
 		Message:     "first",
 		Attachments: []storage.Attachment{{Name: "missing-uri"}},
 		Completion:  acp.CompletionInline,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateFailed {
-		t.Fatalf("unsent first turn = %#v, %v", job, err)
+	}); err == nil {
+		t.Fatal("invalid attachment unexpectedly started a turn")
 	}
 	session, err := store.LoadSession(spawned.SessionID)
 	if err != nil {
@@ -189,6 +212,20 @@ func TestManagerPersistsCodexSessionOnlyAfterPromptSend(t *testing.T) {
 
 func newUnmaterializedCodexTestSession(t *testing.T) (*acp.Manager, *jsonstore.Store, acp.SpawnResult) {
 	t.Helper()
+	manager, store, spawned := newFreshCodexTestSession(t)
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.RuntimeRef.SessionID = "fake-session"
+	if err := store.SaveSession(session); err != nil {
+		t.Fatal(err)
+	}
+	return manager, store, spawned
+}
+
+func newFreshCodexTestSession(t *testing.T) (*acp.Manager, *jsonstore.Store, acp.SpawnResult) {
+	t.Helper()
 	stateDir := t.TempDir()
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -200,14 +237,6 @@ func newUnmaterializedCodexTestSession(t *testing.T) (*acp.Manager, *jsonstore.S
 	t.Cleanup(manager.Close)
 	spawned, err := manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "unmaterialized-codex"})
 	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	session.RuntimeRef.SessionID = "fake-session"
-	if err := store.SaveSession(session); err != nil {
 		t.Fatal(err)
 	}
 	return manager, store, spawned
