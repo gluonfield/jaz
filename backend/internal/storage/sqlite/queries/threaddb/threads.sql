@@ -69,6 +69,23 @@ WHERE (
   OR id IN (sqlc.slice('ids'))
 ORDER BY last_attention_at_ms DESC, id;
 
+-- name: ListOverviewChildren :many
+SELECT
+  id,
+  slug,
+  title,
+  status,
+  acp_agent,
+  model,
+  reasoning_effort,
+  archived,
+  updated_at_ms
+FROM threads
+WHERE parent_id = sqlc.arg(parent_id)
+  AND runtime = 'acp'
+  AND COALESCE(source_type, '') = ''
+ORDER BY last_attention_at_ms DESC, id;
+
 -- name: GetSession :one
 SELECT * FROM threads
 WHERE id = sqlc.arg(ref) OR slug = sqlc.arg(ref)

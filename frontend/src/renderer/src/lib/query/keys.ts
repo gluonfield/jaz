@@ -10,6 +10,7 @@ export const keys = {
   threadSearch: (query: string, includeArchived = false) =>
     ['search', 'threads', query, includeArchived] as const,
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
+  sessionOverview: (id: string) => ['sessions', id, 'overview'] as const,
   sessionRepo: (id: string) => ['sessions', id, 'repo'] as const,
   // Children of sessionRepo so one prefix invalidation refreshes repo state,
   // the changes summary, and any cached file diffs together.

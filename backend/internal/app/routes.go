@@ -42,10 +42,14 @@ type routeDeps struct {
 	MCP             *mcpruntime.Manager            `optional:"true"`
 	Preview         *previewapi.Handler
 	SessionMessages *sessionsapi.MessagesHandler
+	SessionOverview *sessionsapi.OverviewHandler
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
-	routes := server.Routes{{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages}}
+	routes := server.Routes{
+		{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages},
+		{Pattern: "GET /v1/sessions/{session}/overview", Handler: deps.SessionOverview},
+	}
 	routes = append(routes, usageRoutes(deps.Usage)...)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)

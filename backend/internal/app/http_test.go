@@ -81,6 +81,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "GET /v1/feed")
 	requireRoute(t, routes, "GET /v1/feed/completions")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/messages")
+	requireRoute(t, routes, "GET /v1/sessions/{session}/overview")
 	requireRoute(t, routes, "/v1/preview/")
 	if len(publicRoutes) != 1 ||
 		publicRoutes[0].Match == nil ||

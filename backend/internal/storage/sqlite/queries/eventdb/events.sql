@@ -15,6 +15,23 @@ FROM session_events
 WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq;
 
+-- name: ListProviderSubagentEvents :many
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = sqlc.arg(thread_id)
+  AND type = 'provider_subagent'
+ORDER BY seq;
+
 -- name: ListLatestACPTurn :many
 WITH boundary AS (
   SELECT seq

@@ -95,6 +95,64 @@ ORDER BY seq`, "thread").Scan(new(int), new(int), new(int), &plan); err != nil {
 	}
 }
 
+func TestSessionOverviewUsesRequiredIndexes(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	tests := []struct {
+		name  string
+		query string
+		arg   string
+		index string
+	}{
+		{
+			name: "threads",
+			query: `EXPLAIN QUERY PLAN
+SELECT id, slug, title, status, acp_agent, model, reasoning_effort, archived, updated_at_ms
+FROM threads
+WHERE parent_id = ? AND runtime = 'acp' AND COALESCE(source_type, '') = ''
+ORDER BY last_attention_at_ms DESC, id`,
+			arg: "parent", index: "idx_threads_overview_children",
+		},
+		{
+			name: "subagents",
+			query: `EXPLAIN QUERY PLAN
+SELECT thread_id, seq, projection_key, projection_op, type, content, acp, plan, permission, created_at_ms
+FROM session_events
+WHERE thread_id = ? AND type = 'provider_subagent'
+ORDER BY seq`,
+			arg: "parent", index: "idx_session_events_provider_subagents",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rows, err := store.db.Query(test.query, test.arg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer rows.Close()
+			var plans []string
+			for rows.Next() {
+				var plan string
+				if err := rows.Scan(new(int), new(int), new(int), &plan); err != nil {
+					t.Fatal(err)
+				}
+				plans = append(plans, plan)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatal(err)
+			}
+			plan := strings.Join(plans, "\n")
+			if !strings.Contains(plan, test.index) || strings.Contains(plan, "USE TEMP B-TREE") {
+				t.Fatalf("query plan = %q, want index %q without a temporary sort", plan, test.index)
+			}
+		})
+	}
+}
+
 func TestUsageEventsUseCreatedAtIndexOnly(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

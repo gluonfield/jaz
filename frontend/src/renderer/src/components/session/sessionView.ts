@@ -6,8 +6,9 @@ import type {
   Session,
   SessionEvent,
   SessionMessages,
+  SessionOverview,
 } from '@/lib/api/types'
-import { applyProviderToolTitleFallbacks, providerSubagentsFromEvents } from '@/lib/providerSubagents'
+import { applyProviderToolTitleFallbacks, providerSubagentsFromSources } from '@/lib/providerSubagents'
 import { spawnedThreadsFromSources } from '@/lib/spawnedThreads'
 import {
   approvalPlanSurfaceFromEvent,
@@ -184,7 +185,11 @@ function hasStoredAssistantMessage(messages: ChatMessage[], text?: string): bool
 // composer state, live stream flags — skip the O(events) pipeline.
 export type SessionView = ReturnType<typeof deriveSessionView>
 
-export function deriveSessionView(data: SessionMessages, liveEvents: SessionEvent[]) {
+export function deriveSessionView(
+  data: SessionMessages,
+  liveEvents: SessionEvent[],
+  overview?: SessionOverview,
+) {
   const {
     session,
     messages,
@@ -326,7 +331,10 @@ export function deriveSessionView(data: SessionMessages, liveEvents: SessionEven
     planDecisionApproval: latestPlanDecisionSurface?.approval,
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
     panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
-    providerSubagents: providerSubagentsFromEvents(settledTranscriptEvents),
-    spawnedThreads: spawnedThreadsFromSources(acpChildren, [...persistedEvents, ...liveEvents]),
+    providerSubagents: providerSubagentsFromSources(overview?.subagents, settledTranscriptEvents),
+    spawnedThreads: spawnedThreadsFromSources(
+      overview?.threads ?? acpChildren,
+      [...persistedEvents, ...liveEvents],
+    ),
   }
 }

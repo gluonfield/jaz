@@ -288,6 +288,71 @@ func (q *Queries) ListLatestACPTurn(ctx context.Context, threadID string) ([]Lis
 	return items, nil
 }
 
+const listProviderSubagentEvents = `-- name: ListProviderSubagentEvents :many
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = ?1
+  AND type = 'provider_subagent'
+ORDER BY seq
+`
+
+type ListProviderSubagentEventsRow struct {
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) ListProviderSubagentEvents(ctx context.Context, threadID string) ([]ListProviderSubagentEventsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProviderSubagentEvents, threadID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProviderSubagentEventsRow{}
+	for rows.Next() {
+		var i ListProviderSubagentEventsRow
+		if err := rows.Scan(
+			&i.ThreadID,
+			&i.Seq,
+			&i.ProjectionKey,
+			&i.ProjectionOp,
+			&i.Type,
+			&i.Content,
+			&i.Acp,
+			&i.Plan,
+			&i.Permission,
+			&i.CreatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessionEventCompactionPage = `-- name: ListSessionEventCompactionPage :many
 SELECT
   thread_id,

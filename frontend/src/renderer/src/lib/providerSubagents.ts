@@ -1,22 +1,31 @@
-import type { ACPToolCall, ProviderSubagentEvent, SessionEvent } from '@/lib/api/types'
+import type {
+  ACPToolCall,
+  ProviderSubagentEvent,
+  SessionEvent,
+  SessionOverviewSubagent,
+} from '@/lib/api/types'
 
-export interface ProviderSubagentView extends ProviderSubagentEvent {
-  key: string
-  updated_at: string
-}
+export type ProviderSubagentView = SessionOverviewSubagent
 
-export function providerSubagentsFromEvents(events: SessionEvent[]): ProviderSubagentView[] {
+export function providerSubagentsFromSources(
+  stored: SessionOverviewSubagent[] | undefined,
+  events: SessionEvent[],
+): ProviderSubagentView[] {
   const byKey = new Map<string, ProviderSubagentView>()
+  for (const subagent of stored ?? []) byKey.set(subagent.key, subagent)
   for (const event of events) {
     if (event.type !== 'provider_subagent' || !event.provider_subagent?.id) continue
     const subagent = event.provider_subagent
     const key = providerSubagentKey(event)
     if (!key) continue
-    byKey.set(key, {
+    const previous = byKey.get(key)
+    const current: ProviderSubagentView = {
       ...subagent,
       key,
+      seq: event.seq ?? 0,
       updated_at: event.at,
-    })
+    }
+    byKey.set(key, previous ? mergeProviderSubagentView(previous, current) : current)
   }
   return [...byKey.values()].sort((a, b) => {
     const active = subagentActiveRank(a) - subagentActiveRank(b)
@@ -26,7 +35,9 @@ export function providerSubagentsFromEvents(events: SessionEvent[]): ProviderSub
 }
 
 function providerSubagentKey(event: SessionEvent): string {
-  return event.projection_key ?? ''
+  const subagent = event.provider_subagent
+  if (!subagent?.id) return ''
+  return event.projection_key || `provider_subagent:${subagent.provider ?? ''}:${subagent.id}`
 }
 
 export function looksLikeOpaqueToolID(text: string): boolean {
@@ -75,6 +86,48 @@ export function applyProviderToolTitleFallbacks(events: SessionEvent[]): Session
   })
 }
 
+function mergeProviderSubagentEvent(
+  prev: ProviderSubagentEvent | undefined,
+  next: ProviderSubagentEvent,
+): ProviderSubagentEvent {
+  return {
+    ...next,
+    provider: next.provider || prev?.provider,
+    thread_id: next.thread_id || prev?.thread_id,
+    parent_id: next.parent_id || prev?.parent_id,
+    name: next.name || prev?.name,
+    task: next.task || prev?.task,
+    role: next.role || prev?.role,
+    status: next.status || prev?.status,
+    summary: next.summary || prev?.summary,
+    prompt: next.prompt || prev?.prompt,
+    model: next.model || prev?.model,
+    reasoning_effort: next.reasoning_effort || prev?.reasoning_effort,
+    started_at_ms: next.started_at_ms ?? prev?.started_at_ms,
+    completed_at_ms: next.completed_at_ms ?? prev?.completed_at_ms,
+  }
+}
+
+function mergeProviderSubagentView(
+  previous: ProviderSubagentView,
+  current: ProviderSubagentView,
+): ProviderSubagentView {
+  const currentIsNewer = subagentUpdateIsNewer(previous, current)
+  const latest = currentIsNewer ? current : previous
+  const earlier = currentIsNewer ? previous : current
+  return {
+    ...mergeProviderSubagentEvent(earlier, latest),
+    key: latest.key,
+    seq: Math.max(previous.seq, current.seq),
+    updated_at: laterTime(previous.updated_at, current.updated_at),
+  }
+}
+
+function subagentUpdateIsNewer(previous: ProviderSubagentView, current: ProviderSubagentView): boolean {
+  if (previous.seq && current.seq) return current.seq > previous.seq
+  return eventTime(current.updated_at) >= eventTime(previous.updated_at)
+}
+
 function subagentActiveRank(subagent: ProviderSubagentView): number {
   const status = subagent.status?.toLowerCase()
   if (!status || status === 'running' || status === 'starting' || status === 'pending_init') return 0
@@ -84,4 +137,8 @@ function subagentActiveRank(subagent: ProviderSubagentView): number {
 function eventTime(value: string): number {
   const time = Date.parse(value)
   return Number.isNaN(time) ? 0 : time
+}
+
+function laterTime(a: string, b: string): string {
+  return eventTime(b) > eventTime(a) ? b : a
 }
