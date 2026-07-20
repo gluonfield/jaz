@@ -1,7 +1,3 @@
-
-
-https://github.com/user-attachments/assets/83044eb1-ddcd-4aa3-9173-02f0931d1353
-
 [![License](https://img.shields.io/badge/License-Apache_2.0-D22128?logo=apache&logoColor=white)](LICENSE)
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![Bun](https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white)
