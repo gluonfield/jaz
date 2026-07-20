@@ -56,6 +56,14 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 	if request.HistoryRevision > 0 && request.HistoryRevision != page.HistoryRevision {
 		return storage.TranscriptPage{}, storage.ErrTranscriptChanged
 	}
+	var eventRows []eventdb.ListSessionEventPageRow
+	eventsMore := false
+	if request.HistoryRevision == 0 || request.BeforeEventSeq > 0 {
+		eventRows, eventsMore, err = loadTranscriptEventRows(ctx, events, id, request.BeforeEventSeq)
+		if err != nil {
+			return storage.TranscriptPage{}, err
+		}
+	}
 	messageHasEarlier := false
 	if request.HistoryRevision == 0 || request.BeforeMessageSeq > 0 {
 		boundaries, loadErr := messages.ListUserMessageBoundaries(ctx, messagedb.ListUserMessageBoundariesParams{
@@ -65,61 +73,69 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 			return storage.TranscriptPage{}, loadErr
 		}
 		messageHasEarlier = len(boundaries) > request.Turns
+		messageStart := int64(0)
 		if messageHasEarlier {
-			page.BeforeMessageSeq = boundaries[request.Turns-1].Seq
+			messageStart = boundaries[request.Turns-1].Seq
 		}
+		baseStart := messageStart
+		messageRows, loadErr := messages.ListMessageRangeSizes(ctx, messagedb.ListMessageRangeSizesParams{
+			ThreadID: id, StartSeq: messageStart, BeforeSeq: request.BeforeMessageSeq,
+		})
+		if loadErr != nil {
+			return storage.TranscriptPage{}, loadErr
+		}
+		eventOwner := int64(0)
+		if len(eventRows) > 0 {
+			owner, ownerErr := messages.LatestUserMessageBeforeEvent(ctx, messagedb.LatestUserMessageBeforeEventParams{
+				ThreadID: id, CreatedAtMs: eventRows[len(eventRows)-1].CreatedAtMs,
+			})
+			if ownerErr != nil && ownerErr != sql.ErrNoRows {
+				return storage.TranscriptPage{}, ownerErr
+			}
+			if ownerErr == nil {
+				eventOwner = owner.Seq
+			}
+		}
+		alignedStart := eventAlignedMessageStart(messageRows, messageStart, eventOwner)
+		eventAligned := alignedStart > messageStart
 		var truncated bool
-		page.BeforeMessageSeq, truncated, err = boundedTranscriptMessages(
-			ctx, messages, id, page.BeforeMessageSeq, request.BeforeMessageSeq,
-		)
-		messageHasEarlier = messageHasEarlier || truncated
+		messageStart, truncated, err = boundedTranscriptMessageStart(messageRows, alignedStart)
+		messageHasEarlier = messageHasEarlier || truncated || messageStart > baseStart
 		if err == nil {
-			err = loadTranscriptMessages(ctx, messages, id, page.BeforeMessageSeq, request.BeforeMessageSeq, &page)
+			err = loadTranscriptMessages(ctx, messages, id, messageStart, request.BeforeMessageSeq, &page)
 		}
 		if err != nil {
 			return storage.TranscriptPage{}, fmt.Errorf("load transcript cursor: %w", err)
 		}
+		if eventAligned && messageStart > 0 {
+			startAt, loadErr := messages.GetMessageTime(ctx, messagedb.GetMessageTimeParams{
+				ThreadID: id, Seq: messageStart,
+			})
+			if loadErr != nil {
+				return storage.TranscriptPage{}, loadErr
+			}
+			for len(eventRows) > 1 && eventRows[len(eventRows)-1].CreatedAtMs < startAt {
+				eventRows = eventRows[:len(eventRows)-1]
+				eventsMore = true
+			}
+		}
+		if messageHasEarlier {
+			page.BeforeMessageSeq = messageStart
+		} else {
+			page.BeforeMessageSeq = 0
+		}
 	}
-
-	eventsMore := false
-	if request.HistoryRevision == 0 || request.BeforeEventSeq > 0 {
-		sizes, loadErr := events.ListSessionEventPageSizes(ctx, eventdb.ListSessionEventPageSizesParams{
-			ThreadID: id, BeforeSeq: request.BeforeEventSeq, LimitCount: transcriptEventPageRows + 1,
-		})
-		if loadErr != nil {
-			return storage.TranscriptPage{}, loadErr
+	page.Events = make([]sessionevents.Event, 0, len(eventRows))
+	for i := len(eventRows) - 1; i >= 0; i-- {
+		row := eventRows[i]
+		event, decodeErr := eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+		if decodeErr != nil {
+			return storage.TranscriptPage{}, decodeErr
 		}
-		selected := 0
-		selectedBytes := int64(0)
-		for selected < len(sizes) && selected < transcriptEventPageRows {
-			if sizes[selected].Bytes > transcriptEventPageBytes {
-				return storage.TranscriptPage{}, fmt.Errorf("session event %d is %d bytes; limit is %d", sizes[selected].Seq, sizes[selected].Bytes, transcriptEventPageBytes)
-			}
-			if selectedBytes+sizes[selected].Bytes > transcriptEventPageBytes {
-				break
-			}
-			selectedBytes += sizes[selected].Bytes
-			selected++
-		}
-		eventRows, loadErr := events.ListSessionEventPage(ctx, eventdb.ListSessionEventPageParams{
-			ThreadID: id, BeforeSeq: request.BeforeEventSeq, LimitCount: int64(selected),
-		})
-		if loadErr != nil {
-			return storage.TranscriptPage{}, loadErr
-		}
-		eventsMore = len(sizes) > selected
-		page.Events = make([]sessionevents.Event, 0, len(eventRows))
-		for i := len(eventRows) - 1; i >= 0; i-- {
-			row := eventRows[i]
-			event, decodeErr := eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
-			if decodeErr != nil {
-				return storage.TranscriptPage{}, decodeErr
-			}
-			page.Events = append(page.Events, event)
-		}
-		if eventsMore {
-			page.BeforeEventSeq = page.Events[0].Seq
-		}
+		page.Events = append(page.Events, event)
+	}
+	if eventsMore && len(page.Events) > 0 {
+		page.BeforeEventSeq = page.Events[0].Seq
 	}
 	page.HasEarlier = eventsMore || messageHasEarlier
 	page.LatestEventSeq, err = events.LatestSessionEventSeq(ctx, id)
@@ -132,22 +148,77 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 	return page, nil
 }
 
-func boundedTranscriptMessages(
+func loadTranscriptEventRows(
 	ctx context.Context,
-	messages *messagedb.Queries,
+	events *eventdb.Queries,
 	id string,
-	startSeq int64,
 	beforeSeq int64,
-) (int64, bool, error) {
-	rows, err := messages.ListMessageRangeSizes(ctx, messagedb.ListMessageRangeSizesParams{
-		ThreadID: id, StartSeq: startSeq, BeforeSeq: beforeSeq,
+) ([]eventdb.ListSessionEventPageRow, bool, error) {
+	sizes, err := events.ListSessionEventPageSizes(ctx, eventdb.ListSessionEventPageSizesParams{
+		ThreadID: id, BeforeSeq: beforeSeq, LimitCount: transcriptEventPageRows + 1,
 	})
 	if err != nil {
-		return 0, false, err
+		return nil, false, err
 	}
+	selected := 0
+	selectedBytes := int64(0)
+	for selected < len(sizes) && selected < transcriptEventPageRows {
+		if sizes[selected].Bytes > transcriptEventPageBytes {
+			return nil, false, fmt.Errorf("session event %d is %d bytes; limit is %d", sizes[selected].Seq, sizes[selected].Bytes, transcriptEventPageBytes)
+		}
+		if selectedBytes+sizes[selected].Bytes > transcriptEventPageBytes {
+			break
+		}
+		selectedBytes += sizes[selected].Bytes
+		selected++
+	}
+	rows, err := events.ListSessionEventPage(ctx, eventdb.ListSessionEventPageParams{
+		ThreadID: id, BeforeSeq: beforeSeq, LimitCount: int64(selected),
+	})
+	return rows, len(sizes) > selected, err
+}
+
+// ACP events replace assistant message rows for some turns. Return the earliest
+// suffix whose turns preceding the loaded event owner all have assistant rows.
+func eventAlignedMessageStart(rows []messagedb.ListMessageRangeSizesRow, startSeq, eventOwnerSeq int64) int64 {
+	if eventOwnerSeq > startSeq {
+		openUser := int64(0)
+		answered := false
+		ownerSeen := false
+		for i := len(rows) - 1; i >= 0; i-- {
+			row := rows[i]
+			if row.Seq > eventOwnerSeq {
+				break
+			}
+			switch row.Role {
+			case "user":
+				if openUser > 0 && !answered {
+					startSeq = row.Seq
+				}
+				openUser = row.Seq
+				answered = false
+				ownerSeen = row.Seq == eventOwnerSeq
+			case "assistant":
+				answered = openUser > 0
+			}
+			if ownerSeen {
+				break
+			}
+		}
+		if !ownerSeen && openUser > 0 && openUser < eventOwnerSeq && !answered {
+			startSeq = eventOwnerSeq
+		}
+	}
+	return startSeq
+}
+
+func boundedTranscriptMessageStart(rows []messagedb.ListMessageRangeSizesRow, startSeq int64) (int64, bool, error) {
 	bytes := int64(0)
 	acceptedStart := int64(0)
 	for _, row := range rows {
+		if row.Seq < startSeq {
+			break
+		}
 		if row.Bytes > storage.MaxTranscriptMessageBytes {
 			return 0, false, fmt.Errorf("message %d is %d bytes; limit is %d", row.Seq, row.Bytes, storage.MaxTranscriptMessageBytes)
 		}

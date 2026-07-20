@@ -82,6 +82,41 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) er
 	return err
 }
 
+const latestUserMessageBeforeEvent = `-- name: LatestUserMessageBeforeEvent :one
+WITH boundary AS (
+  SELECT boundary_messages.seq
+  FROM messages AS boundary_messages
+  WHERE boundary_messages.thread_id = ?1
+    AND boundary_messages.created_at_ms > ?2
+  ORDER BY boundary_messages.seq
+  LIMIT 1
+)
+SELECT messages.seq, messages.created_at_ms
+FROM messages
+WHERE messages.thread_id = ?1
+  AND messages.role = 'user'
+  AND ((SELECT seq FROM boundary) IS NULL OR messages.seq < (SELECT seq FROM boundary))
+ORDER BY messages.seq DESC
+LIMIT 1
+`
+
+type LatestUserMessageBeforeEventParams struct {
+	ThreadID    string `json:"thread_id"`
+	CreatedAtMs int64  `json:"created_at_ms"`
+}
+
+type LatestUserMessageBeforeEventRow struct {
+	Seq         int64 `json:"seq"`
+	CreatedAtMs int64 `json:"created_at_ms"`
+}
+
+func (q *Queries) LatestUserMessageBeforeEvent(ctx context.Context, arg LatestUserMessageBeforeEventParams) (LatestUserMessageBeforeEventRow, error) {
+	row := q.db.QueryRowContext(ctx, latestUserMessageBeforeEvent, arg.ThreadID, arg.CreatedAtMs)
+	var i LatestUserMessageBeforeEventRow
+	err := row.Scan(&i.Seq, &i.CreatedAtMs)
+	return i, err
+}
+
 const listMessageRangeSizes = `-- name: ListMessageRangeSizes :many
 SELECT
   seq,

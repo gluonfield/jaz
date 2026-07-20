@@ -26,6 +26,23 @@ FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
   AND seq = sqlc.arg(seq);
 
+-- name: LatestUserMessageBeforeEvent :one
+WITH boundary AS (
+  SELECT boundary_messages.seq
+  FROM messages AS boundary_messages
+  WHERE boundary_messages.thread_id = sqlc.arg(thread_id)
+    AND boundary_messages.created_at_ms > sqlc.arg(created_at_ms)
+  ORDER BY boundary_messages.seq
+  LIMIT 1
+)
+SELECT messages.seq, messages.created_at_ms
+FROM messages
+WHERE messages.thread_id = sqlc.arg(thread_id)
+  AND messages.role = 'user'
+  AND ((SELECT seq FROM boundary) IS NULL OR messages.seq < (SELECT seq FROM boundary))
+ORDER BY messages.seq DESC
+LIMIT 1;
+
 -- name: NextMessageSeq :one
 SELECT COALESCE(MAX(seq), 0) + 1 AS seq
 FROM messages
