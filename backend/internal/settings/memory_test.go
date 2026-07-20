@@ -12,6 +12,7 @@ import (
 func TestDefaultWorkerAgentPriority(t *testing.T) {
 	defaults := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		acp.AgentClaude:   {Enabled: true},
+		acp.AgentKimi:     {Enabled: true},
 		acp.AgentOpenCode: {Enabled: true},
 	}}
 	if got := DefaultWorkerAgent(defaults); got != acp.AgentClaude {
@@ -20,6 +21,12 @@ func TestDefaultWorkerAgentPriority(t *testing.T) {
 
 	defaults.ACP[acp.AgentCodex] = ACPAgentDefaults{Enabled: true}
 	if got := DefaultWorkerAgent(defaults); got != acp.AgentCodex {
+		t.Fatalf("agent = %q", got)
+	}
+
+	defaults.ACP[acp.AgentCodex] = ACPAgentDefaults{}
+	defaults.ACP[acp.AgentClaude] = ACPAgentDefaults{}
+	if got := DefaultWorkerAgent(defaults); got != acp.AgentKimi {
 		t.Fatalf("agent = %q", got)
 	}
 }
@@ -33,7 +40,7 @@ func TestWorkerAgentReasoningEffortUsesAgentDefault(t *testing.T) {
 			t.Fatalf("%s effort = %q, want xhigh", agent, got)
 		}
 	}
-	for _, agent := range []string{acp.AgentGrok, acp.AgentAntigravity} {
+	for _, agent := range []string{acp.AgentKimi, acp.AgentGrok, acp.AgentAntigravity} {
 		if got := WorkerAgentReasoningEffort(agent, defaults); got != "" {
 			t.Fatalf("%s effort = %q, want default", agent, got)
 		}
@@ -76,6 +83,10 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			name:  "grok",
 			agent: acp.AgentGrok,
 			model: modelcatalog.DefaultGrokModel,
+		},
+		{
+			name:  "kimi",
+			agent: acp.AgentKimi,
 		},
 		{
 			name:     "opencode-openrouter-style",

@@ -5,6 +5,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   jaz: 'Jaz',
   codex: 'Codex',
   claude: 'Claude',
+  kimi: 'Kimi',
   grok: 'Grok',
   opencode: 'OpenCode',
   antigravity: 'Antigravity',
@@ -25,10 +26,12 @@ export function agentLabel(value: string | undefined): string {
 
 // The identity provider you actually authenticate against — the OAuth is with
 // the model maker, not the CLI. "claude" (Claude Code) signs in with Anthropic,
-// "codex" with OpenAI, "grok" with xAI. Used for "Sign in with …" copy.
+// "codex" with OpenAI, "kimi" with Moonshot AI, "grok" with xAI. Used for
+// "Sign in with …" copy.
 const AUTH_PROVIDERS: Record<string, string> = {
   codex: 'OpenAI',
   claude: 'Anthropic',
+  kimi: 'Moonshot AI',
   grok: 'xAI',
   opencode: 'OpenRouter',
   antigravity: 'Google AI',
@@ -44,6 +47,7 @@ export function authProviderLabel(value: string | undefined): string {
 // shorter "Claude" reads better. Only the onboarding screen uses this variant.
 const ONBOARDING_NAMES: Record<string, string> = {
   claude: 'Claude Code',
+  kimi: 'Kimi Code',
   antigravity: 'Antigravity',
 }
 

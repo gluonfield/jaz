@@ -12,10 +12,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testexec"
 )
+
+func TestACPAuthLoginEnvPreservesHostProxy(t *testing.T) {
+	t.Setenv("HTTP_PROXY", "http://proxy.example:8080")
+	t.Setenv("HTTPS_PROXY", "http://secure-proxy.example:8443")
+	t.Setenv("NO_PROXY", "localhost,127.0.0.1")
+
+	env := strings.Join(acpAuthLoginEnv(acp.AgentLoginInvocation{}), "\n")
+	for _, want := range []string{
+		"HTTP_PROXY=http://proxy.example:8080",
+		"HTTPS_PROXY=http://secure-proxy.example:8443",
+		"NO_PROXY=localhost,127.0.0.1",
+	} {
+		if !strings.Contains(env, want) {
+			t.Fatalf("login environment missing %q: %s", want, env)
+		}
+	}
+}
 
 func TestACPAuthLoginRunsCodexWithoutHome(t *testing.T) {
 	home := t.TempDir()

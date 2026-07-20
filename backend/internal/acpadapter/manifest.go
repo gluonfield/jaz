@@ -282,7 +282,7 @@ func validateManifestAsset(adapter, version string, asset manifestAsset) error {
 
 func cleanRelative(value string) bool {
 	value = strings.TrimSpace(value)
-	return value != "" && value != "." && path.Clean(value) == value && !path.IsAbs(value) && !strings.HasPrefix(value, "../")
+	return value != "" && value != "." && path.Clean(value) == value && !path.IsAbs(value) && !strings.HasPrefix(value, "../") && !strings.ContainsAny(value, `:\`)
 }
 
 func resolveArchivePath(root, value string) string {

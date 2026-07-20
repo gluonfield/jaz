@@ -102,6 +102,9 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 	case AgentClaude:
 		configDir := firstNonEmpty(auth.Path, layout.ACPClaudeConfig)
 		return loginInvocation(map[string]string{"CLAUDE_CONFIG_DIR": configDir}, false, binDir, "claude", "auth", "login", "--claudeai")
+	case AgentKimi:
+		home := firstNonEmpty(auth.Path, layout.ACPKimiHome)
+		return loginInvocation(map[string]string{"KIMI_CODE_HOME": home}, false, binDir, "kimi", "login")
 	case AgentGrok:
 		return loginInvocation(nil, true, binDir, "grok", "login", "--device-auth")
 	case AgentAntigravity:

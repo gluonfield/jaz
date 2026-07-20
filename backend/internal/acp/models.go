@@ -18,6 +18,7 @@ const agentMethodSessionSetModel = "session/set_model"
 const sessionConfigModel = "model"
 const sessionConfigReasoningEffort = "reasoning_effort"
 const claudeSessionConfigEffort = "effort"
+const kimiSessionConfigThinking = "thinking"
 const claudeReasoningEffortUltracode = "ultracode"
 
 type ReasoningEffortOption struct {
@@ -83,6 +84,12 @@ var openCodeReasoningEffortOptions = append(append([]ReasoningEffortOption(nil),
 	ReasoningEffortOption{Value: "max", Label: "Max"},
 )
 
+var kimiReasoningEffortOptions = []ReasoningEffortOption{
+	{Value: "", Label: "Default"},
+	{Value: "off", Label: "Off"},
+	{Value: "on", Label: "On"},
+}
+
 func agentPolicyForAgent(agentName string) agentPolicy {
 	switch strings.ToLower(strings.TrimSpace(agentName)) {
 	case AgentClaude:
@@ -101,6 +108,13 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			providerInLaunch:    true,
 			modelValidationKind: modelValidationNone,
 			effortOptions:       codexReasoningEffortOptions,
+		}
+	case AgentKimi:
+		return agentPolicy{
+			modelConfigID:       sessionConfigModel,
+			effortConfigID:      kimiSessionConfigThinking,
+			modelValidationKind: modelValidationNone,
+			effortOptions:       kimiReasoningEffortOptions,
 		}
 	case AgentGrok:
 		return agentPolicy{
@@ -432,7 +446,7 @@ func parseSessionConfigOptions(raw json.RawMessage) sessionConfigOptionsState {
 		switch {
 		case category == string(acpschema.SessionConfigOptionCategoryModel) || option.ID == sessionConfigModel:
 			state.modelOptions = parseConfigOptionValues(option.Options)
-		case category == string(acpschema.SessionConfigOptionCategoryThoughtLevel) || option.ID == claudeSessionConfigEffort || option.ID == sessionConfigReasoningEffort:
+		case category == string(acpschema.SessionConfigOptionCategoryThoughtLevel) || option.ID == claudeSessionConfigEffort || option.ID == sessionConfigReasoningEffort || option.ID == kimiSessionConfigThinking:
 			priority := 1
 			if category == string(acpschema.SessionConfigOptionCategoryThoughtLevel) {
 				priority = 2

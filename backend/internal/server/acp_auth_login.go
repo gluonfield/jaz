@@ -324,7 +324,18 @@ func newACPAuthLoginID() (string, error) {
 
 func acpAuthLoginEnv(invocation acp.AgentLoginInvocation) []string {
 	env := processenv.Base()
-	processenv.PreserveHost(env, "LANG", "LC_ALL", "LC_CTYPE", "LOGNAME", "SHELL", "SSH_AUTH_SOCK", "USER")
+	processenv.PreserveHost(env,
+		"HTTP_PROXY",
+		"HTTPS_PROXY",
+		"LANG",
+		"LC_ALL",
+		"LC_CTYPE",
+		"LOGNAME",
+		"NO_PROXY",
+		"SHELL",
+		"SSH_AUTH_SOCK",
+		"USER",
+	)
 	if invocation.UsePTY {
 		processenv.PreserveHost(env, "TERM")
 		if env["TERM"] == "" {

@@ -40,16 +40,16 @@ await Promise.all(archiveChecks);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
 
-// Guards the single source of truth against partial edits: the tag must match
-// the version and every asset filename must embed that version. This is what
-// catches "bumped tag/version but forgot an asset name" before release.
+// Guards the single source of truth against partial edits. Most adapters put
+// their version in each asset name; stable_asset_names marks upstreams that do
+// not.
 function assertConsistent(name, adapter) {
   const { tag, version } = adapter;
   if (tag !== version && tag !== `v${version}`) {
     throw new Error(`${name}: tag "${tag}" does not match version "${version}"`);
   }
   for (const [platform, wanted] of Object.entries(adapter.assets)) {
-    if (!wanted.name.includes(version)) {
+    if (!adapter.stable_asset_names && !wanted.name.includes(version)) {
       throw new Error(`${name} ${platform}: asset "${wanted.name}" does not embed version "${version}"`);
     }
   }
@@ -71,6 +71,18 @@ function digestSHA256(asset) {
 }
 
 async function assertArchiveContains(url, paths, label) {
+  if (new URL(url).pathname.endsWith(".zip")) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`${label}: cannot inspect published archive: ${response.status} ${response.statusText}`);
+    }
+    const entries = zipEntries(Buffer.from(await response.arrayBuffer()), label);
+    const missing = paths.filter((path) => !entries.has(path));
+    if (missing.length > 0) {
+      throw new Error(`${label}: published archive is missing required file: ${missing.join(", ")}`);
+    }
+    return;
+  }
   const response = await fetch(url);
   if (!response.ok || !response.body) {
     throw new Error(`${label}: cannot inspect published archive: ${response.status} ${response.statusText}`);
@@ -121,6 +133,46 @@ async function assertArchiveContains(url, paths, label) {
     }
     return true;
   }
+}
+
+function zipEntries(body, label) {
+  let eocd = -1;
+  for (let i = body.length - 22; i >= Math.max(0, body.length - 65557); i--) {
+    if (body.readUInt32LE(i) === 0x06054b50 && i + 22 + body.readUInt16LE(i + 20) === body.length) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) {
+    throw new Error(`${label}: ZIP end-of-central-directory record not found`);
+  }
+  const entries = body.readUInt16LE(eocd + 10);
+  const directorySize = body.readUInt32LE(eocd + 12);
+  const directoryOffset = body.readUInt32LE(eocd + 16);
+  if (entries === 0xffff || directorySize === 0xffffffff || directoryOffset === 0xffffffff) {
+    throw new Error(`${label}: ZIP64 archives are not supported by manifest validation`);
+  }
+  if (directoryOffset + directorySize > body.length) {
+    throw new Error(`${label}: malformed ZIP central directory`);
+  }
+  const directory = body.subarray(directoryOffset, directoryOffset + directorySize);
+  const names = new Set();
+  let offset = 0;
+  for (let i = 0; i < entries; i++) {
+    if (offset + 46 > directory.length || directory.readUInt32LE(offset) !== 0x02014b50) {
+      throw new Error(`${label}: malformed ZIP central directory`);
+    }
+    const nameLength = directory.readUInt16LE(offset + 28);
+    const extraLength = directory.readUInt16LE(offset + 30);
+    const commentLength = directory.readUInt16LE(offset + 32);
+    const next = offset + 46 + nameLength + extraLength + commentLength;
+    if (next > directory.length) {
+      throw new Error(`${label}: malformed ZIP central directory entry`);
+    }
+    names.add(directory.subarray(offset + 46, offset + 46 + nameLength).toString("utf8"));
+    offset = next;
+  }
+  return names;
 }
 
 function tarString(header, start, length) {

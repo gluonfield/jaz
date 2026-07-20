@@ -2,6 +2,7 @@ package acpadapter
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -75,6 +76,41 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	status := manager.Status("claude")
 	if status.State != StateReady || status.Version != "1.2.3" || status.Platform != platform {
 		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestResolveAdapterExtractsZipArchive(t *testing.T) {
+	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Skip(err)
+	}
+	binary := "kimi"
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
+	body := testZip(t, map[string]string{binary: "ok"})
+	sum := sha256.Sum256(body)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/manifest.json":
+			_, _ = fmt.Fprintf(w, `{"adapters":{"kimi":{"version":"0.28.0","assets":{"%s":{"url":"%s","sha256":"%x","binary":"%s"}}}}}`, platform, serverURL(r, "/kimi.zip"), sum, binary)
+		case "/kimi.zip":
+			_, _ = w.Write(body)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	launch, err := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client()).ResolveAdapter(context.Background(), "kimi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(launch.Command); err != nil || string(got) != "ok" {
+		t.Fatalf("installed Kimi binary = %q, %v", got, err)
+	}
+	if info, err := os.Stat(launch.Command); err != nil || info.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("installed Kimi mode = %v, %v", info, err)
 	}
 }
 
@@ -271,6 +307,15 @@ func TestResolveAdapterRejectsUnsafeArchivePath(t *testing.T) {
 	}
 }
 
+func TestExtractZipRejectsUnsafeArchivePath(t *testing.T) {
+	for _, name := range []string{"../kimi", `..\kimi`, "C:/kimi"} {
+		err := extractArchive(testZip(t, map[string]string{name: "bad"}), t.TempDir())
+		if err == nil || !strings.Contains(err.Error(), "unsafe path") {
+			t.Fatalf("unsafe ZIP path %q error = %v", name, err)
+		}
+	}
+}
+
 func TestStatusReportsMissingBeforeManifestDownload(t *testing.T) {
 	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
@@ -411,6 +456,25 @@ func testTarballMode(t *testing.T, files map[string]string, mode int64) []byte {
 		t.Fatal(err)
 	}
 	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func testZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range files {
+		file, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()

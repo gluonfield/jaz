@@ -73,6 +73,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			continue
 		}
+		logFakeACPRequest(t, msg)
 		switch msg.Method {
 		case "initialize":
 			if os.Getenv("JAZ_FAKE_ACP_EXPECT_TERMINAL_AUTH") == "1" {
@@ -401,6 +402,28 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.MethodNotFound(msg.Method))
 			_ = conn.Send(context.Background(), resp)
 		}
+	}
+}
+
+func logFakeACPRequest(t *testing.T, msg *jsonrpc.Message) {
+	path := os.Getenv("JAZ_FAKE_ACP_REQUEST_LOG")
+	if path == "" {
+		return
+	}
+	entry, err := json.Marshal(struct {
+		Method string          `json:"method"`
+		Params json.RawMessage `json:"params"`
+	}{Method: msg.Method, Params: msg.Params})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if _, err := fmt.Fprintln(file, string(entry)); err != nil {
+		t.Fatal(err)
 	}
 }
 

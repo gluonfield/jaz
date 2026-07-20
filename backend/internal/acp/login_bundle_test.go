@@ -53,6 +53,22 @@ func TestAgentLoginInvocationForUsesBundledClaude(t *testing.T) {
 	}
 }
 
+func TestAgentLoginInvocationForUsesBundledKimi(t *testing.T) {
+	bundle := t.TempDir()
+	want := writeExecutable(t, bundle, "kimi")
+	root := t.TempDir()
+	inv := AgentLoginInvocationFor(AgentKimi, root, AgentAuthConfig{}, bundle)
+	if !inv.Available || inv.Executable != want {
+		t.Fatalf("Kimi login invocation = %#v", inv)
+	}
+	if len(inv.Args) != 1 || inv.Args[0] != "login" {
+		t.Fatalf("Kimi login args = %#v, want login", inv.Args)
+	}
+	if got, want := inv.Env["KIMI_CODE_HOME"], filepath.Join(root, "acp", "kimi"); got != want {
+		t.Fatalf("KIMI_CODE_HOME = %q, want %q", got, want)
+	}
+}
+
 func TestAgentLoginInvocationForCodexBundleWithoutLoginCLI(t *testing.T) {
 	// The codex adapter bundles codex-acp but not the codex login CLI. With an
 	// empty-of-codex bundle and codex absent from PATH, login must be reported

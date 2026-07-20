@@ -16,6 +16,7 @@ const (
 	AgentJaz         = "jaz"
 	AgentCodex       = "codex"
 	AgentClaude      = "claude"
+	AgentKimi        = "kimi"
 	AgentGrok        = "grok"
 	AgentOpenCode    = "opencode"
 	AgentAntigravity = "antigravity"
@@ -84,6 +85,8 @@ func promptWithModules(base string, modules promptmodule.Modules) string {
 //   - grok reads _meta.rules and ignores _meta.systemPrompt.
 //   - codex-acp (Jaz fork) appends a _meta.systemPrompt string as developer
 //     instructions; upstream codex-acp ignores _meta entirely.
+//   - kimi (Jaz fork) appends a _meta.systemPrompt string to its native system
+//     prompt without persisting it in conversation history.
 //
 // Unknown agents get the codex-style bare string.
 func systemPromptMeta(agent, prompt string) map[string]any {
@@ -282,6 +285,7 @@ func SelectableAgentCatalog(catalog AgentCatalog) AgentCatalog {
 var builtinAgentOrder = []string{
 	AgentCodex,
 	AgentClaude,
+	AgentKimi,
 	AgentGrok,
 	AgentOpenCode,
 	AgentAntigravity,
@@ -294,6 +298,10 @@ func BuiltinAgents() AgentCatalog {
 			ManagedAdapter:  "claude",
 			Model:           "default",
 			ReasoningEffort: DefaultAgentReasoningEffort(AgentClaude),
+		},
+		AgentKimi: {
+			ManagedAdapter:     "kimi",
+			ManagedAdapterArgs: []string{"acp"},
 		},
 		AgentGrok: {
 			Command: "grok",

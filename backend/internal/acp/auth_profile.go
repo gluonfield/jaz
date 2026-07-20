@@ -70,7 +70,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		mode = AuthModeAuto
 		path = ""
 	}
-	if mode == AuthModeAuto || name == AgentClaude && mode == AuthModeJazProfile {
+	if mode == AuthModeAuto || (name == AgentClaude || name == AgentKimi) && mode == AuthModeJazProfile {
 		path = ""
 	}
 	if name == AgentGrok {
@@ -89,7 +89,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 
 func DisconnectedAuthConfig(name string, current AgentAuthConfig) AgentAuthConfig {
 	switch CanonicalAgentName(name) {
-	case AgentCodex, AgentClaude, AgentOpenCode:
+	case AgentCodex, AgentClaude, AgentKimi, AgentOpenCode:
 		return AgentAuthConfig{Mode: AuthModeJazProfile}
 	case AgentAntigravity:
 		return AgentAuthConfig{Mode: AuthModeAuto}
@@ -110,7 +110,7 @@ func LoginAuthConfig(name string, requested AgentAuthConfig) (AgentAuthConfig, e
 	switch CanonicalAgentName(name) {
 	case AgentAntigravity:
 		return AgentAuthConfig{Mode: AuthModeExistingCLI}, nil
-	case AgentCodex, AgentClaude, AgentOpenCode:
+	case AgentCodex, AgentClaude, AgentKimi, AgentOpenCode:
 		if auth.Mode == AuthModeJazProfile {
 			return auth, nil
 		}
@@ -135,6 +135,8 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 		return resolveCodexAuth(auth, cfg, root, env, providers)
 	case AgentClaude:
 		return resolveClaudeAuth(auth, cfg, root, env)
+	case AgentKimi:
+		return resolveKimiAuth(auth, cfg, root, env)
 	case AgentGrok:
 		return resolveGrokAuth(auth, cfg, root, env)
 	case AgentOpenCode:

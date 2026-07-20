@@ -13,10 +13,11 @@ import (
 
 type adapterAssetSpec struct {
 	Adapters map[string]struct {
-		Repo    string `json:"repo"`
-		Tag     string `json:"tag"`
-		Version string `json:"version"`
-		Assets  map[string]struct {
+		Repo             string `json:"repo"`
+		Tag              string `json:"tag"`
+		Version          string `json:"version"`
+		StableAssetNames bool   `json:"stable_asset_names"`
+		Assets           map[string]struct {
 			Name   string            `json:"name"`
 			Binary string            `json:"binary"`
 			Env    map[string]string `json:"env"`
@@ -54,7 +55,7 @@ func TestAdapterAssetSpecIsInternallyConsistent(t *testing.T) {
 			t.Errorf("adapter %q: tag %q does not match version %q", name, entry.Tag, entry.Version)
 		}
 		for platform, asset := range entry.Assets {
-			if !strings.Contains(asset.Name, entry.Version) {
+			if !entry.StableAssetNames && !strings.Contains(asset.Name, entry.Version) {
 				t.Errorf("adapter %q %s: asset %q does not embed version %q", name, platform, asset.Name, entry.Version)
 			}
 			if strings.TrimSpace(asset.Binary) == "" {
