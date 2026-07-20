@@ -12,7 +12,8 @@ import {
 import { Bubble } from './Bubble'
 import { LiveEvent } from './LiveEvent'
 import type { SessionErrorAction } from './SessionErrorNotice'
-import { ToolDisclosure, toolRunLabel } from './ToolDisclosure'
+import { ToolDisclosure } from './ToolDisclosure'
+import { toolRunLabel } from './toolPresentation'
 
 const INITIAL_VISIBLE_TURNS = 14
 const VISIBLE_TURN_BATCH = 24
@@ -50,7 +51,7 @@ function WorkSection({
   const effectiveOpen = open || findActive
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       <button
         type="button"
         aria-expanded={effectiveOpen}
@@ -65,7 +66,7 @@ function WorkSection({
         Worked for {formatDuration(durationMs)}
       </button>
       {effectiveOpen ? (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-2">
           {items.map((item) => render(item))}
         </div>
       ) : null}
@@ -203,6 +204,8 @@ export const Transcript = memo(function Transcript({
             key={`message-${item.message.seq}`}
             data-message-seq={item.message.seq}
             className={`scroll-mt-24 rounded-card transition-[outline-color,box-shadow] duration-200 ${
+              groupTurns ? '' : 'my-1.5'
+            } ${
               highlightedSeq === item.message.seq
                 ? 'outline-2 outline-offset-4 outline-primary/50 shadow-[0_0_0_8px_color-mix(in_oklab,var(--color-primary)_10%,transparent)]'
                 : 'outline-2 outline-offset-4 outline-transparent'
@@ -255,7 +258,7 @@ export const Transcript = memo(function Transcript({
 
   if (!groupTurns) {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
         <EarlierHistoryButton
           hiddenCount={hiddenHistoryCount}
           unit="history items"
@@ -271,7 +274,7 @@ export const Transcript = memo(function Transcript({
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       <EarlierHistoryButton
         hiddenCount={hiddenHistoryCount}
         unit="turns"
@@ -318,7 +321,7 @@ export const Transcript = memo(function Transcript({
         }
         resultCards.forEach((item) => sections.push(renderItem(item)))
         return (
-          <div key={`turn-${turnIndex}`} className="flex flex-col gap-5">
+          <div key={`turn-${turnIndex}`} className="flex flex-col gap-4">
             {sections}
           </div>
         )

@@ -1,45 +1,16 @@
 import { ChevronRight, LoaderCircle } from 'lucide-react'
 import { memo, useState, type ReactNode } from 'react'
-import { toolCallCategory } from '@/components/session/toolCallCategory'
 import { Collapse } from '@/components/ui/Collapse'
 import type { ACPToolCall } from '@/lib/api/types'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
-import { hasToolCallDetail, ToolCallDetail } from './ToolCallContent'
+import { ToolCallDetail } from './ToolCallContent'
+import { hasToolCallDetail, toolRunLabel } from './toolPresentation'
 import { normalized } from './TranscriptUtils'
 
 function isRunningToolStatus(status?: string): boolean {
   return ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(status))
-}
-
-// One codex-style phrase for a run of tool calls: "Explored 2 files, ran 1 command".
-export function toolRunLabel(calls: ACPToolCall[]): string {
-  const phrases: Record<string, (n: number) => string> = {
-    web_search: (n) => (n === 1 ? 'searched the web' : `searched the web ${n}×`),
-    web_fetch: (n) => `visited ${n} page${n === 1 ? '' : 's'}`,
-    edit: (n) => `edited ${n} file${n === 1 ? '' : 's'}`,
-    read: (n) => `explored ${n} file${n === 1 ? '' : 's'}`,
-    search: (n) => `searched ${n} time${n === 1 ? '' : 's'}`,
-    image: (n) => `viewed ${n} image${n === 1 ? '' : 's'}`,
-    command: (n) => `ran ${n} command${n === 1 ? '' : 's'}`,
-    tool: (n) => `used ${n} tool${n === 1 ? '' : 's'}`,
-  }
-  const order = ['web_search', 'web_fetch', 'read', 'search', 'command', 'edit', 'image', 'tool']
-  const counts = new Map<string, number>()
-  let failed = 0
-  for (const call of calls) {
-    const key = toolCallCategory(call)
-    counts.set(key, (counts.get(key) ?? 0) + 1)
-    if (normalized(call.status) === 'failed') failed += 1
-  }
-  const parts = order.flatMap((key) => {
-    const count = counts.get(key)
-    return count ? [phrases[key](count)] : []
-  })
-  let label = parts.join(', ')
-  label = label.slice(0, 1).toUpperCase() + label.slice(1)
-  return failed ? `${label}, ${failed} failed` : label
 }
 
 const ToolRunDisclosure = memo(function ToolRunDisclosure({
@@ -66,7 +37,7 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
         onClick={() => {
           if (expandable) setOpen((value) => !value)
         }}
-        className="-ml-2 inline-flex min-h-10 max-w-full items-center gap-1.5 rounded-control px-2 text-left text-[13px] text-ink-3 transition-[background-color,color,transform] duration-150 motion-reduce:transition-none enabled:hover:bg-surface/65 enabled:hover:text-ink-2 enabled:active:scale-[0.96] disabled:cursor-default"
+        className="-ml-1.5 inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-control px-1.5 text-left text-[13px] text-ink-3 transition-colors duration-150 motion-reduce:transition-none enabled:hover:text-ink-2 disabled:cursor-default"
       >
         <span className="min-w-0 truncate">{label}</span>
         {running ? (
@@ -79,7 +50,7 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
         />
       </button>
       <Collapse open={open && expandable} className="w-full">
-        <div className="relative w-full py-1 before:absolute before:bottom-6 before:left-[11px] before:top-6 before:w-px before:bg-border/75">
+        <div className="relative w-full py-0.5 before:absolute before:bottom-4 before:left-[9px] before:top-4 before:w-px before:bg-border/75">
           {detailCalls.map((call) => (
             <ToolCallDetail key={call.id} call={call} />
           ))}
@@ -100,7 +71,7 @@ export function ToolStatusLine({
 }) {
   const running = active && isRunningToolStatus(status)
   return (
-    <div className="inline-flex min-h-7 max-w-full items-center gap-1.5 self-start rounded-full px-1 font-mono text-[12px] text-ink-3">
+    <div className="inline-flex min-h-7 max-w-full items-center gap-1.5 self-start rounded-full px-1 text-[12px] text-ink-3">
       <ChevronRight size={12} className="shrink-0 opacity-30" aria-hidden />
       <span className="min-w-0 truncate">{label}</span>
       {status && !running ? <span className="shrink-0">· {status}</span> : null}
@@ -156,7 +127,7 @@ export const ToolDisclosure = memo(function ToolDisclosure({
   flushRun()
 
   return (
-    <div className="flex w-full flex-col items-start gap-2">
+    <div className="flex w-full flex-col items-start gap-1">
       {rows}
     </div>
   )

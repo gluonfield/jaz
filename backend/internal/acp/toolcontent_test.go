@@ -117,6 +117,48 @@ func TestToolUpdateNormalizesCodexWebToolNames(t *testing.T) {
 	}
 }
 
+func TestToolUpdateNormalizesProviderToolPresentation(t *testing.T) {
+	call := toolUpdateSnapshot(toolUpdateFields{
+		ID:       "search-1",
+		Title:    "X Search",
+		RawInput: json.RawMessage(`{"variant":"XSearch"}`),
+		RawOutput: json.RawMessage(`{
+			"action": {
+				"query": "typed tool presentation",
+				"url": "https://primary.example/result",
+				"sources": [
+					{"url":"https://one.example/result","title":"One"},
+					{"url":"https://two.example/result","title":"Two"},
+					{"url":"https://three.example/result","title":"Three"},
+					{"url":"https://four.example/result","title":"Four"},
+					{"url":"https://one.example/result","title":"Duplicate"}
+				]
+			}
+		}`),
+	})
+	if call.ToolName != "WebSearch" || call.Title != "typed tool presentation" {
+		t.Fatalf("normalized identity = %q %q", call.ToolName, call.Title)
+	}
+	if len(call.Content) != 5 {
+		t.Fatalf("normalized result count = %d, want 5", len(call.Content))
+	}
+	if call.Content[1].Type != "link" || call.Content[1].URI != "https://one.example/result" || call.Content[1].Title != "One" {
+		t.Fatalf("normalized result = %+v", call.Content[1])
+	}
+
+	for variant, want := range map[string]string{
+		"Bash":     "Bash",
+		"ListDir":  "LS",
+		"ReadFile": "Read",
+		"WebFetch": "WebFetch",
+	} {
+		got := toolUpdateSnapshot(toolUpdateFields{RawInput: json.RawMessage(`{"variant":"` + variant + `"}`)})
+		if got.ToolName != want {
+			t.Errorf("variant %q normalized to %q, want %q", variant, got.ToolName, want)
+		}
+	}
+}
+
 func TestToolUpdateCapturesRuntimeMetadata(t *testing.T) {
 	now := time.Now().UTC()
 	status := acpschema.ToolCallStatusInProgress
