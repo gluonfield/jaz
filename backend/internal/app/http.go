@@ -6,6 +6,7 @@ import (
 	feedcore "github.com/wins/jaz/backend/internal/feed"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
+	"github.com/wins/jaz/backend/internal/sessionoverview"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/transcript"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
@@ -21,7 +22,12 @@ func HTTPModule() fx.Option {
 			transcript.NewService,
 			fx.From(new(*sqlitestore.Store), new(*acp.Manager)),
 		),
+		fx.Annotate(
+			sessionoverview.NewService,
+			fx.From(new(*sqlitestore.Store), new(*acp.Manager)),
+		),
 		sessionsapi.NewMessagesHandler,
+		sessionsapi.NewOverviewHandler,
 		NewRoutes,
 		NewPublicRoutes,
 	)

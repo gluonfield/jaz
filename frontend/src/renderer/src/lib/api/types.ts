@@ -720,6 +720,33 @@ export interface ProviderSubagentEvent {
   completed_at_ms?: number
 }
 
+export interface SessionOverviewSubagent extends Pick<
+  ProviderSubagentEvent,
+  'provider' | 'id' | 'name' | 'task' | 'role' | 'status' | 'summary' | 'prompt' | 'model' | 'reasoning_effort'
+> {
+  key: string
+  seq: number
+  updated_at: string
+}
+
+export interface SessionOverviewThread {
+  id: string
+  slug: string
+  title?: string
+  acp_agent: string
+  model?: string
+  reasoning_effort?: string
+  state: string
+  archived?: boolean
+  last_event_at?: string
+  updated_at: string
+}
+
+export interface SessionOverview {
+  threads: SessionOverviewThread[]
+  subagents: SessionOverviewSubagent[]
+}
+
 export interface ACPEvent {
   id: string
   slug: string

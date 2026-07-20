@@ -323,6 +323,69 @@ func (q *Queries) ListErrorThreadIDsWithoutError(ctx context.Context, status str
 	return items, nil
 }
 
+const listOverviewChildren = `-- name: ListOverviewChildren :many
+SELECT
+  id,
+  slug,
+  title,
+  status,
+  acp_agent,
+  model,
+  reasoning_effort,
+  archived,
+  updated_at_ms
+FROM threads
+WHERE parent_id = ?1
+  AND runtime = 'acp'
+  AND COALESCE(source_type, '') = ''
+ORDER BY last_attention_at_ms DESC, id
+`
+
+type ListOverviewChildrenRow struct {
+	ID              string         `json:"id"`
+	Slug            string         `json:"slug"`
+	Title           sql.NullString `json:"title"`
+	Status          string         `json:"status"`
+	AcpAgent        sql.NullString `json:"acp_agent"`
+	Model           sql.NullString `json:"model"`
+	ReasoningEffort sql.NullString `json:"reasoning_effort"`
+	Archived        int64          `json:"archived"`
+	UpdatedAtMs     int64          `json:"updated_at_ms"`
+}
+
+func (q *Queries) ListOverviewChildren(ctx context.Context, parentID sql.NullString) ([]ListOverviewChildrenRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOverviewChildren, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOverviewChildrenRow{}
+	for rows.Next() {
+		var i ListOverviewChildrenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Title,
+			&i.Status,
+			&i.AcpAgent,
+			&i.Model,
+			&i.ReasoningEffort,
+			&i.Archived,
+			&i.UpdatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSessionSubtree = `-- name: ListSessionSubtree :many
 WITH RECURSIVE subtree(id) AS (
   SELECT threads.id FROM threads WHERE threads.id = ?1

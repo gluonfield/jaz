@@ -1,6 +1,11 @@
 import type { ACPEvent, ACPJobSnapshot, SessionEvent } from '@/lib/api/types'
 import { isParentChildACPEvent } from '@/lib/sessionEvents'
 
+type SpawnedThreadSource = Pick<
+  ACPJobSnapshot,
+  'id' | 'slug' | 'title' | 'acp_agent' | 'state' | 'model' | 'reasoning_effort' | 'last_event_at' | 'updated_at'
+> & { archived?: boolean }
+
 export interface SpawnedThreadView {
   key: string
   id: string
@@ -10,11 +15,12 @@ export interface SpawnedThreadView {
   state: string
   model?: string
   reasoning_effort?: string
+  archived?: boolean
   updated_at: string
 }
 
 export function spawnedThreadsFromSources(
-  children: ACPJobSnapshot[] | undefined,
+  children: SpawnedThreadSource[] | undefined,
   events: SessionEvent[],
 ): SpawnedThreadView[] {
   const byID = new Map<string, SpawnedThreadView>()
@@ -35,7 +41,7 @@ export function spawnedThreadsFromSources(
   })
 }
 
-function threadViewFromSnapshot(child: ACPJobSnapshot): SpawnedThreadView {
+function threadViewFromSnapshot(child: SpawnedThreadSource): SpawnedThreadView {
   return {
     key: child.id,
     id: child.id,
@@ -45,6 +51,7 @@ function threadViewFromSnapshot(child: ACPJobSnapshot): SpawnedThreadView {
     state: child.state,
     model: child.model,
     reasoning_effort: child.reasoning_effort,
+    archived: child.archived,
     updated_at: child.last_event_at || child.updated_at,
   }
 }
@@ -75,6 +82,7 @@ function mergeSpawnedThread(prev: SpawnedThreadView, next: SpawnedThreadView): S
     state: base.state || fallback.state,
     model: base.model || fallback.model,
     reasoning_effort: base.reasoning_effort || fallback.reasoning_effort,
+    archived: base.archived || fallback.archived,
     updated_at: laterTime(prev.updated_at, next.updated_at),
   }
 }

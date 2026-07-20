@@ -40,10 +40,11 @@ import {
   answerSessionInteractiveResponse,
   cancelSession,
   sendSessionSideChat,
+  sessionOverviewQuery,
   sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
-import type { Session, SessionEvent } from '@/lib/api/types'
+import type { Session, SessionEvent, SessionOverview } from '@/lib/api/types'
 import { drawerSlide } from '@/lib/dom/drawer'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
@@ -156,6 +157,7 @@ function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick:
 
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
+const EMPTY_OVERVIEW: SessionOverview = { threads: [], subagents: [] }
 
 function SessionPage({ sessionId, search }: { sessionId: string; search: SessionSearch }) {
   const queryClient = useQueryClient()
@@ -164,6 +166,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     toast(`Couldn't load earlier history: ${message}`, 'danger')
   }, [toast])
   const detail = useSessionHistory(sessionId, reportHistoryError)
+  const overview = useQuery(sessionOverviewQuery(sessionId))
   usePrefetchQuery(sessionRepoQuery(sessionId))
   const events = useQuery<SessionEvent[]>({
     queryKey: keys.sessionEvents(sessionId),
@@ -373,9 +376,10 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   }, [detail.data, detail.isSuccess, loadEarlierHistory, loadingEarlierHistory, scrollRef, search.message])
 
   const data = detail.data
+  const overviewData = overview.data ?? (overview.isError ? undefined : EMPTY_OVERVIEW)
   const derived = useMemo(
-    () => (data ? deriveSessionView(data, events.data) : undefined),
-    [data, events.data],
+    () => (data ? deriveSessionView(data, events.data, overviewData) : undefined),
+    [data, events.data, overviewData],
   )
   if (detail.isPending) {
     return (

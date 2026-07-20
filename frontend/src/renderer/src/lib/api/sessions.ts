@@ -18,6 +18,7 @@ import {
   type Session,
   type SessionEvent,
   type SessionMessages,
+  type SessionOverview,
 } from './types'
 
 export interface CreateSessionInput {
@@ -538,6 +539,12 @@ export const sessionMessagesQuery = (id: string) =>
   queryOptions({
     queryKey: keys.sessionMessages(id),
     queryFn: ({ signal }) => getSessionMessagesPage(id, {}, signal),
+  })
+
+export const sessionOverviewQuery = (id: string) =>
+  queryOptions({
+    queryKey: keys.sessionOverview(id),
+    queryFn: ({ signal }) => get<SessionOverview>(`/v1/sessions/${id}/overview`, { signal }),
   })
 
 export const healthQuery = queryOptions({
