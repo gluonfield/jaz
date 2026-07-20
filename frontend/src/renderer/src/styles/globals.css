@@ -510,6 +510,80 @@
   }
 }
 
+/* Session liveness "working" indicator: a comet of square pixels chases
+ * clockwise around a 14px grid while two inner pixels blink off-beat and the
+ * core breathes. Base opacity keeps the frame visible so motion reads as a
+ * bright head with a fading tail. */
+.live-pixels {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.live-pixel {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: currentColor;
+  opacity: 0.25;
+  animation: live-pixel-chase 1.6s linear infinite;
+}
+
+.live-pixel-inner {
+  animation: live-pixel-blink 3.2s ease-in-out infinite;
+}
+
+.live-pixel-core {
+  animation: live-pixel-core 2.4s ease-in-out infinite;
+}
+
+@keyframes live-pixel-chase {
+  0% {
+    opacity: 1;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes live-pixel-blink {
+  0%,
+  100% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes live-pixel-core {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-pixel {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
+:root.jaz-no-effects .live-pixel {
+  animation: none;
+  opacity: 0.55;
+}
+
 /* Ultra effort slider: the track ring breathes while the dither field burns. */
 .effort-ultra-track {
   animation: effort-ultra-pulse 2.4s ease-in-out infinite;

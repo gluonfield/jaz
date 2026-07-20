@@ -1,6 +1,7 @@
-import { CircleAlert, LoaderCircle } from 'lucide-react'
+import { CircleAlert } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
+import { LivePixels } from '@/components/ui/LivePixels'
 import { agentLabel } from '@/lib/agentLabel'
 import {
   deriveSessionRunSignal,
@@ -18,8 +19,8 @@ function formatDuration(ms: number | undefined): string {
 
 function detailFor(signal: RunSignal, ageMs: number | undefined): string {
   const age = formatDuration(ageMs)
-  if (signal === 'live') return age ? `live - ${age} ago` : 'live'
-  if (signal === 'quiet') return age ? `quiet for ${age}` : 'quiet'
+  if (signal === 'live') return age ? `- live ${age} ago` : '- live'
+  if (signal === 'quiet') return age ? `- quiet for ${age}` : '- quiet'
   if (signal === 'stale') return age ? `no updates for ${age}` : 'no recent updates'
   return ''
 }
@@ -71,7 +72,7 @@ export function SessionLivenessIndicator({
           {stale ? (
             <CircleAlert className="size-3.5 shrink-0" aria-hidden />
           ) : (
-            <LoaderCircle className="size-3.5 shrink-0 animate-spin text-running" aria-hidden />
+            <LivePixels className="text-running" />
           )}
           <span className="min-w-0 truncate">{label}</span>
           {detail ? (
@@ -87,5 +88,5 @@ function livenessLabel(agent: string | undefined, activeOperation: string | unde
   if (activeOperation === 'compact') {
     return stale ? 'Compaction is still marked running' : 'Compacting'
   }
-  return stale ? `${agentLabel(agent)} is still marked running` : `${agentLabel(agent)} is working`
+  return stale ? `${agentLabel(agent)} is still marked running` : 'Working'
 }
