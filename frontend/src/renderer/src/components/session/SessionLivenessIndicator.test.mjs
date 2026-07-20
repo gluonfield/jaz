@@ -39,5 +39,5 @@ test('stale sessions keep the agent name and alert treatment', () => {
   const html = renderIndicator({ updatedAt: stale })
   expect(html).toContain('Codex is still marked running')
   expect(html).toContain('no updates for 10m')
-  expect(html).not.toContain('live-pixel')
+  expect(html).not.toContain('live-glyph')
 })
