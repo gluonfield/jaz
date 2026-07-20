@@ -19,6 +19,7 @@ type Layout struct {
 	ACPCodexHome      string
 	ACPClaudeConfig   string
 	ACPKimiHome       string
+	ACPQwenHome       string
 	ACPOpenCodeConfig string
 }
 
@@ -36,6 +37,7 @@ func New(root string) Layout {
 		ACPCodexHome:      filepath.Join(root, "acp", "codex-home"),
 		ACPClaudeConfig:   filepath.Join(root, "acp", "claude"),
 		ACPKimiHome:       filepath.Join(root, "acp", "kimi"),
+		ACPQwenHome:       filepath.Join(root, "acp", "qwen"),
 		ACPOpenCodeConfig: filepath.Join(root, "acp", "opencode"),
 	}
 }
@@ -61,6 +63,7 @@ func Ensure(root string) (Layout, error) {
 		layout.ACPCodexHome,
 		layout.ACPClaudeConfig,
 		layout.ACPKimiHome,
+		layout.ACPQwenHome,
 		layout.ACPOpenCodeConfig,
 		layout.Connections,
 		layout.Ingest,

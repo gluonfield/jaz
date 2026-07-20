@@ -14,7 +14,7 @@ type Tool struct {
 }
 
 type input struct {
-	ACPAgent        string `json:"acp_agent,omitempty" jsonschema_description:"Configured ACP agent name, for example codex, claude, kimi, grok, opencode, or antigravity. Empty uses the default selectable agent."`
+	ACPAgent        string `json:"acp_agent,omitempty" jsonschema_description:"Configured ACP agent name, for example codex, claude, kimi, qwen, grok, opencode, or antigravity. Empty uses the default selectable agent."`
 	AgentName       string `json:"agent_name,omitempty" jsonschema_description:"Alias for acp_agent. Use this when the caller expects an agent_name field."`
 	Slug            string `json:"slug,omitempty" jsonschema_description:"Stable human-readable handle for the external session."`
 	Title           string `json:"title,omitempty" jsonschema_description:"Optional display title for the external session."`
@@ -29,7 +29,7 @@ type input struct {
 func (t *Tool) Definition() tools.Definition {
 	return tools.Function(
 		acp.ToolJazAgentSpawn,
-		"Create an idle Jaz agent session using codex, claude, kimi, grok, opencode, or antigravity. This is separate from native child-agent collaboration. Use acp_agent or agent_name to choose the agent; empty uses the default selectable agent. Send tasks with jazagent_send. Omit model unless the user asks for a specific model; use jazagent_options({}) to inspect available agents and useful model choices. Invalid models fail without creating a session. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
+		"Create an idle Jaz agent session using codex, claude, kimi, qwen, grok, opencode, or antigravity. This is separate from native child-agent collaboration. Use acp_agent or agent_name to choose the agent; empty uses the default selectable agent. Send tasks with jazagent_send. Omit model unless the user asks for a specific model; use jazagent_options({}) to inspect available agents and useful model choices. Invalid models fail without creating a session. Pass directory to work inside an existing project; pass worktree=true to isolate repo changes on a session branch. With worktree=true, branch optionally chooses the base branch/ref; omit it to branch from directory's current HEAD.",
 		true,
 		helpers.GenerateSchema[input](),
 	)

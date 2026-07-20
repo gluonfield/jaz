@@ -177,6 +177,7 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 	}{
 		{AgentClaude, map[string]any{"systemPrompt": map[string]any{"append": "jaz prompt"}}},
 		{AgentKimi, map[string]any{"systemPrompt": "jaz prompt"}},
+		{AgentQwen, nil},
 		{AgentGrok, map[string]any{"rules": "jaz prompt"}},
 		{"grok-build", map[string]any{"rules": "jaz prompt"}},
 		{AgentCodex, map[string]any{"systemPrompt": "jaz prompt"}},

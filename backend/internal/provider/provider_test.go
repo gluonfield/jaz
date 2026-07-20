@@ -56,3 +56,21 @@ func TestApplyModelProviderConfigAllowsExplicitKeyForNoKeyBuiltin(t *testing.T) 
 		t.Fatalf("ollama explicit key metadata = requires %v env %q", got.RequiresAPIKey, got.APIKeyEnv)
 	}
 }
+
+func TestQwenProviderCompatibilityMatchesWireSupport(t *testing.T) {
+	modelStudio, ok := ModelProviderByID(ProviderModelStudio)
+	if !ok || !modelStudio.SupportsCapability(CapabilityOpenCode) || !modelStudio.SupportsCapability(CapabilityCodex) {
+		t.Fatalf("ModelStudio capabilities = %#v", modelStudio)
+	}
+	codingPlan, ok := ModelProviderByID(ProviderQwenCodingPlan)
+	if !ok || !codingPlan.SupportsCapability(CapabilityOpenCode) || codingPlan.SupportsCapability(CapabilityCodex) {
+		t.Fatalf("Coding Plan capabilities = %#v", codingPlan)
+	}
+	custom := ApplyModelProviderConfig(ModelProvider{ID: "custom"}, ModelProviderConfig{
+		Type:    "openai-compatible",
+		BaseURL: "https://qwen.example/v1",
+	})
+	if !custom.SupportsCapability(CapabilityOpenCode) {
+		t.Fatalf("custom OpenAI-compatible provider must support Qwen: %#v", custom)
+	}
+}

@@ -35,3 +35,31 @@ describe('Kimi native auth', () => {
     expect(acpAgentEnableable(settings, 'kimi')).toBe(true)
   })
 })
+
+describe('Qwen provider auth', () => {
+  test('uses the Coding Plan key directly and inherits other provider keys', () => {
+    const settings = {
+      agents: ['qwen'],
+      providers: [
+        { id: 'qwen-coding-plan', label: 'Qwen Coding Plan', requires_api_key: true },
+        { id: 'modelstudio-us', label: 'ModelStudio', requires_api_key: true, configured: true },
+      ],
+      acp: { qwen: { enabled: false, model_provider: 'qwen-coding-plan' } },
+      acp_options: {
+        qwen: {
+          supports_auth: true,
+          provider_mode: 'agent_defaults',
+          auth_provider_id: 'qwen-coding-plan',
+          model_provider_ids: ['qwen-coding-plan', 'modelstudio-us'],
+        },
+      },
+      acp_auth: { qwen: { authenticated: false } },
+    }
+    expect(acpAgentEnableable(settings, 'qwen')).toBe(false)
+    settings.acp_auth.qwen.authenticated = true
+    expect(acpAgentEnableable(settings, 'qwen')).toBe(true)
+    settings.acp_auth.qwen.authenticated = false
+    settings.acp.qwen.model_provider = 'modelstudio-us'
+    expect(acpAgentEnableable(settings, 'qwen')).toBe(true)
+  })
+})

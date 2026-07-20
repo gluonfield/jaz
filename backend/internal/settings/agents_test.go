@@ -19,7 +19,7 @@ func testAgentDefaultsSeed() AgentDefaults {
 
 func TestAgentDefaultsFromCatalogKeepsAuthManagedAgentsDisabled(t *testing.T) {
 	seed := AgentDefaultsFromCatalog(acp.BuiltinAgents())
-	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentGrok, acp.AgentOpenCode, acp.AgentAntigravity} {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentQwen, acp.AgentGrok, acp.AgentOpenCode, acp.AgentAntigravity} {
 		if seed.ACP[agent].Enabled {
 			t.Fatalf("%s seeded enabled without auth: %#v", agent, seed.ACP[agent])
 		}

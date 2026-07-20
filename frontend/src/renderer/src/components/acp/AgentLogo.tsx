@@ -1,9 +1,12 @@
 // Brand marks for the coding agents jaz speaks to. All use currentColor so
 // they read in both themes.
 // Claude = official sunburst, Codex = OpenAI knot, Kimi = adapted official K,
+// Qwen = official knot,
 // Grok = xAI mark, Antigravity = official curved A mark, OpenCode = official square mark.
 // Sourced from the providers' published logos and kept inline so the marks
 // remain crisp at every scale.
+
+import { QwenMark } from './QwenMark'
 
 type Props = { agent: string; className?: string; size?: number }
 
@@ -13,6 +16,7 @@ const SIZES: Record<string, number> = {
   claude: 18,
   codex: 17,
   kimi: 17,
+  qwen: 17,
   grok: 16,
   opencode: 15,
   antigravity: 16,
@@ -59,6 +63,10 @@ export function AgentLogo({ agent, className = '', size }: Props) {
         <path d="M69.5 4C74 4 77 7.5 77 12c0 3.5-3 5-8 5-3.5 0-5-2.5-5-6 0-4 2-6.5 5.5-7Z" />
       </svg>
     )
+  }
+
+  if (slug === 'qwen') {
+    return <QwenMark style={dims} className={cls} />
   }
 
   if (slug === 'grok') {

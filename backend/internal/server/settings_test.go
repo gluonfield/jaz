@@ -206,7 +206,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,qwen,grok,opencode,antigravity" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasModelProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -223,8 +223,16 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("codex model options missing GPT-5.6 family %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
-		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter,ollama" {
+		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter,ollama,modelstudio-us" {
 		t.Fatalf("unexpected codex provider options %#v", got.ACPOptions["codex"])
+	}
+	if got.ACP["qwen"].Enabled ||
+		got.ACP["qwen"].ModelProvider != provider.ProviderQwenCodingPlan ||
+		got.ACP["qwen"].Model != provider.DefaultQwenCodingPlanModel ||
+		got.ACPOptions["qwen"].AuthProviderID != provider.ProviderQwenCodingPlan ||
+		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderModelStudio) ||
+		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderQwenCodingPlanCN) {
+		t.Fatalf("unexpected qwen defaults %#v / %#v", got.ACP["qwen"], got.ACPOptions["qwen"])
 	}
 	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||
 		got.ACPOptions["codex"].ModelProviders[0].Label != "OpenAI OAuth" ||
@@ -252,6 +260,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		!hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "max") ||
 		!hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultra") ||
 		len(got.ACPOptions["kimi"].ReasoningEfforts) != 0 ||
+		len(got.ACPOptions["qwen"].ReasoningEfforts) != 0 ||
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}
@@ -755,7 +764,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,local_helper" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,qwen,grok,opencode,antigravity,local_helper" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if _, ok := got.ACP[acp.AgentJaz]; ok {

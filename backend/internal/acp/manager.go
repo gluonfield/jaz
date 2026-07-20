@@ -251,8 +251,15 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	if err != nil {
 		return nil, err
 	}
+	launchPrompt := ""
+	if CanonicalAgentName(name) == AgentQwen {
+		launchPrompt, err = m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+		if err != nil {
+			return nil, err
+		}
+	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, mcpServerPolicy)
+	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, mcpServerPolicy, launchPrompt)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -316,6 +323,9 @@ func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig
 }
 
 func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+	if CanonicalAgentName(agent) == AgentQwen {
+		return nil, nil
+	}
 	prompt, err := m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { Segmented } from '@/components/ui/Segmented'
-import { authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
+import { agentAPIKeyCopy, authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
 import type { ACPAuthLogin, OnboardingACPAdapterStatus, OnboardingACPProbe } from '@/lib/api/types'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { onboardingEase } from './OnboardingParts'
@@ -130,6 +130,7 @@ function AgentCard({
   const running = loginPending || loginJob?.status === 'running'
   const canKey = Boolean(apiKeyEnv)
   const canLogin = Boolean(probe.auth_command_available)
+  const keyCopy = agentAPIKeyCopy(probe.agent, onboardingAgentLabel(probe.agent), Boolean(probe.api_key_configured))
   const [expanded, setExpanded] = useState(false)
   const [chosen, setChosen] = useState<'login' | 'key'>(apiKeyReady ? 'key' : 'login')
   const method = canKey && !canLogin ? 'key' : !canKey ? 'login' : chosen
@@ -296,14 +297,14 @@ function AgentCard({
                       type="password"
                       value={apiKeyValue}
                       onChange={(event) => onAPIKeyChange(event.target.value)}
-                      placeholder={probe.api_key_configured ? 'Already set up' : 'Paste an API key'}
+                      placeholder={keyCopy.placeholder}
                       autoComplete="off"
                       spellCheck={false}
                       className="font-mono text-[12px]"
                       aria-label={`${onboardingAgentLabel(probe.agent)} API key`}
                     />
                     <p className="text-[12px] text-ink-3">
-                      jaz passes this key straight to {onboardingAgentLabel(probe.agent)}.
+                      {keyCopy.description}
                     </p>
                   </div>
                 )}

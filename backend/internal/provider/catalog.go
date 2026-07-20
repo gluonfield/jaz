@@ -9,13 +9,18 @@ import (
 )
 
 const (
-	ProviderOpenRouter = "openrouter"
-	ProviderOpenAI     = "openai"
-	ProviderOllama     = "ollama"
-	ProviderMock       = "mock"
+	ProviderOpenRouter       = "openrouter"
+	ProviderOpenAI           = "openai"
+	ProviderOllama           = "ollama"
+	ProviderModelStudio      = "modelstudio-us"
+	ProviderQwenCodingPlan   = "qwen-coding-plan"
+	ProviderQwenCodingPlanCN = "qwen-coding-plan-cn"
+	ProviderMock             = "mock"
 
-	DefaultOpenRouterModel = "z-ai/glm-5.2"
-	DefaultOpenAIModel     = "gpt-5.4-mini"
+	DefaultOpenRouterModel     = "z-ai/glm-5.2"
+	DefaultOpenAIModel         = "gpt-5.4-mini"
+	DefaultModelStudioModel    = "qwen3.7-max"
+	DefaultQwenCodingPlanModel = "qwen3-coder-plus"
 
 	OpenAIModelGPT56Sol   = "gpt-5.6-sol"
 	OpenAIModelGPT56Terra = "gpt-5.6-terra"
@@ -84,6 +89,37 @@ func ModelProviders() []ModelProvider {
 			OpenCode:         true,
 			Codex:            true,
 			OpenAICompatible: true,
+		},
+		{
+			ID:               ProviderModelStudio,
+			Label:            "Alibaba ModelStudio (US)",
+			BaseURL:          "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
+			APIKeyEnv:        "DASHSCOPE_API_KEY",
+			DefaultModel:     DefaultModelStudioModel,
+			OpenCode:         true,
+			Codex:            true,
+			OpenAICompatible: true,
+			RequiresAPIKey:   true,
+		},
+		{
+			ID:               ProviderQwenCodingPlan,
+			Label:            "Qwen Coding Plan (International)",
+			BaseURL:          "https://coding-intl.dashscope.aliyuncs.com/v1",
+			APIKeyEnv:        "BAILIAN_CODING_PLAN_API_KEY",
+			DefaultModel:     DefaultQwenCodingPlanModel,
+			OpenCode:         true,
+			OpenAICompatible: true,
+			RequiresAPIKey:   true,
+		},
+		{
+			ID:               ProviderQwenCodingPlanCN,
+			Label:            "Qwen Coding Plan (China)",
+			BaseURL:          "https://coding.dashscope.aliyuncs.com/v1",
+			APIKeyEnv:        "JAZ_QWEN_CODING_PLAN_CN_API_KEY",
+			DefaultModel:     DefaultQwenCodingPlanModel,
+			OpenCode:         true,
+			OpenAICompatible: true,
+			RequiresAPIKey:   true,
 		},
 	}
 }
