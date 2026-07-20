@@ -38,6 +38,9 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	if !ok {
 		return SpawnRequest{}, AgentConfig{}, "", fmt.Errorf("acp agent %q is not configured", req.ACPAgent)
 	}
+	if err := validateAgentLaunch(req.ACPAgent, cfg); err != nil {
+		return SpawnRequest{}, AgentConfig{}, "", err
+	}
 	effort := configuredAgentReasoningEffort(req.ACPAgent, cfg.ReasoningEffort)
 	if req.ReasoningEffort != "" {
 		effort = configuredAgentReasoningEffort(req.ACPAgent, req.ReasoningEffort)
@@ -54,6 +57,9 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 		cfg.ModelProvider = providerID
 	}
 	cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
+	if err := m.validateAgentModelProvider(req.ACPAgent, cfg); err != nil {
+		return SpawnRequest{}, AgentConfig{}, "", err
+	}
 	if strings.EqualFold(strings.TrimSpace(req.ReasoningEffort), "none") && agentPolicyForAgent(req.ACPAgent).effortEncodedInModel(cfg.Model) {
 		cfg.Model = strings.TrimSpace(cfg.Model[:strings.LastIndex(cfg.Model, "/")])
 	}
@@ -65,6 +71,18 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 	}
 	cfg.ReasoningEffort = effort
 	return req, cfg, effort, nil
+}
+
+func (m *Manager) validateAgentModelProvider(agent string, cfg AgentConfig) error {
+	capability := strings.TrimSpace(cfg.ModelProviderCapability)
+	modelProvider := strings.TrimSpace(cfg.ModelProvider)
+	if !cfg.UsesModelProvider() || capability == "" || modelProvider == "" {
+		return nil
+	}
+	if m.agentSupportsModelProvider(agent, cfg, modelProvider) {
+		return nil
+	}
+	return fmt.Errorf("model provider %q does not support %q required by acp agent %q", modelProvider, capability, CanonicalAgentName(agent))
 }
 
 func (m *Manager) defaultSpawnAgent() (string, error) {

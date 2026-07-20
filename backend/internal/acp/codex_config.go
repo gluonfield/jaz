@@ -18,23 +18,14 @@ func codexProvider(modelProvider string, providers map[string]modelprovider.Mode
 		return modelprovider.ModelProvider{}, false
 	}
 	if id == CodexProviderOpenAIAPIKey {
-		meta, _ := modelprovider.ModelProviderByID(modelprovider.ProviderOpenAI)
-		if override, present := providers[modelprovider.ProviderOpenAI]; present {
-			meta = modelprovider.ApplyModelProviderConfig(meta, override)
-		}
+		meta := resolveModelProvider(modelprovider.ProviderOpenAI, providers).meta
 		meta.ID = CodexProviderOpenAIAPIKey
 		meta.Label = "OpenAI API key"
 		meta.DefaultModel = CodexOpenAIDefaultModel
 		return meta, true
 	}
-	meta, ok := modelprovider.ModelProviderByID(id)
-	if !ok {
-		meta = modelprovider.ModelProvider{ID: id}
-	}
-	if override, present := providers[id]; present {
-		meta = modelprovider.ApplyModelProviderConfig(meta, override)
-	}
-	return meta, true
+	meta := resolveModelProvider(id, providers).meta
+	return meta, meta.SupportsCapability(modelprovider.CapabilityResponses)
 }
 
 func codexProviderKeyID(id string) string {

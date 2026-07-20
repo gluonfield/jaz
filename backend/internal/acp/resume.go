@@ -66,6 +66,9 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 	if cfg.UsesModelProvider() {
 		cfg.ModelProvider = strings.TrimSpace(session.ModelProvider)
 		cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
+		if err := m.validateAgentModelProvider(agentName, cfg); err != nil {
+			return nil, err
+		}
 	}
 	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
 	if cfg.Local {

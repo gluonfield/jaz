@@ -1022,6 +1022,25 @@ func TestProcessEnvWritesCustomOpenCodeProviderConfig(t *testing.T) {
 	}
 }
 
+func TestOpenCodeRejectsResponsesOnlyCustomProvider(t *testing.T) {
+	providers := map[string]modelprovider.ModelProviderConfig{
+		"internal": {
+			Type:         "openai-compatible",
+			BaseURL:      "https://llm.internal/v1",
+			APIKey:       "internal-key",
+			Capabilities: []string{modelprovider.CapabilityResponses},
+		},
+	}
+	manager := NewManager(nil, Config{Providers: providers}, nil)
+	if _, ok := manager.openCodeProviderConfig(map[string]string{}, "internal/chat"); ok {
+		t.Fatal("Responses-only provider yielded OpenCode config")
+	}
+	status := ProbeAgentAuthWithProviders(AgentOpenCode, AgentConfig{Model: "internal/chat"}, t.TempDir(), nil, providers)
+	if status.Authenticated || !strings.Contains(status.Reason, "does not support Chat Completions") {
+		t.Fatalf("auth = %#v", status)
+	}
+}
+
 func TestProbeAgentAuthMatchesOpenCodeModelProvider(t *testing.T) {
 	clearHostEnv(t)
 	root := t.TempDir()
@@ -1231,6 +1250,13 @@ func TestProbeReadinessRejectsURLBackedGrokModelOverride(t *testing.T) {
 	ready := ProbeReadiness(AgentGrok, AgentConfig{URL: "http://127.0.0.1:9999", Model: modelcatalog.DefaultGrokModel}, t.TempDir(), nil)
 	if ready.Available || !strings.Contains(ready.Reason, "URL-backed Grok") {
 		t.Fatalf("ready = %#v", ready)
+	}
+}
+
+func TestProbeReadinessRejectsURLBackedQwen(t *testing.T) {
+	ready := ProbeReadiness(AgentQwen, AgentConfig{URL: "http://127.0.0.1:9999"}, t.TempDir(), nil)
+	if ready.Available || !strings.Contains(ready.Reason, "model and Jaz system prompt require the local agent launch") {
+		t.Fatalf("readiness = %#v", ready)
 	}
 }
 

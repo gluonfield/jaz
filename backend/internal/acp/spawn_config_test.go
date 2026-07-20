@@ -59,6 +59,40 @@ func TestSpawnConfigRejectsJazAgent(t *testing.T) {
 	}
 }
 
+func TestSpawnConfigRejectsURLBackedQwen(t *testing.T) {
+	manager := &Manager{agents: AgentCatalog{
+		AgentQwen: {URL: "http://127.0.0.1:7777/acp"},
+	}}
+	_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentQwen})
+	if err == nil || !strings.Contains(err.Error(), "model and Jaz system prompt require the local agent launch") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSpawnConfigRejectsProviderWithoutRequiredWireProtocol(t *testing.T) {
+	manager := &Manager{
+		cfg: Config{Providers: map[string]modelprovider.ModelProviderConfig{
+			"internal": {
+				Type:         "openai-compatible",
+				BaseURL:      "https://llm.internal/v1",
+				Capabilities: []string{modelprovider.CapabilityChatCompletions},
+			},
+		}},
+		agents: AgentCatalog{
+			AgentCodex: {
+				Command:                 AgentCodex,
+				ProviderMode:            AgentProviderModeAgentDefaults,
+				ModelProviderCapability: modelprovider.CapabilityResponses,
+				ModelProvider:           "internal",
+			},
+		},
+	}
+	_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentCodex})
+	if err == nil || !strings.Contains(err.Error(), `model provider "internal" does not support "responses"`) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestSpawnConfigDefaultsToCodexBeforeClaude(t *testing.T) {
 	manager := &Manager{agents: AgentCatalog{
 		AgentClaude: AgentConfig{Command: "claude"},

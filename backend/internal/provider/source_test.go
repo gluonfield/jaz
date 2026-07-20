@@ -48,14 +48,19 @@ func TestSourceBaseWinsOverCustom(t *testing.T) {
 }
 
 func TestProvidersReturnsIsolatedCopy(t *testing.T) {
-	src, err := NewSource(map[string]ModelProviderConfig{"a": {BaseURL: "x"}}, nil)
+	src, err := NewSource(map[string]ModelProviderConfig{
+		"a": {BaseURL: "x", Capabilities: []string{CapabilityChatCompletions}},
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := src.Providers()
-	got["a"] = ModelProviderConfig{BaseURL: "mutated"}
+	a := got["a"]
+	a.BaseURL = "mutated"
+	a.Capabilities[0] = CapabilityResponses
+	got["a"] = a
 	got["b"] = ModelProviderConfig{}
-	if src.Providers()["a"].BaseURL != "x" {
+	if current := src.Providers()["a"]; current.BaseURL != "x" || current.Capabilities[0] != CapabilityChatCompletions {
 		t.Fatal("mutating the returned map leaked into internal state")
 	}
 	if _, ok := src.Providers()["b"]; ok {

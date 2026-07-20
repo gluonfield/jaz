@@ -20,7 +20,11 @@ import { keys } from '@/lib/query/keys'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
-const PROVIDER_API_TYPES = [{ value: 'openai-compatible', label: 'OpenAI-compatible' }]
+const PROVIDER_CAPABILITIES = [
+  { value: 'chat_completions', label: 'Chat Completions' },
+  { value: 'responses', label: 'Responses' },
+  { value: 'chat_completions,responses', label: 'Chat Completions + Responses' },
+]
 
 type ProviderOption = AgentSettingsData['providers'][number]
 type ProviderConnection = 'connected' | 'disconnected' | 'checking'
@@ -47,8 +51,19 @@ function draftWithEndpoint(draft: ProviderDraft, baseUrl: string): ProviderDraft
   return endpointRequiresKey(baseUrl) ? next : { ...next, api_key: '' }
 }
 
+function capabilitySelection(capabilities: string[]): string {
+  return ['chat_completions', 'responses'].filter((value) => capabilities.includes(value)).join(',')
+}
+
 function emptyProviderDraft(): ProviderDraft {
-  return { label: '', base_url: '', api_type: 'openai-compatible', default_model: '', icon: '', api_key: '' }
+  return {
+    label: '',
+    base_url: '',
+    capabilities: ['chat_completions'],
+    default_model: '',
+    icon: '',
+    api_key: '',
+  }
 }
 
 function draftFromProvider(provider: ProviderOption): ProviderDraft {
@@ -56,7 +71,7 @@ function draftFromProvider(provider: ProviderOption): ProviderDraft {
     id: provider.id,
     label: provider.label,
     base_url: provider.base_url,
-    api_type: provider.api_type || 'openai-compatible',
+    capabilities: provider.capabilities?.length ? [...provider.capabilities] : ['chat_completions'],
     default_model: provider.default_model ?? '',
     icon: provider.icon ?? '',
     api_key: '',
@@ -409,12 +424,12 @@ function ProviderEditorModal({
               aria-label="Endpoint URL"
             />
           </ProviderField>
-          <ProviderField label="API type">
+          <ProviderField label="API support" hint="Enable only protocols implemented by this endpoint.">
             <Select
-              value={draft.api_type || 'openai-compatible'}
-              options={PROVIDER_API_TYPES}
-              onChange={(api_type) => onChange({ ...draft, api_type })}
-              aria-label="API type"
+              value={capabilitySelection(draft.capabilities)}
+              options={PROVIDER_CAPABILITIES}
+              onChange={(value) => onChange({ ...draft, capabilities: value.split(',') })}
+              aria-label="API support"
               className="w-full"
             />
           </ProviderField>

@@ -1012,7 +1012,7 @@ export interface ModelProviderOption {
   default_model?: string
   default_reasoning_effort?: string
   implemented: boolean
-  opencode?: boolean
+  capabilities?: string[]
   openai_compatible?: boolean
   requires_api_key?: boolean
   /** whether this provider's API key is already configured on the backend */
@@ -1020,8 +1020,6 @@ export interface ModelProviderOption {
   connection_status?: ModelProviderConnectionStatusValue
   /** user-created (DB-backed) provider — editable and deletable in the UI */
   custom?: boolean
-  /** API flavor, e.g. "openai-compatible" */
-  api_type?: string
   /** icon slug (brand mark) for the provider; falls back to a generic mark */
   icon?: string
 }
@@ -1061,7 +1059,7 @@ export interface ModelReasoningCapabilities {
 export interface ProviderInput {
   label: string
   base_url: string
-  api_type: string
+  capabilities: string[]
   default_model?: string
   icon?: string
   /** write-only secret; omit on edit to leave an existing key unchanged */

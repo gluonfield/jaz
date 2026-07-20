@@ -17,11 +17,11 @@ func TestApplyProviderBuildsModelProviderCatalog(t *testing.T) {
 		OpenRouter: openrouterprovider.Config{APIKey: "openrouter-key"},
 		OpenAI:     openaiprovider.Config{APIKey: "openai-key"},
 		Jaz: appConfigWithProvider("internal", provider.ModelProviderConfig{
-			Type:      "openai-compatible",
-			Label:     "Internal",
-			BaseURL:   "https://llm.internal/v1",
-			APIKeyEnv: "INTERNAL_LLM_API_KEY",
-			OpenCode:  true,
+			Type:         "openai-compatible",
+			Label:        "Internal",
+			BaseURL:      "https://llm.internal/v1",
+			APIKeyEnv:    "INTERNAL_LLM_API_KEY",
+			Capabilities: []string{provider.CapabilityChatCompletions},
 		}),
 	}
 
@@ -41,7 +41,8 @@ func TestApplyProviderBuildsModelProviderCatalog(t *testing.T) {
 		t.Fatalf("anthropic should not be a runnable model provider: %#v", cfg.Jaz.ModelProviders)
 	}
 	internal := cfg.Jaz.ModelProviders["internal"]
-	if internal.Type != "openai-compatible" || internal.BaseURL != "https://llm.internal/v1" || !internal.OpenCode {
+	if internal.Type != "openai-compatible" || internal.BaseURL != "https://llm.internal/v1" ||
+		len(internal.Capabilities) != 1 || internal.Capabilities[0] != provider.CapabilityChatCompletions {
 		t.Fatalf("custom provider not preserved: %#v", internal)
 	}
 }

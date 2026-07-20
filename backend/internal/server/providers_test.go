@@ -33,7 +33,7 @@ func newProvidersTestServer(t *testing.T) (http.Handler, *sqlitestore.Store) {
 func TestProvidersCRUDLifecycle(t *testing.T) {
 	handler, _ := newProvidersTestServer(t)
 
-	body := `{"label":"Groq","base_url":"https://api.groq.com/openai/v1","api_type":"openai-compatible","api_key":"gk-test"}`
+	body := `{"label":"Groq","base_url":"https://api.groq.com/openai/v1","capabilities":["chat_completions","responses"],"api_key":"gk-test"}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/providers", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "127.0.0.1:1234"
@@ -43,9 +43,10 @@ func TestProvidersCRUDLifecycle(t *testing.T) {
 		t.Fatalf("create status %d: %s", res.Code, res.Body)
 	}
 	var created struct {
-		ID         string `json:"id"`
-		APIKeyEnv  string `json:"api_key_env"`
-		Configured bool   `json:"configured"`
+		ID           string   `json:"id"`
+		APIKeyEnv    string   `json:"api_key_env"`
+		Capabilities []string `json:"capabilities"`
+		Configured   bool     `json:"configured"`
 	}
 	if err := json.Unmarshal(res.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
@@ -55,6 +56,9 @@ func TestProvidersCRUDLifecycle(t *testing.T) {
 	}
 	if created.APIKeyEnv != "JAZ_PROVIDER_GROQ_API_KEY" {
 		t.Fatalf("api_key_env = %q", created.APIKeyEnv)
+	}
+	if len(created.Capabilities) != 2 || created.Capabilities[0] != provider.CapabilityChatCompletions || created.Capabilities[1] != provider.CapabilityResponses {
+		t.Fatalf("capabilities = %#v", created.Capabilities)
 	}
 	if !created.Configured {
 		t.Fatal("expected configured=true after the key was set")
@@ -70,6 +74,9 @@ func TestProvidersCRUDLifecycle(t *testing.T) {
 	}
 	if !strings.Contains(settingsRes.Body.String(), `"custom":true`) {
 		t.Fatalf("groq not flagged custom: %s", settingsRes.Body)
+	}
+	if !strings.Contains(settingsRes.Body.String(), `"capabilities":["chat_completions","responses"]`) {
+		t.Fatalf("groq capabilities missing: %s", settingsRes.Body)
 	}
 
 	delReq := httptest.NewRequest(http.MethodDelete, "/v1/providers/groq", nil)
@@ -101,7 +108,7 @@ func TestProviderDeleteRemovesKeyAfterLoopbackUpdate(t *testing.T) {
 	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil), Store: store, Root: root, Providers: source}).Handler()
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/providers",
-		strings.NewReader(`{"label":"Local","base_url":"https://llm.internal/v1","api_type":"openai-compatible","api_key":"secret"}`))
+		strings.NewReader(`{"label":"Local","base_url":"https://llm.internal/v1","api_key":"secret"}`))
 	createReq.RemoteAddr = "127.0.0.1:1234"
 	createRes := httptest.NewRecorder()
 	handler.ServeHTTP(createRes, createReq)
@@ -113,7 +120,7 @@ func TestProviderDeleteRemovesKeyAfterLoopbackUpdate(t *testing.T) {
 	}
 
 	updateReq := httptest.NewRequest(http.MethodPut, "/v1/providers/local",
-		strings.NewReader(`{"label":"Local","base_url":"http://127.0.0.1:11434/v1","api_type":"openai-compatible"}`))
+		strings.NewReader(`{"label":"Local","base_url":"http://127.0.0.1:11434/v1"}`))
 	updateReq.RemoteAddr = "127.0.0.1:1234"
 	updateRes := httptest.NewRecorder()
 	handler.ServeHTTP(updateRes, updateReq)

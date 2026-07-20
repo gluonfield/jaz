@@ -79,7 +79,7 @@ func TestCodexProviderArgsCustomProvider(t *testing.T) {
 	args := codexProviderArgs(
 		AgentConfig{ModelProvider: "acme"},
 		map[string]modelprovider.ModelProviderConfig{
-			"acme": {Type: "openai-compatible", Label: "Acme", BaseURL: "https://acme.test/v1", APIKeyEnv: "ACME_KEY"},
+			"acme": {Type: "openai-compatible", Label: "Acme", BaseURL: "https://acme.test/v1", APIKeyEnv: "ACME_KEY", Capabilities: []string{modelprovider.CapabilityResponses}},
 		},
 	)
 	want := []string{
@@ -98,7 +98,7 @@ func TestCodexProviderArgsNoAuthCustomProvider(t *testing.T) {
 	args := codexProviderArgs(
 		AgentConfig{ModelProvider: "local"},
 		map[string]modelprovider.ModelProviderConfig{
-			"local": {Type: "openai-compatible", Label: "Local", BaseURL: "http://localhost:11434/v1"},
+			"local": {Type: "openai-compatible", Label: "Local", BaseURL: "http://localhost:11434/v1", Capabilities: []string{modelprovider.CapabilityResponses}},
 		},
 	)
 	want := []string{
@@ -115,6 +115,15 @@ func TestCodexProviderArgsNoAuthCustomProvider(t *testing.T) {
 func TestCodexProviderArgsUnknownWithoutConfig(t *testing.T) {
 	if args := codexProviderArgs(AgentConfig{ModelProvider: "ghost"}, nil); args != nil {
 		t.Fatalf("unknown provider with no base_url/env_key should yield no args, got %v", args)
+	}
+}
+
+func TestCodexProviderArgsRejectsChatOnlyProvider(t *testing.T) {
+	args := codexProviderArgs(AgentConfig{ModelProvider: "chat"}, map[string]modelprovider.ModelProviderConfig{
+		"chat": {Type: "openai-compatible", BaseURL: "https://chat.test/v1"},
+	})
+	if args != nil {
+		t.Fatalf("chat-only provider yielded Codex args: %#v", args)
 	}
 }
 
@@ -160,7 +169,7 @@ func TestProcessEnvBindsCodexCustomProviderKeyForACPAuth(t *testing.T) {
 	manager := NewManager(nil, Config{
 		Root: root,
 		Providers: map[string]modelprovider.ModelProviderConfig{
-			"acme": {Type: "openai-compatible", BaseURL: "https://acme.test/v1", APIKeyEnv: "ACME_KEY"},
+			"acme": {Type: "openai-compatible", BaseURL: "https://acme.test/v1", APIKeyEnv: "ACME_KEY", Capabilities: []string{modelprovider.CapabilityResponses}},
 		},
 	}, nil)
 

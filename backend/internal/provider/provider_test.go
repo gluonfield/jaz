@@ -75,7 +75,23 @@ func TestQwenProviderCompatibilityMatchesWireSupport(t *testing.T) {
 		Type:    "openai-compatible",
 		BaseURL: "https://qwen.example/v1",
 	})
-	if !custom.SupportsCapability(CapabilityChatCompletions) {
-		t.Fatalf("custom OpenAI-compatible provider must support Qwen: %#v", custom)
+	if !custom.SupportsCapability(CapabilityChatCompletions) || custom.SupportsCapability(CapabilityResponses) {
+		t.Fatalf("custom OpenAI-compatible provider must default to Chat Completions only: %#v", custom)
+	}
+	invalid := ApplyModelProviderConfig(ModelProvider{ID: "invalid"}, ModelProviderConfig{
+		Type:         "openai-compatible",
+		BaseURL:      "https://invalid.example/v1",
+		Capabilities: []string{"response"},
+	})
+	if len(invalid.Capabilities) != 0 {
+		t.Fatalf("invalid explicit capabilities must fail closed: %#v", invalid)
+	}
+	both := ApplyModelProviderConfig(ModelProvider{ID: "both"}, ModelProviderConfig{
+		Type:         "openai-compatible",
+		BaseURL:      "https://both.example/v1",
+		Capabilities: []string{CapabilityResponses, CapabilityChatCompletions},
+	})
+	if !both.SupportsCapability(CapabilityChatCompletions) || !both.SupportsCapability(CapabilityResponses) {
+		t.Fatalf("explicit provider capabilities lost: %#v", both)
 	}
 }

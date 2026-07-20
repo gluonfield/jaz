@@ -86,6 +86,9 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 }
 
 func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, mcpServerPolicy, systemPrompt string) (jsonrpc.MessageConn, *processStderrTail, error) {
+	if err := validateAgentLaunch(name, cfg); err != nil {
+		return nil, nil, err
+	}
 	if cfg.URL != "" {
 		opts := []streamhttp.ClientOption{}
 		parsed, err := url.Parse(cfg.URL)
@@ -161,6 +164,14 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		_ = conn.Close()
 	}()
 	return conn, stderr, nil
+}
+
+func validateAgentLaunch(name string, cfg AgentConfig) error {
+	name = CanonicalAgentName(name)
+	if strings.TrimSpace(cfg.URL) != "" && agentPolicyForAgent(name).systemPromptAtLaunch {
+		return fmt.Errorf("configured acp agent %q cannot use a URL: its model and Jaz system prompt require the local agent launch", name)
+	}
+	return nil
 }
 
 func launchCommand(command string, args []string) (string, []string) {

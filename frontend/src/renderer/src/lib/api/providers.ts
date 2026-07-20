@@ -14,7 +14,7 @@ function normalizeProviderInput(input: ProviderInput): ProviderInput {
   return {
     label: input.label.trim(),
     base_url: input.base_url.trim().replace(/\/+$/, ''),
-    api_type: input.api_type.trim() || 'openai-compatible',
+    capabilities: input.capabilities.length ? [...input.capabilities] : ['chat_completions'],
     default_model: input.default_model?.trim() || undefined,
     icon: input.icon?.trim() || undefined,
     ...(apiKey ? { api_key: apiKey } : {}),

@@ -81,11 +81,10 @@ func (s staticSource) Providers() map[string]ModelProviderConfig {
 
 func (staticSource) Reload() error { return nil }
 
-// cloneProviderConfigs deep-copies the map. ModelProviderConfig is a flat value
-// struct, so a per-entry copy fully isolates the result from the source.
 func cloneProviderConfigs(in map[string]ModelProviderConfig) map[string]ModelProviderConfig {
 	out := make(map[string]ModelProviderConfig, len(in))
 	for id, cfg := range in {
+		cfg.Capabilities = append([]string(nil), cfg.Capabilities...)
 		out[id] = cfg
 	}
 	return out

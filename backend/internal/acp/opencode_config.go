@@ -146,22 +146,24 @@ func (m *Manager) openCodeProviderConfig(env map[string]string, model string) (o
 	if providerID == "" {
 		return openCodeProviderConfig{}, false
 	}
-	cfg, configured := m.providers()[providerID]
-	meta, builtIn := modelprovider.OpenCodeProviderByID(providerID)
-	if !shouldWriteOpenCodeProviderConfig(cfg, meta, configured, builtIn) {
+	provider := resolveModelProvider(providerID, m.providers())
+	if !provider.meta.SupportsCapability(modelprovider.CapabilityChatCompletions) {
 		return openCodeProviderConfig{}, false
 	}
-	baseURL := firstNonEmpty(cfg.BaseURL, meta.BaseURL)
+	if !shouldWriteOpenCodeProviderConfig(provider.config, provider.meta, provider.configured, provider.builtIn) {
+		return openCodeProviderConfig{}, false
+	}
+	baseURL := firstNonEmpty(provider.config.BaseURL, provider.meta.BaseURL)
 	if baseURL == "" {
 		return openCodeProviderConfig{}, false
 	}
-	key := openCodeConfiguredProviderEnv(providerID, cfg)
-	if strings.TrimSpace(cfg.APIKey) != "" && key != "" && strings.TrimSpace(env[key]) == "" {
-		env[key] = cfg.APIKey
+	key := openCodeConfiguredProviderEnv(providerID, provider.config)
+	if strings.TrimSpace(provider.config.APIKey) != "" && key != "" && strings.TrimSpace(env[key]) == "" {
+		env[key] = provider.config.APIKey
 	}
 	result := openCodeProviderConfig{
 		API:  baseURL,
-		Name: firstNonEmpty(cfg.Label, meta.Label, providerID),
+		Name: firstNonEmpty(provider.config.Label, provider.meta.Label, providerID),
 		NPM:  openCodeOpenAICompatibleNPM,
 	}
 	if key != "" {
@@ -206,9 +208,6 @@ func shouldWriteOpenCodeProviderConfig(cfg modelprovider.ModelProviderConfig, me
 	}
 	if !configured {
 		return false
-	}
-	if cfg.OpenCode {
-		return strings.TrimSpace(firstNonEmpty(cfg.BaseURL, meta.BaseURL)) != ""
 	}
 	if strings.EqualFold(strings.TrimSpace(cfg.Type), "openai-compatible") {
 		return strings.TrimSpace(firstNonEmpty(cfg.BaseURL, meta.BaseURL)) != ""

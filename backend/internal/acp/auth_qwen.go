@@ -12,17 +12,7 @@ import (
 )
 
 func qwenProvider(id string, providers map[string]modelprovider.ModelProviderConfig) (modelprovider.ModelProvider, bool) {
-	id = strings.ToLower(strings.TrimSpace(id))
-	meta, ok := modelprovider.ModelProviderByID(id)
-	if !ok {
-		cfg, configured := providers[id]
-		if !configured {
-			return modelprovider.ModelProvider{}, false
-		}
-		meta = modelprovider.ApplyModelProviderConfig(modelprovider.ModelProvider{ID: id}, cfg)
-	} else if cfg, configured := providers[id]; configured {
-		meta = modelprovider.ApplyModelProviderConfig(meta, cfg)
-	}
+	meta := resolveModelProvider(id, providers).meta
 	return meta, meta.SupportsCapability(modelprovider.CapabilityChatCompletions)
 }
 

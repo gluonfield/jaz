@@ -330,33 +330,34 @@ func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env
 	}
 	explicit := status.resolveAPIKey(AgentOpenCode, root, env)
 	providerID := openCodeProviderID(cfg.ProviderQualifiedModel())
-	meta, known := modelprovider.OpenCodeProviderByID(providerID)
-	cfgProvider, configured := providers[providerID]
-	keyEnv := strings.TrimSpace(meta.APIKeyEnv)
-	if configured {
-		if customKeyEnv := openCodeConfiguredProviderEnv(providerID, cfgProvider); customKeyEnv != "" {
+	provider := resolveModelProvider(providerID, providers)
+	known := provider.builtIn || provider.configured
+	if known && !provider.meta.SupportsCapability(modelprovider.CapabilityChatCompletions) {
+		status.Reason = fmt.Sprintf("model provider %q does not support Chat Completions", providerID)
+		return status
+	}
+	keyEnv := strings.TrimSpace(provider.meta.APIKeyEnv)
+	if provider.configured {
+		if customKeyEnv := openCodeConfiguredProviderEnv(providerID, provider.config); customKeyEnv != "" {
 			keyEnv = customKeyEnv
 		}
 	}
-	requiresAPIKey := known && meta.RequiresAPIKey
-	if !known && configured {
-		requiresAPIKey = keyEnv != "" || strings.TrimSpace(cfgProvider.APIKey) != ""
-	}
+	requiresAPIKey := known && provider.meta.RequiresAPIKey
 	switch {
-	case known && !meta.RequiresAPIKey:
+	case known && !provider.meta.RequiresAPIKey:
 		status.markAuthenticated("no_api_key_required", AuthKindNone)
 	case providerID == modelprovider.ProviderOpenRouter && explicit:
 		status.markAuthenticated("api_key_env", AuthKindAPIKey)
-	case configured && strings.TrimSpace(cfgProvider.APIKey) != "":
+	case provider.configured && strings.TrimSpace(provider.config.APIKey) != "":
 		status.markAuthenticated("configured_provider_key", AuthKindAPIKey)
 		status.APIKeySet = true
 	case keyEnv != "" && providerAPIKeyConfigured(root, env, keyEnv, apiKeyAlias(keyEnv)):
 		status.markAuthenticated(strings.ToLower(keyEnv)+"_env", AuthKindAPIKey)
 		status.APIKeySet = true
-	case configured && !requiresAPIKey:
+	case provider.configured && !requiresAPIKey:
 		status.markAuthenticated("no_api_key_required", AuthKindNone)
 	default:
-		status.Reason = openCodeAPIKeyReason(providerID, meta, keyEnv, status.APIKey.SourceEnv, known || configured)
+		status.Reason = openCodeAPIKeyReason(providerID, provider.meta, keyEnv, status.APIKey.SourceEnv, known)
 	}
 	return status
 }

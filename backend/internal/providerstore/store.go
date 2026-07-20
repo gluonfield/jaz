@@ -19,7 +19,7 @@ const (
 	SettingsNamespace = "providers"
 	CustomKey         = "custom"
 
-	APITypeOpenAICompatible = "openai-compatible"
+	openAICompatibleType = "openai-compatible"
 )
 
 // reservedIDs are catalog provider ids a custom provider may never use, so the
@@ -41,9 +41,9 @@ type CustomProvider struct {
 	ID           string    `json:"id"`
 	Label        string    `json:"label"`
 	BaseURL      string    `json:"base_url"`
-	APIType      string    `json:"api_type"`
 	APIKeyEnv    string    `json:"api_key_env"`
 	DefaultModel string    `json:"default_model,omitempty"`
+	Capabilities []string  `json:"capabilities"`
 	Icon         string    `json:"icon,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -57,29 +57,29 @@ func (p CustomProvider) Config() provider.ModelProviderConfig {
 		keyEnv = ""
 	}
 	return provider.ModelProviderConfig{
-		Type:         APITypeOpenAICompatible,
+		Type:         openAICompatibleType,
 		Label:        p.Label,
 		BaseURL:      p.BaseURL,
 		APIKeyEnv:    keyEnv,
 		DefaultModel: p.DefaultModel,
-		OpenCode:     true,
-		Codex:        true,
+		Capabilities: append([]string(nil), p.Capabilities...),
 	}
 }
 
 func (p CustomProvider) normalized() CustomProvider {
 	p.APIKeyEnv = apiKeyEnv(p.ID)
+	p.Capabilities = normalizedCapabilities(p.Capabilities)
 	return p
 }
 
 // Input is the editable surface of a custom provider — everything but the id,
 // timestamps, and the derived APIKeyEnv.
 type Input struct {
-	Label        string `json:"label"`
-	BaseURL      string `json:"base_url"`
-	APIType      string `json:"api_type"`
-	DefaultModel string `json:"default_model"`
-	Icon         string `json:"icon"`
+	Label        string   `json:"label"`
+	BaseURL      string   `json:"base_url"`
+	DefaultModel string   `json:"default_model"`
+	Capabilities []string `json:"capabilities"`
+	Icon         string   `json:"icon"`
 }
 
 type customList struct {
@@ -122,9 +122,9 @@ func Create(store storage.SettingsStorage, in Input) (CustomProvider, error) {
 		ID:           id,
 		Label:        in.Label,
 		BaseURL:      in.BaseURL,
-		APIType:      in.APIType,
 		APIKeyEnv:    apiKeyEnv(id),
 		DefaultModel: in.DefaultModel,
+		Capabilities: append([]string(nil), in.Capabilities...),
 		Icon:         in.Icon,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -151,9 +151,9 @@ func Update(store storage.SettingsStorage, id string, in Input) (CustomProvider,
 		}
 		list.Providers[i].Label = in.Label
 		list.Providers[i].BaseURL = in.BaseURL
-		list.Providers[i].APIType = in.APIType
 		list.Providers[i].APIKeyEnv = apiKeyEnv(list.Providers[i].ID)
 		list.Providers[i].DefaultModel = in.DefaultModel
+		list.Providers[i].Capabilities = append([]string(nil), in.Capabilities...)
 		list.Providers[i].Icon = in.Icon
 		list.Providers[i].UpdatedAt = time.Now().UTC()
 		updated := list.Providers[i]
@@ -188,9 +188,14 @@ func Delete(store storage.SettingsStorage, id string) (CustomProvider, error) {
 func ValidateInput(in Input) (Input, error) {
 	in.Label = strings.TrimSpace(in.Label)
 	in.BaseURL = strings.TrimSpace(in.BaseURL)
-	in.APIType = strings.TrimSpace(in.APIType)
 	in.DefaultModel = strings.TrimSpace(in.DefaultModel)
 	in.Icon = strings.TrimSpace(in.Icon)
+	for _, capability := range in.Capabilities {
+		if !provider.IsWireCapability(capability) {
+			return in, fmt.Errorf("unsupported provider capability %q", capability)
+		}
+	}
+	in.Capabilities = normalizedCapabilities(in.Capabilities)
 	if in.Label == "" {
 		return in, errors.New("name is required")
 	}
@@ -212,13 +217,14 @@ func ValidateInput(in Input) (Input, error) {
 		return in, errors.New("endpoint url must not include credentials")
 	}
 	in.BaseURL = strings.TrimRight(parsed.String(), "/")
-	if in.APIType == "" {
-		in.APIType = APITypeOpenAICompatible
-	}
-	if in.APIType != APITypeOpenAICompatible {
-		return in, fmt.Errorf("unsupported api type %q; only %q is supported", in.APIType, APITypeOpenAICompatible)
-	}
 	return in, nil
+}
+
+func normalizedCapabilities(values []string) []string {
+	if len(values) == 0 {
+		return []string{provider.CapabilityChatCompletions}
+	}
+	return provider.NormalizeWireCapabilities(values)
 }
 
 func load(store storage.SettingsStorage) (customList, error) {
@@ -234,6 +240,11 @@ func load(store storage.SettingsStorage) (customList, error) {
 		return customList{}, err
 	}
 	for i := range list.Providers {
+		for _, capability := range list.Providers[i].Capabilities {
+			if !provider.IsWireCapability(capability) {
+				return customList{}, fmt.Errorf("provider %q has unsupported capability %q", list.Providers[i].ID, capability)
+			}
+		}
 		list.Providers[i] = list.Providers[i].normalized()
 	}
 	return list, nil
@@ -249,7 +260,7 @@ func save(store storage.SettingsStorage, list customList) error {
 }
 
 func apiKeyEnv(id string) string {
-	return provider.ConfiguredAPIKeyEnv(id, provider.ModelProviderConfig{Type: APITypeOpenAICompatible})
+	return provider.ConfiguredAPIKeyEnv(id, provider.ModelProviderConfig{Type: openAICompatibleType})
 }
 
 func uniqueID(label string, existing []CustomProvider) string {

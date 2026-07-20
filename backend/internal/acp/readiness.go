@@ -20,6 +20,9 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 	if cfg.Local {
 		return Readiness{Available: true}
 	}
+	if err := validateAgentLaunch(name, cfg); err != nil {
+		return Readiness{Reason: err.Error()}
+	}
 	if _, _, err := resolveGrokStartupConfig(name, cfg); err != nil {
 		return Readiness{Reason: err.Error()}
 	}

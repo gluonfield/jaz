@@ -49,8 +49,8 @@ func TestCreateGetUpdateDelete(t *testing.T) {
 	if rec.APIKeyEnv != "JAZ_PROVIDER_GROQ_API_KEY" {
 		t.Fatalf("api_key_env = %q", rec.APIKeyEnv)
 	}
-	if rec.APIType != APITypeOpenAICompatible {
-		t.Fatalf("api_type = %q", rec.APIType)
+	if len(rec.Capabilities) != 1 || rec.Capabilities[0] != "chat_completions" {
+		t.Fatalf("capabilities = %#v", rec.Capabilities)
 	}
 	if rec.BaseURL != "https://api.groq.com/openai/v1" {
 		t.Fatalf("base_url not trimmed: %q", rec.BaseURL)
@@ -61,7 +61,12 @@ func TestCreateGetUpdateDelete(t *testing.T) {
 		t.Fatalf("get = %#v ok=%v err=%v", got, ok, err)
 	}
 
-	upd, err := Update(store, "groq", Input{Label: "Groq Cloud", BaseURL: "https://api.groq.com/openai/v1", DefaultModel: "llama-3.1-70b"})
+	upd, err := Update(store, "groq", Input{
+		Label:        "Groq Cloud",
+		BaseURL:      "https://api.groq.com/openai/v1",
+		DefaultModel: "llama-3.1-70b",
+		Capabilities: []string{"responses", "chat_completions"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +75,9 @@ func TestCreateGetUpdateDelete(t *testing.T) {
 	}
 	if cfg := upd.Config(); cfg.DefaultModel != "llama-3.1-70b" {
 		t.Fatalf("config default_model = %q", cfg.DefaultModel)
+	}
+	if cfg := upd.Config(); len(cfg.Capabilities) != 2 || cfg.Capabilities[0] != "chat_completions" || cfg.Capabilities[1] != "responses" {
+		t.Fatalf("config capabilities = %#v", cfg.Capabilities)
 	}
 	if upd.ID != "groq" || upd.APIKeyEnv != rec.APIKeyEnv {
 		t.Fatal("id changed or remote api_key_env was not stable across updates")
@@ -104,7 +112,6 @@ func TestLoopbackProviderConfigIgnoresLegacyKeyEnv(t *testing.T) {
 		ID:        "ollama-2",
 		Label:     "Ollama",
 		BaseURL:   "http://127.0.0.1:11434/v1",
-		APIType:   APITypeOpenAICompatible,
 		APIKeyEnv: "JAZ_PROVIDER_OLLAMA_2_API_KEY",
 	}
 	if cfg := rec.Config(); cfg.APIKeyEnv != "" {
@@ -128,8 +135,22 @@ func TestListKeepsStableProviderKeyEnv(t *testing.T) {
 	if records[0].APIKeyEnv != "JAZ_PROVIDER_OLLAMA_2_API_KEY" {
 		t.Fatalf("api_key_env = %q", records[0].APIKeyEnv)
 	}
+	if len(records[0].Capabilities) != 1 || records[0].Capabilities[0] != "chat_completions" {
+		t.Fatalf("legacy capabilities = %#v", records[0].Capabilities)
+	}
 	if cfg := records[0].Config(); cfg.APIKeyEnv != "" {
 		t.Fatalf("config api_key_env = %q, want empty", cfg.APIKeyEnv)
+	}
+}
+
+func TestListRejectsInvalidPersistedCapability(t *testing.T) {
+	store := newMemStore()
+	_, err := store.SaveSetting(SettingsNamespace, CustomKey, json.RawMessage(`{"providers":[{"id":"bad","label":"Bad","base_url":"https://bad.test/v1","capabilities":["response"]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := List(store); err == nil {
+		t.Fatal("invalid persisted capability was accepted")
 	}
 }
 
@@ -185,7 +206,7 @@ func TestValidateInputRejectsBadInput(t *testing.T) {
 		{Label: "", BaseURL: "https://x/v1"},
 		{Label: "x", BaseURL: ""},
 		{Label: "x", BaseURL: "ftp://x/v1"},
-		{Label: "x", BaseURL: "https://x/v1", APIType: "anthropic"},
+		{Label: "x", BaseURL: "https://x/v1", Capabilities: []string{"completions"}},
 		{Label: "x", BaseURL: "not a url at all"},
 	}
 	for i, in := range cases {

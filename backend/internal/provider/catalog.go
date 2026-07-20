@@ -34,17 +34,16 @@ const (
 )
 
 type ModelProvider struct {
-	ID                     string `json:"id"`
-	Label                  string `json:"label"`
-	BaseURL                string `json:"base_url"`
-	APIKeyEnv              string `json:"api_key_env,omitempty"`
-	DefaultModel           string `json:"default_model,omitempty"`
-	DefaultReasoningEffort string `json:"default_reasoning_effort,omitempty"`
-	Implemented            bool   `json:"implemented"`
-	OpenCode               bool   `json:"opencode,omitempty"`
-	Codex                  bool   `json:"codex,omitempty"`
-	OpenAICompatible       bool   `json:"openai_compatible,omitempty"`
-	RequiresAPIKey         bool   `json:"requires_api_key,omitempty"`
+	ID                     string   `json:"id"`
+	Label                  string   `json:"label"`
+	BaseURL                string   `json:"base_url"`
+	APIKeyEnv              string   `json:"api_key_env,omitempty"`
+	DefaultModel           string   `json:"default_model,omitempty"`
+	DefaultReasoningEffort string   `json:"default_reasoning_effort,omitempty"`
+	Implemented            bool     `json:"implemented"`
+	Capabilities           []string `json:"capabilities,omitempty"`
+	OpenAICompatible       bool     `json:"openai_compatible,omitempty"`
+	RequiresAPIKey         bool     `json:"requires_api_key,omitempty"`
 }
 
 type ModelProviderConfig struct {
@@ -54,8 +53,7 @@ type ModelProviderConfig struct {
 	APIKey       string
 	APIKeyEnv    string
 	DefaultModel string
-	OpenCode     bool
-	Codex        bool
+	Capabilities []string
 }
 
 func ModelProviders() []ModelProvider {
@@ -68,8 +66,7 @@ func ModelProviders() []ModelProvider {
 			DefaultModel:           DefaultOpenRouterModel,
 			DefaultReasoningEffort: "medium",
 			Implemented:            true,
-			OpenCode:               true,
-			Codex:                  true,
+			Capabilities:           []string{CapabilityChatCompletions, CapabilityResponses},
 			RequiresAPIKey:         true,
 		},
 		{
@@ -80,16 +77,14 @@ func ModelProviders() []ModelProvider {
 			DefaultModel:           DefaultOpenAIModel,
 			DefaultReasoningEffort: "medium",
 			Implemented:            true,
-			OpenCode:               true,
-			Codex:                  true,
+			Capabilities:           []string{CapabilityChatCompletions, CapabilityResponses},
 			RequiresAPIKey:         true,
 		},
 		{
 			ID:               ProviderOllama,
 			Label:            "Ollama",
 			BaseURL:          "http://localhost:11434/v1",
-			OpenCode:         true,
-			Codex:            true,
+			Capabilities:     []string{CapabilityChatCompletions, CapabilityResponses},
 			OpenAICompatible: true,
 		},
 		{
@@ -98,8 +93,7 @@ func ModelProviders() []ModelProvider {
 			BaseURL:          "https://dashscope-us.aliyuncs.com/compatible-mode/v1",
 			APIKeyEnv:        "DASHSCOPE_API_KEY",
 			DefaultModel:     DefaultModelStudioModel,
-			OpenCode:         true,
-			Codex:            true,
+			Capabilities:     []string{CapabilityChatCompletions, CapabilityResponses},
 			OpenAICompatible: true,
 			RequiresAPIKey:   true,
 		},
@@ -109,7 +103,7 @@ func ModelProviders() []ModelProvider {
 			BaseURL:          "https://coding-intl.dashscope.aliyuncs.com/v1",
 			APIKeyEnv:        "BAILIAN_CODING_PLAN_API_KEY",
 			DefaultModel:     DefaultQwenCodingPlanModel,
-			OpenCode:         true,
+			Capabilities:     []string{CapabilityChatCompletions},
 			OpenAICompatible: true,
 			RequiresAPIKey:   true,
 		},
@@ -119,7 +113,7 @@ func ModelProviders() []ModelProvider {
 			BaseURL:          "https://coding.dashscope.aliyuncs.com/v1",
 			APIKeyEnv:        "JAZ_QWEN_CODING_PLAN_CN_API_KEY",
 			DefaultModel:     DefaultQwenCodingPlanModel,
-			OpenCode:         true,
+			Capabilities:     []string{CapabilityChatCompletions},
 			OpenAICompatible: true,
 			RequiresAPIKey:   true,
 		},
@@ -129,7 +123,7 @@ func ModelProviders() []ModelProvider {
 			BaseURL:          "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
 			APIKeyEnv:        "BAILIAN_TOKEN_PLAN_API_KEY",
 			DefaultModel:     DefaultQwenTokenPlanModel,
-			OpenCode:         true,
+			Capabilities:     []string{CapabilityChatCompletions},
 			OpenAICompatible: true,
 			RequiresAPIKey:   true,
 		},
@@ -166,13 +160,9 @@ func RunnableModelProviderByID(id string) (ModelProvider, bool) {
 	return ModelProvider{}, false
 }
 
-func OpenCodeProviderByID(id string) (ModelProvider, bool) {
-	provider, ok := ModelProviderByID(id)
-	return provider, ok && provider.OpenCode
-}
-
 func ApplyModelProviderConfig(meta ModelProvider, cfg ModelProviderConfig) ModelProvider {
 	_, builtIn := ModelProviderByID(meta.ID)
+	capabilitiesConfigured := len(cfg.Capabilities) > 0
 	if strings.TrimSpace(cfg.Label) != "" {
 		meta.Label = cfg.Label
 	}
@@ -188,19 +178,14 @@ func ApplyModelProviderConfig(meta ModelProvider, cfg ModelProviderConfig) Model
 	if strings.TrimSpace(cfg.APIKeyEnv) != "" {
 		meta.APIKeyEnv = cfg.APIKeyEnv
 	}
-	if cfg.OpenCode {
-		meta.OpenCode = true
-	}
-	if cfg.Codex {
-		meta.Codex = true
-	}
-	if !builtIn && strings.TrimSpace(cfg.BaseURL) != "" {
-		meta.OpenCode = true
+	if len(cfg.Capabilities) > 0 {
+		meta.Capabilities = NormalizeWireCapabilities(cfg.Capabilities)
 	}
 	if strings.EqualFold(strings.TrimSpace(cfg.Type), "openai-compatible") {
-		meta.OpenCode = true
-		meta.Codex = true
 		meta.OpenAICompatible = true
+		if !builtIn && !capabilitiesConfigured && len(meta.Capabilities) == 0 {
+			meta.Capabilities = []string{CapabilityChatCompletions}
+		}
 	}
 	if strings.TrimSpace(meta.APIKeyEnv) == "" && needsGeneratedAPIKeyEnv(builtIn, meta, cfg) {
 		meta.APIKeyEnv = ConfiguredAPIKeyEnv(meta.ID, cfg)
@@ -217,8 +202,7 @@ func ModelProviderConfigPresent(cfg ModelProviderConfig) bool {
 		strings.TrimSpace(cfg.BaseURL) != "" ||
 		strings.TrimSpace(cfg.APIKey) != "" ||
 		strings.TrimSpace(cfg.DefaultModel) != "" ||
-		cfg.OpenCode ||
-		cfg.Codex
+		len(cfg.Capabilities) > 0
 }
 
 func needsGeneratedAPIKeyEnv(builtIn bool, meta ModelProvider, cfg ModelProviderConfig) bool {
@@ -259,13 +243,42 @@ func ModelsURL(raw string) (string, error) {
 }
 
 func (p ModelProvider) SupportsCapability(capability string) bool {
-	switch strings.TrimSpace(capability) {
-	case CapabilityJaz:
+	capability = strings.ToLower(strings.TrimSpace(capability))
+	if capability == CapabilityJaz {
 		return p.Implemented
-	case CapabilityChatCompletions:
-		return p.OpenCode
-	case CapabilityResponses:
-		return p.Codex
+	}
+	for _, supported := range p.Capabilities {
+		if supported == capability {
+			return true
+		}
+	}
+	return false
+}
+
+func NormalizeWireCapabilities(values []string) []string {
+	chat, responses := false, false
+	for _, value := range values {
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case CapabilityChatCompletions:
+			chat = true
+		case CapabilityResponses:
+			responses = true
+		}
+	}
+	out := make([]string, 0, 2)
+	if chat {
+		out = append(out, CapabilityChatCompletions)
+	}
+	if responses {
+		out = append(out, CapabilityResponses)
+	}
+	return out
+}
+
+func IsWireCapability(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case CapabilityChatCompletions, CapabilityResponses:
+		return true
 	default:
 		return false
 	}

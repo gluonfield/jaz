@@ -675,13 +675,12 @@ func TestAgentSettingsAPIIncludesCustomProviderForACPAgents(t *testing.T) {
 	}
 	var got struct {
 		Providers []struct {
-			ID               string `json:"id"`
-			Label            string `json:"label"`
-			BaseURL          string `json:"base_url"`
-			Codex            bool   `json:"codex"`
-			OpenCode         bool   `json:"opencode"`
-			OpenAICompatible bool   `json:"openai_compatible"`
-			Configured       bool   `json:"configured"`
+			ID               string   `json:"id"`
+			Label            string   `json:"label"`
+			BaseURL          string   `json:"base_url"`
+			Capabilities     []string `json:"capabilities"`
+			OpenAICompatible bool     `json:"openai_compatible"`
+			Configured       bool     `json:"configured"`
 		} `json:"providers"`
 		ACPAuth map[string]struct {
 			Authenticated bool   `json:"authenticated"`
@@ -696,13 +695,12 @@ func TestAgentSettingsAPIIncludesCustomProviderForACPAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 	var custom *struct {
-		ID               string `json:"id"`
-		Label            string `json:"label"`
-		BaseURL          string `json:"base_url"`
-		Codex            bool   `json:"codex"`
-		OpenCode         bool   `json:"opencode"`
-		OpenAICompatible bool   `json:"openai_compatible"`
-		Configured       bool   `json:"configured"`
+		ID               string   `json:"id"`
+		Label            string   `json:"label"`
+		BaseURL          string   `json:"base_url"`
+		Capabilities     []string `json:"capabilities"`
+		OpenAICompatible bool     `json:"openai_compatible"`
+		Configured       bool     `json:"configured"`
 	}
 	for i := range got.Providers {
 		if got.Providers[i].ID == "internal" {
@@ -711,19 +709,17 @@ func TestAgentSettingsAPIIncludesCustomProviderForACPAgents(t *testing.T) {
 		}
 	}
 	if custom == nil || custom.Label != "Internal" || custom.BaseURL != "https://llm.internal/v1" ||
-		!custom.Codex || !custom.OpenCode || !custom.OpenAICompatible || !custom.Configured {
+		len(custom.Capabilities) != 1 || custom.Capabilities[0] != provider.CapabilityChatCompletions ||
+		!custom.OpenAICompatible || !custom.Configured {
 		t.Fatalf("custom provider not exposed correctly: %#v", got.Providers)
 	}
 	if options := got.ACPOptions["codex"]; options.ProviderMode != acp.AgentProviderModeAgentDefaults ||
-		!hasString(options.ModelProviderIDs, "internal") {
-		t.Fatalf("codex capabilities lost: %#v", options)
+		hasString(options.ModelProviderIDs, "internal") {
+		t.Fatalf("chat-only custom provider was offered to Codex: %#v", options)
 	}
 	if options := got.ACPOptions["opencode"]; options.ProviderMode != acp.AgentProviderModeAgentDefaults ||
 		!hasString(options.ModelProviderIDs, "internal") {
 		t.Fatalf("opencode capabilities lost: %#v", options)
-	}
-	if auth := got.ACPAuth["codex"]; !auth.Authenticated || auth.AuthKind != acp.AuthKindAPIKey {
-		t.Fatalf("codex auth did not use custom provider config: %#v", auth)
 	}
 	if auth := got.ACPAuth["opencode"]; !auth.Authenticated || auth.AuthKind != acp.AuthKindAPIKey {
 		t.Fatalf("opencode auth did not use custom provider config: %#v", auth)
