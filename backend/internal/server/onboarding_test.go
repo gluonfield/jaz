@@ -70,9 +70,7 @@ func TestOnboardingAPIProbesAgentsAndSavesProviderKey(t *testing.T) {
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, codexHome)
 	t.Setenv("CODEX_HOME", codexHome)
 	handler := (&Server{ModelCatalog: warmedModelCatalog(t),
 		Store: store,
@@ -328,9 +326,7 @@ func TestOnboardingTreatsAuthenticatedManagedCodexAsAvailable(t *testing.T) {
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, codexHome)
 	t.Setenv("CODEX_HOME", codexHome)
 	store, err := sqlitestore.New(root)
 	if err != nil {
@@ -387,9 +383,7 @@ func TestOnboardingWaitsForManagedCodexDownload(t *testing.T) {
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, codexHome)
 	t.Setenv("CODEX_HOME", codexHome)
 	store, err := sqlitestore.New(root)
 	if err != nil {

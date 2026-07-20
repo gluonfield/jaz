@@ -17,6 +17,13 @@ type codexLoginConfig struct {
 
 func PrepareAgentLoginInvocation(name string, auth AgentAuthConfig, root string, invocation AgentLoginInvocation) error {
 	name = CanonicalAgentName(name)
+	codexHome := ""
+	if name == AgentCodex && auth.Mode == AuthModeJazProfile {
+		codexHome = invocation.Env["CODEX_HOME"]
+		if codexHome != runtimefiles.New(root).ACPCodexHome {
+			return fmt.Errorf("refusing to clear non-Jaz Codex profile %s", codexHome)
+		}
+	}
 	claudeConfigDir := ""
 	if name == AgentClaude && auth.Mode == AuthModeJazProfile {
 		claudeConfigDir = invocation.Env["CLAUDE_CONFIG_DIR"]
@@ -43,8 +50,14 @@ func PrepareAgentLoginInvocation(name string, auth AgentAuthConfig, root string,
 			return fmt.Errorf("prepare login workspace %s: %w", cwd, err)
 		}
 	}
-	if name == AgentCodex && auth.Mode == AuthModeJazProfile {
-		if err := ensureCodexFileCredentialConfig(invocation.Env["CODEX_HOME"]); err != nil {
+	if codexHome != "" {
+		credential := filepath.Join(codexHome, "auth.json")
+		if !codexAuthFileAvailable(codexHome) {
+			if err := RemoveOwnedCredential(name, credential, root); err != nil {
+				return fmt.Errorf("clear stale codex credential %s: %w", credential, err)
+			}
+		}
+		if err := ensureCodexFileCredentialConfig(codexHome); err != nil {
 			return err
 		}
 	}
