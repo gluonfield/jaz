@@ -70,7 +70,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		mode = AuthModeAuto
 		path = ""
 	}
-	if mode == AuthModeAuto || (name == AgentClaude || name == AgentKimi || name == AgentQwen) && mode == AuthModeJazProfile {
+	if mode == AuthModeAuto || mode == AuthModeJazProfile && hasJazAuthProfile(name) {
 		path = ""
 	}
 	if name == AgentGrok {
@@ -88,9 +88,11 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 }
 
 func DisconnectedAuthConfig(name string, current AgentAuthConfig) AgentAuthConfig {
-	switch CanonicalAgentName(name) {
-	case AgentCodex, AgentClaude, AgentKimi, AgentQwen, AgentOpenCode:
+	name = CanonicalAgentName(name)
+	if hasJazAuthProfile(name) {
 		return AgentAuthConfig{Mode: AuthModeJazProfile}
+	}
+	switch name {
 	case AgentAntigravity:
 		return AgentAuthConfig{Mode: AuthModeAuto}
 	default:
@@ -103,20 +105,29 @@ func DisconnectedAuthConfig(name string, current AgentAuthConfig) AgentAuthConfi
 }
 
 func LoginAuthConfig(name string, requested AgentAuthConfig) (AgentAuthConfig, error) {
+	name = CanonicalAgentName(name)
 	auth, err := NormalizeAgentAuthConfig(name, requested)
 	if err != nil {
 		return AgentAuthConfig{}, err
 	}
-	switch CanonicalAgentName(name) {
-	case AgentAntigravity:
-		return AgentAuthConfig{Mode: AuthModeExistingCLI}, nil
-	case AgentCodex, AgentClaude, AgentKimi, AgentQwen, AgentOpenCode:
+	if hasJazAuthProfile(name) {
 		if auth.Mode == AuthModeJazProfile {
 			return auth, nil
 		}
 		return AgentAuthConfig{Mode: AuthModeJazProfile}, nil
+	}
+	if name == AgentAntigravity {
+		return AgentAuthConfig{Mode: AuthModeExistingCLI}, nil
+	}
+	return auth, nil
+}
+
+func hasJazAuthProfile(name string) bool {
+	switch CanonicalAgentName(name) {
+	case AgentCodex, AgentClaude, AgentKimi, AgentQwen, AgentOpenCode:
+		return true
 	default:
-		return auth, nil
+		return false
 	}
 }
 
@@ -157,17 +168,13 @@ func resolveCodexAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env ma
 	layout := runtimefiles.New(root)
 	if !codexNativeOpenAIProvider(cfg.ModelProvider) {
 		return resolvedAgentAuth{
-			Config:      AgentAuthConfig{Mode: AuthModeJazProfile, Path: layout.ACPCodexHome},
-			StoragePath: filepath.Join(layout.ACPCodexHome, "auth.json"),
-			Source:      strings.TrimSpace(cfg.ModelProvider),
-			Reason:      fmt.Sprintf("model provider %q does not support Responses required by Codex", strings.TrimSpace(cfg.ModelProvider)),
+			Config: AgentAuthConfig{Mode: AuthModeJazProfile, Path: layout.ACPCodexHome},
+			Source: strings.TrimSpace(cfg.ModelProvider),
+			Reason: fmt.Sprintf("model provider %q does not support Responses required by Codex", strings.TrimSpace(cfg.ModelProvider)),
 		}
 	}
 	existing := expandAuthPath(firstNonEmpty(existingAuthPath(auth), cfg.Env["CODEX_HOME"], env["CODEX_HOME"], os.Getenv("CODEX_HOME"), defaultHomePath(".codex")))
 	jaz := layout.ACPCodexHome
-	if auth.Mode == AuthModeJazProfile && strings.TrimSpace(auth.Path) != "" {
-		jaz = expandAuthPath(auth.Path)
-	}
 	mode := auth.Mode
 	if mode == AuthModeAuto || mode == "" {
 		mode = AuthModeJazProfile
@@ -206,9 +213,8 @@ func resolveCodexProviderAuth(meta modelprovider.ModelProvider, root string, env
 	layout := runtimefiles.New(root)
 	keyEnv := strings.TrimSpace(meta.APIKeyEnv)
 	status := resolvedAgentAuth{
-		Config:      AgentAuthConfig{Mode: AuthModeJazProfile, Path: layout.ACPCodexHome},
-		StoragePath: filepath.Join(layout.ACPCodexHome, "auth.json"),
-		Source:      AuthModeJazProfile,
+		Config: AgentAuthConfig{Mode: AuthModeJazProfile, Path: layout.ACPCodexHome},
+		Source: AuthModeJazProfile,
 	}
 	value := strings.TrimSpace(providers[codexProviderKeyID(meta.ID)].APIKey)
 	if value == "" && keyEnv != "" {
@@ -221,9 +227,6 @@ func resolveCodexProviderAuth(meta modelprovider.ModelProvider, root string, env
 		status.APIKey = AgentAPIKeySpec{SourceEnv: keyEnv, TargetEnv: keyEnv}
 		status.APIKeyValue = value
 		status.APIKeySet = true
-		if keyEnv != "OPENAI_API_KEY" {
-			status.APIKeyTargetAliases = []string{"OPENAI_API_KEY"}
-		}
 		status.markAuthenticated(strings.ToLower(keyEnv)+"_env", AuthKindAPIKey)
 	default:
 		status.Reason = "Set " + firstNonEmpty(keyEnv, "the provider API key") + " in Settings > Model Providers to use " + firstNonEmpty(strings.TrimSpace(meta.Label), meta.ID) + " with Codex"
@@ -624,7 +627,18 @@ func explicitAgentAPIKey(name, root string, env map[string]string) (string, bool
 }
 
 func codexAuthFileAvailable(home string) bool {
-	return fileExists(filepath.Join(home, "auth.json"))
+	data, err := os.ReadFile(filepath.Join(home, "auth.json"))
+	if err != nil {
+		return false
+	}
+	var auth struct {
+		Mode   string `json:"auth_mode"`
+		Tokens struct {
+			Access  string `json:"access_token"`
+			Refresh string `json:"refresh_token"`
+		} `json:"tokens"`
+	}
+	return json.Unmarshal(data, &auth) == nil && auth.Mode == "chatgpt" && auth.Tokens.Access != "" && auth.Tokens.Refresh != ""
 }
 
 func codexKeyringConfigured(home string) bool {

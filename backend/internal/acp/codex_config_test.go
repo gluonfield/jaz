@@ -1,6 +1,8 @@
 package acp
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -92,7 +94,7 @@ func TestCodexOpenAIAPIKeyRequiresResponsesCapability(t *testing.T) {
 		t.Fatalf("Codex provider aliases = %#v", ids)
 	}
 	status := ProbeAgentAuthWithProviders(AgentCodex, AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, t.TempDir(), nil, providers)
-	if status.Authenticated || status.AuthKind != "" || status.AuthEvidence != "" {
+	if status.Authenticated || status.AuthKind != "" || status.AuthEvidence != "" || status.StoragePath != "" {
 		t.Fatalf("Chat-only OpenAI override auth = %#v", status)
 	}
 }
@@ -163,7 +165,7 @@ func TestProcessEnvBindsSelectedCodexProviderKey(t *testing.T) {
 	manager := NewManager(nil, Config{Root: root}, nil)
 
 	openrouter := manager.processEnv("codex", AgentConfig{ModelProvider: modelprovider.ProviderOpenRouter})
-	if openrouter["OPENROUTER_API_KEY"] != "or-key" || openrouter["OPENAI_API_KEY"] != "or-key" {
+	if openrouter["OPENROUTER_API_KEY"] != "or-key" || openrouter["OPENAI_API_KEY"] != "" {
 		t.Fatalf("codex+openrouter did not bind the provider key: %#v", openrouter)
 	}
 
@@ -193,7 +195,43 @@ func TestProcessEnvDoesNotLeakUnselectedProviderKeyToCodex(t *testing.T) {
 	}
 }
 
-func TestProcessEnvBindsCodexCustomProviderKeyForACPAuth(t *testing.T) {
+func TestCodexProviderKeyCannotOverwriteOAuthProfile(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	home := filepath.Join(root, "acp", "codex-home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	credential := filepath.Join(home, "auth.json")
+	original := `{"auth_mode":"chatgpt","tokens":{"access_token":"oauth","refresh_token":"refresh"}}`
+	if err := os.WriteFile(credential, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(nil, Config{
+		Root: root,
+		Providers: map[string]modelprovider.ModelProviderConfig{
+			modelprovider.ProviderOpenRouter: {APIKey: "or-key"},
+		},
+	}, nil)
+	status := ProbeAgentAuthWithProviders(AgentCodex, AgentConfig{ModelProvider: modelprovider.ProviderOpenRouter}, root, nil, manager.providers())
+	if status.StoragePath != "" {
+		t.Fatalf("provider auth owns OAuth storage %q", status.StoragePath)
+	}
+
+	env := manager.processEnv(AgentCodex, AgentConfig{ModelProvider: modelprovider.ProviderOpenRouter})
+	if env["CODEX_HOME"] != home {
+		t.Fatalf("CODEX_HOME = %q, want stable session home %q", env["CODEX_HOME"], home)
+	}
+	data, err := os.ReadFile(credential)
+	if err != nil || string(data) != original {
+		t.Fatalf("provider setup changed Codex OAuth: %q, %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "config.toml")); !os.IsNotExist(err) {
+		t.Fatalf("provider setup wrote shared Codex config: %v", err)
+	}
+}
+
+func TestProcessEnvBindsCodexCustomProviderKey(t *testing.T) {
 	clearHostEnv(t)
 	root := t.TempDir()
 	t.Setenv("PATH", "/bin")
@@ -214,11 +252,7 @@ func TestProcessEnvBindsCodexCustomProviderKeyForACPAuth(t *testing.T) {
 	if env["ACME_KEY"] != "acme-key" {
 		t.Fatalf("custom provider key was not bound to its configured env: %#v", env)
 	}
-	if env["OPENAI_API_KEY"] != "acme-key" {
-		t.Fatalf("custom provider key was not exposed for codex ACP auth: %#v", env)
-	}
-	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), env)
-	if method != "openai-api-key" || len(missing) != 0 {
-		t.Fatalf("method=%q missing=%v", method, missing)
+	if env["OPENAI_API_KEY"] != "" {
+		t.Fatalf("custom provider key leaked into OPENAI_API_KEY: %#v", env)
 	}
 }

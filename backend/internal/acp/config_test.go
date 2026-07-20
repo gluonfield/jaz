@@ -336,9 +336,7 @@ func TestProcessEnvSetsCodexHomeAndHomeFromSystemLogin(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, filepath.Join(home, ".codex"))
 	t.Setenv("HOME", home)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("PATH", "/bin")
@@ -385,9 +383,7 @@ func TestProbeAgentAuthDoesNotImportCredentials(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, filepath.Join(home, ".codex"))
 	t.Setenv("HOME", home)
 	t.Setenv("CODEX_HOME", "")
 
@@ -631,9 +627,7 @@ func TestProcessEnvNeverLeaksAPIKeysToCodex(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, filepath.Join(home, ".codex"))
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", "/bin")
 	t.Setenv("OPENAI_APIKEY", "openai-key")
@@ -1162,9 +1156,7 @@ func TestProcessEnvAddsAntigravityLoginBinDirToPath(t *testing.T) {
 func TestProcessEnvPrefersAccountAuthOverExplicitAPIKeys(t *testing.T) {
 	root := t.TempDir()
 	codexHome := t.TempDir()
-	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, codexHome)
 	t.Setenv("CODEX_HOME", codexHome)
 	t.Setenv("JAZ_ACP_CODEX_API_KEY", "codex-key")
 
@@ -1190,9 +1182,7 @@ func TestProbeReadinessAllowsCodexOAuthOrExplicitAPIKey(t *testing.T) {
 	}
 
 	codexHome := t.TempDir()
-	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, codexHome)
 	ready = ProbeReadiness(AgentCodex, AgentConfig{Command: exe}, t.TempDir(), map[string]string{"CODEX_HOME": codexHome})
 	if !ready.Available {
 		t.Fatalf("codex should be ready with oauth auth: %#v", ready)

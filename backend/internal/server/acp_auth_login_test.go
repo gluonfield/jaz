@@ -41,11 +41,11 @@ func TestACPAuthLoginRunsCodexWithoutHome(t *testing.T) {
 	testexec.Write(t, filepath.Join(bin, "codex"), `#!/bin/sh
 printf 'home=%s\n' "$HOME"
 printf 'codex_home=%s\n' "$CODEX_HOME"
-printf '{}' > "$CODEX_HOME/auth.json"
+printf '{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}}' > "$CODEX_HOME/auth.json"
 `, `@echo off
 echo home=%HOME%
 echo codex_home=%CODEX_HOME%
-echo {} > "%CODEX_HOME%\auth.json"
+echo {"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}} > "%CODEX_HOME%\auth.json"
 `)
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -93,14 +93,14 @@ if [ ! -d "$CODEX_HOME" ]; then
   echo "CODEX_HOME points to \"$CODEX_HOME\", but that path does not exist" >&2
   exit 1
 fi
-printf '{}' > "$CODEX_HOME/auth.json"
+printf '{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}}' > "$CODEX_HOME/auth.json"
 printf ok
 `, `@echo off
 if not exist "%CODEX_HOME%\" (
   echo CODEX_HOME points to "%CODEX_HOME%", but that path does not exist 1>&2
   exit /b 1
 )
-echo {} > "%CODEX_HOME%\auth.json"
+echo {"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}} > "%CODEX_HOME%\auth.json"
 echo ok
 `)
 	t.Setenv("HOME", home)
@@ -145,12 +145,12 @@ func TestACPAuthLoginRelaysPastedCode(t *testing.T) {
 echo "visit https://auth.example/login"
 read code
 echo "received=$code"
-printf '{}' > "$CODEX_HOME/auth.json"
+printf '{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}}' > "$CODEX_HOME/auth.json"
 `, `@echo off
 echo visit https://auth.example/login
 set /p code=
 echo received=%code%
-echo {} > "%CODEX_HOME%\auth.json"
+echo {"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}} > "%CODEX_HOME%\auth.json"
 `)
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -208,16 +208,14 @@ func TestACPAuthLoginUsesJazProfileEvenWithExistingCodexAuth(t *testing.T) {
 	if err := os.MkdirAll(existing, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(existing, "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCodexOAuth(t, existing)
 	bin := t.TempDir()
 	testexec.Write(t, filepath.Join(bin, "codex"), `#!/bin/sh
 printf 'codex_home=%s\n' "$CODEX_HOME"
-printf '{}' > "$CODEX_HOME/auth.json"
+printf '{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}}' > "$CODEX_HOME/auth.json"
 `, `@echo off
 echo codex_home=%CODEX_HOME%
-echo {} > "%CODEX_HOME%\auth.json"
+echo {"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}} > "%CODEX_HOME%\auth.json"
 `)
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -414,6 +412,13 @@ func assertCodexLoginUsesFileCredentials(t *testing.T, root string) {
 	}
 	if !strings.Contains(string(data), `cli_auth_credentials_store = "file"`) {
 		t.Fatalf("codex config = %q, want file credential store", string(data))
+	}
+}
+
+func writeCodexOAuth(t *testing.T, home string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(home, "auth.json"), []byte(`{"auth_mode":"chatgpt","tokens":{"access_token":"access","refresh_token":"refresh"}}`), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
