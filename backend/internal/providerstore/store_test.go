@@ -107,6 +107,23 @@ func TestCreateLoopbackProviderDoesNotRequireKey(t *testing.T) {
 	}
 }
 
+func TestCreateQwenRegionalProvider(t *testing.T) {
+	rec, err := Create(newMemStore(), Input{
+		Label:        "Qwen Cloud",
+		BaseURL:      "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+		DefaultModel: "qwen3.8-max-preview",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.ID != "qwen-cloud" || rec.APIKeyEnv != "JAZ_PROVIDER_QWEN_CLOUD_API_KEY" {
+		t.Fatalf("Qwen custom provider = %#v", rec)
+	}
+	if cfg := rec.Config(); cfg.BaseURL != rec.BaseURL || cfg.DefaultModel != rec.DefaultModel || cfg.APIKeyEnv != rec.APIKeyEnv {
+		t.Fatalf("Qwen provider config = %#v", cfg)
+	}
+}
+
 func TestLoopbackProviderConfigIgnoresLegacyKeyEnv(t *testing.T) {
 	rec := CustomProvider{
 		ID:        "ollama-2",

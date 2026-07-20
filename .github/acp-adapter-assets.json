@@ -153,34 +153,6 @@
           "binary": "kimi.exe"
         }
       }
-    },
-    "qwen": {
-      "repo": "QwenLM/qwen-code",
-      "tag": "v0.20.0",
-      "version": "0.20.0",
-      "stable_asset_names": true,
-      "assets": {
-        "darwin-arm64": {
-          "name": "qwen-code-darwin-arm64.tar.gz",
-          "binary": "qwen-code/bin/qwen"
-        },
-        "darwin-x64": {
-          "name": "qwen-code-darwin-x64.tar.gz",
-          "binary": "qwen-code/bin/qwen"
-        },
-        "linux-arm64": {
-          "name": "qwen-code-linux-arm64.tar.gz",
-          "binary": "qwen-code/bin/qwen"
-        },
-        "linux-x64": {
-          "name": "qwen-code-linux-x64.tar.gz",
-          "binary": "qwen-code/bin/qwen"
-        },
-        "win32-x64": {
-          "name": "qwen-code-win-x64.zip",
-          "binary": "qwen-code/bin/qwen.cmd"
-        }
-      }
     }
   }
 }

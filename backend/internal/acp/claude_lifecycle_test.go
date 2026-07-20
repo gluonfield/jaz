@@ -24,7 +24,7 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 				"JAZ_FAKE_ACP_PROMPT_DELAY": "1",
 				"JAZ_FAKE_ACP_START_LOG":    startLog,
 			}
-			if agent == acp.AgentCodex || agent == acp.AgentQwen {
+			if agent == acp.AgentCodex {
 				env["JAZ_FAKE_ACP_MATERIALIZED_SESSION"] = filepath.Join(stateDir, "session")
 			}
 			manager, spawned := newNamedProcessTestManager(t, t.TempDir(), agent, env)
@@ -125,96 +125,88 @@ func TestManagerReleasesManagedProcessAfterIdleSideChat(t *testing.T) {
 }
 
 func TestManagerDoesNotReplaceEstablishedLazySession(t *testing.T) {
-	for _, agent := range []string{acp.AgentCodex, acp.AgentQwen} {
-		for _, test := range []struct {
-			name  string
-			event bool
-		}{{name: "message"}, {name: "event", event: true}} {
-			t.Run(agent+"/"+test.name, func(t *testing.T) {
-				manager, store, spawned := newUnmaterializedAgentTestSession(t, agent)
-				var err error
-				if test.event {
-					err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
-				} else {
-					err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				_, err = manager.Send(context.Background(), acp.SendRequest{
-					Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline,
-				})
-				if err == nil || !strings.Contains(err.Error(), "-32002") {
-					t.Fatalf("established session error = %v", err)
-				}
+	for _, test := range []struct {
+		name  string
+		event bool
+	}{{name: "message"}, {name: "event", event: true}} {
+		t.Run(test.name, func(t *testing.T) {
+			manager, store, spawned := newUnmaterializedAgentTestSession(t, acp.AgentCodex)
+			var err error
+			if test.event {
+				err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
+			} else {
+				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = manager.Send(context.Background(), acp.SendRequest{
+				Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline,
 			})
-		}
+			if err == nil || !strings.Contains(err.Error(), "-32002") {
+				t.Fatalf("established session error = %v", err)
+			}
+		})
 	}
 }
 
 func TestManagerDoesNotForkEstablishedLazySessionWithoutProviderID(t *testing.T) {
-	for _, agent := range []string{acp.AgentCodex, acp.AgentQwen} {
-		for _, test := range []struct {
-			name  string
-			event bool
-		}{{name: "message"}, {name: "event", event: true}} {
-			t.Run(agent+"/"+test.name, func(t *testing.T) {
-				manager, store, spawned := newFreshAgentTestSession(t, agent)
-				var err error
-				if test.event {
-					err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
-				} else {
-					err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				_, err = manager.Send(context.Background(), acp.SendRequest{
-					Session: spawned.SessionID, Message: "continue", Completion: acp.CompletionInline,
-				})
-				if err == nil || !strings.Contains(err.Error(), "provider session id is missing") {
-					t.Fatalf("established session error = %v", err)
-				}
+	for _, test := range []struct {
+		name  string
+		event bool
+	}{{name: "message"}, {name: "event", event: true}} {
+		t.Run(test.name, func(t *testing.T) {
+			manager, store, spawned := newFreshAgentTestSession(t, acp.AgentCodex)
+			var err error
+			if test.event {
+				err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
+			} else {
+				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = manager.Send(context.Background(), acp.SendRequest{
+				Session: spawned.SessionID, Message: "continue", Completion: acp.CompletionInline,
 			})
-		}
+			if err == nil || !strings.Contains(err.Error(), "provider session id is missing") {
+				t.Fatalf("established session error = %v", err)
+			}
+		})
 	}
 }
 
 func TestManagerDoesNotPersistUnsentLazySession(t *testing.T) {
-	for _, agent := range []string{acp.AgentCodex, acp.AgentQwen} {
-		t.Run(agent, func(t *testing.T) {
-			manager, store, spawned := newFreshAgentTestSession(t, agent)
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if _, err := manager.Send(ctx, acp.SendRequest{
-				Session:     spawned.SessionID,
-				Message:     "first",
-				Attachments: []storage.Attachment{{Name: "missing-uri"}},
-				Completion:  acp.CompletionInline,
-			}); err == nil {
-				t.Fatal("invalid attachment unexpectedly started a turn")
-			}
-			session, err := store.LoadSession(spawned.SessionID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if session.RuntimeRef.SessionID != "" {
-				t.Fatalf("unsent ACP session persisted as %q", session.RuntimeRef.SessionID)
-			}
-			if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "retry", Completion: acp.CompletionInline}); err != nil {
-				t.Fatal(err)
-			}
-			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
-				t.Fatalf("retried turn = %#v, %v", job, err)
-			}
-			session, err = store.LoadSession(spawned.SessionID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if session.RuntimeRef.SessionID == "" {
-				t.Fatal("sent ACP session was not persisted")
-			}
-		})
+	manager, store, spawned := newFreshAgentTestSession(t, acp.AgentCodex)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := manager.Send(ctx, acp.SendRequest{
+		Session:     spawned.SessionID,
+		Message:     "first",
+		Attachments: []storage.Attachment{{Name: "missing-uri"}},
+		Completion:  acp.CompletionInline,
+	}); err == nil {
+		t.Fatal("invalid attachment unexpectedly started a turn")
+	}
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef.SessionID != "" {
+		t.Fatalf("unsent ACP session persisted as %q", session.RuntimeRef.SessionID)
+	}
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "retry", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
+		t.Fatalf("retried turn = %#v, %v", job, err)
+	}
+	session, err = store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.RuntimeRef.SessionID == "" {
+		t.Fatal("sent ACP session was not persisted")
 	}
 }
 

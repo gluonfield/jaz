@@ -111,14 +111,6 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			modelConfigID:       sessionConfigModel,
 			modelValidationKind: modelValidationNone,
 		}
-	case AgentQwen:
-		return agentPolicy{
-			providerInLaunch:        true,
-			modelConfiguredAtLaunch: true,
-			systemPromptAtLaunch:    true,
-			materializesOnPrompt:    true,
-			modelValidationKind:     modelValidationNone,
-		}
 	case AgentGrok:
 		return agentPolicy{
 			modelValidationKind: modelValidationNone,

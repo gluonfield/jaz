@@ -124,7 +124,7 @@ func LoginAuthConfig(name string, requested AgentAuthConfig) (AgentAuthConfig, e
 
 func hasJazAuthProfile(name string) bool {
 	switch CanonicalAgentName(name) {
-	case AgentCodex, AgentClaude, AgentKimi, AgentQwen, AgentOpenCode:
+	case AgentCodex, AgentClaude, AgentKimi, AgentOpenCode:
 		return true
 	default:
 		return false
@@ -148,8 +148,6 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 		return resolveClaudeAuth(auth, cfg, root, env)
 	case AgentKimi:
 		return resolveKimiAuth(auth, cfg, root, env)
-	case AgentQwen:
-		return resolveQwenAuth(auth, cfg, root, env, providers)
 	case AgentGrok:
 		return resolveGrokAuth(auth, cfg, root, env)
 	case AgentOpenCode:
@@ -600,8 +598,6 @@ func resolveAgentAPIKeySpec(name string) (AgentAPIKeySpec, bool) {
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_CLAUDE_API_KEY", TargetEnv: "ANTHROPIC_API_KEY"}, true
 	case AgentGrok:
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_GROK_API_KEY", TargetEnv: "XAI_API_KEY"}, true
-	case AgentQwen:
-		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_QWEN_API_KEY", TargetEnv: "BAILIAN_CODING_PLAN_API_KEY"}, true
 	case AgentOpenCode:
 		return AgentAPIKeySpec{SourceEnv: "JAZ_ACP_OPENCODE_API_KEY", TargetEnv: "OPENROUTER_API_KEY"}, true
 	default:

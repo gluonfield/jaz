@@ -57,23 +57,10 @@ func TestApplyModelProviderConfigAllowsExplicitKeyForNoKeyBuiltin(t *testing.T) 
 	}
 }
 
-func TestQwenProviderCompatibilityMatchesWireSupport(t *testing.T) {
-	modelStudio, ok := ModelProviderByID(ProviderModelStudio)
-	if !ok || !modelStudio.SupportsCapability(CapabilityChatCompletions) || !modelStudio.SupportsCapability(CapabilityResponses) {
-		t.Fatalf("ModelStudio capabilities = %#v", modelStudio)
-	}
-	codingPlan, ok := ModelProviderByID(ProviderQwenCodingPlan)
-	if !ok || !codingPlan.SupportsCapability(CapabilityChatCompletions) || codingPlan.SupportsCapability(CapabilityResponses) {
-		t.Fatalf("Coding Plan capabilities = %#v", codingPlan)
-	}
-	tokenPlan, ok := ModelProviderByID(ProviderQwenTokenPlan)
-	if !ok || tokenPlan.DefaultModel != DefaultQwenTokenPlanModel ||
-		!tokenPlan.SupportsCapability(CapabilityChatCompletions) || tokenPlan.SupportsCapability(CapabilityResponses) {
-		t.Fatalf("Token Plan capabilities = %#v", tokenPlan)
-	}
+func TestCustomOpenAICompatibleProviderDefaultsToChatCompletions(t *testing.T) {
 	custom := ApplyModelProviderConfig(ModelProvider{ID: "custom"}, ModelProviderConfig{
 		Type:    "openai-compatible",
-		BaseURL: "https://qwen.example/v1",
+		BaseURL: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
 	})
 	if !custom.SupportsCapability(CapabilityChatCompletions) || custom.SupportsCapability(CapabilityResponses) {
 		t.Fatalf("custom OpenAI-compatible provider must default to Chat Completions only: %#v", custom)
@@ -98,7 +85,7 @@ func TestQwenProviderCompatibilityMatchesWireSupport(t *testing.T) {
 
 func TestResolveModelProvidersAppliesConfiguredDefaultsOnce(t *testing.T) {
 	resolved := ResolveModelProviders(map[string]ModelProviderConfig{
-		ProviderModelStudio: {DefaultModel: "qwen-custom"},
+		ProviderOpenRouter: {DefaultModel: "router-custom"},
 		"acme": {
 			Type:         "openai-compatible",
 			BaseURL:      "https://acme.test/v1",
@@ -112,7 +99,7 @@ func TestResolveModelProvidersAppliesConfiguredDefaultsOnce(t *testing.T) {
 		}
 		seen[modelProvider.ID] = modelProvider
 	}
-	if seen[ProviderModelStudio].Meta.DefaultModel != "qwen-custom" || seen["acme"].Meta.DefaultModel != "acme-coder" {
+	if seen[ProviderOpenRouter].Meta.DefaultModel != "router-custom" || seen["acme"].Meta.DefaultModel != "acme-coder" {
 		t.Fatalf("resolved providers = %#v", seen)
 	}
 }

@@ -32,20 +32,6 @@ func TestCodexProviderArgsOpenRouter(t *testing.T) {
 	}
 }
 
-func TestCodexProviderArgsModelStudioUsesResponses(t *testing.T) {
-	args := codexProviderArgs(AgentConfig{ModelProvider: modelprovider.ProviderModelStudio}, nil)
-	want := []string{
-		"-c", `model_provider="modelstudio-us"`,
-		"-c", `model_providers.modelstudio-us.name="Alibaba ModelStudio (US)"`,
-		"-c", `model_providers.modelstudio-us.base_url="https://dashscope-us.aliyuncs.com/compatible-mode/v1"`,
-		"-c", `model_providers.modelstudio-us.env_key="DASHSCOPE_API_KEY"`,
-		"-c", `model_providers.modelstudio-us.wire_api="responses"`,
-	}
-	if !slices.Equal(args, want) {
-		t.Fatalf("ModelStudio args mismatch\n got: %v\nwant: %v", args, want)
-	}
-}
-
 func TestCodexProviderArgsOllama(t *testing.T) {
 	want := []string{"-c", `model_provider="ollama"`}
 	if args := codexProviderArgs(AgentConfig{ModelProvider: modelprovider.ProviderOllama}, nil); !slices.Equal(args, want) {

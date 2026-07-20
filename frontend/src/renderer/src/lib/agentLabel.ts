@@ -6,7 +6,6 @@ const DISPLAY_NAMES: Record<string, string> = {
   codex: 'Codex',
   claude: 'Claude',
   kimi: 'Kimi',
-  qwen: 'Qwen',
   grok: 'Grok',
   opencode: 'OpenCode',
   antigravity: 'Antigravity',
@@ -25,13 +24,11 @@ export function agentLabel(value: string | undefined): string {
     .join(' ')
 }
 
-// The service that owns an agent's credentials. Most are OAuth identities;
-// Qwen uses an Alibaba subscription key instead.
+// The service that owns an agent's credentials.
 const AUTH_PROVIDERS: Record<string, string> = {
   codex: 'OpenAI',
   claude: 'Anthropic',
   kimi: 'Moonshot AI',
-  qwen: 'Qwen Coding Plan',
   grok: 'xAI',
   opencode: 'OpenRouter',
   antigravity: 'Google AI',
@@ -48,7 +45,6 @@ export function authProviderLabel(value: string | undefined): string {
 const ONBOARDING_NAMES: Record<string, string> = {
   claude: 'Claude Code',
   kimi: 'Kimi Code',
-  qwen: 'Qwen Code',
   antigravity: 'Antigravity',
 }
 
@@ -62,13 +58,6 @@ export function agentAPIKeyCopy(
   target: string,
   configured: boolean,
 ): { placeholder: string; description: string; connected: string } {
-  if ((value || '').trim().toLowerCase() === 'qwen') {
-    return {
-      placeholder: configured ? 'Already set up' : 'Paste your sk-sp-… subscription key',
-      description: 'Uses your Alibaba Cloud Coding Plan subscription; Qwen OAuth is discontinued.',
-      connected: 'Connected to Qwen Coding Plan',
-    }
-  }
   return {
     placeholder: configured ? 'Already set up' : 'Paste an API key',
     description: `jaz passes this key straight to ${target}.`,

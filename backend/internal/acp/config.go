@@ -17,7 +17,6 @@ const (
 	AgentCodex       = "codex"
 	AgentClaude      = "claude"
 	AgentKimi        = "kimi"
-	AgentQwen        = "qwen"
 	AgentGrok        = "grok"
 	AgentOpenCode    = "opencode"
 	AgentAntigravity = "antigravity"
@@ -287,7 +286,6 @@ var builtinAgentOrder = []string{
 	AgentCodex,
 	AgentClaude,
 	AgentKimi,
-	AgentQwen,
 	AgentGrok,
 	AgentOpenCode,
 	AgentAntigravity,
@@ -304,15 +302,6 @@ func BuiltinAgents() AgentCatalog {
 		AgentKimi: {
 			ManagedAdapter:     "kimi",
 			ManagedAdapterArgs: []string{"acp"},
-		},
-		AgentQwen: {
-			ManagedAdapter:          "qwen",
-			ManagedAdapterArgs:      []string{"--acp"},
-			ProviderMode:            AgentProviderModeAgentDefaults,
-			ModelProviderCapability: provider.CapabilityChatCompletions,
-			ModelProvider:           provider.ProviderQwenCodingPlan,
-			AuthProviderID:          provider.ProviderQwenCodingPlan,
-			Model:                   provider.DefaultQwenCodingPlanModel,
 		},
 		AgentGrok: {
 			Command: "grok",

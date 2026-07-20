@@ -976,16 +976,16 @@ func TestProcessEnvUsesSplitOpenCodeProviderModel(t *testing.T) {
 	}
 }
 
-func TestProcessEnvWritesCustomOpenCodeProviderConfig(t *testing.T) {
+func TestProcessEnvWritesQwenRegionalCustomProviderConfig(t *testing.T) {
 	root := t.TempDir()
 	env, err := NewManager(nil, Config{
 		Root: root,
 		Providers: map[string]modelprovider.ModelProviderConfig{
-			"internal": {
+			"qwen-cloud": {
 				Type:    "openai-compatible",
-				Label:   "Internal",
-				BaseURL: "https://llm.internal/v1",
-				APIKey:  "internal-key",
+				Label:   "Qwen Cloud",
+				BaseURL: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+				APIKey:  "qwen-key",
 			},
 			"unused": {
 				Type:      "openai-compatible",
@@ -994,11 +994,11 @@ func TestProcessEnvWritesCustomOpenCodeProviderConfig(t *testing.T) {
 				APIKeyEnv: "UNUSED_PROVIDER_KEY",
 			},
 		},
-	}, nil).processEnvPrepared("opencode", AgentConfig{Model: "internal/chat"})
+	}, nil).processEnvPrepared("opencode", AgentConfig{Model: "qwen-cloud/qwen3.8-max-preview"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if env["JAZ_PROVIDER_INTERNAL_API_KEY"] != "internal-key" {
+	if env["JAZ_PROVIDER_QWEN_CLOUD_API_KEY"] != "qwen-key" {
 		t.Fatalf("custom provider key not mapped: %#v", env)
 	}
 	if env["UNUSED_PROVIDER_KEY"] != "" {
@@ -1016,12 +1016,12 @@ func TestProcessEnvWritesCustomOpenCodeProviderConfig(t *testing.T) {
 	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &content); err != nil {
 		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
 	}
-	internal := content.Provider["internal"]
-	if internal.API != "https://llm.internal/v1" || strings.Join(internal.Env, ",") != "JAZ_PROVIDER_INTERNAL_API_KEY" {
-		t.Fatalf("internal provider config = %#v", internal)
+	qwen := content.Provider["qwen-cloud"]
+	if qwen.API != "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1" || strings.Join(qwen.Env, ",") != "JAZ_PROVIDER_QWEN_CLOUD_API_KEY" {
+		t.Fatalf("Qwen provider config = %#v", qwen)
 	}
-	if _, ok := internal.Models["chat"]; !ok {
-		t.Fatalf("internal models = %#v", internal.Models)
+	if _, ok := qwen.Models["qwen3.8-max-preview"]; !ok {
+		t.Fatalf("Qwen models = %#v", qwen.Models)
 	}
 }
 
@@ -1256,13 +1256,6 @@ func TestProbeReadinessRejectsURLBackedGrokModelOverride(t *testing.T) {
 	ready := ProbeReadiness(AgentGrok, AgentConfig{URL: "http://127.0.0.1:9999", Model: modelcatalog.DefaultGrokModel}, t.TempDir(), nil)
 	if ready.Available || !strings.Contains(ready.Reason, "URL-backed Grok") {
 		t.Fatalf("ready = %#v", ready)
-	}
-}
-
-func TestProbeReadinessRejectsURLBackedQwen(t *testing.T) {
-	ready := ProbeReadiness(AgentQwen, AgentConfig{URL: "http://127.0.0.1:9999"}, t.TempDir(), nil)
-	if ready.Available || !strings.Contains(ready.Reason, "model and Jaz system prompt require the local agent launch") {
-		t.Fatalf("readiness = %#v", ready)
 	}
 }
 

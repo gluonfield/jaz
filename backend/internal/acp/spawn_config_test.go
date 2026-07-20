@@ -59,16 +59,6 @@ func TestSpawnConfigRejectsJazAgent(t *testing.T) {
 	}
 }
 
-func TestSpawnConfigRejectsURLBackedQwen(t *testing.T) {
-	manager := &Manager{agents: AgentCatalog{
-		AgentQwen: {URL: "http://127.0.0.1:7777/acp"},
-	}}
-	_, _, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentQwen})
-	if err == nil || !strings.Contains(err.Error(), "model and Jaz system prompt require the local agent launch") {
-		t.Fatalf("err = %v", err)
-	}
-}
-
 func TestSpawnConfigRejectsProviderWithoutRequiredWireProtocol(t *testing.T) {
 	manager := &Manager{
 		cfg: Config{Providers: map[string]modelprovider.ModelProviderConfig{
@@ -217,33 +207,29 @@ func TestSpawnConfigUsesCodexOpenAIDefaultModelForOpenAIProviders(t *testing.T) 
 }
 
 func TestSpawnConfigUsesConfiguredProviderDefaultModel(t *testing.T) {
-	for _, agent := range []string{AgentOpenCode, AgentQwen} {
-		t.Run(agent, func(t *testing.T) {
-			manager := &Manager{
-				cfg: Config{Providers: map[string]modelprovider.ModelProviderConfig{
-					"acme": {
-						Type:         "openai-compatible",
-						BaseURL:      "https://acme.test/v1",
-						DefaultModel: "acme-coder",
-						Capabilities: []string{modelprovider.CapabilityChatCompletions},
-					},
-				}},
-				agents: AgentCatalog{agent: {
-					Command:                 agent,
-					ProviderMode:            AgentProviderModeAgentDefaults,
-					ModelProviderCapability: modelprovider.CapabilityChatCompletions,
-					ModelProvider:           modelprovider.ProviderOpenRouter,
-					Model:                   modelprovider.DefaultOpenRouterModel,
-				}},
-			}
-			_, cfg, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: agent, ModelProvider: "acme"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if cfg.ModelProvider != "acme" || cfg.Model != "acme-coder" {
-				t.Fatalf("provider switch = %#v", cfg)
-			}
-		})
+	manager := &Manager{
+		cfg: Config{Providers: map[string]modelprovider.ModelProviderConfig{
+			"acme": {
+				Type:         "openai-compatible",
+				BaseURL:      "https://acme.test/v1",
+				DefaultModel: "acme-coder",
+				Capabilities: []string{modelprovider.CapabilityChatCompletions},
+			},
+		}},
+		agents: AgentCatalog{AgentOpenCode: {
+			Command:                 AgentOpenCode,
+			ProviderMode:            AgentProviderModeAgentDefaults,
+			ModelProviderCapability: modelprovider.CapabilityChatCompletions,
+			ModelProvider:           modelprovider.ProviderOpenRouter,
+			Model:                   modelprovider.DefaultOpenRouterModel,
+		}},
+	}
+	_, cfg, _, err := manager.spawnConfig(SpawnRequest{ACPAgent: AgentOpenCode, ModelProvider: "acme"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ModelProvider != "acme" || cfg.Model != "acme-coder" {
+		t.Fatalf("provider switch = %#v", cfg)
 	}
 }
 

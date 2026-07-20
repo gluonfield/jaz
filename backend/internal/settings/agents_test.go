@@ -19,7 +19,7 @@ func testAgentDefaultsSeed() AgentDefaults {
 
 func TestAgentDefaultsFromCatalogKeepsAuthManagedAgentsDisabled(t *testing.T) {
 	seed := AgentDefaultsFromCatalog(acp.BuiltinAgents())
-	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentQwen, acp.AgentGrok, acp.AgentOpenCode, acp.AgentAntigravity} {
+	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentGrok, acp.AgentOpenCode, acp.AgentAntigravity} {
 		if seed.ACP[agent].Enabled {
 			t.Fatalf("%s seeded enabled without auth: %#v", agent, seed.ACP[agent])
 		}
@@ -229,6 +229,17 @@ func TestMergeAgentDefaultsMigratesRetiredGrokBuildModel(t *testing.T) {
 
 	if merged.ACP[acp.AgentGrok].Model != seed.ACP[acp.AgentGrok].Model {
 		t.Fatalf("grok model = %q, want %q", merged.ACP[acp.AgentGrok].Model, seed.ACP[acp.AgentGrok].Model)
+	}
+}
+
+func TestMergeAgentDefaultsDropsRetiredQwenAgent(t *testing.T) {
+	seed := testAgentDefaultsSeed()
+	stored := testAgentDefaultsSeed()
+	stored.ACP["qwen"] = ACPAgentDefaults{Enabled: true, ModelProvider: "qwen-token-plan"}
+
+	merged := MergeAgentDefaults(stored, seed, agentNames(seed))
+	if _, ok := merged.ACP["qwen"]; ok {
+		t.Fatalf("retired Qwen agent survived settings merge: %#v", merged.ACP["qwen"])
 	}
 }
 

@@ -118,7 +118,6 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 			env[key] = value
 		}
 	}
-	cfg.Args = qwenLaunchArgs(name, cfg.Args, cfg.ProviderNativeModel(), systemPrompt)
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
@@ -360,9 +359,6 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 	}
 	if name == AgentKimi {
 		prepareErr = firstError(prepareErr, m.prepareKimiProcessEnv(root, agent, env, prepare))
-	}
-	if name == AgentQwen {
-		prepareErr = firstError(prepareErr, m.prepareQwenProcessEnv(root, agent, env, prepare))
 	}
 	if name == AgentGrok {
 		processenv.PreserveHost(env,

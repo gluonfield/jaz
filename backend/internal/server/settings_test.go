@@ -218,12 +218,19 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,kimi,qwen,grok,opencode,antigravity" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasModelProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
 		!hasModelProvider(got.Providers, "openrouter", "https://openrouter.ai/api/v1") {
 		t.Fatalf("providers = %#v", got.Providers)
+	}
+	for _, retired := range []string{"modelstudio-us", "qwen-coding-plan", "qwen-coding-plan-cn", "qwen-token-plan"} {
+		for _, modelProvider := range got.Providers {
+			if modelProvider.ID == retired {
+				t.Fatalf("retired built-in provider %q was exposed", retired)
+			}
+		}
 	}
 	if got.ACP["codex"].Enabled ||
 		got.ACP["codex"].Model != provider.OpenAIModelGPT56Sol {
@@ -235,17 +242,11 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("codex model options missing GPT-5.6 family %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
-		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter,ollama,modelstudio-us" {
+		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter,ollama" {
 		t.Fatalf("unexpected codex provider options %#v", got.ACPOptions["codex"])
 	}
-	if got.ACP["qwen"].Enabled ||
-		got.ACP["qwen"].ModelProvider != provider.ProviderQwenCodingPlan ||
-		got.ACP["qwen"].Model != provider.DefaultQwenCodingPlanModel ||
-		got.ACPOptions["qwen"].AuthProviderID != provider.ProviderQwenCodingPlan ||
-		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderModelStudio) ||
-		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderQwenCodingPlanCN) ||
-		!hasString(got.ACPOptions["qwen"].ModelProviderIDs, provider.ProviderQwenTokenPlan) {
-		t.Fatalf("unexpected qwen defaults %#v / %#v", got.ACP["qwen"], got.ACPOptions["qwen"])
+	if _, ok := got.ACP["qwen"]; ok {
+		t.Fatalf("retired Qwen agent was exposed: %#v", got.ACP["qwen"])
 	}
 	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||
 		got.ACPOptions["codex"].ModelProviders[0].Label != "OpenAI OAuth" ||
@@ -273,7 +274,6 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		!hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "max") ||
 		!hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultra") ||
 		len(got.ACPOptions["kimi"].ReasoningEfforts) != 0 ||
-		len(got.ACPOptions["qwen"].ReasoningEfforts) != 0 ||
 		hasReasoningEffort(got.ACPOptions["codex"].ReasoningEfforts, "ultracode") {
 		t.Fatalf("unexpected acp options %#v", got.ACPOptions)
 	}
@@ -704,26 +704,26 @@ func TestAgentSettingsAPIIncludesCustomProviderForACPAgents(t *testing.T) {
 			Command:                 "codex",
 			ProviderMode:            acp.AgentProviderModeAgentDefaults,
 			ModelProviderCapability: provider.CapabilityResponses,
-			ModelProvider:           "internal",
+			ModelProvider:           "qwen-cloud",
 			Model:                   "gpt-5.4-mini",
 		},
 		acp.AgentOpenCode: {
 			Command:                 "opencode",
 			ProviderMode:            acp.AgentProviderModeAgentDefaults,
 			ModelProviderCapability: provider.CapabilityChatCompletions,
-			ModelProvider:           "internal",
-			Model:                   "chat",
+			ModelProvider:           "qwen-cloud",
+			Model:                   "qwen3.8-max-preview",
 		},
 	})
 	handler := (&Server{ModelCatalog: modelcatalog.NewService(nil),
 		Store:        store,
 		AgentCatalog: catalog,
 		Providers: provider.StaticSource(map[string]provider.ModelProviderConfig{
-			"internal": {
+			"qwen-cloud": {
 				Type:    "openai-compatible",
-				Label:   "Internal",
-				BaseURL: "https://llm.internal/v1",
-				APIKey:  "internal-key",
+				Label:   "Qwen Cloud",
+				BaseURL: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
+				APIKey:  "qwen-key",
 			},
 		}),
 	}).Handler()
@@ -763,22 +763,22 @@ func TestAgentSettingsAPIIncludesCustomProviderForACPAgents(t *testing.T) {
 		Configured       bool     `json:"configured"`
 	}
 	for i := range got.Providers {
-		if got.Providers[i].ID == "internal" {
+		if got.Providers[i].ID == "qwen-cloud" {
 			custom = &got.Providers[i]
 			break
 		}
 	}
-	if custom == nil || custom.Label != "Internal" || custom.BaseURL != "https://llm.internal/v1" ||
+	if custom == nil || custom.Label != "Qwen Cloud" || custom.BaseURL != "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1" ||
 		len(custom.Capabilities) != 1 || custom.Capabilities[0] != provider.CapabilityChatCompletions ||
 		!custom.OpenAICompatible || !custom.Configured {
 		t.Fatalf("custom provider not exposed correctly: %#v", got.Providers)
 	}
 	if options := got.ACPOptions["codex"]; options.ProviderMode != acp.AgentProviderModeAgentDefaults ||
-		hasString(options.ModelProviderIDs, "internal") {
+		hasString(options.ModelProviderIDs, "qwen-cloud") {
 		t.Fatalf("chat-only custom provider was offered to Codex: %#v", options)
 	}
 	if options := got.ACPOptions["opencode"]; options.ProviderMode != acp.AgentProviderModeAgentDefaults ||
-		!hasString(options.ModelProviderIDs, "internal") {
+		!hasString(options.ModelProviderIDs, "qwen-cloud") {
 		t.Fatalf("opencode capabilities lost: %#v", options)
 	}
 	if auth := got.ACPAuth["opencode"]; !auth.Authenticated || auth.AuthKind != acp.AuthKindAPIKey {
@@ -821,7 +821,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,kimi,qwen,grok,opencode,antigravity,local_helper" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,local_helper" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if _, ok := got.ACP[acp.AgentJaz]; ok {

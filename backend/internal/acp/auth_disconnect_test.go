@@ -10,7 +10,7 @@ import (
 )
 
 func TestDisconnectedAuthConfigPinsProfileAgents(t *testing.T) {
-	for _, agent := range []string{AgentCodex, AgentClaude, AgentKimi, AgentQwen, AgentOpenCode} {
+	for _, agent := range []string{AgentCodex, AgentClaude, AgentKimi, AgentOpenCode} {
 		if got := DisconnectedAuthConfig(agent, AgentAuthConfig{Mode: AuthModeExistingCLI}); got.Mode != AuthModeJazProfile || got.Path != "" {
 			t.Fatalf("%s disconnected auth = %#v, want Jaz profile", agent, got)
 		}

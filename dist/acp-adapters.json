@@ -167,36 +167,6 @@
           "binary": "kimi.exe"
         }
       }
-    },
-    "qwen": {
-      "version": "0.20.0",
-      "assets": {
-        "darwin-arm64": {
-          "url": "https://github.com/QwenLM/qwen-code/releases/download/v0.20.0/qwen-code-darwin-arm64.tar.gz",
-          "sha256": "971675ad3f9a0f22f1f1b27c6eb1a8a74d2effbc713de0494e61ca78b4626574",
-          "binary": "qwen-code/bin/qwen"
-        },
-        "darwin-x64": {
-          "url": "https://github.com/QwenLM/qwen-code/releases/download/v0.20.0/qwen-code-darwin-x64.tar.gz",
-          "sha256": "54b7f8d36c7c7be97519d4cf4a172a051737eab5ba9cd47338f90622a269f1d2",
-          "binary": "qwen-code/bin/qwen"
-        },
-        "linux-arm64": {
-          "url": "https://github.com/QwenLM/qwen-code/releases/download/v0.20.0/qwen-code-linux-arm64.tar.gz",
-          "sha256": "adefeb67b195e69c8d6531fbe91c060ed00b57b384247e3449d18d629a40d8f4",
-          "binary": "qwen-code/bin/qwen"
-        },
-        "linux-x64": {
-          "url": "https://github.com/QwenLM/qwen-code/releases/download/v0.20.0/qwen-code-linux-x64.tar.gz",
-          "sha256": "cfc560c5cb04860650887f484be99739ec1d86a77bbc989b90b5c81beb407ca8",
-          "binary": "qwen-code/bin/qwen"
-        },
-        "win32-x64": {
-          "url": "https://github.com/QwenLM/qwen-code/releases/download/v0.20.0/qwen-code-win-x64.zip",
-          "sha256": "9b13bcc0b6e2b27494c20b2991c850b216ea1d4412db6fa41850963f45233666",
-          "binary": "qwen-code/bin/qwen.cmd"
-        }
-      }
     }
   }
 }
