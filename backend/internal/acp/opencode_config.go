@@ -18,6 +18,7 @@ const openCodeOpenAICompatibleNPM = "@ai-sdk/openai-compatible"
 
 type openCodeConfigContent struct {
 	Instructions []string                          `json:"instructions,omitempty"`
+	Permission   string                            `json:"permission"`
 	Provider     map[string]openCodeProviderConfig `json:"provider,omitempty"`
 	Model        string                            `json:"model,omitempty"`
 	SmallModel   string                            `json:"small_model,omitempty"`
@@ -99,7 +100,7 @@ func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]stri
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
 		return nil
 	}
-	content := openCodeConfigContent{}
+	content := openCodeConfigContent{Permission: "allow"}
 	if instruction, err := m.prepareOpenCodeInstructionFile(ctx, env, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions); err != nil {
 		return err
 	} else if instruction != "" {
@@ -117,9 +118,6 @@ func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]stri
 		}
 	}
 	addOpenCodeReasoningVariant(&content, model, agent.ReasoningEffort)
-	if len(content.Instructions) == 0 && len(content.Provider) == 0 && content.Model == "" && content.SmallModel == "" {
-		return nil
-	}
 	data, err := json.Marshal(content)
 	if err != nil {
 		return err

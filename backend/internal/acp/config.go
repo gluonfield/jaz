@@ -309,7 +309,7 @@ func BuiltinAgents() AgentCatalog {
 		},
 		AgentOpenCode: {
 			Command:                 "npx",
-			Args:                    []string{"-y", "opencode-ai@1.17.7", "acp"},
+			Args:                    []string{"-y", "opencode-ai@1.18.3", "acp"},
 			ProviderMode:            AgentProviderModeAgentDefaults,
 			ModelProviderCapability: provider.CapabilityOpenCode,
 			ModelProvider:           provider.ProviderOpenRouter,
