@@ -55,6 +55,11 @@ Connect your coding agent and reuse subscription (Codex, Claude Code, Open Code,
 
 <img width="3656" height="2690" alt="image" src="https://github.com/user-attachments/assets/b4ee3750-8b35-4d33-a78e-dc7b2c4c6a54" />
 
+Connect your apps
+
+<img width="3834" height="2776" alt="image" src="https://github.com/user-attachments/assets/1b7ad3c9-b6cb-4dcc-9c62-74e8ab0b0c78" />
+
+
 
 
 
