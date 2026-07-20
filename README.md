@@ -43,6 +43,19 @@ Board with live artifacts
 
 <img width="4410" height="2924" alt="image" src="https://github.com/user-attachments/assets/29974b5b-26b2-4f30-aaea-cc4afed6c176" />
 
+Customize
+
+<img width="3694" height="2710" alt="image" src="https://github.com/user-attachments/assets/f789b6e6-8dd1-4169-9bdd-65c6d36b7187" />
+
+Track usage
+
+<img width="3696" height="2712" alt="image" src="https://github.com/user-attachments/assets/fb7714a7-8494-4e34-a1f0-690412f606df" />
+
+Connect multiple coding agents
+
+<img width="3656" height="2690" alt="image" src="https://github.com/user-attachments/assets/b4ee3750-8b35-4d33-a78e-dc7b2c4c6a54" />
+
+
 
 
 ## Get Started
