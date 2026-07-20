@@ -122,6 +122,9 @@ func TestToolUpdateNormalizesProviderToolPresentation(t *testing.T) {
 		ID:       "search-1",
 		Title:    "X Search",
 		RawInput: json.RawMessage(`{"variant":"XSearch"}`),
+	})
+	mergeToolCall(&call, toolUpdateSnapshot(toolUpdateFields{
+		ID: "search-1",
 		RawOutput: json.RawMessage(`{
 			"action": {
 				"query": "typed tool presentation",
@@ -135,7 +138,7 @@ func TestToolUpdateNormalizesProviderToolPresentation(t *testing.T) {
 				]
 			}
 		}`),
-	})
+	}))
 	if call.ToolName != "WebSearch" || call.Title != "typed tool presentation" {
 		t.Fatalf("normalized identity = %q %q", call.ToolName, call.Title)
 	}

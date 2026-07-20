@@ -78,7 +78,11 @@ function HumanToolPreview({
 }) {
   if (preview?.type === 'web_results') {
     return (
-      <div className="mb-1 ml-7 flex flex-col rounded-control bg-surface/40 p-0.5 ring-1 ring-border/45">
+      <div
+        role="group"
+        aria-label={`${preview.total} search results; showing ${preview.items.length}`}
+        className="mb-1 ml-7 flex flex-col rounded-control bg-surface/40 p-0.5 ring-1 ring-border/45"
+      >
         {preview.items.map((result) => (
           <ResultRow key={result.url} {...result} />
         ))}

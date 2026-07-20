@@ -64,6 +64,7 @@ func mergeToolCall(dst *sessionevents.ACPToolCall, src sessionevents.ACPToolCall
 	if !src.UpdatedAt.IsZero() {
 		dst.UpdatedAt = src.UpdatedAt
 	}
+	normalizeToolCall(dst)
 }
 
 type toolUpdateFields struct {
@@ -83,27 +84,21 @@ type toolUpdateFields struct {
 // ToolCallUpdate) into a partial snapshot. Both session-update variants share
 // this so the protocol handler keeps one merge path.
 func toolUpdateSnapshot(fields toolUpdateFields) sessionevents.ACPToolCall {
-	toolName := normalizedToolName(fields.Meta, fields.Kind, fields.RawInput)
-	rawOutput := boundedRawOutput(fields.RawOutput)
-	content := normalizeToolContent(fields.Content)
-	webOutput := decodeWebToolOutput(toolName, rawOutput)
-	if len(content) == 0 {
-		content = webOutput.content()
-	}
 	src := sessionevents.ACPToolCall{
 		ID:        string(fields.ID),
-		Title:     webOutput.title(fields.Title),
+		Title:     fields.Title,
 		Kind:      kindString(fields.Kind),
-		ToolName:  toolName,
-		Content:   content,
+		ToolName:  metadataToolName(fields.Meta),
+		Content:   normalizeToolContent(fields.Content),
 		Locations: normalizeToolLocations(fields.Locations),
 		RawInput:  boundedRawInput(fields.RawInput),
-		RawOutput: rawOutput,
+		RawOutput: boundedRawOutput(fields.RawOutput),
 		Runtime:   acpToolRuntime(fields.Meta, fields.At),
 	}
 	if fields.Status != nil {
 		src.Status = string(*fields.Status)
 	}
+	normalizeToolCall(&src)
 	return src
 }
 
@@ -157,20 +152,30 @@ func normalizeToolLocations(locations []acpschema.ToolCallLocation) []sessioneve
 	return out
 }
 
-func normalizedToolName(meta map[string]any, kind *acpschema.ToolKind, rawInput json.RawMessage) string {
+func metadataToolName(meta map[string]any) string {
 	if cc, ok := meta["claudeCode"].(map[string]any); ok {
 		if name, ok := cc["toolName"].(string); ok && name != "" {
 			return name
 		}
 	}
-	var input struct {
-		Variant string `json:"variant"`
-		Action  struct {
-			Type string `json:"type"`
-		} `json:"action"`
+	return ""
+}
+
+func normalizeToolCall(call *sessionevents.ACPToolCall) {
+	call.ToolName = normalizedToolName(call.ToolName, call.Kind, call.RawInput)
+	webOutput := decodeWebToolOutput(call.ToolName, call.RawOutput)
+	call.Title = webOutput.title(call.Title)
+	if len(call.Content) == 0 {
+		call.Content = webOutput.Results
 	}
-	_ = json.Unmarshal(rawInput, &input)
-	switch toolNameKey(input.Variant) {
+}
+
+func normalizedToolName(name, kind string, input map[string]any) string {
+	if name != "" {
+		return name
+	}
+	variant, _ := input["variant"].(string)
+	switch toolNameKey(variant) {
 	case "bash":
 		return "Bash"
 	case "listdir":
@@ -182,10 +187,11 @@ func normalizedToolName(meta map[string]any, kind *acpschema.ToolKind, rawInput 
 	case "websearch", "xsearch":
 		return "WebSearch"
 	}
-	if kind == nil || *kind != acpschema.ToolKindFetch {
+	if kind != string(acpschema.ToolKindFetch) {
 		return ""
 	}
-	if input.Action.Type == "search" {
+	action, _ := input["action"].(map[string]any)
+	if action["type"] == "search" {
 		return "WebSearch"
 	}
 	return "WebFetch"
@@ -251,13 +257,6 @@ func decodeWebToolOutput(toolName string, raw json.RawMessage) webToolOutput {
 		appendResult(source.URL, source.Title)
 	}
 	return out
-}
-
-func (o webToolOutput) content() []sessionevents.ACPToolContent {
-	if len(o.Results) == 0 {
-		return nil
-	}
-	return o.Results
 }
 
 func (o webToolOutput) title(title string) string {
