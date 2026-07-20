@@ -510,7 +510,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                             />
                           </>
                         ) : live ? (
-                          <div className="flex flex-col gap-5">
+                          <div className="flex flex-col gap-2">
                             <motion.div
                               className="flex justify-end"
                               initial={{ opacity: 0, y: 8 }}

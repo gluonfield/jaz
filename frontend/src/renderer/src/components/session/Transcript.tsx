@@ -13,7 +13,6 @@ import { Bubble } from './Bubble'
 import { LiveEvent } from './LiveEvent'
 import type { SessionErrorAction } from './SessionErrorNotice'
 import { ToolDisclosure } from './ToolDisclosure'
-import { toolRunLabel } from './toolPresentation'
 
 const INITIAL_VISIBLE_TURNS = 14
 const VISIBLE_TURN_BATCH = 24
@@ -221,12 +220,7 @@ export const Transcript = memo(function Transcript({
         )
       case 'tools':
         return (
-          <ToolDisclosure
-            key={item.key}
-            label={toolRunLabel(item.calls)}
-            calls={item.calls}
-            active={working}
-          />
+          <ToolDisclosure key={item.key} calls={item.calls} active={working} />
         )
       case 'event': {
         const taskSurface = taskSurfaceFromEvent(item.event)

@@ -32,7 +32,7 @@ export function ThinkingBlock({ text, pending = false }: { text: string; pending
           <span className="absolute -left-2.5 top-2 flex size-5 items-center justify-center rounded-full bg-bg text-ink-3">
             <Clock3 size={12} aria-hidden />
           </span>
-          <div className="max-h-72 overflow-auto [&_.chat-prose]:text-[13px] [&_.chat-prose]:leading-[1.55] [&_.chat-prose]:text-ink-3">
+          <div className="thinking-prose max-h-72 overflow-auto">
             <MessageMarkdown text={trimmed} />
           </div>
         </div>
