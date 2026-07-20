@@ -51,7 +51,7 @@ Track usage
 
 <img width="3696" height="2712" alt="image" src="https://github.com/user-attachments/assets/fb7714a7-8494-4e34-a1f0-690412f606df" />
 
-Connect multiple coding agents
+Connect your coding agent and reuse subscription (Codex, Claude Code, Open Code, Antigravity, Kimi)
 
 <img width="3656" height="2690" alt="image" src="https://github.com/user-attachments/assets/b4ee3750-8b35-4d33-a78e-dc7b2c4c6a54" />
 
