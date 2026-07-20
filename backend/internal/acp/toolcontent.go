@@ -3,6 +3,7 @@ package acp
 import (
 	"encoding/json"
 	"regexp"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -82,15 +83,22 @@ type toolUpdateFields struct {
 // ToolCallUpdate) into a partial snapshot. Both session-update variants share
 // this so the protocol handler keeps one merge path.
 func toolUpdateSnapshot(fields toolUpdateFields) sessionevents.ACPToolCall {
+	toolName := normalizedToolName(fields.Meta, fields.Kind, fields.RawInput)
+	rawOutput := boundedRawOutput(fields.RawOutput)
+	content := normalizeToolContent(fields.Content)
+	webOutput := decodeWebToolOutput(toolName, rawOutput)
+	if len(content) == 0 {
+		content = webOutput.content()
+	}
 	src := sessionevents.ACPToolCall{
 		ID:        string(fields.ID),
-		Title:     fields.Title,
+		Title:     webOutput.title(fields.Title),
 		Kind:      kindString(fields.Kind),
-		ToolName:  normalizedToolName(fields.Meta, fields.Kind, fields.RawInput),
-		Content:   normalizeToolContent(fields.Content),
+		ToolName:  toolName,
+		Content:   content,
 		Locations: normalizeToolLocations(fields.Locations),
 		RawInput:  boundedRawInput(fields.RawInput),
-		RawOutput: boundedRawOutput(fields.RawOutput),
+		RawOutput: rawOutput,
 		Runtime:   acpToolRuntime(fields.Meta, fields.At),
 	}
 	if fields.Status != nil {
@@ -155,18 +163,109 @@ func normalizedToolName(meta map[string]any, kind *acpschema.ToolKind, rawInput 
 			return name
 		}
 	}
-	if kind == nil || *kind != acpschema.ToolKindFetch {
-		return ""
-	}
 	var input struct {
-		Action struct {
+		Variant string `json:"variant"`
+		Action  struct {
 			Type string `json:"type"`
 		} `json:"action"`
 	}
-	if json.Unmarshal(rawInput, &input) == nil && input.Action.Type == "search" {
+	_ = json.Unmarshal(rawInput, &input)
+	switch toolNameKey(input.Variant) {
+	case "bash":
+		return "Bash"
+	case "listdir":
+		return "LS"
+	case "readfile":
+		return "Read"
+	case "webfetch":
+		return "WebFetch"
+	case "websearch", "xsearch":
+		return "WebSearch"
+	}
+	if kind == nil || *kind != acpschema.ToolKindFetch {
+		return ""
+	}
+	if input.Action.Type == "search" {
 		return "WebSearch"
 	}
 	return "WebFetch"
+}
+
+func toolNameKey(name string) string {
+	return strings.NewReplacer("_", "", "-", "", " ", "").Replace(strings.ToLower(name))
+}
+
+type webToolOutput struct {
+	Query   string
+	Results []sessionevents.ACPToolContent
+}
+
+func decodeWebToolOutput(toolName string, raw json.RawMessage) webToolOutput {
+	if toolName != "WebSearch" && toolName != "WebFetch" || len(raw) == 0 {
+		return webToolOutput{}
+	}
+	if raw[0] == '"' {
+		var nested string
+		if json.Unmarshal(raw, &nested) != nil {
+			return webToolOutput{}
+		}
+		raw = json.RawMessage(nested)
+	}
+	var value struct {
+		Action struct {
+			Query   string `json:"query"`
+			URL     string `json:"url"`
+			Sources []struct {
+				URL   string `json:"url"`
+				Title string `json:"title"`
+			} `json:"sources"`
+		} `json:"action"`
+		Input struct {
+			Query string `json:"query"`
+		} `json:"input"`
+	}
+	if json.Unmarshal(raw, &value) != nil {
+		return webToolOutput{}
+	}
+	out := webToolOutput{Query: firstNonEmpty(value.Action.Query, value.Input.Query)}
+	seen := make(map[string]struct{})
+	appendResult := func(uri, title string) {
+		uri = redactToolText(uri)
+		if uri == "" {
+			return
+		}
+		if _, ok := seen[uri]; ok {
+			return
+		}
+		seen[uri] = struct{}{}
+		if len(out.Results) < maxToolContentBlocks {
+			out.Results = append(out.Results, sessionevents.ACPToolContent{
+				Type:  "link",
+				URI:   uri,
+				Title: redactToolText(title),
+			})
+		}
+	}
+	appendResult(value.Action.URL, "")
+	for _, source := range value.Action.Sources {
+		appendResult(source.URL, source.Title)
+	}
+	return out
+}
+
+func (o webToolOutput) content() []sessionevents.ACPToolContent {
+	if len(o.Results) == 0 {
+		return nil
+	}
+	return o.Results
+}
+
+func (o webToolOutput) title(title string) string {
+	clean := strings.Trim(strings.TrimSpace(title), `"`)
+	if o.Query != "" && (clean == "" || strings.EqualFold(clean, "web search") || strings.EqualFold(clean, "x search")) {
+		return redactToolText(o.Query)
+	}
+	return title
 }
 
 func normalizeToolContent(items []acpschema.ToolCallContent) []sessionevents.ACPToolContent {

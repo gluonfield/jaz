@@ -1,35 +1,13 @@
 import { LoaderCircle } from 'lucide-react'
 import { memo } from 'react'
 import type { ACPToolCall, ACPToolContent } from '@/lib/api/types'
-import { toolCallCategory } from '@/components/session/toolCallCategory'
+import { toolCallCategory, toolCallPresentation } from './toolPresentation'
 import { normalized } from './TranscriptUtils'
 
 const RUNNING_STATUSES = new Set(['pending', 'in_progress', 'in-progress', 'running'])
 
 export function hasInlineShellCommand(call: ACPToolCall): boolean {
   return toolCallCategory(call) === 'command'
-}
-
-function commandText(call: ACPToolCall): string {
-  const input = call.raw_input
-  if (input && typeof input === 'object') {
-    const record = input as Record<string, unknown>
-    for (const key of ['command', 'cmd', 'script']) {
-      const value = record[key]
-      if (typeof value === 'string' && value.trim()) return value.trim()
-      if (Array.isArray(value) && value.length) return value.map(String).join(' ')
-    }
-  }
-  return (call.title ?? '').trim()
-}
-
-function commandDescription(call: ACPToolCall): string {
-  const input = call.raw_input
-  if (input && typeof input === 'object') {
-    const desc = (input as Record<string, unknown>).description
-    if (typeof desc === 'string') return desc.trim()
-  }
-  return ''
 }
 
 // Some agents wrap command output in a markdown fence; we render monospace already.
@@ -56,8 +34,9 @@ export const ShellCommandBlock = memo(function ShellCommandBlock({
   call: ACPToolCall
   active?: boolean
 }) {
-  const command = commandText(call)
-  const description = commandDescription(call)
+  const presentation = toolCallPresentation(call)
+  const command = presentation.command || (call.title ?? '').trim()
+  const description = presentation.description
   const output = outputText(call.content)
   const exitCode = call.runtime?.terminal_exit_code
   const failed = normalized(call.status) === 'failed' || (exitCode !== undefined && exitCode !== 0)

@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
 import { ArtifactBlock } from './ArtifactBlock'
-import { ToolDisclosure, toolRunLabel } from './ToolDisclosure'
+import { ToolDisclosure } from './ToolDisclosure'
+import { toolRunLabel } from './toolPresentation'
 import { isArtifactToolName } from './toolVisibility'
 
 interface ToolCallItem {

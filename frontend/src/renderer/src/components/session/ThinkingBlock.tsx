@@ -1,6 +1,6 @@
-import { ChevronRight } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
+import { ChevronRight, Clock3, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
+import { Collapse } from '@/components/ui/Collapse'
 import { MessageMarkdown } from './MessageMarkdown'
 
 export function ThinkingBlock({ text, pending = false }: { text: string; pending?: boolean }) {
@@ -9,43 +9,34 @@ export function ThinkingBlock({ text, pending = false }: { text: string; pending
   if (!trimmed) return null
 
   return (
-    <div className="flex flex-col items-start gap-1.5">
+    <div className="flex w-full max-w-[var(--prose-max)] flex-col items-start">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex cursor-pointer items-center gap-1 font-mono text-[12px] text-ink-3 transition-colors duration-150 hover:text-ink"
+        className="-ml-1.5 inline-flex min-h-8 items-center gap-1.5 rounded-control px-1.5 text-left text-[13px] text-ink-3 transition-colors duration-150 hover:text-ink-2 motion-reduce:transition-none"
       >
-        <motion.span
-          animate={{ rotate: open ? 90 : 0 }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
-        >
-          <ChevronRight size={12} />
-        </motion.span>
-        Thinking
+        <span>{pending ? 'Thinking' : 'Thought process'}</span>
         {pending ? (
-          <span className="ml-1.5 inline-flex items-center gap-1 text-[11px]">
-            <span className="jaz-shimmer size-1.5 rounded-full" />
-            live
-          </span>
+          <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
         ) : null}
+        <ChevronRight
+          size={13}
+          className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+          aria-hidden
+        />
       </button>
 
-      <AnimatePresence initial={false}>
-        {open ? (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className="w-full overflow-hidden"
-          >
-            <div className="max-h-72 overflow-auto rounded-card bg-surface px-3 py-2 select-text">
-              <MessageMarkdown text={trimmed} />
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      <Collapse open={open} className="w-full">
+        <div className="relative ml-2 border-l border-border/75 py-1 pl-5 select-text">
+          <span className="absolute -left-2.5 top-2 flex size-5 items-center justify-center rounded-full bg-bg text-ink-3">
+            <Clock3 size={12} aria-hidden />
+          </span>
+          <div className="max-h-72 overflow-auto [&_.chat-prose]:text-[13px] [&_.chat-prose]:leading-[1.55] [&_.chat-prose]:text-ink-2">
+            <MessageMarkdown text={trimmed} />
+          </div>
+        </div>
+      </Collapse>
     </div>
   )
 }
