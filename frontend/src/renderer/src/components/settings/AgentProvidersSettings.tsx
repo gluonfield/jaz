@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
-import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
@@ -16,8 +15,6 @@ import { createProvider, deleteProvider, getProviderStatuses, updateProvider } f
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
-
-const EASE = [0.22, 1, 0.36, 1] as const
 
 const PROVIDER_CAPABILITIES = [
   { value: 'chat_completions', label: 'Chat Completions' },
@@ -260,70 +257,67 @@ function ProviderRow({
         />
       </button>
 
-      <AnimatePresence initial={false}>
-        {expanded ? (
-          <motion.div
-            key="body"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: EASE }}
-            className="overflow-hidden"
-          >
-            <div className="flex flex-col gap-3 px-3 pb-3 pt-0.5">
-              {needsKey ? (
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[12px] font-medium text-ink-2">API key</span>
-                    {provider.api_key_env ? (
-                      <span className="font-mono text-[11px] text-ink-3">{provider.api_key_env}</span>
-                    ) : null}
-                  </div>
-                  <Input
-                    type="password"
-                    value={keyDraft}
-                    disabled={disabled}
-                    onChange={(event) => onKeyChange(event.target.value)}
-                    placeholder={
-                      provider.configured
-                        ? 'Configured — paste a new key to replace it'
-                        : 'Paste an API key'
-                    }
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="font-mono text-[12px]"
-                    aria-label={`${provider.label} API key`}
-                  />
-                  {remote ? (
-                    <p className="text-pretty text-[12px] text-ink-3">
-                      API keys can only be added from the machine running jaz.
-                    </p>
+      <div
+        aria-hidden={!expanded}
+        inert={expanded ? undefined : true}
+        className={`grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex flex-col gap-3 px-3 pb-3 pt-0.5">
+            {needsKey ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[12px] font-medium text-ink-2">API key</span>
+                  {provider.api_key_env ? (
+                    <span className="font-mono text-[11px] text-ink-3">{provider.api_key_env}</span>
                   ) : null}
                 </div>
-              ) : (
-                <p className="text-pretty text-[12px] text-ink-3">No API key required.</p>
-              )}
+                <Input
+                  type="password"
+                  value={keyDraft}
+                  disabled={disabled}
+                  onChange={(event) => onKeyChange(event.target.value)}
+                  placeholder={
+                    provider.configured
+                      ? 'Configured — paste a new key to replace it'
+                      : 'Paste an API key'
+                  }
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="font-mono text-[12px]"
+                  aria-label={`${provider.label} API key`}
+                />
+                {remote ? (
+                  <p className="text-pretty text-[12px] text-ink-3">
+                    API keys can only be added from the machine running jaz.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-pretty text-[12px] text-ink-3">No API key required.</p>
+            )}
 
-              {onEdit || onDelete ? (
-                <div className="flex items-center gap-1 border-t border-border/70 pt-3">
-                  {onEdit ? (
-                    <Button variant="ghost" size="sm" disabled={disabled} onClick={onEdit}>
-                      <Pencil size={13} />
-                      Edit
-                    </Button>
-                  ) : null}
-                  {onDelete ? (
-                    <Button variant="danger" size="sm" disabled={disabled} onClick={onDelete}>
-                      <Trash2 size={13} />
-                      Remove
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+            {onEdit || onDelete ? (
+              <div className="flex items-center gap-1 border-t border-border/70 pt-3">
+                {onEdit ? (
+                  <Button variant="ghost" size="sm" disabled={disabled} onClick={onEdit}>
+                    <Pencil size={13} />
+                    Edit
+                  </Button>
+                ) : null}
+                {onDelete ? (
+                  <Button variant="danger" size="sm" disabled={disabled} onClick={onDelete}>
+                    <Trash2 size={13} />
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </SettingsCard>
   )
 }
