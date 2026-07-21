@@ -18,8 +18,16 @@ import { isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
 
 const PROVIDER_CAPABILITIES = [
-  { value: 'chat_completions', label: 'Chat Completions' },
-  { value: 'responses', label: 'Responses' },
+  {
+    value: 'chat_completions',
+    label: 'Chat completions',
+    description: 'Supports the /chat/completions endpoint',
+  },
+  {
+    value: 'responses',
+    label: 'Responses',
+    description: 'Supports the OpenAI Responses API',
+  },
 ]
 
 type ProviderOption = AgentSettingsData['providers'][number]
@@ -512,7 +520,7 @@ function ProviderEditorModal({
 
 function CapabilityPicker({ value, onChange }: { value: string[]; onChange: (value: string[]) => void }) {
   return (
-    <div role="group" aria-label="API support" className="grid grid-cols-2 gap-2">
+    <div role="group" aria-label="API support" className="flex flex-col rounded-control bg-bg p-1">
       {PROVIDER_CAPABILITIES.map((capability) => {
         const checked = value.includes(capability.value)
         const required = checked && value.length === 1
@@ -530,18 +538,14 @@ function CapabilityPicker({ value, onChange }: { value: string[]; onChange: (val
                   : [...value, capability.value],
               )
             }
-            className={`flex min-h-10 min-w-0 items-center gap-2 rounded-control px-3 text-left text-[13px] outline-none transition-[background-color,box-shadow,scale] duration-150 active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default ${
-              checked
-                ? 'bg-primary-soft text-ink ring-1 ring-primary/40'
-                : 'bg-bg text-ink-2 ring-1 ring-border hover:bg-surface-2 hover:text-ink'
-            }`}
+            className={`flex min-h-11 w-full min-w-0 items-center gap-3 rounded-[8px] px-2.5 py-2 text-left outline-none transition-[background-color,color] duration-150 hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60 disabled:cursor-default ${checked ? 'text-ink' : 'text-ink-2'}`}
           >
             <span
               aria-hidden
-              className={`grid size-4 shrink-0 place-items-center rounded-[5px] transition-[background-color,box-shadow] duration-150 ${
+              className={`grid size-[18px] shrink-0 place-items-center rounded-[5px] transition-[background-color,box-shadow] duration-150 ${
                 checked
                   ? 'bg-primary text-on-primary'
-                  : 'bg-transparent text-transparent ring-1 ring-border'
+                  : 'bg-surface text-transparent ring-1 ring-inset ring-border'
               }`}
             >
               <Check
@@ -554,7 +558,10 @@ function CapabilityPicker({ value, onChange }: { value: string[]; onChange: (val
                 }`}
               />
             </span>
-            <span className="truncate">{capability.label}</span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-[13px] font-medium">{capability.label}</span>
+              <span className="truncate text-[11.5px] text-ink-3">{capability.description}</span>
+            </span>
           </button>
         )
       })}
