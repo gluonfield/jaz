@@ -22,7 +22,7 @@ export function Collapse({
         if (event.target === event.currentTarget && event.propertyName === 'grid-template-rows') setSettledOpen(open)
       }}
     >
-      <div className={`min-h-0 ${open && settledOpen ? 'overflow-visible' : 'overflow-hidden'} ${className}`} inert={!open}>
+      <div className={`min-h-0 min-w-0 ${open && settledOpen ? 'overflow-visible' : 'overflow-hidden'} ${className}`} inert={!open}>
         {children}
       </div>
     </div>
