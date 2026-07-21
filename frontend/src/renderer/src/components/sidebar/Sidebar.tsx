@@ -219,7 +219,7 @@ function SessionRows({
 }) {
   const showRuntimeBadge = useShowModelIcons()
   return (
-    <div className="flex flex-col gap-px">
+    <div className="relative flex flex-col gap-px">
       <AnimatePresence initial={false} mode="popLayout">
         {items.map((item) => (
           <motion.div
@@ -227,7 +227,7 @@ function SessionRows({
             layout="position"
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -8 }}
+            exit={{ opacity: 0, y: -8, transition: { duration: 0.15, ease: 'easeIn' } }}
             transition={ROW_SPRING}
           >
             <SessionRow
