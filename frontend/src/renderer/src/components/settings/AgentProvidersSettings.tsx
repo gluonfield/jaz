@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -9,7 +9,6 @@ import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/ag
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { Select } from '@/components/ui/Select'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { modelProviderRequiresKey } from '@/lib/agentRuntimes'
@@ -23,7 +22,6 @@ const EASE = [0.22, 1, 0.36, 1] as const
 const PROVIDER_CAPABILITIES = [
   { value: 'chat_completions', label: 'Chat Completions' },
   { value: 'responses', label: 'Responses' },
-  { value: 'chat_completions,responses', label: 'Chat Completions + Responses' },
 ]
 
 type ProviderOption = AgentSettingsData['providers'][number]
@@ -49,10 +47,6 @@ function endpointRequiresKey(raw: string): boolean {
 function draftWithEndpoint(draft: ProviderDraft, baseUrl: string): ProviderDraft {
   const next = { ...draft, base_url: baseUrl }
   return endpointRequiresKey(baseUrl) ? next : { ...next, api_key: '' }
-}
-
-function capabilitySelection(capabilities: string[]): string {
-  return ['chat_completions', 'responses'].filter((value) => capabilities.includes(value)).join(',')
 }
 
 function emptyProviderDraft(): ProviderDraft {
@@ -424,13 +418,13 @@ function ProviderEditorModal({
               aria-label="Endpoint URL"
             />
           </ProviderField>
-          <ProviderField label="API support" hint="Enable only protocols implemented by this endpoint.">
-            <Select
-              value={capabilitySelection(draft.capabilities)}
-              options={PROVIDER_CAPABILITIES}
-              onChange={(value) => onChange({ ...draft, capabilities: value.split(',') })}
-              aria-label="API support"
-              className="w-full"
+          <ProviderField
+            label="API support"
+            hint="Enable only protocols implemented by this endpoint. At least one is required."
+          >
+            <CapabilityPicker
+              value={draft.capabilities}
+              onChange={(capabilities) => onChange({ ...draft, capabilities })}
             />
           </ProviderField>
           {needsKey ? (
@@ -456,6 +450,58 @@ function ProviderEditorModal({
         </div>
       ) : null}
     </Modal>
+  )
+}
+
+function CapabilityPicker({ value, onChange }: { value: string[]; onChange: (value: string[]) => void }) {
+  return (
+    <div role="group" aria-label="API support" className="grid grid-cols-2 gap-2">
+      {PROVIDER_CAPABILITIES.map((capability) => {
+        const checked = value.includes(capability.value)
+        const required = checked && value.length === 1
+        return (
+          <button
+            key={capability.value}
+            type="button"
+            role="checkbox"
+            aria-checked={checked}
+            disabled={required}
+            onClick={() =>
+              onChange(
+                checked
+                  ? value.filter((item) => item !== capability.value)
+                  : [...value, capability.value],
+              )
+            }
+            className={`flex min-h-10 min-w-0 items-center gap-2 rounded-control px-3 text-left text-[13px] outline-none transition-[background-color,box-shadow,scale] duration-150 active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-default ${
+              checked
+                ? 'bg-primary-soft text-ink ring-1 ring-primary/40'
+                : 'bg-bg text-ink-2 ring-1 ring-border hover:bg-surface-2 hover:text-ink'
+            }`}
+          >
+            <span
+              aria-hidden
+              className={`grid size-4 shrink-0 place-items-center rounded-[5px] transition-[background-color,box-shadow] duration-150 ${
+                checked
+                  ? 'bg-primary text-on-primary'
+                  : 'bg-transparent text-transparent ring-1 ring-border'
+              }`}
+            >
+              <Check
+                size={11}
+                strokeWidth={3}
+                className={`transition-[opacity,scale,filter] duration-150 ease-[cubic-bezier(0.2,0,0,1)] ${
+                  checked
+                    ? 'scale-100 opacity-100 blur-0'
+                    : 'scale-[0.25] opacity-0 blur-[4px]'
+                }`}
+              />
+            </span>
+            <span className="truncate">{capability.label}</span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
