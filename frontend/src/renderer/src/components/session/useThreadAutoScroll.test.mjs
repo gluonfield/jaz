@@ -1,16 +1,20 @@
 import { expect, test } from 'bun:test'
-import { applyThreadResize } from './useThreadAutoScroll'
+import { createThreadScrollState } from './useThreadAutoScroll'
 
-test('thread resize preserves the viewport when bottom following is paused', () => {
-  const viewport = { clientHeight: 600, scrollHeight: 1400, scrollTop: 500 }
+test('opening a disclosure pauses active bottom following before content grows', () => {
+  const scrollState = createThreadScrollState()
+  const viewport = { clientHeight: 600, scrollHeight: 1000, scrollTop: 400 }
+  scrollState.pause()
+  viewport.scrollHeight = 1050
 
-  expect(applyThreadResize(viewport, false)).toBe(true)
-  expect(viewport.scrollTop).toBe(500)
+  expect(scrollState.resize(viewport)).toBe(true)
+  expect(viewport.scrollTop).toBe(400)
 })
 
 test('thread resize pins content growth while bottom following is active', () => {
+  const scrollState = createThreadScrollState()
   const viewport = { clientHeight: 600, scrollHeight: 1400, scrollTop: 500 }
 
-  expect(applyThreadResize(viewport, true)).toBe(false)
+  expect(scrollState.resize(viewport)).toBe(false)
   expect(viewport.scrollTop).toBe(1400)
 })
