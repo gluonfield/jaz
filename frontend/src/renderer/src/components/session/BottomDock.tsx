@@ -25,7 +25,7 @@ export function BottomDock({
   return (
     <div
       ref={ref}
-      className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-b from-transparent to-bg to-45% pt-6 pb-5"
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] bg-gradient-to-b from-transparent to-bg to-45% pt-6 pb-5"
     >
       <div className={`pointer-events-none relative ${THREAD_COLUMN_CLASS}`}>
         <div className="pointer-events-auto absolute inset-x-0 bottom-full">{before}</div>
