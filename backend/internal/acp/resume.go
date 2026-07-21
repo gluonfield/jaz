@@ -167,7 +167,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	agentName = CanonicalAgentName(agentName)
 	storedID := session.RuntimeRef.SessionID
 	if loadSessionSupported(ac.initRaw) && storedID != "" {
-		meta, err := m.sessionMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
+		meta, err := m.sessionLoadMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
 		if err != nil {
 			return "", ModeState{}, false, err
 		}

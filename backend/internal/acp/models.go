@@ -57,6 +57,7 @@ type agentPolicy struct {
 	providerInLaunch        bool
 	modelConfiguredAtLaunch bool
 	systemPromptAtLaunch    bool
+	promptPersistsOnLoad    bool
 	materializesOnPrompt    bool
 	modelValidationKind     modelValidationKind
 	effortOptions           []ReasoningEffortOption
@@ -102,6 +103,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			effortConfigID:       sessionConfigReasoningEffort,
 			effortInModelSuffix:  true,
 			providerInLaunch:     true,
+			promptPersistsOnLoad: true,
 			materializesOnPrompt: true,
 			modelValidationKind:  modelValidationNone,
 			effortOptions:        codexReasoningEffortOptions,
