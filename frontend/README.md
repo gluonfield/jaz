@@ -60,7 +60,7 @@ in `.env.local`; `VITE_POSTHOG_TOKEN` is still accepted for Vite-only setups.
 - `src/preload/` — context bridge; exposes `window.jaz.apiBaseUrl`
 - `src/renderer/src/routes/` — file-based routes (`__root` shell, `/`, `/agent`, `/sessions`, `/sessions/$sessionId`)
 - `src/renderer/src/lib/api/` — typed client for the Go REST + SSE API
-- `src/renderer/src/styles/globals.css` — design tokens (see `../DESIGN.md`)
+- `src/renderer/src/styles/globals.css` — design tokens
 
 ## Notes
 

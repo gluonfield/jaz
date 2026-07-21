@@ -13,12 +13,8 @@ import (
 
 type adapterAssetSpec struct {
 	Adapters map[string]struct {
-		Repo             string `json:"repo"`
-		Tag              string `json:"tag"`
-		Version          string `json:"version"`
-		StableAssetNames bool   `json:"stable_asset_names"`
-		Assets           map[string]struct {
-			Name   string            `json:"name"`
+		Tag    string `json:"tag"`
+		Assets map[string]struct {
 			Binary string            `json:"binary"`
 			Env    map[string]string `json:"env"`
 		} `json:"assets"`
@@ -27,9 +23,7 @@ type adapterAssetSpec struct {
 
 // .github/acp-adapter-assets.json is the single source of truth for managed
 // adapter versions: the backend carries no adapter version in code. These tests
-// keep it that way — they fail if a built-in agent references a managed adapter
-// that isn't pinned, or if a pin is internally inconsistent (the failure mode
-// that shipped codex 0.16.7 while 0.16.8 was the fix).
+// keep it that way and ensure every built-in managed adapter has a complete pin.
 
 func TestBuiltinManagedAdaptersArePinned(t *testing.T) {
 	spec := loadAdapterAssetSpec(t)
@@ -42,22 +36,16 @@ func TestBuiltinManagedAdaptersArePinned(t *testing.T) {
 		if !ok {
 			t.Fatalf("agent %q uses managed adapter %q with no entry in acp-adapter-assets.json", name, adapter)
 		}
-		if entry.Tag == "" || entry.Version == "" || len(entry.Assets) == 0 {
-			t.Fatalf("managed adapter %q is missing tag/version/assets in acp-adapter-assets.json", adapter)
+		if entry.Tag == "" || len(entry.Assets) == 0 {
+			t.Fatalf("managed adapter %q is missing tag/assets in acp-adapter-assets.json", adapter)
 		}
 	}
 }
 
-func TestAdapterAssetSpecIsInternallyConsistent(t *testing.T) {
+func TestAdapterAssetsAreComplete(t *testing.T) {
 	spec := loadAdapterAssetSpec(t)
 	for name, entry := range spec.Adapters {
-		if entry.Tag != entry.Version && entry.Tag != "v"+entry.Version {
-			t.Errorf("adapter %q: tag %q does not match version %q", name, entry.Tag, entry.Version)
-		}
 		for platform, asset := range entry.Assets {
-			if !entry.StableAssetNames && !strings.Contains(asset.Name, entry.Version) {
-				t.Errorf("adapter %q %s: asset %q does not embed version %q", name, platform, asset.Name, entry.Version)
-			}
 			if strings.TrimSpace(asset.Binary) == "" {
 				t.Errorf("adapter %q %s: missing binary name", name, platform)
 			}

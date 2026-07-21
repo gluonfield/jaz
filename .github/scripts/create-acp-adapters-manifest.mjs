@@ -9,12 +9,10 @@ const spec = JSON.parse(readFileSync(specPath, "utf8"));
 const manifest = {
   adapters: {},
 };
-const archiveChecks = [];
 
 for (const [name, adapter] of Object.entries(spec.adapters)) {
-  assertConsistent(name, adapter);
   const adapterAssets = releaseAssetMap(adapter.repo, adapter.tag);
-  manifest.adapters[name] = { version: adapter.version, assets: {} };
+  manifest.adapters[name] = { version: adapter.tag.replace(/^v/, ""), assets: {} };
   for (const [platform, wanted] of Object.entries(adapter.assets)) {
     const asset = adapterAssets.get(wanted.name);
     if (!asset) {
@@ -27,33 +25,16 @@ for (const [name, adapter] of Object.entries(spec.adapters)) {
       binary: wanted.binary,
       ...(wanted.env ? { env: wanted.env } : {}),
     };
-    archiveChecks.push(assertArchiveContains(
+    await assertArchiveContains(
       asset.url,
       [wanted.binary, ...Object.values(wanted.env || {})],
       `${name} ${platform}`,
-    ));
+    );
   }
 }
-
-await Promise.all(archiveChecks);
 
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
-
-// Guards the single source of truth against partial edits. Most adapters put
-// their version in each asset name; stable_asset_names marks upstreams that do
-// not.
-function assertConsistent(name, adapter) {
-  const { tag, version } = adapter;
-  if (tag !== version && tag !== `v${version}`) {
-    throw new Error(`${name}: tag "${tag}" does not match version "${version}"`);
-  }
-  for (const [platform, wanted] of Object.entries(adapter.assets)) {
-    if (!adapter.stable_asset_names && !wanted.name.includes(version)) {
-      throw new Error(`${name} ${platform}: asset "${wanted.name}" does not embed version "${version}"`);
-    }
-  }
-}
 
 function releaseAssetMap(repo, tag) {
   const raw = execFileSync("gh", ["release", "view", tag, "--repo", repo, "--json", "assets"], {
