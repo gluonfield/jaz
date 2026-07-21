@@ -13,9 +13,10 @@ test('collapse keeps hidden content mounted for its first transition', () => {
   expect(html).toContain('prepared content')
 })
 
-test('expanded collapse does not clip nested layout motion', () => {
+test('expanded collapse preserves nested layout motion and width constraints', () => {
   const html = renderToStaticMarkup(createElement(Collapse, { open: true }, createElement('span')))
 
+  expect(html).toContain('min-w-0')
   expect(html).toContain('overflow-visible')
 })
 
