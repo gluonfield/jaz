@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, CheckCircle2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
 import { SettingsCard } from '@/components/settings/SettingsCard'
-import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/agentSettingsShell'
+import { SettingsSection } from '@/components/settings/agentSettingsShell'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
@@ -12,6 +12,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { modelProviderRequiresKey } from '@/lib/agentRuntimes'
 import { createProvider, deleteProvider, getProviderStatuses, updateProvider } from '@/lib/api/providers'
+import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
 import { keys } from '@/lib/query/keys'
@@ -24,6 +25,7 @@ const PROVIDER_CAPABILITIES = [
 type ProviderOption = AgentSettingsData['providers'][number]
 type ProviderConnection = 'connected' | 'disconnected' | 'checking'
 type ProviderDraft = ProviderInput & { id?: string }
+type ProviderKeyDraft = { provider: ProviderOption; apiKey: string }
 
 function prettyEndpoint(url: string): string {
   return url.replace(/^https?:\/\//, '')
@@ -73,9 +75,9 @@ export function AgentProvidersSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const remote = !isLocalBackendUrl(useConnection().url)
-  const { settings, draft, providerKeys, setProviderKeys, save, providerKeyDirty } =
-    useAgentSettingsDraft('providers')
+  const settings = useQuery(agentSettingsQuery)
   const [providerDraft, setProviderDraft] = useState<ProviderDraft | null>(null)
+  const [keyDraft, setKeyDraft] = useState<ProviderKeyDraft | null>(null)
   const providerStatuses = useQuery({
     queryKey: keys.providerStatuses,
     queryFn: getProviderStatuses,
@@ -112,6 +114,15 @@ export function AgentProvidersSettings() {
     onError: (error: Error) => toast(`Couldn't remove provider: ${error.message}`, 'danger'),
     onSettled: invalidate,
   })
+  const saveKey = useMutation({
+    mutationFn: ({ settings, draft }: { settings: AgentSettingsData; draft: ProviderKeyDraft }) =>
+      updateAgentSettings(settings, { [draft.provider.id]: draft.apiKey }),
+    onSuccess: (_, { draft }) => {
+      toast(`Saved ${draft.provider.label}`)
+      setKeyDraft(null)
+    },
+    onSettled: invalidate,
+  })
 
   const openCreate = () => {
     upsert.reset()
@@ -121,26 +132,30 @@ export function AgentProvidersSettings() {
     upsert.reset()
     setProviderDraft(draftFromProvider(provider))
   }
+  const openKeyEdit = (provider: ProviderOption) => {
+    saveKey.reset()
+    setKeyDraft({ provider, apiKey: '' })
+  }
   const closeEditor = () => {
     upsert.reset()
     setProviderDraft(null)
   }
+  const closeKeyEditor = () => {
+    saveKey.reset()
+    setKeyDraft(null)
+  }
 
-  const providers = draft?.providers ?? []
-  const canSave = draft != null && providerKeyDirty && !save.isPending
+  const providers = settings.data?.providers ?? []
 
   return (
     <>
       <SettingsSection
         title="Model Providers"
         description="Configure model providers once. Provider-backed ACP agents can reuse them."
-        canSave={canSave}
-        saving={save.isPending}
-        onSave={() => draft && save.mutate(draft)}
       >
         {settings.isError ? (
           <p className="py-2 text-[13px] text-danger">{settings.error.message}</p>
-        ) : settings.isPending || !draft ? (
+        ) : settings.isPending ? (
           <SkeletonRows count={3} />
         ) : (
           <div className="flex flex-col gap-1.5">
@@ -151,12 +166,15 @@ export function AgentProvidersSettings() {
                 <ProviderRow
                   key={provider.id}
                   provider={providerWithStatus}
-                  keyDraft={providerKeys[provider.id] ?? ''}
                   statusPending={providerStatuses.isPending && !status}
-                  disabled={save.isPending}
-                  remote={remote}
-                  onKeyChange={(value) => setProviderKeys({ ...providerKeys, [provider.id]: value })}
-                  onEdit={provider.custom ? () => openEdit(provider) : undefined}
+                  disabled={upsert.isPending || remove.isPending || saveKey.isPending}
+                  onEdit={
+                    provider.custom
+                      ? () => openEdit(provider)
+                      : modelProviderRequiresKey(provider)
+                        ? () => openKeyEdit(provider)
+                        : undefined
+                  }
                   onDelete={
                     provider.custom
                       ? () => {
@@ -190,44 +208,56 @@ export function AgentProvidersSettings() {
         onClose={closeEditor}
         onSave={() => providerDraft && upsert.mutate(providerDraft)}
       />
+      <ProviderKeyEditorModal
+        draft={keyDraft}
+        remote={remote}
+        saving={saveKey.isPending}
+        error={saveKey.isError ? saveKey.error.message : ''}
+        onChange={setKeyDraft}
+        onClose={closeKeyEditor}
+        onSave={() =>
+          settings.data &&
+          keyDraft &&
+          saveKey.mutate({ settings: settings.data, draft: keyDraft })
+        }
+      />
     </>
   )
 }
 
 function ProviderRow({
   provider,
-  keyDraft,
   statusPending,
   disabled,
-  remote,
-  onKeyChange,
   onEdit,
   onDelete,
 }: {
   provider: ProviderOption
-  keyDraft: string
   statusPending: boolean
   disabled: boolean
-  remote: boolean
-  onKeyChange: (value: string) => void
   onEdit?: () => void
   onDelete?: () => void
 }) {
   const needsKey = modelProviderRequiresKey(provider)
   const connected =
-    (needsKey && Boolean(keyDraft.trim())) ||
     provider.connection_status === 'connected' ||
-    (!provider.connection_status && needsKey && Boolean(provider.configured || keyDraft.trim()))
+    (!provider.connection_status && needsKey && Boolean(provider.configured))
   const state: ProviderConnection = connected
     ? 'connected'
     : !needsKey && statusPending
       ? 'checking'
       : 'disconnected'
+  const [expanded, setExpanded] = useState(false)
   const hasActions = Boolean(onEdit || onDelete)
 
   return (
-    <SettingsCard>
-      <div className="flex w-full items-center gap-2.5 px-3 py-2">
+    <SettingsCard className="overflow-hidden">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((open) => !open)}
+        className="flex w-full items-center gap-2.5 px-3 py-2 text-left outline-none transition-[background-color] duration-150 hover:bg-surface-2/50 focus-visible:bg-surface-2/70 focus-visible:outline-none"
+      >
         <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-bg text-ink">
           <ProviderLogo provider={provider.icon || provider.id} />
         </span>
@@ -243,59 +273,44 @@ function ProviderRow({
           ) : null}
         </span>
         {state === 'connected' ? <CheckCircle2 size={17} className="shrink-0 text-primary" /> : null}
-      </div>
+        <ChevronDown
+          size={15}
+          className={`shrink-0 text-ink-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+        />
+      </button>
 
-      {needsKey || hasActions ? (
-        <div className="flex flex-col gap-3 px-3 pb-3 pt-0.5">
-          {needsKey ? (
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[12px] font-medium text-ink-2">API key</span>
-                {provider.api_key_env ? (
-                  <span className="font-mono text-[11px] text-ink-3">{provider.api_key_env}</span>
+      <div
+        aria-hidden={!expanded}
+        inert={expanded ? undefined : true}
+        className={`grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+          expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="flex flex-col gap-3 px-3 pb-3 pt-0.5">
+            {!needsKey ? (
+              <p className="text-pretty text-[12px] text-ink-3">No API key required.</p>
+            ) : null}
+
+            {hasActions ? (
+              <div className="flex items-center gap-1">
+                {onEdit ? (
+                  <Button variant="ghost" size="sm" disabled={disabled} onClick={onEdit}>
+                    <Pencil size={13} />
+                    Edit
+                  </Button>
+                ) : null}
+                {onDelete ? (
+                  <Button variant="danger" size="sm" disabled={disabled} onClick={onDelete}>
+                    <Trash2 size={13} />
+                    Remove
+                  </Button>
                 ) : null}
               </div>
-              <Input
-                type="password"
-                value={keyDraft}
-                disabled={disabled}
-                onChange={(event) => onKeyChange(event.target.value)}
-                placeholder={
-                  provider.configured
-                    ? 'Configured — paste a new key to replace it'
-                    : 'Paste an API key'
-                }
-                autoComplete="off"
-                spellCheck={false}
-                className="font-mono text-[12px]"
-                aria-label={`${provider.label} API key`}
-              />
-              {remote ? (
-                <p className="text-pretty text-[12px] text-ink-3">
-                  API keys can only be added from the machine running jaz.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {hasActions ? (
-            <div className="flex items-center gap-1">
-              {onEdit ? (
-                <Button variant="ghost" size="sm" disabled={disabled} onClick={onEdit}>
-                  <Pencil size={13} />
-                  Edit details
-                </Button>
-              ) : null}
-              {onDelete ? (
-                <Button variant="danger" size="sm" disabled={disabled} onClick={onDelete}>
-                  <Trash2 size={13} />
-                  Remove
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      ) : null}
+      </div>
     </SettingsCard>
   )
 }
@@ -317,6 +332,76 @@ function ProviderPill({ state }: { state: ProviderConnection }) {
     >
       {text}
     </span>
+  )
+}
+
+function ProviderKeyEditorModal({
+  draft,
+  remote,
+  saving,
+  error,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  draft: ProviderKeyDraft | null
+  remote: boolean
+  saving: boolean
+  error: string
+  onChange: (draft: ProviderKeyDraft) => void
+  onClose: () => void
+  onSave: () => void
+}) {
+  return (
+    <Modal
+      open={draft !== null}
+      onClose={onClose}
+      size="sm"
+      title={draft ? `Edit ${draft.provider.label}` : 'Edit provider'}
+      description={
+        draft?.provider.configured
+          ? 'Paste a new API key to replace the configured key.'
+          : 'Add the API key used by this provider.'
+      }
+      footer={
+        <>
+          <p className="min-w-0 truncate text-[12px] text-danger" role="alert">
+            {error}
+          </p>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button variant="ghost" size="md" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
+              disabled={!draft?.apiKey.trim() || saving}
+              onClick={onSave}
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </div>
+        </>
+      }
+    >
+      {draft ? (
+        <ProviderField
+          label="API key"
+          hint={remote ? 'API keys can only be added from the machine running jaz.' : undefined}
+        >
+          <Input
+            type="password"
+            value={draft.apiKey}
+            onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
+            placeholder={draft.provider.configured ? 'Paste a new API key' : 'Paste an API key'}
+            autoComplete="off"
+            spellCheck={false}
+            className="font-mono text-[12px]"
+            aria-label={`${draft.provider.label} API key`}
+          />
+        </ProviderField>
+      ) : null}
+    </Modal>
   )
 }
 
@@ -399,7 +484,7 @@ function ProviderEditorModal({
               onChange={(capabilities) => onChange({ ...draft, capabilities })}
             />
           </ProviderField>
-          {needsKey && !isEdit ? (
+          {needsKey ? (
             <ProviderField
               label="API key"
               hint={remote ? 'API keys can only be added from the machine running jaz.' : undefined}
@@ -408,7 +493,7 @@ function ProviderEditorModal({
                 type="password"
                 value={draft.api_key ?? ''}
                 onChange={(event) => onChange({ ...draft, api_key: event.target.value })}
-                placeholder="Paste an API key"
+                placeholder={isEdit ? 'Leave blank to keep the current key' : 'Paste an API key'}
                 autoComplete="off"
                 spellCheck={false}
                 className="font-mono text-[12px]"
