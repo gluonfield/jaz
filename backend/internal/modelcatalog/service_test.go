@@ -209,7 +209,7 @@ func TestServiceFetchesAuthenticatedCustomProviderModels(t *testing.T) {
 			http.Error(w, "unexpected models request", http.StatusUnauthorized)
 			return
 		}
-		_, _ = w.Write([]byte(`{"data":[{"id":"qwen3-coder-plus","name":"Qwen3 Coder Plus"},{"id":"qwen3-max"}]}`))
+		_, _ = w.Write([]byte(`{"data":[{"id":"qwen3.8-max-preview"},{"id":"qwen3-coder-plus","name":"Qwen3 Coder Plus"},{"id":"qwen3-max"}]}`))
 	}))
 	defer upstream.Close()
 
@@ -233,7 +233,9 @@ func TestServiceFetchesAuthenticatedCustomProviderModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(models) != 2 || models[0].Value != "qwen3-coder-plus" || models[0].Label != "Qwen3 Coder Plus" || models[1].Value != "qwen3-max" {
+	if len(models) != 3 || models[0].Value != "qwen3.8-max-preview" || models[0].ContextLength != 1_000_000 ||
+		!slices.Equal(models[0].InputModalities, []string{"text", "image"}) ||
+		models[1].Value != "qwen3-coder-plus" || models[1].Label != "Qwen3 Coder Plus" || models[2].Value != "qwen3-max" {
 		t.Fatalf("models = %#v", models)
 	}
 
@@ -242,11 +244,11 @@ func TestServiceFetchesAuthenticatedCustomProviderModels(t *testing.T) {
 			Type:         "openai-compatible",
 			BaseURL:      upstream.URL + "/compatible-mode/v1",
 			APIKeyEnv:    "JAZ_PROVIDER_QWEN_CLOUD_API_KEY",
-			DefaultModel: "qwen3-coder-plus",
+			DefaultModel: "qwen3.8-max-preview",
 		},
 	}), func(string) string { return "wrong-key" })
 	models, err = fallback.ProviderModels("qwen-cloud")
-	if err != nil || len(models) != 1 || models[0].Value != "qwen3-coder-plus" {
+	if err != nil || len(models) != 1 || models[0].Value != "qwen3.8-max-preview" || models[0].ContextLength != 1_000_000 {
 		t.Fatalf("fallback models = %#v, error = %v", models, err)
 	}
 }

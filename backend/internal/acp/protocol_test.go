@@ -76,6 +76,74 @@ func TestAgentMessageChunkMessageIDPersistsTextRunID(t *testing.T) {
 	}
 }
 
+func TestCodexHiddenWarningsDoNotPolluteAssistantAnswer(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "warning", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = sessionevents.New()
+	job := &jobState{Job: Job{ID: session.ID, ACPAgent: AgentCodex, ACPSession: "acp-session"}}
+	manager.jobsByID[session.ID] = job
+	manager.jobsByACP["acp-session"] = job
+
+	for _, message := range []struct{ id, text string }{
+		{"codex:warning:turn:1", "Falling back from WebSockets to HTTPS transport. disconnected"},
+		{"codex:warning:turn:2", "Model metadata for `qwen3.8-max-preview` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."},
+		{"https-answer", "done"},
+	} {
+		_, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
+			Method: acpschema.ClientMethodSessionUpdate,
+			Params: mustJSON(t, map[string]any{
+				"sessionId": "acp-session",
+				"update": map[string]any{
+					"sessionUpdate": "agent_message_chunk",
+					"messageId":     message.id,
+					"content":       map[string]any{"type": "text", "text": message.text},
+				},
+			}),
+		})
+		if rpcErr != nil {
+			t.Fatal(rpcErr)
+		}
+	}
+	manager.withACPTranscriptBarrier(job.eventView(), nil)
+
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].Type != sessionevents.TypeACPMessage || stored[0].Content != "done" || job.Assistant != "done" {
+		t.Fatalf("stored = %#v, assistant = %q", stored, job.Assistant)
+	}
+}
+
+func TestCodexHiddenWarningsRequireWarningIDAndCodexAgent(t *testing.T) {
+	update, err := acpschema.DecodeSessionUpdate(json.RawMessage(`{
+		"sessionUpdate": "agent_message_chunk",
+		"messageId": "codex:warning:turn:1",
+		"content": {"type": "text", "text": "Falling back from WebSockets to HTTPS transport. disconnected"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !codexHiddenWarning(AgentCodex, update) {
+		t.Fatal("codex transport fallback was not recognized")
+	}
+	if codexHiddenWarning(AgentClaude, update) {
+		t.Fatal("non-codex output was suppressed")
+	}
+	message := update.(acpschema.AgentMessageChunkUpdate)
+	message.MessageID = "answer"
+	if codexHiddenWarning(AgentCodex, message) {
+		t.Fatal("ordinary codex output was suppressed")
+	}
+}
+
 func TestRequestPermissionPublishesAndWaitsForAnswer(t *testing.T) {
 	root := t.TempDir()
 	store, err := jsonstore.New(t.TempDir())

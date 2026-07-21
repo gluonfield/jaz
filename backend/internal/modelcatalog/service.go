@@ -94,7 +94,7 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 			}
 		}
 		if model := strings.TrimSpace(meta.DefaultModel); model != "" {
-			return []Model{{Value: model, Label: model, Reasoning: Reasoning{Status: ReasoningUnavailable}}}, nil
+			return []Model{completeModelMetadata(modelWithoutProviderReasoning(model, model, "", 0))}, nil
 		}
 		return []Model{}, nil
 	}

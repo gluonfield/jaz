@@ -14,11 +14,50 @@ type codexMetadataCatalog struct {
 	models []modelcatalog.Model
 	err    error
 	calls  int
+	lastID string
 }
 
-func (c *codexMetadataCatalog) ProviderModels(string) ([]modelcatalog.Model, error) {
+func (c *codexMetadataCatalog) ProviderModels(id string) ([]modelcatalog.Model, error) {
 	c.calls++
+	c.lastID = id
 	return c.models, c.err
+}
+
+func TestResolveCodexModelMetadataUsesCustomProviderCatalog(t *testing.T) {
+	catalog := &codexMetadataCatalog{models: []modelcatalog.Model{{
+		Value:           "qwen3.8-max-preview",
+		Label:           "Qwen3.8 Max Preview",
+		ContextLength:   1_000_000,
+		InputModalities: []string{"text", "image"},
+	}}}
+	manager := NewManager(nil, Config{ModelCatalog: catalog}, nil)
+	encoded, err := manager.resolveCodexModelMetadata(AgentCodex, AgentConfig{
+		ProviderMode:  AgentProviderModeAgentDefaults,
+		ModelProvider: "qwen-cloud",
+		Model:         "qwen3.8-max-preview",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata codexModelMetadata
+	if err := json.Unmarshal([]byte(encoded), &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if catalog.lastID != "qwen-cloud" || metadata.ContextWindow != 1_000_000 || !reflect.DeepEqual(metadata.InputModalities, []string{"text", "image"}) {
+		t.Fatalf("provider = %q, metadata = %#v", catalog.lastID, metadata)
+	}
+}
+
+func TestResolveCodexModelMetadataAllowsIncompleteCustomCatalog(t *testing.T) {
+	manager := NewManager(nil, Config{ModelCatalog: &codexMetadataCatalog{models: []modelcatalog.Model{{Value: "unknown"}}}}, nil)
+	metadata, err := manager.resolveCodexModelMetadata(AgentCodex, AgentConfig{
+		ProviderMode:  AgentProviderModeAgentDefaults,
+		ModelProvider: "custom",
+		Model:         "unknown",
+	})
+	if err != nil || metadata != "" {
+		t.Fatalf("metadata = %q, error = %v", metadata, err)
+	}
 }
 
 func (*codexMetadataCatalog) AgentModels(string) []modelcatalog.Model {
@@ -63,8 +102,8 @@ func TestResolveCodexModelMetadataUsesCanonicalCapabilities(t *testing.T) {
 		t.Fatalf("provider catalog calls = %d, want 1", catalog.calls)
 	}
 	catalog.err = modelcatalog.ErrCatalogUnavailable
-	if _, err := manager.resolveCodexModelMetadata(AgentCodex, cfg); !errors.Is(err, modelcatalog.ErrCatalogUnavailable) {
-		t.Fatalf("catalog error = %v", err)
+	if metadata, err := manager.resolveCodexModelMetadata(AgentCodex, cfg); err != nil || metadata != "" {
+		t.Fatalf("metadata = %q, catalog error = %v", metadata, err)
 	}
 }
 

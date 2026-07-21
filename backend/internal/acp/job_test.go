@@ -46,6 +46,7 @@ func TestCompletedTurnPayloadIsReleasedAndRestoredOnDemand(t *testing.T) {
 	if err := store.AppendSessionEvents(session.ID,
 		sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "old", ACP: acpEvent(StateRunning)},
 		sessionevents.Event{Type: "acp", ACP: acpEvent(StateIdle)},
+		sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "Falling back from WebSockets to HTTPS transport. disconnected", ACP: &sessionevents.ACPEvent{ID: session.ID, State: StateRunning, TextRunID: "message:codex:warning:turn:1"}},
 		sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "new answer", ACP: acpEvent(StateRunning)},
 		sessionevents.Event{Type: sessionevents.TypeACPThought, ACP: &sessionevents.ACPEvent{ID: session.ID, State: StateRunning, Thought: "new thought"}},
 		sessionevents.Event{Type: "acp_tool", ACP: &sessionevents.ACPEvent{ID: session.ID, State: StateRunning, ToolCalls: []sessionevents.ACPToolCall{{ID: "tool-2", Title: "Read", Status: "completed"}}}},

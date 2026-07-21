@@ -59,6 +59,17 @@ func userPromptAt(t *testing.T, store *Store, id, text string, atMs int64) {
 	}
 }
 
+func TestLastTurnReplyIgnoresLegacyCodexTransportFallback(t *testing.T) {
+	at := time.UnixMilli(1000)
+	text, replyAt := lastTurnReply([]sessionevents.Event{
+		{Type: sessionevents.TypeACPMessage, Content: "Falling back from WebSockets to HTTPS transport. disconnected", ACP: &sessionevents.ACPEvent{TextRunID: "message:codex:warning:turn:1"}, At: at},
+		{Type: sessionevents.TypeACPMessage, Content: "done", At: at.Add(time.Second)},
+	})
+	if text != "done" || replyAt != 2000 {
+		t.Fatalf("reply = %q at %d", text, replyAt)
+	}
+}
+
 func setRunning(t *testing.T, store *Store, id string) {
 	t.Helper()
 	session, err := store.LoadSession(id)

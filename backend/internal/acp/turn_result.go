@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 func (m *Manager) Wait(ctx context.Context, req WaitRequest) (Job, error) {
@@ -100,6 +101,10 @@ func (m *Manager) restoreTurnResult(ctx context.Context, job Job) (Job, error) {
 	permissions := make(map[string]sessionevents.ACPPermission)
 	var assistant, thought strings.Builder
 	for _, event := range events {
+		event, visible := storage.DisplayEvent(event)
+		if !visible {
+			continue
+		}
 		if event.Type == "acp" && event.ACP != nil && event.ACP.ID == job.ID {
 			if event.ACP.State != "" {
 				job.State = event.ACP.State

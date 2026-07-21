@@ -132,6 +132,9 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if err != nil {
 		return
 	}
+	if codexHiddenWarning(job.ACPAgent, update) {
+		return
+	}
 	recordTool := func(src sessionevents.ACPToolCall, create bool) {
 		src.UpdatedAt = now
 		if job.toolByID == nil {
