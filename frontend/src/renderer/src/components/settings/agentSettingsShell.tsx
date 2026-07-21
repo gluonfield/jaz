@@ -56,7 +56,7 @@ export function useAgentSettingsDraft(label: string) {
   return { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty }
 }
 
-// The chrome both agent-settings screens share: heading, Save button, body slot.
+// The chrome both agent-settings screens share: heading, optional save action, body slot.
 export function SettingsSection({
   title,
   description,
@@ -67,9 +67,9 @@ export function SettingsSection({
 }: {
   title: string
   description: string
-  canSave: boolean
-  saving: boolean
-  onSave: () => void
+  canSave?: boolean
+  saving?: boolean
+  onSave?: () => void
   children: ReactNode
 }) {
   return (
@@ -79,10 +79,12 @@ export function SettingsSection({
           <p className="text-sm font-medium text-ink">{title}</p>
           <p className="mt-0.5 text-pretty text-[13px] text-ink-2">{description}</p>
         </div>
-        <Button variant="primary" size="md" disabled={!canSave} onClick={onSave}>
-          <Save size={14} />
-          {saving ? 'Saving...' : 'Save changes'}
-        </Button>
+        {onSave ? (
+          <Button variant="primary" size="md" disabled={!canSave} onClick={onSave}>
+            <Save size={14} />
+            {saving ? 'Saving...' : 'Save changes'}
+          </Button>
+        ) : null}
       </div>
       <div className="mt-3">{children}</div>
     </section>
