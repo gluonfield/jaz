@@ -308,7 +308,7 @@ export const Transcript = memo(function Transcript({
         }
         resultCards.forEach((item) => sections.push(renderItem(item)))
         return (
-          <div key={`turn-${turnIndex}`} className="flex flex-col gap-4">
+          <div key={`turn-${turnIndex}`} className={`flex flex-col ${active ? 'gap-2' : 'gap-4'}`}>
             {sections}
           </div>
         )
