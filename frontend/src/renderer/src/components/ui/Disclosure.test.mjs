@@ -6,11 +6,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Collapse } from './Collapse'
 import { DisclosureTrigger } from './DisclosureTrigger'
 
-globalThis.IS_REACT_ACT_ENVIRONMENT = true
-const { document, window } = parseHTML('<html><body></body></html>')
-globalThis.document = document
-globalThis.window = window
-
 test('mount-on-open collapse skips initially hidden content', () => {
   let renders = 0
   function DeferredContent() {
@@ -36,6 +31,14 @@ test('mount-on-open collapse skips initially hidden content', () => {
 })
 
 test('mount-on-open collapse retains its child after closing', () => {
+  const previousDocument = globalThis.document
+  const previousWindow = globalThis.window
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT
+  const { document, window } = parseHTML('<html><body></body></html>')
+  globalThis.document = document
+  globalThis.window = window
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+
   let mounts = 0
   let unmounts = 0
   function TrackedContent() {
@@ -51,23 +54,32 @@ test('mount-on-open collapse retains its child after closing', () => {
     createElement(Collapse, { open, mountOnOpen: true }, createElement(TrackedContent))
 
   const container = document.createElement('div')
-  const root = createRoot(container)
-  act(() => {
-    root.render(tree(false))
-  })
-  expect(mounts).toBe(0)
-  expect(container.textContent).toBe('')
+  let root
+  try {
+    root = createRoot(container)
+    act(() => {
+      root.render(tree(false))
+    })
+    expect(mounts).toBe(0)
+    expect(container.textContent).toBe('')
 
-  act(() => root.render(tree(true)))
-  expect(mounts).toBe(1)
-  expect(container.textContent).toBe('tracked content')
+    act(() => root.render(tree(true)))
+    expect(mounts).toBe(1)
+    expect(container.textContent).toBe('tracked content')
 
-  act(() => root.render(tree(false)))
-  expect(unmounts).toBe(0)
-  expect(container.textContent).toBe('tracked content')
+    act(() => root.render(tree(false)))
+    expect(unmounts).toBe(0)
+    expect(container.textContent).toBe('tracked content')
 
-  act(() => root.unmount())
-  expect(unmounts).toBe(1)
+    act(() => root.unmount())
+    root = undefined
+    expect(unmounts).toBe(1)
+  } finally {
+    if (root) act(() => root.unmount())
+    globalThis.document = previousDocument
+    globalThis.window = previousWindow
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment
+  }
 })
 
 test('disclosure trigger keeps its caret after the label', () => {
