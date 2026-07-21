@@ -31,6 +31,10 @@ memory, and git control. Client/server split, always-on, open source end to end.
 
 ## Examples
 
+Ultrathink
+
+https://github.com/user-attachments/assets/16062e29-f4ae-4484-87ca-3a5977fac88b
+
 Familiar chat UI
 
 <img width="3358" height="2334" alt="image" src="https://github.com/user-attachments/assets/ab52e8f6-ff3b-450f-895b-027f2faa6481" />
@@ -42,6 +46,30 @@ Interactive visualisations
 Board with live artifacts
 
 <img width="4410" height="2924" alt="image" src="https://github.com/user-attachments/assets/29974b5b-26b2-4f30-aaea-cc4afed6c176" />
+
+Customize
+
+<img width="3694" height="2710" alt="image" src="https://github.com/user-attachments/assets/f789b6e6-8dd1-4169-9bdd-65c6d36b7187" />
+
+Track usage
+
+<img width="3696" height="2712" alt="image" src="https://github.com/user-attachments/assets/fb7714a7-8494-4e34-a1f0-690412f606df" />
+
+Connect your coding agent and reuse subscription (Codex, Claude Code, Open Code, Antigravity, Kimi)
+
+<img width="3656" height="2690" alt="image" src="https://github.com/user-attachments/assets/b4ee3750-8b35-4d33-a78e-dc7b2c4c6a54" />
+
+Connect your apps (Slack, Gmail, Google Calendar, WhatsApp, Telegram, [Deployink](https://deployink.com))
+
+<img width="3834" height="2776" alt="image" src="https://github.com/user-attachments/assets/1b7ad3c9-b6cb-4dcc-9c62-74e8ab0b0c78" />
+
+Side panel
+
+https://github.com/user-attachments/assets/de550dc1-75cc-43bb-aca0-f34c99573d47
+
+
+
+
 
 
 
