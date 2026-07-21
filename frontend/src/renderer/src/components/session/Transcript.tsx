@@ -25,8 +25,6 @@ type RenderOptions = {
   showAssistantCopy?: boolean
 }
 
-type TimelineItemRenderer = (item: TimelineItem) => ReactNode
-
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(1, Math.round(ms / 1000))
   const hours = Math.floor(totalSeconds / 3600)
@@ -35,16 +33,6 @@ function formatDuration(ms: number): string {
   if (hours) return `${hours}h ${minutes}m`
   if (minutes) return `${minutes}m ${seconds}s`
   return `${seconds}s`
-}
-
-function WorkSectionItems({
-  items,
-  render,
-}: {
-  items: TimelineItem[]
-  render: TimelineItemRenderer
-}) {
-  return <div className="flex flex-col gap-2 pt-3">{items.map((item) => render(item))}</div>
 }
 
 function WorkSection({
@@ -58,7 +46,7 @@ function WorkSection({
   durationMs: number
   defaultOpen: boolean
   findActive?: boolean
-  render: TimelineItemRenderer
+  render: (item: TimelineItem) => ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const effectiveOpen = open || findActive
@@ -71,8 +59,8 @@ function WorkSection({
         onClick={() => setOpen((value) => !value)}
         className="self-start font-medium"
       />
-      <Collapse open={effectiveOpen} className="w-full" mountOnOpen>
-        <WorkSectionItems items={items} render={render} />
+      <Collapse open={effectiveOpen} className="w-full">
+        <div className="flex flex-col gap-2 pt-3">{items.map((item) => render(item))}</div>
       </Collapse>
     </div>
   )
