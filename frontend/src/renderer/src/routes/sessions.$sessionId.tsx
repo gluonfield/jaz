@@ -480,7 +480,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
           <div className="relative h-full min-w-0 flex-1">
             <div
               ref={attachScroll}
-              className="scrollbar-quiet h-full overflow-y-auto"
+              className="scrollbar-quiet relative z-0 h-full overflow-y-auto"
               onScroll={onThreadScroll}
               onClickCapture={onThreadClickCapture}
             >
