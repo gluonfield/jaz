@@ -46,7 +46,7 @@ func (s *Service) Load(ctx context.Context, ref string, request storage.Transcri
 	if request.BeforeMessageSeq == 0 && request.BeforeEventSeq == 0 {
 		clearPendingSteer(&session, page.Messages)
 	}
-	page.Events = sessionevents.CompactTranscript(storage.GoalDisplayEvents(page.Events))
+	page.Events = sessionevents.CompactTranscript(storage.DisplayEvents(page.Events))
 	related, err := s.store.LoadTranscriptSessions(ctx, session.ID, referencedSessionIDs(page.Events, session.ID))
 	if err != nil {
 		return View{}, err

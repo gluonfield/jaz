@@ -78,24 +78,6 @@ func TestGoalProjectionFromEventClearsRequestOnlySnapshot(t *testing.T) {
 	}
 }
 
-func TestGoalDisplayEventsConvertsRequestOnlySnapshotToClear(t *testing.T) {
-	events := GoalDisplayEvents([]sessionevents.Event{
-		{
-			SessionID: "thread-1",
-			Type:      sessionevents.TypeGoalUpdate,
-			Goal: &sessionevents.GoalEvent{
-				Identity: goal.Identity{
-					Objective: "user prompt text",
-					Status:    goal.StatusRequested,
-				},
-			},
-		},
-	})
-	if len(events) != 1 || events[0].Type != sessionevents.TypeGoalClear || events[0].Goal != nil {
-		t.Fatalf("events = %#v, want goal_clear", events)
-	}
-}
-
 func TestUnmarshalGoalStateIgnoresRequestOnlySnapshot(t *testing.T) {
 	state, err := UnmarshalGoalState(`{"objective":"user prompt text","status":"requested"}`)
 	if err != nil {

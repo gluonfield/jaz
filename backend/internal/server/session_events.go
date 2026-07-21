@@ -42,7 +42,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 			afterSeq = event.Seq
 		}
 		var ok bool
-		event, ok = storage.GoalDisplayEvent(event)
+		event, ok = storage.DisplayEvent(event)
 		if !ok {
 			continue
 		}
@@ -61,7 +61,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 		}
 		projector := sessionevents.NewProjector()
 		for _, event := range all {
-			if display, visible := storage.GoalDisplayEvent(event); visible {
+			if display, visible := storage.DisplayEvent(event); visible {
 				projector.Apply(display)
 			}
 		}
@@ -92,7 +92,7 @@ func (s *Server) streamSessionEvents(w http.ResponseWriter, r *http.Request, ses
 			afterSeq = event.Seq
 		}
 		var ok bool
-		event, ok = storage.GoalDisplayEvent(event)
+		event, ok = storage.DisplayEvent(event)
 		if !ok {
 			continue
 		}

@@ -2,6 +2,7 @@ package modelcatalog
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/provider"
 )
@@ -56,6 +57,12 @@ func sortReasoningEfforts(efforts []string) {
 }
 
 var (
+	knownModels = map[string]Model{
+		"qwen3.8-max-preview": {
+			ContextLength:   1_000_000,
+			InputModalities: []string{"text", "image"},
+		},
+	}
 	openAIModels = []Model{
 		openRouterBackedModel(provider.OpenAIModelGPT56Sol, "GPT-5.6 Sol", "Frontier capability", 1050000, "openai/gpt-5.6-sol"),
 		openRouterBackedModel(provider.OpenAIModelGPT56Terra, "GPT-5.6 Terra", "Balanced capability and cost", 1050000, "openai/gpt-5.6-terra"),
@@ -118,6 +125,20 @@ func cloneModels(models []Model) []Model {
 		out[i] = cloneModel(model)
 	}
 	return out
+}
+
+func completeModelMetadata(model Model) Model {
+	known, ok := knownModels[strings.ToLower(model.Value)]
+	if !ok {
+		return model
+	}
+	if model.ContextLength == 0 {
+		model.ContextLength = known.ContextLength
+	}
+	if len(model.InputModalities) == 0 {
+		model.InputModalities = cloneStrings(known.InputModalities)
+	}
+	return model
 }
 
 func cloneModel(model Model) Model {

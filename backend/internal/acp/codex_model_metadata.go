@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"github.com/wins/jaz/backend/internal/provider"
 )
 
 const codexModelMetadataEnv = "JAZ_CODEX_MODEL_METADATA"
@@ -23,25 +21,19 @@ type codexModelMetadata struct {
 func (m *Manager) resolveCodexModelMetadata(name string, cfg AgentConfig) (string, error) {
 	providerID := strings.TrimSpace(cfg.ModelProvider)
 	modelID := strings.TrimSpace(cfg.Model)
-	if CanonicalAgentName(name) != AgentCodex || !cfg.UsesProvider() || !strings.EqualFold(providerID, provider.ProviderOpenRouter) {
+	if CanonicalAgentName(name) != AgentCodex || !cfg.UsesProvider() {
 		return "", nil
 	}
-	if modelID == "" {
-		return "", fmt.Errorf("resolve Codex OpenRouter metadata: model is empty")
+	if modelID == "" || m.cfg.ModelCatalog == nil {
+		return "", nil
 	}
-	if m.cfg.ModelCatalog == nil {
-		return "", fmt.Errorf("resolve Codex OpenRouter metadata for %q: model catalog is unavailable", modelID)
-	}
-	models, err := (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).ProviderModels(AgentCodex, provider.ProviderOpenRouter)
+	models, err := (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).ProviderModels(AgentCodex, providerID)
 	if err != nil {
-		return "", fmt.Errorf("resolve Codex OpenRouter metadata for %q: %w", modelID, err)
+		return "", nil
 	}
 	model, ok := findCapabilityModel(models, modelID)
-	if !ok {
-		return "", fmt.Errorf("resolve Codex OpenRouter metadata: model %q is not in the provider catalog", modelID)
-	}
-	if model.ContextLength <= 0 {
-		return "", fmt.Errorf("resolve Codex OpenRouter metadata: model %q has no context window", modelID)
+	if !ok || model.ContextLength <= 0 {
+		return "", nil
 	}
 	metadata := codexModelMetadata{
 		ID:                     modelID,
@@ -54,7 +46,7 @@ func (m *Manager) resolveCodexModelMetadata(name string, cfg AgentConfig) (strin
 	}
 	encoded, err := json.Marshal(metadata)
 	if err != nil {
-		return "", fmt.Errorf("encode Codex OpenRouter metadata for %q: %w", modelID, err)
+		return "", fmt.Errorf("encode Codex metadata for provider %q model %q: %w", providerID, modelID, err)
 	}
 	return string(encoded), nil
 }

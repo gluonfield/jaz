@@ -62,7 +62,7 @@ func (s *Store) LoadFeedCompletions() ([]storage.FeedCompletion, error) {
 func lastTurnReply(events []sessionevents.Event) (string, int64) {
 	parts := make([]string, 0)
 	var replyAt int64
-	for _, event := range sessionevents.CompactTextChunks(events) {
+	for _, event := range sessionevents.CompactTextChunks(storage.DisplayEvents(events)) {
 		if event.Type != sessionevents.TypeACPMessage {
 			continue
 		}

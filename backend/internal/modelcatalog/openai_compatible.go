@@ -35,7 +35,7 @@ func fetchOpenAICompatibleModels(ctx context.Context, baseURL, apiKey string) ([
 		if label == "" {
 			label = id
 		}
-		out = append(out, modelWithoutProviderReasoning(id, label, "", entry.ContextLength))
+		out = append(out, completeModelMetadata(modelWithoutProviderReasoning(id, label, "", entry.ContextLength)))
 	}
 	return out, nil
 }

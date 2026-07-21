@@ -62,33 +62,6 @@ func GoalProjectionFromEvents(events ...sessionevents.Event) (GoalProjection, er
 	return latest, nil
 }
 
-func GoalDisplayEvents(events []sessionevents.Event) []sessionevents.Event {
-	out := make([]sessionevents.Event, 0, len(events))
-	for _, event := range events {
-		display, ok := GoalDisplayEvent(event)
-		if ok {
-			out = append(out, display)
-		}
-	}
-	return out
-}
-
-func GoalDisplayEvent(event sessionevents.Event) (sessionevents.Event, bool) {
-	projection, ok, err := GoalProjectionFromEvent(event)
-	if !ok {
-		return event, true
-	}
-	event.Content = ""
-	if err != nil || !projection.Seen || projection.State == nil {
-		event.Type = sessionevents.TypeGoalClear
-		event.Goal = nil
-		return event, true
-	}
-	event.Type = sessionevents.TypeGoalUpdate
-	event.Goal = projection.State
-	return event, true
-}
-
 func GoalProjectionFromEvent(event sessionevents.Event) (GoalProjection, bool, error) {
 	if event.Type == sessionevents.TypeGoalClear {
 		return GoalProjection{Seen: true}, true, nil
