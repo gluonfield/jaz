@@ -1,6 +1,7 @@
-import { ChevronRight, Clock3, LoaderCircle } from 'lucide-react'
+import { Clock3, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
+import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
 import { MessageMarkdown } from './MessageMarkdown'
 
 export function ThinkingBlock({ text, pending = false }: { text: string; pending?: boolean }) {
@@ -10,22 +11,14 @@ export function ThinkingBlock({ text, pending = false }: { text: string; pending
 
   return (
     <div className="flex w-full max-w-[var(--prose-max)] flex-col items-start">
-      <button
-        type="button"
-        aria-expanded={open}
+      <DisclosureTrigger
+        label={pending ? 'Thinking' : 'Thought process'}
+        open={open}
         onClick={() => setOpen((value) => !value)}
-        className="-ml-1.5 inline-flex min-h-8 items-center gap-1.5 rounded-control px-1.5 text-left text-[13px] text-ink-3 transition-colors duration-150 hover:text-ink-2 motion-reduce:transition-none"
-      >
-        <span>{pending ? 'Thinking' : 'Thought process'}</span>
-        {pending ? (
+        accessory={pending ? (
           <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
-        ) : null}
-        <ChevronRight
-          size={13}
-          className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
-          aria-hidden
-        />
-      </button>
+        ) : undefined}
+      />
 
       <Collapse open={open} className="w-full">
         <div className="relative ml-2 border-l border-border/75 py-1 pl-5 select-text">

@@ -1,7 +1,9 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { memo, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { ChatMessage, SessionEvent } from '@/lib/api/types'
 import { Button } from '@/components/ui/Button'
+import { Collapse } from '@/components/ui/Collapse'
+import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import {
   buildTimeline,
@@ -23,6 +25,8 @@ type RenderOptions = {
   showAssistantCopy?: boolean
 }
 
+type TimelineItemRenderer = (item: TimelineItem) => ReactNode
+
 function formatDuration(ms: number): string {
   const totalSeconds = Math.max(1, Math.round(ms / 1000))
   const hours = Math.floor(totalSeconds / 3600)
@@ -31,6 +35,16 @@ function formatDuration(ms: number): string {
   if (hours) return `${hours}h ${minutes}m`
   if (minutes) return `${minutes}m ${seconds}s`
   return `${seconds}s`
+}
+
+function WorkSectionItems({
+  items,
+  render,
+}: {
+  items: TimelineItem[]
+  render: TimelineItemRenderer
+}) {
+  return <div className="flex flex-col gap-2 pt-3">{items.map((item) => render(item))}</div>
 }
 
 function WorkSection({
@@ -44,31 +58,22 @@ function WorkSection({
   durationMs: number
   defaultOpen: boolean
   findActive?: boolean
-  render: (item: TimelineItem) => ReactNode
+  render: TimelineItemRenderer
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const effectiveOpen = open || findActive
 
   return (
-    <div className="flex flex-col gap-3">
-      <button
-        type="button"
-        aria-expanded={effectiveOpen}
+    <div className="flex flex-col">
+      <DisclosureTrigger
+        label={`Worked for ${formatDuration(durationMs)}`}
+        open={effectiveOpen}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-full px-1 text-left text-[12px] font-medium text-ink-3 transition-colors hover:text-ink"
-      >
-        <ChevronRight
-          size={12}
-          className={`shrink-0 transition-transform ${effectiveOpen ? 'rotate-90' : ''}`}
-          aria-hidden
-        />
-        Worked for {formatDuration(durationMs)}
-      </button>
-      {effectiveOpen ? (
-        <div className="flex flex-col gap-2">
-          {items.map((item) => render(item))}
-        </div>
-      ) : null}
+        className="self-start font-medium"
+      />
+      <Collapse open={effectiveOpen} className="w-full" mountOnOpen>
+        <WorkSectionItems items={items} render={render} />
+      </Collapse>
     </div>
   )
 }

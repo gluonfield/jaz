@@ -1,6 +1,7 @@
 import { ChevronRight, LoaderCircle } from 'lucide-react'
 import { memo, useState, type ReactNode } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
+import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
 import type { ACPToolCall } from '@/lib/api/types'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
@@ -30,23 +31,15 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
   const running = active && calls.some((call) => isRunningToolStatus(call.status))
   return (
     <div className="flex w-full flex-col items-start">
-      <button
-        type="button"
+      <DisclosureTrigger
+        label={label}
+        open={open}
         disabled={!expandable}
-        aria-expanded={expandable ? open : undefined}
         onClick={() => setOpen((value) => !value)}
-        className="-ml-1.5 inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-control px-1.5 text-left text-[13px] text-ink-3 transition-colors duration-150 motion-reduce:transition-none enabled:hover:text-ink-2 disabled:cursor-default"
-      >
-        <span className="min-w-0 truncate">{label}</span>
-        {running ? (
+        accessory={running ? (
           <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
-        ) : null}
-        <ChevronRight
-          size={13}
-          className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${!expandable ? 'opacity-30' : open ? 'rotate-90' : ''}`}
-          aria-hidden
-        />
-      </button>
+        ) : undefined}
+      />
       <Collapse open={open && expandable} className="w-full">
         <div className="relative w-full py-0.5 before:absolute before:bottom-4 before:left-[9px] before:top-4 before:w-px before:bg-border/75">
           {detailCalls.map((call) => (
