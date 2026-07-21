@@ -7,17 +7,11 @@ import { Input } from '@/components/ui/Input'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { Modal } from '@/components/ui/Modal'
 import { ContextMenu, MenuRow } from '@/components/ui/Popover'
-import {
-  setSessionArchived,
-  setSessionPinned,
-  setSessionTitle,
-  type SessionListItem,
-} from '@/lib/api/sessions'
+import { setSessionArchived, setSessionPinned, setSessionTitle } from '@/lib/api/sessions'
 import type { Session } from '@/lib/api/types'
 import { recentTime } from '@/lib/format/time'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
-import { keys } from '@/lib/query/keys'
 import { RuntimeBadge } from './RuntimeBadge'
 
 // Auto-generated chat slugs (chat-2026-06-06-153125) carry no scannable
@@ -247,27 +241,10 @@ function usePinToggle(session: Session) {
   return { pinned, toggle: () => mutation.mutate() }
 }
 
-function withoutSessionSubtree(items: SessionListItem[], id: string): SessionListItem[] {
-  const removed = new Set([id])
-  return items.filter(({ session }) => {
-    if (session.parent_id && removed.has(session.parent_id)) removed.add(session.id)
-    return !removed.has(session.id)
-  })
-}
-
 function useArchive(session: Session) {
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: () => setSessionArchived(session.id, true),
-    onMutate: async () => {
-      await queryClient.cancelQueries({ queryKey: keys.sidebarSessions })
-      const previous = queryClient.getQueryData<SessionListItem[]>(keys.sidebarSessions)
-      queryClient.setQueryData<SessionListItem[]>(keys.sidebarSessions, (items) =>
-        items ? withoutSessionSubtree(items, session.id) : items,
-      )
-      return previous
-    },
-    onError: (_error, _variables, previous) => queryClient.setQueryData(keys.sidebarSessions, previous),
     onSettled: () => invalidateSessionLists(queryClient, { archived: true }),
   })
   return () => mutation.mutate()
