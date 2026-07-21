@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, type LinkComponentProps, useNavigate } from '@tanstack/react-router'
 import { ChevronDown, GripVertical, Inbox, LayoutDashboard, Repeat, Settings, SquarePen } from 'lucide-react'
-import { AnimatePresence, motion, Reorder, type Transition, useDragControls } from 'motion/react'
+import { Reorder, type Transition, useDragControls } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
+import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { Collapse } from '@/components/ui/Collapse'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
@@ -29,7 +30,6 @@ const MORE_ACTION_CLASS =
 const SECTION_HEADING_CLASS = 'pb-1 text-[13px] font-semibold text-ink max-sm:text-[15px]'
 
 const ROW_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 34 }
-const SESSION_ROW_TRANSITION: Transition = { duration: 0.16, ease: [0.2, 0, 0, 1] }
 
 type SessionProjectGroup = {
   key: string
@@ -220,16 +220,13 @@ function SessionRows({
 }) {
   const showRuntimeBadge = useShowModelIcons()
   return (
-    <div className="relative flex flex-col gap-px">
-      <AnimatePresence initial={false} mode="popLayout">
+    <div className="flex flex-col gap-px">
+      <AnimatedList>
         {items.map((item) => (
-          <motion.div
+          <AnimatedListItem
             key={item.session.id}
-            layout="position"
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={SESSION_ROW_TRANSITION}
           >
             <SessionRow
               session={item.session}
@@ -238,9 +235,9 @@ function SessionRows({
               shortcutMode={shortcutMode}
               showRuntimeBadge={showRuntimeBadge}
             />
-          </motion.div>
+          </AnimatedListItem>
         ))}
-      </AnimatePresence>
+      </AnimatedList>
     </div>
   )
 }

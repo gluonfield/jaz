@@ -13,6 +13,12 @@ test('collapse keeps hidden content mounted for its first transition', () => {
   expect(html).toContain('prepared content')
 })
 
+test('expanded collapse does not clip nested layout motion', () => {
+  const html = renderToStaticMarkup(createElement(Collapse, { open: true }, createElement('span')))
+
+  expect(html).toContain('overflow-visible')
+})
+
 test('disclosure trigger keeps its caret after the label', () => {
   const html = renderToStaticMarkup(
     createElement(DisclosureTrigger, {
