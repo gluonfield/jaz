@@ -29,6 +29,7 @@ const MORE_ACTION_CLASS =
 const SECTION_HEADING_CLASS = 'pb-1 text-[13px] font-semibold text-ink max-sm:text-[15px]'
 
 const ROW_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 34 }
+const SESSION_ROW_TRANSITION: Transition = { duration: 0.16, ease: [0.2, 0, 0, 1] }
 
 type SessionProjectGroup = {
   key: string
@@ -227,8 +228,8 @@ function SessionRows({
             layout="position"
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, y: -8, transition: { duration: 0.15, ease: 'easeIn' } }}
-            transition={ROW_SPRING}
+            exit={{ opacity: 0, y: -8 }}
+            transition={SESSION_ROW_TRANSITION}
           >
             <SessionRow
               session={item.session}
