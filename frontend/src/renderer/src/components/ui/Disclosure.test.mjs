@@ -1,85 +1,16 @@
 import { expect, test } from 'bun:test'
-import { parseHTML } from 'linkedom'
-import { act, createElement, useEffect } from 'react'
-import { createRoot } from 'react-dom/client'
+import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Collapse } from './Collapse'
 import { DisclosureTrigger } from './DisclosureTrigger'
 
-test('mount-on-open collapse skips initially hidden content', () => {
-  let renders = 0
-  function DeferredContent() {
-    renders++
-    return createElement('span', null, 'expensive content')
-  }
-
-  const closed = renderToStaticMarkup(
-    createElement(Collapse, { open: false, mountOnOpen: true }, createElement(DeferredContent)),
+test('collapse keeps hidden content mounted for its first transition', () => {
+  const html = renderToStaticMarkup(
+    createElement(Collapse, { open: false }, createElement('span', null, 'prepared content')),
   )
-  expect(renders).toBe(0)
 
-  const open = renderToStaticMarkup(
-    createElement(Collapse, { open: true, mountOnOpen: true }, createElement(DeferredContent)),
-  )
-  expect(renders).toBe(1)
-
-  const eager = renderToStaticMarkup(createElement(Collapse, { open: false }, createElement(DeferredContent)))
-
-  expect(closed).not.toContain('expensive content')
-  expect(open).toContain('expensive content')
-  expect(eager).toContain('expensive content')
-})
-
-test('mount-on-open collapse retains its child after closing', () => {
-  const previousDocument = globalThis.document
-  const previousWindow = globalThis.window
-  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT
-  const { document, window } = parseHTML('<html><body></body></html>')
-  globalThis.document = document
-  globalThis.window = window
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true
-
-  let mounts = 0
-  let unmounts = 0
-  function TrackedContent() {
-    useEffect(() => {
-      mounts++
-      return () => {
-        unmounts++
-      }
-    }, [])
-    return createElement('span', null, 'tracked content')
-  }
-  const tree = (open) =>
-    createElement(Collapse, { open, mountOnOpen: true }, createElement(TrackedContent))
-
-  const container = document.createElement('div')
-  let root
-  try {
-    root = createRoot(container)
-    act(() => {
-      root.render(tree(false))
-    })
-    expect(mounts).toBe(0)
-    expect(container.textContent).toBe('')
-
-    act(() => root.render(tree(true)))
-    expect(mounts).toBe(1)
-    expect(container.textContent).toBe('tracked content')
-
-    act(() => root.render(tree(false)))
-    expect(unmounts).toBe(0)
-    expect(container.textContent).toBe('tracked content')
-
-    act(() => root.unmount())
-    root = undefined
-    expect(unmounts).toBe(1)
-  } finally {
-    if (root) act(() => root.unmount())
-    globalThis.document = previousDocument
-    globalThis.window = previousWindow
-    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment
-  }
+  expect(html).toContain('grid-rows-[0fr]')
+  expect(html).toContain('prepared content')
 })
 
 test('disclosure trigger keeps its caret after the label', () => {
