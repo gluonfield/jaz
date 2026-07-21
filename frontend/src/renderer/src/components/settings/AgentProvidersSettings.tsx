@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, CheckCircle2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
@@ -194,9 +194,6 @@ export function AgentProvidersSettings() {
   )
 }
 
-// One row in the providers list: a collapsed header with the brand mark and
-// connection state, expanding to the key field. Custom providers get an
-// edit/remove footer; built-ins are key-only.
 function ProviderRow({
   provider,
   keyDraft,
@@ -226,16 +223,11 @@ function ProviderRow({
     : !needsKey && statusPending
       ? 'checking'
       : 'disconnected'
-  const [expanded, setExpanded] = useState(false)
+  const hasActions = Boolean(onEdit || onDelete)
 
   return (
-    <SettingsCard className="overflow-hidden">
-      <button
-        type="button"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((open) => !open)}
-        className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2/50"
-      >
+    <SettingsCard>
+      <div className="flex w-full items-center gap-2.5 px-3 py-2">
         <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-bg text-ink">
           <ProviderLogo provider={provider.icon || provider.id} />
         </span>
@@ -251,73 +243,59 @@ function ProviderRow({
           ) : null}
         </span>
         {state === 'connected' ? <CheckCircle2 size={17} className="shrink-0 text-primary" /> : null}
-        <ChevronDown
-          size={15}
-          className={`shrink-0 text-ink-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      <div
-        aria-hidden={!expanded}
-        inert={expanded ? undefined : true}
-        className={`grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-          expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        }`}
-      >
-        <div className="min-h-0 overflow-hidden">
-          <div className="flex flex-col gap-3 px-3 pb-3 pt-0.5">
-            {needsKey ? (
-              <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[12px] font-medium text-ink-2">API key</span>
-                  {provider.api_key_env ? (
-                    <span className="font-mono text-[11px] text-ink-3">{provider.api_key_env}</span>
-                  ) : null}
-                </div>
-                <Input
-                  type="password"
-                  value={keyDraft}
-                  disabled={disabled}
-                  onChange={(event) => onKeyChange(event.target.value)}
-                  placeholder={
-                    provider.configured
-                      ? 'Configured — paste a new key to replace it'
-                      : 'Paste an API key'
-                  }
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="font-mono text-[12px]"
-                  aria-label={`${provider.label} API key`}
-                />
-                {remote ? (
-                  <p className="text-pretty text-[12px] text-ink-3">
-                    API keys can only be added from the machine running jaz.
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <p className="text-pretty text-[12px] text-ink-3">No API key required.</p>
-            )}
-
-            {onEdit || onDelete ? (
-              <div className="flex items-center gap-1 border-t border-border/70 pt-3">
-                {onEdit ? (
-                  <Button variant="ghost" size="sm" disabled={disabled} onClick={onEdit}>
-                    <Pencil size={13} />
-                    Edit
-                  </Button>
-                ) : null}
-                {onDelete ? (
-                  <Button variant="danger" size="sm" disabled={disabled} onClick={onDelete}>
-                    <Trash2 size={13} />
-                    Remove
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
       </div>
+
+      {needsKey || hasActions ? (
+        <div className="flex flex-col gap-3 px-3 pb-3 pt-0.5">
+          {needsKey ? (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px] font-medium text-ink-2">API key</span>
+                {provider.api_key_env ? (
+                  <span className="font-mono text-[11px] text-ink-3">{provider.api_key_env}</span>
+                ) : null}
+              </div>
+              <Input
+                type="password"
+                value={keyDraft}
+                disabled={disabled}
+                onChange={(event) => onKeyChange(event.target.value)}
+                placeholder={
+                  provider.configured
+                    ? 'Configured — paste a new key to replace it'
+                    : 'Paste an API key'
+                }
+                autoComplete="off"
+                spellCheck={false}
+                className="font-mono text-[12px]"
+                aria-label={`${provider.label} API key`}
+              />
+              {remote ? (
+                <p className="text-pretty text-[12px] text-ink-3">
+                  API keys can only be added from the machine running jaz.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {hasActions ? (
+            <div className="flex items-center gap-1">
+              {onEdit ? (
+                <Button variant="ghost" size="sm" disabled={disabled} onClick={onEdit}>
+                  <Pencil size={13} />
+                  Edit details
+                </Button>
+              ) : null}
+              {onDelete ? (
+                <Button variant="danger" size="sm" disabled={disabled} onClick={onDelete}>
+                  <Trash2 size={13} />
+                  Remove
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </SettingsCard>
   )
 }
@@ -342,8 +320,6 @@ function ProviderPill({ state }: { state: ProviderConnection }) {
   )
 }
 
-// Create/edit a custom OpenAI-compatible provider. Built-ins never open this —
-// their key is edited inline on the row.
 function ProviderEditorModal({
   draft,
   remote,
@@ -371,9 +347,11 @@ function ProviderEditorModal({
       size="md"
       title={isEdit ? 'Edit provider' : 'Add a provider'}
       description={
-        needsKey
-          ? 'Connect any OpenAI-compatible endpoint with your own API key.'
-          : 'Connect a local OpenAI-compatible endpoint.'
+        isEdit
+          ? 'Update the provider details and API support.'
+          : needsKey
+            ? 'Connect any OpenAI-compatible endpoint with your own API key.'
+            : 'Connect a local OpenAI-compatible endpoint.'
       }
       footer={
         <>
@@ -421,7 +399,7 @@ function ProviderEditorModal({
               onChange={(capabilities) => onChange({ ...draft, capabilities })}
             />
           </ProviderField>
-          {needsKey ? (
+          {needsKey && !isEdit ? (
             <ProviderField
               label="API key"
               hint={remote ? 'API keys can only be added from the machine running jaz.' : undefined}
@@ -430,7 +408,7 @@ function ProviderEditorModal({
                 type="password"
                 value={draft.api_key ?? ''}
                 onChange={(event) => onChange({ ...draft, api_key: event.target.value })}
-                placeholder={isEdit ? 'Leave blank to keep the current key' : 'Paste an API key'}
+                placeholder="Paste an API key"
                 autoComplete="off"
                 spellCheck={false}
                 className="font-mono text-[12px]"
