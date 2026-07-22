@@ -17,7 +17,7 @@ import {
   patchBoard,
   removeWidgetFromBoard,
 } from '@/lib/api/boards'
-import { clientRuntime } from '@/lib/clientRuntime'
+import { clientRuntime, popOutBoard } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 import { useTheme } from '@/lib/theme'
 
@@ -151,14 +151,6 @@ function BoardPage() {
     const current = cached?.board.font_scale || scale
     applyScale(Math.min(2, Math.max(0.7, Math.round((current + delta) * 10) / 10)))
   }
-  const popOut = () => {
-    if (clientRuntime.openBoardWindow) {
-      clientRuntime.openBoardWindow(boardId)
-      return
-    }
-    window.open(`/boards/${boardId}`, '_blank', 'noopener,noreferrer')
-  }
-
   // Board windows stay chrome-light; embedded boards carry their name and the
   // explicit window escape hatch in the app page header.
   return (
@@ -230,7 +222,7 @@ function BoardPage() {
         )}
         <div className="flex shrink-0 items-center gap-1">
           {isBoardWindow ? null : (
-            <Button variant="secondary" size="sm" onClick={popOut}>
+            <Button variant="secondary" size="sm" onClick={() => popOutBoard(boardId)}>
               <ExternalLink size={13} />
               Pop Out
             </Button>

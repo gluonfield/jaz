@@ -103,3 +103,11 @@ function createRuntime(): ClientRuntime {
 }
 
 export const clientRuntime = createRuntime()
+
+export function popOutBoard(boardId: string): void {
+  if (clientRuntime.openBoardWindow) {
+    clientRuntime.openBoardWindow(boardId)
+    return
+  }
+  window.open(`/boards/${boardId}`, '_blank', 'noopener,noreferrer')
+}

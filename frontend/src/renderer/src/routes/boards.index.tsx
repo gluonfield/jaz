@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Plus, Trash2 } from 'lucide-react'
+import { ExternalLink, Plus, Trash2 } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useState } from 'react'
 import { BoardCover } from '@/components/boards/BoardCover'
@@ -12,6 +12,7 @@ import { IconButton } from '@/components/ui/IconButton'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { boardsQuery, deleteBoard } from '@/lib/api/boards'
 import type { Board } from '@/lib/api/types'
+import { popOutBoard } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
 
 export const Route = createFileRoute('/boards/')({
@@ -104,7 +105,17 @@ function BoardCard({ board, index, onDelete }: { board: Board; index: number; on
           {board.name}
         </p>
       </Link>
-      <span className="absolute right-2 top-2 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 max-sm:opacity-100">
+      <span className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity duration-150 focus-within:opacity-100 group-hover:opacity-100 max-sm:opacity-100">
+        <IconButton
+          variant="ghost"
+          size="sm"
+          aria-label={`Pop out board ${board.name}`}
+          title="Pop out board"
+          onClick={() => popOutBoard(board.id)}
+          className="bg-bg/80 shadow-sm backdrop-blur-sm"
+        >
+          <ExternalLink size={13} />
+        </IconButton>
         <IconButton
           variant="ghost"
           size="sm"
