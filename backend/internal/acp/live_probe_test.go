@@ -165,6 +165,9 @@ func probeApplyConfiguredSessionOptions(t *testing.T, ctx context.Context, conn 
 }
 
 func applyProbeEnvOverrides(env map[string]string) {
+	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_MODEL_METADATA")); value != "" {
+		env[codexModelMetadataEnv] = value
+	}
 	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_CLAUDE_EXECUTABLE")); value != "" {
 		env["CLAUDE_CODE_EXECUTABLE"] = value
 	}
@@ -172,7 +175,6 @@ func applyProbeEnvOverrides(env map[string]string) {
 		env["CLAUDE_CONFIG_DIR"] = value
 	}
 	for _, key := range []string{
-		codexModelMetadataEnv,
 		"ANTHROPIC_API_KEY",
 		"ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL",
