@@ -23,7 +23,7 @@ func (c *codexMetadataCatalog) ProviderModels(id string) ([]modelcatalog.Model, 
 	return c.models, c.err
 }
 
-func TestResolveCodexModelMetadataUsesCustomProviderCatalog(t *testing.T) {
+func TestResolveCodexCustomProviderModelMetadataUsesCatalog(t *testing.T) {
 	catalog := &codexMetadataCatalog{models: []modelcatalog.Model{{
 		Value:           "qwen3.8-max-preview",
 		Label:           "Qwen3.8 Max Preview",
@@ -31,7 +31,7 @@ func TestResolveCodexModelMetadataUsesCustomProviderCatalog(t *testing.T) {
 		InputModalities: []string{"text", "image"},
 	}}}
 	manager := NewManager(nil, Config{ModelCatalog: catalog}, nil)
-	encoded, err := manager.resolveCodexModelMetadata(AgentCodex, AgentConfig{
+	encoded, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, AgentConfig{
 		ProviderMode:  AgentProviderModeAgentDefaults,
 		ModelProvider: "qwen-cloud",
 		Model:         "qwen3.8-max-preview",
@@ -48,9 +48,24 @@ func TestResolveCodexModelMetadataUsesCustomProviderCatalog(t *testing.T) {
 	}
 }
 
-func TestResolveCodexModelMetadataAllowsIncompleteCustomCatalog(t *testing.T) {
+func TestResolveCodexCustomProviderModelMetadataPreservesNativeCatalog(t *testing.T) {
+	for _, providerID := range []string{"", AgentCodex, provider.ProviderOpenAI, CodexProviderOpenAIAPIKey} {
+		catalog := &codexMetadataCatalog{err: errors.New("must not be called")}
+		manager := NewManager(nil, Config{ModelCatalog: catalog}, nil)
+		metadata, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, AgentConfig{
+			ProviderMode:  AgentProviderModeAgentDefaults,
+			ModelProvider: providerID,
+			Model:         provider.OpenAIModelGPT56Sol,
+		})
+		if err != nil || metadata != "" || catalog.calls != 0 {
+			t.Fatalf("provider %q: metadata = %q, error = %v, catalog calls = %d", providerID, metadata, err, catalog.calls)
+		}
+	}
+}
+
+func TestResolveCodexCustomProviderModelMetadataAllowsIncompleteCatalog(t *testing.T) {
 	manager := NewManager(nil, Config{ModelCatalog: &codexMetadataCatalog{models: []modelcatalog.Model{{Value: "unknown"}}}}, nil)
-	metadata, err := manager.resolveCodexModelMetadata(AgentCodex, AgentConfig{
+	metadata, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, AgentConfig{
 		ProviderMode:  AgentProviderModeAgentDefaults,
 		ModelProvider: "custom",
 		Model:         "unknown",
@@ -64,7 +79,7 @@ func (*codexMetadataCatalog) AgentModels(string) []modelcatalog.Model {
 	return nil
 }
 
-func TestResolveCodexModelMetadataUsesCanonicalCapabilities(t *testing.T) {
+func TestResolveCodexCustomProviderModelMetadataUsesCanonicalCapabilities(t *testing.T) {
 	catalog := &codexMetadataCatalog{models: []modelcatalog.Model{{
 		Value:           "moonshotai/kimi-k3",
 		Label:           "Kimi K3",
@@ -83,7 +98,7 @@ func TestResolveCodexModelMetadataUsesCanonicalCapabilities(t *testing.T) {
 		ModelProvider: provider.ProviderOpenRouter,
 		Model:         "moonshotai/kimi-k3",
 	}
-	encoded, err := manager.resolveCodexModelMetadata(AgentCodex, cfg)
+	encoded, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +117,7 @@ func TestResolveCodexModelMetadataUsesCanonicalCapabilities(t *testing.T) {
 		t.Fatalf("provider catalog calls = %d, want 1", catalog.calls)
 	}
 	catalog.err = modelcatalog.ErrCatalogUnavailable
-	if metadata, err := manager.resolveCodexModelMetadata(AgentCodex, cfg); err != nil || metadata != "" {
+	if metadata, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, cfg); err != nil || metadata != "" {
 		t.Fatalf("metadata = %q, catalog error = %v", metadata, err)
 	}
 }

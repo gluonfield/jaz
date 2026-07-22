@@ -47,6 +47,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			t.Fatalf("Codex model metadata = %#v, %v; want %q", metadata, err, want)
 		}
 	}
+	expectsNoMetadata := os.Getenv("JAZ_FAKE_ACP_EXPECT_NO_CODEX_METADATA") == "1"
+	if metadata := os.Getenv("JAZ_CODEX_MODEL_METADATA"); expectsNoMetadata && metadata != "" {
+		t.Fatalf("unexpected Codex model metadata %q", metadata)
+	}
 	if msg := os.Getenv("JAZ_FAKE_ACP_EXIT_BEFORE_INIT"); msg != "" {
 		_, _ = fmt.Fprintln(os.Stderr, msg)
 		os.Exit(2)

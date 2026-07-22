@@ -104,8 +104,8 @@ function modelSuggestionsFromCatalog(models: ModelCatalogEntry[]): ModelSuggesti
 }
 
 // Context window for a session, by precedence: the runtime-reported size
-// (ACP usage_update), then a known model entry (curated or OpenRouter's
-// catalog), then the model-family heuristic. Null hides the capacity readout.
+// (ACP usage_update), then an explicit provider catalog value. Unknown native
+// metadata stays unknown; null hides the capacity readout.
 export function useContextWindow(session: Session): number | null {
   const usage = session.usage
   const hasTokens = Boolean(
@@ -129,22 +129,5 @@ export function useContextWindow(session: Session): number | null {
   const known = (agent ? acpAgentModelSuggestions(settings.data, agent) : [])
     .concat(wantsOpenRouter ? (openRouter.data ?? []) : [])
     .find((m) => m.value === session.model)
-  return known?.contextLength ?? contextWindowHeuristic(session.model, agent)
-}
-
-// Last resort for free-text model ids the catalogs don't know.
-function contextWindowHeuristic(model?: string, acpAgent?: string): number | null {
-  const id = (model ?? '').toLowerCase()
-  if (id.includes('[1m]')) return 1_000_000
-  // Claude ACP without an explicit pick runs the adapter default: Opus 4.8 (1M).
-  if (acpAgent === 'claude' && id === '') return 1_000_000
-  if (acpAgent === 'grok' && id === '') return 512_000
-  if (id.startsWith('openrouter/')) return 400_000
-  if (id.startsWith('ollama/')) return 128_000
-  if (/claude|sonnet|haiku|opus|fable/.test(id)) return 200_000
-  if (/gpt-5|codex/.test(id)) return 400_000
-  if (/grok-4\.5|grok-build/.test(id)) return 512_000
-  if (/grok|composer/.test(id)) return 200_000
-  if (/gemini/.test(id)) return 1_000_000
-  return null
+  return known?.contextLength ?? null
 }
