@@ -1117,22 +1117,24 @@ func TestManagerUsesCodexModelAndEffortConfigOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
+		Root:         t.TempDir(),
+		Workspace:    t.TempDir(),
+		ModelCatalog: warmedManagerModelCatalog(t),
 		Agents: map[string]acp.AgentConfig{
 			"codex": {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
 				ProviderMode:    acp.AgentProviderModeAgentDefaults,
 				ModelProvider:   provider.ProviderOpenAI,
-				Model:           "fake-large",
+				Model:           "gpt-5.5",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_MODELS":              "fake-large",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "fake-large",
-					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
+					"JAZ_FAKE_ACP_AGENT":                    "1",
+					"JAZ_FAKE_ACP_MODELS":                   "gpt-5.5",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":      "gpt-5.5",
+					"JAZ_FAKE_ACP_EXPECT_NO_CODEX_METADATA": "1",
+					"JAZ_FAKE_ACP_SET_CONFIG":               "1",
+					"JAZ_FAKE_ACP_EXPECT_EFFORT":            "xhigh",
 				},
 			},
 		},
@@ -1149,7 +1151,7 @@ func TestManagerUsesCodexModelAndEffortConfigOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Model != "fake-large" || session.ReasoningEffort != "xhigh" {
+	if session.Model != "gpt-5.5" || session.ReasoningEffort != "xhigh" {
 		t.Fatalf("unexpected stored model metadata %#v", session)
 	}
 }

@@ -209,7 +209,7 @@ func TestServiceFetchesAuthenticatedCustomProviderModels(t *testing.T) {
 			http.Error(w, "unexpected models request", http.StatusUnauthorized)
 			return
 		}
-		_, _ = w.Write([]byte(`{"data":[{"id":"qwen3.8-max-preview"},{"id":"qwen3-coder-plus","name":"Qwen3 Coder Plus"},{"id":"qwen3-max"}]}`))
+		_, _ = w.Write([]byte(`{"data":[{"id":"qwen3.8-max-preview","context_length":1000000},{"id":"qwen3-coder-plus","name":"Qwen3 Coder Plus"},{"id":"qwen3-max"}]}`))
 	}))
 	defer upstream.Close()
 
@@ -248,7 +248,7 @@ func TestServiceFetchesAuthenticatedCustomProviderModels(t *testing.T) {
 		},
 	}), func(string) string { return "wrong-key" })
 	models, err = fallback.ProviderModels("qwen-cloud")
-	if err != nil || len(models) != 1 || models[0].Value != "qwen3.8-max-preview" || models[0].ContextLength != 1_000_000 {
+	if err != nil || len(models) != 1 || models[0].Value != "qwen3.8-max-preview" || models[0].ContextLength != 0 {
 		t.Fatalf("fallback models = %#v, error = %v", models, err)
 	}
 }
@@ -288,10 +288,13 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 			t.Fatalf("OpenAI catalog missing %s: %#v", value, models)
 		}
 	}
-	if values[provider.OpenAIModelGPT56Sol].OpenRouterID != "openai/gpt-5.6-sol" ||
-		values[provider.OpenAIModelGPT56Terra].ContextLength != 1050000 ||
-		values[provider.OpenAIModelGPT56Luna].ContextLength != 400000 {
+	if values[provider.OpenAIModelGPT56Sol].OpenRouterID != "openai/gpt-5.6-sol" {
 		t.Fatalf("unexpected GPT-5.6 metadata %#v", values)
+	}
+	for value, model := range values {
+		if model.ContextLength != 0 {
+			t.Fatalf("static OpenAI model %q context length = %d", value, model.ContextLength)
+		}
 	}
 	if models[0].Reasoning.Status != ReasoningPending {
 		t.Fatalf("reasoning status = %q", models[0].Reasoning.Status)
@@ -357,6 +360,17 @@ func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 	}
 	if efforts["haiku"].Reasoning.Efforts == nil || len(efforts["haiku"].Reasoning.Efforts) != 0 {
 		t.Fatalf("haiku efforts = %#v", efforts["haiku"].Reasoning.Efforts)
+	}
+}
+
+func TestServiceAgentModelsDoNotMirrorProviderContext(t *testing.T) {
+	service := NewService(nil)
+	for agent := range agentModels {
+		for _, model := range service.AgentModels(agent) {
+			if model.ContextLength != 0 {
+				t.Fatalf("agent %q model %q mirrors context %d", agent, model.Value, model.ContextLength)
+			}
+		}
 	}
 }
 

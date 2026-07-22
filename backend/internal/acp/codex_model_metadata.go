@@ -18,10 +18,12 @@ type codexModelMetadata struct {
 	DefaultReasoningEffort string   `json:"default_reasoning_effort,omitempty"`
 }
 
-func (m *Manager) resolveCodexModelMetadata(name string, cfg AgentConfig) (string, error) {
+func (m *Manager) resolveCodexCustomProviderModelMetadata(name string, cfg AgentConfig) (string, error) {
 	providerID := strings.TrimSpace(cfg.ModelProvider)
 	modelID := strings.TrimSpace(cfg.Model)
-	if CanonicalAgentName(name) != AgentCodex || !cfg.UsesProvider() {
+	usesNativeMetadata := codexNativeOpenAIProvider(providerID) ||
+		strings.EqualFold(providerID, CodexProviderOpenAIAPIKey)
+	if CanonicalAgentName(name) != AgentCodex || !cfg.UsesProvider() || usesNativeMetadata {
 		return "", nil
 	}
 	if modelID == "" || m.cfg.ModelCatalog == nil {
