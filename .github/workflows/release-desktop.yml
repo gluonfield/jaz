@@ -214,9 +214,6 @@ jobs:
             --clobber
 
   windows:
-    # Disabled until Windows packaging is split out of the hot release path; hosted
-    # Windows builds were taking about an hour and blocking urgent Jaz releases.
-    if: ${{ false }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
