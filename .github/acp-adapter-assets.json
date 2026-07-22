@@ -31,6 +31,20 @@
           "env": {
             "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
           }
+        },
+        "win32-arm64": {
+          "name": "codex-acp-0.16.28-aarch64-pc-windows-msvc.tar.gz",
+          "binary": "codex-acp.exe",
+          "env": {
+            "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"
+          }
+        },
+        "win32-x64": {
+          "name": "codex-acp-0.16.28-x86_64-pc-windows-msvc.tar.gz",
+          "binary": "codex-acp.exe",
+          "env": {
+            "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"
+          }
         }
       }
     },
