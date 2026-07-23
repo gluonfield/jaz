@@ -56,6 +56,7 @@ type Data struct {
 	RuntimePaths    RuntimePaths
 	Soul            string
 	Internal        string
+	BrowserEnabled  bool
 	ArtifactSurface string
 	Memory          *MemoryData
 	Connections     []connections.AgentConnection

@@ -20,13 +20,13 @@ import (
 var PromptFiles = []string{"AGENTS.md", "SOUL.md", "INTERNAL.md"}
 
 func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
-	return prompt(context.Background(), root, workspace, memoryRoot, skillsPrompt, nil, nil, visualize.SurfaceChat, time.Now())
+	return prompt(context.Background(), root, workspace, memoryRoot, skillsPrompt, nil, nil, false, visualize.SurfaceChat, time.Now())
 }
 
 // prompt joins the two layers: the Jaz agent prompt (identity and operating
 // rules) and the platform prompt (runtime context, AGENTS.md, SOUL.md,
 // INTERNAL.md, memory, skills) that every agent in Jaz shares.
-func prompt(ctx context.Context, root, workspace, memoryRoot, skillsPrompt string, connections []connections.AgentConnection, agentNames []string, surface visualize.Surface, now time.Time) (string, error) {
+func prompt(ctx context.Context, root, workspace, memoryRoot, skillsPrompt string, connections []connections.AgentConnection, agentNames []string, browserEnabled bool, surface visualize.Surface, now time.Time) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
 		workspace = defaultWorkspace(root)
 	}
@@ -34,7 +34,7 @@ func prompt(ctx context.Context, root, workspace, memoryRoot, skillsPrompt strin
 	if err != nil {
 		return "", err
 	}
-	platform, err := platformPrompt(ctx, root, workspace, workspace, memoryRoot, skillsPrompt, connections, agentNames, surface, now)
+	platform, err := platformPrompt(ctx, root, workspace, workspace, memoryRoot, skillsPrompt, connections, agentNames, browserEnabled, surface, now)
 	if err != nil {
 		return "", err
 	}
@@ -52,7 +52,7 @@ func defaultWorkspace(root string) string {
 // platformPrompt renders the jaz extension shared by all agents: runtime
 // context, AGENTS.md, SOUL.md, INTERNAL.md, connected-account paths, the memory
 // protocol with live horizons, and the skills catalog.
-func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skillsPrompt string, connections []connections.AgentConnection, agentNames []string, surface visualize.Surface, now time.Time) (string, error) {
+func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skillsPrompt string, connections []connections.AgentConnection, agentNames []string, browserEnabled bool, surface visualize.Surface, now time.Time) (string, error) {
 	// These prompt files always render — an empty section tells every agent the
 	// file exists and is editable, instead of silently vanishing.
 	agents, err := ReadPromptFile(root, "AGENTS.md")
@@ -84,6 +84,7 @@ func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skill
 		RuntimePaths:    runtimePaths(root, workspace),
 		Soul:            orEmpty(soul),
 		Internal:        orEmpty(internal),
+		BrowserEnabled:  browserEnabled,
 		ArtifactSurface: string(visualize.NormalizeSurface(string(surface))),
 		Memory:          memory,
 		Connections:     connections,

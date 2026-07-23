@@ -27,8 +27,9 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 			DefaultWorkspace: "/tmp/jaz/workspaces/default",
 			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
 		},
-		Soul:     "soul",
-		Internal: "prefer deletion fixes",
+		Soul:           "soul",
+		Internal:       "prefer deletion fixes",
+		BrowserEnabled: true,
 		Memory: &MemoryData{
 			LongTerm:            "- Goal: $5m.",
 			ShortTerm:           "- Focus: jaz memory.",
@@ -83,6 +84,8 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"`sources/chat/telegram/42/conversations/` (memory_prefix)",
 		"## Jaz agent sessions",
 		"one of: `codex`, `claude`",
+		"## Browser tools",
+		"Use Jaztools browser tools only for tasks that require browser or extension interaction.",
 		"## Artifacts and visualisation",
 		"Artifact usage criteria:",
 		"Always call `visualise_read_me` before the first artifact",
@@ -155,6 +158,18 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	for _, reject := range []string{"visualise:show_widget", "visualise:read_me"} {
 		if strings.Contains(prompt, reject) {
 			t.Fatalf("artifact policy must use identifier-safe tool names; found %q:\n%s", reject, prompt)
+		}
+	}
+}
+
+func TestRenderOmitsBrowserPolicyWhenDisabled(t *testing.T) {
+	prompt, err := Render(testData("agents", "soul"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reject := range []string{"## Browser tools", "Jaztools browser tools", "browser or extension interaction"} {
+		if strings.Contains(prompt, reject) {
+			t.Fatalf("disabled browser tools must omit %q:\n%s", reject, prompt)
 		}
 	}
 }

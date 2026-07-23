@@ -22,12 +22,13 @@ type AgentNameSource interface {
 }
 
 type Builder struct {
-	root          string
-	workspace     string
-	memoryRoot    string
-	memoryEnabled func() bool
-	connections   ConnectionSource
-	agents        AgentNameSource
+	root           string
+	workspace      string
+	memoryRoot     string
+	memoryEnabled  func() bool
+	browserEnabled func() bool
+	connections    ConnectionSource
+	agents         AgentNameSource
 }
 
 func NewBuilder(root, workspace, memoryRoot string, memoryEnabled func() bool) *Builder {
@@ -41,6 +42,11 @@ func (b *Builder) WithConnections(connections ConnectionSource) *Builder {
 
 func (b *Builder) WithAgents(agents AgentNameSource) *Builder {
 	b.agents = agents
+	return b
+}
+
+func (b *Builder) WithBrowserEnabled(enabled func() bool) *Builder {
+	b.browserEnabled = enabled
 	return b
 }
 
@@ -101,7 +107,7 @@ func (b *Builder) ACPPromptForContext(ctx context.Context, cwd, surface string) 
 		return "", err
 	}
 	agents := b.agentNames()
-	return platformPrompt(ctx, b.root, cwd, b.runtimeWorkspace(), memoryRoot, catalog.Prompt(), connections, agents, visualize.NormalizeSurface(surface), now)
+	return platformPrompt(ctx, b.root, cwd, b.runtimeWorkspace(), memoryRoot, catalog.Prompt(), connections, agents, b.browserToolsEnabled(), visualize.NormalizeSurface(surface), now)
 }
 
 func (b *Builder) PromptModulesForContext(ctx context.Context, opts acp.PromptModuleOptions) (promptmodule.Modules, error) {
@@ -146,8 +152,12 @@ func (b *Builder) build(ctx context.Context, workspace string, surface visualize
 		return "", "", err
 	}
 	agents := b.agentNames()
-	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, connections, agents, surface, now)
+	system, err = prompt(ctx, b.root, workspace, memoryRoot, skillsPrompt, connections, agents, b.browserToolsEnabled(), surface, now)
 	return system, skillsPrompt, err
+}
+
+func (b *Builder) browserToolsEnabled() bool {
+	return b.browserEnabled != nil && b.browserEnabled()
 }
 
 func (b *Builder) memoryRootForPrompt() string {

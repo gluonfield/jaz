@@ -19,7 +19,7 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 
 	now := time.Date(2026, 6, 2, 9, 8, 7, 0, time.FixedZone("BST", 3600))
 	workspace := filepath.Join(root, "workspaces", "default")
-	prompt, err := prompt(context.Background(), root, workspace, "", "skills", nil, nil, visualize.SurfaceChat, now)
+	prompt, err := prompt(context.Background(), root, workspace, "", "skills", nil, nil, false, visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 	today := now.Local().Format("2006-01-02")
 	write(t, memoryRoot, "daily/"+today+".md", "# Daily\n\n- shipped provenance fields")
 
-	got, err := prompt(context.Background(), root, "", memoryRoot, "", nil, nil, visualize.SurfaceChat, now)
+	got, err := prompt(context.Background(), root, "", memoryRoot, "", nil, nil, false, visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 		"## memory/daily/"+today+".md", "shipped provenance fields",
 	)
 
-	missing, err := prompt(context.Background(), root, "", t.TempDir(), "", nil, nil, visualize.SurfaceChat, now)
+	missing, err := prompt(context.Background(), root, "", t.TempDir(), "", nil, nil, false, visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestPromptInjectsMemoryHorizons(t *testing.T) {
 		t.Fatalf("memory protocol should inject whenever memory is enabled:\n%s", missing)
 	}
 
-	disabled, err := prompt(context.Background(), root, "", "", "", nil, nil, visualize.SurfaceChat, now)
+	disabled, err := prompt(context.Background(), root, "", "", "", nil, nil, false, visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestPromptDoesNotTruncateMemorySections(t *testing.T) {
 	daily := "# Daily\n\n" + strings.Repeat("d", 1600) + " daily-tail"
 	write(t, memoryRoot, "daily/"+today+".md", daily)
 
-	got, err := prompt(context.Background(), root, "", memoryRoot, "", nil, nil, visualize.SurfaceChat, now)
+	got, err := prompt(context.Background(), root, "", memoryRoot, "", nil, nil, false, visualize.SurfaceChat, now)
 	if err != nil {
 		t.Fatal(err)
 	}

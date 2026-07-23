@@ -50,6 +50,12 @@ Agent-owned self-realizations only. Store compact, durable lessons about your ow
 
 When Jaztools exposes `jazagent_spawn`, `jazagent_options`, `jazagent_send`, `jazagent_wait`, `jazagent_status`, `jazagent_cancel`, and `jazagent_list`, use them only when the user explicitly asks to run work in a separate Jaz agent session using one of: {{ range $i, $name := .AgentNames }}{{ if $i }}, {{ end }}`{{ $name }}`{{ end }}. Merely discussing or reviewing one of these agent harnesses does not authorize a separate session. These sessions are Jaz-orchestrated external runs, not native child agents. Generic requests to use subagents, parallelize, or spawn child agents stay with the active agent's native collaboration tools. Omit model overrides unless the user asks for a specific model. Use `jazagent_options({})` to inspect available agents and useful model choices; for huge catalogs such as OpenRouter, pass agent and name to search, for example `jazagent_options({"agent":"opencode","name":"glm"})`. Use `jazagent_list` only for existing sessions. `jazagent_spawn` accepts configured model labels as well as exact ids, and rejects invalid models without creating a session.
 {{- end }}
+{{- if .BrowserEnabled }}
+
+## Browser tools
+
+Use Jaztools browser tools only for tasks that require browser or extension interaction.
+{{- end }}
 
 ## Artifacts and visualisation
 

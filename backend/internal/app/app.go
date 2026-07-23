@@ -210,7 +210,10 @@ func NewMemory(cfg Config, layout runtimefiles.Layout) (*jazmem.Memory, error) {
 }
 
 func NewPromptBuilder(store *sqlitestore.Store, workspace Workspace, memory *memoryservice.Service, connections *connections.Service, agents acp.AgentConfigSource) *coordinator.Builder {
-	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled).WithConnections(connections).WithAgents(agents)
+	return coordinator.NewBuilder(store.RootDir(), string(workspace), memory.Root(), memory.Enabled).
+		WithConnections(connections).
+		WithAgents(agents).
+		WithBrowserEnabled(func() bool { return agentsettings.BrowserEnabled(store) })
 }
 
 func NewACPAgentCatalog(cfg Config) acp.AgentCatalog {

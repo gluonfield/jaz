@@ -25,7 +25,9 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	}
 	write(t, skillDir, "SKILL.md", "---\nname: deploy\ndescription: ship & verify\n---\nsteps")
 
-	builder := NewBuilder(root, filepath.Join(root, "workspaces", "default"), memoryRoot, func() bool { return true }).WithAgents(staticAgentNames{names: []string{"codex", "claude"}})
+	builder := NewBuilder(root, filepath.Join(root, "workspaces", "default"), memoryRoot, func() bool { return true }).
+		WithAgents(staticAgentNames{names: []string{"codex", "claude"}}).
+		WithBrowserEnabled(func() bool { return true })
 	system, err := builder.SystemPrompt()
 	if err != nil {
 		t.Fatal(err)
@@ -43,6 +45,8 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"collapse stale layers",
 		"## Jaz agent sessions",
 		"one of: `codex`, `claude`",
+		"## Browser tools",
+		"Use Jaztools browser tools only for tasks that require browser or extension interaction.",
 		"## Artifacts and visualisation",
 		"Few-shot trace:",
 		"## memory",

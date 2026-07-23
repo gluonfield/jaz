@@ -189,6 +189,27 @@ func TestBuilderSkipsMemoryWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestBuilderBrowserPromptFollowsSetting(t *testing.T) {
+	enabled := false
+	builder := NewBuilder(t.TempDir(), "", "", nil).WithBrowserEnabled(func() bool { return enabled })
+	disabled, err := builder.ACPPrompt("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(disabled, "## Browser tools") {
+		t.Fatalf("disabled browser prompt leaked into system prompt:\n%s", disabled)
+	}
+
+	enabled = true
+	prompt, err := builder.ACPPrompt("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(prompt, "## Browser tools\n\nUse Jaztools browser tools only") {
+		t.Fatalf("enabled browser prompt missing from system prompt:\n%s", prompt)
+	}
+}
+
 func TestBuilderIncludesConnections(t *testing.T) {
 	builder := NewBuilder(t.TempDir(), "", t.TempDir(), func() bool { return true }).WithConnections(staticConnections{connections: []connections.AgentConnection{{
 		ProviderName: "WhatsApp",
