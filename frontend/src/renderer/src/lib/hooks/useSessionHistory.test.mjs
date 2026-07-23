@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mergeEarlierHistory, mergeLatestHistory } from '../sessionHistory'
+import { loadCompleteHistoryBatch, mergeEarlierHistory, mergeLatestHistory } from '../sessionHistory'
 
 const session = { id: 'thread' }
 const message = (seq, content) => ({ seq, role: seq % 2 ? 'user' : 'assistant', content, blocks: [], created_at: new Date(seq * 1000).toISOString() })
@@ -55,5 +55,61 @@ describe('session history ownership', () => {
 
     expect(merged.events).toHaveLength(1)
     expect(merged.events[0].content).toBe('Hello')
+  })
+
+  test('completes the newest turn across physical event pages before exposing older history', async () => {
+    const current = {
+      session,
+      history_revision: 7,
+      messages: [message(15, 'latest prompt')],
+      events: [text(600, 'end')],
+      has_earlier: true,
+      before_message_seq: 15,
+      before_event_seq: 500,
+    }
+    const pages = [
+      {
+        ...current,
+        messages: [],
+        events: [text(499, 'middle')],
+        before_event_seq: 250,
+      },
+      {
+        ...current,
+        messages: [],
+        events: [text(249, 'start')],
+        before_event_seq: undefined,
+      },
+      {
+        ...current,
+        messages: [message(1, 'earlier prompt')],
+        events: [],
+        has_earlier: false,
+        before_message_seq: undefined,
+        before_event_seq: undefined,
+      },
+    ]
+    let calls = 0
+
+    const loaded = await loadCompleteHistoryBatch(current, async () => pages[calls++])
+
+    expect(calls).toBe(3)
+    expect(loaded.messages.map((item) => item.seq)).toEqual([1, 15])
+    expect(loaded.events[0].content).toBe('startmiddleend')
+  })
+
+  test('rejects a continuation page whose cursors do not advance', async () => {
+    const current = {
+      session,
+      history_revision: 7,
+      messages: [message(15, 'latest prompt')],
+      events: [],
+      has_earlier: true,
+      before_message_seq: 15,
+    }
+
+    expect(loadCompleteHistoryBatch(current, async () => current)).rejects.toThrow(
+      'Earlier history cursor did not advance',
+    )
   })
 })

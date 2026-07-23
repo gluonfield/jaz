@@ -87,6 +87,7 @@ function EarlierHistoryButton({
         size="sm"
         className="border border-border bg-bg/90"
         title={hiddenCount > 0 ? `${hiddenCount} earlier ${unit}` : 'Load earlier history'}
+        aria-expanded={false}
         disabled={loading}
         onClick={onClick}
       >
