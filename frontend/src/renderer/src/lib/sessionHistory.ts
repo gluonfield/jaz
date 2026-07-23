@@ -16,16 +16,50 @@ export function mergeLatestHistory(current: SessionMessages | undefined, latest:
   }
 }
 
-export function mergeEarlierHistory(current: SessionMessages, earlier: SessionMessages): SessionMessages {
+export function mergeEarlierHistory(current: SessionMessages, ...pages: SessionMessages[]): SessionMessages {
+  if (!pages.length) return current
+  const boundary = pages.at(-1)!
+  const chronological = pages.reverse()
   return {
     ...current,
-    messages: mergeMessages(earlier.messages, current.messages),
-    events: coalesceSessionEvents([...earlier.events, ...current.events]),
-    acp_meta: { ...earlier.acp_meta, ...current.acp_meta },
-    has_earlier: earlier.has_earlier,
-    before_message_seq: earlier.before_message_seq,
-    before_event_seq: earlier.before_event_seq,
+    messages: mergeMessages(...chronological.map((page) => page.messages), current.messages),
+    events: coalesceSessionEvents([
+      ...chronological.flatMap((page) => page.events),
+      ...current.events,
+    ]),
+    acp_meta: Object.assign({}, ...chronological.map((page) => page.acp_meta), current.acp_meta),
+    has_earlier: boundary.has_earlier,
+    before_message_seq: boundary.before_message_seq,
+    before_event_seq: boundary.before_event_seq,
   }
+}
+
+export async function loadCompleteHistoryBatch(
+  current: SessionMessages,
+  loadPage: (cursor: SessionMessages) => Promise<SessionMessages>,
+): Promise<SessionMessages> {
+  const pages: SessionMessages[] = []
+  let cursor = current
+  while (cursor.has_earlier) {
+    if (!cursor.before_message_seq && !cursor.before_event_seq) {
+      throw new Error('Earlier history has no continuation cursor')
+    }
+    const page = await loadPage(cursor)
+    if (page.history_revision !== cursor.history_revision) {
+      throw new Error('Earlier history revision changed')
+    }
+    if (
+      page.has_earlier &&
+      page.before_message_seq === cursor.before_message_seq &&
+      page.before_event_seq === cursor.before_event_seq
+    ) {
+      throw new Error('Earlier history cursor did not advance')
+    }
+    pages.push(page)
+    cursor = page
+    if (page.messages.some((message) => message.role === 'user')) break
+  }
+  return mergeEarlierHistory(current, ...pages)
 }
 
 function mergeMessages(...groups: ChatMessage[][]): ChatMessage[] {
