@@ -107,7 +107,7 @@ func TestSpawnConfigDefaultsWorkerSourceToRestrictedMCPPolicy(t *testing.T) {
 	}{
 		{storage.SourceMemorySearch, MCPServerPolicyMemorySearchWorker},
 		{storage.SourceMemorySource, MCPServerPolicyMemorySourceWorker},
-		{storage.SourceBrowserTask, MCPServerPolicyBrowserWorker},
+		{storage.LegacySourceBrowserTask, MCPServerPolicyRetiredWorker},
 	}
 	for _, tc := range cases {
 		t.Run(tc.source, func(t *testing.T) {
@@ -122,6 +122,16 @@ func TestSpawnConfigDefaultsWorkerSourceToRestrictedMCPPolicy(t *testing.T) {
 				t.Fatalf("mcp server policy = %q, want %q", req.MCPServerPolicy, tc.want)
 			}
 		})
+	}
+}
+
+func TestLegacyBrowserWorkerPolicyIsRetiredOnResume(t *testing.T) {
+	session := storage.Session{
+		SourceType: storage.LegacySourceBrowserTask,
+		RuntimeRef: &storage.RuntimeRef{MCPServerPolicy: "browser_worker"},
+	}
+	if got := effectiveMCPServerPolicy(session); got != MCPServerPolicyRetiredWorker {
+		t.Fatalf("policy = %q, want %q", got, MCPServerPolicyRetiredWorker)
 	}
 }
 

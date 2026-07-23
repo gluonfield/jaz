@@ -1,45 +1,42 @@
-package browserworker
+package browsercontrol
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
 )
 
 const (
+	browserImageBase64Limit = 32 << 20
+	browserWireReadLimit    = 34 << 20
+)
+
+const (
 	ActionStatus     = "status"
 	ActionTabs       = "tabs"
-	ActionAdoptTab   = "adopt_active_tab"
+	ActionClaimTab   = "claim_tab"
 	ActionNavigate   = "navigate"
-	ActionSnapshot   = "snapshot"
 	ActionState      = "state"
-	ActionExtract    = "extract"
+	ActionFind       = "find"
 	ActionScreenshot = "screenshot"
 	ActionClick      = "click"
-	ActionHover      = "hover"
-	ActionType       = "type"
-	ActionFill       = "fill"
-	ActionSelect     = "select"
+	ActionFormInput  = "form_input"
 	ActionPress      = "press"
 	ActionScroll     = "scroll"
 	ActionWait       = "wait"
-	ActionPDF        = "pdf"
 )
 
 var supportedExtensionActions = []string{
 	ActionStatus,
 	ActionTabs,
-	ActionAdoptTab,
+	ActionClaimTab,
 	ActionNavigate,
-	ActionSnapshot,
 	ActionState,
-	ActionExtract,
+	ActionFind,
 	ActionScreenshot,
 	ActionClick,
-	ActionHover,
-	ActionType,
-	ActionFill,
-	ActionSelect,
+	ActionFormInput,
 	ActionPress,
 	ActionScroll,
 	ActionWait,
@@ -47,22 +44,6 @@ var supportedExtensionActions = []string{
 
 func SupportedExtensionActions() []string {
 	return append([]string(nil), supportedExtensionActions...)
-}
-
-var optionalExtensionActions = map[string]bool{
-	ActionAdoptTab: true,
-	ActionExtract:  true,
-}
-
-func requiredExtensionActions() []string {
-	actions := SupportedExtensionActions()
-	required := make([]string, 0, len(actions))
-	for _, action := range actions {
-		if !optionalExtensionActions[action] {
-			required = append(required, action)
-		}
-	}
-	return required
 }
 
 type UnsupportedActionError struct {
@@ -84,4 +65,16 @@ func IsUnsupportedAction(err error, action string) bool {
 		return false
 	}
 	return strings.EqualFold(strings.TrimSpace(unsupported.Action), strings.TrimSpace(action))
+}
+
+func decodeImageBase64(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if len(value) > browserImageBase64Limit {
+		return nil, fmt.Errorf("browser screenshot exceeds %d encoded bytes", browserImageBase64Limit)
+	}
+	data, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("decode browser screenshot: %w", err)
+	}
+	return data, nil
 }

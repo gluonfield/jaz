@@ -14,7 +14,6 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/acpadapter"
 	"github.com/wins/jaz/backend/internal/agent"
-	"github.com/wins/jaz/backend/internal/browsertask"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/jazagent"
@@ -350,8 +349,6 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	}
 	cfg.ACP.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
 		switch session.SourceType {
-		case storage.SourceBrowserTask:
-			return promptmodule.New(browsertask.WorkerSystemPrompt()), nil
 		case storage.SourceMemorySearch:
 			return promptmodule.New(memorysearch.WorkerSystemPrompt()), nil
 		case storage.SourceMemorySource:

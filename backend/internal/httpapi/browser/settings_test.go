@@ -7,17 +7,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/browserworker"
+	"github.com/wins/jaz/backend/internal/browsercontrol"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
 type extensionStatusStub struct {
-	status browserworker.ExtensionStatus
+	status browsercontrol.ExtensionStatus
 }
 
-func (s extensionStatusStub) Status() browserworker.ExtensionStatus {
+func (s extensionStatusStub) Status() browsercontrol.ExtensionStatus {
 	return s.status
 }
 
@@ -27,18 +26,11 @@ func TestSettingsEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
-		acp.AgentCodex: {Enabled: true},
-	}}); err != nil {
-		t.Fatal(err)
-	}
 	changed := false
-	handler := NewSettingsHandler(store, acp.AgentCatalog{
-		acp.AgentCodex: {Command: "codex-acp"},
-	}, extensionStatusStub{status: browserworker.ExtensionStatus{
+	handler := NewSettingsHandler(store, extensionStatusStub{status: browsercontrol.ExtensionStatus{
 		Connected:   true,
 		ExtensionID: "ext-1",
-		Protocol:    browserworker.ExtensionProtocol,
+		Protocol:    browsercontrol.ExtensionProtocol,
 		BridgeURL:   "ws://127.0.0.1:5299/v1/browser/extension",
 		Actions:     []string{"status", "snapshot"},
 	}}, func() { changed = true })
@@ -52,7 +44,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Enabled || status.Agent != "" || status.Mode != jazsettings.BrowserModeExtension {
+	if status.Enabled || status.Mode != jazsettings.BrowserModeExtension {
 		t.Fatalf("default browser status = %#v", status)
 	}
 	if !status.Extension.Connected || status.Extension.ExtensionID != "ext-1" || len(status.Extension.Actions) != 2 {
@@ -60,9 +52,9 @@ func TestSettingsEndpoint(t *testing.T) {
 	}
 
 	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"agent":"codex"}`)))
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true}`)))
 	if res.Code != http.StatusOK {
-		t.Fatalf("set browser agent = %d, body = %s", res.Code, res.Body.String())
+		t.Fatalf("enable browser = %d, body = %s", res.Code, res.Body.String())
 	}
 	if !changed {
 		t.Fatal("settings update did not notify dependencies")
@@ -70,20 +62,8 @@ func TestSettingsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Agent != acp.AgentCodex || status.Enabled || status.Mode != jazsettings.BrowserModeExtension {
+	if !status.Enabled || status.Mode != jazsettings.BrowserModeExtension {
 		t.Fatalf("browser status = %#v", status)
-	}
-
-	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true}`)))
-	if res.Code != http.StatusOK {
-		t.Fatalf("enable browser = %d, body = %s", res.Code, res.Body.String())
-	}
-	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
-		t.Fatal(err)
-	}
-	if status.Agent != acp.AgentCodex || !status.Enabled {
-		t.Fatalf("enable should preserve browser agent, got %#v", status)
 	}
 
 	res = httptest.NewRecorder()
@@ -94,14 +74,8 @@ func TestSettingsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Agent != acp.AgentCodex || status.Enabled {
-		t.Fatalf("disable should preserve browser agent, got %#v", status)
-	}
-
-	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"agent":"jaz"}`)))
-	if res.Code != http.StatusBadRequest {
-		t.Fatalf("built-in Jaz browser agent should 400, got %d body = %s", res.Code, res.Body.String())
+	if status.Enabled {
+		t.Fatalf("browser should be disabled, got %#v", status)
 	}
 }
 
@@ -111,17 +85,10 @@ func TestSettingsEndpointAllowsManagedModeWithoutExtension(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
-		acp.AgentCodex: {Enabled: true},
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	handler := NewSettingsHandler(store, acp.AgentCatalog{
-		acp.AgentCodex: {Command: "codex-acp"},
-	}, extensionStatusStub{}, nil)
+	handler := NewSettingsHandler(store, extensionStatusStub{}, nil)
 
 	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true,"agent":"codex","mode":"managed"}`)))
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true,"mode":"managed"}`)))
 	if res.Code != http.StatusOK {
 		t.Fatalf("set managed browser = %d, body = %s", res.Code, res.Body.String())
 	}
@@ -129,7 +96,7 @@ func TestSettingsEndpointAllowsManagedModeWithoutExtension(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if !status.Enabled || status.Agent != acp.AgentCodex || status.Mode != jazsettings.BrowserModeManaged {
+	if !status.Enabled || status.Mode != jazsettings.BrowserModeManaged {
 		t.Fatalf("browser status = %#v", status)
 	}
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -18,7 +17,6 @@ const (
 
 type BrowserSettings struct {
 	Enabled bool   `json:"enabled"`
-	Agent   string `json:"agent,omitempty"`
 	Mode    string `json:"mode,omitempty"`
 }
 
@@ -38,13 +36,11 @@ func LoadBrowserSettings(store storage.SettingsStorage) (BrowserSettings, error)
 	if err := json.Unmarshal(setting.Value, &settings); err != nil {
 		return BrowserSettings{}, err
 	}
-	settings.Agent = strings.TrimSpace(settings.Agent)
 	settings.Mode = BrowserMode(settings)
 	return settings, nil
 }
 
 func SaveBrowserSettings(store storage.SettingsStorage, settings BrowserSettings) (BrowserSettings, error) {
-	settings.Agent = strings.TrimSpace(settings.Agent)
 	settings.Mode = BrowserMode(settings)
 	encoded := settings
 	if encoded.Mode == BrowserModeExtension {
@@ -66,13 +62,6 @@ func BrowserEnabled(store storage.SettingsStorage) bool {
 		return false
 	}
 	return settings.Enabled
-}
-
-func BrowserAgent(settings BrowserSettings, defaults AgentDefaults) string {
-	if agent := acp.CanonicalAgentName(settings.Agent); agent != "" {
-		return agent
-	}
-	return DefaultWorkerAgent(defaults)
 }
 
 func BrowserMode(settings BrowserSettings) string {

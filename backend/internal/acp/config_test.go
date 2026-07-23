@@ -244,11 +244,11 @@ func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 
 func TestSessionPromptMetaSkipsBasePromptForRestrictedWorker(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", MCPServerPolicyBrowserWorker, []string{"browser worker prompt"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", MCPServerPolicyMemorySearchWorker, []string{"memory worker prompt"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got["systemPrompt"] != "browser worker prompt" {
+	if got["systemPrompt"] != "memory worker prompt" {
 		t.Fatalf("system prompt = %#v", got)
 	}
 }
@@ -284,13 +284,6 @@ func TestSessionPromptMetaAddsRestrictedWorkerModules(t *testing.T) {
 		}
 	}
 
-	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", MCPServerPolicyBrowserWorker, []string{"browser worker prompt"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got["systemPrompt"] != workerMemoryPrompt+"\n\nbrowser worker prompt" {
-		t.Fatalf("browser worker prompt = %#v", got)
-	}
 }
 
 func TestMergeAgentsPreservesCapabilitiesOnPartialOverride(t *testing.T) {
@@ -762,7 +755,7 @@ func TestProcessEnvWritesOpenCodeRestrictedWorkerInstructionsWithoutBasePrompt(t
 		Root:         root,
 		SystemPrompt: testPrompt("jaz platform prompt"),
 	}, nil)
-	env, err := manager.processEnvPreparedForSurfacePolicy(context.Background(), "opencode", AgentConfig{}, "", "", MCPServerPolicyBrowserWorker, []string{"browser worker prompt"})
+	env, err := manager.processEnvPreparedForSurfacePolicy(context.Background(), "opencode", AgentConfig{}, "", "", MCPServerPolicyMemorySearchWorker, []string{"memory worker prompt"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +765,7 @@ func TestProcessEnvWritesOpenCodeRestrictedWorkerInstructionsWithoutBasePrompt(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != "browser worker prompt\n" {
+	if string(data) != "memory worker prompt\n" {
 		t.Fatalf("instructions = %q", data)
 	}
 	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {

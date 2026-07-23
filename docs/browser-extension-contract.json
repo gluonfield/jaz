@@ -1,32 +1,23 @@
 {
-  "protocol": "jaz.browser.extension.v1",
+  "protocol": "jaz.browser.extension.v2",
   "bridge_path": "/v1/browser/extension",
   "actions": [
     "status",
     "tabs",
-    "adopt_active_tab",
+    "claim_tab",
     "navigate",
-    "snapshot",
     "state",
-    "extract",
+    "find",
     "screenshot",
     "click",
-    "hover",
-    "type",
-    "fill",
-    "select",
+    "form_input",
     "press",
     "scroll",
     "wait"
   ],
   "page_state": {
-    "fields": ["url", "title", "ready_state", "text", "elements"],
-    "element_fields": ["ref", "tag", "role", "name", "text", "href", "selector"],
+    "fields": ["url", "title", "ready_state", "page_revision", "text", "elements"],
+    "element_fields": ["ref", "tag", "role", "name", "text", "href", "input_type", "value", "required", "disabled", "read_only", "checked", "validation"],
     "frame_ref_prefix": "f<frame_id>:"
-  },
-  "page_extraction": {
-    "fields": ["url", "title", "ready_state", "coverage", "items", "navigation"],
-    "coverage_fields": ["scroll_y", "viewport_height", "document_height", "scroll_percent", "at_bottom"],
-    "item_fields": ["ref", "role", "title", "text", "href"]
   }
 }

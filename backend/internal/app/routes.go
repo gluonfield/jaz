@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/wins/jaz/backend/internal/browserworker"
+	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
@@ -34,14 +34,14 @@ type routeDeps struct {
 	Devices         *deviceauth.Service `optional:"true"`
 	Store           storage.Store
 	AuthKey         RuntimeAuthKey
-	Config          serverconfig.Config            `optional:"true"`
-	Browser         *browserworker.ExtensionBridge `optional:"true"`
-	BrowserSettings *BrowserSettingsHandler        `optional:"true"`
-	Connections     *connections.Service           `optional:"true"`
-	ConnectionStart *connections.ConnectService    `optional:"true"`
-	ConnectionOAuth *connections.OAuthService      `optional:"true"`
-	ConnectionQR    *connections.QRService         `optional:"true"`
-	MCP             *mcpruntime.Manager            `optional:"true"`
+	Config          serverconfig.Config             `optional:"true"`
+	Browser         *browsercontrol.ExtensionBridge `optional:"true"`
+	BrowserSettings *BrowserSettingsHandler         `optional:"true"`
+	Connections     *connections.Service            `optional:"true"`
+	ConnectionStart *connections.ConnectService     `optional:"true"`
+	ConnectionOAuth *connections.OAuthService       `optional:"true"`
+	ConnectionQR    *connections.QRService          `optional:"true"`
+	MCP             *mcpruntime.Manager             `optional:"true"`
 	Preview         *previewapi.Handler
 	SessionMessages *sessionsapi.MessagesHandler
 	SessionOverview *sessionsapi.OverviewHandler
@@ -157,7 +157,7 @@ func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, setti
 	)
 }
 
-func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler, extension *browserworker.ExtensionBridge) server.Routes {
+func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler, extension *browsercontrol.ExtensionBridge) server.Routes {
 	if settings != nil {
 		routes = append(routes,
 			server.Route{Pattern: "GET /v1/browser", Handler: settings},

@@ -1,4 +1,4 @@
-package browserworker
+package browsercontrol
 
 import (
 	"context"
@@ -49,7 +49,7 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 			t.Errorf("read call: %v", err)
 			return
 		}
-		if req.Type != "call" || req.Action != "snapshot" || req.Session != "browser-worker-1" {
+		if req.Type != "call" || req.Action != ActionScreenshot || req.Session != "browser-session-1" || req.TabID != "" || req.Value != nil {
 			t.Errorf("request = %#v", req)
 		}
 		if err := ws.WriteJSON(extensionResult{
@@ -64,16 +64,47 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 			},
 		}); err != nil {
 			t.Errorf("write result: %v", err)
+			return
+		}
+		if err := ws.ReadJSON(&req); err != nil {
+			t.Errorf("read form call: %v", err)
+			return
+		}
+		if req.Action != ActionFormInput || req.Ref != "p1:e2" || req.Value != float64(17) || req.TabID != "" {
+			t.Errorf("form request = %#v", req)
+		}
+		if err := ws.WriteJSON(extensionResult{
+			ID:   req.ID,
+			Type: "result",
+			OK:   true,
+			Output: extensionWireOutput{
+				Status: "ok",
+				Text:   "set",
+			},
+		}); err != nil {
+			t.Errorf("write form result: %v", err)
 		}
 	}()
-	out, err := bridge.Call(context.Background(), ActionInput{Action: "snapshot", Session: "browser-worker-1"})
+	out, err := bridge.Call(context.Background(), ActionInput{
+		Action:  ActionScreenshot,
+		Session: "browser-session-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Text != "snapshot text" || string(out.ImageData) != "image" || out.ImageMIMEType != "image/png" {
+		t.Fatalf("out = %#v", out)
+	}
+	out, err = bridge.Call(context.Background(), ActionInput{
+		Action:  ActionFormInput,
+		Session: "browser-session-1",
+		Ref:     "p1:e2",
+		Value:   17,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	<-done
-	if out.Text != "snapshot text" || out.ImageBase64 != "aW1hZ2U=" || out.ImageMIMEType != "image/png" {
-		t.Fatalf("out = %#v", out)
-	}
 	status := bridge.Status()
 	if !status.Connected || status.ExtensionID != "ext-1" || status.Protocol != ExtensionProtocol || status.BridgeURL != "ws://127.0.0.1:5299/v1/browser/extension" || status.UserAgent != "Chrome" {
 		t.Fatalf("status = %#v", status)
@@ -105,35 +136,6 @@ func TestExtensionBridgeManagedModeBypassesConnectedExtension(t *testing.T) {
 	}
 	if !fallback.called || out.Text != "fallback" {
 		t.Fatalf("fallback=%v out=%#v", fallback.called, out)
-	}
-}
-
-func TestExtensionBridgeAcceptsLegacyOptionalActions(t *testing.T) {
-	bridge := NewExtensionBridge(nil, nil)
-	server := httptest.NewServer(bridge)
-	t.Cleanup(server.Close)
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = ws.Close() })
-	actions := requiredExtensionActions()
-	if err := ws.WriteJSON(map[string]any{
-		"type":         "hello",
-		"protocol":     ExtensionProtocol,
-		"extension_id": "old-ext",
-		"capabilities": map[string]any{"actions": actions},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	waitForConnected(t, bridge)
-	status := bridge.Status()
-	if !status.Connected || len(status.Actions) != len(actions) {
-		t.Fatalf("status = %#v", status)
-	}
-	_, err = bridge.Call(context.Background(), ActionInput{Action: ActionExtract})
-	if err == nil || !IsUnsupportedAction(err, ActionExtract) || !strings.Contains(err.Error(), "reload the updated Jaz Browser Bridge") {
-		t.Fatalf("err = %v", err)
 	}
 }
 
@@ -286,14 +288,46 @@ func TestExtensionBridgeRejectsNonGet(t *testing.T) {
 }
 
 func TestActionOutputMapsExtensionWireFields(t *testing.T) {
-	raw := `{"status":"ok","text":"x","image_base64":"img","image_mime_type":"image/png","pdf_base64":"pdf","pdf_base64_length":3,"data":{"url":"https://example.com"}}`
+	raw := `{"status":"ok","text":"x","image_base64":"aW1n","image_mime_type":"image/png","data":{"url":"https://example.com"}}`
 	var wire extensionWireOutput
 	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
 		t.Fatal(err)
 	}
-	out := actionOutput(wire)
-	if out.ImageBase64 != "img" || out.ImageMIMEType != "image/png" || out.PDFBase64 != "pdf" || out.PDFBase64Length != 3 || !strings.Contains(string(out.Data), "example.com") {
+	out, err := actionOutput(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out.ImageData) != "img" || out.ImageMIMEType != "image/png" || !strings.Contains(string(out.Data), "example.com") {
 		t.Fatalf("out = %#v", out)
+	}
+	if _, err := actionOutput(extensionWireOutput{ImageBase64: "not-base64!"}); err == nil {
+		t.Fatal("invalid screenshot base64 was accepted")
+	}
+}
+
+func TestSafeBridgeURLRedactsCredentials(t *testing.T) {
+	got := safeBridgeURL("wss://user:password@example.com/v1/browser/extension?mode=remote&token=secret&KEY=root#private")
+	if got != "wss://example.com/v1/browser/extension?mode=remote" {
+		t.Fatalf("safe URL = %q", got)
+	}
+	if got := safeBridgeURL("://invalid secret"); got != "" {
+		t.Fatalf("invalid bridge URL leaked as %q", got)
+	}
+}
+
+func TestChromeExtensionOriginValidation(t *testing.T) {
+	if !IsChromeExtensionOrigin("chrome-extension://abcdefghijklmnopabcdefghijklmnop") {
+		t.Fatal("valid Chrome extension origin was rejected")
+	}
+	for _, origin := range []string{
+		"chrome-extension://abcdefghijklmnop",
+		"chrome-extension://abcdefghijklmnopabcdefghijklmnop.example.com",
+		"chrome-extension://abcdefghijklmnopabcdefghijklmnop/extra",
+		"https://abcdefghijklmnopabcdefghijklmnop",
+	} {
+		if IsChromeExtensionOrigin(origin) {
+			t.Fatalf("invalid Chrome extension origin was accepted: %q", origin)
+		}
 	}
 }
 

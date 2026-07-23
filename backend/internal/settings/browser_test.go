@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -29,18 +28,6 @@ func TestBrowserSettingsDefaultDisabled(t *testing.T) {
 func TestBrowserEnabledFailsClosedOnLoadError(t *testing.T) {
 	if BrowserEnabled(failingSettingsStore{}) {
 		t.Fatal("browser should be disabled when settings cannot be loaded")
-	}
-}
-
-func TestBrowserAgentDefaultsToEnabledWorkerAgent(t *testing.T) {
-	defaults := AgentDefaults{ACP: map[string]ACPAgentDefaults{
-		acp.AgentClaude: {Enabled: true},
-	}}
-	if got := BrowserAgent(BrowserSettings{Enabled: true}, defaults); got != acp.AgentClaude {
-		t.Fatalf("agent = %q", got)
-	}
-	if got := BrowserAgent(BrowserSettings{Enabled: true, Agent: acp.AgentCodex}, defaults); got != acp.AgentCodex {
-		t.Fatalf("explicit agent = %q", got)
 	}
 }
 

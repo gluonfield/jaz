@@ -1,4 +1,4 @@
-package browserworker
+package browsercontrol
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	ExtensionProtocol = "jaz.browser.extension.v1"
+	ExtensionProtocol = "jaz.browser.extension.v2"
 	extensionTimeout  = 30 * time.Second
 )
 
@@ -63,15 +63,17 @@ type extensionHello struct {
 }
 
 type extensionCall struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Session  string `json:"session,omitempty"`
-	Action   string `json:"action"`
-	URL      string `json:"url,omitempty"`
-	Selector string `json:"selector,omitempty"`
-	Text     string `json:"text,omitempty"`
-	Key      string `json:"key,omitempty"`
-	Amount   int    `json:"amount,omitempty"`
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Session string `json:"session,omitempty"`
+	Action  string `json:"action"`
+	URL     string `json:"url,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+	Text    string `json:"text,omitempty"`
+	Key     string `json:"key,omitempty"`
+	Amount  int    `json:"amount,omitempty"`
+	TabID   string `json:"tab_id,omitempty"`
+	Value   any    `json:"value,omitempty"`
 }
 
 type extensionResult struct {
@@ -83,20 +85,35 @@ type extensionResult struct {
 }
 
 type extensionWireOutput struct {
-	Status          string          `json:"status"`
-	Text            string          `json:"text,omitempty"`
-	ImageBase64     string          `json:"image_base64,omitempty"`
-	ImageMIMEType   string          `json:"image_mime_type,omitempty"`
-	PDFBase64       string          `json:"pdf_base64,omitempty"`
-	PDFBase64Length int             `json:"pdf_base64_length,omitempty"`
-	Data            json.RawMessage `json:"data,omitempty"`
+	Status        string          `json:"status"`
+	Text          string          `json:"text,omitempty"`
+	ImageBase64   string          `json:"image_base64,omitempty"`
+	ImageMIMEType string          `json:"image_mime_type,omitempty"`
+	Data          json.RawMessage `json:"data,omitempty"`
 }
 
 var extensionUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
-		return origin == "" || strings.HasPrefix(origin, "chrome-extension://")
+		return origin == "" || IsChromeExtensionOrigin(origin)
 	},
+}
+
+func IsChromeExtensionOrigin(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "chrome-extension" || u.Port() != "" || (u.Path != "" && u.Path != "/") {
+		return false
+	}
+	id := u.Hostname()
+	if len(id) != 32 {
+		return false
+	}
+	for _, char := range id {
+		if char < 'a' || char > 'p' {
+			return false
+		}
+	}
+	return true
 }
 
 func NewExtensionBridge(fallback Backend, useExtension func() bool) *ExtensionBridge {
@@ -117,6 +134,7 @@ func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		pending: map[string]chan extensionResult{},
 		done:    make(chan struct{}),
 	}
+	conn.SetReadLimit(browserWireReadLimit)
 	client.readLoop(func() {
 		b.clearClient(client)
 	}, func(hello extensionHello) error {
@@ -211,15 +229,17 @@ func (c *extensionClient) call(ctx context.Context, id string, input ActionInput
 	c.addPending(id, resp)
 	defer c.removePending(id)
 	req := extensionCall{
-		ID:       id,
-		Type:     "call",
-		Session:  input.Session,
-		Action:   input.Action,
-		URL:      input.URL,
-		Selector: input.Selector,
-		Text:     input.Text,
-		Key:      input.Key,
-		Amount:   input.Amount,
+		ID:      id,
+		Type:    "call",
+		Session: input.Session,
+		Action:  input.Action,
+		URL:     input.URL,
+		Ref:     input.Ref,
+		Text:    input.Text,
+		Key:     input.Key,
+		Amount:  input.Amount,
+		TabID:   input.TabID,
+		Value:   input.Value,
 	}
 	if err := c.write(req); err != nil {
 		return ActionOutput{}, err
@@ -232,9 +252,9 @@ func (c *extensionClient) call(ctx context.Context, id string, input ActionInput
 			if strings.TrimSpace(out.Error) == "" {
 				return ActionOutput{}, errors.New("browser extension call failed")
 			}
-			return ActionOutput{}, errors.New(out.Error)
+			return ActionOutput{}, errors.New(limitBrowserText(out.Error, 4000))
 		}
-		return actionOutput(out.Output), nil
+		return actionOutput(out.Output)
 	case <-c.done:
 		return ActionOutput{}, errors.New("browser extension disconnected")
 	case <-timer.C:
@@ -309,7 +329,7 @@ func (c *extensionClient) closeWithReason(reason string) {
 func closeReason(reason string) string {
 	reason = strings.TrimSpace(reason)
 	if len(reason) > 120 {
-		return strings.TrimSpace(reason[:120])
+		return strings.TrimSpace(truncateUTF8(reason, 120))
 	}
 	return reason
 }
@@ -339,7 +359,15 @@ func validateHello(hello extensionHello) error {
 	if strings.TrimSpace(hello.Protocol) != ExtensionProtocol {
 		return fmt.Errorf("unsupported browser extension protocol %q", strings.TrimSpace(hello.Protocol))
 	}
-	if missing := missingActions(hello.Capabilities.Actions, requiredExtensionActions()); len(missing) > 0 {
+	if len(hello.ExtensionID) > 256 || len(hello.BridgeURL) > browserURLLimit || len(hello.UserAgent) > 1000 || len(hello.Capabilities.Actions) > 100 {
+		return errors.New("browser extension hello exceeds field limits")
+	}
+	for _, action := range hello.Capabilities.Actions {
+		if len(action) > 100 {
+			return errors.New("browser extension action name is too long")
+		}
+	}
+	if missing := missingActions(hello.Capabilities.Actions, supportedExtensionActions); len(missing) > 0 {
 		return fmt.Errorf("browser extension missing required capabilities: %s", strings.Join(missing, ", "))
 	}
 	return nil
@@ -379,11 +407,18 @@ func safeBridgeURL(raw string) string {
 		return ""
 	}
 	u, err := url.Parse(value)
-	if err != nil {
-		return value
+	if err != nil || (u.Scheme != "ws" && u.Scheme != "wss") || u.Host == "" {
+		return ""
 	}
+	u.User = nil
+	u.Fragment = ""
 	q := u.Query()
-	q.Del("key")
+	for key := range q {
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "key", "token", "access_token", "api_key", "authorization":
+			q.Del(key)
+		}
+	}
 	u.RawQuery = q.Encode()
 	return u.String()
 }
@@ -412,14 +447,16 @@ func (c *extensionClient) supports(action string) bool {
 	return false
 }
 
-func actionOutput(out extensionWireOutput) ActionOutput {
+func actionOutput(out extensionWireOutput) (ActionOutput, error) {
+	image, err := decodeImageBase64(out.ImageBase64)
+	if err != nil {
+		return ActionOutput{}, err
+	}
 	return boundActionOutput(ActionOutput{
-		Status:          out.Status,
-		Text:            out.Text,
-		ImageBase64:     out.ImageBase64,
-		ImageMIMEType:   out.ImageMIMEType,
-		PDFBase64:       out.PDFBase64,
-		PDFBase64Length: out.PDFBase64Length,
-		Data:            append(json.RawMessage(nil), out.Data...),
-	})
+		Status:        out.Status,
+		Text:          out.Text,
+		ImageData:     image,
+		ImageMIMEType: out.ImageMIMEType,
+		Data:          append(json.RawMessage(nil), out.Data...),
+	}), nil
 }

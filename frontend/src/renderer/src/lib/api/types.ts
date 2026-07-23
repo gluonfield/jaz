@@ -53,7 +53,7 @@ export interface ModelUsage {
 }
 
 export interface CategoryUsage {
-  // chat, loop_run, memory_dream, memory_search, memory_source, browser_task
+  // chat, loop_run, memory_dream, memory_search, memory_source, browser_task (legacy)
   category: string
   usage: UsageTotals
 }
@@ -1155,7 +1155,6 @@ export interface BrowserExtensionStatus {
 
 export interface BrowserStatus {
   enabled: boolean
-  agent?: string
   mode: BrowserMode
   extension: BrowserExtensionStatus
 }

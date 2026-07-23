@@ -212,7 +212,7 @@ func TestAuthMiddlewareAcceptsLocalBrowserExtensionWithoutKeyAfterBootstrap(t *t
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
 	req.RemoteAddr = "127.0.0.1:53124"
-	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
+	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnopabcdefghijklmnop")
 	res := httptest.NewRecorder()
 	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key", Devices: devices}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -235,10 +235,23 @@ func TestAuthMiddlewareRejectsWebsiteOriginBrowserExtensionWithoutKey(t *testing
 	}
 }
 
+func TestAuthMiddlewareRejectsMalformedChromeExtensionOriginWithoutKey(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
+	req.RemoteAddr = "127.0.0.1:53124"
+	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
+	res := httptest.NewRecorder()
+	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})).ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+}
+
 func TestAuthMiddlewareRejectsRemoteBrowserExtensionWithoutKey(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
 	req.RemoteAddr = "203.0.113.10:53124"
-	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
+	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnopabcdefghijklmnop")
 	res := httptest.NewRecorder()
 	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

@@ -128,7 +128,6 @@ export function updateAgentSettings(
 
 export function updateBrowserSettings(input: {
   enabled?: boolean
-  agent?: string
   mode?: BrowserMode
 }): Promise<BrowserStatus> {
   return put<BrowserStatus>('/v1/browser', input)

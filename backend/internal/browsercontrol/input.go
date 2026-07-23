@@ -1,4 +1,4 @@
-package browserworker
+package browsercontrol
 
 import (
 	"errors"

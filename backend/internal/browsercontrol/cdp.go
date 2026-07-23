@@ -1,4 +1,4 @@
-package browserworker
+package browsercontrol
 
 import (
 	"context"
@@ -44,6 +44,7 @@ func dialCDP(ctx context.Context, endpoint string) (*cdpConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	ws.SetReadLimit(browserWireReadLimit)
 	conn := &cdpConn{
 		ws:      ws,
 		pending: map[int64]chan cdpReply{},

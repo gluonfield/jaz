@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/serverconfig"
@@ -87,7 +88,7 @@ func localBrowserExtensionRequest(r *http.Request) bool {
 	return r.Method == http.MethodGet &&
 		r.URL.Path == "/v1/browser/extension" &&
 		loopbackRequest(r) &&
-		strings.HasPrefix(strings.TrimSpace(r.Header.Get("Origin")), "chrome-extension://")
+		browsercontrol.IsChromeExtensionOrigin(r.Header.Get("Origin"))
 }
 
 func publicDeviceRequest(r *http.Request) bool {

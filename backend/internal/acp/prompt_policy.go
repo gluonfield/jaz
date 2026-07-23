@@ -15,9 +15,9 @@ import (
 // They may still receive shared prompt modules such as memory or connections.
 // Adding a worker is a single entry here.
 var restrictedWorkerPolicies = map[string]string{
-	storage.SourceMemorySearch: MCPServerPolicyMemorySearchWorker,
-	storage.SourceMemorySource: MCPServerPolicyMemorySourceWorker,
-	storage.SourceBrowserTask:  MCPServerPolicyBrowserWorker,
+	storage.SourceMemorySearch:      MCPServerPolicyMemorySearchWorker,
+	storage.SourceMemorySource:      MCPServerPolicyMemorySourceWorker,
+	storage.LegacySourceBrowserTask: MCPServerPolicyRetiredWorker,
 }
 
 func mcpServerPolicyForSourceType(sourceType string) string {
@@ -35,6 +35,9 @@ func restrictedWorkerPolicy(policy string) bool {
 
 func effectiveMCPServerPolicy(session storage.Session) string {
 	if session.RuntimeRef != nil && session.RuntimeRef.MCPServerPolicy != "" {
+		if session.RuntimeRef.MCPServerPolicy == "browser_worker" {
+			return MCPServerPolicyRetiredWorker
+		}
 		return session.RuntimeRef.MCPServerPolicy
 	}
 	return mcpServerPolicyForSourceType(session.SourceType)
@@ -43,7 +46,7 @@ func effectiveMCPServerPolicy(session storage.Session) string {
 func (m *Manager) systemPrompt(ctx context.Context, cwd, artifactSurface, mcpServerPolicy string, modules promptmodule.Modules) (string, error) {
 	var prompt string
 	if restrictedWorkerPolicy(mcpServerPolicy) {
-		base, err := m.restrictedWorkerPrompt(ctx, mcpServerPolicy)
+		base, err := m.restrictedWorkerPrompt(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -58,14 +61,12 @@ func (m *Manager) systemPrompt(ctx context.Context, cwd, artifactSurface, mcpSer
 	return strings.TrimSpace(promptWithModules(prompt, modules)), nil
 }
 
-func (m *Manager) restrictedWorkerPrompt(ctx context.Context, mcpServerPolicy string) (string, error) {
+func (m *Manager) restrictedWorkerPrompt(ctx context.Context) (string, error) {
 	modules, ok := m.cfg.SystemPrompt.(SystemPromptModules)
 	if !ok {
 		return "", nil
 	}
-	prompt, err := modules.PromptModulesForContext(ctx, PromptModuleOptions{
-		Connections: mcpServerPolicy != MCPServerPolicyBrowserWorker,
-	})
+	prompt, err := modules.PromptModulesForContext(ctx, PromptModuleOptions{Connections: true})
 	if err != nil {
 		return "", fmt.Errorf("build restricted worker prompt modules: %w", err)
 	}

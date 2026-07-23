@@ -6,14 +6,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gluonfield/jazmem/pkg/jazmem"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/browsertask"
-	"github.com/wins/jaz/backend/internal/browserworker"
+	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/connectors/telegram"
 	"github.com/wins/jaz/backend/internal/connectors/whatsapp"
@@ -105,12 +105,12 @@ func (s fakeACPService) AgentOptions(req acp.AgentOptionsRequest) (acp.AgentOpti
 	return out, nil
 }
 
-func (fakeBrowserBackend) Call(context.Context, browserworker.ActionInput) (browserworker.ActionOutput, error) {
-	return browserworker.ActionOutput{Status: "ok", Text: "fake browser"}, nil
+func (fakeBrowserBackend) Call(context.Context, browsercontrol.ActionInput) (browsercontrol.ActionOutput, error) {
+	return browsercontrol.ActionOutput{Status: "ok", Text: "fake browser"}, nil
 }
 
-func (fakeBrowserBackend) Status() browserworker.ExtensionStatus {
-	return browserworker.ExtensionStatus{Connected: true}
+func (fakeBrowserBackend) Status() browsercontrol.ExtensionStatus {
+	return browsercontrol.ExtensionStatus{Connected: true}
 }
 
 func (fakeWhatsAppSender) SendMessage(context.Context, whatsapp.SendMessageRequest) (whatsapp.SendMessageResult, error) {
@@ -560,6 +560,34 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 	}
 }
 
+func TestLegacyBrowserTaskUsesRetiredEmptySurface(t *testing.T) {
+	service := &Service{}
+	if got := workerSurfaceBySourceType[storage.LegacySourceBrowserTask]; got != retiredWorkerSurface {
+		t.Fatalf("legacy browser surface = %v, want retired", got)
+	}
+	req, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=retired_worker", nil)
+	if service.surface(req) != retiredWorkerSurface {
+		t.Fatal("retired worker query did not select the retired surface")
+	}
+	legacyReq, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=browser_worker", nil)
+	if service.surface(legacyReq) != retiredWorkerSurface {
+		t.Fatal("legacy browser worker query did not fail closed")
+	}
+	unknownReq, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=typo", nil)
+	if service.surface(unknownReq) != retiredWorkerSurface {
+		t.Fatal("unknown tool surface did not fail closed")
+	}
+	session, closeSession := connectClient(t, service.server(retiredWorkerSurface))
+	defer closeSession()
+	tools, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools.Tools) != 0 {
+		t.Fatalf("retired browser task exposed tools: %#v", tools.Tools)
+	}
+}
+
 func TestWidgetSurfaceGetsAgentToolsAfterServerCreated(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -793,18 +821,13 @@ func TestMemoryToolsFollowEnabledSetting(t *testing.T) {
 	}
 }
 
-func TestBrowserToolsAndWorkerSurface(t *testing.T) {
+func TestBrowserToolsUseDirectThreadSurface(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	if _, err := jazsettings.SaveBrowserSettings(store, jazsettings.BrowserSettings{Enabled: true, Agent: acp.AgentCodex}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := jazsettings.SaveAgentDefaults(store, jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
-		acp.AgentCodex: {Enabled: true},
-	}}); err != nil {
+	if _, err := jazsettings.SaveBrowserSettings(store, jazsettings.BrowserSettings{Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	memory, err := jazmem.Open(jazmem.Config{Root: t.TempDir(), DBPath: filepath.Join(t.TempDir(), "memory.sqlite")})
@@ -827,45 +850,58 @@ func TestBrowserToolsAndWorkerSurface(t *testing.T) {
 		connections.NewTelegramMCPTools(store, nil, nil),
 	)
 	service.SetLoops(loops.NewService(store, &fakeExecutor{started: make(chan loops.Run, 1)}, nil))
-	service.SetBrowser(browsertask.New(store, fakeACPService{spawned: make(chan acp.SpawnRequest, 1)}, acp.BuiltinAgents(), fakeBrowserBackend{}), fakeBrowserBackend{})
+	service.SetBrowser(store, fakeBrowserBackend{})
 
 	session, closeSession := connectClient(t, service.Server())
 	defer closeSession()
-	for _, name := range []string{"browser_do", "browser_get", "browser_check"} {
+	for _, name := range browsercontrol.MCPToolNames() {
 		if !hasTool(t, session, name) {
 			t.Fatalf("ordinary server missing %s", name)
 		}
-	}
-
-	browserSession, err := store.CreateSession(storage.CreateSession{
-		Slug:       "browser-linkedin",
-		Runtime:    storage.RuntimeACP,
-		SourceType: storage.SourceBrowserTask,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if service.surface(sessionRequest(browserSession.ID)) != browserWorkerSurface {
-		t.Fatal("browser task session did not route to browser worker surface")
-	}
-	queryReq, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1/mcp/jaztools?jaztools_surface=browser_worker", nil)
-	if service.surface(queryReq) != browserWorkerSurface {
-		t.Fatal("browser worker surface query did not route")
-	}
-
-	worker, closeWorker := connectClient(t, service.server(browserWorkerSurface))
-	defer closeWorker()
-	if !hasTool(t, worker, "browser") {
-		t.Fatal("worker server missing browser")
-	}
-	for _, name := range []string{"browser_do", "browser_get", "browser_check"} {
-		if !hasTool(t, worker, name) {
-			t.Fatalf("worker server missing %s", name)
+		schema, err := json.Marshal(findTool(t, session, name).InputSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(schema), `"selector"`) {
+			t.Fatalf("%s still advertises a selector escape hatch: %s", name, schema)
 		}
 	}
-	for _, name := range []string{"memory_search", "jazagent_spawn", "create_goal", "visualise_read_me"} {
-		if hasTool(t, worker, name) {
-			t.Fatalf("worker server advertised %s", name)
+	if !strings.Contains(findTool(t, session, browsercontrol.ToolReadPage).Description, "do not invent CSS selectors") {
+		t.Fatal("read-page tool does not enforce the state/ref workflow")
+	}
+	if !strings.Contains(findTool(t, session, browsercontrol.ToolClaimTab).Description, "only when the user explicitly asks") {
+		t.Fatal("claim-tab tool does not guard existing user tabs")
+	}
+	if tool := findTool(t, session, browsercontrol.ToolReadPage); tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
+		t.Fatal("read-page tool is not marked read-only")
+	}
+	if tool := findTool(t, session, browsercontrol.ToolClick); tool.Annotations == nil || tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint {
+		t.Fatal("click tool is not marked potentially destructive")
+	}
+	for _, name := range []string{"browser", "browser_do", "browser_get", "browser_check"} {
+		if hasTool(t, session, name) {
+			t.Fatalf("ordinary server advertised removed tool %s", name)
+		}
+	}
+
+	widgetSession, closeWidget := connectClient(t, service.server(widgetSurface))
+	defer closeWidget()
+	for _, name := range browsercontrol.MCPToolNames() {
+		if !hasTool(t, widgetSession, name) {
+			t.Fatalf("widget server missing %s", name)
+		}
+	}
+
+	if _, err := jazsettings.SaveBrowserSettings(store, jazsettings.BrowserSettings{Enabled: false}); err != nil {
+		t.Fatal(err)
+	}
+	service.Sync()
+	for _, name := range browsercontrol.MCPToolNames() {
+		if hasTool(t, session, name) {
+			t.Fatalf("ordinary server still advertised %s after browser tools were disabled", name)
+		}
+		if hasTool(t, widgetSession, name) {
+			t.Fatalf("widget server still advertised %s after browser tools were disabled", name)
 		}
 	}
 }

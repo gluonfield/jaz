@@ -4,14 +4,11 @@ import { SettingsCard } from './SettingsCard'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Segmented } from '@/components/ui/Segmented'
-import { Select } from '@/components/ui/Select'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
-import { agentLabel } from '@/lib/agentLabel'
-import { browserSettingsQuery, agentSettingsQuery, updateBrowserSettings } from '@/lib/api/settings'
+import { browserSettingsQuery, updateBrowserSettings } from '@/lib/api/settings'
 import type { BrowserMode, BrowserStatus } from '@/lib/api/types'
-import { enabledACPAgents } from '@/lib/agentRuntimes'
 import { apiAuthenticatedWebSocketUrl, apiBaseUrl } from '@/lib/api/client'
 import { keys } from '@/lib/query/keys'
 
@@ -45,7 +42,6 @@ function extensionEndpoint(): string {
 
 export function BrowserSettings() {
   const status = useQuery(browserSettingsQuery)
-  const agentSettings = useQuery(agentSettingsQuery)
   const queryClient = useQueryClient()
   const toast = useToast()
 
@@ -55,12 +51,6 @@ export function BrowserSettings() {
     mutationFn: (enabled: boolean) => updateBrowserSettings({ enabled }),
     onSuccess: setStatus,
     onError: (error: Error) => toast(`Couldn't update browser settings: ${error.message}`, 'danger'),
-  })
-
-  const setAgent = useMutation({
-    mutationFn: (agent: string) => updateBrowserSettings({ agent }),
-    onSuccess: setStatus,
-    onError: (error: Error) => toast(`Couldn't update browser agent: ${error.message}`, 'danger'),
   })
 
   const setMode = useMutation({
@@ -90,25 +80,6 @@ export function BrowserSettings() {
   const browser = status.data
   const extension = browser.extension ?? { connected: false }
   const mode: BrowserMode = browser.mode ?? 'extension'
-  const agents = enabledACPAgents(agentSettings.data)
-  const selectedAgent = browser.agent ?? ''
-  const staleAgent = selectedAgent && !agents.includes(selectedAgent)
-  const agentOptions = [
-    { value: '', label: 'Not selected' },
-    ...(staleAgent
-      ? [
-          {
-            value: selectedAgent,
-            label: `${agentLabel(selectedAgent)} (disabled)`,
-          },
-        ]
-      : []),
-    ...agents.map((agent) => ({
-      value: agent,
-      label: agentLabel(agent),
-    })),
-  ]
-  const agentValid = !selectedAgent || agents.includes(selectedAgent) || agentSettings.isPending
   const connected = Boolean(extension.connected)
   const endpoint = extensionEndpoint()
 
@@ -118,7 +89,7 @@ export function BrowserSettings() {
         <div>
           <h1 className="text-lg font-semibold text-ink">Browser</h1>
           <p className="mt-0.5 max-w-[58ch] text-[13px] text-ink-2">
-            Delegated browser workers use the selected coding agent and the browser backend you choose.
+            Give the current agent direct browser control through the backend you choose.
           </p>
         </div>
         <div className="flex h-8 shrink-0 items-center gap-2">
@@ -154,29 +125,6 @@ export function BrowserSettings() {
               { value: 'extension', label: 'Extension', icon: <Puzzle size={14} /> },
               { value: 'managed', label: 'Background Chromium', icon: <Monitor size={14} /> },
             ]}
-          />
-        </div>
-      </SettingsCard>
-
-      <SettingsCard className="mt-4 px-4 py-2.5">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium text-ink">Browser worker agent</p>
-            <p className="mt-0.5 text-[12px] text-ink-2">
-              Raw page state stays inside this child ACP session.
-            </p>
-            {!agentValid ? (
-              <p className="mt-1 text-[12px] text-danger">
-                {agentLabel(selectedAgent)} is no longer enabled.
-              </p>
-            ) : null}
-          </div>
-          <Select
-            value={selectedAgent}
-            options={agentOptions}
-            disabled={!browser.enabled || setAgent.isPending || agentSettings.isPending}
-            onChange={(agent) => setAgent.mutate(agent)}
-            aria-label="Browser worker agent"
           />
         </div>
       </SettingsCard>

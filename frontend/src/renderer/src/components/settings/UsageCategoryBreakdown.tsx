@@ -10,7 +10,7 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
   loop_run: { label: 'Loops', color: USAGE_SHARE_PALETTE[1] },
   memory_dream: { label: 'Memory Dream', color: USAGE_SHARE_PALETTE[2] },
   memory_search: { label: 'Memory Search', color: USAGE_SHARE_PALETTE[3] },
-  browser_task: { label: 'Browser Agent', color: USAGE_SHARE_PALETTE[4] },
+  browser_task: { label: 'Legacy Browser Agent', color: USAGE_SHARE_PALETTE[4] },
   memory_source: { label: 'Memory Capture', color: USAGE_SHARE_PALETTE[5] },
 }
 const CATEGORY_FALLBACK_COLOR = USAGE_SHARE_OTHER_COLOR
@@ -38,7 +38,7 @@ export function CategoryBreakdown({ categories }: { categories: UsageCategoryTot
     <div className="mt-5 rounded-control bg-bg/45 px-3 py-3">
       <p className="text-[12px] font-medium text-ink">Last 30 days by activity</p>
       <p className="mt-0.5 text-[11px] text-ink-3">
-        Where tokens went across chat, loops, memory, and the browser agent.
+        Where tokens went across chat, loops, and memory.
       </p>
 
       <div className="mt-3 flex h-2.5 w-full overflow-hidden rounded-full ring-1 ring-border/60">

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/browserworker"
+	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
@@ -164,7 +164,7 @@ func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 func TestNewRoutesIncludesBrowserExtensionRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),
-		Browser: browserworker.NewExtensionBridge(nil, nil),
+		Browser: browsercontrol.NewExtensionBridge(nil, nil),
 		Preview: testPreviewHandler(t),
 	})
 	for _, route := range routes {

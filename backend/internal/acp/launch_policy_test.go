@@ -16,7 +16,7 @@ func TestRestrictedCodexWorkersOnlyDisableNativeGoals(t *testing.T) {
 		"-c", `web_search="live"`,
 		"-c", `suppress_unstable_features_warning=true`,
 	}
-	got := argsForLaunchPolicy(AgentCodex, input, MCPServerPolicyBrowserWorker)
+	got := argsForLaunchPolicy(AgentCodex, input, MCPServerPolicyMemorySearchWorker)
 	want := []string{
 		"-c", `sandbox_mode="danger-full-access"`,
 		"-c", `features.tool_search_always_defer_mcp_tools=true`,

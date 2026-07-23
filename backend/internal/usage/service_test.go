@@ -133,7 +133,7 @@ func TestDailyCategorizesUsageBySourceType(t *testing.T) {
 		{SessionID: "loop-1", SourceType: storage.SourceLoopRun, Usage: storage.Usage{InputTokens: 40, OutputTokens: 8}, Source: storage.UsageEventSourceTurn, CreatedAt: day},
 		{SessionID: "dream-1", SourceType: storage.SourceMemoryDream, Usage: storage.Usage{InputTokens: 30, OutputTokens: 3}, Source: storage.UsageEventSourceTurn, CreatedAt: day},
 		{SessionID: "search-1", SourceType: storage.SourceMemorySearch, Usage: storage.Usage{InputTokens: 20, OutputTokens: 2}, Source: storage.UsageEventSourceTurn, CreatedAt: day},
-		{SessionID: "browser-1", SourceType: storage.SourceBrowserTask, Usage: storage.Usage{InputTokens: 10, OutputTokens: 1}, Source: storage.UsageEventSourceTurn, CreatedAt: day},
+		{SessionID: "browser-1", SourceType: storage.LegacySourceBrowserTask, Usage: storage.Usage{InputTokens: 10, OutputTokens: 1}, Source: storage.UsageEventSourceTurn, CreatedAt: day},
 		{SessionID: "imported", SourceType: storage.SourceLoopRun, Usage: storage.Usage{InputTokens: 9_000}, Source: storage.UsageEventSourceSessionImport, CreatedAt: day},
 	}}
 	daily, err := (Service{store: store, now: func() time.Time { return now }}).Daily(DailyQuery{Days: 1, Location: time.UTC})
@@ -148,11 +148,11 @@ func TestDailyCategorizesUsageBySourceType(t *testing.T) {
 		summed += category.Usage.InputOutputTokens()
 	}
 	want := map[string]int64{
-		CategoryChat:               165, // two chat sessions, session import excluded
-		storage.SourceLoopRun:      48,
-		storage.SourceMemoryDream:  33,
-		storage.SourceMemorySearch: 22,
-		storage.SourceBrowserTask:  11,
+		CategoryChat:                    165, // two chat sessions, session import excluded
+		storage.SourceLoopRun:           48,
+		storage.SourceMemoryDream:       33,
+		storage.SourceMemorySearch:      22,
+		storage.LegacySourceBrowserTask: 11,
 	}
 	for category, total := range want {
 		if got[category] != total {
