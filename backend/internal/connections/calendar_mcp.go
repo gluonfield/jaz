@@ -26,7 +26,7 @@ func (t *CalendarMCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        calendarconnector.ToolCreateEvent,
 		Title:       "Create Google Calendar event",
-		Description: "Create a Google Calendar event on one connected account, with optional location, description, attendees, optional attendees, and guest update emails.",
+		Description: "Create a Google Calendar event on one connected account, with optional Google Meet conferencing, location, description, attendees, optional attendees, and guest update emails.",
 	}, t.CreateEvent)
 }
 
@@ -93,6 +93,9 @@ func (t *CalendarMCPTools) CreateEvent(ctx context.Context, _ *mcp.CallToolReque
 	text := "Created Google Calendar event"
 	if event.Summary != "" {
 		text += ": " + event.Summary
+	}
+	if event.HangoutLink != "" {
+		text += "\nGoogle Meet: " + event.HangoutLink
 	}
 	return textResult(text), CalendarEventOutput{
 		Connected:  true,

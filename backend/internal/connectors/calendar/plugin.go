@@ -17,10 +17,10 @@ func Plugin() integrations.Plugin {
 	return integrations.Plugin{
 		ID:          ProviderID,
 		Name:        ProviderName,
-		Description: "Read Google Calendar events and create events with guests from connected accounts.",
+		Description: "Read Google Calendar events and create events with guests and optional Google Meet conferencing from connected accounts.",
 		Examples: []string{
 			"Show my calendar for tomorrow",
-			"Create a meeting with Majid next Tuesday at 2pm",
+			"Create a Google Meet with Majid next Tuesday at 2pm",
 			"Find free context around my afternoon meetings",
 		},
 		Provider: integrations.Provider{
@@ -44,10 +44,11 @@ func Plugin() integrations.Plugin {
 		MultiAccount: true,
 		Tools: []integrations.PluginTool{
 			tool(ToolGetEvents, "Get Google Calendar events from a connected account.", integrations.ActionRiskRead),
-			tool(ToolCreateEvent, "Create a Google Calendar event and invite guests.", integrations.ActionRiskWrite),
+			tool(ToolCreateEvent, "Create a Google Calendar event, optionally add Google Meet, and invite guests.", integrations.ActionRiskWrite),
 		},
 		ConnectionNotes: []string{
 			"Connect each Google Calendar account separately.",
+			"Set add_google_meet on create-event to request a new Google Meet conference; the event result includes its link and conference details.",
 			"Guests receive invitations when create-event send_updates is all or external_only.",
 			"Use primary for the main calendar, or pass another calendar ID when needed.",
 		},

@@ -27,6 +27,7 @@ type CalendarCreateEventInput struct {
 	Attendees         []string `json:"attendees,omitempty" jsonschema:"required attendee email addresses to invite"`
 	OptionalAttendees []string `json:"optional_attendees,omitempty" jsonschema:"optional attendee email addresses to invite"`
 	SendUpdates       string   `json:"send_updates,omitempty" jsonschema:"all, external_only, or none; defaults to all when attendees are present"`
+	AddGoogleMeet     bool     `json:"add_google_meet,omitempty" jsonschema:"create a Google Meet conference for the event; defaults to false"`
 }
 
 type CalendarEventsOutput struct {

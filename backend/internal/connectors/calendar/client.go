@@ -11,9 +11,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-const APIBaseURL = "https://www.googleapis.com"
+const (
+	APIBaseURL                   = "https://www.googleapis.com"
+	conferenceSolutionGoogleMeet = "hangoutsMeet"
+)
 
 type APIClient struct {
 	HTTP    *http.Client
@@ -100,6 +105,9 @@ func (c APIClient) CreateEvent(ctx context.Context, input CreateEventRequest) (E
 	if sendUpdates != "" {
 		q.Set("sendUpdates", sendUpdates)
 	}
+	if body.ConferenceData != nil {
+		q.Set("conferenceDataVersion", "1")
+	}
 	var event apiEvent
 	if err := c.post(ctx, "calendar/v3/calendars/"+url.PathEscape(calendarID)+"/events", q, body, &event); err != nil {
 		return Event{}, err
@@ -132,14 +140,21 @@ func eventInsertBody(input CreateEventRequest) (apiEvent, error) {
 			Optional:    attendee.Optional,
 		})
 	}
-	return apiEvent{
+	body := apiEvent{
 		Summary:     summary,
 		Description: strings.TrimSpace(input.Description),
 		Location:    strings.TrimSpace(input.Location),
 		Start:       start,
 		End:         end,
 		Attendees:   attendees,
-	}, nil
+	}
+	if input.AddGoogleMeet {
+		body.ConferenceData = &apiConferenceData{CreateRequest: &apiConferenceCreateRequest{
+			RequestID:             uuid.NewString(),
+			ConferenceSolutionKey: apiConferenceSolutionKey{Type: conferenceSolutionGoogleMeet},
+		}}
+	}
+	return body, nil
 }
 
 func eventTimeInput(input EventTimeInput, field string) (apiEventTime, error) {

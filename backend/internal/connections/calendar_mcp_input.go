@@ -56,14 +56,15 @@ func calendarCreateEventRequest(input CalendarCreateEventInput) (calendarconnect
 		return calendarconnector.CreateEventRequest{}, err
 	}
 	return calendarconnector.CreateEventRequest{
-		CalendarID:  strings.TrimSpace(input.CalendarID),
-		Summary:     summary,
-		Description: strings.TrimSpace(input.Description),
-		Location:    strings.TrimSpace(input.Location),
-		Start:       start,
-		End:         end,
-		Attendees:   attendees,
-		SendUpdates: sendUpdates,
+		CalendarID:    strings.TrimSpace(input.CalendarID),
+		Summary:       summary,
+		Description:   strings.TrimSpace(input.Description),
+		Location:      strings.TrimSpace(input.Location),
+		Start:         start,
+		End:           end,
+		Attendees:     attendees,
+		SendUpdates:   sendUpdates,
+		AddGoogleMeet: input.AddGoogleMeet,
 	}, nil
 }
 

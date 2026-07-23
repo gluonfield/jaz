@@ -63,5 +63,14 @@ and pass the setting through that agent's own args or env.
 
 Runtime files are stored under `~/.jaz` by default. Override with `jaz.root`.
 
+## Google Calendar
+
+The `google_calendar_create_event` MCP action accepts optional
+`add_google_meet: true`. When requested, Jaz creates a Google Meet conference
+through Calendar conference data and returns `hangout_link` plus structured
+`conference_data` on the event. Omitting the field preserves event creation
+without an explicit conference request. The existing Calendar connection and
+`calendar.events` OAuth scope are sufficient; no reconnect is required.
+
 For remote Linux deployment and the connected-device direction, see
 [`../docs/remote-backend.md`](../docs/remote-backend.md).

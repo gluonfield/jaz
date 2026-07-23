@@ -96,6 +96,9 @@ func TestAPIClientCreateEventInvitesGuests(t *testing.T) {
 		if r.URL.Query().Get("sendUpdates") != "all" {
 			t.Fatalf("query = %#v", r.URL.Query())
 		}
+		if r.URL.Query().Has("conferenceDataVersion") {
+			t.Fatalf("unexpected conferenceDataVersion: %#v", r.URL.Query())
+		}
 		var body apiEvent
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
@@ -108,7 +111,8 @@ func TestAPIClientCreateEventInvitesGuests(t *testing.T) {
 			body.Start.TimeZone != "Europe/London" ||
 			len(body.Attendees) != 2 ||
 			body.Attendees[0].Email != "alice@example.com" ||
-			body.Attendees[1].Optional != true {
+			body.Attendees[1].Optional != true ||
+			body.ConferenceData != nil {
 			t.Fatalf("body = %#v", body)
 		}
 		_, _ = w.Write([]byte(`{
@@ -136,6 +140,64 @@ func TestAPIClientCreateEventInvitesGuests(t *testing.T) {
 		t.Fatal(err)
 	}
 	if event.ID != "evt1" || event.Summary != "Demo" || len(event.Attendees) != 2 {
+		t.Fatalf("event = %#v", event)
+	}
+}
+
+func TestAPIClientCreateEventAddsGoogleMeet(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("conferenceDataVersion"); got != "1" {
+			t.Fatalf("conferenceDataVersion = %q", got)
+		}
+		var body apiEvent
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body.ConferenceData == nil ||
+			body.ConferenceData.CreateRequest == nil ||
+			body.ConferenceData.CreateRequest.RequestID == "" ||
+			body.ConferenceData.CreateRequest.ConferenceSolutionKey.Type != conferenceSolutionGoogleMeet {
+			t.Fatalf("conference data = %#v", body.ConferenceData)
+		}
+		_, _ = w.Write([]byte(`{
+			"id":"evt-meet",
+			"summary":"Meet",
+			"hangoutLink":"https://meet.google.com/abc-defg-hij",
+			"conferenceData":{
+				"createRequest":{"requestId":"request","status":{"statusCode":"success"}},
+				"entryPoints":[
+					{"entryPointType":"video","uri":"https://meet.google.com/abc-defg-hij","label":"meet.google.com/abc-defg-hij"},
+					{"entryPointType":"phone","uri":"tel:+441234567890","label":"+44 1234 567890","pin":"123456"}
+				],
+				"conferenceSolution":{"key":{"type":"hangoutsMeet"},"name":"Google Meet","iconUri":"https://example.com/meet.png"},
+				"conferenceId":"abc-defg-hij",
+				"notes":"Join from a supported browser."
+			},
+			"start":{"date":"2026-07-02"},
+			"end":{"date":"2026-07-03"}
+		}`))
+	}))
+	defer server.Close()
+
+	event, err := (APIClient{HTTP: server.Client(), BaseURL: server.URL}).CreateEvent(context.Background(), CreateEventRequest{
+		Summary:       "Meet",
+		Start:         EventTimeInput{Date: "2026-07-02"},
+		End:           EventTimeInput{Date: "2026-07-03"},
+		AddGoogleMeet: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.HangoutLink != "https://meet.google.com/abc-defg-hij" ||
+		event.ConferenceData == nil ||
+		event.ConferenceData.ConferenceID != "abc-defg-hij" ||
+		event.ConferenceData.CreateRequestStatus != "success" ||
+		event.ConferenceData.Solution == nil ||
+		event.ConferenceData.Solution.Type != conferenceSolutionGoogleMeet ||
+		event.ConferenceData.Solution.Name != "Google Meet" ||
+		len(event.ConferenceData.EntryPoints) != 2 ||
+		event.ConferenceData.EntryPoints[1].PIN != "123456" ||
+		event.ConferenceData.Notes != "Join from a supported browser." {
 		t.Fatalf("event = %#v", event)
 	}
 }

@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	calendarconnector "github.com/wins/jaz/backend/internal/connectors/calendar"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
@@ -16,6 +18,20 @@ import (
 
 func newTestCalendarMCPTools(store CalendarToolStore) *CalendarMCPTools {
 	return NewCalendarMCPTools(store)
+}
+
+func TestCalendarCreateEventInputIncludesGoogleMeet(t *testing.T) {
+	schema, err := jsonschema.For[CalendarCreateEventInput](nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meet := schema.Properties["add_google_meet"]
+	if meet == nil ||
+		meet.Type != "boolean" ||
+		slices.Contains(schema.Required, "add_google_meet") ||
+		!strings.Contains(meet.Description, "Google Meet") {
+		t.Fatalf("add_google_meet schema = %#v", meet)
+	}
 }
 
 func TestCalendarMCPToolsGetEventsAndCreateEvent(t *testing.T) {
@@ -45,7 +61,7 @@ func TestCalendarMCPToolsGetEventsAndCreateEvent(t *testing.T) {
 					}]
 				}`))
 			case http.MethodPost:
-				if r.URL.Query().Get("sendUpdates") != "all" {
+				if r.URL.Query().Get("sendUpdates") != "all" || r.URL.Query().Get("conferenceDataVersion") != "1" {
 					t.Fatalf("query = %#v", r.URL.Query())
 				}
 				var body struct {
@@ -65,6 +81,14 @@ func TestCalendarMCPToolsGetEventsAndCreateEvent(t *testing.T) {
 						DisplayName string `json:"displayName"`
 						Optional    bool   `json:"optional"`
 					} `json:"attendees"`
+					ConferenceData *struct {
+						CreateRequest struct {
+							RequestID             string `json:"requestId"`
+							ConferenceSolutionKey struct {
+								Type string `json:"type"`
+							} `json:"conferenceSolutionKey"`
+						} `json:"createRequest"`
+					} `json:"conferenceData"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 					t.Fatal(err)
@@ -79,13 +103,23 @@ func TestCalendarMCPToolsGetEventsAndCreateEvent(t *testing.T) {
 					body.Attendees[0].Email != "alice@example.com" ||
 					body.Attendees[0].DisplayName != "Alice" ||
 					body.Attendees[1].Email != "bob@example.com" ||
-					body.Attendees[1].Optional != true {
+					body.Attendees[1].Optional != true ||
+					body.ConferenceData == nil ||
+					body.ConferenceData.CreateRequest.RequestID == "" ||
+					body.ConferenceData.CreateRequest.ConferenceSolutionKey.Type != "hangoutsMeet" {
 					t.Fatalf("body = %#v", body)
 				}
 				_, _ = w.Write([]byte(`{
 					"id":"evt2",
 					"summary":"Demo",
 					"htmlLink":"https://calendar.google.com/event?eid=evt2",
+					"hangoutLink":"https://meet.google.com/abc-defg-hij",
+					"conferenceData":{
+						"createRequest":{"requestId":"request","status":{"statusCode":"success"}},
+						"entryPoints":[{"entryPointType":"video","uri":"https://meet.google.com/abc-defg-hij","label":"meet.google.com/abc-defg-hij"}],
+						"conferenceSolution":{"key":{"type":"hangoutsMeet"},"name":"Google Meet"},
+						"conferenceId":"abc-defg-hij"
+					},
 					"start":{"dateTime":"2026-07-02T14:00:00+01:00","timeZone":"Europe/London"},
 					"end":{"dateTime":"2026-07-02T14:30:00+01:00","timeZone":"Europe/London"},
 					"attendees":[{"email":"alice@example.com"},{"email":"bob@example.com","optional":true}]
@@ -141,14 +175,22 @@ func TestCalendarMCPToolsGetEventsAndCreateEvent(t *testing.T) {
 		TimeZone:          " Europe/London ",
 		Attendees:         []string{" Alice <alice@example.com> "},
 		OptionalAttendees: []string{"alice@example.com", "bob@example.com"},
+		AddGoogleMeet:     true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !created.Connected || created.Event.ID != "evt2" || created.CalendarID != "primary" || len(created.Event.Attendees) != 2 {
+	if !created.Connected ||
+		created.Event.ID != "evt2" ||
+		created.CalendarID != "primary" ||
+		len(created.Event.Attendees) != 2 ||
+		created.Event.HangoutLink != "https://meet.google.com/abc-defg-hij" ||
+		created.Event.ConferenceData == nil ||
+		created.Event.ConferenceData.ConferenceID != "abc-defg-hij" ||
+		created.Event.ConferenceData.CreateRequestStatus != "success" {
 		t.Fatalf("created = %#v", created)
 	}
-	if got := toolText(result); !strings.Contains(got, "Created Google Calendar event: Demo") {
+	if got := toolText(result); !strings.Contains(got, "Created Google Calendar event: Demo") || !strings.Contains(got, created.Event.HangoutLink) {
 		t.Fatalf("text = %q", got)
 	}
 }
