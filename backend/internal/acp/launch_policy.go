@@ -2,19 +2,11 @@ package acp
 
 import "strings"
 
-func argsForLaunchPolicy(agent string, args []string, mcpServerPolicy string) []string {
+func argsForLaunchPolicy(agent string, args []string, _ string) []string {
 	if CanonicalAgentName(agent) != AgentCodex {
 		return args
 	}
-	args = withCodexConfig(args, "features.goals", "false")
-	if !restrictedWorkerPolicy(mcpServerPolicy) {
-		return args
-	}
-	args = withoutCodexConfig(args, "features.tool_search_always_defer_mcp_tools")
-	for _, key := range []string{"features.browser_use", "features.browser_use_external", "features.in_app_browser"} {
-		args = withCodexConfig(args, key, "false")
-	}
-	return args
+	return withCodexConfig(args, "features.goals", "false")
 }
 
 func withoutCodexConfig(args []string, key string) []string {
