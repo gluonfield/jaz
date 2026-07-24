@@ -27,7 +27,7 @@ const MORE_ACTION_CLASS =
 
 // Group headings (Pinned, project names) share one anchor style so they stay
 // stronger than the chat rows beneath them.
-const SECTION_HEADING_CLASS = 'pb-1 text-[13px] font-semibold text-ink max-sm:text-[15px]'
+const SECTION_HEADING_CLASS = 'text-[13px] font-semibold text-ink max-sm:text-[15px]'
 
 const ROW_SPRING: Transition = { type: 'spring', stiffness: 420, damping: 34 }
 
@@ -290,7 +290,7 @@ function ProjectGroup({
             </span>
             <ChevronDown
               size={13}
-              className={`-ml-1 -mt-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
+              className={`-ml-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
               aria-hidden
             />
           </motion.button>
@@ -438,7 +438,7 @@ function SessionsSection({ open }: { open: boolean }) {
         <div className="flex flex-col gap-3">
           {pinnedBlock ? (
             <div>
-              <p className={`px-2 ${SECTION_HEADING_CLASS}`}>{pinnedBlock.label}</p>
+              <p className={`px-2 pb-1 ${SECTION_HEADING_CLASS}`}>{pinnedBlock.label}</p>
               <SessionRows items={pinnedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
             </div>
           ) : null}
