@@ -297,7 +297,13 @@ export const RenderedMarkdown = memo(function RenderedMarkdown({
   return <BaseMarkdown text={text} className={className} Link={PlainMarkdownLink} />
 })
 
-// Shared renderer for assistant prose: GitHub-flavored markdown + LaTeX via KaTeX.
+// User messages already carry mentions as Markdown links, so they use the same
+// chat renderer without the assistant-only expansion of bare skill names.
+export const UserMessageMarkdown = memo(function UserMessageMarkdown({ text }: { text: string }) {
+  return <BaseMarkdown text={text} className="chat-prose" Link={MessageMarkdownLink} />
+})
+
+// Shared renderer for assistant prose: GitHub-flavored Markdown + LaTeX via KaTeX.
 // Memoized: the remark/rehype pipeline is the priciest per-item work in a
 // transcript, so it must only run when the text actually changes.
 export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {

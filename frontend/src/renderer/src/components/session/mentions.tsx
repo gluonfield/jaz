@@ -192,8 +192,8 @@ function MentionPopover({
   )
 }
 
-// MentionText renders plain message text (user bubbles) with mentions decoded
-// into pills; whitespace handling is inherited from the container.
+// MentionText renders compact plain-text surfaces with mentions decoded into
+// pills; full chat messages use the Markdown renderer.
 export function MentionText({ text }: { text: string }) {
   const segments = decodeMentions(text)
   if (segments.length === 1 && !segments[0].mention) return <>{text}</>
