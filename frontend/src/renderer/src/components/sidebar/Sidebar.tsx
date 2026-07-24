@@ -630,7 +630,7 @@ export function Sidebar({
           that should dismiss the full-screen drawer, so drop it there. */}
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
-      <div className="flex shrink-0 flex-col px-3 pb-px max-sm:px-4">
+      <div className="flex shrink-0 flex-col pl-2 pr-3 pb-px max-sm:px-4">
         <NavLink
           to="/new"
           icon={<SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />}
@@ -652,7 +652,7 @@ export function Sidebar({
       <nav
         ref={navRef}
         onScroll={updateNavEdge}
-        className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 max-sm:gap-6 max-sm:px-4"
+        className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pl-2 pr-3 max-sm:gap-6 max-sm:px-4"
       >
         <div className="flex flex-col gap-px">
           <FeedLink />
@@ -667,7 +667,7 @@ export function Sidebar({
         <SessionsSection open={open} />
       </nav>
 
-      <div className="flex shrink-0 flex-col gap-0.5 border-t border-border px-3 py-1.5">
+      <div className="flex shrink-0 flex-col gap-0.5 border-t border-border pl-2 pr-3 py-1.5 max-sm:pl-3">
         <UpdatePanel />
         <ConnectionFooterButton onOpenConnect={onOpenConnect} />
         <button
