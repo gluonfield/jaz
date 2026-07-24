@@ -70,8 +70,8 @@ export function SessionRow({
       <Link
         to="/sessions/$sessionId"
         params={{ sessionId: session.id }}
-        className="group flex h-8 select-none items-center gap-2 rounded-full px-2.5 text-[13px] text-ink transition-colors duration-150 [-webkit-touch-callout:none] hover:bg-surface-2 max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 max-sm:text-[15px]"
-        activeProps={{ className: 'bg-primary-soft! text-ink! font-medium' }}
+        className="group flex h-[30px] select-none items-center gap-2 rounded-full px-2.5 text-[13px] text-ink transition-colors duration-150 [-webkit-touch-callout:none] hover:bg-list-hover max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 max-sm:text-[15px]"
+        activeProps={{ className: 'bg-list-hover! text-ink! font-medium' }}
         {...menuTriggers}
       >
         {/* branch connector: this thread was spawned by the session above */}

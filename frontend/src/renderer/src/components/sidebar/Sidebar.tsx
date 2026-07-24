@@ -23,7 +23,7 @@ const PROJECT_SESSION_LIMIT = 5
 const DEFAULT_SESSION_LIMIT = 5
 const COLLAPSED_PROJECTS_KEY = 'jaz.sidebar.collapsedProjects'
 const MORE_ACTION_CLASS =
-  'flex h-8 items-center rounded-full px-2.5 text-[13px] text-ink-3 opacity-80 transition-[background-color,color,opacity] duration-150 hover:bg-surface-2 hover:text-ink hover:opacity-100 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
+  'flex h-[30px] items-center rounded-full px-2.5 text-[13px] text-ink-3 opacity-80 transition-[background-color,color,opacity] duration-150 hover:bg-list-hover hover:text-ink hover:opacity-100 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
 
 // Group headings (Pinned, project names) share one anchor style so they stay
 // stronger than the chat rows beneath them.
@@ -272,7 +272,7 @@ function ProjectGroup({
       dragControls={dragControls}
       onDragEnd={onReorderEnd}
     >
-      <div className="group/project flex h-8 items-center justify-between pr-1 max-sm:h-11">
+      <div className="group/project flex h-[30px] items-center justify-between rounded-full pr-1 transition-colors duration-150 hover:bg-list-hover max-sm:h-11">
         <div className="flex min-w-0 flex-1 items-center">
           {/* -ml-3 hangs the grip in the nav's left padding so the project
               name stays aligned with the nav labels above */}
@@ -351,7 +351,7 @@ function UngroupedSessionsBlock({
           to="/sessions"
           className={MORE_ACTION_CLASS}
           activeOptions={{ exact: true }}
-          activeProps={{ className: 'bg-primary-soft! opacity-100!' }}
+          activeProps={{ className: 'bg-list-hover! opacity-100!' }}
         >
           Show all threads
         </Link>
@@ -487,10 +487,10 @@ function SessionsSection({ open }: { open: boolean }) {
   )
 }
 
-// Same row metrics as SessionRow (h-8 / max-sm:h-11, 1px gaps) so the rail
+// Same row metrics as SessionRow (30px / max-sm:h-11, 1px gaps) so the rail
 // reads as one rhythm from New task down through the chat lists.
 const NAV_LINK_CLASS =
-  'group flex h-8 items-center gap-2 rounded-full px-2.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
+  'group flex h-[30px] items-center gap-2 rounded-full px-2.5 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-list-hover max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
 
 function NavLink({
   to,
@@ -504,7 +504,7 @@ function NavLink({
   badge?: ReactNode
 }) {
   return (
-    <Link to={to} className={NAV_LINK_CLASS} activeProps={{ className: 'bg-primary-soft!' }}>
+    <Link to={to} className={NAV_LINK_CLASS} activeProps={{ className: 'bg-list-hover!' }}>
       <span className="grid size-[18px] shrink-0 place-items-center">{icon}</span>
       <span className="flex-1">{label}</span>
       {badge}
@@ -630,7 +630,7 @@ export function Sidebar({
           that should dismiss the full-screen drawer, so drop it there. */}
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
-      <div className="flex shrink-0 flex-col pl-2 pr-3 pb-px max-sm:px-4">
+      <div className="flex shrink-0 flex-col pl-1.5 pr-3 pb-px max-sm:px-4">
         <NavLink
           to="/new"
           icon={<SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />}
@@ -652,7 +652,7 @@ export function Sidebar({
       <nav
         ref={navRef}
         onScroll={updateNavEdge}
-        className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pl-2 pr-3 max-sm:gap-6 max-sm:px-4"
+        className="scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pl-1.5 pr-3 max-sm:gap-6 max-sm:px-4"
       >
         <div className="flex flex-col gap-px">
           <FeedLink />
@@ -667,13 +667,13 @@ export function Sidebar({
         <SessionsSection open={open} />
       </nav>
 
-      <div className="flex shrink-0 flex-col gap-0.5 border-t border-border pl-2 pr-3 py-1.5 max-sm:pl-3">
+      <div className="flex shrink-0 flex-col gap-0.5 border-t border-border pl-1.5 pr-3 py-1.5 max-sm:pl-3">
         <UpdatePanel />
         <ConnectionFooterButton onOpenConnect={onOpenConnect} />
         <button
           type="button"
           onClick={onOpenSettings}
-          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-surface-2 max-sm:px-3 max-sm:py-2 max-sm:text-[15px]"
+          className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-list-hover max-sm:px-3 max-sm:py-2 max-sm:text-[15px]"
         >
           <Settings size={15} className="text-ink-2 max-sm:size-[18px]" />
           <span className="flex-1 text-left">Settings</span>
