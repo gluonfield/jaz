@@ -4,13 +4,11 @@ import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { BottomDock } from '@/components/session/BottomDock'
+import { UserBubble } from '@/components/session/Bubble'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
-import { LiveAttachmentList } from '@/components/session/LiveAttachmentList'
-import { MessageContexts } from '@/components/session/MessageContexts'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
-import { MentionText } from '@/components/session/mentions'
 import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { GoalStatusBar } from '@/components/session/GoalStatusBar'
@@ -524,16 +522,17 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                         ) : live ? (
                           <div className="flex flex-col gap-2">
                             <motion.div
-                              className="flex justify-end"
+                              className="w-full"
                               initial={{ opacity: 0, y: 8 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                             >
-                              <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
-                                <MessageContexts contexts={live.contexts} />
-                                <MentionText text={live.user} />
-                                <LiveAttachmentList attachments={live.attachments} attachmentSessionId={sessionId} />
-                              </div>
+                              <UserBubble
+                                text={live.user}
+                                contexts={live.contexts}
+                                attachments={live.attachments}
+                                attachmentSessionId={sessionId}
+                              />
                             </motion.div>
                             <ThinkingBlock text={live.reasoning} pending={streaming} />
                             <ToolCalls

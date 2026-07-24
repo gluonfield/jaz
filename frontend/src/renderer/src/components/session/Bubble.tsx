@@ -3,7 +3,7 @@ import type { ChatMessage, MessageBlock } from '@/lib/api/types'
 import { browserAnnotationFromJSON } from '@/lib/messageContext'
 import type { ComposerContext } from '@/lib/messageContext'
 import { AssistantMarkdown } from './AssistantMarkdown'
-import { MentionText } from './mentions'
+import { UserMessageMarkdown } from './MessageMarkdown'
 import { MessageAttachments, type MessageAttachment } from './MessageAttachments'
 import { MessageContexts } from './MessageContexts'
 import { ThinkingBlock } from './ThinkingBlock'
@@ -73,9 +73,9 @@ export function UserBubble({
 }) {
   return (
     <div className="flex justify-end">
-      <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm whitespace-pre-wrap [overflow-wrap:break-word] select-text">
+      <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm [overflow-wrap:break-word] select-text">
         <MessageContexts contexts={contexts} />
-        <MentionText text={text} />
+        <UserMessageMarkdown text={text} />
         <MessageAttachments attachments={attachments} attachmentSessionId={attachmentSessionId} />
       </div>
     </div>
