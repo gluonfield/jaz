@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, type LinkComponentProps, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, GripVertical, Inbox, LayoutDashboard, Repeat, Settings, SquarePen } from 'lucide-react'
-import { Reorder, type Transition, useDragControls } from 'motion/react'
+import { ChevronDown, Folder, Inbox, LayoutDashboard, Repeat, Settings, SquarePen } from 'lucide-react'
+import { motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
@@ -274,24 +274,17 @@ function ProjectGroup({
     >
       <div className="group/project flex h-[30px] items-center justify-between rounded-full pr-1 transition-colors duration-150 hover:bg-list-hover max-sm:h-11">
         <div className="flex min-w-0 flex-1 items-center">
-          {/* -ml-3 hangs the grip in the nav's left padding so the project
-              name stays aligned with the nav labels above */}
-          <button
+          <motion.button
             type="button"
             onPointerDown={(event) => dragControls.start(event)}
-            className="-ml-3 grid size-5 shrink-0 cursor-grab touch-none place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink active:cursor-grabbing focus-visible:opacity-100 group-hover/project:opacity-100"
-            aria-label={`Reorder ${group.label}`}
-            title="Drag to reorder"
-          >
-            <GripVertical size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={onToggle}
+            onTap={onToggle}
             aria-expanded={!collapsed}
             aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${group.label}`}
-            className="flex h-full min-w-0 flex-1 items-center rounded-full text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="flex h-full min-w-0 flex-1 cursor-grab touch-none items-center gap-2 rounded-full px-2.5 text-left outline-none active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-primary/40"
           >
+            <span className="grid size-[18px] shrink-0 place-items-center">
+              <Folder size={15} className="text-ink-2" />
+            </span>
             <span className={`min-w-0 truncate ${SECTION_HEADING_CLASS}`} title={group.label}>
               {group.label}
             </span>
@@ -300,7 +293,7 @@ function ProjectGroup({
               className={`-mt-1 ml-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
               aria-hidden
             />
-          </button>
+          </motion.button>
         </div>
         <Link
           to="/new"
