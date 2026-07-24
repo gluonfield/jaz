@@ -290,7 +290,7 @@ function ProjectGroup({
             </span>
             <ChevronDown
               size={13}
-              className={`-mt-1 ml-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
+              className={`-ml-1 -mt-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
               aria-hidden
             />
           </motion.button>
