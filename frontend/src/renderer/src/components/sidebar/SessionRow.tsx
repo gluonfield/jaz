@@ -32,18 +32,6 @@ function isCoarsePointer() {
   return window.matchMedia?.('(pointer: coarse)').matches === true
 }
 
-function StatusDot({ session }: { session: Session }) {
-  if (session.status === 'error') {
-    return (
-      <span
-        title={session.error ? `Failed: ${session.error}` : 'Failed'}
-        className="size-1.5 shrink-0 rounded-full bg-danger"
-      />
-    )
-  }
-  return null
-}
-
 export function SessionRow({
   session,
   child = false,
@@ -59,6 +47,9 @@ export function SessionRow({
 }) {
   const shortcut = shortcutMode && shortcutIndex ? shortcutIndex : undefined
   const timeLabel = recentTime(session.last_attention_at || session.updated_at)
+  // Running and failed are the same kind of fact, so they share the trailing
+  // state column rather than sitting on opposite sides of the row.
+  const state = session.status === 'running' || session.status === 'error' ? session.status : null
   const [rename, setRename] = useState<null | 'inline' | 'modal'>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const menuTriggers = useContextMenuTrigger(setMenu)
@@ -71,17 +62,20 @@ export function SessionRow({
         to="/sessions/$sessionId"
         params={{ sessionId: session.id }}
         className="group flex h-[30px] select-none items-center gap-2 rounded-full px-2.5 text-[13px] text-ink transition-colors duration-150 [-webkit-touch-callout:none] hover:bg-list-hover max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 max-sm:text-[15px]"
-        activeProps={{ className: 'bg-list-hover! text-ink! font-medium' }}
+        activeProps={{ className: 'bg-list-active!' }}
         {...menuTriggers}
       >
         {/* branch connector: this thread was spawned by the session above */}
         {child ? <CornerDownRight size={12} className="shrink-0 text-ink-3" /> : null}
-        <StatusDot session={session} />
-        {/* When the chip leads the row, a negative margin optically aligns
-            its text with the titles. */}
-        {showRuntimeBadge && session.runtime === 'acp' ? (
-          <RuntimeBadge session={session} compact className={child ? '' : '-ml-1.5'} />
-        ) : null}
+        {/* Identity gutter, the same width as the nav icons, present whether or
+            not this row has an agent to show. Without it a row's title starts
+            wherever its indicators happen to end, and the sidebar has as many
+            left edges as it has kinds of row. */}
+        <span className="grid size-[18px] shrink-0 place-items-center">
+          {showRuntimeBadge && session.runtime === 'acp' ? (
+            <RuntimeBadge session={session} compact />
+          ) : null}
+        </span>
         {inlineEditing ? (
           <RenameField session={session} onDone={() => setRename(null)} />
         ) : (
@@ -93,14 +87,20 @@ export function SessionRow({
           <span className="flex min-w-8 shrink-0 justify-end">
             <KeyboardShortcut value={shortcut} />
           </span>
-        ) : session.status === 'running' ? (
+        ) : state ? (
           <span
-            title="Running"
             className={`flex min-w-8 shrink-0 items-center justify-end ${
               shortcutMode ? '' : 'group-hover:hidden'
             }`}
           >
-            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-running" />
+            <span
+              title={
+                state === 'running' ? 'Running' : session.error ? `Failed: ${session.error}` : 'Failed'
+              }
+              className={`size-1.5 shrink-0 rounded-full ${
+                state === 'running' ? 'animate-pulse bg-running' : 'bg-danger'
+              }`}
+            />
           </span>
         ) : timeLabel ? (
           <span

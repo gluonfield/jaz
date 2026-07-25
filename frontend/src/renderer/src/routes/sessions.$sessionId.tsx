@@ -142,7 +142,10 @@ function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick:
           exit={{ opacity: 0, scale: 0.85, y: 6 }}
           whileTap={{ scale: 0.96 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-surface text-ink shadow-[0_8px_24px_rgba(0,0,0,0.14)] transition-colors duration-150 hover:bg-surface-2"
+          // It floats over live transcript content, including surfaces it shares
+          // a fill with, so it needs an edge of its own to read as a control
+          // rather than a hole punched in whatever is behind it.
+          className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-surface text-ink shadow-[0_8px_24px_rgba(0,0,0,0.14)] ring-1 ring-border transition-colors duration-150 hover:bg-surface-2"
         >
           <ArrowDown size={17} />
         </motion.button>

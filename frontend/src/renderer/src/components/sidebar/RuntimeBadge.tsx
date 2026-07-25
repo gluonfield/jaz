@@ -32,8 +32,17 @@ export function RuntimeBadge({
   return (
     <span title={title} className={`inline-flex min-w-0 items-center gap-1.5 ${className}`}>
       {showLogo ? (
-        <span className="inline-flex shrink-0 items-center px-1.5 text-ink">
+        <span className="inline-flex shrink-0 items-center text-ink">
           <AgentLogo agent={agent ?? ''} size={15} />
+        </span>
+      ) : compact ? (
+        // Compact means the badge sits in a one-glyph identity gutter, so an
+        // agent with no brand mark gets a monogram rather than a name pill wide
+        // enough to shove the title off its column. The full name is on hover.
+        <span
+          className={`grid size-[17px] shrink-0 place-items-center rounded-full text-[10px] leading-none font-medium ${pillTone}`}
+        >
+          {name.slice(0, 1).toUpperCase()}
         </span>
       ) : (
         <span

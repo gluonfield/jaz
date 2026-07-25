@@ -79,9 +79,7 @@ function ArchivedRow({ session, child = false }: { session: Session; child?: boo
   return (
     <div className="flex items-center gap-2 rounded-full px-3 py-2 text-[13px] text-ink-2">
       {child ? <CornerDownRight size={12} className="shrink-0 text-ink-3" /> : null}
-      {session.runtime === 'acp' ? (
-        <RuntimeBadge session={session} className={child ? '' : '-ml-1.5'} />
-      ) : null}
+      {session.runtime === 'acp' ? <RuntimeBadge session={session} /> : null}
       <span className="min-w-0 flex-1 truncate" title={sessionLabel(session)}>
         {sessionLabel(session)}
       </span>

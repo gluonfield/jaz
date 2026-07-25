@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, type LinkComponentProps, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Folder, Inbox, LayoutDashboard, Repeat, Settings, SquarePen } from 'lucide-react'
+import { ChevronDown, Folder, Inbox, LayoutDashboard, Pin, Repeat, Settings, SquarePen } from 'lucide-react'
 import { motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
@@ -22,8 +22,11 @@ import { SessionRow } from './SessionRow'
 const PROJECT_SESSION_LIMIT = 5
 const DEFAULT_SESSION_LIMIT = 5
 const COLLAPSED_PROJECTS_KEY = 'jaz.sidebar.collapsedProjects'
+// pl-9 = row padding (10px) + icon gutter (18px) + gap (8px): the one column
+// every sidebar label starts on, whether or not the row draws a glyph there.
+// Phone metrics are wider (px-3 + gap-2.5), so the column moves to 40px.
 const MORE_ACTION_CLASS =
-  'flex h-[30px] items-center rounded-full px-2.5 text-[13px] text-ink-3 opacity-80 transition-[background-color,color,opacity] duration-150 hover:bg-list-hover hover:text-ink hover:opacity-100 max-sm:h-11 max-sm:px-3 max-sm:text-[15px]'
+  'flex h-[30px] items-center rounded-full pl-9 pr-2.5 text-[13px] text-ink-3 opacity-80 transition-[background-color,color,opacity] duration-150 hover:bg-list-hover hover:text-ink hover:opacity-100 max-sm:h-11 max-sm:pl-10 max-sm:pr-3 max-sm:text-[15px]'
 
 // Group headings (Pinned, project names) share one anchor style so they stay
 // stronger than the chat rows beneath them.
@@ -344,7 +347,7 @@ function UngroupedSessionsBlock({
           to="/sessions"
           className={MORE_ACTION_CLASS}
           activeOptions={{ exact: true }}
-          activeProps={{ className: 'bg-list-hover! opacity-100!' }}
+          activeProps={{ className: 'bg-list-active! opacity-100!' }}
         >
           Show all threads
         </Link>
@@ -438,7 +441,17 @@ function SessionsSection({ open }: { open: boolean }) {
         <div className="flex flex-col gap-3">
           {pinnedBlock ? (
             <div>
-              <p className={`px-2 pb-1 ${SECTION_HEADING_CLASS}`}>{pinnedBlock.label}</p>
+              {/* Pinned and a project are the same rank, so they render the
+                  same way: a glyph in the gutter, the name on the label
+                  column. */}
+              <p
+                className={`flex h-[30px] items-center gap-2 px-2.5 max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 ${SECTION_HEADING_CLASS}`}
+              >
+                <span className="grid size-[18px] shrink-0 place-items-center">
+                  <Pin size={14} className="text-ink-2" />
+                </span>
+                {pinnedBlock.label}
+              </p>
               <SessionRows items={pinnedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
             </div>
           ) : null}
@@ -497,7 +510,7 @@ function NavLink({
   badge?: ReactNode
 }) {
   return (
-    <Link to={to} className={NAV_LINK_CLASS} activeProps={{ className: 'bg-list-hover!' }}>
+    <Link to={to} className={NAV_LINK_CLASS} activeProps={{ className: 'bg-list-active!' }}>
       <span className="grid size-[18px] shrink-0 place-items-center">{icon}</span>
       <span className="flex-1">{label}</span>
       {badge}
@@ -668,7 +681,9 @@ export function Sidebar({
           onClick={onOpenSettings}
           className="group flex w-full items-center gap-2 rounded-full px-2.5 py-1 text-[13px] font-medium text-ink transition-colors duration-150 hover:bg-list-hover max-sm:px-3 max-sm:py-2 max-sm:text-[15px]"
         >
-          <Settings size={15} className="text-ink-2 max-sm:size-[18px]" />
+          <span className="grid size-[18px] shrink-0 place-items-center">
+            <Settings size={15} className="text-ink-2 max-sm:size-[18px]" />
+          </span>
           <span className="flex-1 text-left">Settings</span>
         </button>
       </div>

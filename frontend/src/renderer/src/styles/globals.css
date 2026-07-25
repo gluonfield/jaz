@@ -12,6 +12,9 @@
   --color-surface: oklch(0.94 0.009 262);
   --color-surface-2: oklch(0.906 0.011 262);
   --color-list-hover: color-mix(in oklab, var(--color-ink) 5%, transparent);
+  /* Selection has to outrank the pointer: at hover's weight the row you are
+   * pointing at and the thread you are actually in look identical. */
+  --color-list-active: color-mix(in oklab, var(--color-ink) 11%, transparent);
 
   /* text hierarchy — cool-neutral, same hue as the brand */
   --color-ink: oklch(0.27 0.01 262);
@@ -137,6 +140,7 @@
   --color-surface: oklch(0.248 0.008 262);
   --color-surface-2: oklch(0.298 0.009 262);
   --color-list-hover: color-mix(in oklab, var(--color-ink) 8%, transparent);
+  --color-list-active: color-mix(in oklab, var(--color-ink) 16%, transparent);
 
   --color-ink: oklch(0.945 0.004 262);
   --color-ink-2: oklch(0.76 0.006 262);
@@ -339,12 +343,15 @@
   vertical-align: -0.1em;
   pointer-events: none;
 }
+/* A filled surface card is the user-turn shape; wearing it here made a pulled
+ * quote read as a message someone sent. A rule marks the quote without
+ * borrowing that shape, and the text stays primary — quoted material is
+ * usually the point of the paragraph, not an aside. */
 :where(.chat-prose, .file-prose) blockquote {
   margin: 0.6em 0;
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-  padding: 0.5em 0.75em;
-  color: var(--color-ink-2);
+  border-left: 2px solid var(--color-border);
+  padding: 0.1em 0 0.1em 0.75em;
+  color: var(--color-ink);
 }
 /* Tables render wrapped in .chat-table-scroll so a wide one scrolls inside its
    own box instead of widening the prose column past the viewport. */

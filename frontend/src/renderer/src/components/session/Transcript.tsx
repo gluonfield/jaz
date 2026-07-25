@@ -262,7 +262,9 @@ export const Transcript = memo(function Transcript({
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    // Turns are spaced wider than the sections inside one turn; at the same gap
+    // there is nothing marking where a turn ends and the next begins.
+    <div className="flex flex-col gap-7">
       <EarlierHistoryButton
         hiddenCount={hiddenHistoryCount}
         unit="turns"
