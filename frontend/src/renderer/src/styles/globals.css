@@ -601,6 +601,56 @@
   opacity: 0;
 }
 
+/* Streaming reveal: a chunk lands as a whole line, so the appended text wipes
+ * in behind a soft mask edge instead of popping. Only the delta carries the
+ * attribute (see streamReveal.ts) and the phase alternates a/b because a
+ * reused span restarts a CSS animation only when the animation name changes.
+ * Motion off must also drop the mask — the animation is what fills it in. */
+@property --stream-tail-p {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+[data-stream-tail] {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  mask-image: linear-gradient(
+    100deg,
+    black calc(var(--stream-tail-p) - 26%),
+    transparent var(--stream-tail-p)
+  );
+  animation: stream-tail-a 300ms linear both;
+}
+
+[data-stream-tail='b'] {
+  animation-name: stream-tail-b;
+}
+
+@keyframes stream-tail-a {
+  to {
+    --stream-tail-p: 140%;
+  }
+}
+
+@keyframes stream-tail-b {
+  to {
+    --stream-tail-p: 140%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-stream-tail] {
+    animation: none;
+    mask-image: none;
+  }
+}
+
+:root.jaz-no-effects [data-stream-tail] {
+  animation: none;
+  mask-image: none;
+}
+
 /* Ultra effort slider: the track ring breathes while the dither field burns. */
 .effort-ultra-track {
   animation: effort-ultra-pulse 2.4s ease-in-out infinite;
