@@ -121,7 +121,13 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	cfg.Args = argsForLaunchPolicy(name, cfg.Args, mcpServerPolicy)
+	if isCodexAppServer(name, cfg) {
+		if err := configureCodexAppServerEnv(env, cfg, m.providers(), systemPrompt); err != nil {
+			return nil, nil, err
+		}
+	} else {
+		cfg.Args = argsForLaunchPolicy(name, cfg.Args, mcpServerPolicy)
+	}
 	command, args, err := processCommand(name, cfg, m.providers())
 	if err != nil {
 		return nil, nil, err
@@ -446,7 +452,7 @@ func (m *Manager) installAgentSkills(agent, root, dst string) {
 
 func processCommand(name string, cfg AgentConfig, providers map[string]modelprovider.ModelProviderConfig) (string, []string, error) {
 	args := append([]string(nil), cfg.Args...)
-	if CanonicalAgentName(name) == AgentCodex {
+	if CanonicalAgentName(name) == AgentCodex && !isCodexAppServer(name, cfg) {
 		args = append(args, codexProviderArgs(cfg, providers)...)
 	}
 	grokCfg, handled, err := resolveGrokStartupConfig(name, cfg)
@@ -582,7 +588,12 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	}
 	if agent == AgentCodex {
 		for _, method := range init.AuthMethods {
-			if method.ID == "chatgpt" && codexAuthAvailable(env) {
+			if method.ID == "api-key" && firstNonEmpty(env["CODEX_API_KEY"], env["OPENAI_API_KEY"]) != "" {
+				return method.ID, nil
+			}
+		}
+		for _, method := range init.AuthMethods {
+			if (method.ID == "chatgpt" || method.ID == "chat-gpt") && codexAuthAvailable(env) {
 				return method.ID, nil
 			}
 		}
@@ -590,7 +601,7 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	var missing []string
 	if agent == AgentCodex {
 		for _, method := range init.AuthMethods {
-			if method.ID == "chatgpt" {
+			if method.ID == "chatgpt" || method.ID == "chat-gpt" {
 				missing = appendMissing(missing, codexAuthHint(env))
 				break
 			}

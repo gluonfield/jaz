@@ -260,7 +260,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		env[codexModelMetadataEnv] = modelMetadata
 	}
 	launchPrompt := ""
-	if agentPolicyForAgent(name).systemPromptAtLaunch {
+	if systemPromptAtLaunch(name, cfg) {
 		launchPrompt, err = m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 		if err != nil {
 			return nil, err
@@ -323,7 +323,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
 func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
-	meta, err := m.sessionPromptMeta(ctx, agent, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+	meta, err := m.sessionPromptMeta(ctx, agent, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
@@ -340,8 +340,8 @@ func (m *Manager) sessionLoadMeta(ctx context.Context, agent string, cfg AgentCo
 	return m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 }
 
-func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
-	if agentPolicyForAgent(agent).systemPromptAtLaunch {
+func (m *Manager) sessionPromptMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+	if systemPromptAtLaunch(agent, cfg) {
 		return nil, nil
 	}
 	prompt, err := m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)

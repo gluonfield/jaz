@@ -85,6 +85,8 @@ func promptWithModules(base string, modules promptmodule.Modules) string {
 //   - grok reads _meta.rules and ignores _meta.systemPrompt.
 //   - codex-acp (Jaz fork) appends a _meta.systemPrompt string as developer
 //     instructions; upstream codex-acp ignores _meta entirely.
+//   - codex-app-server receives developer instructions in its launch config and
+//     does not use this session metadata path.
 //   - kimi (Jaz fork) appends a _meta.systemPrompt string to its native system
 //     prompt without persisting it in conversation history.
 //
@@ -335,13 +337,7 @@ func BuiltinAgents() AgentCatalog {
 
 func codexBuiltinAgent() AgentConfig {
 	return AgentConfig{
-		ManagedAdapter: "codex",
-		ManagedAdapterArgs: []string{
-			"-c", `sandbox_mode="danger-full-access"`,
-			"-c", `approval_policy="never"`,
-			"-c", `features.tool_search_always_defer_mcp_tools=true`,
-			"-c", `suppress_unstable_features_warning=true`,
-		},
+		ManagedAdapter:          codexAppServerAdapter,
 		ProviderMode:            AgentProviderModeAgentDefaults,
 		ModelProviderCapability: provider.CapabilityResponses,
 		ModelProvider:           provider.ProviderOpenAI,

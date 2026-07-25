@@ -71,6 +71,35 @@ func TestCodexAssetsDeclareCodeModeHost(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerAssetsDeclareRuntime(t *testing.T) {
+	codex := loadAdapterAssetSpec(t).Adapters["codex-app-server"]
+	for platform, asset := range codex.Assets {
+		triple := map[string]string{
+			"darwin-arm64": "aarch64-apple-darwin",
+			"darwin-x64":   "x86_64-apple-darwin",
+			"linux-arm64":  "aarch64-unknown-linux-musl",
+			"linux-x64":    "x86_64-unknown-linux-musl",
+			"win32-arm64":  "aarch64-pc-windows-msvc",
+			"win32-x64":    "x86_64-pc-windows-msvc",
+		}[platform]
+		if triple == "" {
+			t.Errorf("codex-app-server has unexpected platform %q", platform)
+			continue
+		}
+		executable := ""
+		if strings.HasPrefix(platform, "win32-") {
+			executable = ".exe"
+		}
+		root := "codex-runtime/" + triple + "/bin/"
+		if got, want := asset.Env["CODEX_PATH"], root+"codex"+executable; got != want {
+			t.Errorf("codex-app-server %s CODEX_PATH = %q, want %q", platform, got, want)
+		}
+		if got, want := asset.Env["CODEX_CODE_MODE_HOST_PATH"], root+"codex-code-mode-host"+executable; got != want {
+			t.Errorf("codex-app-server %s host = %q, want %q", platform, got, want)
+		}
+	}
+}
+
 func loadAdapterAssetSpec(t *testing.T) adapterAssetSpec {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
