@@ -293,7 +293,7 @@ function ProjectGroup({
             </span>
             <ChevronDown
               size={13}
-              className={`-ml-1 shrink-0 text-ink-3 transition-[color,transform] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
+              className={`-ml-1 shrink-0 text-ink-3 transition-[color,rotate] duration-150 ease-out group-hover/project:text-ink ${collapsed ? '-rotate-90' : ''}`}
               aria-hidden
             />
           </motion.button>
@@ -301,7 +301,7 @@ function ProjectGroup({
         <Link
           to="/new"
           search={{ project: group.key }}
-          className="-mt-1 grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100"
+          className="grid size-6 place-items-center rounded-full text-ink-3 opacity-0 transition-colors duration-150 hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100"
           aria-label={`New task in ${group.label}`}
           title={`New task in ${group.label}`}
         >
