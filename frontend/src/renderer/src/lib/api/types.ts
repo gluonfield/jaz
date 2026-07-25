@@ -1146,6 +1146,7 @@ export interface AgentSettings {
 export interface BrowserExtensionStatus {
   connected: boolean
   extension_id?: string
+  version?: string
   protocol?: string
   bridge_url?: string
   user_agent?: string

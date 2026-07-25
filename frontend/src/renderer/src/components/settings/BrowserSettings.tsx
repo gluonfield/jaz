@@ -169,6 +169,8 @@ export function BrowserSettings() {
           <dd className="min-w-0 break-all font-mono text-ink">
             {extension.extension_id || 'Not connected'}
           </dd>
+          <dt className="text-ink-3">Version</dt>
+          <dd className="font-mono text-ink">{extension.version || 'Not reported'}</dd>
           <dt className="text-ink-3">Last connected</dt>
           <dd className="text-ink">{formatTime(extension.last_connected_at)}</dd>
           <dt className="text-ink-3">Actions</dt>
