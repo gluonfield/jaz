@@ -117,7 +117,7 @@ export const Transcript = memo(function Transcript({
   groupTurns = false,
   working = false,
   findActive = false,
-  highlightedSeq,
+  revealSeq,
   tail,
   errorAction,
   onApprovePlan,
@@ -133,7 +133,8 @@ export const Transcript = memo(function Transcript({
   groupTurns?: boolean
   working?: boolean
   findActive?: boolean
-  highlightedSeq?: number
+  // A jump target outside the rendered window: drop the window so it exists.
+  revealSeq?: number
   // in-flight live exchange, rendered between history and anchored live state
   tail?: ReactNode
   errorAction?: SessionErrorAction
@@ -168,8 +169,8 @@ export const Transcript = memo(function Transcript({
   }, [baselineVisibleHistory, historyCount])
 
   useEffect(() => {
-    if (highlightedSeq) setVisibleHistoryCount(historyCount)
-  }, [highlightedSeq, historyCount])
+    if (revealSeq) setVisibleHistoryCount(historyCount)
+  }, [revealSeq, historyCount])
 
   const historyStart = findActive ? 0 : Math.max(0, historyCount - visibleHistoryCount)
   const hiddenHistoryCount = historyStart
@@ -196,13 +197,7 @@ export const Transcript = memo(function Transcript({
           <div
             key={`message-${item.message.seq}`}
             data-message-seq={item.message.seq}
-            className={`scroll-mt-24 rounded-card transition-[outline-color,box-shadow] duration-200 ${
-              groupTurns ? '' : 'my-1.5'
-            } ${
-              highlightedSeq === item.message.seq
-                ? 'outline-2 outline-offset-4 outline-primary/50 shadow-[0_0_0_8px_color-mix(in_oklab,var(--color-primary)_10%,transparent)]'
-                : 'outline-2 outline-offset-4 outline-transparent'
-            }`}
+            className={`scroll-mt-24 ${groupTurns ? '' : 'my-1.5'}`}
           >
             <Bubble
               message={item.message}

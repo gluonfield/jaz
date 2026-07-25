@@ -157,7 +157,6 @@ function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick:
 
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
-const HIGHLIGHT_MS = 2200
 const EMPTY_OVERVIEW: SessionOverview = { threads: [], subagents: [] }
 
 function SessionPage({ sessionId, search }: { sessionId: string; search: SessionSearch }) {
@@ -229,25 +228,19 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     pinToBottom,
   } = useThreadAutoScroll({ resetKey: sessionId })
   const threadFind = useThreadFind(sessionId, scrollRef)
-  const [highlightedMessageSeq, setHighlightedMessageSeq] = useState<number>()
-  const highlightTimerRef = useRef(0)
+  const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()
   const jumpedMessageRef = useRef(0)
 
-  // The one way into a message: deep links and the outline rail both land here,
-  // so a jump always reveals, centres, and marks the same way.
+  // The one way into a message: deep links and the outline rail both land here.
+  // A jump only reveals and scrolls — it never marks or focuses the target.
   const jumpToMessage = useCallback((messageSeq: number) => {
-    setHighlightedMessageSeq(messageSeq)
+    setRevealedMessageSeq(messageSeq)
     requestAnimationFrame(() => {
       scrollRef.current
         ?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
         ?.scrollIntoView({ block: 'center', inline: 'nearest' })
     })
-    window.clearTimeout(highlightTimerRef.current)
-    highlightTimerRef.current = window.setTimeout(() => {
-      setHighlightedMessageSeq((current) => (current === messageSeq ? undefined : current))
-    }, HIGHLIGHT_MS)
   }, [scrollRef])
-  useEffect(() => () => window.clearTimeout(highlightTimerRef.current), [])
 
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     pinToBottom()
@@ -516,7 +509,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                       groupTurns={isACP}
                       working={sessionRunning}
                       findActive={threadFind.open && Boolean(threadFind.query.trim())}
-                      highlightedSeq={highlightedMessageSeq}
+                      revealSeq={revealedMessageSeq}
                       errorAction={sessionError ? undefined : continueErrorAction}
                       onArtifactPrompt={queue.onSend}
                       hasEarlierHistory={detail.data.has_earlier}
