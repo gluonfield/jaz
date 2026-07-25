@@ -32,7 +32,7 @@ func TestClaimTabUsesExplicitTabAndSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out.Text, "claimed") || out.StateError == "" || len(backend.inputs) != 2 {
+	if out.Text != "claimed" || len(backend.inputs) != 1 {
 		t.Fatalf("out=%#v inputs=%#v", out, backend.inputs)
 	}
 	if input := backend.inputs[0]; input.Action != ActionClaimTab || input.TabID != "42" || input.Session != "browser-session-1" {
@@ -59,13 +59,8 @@ func TestUnavailableBackendReportsMissingBridge(t *testing.T) {
 }
 
 func TestFormInputSchemaAcceptsEverySupportedValueType(t *testing.T) {
-	state, err := json.Marshal(PageState{URL: "https://example.com", PageRevision: "p2"})
-	if err != nil {
-		t.Fatal(err)
-	}
 	backend := &recordingBackend{outputs: map[string]ActionOutput{
 		ActionFormInput: {Status: "ok", Text: "set"},
-		ActionState:     {Status: "ok", Data: state},
 	}}
 	session := connectBrowserMCP(t, backend)
 	for _, value := range []any{"prepared narrative", 17, true} {
@@ -121,13 +116,8 @@ func TestToolPassesSessionAndImageContent(t *testing.T) {
 }
 
 func TestFormInputRequiresAndPassesOpaqueRef(t *testing.T) {
-	state, err := json.Marshal(PageState{URL: "https://example.com", PageRevision: "p2"})
-	if err != nil {
-		t.Fatal(err)
-	}
 	backend := &recordingBackend{outputs: map[string]ActionOutput{
 		ActionFormInput: {Status: "ok", Text: "set"},
-		ActionState:     {Status: "ok", Data: state},
 	}}
 	_, out, err := (directTools{backend: backend}).FormInput(context.Background(), &mcp.CallToolRequest{}, FormInput{
 		Ref:   "f0:p1:e4",
@@ -136,7 +126,7 @@ func TestFormInputRequiresAndPassesOpaqueRef(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Page == nil || out.Page.PageRevision != "p2" {
+	if out.Text != "set" {
 		t.Fatalf("out = %#v", out)
 	}
 	input := backend.inputs[0]
@@ -301,7 +291,7 @@ func TestBoundBrowserTabsBoundsStructuredContent(t *testing.T) {
 	}
 }
 
-func TestActionReportsPostActionReadFailure(t *testing.T) {
+func TestActionDoesNotPerformImplicitPageRead(t *testing.T) {
 	backend := &recordingBackend{outputs: map[string]ActionOutput{
 		ActionClick: {Status: "ok", Text: "clicked"},
 	}}
@@ -313,10 +303,10 @@ func TestActionReportsPostActionReadFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.StateError != "browser returned invalid page state" {
+	if out.Text != "clicked" || len(backend.inputs) != 1 || backend.inputs[0].Action != ActionClick {
 		t.Fatalf("out = %#v", out)
 	}
-	if text := result.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "Post-action page read unavailable") {
+	if text := result.Content[0].(*mcp.TextContent).Text; text != "clicked" {
 		t.Fatalf("content = %q", text)
 	}
 }

@@ -31,12 +31,13 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = ws.Close() })
 	if err := ws.WriteJSON(map[string]any{
-		"type":         "hello",
-		"protocol":     ExtensionProtocol,
-		"extension_id": "ext-1",
-		"bridge_url":   "ws://127.0.0.1:5299/v1/browser/extension?key=secret",
-		"user_agent":   "Chrome",
-		"capabilities": map[string]any{"actions": SupportedExtensionActions()},
+		"type":              "hello",
+		"protocol":          ExtensionProtocol,
+		"extension_id":      "ext-1",
+		"extension_version": "0.2.0",
+		"bridge_url":        "ws://127.0.0.1:5299/v1/browser/extension?key=secret",
+		"user_agent":        "Chrome",
+		"capabilities":      map[string]any{"actions": SupportedExtensionActions()},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -106,8 +107,22 @@ func TestExtensionBridgeRoutesCallToConnectedExtension(t *testing.T) {
 	}
 	<-done
 	status := bridge.Status()
-	if !status.Connected || status.ExtensionID != "ext-1" || status.Protocol != ExtensionProtocol || status.BridgeURL != "ws://127.0.0.1:5299/v1/browser/extension" || status.UserAgent != "Chrome" {
+	if !status.Connected || status.ExtensionID != "ext-1" || status.Version != "0.2.0" || status.Protocol != ExtensionProtocol || status.BridgeURL != "ws://127.0.0.1:5299/v1/browser/extension" || status.UserAgent != "Chrome" {
 		t.Fatalf("status = %#v", status)
+	}
+}
+
+func TestExtensionBridgeAllowsRequestedWaitToFinish(t *testing.T) {
+	bridge := NewExtensionBridge(nil, nil)
+	if got := bridge.callTimeout(ActionInput{Action: ActionWait, Amount: 60000}); got != 65*time.Second {
+		t.Fatalf("wait call timeout = %s", got)
+	}
+	if got := bridge.callTimeout(ActionInput{Action: ActionWait, Amount: 1000}); got != extensionTimeout {
+		t.Fatalf("short wait call timeout = %s", got)
+	}
+	bridge.Timeout = 10 * time.Millisecond
+	if got := bridge.callTimeout(ActionInput{Action: ActionWait, Amount: 60000}); got != 10*time.Millisecond {
+		t.Fatalf("explicit test/operator timeout was overridden: %s", got)
 	}
 }
 

@@ -6,6 +6,7 @@ import {
   type HighlightedCodeLines,
 } from '@/components/session/HighlightedCode'
 import type { RepoFileChange } from '@/lib/api/types'
+import { diffSides, diffTokens } from '@/lib/diff/diffSides'
 import { parseUnifiedDiff, type DiffHunk } from '@/lib/diff/parseUnifiedDiff'
 
 // A file's +/− counts, shared by changed-file rows and diff section headers.
@@ -52,8 +53,14 @@ export const DiffHunkTable = memo(function DiffHunkTable({
   truncated?: boolean
   flattenTokens?: boolean
 }) {
-  const lines = useMemo(() => hunks.flatMap((hunk) => hunk.lines.map((line) => line.text)), [hunks])
-  const highlighted = useSyntaxHighlightedLines(binary ? '' : (path ?? ''), lines)
+  const sides = useMemo(() => diffSides(hunks), [hunks])
+  const language = binary ? '' : (path ?? '')
+  const oldTokens = useSyntaxHighlightedLines(language, sides.old)
+  const newTokens = useSyntaxHighlightedLines(language, sides.new)
+  const highlighted = useMemo(
+    () => diffTokens(sides, oldTokens, newTokens),
+    [sides, oldTokens, newTokens],
+  )
   if (binary) {
     return <Notice>Binary file — no text diff.</Notice>
   }

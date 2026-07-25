@@ -25,7 +25,9 @@ The normal interaction path is `browser_tabs` or `browser_navigate`, followed by
 `browser_click` or `browser_form_input`. Page refs carry a page revision and are
 rejected after they become stale. Each new `browser_read_page` or `browser_find`
 result replaces the prior ref set. CSS selectors are not part of the MCP tool
-contract.
+contract. Action tools return their own result without silently performing a
+second page read; call `browser_read_page` explicitly when the next step depends
+on updated state.
 
 The extension's `browser_key` action dispatches DOM keyboard events. It can
 activate page-level keyboard handlers, but Chrome does not apply every trusted

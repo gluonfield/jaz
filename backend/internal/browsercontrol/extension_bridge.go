@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	ExtensionProtocol = "jaz.browser.extension.v2"
-	extensionTimeout  = 30 * time.Second
+	ExtensionProtocol          = "jaz.browser.extension.v2"
+	extensionTimeout           = 30 * time.Second
+	extensionWaitResponseGrace = 5 * time.Second
 )
 
 type ExtensionBridge struct {
@@ -33,6 +34,7 @@ type ExtensionBridge struct {
 type ExtensionStatus struct {
 	Connected     bool     `json:"connected"`
 	ExtensionID   string   `json:"extension_id,omitempty"`
+	Version       string   `json:"version,omitempty"`
 	Protocol      string   `json:"protocol,omitempty"`
 	BridgeURL     string   `json:"bridge_url,omitempty"`
 	UserAgent     string   `json:"user_agent,omitempty"`
@@ -52,12 +54,13 @@ type extensionClient struct {
 }
 
 type extensionHello struct {
-	Type         string `json:"type"`
-	Protocol     string `json:"protocol"`
-	ExtensionID  string `json:"extension_id"`
-	BridgeURL    string `json:"bridge_url"`
-	UserAgent    string `json:"user_agent"`
-	Capabilities struct {
+	Type             string `json:"type"`
+	Protocol         string `json:"protocol"`
+	ExtensionID      string `json:"extension_id"`
+	ExtensionVersion string `json:"extension_version"`
+	BridgeURL        string `json:"bridge_url"`
+	UserAgent        string `json:"user_agent"`
+	Capabilities     struct {
 		Actions []string `json:"actions"`
 	} `json:"capabilities"`
 }
@@ -158,7 +161,7 @@ func (b *ExtensionBridge) Call(ctx context.Context, input ActionInput) (ActionOu
 		if !client.supports(input.Action) {
 			return ActionOutput{}, UnsupportedActionError{Action: input.Action, Hint: "reload the updated Jaz Browser Bridge"}
 		}
-		return client.call(ctx, b.nextID(), input, b.timeout())
+		return client.call(ctx, b.nextID(), input, b.callTimeout(input))
 	}
 	return ActionOutput{}, errors.New("browser extension bridge is not connected")
 }
@@ -222,6 +225,13 @@ func (b *ExtensionBridge) timeout() time.Duration {
 		return b.Timeout
 	}
 	return extensionTimeout
+}
+
+func (b *ExtensionBridge) callTimeout(input ActionInput) time.Duration {
+	if b.Timeout > 0 || input.Action != ActionWait {
+		return b.timeout()
+	}
+	return max(b.timeout(), time.Duration(input.Amount)*time.Millisecond+extensionWaitResponseGrace)
 }
 
 func (c *extensionClient) call(ctx context.Context, id string, input ActionInput, timeout time.Duration) (ActionOutput, error) {
@@ -359,7 +369,7 @@ func validateHello(hello extensionHello) error {
 	if strings.TrimSpace(hello.Protocol) != ExtensionProtocol {
 		return fmt.Errorf("unsupported browser extension protocol %q", strings.TrimSpace(hello.Protocol))
 	}
-	if len(hello.ExtensionID) > 256 || len(hello.BridgeURL) > browserURLLimit || len(hello.UserAgent) > 1000 || len(hello.Capabilities.Actions) > 100 {
+	if len(hello.ExtensionID) > 256 || len(hello.ExtensionVersion) > 100 || len(hello.BridgeURL) > browserURLLimit || len(hello.UserAgent) > 1000 || len(hello.Capabilities.Actions) > 100 {
 		return errors.New("browser extension hello exceeds field limits")
 	}
 	for _, action := range hello.Capabilities.Actions {
@@ -393,6 +403,7 @@ func (c *extensionClient) setHello(hello extensionHello) {
 	c.status = ExtensionStatus{
 		Connected:     true,
 		ExtensionID:   strings.TrimSpace(hello.ExtensionID),
+		Version:       strings.TrimSpace(hello.ExtensionVersion),
 		Protocol:      strings.TrimSpace(hello.Protocol),
 		BridgeURL:     safeBridgeURL(hello.BridgeURL),
 		UserAgent:     strings.TrimSpace(hello.UserAgent),

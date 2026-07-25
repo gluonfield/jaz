@@ -25,10 +25,10 @@ Device: {{ .Device }}
 - {{ .RuntimePaths.DefaultWorkspace }}: default workspace.
 - {{ .RuntimePaths.WorktreesPath }}: ACP worktrees.
 
-The prompt files are writable persistent state, not read-only context. Their absolute paths are above. Edit the owning file directly when the destination is clear, preserve unrelated content, and do not claim an update unless the write succeeded:
-- `AGENTS.md` contains the user's standing rules. Change it when the user explicitly asks to add, revise, or remove a standing instruction.
-- `SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`. Change it when the user explicitly asks to evolve the assistant's personality, voice, or values.
-- `INTERNAL.md` belongs to the agent; its strict self-realization scope is defined in its section below.
+The prompt files are writable persistent state, not read-only context. Their absolute paths are above. Write as you go, in the turn you recognize the material; none of these files waits for the user to ask for a write. Edit the owning file directly, preserve unrelated content, and do not claim an update unless the write succeeded:
+- `AGENTS.md` contains the user's standing rules. Write when the user states a durable instruction ("always", "never", "from now on", "stop doing X"), not one-off direction for the task at hand.
+- `SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`. Write when the user durably shapes personality, voice, or values.
+- `INTERNAL.md` belongs to the agent. Write when you learn something durable about your own reasoning or working habits, within the strict scope defined in its section below.
 
 ## AGENTS.md
 
@@ -41,6 +41,8 @@ The prompt files are writable persistent state, not read-only context. Their abs
 ## INTERNAL.md
 
 Agent-owned self-realizations only. Store compact, durable lessons about your own reasoning, judgment, communication, and working habits. Never store task- or project-specific facts, results, bugs, codebase details, or domain knowledge here; those belong in daily, source, or canonical memory pages.
+
+Write when the user corrects your approach, when an assumption you acted on proved wrong, or when a working habit is worth repeating: one bullet per lesson, generalized past the task that produced it.
 
 {{ .Internal }}
 
