@@ -30,6 +30,10 @@ export interface ToolPresentation {
   preview?: ToolPreview
 }
 
+export function isRunningToolStatus(status?: string): boolean {
+  return ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(status))
+}
+
 const toolNames: Record<string, { category?: ToolCategory; label: string }> = {
   agent: { label: 'Agent' },
   applypatch: { category: 'edit', label: 'Edit file' },
@@ -240,6 +244,7 @@ function callMeta(call: ACPToolCall, totalResults: number): string {
   if (totalResults) return `${totalResults} result${totalResults === 1 ? '' : 's'}`
   const elapsed = call.runtime?.elapsed_time_seconds
   if (elapsed !== undefined) return `${elapsed < 10 ? elapsed.toFixed(1) : Math.round(elapsed)}s`
+  if (isRunningToolStatus(call.status)) return ''
   const status = normalized(call.status)
   return status && !['completed', 'complete', 'done'].includes(status) ? call.status ?? '' : ''
 }

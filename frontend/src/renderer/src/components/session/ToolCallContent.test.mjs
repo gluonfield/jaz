@@ -33,3 +33,21 @@ test('collapsed tool rows leave previews unmounted inside the disclosure', async
   // escaping the Collapse: outside it, the markup would show up here.
   expect(html).not.toContain('after_unique_preview')
 })
+
+test('active tool rows show a spinner instead of the protocol status', async () => {
+  const { ToolCallDetail } = await import('./ToolCallContent')
+  const call = {
+    id: 'search-1',
+    title: 'Tool: jaztools/memory_search',
+    status: 'in_progress',
+    raw_input: { query: 'open questions' },
+  }
+
+  const active = renderToStaticMarkup(createElement(ToolCallDetail, { call, active: true }))
+  expect(active).toContain('animate-spin')
+  expect(active).not.toContain('in_progress')
+
+  const stale = renderToStaticMarkup(createElement(ToolCallDetail, { call }))
+  expect(stale).not.toContain('animate-spin')
+  expect(stale).not.toContain('in_progress')
+})
