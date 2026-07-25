@@ -19,6 +19,7 @@ import { SidePanelControl, useSidePanelState } from '@/components/session/SidePa
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ThreadFindBar } from '@/components/session/ThreadFindBar'
+import { ThreadOutline } from '@/components/session/ThreadOutline'
 import { TokenStats } from '@/components/session/TokenStats'
 import { ToolCalls } from '@/components/session/ToolCalls'
 import { Transcript } from '@/components/session/Transcript'
@@ -156,6 +157,7 @@ function ScrollToBottomButton({ visible, onClick }: { visible: boolean; onClick:
 
 const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
+const HIGHLIGHT_MS = 2200
 const EMPTY_OVERVIEW: SessionOverview = { threads: [], subagents: [] }
 
 function SessionPage({ sessionId, search }: { sessionId: string; search: SessionSearch }) {
@@ -228,6 +230,24 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   } = useThreadAutoScroll({ resetKey: sessionId })
   const threadFind = useThreadFind(sessionId, scrollRef)
   const [highlightedMessageSeq, setHighlightedMessageSeq] = useState<number>()
+  const highlightTimerRef = useRef(0)
+  const jumpedMessageRef = useRef(0)
+
+  // The one way into a message: deep links and the outline rail both land here,
+  // so a jump always reveals, centres, and marks the same way.
+  const jumpToMessage = useCallback((messageSeq: number) => {
+    setHighlightedMessageSeq(messageSeq)
+    requestAnimationFrame(() => {
+      scrollRef.current
+        ?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
+        ?.scrollIntoView({ block: 'center', inline: 'nearest' })
+    })
+    window.clearTimeout(highlightTimerRef.current)
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedMessageSeq((current) => (current === messageSeq ? undefined : current))
+    }, HIGHLIGHT_MS)
+  }, [scrollRef])
+  useEffect(() => () => window.clearTimeout(highlightTimerRef.current), [])
 
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     pinToBottom()
@@ -360,26 +380,18 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     void markThreadSeen(sessionId).finally(() => queryClient.invalidateQueries({ queryKey: keys.feed }))
   }, [sessionId, queryClient])
 
+  // A deep link jumps once. Without this the effect re-fires on every streamed
+  // update and drags the reader back to the linked message after they have
+  // navigated away from it.
   useEffect(() => {
-    if (!detail.isSuccess || !search.message) return
-    const messageSeq = search.message
-    if (!detail.data.messages.some((message) => message.seq === messageSeq)) {
+    if (!detail.isSuccess || !search.message || jumpedMessageRef.current === search.message) return
+    if (!detail.data.messages.some((message) => message.seq === search.message)) {
       if (detail.data.has_earlier && !loadingEarlierHistory) void loadEarlierHistory()
       return
     }
-    setHighlightedMessageSeq(messageSeq)
-    const frame = requestAnimationFrame(() => {
-      const target = scrollRef.current?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
-      target?.scrollIntoView({ block: 'center', inline: 'nearest' })
-    })
-    const timer = window.setTimeout(() => {
-      setHighlightedMessageSeq((current) => (current === messageSeq ? undefined : current))
-    }, 2200)
-    return () => {
-      cancelAnimationFrame(frame)
-      window.clearTimeout(timer)
-    }
-  }, [detail.data, detail.isSuccess, loadEarlierHistory, loadingEarlierHistory, scrollRef, search.message])
+    jumpedMessageRef.current = search.message
+    jumpToMessage(search.message)
+  }, [detail.data, detail.isSuccess, jumpToMessage, loadEarlierHistory, loadingEarlierHistory, search.message])
 
   const data = detail.data
   const overviewData = overview.data ?? (overview.isError ? undefined : EMPTY_OVERVIEW)
@@ -567,6 +579,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                 )}
               </div>
             </div>
+            <ThreadOutline
+              messages={transcriptMessages}
+              events={displayEvents}
+              scrollRef={scrollRef}
+              onSelect={jumpToMessage}
+            />
             <ThreadFindBar find={threadFind} />
             <SelectionContextToolbar scrollRef={scrollRef} onAdd={composerContexts.addSelection} />
 

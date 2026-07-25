@@ -2,6 +2,7 @@ import { memo } from 'react'
 import type { ChatMessage, MessageBlock } from '@/lib/api/types'
 import { browserAnnotationFromJSON } from '@/lib/messageContext'
 import type { ComposerContext } from '@/lib/messageContext'
+import { messageText } from '@/lib/messageText'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { UserMessageMarkdown } from './MessageMarkdown'
 import { MessageAttachments, type MessageAttachment } from './MessageAttachments'
@@ -11,17 +12,6 @@ import { ToolCalls } from './ToolCalls'
 import { isHiddenToolName } from './toolVisibility'
 
 type ToolBlock = Extract<MessageBlock, { type: 'tool' }>
-
-function messageText(message: ChatMessage): string {
-  // Each text block is a separate utterance; join as paragraphs so block
-  // boundaries don't fuse sentences together ("…intact.Updated…").
-  const text = message.blocks
-    ?.filter((block) => block.type === 'text')
-    .map((block) => (block.text ?? '').trim())
-    .filter(Boolean)
-    .join('\n\n')
-  return text || message.content
-}
 
 function messageContexts(message: ChatMessage): ComposerContext[] {
   return (
