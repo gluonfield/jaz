@@ -1,4 +1,4 @@
-import { ChevronRight, LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { memo, useState, type ReactNode } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
 import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
@@ -7,12 +7,7 @@ import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
 import { ToolCallDetail } from './ToolCallContent'
-import { hasToolCallDetail, toolRunLabel } from './toolPresentation'
-import { normalized } from './TranscriptUtils'
-
-function isRunningToolStatus(status?: string): boolean {
-  return ['pending', 'in_progress', 'in-progress', 'running'].includes(normalized(status))
-}
+import { hasToolCallDetail, isRunningToolStatus, toolRunLabel } from './toolPresentation'
 
 const ToolRunDisclosure = memo(function ToolRunDisclosure({
   label,
@@ -43,33 +38,13 @@ const ToolRunDisclosure = memo(function ToolRunDisclosure({
       <Collapse open={open && expandable} className="w-full">
         <div className="relative w-full py-0.5 before:absolute before:bottom-4 before:left-[9px] before:top-4 before:w-px before:bg-border/75">
           {detailCalls.map((call) => (
-            <ToolCallDetail key={call.id} call={call} />
+            <ToolCallDetail key={call.id} call={call} active={active} />
           ))}
         </div>
       </Collapse>
     </div>
   )
 })
-
-export function ToolStatusLine({
-  label,
-  status,
-  active = false,
-}: {
-  label: string
-  status?: string
-  active?: boolean
-}) {
-  const running = active && isRunningToolStatus(status)
-  return (
-    <div className="inline-flex min-h-7 max-w-full items-center gap-1.5 self-start rounded-full px-1 text-[12px] text-ink-3">
-      <ChevronRight size={12} className="shrink-0 opacity-30" aria-hidden />
-      <span className="min-w-0 truncate">{label}</span>
-      {status && !running ? <span className="shrink-0">· {status}</span> : null}
-      {running ? <LoaderCircle className="size-3 shrink-0 animate-spin text-running" aria-hidden /> : null}
-    </div>
-  )
-}
 
 export const ToolDisclosure = memo(function ToolDisclosure({
   calls,

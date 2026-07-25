@@ -60,6 +60,16 @@ test('web result totals remain truthful while the preview stays bounded', () => 
   })
 })
 
+test('running protocol statuses stay out of visible tool metadata', () => {
+  expect(
+    toolCallPresentation({
+      id: 'running',
+      tool_name: 'memory_search',
+      status: 'in_progress',
+    }).meta,
+  ).toBe('')
+})
+
 test('run summaries use the same typed categories as individual rows', () => {
   expect(
     toolRunLabel([

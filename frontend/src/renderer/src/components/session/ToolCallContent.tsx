@@ -6,6 +6,7 @@ import {
   FileText,
   Globe,
   Image,
+  LoaderCircle,
   Search,
   SquareTerminal,
   type LucideIcon,
@@ -14,6 +15,7 @@ import { memo, useState } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
 import type { ACPToolCall } from '@/lib/api/types'
 import {
+  isRunningToolStatus,
   toolCallPresentation,
   toolDomain,
   type ToolCategory,
@@ -118,12 +120,19 @@ const categoryIcons: Record<ToolCategory, LucideIcon> = {
   web_search: Search,
 }
 
-export const ToolCallDetail = memo(function ToolCallDetail({ call }: { call: ACPToolCall }) {
+export const ToolCallDetail = memo(function ToolCallDetail({
+  call,
+  active = false,
+}: {
+  call: ACPToolCall
+  active?: boolean
+}) {
   const [open, setOpen] = useState(false)
   const presentation = toolCallPresentation(call)
   const expandable = hasToolRawDetails(call.raw_input, presentation.output)
   const Icon = categoryIcons[presentation.category]
   const failed = normalized(call.status) === 'failed'
+  const running = active && isRunningToolStatus(call.status)
   return (
     <div className="relative min-w-0">
       <button
@@ -142,6 +151,7 @@ export const ToolCallDetail = memo(function ToolCallDetail({ call }: { call: ACP
             {presentation.meta}
           </span>
         ) : null}
+        {running ? <LoaderCircle className="size-3 shrink-0 animate-spin text-running" aria-hidden /> : null}
         {expandable ? (
           <ChevronRight
             size={12}

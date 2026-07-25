@@ -1,10 +1,8 @@
 import { LoaderCircle } from 'lucide-react'
 import { memo } from 'react'
 import type { ACPToolCall, ACPToolContent } from '@/lib/api/types'
-import { toolCallCategory, toolCallPresentation } from './toolPresentation'
+import { isRunningToolStatus, toolCallCategory, toolCallPresentation } from './toolPresentation'
 import { normalized } from './TranscriptUtils'
-
-const RUNNING_STATUSES = new Set(['pending', 'in_progress', 'in-progress', 'running'])
 
 export function hasInlineShellCommand(call: ACPToolCall): boolean {
   return toolCallCategory(call) === 'command'
@@ -40,7 +38,7 @@ export const ShellCommandBlock = memo(function ShellCommandBlock({
   const output = outputText(call.content)
   const exitCode = call.runtime?.terminal_exit_code
   const failed = normalized(call.status) === 'failed' || (exitCode !== undefined && exitCode !== 0)
-  const running = active && RUNNING_STATUSES.has(normalized(call.status))
+  const running = active && isRunningToolStatus(call.status)
 
   return (
     <div className="w-full overflow-hidden rounded-card border border-border">
