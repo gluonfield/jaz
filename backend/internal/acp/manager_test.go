@@ -52,7 +52,7 @@ func warmedManagerModelCatalog(t *testing.T) *modelcatalog.Service {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
-			{"id":"anthropic/claude-opus-4.8","context_length":1000000,"reasoning":{"supported_efforts":["xhigh"]}},
+			{"id":"anthropic/claude-opus-5","context_length":1000000,"reasoning":{"supported_efforts":["xhigh"]}},
 			{"id":"openai/gpt-5.5","context_length":1050000,"architecture":{"input_modalities":["text","image"]},"reasoning":{"supported_efforts":["xhigh"]}}
 		]}`))
 	}))
@@ -1081,12 +1081,12 @@ func TestManagerSpawnAcceptsConfiguredClaudeModelLabel(t *testing.T) {
 			"claude": {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:           "opus-4.8",
+				Model:           "opus-5",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_MODELS":              "default,sonnet",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "default",
+					"JAZ_FAKE_ACP_MODELS":              "opus[1m],sonnet",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "opus[1m]",
 					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
 					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
 					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
@@ -1106,8 +1106,8 @@ func TestManagerSpawnAcceptsConfiguredClaudeModelLabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Model != "default" {
-		t.Fatalf("claude model = %q, want default", session.Model)
+	if session.Model != "opus[1m]" {
+		t.Fatalf("claude model = %q, want opus[1m]", session.Model)
 	}
 }
 

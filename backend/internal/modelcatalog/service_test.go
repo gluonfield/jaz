@@ -340,7 +340,7 @@ func TestServiceDoesNotInventReasoningBeforeCatalogLoads(t *testing.T) {
 func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 	service := warmOpenRouterTestService(t, `{"data":[
 		{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","high","medium","low"],"default_effort":"medium"}},
-		{"id":"anthropic/claude-opus-4.8","name":"Anthropic: Claude Opus 4.8","reasoning":{"mandatory":true,"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
+		{"id":"anthropic/claude-opus-5","name":"Anthropic: Claude Opus 5","reasoning":{"mandatory":true,"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
 		{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
 	]}`)
 
@@ -352,11 +352,9 @@ func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 	if strings.Join(efforts["sonnet"].Reasoning.Efforts, ",") != "low,medium,high,max" {
 		t.Fatalf("sonnet efforts = %#v", efforts["sonnet"].Reasoning.Efforts)
 	}
-	if strings.Join(efforts["default"].Reasoning.Efforts, ",") != "low,medium,high,xhigh,max" {
-		t.Fatalf("default efforts = %#v", efforts["default"].Reasoning.Efforts)
-	}
-	if efforts["default"].Reasoning.DefaultEffort != "medium" || !efforts["default"].Reasoning.Mandatory {
-		t.Fatalf("default reasoning metadata = %#v", efforts["default"])
+	if efforts["opus[1m]"].Label != "Opus 5" || efforts["opus[1m]"].OpenRouterID != "" ||
+		efforts["opus[1m]"].Reasoning.Status != ReasoningUnavailable {
+		t.Fatalf("opus model = %#v", efforts["opus[1m]"])
 	}
 	if efforts["haiku"].Reasoning.Efforts == nil || len(efforts["haiku"].Reasoning.Efforts) != 0 {
 		t.Fatalf("haiku efforts = %#v", efforts["haiku"].Reasoning.Efforts)

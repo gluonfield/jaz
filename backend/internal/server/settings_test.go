@@ -34,7 +34,7 @@ func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 			{"id":"openai/gpt-5.6-terra","name":"OpenAI: GPT-5.6 Terra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-5.6-luna","name":"OpenAI: GPT-5.6 Luna","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-5.5","name":"OpenAI: GPT-5.5","reasoning":{"supported_efforts":["high","medium","low"]}},
-			{"id":"anthropic/claude-opus-4.8","name":"Anthropic: Claude Opus 4.8","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"]}},
+			{"id":"anthropic/claude-opus-5","name":"Anthropic: Claude Opus 5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"]}},
 			{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
 			{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
 		]}`))

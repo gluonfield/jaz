@@ -296,7 +296,7 @@ func BuiltinAgents() AgentCatalog {
 		AgentCodex: codexBuiltinAgent(),
 		AgentClaude: {
 			ManagedAdapter:  "claude",
-			Model:           "default",
+			Model:           "opus[1m]",
 			ReasoningEffort: DefaultAgentReasoningEffort(AgentClaude),
 		},
 		AgentKimi: {

@@ -16,7 +16,7 @@ func TestAgentOptionsIncludesConfiguredModelOptions(t *testing.T) {
 	manager := &Manager{
 		cfg: Config{ModelCatalog: modelcatalog.NewService(nil)},
 		agents: AgentCatalog{
-			AgentClaude: {Model: "opus-4.8", ReasoningEffort: "xhigh"},
+			AgentClaude: {Model: "opus[1m]", ReasoningEffort: "xhigh"},
 		},
 	}
 
@@ -28,10 +28,10 @@ func TestAgentOptionsIncludesConfiguredModelOptions(t *testing.T) {
 		t.Fatalf("agents = %#v", out.Agents)
 	}
 	options := out.Agents[0]
-	if options.Name != AgentClaude || options.DefaultModel != "opus-4.8" || options.DefaultReasoningEffort != "xhigh" {
+	if options.Name != AgentClaude || options.DefaultModel != "opus[1m]" || options.DefaultReasoningEffort != "xhigh" {
 		t.Fatalf("defaults = %#v", options)
 	}
-	if len(options.Models) != 1 || options.Models[0].Model != "default" || options.Models[0].Label != "Opus 4.8" {
+	if len(options.Models) != 1 || options.Models[0].Model != "opus[1m]" || options.Models[0].Label != "Opus 5" {
 		t.Fatalf("models = %#v", options.Models)
 	}
 }
