@@ -18,8 +18,8 @@ type providerSubagentHint struct {
 }
 
 type providerSubagentUpdate struct {
-	subagent *sessionevents.ProviderSubagentEvent
-	consume  bool
+	subagents []sessionevents.ProviderSubagentEvent
+	consume   bool
 }
 
 // providerSubagentFromUpdate publishes subagent panel records and decides which
@@ -28,25 +28,37 @@ func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpd
 	switch event := update.(type) {
 	case acpschema.SessionInfoSessionUpdate:
 		subagent := providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{})
-		return providerSubagentUpdate{subagent: subagent, consume: subagent != nil}
+		return providerSubagentUpdate{subagents: providerSubagentSlice(subagent), consume: subagent != nil}
 	case acpschema.ToolCallSessionUpdate:
-		return toolCallSubagent(agent, event.Meta)
+		return toolCallSubagent(agent, event.Meta, event.RawInput)
 	case acpschema.ToolCallUpdateSessionUpdate:
-		return toolCallSubagent(agent, event.Meta)
+		return toolCallSubagent(agent, event.Meta, event.RawInput)
 	case acpschema.AgentMessageChunkUpdate:
-		return providerSubagentUpdate{subagent: providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
+		return providerSubagentUpdate{subagents: providerSubagentSlice(providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"}))}
 	case acpschema.AgentThoughtChunkUpdate:
-		return providerSubagentUpdate{subagent: providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})}
+		return providerSubagentUpdate{subagents: providerSubagentSlice(providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"}))}
 	default:
 		return providerSubagentUpdate{}
 	}
 }
 
-func toolCallSubagent(agent string, meta map[string]any) providerSubagentUpdate {
-	return providerSubagentUpdate{
-		subagent: providerSubagentFromMeta(agent, meta, providerSubagentHint{status: "running"}),
-		consume:  subagentInternalToolCall(meta),
+func toolCallSubagent(agent string, meta map[string]any, rawInput json.RawMessage) providerSubagentUpdate {
+	subagent := providerSubagentFromMeta(agent, meta, providerSubagentHint{status: "running"})
+	subagents := providerSubagentSlice(subagent)
+	if len(subagents) == 0 && CanonicalAgentName(agent) == AgentCodex {
+		subagents = codexSubagentsFromMeta(meta, rawInput)
 	}
+	return providerSubagentUpdate{
+		subagents: subagents,
+		consume:   subagentInternalToolCall(meta),
+	}
+}
+
+func providerSubagentSlice(subagent *sessionevents.ProviderSubagentEvent) []sessionevents.ProviderSubagentEvent {
+	if subagent == nil {
+		return nil
+	}
+	return []sessionevents.ProviderSubagentEvent{*subagent}
 }
 
 // subagentInternalToolCall reports whether a tool call is a Claude subagent's

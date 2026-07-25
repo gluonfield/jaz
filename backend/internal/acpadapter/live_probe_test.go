@@ -29,7 +29,7 @@ func TestLiveCodexAppServerArchive(t *testing.T) {
 		}
 	}
 	if output, err := exec.CommandContext(ctx, launch.Command, "--version").CombinedOutput(); err != nil ||
-		!strings.Contains(string(output), "1.1.7-jaz.5") {
+		!strings.Contains(string(output), "1.1.7-jaz.7") {
 		t.Fatalf("adapter --version: %s err=%v", output, err)
 	}
 	if output, err := exec.CommandContext(ctx, launch.Env["CODEX_PATH"], "--version").CombinedOutput(); err != nil ||

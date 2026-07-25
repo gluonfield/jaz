@@ -170,8 +170,8 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		return
 	}
 	subagentUpdate := providerSubagentFromUpdate(job.ACPAgent, update)
-	if subagentUpdate.subagent != nil {
-		m.publishProviderSubagent(job.eventView(), *subagentUpdate.subagent)
+	for _, subagent := range subagentUpdate.subagents {
+		m.publishProviderSubagent(job.eventView(), subagent)
 	}
 	if subagentUpdate.consume {
 		return

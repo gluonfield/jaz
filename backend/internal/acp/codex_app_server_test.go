@@ -35,13 +35,9 @@ func TestConfigureCodexAppServerEnv(t *testing.T) {
 	if err := json.Unmarshal([]byte(env["CODEX_CONFIG"]), &config); err != nil {
 		t.Fatal(err)
 	}
-	if env["MODEL_PROVIDER"] != modelprovider.ProviderOpenRouter {
-		t.Fatalf("MODEL_PROVIDER = %q", env["MODEL_PROVIDER"])
-	}
 	if config["developer_instructions"] != "Jaz instructions" ||
 		config["model"] != "moonshotai/kimi-k3" ||
 		config["model_reasoning_effort"] != "max" ||
-		config["model_context_window"] != float64(1_048_576) ||
 		config["sandbox_mode"] != "danger-full-access" ||
 		config["approval_policy"] != "never" {
 		t.Fatalf("config = %#v", config)
@@ -77,7 +73,7 @@ func TestConfigureCodexAppServerEnvKeepsOpenAIAccountAuthNative(t *testing.T) {
 	if err := json.Unmarshal([]byte(env["CODEX_CONFIG"]), &config); err != nil {
 		t.Fatal(err)
 	}
-	if env["MODEL_PROVIDER"] != "openai" || config["model_provider"] != "openai" {
+	if config["model_provider"] != "openai" {
 		t.Fatalf("env = %#v, config = %#v", env, config)
 	}
 	if _, ok := config["model_providers"]; ok {

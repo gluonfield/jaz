@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -12,6 +13,62 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
+
+func TestCodexOfficialSubagentMetadata(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  string
+		want sessionevents.ProviderSubagentEvent
+	}{
+		{
+			name: "activity",
+			raw: `{
+				"sessionUpdate":"tool_call","toolCallId":"activity","title":"Start subagent",
+				"rawInput":{"agentThreadId":"child","agentPath":"/root/audit","activityKind":"started"},
+				"_meta":{"codex":{"subagent":{"threadId":"child","path":"/root/audit","activity":"started"}}}
+			}`,
+			want: sessionevents.ProviderSubagentEvent{
+				Provider: AgentCodex, ID: "child", ThreadID: "child",
+				Name: "audit", Task: "audit", Status: "running", Summary: "Spawned",
+			},
+		},
+		{
+			name: "collaboration",
+			raw: `{
+				"sessionUpdate":"tool_call","toolCallId":"spawn","title":"spawnAgent",
+				"rawInput":{
+					"prompt":"audit it","senderThreadId":"parent","receiverThreadIds":["child","child-2"],
+					"agentsStates":{
+						"child":{"status":"running","message":"Inspecting"},
+						"child-2":{"status":"errored","message":null}
+					}
+				},
+				"_meta":{"codex":{"collaboration":{
+					"tool":"spawnAgent","senderThreadId":"parent","receiverThreadIds":["child","child-2"]
+				}}}
+			}`,
+			want: sessionevents.ProviderSubagentEvent{
+				Provider: AgentCodex, ID: "child", ThreadID: "child", ParentID: "parent",
+				Status: "running", Summary: "Inspecting", Prompt: "audit it",
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			update, err := acpschema.DecodeSessionUpdate(json.RawMessage(test.raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := providerSubagentFromUpdate(AgentCodex, update).subagents
+			if len(got) == 0 || got[0] != test.want {
+				t.Fatalf("subagents = %#v, first want %#v", got, test.want)
+			}
+			if test.name == "collaboration" &&
+				(len(got) != 2 || got[1].ID != "child-2" || got[1].Status != "failed" || got[1].Summary != "Failed") {
+				t.Fatalf("subagents = %#v", got)
+			}
+		})
+	}
+}
 
 func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())

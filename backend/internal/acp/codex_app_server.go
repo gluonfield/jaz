@@ -48,22 +48,10 @@ func configureCodexAppServerEnv(
 
 	providerID, providerConfig := codexAppServerProvider(cfg, providers)
 	config["model_provider"] = providerID
-	env["MODEL_PROVIDER"] = providerID
 	if providerConfig != nil {
 		modelProviders := mergeAnyMap(config["model_providers"], nil)
 		modelProviders[providerID] = mergeAnyMap(modelProviders[providerID], providerConfig)
 		config["model_providers"] = modelProviders
-	}
-
-	if raw := env[codexModelMetadataEnv]; raw != "" {
-		var metadata codexModelMetadata
-		if err := json.Unmarshal([]byte(raw), &metadata); err != nil {
-			return fmt.Errorf("parse %s for CODEX_CONFIG: %w", codexModelMetadataEnv, err)
-		}
-		if metadata.ContextWindow <= 0 {
-			return fmt.Errorf("%s context_window must be positive", codexModelMetadataEnv)
-		}
-		config["model_context_window"] = metadata.ContextWindow
 	}
 
 	encoded, err := json.Marshal(config)

@@ -67,6 +67,21 @@ func TestLiveCodexACPSideChatProbe(t *testing.T) {
 	if secondThreadID != firstThreadID {
 		t.Fatalf("side chat thread id changed: first=%q second=%q", firstThreadID, secondThreadID)
 	}
+
+	main := probeCall(t, ctx, conn, "6", acpschema.AgentMethodSessionPrompt, map[string]any{
+		"sessionId": session.SessionID,
+		"prompt":    []map[string]any{{"type": "text", "text": "Reply with exactly MAIN_THREAD_READY."}},
+	})
+	var mainResponse acpschema.PromptResponse
+	if err := json.Unmarshal(main.Result, &mainResponse); err != nil {
+		t.Fatal(err)
+	}
+	if mainResponse.StopReason != acpschema.StopReasonEndTurn {
+		t.Fatalf("main stop reason = %q, want %q", mainResponse.StopReason, acpschema.StopReasonEndTurn)
+	}
+	forkSideID := "fork-side-probe"
+	forked := probeSidePrompt(t, ctx, conn, "7", session.SessionID, forkSideID, "Reply with exactly FORKED_SIDECHAT.")
+	requireProbeSideMeta(t, forked, forkSideID, string(session.SessionID))
 }
 
 func probeSidePrompt(t *testing.T, ctx context.Context, conn jsonrpc.MessageConn, id string, sessionID acpschema.SessionID, sideID, prompt string) []map[string]any {
