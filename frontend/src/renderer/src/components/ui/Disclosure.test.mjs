@@ -4,18 +4,24 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Collapse } from './Collapse'
 import { DisclosureTrigger } from './DisclosureTrigger'
 
-test('collapse keeps hidden content mounted for its first transition', () => {
+// A clipped-but-present subtree still costs full style, layout, and effects. A
+// transcript nests these three deep over hundreds of tool calls, so closed
+// content must be absent from the tree, not merely hidden.
+test('collapse leaves closed content unmounted', () => {
   const html = renderToStaticMarkup(
     createElement(Collapse, { open: false }, createElement('span', null, 'prepared content')),
   )
 
   expect(html).toContain('grid-rows-[0fr]')
-  expect(html).toContain('prepared content')
+  expect(html).not.toContain('prepared content')
 })
 
-test('expanded collapse preserves nested layout motion and width constraints', () => {
-  const html = renderToStaticMarkup(createElement(Collapse, { open: true }, createElement('span')))
+test('expanded collapse mounts content and preserves nested layout motion', () => {
+  const html = renderToStaticMarkup(
+    createElement(Collapse, { open: true }, createElement('span', null, 'prepared content')),
+  )
 
+  expect(html).toContain('prepared content')
   expect(html).toContain('min-w-0')
   expect(html).toContain('overflow-visible')
 })

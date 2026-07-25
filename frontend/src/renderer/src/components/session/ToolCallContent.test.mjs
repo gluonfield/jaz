@@ -7,7 +7,7 @@ mock.module('./EditDiffBlock', () => ({
   EditDiffBlock: () => createElement('span', null, 'after_unique_preview'),
 }))
 
-test('collapsed tool rows keep styled previews inside the disclosure', async () => {
+test('collapsed tool rows leave previews unmounted inside the disclosure', async () => {
   const { ToolCallDetail } = await import('./ToolCallContent')
   const call = {
     id: 'edit-1',
@@ -27,5 +27,9 @@ test('collapsed tool rows keep styled previews inside the disclosure', async () 
 
   const html = renderToStaticMarkup(createElement(ToolCallDetail, { call }))
   expect(html).toContain('grid-rows-[0fr]')
-  expect(html.indexOf('inert')).toBeLessThan(html.indexOf('after_unique_preview'))
+  // The row itself renders, so the absent preview below is a real signal.
+  expect(html).toContain('Edit example.go')
+  // Closed disclosures don't mount their preview. This also catches a preview
+  // escaping the Collapse: outside it, the markup would show up here.
+  expect(html).not.toContain('after_unique_preview')
 })

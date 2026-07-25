@@ -265,14 +265,16 @@ export function toolCallPresentation(call: ACPToolCall): ToolPresentation {
   }
 }
 
+// `rawOutput` is the same expression toolCallPresentation exposes as `output`,
+// evaluated last so the cheap field checks short-circuit before it concatenates
+// every content block.
 export function hasToolCallDetail(call: ACPToolCall): boolean {
-  const presentation = toolCallPresentation(call)
   return Boolean(
     call.title ||
       call.tool_name ||
       call.status ||
       call.raw_input !== undefined ||
-      presentation.output !== undefined,
+      rawOutput(call) !== undefined,
   )
 }
 
