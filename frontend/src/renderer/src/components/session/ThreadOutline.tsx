@@ -12,12 +12,13 @@ const TICK_REST = 8
 const TICK_MIN = 12
 const TICK_MAX = 24
 const TICK_HOVER = 28
-const TICK_PITCH = 10
-const RAIL_MAX_HEIGHT = 340
+const TICK_PITCH = 8
+const RAIL_MAX_HEIGHT = 300
 
-const CARD_WIDTH = 300
-const CARD_GAP = 14
-const CARD_MAX_HEIGHT = 152
+const CARD_WIDTH = 252
+const CARD_GAP = 10
+// Title line + three clamped preview lines + padding: the tallest the card gets.
+const CARD_MAX_HEIGHT = 112
 const VIEWPORT_MARGIN = 12
 
 // The turn in view is the last one whose top has crossed the reading line.
@@ -126,7 +127,7 @@ export function ThreadOutline({
                 onFocus={(event) => open(event.currentTarget, entry.seq)}
                 onBlur={close}
                 onClick={() => onSelect(entry.seq)}
-                className={`flex h-2.5 min-h-0 shrink cursor-pointer items-center pr-3 transition-colors duration-200 motion-reduce:transition-none ${
+                className={`flex h-2 min-h-0 shrink cursor-pointer items-center pr-3 transition-colors duration-200 motion-reduce:transition-none ${
                   hovered
                     ? 'text-primary'
                     : active
@@ -163,19 +164,12 @@ function OutlineCard({ entry, anchor }: { entry?: OutlineEntry; anchor: Anchor |
           exit={{ opacity: 0, x: reduce ? 0 : -6, y: '-50%' }}
           transition={{ duration: 0.14, ease: 'easeOut' }}
           style={{ left: anchor.left, top: anchor.top, width: CARD_WIDTH }}
-          className="pointer-events-none fixed z-tooltip rounded-card bg-surface p-3.5 shadow-raised ring-1 ring-border/70"
+          className="pointer-events-none fixed z-tooltip rounded-card bg-surface px-3 py-2.5 shadow-raised ring-1 ring-border/70"
         >
-          <p className="truncate text-[13px] font-medium text-ink">{entry.title}</p>
-          {entry.preview.map((paragraph, index) => (
-            <p
-              key={index}
-              className={`mt-1.5 text-[12.5px] leading-relaxed ${
-                index ? 'line-clamp-2 text-ink-3' : 'line-clamp-1 text-ink-2'
-              }`}
-            >
-              {paragraph}
-            </p>
-          ))}
+          <p className="truncate text-[12.5px] leading-snug font-medium text-ink">{entry.title}</p>
+          {entry.preview ? (
+            <p className="mt-1 line-clamp-3 text-[12px] leading-snug text-ink-2">{entry.preview}</p>
+          ) : null}
         </motion.div>
       ) : null}
     </AnimatePresence>,

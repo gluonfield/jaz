@@ -8,7 +8,9 @@ import { messageText } from '@/lib/messageText'
 export interface OutlineEntry {
   seq: number
   title: string
-  preview: string[]
+  /** the answer's opening, flowed into one block — paragraph breaks would read
+   * as blank gaps at preview size */
+  preview: string
   /** 0..1 answer volume; the rail draws it as tick length */
   weight: number
 }
@@ -118,7 +120,9 @@ export function buildOutline(messages: ChatMessage[], events: SessionEvent[]): O
     return {
       seq: prompt.seq,
       title: outlineParagraphs(prompt.text.slice(0, TITLE_SCAN_CHARS))[0] || 'Message',
-      preview: outlineParagraphs(answer.slice(0, PREVIEW_SCAN_CHARS)).slice(0, PREVIEW_PARAGRAPHS),
+      preview: outlineParagraphs(answer.slice(0, PREVIEW_SCAN_CHARS))
+        .slice(0, PREVIEW_PARAGRAPHS)
+        .join(' '),
       weight: Math.min(1, chars / FULL_WEIGHT_CHARS),
     }
   })
