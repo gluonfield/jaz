@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -14,6 +15,11 @@ import (
 type sessionTitleResponse struct {
 	Title string `json:"title"`
 }
+
+// A title costs a whole agent spawn: adapter boot, MCP-loaded session/new, then
+// one prompt on the thread's own model. The 30s server-action budget does not
+// cover that, and a miss is permanent because titling only runs once.
+const titleGenerationTimeout = 2 * time.Minute
 
 func shouldGenerateTitleFromMessage(session storage.Session, message string, existing []provider.Message) bool {
 	if session.ManualTitle || session.TitleLocked {
@@ -50,9 +56,7 @@ func (s *Server) maybeGenerateSessionTitle(session storage.Session, message stri
 		return
 	}
 	go func() {
-		ctx, cancel := serverActionContext()
-		defer cancel()
-		s.generateAndSaveSessionTitle(ctx, session, message)
+		s.generateAndSaveSessionTitle(context.Background(), session, message)
 	}()
 }
 
@@ -70,7 +74,7 @@ func (s *Server) generateAndSaveSessionTitle(ctx context.Context, session storag
 		s.logger().Debug("loading session after title generation failed", "session", session.ID, "error", err)
 		return session
 	}
-	if current.ManualTitle || current.TitleLocked || current.Title != session.Title {
+	if current.ManualTitle || current.TitleLocked {
 		return current
 	}
 	current.Title = title
@@ -91,6 +95,7 @@ func (s *Server) generateSessionTitle(ctx context.Context, session storage.Sessi
 		ModelProvider:   session.ModelProvider,
 		Model:           session.Model,
 		ReasoningEffort: "none",
+		Timeout:         titleGenerationTimeout,
 	})
 	if err != nil {
 		return "", err

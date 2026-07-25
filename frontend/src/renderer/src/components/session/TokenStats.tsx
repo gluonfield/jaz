@@ -41,11 +41,11 @@ export function TokenStats({ session }: { session: Session }) {
       }
     >
       <div className="flex min-w-[200px] flex-col gap-1 px-2 py-1.5">
-        <StatRow label="Input" value={formatTokens(input)} />
-        <StatRow label="Output" value={formatTokens(output)} />
         {total > 0 ? <StatRow label="Total" value={formatTokens(total)} /> : null}
+        <StatRow label="Input (uncached)" value={formatTokens(input)} />
         <StatRow label="Cache read" value={formatTokens(cached)} />
         {cacheWrite > 0 ? <StatRow label="Cache write" value={formatTokens(cacheWrite)} /> : null}
+        <StatRow label="Output" value={formatTokens(output)} />
         {reasoning > 0 ? <StatRow label="Reasoning" value={formatTokens(reasoning)} /> : null}
         {context > 0 ? (
           <>

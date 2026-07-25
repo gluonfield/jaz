@@ -46,6 +46,49 @@ func TestBeginACPTurnGeneratesTitleFromFirstMessage(t *testing.T) {
 	if manager.utilityPrompt.ReasoningEffort != "none" {
 		t.Fatalf("utility prompt reasoning effort = %q, want none", manager.utilityPrompt.ReasoningEffort)
 	}
+	// Titling spawns an agent; inheriting the 30s server-action budget strands
+	// the thread on its placeholder title for good.
+	if manager.utilityPrompt.Timeout != titleGenerationTimeout {
+		t.Fatalf("utility prompt timeout = %s, want %s", manager.utilityPrompt.Timeout, titleGenerationTimeout)
+	}
+}
+
+// The runtime pushes its own session title on every idle (claude-agent-acp
+// relays Claude Code's, falling back to the raw last prompt). That push can land
+// while the title prompt is still in flight; the generated title must still win,
+// because only a manual or already-locked title outranks it.
+func TestGeneratedSessionTitleSurvivesRuntimeTitlePush(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug:    "runtime-title-race",
+		Title:   "Fix the redirect",
+		Runtime: storage.RuntimeACP,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{
+		Store: store,
+		ACP:   &fakeACPManager{utilityText: `{"title":"Redirect State Fix"}`},
+	}
+
+	if _, updated, err := store.UpdateSessionTitleFromRuntime(session.ID, "Fix the redirect because state drops"); err != nil || !updated {
+		t.Fatalf("runtime title push updated=%v err=%v, want update", updated, err)
+	}
+
+	server.generateAndSaveSessionTitle(context.Background(), session, "Fix the redirect")
+
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Title != "Redirect State Fix" || !loaded.TitleLocked {
+		t.Fatalf("title/locked = %q/%v, want generated and locked", loaded.Title, loaded.TitleLocked)
+	}
 }
 
 func TestMessageStreamGeneratesTitleVisibleToUI(t *testing.T) {
