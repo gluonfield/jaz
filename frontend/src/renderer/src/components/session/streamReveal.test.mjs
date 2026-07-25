@@ -1,54 +1,51 @@
 import { expect, test } from 'bun:test'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import Markdown from 'react-markdown'
 import { nextStreamTail, rehypeStreamTail } from './streamReveal'
 
-const paragraph = (...children) => ({
-  type: 'root',
-  children: [{ type: 'element', tagName: 'p', properties: {}, children }],
-})
-const text = (value) => ({ type: 'text', value })
+const stream = (...chunks) => {
+  let text = ''
+  let tail = { text: '', offset: 0, phase: 'a' }
+  for (const chunk of chunks) {
+    text += chunk
+    tail = nextStreamTail(tail, text)
+  }
+  return renderToStaticMarkup(
+    createElement(Markdown, { rehypePlugins: [[rehypeStreamTail, tail]], children: text }),
+  )
+}
 
 test('an appended chunk reveals only the delta and alternates phase', () => {
-  const first = nextStreamTail({ text: '', chars: 0, phase: 'a' }, 'Streaming text')
+  const first = nextStreamTail({ text: '', offset: 0, phase: 'a' }, 'Streaming text')
   const second = nextStreamTail(first, 'Streaming text arrives in chunks')
 
-  expect(first.chars).toBe(0)
-  expect(second.chars).toBe(' arrives in chunks'.length)
+  expect(first.offset).toBe('Streaming text'.length)
+  expect(second.offset).toBe('Streaming text'.length)
   expect(second.phase).not.toBe(first.phase)
 })
 
 test('replaced text reveals nothing', () => {
-  const prev = { text: 'live draft', chars: 4, phase: 'a' }
+  const prev = { text: 'live draft', offset: 4, phase: 'a' }
 
-  expect(nextStreamTail(prev, 'persisted answer').chars).toBe(0)
-  expect(nextStreamTail(prev, 'live').chars).toBe(0)
+  expect(nextStreamTail(prev, 'persisted answer').offset).toBe('persisted answer'.length)
+  expect(nextStreamTail(prev, 'live').offset).toBe('live'.length)
 })
 
-test('the tail pass splits the boundary text node', () => {
-  const tree = paragraph(text('settled and new'))
-  rehypeStreamTail({ text: '', chars: 7, phase: 'a' })(tree)
+test('markup in the new chunk does not drag the reveal over settled text', () => {
+  const html = stream('Streaming lands in **chunks**', ', and `code()` stays whole.')
 
-  expect(tree.children[0].children).toEqual([
-    text('settled '),
-    {
-      type: 'element',
-      tagName: 'span',
-      properties: { dataStreamTail: 'a' },
-      children: [text('and new')],
-    },
-  ])
+  expect(html).toContain('<strong>chunks</strong>')
+  expect(html).toContain('<span data-stream-tail="a">, and </span>')
 })
 
-test('code spends the reveal budget without being wrapped', () => {
-  const tree = paragraph(text('settled prose'), {
-    type: 'element',
-    tagName: 'code',
-    properties: {},
-    children: [text('run()')],
-  })
-  rehypeStreamTail({ text: '', chars: 5, phase: 'a' })(tree)
+test('code keeps its own text and the prose after it still reveals', () => {
+  const html = stream('Run it.', ' Use `bun test` next.')
 
-  expect(tree.children[0].children.map((node) => node.tagName ?? node.value)).toEqual([
-    'settled prose',
-    'code',
-  ])
+  expect(html).toContain('<code>bun test</code>')
+  expect(html).toContain('<span data-stream-tail="a"> next.</span>')
+})
+
+test('a settled message reveals nothing', () => {
+  expect(stream('Nothing streamed here.')).not.toContain('data-stream-tail')
 })

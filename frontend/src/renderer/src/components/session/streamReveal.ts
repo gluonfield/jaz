@@ -1,84 +1,84 @@
+import type { Element, Root, RootContent } from 'hast'
 import { useRef } from 'react'
 
-// Streamed text arrives as whole chunks appended to one growing string, so the
-// only thing that must animate is the delta. The tail is wrapped after parsing
-// (never by editing the Markdown source) and the phase alternates so the CSS
-// animation restarts on every chunk even when React reuses the span.
+// Streamed text is one growing string, so the only thing that should animate is
+// what the latest chunk added. Parsed nodes keep their source offsets, so the
+// reveal is anchored to where the previous render ended rather than counting
+// characters back from the end — Markdown syntax and rendered text are
+// different lengths, and counting backwards drags the sweep over settled prose.
+// The phase alternates because react-markdown keys children by `tagName-count`:
+// the tail span keeps the same key every chunk, so React reuses the node and
+// only a changed animation-name restarts the sweep.
 
 // Each wrapped line fragment carries its own copy of the mask, so a tail wider
 // than a couple of lines wipes them in parallel instead of in reading order.
 // Past the cap the older part of the chunk simply lands settled.
 const MAX_TAIL_CHARS = 240
 
-export type StreamTail = { text: string; chars: number; phase: 'a' | 'b' }
+export type StreamTail = { text: string; offset: number; phase: 'a' | 'b' }
 
 // A message that mounts whole (history, or a turn's persisted row replacing the
-// live event) has no delta to reveal, so only growth of the same string counts.
+// live event) has no delta to reveal, so only growth of the same string counts;
+// an offset at the end of the text reveals nothing.
 export function nextStreamTail(prev: StreamTail, text: string): StreamTail {
   if (prev.text === text) return prev
   const appended = prev.text !== '' && text.length > prev.text.length && text.startsWith(prev.text)
   return {
     text,
-    chars: appended ? Math.min(text.length - prev.text.length, MAX_TAIL_CHARS) : 0,
+    offset: appended ? Math.max(prev.text.length, text.length - MAX_TAIL_CHARS) : text.length,
     phase: prev.phase === 'a' ? 'b' : 'a',
   }
 }
 
+// Keyed on the text it already saw, so a repeated render — StrictMode's double
+// invoke included — resolves to the same tail instead of consuming the growth.
 export function useStreamTail(text: string): StreamTail {
-  const ref = useRef<StreamTail>({ text: '', chars: 0, phase: 'a' })
+  const ref = useRef<StreamTail>({ text: '', offset: 0, phase: 'a' })
   ref.current = nextStreamTail(ref.current, text)
   return ref.current
 }
 
-type HastNode = {
-  type: string
-  tagName?: string
-  value?: string
-  properties?: Record<string, unknown>
-  children?: HastNode[]
-}
-
-// Code and math render from their own text, so a wrapper inside them would
-// corrupt the block. Their text still spends the budget: the reveal must stay
-// anchored to the end of the message instead of sliding back over settled prose.
-function isOpaque(node: HastNode): boolean {
-  if (node.tagName === 'pre' || node.tagName === 'code') return true
-  const className = node.properties?.className
-  return Array.isArray(className) && className.some((name) => String(name).startsWith('math'))
-}
-
-export function rehypeStreamTail({ chars, phase }: StreamTail) {
-  return (tree: HastNode) => {
-    if (chars > 0) wrapTail(tree, { left: chars, phase }, false)
+export function rehypeStreamTail({ text, offset, phase }: StreamTail) {
+  return (tree: Root) => {
+    if (offset < text.length) revealTail(tree.children, offset, phase)
   }
 }
 
-function wrapTail(node: HastNode, budget: { left: number; phase: string }, opaque: boolean): void {
-  const children = node.children
-  if (!children) return
-  for (let i = children.length - 1; i >= 0 && budget.left > 0; i--) {
+// Code and math render from their own text, so a wrapper inside them would
+// corrupt the block; their content lands settled instead.
+function isOpaque(node: Element): boolean {
+  if (node.tagName === 'pre' || node.tagName === 'code') return true
+  const className = node.properties.className
+  return Array.isArray(className) && className.some((name) => String(name).startsWith('math'))
+}
+
+// Nodes a transform synthesized (linkified file paths) carry no source offset
+// and stay settled rather than guessing where they came from.
+function revealTail(children: RootContent[], offset: number, phase: string): void {
+  for (let i = 0; i < children.length; i++) {
     const child = children[i]
     if (child.type === 'element') {
-      wrapTail(child, budget, opaque || isOpaque(child))
+      if (!isOpaque(child)) revealTail(child.children, offset, phase)
       continue
     }
     if (child.type !== 'text') continue
-    const value = child.value ?? ''
-    const start = Math.max(0, value.length - budget.left)
-    budget.left -= value.length - start
-    const tail = value.slice(start)
-    if (opaque || !tail.trim()) continue
-    const span: HastNode = {
+    const start = child.position?.start.offset
+    if (start === undefined) continue
+    const settled = Math.max(0, offset - start)
+    const tail = child.value.slice(settled)
+    if (!tail.trim()) continue
+    const span: Element = {
       type: 'element',
       tagName: 'span',
-      properties: { dataStreamTail: budget.phase },
+      properties: { dataStreamTail: phase },
       children: [{ type: 'text', value: tail }],
     }
-    if (start === 0) {
+    if (settled === 0) {
       children[i] = span
     } else {
-      child.value = value.slice(0, start)
+      child.value = child.value.slice(0, settled)
       children.splice(i + 1, 0, span)
+      i++
     }
   }
 }
