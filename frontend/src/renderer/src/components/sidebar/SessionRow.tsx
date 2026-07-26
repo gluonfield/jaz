@@ -65,14 +65,12 @@ export function SessionRow({
         activeProps={{ className: 'bg-list-active!' }}
         {...menuTriggers}
       >
-        {/* branch connector: this thread was spawned by the session above */}
-        {child ? <CornerDownRight size={12} className="shrink-0 text-ink-3" /> : null}
-        {/* Identity gutter, the same width as the nav icons, present whether or
-            not this row has an agent to show. Without it a row's title starts
-            wherever its indicators happen to end, and the sidebar has as many
-            left edges as it has kinds of row. */}
+        {/* Branch and runtime marks share one identity gutter so every label
+            keeps the same left edge. Branch identity wins for spawned threads. */}
         <span className="grid size-[18px] shrink-0 place-items-center">
-          {showRuntimeBadge && session.runtime === 'acp' ? (
+          {child ? (
+            <CornerDownRight size={12} className="text-ink-3" />
+          ) : showRuntimeBadge && session.runtime === 'acp' ? (
             <RuntimeBadge session={session} compact />
           ) : null}
         </span>
