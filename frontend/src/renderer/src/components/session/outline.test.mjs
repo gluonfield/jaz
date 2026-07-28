@@ -70,11 +70,6 @@ describe('buildOutline', () => {
     expect(second.preview).toBe('No blockers found.')
   })
 
-  test('weight counts every answer block in the turn, not just the last', () => {
-    const [first, second] = buildOutline(messages, events)
-    expect(first.weight).toBeGreaterThan(second.weight)
-  })
-
   test('reads assistant messages when a thread has no ACP events', () => {
     const native = [message(1, 'user', 'Hi', 1000), message(2, 'assistant', 'Hello there.', 2000)]
     expect(buildOutline(native, [])[0].preview).toBe('Hello there.')
@@ -82,7 +77,7 @@ describe('buildOutline', () => {
 
   test('a turn still answering has a title and an empty preview', () => {
     expect(buildOutline([message(1, 'user', 'Pending prompt', 1000)], [])).toEqual([
-      { seq: 1, title: 'Pending prompt', preview: '', weight: 0 },
+      { seq: 1, title: 'Pending prompt', preview: '' },
     ])
   })
 })
