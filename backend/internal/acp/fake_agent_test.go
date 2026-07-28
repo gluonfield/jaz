@@ -3,7 +3,6 @@ package acp_test
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -14,15 +13,6 @@ import (
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
-
-var fakeCodexConfigs = map[string]bool{}
-
-func init() {
-	flag.Func("c", "Codex config override", func(value string) error {
-		fakeCodexConfigs[value] = true
-		return nil
-	})
-}
 
 func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
@@ -36,8 +26,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		_, _ = fmt.Fprintln(file, os.Getpid())
 		_ = file.Close()
 	}
-	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" && !fakeCodexConfigs["features.goals=false"] {
-		t.Fatalf("Codex config = %#v, want features.goals=false", fakeCodexConfigs)
+	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" {
+		var config struct {
+			Features map[string]bool `json:"features"`
+		}
+		if err := json.Unmarshal([]byte(os.Getenv("CODEX_CONFIG")), &config); err != nil {
+			t.Fatalf("parse Codex config: %v", err)
+		}
+		disabled, ok := config.Features["goals"]
+		if !ok || disabled {
+			t.Fatalf("Codex config = %#v, want features.goals=false", config)
+		}
 	}
 	if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_METADATA"); want != "" {
 		var metadata struct {

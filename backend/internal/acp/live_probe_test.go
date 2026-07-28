@@ -248,12 +248,12 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 
 func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, func()) {
 	t.Helper()
-	if isCodexAppServer(agent, cfg) {
-		if err := configureCodexAppServerEnv(env, cfg, nil, ""); err != nil {
+	if CanonicalAgentName(agent) == AgentCodex {
+		if err := configureCodexEnv(env, cfg, nil, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	command, args, err := processCommand(agent, cfg, nil)
+	command, args, err := processCommand(agent, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

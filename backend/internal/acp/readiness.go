@@ -41,7 +41,7 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 		}
 		return Readiness{Available: true}
 	}
-	command, _, err := processCommand(name, cfg, providers)
+	command, _, err := processCommand(name, cfg)
 	if err != nil {
 		return Readiness{Reason: err.Error()}
 	}

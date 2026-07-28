@@ -83,10 +83,8 @@ func promptWithModules(base string, modules promptmodule.Modules) string {
 //   - claude-agent-acp reads _meta.systemPrompt; {"append": ...} extends the
 //     Claude Code preset, while a bare string would replace it.
 //   - grok reads _meta.rules and ignores _meta.systemPrompt.
-//   - codex-acp (Jaz fork) appends a _meta.systemPrompt string as developer
-//     instructions; upstream codex-acp ignores _meta entirely.
-//   - codex-app-server receives developer instructions in its launch config and
-//     does not use this session metadata path.
+//   - codex receives developer instructions in its launch config and does not
+//     use this session metadata path.
 //   - kimi (Jaz fork) appends a _meta.systemPrompt string to its native system
 //     prompt without persisting it in conversation history.
 //
@@ -337,7 +335,7 @@ func BuiltinAgents() AgentCatalog {
 
 func codexBuiltinAgent() AgentConfig {
 	return AgentConfig{
-		ManagedAdapter:          codexAppServerAdapter,
+		ManagedAdapter:          AgentCodex,
 		ProviderMode:            AgentProviderModeAgentDefaults,
 		ModelProviderCapability: provider.CapabilityResponses,
 		ModelProvider:           provider.ProviderOpenAI,

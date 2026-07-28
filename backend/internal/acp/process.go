@@ -19,7 +19,6 @@ import (
 	"github.com/gluonfield/acp-transport/streamhttp"
 	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/promptmodule"
-	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
@@ -85,7 +84,7 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 	return err
 }
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, mcpServerPolicy, systemPrompt string) (jsonrpc.MessageConn, *processStderrTail, error) {
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string) (jsonrpc.MessageConn, *processStderrTail, error) {
 	if err := validateAgentLaunch(name, cfg); err != nil {
 		return nil, nil, err
 	}
@@ -121,14 +120,12 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	if isCodexAppServer(name, cfg) {
-		if err := configureCodexAppServerEnv(env, cfg, m.providers(), systemPrompt); err != nil {
+	if CanonicalAgentName(name) == AgentCodex {
+		if err := configureCodexEnv(env, cfg, m.providers(), systemPrompt); err != nil {
 			return nil, nil, err
 		}
-	} else {
-		cfg.Args = argsForLaunchPolicy(name, cfg.Args, mcpServerPolicy)
 	}
-	command, args, err := processCommand(name, cfg, m.providers())
+	command, args, err := processCommand(name, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -450,11 +447,8 @@ func (m *Manager) installAgentSkills(agent, root, dst string) {
 	}
 }
 
-func processCommand(name string, cfg AgentConfig, providers map[string]modelprovider.ModelProviderConfig) (string, []string, error) {
+func processCommand(name string, cfg AgentConfig) (string, []string, error) {
 	args := append([]string(nil), cfg.Args...)
-	if CanonicalAgentName(name) == AgentCodex && !isCodexAppServer(name, cfg) {
-		args = append(args, codexProviderArgs(cfg, providers)...)
-	}
 	grokCfg, handled, err := resolveGrokStartupConfig(name, cfg)
 	if err != nil {
 		return "", nil, err

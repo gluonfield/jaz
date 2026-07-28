@@ -11,11 +11,11 @@ import (
 	"time"
 )
 
-func TestLiveCodexAppServerArchive(t *testing.T) {
+func TestLiveCodexArchive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	launch, err := New(t.TempDir(), "dev").ResolveAdapter(ctx, "codex-app-server")
+	launch, err := New(t.TempDir(), "dev").ResolveAdapter(ctx, "codex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +29,7 @@ func TestLiveCodexAppServerArchive(t *testing.T) {
 		}
 	}
 	if output, err := exec.CommandContext(ctx, launch.Command, "--version").CombinedOutput(); err != nil ||
-		!strings.Contains(string(output), "1.1.7-jaz.7") {
+		!strings.Contains(string(output), "1.1.7-jaz.8") {
 		t.Fatalf("adapter --version: %s err=%v", output, err)
 	}
 	if output, err := exec.CommandContext(ctx, launch.Env["CODEX_PATH"], "--version").CombinedOutput(); err != nil ||

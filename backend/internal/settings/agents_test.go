@@ -63,7 +63,7 @@ func TestACPConfigSourceUsesCatalogLaunchCommand(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("codex config: ok=%v err=%v", ok, err)
 	}
-	if codex.Command != "" || codex.ManagedAdapter != "codex-app-server" {
+	if codex.Command != "" || codex.ManagedAdapter != "codex" {
 		t.Fatalf("codex config = %#v, want managed adapter", codex)
 	}
 }

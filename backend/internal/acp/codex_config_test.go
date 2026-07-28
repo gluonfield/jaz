@@ -1,8 +1,10 @@
 package acp
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -10,32 +12,107 @@ import (
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 )
 
-func TestCodexProviderArgsNativeOpenAI(t *testing.T) {
-	for _, providerID := range []string{"", AgentCodex, modelprovider.ProviderOpenAI} {
-		if args := codexProviderArgs(AgentConfig{ModelProvider: providerID}, nil); args != nil {
-			t.Fatalf("provider %q should use the native Codex path, got %v", providerID, args)
+func TestConfigureCodexEnv(t *testing.T) {
+	env := map[string]string{
+		"CODEX_CONFIG":        `{"features":{"existing":true},"model_providers":{"keep":{"name":"Keep"}}}`,
+		codexModelMetadataEnv: `{"id":"moonshotai/kimi-k3","display_name":"Kimi K3","context_window":1048576}`,
+	}
+	cfg := AgentConfig{
+		ModelProvider:   modelprovider.ProviderOpenRouter,
+		Model:           "moonshotai/kimi-k3",
+		ReasoningEffort: "max",
+	}
+	providers := map[string]modelprovider.ModelProviderConfig{
+		modelprovider.ProviderOpenRouter: {
+			Label:        "OpenRouter",
+			BaseURL:      "https://openrouter.ai/api/v1",
+			APIKeyEnv:    "OPENROUTER_API_KEY",
+			Capabilities: []string{modelprovider.CapabilityResponses},
+		},
+	}
+
+	if err := configureCodexEnv(env, cfg, providers, "Jaz instructions"); err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal([]byte(env["CODEX_CONFIG"]), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["developer_instructions"] != "Jaz instructions" ||
+		config["model"] != "moonshotai/kimi-k3" ||
+		config["model_reasoning_effort"] != "max" ||
+		config["sandbox_mode"] != "danger-full-access" ||
+		config["approval_policy"] != "never" {
+		t.Fatalf("config = %#v", config)
+	}
+	features := config["features"].(map[string]any)
+	if features["existing"] != true || features["goals"] != false ||
+		features["tool_search_always_defer_mcp_tools"] != true {
+		t.Fatalf("features = %#v", features)
+	}
+	modelProviders := config["model_providers"].(map[string]any)
+	if !reflect.DeepEqual(modelProviders["keep"], map[string]any{"name": "Keep"}) {
+		t.Fatalf("preserved providers = %#v", modelProviders)
+	}
+	if !reflect.DeepEqual(modelProviders[modelprovider.ProviderOpenRouter], map[string]any{
+		"name":     "OpenRouter",
+		"base_url": "https://openrouter.ai/api/v1",
+		"env_key":  "OPENROUTER_API_KEY",
+		"wire_api": "responses",
+	}) {
+		t.Fatalf("OpenRouter = %#v", modelProviders[modelprovider.ProviderOpenRouter])
+	}
+}
+
+func TestConfigureCodexEnvKeepsOpenAIAccountAuthNative(t *testing.T) {
+	env := map[string]string{"CODEX_CONFIG": "null"}
+	if err := configureCodexEnv(env, AgentConfig{
+		ModelProvider: modelprovider.ProviderOpenAI,
+		Model:         modelprovider.OpenAIModelGPT56Sol,
+	}, nil, "instructions"); err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal([]byte(env["CODEX_CONFIG"]), &config); err != nil {
+		t.Fatal(err)
+	}
+	if config["model_provider"] != "openai" {
+		t.Fatalf("env = %#v, config = %#v", env, config)
+	}
+	if _, ok := config["model_providers"]; ok {
+		t.Fatalf("native OpenAI provider was overridden: %#v", config)
+	}
+}
+
+func TestCodexLaunchProvider(t *testing.T) {
+	providers := map[string]modelprovider.ModelProviderConfig{
+		"acme": {
+			Label:        "Acme",
+			BaseURL:      "https://acme.test/v1",
+			APIKeyEnv:    "ACME_KEY",
+			Capabilities: []string{modelprovider.CapabilityResponses},
+		},
+	}
+	for _, test := range []struct {
+		id         string
+		wantID     string
+		wantConfig map[string]any
+	}{
+		{modelprovider.ProviderOpenAI, "openai", nil},
+		{modelprovider.ProviderOllama, modelprovider.ProviderOllama, nil},
+		{CodexProviderOpenAIAPIKey, CodexProviderOpenAIAPIKey, map[string]any{
+			"name": "OpenAI API key", "base_url": "https://api.openai.com/v1",
+			"env_key": "OPENAI_API_KEY", "wire_api": "responses",
+		}},
+		{"acme", "acme", map[string]any{
+			"name": "Acme", "base_url": "https://acme.test/v1",
+			"env_key": "ACME_KEY", "wire_api": "responses",
+		}},
+	} {
+		id, config := codexLaunchProvider(AgentConfig{ModelProvider: test.id}, providers)
+		if id != test.wantID || !reflect.DeepEqual(config, test.wantConfig) {
+			t.Errorf("%s = %q, %#v; want %q, %#v", test.id, id, config, test.wantID, test.wantConfig)
 		}
-	}
-}
-
-func TestCodexProviderArgsOpenRouter(t *testing.T) {
-	args := codexProviderArgs(AgentConfig{ModelProvider: modelprovider.ProviderOpenRouter}, nil)
-	want := []string{
-		"-c", `model_provider="openrouter"`,
-		"-c", `model_providers.openrouter.name="OpenRouter"`,
-		"-c", `model_providers.openrouter.base_url="https://openrouter.ai/api/v1"`,
-		"-c", `model_providers.openrouter.env_key="OPENROUTER_API_KEY"`,
-		"-c", `model_providers.openrouter.wire_api="responses"`,
-	}
-	if !slices.Equal(args, want) {
-		t.Fatalf("openrouter args mismatch\n got: %v\nwant: %v", args, want)
-	}
-}
-
-func TestCodexProviderArgsOllama(t *testing.T) {
-	want := []string{"-c", `model_provider="ollama"`}
-	if args := codexProviderArgs(AgentConfig{ModelProvider: modelprovider.ProviderOllama}, nil); !slices.Equal(args, want) {
-		t.Fatalf("ollama args mismatch\n got: %v\nwant: %v", args, want)
 	}
 }
 
@@ -49,26 +126,12 @@ func TestProbeAgentAuthAcceptsNoAuthCodexProvider(t *testing.T) {
 	}
 }
 
-func TestCodexProviderArgsOpenAIAPIKey(t *testing.T) {
-	args := codexProviderArgs(AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, nil)
-	want := []string{
-		"-c", `model_provider="openai-api-key"`,
-		"-c", `model_providers.openai-api-key.name="OpenAI API key"`,
-		"-c", `model_providers.openai-api-key.base_url="https://api.openai.com/v1"`,
-		"-c", `model_providers.openai-api-key.env_key="OPENAI_API_KEY"`,
-		"-c", `model_providers.openai-api-key.wire_api="responses"`,
-	}
-	if !slices.Equal(args, want) {
-		t.Fatalf("openai api-key args mismatch\n got: %v\nwant: %v", args, want)
-	}
-}
-
 func TestCodexOpenAIAPIKeyRequiresResponsesCapability(t *testing.T) {
 	providers := map[string]modelprovider.ModelProviderConfig{
 		modelprovider.ProviderOpenAI: {Capabilities: []string{modelprovider.CapabilityChatCompletions}},
 	}
-	if args := codexProviderArgs(AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, providers); args != nil {
-		t.Fatalf("Chat-only OpenAI override yielded Codex Responses args: %#v", args)
+	if _, ok := codexProvider(CodexProviderOpenAIAPIKey, providers); ok {
+		t.Fatal("Chat-only OpenAI override yielded a Codex Responses provider")
 	}
 	resolved := modelprovider.ResolveModelProviders(providers)
 	metas := make([]modelprovider.ModelProvider, 0, len(resolved))
@@ -82,58 +145,6 @@ func TestCodexOpenAIAPIKeyRequiresResponsesCapability(t *testing.T) {
 	status := ProbeAgentAuthWithProviders(AgentCodex, AgentConfig{ModelProvider: CodexProviderOpenAIAPIKey}, t.TempDir(), nil, providers)
 	if status.Authenticated || status.AuthKind != "" || status.AuthEvidence != "" || status.StoragePath != "" {
 		t.Fatalf("Chat-only OpenAI override auth = %#v", status)
-	}
-}
-
-func TestCodexProviderArgsCustomProvider(t *testing.T) {
-	args := codexProviderArgs(
-		AgentConfig{ModelProvider: "acme"},
-		map[string]modelprovider.ModelProviderConfig{
-			"acme": {Type: "openai-compatible", Label: "Acme", BaseURL: "https://acme.test/v1", APIKeyEnv: "ACME_KEY", Capabilities: []string{modelprovider.CapabilityResponses}},
-		},
-	)
-	want := []string{
-		"-c", `model_provider="acme"`,
-		"-c", `model_providers.acme.name="Acme"`,
-		"-c", `model_providers.acme.base_url="https://acme.test/v1"`,
-		"-c", `model_providers.acme.env_key="ACME_KEY"`,
-		"-c", `model_providers.acme.wire_api="responses"`,
-	}
-	if !slices.Equal(args, want) {
-		t.Fatalf("custom provider args mismatch\n got: %v\nwant: %v", args, want)
-	}
-}
-
-func TestCodexProviderArgsNoAuthCustomProvider(t *testing.T) {
-	args := codexProviderArgs(
-		AgentConfig{ModelProvider: "local"},
-		map[string]modelprovider.ModelProviderConfig{
-			"local": {Type: "openai-compatible", Label: "Local", BaseURL: "http://localhost:11434/v1", Capabilities: []string{modelprovider.CapabilityResponses}},
-		},
-	)
-	want := []string{
-		"-c", `model_provider="local"`,
-		"-c", `model_providers.local.name="Local"`,
-		"-c", `model_providers.local.base_url="http://localhost:11434/v1"`,
-		"-c", `model_providers.local.wire_api="responses"`,
-	}
-	if !slices.Equal(args, want) {
-		t.Fatalf("local provider args mismatch\n got: %v\nwant: %v", args, want)
-	}
-}
-
-func TestCodexProviderArgsUnknownWithoutConfig(t *testing.T) {
-	if args := codexProviderArgs(AgentConfig{ModelProvider: "ghost"}, nil); args != nil {
-		t.Fatalf("unknown provider with no base_url/env_key should yield no args, got %v", args)
-	}
-}
-
-func TestCodexProviderArgsRejectsChatOnlyProvider(t *testing.T) {
-	args := codexProviderArgs(AgentConfig{ModelProvider: "chat"}, map[string]modelprovider.ModelProviderConfig{
-		"chat": {Type: "openai-compatible", BaseURL: "https://chat.test/v1"},
-	})
-	if args != nil {
-		t.Fatalf("chat-only provider yielded Codex args: %#v", args)
 	}
 }
 
