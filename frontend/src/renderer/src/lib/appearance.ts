@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { type JazDefaults, jazDefaults } from './jazDefaults'
+import { effectiveHomeWordmark, normalizeHomeWordmark } from './homeWordmark'
 
 // User-tunable appearance preferences, kept deliberately separate from the
 // light/dark theme (lib/theme.ts). Same mechanics: persisted in localStorage,
@@ -25,6 +26,10 @@ export interface AppearanceSettings {
   wideLayout: boolean
   /** show ACP agent/model marks in the left sidebar */
   showModelIcons: boolean
+  /** custom particle wordmark on the new-thread screen; '' keeps "jaz" */
+  homeWordmark: string
+  /** keep the new-thread particle field on its wordmark */
+  homeWordmarkOnly: boolean
 }
 
 export const DEFAULTS: AppearanceSettings = {
@@ -36,6 +41,8 @@ export const DEFAULTS: AppearanceSettings = {
   inlineShellCommands: false,
   wideLayout: false,
   showModelIcons: true,
+  homeWordmark: '',
+  homeWordmarkOnly: false,
 }
 
 // Whole-UI zoom steps. The chrome is built largely with px sizes, so scaling the
@@ -80,18 +87,19 @@ const boolField = (
   normalize: (v) => v,
 })
 
-const fontField = (
+const stringField = (
   storageKey: string,
   pick: (cfg: JazDefaults) => string | undefined,
+  normalize: (value: string) => string,
 ): Field<string> => ({
   storageKey,
   fromConfig: (cfg) => {
     const v = pick(cfg)
-    return typeof v === 'string' ? fontName(v) : undefined
+    return typeof v === 'string' ? normalize(v) : undefined
   },
-  decode: fontName,
+  decode: normalize,
   encode: (v) => v,
-  normalize: fontName,
+  normalize,
 })
 
 const numberField = (
@@ -112,12 +120,18 @@ const numberField = (
 const FIELDS: { [K in keyof AppearanceSettings]: Field<AppearanceSettings[K]> } = {
   effects: boolField('jaz.appearance.effects', (c) => c.effects),
   fontScale: numberField('jaz.appearance.fontScale', (c) => c.fontScale, normalizeFontScale),
-  uiFont: fontField('jaz.appearance.uiFont', (c) => c.uiFont),
-  monoFont: fontField('jaz.appearance.monoFont', (c) => c.monoFont),
+  uiFont: stringField('jaz.appearance.uiFont', (c) => c.uiFont, fontName),
+  monoFont: stringField('jaz.appearance.monoFont', (c) => c.monoFont, fontName),
   inlineDiffs: boolField('jaz.appearance.inlineDiffs', (c) => c.inlineDiffs),
   inlineShellCommands: boolField('jaz.appearance.inlineShellCommands', (c) => c.inlineShellCommands),
   wideLayout: boolField('jaz.appearance.wideLayout', (c) => c.wideLayout),
   showModelIcons: boolField('jaz.appearance.showModelIcons', (c) => c.showModelIcons),
+  homeWordmark: stringField(
+    'jaz.appearance.homeWordmark',
+    (c) => c.homeWordmark,
+    normalizeHomeWordmark,
+  ),
+  homeWordmarkOnly: boolField('jaz.appearance.homeWordmarkOnly', (c) => c.homeWordmarkOnly),
 }
 
 const FIELD_KEYS = Object.keys(FIELDS) as (keyof AppearanceSettings)[]
@@ -235,4 +249,12 @@ export function useInlineShellCommands(): boolean {
 
 export function useShowModelIcons(): boolean {
   return useSyncExternalStore(subscribe, () => current.showModelIcons)
+}
+
+export function useHomeWordmark(): string {
+  return useSyncExternalStore(subscribe, () => effectiveHomeWordmark(current.homeWordmark))
+}
+
+export function useHomeWordmarkOnly(): boolean {
+  return useSyncExternalStore(subscribe, () => current.homeWordmarkOnly)
 }

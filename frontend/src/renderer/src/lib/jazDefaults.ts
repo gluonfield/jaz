@@ -38,6 +38,8 @@ export interface JazDefaults {
   effects?: boolean
   wideLayout?: boolean
   showModelIcons?: boolean
+  homeWordmark?: string
+  homeWordmarkOnly?: boolean
   inlineDiffs?: boolean
   inlineShellCommands?: boolean
   composer?: ComposerConfig

@@ -12,6 +12,8 @@ window.__JAZ_DEFAULTS__ = {
   // effects: true,                // decorative motion (composer glow, shimmer)
   // wideLayout: false,            // wider thread column
   // showModelIcons: true,         // ACP agent/model marks in the left sidebar
+  // homeWordmark: 'jaz',          // particle wordmark on the new-thread screen
+  // homeWordmarkOnly: false,      // hide other particle shapes and phrases
   // inlineDiffs: false,           // expand agent file diffs in the transcript
   // inlineShellCommands: false,   // expand agent shell commands in the transcript
 

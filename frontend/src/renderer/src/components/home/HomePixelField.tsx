@@ -3,6 +3,7 @@ import { AnimatePresence } from 'motion/react'
 import { MusicBubbles } from '@/components/home/MusicBubbles'
 import { RocketVideo } from '@/components/home/RocketVideo'
 import { PixelField } from '@/components/ui/PixelField'
+import { useHomeWordmark, useHomeWordmarkOnly } from '@/lib/appearance'
 import type {
   PixelFieldLifecycle,
   PixelFieldShapeChoiceContext,
@@ -34,6 +35,8 @@ function chooseHomeShape({
 }
 
 export function HomePixelField({ themeKey, calm }: { themeKey: string; calm: boolean }) {
+  const wordmark = useHomeWordmark()
+  const wordmarkOnly = useHomeWordmarkOnly()
   const [musicFrame, setMusicFrame] = useState<PixelFieldShapeFrame | null>(null)
   const [musicPlaybackActive, setMusicPlaybackActive] = useState(false)
   const [rocketFrame, setRocketFrame] = useState<PixelFieldShapeFrame | null>(null)
@@ -59,6 +62,8 @@ export function HomePixelField({ themeKey, calm }: { themeKey: string; calm: boo
       <PixelField
         key={themeKey}
         calm={calm}
+        wordmark={wordmark}
+        shapes={wordmarkOnly ? [] : undefined}
         lifecycle={lifecycle}
         onShapeFrame={(frame) => {
           setMusicFrame(frame?.shape === 'music' ? frame : null)

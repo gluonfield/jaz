@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
+import { DEFAULT_HOME_WORDMARK } from '@/lib/homeWordmark'
 import type {
   PixelFieldActiveShapeState,
   PixelFieldLifecycle,
@@ -408,19 +409,21 @@ function cssToRgb(css: string, scratch: CanvasRenderingContext2D): [number, numb
 }
 
 // Wordmark particle backdrop, after enchanted-twin's voice visualizer: one
-// persistent swarm of ~20k GPU particles. Its home is the word "jaz" set in
-// Inter, shimmering with the wordmark's rainbow ramp. Every so often it
+// persistent swarm of ~20k GPU particles. Its home is a word set in Inter,
+// shimmering with the wordmark's rainbow ramp. Every so often it
 // morphs into a construction — a spinning sphere or torus, a solid sun, bird,
 // paper plane, or a short encouraging phrase — holds, then flows home (or
 // chains into the next construction).
 // While `calm` (the user is typing), it returns home and dims.
 export function PixelField({
   calm = false,
+  wordmark = DEFAULT_HOME_WORDMARK,
   shapes,
   onShapeFrame,
   lifecycle,
 }: {
   calm?: boolean
+  wordmark?: string
   shapes?: PixelFieldShapeName[]
   onShapeFrame?: (frame: PixelFieldShapeFrame | null) => void
   lifecycle?: PixelFieldLifecycle
@@ -430,7 +433,7 @@ export function PixelField({
   const onShapeFrameRef = useRef(onShapeFrame)
   const lifecycleRef = useRef(lifecycle)
   const reducedMotion = useReducedEffectsMotion()
-  const playlistKey = (shapes?.length ? shapes : DEFAULT_PLAYLIST).join(',')
+  const playlistKey = JSON.stringify(shapes ?? DEFAULT_PLAYLIST)
 
   useEffect(() => {
     calmRef.current = calm
@@ -445,11 +448,12 @@ export function PixelField({
   }, [lifecycle])
 
   useEffect(() => {
+    onShapeFrameRef.current?.(null)
     const canvas = canvasRef.current
     if (!canvas) return
     const gl = canvas.getContext('webgl2', { alpha: true, antialias: false })
     if (!gl) return
-    const playlist = playlistKey.split(',') as PixelFieldShapeName[]
+    const playlist = JSON.parse(playlistKey) as PixelFieldShapeName[]
 
     /* ---- program ---- */
     const compile = (type: number, src: string) => {
@@ -544,23 +548,26 @@ export function PixelField({
     attr('aColor', 3, colorArr, gl.STATIC_DRAW)
 
     /* ---- wordmark (the home state) ---- */
-    // Rasterize "jaz" in the app's face and sample the inked pixels. Re-baked
+    // Rasterize the wordmark in the app's face and sample the inked pixels. Re-baked
     // once webfonts finish loading, in case Inter wasn't ready at mount.
     let markPts: Float32Array | null = null
     let markAspect = 0.45 // half-height / half-width of the sampled text
     const bakeWordmark = () => {
-      const W = 560
       const H = 280
       const cv = document.createElement('canvas')
-      cv.width = W
-      cv.height = H
       const g = cv.getContext('2d')
       if (!g) return
-      g.font = '600 150px "Inter Variable", ui-sans-serif, sans-serif'
+      const font = '600 150px "Inter Variable", ui-sans-serif, sans-serif'
+      g.font = font
+      g.letterSpacing = '-4px'
+      const W = Math.max(280, Math.ceil(g.measureText(wordmark).width) + 80)
+      cv.width = W
+      cv.height = H
+      g.font = font
       g.textAlign = 'center'
       g.textBaseline = 'middle'
       g.letterSpacing = '-4px'
-      g.fillText('jaz', W / 2, H / 2)
+      g.fillText(wordmark, W / 2, H / 2)
       const data = g.getImageData(0, 0, W, H).data
       const inked: number[] = []
       let minX = W
@@ -1034,7 +1041,7 @@ export function PixelField({
       cancelAnimationFrame(raf)
       observer.disconnect()
     }
-  }, [reducedMotion, playlistKey])
+  }, [reducedMotion, playlistKey, wordmark])
 
   return (
     <canvas
