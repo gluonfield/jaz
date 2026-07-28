@@ -18,6 +18,7 @@ import {
   exportCodexThemeString,
   parseCodexThemeString,
 } from '@/lib/codexTheme'
+import { HOME_WORDMARK_MAX_LENGTH } from '@/lib/homeWordmark'
 import { FontPicker } from './FontPicker'
 import { SettingsCard } from './SettingsCard'
 import { ThemeConfigPreview } from './ThemeConfigPreview'
@@ -278,6 +279,8 @@ function ThemeModeCard({ mode }: { mode: keyof ModeSchemes }) {
 
 export function AppearanceSettings() {
   const { settings, setAppearance } = useAppearance()
+  const [homeWordmark, setHomeWordmark] = useState(settings.homeWordmark)
+  useEffect(() => setHomeWordmark(settings.homeWordmark), [settings.homeWordmark])
 
   return (
     <section className="py-4">
@@ -326,6 +329,23 @@ export function AppearanceSettings() {
             checked={settings.showModelIcons}
             onChange={(value) => setAppearance({ showModelIcons: value })}
             aria-label="Show Model Icons"
+          />
+        </Row>
+        <Row
+          title="Home wordmark"
+          description="Text the particle field returns to on the new-thread screen. Leave blank for “jaz”."
+        >
+          <input
+            type="text"
+            value={homeWordmark}
+            maxLength={HOME_WORDMARK_MAX_LENGTH}
+            placeholder="jaz"
+            aria-label="Home wordmark"
+            onChange={(event) => {
+              setHomeWordmark(event.currentTarget.value)
+              setAppearance({ homeWordmark: event.currentTarget.value })
+            }}
+            className="h-8 w-48 rounded-control bg-surface-2 px-2.5 text-[13px] text-ink outline-none ring-1 ring-border/60 placeholder:text-ink-3 focus:ring-primary"
           />
         </Row>
       </SettingsCard>
