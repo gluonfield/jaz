@@ -11,8 +11,6 @@ export interface OutlineEntry {
   /** the answer's opening, flowed into one block — paragraph breaks would read
    * as blank gaps at preview size */
   preview: string
-  /** 0..1 answer volume; the rail draws it as tick length */
-  weight: number
 }
 
 const PREVIEW_PARAGRAPHS = 2
@@ -20,7 +18,6 @@ const PREVIEW_PARAGRAPHS = 2
 // re-running over whole answers on every streamed delta.
 const PREVIEW_SCAN_CHARS = 800
 const TITLE_SCAN_CHARS = 400
-const FULL_WEIGHT_CHARS = 1400
 
 const fenceLine = /^ {0,3}(?:```|~~~)/
 const headingLine = /^ {0,3}#{1,6}\s/
@@ -108,12 +105,10 @@ export function buildOutline(messages: ChatMessage[], events: SessionEvent[]): O
   let cursor = 0
   return prompts.map((prompt, index) => {
     const next = prompts[index + 1]?.at ?? Infinity
-    let chars = 0
     let answer = ''
     while (cursor < sources.length && sources[cursor].at < next) {
       const source = sources[cursor++]
       if (source.at < prompt.at) continue
-      chars += source.text.length
       // The turn's closing text is its answer; earlier blocks are its narration.
       answer = source.text
     }
@@ -123,7 +118,6 @@ export function buildOutline(messages: ChatMessage[], events: SessionEvent[]): O
       preview: outlineParagraphs(answer.slice(0, PREVIEW_SCAN_CHARS))
         .slice(0, PREVIEW_PARAGRAPHS)
         .join(' '),
-      weight: Math.min(1, chars / FULL_WEIGHT_CHARS),
     }
   })
 }
