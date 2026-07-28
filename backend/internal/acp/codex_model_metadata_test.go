@@ -29,6 +29,7 @@ func TestResolveCodexCustomProviderModelMetadataUsesCatalog(t *testing.T) {
 		Label:           "Qwen3.8 Max Preview",
 		ContextLength:   1_000_000,
 		InputModalities: []string{"text", "image"},
+		Reasoning:       modelcatalog.Reasoning{Status: modelcatalog.ReasoningReady},
 	}}}
 	manager := NewManager(nil, Config{ModelCatalog: catalog}, nil)
 	encoded, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, AgentConfig{
@@ -63,14 +64,14 @@ func TestResolveCodexCustomProviderModelMetadataPreservesNativeCatalog(t *testin
 	}
 }
 
-func TestResolveCodexCustomProviderModelMetadataAllowsIncompleteCatalog(t *testing.T) {
+func TestResolveCodexCustomProviderModelMetadataRejectsIncompleteCatalog(t *testing.T) {
 	manager := NewManager(nil, Config{ModelCatalog: &codexMetadataCatalog{models: []modelcatalog.Model{{Value: "unknown"}}}}, nil)
 	metadata, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, AgentConfig{
 		ProviderMode:  AgentProviderModeAgentDefaults,
 		ModelProvider: "custom",
 		Model:         "unknown",
 	})
-	if err != nil || metadata != "" {
+	if err == nil || metadata != "" {
 		t.Fatalf("metadata = %q, error = %v", metadata, err)
 	}
 }
@@ -96,6 +97,36 @@ func TestResolveCodexCustomProviderModelMetadataPreservesKnownEmptyReasoningEffo
 	}
 	if metadata.ReasoningEfforts == nil || len(metadata.ReasoningEfforts) != 0 {
 		t.Fatalf("reasoning efforts = %#v", metadata.ReasoningEfforts)
+	}
+}
+
+func TestResolveCodexCustomProviderModelMetadataAllowsUnknownReasoningDefault(t *testing.T) {
+	manager := NewManager(nil, Config{ModelCatalog: &codexMetadataCatalog{models: []modelcatalog.Model{{
+		Value:           "custom",
+		ContextLength:   128_000,
+		InputModalities: []string{"text"},
+		Reasoning: modelcatalog.Reasoning{
+			Status:  modelcatalog.ReasoningReady,
+			Efforts: []string{"low", "high"},
+		},
+	}}}}, nil)
+	encoded, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, AgentConfig{
+		ProviderMode:  AgentProviderModeAgentDefaults,
+		ModelProvider: "custom",
+		Model:         "custom",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal([]byte(encoded), &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := metadata["default_reasoning_effort"]; ok {
+		t.Fatalf("metadata = %#v", metadata)
+	}
+	if !reflect.DeepEqual(metadata["reasoning_efforts"], []any{"low", "high"}) {
+		t.Fatalf("metadata = %#v", metadata)
 	}
 }
 
@@ -141,7 +172,7 @@ func TestResolveCodexCustomProviderModelMetadataUsesCanonicalCapabilities(t *tes
 		t.Fatalf("provider catalog calls = %d, want 1", catalog.calls)
 	}
 	catalog.err = modelcatalog.ErrCatalogUnavailable
-	if metadata, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, cfg); err != nil || metadata != "" {
+	if metadata, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, cfg); err == nil || metadata != "" {
 		t.Fatalf("metadata = %q, catalog error = %v", metadata, err)
 	}
 }

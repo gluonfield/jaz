@@ -8,10 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
-const (
-	providerSubagentMetaKey  = "providerSubagent"
-	providerSubagentsMetaKey = "providerSubagents"
-)
+const providerSubagentsMetaKey = "providerSubagents"
 
 type providerSubagentHint struct {
 	summary string
@@ -65,24 +62,29 @@ func providerSubagentsFromMeta(agent string, meta map[string]any, hint providerS
 	if meta == nil {
 		return nil
 	}
-	for _, namespace := range []string{codexMetaKey, "claudeCode", "jaz"} {
-		provider, ok := mapValue(meta[namespace])
+	switch CanonicalAgentName(agent) {
+	case AgentCodex:
+		provider, ok := mapValue(meta[codexMetaKey])
 		if !ok {
-			continue
+			return nil
 		}
-		for _, key := range []string{providerSubagentsMetaKey, "provider_subagents"} {
-			if raw, ok := provider[key]; ok {
-				return decodeProviderSubagents(raw, agent, hint)
-			}
+		raw, ok := provider[providerSubagentsMetaKey]
+		if !ok {
+			return nil
 		}
-		for _, key := range []string{providerSubagentMetaKey, "provider_subagent"} {
-			if raw, ok := provider[key]; ok {
-				subagent := decodeProviderSubagent(raw, agent, hint)
-				if subagent == nil {
-					return nil
-				}
-				return []sessionevents.ProviderSubagentEvent{*subagent}
-			}
+		return decodeProviderSubagents(raw, agent, hint)
+	case AgentClaude:
+		provider, ok := mapValue(meta["jaz"])
+		if !ok {
+			return nil
+		}
+		raw, ok := provider["providerSubagent"]
+		if !ok {
+			return nil
+		}
+		subagent := decodeProviderSubagent(raw, agent, hint)
+		if subagent != nil {
+			return []sessionevents.ProviderSubagentEvent{*subagent}
 		}
 	}
 	return nil
@@ -97,13 +99,12 @@ func decodeProviderSubagents(raw any, agent string, hint providerSubagentHint) [
 	if err := json.Unmarshal(data, &subagents); err != nil {
 		return nil
 	}
-	valid := subagents[:0]
 	for i := range subagents {
-		if normalizeProviderSubagent(&subagents[i], agent, hint) {
-			valid = append(valid, subagents[i])
+		if !normalizeProviderSubagent(&subagents[i], agent, hint) {
+			return nil
 		}
 	}
-	return valid
+	return subagents
 }
 
 func decodeProviderSubagent(raw any, agent string, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {

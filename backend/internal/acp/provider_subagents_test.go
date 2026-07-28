@@ -14,6 +14,16 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
+type appendBatchStore struct {
+	Store
+	batchSizes []int
+}
+
+func (s *appendBatchStore) AppendSessionEvents(id string, events ...sessionevents.Event) error {
+	s.batchSizes = append(s.batchSizes, len(events))
+	return s.Store.AppendSessionEvents(id, events...)
+}
+
 func TestProviderSubagentPluralMetadata(t *testing.T) {
 	update, err := acpschema.DecodeSessionUpdate(json.RawMessage(`{
 		"sessionUpdate":"tool_call","toolCallId":"spawn","title":"spawnAgent",
@@ -49,6 +59,43 @@ func TestProviderSubagentPluralMetadata(t *testing.T) {
 	}
 }
 
+func TestProviderSubagentPluralMetadataRejectsPartialBatch(t *testing.T) {
+	update, err := acpschema.DecodeSessionUpdate(json.RawMessage(`{
+		"sessionUpdate":"tool_call","toolCallId":"spawn","title":"spawnAgent",
+		"_meta":{"codex":{"providerSubagents":[
+			{"id":"child","status":"running"},
+			{"status":"failed"}
+		]}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := providerSubagentFromUpdate(AgentCodex, update).subagents; got != nil {
+		t.Fatalf("subagents = %#v", got)
+	}
+}
+
+func TestProviderSubagentPluralMetadataPublishesOneBatch(t *testing.T) {
+	base, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := base.CreateSession(storage.CreateSession{Slug: "codex-subagent-batch", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &appendBatchStore{Store: base}
+	manager := NewManager(store, Config{}, nil)
+	manager.publishProviderSubagents(eventView{ID: session.ID, ACPAgent: AgentCodex}, []sessionevents.ProviderSubagentEvent{
+		{Provider: AgentCodex, ID: "one", Status: "running"},
+		{Provider: AgentCodex, ID: "two", Status: "running"},
+	})
+
+	if len(store.batchSizes) != 1 || store.batchSizes[0] != 2 {
+		t.Fatalf("append batches = %#v", store.batchSizes)
+	}
+}
+
 func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -76,7 +123,7 @@ func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 				"sessionUpdate": "session_info_update",
 				"_meta": map[string]any{
 					codexMetaKey: map[string]any{
-						"providerSubagent": map[string]any{
+						"providerSubagents": []any{map[string]any{
 							"provider":  "codex",
 							"id":        "thread-1",
 							"thread_id": "thread-1",
@@ -84,7 +131,7 @@ func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 							"task":      "next_rigidity",
 							"status":    "running",
 							"prompt":    "inspect the leak",
-						},
+						}},
 					},
 				},
 			},
@@ -138,16 +185,16 @@ func TestProviderSubagentSparseUpdateAfterManagerRestartPublishesCompleteSnapsho
 	}
 	view := eventView{ID: session.ID, Slug: session.Slug, ACPAgent: AgentCodex}
 	first := NewManager(store, Config{}, nil)
-	first.publishProviderSubagent(view, sessionevents.ProviderSubagentEvent{
+	first.publishProviderSubagents(view, []sessionevents.ProviderSubagentEvent{{
 		Provider: AgentCodex, ID: "worker", Name: "Newton", Task: "audit", Status: "running",
-	})
+	}})
 
 	second := NewManager(store, Config{}, nil)
 	second.Events = sessionevents.New()
 	live := second.Events.Subscribe(t.Context(), session.ID)
-	second.publishProviderSubagent(view, sessionevents.ProviderSubagentEvent{
+	second.publishProviderSubagents(view, []sessionevents.ProviderSubagentEvent{{
 		Provider: AgentCodex, ID: "worker", Status: "completed",
-	})
+	}})
 
 	event := <-live
 	if event.ProviderSubagent == nil || event.ProviderSubagent.Name != "Newton" || event.ProviderSubagent.Task != "audit" || event.ProviderSubagent.Status != "completed" {
@@ -191,11 +238,11 @@ func TestProviderSubagentMetadataDoesNotConsumeMessageChunk(t *testing.T) {
 				"content":       map[string]any{"type": "text", "text": "root-visible text"},
 				"_meta": map[string]any{
 					codexMetaKey: map[string]any{
-						"providerSubagent": map[string]any{
+						"providerSubagents": []any{map[string]any{
 							"provider": "codex",
 							"id":       "thread-1",
 							"status":   "running",
-						},
+						}},
 					},
 				},
 			},

@@ -15,7 +15,8 @@ func TestLiveCodexArchive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	launch, err := New(t.TempDir(), "dev").ResolveAdapter(ctx, "codex")
+	manager := New(t.TempDir(), "dev")
+	launch, err := manager.ResolveAdapter(ctx, "codex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,8 +29,9 @@ func TestLiveCodexArchive(t *testing.T) {
 			t.Fatalf("managed runtime file %q: info=%v err=%v", path, info, err)
 		}
 	}
+	version := manager.Status("codex").Version
 	if output, err := exec.CommandContext(ctx, launch.Command, "--version").CombinedOutput(); err != nil ||
-		!strings.Contains(string(output), "1.1.7-jaz.9") {
+		version == "" || !strings.Contains(string(output), version) {
 		t.Fatalf("adapter --version: %s err=%v", output, err)
 	}
 	if output, err := exec.CommandContext(ctx, launch.Env["CODEX_PATH"], "--version").CombinedOutput(); err != nil ||
