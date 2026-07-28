@@ -348,6 +348,16 @@ export function AppearanceSettings() {
             className="h-8 w-48 rounded-control bg-surface-2 px-2.5 text-[13px] text-ink outline-none ring-1 ring-border/60 placeholder:text-ink-3 focus:ring-primary"
           />
         </Row>
+        <Row
+          title="Wordmark only"
+          description="Hide the particle field’s shapes, phrases, music, and rocket from the main menu."
+        >
+          <Switch
+            checked={settings.homeWordmarkOnly}
+            onChange={(value) => setAppearance({ homeWordmarkOnly: value })}
+            aria-label="Wordmark only"
+          />
+        </Row>
       </SettingsCard>
 
       <div className="mt-6 flex items-end justify-between gap-3">

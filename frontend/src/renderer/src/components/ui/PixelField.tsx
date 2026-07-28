@@ -433,7 +433,7 @@ export function PixelField({
   const onShapeFrameRef = useRef(onShapeFrame)
   const lifecycleRef = useRef(lifecycle)
   const reducedMotion = useReducedEffectsMotion()
-  const playlistKey = (shapes?.length ? shapes : DEFAULT_PLAYLIST).join(',')
+  const playlistKey = JSON.stringify(shapes ?? DEFAULT_PLAYLIST)
 
   useEffect(() => {
     calmRef.current = calm
@@ -448,11 +448,12 @@ export function PixelField({
   }, [lifecycle])
 
   useEffect(() => {
+    onShapeFrameRef.current?.(null)
     const canvas = canvasRef.current
     if (!canvas) return
     const gl = canvas.getContext('webgl2', { alpha: true, antialias: false })
     if (!gl) return
-    const playlist = playlistKey.split(',') as PixelFieldShapeName[]
+    const playlist = JSON.parse(playlistKey) as PixelFieldShapeName[]
 
     /* ---- program ---- */
     const compile = (type: number, src: string) => {
