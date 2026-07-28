@@ -42,11 +42,14 @@ export function TokenStats({ session }: { session: Session }) {
     >
       <div className="flex min-w-[200px] flex-col gap-1 px-2 py-1.5">
         {total > 0 ? <StatRow label="Total" value={formatTokens(total)} /> : null}
-        <StatRow label="Input (uncached)" value={formatTokens(input)} />
+        <StatRow label="Input" value={formatTokens(input)} />
         <StatRow label="Cache read" value={formatTokens(cached)} />
         {cacheWrite > 0 ? <StatRow label="Cache write" value={formatTokens(cacheWrite)} /> : null}
         <StatRow label="Output" value={formatTokens(output)} />
         {reasoning > 0 ? <StatRow label="Reasoning" value={formatTokens(reasoning)} /> : null}
+        {cacheWrite > 0 ? (
+          <div className="mt-0.5 text-[10px] leading-tight text-ink-3">Cache write counts inside Input.</div>
+        ) : null}
         {context > 0 ? (
           <>
             <StatRow

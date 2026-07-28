@@ -161,7 +161,8 @@ export function ModelBreakdown({
           ) : null}
 
           <p className="mt-2 text-[11px] text-ink-3">
-            Total = Input + Cache read + Cache write + Output.
+            Total = Input + Cache read + Output. Input is every token sent that cache did not
+            replay, so Cache write is counted inside it.
           </p>
           <p className="mt-1 text-[11px] text-ink-3">
             Cost is an OpenRouter list-price equivalent for subscription-backed coding-agent usage,

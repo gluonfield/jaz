@@ -137,20 +137,22 @@ export function peakDay(days: DailyUsage[]): DailyUsage | null {
   }, null)
 }
 
+// Every token the thread has ever sent that cache did not replay. The backend
+// stores input inclusive of cache, so cache reads come back out; cache writes
+// are new content and stay. Accumulates per turn, so it only ever grows —
+// compaction shrinks context, never this.
 export function inputTokens(usage: UsageTotals): number {
-  return Math.max(
-    0,
-    (usage.input_tokens ?? 0) - (usage.cached_input_tokens ?? 0) - (usage.cached_write_tokens ?? 0),
-  )
+  return Math.max(0, (usage.input_tokens ?? 0) - (usage.cached_input_tokens ?? 0))
+}
+
+// The slice billed at the plain input rate, with cache reads and writes priced
+// on their own lines. Cost math only — never show this as "input".
+export function fullRateInputTokens(usage: UsageTotals): number {
+  return Math.max(0, inputTokens(usage) - (usage.cached_write_tokens ?? 0))
 }
 
 export function totalUsageTokens(usage: UsageTotals): number {
-  return (
-    inputTokens(usage) +
-    (usage.cached_input_tokens ?? 0) +
-    (usage.cached_write_tokens ?? 0) +
-    (usage.output_tokens ?? 0)
-  )
+  return (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
 }
 
 export function usageLevel(total: number, maxTotal: number): number {

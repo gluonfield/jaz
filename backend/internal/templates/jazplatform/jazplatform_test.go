@@ -111,6 +111,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"these govern behavior on the Jaz platform",
 		"Launching background work is not delivery",
 		"none of these files waits for the user to ask for a write",
+		"revise it in place instead of appending a near-duplicate",
 		"`AGENTS.md` contains the user's standing rules. Write when the user states a durable instruction",
 		"`SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`",
 		"`INTERNAL.md` belongs to the agent. Write when you learn something durable",

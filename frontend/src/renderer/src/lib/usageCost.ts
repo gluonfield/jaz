@@ -1,6 +1,6 @@
 import type { AgentSettings, UsageTotals } from './api/types'
 import { type ModelPricing, pricingIdForUsage, usageModelLabel } from './models'
-import { inputTokens, totalUsageTokens, type UsageModelTotals } from './usageDaily'
+import { fullRateInputTokens, totalUsageTokens, type UsageModelTotals } from './usageDaily'
 
 export function buildPricingIndex(models: { value: string; pricing?: ModelPricing }[]): Map<string, ModelPricing> {
   const index = new Map<string, ModelPricing>()
@@ -14,7 +14,7 @@ function estimateUsageCost(usage: UsageTotals, pricing: ModelPricing): number {
   const cacheRead = usage.cached_input_tokens ?? 0
   const cacheWrite = usage.cached_write_tokens ?? 0
   const output = usage.output_tokens ?? 0
-  return inputTokens(usage) * pricing.input + cacheRead * pricing.cacheRead + cacheWrite * pricing.cacheWrite + output * pricing.output
+  return fullRateInputTokens(usage) * pricing.input + cacheRead * pricing.cacheRead + cacheWrite * pricing.cacheWrite + output * pricing.output
 }
 
 export interface PricedModel {
