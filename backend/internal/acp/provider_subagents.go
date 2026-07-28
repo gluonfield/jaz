@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	providerSubagentMetaKey = "providerSubagent"
+	providerSubagentMetaKey  = "providerSubagent"
+	providerSubagentsMetaKey = "providerSubagents"
 )
 
 type providerSubagentHint struct {
@@ -27,38 +28,26 @@ type providerSubagentUpdate struct {
 func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpdate) providerSubagentUpdate {
 	switch event := update.(type) {
 	case acpschema.SessionInfoSessionUpdate:
-		subagent := providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{})
-		return providerSubagentUpdate{subagents: providerSubagentSlice(subagent), consume: subagent != nil}
+		subagents := providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{})
+		return providerSubagentUpdate{subagents: subagents, consume: len(subagents) > 0}
 	case acpschema.ToolCallSessionUpdate:
-		return toolCallSubagent(agent, event.Meta, event.RawInput)
+		return toolCallSubagent(agent, event.Meta)
 	case acpschema.ToolCallUpdateSessionUpdate:
-		return toolCallSubagent(agent, event.Meta, event.RawInput)
+		return toolCallSubagent(agent, event.Meta)
 	case acpschema.AgentMessageChunkUpdate:
-		return providerSubagentUpdate{subagents: providerSubagentSlice(providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"}))}
+		return providerSubagentUpdate{subagents: providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
 	case acpschema.AgentThoughtChunkUpdate:
-		return providerSubagentUpdate{subagents: providerSubagentSlice(providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"}))}
+		return providerSubagentUpdate{subagents: providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})}
 	default:
 		return providerSubagentUpdate{}
 	}
 }
 
-func toolCallSubagent(agent string, meta map[string]any, rawInput json.RawMessage) providerSubagentUpdate {
-	subagent := providerSubagentFromMeta(agent, meta, providerSubagentHint{status: "running"})
-	subagents := providerSubagentSlice(subagent)
-	if len(subagents) == 0 && CanonicalAgentName(agent) == AgentCodex {
-		subagents = codexSubagentsFromMeta(meta, rawInput)
-	}
+func toolCallSubagent(agent string, meta map[string]any) providerSubagentUpdate {
 	return providerSubagentUpdate{
-		subagents: subagents,
+		subagents: providerSubagentsFromMeta(agent, meta, providerSubagentHint{status: "running"}),
 		consume:   subagentInternalToolCall(meta),
 	}
-}
-
-func providerSubagentSlice(subagent *sessionevents.ProviderSubagentEvent) []sessionevents.ProviderSubagentEvent {
-	if subagent == nil {
-		return nil
-	}
-	return []sessionevents.ProviderSubagentEvent{*subagent}
 }
 
 // subagentInternalToolCall reports whether a tool call is a Claude subagent's
@@ -72,7 +61,7 @@ func subagentInternalToolCall(meta map[string]any) bool {
 	return strings.TrimSpace(stringValue(claudeCode["parentToolUseId"])) != ""
 }
 
-func providerSubagentFromMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
+func providerSubagentsFromMeta(agent string, meta map[string]any, hint providerSubagentHint) []sessionevents.ProviderSubagentEvent {
 	if meta == nil {
 		return nil
 	}
@@ -81,20 +70,43 @@ func providerSubagentFromMeta(agent string, meta map[string]any, hint providerSu
 		if !ok {
 			continue
 		}
+		for _, key := range []string{providerSubagentsMetaKey, "provider_subagents"} {
+			if raw, ok := provider[key]; ok {
+				return decodeProviderSubagents(raw, agent, hint)
+			}
+		}
 		for _, key := range []string{providerSubagentMetaKey, "provider_subagent"} {
-			if raw, ok := mapValue(provider[key]); ok {
-				subagent := decodeProviderSubagent(raw)
-				if subagent != nil {
-					fillProviderSubagent(subagent, agent, hint)
+			if raw, ok := provider[key]; ok {
+				subagent := decodeProviderSubagent(raw, agent, hint)
+				if subagent == nil {
+					return nil
 				}
-				return subagent
+				return []sessionevents.ProviderSubagentEvent{*subagent}
 			}
 		}
 	}
 	return nil
 }
 
-func decodeProviderSubagent(raw map[string]any) *sessionevents.ProviderSubagentEvent {
+func decodeProviderSubagents(raw any, agent string, hint providerSubagentHint) []sessionevents.ProviderSubagentEvent {
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var subagents []sessionevents.ProviderSubagentEvent
+	if err := json.Unmarshal(data, &subagents); err != nil {
+		return nil
+	}
+	valid := subagents[:0]
+	for i := range subagents {
+		if normalizeProviderSubagent(&subagents[i], agent, hint) {
+			valid = append(valid, subagents[i])
+		}
+	}
+	return valid
+}
+
+func decodeProviderSubagent(raw any, agent string, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
 	data, err := json.Marshal(raw)
 	if err != nil {
 		return nil
@@ -103,16 +115,21 @@ func decodeProviderSubagent(raw map[string]any) *sessionevents.ProviderSubagentE
 	if err := json.Unmarshal(data, &subagent); err != nil {
 		return nil
 	}
-	if subagent.ID == "" && subagent.ThreadID != "" {
-		subagent.ID = subagent.ThreadID
-	}
-	if subagent.ID == "" {
+	if !normalizeProviderSubagent(&subagent, agent, hint) {
 		return nil
 	}
 	return &subagent
 }
 
-func fillProviderSubagent(subagent *sessionevents.ProviderSubagentEvent, agent string, hint providerSubagentHint) {
+func normalizeProviderSubagent(subagent *sessionevents.ProviderSubagentEvent, agent string, hint providerSubagentHint) bool {
+	subagent.ID = strings.TrimSpace(subagent.ID)
+	subagent.ThreadID = strings.TrimSpace(subagent.ThreadID)
+	if subagent.ID == "" {
+		subagent.ID = subagent.ThreadID
+	}
+	if subagent.ID == "" {
+		return false
+	}
 	if subagent.Provider == "" {
 		subagent.Provider = CanonicalAgentName(agent)
 	}
@@ -122,6 +139,7 @@ func fillProviderSubagent(subagent *sessionevents.ProviderSubagentEvent, agent s
 	if subagent.Summary == "" {
 		subagent.Summary = hint.summary
 	}
+	return true
 }
 
 func mapValue(value any) (map[string]any, bool) {

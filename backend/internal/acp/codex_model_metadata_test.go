@@ -75,6 +75,30 @@ func TestResolveCodexCustomProviderModelMetadataAllowsIncompleteCatalog(t *testi
 	}
 }
 
+func TestResolveCodexCustomProviderModelMetadataPreservesKnownEmptyReasoningEfforts(t *testing.T) {
+	manager := NewManager(nil, Config{ModelCatalog: &codexMetadataCatalog{models: []modelcatalog.Model{{
+		Value:           "automatic",
+		ContextLength:   128_000,
+		InputModalities: []string{"text"},
+		Reasoning:       modelcatalog.Reasoning{Status: modelcatalog.ReasoningReady},
+	}}}}, nil)
+	encoded, err := manager.resolveCodexCustomProviderModelMetadata(AgentCodex, AgentConfig{
+		ProviderMode:  AgentProviderModeAgentDefaults,
+		ModelProvider: "custom",
+		Model:         "automatic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata codexModelMetadata
+	if err := json.Unmarshal([]byte(encoded), &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.ReasoningEfforts == nil || len(metadata.ReasoningEfforts) != 0 {
+		t.Fatalf("reasoning efforts = %#v", metadata.ReasoningEfforts)
+	}
+}
+
 func (*codexMetadataCatalog) AgentModels(string) []modelcatalog.Model {
 	return nil
 }

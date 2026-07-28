@@ -14,59 +14,38 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestCodexOfficialSubagentMetadata(t *testing.T) {
-	for _, test := range []struct {
-		name string
-		raw  string
-		want sessionevents.ProviderSubagentEvent
-	}{
+func TestProviderSubagentPluralMetadata(t *testing.T) {
+	update, err := acpschema.DecodeSessionUpdate(json.RawMessage(`{
+		"sessionUpdate":"tool_call","toolCallId":"spawn","title":"spawnAgent",
+		"_meta":{"codex":{"providerSubagents":[{
+			"provider":"codex","id":"child","thread_id":"child","parent_id":"parent",
+			"status":"running","summary":"Inspecting","prompt":"audit it"
+		},{
+			"provider":"codex","id":"child-2","thread_id":"child-2","parent_id":"parent",
+			"status":"failed","summary":"Failed","prompt":"audit it"
+		}]}}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := providerSubagentFromUpdate(AgentCodex, update).subagents
+	want := []sessionevents.ProviderSubagentEvent{
 		{
-			name: "activity",
-			raw: `{
-				"sessionUpdate":"tool_call","toolCallId":"activity","title":"Start subagent",
-				"rawInput":{"agentThreadId":"child","agentPath":"/root/audit","activityKind":"started"},
-				"_meta":{"codex":{"subagent":{"threadId":"child","path":"/root/audit","activity":"started"}}}
-			}`,
-			want: sessionevents.ProviderSubagentEvent{
-				Provider: AgentCodex, ID: "child", ThreadID: "child",
-				Name: "audit", Task: "audit", Status: "running", Summary: "Spawned",
-			},
+			Provider: AgentCodex, ID: "child", ThreadID: "child", ParentID: "parent",
+			Status: "running", Summary: "Inspecting", Prompt: "audit it",
 		},
 		{
-			name: "collaboration",
-			raw: `{
-				"sessionUpdate":"tool_call","toolCallId":"spawn","title":"spawnAgent",
-				"rawInput":{
-					"prompt":"audit it","senderThreadId":"parent","receiverThreadIds":["child","child-2"],
-					"agentsStates":{
-						"child":{"status":"running","message":"Inspecting"},
-						"child-2":{"status":"errored","message":null}
-					}
-				},
-				"_meta":{"codex":{"collaboration":{
-					"tool":"spawnAgent","senderThreadId":"parent","receiverThreadIds":["child","child-2"]
-				}}}
-			}`,
-			want: sessionevents.ProviderSubagentEvent{
-				Provider: AgentCodex, ID: "child", ThreadID: "child", ParentID: "parent",
-				Status: "running", Summary: "Inspecting", Prompt: "audit it",
-			},
+			Provider: AgentCodex, ID: "child-2", ThreadID: "child-2", ParentID: "parent",
+			Status: "failed", Summary: "Failed", Prompt: "audit it",
 		},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			update, err := acpschema.DecodeSessionUpdate(json.RawMessage(test.raw))
-			if err != nil {
-				t.Fatal(err)
-			}
-			got := providerSubagentFromUpdate(AgentCodex, update).subagents
-			if len(got) == 0 || got[0] != test.want {
-				t.Fatalf("subagents = %#v, first want %#v", got, test.want)
-			}
-			if test.name == "collaboration" &&
-				(len(got) != 2 || got[1].ID != "child-2" || got[1].Status != "failed" || got[1].Summary != "Failed") {
-				t.Fatalf("subagents = %#v", got)
-			}
-		})
+	}
+	if len(got) != len(want) {
+		t.Fatalf("subagents = %#v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("subagents[%d] = %#v, want %#v", i, got[i], want[i])
+		}
 	}
 }
 

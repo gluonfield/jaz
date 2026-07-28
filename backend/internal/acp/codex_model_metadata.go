@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/wins/jaz/backend/internal/modelcatalog"
 )
 
 const codexModelMetadataEnv = "JAZ_CODEX_MODEL_METADATA"
@@ -14,7 +16,7 @@ type codexModelMetadata struct {
 	Description            string   `json:"description,omitempty"`
 	ContextWindow          int      `json:"context_window"`
 	InputModalities        []string `json:"input_modalities,omitempty"`
-	ReasoningEfforts       []string `json:"reasoning_efforts,omitempty"`
+	ReasoningEfforts       []string `json:"reasoning_efforts"`
 	DefaultReasoningEffort string   `json:"default_reasoning_effort,omitempty"`
 }
 
@@ -37,13 +39,17 @@ func (m *Manager) resolveCodexCustomProviderModelMetadata(name string, cfg Agent
 	if !ok || model.ContextLength <= 0 {
 		return "", nil
 	}
+	var reasoningEfforts []string
+	if model.Reasoning.Status == modelcatalog.ReasoningReady {
+		reasoningEfforts = append([]string{}, model.Reasoning.Efforts...)
+	}
 	metadata := codexModelMetadata{
 		ID:                     modelID,
 		DisplayName:            model.Label,
 		Description:            model.Description,
 		ContextWindow:          model.ContextLength,
 		InputModalities:        append([]string(nil), model.InputModalities...),
-		ReasoningEfforts:       append([]string(nil), model.Reasoning.Efforts...),
+		ReasoningEfforts:       reasoningEfforts,
 		DefaultReasoningEffort: model.Reasoning.DefaultEffort,
 	}
 	encoded, err := json.Marshal(metadata)
