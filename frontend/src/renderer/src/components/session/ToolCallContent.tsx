@@ -145,20 +145,20 @@ export const ToolCallDetail = memo(function ToolCallDetail({
         <span className="relative z-[1] flex size-5 shrink-0 items-center justify-center rounded-full bg-bg text-ink-3">
           <Icon size={12} aria-hidden />
         </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{presentation.label}</span>
+        <span className="min-w-0 truncate text-[13px] text-ink-2">{presentation.label}</span>
+        {expandable ? (
+          <ChevronRight
+            size={12}
+            className={`shrink-0 text-ink-3 transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+            aria-hidden
+          />
+        ) : null}
         {presentation.meta ? (
           <span className={`shrink-0 text-[11.5px] tabular-nums ${failed ? 'text-danger' : 'text-ink-3'}`}>
             {presentation.meta}
           </span>
         ) : null}
         {running ? <LoaderCircle className="size-3 shrink-0 animate-spin text-running" aria-hidden /> : null}
-        {expandable ? (
-          <ChevronRight
-            size={12}
-            className={`mr-0.5 shrink-0 text-ink-3 transition-transform duration-150 motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
-            aria-hidden
-          />
-        ) : null}
       </button>
       <Collapse open={open && expandable} className="w-full">
         <HumanToolPreview call={call} category={presentation.category} preview={presentation.preview} />
