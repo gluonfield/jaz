@@ -71,6 +71,21 @@ func TestParseSessionConfigOptions(t *testing.T) {
 	if mixed.effortConfigID != "thinking" || len(mixed.effortOptions) != 1 || mixed.effortOptions[0] != "xhigh" {
 		t.Fatalf("mixed effort config = %#v", mixed)
 	}
+
+	plan := parseSessionConfigOptions(json.RawMessage(`{"configOptions":[{
+		"id":"collaboration_mode",
+		"options":[{"value":"default"},{"value":"plan"}]
+	}]}`))
+	if plan.planConfigID != sessionConfigCollaborationMode {
+		t.Fatalf("plan config id = %q", plan.planConfigID)
+	}
+	unsupportedPlan := parseSessionConfigOptions(json.RawMessage(`{"configOptions":[{
+		"id":"collaboration_mode",
+		"options":[{"value":"plan"}]
+	}]}`))
+	if unsupportedPlan.planConfigID != "" {
+		t.Fatalf("incomplete plan config id = %q", unsupportedPlan.planConfigID)
+	}
 }
 
 func TestConfigOptionValueAvailable(t *testing.T) {

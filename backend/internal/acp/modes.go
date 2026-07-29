@@ -48,6 +48,16 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *jobState, planReq
 	modes := job.Modes.Clone()
 	job.mu.RUnlock()
 
+	if modes.planConfigID != "" {
+		if err := m.ensureTurnMode(ctx, job, baselineModeID(job.ACPAgent, modes)); err != nil {
+			return err
+		}
+		value := "default"
+		if planRequested {
+			value = "plan"
+		}
+		return m.applyTurnConfig(ctx, job, modes.planConfigID, value)
+	}
 	if planRequested {
 		if modes.PlanModeID == "" {
 			return fmt.Errorf("acp session %s does not expose plan mode", job.Slug)
@@ -60,6 +70,27 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *jobState, planReq
 		return m.applyTurnMode(ctx, job, target)
 	}
 	return m.ensureTurnMode(ctx, job, target)
+}
+
+func (m *Manager) applyTurnConfig(ctx context.Context, job *jobState, configID, value string) error {
+	job.mu.RLock()
+	acpSessionID := job.ACPSession
+	jobID := job.ID
+	job.mu.RUnlock()
+
+	peer := m.peer(jobID)
+	if peer == nil {
+		return fmt.Errorf("acp peer is not active")
+	}
+	_, err := peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+		SessionID: acpschema.SessionID(acpSessionID),
+		ConfigID:  acpschema.SessionConfigID(configID),
+		Value:     acpschema.SessionConfigValueID(value),
+	})
+	if err != nil {
+		return fmt.Errorf("set acp session %q config to %q: %w", configID, value, err)
+	}
+	return nil
 }
 
 func (m *Manager) ensureTurnMode(ctx context.Context, job *jobState, target string) error {

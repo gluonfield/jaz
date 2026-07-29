@@ -142,6 +142,7 @@ type ModeState struct {
 	CurrentModeID  string         `json:"current_mode_id,omitempty"`
 	PlanModeID     string         `json:"plan_mode_id,omitempty"`
 	AvailableModes []ModeSnapshot `json:"available_modes,omitempty"`
+	planConfigID   string
 }
 
 type ModeSnapshot struct {
@@ -290,6 +291,7 @@ func (s ModeState) Clone() ModeState {
 		CurrentModeID:  s.CurrentModeID,
 		PlanModeID:     s.PlanModeID,
 		AvailableModes: append([]ModeSnapshot(nil), s.AvailableModes...),
+		planConfigID:   s.planConfigID,
 	}
 }
 

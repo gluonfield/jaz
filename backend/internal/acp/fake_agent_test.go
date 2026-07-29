@@ -61,6 +61,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	}
 	currentModel := ""
 	currentEffort := ""
+	currentCollaborationMode := "default"
 	messageSeq := 0
 	nextMessageID := func(kind string) string {
 		messageSeq++
@@ -182,9 +183,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					},
 				})
 			}
-			sendResult(conn, msg, map[string]any{
+			result := map[string]any{
 				"modes": fakeModes(),
-			})
+			}
+			addFakePlanConfig(result)
+			sendResult(conn, msg, result)
 		case "session/new":
 			var req struct {
 				Meta       map[string]any    `json:"_meta"`
@@ -228,6 +231,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				result["modes"] = modes
 			}
 			addFakeModels(result)
+			addFakePlanConfig(result)
 			sendResult(conn, msg, result)
 		case "session/close":
 			sendResult(conn, msg, map[string]any{})
@@ -274,6 +278,16 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != "fake-session" {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected configured option", nil))
 				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if req.ConfigID == "collaboration_mode" {
+				if req.Value != "default" && req.Value != "plan" {
+					resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected collaboration mode", nil))
+					_ = conn.Send(context.Background(), resp)
+					continue
+				}
+				currentCollaborationMode = req.Value
+				sendResult(conn, msg, map[string]any{})
 				continue
 			}
 			wantConfigID := os.Getenv("JAZ_FAKE_ACP_EXPECT_CONFIG_ID")
@@ -407,7 +421,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				pendingPrompt = msg
 				continue
 			}
-			if currentMode == "plan" {
+			if currentMode == "plan" || currentCollaborationMode == "plan" {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": "fake-session",
 					"update": map[string]any{
@@ -681,6 +695,24 @@ func addFakeModels(result map[string]any) {
 			"options": modelOptions,
 		},
 	}
+}
+
+func addFakePlanConfig(result map[string]any) {
+	if os.Getenv("JAZ_FAKE_ACP_PLAN_CONFIG") != "1" {
+		return
+	}
+	options, _ := result["configOptions"].([]map[string]any)
+	result["configOptions"] = append(options, map[string]any{
+		"id":           "collaboration_mode",
+		"name":         "Collaboration mode",
+		"category":     "collaboration_mode",
+		"type":         "select",
+		"currentValue": "default",
+		"options": []map[string]any{
+			{"value": "default"},
+			{"value": "plan"},
+		},
+	})
 }
 
 func fakeUltracodeMeta(meta map[string]any) bool {

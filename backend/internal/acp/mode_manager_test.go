@@ -174,3 +174,65 @@ func TestManagerRestoresCodexFullAccessMode(t *testing.T) {
 		t.Fatalf("ordinary send result: assistant=%q plan=%#v", job.Assistant, job.Plan)
 	}
 }
+
+func TestManagerUsesCodexPlanConfigOption(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      t.TempDir(),
+		Workspace: t.TempDir(),
+		Agents: map[string]acp.AgentConfig{
+			"codex": {
+				Command: os.Args[0],
+				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":        "1",
+					"JAZ_FAKE_ACP_LOAD":         "1",
+					"JAZ_FAKE_ACP_CODEX_MODES":  "1",
+					"JAZ_FAKE_ACP_CURRENT_MODE": "agent",
+					"JAZ_FAKE_ACP_PLAN_CONFIG":  "1",
+					"JAZ_FAKE_ACP_SET_CONFIG":   "1",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-plan-config"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	status, err := manager.Status(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Modes.CurrentModeID != "agent-full-access" || status.Modes.PlanModeID != "plan" {
+		t.Fatalf("spawn modes = %#v", status.Modes)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "make a plan", Completion: acp.CompletionInline, PlanRequested: true}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Modes.CurrentModeID != "agent-full-access" || len(job.Plan) == 0 {
+		t.Fatalf("plan result: modes=%#v plan=%#v", job.Modes, job.Plan)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "approved", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err = manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Modes.CurrentModeID != "agent-full-access" || job.Assistant != "hello from fake agent" || len(job.Plan) != 0 {
+		t.Fatalf("ordinary result: modes=%#v assistant=%q plan=%#v", job.Modes, job.Assistant, job.Plan)
+	}
+}

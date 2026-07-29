@@ -499,9 +499,13 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}, nil
 }
 
-func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpschema.NewSessionResponse) (ModeState, error) {
-	acpModes := session.Modes
+func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpSessionInfo) (ModeState, error) {
+	acpModes := session.response.Modes
 	modes := modeStateFromACP(acpModes)
+	if session.configOptions.planConfigID != "" {
+		modes.PlanModeID = "plan"
+		modes.planConfigID = session.configOptions.planConfigID
+	}
 	if acpModes == nil {
 		return modes, nil
 	}
@@ -510,7 +514,7 @@ func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, a
 		target = baselineModeID(agentName, modes)
 	}
 	if target != "" && modes.CurrentModeID != target {
-		if err := m.setSessionMode(ctx, peer, session.SessionID, target); err != nil {
+		if err := m.setSessionMode(ctx, peer, session.response.SessionID, target); err != nil {
 			return modes, err
 		}
 		modes.CurrentModeID = target

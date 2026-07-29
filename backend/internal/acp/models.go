@@ -15,6 +15,7 @@ import (
 )
 
 const agentMethodSessionSetModel = "session/set_model"
+const sessionConfigCollaborationMode = "collaboration_mode"
 const sessionConfigModel = "model"
 const sessionConfigReasoningEffort = "reasoning_effort"
 const claudeSessionConfigEffort = "effort"
@@ -254,6 +255,7 @@ type sessionModelState struct {
 
 type sessionConfigOptionsState struct {
 	configOptionsPresent bool
+	planConfigID         string
 	modelOptions         []string
 	effortConfigPresent  bool
 	effortConfigID       string
@@ -356,7 +358,7 @@ func (m *Manager) configuredModeState(
 	if _, handled, err := resolveGrokStartupConfig(agentName, cfg); err != nil {
 		return ModeState{}, err
 	} else if handled {
-		return m.initializeModeState(ctx, peer, agentName, session.response)
+		return m.initializeModeState(ctx, peer, agentName, session)
 	}
 	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, modelToSet, session.modelState)
 	if err != nil {
@@ -382,7 +384,7 @@ func (m *Manager) configuredModeState(
 			return ModeState{}, err
 		}
 	}
-	return m.initializeModeState(ctx, peer, agentName, session.response)
+	return m.initializeModeState(ctx, peer, agentName, session)
 }
 
 func (m *Manager) applyConfiguredReasoningEffort(
@@ -443,6 +445,11 @@ func parseSessionConfigOptions(raw json.RawMessage) sessionConfigOptionsState {
 	for _, option := range options {
 		category := strings.TrimSpace(option.Category)
 		switch {
+		case option.ID == sessionConfigCollaborationMode:
+			values := parseConfigOptionValues(option.Options)
+			if configOptionValueAvailable(values, "default") && configOptionValueAvailable(values, "plan") {
+				state.planConfigID = option.ID
+			}
 		case category == string(acpschema.SessionConfigOptionCategoryModel) || option.ID == sessionConfigModel:
 			state.modelOptions = parseConfigOptionValues(option.Options)
 		case category == string(acpschema.SessionConfigOptionCategoryThoughtLevel) || option.ID == claudeSessionConfigEffort || option.ID == sessionConfigReasoningEffort:

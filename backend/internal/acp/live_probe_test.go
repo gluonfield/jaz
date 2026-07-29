@@ -85,6 +85,7 @@ func TestLiveACPProbe(t *testing.T) {
 	if sessionResp.SessionID == "" {
 		t.Fatal("empty session id")
 	}
+	options := parseSessionConfigOptions(session.Result)
 	probeApplyConfiguredSessionOptions(t, ctx, conn, agent, sessionResp.SessionID)
 	availableModes := []acpschema.SessionMode(nil)
 	if sessionResp.Modes != nil {
@@ -103,6 +104,13 @@ func TestLiveACPProbe(t *testing.T) {
 	}
 	if os.Getenv("ACP_PROBE_SKIP_PLAN_MODE") == "1" {
 		t.Log("skipping plan mode switch")
+	} else if options.planConfigID != "" {
+		setPlan := probeCall(t, ctx, conn, "5", acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+			SessionID: sessionResp.SessionID,
+			ConfigID:  acpschema.SessionConfigID(options.planConfigID),
+			Value:     acpschema.SessionConfigValueID("plan"),
+		})
+		t.Logf("session/set_config_option(%s=plan) result: %s", options.planConfigID, setPlan.Result)
 	} else if modeID := planModeID(availableModes); modeID != "" {
 		setMode := probeCall(t, ctx, conn, "5", acpschema.AgentMethodSessionSetMode, acpschema.SetSessionModeRequest{
 			SessionID: sessionResp.SessionID,
