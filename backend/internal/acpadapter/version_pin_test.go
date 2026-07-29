@@ -58,14 +58,30 @@ func TestAdapterAssetsAreComplete(t *testing.T) {
 	}
 }
 
-func TestCodexAssetsDeclareCodeModeHost(t *testing.T) {
+func TestCodexAssetsDeclareRuntime(t *testing.T) {
 	codex := loadAdapterAssetSpec(t).Adapters["codex"]
 	for platform, asset := range codex.Assets {
-		want := "codex-code-mode-host"
-		if strings.HasPrefix(platform, "win32-") {
-			want += ".exe"
+		triple := map[string]string{
+			"darwin-arm64": "aarch64-apple-darwin",
+			"darwin-x64":   "x86_64-apple-darwin",
+			"linux-arm64":  "aarch64-unknown-linux-musl",
+			"linux-x64":    "x86_64-unknown-linux-musl",
+			"win32-arm64":  "aarch64-pc-windows-msvc",
+			"win32-x64":    "x86_64-pc-windows-msvc",
+		}[platform]
+		if triple == "" {
+			t.Errorf("codex has unexpected platform %q", platform)
+			continue
 		}
-		if got := asset.Env["CODEX_CODE_MODE_HOST_PATH"]; got != want {
+		executable := ""
+		if strings.HasPrefix(platform, "win32-") {
+			executable = ".exe"
+		}
+		root := "codex-runtime/" + triple + "/bin/"
+		if got, want := asset.Env["CODEX_PATH"], root+"codex"+executable; got != want {
+			t.Errorf("codex %s CODEX_PATH = %q, want %q", platform, got, want)
+		}
+		if got, want := asset.Env["CODEX_CODE_MODE_HOST_PATH"], root+"codex-code-mode-host"+executable; got != want {
 			t.Errorf("codex %s host = %q, want %q", platform, got, want)
 		}
 	}

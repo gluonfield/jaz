@@ -103,6 +103,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			effortConfigID:       sessionConfigReasoningEffort,
 			effortInModelSuffix:  true,
 			providerInLaunch:     true,
+			systemPromptAtLaunch: true,
 			promptPersistsOnLoad: true,
 			materializesOnPrompt: true,
 			modelValidationKind:  modelValidationNone,

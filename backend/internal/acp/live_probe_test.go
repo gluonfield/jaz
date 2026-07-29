@@ -168,6 +168,15 @@ func applyProbeEnvOverrides(env map[string]string) {
 	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_MODEL_METADATA")); value != "" {
 		env[codexModelMetadataEnv] = value
 	}
+	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_PATH")); value != "" {
+		env["CODEX_PATH"] = value
+	}
+	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_CODE_MODE_HOST_PATH")); value != "" {
+		env["CODEX_CODE_MODE_HOST_PATH"] = value
+	}
+	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_APP_SERVER_LOGS")); value != "" {
+		env["APP_SERVER_LOGS"] = value
+	}
 	if value := strings.TrimSpace(os.Getenv("ACP_PROBE_CLAUDE_EXECUTABLE")); value != "" {
 		env["CLAUDE_CODE_EXECUTABLE"] = value
 	}
@@ -239,7 +248,12 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 
 func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentConfig, env map[string]string, cwd string) (jsonrpc.MessageConn, func()) {
 	t.Helper()
-	command, args, err := processCommand(agent, cfg, nil)
+	if CanonicalAgentName(agent) == AgentCodex {
+		if err := configureCodexEnv(env, cfg, nil, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	command, args, err := processCommand(agent, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}

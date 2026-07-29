@@ -87,22 +87,24 @@ func (m *Manager) publishACPTool(job eventView, call sessionevents.ACPToolCall) 
 	m.publishOrderedACPEvents(job, events...)
 }
 
-func (m *Manager) publishProviderSubagent(job eventView, subagent sessionevents.ProviderSubagentEvent) {
-	if subagent.ID == "" {
+func (m *Manager) publishProviderSubagents(job eventView, subagents []sessionevents.ProviderSubagentEvent) {
+	if len(subagents) == 0 {
 		return
 	}
-	if subagent.Provider == "" {
-		subagent.Provider = CanonicalAgentName(job.ACPAgent)
-	}
-	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(job)))
-	for _, sessionID := range surfaceSessionIDs(job) {
-		events = append(events, sessionevents.Event{
-			SessionID:        sessionID,
-			Type:             sessionevents.TypeProviderSubagent,
-			ProviderSubagent: &subagent,
-			At:               time.Now().UTC(),
-			ProjectionKey:    sessionevents.ProviderSubagentProjectionKey(job.ID, subagent),
-		})
+	sessionIDs := surfaceSessionIDs(job)
+	events := make([]sessionevents.Event, 0, len(sessionIDs)*len(subagents))
+	now := time.Now().UTC()
+	for _, sessionID := range sessionIDs {
+		for i := range subagents {
+			subagent := subagents[i]
+			events = append(events, sessionevents.Event{
+				SessionID:        sessionID,
+				Type:             sessionevents.TypeProviderSubagent,
+				ProviderSubagent: &subagent,
+				At:               now,
+				ProjectionKey:    sessionevents.ProviderSubagentProjectionKey(job.ID, subagent),
+			})
+		}
 	}
 	m.publishOrderedACPEvents(job, events...)
 }

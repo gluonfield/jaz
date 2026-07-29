@@ -92,14 +92,13 @@ func TestProcessEnvIsMinimalAndCanonical(t *testing.T) {
 
 func TestCodexBuiltinAgentUsesManagedAdapter(t *testing.T) {
 	cfg := codexBuiltinAgent()
-	if cfg.Command != "" || cfg.ManagedAdapter != "codex" {
+	if cfg.Command != "" || cfg.ManagedAdapter != AgentCodex {
 		t.Fatalf("cfg = %#v, want managed adapter", cfg)
 	}
 	if cfg.Model != modelprovider.OpenAIModelGPT56Sol {
 		t.Fatalf("model = %q, want %q", cfg.Model, modelprovider.OpenAIModelGPT56Sol)
 	}
-	args := strings.Join(cfg.ManagedAdapterArgs, "\n")
-	if !strings.Contains(args, `sandbox_mode="danger-full-access"`) {
+	if cfg.ManagedAdapterArgs != nil {
 		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)
 	}
 }
@@ -179,7 +178,6 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 		{AgentKimi, map[string]any{"systemPrompt": "jaz prompt"}},
 		{AgentGrok, map[string]any{"rules": "jaz prompt"}},
 		{"grok-build", map[string]any{"rules": "jaz prompt"}},
-		{AgentCodex, map[string]any{"systemPrompt": "jaz prompt"}},
 		{"unknown-agent", map[string]any{"systemPrompt": "jaz prompt"}},
 	}
 	for _, tc := range cases {
@@ -191,7 +189,7 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 
 func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", "", []string{"run context"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentKimi, "", "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +200,7 @@ func TestSessionPromptMetaAppendsPerSessionExtension(t *testing.T) {
 
 func TestSessionPromptMetaUsesClientPlatformContext(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: platformPrompt{}}}
-	got, err := manager.sessionPromptMeta(sessioncontext.WithClientPlatform(context.Background(), "mobile"), AgentCodex, "", "", "", nil)
+	got, err := manager.sessionPromptMeta(sessioncontext.WithClientPlatform(context.Background(), "mobile"), AgentKimi, "", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,12 +211,23 @@ func TestSessionPromptMetaUsesClientPlatformContext(t *testing.T) {
 
 func TestSessionPromptMetaAllowsExtensionWithoutBasePrompt(t *testing.T) {
 	manager := &Manager{}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", "", []string{"run context"})
+	got, err := manager.sessionPromptMeta(context.Background(), AgentKimi, "", "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got["systemPrompt"] != "run context" {
 		t.Fatalf("system prompt = %#v", got)
+	}
+}
+
+func TestCodexSystemPromptIsNotDuplicatedInSessionMeta(t *testing.T) {
+	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("launch prompt")}}
+	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", "", []string{"run context"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Fatalf("Codex session metadata = %#v, want launch-only prompt", got)
 	}
 }
 
@@ -244,11 +253,11 @@ func TestSessionPromptMetaSendsGrokExtensionsAsRules(t *testing.T) {
 
 func TestSessionPromptMetaSkipsBasePromptForRestrictedWorker(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
-	got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", MCPServerPolicyMemorySearchWorker, []string{"memory worker prompt"})
+	got, err := manager.systemPrompt(context.Background(), "", "", MCPServerPolicyMemorySearchWorker, []string{"memory worker prompt"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got["systemPrompt"] != "memory worker prompt" {
+	if got != "memory worker prompt" {
 		t.Fatalf("system prompt = %#v", got)
 	}
 }
@@ -263,13 +272,12 @@ func TestSessionPromptMetaAddsRestrictedWorkerModules(t *testing.T) {
 		{MCPServerPolicyMemorySearchWorker, "memory-search worker prompt", workerConnectionsPrompt + "\n\n" + workerMemoryPrompt + "\n\nmemory-search worker prompt"},
 		{MCPServerPolicyMemorySourceWorker, "memory-source worker prompt", workerConnectionsPrompt + "\n\n" + workerMemoryPrompt + "\n\nmemory-source worker prompt"},
 	} {
-		got, err := manager.sessionPromptMeta(context.Background(), AgentCodex, "", "", tc.policy, []string{tc.worker})
+		prompt, err := manager.systemPrompt(context.Background(), "", "", tc.policy, []string{tc.worker})
 		if err != nil {
 			t.Fatal(err)
 		}
-		prompt := got["systemPrompt"].(string)
 		if prompt != tc.want {
-			t.Fatalf("system prompt = %#v", got)
+			t.Fatalf("system prompt = %q", prompt)
 		}
 		for _, want := range []string{"## connections", "sources/chat/telegram/42/contacts.md", "sources/chat/telegram/42/conversations/", "## memory", "Core memory paths:", "## memory/LONG_TERM.md", "## memory/SHORT_TERM.md", "## memory/daily/2026-06-30.md"} {
 			if !strings.Contains(prompt, want) {
@@ -280,7 +288,7 @@ func TestSessionPromptMetaAddsRestrictedWorkerModules(t *testing.T) {
 			t.Fatalf("restricted worker prompt must not include ingest paths:\n%s", prompt)
 		}
 		if strings.Contains(prompt, "full platform") {
-			t.Fatalf("restricted worker received full platform prompt: %#v", got)
+			t.Fatalf("restricted worker received full platform prompt: %q", prompt)
 		}
 	}
 
@@ -1354,7 +1362,7 @@ func TestProcessCommandAddsGrokReasoningEffortArg(t *testing.T) {
 		Command:         "grok",
 		Args:            []string{"--no-auto-update", "agent", "--no-leader", "stdio"},
 		ReasoningEffort: "high",
-	}, nil)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1369,7 +1377,7 @@ func TestProcessCommandAddsGrokModelArg(t *testing.T) {
 		Command: "grok",
 		Args:    []string{"agent", "stdio"},
 		Model:   modelcatalog.DefaultGrokModel,
-	}, nil)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1383,7 +1391,7 @@ func TestProcessCommandRejectsAmbiguousGrokModelArg(t *testing.T) {
 		Command: "grok",
 		Args:    []string{"agent", "--model=custom", "stdio"},
 		Model:   modelcatalog.DefaultGrokModel,
-	}, nil)
+	})
 	if err == nil || !strings.Contains(err.Error(), "model is ambiguous") {
 		t.Fatalf("error = %v", err)
 	}
@@ -1410,7 +1418,7 @@ func TestProcessCommandDoesNotDuplicateGrokAlwaysApproveArg(t *testing.T) {
 			_, args, err := processCommand("grok", AgentConfig{
 				Command: "grok",
 				Args:    tc.args,
-			}, nil)
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1426,7 +1434,7 @@ func TestProcessCommandRejectsAmbiguousGrokReasoningEffortArg(t *testing.T) {
 		Command:         "grok",
 		Args:            []string{"agent", "--reasoning-effort=low", "stdio"},
 		ReasoningEffort: "high",
-	}, nil)
+	})
 	if err == nil || !strings.Contains(err.Error(), "reasoning effort is ambiguous") {
 		t.Fatalf("error = %v", err)
 	}
@@ -1436,7 +1444,7 @@ func TestProcessCommandLeavesNonGrokCommandAlone(t *testing.T) {
 	_, args, err := processCommand("grok", AgentConfig{
 		Command: os.Args[0],
 		Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-	}, nil)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1461,6 +1469,20 @@ func codexInitializeAuthMethods() []byte {
 			{"type": "env_var", "id": "openai-api-key", "vars": [{"name": "OPENAI_API_KEY"}]}
 		]
 	}`)
+}
+
+func TestAutoAuthMethodSupportsOfficialCodexAuthIDs(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	raw := []byte(`{
+		"authMethods": [
+			{"id": "api-key", "name": "OpenAI API key"},
+			{"id": "chat-gpt", "name": "Login with ChatGPT"}
+		]
+	}`)
+	method, missing := autoAuthMethod(AgentCodex, raw, map[string]string{"CODEX_API_KEY": "key"})
+	if method != "api-key" || len(missing) != 0 {
+		t.Fatalf("method=%q missing=%v", method, missing)
+	}
 }
 
 func grokInitializeAuthMethods() []byte {

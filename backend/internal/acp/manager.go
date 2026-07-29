@@ -267,7 +267,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		}
 	}
 	runCtx, cancel := context.WithCancel(context.Background())
-	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, mcpServerPolicy, launchPrompt)
+	conn, stderr, err := m.openConn(runCtx, name, cfg, env, cwd, launchPrompt)
 	if err != nil {
 		cancel()
 		return nil, err

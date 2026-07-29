@@ -19,7 +19,6 @@ import (
 	"github.com/gluonfield/acp-transport/streamhttp"
 	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/promptmodule"
-	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
@@ -91,7 +90,7 @@ func withProcessStderr(err error, stderr *processStderrTail) error {
 	return err
 }
 
-func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, mcpServerPolicy, systemPrompt string) (jsonrpc.MessageConn, *processStderrTail, error) {
+func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, env map[string]string, cwd, systemPrompt string) (jsonrpc.MessageConn, *processStderrTail, error) {
 	if err := validateAgentLaunch(name, cfg); err != nil {
 		return nil, nil, err
 	}
@@ -127,8 +126,12 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
-	cfg.Args = argsForLaunchPolicy(name, cfg.Args, mcpServerPolicy)
-	command, args, err := processCommand(name, cfg, m.providers())
+	if CanonicalAgentName(name) == AgentCodex {
+		if err := configureCodexEnv(env, cfg, m.providers(), systemPrompt); err != nil {
+			return nil, nil, err
+		}
+	}
+	command, args, err := processCommand(name, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -450,11 +453,8 @@ func (m *Manager) installAgentSkills(agent, root, dst string) {
 	}
 }
 
-func processCommand(name string, cfg AgentConfig, providers map[string]modelprovider.ModelProviderConfig) (string, []string, error) {
+func processCommand(name string, cfg AgentConfig) (string, []string, error) {
 	args := append([]string(nil), cfg.Args...)
-	if CanonicalAgentName(name) == AgentCodex {
-		args = append(args, codexProviderArgs(cfg, providers)...)
-	}
 	grokCfg, handled, err := resolveGrokStartupConfig(name, cfg)
 	if err != nil {
 		return "", nil, err
@@ -588,7 +588,12 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	}
 	if agent == AgentCodex {
 		for _, method := range init.AuthMethods {
-			if method.ID == "chatgpt" && codexAuthAvailable(env) {
+			if method.ID == "api-key" && firstNonEmpty(env["CODEX_API_KEY"], env["OPENAI_API_KEY"]) != "" {
+				return method.ID, nil
+			}
+		}
+		for _, method := range init.AuthMethods {
+			if (method.ID == "chatgpt" || method.ID == "chat-gpt") && codexAuthAvailable(env) {
 				return method.ID, nil
 			}
 		}
@@ -596,7 +601,7 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (s
 	var missing []string
 	if agent == AgentCodex {
 		for _, method := range init.AuthMethods {
-			if method.ID == "chatgpt" {
+			if method.ID == "chatgpt" || method.ID == "chat-gpt" {
 				missing = appendMissing(missing, codexAuthHint(env))
 				break
 			}

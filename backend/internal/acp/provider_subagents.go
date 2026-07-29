@@ -8,9 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
-const (
-	providerSubagentMetaKey = "providerSubagent"
-)
+const providerSubagentsMetaKey = "providerSubagents"
 
 type providerSubagentHint struct {
 	summary string
@@ -18,8 +16,8 @@ type providerSubagentHint struct {
 }
 
 type providerSubagentUpdate struct {
-	subagent *sessionevents.ProviderSubagentEvent
-	consume  bool
+	subagents []sessionevents.ProviderSubagentEvent
+	consume   bool
 }
 
 // providerSubagentFromUpdate publishes subagent panel records and decides which
@@ -27,16 +25,16 @@ type providerSubagentUpdate struct {
 func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpdate) providerSubagentUpdate {
 	switch event := update.(type) {
 	case acpschema.SessionInfoSessionUpdate:
-		subagent := providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{})
-		return providerSubagentUpdate{subagent: subagent, consume: subagent != nil}
+		subagents := providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{})
+		return providerSubagentUpdate{subagents: subagents, consume: len(subagents) > 0}
 	case acpschema.ToolCallSessionUpdate:
 		return toolCallSubagent(agent, event.Meta)
 	case acpschema.ToolCallUpdateSessionUpdate:
 		return toolCallSubagent(agent, event.Meta)
 	case acpschema.AgentMessageChunkUpdate:
-		return providerSubagentUpdate{subagent: providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
+		return providerSubagentUpdate{subagents: providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
 	case acpschema.AgentThoughtChunkUpdate:
-		return providerSubagentUpdate{subagent: providerSubagentFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})}
+		return providerSubagentUpdate{subagents: providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})}
 	default:
 		return providerSubagentUpdate{}
 	}
@@ -44,8 +42,8 @@ func providerSubagentFromUpdate(agent string, update acpschema.DecodedSessionUpd
 
 func toolCallSubagent(agent string, meta map[string]any) providerSubagentUpdate {
 	return providerSubagentUpdate{
-		subagent: providerSubagentFromMeta(agent, meta, providerSubagentHint{status: "running"}),
-		consume:  subagentInternalToolCall(meta),
+		subagents: providerSubagentsFromMeta(agent, meta, providerSubagentHint{status: "running"}),
+		consume:   subagentInternalToolCall(meta),
 	}
 }
 
@@ -60,29 +58,56 @@ func subagentInternalToolCall(meta map[string]any) bool {
 	return strings.TrimSpace(stringValue(claudeCode["parentToolUseId"])) != ""
 }
 
-func providerSubagentFromMeta(agent string, meta map[string]any, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
+func providerSubagentsFromMeta(agent string, meta map[string]any, hint providerSubagentHint) []sessionevents.ProviderSubagentEvent {
 	if meta == nil {
 		return nil
 	}
-	for _, namespace := range []string{codexMetaKey, "claudeCode", "jaz"} {
-		provider, ok := mapValue(meta[namespace])
+	switch CanonicalAgentName(agent) {
+	case AgentCodex:
+		provider, ok := mapValue(meta[codexMetaKey])
 		if !ok {
-			continue
+			return nil
 		}
-		for _, key := range []string{providerSubagentMetaKey, "provider_subagent"} {
-			if raw, ok := mapValue(provider[key]); ok {
-				subagent := decodeProviderSubagent(raw)
-				if subagent != nil {
-					fillProviderSubagent(subagent, agent, hint)
-				}
-				return subagent
-			}
+		raw, ok := provider[providerSubagentsMetaKey]
+		if !ok {
+			return nil
+		}
+		return decodeProviderSubagents(raw, agent, hint)
+	case AgentClaude:
+		provider, ok := mapValue(meta["jaz"])
+		if !ok {
+			return nil
+		}
+		raw, ok := provider["providerSubagent"]
+		if !ok {
+			return nil
+		}
+		subagent := decodeProviderSubagent(raw, agent, hint)
+		if subagent != nil {
+			return []sessionevents.ProviderSubagentEvent{*subagent}
 		}
 	}
 	return nil
 }
 
-func decodeProviderSubagent(raw map[string]any) *sessionevents.ProviderSubagentEvent {
+func decodeProviderSubagents(raw any, agent string, hint providerSubagentHint) []sessionevents.ProviderSubagentEvent {
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var subagents []sessionevents.ProviderSubagentEvent
+	if err := json.Unmarshal(data, &subagents); err != nil {
+		return nil
+	}
+	for i := range subagents {
+		if !normalizeProviderSubagent(&subagents[i], agent, hint) {
+			return nil
+		}
+	}
+	return subagents
+}
+
+func decodeProviderSubagent(raw any, agent string, hint providerSubagentHint) *sessionevents.ProviderSubagentEvent {
 	data, err := json.Marshal(raw)
 	if err != nil {
 		return nil
@@ -91,16 +116,21 @@ func decodeProviderSubagent(raw map[string]any) *sessionevents.ProviderSubagentE
 	if err := json.Unmarshal(data, &subagent); err != nil {
 		return nil
 	}
-	if subagent.ID == "" && subagent.ThreadID != "" {
-		subagent.ID = subagent.ThreadID
-	}
-	if subagent.ID == "" {
+	if !normalizeProviderSubagent(&subagent, agent, hint) {
 		return nil
 	}
 	return &subagent
 }
 
-func fillProviderSubagent(subagent *sessionevents.ProviderSubagentEvent, agent string, hint providerSubagentHint) {
+func normalizeProviderSubagent(subagent *sessionevents.ProviderSubagentEvent, agent string, hint providerSubagentHint) bool {
+	subagent.ID = strings.TrimSpace(subagent.ID)
+	subagent.ThreadID = strings.TrimSpace(subagent.ThreadID)
+	if subagent.ID == "" {
+		subagent.ID = subagent.ThreadID
+	}
+	if subagent.ID == "" {
+		return false
+	}
 	if subagent.Provider == "" {
 		subagent.Provider = CanonicalAgentName(agent)
 	}
@@ -110,6 +140,7 @@ func fillProviderSubagent(subagent *sessionevents.ProviderSubagentEvent, agent s
 	if subagent.Summary == "" {
 		subagent.Summary = hint.summary
 	}
+	return true
 }
 
 func mapValue(value any) (map[string]any, bool) {

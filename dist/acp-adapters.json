@@ -1,54 +1,60 @@
 {
   "adapters": {
     "codex": {
-      "version": "0.16.29",
+      "version": "1.1.7-jaz.10",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.29/codex-acp-0.16.29-aarch64-apple-darwin.tar.gz",
-          "sha256": "7c280ce499c7a31ad08f9c92a1a1b2e339e8daa19db40fabf534b319b75b1b7b",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.7-jaz.10/codex-acp-app-server-1.1.7-jaz.10-darwin-arm64.tar.gz",
+          "sha256": "58843e344e35c7d194bbbc8588fc5ca71062a7c8e599b8085e63c33945d06631",
           "binary": "codex-acp",
           "env": {
-            "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
+            "CODEX_PATH": "codex-runtime/aarch64-apple-darwin/bin/codex",
+            "CODEX_CODE_MODE_HOST_PATH": "codex-runtime/aarch64-apple-darwin/bin/codex-code-mode-host"
           }
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.29/codex-acp-0.16.29-x86_64-apple-darwin.tar.gz",
-          "sha256": "fb59b76159cb5b89efdefd88bf3afd78edeef39d800fcbf6c84b24f7e850a382",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.7-jaz.10/codex-acp-app-server-1.1.7-jaz.10-darwin-x64.tar.gz",
+          "sha256": "9c1fed72e063a99bc9af6c68fca20639ae8b9a7f7f6dce96525711168e3bb0f5",
           "binary": "codex-acp",
           "env": {
-            "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
+            "CODEX_PATH": "codex-runtime/x86_64-apple-darwin/bin/codex",
+            "CODEX_CODE_MODE_HOST_PATH": "codex-runtime/x86_64-apple-darwin/bin/codex-code-mode-host"
           }
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.29/codex-acp-0.16.29-aarch64-unknown-linux-gnu.tar.gz",
-          "sha256": "a903844c5d16c5e09a5ce738f450776e81ced6b3de8615bed9cf9f9a58ee2e07",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.7-jaz.10/codex-acp-app-server-1.1.7-jaz.10-linux-arm64.tar.gz",
+          "sha256": "bdcdc42a6526bf12cc8597b4bb79f56401834b695cc4414936b39f27d22c7ebb",
           "binary": "codex-acp",
           "env": {
-            "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
+            "CODEX_PATH": "codex-runtime/aarch64-unknown-linux-musl/bin/codex",
+            "CODEX_CODE_MODE_HOST_PATH": "codex-runtime/aarch64-unknown-linux-musl/bin/codex-code-mode-host"
           }
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.29/codex-acp-0.16.29-x86_64-unknown-linux-gnu.tar.gz",
-          "sha256": "cb67a81e38cba8f7f293b264c13ec1318433c1043018d779f8b34719058dc2d3",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.7-jaz.10/codex-acp-app-server-1.1.7-jaz.10-linux-x64.tar.gz",
+          "sha256": "25385c5fae5d9d60a7accc12dcdd275a0091e1b8f646514ffbda436b598d1f42",
           "binary": "codex-acp",
           "env": {
-            "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host"
+            "CODEX_PATH": "codex-runtime/x86_64-unknown-linux-musl/bin/codex",
+            "CODEX_CODE_MODE_HOST_PATH": "codex-runtime/x86_64-unknown-linux-musl/bin/codex-code-mode-host"
           }
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.29/codex-acp-0.16.29-aarch64-pc-windows-msvc.tar.gz",
-          "sha256": "0a1454541ae087c2877686644ec606a6825396aac5e43ac70fb1599cf774c2bf",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.7-jaz.10/codex-acp-app-server-1.1.7-jaz.10-win32-arm64.tar.gz",
+          "sha256": "bba9151cb72cede28560c3e029c89984dc7ff7595e4f9579e7f66985f9801ddd",
           "binary": "codex-acp.exe",
           "env": {
-            "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"
+            "CODEX_PATH": "codex-runtime/aarch64-pc-windows-msvc/bin/codex.exe",
+            "CODEX_CODE_MODE_HOST_PATH": "codex-runtime/aarch64-pc-windows-msvc/bin/codex-code-mode-host.exe"
           }
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/codex-acp/releases/download/v0.16.29/codex-acp-0.16.29-x86_64-pc-windows-msvc.tar.gz",
-          "sha256": "e8423ee136a3043a6fb2d2e223cd23fed65dc4661a40d12a5f3e57d8091e4208",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.7-jaz.10/codex-acp-app-server-1.1.7-jaz.10-win32-x64.tar.gz",
+          "sha256": "e8eb52a64d51007ddf40e1940c1f4432bfce52e9d37e8664e5e899261ac1a0bf",
           "binary": "codex-acp.exe",
           "env": {
-            "CODEX_CODE_MODE_HOST_PATH": "codex-code-mode-host.exe"
+            "CODEX_PATH": "codex-runtime/x86_64-pc-windows-msvc/bin/codex.exe",
+            "CODEX_CODE_MODE_HOST_PATH": "codex-runtime/x86_64-pc-windows-msvc/bin/codex-code-mode-host.exe"
           }
         }
       }
