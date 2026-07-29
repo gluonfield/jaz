@@ -289,7 +289,7 @@ func resolveClaudeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env m
 	switch {
 	case accountAuthConfigured:
 		status.markAuthenticated("env", AuthKindOAuth)
-	case path != "" && !rejectedLogin && claudeAuthFileAvailable(path):
+	case path != "" && !rejectedLogin && claudeProfileAuthAvailable(path):
 		status.markAuthenticated("claude_json", AuthKindOAuth)
 	case apiKeyConfigured:
 		status.markAuthenticated("api_key_env", AuthKindAPIKey)
