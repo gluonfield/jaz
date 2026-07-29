@@ -415,20 +415,21 @@ func (j *jobState) requestCancel() (bool, chan struct{}) {
 	return j.requestTurnCancel(StopReasonCancelled)
 }
 
-func (j *jobState) requestShutdown() bool {
-	running, _ := j.requestTurnCancel(StopReasonServerShutdown)
-	return running
+func (j *jobState) requestShutdown() (bool, chan struct{}) {
+	return j.requestTurnCancel(StopReasonServerShutdown)
 }
 
 func (j *jobState) requestTurnCancel(reason string) (bool, chan struct{}) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	running := j.State == StateRunning || j.State == StateStarting
-	if !running || j.turn == nil {
+	if j.turn == nil {
 		return running, nil
 	}
-	j.turn.cancelRequested = true
-	j.turn.cancelReason = reason
+	if running {
+		j.turn.cancelRequested = true
+		j.turn.cancelReason = reason
+	}
 	return running, j.turn.done
 }
 

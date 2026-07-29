@@ -77,7 +77,7 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 	}
 }
 
-func TestManagerRejectsManagedAgentWithoutSessionLoad(t *testing.T) {
+func TestManagerRejectsManagedAgentWithoutSessionRestore(t *testing.T) {
 	startLog := filepath.Join(t.TempDir(), "starts")
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -89,7 +89,7 @@ func TestManagerRejectsManagedAgentWithoutSessionLoad(t *testing.T) {
 	}, "", "")
 	t.Cleanup(manager.Close)
 	_, err = manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: acp.AgentGrok, Slug: "grok-process-test"})
-	if err == nil || !strings.Contains(err.Error(), "requires session/load") {
+	if err == nil || !strings.Contains(err.Error(), "requires session/resume or session/load") {
 		t.Fatalf("spawn error = %v", err)
 	}
 	data, err := os.ReadFile(startLog)
@@ -98,6 +98,31 @@ func TestManagerRejectsManagedAgentWithoutSessionLoad(t *testing.T) {
 	}
 	if starts := len(strings.Fields(string(data))); starts != 1 {
 		t.Fatalf("process starts = %d, want capability probe only; log=%q", starts, data)
+	}
+}
+
+func TestManagerPrefersSessionResume(t *testing.T) {
+	requestLog := filepath.Join(t.TempDir(), "requests")
+	manager, spawned := newNamedProcessTestManager(t, t.TempDir(), acp.AgentGrok, map[string]string{
+		"JAZ_FAKE_ACP_RESUME":      "1",
+		"JAZ_FAKE_ACP_REQUEST_LOG": requestLog,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "continue", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
+		t.Fatalf("resumed turn = %#v, %v", job, err)
+	}
+	requests, err := os.ReadFile(requestLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(requests), `"method":"session/resume"`) ||
+		strings.Contains(string(requests), `"method":"session/load"`) {
+		t.Fatalf("restore requests = %s", requests)
 	}
 }
 

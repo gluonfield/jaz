@@ -331,10 +331,10 @@ func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig
 }
 
 // An adapter that persists the system prompt in provider history must not
-// receive it again on session/load. Load still carries non-prompt options.
-func (m *Manager) sessionLoadMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+// receive it again when restoring a session. Restore still carries non-prompt options.
+func (m *Manager) sessionRestoreMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
 	policy := agentPolicyForAgent(agent)
-	if policy.promptPersistsOnLoad {
+	if policy.promptPersistsOnRestore {
 		return policy.mergeSessionMeta(nil, cfg.ReasoningEffort), nil
 	}
 	return m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)

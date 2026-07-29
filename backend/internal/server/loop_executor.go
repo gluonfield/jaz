@@ -43,7 +43,7 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	}
 	loop := execution.Loop
 	run := execution.Run
-	startCtx, cancel := serverActionContext()
+	startCtx, cancel := serverACPBootstrapContext()
 	defer cancel()
 	// An empty agent stays empty: the ACP manager resolves the canonical
 	// default at spawn time, the same default sessions get.
@@ -72,7 +72,7 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	if err := execution.Controller.MarkRunning(run.ID, spawned.SessionID); err != nil {
 		r.logger().Error("mark loop run running failed", "run", run.ID, "session", spawned.SessionID, "error", err)
 	}
-	sendCtx, cancel := serverActionContext()
+	sendCtx, cancel := serverACPBootstrapContext()
 	defer cancel()
 	if _, err := r.acp.Send(sendCtx, acp.SendRequest{
 		Session:    spawned.SessionID,

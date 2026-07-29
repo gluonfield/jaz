@@ -88,6 +88,12 @@ func TestACPStreamPublishesMessageRefreshAfterAccept(t *testing.T) {
 
 	server.Handler().ServeHTTP(res, req)
 
+	manager.mu.Lock()
+	sendDeadline := manager.sendDeadline
+	manager.mu.Unlock()
+	if remaining := time.Until(sendDeadline); remaining <= serverActionTimeout {
+		t.Fatalf("ACP bootstrap deadline = %s, want more than %s", remaining, serverActionTimeout)
+	}
 	deadline := time.After(time.Second)
 	for {
 		select {

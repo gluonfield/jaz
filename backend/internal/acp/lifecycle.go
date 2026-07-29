@@ -76,9 +76,10 @@ func (m *Manager) Close() {
 	m.mu.Unlock()
 
 	stopping := make([]bool, len(jobs))
+	turns := make([]<-chan struct{}, len(jobs))
 	activeTurns := 0
 	for i, job := range jobs {
-		stopping[i] = job.requestShutdown()
+		stopping[i], turns[i] = job.requestShutdown()
 		if cancel := job.turnCancel(); cancel != nil {
 			cancel()
 		}
@@ -99,6 +100,9 @@ func (m *Manager) Close() {
 		process.close()
 	}
 	for i, job := range jobs {
+		if turns[i] != nil {
+			<-turns[i]
+		}
 		if stopping[i] {
 			job.setState(StateCancelled, StopReasonServerShutdown, "")
 			if err := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); err != nil {

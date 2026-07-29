@@ -57,7 +57,7 @@ type agentPolicy struct {
 	providerInLaunch        bool
 	modelConfiguredAtLaunch bool
 	systemPromptAtLaunch    bool
-	promptPersistsOnLoad    bool
+	promptPersistsOnRestore bool
 	materializesOnPrompt    bool
 	modelValidationKind     modelValidationKind
 	effortOptions           []ReasoningEffortOption
@@ -99,15 +99,15 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 		}
 	case AgentCodex:
 		return agentPolicy{
-			modelConfigID:        sessionConfigModel,
-			effortConfigID:       sessionConfigReasoningEffort,
-			effortInModelSuffix:  true,
-			providerInLaunch:     true,
-			systemPromptAtLaunch: true,
-			promptPersistsOnLoad: true,
-			materializesOnPrompt: true,
-			modelValidationKind:  modelValidationNone,
-			effortOptions:        codexReasoningEffortOptions,
+			modelConfigID:           sessionConfigModel,
+			effortConfigID:          sessionConfigReasoningEffort,
+			effortInModelSuffix:     true,
+			providerInLaunch:        true,
+			systemPromptAtLaunch:    true,
+			promptPersistsOnRestore: true,
+			materializesOnPrompt:    true,
+			modelValidationKind:     modelValidationNone,
+			effortOptions:           codexReasoningEffortOptions,
 		}
 	case AgentKimi:
 		return agentPolicy{

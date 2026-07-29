@@ -540,7 +540,7 @@ func (s *Server) startSteeredQueuedPrompt(claimed steeredQueuedPrompt) error {
 		s.setSessionStatus(storage.Session{ID: claimed.session.ID}, storage.StatusRunning)
 		s.publishSessionChanged(claimed.session.ID)
 	}
-	ctx, cancel := serverActionContext()
+	ctx, cancel := serverACPBootstrapContext()
 	defer cancel()
 	if err := s.startQueuedPrompt(ctx, claimed.session, claimed.prompt); err != nil {
 		return err

@@ -31,7 +31,7 @@ func (s *Server) handleSessionCompact(w http.ResponseWriter, r *http.Request, se
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	ctx, cancel := serverActionContextFrom(r.Context())
+	ctx, cancel := serverACPBootstrapContextFrom(r.Context())
 	defer cancel()
 	job, err := s.ACP.Compact(ctx, acp.CompactRequest{Session: session.ID})
 	if err != nil {

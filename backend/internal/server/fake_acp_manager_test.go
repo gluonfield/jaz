@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
@@ -25,6 +26,7 @@ type fakeACPManager struct {
 	sideCtxErr     error
 	answerCtxErr   error
 	cancelCtxErr   error
+	sendDeadline   time.Time
 	cancelled      bool
 	sendErr        error
 	internalErr    error
@@ -132,6 +134,7 @@ func (f *fakeACPManager) Send(ctx context.Context, req acp.SendRequest) (acp.Job
 	defer f.mu.Unlock()
 	f.sent = req
 	f.sendCtxErr = ctx.Err()
+	f.sendDeadline, _ = ctx.Deadline()
 	f.sendPlatform = sessioncontext.ClientPlatform(ctx)
 	return f.job, f.sendErr
 }

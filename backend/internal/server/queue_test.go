@@ -814,12 +814,16 @@ func TestSessionQueueSteerClaimsOnePromptForRunningACP(t *testing.T) {
 	answered := manager.answered
 	cancelCtxErr := manager.cancelCtxErr
 	sendCtxErr := manager.sendCtxErr
+	sendDeadline := manager.sendDeadline
 	manager.mu.Unlock()
 	if answered.Text != "" {
 		t.Fatalf("steer should not use text-only interactive answer: %#v", answered)
 	}
 	if cancelCtxErr != nil || sendCtxErr != nil {
 		t.Fatalf("steer used cancelled context: cancel=%v send=%v", cancelCtxErr, sendCtxErr)
+	}
+	if remaining := time.Until(sendDeadline); remaining <= serverActionTimeout {
+		t.Fatalf("queued ACP bootstrap deadline = %s, want more than %s", remaining, serverActionTimeout)
 	}
 	loaded := waitForSession(t, store, session.ID, func(loaded storage.Session) bool {
 		return queuedTexts(loaded.QueuedMessages) == "first|third" && loaded.PendingSteer == nil

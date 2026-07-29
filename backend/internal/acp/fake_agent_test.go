@@ -110,6 +110,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			capabilities := map[string]any{
 				"loadSession": os.Getenv("JAZ_FAKE_ACP_LOAD") != "0",
 			}
+			if os.Getenv("JAZ_FAKE_ACP_RESUME") == "1" {
+				capabilities["sessionCapabilities"] = map[string]any{
+					"resume": map[string]any{},
+				}
+			}
 			if os.Getenv("JAZ_FAKE_ACP_MCP_HTTP") == "1" {
 				capabilities["mcpCapabilities"] = map[string]any{"http": true}
 			}
@@ -123,7 +128,16 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				"agentInfo":         map[string]any{"name": "fake-agent", "version": "test"},
 				"agentCapabilities": capabilities,
 			})
-		case "session/load":
+		case "session/load", "session/resume":
+			supported := os.Getenv("JAZ_FAKE_ACP_LOAD") != "0"
+			if msg.Method == "session/resume" {
+				supported = os.Getenv("JAZ_FAKE_ACP_RESUME") == "1"
+			}
+			if !supported {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.MethodNotFound(msg.Method))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
 			var req struct {
 				Meta       map[string]any    `json:"_meta"`
 				Cwd        string            `json:"cwd"`
@@ -157,15 +171,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
-			// History replay arrives before the load result resolves.
-			notify(conn, "session/update", map[string]any{
-				"sessionId": "fake-session",
-				"update": map[string]any{
-					"sessionUpdate": "agent_message_chunk",
-					"messageId":     "fake:replay:1",
-					"content":       map[string]any{"type": "text", "text": "replayed history"},
-				},
-			})
+			if msg.Method == "session/load" {
+				// History replay arrives before the load result resolves.
+				notify(conn, "session/update", map[string]any{
+					"sessionId": "fake-session",
+					"update": map[string]any{
+						"sessionUpdate": "agent_message_chunk",
+						"messageId":     "fake:replay:1",
+						"content":       map[string]any{"type": "text", "text": "replayed history"},
+					},
+				})
+			}
 			sendResult(conn, msg, map[string]any{
 				"modes": fakeModes(),
 			})

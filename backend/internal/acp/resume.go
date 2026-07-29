@@ -161,18 +161,19 @@ func (m *Manager) resumeSystemPromptExtensions(session storage.Session) (promptm
 	return promptmodule.New(extensions...), nil
 }
 
-// The job is registered only after session/load returns, so the agent's
-// history replay notifications are dropped, not re-recorded as events.
+// session/resume restores provider state without replaying history. The job is
+// registered after the legacy session/load fallback so its replay is dropped.
 func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentName string, session storage.Session, cfg AgentConfig, cwd, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (string, ModeState, bool, error) {
 	agentName = CanonicalAgentName(agentName)
 	storedID := session.RuntimeRef.SessionID
-	if loadSessionSupported(ac.initRaw) && storedID != "" {
-		meta, err := m.sessionLoadMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
+	restoreMethod := sessionRestoreMethod(ac.initRaw)
+	if storedID != "" && restoreMethod != "" {
+		meta, err := m.sessionRestoreMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
 		if err != nil {
 			return "", ModeState{}, false, err
 		}
 		mcpCtx := mcpsession.With(ctx, session.ID)
-		raw, err := ac.peer.Call(mcpCtx, acpschema.AgentMethodSessionLoad, struct {
+		raw, err := ac.peer.Call(mcpCtx, restoreMethod, struct {
 			Meta       map[string]any      `json:"_meta,omitempty"`
 			Cwd        string              `json:"cwd"`
 			MCPServers []json.RawMessage   `json:"mcpServers"`

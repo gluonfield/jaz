@@ -27,10 +27,7 @@ func TestExecCommandCompletes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(result.Content), &payload); err != nil {
-		t.Fatal(err)
-	}
+	payload := awaitCommandPayload(t, manager, result)
 	if payload["status"] != "completed" || strings.TrimSpace(payload["output"].(string)) != "hello" {
 		t.Fatalf("unexpected payload %#v", payload)
 	}

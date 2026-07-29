@@ -76,7 +76,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	}
 	releaseStream := s.ACP.RetainStream(session.ID)
 	defer releaseStream()
-	startCtx, cancelStart := serverActionContextFrom(clientCtx)
+	startCtx, cancelStart := serverACPBootstrapContextFrom(clientCtx)
 	var job acp.Job
 	if turn.compact() {
 		job, err = s.ACP.Compact(startCtx, acp.CompactRequest{Session: session.ID})

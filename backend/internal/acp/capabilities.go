@@ -15,14 +15,23 @@ func promptQueueingSupported(raw json.RawMessage) bool {
 	return metaPromptQueueing(resp.AgentCapabilities.Meta)
 }
 
-func loadSessionSupported(raw json.RawMessage) bool {
+func sessionRestoreMethod(raw json.RawMessage) string {
 	var resp acpschema.InitializeResponse
-	return json.Unmarshal(raw, &resp) == nil && resp.AgentCapabilities != nil && resp.AgentCapabilities.LoadSession
+	if json.Unmarshal(raw, &resp) != nil || resp.AgentCapabilities == nil {
+		return ""
+	}
+	if sessions := resp.AgentCapabilities.SessionCapabilities; sessions != nil && sessions.Resume != nil {
+		return acpschema.AgentMethodSessionResume
+	}
+	if resp.AgentCapabilities.LoadSession {
+		return acpschema.AgentMethodSessionLoad
+	}
+	return ""
 }
 
 func validateProcessLifecycle(agent string, cfg AgentConfig, raw json.RawMessage) error {
-	if turnScopedAgentProcess(cfg) && !loadSessionSupported(raw) {
-		return fmt.Errorf("managed ACP agent %q requires session/load support", CanonicalAgentName(agent))
+	if turnScopedAgentProcess(cfg) && sessionRestoreMethod(raw) == "" {
+		return fmt.Errorf("managed ACP agent %q requires session/resume or session/load support", CanonicalAgentName(agent))
 	}
 	return nil
 }

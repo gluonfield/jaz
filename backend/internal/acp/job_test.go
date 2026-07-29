@@ -15,7 +15,7 @@ func TestRequestShutdownOnlyMarksActiveTurns(t *testing.T) {
 		turn: &activeTurn{done: make(chan struct{})},
 	}
 
-	if job.requestShutdown() {
+	if running, _ := job.requestShutdown(); running {
 		t.Fatal("idle cleanup turn marked as shutdown")
 	}
 	if reason, ok := job.cancelReason(); ok {
@@ -23,7 +23,7 @@ func TestRequestShutdownOnlyMarksActiveTurns(t *testing.T) {
 	}
 
 	job.State = StateRunning
-	if !job.requestShutdown() {
+	if running, _ := job.requestShutdown(); !running {
 		t.Fatal("running turn was not marked as shutdown")
 	}
 	if reason, ok := job.cancelReason(); !ok || reason != StopReasonServerShutdown {
@@ -122,7 +122,7 @@ func TestLateLocalCancelObservesShutdownRequest(t *testing.T) {
 		Job:  Job{State: StateRunning},
 		turn: &activeTurn{done: done},
 	}
-	if !job.requestShutdown() {
+	if running, _ := job.requestShutdown(); !running {
 		t.Fatal("running turn was not marked as shutdown")
 	}
 	ctx, cancel := context.WithCancel(context.Background())

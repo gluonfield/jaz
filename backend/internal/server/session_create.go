@@ -52,7 +52,7 @@ func (s *Server) createACPSession(w http.ResponseWriter, req createSessionReques
 	if directory == "" {
 		directory = "."
 	}
-	ctx, cancel := serverActionContext()
+	ctx, cancel := serverACPBootstrapContext()
 	defer cancel()
 	session, err := s.ACP.CreateSession(ctx, acp.SpawnRequest{
 		ACPAgent:        strings.TrimSpace(req.Agent),
