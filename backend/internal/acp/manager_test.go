@@ -735,6 +735,34 @@ func TestManagerSendStartsStoredACPSession(t *testing.T) {
 	}
 }
 
+func TestManagerSendPersistsRunningSession(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), nil)
+	t.Cleanup(manager.Close)
+
+	spawned, err := manager.Spawn(t.Context(), acp.SpawnRequest{ACPAgent: "fake", Slug: "stored-running"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Send(t.Context(), acp.SendRequest{
+		Session: spawned.SessionID, Message: "block until cancelled",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) })
+
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.Status != storage.StatusRunning {
+		t.Fatalf("stored status = %q, want %q", session.Status, storage.StatusRunning)
+	}
+}
+
 func TestManagerIncludesAgentStderrWhenInitializeConnectionCloses(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
