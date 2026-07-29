@@ -21,6 +21,16 @@ func TestPreferredBaselineModeIDUsesAgentPolicy(t *testing.T) {
 	}
 }
 
+func TestPreferredBaselineModeIDUsesCodexFullAccess(t *testing.T) {
+	modes := []acpschema.SessionMode{
+		{ID: "agent", Name: "Agent"},
+		{ID: "agent-full-access", Name: "Agent (full access)"},
+	}
+	if got := preferredBaselineModeID(AgentCodex, modes); got != "agent-full-access" {
+		t.Fatalf("codex baseline mode = %q, want agent-full-access", got)
+	}
+}
+
 func TestPreferredBaselineModeIDFallsBackToClaudeAuto(t *testing.T) {
 	modes := []acpschema.SessionMode{
 		{ID: "auto", Name: "Auto"},

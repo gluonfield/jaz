@@ -536,6 +536,15 @@ func fakeModes() map[string]any {
 			},
 		}
 	}
+	if os.Getenv("JAZ_FAKE_ACP_CODEX_MODES") == "1" {
+		return map[string]any{
+			"currentModeId": currentMode,
+			"availableModes": []map[string]any{
+				{"id": "agent", "name": "Agent"},
+				{"id": "agent-full-access", "name": "Agent (full access)"},
+			},
+		}
+	}
 	return map[string]any{
 		"currentModeId": currentMode,
 		"availableModes": []map[string]any{
@@ -547,7 +556,7 @@ func fakeModes() map[string]any {
 }
 
 func fakeModeSupported(mode string) bool {
-	for _, id := range []string{"full-access", "always-approve", "bypassPermissions", "acceptEdits", "auto", "plan"} {
+	for _, id := range []string{"agent-full-access", "full-access", "always-approve", "bypassPermissions", "acceptEdits", "auto", "plan"} {
 		if mode == id {
 			return true
 		}

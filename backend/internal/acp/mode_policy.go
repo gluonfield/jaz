@@ -8,6 +8,7 @@ const (
 )
 
 var baselineModePriority = map[string][]string{
+	AgentCodex:  {"agent-full-access"},
 	AgentClaude: {claudeModeBypassPermissions, claudeModeAuto},
 	AgentGrok:   {"always-approve"},
 }

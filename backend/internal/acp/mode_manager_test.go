@@ -124,7 +124,7 @@ func TestManagerLeavesLoadedPlanModeBeforeOrdinarySend(t *testing.T) {
 	}
 }
 
-func TestManagerForcesBaselineWhenLoadedModeLooksAlreadyRestored(t *testing.T) {
+func TestManagerRestoresCodexFullAccessMode(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -149,10 +149,10 @@ func TestManagerForcesBaselineWhenLoadedModeLooksAlreadyRestored(t *testing.T) {
 				Command: os.Args[0],
 				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":         "1",
-					"JAZ_FAKE_ACP_LOAD":          "1",
-					"JAZ_FAKE_ACP_CURRENT_MODE":  "plan",
-					"JAZ_FAKE_ACP_REPORTED_MODE": "full-access",
+					"JAZ_FAKE_ACP_AGENT":        "1",
+					"JAZ_FAKE_ACP_LOAD":         "1",
+					"JAZ_FAKE_ACP_CODEX_MODES":  "1",
+					"JAZ_FAKE_ACP_CURRENT_MODE": "agent",
 				},
 			},
 		},
@@ -167,10 +167,10 @@ func TestManagerForcesBaselineWhenLoadedModeLooksAlreadyRestored(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Modes.CurrentModeID != "full-access" {
-		t.Fatalf("modes after ordinary send = %#v, want full-access baseline", job.Modes)
+	if job.Modes.CurrentModeID != "agent-full-access" {
+		t.Fatalf("modes after ordinary send = %#v, want agent-full-access baseline", job.Modes)
 	}
 	if job.Assistant != "hello from fake agent" || len(job.Plan) != 0 {
-		t.Fatalf("ordinary send stayed in stale plan mode: assistant=%q plan=%#v", job.Assistant, job.Plan)
+		t.Fatalf("ordinary send result: assistant=%q plan=%#v", job.Assistant, job.Plan)
 	}
 }
