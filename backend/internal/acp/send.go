@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -116,13 +117,16 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 			return Job{}, err
 		}
 	}
+	if err := m.store.UpdateSessionStatus(job.ID, storage.StatusRunning, "", time.Now().UTC()); err != nil {
+		return Job{}, fmt.Errorf("mark session running: %w", err)
+	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
 	job.mu.Lock()
 	job.turn.processLease = processLease
 	job.mu.Unlock()
 	started = true
-	m.touchJobAttention(job)
+	m.touchAttention(parentSessionIDs(job.eventView())...)
 	if opts.transcript == sendTranscriptUserMessage {
 		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
 			m.log.Error("append user message failed", "session", job.ID, "error", err)
