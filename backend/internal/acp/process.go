@@ -26,6 +26,12 @@ import (
 const (
 	processStderrTailLimit = 2000
 	acpProcessStdioDrain   = 2 * time.Second
+	// Coding agents rotate their own OAuth credentials while running: the
+	// provider retires the old refresh token the moment the new one is issued,
+	// so a process killed between the rotation and the write that persists it
+	// leaves a credential the provider has already invalidated. Let the process
+	// group shut itself down before forcing it.
+	processTerminateGrace = 5 * time.Second
 )
 
 type processStderrTail struct {
@@ -132,7 +138,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	prepareProcessCommand(cmd)
 	process := newProcessSupervisor(cmd)
 	cmd.Cancel = process.terminate
-	cmd.WaitDelay = acpProcessStdioDrain
+	cmd.WaitDelay = processTerminateGrace + acpProcessStdioDrain
 	cmd.Env = processenv.List(env)
 	if cwd != "" {
 		cmd.Dir = cwd

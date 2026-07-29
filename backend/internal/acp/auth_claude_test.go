@@ -3,12 +3,52 @@ package acp
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestClaudeKeychainServiceUsesProfilePathHash(t *testing.T) {
 	if got := claudeKeychainService("/var/lib/jaz/acp/claude"); got != "Claude Code-credentials-1ed971f6" {
 		t.Fatalf("service = %q", got)
+	}
+}
+
+func TestClaudeProfileAuthUnavailableWhenCredentialCleared(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{"oauthAccount":{"accountUuid":"account-id"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, ".credentials.json"), []byte(`{"claudeAiOauth":{"accessToken":"","refreshToken":"","expiresAt":0}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if claudeProfileAuthAvailable(configDir) {
+		t.Fatal("blanked credential reported as an available login")
+	}
+}
+
+func TestClaudeProfileAuthAvailableWithStoredCredential(t *testing.T) {
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, ".credentials.json"), []byte(`{"claudeAiOauth":{"accessToken":"sk-ant-oat01-token"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if !claudeProfileAuthAvailable(configDir) {
+		t.Fatal("stored credential reported as missing")
+	}
+}
+
+func TestClaudeProfileAuthFallsBackWhenCredentialStoreUnreadable(t *testing.T) {
+	if runtime.GOOS == "darwin" {
+		t.Skip("darwin resolves the credential from the Keychain")
+	}
+	configDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(configDir, ".claude.json"), []byte(`{"oauthAccount":{"accountUuid":"account-id"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if !claudeProfileAuthAvailable(configDir) {
+		t.Fatal("unreadable credential store must keep the profile's previous answer")
 	}
 }
 
