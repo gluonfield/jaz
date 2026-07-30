@@ -232,6 +232,10 @@
   --prose-line-height: 1.55;
   --prose-color: var(--color-ink-3);
 }
+.thinking-prose p > strong:only-child {
+  display: block;
+  font-weight: inherit;
+}
 .chat-prose {
   /* width:100% (not just max-width) so the prose fills — and is capped by — its
      container. Without it, an items-start flex parent sizes this to its content's
