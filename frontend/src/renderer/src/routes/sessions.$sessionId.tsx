@@ -27,7 +27,8 @@ import { deriveSessionView, isCodexACPSession, sessionEventErrorMessage } from '
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
-import { liveTranscriptMessages, useLiveSessionSend } from '@/components/session/useLiveSessionSend'
+import { liveTranscriptMessages } from '@/components/session/liveTranscript'
+import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
@@ -175,7 +176,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     staleTime: Infinity,
     gcTime: Infinity,
   })
-  const streamingRef = useRef(false)
   const shownCriticalErrors = useRef(new Set<string>())
   const [lastSessionEventAt, setLastSessionEventAt] = useState<string>()
   const notifyCriticalError = useCallback((message: string) => {
@@ -195,7 +195,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     notifySessionEventError(event)
   }, [notifySessionEventError])
   useEffect(() => setLastSessionEventAt(undefined), [sessionId])
-  useSessionEvents(sessionId, detail.data?.latest_event_seq, streamingRef, handleSessionEvent)
+  useSessionEvents(sessionId, detail.data?.latest_event_seq, handleSessionEvent)
 
   const { loadingEarlierHistory, loadEarlierHistory } = detail
 
@@ -213,7 +213,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
 
   const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
     sessionId,
-    streamingRef,
     onCriticalError: notifyCriticalError,
   })
   const [bottomDockHeight, setBottomDockHeight] = useState(0)

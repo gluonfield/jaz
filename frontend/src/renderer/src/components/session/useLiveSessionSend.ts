@@ -1,50 +1,18 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { uploadSessionAttachment } from '@/lib/api/sessions'
 import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
-import type { ChatMessage } from '@/lib/api/types'
-import { contextInputs } from '@/lib/messageContext'
-import { userInputMessageBlocks } from '@/lib/messageBlocks'
+import type { SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { preparedSendMessage, type ComposerContext, type SendMessageOptions } from '@/lib/sendMessage'
+import type { LiveAttachment, LiveExchange } from './liveTranscript'
 import { isHiddenToolName } from './toolVisibility'
-
-export interface LiveExchange {
-  user: string
-  at: string
-  planRequested: boolean
-  goalRequested: boolean
-  contexts: ComposerContext[]
-  attachments: LiveAttachment[]
-  reasoning: string
-  assistant: string
-  tools: LiveTool[]
-  error?: string
-}
-
-export interface LiveAttachment {
-  id?: string
-  name: string
-  uri?: string
-  mime_type?: string
-  size?: number
-  uploading?: boolean
-}
-
-export interface LiveTool {
-  key: string
-  name: string
-  args?: string
-  result?: string
-}
 
 export function useLiveSessionSend({
   sessionId,
-  streamingRef,
   onCriticalError,
 }: {
   sessionId: string
-  streamingRef: MutableRefObject<boolean>
   onCriticalError: (message: string) => void
 }) {
   const queryClient = useQueryClient()
@@ -64,6 +32,8 @@ export function useLiveSessionSend({
     setLive({
       user: text,
       at: new Date().toISOString(),
+      baselineMessageSeq:
+        queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))?.messages.at(-1)?.seq ?? 0,
       planRequested: Boolean(options.planRequested),
       goalRequested: Boolean(options.goalRequested),
       contexts: draftContexts,
@@ -77,7 +47,6 @@ export function useLiveSessionSend({
       tools: [],
     })
     setStreaming(true)
-    streamingRef.current = true
 
     ;(async () => {
       const attachments = files.length
@@ -116,7 +85,6 @@ export function useLiveSessionSend({
         const current = abortRef.current === controller
         if (current) {
           setStreaming(false)
-          streamingRef.current = false
           abortRef.current = null
         }
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
@@ -128,7 +96,7 @@ export function useLiveSessionSend({
           setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
         }
       })
-  }, [onCriticalError, queryClient, sessionId, streamingRef])
+  }, [onCriticalError, queryClient, sessionId])
 
   const abort = useCallback(() => {
     const controller = abortRef.current
@@ -136,50 +104,10 @@ export function useLiveSessionSend({
     controller.abort()
     abortRef.current = null
     setStreaming(false)
-    streamingRef.current = false
     setLive(null)
-  }, [streamingRef])
+  }, [])
 
   return { live, streaming, send, abort }
-}
-
-export function liveUserMessage(live: LiveExchange, seq: number): ChatMessage {
-  return {
-    seq,
-    role: 'user',
-    content: live.user,
-    blocks: userInputMessageBlocks(live.user, contextInputs(live.contexts), live.attachments),
-    created_at: live.at,
-  }
-}
-
-export function liveTranscriptMessages(
-  messages: ChatMessage[],
-  live: LiveExchange | null,
-  active: boolean,
-): ChatMessage[] {
-  if (!active || !live) return messages
-
-  const currentIndex = currentLiveUserIndex(messages, live)
-  if (currentIndex === -1) {
-    return [...messages, liveUserMessage(live, (messages.at(-1)?.seq ?? 0) + 1_000_000)]
-  }
-
-  const out = messages.slice()
-  out[currentIndex] = liveUserMessage(live, messages[currentIndex].seq)
-  return out
-}
-
-function currentLiveUserIndex(messages: ChatMessage[], live: LiveExchange): number {
-  const index = messages.findLastIndex((message) => message.role === 'user')
-  if (index === -1 || messages[index].content !== live.user) return -1
-  if (index === messages.length - 1) return index
-  return itemTime(messages[index].created_at) >= itemTime(live.at) ? index : -1
-}
-
-function itemTime(value: string | undefined): number {
-  const parsed = Date.parse(value ?? '')
-  return Number.isNaN(parsed) ? 0 : parsed
 }
 
 function liveContextAttachments(contexts: ComposerContext[]): LiveAttachment[] {

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, type RefObject } from 'react'
+import { useEffect } from 'react'
 import { getSession } from '@/lib/api/sessions'
 import { openSessionEvents } from '@/lib/api/sse'
 import type { SessionEvent, SessionMessages } from '@/lib/api/types'
@@ -7,14 +7,11 @@ import { keys } from '@/lib/query/keys'
 import { mergeSessionEvent } from '@/lib/sessionEvents'
 
 // Subscribes to a session's SSE stream while mounted; events accumulate in
-// the query cache. streamingRef suppresses mid-turn message refetches on the
-// page that is itself streaming — its live exchange already renders the turn.
-// Cache writes are batched and sidebar invalidations debounced so a busy turn
-// costs one render per flush, not one per event.
+// the query cache. Cache writes are batched and sidebar invalidations
+// debounced so a busy turn costs one render per flush, not one per event.
 export function useSessionEvents(
   sessionId: string,
   latestEventSeq: number | undefined,
-  streamingRef?: RefObject<boolean>,
   onEvent?: (event: SessionEvent) => void,
 ): void {
   const queryClient = useQueryClient()
@@ -41,7 +38,6 @@ export function useSessionEvents(
     }
     const refetchMessages = () => {
       queryClient.invalidateQueries({ queryKey: keys.usage })
-      if (streamingRef?.current) return
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
       // Turn boundaries are when the working tree changes — refresh repo
       // state and the changes summary here instead of polling for them.
@@ -88,5 +84,5 @@ export function useSessionEvents(
       if (pending.length) flush()
       if (listsTimer !== null) clearTimeout(listsTimer)
     }
-  }, [sessionId, afterSeq, queryClient, streamingRef, onEvent])
+  }, [sessionId, afterSeq, queryClient, onEvent])
 }
