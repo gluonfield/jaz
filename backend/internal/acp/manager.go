@@ -243,6 +243,17 @@ func (c *agentConn) trackPromptSends(job *jobState, onFirst func()) {
 	}
 }
 
+func (m *Manager) persistSessionOnPrompt(sessionID, agentName, acpSessionID string) func() {
+	return func() {
+		updated, err := m.store.ReplaceRuntimeSessionID(sessionID, "", acpSessionID)
+		if err != nil {
+			m.log.Error("persist materialized agent session", "agent", agentName, "session", sessionID, "error", err)
+		} else if !updated {
+			m.log.Error("materialized agent session changed before persistence", "agent", agentName, "session", sessionID)
+		}
+	}
+}
+
 func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (*agentConn, error) {
 	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions, jsonrpc.HandlerFunc(m.handleJSONRPC))
 }
@@ -468,9 +479,8 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		return fail(err)
 	}
 	acpSessionID := string(acpSession.response.SessionID)
-	if sessionMaterializesOnPrompt(req.ACPAgent, cfg) {
-		acpSessionID = ""
-	} else {
+	materializesOnPrompt := sessionMaterializesOnPrompt(req.ACPAgent, cfg)
+	if !materializesOnPrompt {
 		session.RuntimeRef.SessionID = acpSessionID
 		if err := m.store.SaveSession(session); err != nil {
 			ac.close()
@@ -480,11 +490,15 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	process := newAgentProcess(ac, turnScopedAgentProcess(cfg))
 	job := newIdleJob(session, req.ACPAgent, acpSessionID, absCwd, modes)
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
+	var persistSessionID func()
+	if materializesOnPrompt {
+		persistSessionID = m.persistSessionOnPrompt(session.ID, req.ACPAgent, acpSessionID)
+	}
 	m.addJob(job, process)
-	if process.turnScoped {
+	if process.turnScoped && !materializesOnPrompt {
 		m.closeUnusedProcess(job)
 	} else {
-		ac.trackPromptSends(job, nil)
+		ac.trackPromptSends(job, persistSessionID)
 	}
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
 

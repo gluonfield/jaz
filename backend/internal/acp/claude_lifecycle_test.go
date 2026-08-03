@@ -30,6 +30,9 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 			manager, spawned := newNamedProcessTestManager(t, t.TempDir(), agent, env)
 
 			ctx := context.Background()
+			if starts := processStarts(t, startLog); starts != 1 {
+				t.Fatalf("process starts after spawn = %d, want 1", starts)
+			}
 			sent, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline})
 			if err != nil {
 				t.Fatal(err)
@@ -37,6 +40,13 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 			ref := sent.ACPSession
 			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: ref, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
 				t.Fatalf("first turn = %#v, %v", job, err)
+			}
+			firstTurnStarts := 2
+			if agent == acp.AgentClaude || agent == acp.AgentCodex {
+				firstTurnStarts = 1
+			}
+			if starts := processStarts(t, startLog); starts != firstTurnStarts {
+				t.Fatalf("process starts after first turn = %d, want %d", starts, firstTurnStarts)
 			}
 			if _, err := manager.Send(ctx, acp.SendRequest{Session: ref}); err == nil {
 				t.Fatal("empty turn unexpectedly started")
@@ -66,15 +76,20 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: ref, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
 				t.Fatalf("second turn = %#v, %v", job, err)
 			}
-			data, err := os.ReadFile(startLog)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if starts := len(strings.Fields(string(data))); starts != 3 {
-				t.Fatalf("process starts = %d, want one spawn validation plus one per turn; log=%q", starts, data)
+			if starts := processStarts(t, startLog); starts != firstTurnStarts+1 {
+				t.Fatalf("process starts = %d, want %d", starts, firstTurnStarts+1)
 			}
 		})
 	}
+}
+
+func processStarts(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(strings.Fields(string(data)))
 }
 
 func TestManagerRejectsManagedAgentWithoutSessionRestore(t *testing.T) {
@@ -140,12 +155,8 @@ func TestManagerReleasesManagedProcessAfterIdleSideChat(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	data, err := os.ReadFile(startLog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if starts := len(strings.Fields(string(data))); starts != 3 {
-		t.Fatalf("process starts = %d, want one spawn validation plus one per side chat; log=%q", starts, data)
+	if starts := processStarts(t, startLog); starts != 2 {
+		t.Fatalf("process starts = %d, want the initial owner plus one restored side chat", starts)
 	}
 }
 
@@ -165,6 +176,9 @@ func TestManagerDoesNotReplaceEstablishedLazySession(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			manager = restartNamedProcessTestManager(t, manager, store, acp.AgentCodex, map[string]string{
+				"JAZ_FAKE_ACP_MATERIALIZED_SESSION": filepath.Join(t.TempDir(), "missing-session"),
+			})
 			_, err = manager.Send(context.Background(), acp.SendRequest{
 				Session: spawned.SessionID, Message: "first", Completion: acp.CompletionInline,
 			})
@@ -191,6 +205,7 @@ func TestManagerDoesNotForkEstablishedLazySessionWithoutProviderID(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
+			manager = restartNamedProcessTestManager(t, manager, store, acp.AgentCodex, nil)
 			_, err = manager.Send(context.Background(), acp.SendRequest{
 				Session: spawned.SessionID, Message: "continue", Completion: acp.CompletionInline,
 			})
@@ -202,36 +217,40 @@ func TestManagerDoesNotForkEstablishedLazySessionWithoutProviderID(t *testing.T)
 }
 
 func TestManagerDoesNotPersistUnsentLazySession(t *testing.T) {
-	manager, store, spawned := newFreshAgentTestSession(t, acp.AgentCodex)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if _, err := manager.Send(ctx, acp.SendRequest{
-		Session:     spawned.SessionID,
-		Message:     "first",
-		Attachments: []storage.Attachment{{Name: "missing-uri"}},
-		Completion:  acp.CompletionInline,
-	}); err == nil {
-		t.Fatal("invalid attachment unexpectedly started a turn")
-	}
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if session.RuntimeRef.SessionID != "" {
-		t.Fatalf("unsent ACP session persisted as %q", session.RuntimeRef.SessionID)
-	}
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "retry", Completion: acp.CompletionInline}); err != nil {
-		t.Fatal(err)
-	}
-	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
-		t.Fatalf("retried turn = %#v, %v", job, err)
-	}
-	session, err = store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if session.RuntimeRef.SessionID == "" {
-		t.Fatal("sent ACP session was not persisted")
+	for _, agent := range []string{acp.AgentClaude, acp.AgentCodex} {
+		t.Run(agent, func(t *testing.T) {
+			manager, store, spawned := newFreshAgentTestSession(t, agent)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if _, err := manager.Send(ctx, acp.SendRequest{
+				Session:     spawned.SessionID,
+				Message:     "first",
+				Attachments: []storage.Attachment{{Name: "missing-uri"}},
+				Completion:  acp.CompletionInline,
+			}); err == nil {
+				t.Fatal("invalid attachment unexpectedly started a turn")
+			}
+			session, err := store.LoadSession(spawned.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if session.RuntimeRef.SessionID != "" {
+				t.Fatalf("unsent ACP session persisted as %q", session.RuntimeRef.SessionID)
+			}
+			if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "retry", Completion: acp.CompletionInline}); err != nil {
+				t.Fatal(err)
+			}
+			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
+				t.Fatalf("retried turn = %#v, %v", job, err)
+			}
+			session, err = store.LoadSession(spawned.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if session.RuntimeRef.SessionID == "" {
+				t.Fatal("sent ACP session was not persisted")
+			}
+		})
 	}
 }
 
@@ -272,6 +291,14 @@ func newFreshAgentTestSession(t *testing.T, agent string) (*acp.Manager, *jsonst
 		t.Fatalf("fresh %s session persisted pre-prompt ACP id %q", agent, session.RuntimeRef.SessionID)
 	}
 	return manager, store, spawned
+}
+
+func restartNamedProcessTestManager(t *testing.T, manager *acp.Manager, store *jsonstore.Store, agent string, env map[string]string) *acp.Manager {
+	t.Helper()
+	manager.Close()
+	restarted := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), agent, env, "", "")
+	t.Cleanup(restarted.Close)
+	return restarted
 }
 
 func TestManagerRecordsClaudeRuntimeAuthFailure(t *testing.T) {
