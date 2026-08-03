@@ -117,7 +117,7 @@ func TestReserveSteerDoesNotQueuePromptWhenUserMessageCannotPersist(t *testing.T
 	}
 	manager := NewManager(rejectingMessageStore{Store: store}, Config{}, nil)
 	job := newIdleJob(session, "fake", "runtime-session", "", ModeState{})
-	job.promptQueueing = true
+	job.steerMethod = steerPromptQueueing
 	job.startTurn(CompletionInline, false, false)
 
 	_, err = manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "keep me"}, nil)

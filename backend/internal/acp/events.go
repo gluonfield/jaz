@@ -189,7 +189,7 @@ func (m *Manager) steerText(ctx context.Context, job *jobState, text string, req
 		Message:       text,
 		ParentVisible: req.ParentVisible,
 	})
-	if err == nil || !errors.Is(err, ErrPromptQueueingUnsupported) {
+	if err == nil || !errors.Is(err, ErrSteeringUnsupported) {
 		return err
 	}
 	if _, err := m.Cancel(ctx, job.ID); err != nil {

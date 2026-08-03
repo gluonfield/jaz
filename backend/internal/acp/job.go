@@ -107,7 +107,7 @@ type jobState struct {
 	mu                     sync.RWMutex
 	sendMu                 sync.Mutex
 	turnMu                 sync.Mutex
-	promptQueueing         bool
+	steerMethod            steerMethod
 	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
 	pendingToolUpdateByID  map[string]sessionevents.ACPToolCall

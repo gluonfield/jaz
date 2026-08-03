@@ -2,6 +2,9 @@ package acp_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +13,59 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
+
+func TestManagerSteerUsesNativeHarnessSteering(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestLog := filepath.Join(t.TempDir(), "requests.jsonl")
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
+		"JAZ_FAKE_ACP_NATIVE_STEERING": "1",
+		"JAZ_FAKE_ACP_REQUEST_LOG":     requestLog,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "fake-native-steer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "native follow-up"}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.State != acp.StateIdle || job.StopReason == acp.StopReasonCancelled || job.Assistant != "hello from native steer" {
+		t.Fatalf("native steer state=%s stop=%q assistant=%q error=%q", job.State, job.StopReason, job.Assistant, job.Error)
+	}
+	requests, err := os.ReadFile(requestLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestText := string(requests)
+	if strings.Count(requestText, `"method":"session/prompt"`) != 1 ||
+		strings.Count(requestText, `"method":"_session/steering"`) != 1 ||
+		!strings.Contains(requestText, `"waitForCompletion":true`) {
+		t.Fatalf("native steer requests = %s", requestText)
+	}
+	messages, err := store.LoadMessages(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 ||
+		provider.MessageContent(messages[0]) != "block until cancelled" ||
+		provider.MessageContent(messages[1]) != "native follow-up" {
+		t.Fatalf("messages = %#v", messages)
+	}
+}
 
 func TestManagerSteerCancelsPendingQuestion(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())

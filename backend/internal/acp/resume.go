@@ -131,7 +131,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		}
 	}
 	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
-	job.promptQueueing = promptQueueingSupported(ac.initRaw)
+	job.steerMethod = supportedSteerMethod(ac.initRaw)
 	var persistSessionID func()
 	if materializesOnPrompt {
 		persistSessionID = m.persistSessionOnPrompt(session.ID, agentName, acpSessionID)
