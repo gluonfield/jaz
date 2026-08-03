@@ -67,6 +67,36 @@ func TestCompactTranscriptMergesACPTextWithSameRunID(t *testing.T) {
 	}
 }
 
+func TestCompactTranscriptPreservesThoughtToolThoughtOrder(t *testing.T) {
+	thought := func(seq int64, textRunID, text string) Event {
+		acp := compactACPState("thread", "running")
+		acp.Thought = text
+		return compactACPTextRun(seq, TypeACPThought, "", textRunID, acp)
+	}
+	tool := compactACPState("thread", "running")
+	tool.ToolCalls = []ACPToolCall{{ID: "tool-1", Title: "Inspect", Status: "completed"}}
+
+	got := CompactTranscript([]Event{
+		thought(1, "message:reasoning-before", "Inspect "),
+		thought(2, "message:reasoning-before", "the code"),
+		compactACP(3, "acp_tool", "", tool),
+		thought(4, "message:reasoning-after", "Apply the result"),
+	})
+
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3: %#v", len(got), got)
+	}
+	if got[0].Seq != 2 || got[0].ACP.Thought != "Inspect the code" {
+		t.Fatalf("first thought = %#v", got[0])
+	}
+	if got[1].Seq != 3 || got[1].Type != "acp_tool" {
+		t.Fatalf("tool = %#v", got[1])
+	}
+	if got[2].Seq != 4 || got[2].ACP.Thought != "Apply the result" {
+		t.Fatalf("second thought = %#v", got[2])
+	}
+}
+
 func TestProjectorOwnsAppendAndBoundaryIdentity(t *testing.T) {
 	projector := NewProjector()
 	first := projector.Apply(compactACPTextRun(1, TypeACPMessage, "Hel", "message:m1", compactACPState("thread", "running")))
