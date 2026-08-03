@@ -1,11 +1,11 @@
 {
   "adapters": {
     "codex": {
-      "version": "1.1.9-jaz.2",
+      "version": "1.1.9-jaz.3",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.2/codex-acp-app-server-1.1.9-jaz.2-darwin-arm64.tar.gz",
-          "sha256": "3e927fd2406b1760e0f3f8f8c743568f55dcbd44e6eaf73185044b655fc356db",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.3/codex-acp-app-server-1.1.9-jaz.3-darwin-arm64.tar.gz",
+          "sha256": "8da8afa001fc5d87d2c079df95c4edd67795ae239419af24b512f4708bf38a01",
           "binary": "codex-acp",
           "env": {
             "CODEX_PATH": "codex-runtime/aarch64-apple-darwin/bin/codex",
@@ -13,8 +13,8 @@
           }
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.2/codex-acp-app-server-1.1.9-jaz.2-darwin-x64.tar.gz",
-          "sha256": "ca9dda28b1289c8c62e1c3b50384a8471d690418e76e217fa2c8afb3f32e1fce",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.3/codex-acp-app-server-1.1.9-jaz.3-darwin-x64.tar.gz",
+          "sha256": "65fb4021c79d25435b5cfb5f8ef52f8f789d388714a0371c90c1f92b7ddd93e5",
           "binary": "codex-acp",
           "env": {
             "CODEX_PATH": "codex-runtime/x86_64-apple-darwin/bin/codex",
@@ -22,8 +22,8 @@
           }
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.2/codex-acp-app-server-1.1.9-jaz.2-linux-arm64.tar.gz",
-          "sha256": "09edc3e316e1697d51483baee53b72d7f2dfa3f8d936bd894dcd25be6eadc3a8",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.3/codex-acp-app-server-1.1.9-jaz.3-linux-arm64.tar.gz",
+          "sha256": "1243805a55fb3cdccb0bc4ceafe4466a3fddf189ab4c95a65fc07eec1e842dc2",
           "binary": "codex-acp",
           "env": {
             "CODEX_PATH": "codex-runtime/aarch64-unknown-linux-musl/bin/codex",
@@ -31,8 +31,8 @@
           }
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.2/codex-acp-app-server-1.1.9-jaz.2-linux-x64.tar.gz",
-          "sha256": "bb4821ee5aa09d06a2a37d4ce4deaadb5f65f7d4bf15fd97b68bf3c29ea508a0",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.3/codex-acp-app-server-1.1.9-jaz.3-linux-x64.tar.gz",
+          "sha256": "4d84cf02b8f9058fa14ccc6daa210d5c6df04b7d065ec3af7197ee01ceac1b25",
           "binary": "codex-acp",
           "env": {
             "CODEX_PATH": "codex-runtime/x86_64-unknown-linux-musl/bin/codex",
@@ -40,8 +40,8 @@
           }
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.2/codex-acp-app-server-1.1.9-jaz.2-win32-arm64.tar.gz",
-          "sha256": "498967d439c09f07ce1d3aef0787845c0f4a109c7146b9f16d3cf38ebeeb61fa",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.3/codex-acp-app-server-1.1.9-jaz.3-win32-arm64.tar.gz",
+          "sha256": "8a2e14d6f7a022bba447962b797dbcd9832e2495d13ac09ce1d8f969c2778f52",
           "binary": "codex-acp.exe",
           "env": {
             "CODEX_PATH": "codex-runtime/aarch64-pc-windows-msvc/bin/codex.exe",
@@ -49,8 +49,8 @@
           }
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.2/codex-acp-app-server-1.1.9-jaz.2-win32-x64.tar.gz",
-          "sha256": "a0394a1f8c8f2c429b5fa9e4d0a888160b903a5e281cad5f1671515290926975",
+          "url": "https://github.com/gluonfield/codex-acp-app-server/releases/download/v1.1.9-jaz.3/codex-acp-app-server-1.1.9-jaz.3-win32-x64.tar.gz",
+          "sha256": "73279eafc384a71d040d2a2fdceec68a9ec0bf749acb3647750e5a6fe3dd1b2c",
           "binary": "codex-acp.exe",
           "env": {
             "CODEX_PATH": "codex-runtime/x86_64-pc-windows-msvc/bin/codex.exe",
