@@ -628,24 +628,14 @@ export function Sidebar({
             </span>
             <span className="flex-1">New task</span>
           </Link>
-          <div className="group/search relative shrink-0">
-            <button
-              type="button"
-              onClick={onOpenCommandPalette}
-              aria-label="Open search"
-              aria-describedby="sidebar-search-tooltip"
-              className="grid size-[30px] place-items-center rounded-full text-ink-3 transition-colors duration-150 hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 max-sm:size-11"
-            >
-              <Search size={15} className="max-sm:size-[18px]" />
-            </button>
-            <span
-              id="sidebar-search-tooltip"
-              role="tooltip"
-              className="pointer-events-none absolute top-full right-0 z-tooltip mt-1.5 translate-y-1 whitespace-nowrap rounded-full bg-ink px-2.5 py-1 text-[11px] font-medium text-bg opacity-0 shadow-raised transition-[opacity,transform] duration-150 ease-out group-hover/search:translate-y-0 group-hover/search:opacity-100 group-focus-within/search:translate-y-0 group-focus-within/search:opacity-100"
-            >
-              Search <span className="ml-1 opacity-60">⌘K</span>
-            </span>
-          </div>
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            aria-label="Open search"
+            className="grid size-[30px] shrink-0 place-items-center rounded-full text-ink-3 transition-colors duration-150 hover:bg-list-hover hover:text-ink focus-visible:bg-list-hover focus-visible:ring-2 focus-visible:ring-primary/40 max-sm:size-11"
+          >
+            <Search size={15} className="max-sm:size-[18px]" />
+          </button>
         </div>
       </div>
 
