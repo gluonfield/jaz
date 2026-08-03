@@ -130,9 +130,7 @@ func TestCreateElicitationCancelsWhenPromptSuccessorQueued(t *testing.T) {
 	manager := NewManager(store, Config{}, nil)
 	job := &jobState{Job: Job{ID: session.ID, ACPSession: "acp-session", Cwd: t.TempDir()}, promptQueueing: true}
 	job.startTurn(CompletionInline, false, false)
-	if _, ok := job.addPromptCall(false); !ok {
-		t.Fatal("prompt queueing unavailable")
-	}
+	job.turn.promptCalls++
 	manager.jobsByID[session.ID] = job
 	manager.jobsByACP["acp-session"] = job
 

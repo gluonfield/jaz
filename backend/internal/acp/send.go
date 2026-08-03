@@ -120,6 +120,15 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	if err := m.store.UpdateSessionStatus(job.ID, storage.StatusRunning, "", time.Now().UTC()); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}
+	if opts.transcript == sendTranscriptUserMessage {
+		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
+			appendErr := fmt.Errorf("append user message: %w", err)
+			if rollbackErr := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); rollbackErr != nil {
+				return Job{}, errors.Join(appendErr, fmt.Errorf("restore session idle: %w", rollbackErr))
+			}
+			return Job{}, appendErr
+		}
+	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
 	job.mu.Lock()
@@ -127,11 +136,6 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	job.mu.Unlock()
 	started = true
 	m.touchAttention(parentSessionIDs(job.eventView())...)
-	if opts.transcript == sendTranscriptUserMessage {
-		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
-			m.log.Error("append user message failed", "session", job.ID, "error", err)
-		}
-	}
 	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.eventView())
 	if local != nil {
@@ -175,19 +179,32 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	done, ok := job.addPromptCall(req.ParentVisible)
-	if !ok {
-		return Job{}, ErrPromptQueueingUnsupported
+	done, err := m.reserveSteer(job, req, contexts)
+	if err != nil {
+		return Job{}, err
 	}
 	handoff := m.cancelPendingPermissionsForSteer(job, done)
 	m.touchJobAttention(job)
-	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
-		m.log.Error("append user message failed", "session", job.ID, "error", err)
-	}
 	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.eventView())
 	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, promptReq)
 	return job.Snapshot(), nil
+}
+
+func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext) (chan struct{}, error) {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	if !job.promptQueueing || job.turn == nil || (job.State != StateRunning && job.State != StateStarting) {
+		return nil, ErrPromptQueueingUnsupported
+	}
+	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
+		return nil, fmt.Errorf("append user message: %w", err)
+	}
+	if req.ParentVisible {
+		job.ParentVisible = true
+	}
+	job.turn.promptCalls++
+	return job.turn.done, nil
 }
 
 func (m *Manager) runPromptCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, req acpschema.PromptRequest) {

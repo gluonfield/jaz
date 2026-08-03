@@ -19,6 +19,7 @@ const (
 	StreamToolCall   = "tool_call"
 	StreamToolResult = "tool_result"
 	StreamTurn       = "turn"
+	StreamAccepted   = "accepted"
 	StreamError      = "error"
 	StreamDone       = "done"
 )

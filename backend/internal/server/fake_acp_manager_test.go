@@ -14,6 +14,7 @@ type fakeACPManager struct {
 	mu             sync.Mutex
 	sent           acp.SendRequest
 	internal       acp.InternalTurnRequest
+	internalCalls  int
 	continueGoals  []string
 	compacted      acp.CompactRequest
 	steered        acp.SteerRequest
@@ -143,6 +144,7 @@ func (f *fakeACPManager) StartInternalTurn(_ context.Context, req acp.InternalTu
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.internal = req
+	f.internalCalls++
 	return f.job, f.internalErr
 }
 

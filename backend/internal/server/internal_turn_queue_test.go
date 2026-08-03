@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -132,7 +133,7 @@ func TestInternalTurnQueuesWhileParentRunningAndStaysHidden(t *testing.T) {
 		Slug:  session.Slug,
 		State: acp.StateRunning,
 	}}
-	srv := &Server{Store: store, ACP: manager}
+	srv := &Server{Store: store, ACP: manager, Locks: sessionlock.New()}
 
 	if err := srv.StartInternalTurn(context.Background(), session.ID, "child result"); err != nil {
 		t.Fatal(err)
@@ -181,14 +182,27 @@ func TestInternalTurnRunsBeforeExistingPublicQueue(t *testing.T) {
 		Slug:  session.Slug,
 		State: acp.StateIdle,
 	}}
-	srv := &Server{Store: store, ACP: manager}
+	srv := &Server{Store: store, ACP: manager, Locks: sessionlock.New()}
 
-	if err := srv.StartInternalTurn(context.Background(), session.ID, "child result"); err != nil {
-		t.Fatal(err)
+	done := make(chan error, 1)
+	go func() { done <- srv.StartInternalTurn(context.Background(), session.ID, "child result") }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("internal turn deadlocked while draining the idle session")
 	}
 	internal := waitForACPInternal(t, manager, "child result")
 	if internal.Session != session.ID {
 		t.Fatalf("internal turn = %#v, want session %s", internal, session.ID)
+	}
+	manager.mu.Lock()
+	internalCalls := manager.internalCalls
+	manager.mu.Unlock()
+	if internalCalls != 1 {
+		t.Fatalf("internal turn started %d times, want 1", internalCalls)
 	}
 	if sent := sentACPRequest(manager); sent.Message != "" {
 		t.Fatalf("public queued prompt ran before internal turn: %#v", sent)

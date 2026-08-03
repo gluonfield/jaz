@@ -479,22 +479,6 @@ func (j *jobState) turnCancel() context.CancelFunc {
 	return j.turn.cancel
 }
 
-func (j *jobState) addPromptCall(parentVisible bool) (chan struct{}, bool) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if !j.promptQueueing || j.turn == nil {
-		return nil, false
-	}
-	if j.State != StateRunning && j.State != StateStarting {
-		return nil, false
-	}
-	if parentVisible {
-		j.ParentVisible = true
-	}
-	j.turn.promptCalls++
-	return j.turn.done, true
-}
-
 func (j *jobState) hasQueuedPromptSuccessor() bool {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
