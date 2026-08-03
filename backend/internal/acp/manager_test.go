@@ -557,8 +557,8 @@ func TestManagerSideChatDoesNotTouchRunningTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if starts := len(strings.Fields(string(data))); starts != 3 {
-		t.Fatalf("process starts = %d, want validation, main turn, and post-turn side chat; log=%q", starts, data)
+	if starts := len(strings.Fields(string(data))); starts != 2 {
+		t.Fatalf("process starts = %d, want the initial owner and post-turn side chat; log=%q", starts, data)
 	}
 }
 

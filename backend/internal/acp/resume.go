@@ -134,14 +134,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 	job.promptQueueing = promptQueueingSupported(ac.initRaw)
 	var persistSessionID func()
 	if materializesOnPrompt {
-		persistSessionID = func() {
-			updated, err := m.store.ReplaceRuntimeSessionID(session.ID, "", acpSessionID)
-			if err != nil {
-				m.log.Error("persist materialized agent session", "agent", agentName, "session", session.ID, "error", err)
-			} else if !updated {
-				m.log.Error("materialized agent session changed before persistence", "agent", agentName, "session", session.ID)
-			}
-		}
+		persistSessionID = m.persistSessionOnPrompt(session.ID, agentName, acpSessionID)
 	}
 	ac.trackPromptSends(job, persistSessionID)
 	m.addJob(job, newAgentProcess(ac, turnScopedAgentProcess(cfg)))

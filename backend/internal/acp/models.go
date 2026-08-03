@@ -92,11 +92,12 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 	switch strings.ToLower(strings.TrimSpace(agentName)) {
 	case AgentClaude:
 		return agentPolicy{
-			modelConfigID:       sessionConfigModel,
-			effortConfigID:      claudeSessionConfigEffort,
-			modelValidationKind: modelValidationClaude,
-			effortOptions:       claudeReasoningEffortOptions,
-			ultracodeSetting:    true,
+			modelConfigID:        sessionConfigModel,
+			effortConfigID:       claudeSessionConfigEffort,
+			materializesOnPrompt: true,
+			modelValidationKind:  modelValidationClaude,
+			effortOptions:        claudeReasoningEffortOptions,
+			ultracodeSetting:     true,
 		}
 	case AgentCodex:
 		return agentPolicy{
