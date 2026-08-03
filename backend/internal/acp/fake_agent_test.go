@@ -124,11 +124,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"claudeCode": map[string]any{"promptQueueing": true},
 				}
 			}
-			sendResult(conn, msg, map[string]any{
+			response := map[string]any{
 				"protocolVersion":   1,
 				"agentInfo":         map[string]any{"name": "fake-agent", "version": "test"},
 				"agentCapabilities": capabilities,
-			})
+			}
+			if os.Getenv("JAZ_FAKE_ACP_NATIVE_STEERING") == "1" {
+				response["_meta"] = map[string]any{
+					"steering": map[string]any{"supported": true, "waitForCompletion": true},
+				}
+			}
+			sendResult(conn, msg, response)
 		case "session/load", "session/resume":
 			supported := os.Getenv("JAZ_FAKE_ACP_LOAD") != "0"
 			if msg.Method == "session/resume" {
@@ -336,6 +342,26 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			currentEffort = req.Value
 			sendResult(conn, msg, map[string]any{})
+		case "_session/steering":
+			var req struct {
+				WaitForCompletion bool `json:"waitForCompletion"`
+			}
+			if json.Unmarshal(msg.Params, &req) != nil || !req.WaitForCompletion || pendingPrompt == nil {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected completion-aware native steer", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			notify(conn, "session/update", map[string]any{
+				"sessionId": "fake-session",
+				"update": map[string]any{
+					"sessionUpdate": "agent_message_chunk",
+					"messageId":     nextMessageID("native-steer"),
+					"content":       map[string]any{"type": "text", "text": "hello from native steer"},
+				},
+			})
+			sendResult(conn, pendingPrompt, map[string]any{"stopReason": "end_turn"})
+			pendingPrompt = nil
+			sendResult(conn, msg, map[string]any{"outcome": "injected", "stopReason": "end_turn"})
 		case "session/prompt":
 			if os.Getenv("JAZ_FAKE_ACP_PROMPT_DELAY") == "1" {
 				time.Sleep(200 * time.Millisecond)

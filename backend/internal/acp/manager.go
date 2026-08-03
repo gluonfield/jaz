@@ -489,7 +489,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	process := newAgentProcess(ac, turnScopedAgentProcess(cfg))
 	job := newIdleJob(session, req.ACPAgent, acpSessionID, absCwd, modes)
-	job.promptQueueing = promptQueueingSupported(ac.initRaw)
+	job.steerMethod = supportedSteerMethod(ac.initRaw)
 	var persistSessionID func()
 	if materializesOnPrompt {
 		persistSessionID = m.persistSessionOnPrompt(session.ID, req.ACPAgent, acpSessionID)

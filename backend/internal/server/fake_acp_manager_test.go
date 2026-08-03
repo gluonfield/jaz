@@ -167,7 +167,7 @@ func (f *fakeACPManager) Steer(ctx context.Context, req acp.SteerRequest) (acp.J
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if !f.steerSupported {
-		return f.job, acp.ErrPromptQueueingUnsupported
+		return f.job, acp.ErrSteeringUnsupported
 	}
 	f.steered = req
 	f.steerCtxErr = ctx.Err()

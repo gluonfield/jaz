@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-var ErrPromptQueueingUnsupported = errors.New("acp prompt queueing unsupported")
+var ErrSteeringUnsupported = errors.New("acp steering unsupported")
 
 type sendTranscriptMode int
 
@@ -155,17 +156,17 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, fmt.Errorf("message is required")
 	}
 	job.mu.RLock()
-	queueing := job.promptQueueing
+	method := job.steerMethod
 	job.mu.RUnlock()
-	if !queueing {
-		return Job{}, ErrPromptQueueingUnsupported
+	if method == steerUnsupported {
+		return Job{}, ErrSteeringUnsupported
 	}
 	local := m.localAgent(job.ACPAgent)
 	if m.configuredLocal(job.ACPAgent) && local == nil {
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
 	}
 	if local != nil {
-		return Job{}, ErrPromptQueueingUnsupported
+		return Job{}, ErrSteeringUnsupported
 	}
 	if err := job.waitFirstPromptSent(ctx); err != nil {
 		return Job{}, err
@@ -187,15 +188,15 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	m.touchJobAttention(job)
 	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.eventView())
-	go m.runPromptCallAfterHandoff(context.Background(), job, done, handoff, promptReq)
+	go m.runSteerCallAfterHandoff(context.Background(), job, done, handoff, method, promptReq)
 	return job.Snapshot(), nil
 }
 
 func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext) (chan struct{}, error) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
-	if !job.promptQueueing || job.turn == nil || (job.State != StateRunning && job.State != StateStarting) {
-		return nil, ErrPromptQueueingUnsupported
+	if job.steerMethod == steerUnsupported || job.turn == nil || (job.State != StateRunning && job.State != StateStarting) {
+		return nil, ErrSteeringUnsupported
 	}
 	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
 		return nil, fmt.Errorf("append user message: %w", err)
@@ -207,7 +208,42 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	return job.turn.done, nil
 }
 
-func (m *Manager) runPromptCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, req acpschema.PromptRequest) {
+func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done chan struct{}, prompt acpschema.PromptRequest) {
+	peer := m.peer(job.ID)
+	if peer == nil {
+		m.failPromptCall(done, job, fmt.Errorf("acp peer is not active"))
+		return
+	}
+	m.withACPTranscriptBarrier(job.eventView(), nil)
+	raw, err := peer.Call(ctx, string(steerNative), struct {
+		SessionID         acpschema.SessionID      `json:"sessionId"`
+		Prompt            []acpschema.ContentBlock `json:"prompt"`
+		WaitForCompletion bool                     `json:"waitForCompletion"`
+	}{
+		SessionID:         prompt.SessionID,
+		Prompt:            prompt.Prompt,
+		WaitForCompletion: true,
+	})
+	if err != nil {
+		m.failPromptCall(done, job, err)
+		return
+	}
+	var response struct {
+		Outcome    string `json:"outcome"`
+		StopReason string `json:"stopReason"`
+	}
+	if err := json.Unmarshal(raw, &response); err != nil {
+		m.failPromptCall(done, job, err)
+		return
+	}
+	if (response.Outcome != "injected" && response.Outcome != "startedNewTurn") || response.StopReason == "" {
+		m.failPromptCall(done, job, fmt.Errorf("invalid native ACP steering response"))
+		return
+	}
+	m.completePromptCall(done, job, response.StopReason)
+}
+
+func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, method steerMethod, prompt acpschema.PromptRequest) {
 	if handoff != nil {
 		select {
 		case <-handoff:
@@ -220,5 +256,10 @@ func (m *Manager) runPromptCallAfterHandoff(ctx context.Context, job *jobState, 
 		return
 	default:
 	}
-	m.runPromptCall(ctx, job, done, req)
+	switch method {
+	case steerPromptQueueing:
+		m.runPromptCall(ctx, job, done, prompt)
+	case steerNative:
+		m.runNativeSteerCall(ctx, job, done, prompt)
+	}
 }

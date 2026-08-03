@@ -535,7 +535,7 @@ func (s *Server) startSteeredQueuedPrompt(claimed steeredQueuedPrompt) error {
 			s.publishMessagesChanged(claimed.session.ID)
 			return nil
 		}
-		if !errors.Is(err, acp.ErrPromptQueueingUnsupported) {
+		if !errors.Is(err, acp.ErrSteeringUnsupported) {
 			return err
 		}
 		ctx, cancel = serverActionContext()
@@ -580,7 +580,7 @@ func (s *Server) steerRunningQueuedPrompt(ctx context.Context, session storage.S
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, acp.ErrPromptQueueingUnsupported) {
+	if errors.Is(err, acp.ErrSteeringUnsupported) {
 		return err
 	}
 	return acpSendError(session, err)

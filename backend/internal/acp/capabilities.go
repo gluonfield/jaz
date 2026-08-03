@@ -7,12 +7,27 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 )
 
-func promptQueueingSupported(raw json.RawMessage) bool {
+type steerMethod string
+
+const (
+	steerUnsupported    steerMethod = ""
+	steerPromptQueueing steerMethod = acpschema.AgentMethodSessionPrompt
+	steerNative         steerMethod = "_session/steering"
+)
+
+func supportedSteerMethod(raw json.RawMessage) steerMethod {
 	var resp acpschema.InitializeResponse
-	if json.Unmarshal(raw, &resp) != nil || resp.AgentCapabilities == nil {
-		return false
+	if json.Unmarshal(raw, &resp) != nil {
+		return steerUnsupported
 	}
-	return metaPromptQueueing(resp.AgentCapabilities.Meta)
+	if resp.AgentCapabilities != nil && metaPromptQueueing(resp.AgentCapabilities.Meta) {
+		return steerPromptQueueing
+	}
+	steering, _ := resp.Meta["steering"].(map[string]any)
+	if boolMeta(steering, "supported") && boolMeta(steering, "waitForCompletion") {
+		return steerNative
+	}
+	return steerUnsupported
 }
 
 func sessionRestoreMethod(raw json.RawMessage) string {
