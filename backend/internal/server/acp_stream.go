@@ -66,6 +66,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		if !turn.compact() && errors.Is(err, errACPTurnRunning) {
 			err = s.queueACPStreamTurn(session.ID, turn)
 			if err == nil {
+				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamAccepted})
 				writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 				return
 			}
@@ -101,6 +102,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 		return
 	}
 	s.publishMessagesChanged(session.ID)
+	writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamAccepted})
 
 	stream := acp.StreamViewFromJob(job)
 	emittedAssistant := 0

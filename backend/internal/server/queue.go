@@ -265,29 +265,36 @@ func (s *Server) StartInternalTurn(_ context.Context, sessionID, message string)
 	if !ok {
 		return fmt.Errorf("message is required")
 	}
+	id, idle, err := s.enqueueInternalTurn(sessionID, prompt)
+	if err != nil {
+		return err
+	}
+	if idle {
+		s.drainQueueSoon(id)
+	}
+	return nil
+}
 
+func (s *Server) enqueueInternalTurn(sessionID string, prompt storage.QueuedMessage) (string, bool, error) {
 	unlock := s.lockSession(sessionID)
 	defer unlock()
 
 	session, err := s.Store.LoadSession(sessionID)
 	if err != nil {
-		return err
+		return "", false, err
 	}
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeACP
 	}
 	if !s.canStartQueuedPrompt(session) {
-		return fmt.Errorf("session runtime is not configured")
+		return "", false, fmt.Errorf("session runtime is not configured")
 	}
 	session.QueuedMessages = s.assignQueuedMessageIDs(insertInternalQueuedPrompt(session.QueuedMessages, prompt))
 	idle := session.Status == storage.StatusIdle && !s.sessionRuntimeRunning(session)
 	if err := s.Store.SaveSession(session); err != nil {
-		return err
+		return "", false, err
 	}
-	if idle {
-		s.drainQueueSoon(session.ID)
-	}
-	return nil
+	return session.ID, idle, nil
 }
 
 func (s *Server) drainQueuedPrompt(ctx context.Context, sessionID string) {

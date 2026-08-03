@@ -131,13 +131,14 @@ function LauncherPage() {
           uploadSessionAttachment(session.id, await dataURLToFile(shot.dataUrl, 'screenshot.png')),
         ),
       )
-      void streamSessionMessage({
+      const stream = streamSessionMessage({
         sessionId: session.id,
         message: text,
         attachmentIds: uploaded.map((attachment) => attachment.id),
         signal: new AbortController().signal,
         onEvent: () => {},
-      }).catch(() => {})
+      })
+      void stream.finished.catch(() => {})
       clientRuntime.openInMain?.(`/sessions/${session.id}`)
       clientRuntime.hideLauncher?.()
       reset()

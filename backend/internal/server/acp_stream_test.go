@@ -46,6 +46,9 @@ func TestACPStreamQueuesPromptReservedByRunningTurn(t *testing.T) {
 	if res.Code != http.StatusOK || strings.Contains(res.Body.String(), `"type":"error"`) {
 		t.Fatalf("response = %d %s", res.Code, res.Body.String())
 	}
+	if !strings.Contains(res.Body.String(), `"type":"accepted"`) {
+		t.Fatalf("response did not acknowledge durable queueing: %s", res.Body.String())
+	}
 	if manager.sent.Message != "" {
 		t.Fatalf("reserved turn was sent concurrently: %#v", manager.sent)
 	}
@@ -87,6 +90,9 @@ func TestACPStreamPublishesMessageRefreshAfterAccept(t *testing.T) {
 	res := httptest.NewRecorder()
 
 	server.Handler().ServeHTTP(res, req)
+	if !strings.Contains(res.Body.String(), `"type":"accepted"`) {
+		t.Fatalf("response did not acknowledge persisted message: %s", res.Body.String())
+	}
 
 	manager.mu.Lock()
 	sendDeadline := manager.sendDeadline

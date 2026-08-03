@@ -122,7 +122,7 @@ export function VoiceMode({ sessionId, onExit }: { sessionId: string; onExit: ()
         setLive('')
 
         let reply = ''
-        await streamSessionMessage({
+        const stream = streamSessionMessage({
           sessionId,
           message: text,
           voice: true,
@@ -132,9 +132,9 @@ export function VoiceMode({ sessionId, onExit }: { sessionId: string; onExit: ()
               reply += event.delta
               setLive(reply)
             }
-            if (event.type === 'error' && event.error) throw new Error(event.error)
           },
         })
+        await stream.finished
         if (exitedRef.current) return
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })

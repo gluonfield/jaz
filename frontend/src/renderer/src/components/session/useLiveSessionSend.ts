@@ -22,7 +22,7 @@ export function useLiveSessionSend({
 
   useEffect(() => () => abortRef.current?.abort(), [sessionId])
 
-  const send = useCallback((text: string, options: SendMessageOptions = {}) => {
+  const send = useCallback((text: string, options: SendMessageOptions = {}): Promise<void> => {
     const controller = new AbortController()
     const files = options.files ?? []
     const draftAttachments = options.attachments ?? []
@@ -48,7 +48,7 @@ export function useLiveSessionSend({
     })
     setStreaming(true)
 
-    ;(async () => {
+    const started = (async () => {
       const attachments = files.length
         ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
         : []
@@ -58,7 +58,7 @@ export function useLiveSessionSend({
         )
       }
       const prepared = preparedSendMessage(options, attachments)
-      await streamSessionMessage({
+      return streamSessionMessage({
         sessionId,
         message: text,
         contexts: prepared.contexts,
@@ -67,13 +67,13 @@ export function useLiveSessionSend({
         goalRequested: options.goalRequested,
         signal: controller.signal,
         onEvent: (event) => {
-          if (event.type === 'error') {
-            onCriticalError(event.error || 'Something went wrong.')
-          }
           setLive((prev) => (prev ? mergeLiveStreamEvent(prev, event) : prev))
         },
       })
     })()
+
+    void started
+      .then((stream) => stream.finished)
       .catch((err: Error) => {
         if (controller.signal.aborted) return
         onCriticalError(err.message || 'Something went wrong.')
@@ -93,9 +93,10 @@ export function useLiveSessionSend({
         queryClient.invalidateQueries({ queryKey: keys.usage })
         queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
         if (current) {
-          setLive((prev) => (prev?.error ? { ...prev, error: undefined } : null))
+          setLive((prev) => (prev?.error ? prev : null))
         }
       })
+    return started.then((stream) => stream.accepted)
   }, [onCriticalError, queryClient, sessionId])
 
   const abort = useCallback(() => {

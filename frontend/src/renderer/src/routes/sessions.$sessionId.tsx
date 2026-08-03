@@ -48,7 +48,7 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
-import { takePendingMessage } from '@/lib/pendingMessage'
+import { setPendingMessage, takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import { type PlanApprovalAction } from '@/lib/taskSurface'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
@@ -243,7 +243,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
 
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     pinToBottom()
-    sendLiveMessage(text, options)
+    return sendLiveMessage(text, options)
   }, [pinToBottom, sendLiveMessage])
 
   // Cancelling clears any active goal server-side, so this doubles as the goal
@@ -359,10 +359,13 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     const pending = takePendingMessage(sessionId)
     if (!pending) return
     sentPendingRef.current = sessionId
-    handleSend(pending.text, {
+    void handleSend(pending.text, {
       planRequested: pending.planRequested,
       goalRequested: pending.goalRequested,
       files: pending.files ?? [],
+    }).catch(() => {
+      setPendingMessage(sessionId, pending)
+      sentPendingRef.current = null
     })
   }, [detail.isSuccess, handleSend, sessionId])
 
@@ -437,19 +440,20 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
       !hasBlockingPendingPermission,
   )
   const sessionError = session.status === 'error' ? session.error?.trim() || 'Unknown error.' : ''
+  const visibleSessionError = sessionError || live?.error?.trim() || ''
   const sessionErrorContext = [session.model_provider, session.model].filter(Boolean).join(' · ')
   const isACP = session.runtime === 'acp'
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
   const pendingSteer = session.pending_steer_message
-  const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !sessionError && !sessionRunning
+  const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !visibleSessionError && !sessionRunning
   // ACP turns stream through events. While the request is active, the local
   // send time is the turn boundary; replayed user rows can be timestamped after
   // early live events and would otherwise fold those events into the prior turn.
   const transcriptMessages = liveTranscriptMessages(messages, live, isACP)
   const goalStatusVisible = goalActive
   const canContinueFromInlineError =
-    isACP && !sessionRunning && !streaming && !live && !hasBlockingPendingPermission
+    isACP && !sessionRunning && !streaming && (!live || Boolean(live.error)) && !hasBlockingPendingPermission
   const continueErrorAction: SessionErrorAction | undefined =
     canContinueFromInlineError ? {
       label: 'Continue',
@@ -509,7 +513,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                       working={sessionRunning}
                       findActive={threadFind.open && Boolean(threadFind.query.trim())}
                       revealSeq={revealedMessageSeq}
-                      errorAction={sessionError ? undefined : continueErrorAction}
+                      errorAction={visibleSessionError ? undefined : continueErrorAction}
                       onArtifactPrompt={queue.onSend}
                       hasEarlierHistory={detail.data.has_earlier}
                       loadingEarlierHistory={loadingEarlierHistory}
@@ -554,15 +558,14 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                             ) : streaming ? (
                               <p className="animate-pulse text-sm text-ink-3">Thinking…</p>
                             ) : null}
-                            {live.error ? <SessionErrorNotice message={live.error} /> : null}
                           </div>
                         ) : null
                       }
                     />
-                    {sessionError ? (
+                    {visibleSessionError ? (
                       <SessionErrorNotice
-                        message={sessionError}
-                        context={sessionErrorContext}
+                        message={visibleSessionError}
+                        context={sessionError ? sessionErrorContext : undefined}
                         className="mt-5"
                         action={continueErrorAction}
                       />
