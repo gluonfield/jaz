@@ -75,7 +75,7 @@ export function ComposerCard({
   translucent = false,
   draftStorageKey,
   draftStorage = 'session',
-  clearOnSend = true,
+  clearTiming = 'resolved',
   leftSlot,
   fileRoot,
   attachmentSessionId,
@@ -86,7 +86,7 @@ export function ComposerCard({
   onVoice,
   onUploadAttachment,
   onRemoveContext,
-  onClearContexts,
+  onReplaceContexts,
   onTextChange,
 }: {
   streaming: boolean
@@ -103,7 +103,7 @@ export function ComposerCard({
   translucent?: boolean
   draftStorageKey?: string
   draftStorage?: ComposerDraftStorage
-  clearOnSend?: boolean
+  clearTiming?: 'immediate' | 'resolved' | 'never'
   /** leading toolbar content (e.g. the new-thread runtime/project controls) */
   leftSlot?: ReactNode
   /** server-side directory the @-mention file picker indexes (a project path,
@@ -119,13 +119,17 @@ export function ComposerCard({
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onRemoveContext?: (id: string) => void
-  onClearContexts?: () => void
+  onReplaceContexts?: (contexts: ComposerContext[]) => void
   onTextChange?: (text: string) => void
 }) {
   const [focused, setFocused] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [planModeOverride, setPlanModeOverride] = useState<boolean | null>(null)
-  const [goalRequested, setGoalRequested] = useState(false)
+  const [goalRequested, setGoalRequestedState] = useState(false)
+  const goalRequestedRef = useRef(false)
+  const contextsRef = useRef(contexts)
+  const clearGenerationRef = useRef(0)
+  contextsRef.current = contexts
   const fileInputRef = useRef<HTMLInputElement>(null)
   const reducedMotion = useReducedMotion()
   // With effects off, drop the rainbow focus comet for a calm static border that
@@ -158,6 +162,12 @@ export function ComposerCard({
   const submitDisabled = !hasDraftContent || disabled || attachmentBusy || (streaming && !canQueueWhileStreaming)
   const showStopButton = streaming && onStop && (!queueWhenStreaming || !hasDraftContent)
 
+  const setGoalRequested = useCallback((next: boolean) => {
+    if (goalRequestedRef.current === next) return
+    goalRequestedRef.current = next
+    setGoalRequestedState(next)
+  }, [])
+
   // autoFocus lands before React's focus listeners attach; sync the ring state.
   useEffect(() => {
     if (document.activeElement === mention.textareaRef.current) setFocused(true)
@@ -173,7 +183,7 @@ export function ComposerCard({
 
   useEffect(() => {
     if (!goalAvailable || goalEngaged) setGoalRequested(false)
-  }, [goalEngaged, goalAvailable])
+  }, [goalEngaged, goalAvailable, setGoalRequested])
 
   const { dropTargetRef, dragging: draggingFiles } = useFileDropTarget<HTMLDivElement>({
     disabled,
@@ -230,10 +240,32 @@ export function ComposerCard({
   }, [planModeOn, planToggleDisabled, setPlanMode])
 
   const clearDraft = () => {
+    const generation = ++clearGenerationRef.current
+    const sent = {
+      editor: mention.currentDraft(),
+      attachments: attachmentDraft.currentAttachments(),
+      contexts: contextsRef.current,
+      goalRequested: goalRequestedRef.current,
+    }
     mention.reset()
     attachmentDraft.clearAttachments()
-    onClearContexts?.()
+    contextsRef.current = []
+    onReplaceContexts?.([])
     setGoalRequested(false)
+    return () => {
+      if (
+        generation !== clearGenerationRef.current ||
+        mention.currentDraft().text !== '' ||
+        attachmentDraft.currentAttachments().length > 0 ||
+        contextsRef.current.length > 0 ||
+        goalRequestedRef.current
+      ) return
+      mention.restore(sent.editor)
+      attachmentDraft.replaceAttachments(sent.attachments)
+      contextsRef.current = sent.contexts
+      onReplaceContexts?.(sent.contexts)
+      setGoalRequested(sent.goalRequested)
+    }
   }
 
   const submit = async () => {
@@ -248,17 +280,22 @@ export function ComposerCard({
     ) {
       return
     }
-    try {
-      await onSend(trimmed, {
+    const send = () =>
+      onSend(trimmed, {
         planRequested: planModeOn,
         goalRequested: goalModeOn,
         files: attachmentDraft.files,
         attachments: attachmentDraft.uploaded,
         ...(contexts.length > 0 ? { contexts } : {}),
       })
-      if (clearOnSend) clearDraft()
+    let restore: (() => void) | undefined
+    try {
+      const pending = send()
+      if (clearTiming === 'immediate') restore = clearDraft()
+      await pending
+      if (clearTiming === 'resolved') clearDraft()
     } catch {
-      // Sender owns user-facing failure state; keep the draft intact.
+      restore?.()
     }
   }
 
@@ -511,7 +548,7 @@ export function Composer({
   onVoice,
   onUploadAttachment,
   onRemoveContext,
-  onClearContexts,
+  onReplaceContexts,
   onSteerQueuedPrompt,
   onDeleteQueuedPrompt,
   onEditQueuedPrompt,
@@ -538,7 +575,7 @@ export function Composer({
   onVoice?: () => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onRemoveContext?: (id: string) => void
-  onClearContexts?: () => void
+  onReplaceContexts?: (contexts: ComposerContext[]) => void
   onSteerQueuedPrompt?: (id: string) => void
   onDeleteQueuedPrompt?: (id: string) => void
   onEditQueuedPrompt?: (id: string, text: string) => void
@@ -572,6 +609,7 @@ export function Composer({
         goalAvailable={goalAvailable}
         goalEngaged={goalEngaged}
         queueWhenStreaming
+        clearTiming="immediate"
         draftStorageKey={draftStorageKey}
         draftStorage="local"
         fileRoot={fileRoot}
@@ -583,7 +621,7 @@ export function Composer({
         onVoice={onVoice}
         onUploadAttachment={onUploadAttachment}
         onRemoveContext={onRemoveContext}
-        onClearContexts={onClearContexts}
+        onReplaceContexts={onReplaceContexts}
       />
     </>
   )

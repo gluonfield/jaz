@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { pruneTokens, type InlineToken } from './composerTokens'
 
 export type ComposerDraftStorage = 'session' | 'local'
@@ -106,9 +106,11 @@ export function useComposerDraft({
   // Resolved once; the lazy initializer keeps a stable fallback identity.
   const [fallback] = useState(() => initial?.() ?? emptyDraft())
   const [draft, setDraftState] = useState(() => readStoredDraft(storageKey, storage) ?? fallback)
+  const draftRef = useRef(draft)
 
   useLayoutEffect(() => {
     const next = readStoredDraft(storageKey, storage) ?? fallback
+    draftRef.current = next
     setDraftState((current) => (sameDraft(current, next) ? current : next))
     onTextChange?.(next.text)
   }, [storage, storageKey, fallback, onTextChange])
@@ -116,6 +118,7 @@ export function useComposerDraft({
   const setDraft = useCallback(
     (next: ComposerDraft) => {
       const draft = normalizedDraft(next)
+      draftRef.current = draft
       setDraftState(draft)
       onTextChange?.(draft.text)
       writeStoredDraft(storageKey, storage, draft)
@@ -125,10 +128,13 @@ export function useComposerDraft({
 
   const clearDraft = useCallback(() => setDraft(emptyDraft()), [setDraft])
 
+  const currentDraft = useCallback(() => draftRef.current, [])
+
   return {
     text: draft.text,
     tokens: draft.tokens,
     setDraft,
     clearDraft,
+    currentDraft,
   }
 }

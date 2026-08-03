@@ -166,9 +166,5 @@ export function useComposerContexts({
     commitContexts(contextsRef.current.filter((context) => context.id !== id))
   }, [commitContexts])
 
-  const clearContexts = useCallback(() => {
-    commitContexts([])
-  }, [commitContexts])
-
-  return { contexts, addSelection, addBrowserAnnotation, removeContext, clearContexts }
+  return { contexts, addSelection, addBrowserAnnotation, removeContext, replaceContexts: commitContexts }
 }

@@ -629,7 +629,7 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
                     attachmentSessionId={session.id}
                     contexts={composerContexts.contexts}
                     onRemoveContext={composerContexts.removeContext}
-                    onClearContexts={composerContexts.clearContexts}
+                    onReplaceContexts={composerContexts.replaceContexts}
                     onSend={queue.onSend}
                     onStop={stopSession}
                     onClearGoal={stopSession}

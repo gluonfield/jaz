@@ -31,7 +31,7 @@ import {
 } from './composerTokens'
 import { fuzzyMatch } from './fuzzy'
 import { decodeMentions, encodeMention, mentionLabelText } from './mentionCodec'
-import { useComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
+import { useComposerDraft, type ComposerDraft, type ComposerDraftStorage } from './useComposerDraft'
 
 // Result cap for the $/@ popups, mirroring Codex's file-search page size.
 const MAX_SUGGESTIONS = 20
@@ -103,7 +103,7 @@ export function useMentionInput({
   /** reports the display text on every change, including draft restores */
   onTextChange?: (text: string) => void
 }) {
-  const { text, tokens, setDraft, clearDraft } = useComposerDraft({
+  const { text, tokens, setDraft, clearDraft, currentDraft } = useComposerDraft({
     storageKey,
     storage,
     initial: () => fromWire(initialValue),
@@ -305,7 +305,7 @@ export function useMentionInput({
 
   // Programmatic edits don't fire onChange; restore the caret and replay the
   // auto-grow after React commits the new value.
-  const placeCaret = (pos: number) => {
+  const placeCaret = useCallback((pos: number) => {
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (!el) return
@@ -313,7 +313,7 @@ export function useMentionInput({
       el.setSelectionRange(pos, pos)
       autoGrow(el)
     })
-  }
+  }, [autoGrow])
 
   const selectItem = (item: SuggestionItem) => {
     if (!menuTrigger) return
@@ -342,6 +342,13 @@ export function useMentionInput({
       el.focus()
     }
   }, [clearDraft])
+
+  const restore = (draft: ComposerDraft) => {
+    setDraft(draft)
+    setCaret(draft.text.length)
+    setDismissedAt(null)
+    placeCaret(draft.text.length)
+  }
 
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value
@@ -434,10 +441,13 @@ export function useMentionInput({
     maxHeight,
     /** the current value in wire form (encoded mentions) */
     value: () => {
-      const current = textareaRef.current?.value ?? text
-      return expandTokens(current, pruneTokens(tokens, current))
+      const draft = currentDraft()
+      const current = textareaRef.current?.value ?? draft.text
+      return expandTokens(current, pruneTokens(draft.tokens, current))
     },
+    currentDraft,
     reset,
+    restore,
     onFocus: () => setFocused(true),
     onBlur: () => setFocused(false),
     onChange,

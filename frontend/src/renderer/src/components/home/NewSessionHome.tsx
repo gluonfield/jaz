@@ -67,7 +67,7 @@ export function NewSessionHome({
             disabled={creating || disabled}
             leftSlot={leftSlot}
             draftStorageKey={draftStorageKey}
-            clearOnSend={false}
+            clearTiming="never"
             fileRoot={fileRoot}
             onSend={onSend}
             onVoice={onVoice}

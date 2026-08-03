@@ -108,6 +108,8 @@ export function useComposerAttachments({
     addFiles,
     removeAttachment,
     clearAttachments,
+    currentAttachments: () => attachmentsRef.current,
+    replaceAttachments: commitAttachments,
     busy: attachments.some((attachment) => attachment.uploading || attachment.error),
     files: attachments.flatMap((attachment) => {
       const file = pendingUploadFile(attachment)
