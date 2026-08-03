@@ -276,6 +276,7 @@ function RootLayout() {
               resizing={resizing}
               onResizeStart={startResize}
               onResizeReset={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+              onOpenCommandPalette={() => setCommandOpen(true)}
               onOpenSettings={() => openSettings()}
               onOpenConnect={() => setConnectOpen(true)}
             />

@@ -1,15 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, type LinkComponentProps, useNavigate } from '@tanstack/react-router'
-import { ChevronDown, Folder, Inbox, LayoutDashboard, Pin, Repeat, Settings, SquarePen } from 'lucide-react'
+import { ChevronDown, Folder, Inbox, LayoutDashboard, Pin, Repeat, Search, Settings, SquarePen } from 'lucide-react'
 import { motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ConnectionFooterButton } from '@/components/connection/ConnectionFooterButton'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { Collapse } from '@/components/ui/Collapse'
-import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { feedQuery } from '@/lib/api/feed'
-import { activeRunStatus, loopsQuery, TONE_DOT } from '@/lib/api/loops'
 import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
 import { useShowModelIcons } from '@/lib/appearance'
 import { modalDialogOpen } from '@/lib/dom/modal'
@@ -539,26 +537,6 @@ function FeedLink() {
   )
 }
 
-function LoopsLink() {
-  const loops = useQuery(loopsQuery)
-  const running = loops.data?.some((loop) => activeRunStatus(loop.last_run_status))
-  const failed = loops.data?.some((loop) => loop.last_run_status === 'error')
-  return (
-    <NavLink
-      to="/loops"
-      icon={<Repeat size={15} className="text-ink-2 max-sm:size-[18px]" />}
-      label="Loops"
-      badge={
-        running ? (
-          <span title="A loop is running" className={`size-1.5 shrink-0 rounded-full ${TONE_DOT.running}`} />
-        ) : failed ? (
-          <span title="A loop failed" className={`size-1.5 shrink-0 rounded-full ${TONE_DOT.failed}`} />
-        ) : null
-      }
-    />
-  )
-}
-
 export function Sidebar({
   open,
   width,
@@ -567,6 +545,7 @@ export function Sidebar({
   resizing,
   onResizeStart,
   onResizeReset,
+  onOpenCommandPalette,
   onOpenSettings,
   onOpenConnect,
 }: {
@@ -577,6 +556,7 @@ export function Sidebar({
   resizing?: boolean
   onResizeStart: (e: ReactPointerEvent) => void
   onResizeReset: () => void
+  onOpenCommandPalette: () => void
   onOpenSettings: () => void
   onOpenConnect: () => void
 }) {
@@ -637,12 +617,27 @@ export function Sidebar({
       <div className={`h-[52px] shrink-0 ${mobile ? '' : 'titlebar-drag'}`} />
 
       <div className="flex shrink-0 flex-col pl-1.5 pr-3 pb-px max-sm:px-4">
-        <NavLink
-          to="/new"
-          icon={<SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />}
-          label="New task"
-          badge={<KeyboardShortcut value="N" className="max-sm:hidden" />}
-        />
+        <div className="flex items-center gap-px">
+          <Link
+            to="/new"
+            className={`${NAV_LINK_CLASS} min-w-0 flex-1`}
+            activeProps={{ className: 'bg-list-active!' }}
+          >
+            <span className="grid size-[18px] shrink-0 place-items-center">
+              <SquarePen size={15} className="text-ink-2 max-sm:size-[18px]" />
+            </span>
+            <span className="flex-1">New task</span>
+          </Link>
+          <button
+            type="button"
+            onClick={onOpenCommandPalette}
+            aria-label="Open search"
+            title="Search (⌘K)"
+            className="grid size-[30px] shrink-0 place-items-center rounded-full text-ink-3 transition-colors duration-150 hover:text-ink focus-visible:ring-2 focus-visible:ring-primary/40 max-sm:size-11"
+          >
+            <Search size={15} className="max-sm:size-[18px]" />
+          </button>
+        </div>
       </div>
 
       <div
@@ -662,7 +657,11 @@ export function Sidebar({
       >
         <div className="flex flex-col gap-px">
           <FeedLink />
-          <LoopsLink />
+          <NavLink
+            to="/loops"
+            icon={<Repeat size={15} className="text-ink-2 max-sm:size-[18px]" />}
+            label="Loops"
+          />
           <NavLink
             to="/boards"
             icon={<LayoutDashboard size={15} className="text-ink-2 max-sm:size-[18px]" />}
