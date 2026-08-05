@@ -73,9 +73,11 @@ test('running protocol statuses stay out of visible tool metadata', () => {
 test('run summaries use the same typed categories as individual rows', () => {
   expect(
     toolRunLabel([
-      { id: 'read', tool_name: 'read' },
-      { id: 'command', tool_name: 'exec_command' },
-      { id: 'failed', tool_name: 'apply_patch', status: 'failed' },
+      { id: 'edit', tool_name: 'apply_patch' },
+      { id: 'read-1', tool_name: 'read' },
+      { id: 'read-2', tool_name: 'read' },
+      { id: 'command-1', tool_name: 'exec_command', status: 'failed' },
+      { id: 'command-2', tool_name: 'exec_command' },
     ]),
-  ).toBe('Explored 1 file, ran 1 command, edited 1 file, 1 failed')
+  ).toBe('Edited a file, read files, ran commands, 1 failed')
 })

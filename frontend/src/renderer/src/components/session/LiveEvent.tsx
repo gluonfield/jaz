@@ -2,13 +2,13 @@ import { memo } from 'react'
 import type { ACPPermission, SessionEvent } from '@/lib/api/types'
 import { isParentChildACPEvent } from '@/lib/sessionEvents'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
+import { ACPThought } from './ActivityBlock'
 import { ACPEventHeader } from './ACPEventHeader'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { LoopCreatedCard } from './LoopCreatedCard'
 import { SessionErrorNotice, type SessionErrorAction } from './SessionErrorNotice'
 import { TaskChecklist } from './TaskChecklist'
-import { ThinkingBlock } from './ThinkingBlock'
 import { ToolDisclosure } from './ToolDisclosure'
 import { PermissionCard } from './TranscriptPermissions'
 
@@ -44,7 +44,7 @@ export const LiveEvent = memo(function LiveEvent({
       {showHeader && event.acp ? (
         <ACPEventHeader agent={event.acp.agent} title={event.acp.title} at={event.at} />
       ) : null}
-      {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} /> : null}
+      {event.acp?.thought ? <ACPThought text={event.acp.thought} /> : null}
       {artifact ? (
         <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
       ) : null}

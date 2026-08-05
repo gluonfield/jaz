@@ -69,26 +69,15 @@ const kindCategories: Record<string, ToolCategory> = {
   search: 'search',
 }
 
-const categoryOrder: ToolCategory[] = [
-  'web_search',
-  'web_fetch',
-  'read',
-  'search',
-  'command',
-  'edit',
-  'image',
-  'tool',
-]
-
 const categoryPhrases: Record<ToolCategory, (count: number) => string> = {
-  web_search: (count) => (count === 1 ? 'searched the web' : `searched the web ${count}×`),
-  web_fetch: (count) => `visited ${count} page${count === 1 ? '' : 's'}`,
-  edit: (count) => `edited ${count} file${count === 1 ? '' : 's'}`,
-  read: (count) => `explored ${count} file${count === 1 ? '' : 's'}`,
-  search: (count) => `searched ${count} time${count === 1 ? '' : 's'}`,
-  image: (count) => `viewed ${count} image${count === 1 ? '' : 's'}`,
-  command: (count) => `ran ${count} command${count === 1 ? '' : 's'}`,
-  tool: (count) => `used ${count} tool${count === 1 ? '' : 's'}`,
+  web_search: () => 'searched the web',
+  web_fetch: (count) => `visited ${count === 1 ? 'a page' : 'pages'}`,
+  edit: (count) => `edited ${count === 1 ? 'a file' : 'files'}`,
+  read: (count) => `read ${count === 1 ? 'a file' : 'files'}`,
+  search: (count) => `searched ${count === 1 ? 'once' : 'files'}`,
+  image: (count) => `viewed ${count === 1 ? 'an image' : 'images'}`,
+  command: (count) => `ran ${count === 1 ? 'a command' : 'commands'}`,
+  tool: (count) => `used ${count === 1 ? 'a tool' : 'tools'}`,
 }
 
 export function toolNameKey(name?: string): string {
@@ -291,11 +280,8 @@ export function toolRunLabel(calls: ACPToolCall[]): string {
     counts.set(category, (counts.get(category) ?? 0) + 1)
     if (normalized(call.status) === 'failed') failed += 1
   }
-  const label = categoryOrder
-    .flatMap((category) => {
-      const count = counts.get(category)
-      return count ? [categoryPhrases[category](count)] : []
-    })
+  const label = [...counts]
+    .map(([category, count]) => categoryPhrases[category](count))
     .join(', ')
   const sentence = label.slice(0, 1).toUpperCase() + label.slice(1)
   return failed ? `${sentence}, ${failed} failed` : sentence

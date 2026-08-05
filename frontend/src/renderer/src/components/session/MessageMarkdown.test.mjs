@@ -11,7 +11,6 @@ mock.module('./mentions', () => ({
 mock.module('./CodeBlock', () => ({
   CodeBlock: ({ children }) => createElement('pre', null, children),
 }))
-mock.module('./AssistantMarkdown', () => ({ AssistantMarkdown: () => null }))
 mock.module('./MessageAttachments', () => ({ MessageAttachments: () => null }))
 mock.module('./MessageContexts', () => ({ MessageContexts: () => null }))
 mock.module('./ThinkingBlock', () => ({ ThinkingBlock: () => null }))

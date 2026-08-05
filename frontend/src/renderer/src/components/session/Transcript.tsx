@@ -11,7 +11,7 @@ import {
   stableEventKey,
   type TimelineItem,
 } from './timeline'
-import { ActivityDisclosure } from './ActivityDisclosure'
+import { ActivityBlock } from './ActivityBlock'
 import { Bubble } from './Bubble'
 import { LiveEvent } from './LiveEvent'
 import type { SessionErrorAction } from './SessionErrorNotice'
@@ -210,7 +210,7 @@ export const Transcript = memo(function Transcript({
         )
       case 'activity':
         return (
-          <ActivityDisclosure
+          <ActivityBlock
             key={item.key}
             entries={item.entries}
             header={item.header}

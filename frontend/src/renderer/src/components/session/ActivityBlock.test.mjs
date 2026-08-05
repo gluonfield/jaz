@@ -39,14 +39,11 @@ mock.module('@/lib/appearance', () => ({
 mock.module('./MessageMarkdown', () => ({
   MessageMarkdown: ({ text }) => createElement('span', null, text),
   UserMessageMarkdown: ({ text }) => createElement('span', null, text),
+  usePreviewLink: () => () => {},
 }))
 
 mock.module('./Bubble', () => ({
   Bubble: ({ message }) => createElement('span', null, message.content),
-}))
-
-mock.module('./LiveEvent', () => ({
-  LiveEvent: ({ event }) => createElement('span', null, event.content),
 }))
 
 mock.module('./EditDiffBlock', () => ({
@@ -60,13 +57,13 @@ mock.module('./EditDiffBlock', () => ({
   ),
 }))
 
-const { ActivityDisclosure } = await import('./ActivityDisclosure')
+const { ActivityBlock } = await import('./ActivityBlock')
 const { Transcript } = await import('./Transcript')
 
 const thought = (text, key = 'thought') => ({ kind: 'thought', text, key })
 const tool = (call, key = `tool-${call.id}`) => ({ kind: 'tool', call, key })
 
-test('the production transcript preserves expanded activity order and ACP headers', () => {
+test('the live production transcript keeps reasoning visible and tool details collapsed', () => {
   const at = (seconds) => new Date(seconds * 1000).toISOString()
   const acp = (id, fields) => ({
     session_id: 'thread',
@@ -102,12 +99,11 @@ test('the production transcript preserves expanded activity order and ACP header
     sessionId: 'thread',
     groupTurns: true,
     working: true,
-    findActive: true,
   }))
 
   const ordered = [
     'reasoning-one',
-    'Read contract',
+    'Read a file',
     'visible-commentary',
     'review-agent',
     'Independent review',
@@ -115,6 +111,47 @@ test('the production transcript preserves expanded activity order and ACP header
   ].map((value) => html.indexOf(value))
   expect(ordered.every((index) => index >= 0)).toBe(true)
   expect(ordered).toEqual([...ordered].sort((a, b) => a - b))
+  expect(html).not.toContain('Read contract')
+  expect(html).not.toContain('Thought process')
+})
+
+test('search expansion reveals tool detail without hiding reasoning', () => {
+  const entries = [
+    thought('visible-reasoning'),
+    tool({ id: 'read', tool_name: 'read', title: 'Read hidden detail' }),
+  ]
+
+  const html = renderToStaticMarkup(createElement(ActivityBlock, {
+    entries,
+    findActive: true,
+  }))
+
+  expect(html).toContain('visible-reasoning')
+  expect(html).toContain('Read hidden detail')
+})
+
+test('mixed ACP snapshots use the same visible reasoning path', () => {
+  const html = renderToStaticMarkup(createElement(Transcript, {
+    messages: [],
+    events: [{
+      session_id: 'thread',
+      type: 'acp',
+      content: 'mixed-answer',
+      at: new Date(1000).toISOString(),
+      acp: {
+        id: 'thread',
+        agent: 'generic-acp',
+        session_id: 'thread',
+        state: 'completed',
+        thought: 'mixed-reasoning',
+      },
+    }],
+    sessionId: 'thread',
+  }))
+
+  expect(html).toContain('mixed-reasoning')
+  expect(html).toContain('mixed-answer')
+  expect(html).not.toContain('Thought process')
 })
 
 test('the completed production transcript keeps one work fold with searchable activity detail', () => {
@@ -173,14 +210,14 @@ test('inline shell preference keeps commands and output on the transcript axis',
   ]
 
   inlineShellCommands = false
-  const folded = renderToStaticMarkup(createElement(ActivityDisclosure, {
+  const folded = renderToStaticMarkup(createElement(ActivityBlock, {
     entries,
     findActive: true,
   }))
   expect(folded).not.toContain('unique-shell-output')
 
   inlineShellCommands = true
-  const inline = renderToStaticMarkup(createElement(ActivityDisclosure, {
+  const inline = renderToStaticMarkup(createElement(ActivityBlock, {
     entries,
     findActive: true,
   }))
@@ -202,13 +239,13 @@ test('inline diff preference keeps file changes on the transcript axis', () => {
   })]
 
   inlineDiffs = false
-  const folded = renderToStaticMarkup(createElement(ActivityDisclosure, {
+  const folded = renderToStaticMarkup(createElement(ActivityBlock, {
     entries,
     findActive: true,
   }))
   expect(folded).not.toContain('after_unique_line')
 
   inlineDiffs = true
-  const inline = renderToStaticMarkup(createElement(ActivityDisclosure, { entries }))
+  const inline = renderToStaticMarkup(createElement(ActivityBlock, { entries }))
   expect(inline).toContain('after_unique_line')
 })
