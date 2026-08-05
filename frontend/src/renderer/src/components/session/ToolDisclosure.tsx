@@ -1,50 +1,7 @@
-import { LoaderCircle } from 'lucide-react'
-import { memo, useState, type ReactNode } from 'react'
-import { Collapse } from '@/components/ui/Collapse'
-import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
+import { memo } from 'react'
 import type { ACPToolCall } from '@/lib/api/types'
-import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
-import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
-import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
-import { ToolCallDetail } from './ToolCallContent'
-import { hasToolCallDetail, isRunningToolStatus, toolRunLabel } from './toolPresentation'
-
-const ToolRunDisclosure = memo(function ToolRunDisclosure({
-  label,
-  calls,
-  active = false,
-}: {
-  label: string
-  calls: ACPToolCall[]
-  active?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const detailCalls = calls.filter(hasToolCallDetail)
-  const expandable = detailCalls.length > 0
-  // Old sessions can hold stale non-terminal statuses; only spin while the
-  // session is actually working.
-  const running = active && calls.some((call) => isRunningToolStatus(call.status))
-  return (
-    <div className="flex w-full flex-col items-start">
-      <DisclosureTrigger
-        label={label}
-        open={open}
-        disabled={!expandable}
-        onClick={() => setOpen((value) => !value)}
-        accessory={running ? (
-          <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
-        ) : undefined}
-      />
-      <Collapse open={open && expandable} className="w-full">
-        <div className="relative w-full py-0.5 before:absolute before:bottom-4 before:left-[9px] before:top-4 before:w-px before:bg-border/75">
-          {detailCalls.map((call) => (
-            <ToolCallDetail key={call.id} call={call} active={active} />
-          ))}
-        </div>
-      </Collapse>
-    </div>
-  )
-})
+import { ActivityDisclosure } from './ActivityDisclosure'
+import type { ActivityEntry } from './timeline'
 
 export const ToolDisclosure = memo(function ToolDisclosure({
   calls,
@@ -53,51 +10,10 @@ export const ToolDisclosure = memo(function ToolDisclosure({
   calls: ACPToolCall[]
   active?: boolean
 }) {
-  const inlineDiffs = useInlineDiffs()
-  const inlineShell = useInlineShellCommands()
-  const showDiff = (call: ACPToolCall) => inlineDiffs && hasInlineDiff(call)
-  const showShell = (call: ACPToolCall) => inlineShell && hasInlineShellCommand(call)
-  if (!calls.some((call) => showDiff(call) || showShell(call))) {
-    return <ToolRunDisclosure label={toolRunLabel(calls)} calls={calls} active={active} />
-  }
-
-  const rows: ReactNode[] = []
-  let run: ACPToolCall[] = []
-  const flushRun = () => {
-    if (!run.length) return
-    rows.push(
-      <ToolRunDisclosure
-        key={`run-${rows.length}-${run[0].id}`}
-        label={toolRunLabel(run)}
-        calls={run}
-        active={active}
-      />,
-    )
-    run = []
-  }
-  for (const call of calls) {
-    if (showDiff(call)) {
-      flushRun()
-      rows.push(<EditDiffBlock key={call.id} call={call} />)
-      continue
-    }
-    if (showShell(call)) {
-      flushRun()
-      rows.push(<ShellCommandBlock key={call.id} call={call} active={active} />)
-      continue
-    }
-    run.push(call)
-  }
-  flushRun()
-
-  return (
-    <div className="flex w-full flex-col items-start gap-1">
-      {rows}
-    </div>
-  )
+  const entries: ActivityEntry[] = calls.map((call, index) => ({
+    kind: 'tool',
+    call,
+    key: `tool-${call.id}-${index}`,
+  }))
+  return <ActivityDisclosure entries={entries} active={active} />
 })
-
-export function ToolSummary({ calls, active = false }: { calls?: ACPToolCall[]; active?: boolean }) {
-  if (!calls?.length) return null
-  return <ToolDisclosure calls={calls} active={active} />
-}

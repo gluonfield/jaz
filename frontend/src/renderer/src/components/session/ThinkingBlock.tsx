@@ -1,8 +1,8 @@
-import { Clock3, LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
 import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
-import { MessageMarkdown } from './MessageMarkdown'
+import { ThinkingDetail } from './ThinkingDetail'
 
 export function ThinkingBlock({ text, pending = false }: { text: string; pending?: boolean }) {
   const [open, setOpen] = useState(false)
@@ -21,13 +21,8 @@ export function ThinkingBlock({ text, pending = false }: { text: string; pending
       />
 
       <Collapse open={open} className="w-full">
-        <div className="relative ml-2 border-l border-border/75 py-1 pl-5 select-text">
-          <span className="absolute -left-2.5 top-2 flex size-5 items-center justify-center rounded-full bg-bg text-ink-3">
-            <Clock3 size={12} aria-hidden />
-          </span>
-          <div className="thinking-prose max-h-72 overflow-auto">
-            <MessageMarkdown text={trimmed} />
-          </div>
+        <div className="relative w-full py-0.5 before:absolute before:bottom-4 before:left-[9px] before:top-4 before:w-px before:bg-border/75">
+          <ThinkingDetail text={trimmed} />
         </div>
       </Collapse>
     </div>

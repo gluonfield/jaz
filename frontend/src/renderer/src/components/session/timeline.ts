@@ -2,7 +2,7 @@
 // events) into the ordered, filtered, grouped items the Transcript component
 // renders. Pure data — no JSX — so the component can memoize one buildTimeline
 // call per data change.
-import type { ACPPermission, ACPToolCall, ChatMessage, SessionEvent } from '@/lib/api/types'
+import type { ACPEvent, ACPPermission, ACPToolCall, ChatMessage, SessionEvent } from '@/lib/api/types'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import { isParentChildACPEvent, sessionEventCoalesceKey } from '@/lib/sessionEvents'
 import { hasPermissionSurface, normalized } from './TranscriptUtils'
@@ -10,7 +10,26 @@ import { hasPermissionSurface, normalized } from './TranscriptUtils'
 export type TimelineItem =
   | { kind: 'message'; message: ChatMessage; at: number }
   | { kind: 'event'; event: SessionEvent; eventIndex: number; at: number; showHeader: boolean }
-  | { kind: 'tools'; calls: ACPToolCall[]; at: number; key: string }
+  | {
+      kind: 'activity'
+      entries: ActivityEntry[]
+      at: number
+      key: string
+      header?: ActivityHeader
+    }
+
+export type ActivityEntry =
+  | { kind: 'thought'; text: string; key: string }
+  | { kind: 'tool'; call: ACPToolCall; key: string }
+
+export interface ActivityHeader {
+  agent: string
+  title?: string
+  at: string
+}
+
+type EventTimelineItem = Extract<TimelineItem, { kind: 'event' }>
+type ActivityEventItem = EventTimelineItem & { event: SessionEvent & { acp: ACPEvent } }
 
 export interface Turn {
   opener?: TimelineItem
@@ -87,29 +106,82 @@ function mergeTimeline(
   return out
 }
 
-// Consecutive tool events collapse into one run: "Explored 2 files, ran 1 command".
-function groupToolRuns(items: TimelineItem[]): TimelineItem[] {
+function isActivityEvent(item: TimelineItem): item is ActivityEventItem {
+  if (item.kind !== 'event') return false
+  const event = item.event
+  return Boolean(
+    event.acp &&
+      !event.content &&
+      !event.permission &&
+      !event.acp.error &&
+      !taskSurfaceFromEvent(event) &&
+      (event.acp.thought || event.acp.tool_calls?.length),
+  )
+}
+
+function eventActivityEntries(item: ActivityEventItem): ActivityEntry[] {
+  const eventKey = stableEventKey(item.event, item.eventIndex)
+  const entries: ActivityEntry[] = []
+  if (item.event.acp.thought) {
+    entries.push({ kind: 'thought', text: item.event.acp.thought, key: `thought-${eventKey}` })
+  }
+  for (const call of item.event.acp.tool_calls ?? []) {
+    entries.push({ kind: 'tool', call, key: `tool-${item.event.acp.id}:${call.id}` })
+  }
+  return entries
+}
+
+function appendActivityEntries(activity: ActivityEntry[], entries: ActivityEntry[]): void {
+  for (const entry of entries) {
+    if (entry.kind === 'thought') {
+      activity.push(entry)
+      continue
+    }
+    const existing = activity.findIndex(
+      (candidate) => candidate.kind === 'tool' && candidate.call.id === entry.call.id,
+    )
+    if (existing >= 0) activity[existing] = entry
+    else activity.push(entry)
+  }
+}
+
+// Activity is part of the canonical timeline: every transcript surface gets the
+// same reasoning/tool grouping, and source changes remain explicit boundaries.
+function groupActivities(items: TimelineItem[]): TimelineItem[] {
   const out: TimelineItem[] = []
+  let activity: Extract<TimelineItem, { kind: 'activity' }> | undefined
+  let sourceID = ''
+  const flush = () => {
+    if (activity) out.push(activity)
+    activity = undefined
+    sourceID = ''
+  }
   for (const item of items) {
-    const isToolEvent =
-      item.kind === 'event' &&
-      item.event.type === 'acp_tool' &&
-      item.event.acp?.tool_calls?.length === 1
-    if (!isToolEvent) {
+    if (!isActivityEvent(item)) {
+      flush()
       out.push(item)
       continue
     }
-    const call = (item as Extract<TimelineItem, { kind: 'event' }>).event.acp!.tool_calls![0]
-    const prev = out.at(-1)
-    if (prev?.kind === 'tools') {
-      const existing = prev.calls.findIndex((candidate) => candidate.id === call.id)
-      if (existing === -1) prev.calls.push(call)
-      else prev.calls[existing] = call
-      prev.at = item.at
+    const nextSourceID = item.event.acp.id
+    if (!activity || sourceID !== nextSourceID) {
+      flush()
+      const entries = eventActivityEntries(item)
+      activity = {
+        kind: 'activity',
+        entries,
+        at: item.at,
+        key: `activity-${stableEventKey(item.event, item.eventIndex)}`,
+        header: item.showHeader
+          ? { agent: item.event.acp.agent, title: item.event.acp.title, at: item.event.at }
+          : undefined,
+      }
+      sourceID = nextSourceID
       continue
     }
-    out.push({ kind: 'tools', calls: [call], at: item.at, key: `tools-${call.id}` })
+    appendActivityEntries(activity.entries, eventActivityEntries(item))
+    activity.at = item.at
   }
+  flush()
   return out
 }
 
@@ -152,7 +224,7 @@ export function isCollapsibleWork(
   pendingPermissionIds: Set<string>,
   latestTaskSurfaceIndex: Map<string, number>,
 ): boolean {
-  if (item.kind === 'tools') return true
+  if (item.kind === 'activity') return true
   if (item.kind !== 'event') return false
   const event = item.event
   if (event.type === 'artifact') return false
@@ -358,7 +430,7 @@ export function buildTimeline(
   }
 
   const visibleMessages = messages.filter((message) => message.role === 'user' || message.role === 'assistant')
-  const merged = groupToolRuns(mergeTimeline(visibleMessages, renderedEvents))
+  const merged = mergeTimeline(visibleMessages, renderedEvents)
   // Live state isn't history: pending questions and working status anchor at
   // the bottom; an answered question returns to its chronological spot.
   const isPendingCard = (item: TimelineItem) =>
@@ -369,10 +441,11 @@ export function buildTimeline(
     item.kind === 'event' && isWorkingStatusOnly(item.event)
   const pendingCards = merged.filter(isPendingCard)
   const workingStatusItems = merged.filter(isWorkingStatusItem)
-  const chronological = merged.filter((item) => !isPendingCard(item) && !isWorkingStatusItem(item))
+  const chronologicalItems = merged.filter((item) => !isPendingCard(item) && !isWorkingStatusItem(item))
   // A live "working" indicator next to a question awaiting the user is noise.
   const anchored = [...(pendingCards.length ? [] : workingStatusItems), ...pendingCards]
-  markEventHeaders([...chronological, ...anchored], sessionId)
+  markEventHeaders([...chronologicalItems, ...anchored], sessionId)
+  const chronological = groupActivities(chronologicalItems)
   return {
     chronological,
     anchored,
@@ -388,7 +461,10 @@ export function buildTimeline(
 export function stableEventKey(event: SessionEvent, eventIndex = 0): string {
   const coalesceKey = sessionEventCoalesceKey(event)
   if (coalesceKey) return coalesceKey
-  if ((event.type === 'acp_message' || event.type === 'acp_thought') && event.acp?.id) {
+  if (
+    (event.type === 'acp_message' || event.type === 'acp_thought' || event.type === 'acp_tool') &&
+    event.acp?.id
+  ) {
     return `${event.type}:${event.acp.id}:${event.session_id}:${eventIndex}`
   }
   return `${event.session_id}:${event.seq ?? 'live'}`

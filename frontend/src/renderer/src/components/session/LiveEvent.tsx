@@ -1,16 +1,15 @@
 import { memo } from 'react'
 import type { ACPPermission, SessionEvent } from '@/lib/api/types'
-import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
 import { isParentChildACPEvent } from '@/lib/sessionEvents'
-import { relativeTime } from '@/lib/format/time'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
+import { ACPEventHeader } from './ACPEventHeader'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { LoopCreatedCard } from './LoopCreatedCard'
 import { SessionErrorNotice, type SessionErrorAction } from './SessionErrorNotice'
 import { TaskChecklist } from './TaskChecklist'
 import { ThinkingBlock } from './ThinkingBlock'
-import { ToolSummary } from './ToolDisclosure'
+import { ToolDisclosure } from './ToolDisclosure'
 import { PermissionCard } from './TranscriptPermissions'
 
 export const LiveEvent = memo(function LiveEvent({
@@ -37,23 +36,13 @@ export const LiveEvent = memo(function LiveEvent({
   const eventTaskSurface = taskSurfaceFromEvent(event)
   const taskSurface = showTaskSurface ? eventTaskSurface : undefined
   const parentChild = isParentChildACPEvent(event)
+  const toolCalls = parentChild ? undefined : event.acp?.tool_calls
   const artifact = event.type === 'artifact' ? event.artifact : undefined
   const loopCreated = event.type === 'loop_created' ? event.loop_created : undefined
   return (
     <div className="flex min-w-0 max-w-[var(--prose-max)] flex-col gap-2">
-      {event.acp && showHeader ? (
-        <p className="text-[12px] text-ink-3">
-          {hasAgentLogo(event.acp.agent) ? (
-            <AgentLogo
-              agent={event.acp.agent}
-              size={12}
-              className="inline-block translate-y-[2px] text-ink-2"
-            />
-          ) : (
-            <span className="font-mono">{event.acp.agent}</span>
-          )}
-          {event.acp.title ? ` · ${event.acp.title}` : ''} · {relativeTime(event.at)}
-        </p>
+      {showHeader && event.acp ? (
+        <ACPEventHeader agent={event.acp.agent} title={event.acp.title} at={event.at} />
       ) : null}
       {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} /> : null}
       {artifact ? (
@@ -64,7 +53,7 @@ export const LiveEvent = memo(function LiveEvent({
         <AssistantMarkdown text={event.content} showCopy={showCopy} />
       ) : null}
       {event.acp?.error ? <SessionErrorNotice message={event.acp.error} action={errorAction} /> : null}
-      {!parentChild ? <ToolSummary calls={event.acp?.tool_calls} active={working} /> : null}
+      {toolCalls?.length ? <ToolDisclosure calls={toolCalls} active={working} /> : null}
       {event.permission ? (
         <PermissionCard event={event} resolution={permissionResolution} />
       ) : null}

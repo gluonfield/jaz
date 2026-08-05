@@ -11,10 +11,10 @@ import {
   stableEventKey,
   type TimelineItem,
 } from './timeline'
+import { ActivityDisclosure } from './ActivityDisclosure'
 import { Bubble } from './Bubble'
 import { LiveEvent } from './LiveEvent'
 import type { SessionErrorAction } from './SessionErrorNotice'
-import { ToolDisclosure } from './ToolDisclosure'
 
 const INITIAL_VISIBLE_TURNS = 14
 const VISIBLE_TURN_BATCH = 24
@@ -23,6 +23,7 @@ const VISIBLE_ITEM_BATCH = 120
 
 type RenderOptions = {
   showAssistantCopy?: boolean
+  activityActive?: boolean
 }
 
 function formatDuration(ms: number): string {
@@ -57,10 +58,10 @@ function WorkSection({
         label={`Worked for ${formatDuration(durationMs)}`}
         open={effectiveOpen}
         onClick={() => setOpen((value) => !value)}
-        className="self-start font-medium"
+        className="self-start font-medium tabular-nums"
       />
       <Collapse open={effectiveOpen} className="w-full">
-        <div className="flex flex-col gap-2 pt-3">{items.map((item) => render(item))}</div>
+        <div className="flex flex-col gap-3 pt-3">{items.map((item) => render(item))}</div>
       </Collapse>
     </div>
   )
@@ -207,9 +208,15 @@ export const Transcript = memo(function Transcript({
             />
           </div>
         )
-      case 'tools':
+      case 'activity':
         return (
-          <ToolDisclosure key={item.key} calls={item.calls} active={working} />
+          <ActivityDisclosure
+            key={item.key}
+            entries={item.entries}
+            header={item.header}
+            active={options.activityActive}
+            findActive={findActive}
+          />
         )
       case 'event': {
         const taskSurface = taskSurfaceFromEvent(item.event)
@@ -249,7 +256,11 @@ export const Transcript = memo(function Transcript({
           loading={loadingEarlierHistory}
           onClick={revealEarlierHistory}
         />
-        {visibleChronological.map((item) => renderItem(item))}
+        {visibleChronological.map((item, index) =>
+          renderItem(item, {
+            activityActive: working && index === visibleChronological.length - 1,
+          }),
+        )}
         {tail}
         {anchored.map((item) => renderItem(item))}
       </div>
@@ -277,9 +288,9 @@ export const Transcript = memo(function Transcript({
         const sections: ReactNode[] = []
         if (turn.opener) sections.push(renderItem(turn.opener))
         if (active) {
-          // Live turn: stream items in order. Answer-vs-narration classification
-          // isn't stable until the turn completes, so nothing folds yet.
-          flow.forEach((item) => sections.push(renderItem(item)))
+          flow.forEach((item, index) =>
+            sections.push(renderItem(item, { activityActive: index === flow.length - 1 })),
+          )
         } else {
           // One "Worked for" disclosure per turn holds all folded work, so a shown
           // message can't split the turn into a staircase of tiny disclosures.
@@ -306,7 +317,7 @@ export const Transcript = memo(function Transcript({
         }
         resultCards.forEach((item) => sections.push(renderItem(item)))
         return (
-          <div key={`turn-${turnIndex}`} className={`flex flex-col ${active ? 'gap-2' : 'gap-4'}`}>
+          <div key={`turn-${turnIndex}`} className="flex flex-col gap-4">
             {sections}
           </div>
         )
