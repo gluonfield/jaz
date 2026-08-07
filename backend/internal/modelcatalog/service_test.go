@@ -382,14 +382,14 @@ func TestServiceAgentModelsIncludesAntigravityModels(t *testing.T) {
 		got = append(got, model.Value)
 	}
 	want := []string{
-		"Gemini 3.5 Flash (Medium)",
-		"Gemini 3.5 Flash (High)",
-		"Gemini 3.5 Flash (Low)",
-		"Gemini 3.1 Pro (Low)",
-		"Gemini 3.1 Pro (High)",
-		"Claude Sonnet 4.6 (Thinking)",
-		"Claude Opus 4.6 (Thinking)",
-		"GPT-OSS 120B (Medium)",
+		"gemini-3.6-flash-medium",
+		"gemini-3.6-flash-high",
+		"gemini-3.6-flash-low",
+		"gemini-3.1-pro-low",
+		"gemini-3.1-pro-high",
+		"claude-sonnet-4-6",
+		"claude-opus-4-6-thinking",
+		"gpt-oss-120b-medium",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("antigravity models = %#v, want %#v", got, want)
