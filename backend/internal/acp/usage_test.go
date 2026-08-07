@@ -58,20 +58,31 @@ func TestUsageFromRawReadsThoughtTokens(t *testing.T) {
 
 // Antigravity's prompt result carries the turn's own tokens; its counters are
 // cumulative per conversation, so the adapter sends the difference as a delta.
+// Its cache reads are a share of the input and can exceed it, because a turn
+// makes several model calls that each re-read the cached prefix. The reported
+// total settles that input already accounts for them, so they must be recorded
+// as a detail rather than added on top.
 func TestUsageFromRawReadsAntigravityPromptResult(t *testing.T) {
 	report := usageReportFromRaw(json.RawMessage(`{
 		"stopReason": "end_turn",
 		"_meta": {"lastTokenUsage": {
-			"input_tokens": 12464,
-			"output_tokens": 28,
-			"thinking_tokens": 27,
-			"total_tokens": 12492
+			"input_tokens": 4906,
+			"cache_read_tokens": 12205,
+			"output_tokens": 15,
+			"thinking_tokens": 13,
+			"total_tokens": 4921
 		}}
 	}`))
 	if !report.Snapshot.IsZero() {
 		t.Fatalf("snapshot = %#v, want the turn counted as a delta", report.Snapshot)
 	}
-	want := storage.Usage{InputTokens: 12464, OutputTokens: 28, ReasoningOutputTokens: 27, TotalTokens: 12492}
+	want := storage.Usage{
+		InputTokens:           4906,
+		CachedInputTokens:     12205,
+		OutputTokens:          15,
+		ReasoningOutputTokens: 13,
+		TotalTokens:           4921,
+	}
 	if report.Delta != want {
 		t.Fatalf("delta = %#v, want %#v", report.Delta, want)
 	}

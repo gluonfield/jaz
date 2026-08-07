@@ -60,36 +60,36 @@
       }
     },
     "antigravity": {
-      "version": "0.3.1",
+      "version": "0.3.2",
       "assets": {
         "darwin-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.1/agy-acp-0.3.1-darwin-arm64.tar.gz",
-          "sha256": "e775641bbfd845f2d55204b6be9789b876d2e4a73c0ffadc7f34ee8e00f5e5c6",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.2/agy-acp-0.3.2-darwin-arm64.tar.gz",
+          "sha256": "135b9bbd2f5764d05126b1bbf0bb5c5df8d27e086e3385086e79dd63713a6cee",
           "binary": "agy-acp"
         },
         "darwin-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.1/agy-acp-0.3.1-darwin-x64.tar.gz",
-          "sha256": "e11ecba76cafca9cbfdd2c84f8d56e679c939b336a52fea55d9053243f6c7cd3",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.2/agy-acp-0.3.2-darwin-x64.tar.gz",
+          "sha256": "0c589772dd3f4f17f49d4dc2a57c330371d4bf93e479cff3d045ce9a1b3d61a9",
           "binary": "agy-acp"
         },
         "linux-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.1/agy-acp-0.3.1-linux-arm64.tar.gz",
-          "sha256": "02d62e4019b2feeec59b79d175b7190e7a08f9fcc563ce75535c1ab005968534",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.2/agy-acp-0.3.2-linux-arm64.tar.gz",
+          "sha256": "44aef8d21c72a0bc4b94818adf749165ab9e121d0cd25dbec3df9996aee0c20c",
           "binary": "agy-acp"
         },
         "linux-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.1/agy-acp-0.3.1-linux-x64.tar.gz",
-          "sha256": "7ac2bfd59e1af61663aea5eb975fd57a1c8f2a26f3484a18420302d7ff6e2560",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.2/agy-acp-0.3.2-linux-x64.tar.gz",
+          "sha256": "22f118c3720752255596b3688c4cb739990ae24d08997206ab851ecdc18e4f55",
           "binary": "agy-acp"
         },
         "win32-arm64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.1/agy-acp-0.3.1-win32-arm64.tar.gz",
-          "sha256": "aab1c619bc9ce2e13797adfeba92e6c40a9675ce998068ba2686298ab537f0f4",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.2/agy-acp-0.3.2-win32-arm64.tar.gz",
+          "sha256": "a0b8658e637302f372cbf1d4689644fc654607af125541276cffd6efa55c3c56",
           "binary": "agy-acp.exe"
         },
         "win32-x64": {
-          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.1/agy-acp-0.3.1-win32-x64.tar.gz",
-          "sha256": "407951f3fb400b5d5982b58d44b14425ead44ae35574c6e87405428b8c7ef915",
+          "url": "https://github.com/gluonfield/agy-acp/releases/download/v0.3.2/agy-acp-0.3.2-win32-x64.tar.gz",
+          "sha256": "fd84f9f0bc9678790ea2577274e8de13be6be2ee3ac0d8d22b81e4d3ec72fc51",
           "binary": "agy-acp.exe"
         }
       }
