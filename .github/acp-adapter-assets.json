@@ -56,30 +56,30 @@
     },
     "antigravity": {
       "repo": "gluonfield/agy-acp",
-      "tag": "v0.1.9",
+      "tag": "v0.1.10",
       "assets": {
         "darwin-arm64": {
-          "name": "agy-acp-0.1.9-darwin-arm64.tar.gz",
+          "name": "agy-acp-0.1.10-darwin-arm64.tar.gz",
           "binary": "agy-acp"
         },
         "darwin-x64": {
-          "name": "agy-acp-0.1.9-darwin-x64.tar.gz",
+          "name": "agy-acp-0.1.10-darwin-x64.tar.gz",
           "binary": "agy-acp"
         },
         "linux-arm64": {
-          "name": "agy-acp-0.1.9-linux-arm64.tar.gz",
+          "name": "agy-acp-0.1.10-linux-arm64.tar.gz",
           "binary": "agy-acp"
         },
         "linux-x64": {
-          "name": "agy-acp-0.1.9-linux-x64.tar.gz",
+          "name": "agy-acp-0.1.10-linux-x64.tar.gz",
           "binary": "agy-acp"
         },
         "win32-arm64": {
-          "name": "agy-acp-0.1.9-win32-arm64.tar.gz",
+          "name": "agy-acp-0.1.10-win32-arm64.tar.gz",
           "binary": "agy-acp.exe"
         },
         "win32-x64": {
-          "name": "agy-acp-0.1.9-win32-x64.tar.gz",
+          "name": "agy-acp-0.1.10-win32-x64.tar.gz",
           "binary": "agy-acp.exe"
         }
       }
