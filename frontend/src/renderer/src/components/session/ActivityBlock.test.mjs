@@ -115,6 +115,38 @@ test('the live production transcript keeps reasoning visible and tool details co
   expect(html).not.toContain('Thought process')
 })
 
+test('a running turn offers copy only on its trailing text, not on interim narration', () => {
+  const at = (seconds) => new Date(seconds * 1000).toISOString()
+  const acp = (fields) => ({
+    session_id: 'thread',
+    type: fields.content ? 'acp_message' : 'acp_tool',
+    content: fields.content,
+    at: at(fields.at),
+    acp: {
+      id: 'thread',
+      agent: 'codex',
+      session_id: 'thread',
+      state: 'running',
+      tool_calls: fields.tool_calls,
+    },
+  })
+  const render = (events) => renderToStaticMarkup(createElement(Transcript, {
+    messages: [{ seq: 1, role: 'user', content: 'prompt', created_at: at(1) }],
+    events,
+    sessionId: 'thread',
+    groupTurns: true,
+    working: true,
+  }))
+  const copies = (html) => html.match(/aria-label="Copy message as Markdown"/g)?.length ?? 0
+
+  const interim = acp({ at: 2, content: 'interim-narration' })
+  const work = acp({ at: 3, tool_calls: [{ id: 'read', tool_name: 'read', title: 'Read a file' }] })
+  const answer = acp({ at: 4, content: 'trailing-answer' })
+
+  expect(copies(render([interim, work]))).toBe(0)
+  expect(copies(render([interim, work, answer]))).toBe(1)
+})
+
 test('search expansion reveals tool detail without hiding reasoning', () => {
   const entries = [
     thought('visible-reasoning'),

@@ -288,9 +288,12 @@ export const Transcript = memo(function Transcript({
         const sections: ReactNode[] = []
         if (turn.opener) sections.push(renderItem(turn.opener))
         if (active) {
-          flow.forEach((item, index) =>
-            sections.push(renderItem(item, { activityActive: index === flow.length - 1 })),
-          )
+          // A running turn has no classified result yet, so every text block above
+          // the tail is interim narration: only the trailing item can be copied.
+          flow.forEach((item, index) => {
+            const trailing = index === flow.length - 1
+            sections.push(renderItem(item, { activityActive: trailing, showAssistantCopy: trailing }))
+          })
         } else {
           // One "Worked for" disclosure per turn holds all folded work, so a shown
           // message can't split the turn into a staircase of tiny disclosures.
