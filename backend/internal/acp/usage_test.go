@@ -56,6 +56,27 @@ func TestUsageFromRawReadsThoughtTokens(t *testing.T) {
 	}
 }
 
+// Antigravity's prompt result carries the turn's own tokens; its counters are
+// cumulative per conversation, so the adapter sends the difference as a delta.
+func TestUsageFromRawReadsAntigravityPromptResult(t *testing.T) {
+	report := usageReportFromRaw(json.RawMessage(`{
+		"stopReason": "end_turn",
+		"_meta": {"lastTokenUsage": {
+			"input_tokens": 12464,
+			"output_tokens": 28,
+			"thinking_tokens": 27,
+			"total_tokens": 12492
+		}}
+	}`))
+	if !report.Snapshot.IsZero() {
+		t.Fatalf("snapshot = %#v, want the turn counted as a delta", report.Snapshot)
+	}
+	want := storage.Usage{InputTokens: 12464, OutputTokens: 28, ReasoningOutputTokens: 27, TotalTokens: 12492}
+	if report.Delta != want {
+		t.Fatalf("delta = %#v, want %#v", report.Delta, want)
+	}
+}
+
 func TestUsageFromRawIgnoresTelemetryTotalOnly(t *testing.T) {
 	usage := usageFromRaw(json.RawMessage(`{
 		"sessionUpdate": "agent_message_chunk",

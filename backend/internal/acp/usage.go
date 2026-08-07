@@ -313,7 +313,8 @@ func usageFromFields(fields map[string]json.RawMessage) (storage.Usage, bool) {
 	usage.ReasoningOutputTokens = firstIntField(fields,
 		"reasoning_output_tokens", "reasoningOutputTokens",
 		"reasoning_tokens", "reasoningTokens",
-		"thought_tokens", "thoughtTokens")
+		"thought_tokens", "thoughtTokens",
+		"thinking_tokens", "thinkingTokens")
 	usage.TotalTokens = firstIntField(fields, "total_tokens", "totalTokens")
 	usage.ContextTokens = firstIntField(fields, "context_tokens", "contextTokens", "context_used_tokens", "contextUsedTokens")
 	return usage, inclusive
