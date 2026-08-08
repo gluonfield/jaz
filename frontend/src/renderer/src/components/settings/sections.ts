@@ -60,9 +60,14 @@ export const isSettingsSection = (value: unknown): value is SettingsSection =>
 
 const EXPERIMENTAL_FEATURES_ENABLED_KEY = 'jaz.experimentalFeatures.enabled'
 const EXPERIMENTAL_FEATURES_EVENT = 'jaz:experimental-features'
+const DEFAULT_EXPERIMENTAL_FEATURES_ENABLED = true
 
 export function useExperimentalFeaturesEnabled(): [boolean, (enabled: boolean) => void] {
-  const enabled = useSyncExternalStore(subscribe, experimentalFeaturesEnabled, () => false)
+  const enabled = useSyncExternalStore(
+    subscribe,
+    experimentalFeaturesEnabled,
+    () => DEFAULT_EXPERIMENTAL_FEATURES_ENABLED,
+  )
   return [enabled, setExperimentalFeaturesEnabled]
 }
 
@@ -72,19 +77,24 @@ export function visibleSettingsSections(experimentalEnabled: boolean): SettingsN
 }
 
 function experimentalFeaturesEnabled(): boolean {
-  if (typeof window === 'undefined') return false
+  if (typeof window === 'undefined') return DEFAULT_EXPERIMENTAL_FEATURES_ENABLED
   try {
-    return window.localStorage.getItem(EXPERIMENTAL_FEATURES_ENABLED_KEY) === 'true'
+    const stored = window.localStorage.getItem(EXPERIMENTAL_FEATURES_ENABLED_KEY)
+    if (stored === null) return DEFAULT_EXPERIMENTAL_FEATURES_ENABLED
+    return stored === 'true'
   } catch {
-    return false
+    return DEFAULT_EXPERIMENTAL_FEATURES_ENABLED
   }
 }
 
 function setExperimentalFeaturesEnabled(enabled: boolean) {
   if (typeof window === 'undefined') return
   try {
-    if (enabled) window.localStorage.setItem(EXPERIMENTAL_FEATURES_ENABLED_KEY, 'true')
-    else window.localStorage.removeItem(EXPERIMENTAL_FEATURES_ENABLED_KEY)
+    if (enabled === DEFAULT_EXPERIMENTAL_FEATURES_ENABLED) {
+      window.localStorage.removeItem(EXPERIMENTAL_FEATURES_ENABLED_KEY)
+    } else {
+      window.localStorage.setItem(EXPERIMENTAL_FEATURES_ENABLED_KEY, String(enabled))
+    }
   } catch {
     return
   }
