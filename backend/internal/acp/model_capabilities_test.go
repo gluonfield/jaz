@@ -105,13 +105,24 @@ func TestModelCapabilitiesUsesCodexHarnessForOpenAIModelsWithoutProviderMetadata
 	}
 }
 
-func TestModelCapabilitiesLeavesProviderBackedModelsUnknownUntilCatalogLoads(t *testing.T) {
+func TestModelCapabilitiesPopulatesNativeAgentReasoningCapabilities(t *testing.T) {
 	capabilities := ModelCapabilities{Catalog: modelcatalog.NewService(nil)}
 	models := capabilities.AgentModels(AgentCodex)
-	if len(models) == 0 || models[0].Reasoning.Status != modelcatalog.ReasoningPending {
+	if len(models) == 0 || models[0].Reasoning.Status != modelcatalog.ReasoningReady {
 		t.Fatalf("models = %#v", models)
 	}
-	if err := capabilities.ValidateReasoningEffort(AgentCodex, provider.ProviderOpenAI, provider.OpenAIModelGPT56Sol, "minimal"); !errors.Is(err, modelcatalog.ErrCatalogUnavailable) {
+	if !containsString(models[0].Reasoning.Efforts, "ultra") {
+		t.Fatalf("gpt-5.6-sol efforts = %#v, want ultra", models[0].Reasoning.Efforts)
+	}
+	if err := capabilities.ValidateReasoningEffort(AgentCodex, "", provider.OpenAIModelGPT56Sol, "ultra"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestModelCapabilitiesLeavesProviderBackedModelsUnknownUntilCatalogLoads(t *testing.T) {
+	capabilities := ModelCapabilities{Catalog: modelcatalog.NewService(nil)}
+	_, err := capabilities.ProviderModels(AgentCodex, provider.ProviderOpenRouter)
+	if !errors.Is(err, modelcatalog.ErrCatalogUnavailable) {
 		t.Fatalf("err = %v, want ErrCatalogUnavailable", err)
 	}
 }

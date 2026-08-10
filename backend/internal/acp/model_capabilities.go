@@ -173,8 +173,8 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 			if agent == AgentClaude && containsString(resolved.Reasoning.Efforts, "xhigh") {
 				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
 			}
-		case modelcatalog.ReasoningUnavailable:
-			if allowAgentCapabilities && model.OpenRouterID == "" {
+		case modelcatalog.ReasoningUnavailable, modelcatalog.ReasoningPending:
+			if allowAgentCapabilities {
 				resolved.Reasoning = agentReasoningCapabilities(agent, model, supported)
 			}
 		}
