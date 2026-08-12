@@ -61,7 +61,7 @@ func (m *Manager) validateSpawnModelBeforePersist(ctx context.Context, req Spawn
 		return err
 	}
 	effective := configuredSessionModel(model)
-	if policy.modelValidationKind == modelValidationClaude {
+	if policy.modelValidationKind == modelValidationAdvertisedContextTag {
 		effective = info.modelState.resolveAdvertised(effective)
 	}
 	return policy.validateConfiguredSessionModel(req.ACPAgent, model, effective, info.modelState)

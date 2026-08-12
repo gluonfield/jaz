@@ -92,20 +92,20 @@ func TestCodexHiddenWarningsDoNotPolluteAssistantAnswer(t *testing.T) {
 	manager.jobsByACP["acp-session"] = job
 
 	for _, message := range []struct{ id, text string }{
+		{"", "Warning: Falling back from WebSockets to HTTPS transport. disconnected\n\n"},
 		{"codex:warning:turn:1", "Falling back from WebSockets to HTTPS transport. disconnected"},
-		{"codex:warning:turn:2", "Model metadata for `qwen3.8-max-preview` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."},
 		{"https-answer", "done"},
 	} {
+		update := map[string]any{
+			"sessionUpdate": "agent_message_chunk",
+			"content":       map[string]any{"type": "text", "text": message.text},
+		}
+		if message.id != "" {
+			update["messageId"] = message.id
+		}
 		_, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{
 			Method: acpschema.ClientMethodSessionUpdate,
-			Params: mustJSON(t, map[string]any{
-				"sessionId": "acp-session",
-				"update": map[string]any{
-					"sessionUpdate": "agent_message_chunk",
-					"messageId":     message.id,
-					"content":       map[string]any{"type": "text", "text": message.text},
-				},
-			}),
+			Params: mustJSON(t, map[string]any{"sessionId": "acp-session", "update": update}),
 		})
 		if rpcErr != nil {
 			t.Fatal(rpcErr)
@@ -122,11 +122,12 @@ func TestCodexHiddenWarningsDoNotPolluteAssistantAnswer(t *testing.T) {
 	}
 }
 
-func TestCodexHiddenWarningsRequireWarningIDAndCodexAgent(t *testing.T) {
+// Codex sends warnings as plain message chunks without a message id, so
+// recognition rests on the text and the agent alone.
+func TestCodexHiddenWarningsNeedNoMessageIDAndStayCodexOnly(t *testing.T) {
 	update, err := acpschema.DecodeSessionUpdate(json.RawMessage(`{
 		"sessionUpdate": "agent_message_chunk",
-		"messageId": "codex:warning:turn:1",
-		"content": {"type": "text", "text": "Falling back from WebSockets to HTTPS transport. disconnected"}
+		"content": {"type": "text", "text": "Warning: Falling back from WebSockets to HTTPS transport. disconnected\n\n"}
 	}`))
 	if err != nil {
 		t.Fatal(err)
@@ -137,10 +138,30 @@ func TestCodexHiddenWarningsRequireWarningIDAndCodexAgent(t *testing.T) {
 	if codexHiddenWarning(AgentClaude, update) {
 		t.Fatal("non-codex output was suppressed")
 	}
-	message := update.(acpschema.AgentMessageChunkUpdate)
-	message.MessageID = "answer"
-	if codexHiddenWarning(AgentCodex, message) {
+	answer, err := acpschema.DecodeSessionUpdate(json.RawMessage(`{
+		"sessionUpdate": "agent_message_chunk",
+		"content": {"type": "text", "text": "answer"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if codexHiddenWarning(AgentCodex, answer) {
 		t.Fatal("ordinary codex output was suppressed")
+	}
+}
+
+// The fallback-metadata warning is the only signal that a session is running on
+// guessed model metadata, so it must reach the transcript.
+func TestCodexModelMetadataWarningStaysVisible(t *testing.T) {
+	update, err := acpschema.DecodeSessionUpdate(json.RawMessage(`{
+		"sessionUpdate": "agent_message_chunk",
+		"content": {"type": "text", "text": "Warning: Model metadata for ` + "`gpt-5.6-sol`" + ` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.\n\n"}
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if codexHiddenWarning(AgentCodex, update) {
+		t.Fatal("fallback metadata warning was suppressed")
 	}
 }
 

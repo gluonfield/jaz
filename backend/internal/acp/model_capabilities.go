@@ -205,7 +205,7 @@ func agentReasoningCapabilities(agent string, model modelcatalog.Model, supporte
 		return capabilities
 	}
 	switch model.Value {
-	case modelcatalog.DefaultGrokModel:
+	case modelcatalog.DefaultGrokModel, modelcatalog.GrokLegacyModel:
 		capabilities.Efforts = []string{"low", "medium", defaultGrokReasoningEffort}
 		capabilities.DefaultEffort = defaultGrokReasoningEffort
 	case modelcatalog.GrokComposerModel:

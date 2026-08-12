@@ -49,7 +49,8 @@ func TestAgentOptionsReportsModelScopedReasoningEfforts(t *testing.T) {
 		t.Fatal(err)
 	}
 	models := out.Agents[0].Models
-	if len(models) != 2 || models[0].Model != modelcatalog.DefaultGrokModel || models[1].Model != modelcatalog.GrokComposerModel {
+	if len(models) != 3 || models[0].Model != modelcatalog.DefaultGrokModel ||
+		models[1].Model != modelcatalog.GrokLegacyModel || models[2].Model != modelcatalog.GrokComposerModel {
 		t.Fatalf("models = %#v", models)
 	}
 	if models[0].Reasoning.Status != modelcatalog.ReasoningReady ||
@@ -57,8 +58,8 @@ func TestAgentOptionsReportsModelScopedReasoningEfforts(t *testing.T) {
 		models[0].Reasoning.DefaultEffort != defaultGrokReasoningEffort {
 		t.Fatalf("grok reasoning = %#v", models[0].Reasoning)
 	}
-	if models[1].Reasoning.Status != modelcatalog.ReasoningReady || len(models[1].Reasoning.Efforts) != 0 {
-		t.Fatalf("composer reasoning = %#v", models[1].Reasoning)
+	if models[2].Reasoning.Status != modelcatalog.ReasoningReady || len(models[2].Reasoning.Efforts) != 0 {
+		t.Fatalf("composer reasoning = %#v", models[2].Reasoning)
 	}
 }
 

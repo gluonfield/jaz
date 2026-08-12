@@ -1381,7 +1381,7 @@ func TestProcessCommandAddsGrokModelArg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(args, " ") != "agent --always-approve --model grok-4.5 stdio" {
+	if strings.Join(args, " ") != "agent --always-approve --model grok-4.6 stdio" {
 		t.Fatalf("args = %#v", args)
 	}
 }

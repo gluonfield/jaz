@@ -50,7 +50,8 @@ var reasoningEffortRank = map[string]int{
 }
 
 const (
-	DefaultGrokModel  = "grok-4.5"
+	DefaultGrokModel  = "grok-4.6"
+	GrokLegacyModel   = "grok-4.5"
 	GrokComposerModel = "grok-composer-2.5-fast"
 )
 
@@ -92,7 +93,8 @@ var (
 			openRouterBackedModel("haiku", "Haiku 4.5", "Fastest for quick answers", "anthropic/claude-haiku-4.5"),
 		},
 		"grok": {
-			modelWithoutProviderReasoning(DefaultGrokModel, "Grok 4.5", "Default Grok model"),
+			modelWithoutProviderReasoning(DefaultGrokModel, "Grok 4.6", "Default Grok model"),
+			modelWithoutProviderReasoning(GrokLegacyModel, "Grok 4.5", "Previous Grok model"),
 			modelWithoutProviderReasoning(GrokComposerModel, "Composer 2.5", "Cursor's coding model"),
 		},
 		"antigravity": {

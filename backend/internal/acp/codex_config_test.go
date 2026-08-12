@@ -82,6 +82,12 @@ func TestConfigureCodexEnvKeepsOpenAIAccountAuthNative(t *testing.T) {
 	if _, ok := config["model_providers"]; ok {
 		t.Fatalf("native OpenAI provider was overridden: %#v", config)
 	}
+	// Codex advertises the models the signed-in account may use and Jaz selects
+	// from that list; launching with the model already applied would make an
+	// unavailable model current, which Codex accepts with fallback metadata.
+	if _, ok := config["model"]; ok {
+		t.Fatalf("account auth must leave the model to Codex: %#v", config)
+	}
 }
 
 func TestCodexLaunchProvider(t *testing.T) {

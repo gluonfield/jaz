@@ -2,6 +2,7 @@ package acp
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -147,6 +148,59 @@ func TestDefaultAgentReasoningEffort(t *testing.T) {
 		if got := DefaultAgentReasoningEffort(agent); got != "" {
 			t.Fatalf("%q default effort = %q, want empty", agent, got)
 		}
+	}
+}
+
+// Codex advertises per-effort model ids alongside the plain ids it accepts as a
+// config value, and only offers what the signed-in account may use.
+func TestCodexModelValidationUsesAdvertisedModels(t *testing.T) {
+	state := parseSessionModelState(json.RawMessage(`{
+		"models":{"availableModels":[{"modelId":"gpt-5.6-terra[low]"},{"modelId":"gpt-5.6-terra[xhigh]"},{"modelId":"gpt-5.5[high]"}]},
+		"configOptions":[{"id":"model","category":"model","options":[{"value":"gpt-5.6-terra"},{"value":"gpt-5.5"}]}]
+	}`))
+	policy := agentPolicyForAgent(AgentCodex)
+
+	if err := policy.validateConfiguredSessionModel(AgentCodex, "gpt-5.6-terra", "gpt-5.6-terra", state); err != nil {
+		t.Fatalf("advertised model rejected: %v", err)
+	}
+	err := policy.validateConfiguredSessionModel(AgentCodex, "gpt-5.6-sol", "gpt-5.6-sol", state)
+	if err == nil {
+		t.Fatal("expected an unavailable model to be rejected")
+	}
+	if got := err.Error(); !strings.Contains(got, "gpt-5.6-sol") || !strings.Contains(got, "gpt-5.5, gpt-5.6-terra") {
+		t.Fatalf("error must name the configured model and the selectable ids: %s", got)
+	}
+}
+
+// Codex repeats the session's current model in the model config option even when
+// the account cannot use it, so a thread pinned to an unavailable model would
+// otherwise be validated against Jaz's own request.
+func TestModelValidationIgnoresEchoedCurrentModel(t *testing.T) {
+	state := parseSessionModelState(json.RawMessage(`{
+		"models":{"availableModels":[{"modelId":"gpt-5.6-terra[low]"},{"modelId":"gpt-5.6-terra[high]"}]},
+		"configOptions":[{"id":"model","category":"model","currentValue":"gpt-5.6-sol","options":[{"value":"gpt-5.6-sol"},{"value":"gpt-5.6-terra"}]}]
+	}`))
+	err := agentPolicyForAgent(AgentCodex).validateConfiguredSessionModel(AgentCodex, "gpt-5.6-sol", "gpt-5.6-sol", state)
+	if err == nil {
+		t.Fatal("expected the echoed current model to be rejected")
+	}
+	if got := err.Error(); !strings.HasSuffix(got, "available model ids: gpt-5.6-terra") {
+		t.Fatalf("error must list only what the agent advertises: %s", got)
+	}
+}
+
+// An agent that describes its models only through the config option still gets
+// validated against that list.
+func TestModelValidationFallsBackToConfigOptions(t *testing.T) {
+	state := parseSessionModelState(json.RawMessage(`{
+		"configOptions":[{"id":"model","category":"model","options":[{"value":"fake-large"}]}]
+	}`))
+	policy := agentPolicyForAgent(AgentCodex)
+	if err := policy.validateConfiguredSessionModel(AgentCodex, "fake-large", "fake-large", state); err != nil {
+		t.Fatalf("advertised model rejected: %v", err)
+	}
+	if err := policy.validateConfiguredSessionModel(AgentCodex, "fake-small", "fake-small", state); err == nil {
+		t.Fatal("expected an unlisted model to be rejected")
 	}
 }
 

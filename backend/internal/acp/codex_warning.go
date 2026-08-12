@@ -8,5 +8,5 @@ import (
 func codexHiddenWarning(agent string, update acpschema.DecodedSessionUpdate) bool {
 	message, ok := update.(acpschema.AgentMessageChunkUpdate)
 	return ok && CanonicalAgentName(agent) == AgentCodex &&
-		codexcompat.IsHiddenWarning(message.MessageID, contentText(message.Content))
+		codexcompat.IsHiddenWarning(contentText(message.Content))
 }

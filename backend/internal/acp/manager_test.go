@@ -1349,7 +1349,10 @@ func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 	}
 }
 
-func TestManagerAllowsUnadvertisedCodexModel(t *testing.T) {
+// Codex advertises the models the signed-in account may use, so a configured
+// model it does not offer has to fail before the session exists rather than
+// reaching the provider as a rejected turn.
+func TestManagerRejectsUnadvertisedCodexModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -1365,7 +1368,6 @@ func TestManagerAllowsUnadvertisedCodexModel(t *testing.T) {
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":                     "1",
 					"JAZ_FAKE_ACP_MODELS":                    "fake-large",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "missing-model",
 					"JAZ_FAKE_ACP_SET_CONFIG":                "1",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT": "1",
 				},
@@ -1375,17 +1377,17 @@ func TestManagerAllowsUnadvertisedCodexModel(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-model"})
-	if err != nil {
-		t.Fatal(err)
+	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-model"})
+	if err == nil {
+		t.Fatal("expected unadvertised codex model to fail")
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
+	if !strings.Contains(err.Error(), "missing-model") || !strings.Contains(err.Error(), "fake-large") {
+		t.Fatalf("error must name the configured and advertised models: %v", err)
 	}
-	if session.Model != "missing-model" || session.ReasoningEffort != "" {
-		t.Fatalf("unexpected stored model metadata %#v", session)
+	if sessions, listErr := store.ListSessions(storage.SessionFilter{}); listErr != nil {
+		t.Fatal(listErr)
+	} else if len(sessions) != 0 {
+		t.Fatalf("rejected model must not persist a session: %#v", sessions)
 	}
 }
 
@@ -1401,12 +1403,12 @@ func TestManagerSkipsConfiguredCodexEffortWhenModelOmitsEffortConfig(t *testing.
 			"codex": {
 				Command:         os.Args[0],
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:           "missing-model",
+				Model:           "fake-large",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":                     "1",
 					"JAZ_FAKE_ACP_MODELS":                    "fake-large",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "missing-model",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "fake-large",
 					"JAZ_FAKE_ACP_SET_CONFIG":                "1",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT": "1",
 					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":          "unexpected_effort_config",

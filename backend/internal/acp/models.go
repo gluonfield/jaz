@@ -48,7 +48,8 @@ type modelValidationKind int
 
 const (
 	modelValidationNone modelValidationKind = iota
-	modelValidationClaude
+	modelValidationAdvertised
+	modelValidationAdvertisedContextTag
 )
 
 type agentPolicy struct {
@@ -95,7 +96,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			modelConfigID:        sessionConfigModel,
 			effortConfigID:       claudeSessionConfigEffort,
 			materializesOnPrompt: true,
-			modelValidationKind:  modelValidationClaude,
+			modelValidationKind:  modelValidationAdvertisedContextTag,
 			effortOptions:        claudeReasoningEffortOptions,
 			ultracodeSetting:     true,
 		}
@@ -108,7 +109,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			systemPromptAtLaunch:    true,
 			promptPersistsOnRestore: true,
 			materializesOnPrompt:    true,
-			modelValidationKind:     modelValidationNone,
+			modelValidationKind:     modelValidationAdvertised,
 			effortOptions:           codexReasoningEffortOptions,
 		}
 	case AgentKimi:
@@ -270,7 +271,7 @@ type sessionConfigOptionsState struct {
 func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, state sessionModelState) (json.RawMessage, error) {
 	policy := agentPolicyForAgent(agentName)
 	model := configuredSessionModel(rawModel)
-	if policy.modelValidationKind == modelValidationClaude {
+	if policy.modelValidationKind == modelValidationAdvertisedContextTag {
 		model = state.resolveAdvertised(model)
 	}
 	if err := policy.validateConfiguredSessionModel(agentName, rawModel, model, state); err != nil {
@@ -511,9 +512,13 @@ func parseSessionModelState(raw json.RawMessage) sessionModelState {
 	for _, model := range resp.Models.AvailableModels {
 		state.addExact(model.ModelID)
 	}
-	configOptions := parseSessionConfigOptions(raw)
-	for _, value := range configOptions.modelOptions {
-		state.addBase(value)
+	// The model config option repeats the session's current model even when the
+	// agent does not offer it, so it only describes what is available when the
+	// agent advertised nothing else.
+	if len(state.exact) == 0 {
+		for _, value := range parseSessionConfigOptions(raw).modelOptions {
+			state.addBase(value)
+		}
 	}
 	return state
 }
@@ -551,25 +556,13 @@ func parseConfigOptionValues(raw json.RawMessage) []string {
 }
 
 func (p agentPolicy) validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, state sessionModelState) error {
-	if strings.TrimSpace(rawModel) == "" || state.empty() {
+	if p.modelValidationKind == modelValidationNone || strings.TrimSpace(rawModel) == "" || state.empty() {
 		return nil
 	}
-	switch p.modelValidationKind {
-	case modelValidationClaude:
-		if state.hasExact(effectiveModel) || state.hasBase(effectiveModel) {
-			return nil
-		}
-		available := state.availableExact()
-		if len(available) == 0 {
-			available = state.availableBases()
-		}
-		if len(available) == 0 {
-			return nil
-		}
-		return fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available model ids: %s", agentName, effectiveModel, strings.Join(available, ", "))
-	default:
+	if _, ok := state.matchAdvertised(effectiveModel); ok {
 		return nil
 	}
+	return fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available model ids: %s", agentName, effectiveModel, strings.Join(state.advertisedModels(), ", "))
 }
 
 func (s *sessionModelState) addExact(model string) {
@@ -601,58 +594,54 @@ func (s sessionModelState) empty() bool {
 	return len(s.exact) == 0 && len(s.base) == 0
 }
 
-// resolveAdvertised maps a configured Claude model onto the spelling the agent
-// currently advertises. Claude Code flips the "[1m]" context tag on a model
-// between restarts (a model is bare while it is the active selection and tagged
-// otherwise), so a static catalog value alternates in and out of validity. When
-// the literal value is not advertised, fall back to matching by context-tag
-// base and return the advertised spelling so set_config_option gets a value the
-// agent accepts.
-func (s sessionModelState) resolveAdvertised(model string) string {
+// matchAdvertised finds the spelling the agent currently advertises for a
+// configured model, ignoring the tag agents append to a model id: Claude Code
+// flips the "[1m]" context tag between restarts (a model is bare while it is
+// the active selection and tagged otherwise), and Codex advertises one id per
+// reasoning effort ("gpt-5.6-terra[high]") while accepting the bare id.
+func (s sessionModelState) matchAdvertised(model string) (string, bool) {
 	model = strings.TrimSpace(model)
 	if model == "" || s.empty() {
-		return model
+		return "", false
 	}
 	if _, ok := s.exact[model]; ok {
-		return model
+		return model, true
 	}
 	if _, ok := s.base[model]; ok {
-		return model
+		return model, true
 	}
 	base := contextTagBase(model)
-	for adv := range s.exact {
-		if contextTagBase(adv) == base {
-			return adv
+	for _, advertised := range []map[string]struct{}{s.exact, s.base} {
+		for candidate := range advertised {
+			if contextTagBase(candidate) == base {
+				return candidate, true
+			}
 		}
 	}
-	for adv := range s.base {
-		if contextTagBase(adv) == base {
-			return adv
-		}
+	return "", false
+}
+
+// resolveAdvertised rewrites a configured model to the advertised spelling so
+// set_config_option gets a value the agent accepts.
+func (s sessionModelState) resolveAdvertised(model string) string {
+	if advertised, ok := s.matchAdvertised(model); ok {
+		return advertised
 	}
-	return model
+	return strings.TrimSpace(model)
 }
 
-func (s sessionModelState) hasExact(model string) bool {
-	_, ok := s.exact[strings.TrimSpace(model)]
-	return ok
-}
-
-func (s sessionModelState) hasBase(model string) bool {
-	model = strings.TrimSpace(model)
-	if modelHasReasoningEffort(model) {
-		model = model[:strings.LastIndex(model, "/")]
+// advertisedModels lists the selectable model ids, stripped of the per-effort
+// and per-context tags that would otherwise repeat one model many times.
+func (s sessionModelState) advertisedModels() []string {
+	advertised := s.exact
+	if len(advertised) == 0 {
+		advertised = s.base
 	}
-	_, ok := s.base[model]
-	return ok
-}
-
-func (s sessionModelState) availableBases() []string {
-	return sortedKeys(s.base)
-}
-
-func (s sessionModelState) availableExact() []string {
-	return sortedKeys(s.exact)
+	models := make(map[string]struct{}, len(advertised))
+	for model := range advertised {
+		models[contextTagBase(model)] = struct{}{}
+	}
+	return sortedKeys(models)
 }
 
 func sortedKeys(values map[string]struct{}) []string {

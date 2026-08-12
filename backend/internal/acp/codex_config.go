@@ -64,7 +64,11 @@ func configureCodexEnv(
 	if developerInstructions != "" {
 		config["developer_instructions"] = developerInstructions
 	}
-	if model := strings.TrimSpace(cfg.Model); model != "" {
+	// On its own account auth Codex advertises the models the signed-in plan may
+	// use, and Jaz applies the configured model through session/set_config_option.
+	// Launching with the model already set makes an unavailable model the current
+	// one, which Codex accepts with fallback metadata instead of rejecting.
+	if model := strings.TrimSpace(cfg.Model); model != "" && !codexNativeOpenAIProvider(cfg.ModelProvider) {
 		config["model"] = model
 	}
 	if effort := strings.TrimSpace(cfg.ReasoningEffort); effort != "" {

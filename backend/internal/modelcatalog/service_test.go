@@ -408,6 +408,7 @@ func TestServiceAgentModelsIncludesCurrentGrokModels(t *testing.T) {
 	}
 	want := []string{
 		DefaultGrokModel,
+		GrokLegacyModel,
 		GrokComposerModel,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
