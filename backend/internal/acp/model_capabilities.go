@@ -47,26 +47,30 @@ type ModelCapabilities struct {
 }
 
 func (c ModelCapabilities) AgentModels(agent string) []AgentModel {
-	return resolveModelCapabilities(agent, c.Catalog.AgentModels(agent), true)
+	return c.curatedModels(agent, "")
 }
 
 func (c ModelCapabilities) AgentModelsForProvider(agent, providerID string) ([]AgentModel, error) {
 	if !usesCuratedModels(agent, providerID) {
 		return c.ProviderModels(agent, providerID)
 	}
-	return resolveModelCapabilities(agent, c.Catalog.AgentModels(agent), usesAgentReasoningCapabilities(agent, providerID)), nil
+	return c.curatedModels(agent, providerID), nil
 }
 
+func (c ModelCapabilities) curatedModels(agent, providerID string) []AgentModel {
+	return resolveModelCapabilities(agent, c.Catalog.AgentModels(agent), agentOwnsModelMetadata(agent, providerID))
+}
+
+// usesCuratedModels reports whether Jaz's own model list describes the pair,
+// either because the agent owns the metadata or because Jaz curates that
+// provider's models for it.
 func usesCuratedModels(agent, providerID string) bool {
-	providerID = strings.ToLower(strings.TrimSpace(providerID))
-	if providerID == "" {
+	if agentOwnsModelMetadata(agent, providerID) {
 		return true
 	}
 	switch CanonicalAgentName(agent) {
-	case AgentCodex:
-		return providerID == provider.ProviderOpenAI || providerID == CodexProviderOpenAIAPIKey || providerID == provider.ProviderOpenRouter
-	case AgentOpenCode:
-		return providerID == provider.ProviderOpenRouter
+	case AgentCodex, AgentOpenCode:
+		return strings.ToLower(strings.TrimSpace(providerID)) == provider.ProviderOpenRouter
 	}
 	return false
 }
@@ -76,7 +80,7 @@ func (c ModelCapabilities) ProviderModels(agent, providerID string) ([]AgentMode
 	if err != nil {
 		return nil, err
 	}
-	resolved := resolveModelCapabilities(agent, models, usesAgentReasoningCapabilities(agent, providerID))
+	resolved := resolveModelCapabilities(agent, models, agentOwnsModelMetadata(agent, providerID))
 	addModelAliases(resolved, c.Catalog.AgentModels(agent))
 	return resolved, nil
 }
@@ -110,10 +114,30 @@ func addModelAlias(aliases []string, value, alias string) []string {
 	return append(aliases, alias)
 }
 
-func usesAgentReasoningCapabilities(agent, providerID string) bool {
-	providerID = strings.ToLower(strings.TrimSpace(providerID))
-	return providerID == "" || CanonicalAgentName(agent) == AgentCodex &&
-		(providerID == provider.ProviderOpenAI || providerID == CodexProviderOpenAIAPIKey)
+// agentOwnsModelMetadata reports whether the agent supplies the model catalog
+// and reasoning capabilities itself instead of Jaz's provider catalog: with no
+// provider selected every agent runs on its own defaults, and Codex keeps its
+// built-in catalog on its own backend and with an OpenAI API key.
+func agentOwnsModelMetadata(agent, providerID string) bool {
+	if strings.TrimSpace(providerID) == "" {
+		return true
+	}
+	if CanonicalAgentName(agent) != AgentCodex {
+		return false
+	}
+	return codexNativeOpenAIProvider(providerID) ||
+		strings.EqualFold(strings.TrimSpace(providerID), CodexProviderOpenAIAPIKey)
+}
+
+// reasoningCapabilityModels returns the models a configured effort is judged
+// against. A selected provider's capabilities win even where the picker offers
+// Jaz's curated list, so that an effort is never accepted against a catalog the
+// turn will not run on.
+func (c ModelCapabilities) reasoningCapabilityModels(agent, providerID string) ([]AgentModel, error) {
+	if strings.TrimSpace(providerID) == "" {
+		return c.AgentModels(agent), nil
+	}
+	return c.ProviderModels(agent, providerID)
 }
 
 func (c ModelCapabilities) ValidateReasoningEffort(agent, providerID, model, effort string) error {
@@ -121,17 +145,9 @@ func (c ModelCapabilities) ValidateReasoningEffort(agent, providerID, model, eff
 	if effort == "" {
 		return nil
 	}
-	var (
-		models []AgentModel
-		err    error
-	)
-	if strings.TrimSpace(providerID) == "" {
-		models = c.AgentModels(agent)
-	} else {
-		models, err = c.ProviderModels(agent, providerID)
-		if err != nil {
-			return err
-		}
+	models, err := c.reasoningCapabilityModels(agent, providerID)
+	if err != nil {
+		return err
 	}
 	found, ok := findCapabilityModel(models, model)
 	if !ok && strings.TrimSpace(providerID) == "" && agentPolicyForAgent(agent).supportsReasoningEffort(effort) {

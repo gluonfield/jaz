@@ -49,7 +49,7 @@ func modelAliasKey(value string) string {
 
 func (m *Manager) validateSpawnModelBeforePersist(ctx context.Context, req SpawnRequest, cfg AgentConfig) error {
 	policy := agentPolicyForAgent(req.ACPAgent)
-	if cfg.Local || policy.modelValidationKind == modelValidationNone {
+	if cfg.Local || policy.unadvertisedModel != unadvertisedModelRejected {
 		return nil
 	}
 	model := policy.sessionConfigModel(cfg)
@@ -60,11 +60,8 @@ func (m *Manager) validateSpawnModelBeforePersist(ctx context.Context, req Spawn
 	if err != nil {
 		return err
 	}
-	effective := configuredSessionModel(model)
-	if policy.modelValidationKind == modelValidationAdvertisedContextTag {
-		effective = info.modelState.resolveAdvertised(effective)
-	}
-	return policy.validateConfiguredSessionModel(req.ACPAgent, model, effective, info.modelState)
+	_, err = policy.sessionModelToSend(req.ACPAgent, model, info.modelState)
+	return err
 }
 
 func (m *Manager) probeAgentSession(ctx context.Context, req SpawnRequest, cfg AgentConfig) (acpSessionInfo, error) {

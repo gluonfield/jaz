@@ -1349,10 +1349,12 @@ func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 	}
 }
 
-// Codex advertises the models the signed-in account may use, so a configured
-// model it does not offer has to fail before the session exists rather than
-// reaching the provider as a rejected turn.
-func TestManagerRejectsUnadvertisedCodexModel(t *testing.T) {
+// Codex advertises the models the signed-in account may use, and that set
+// shrinks when a plan lapses. The session must still start on the agent's own
+// default rather than pushing a model the provider will reject: the fake agent
+// fails any model option other than the advertised one, so a started session
+// proves Jaz sent none.
+func TestManagerKeepsAgentDefaultForUnadvertisedCodexModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -1368,6 +1370,7 @@ func TestManagerRejectsUnadvertisedCodexModel(t *testing.T) {
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":                     "1",
 					"JAZ_FAKE_ACP_MODELS":                    "fake-large",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "fake-large",
 					"JAZ_FAKE_ACP_SET_CONFIG":                "1",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT": "1",
 				},
@@ -1377,17 +1380,17 @@ func TestManagerRejectsUnadvertisedCodexModel(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-model"})
-	if err == nil {
-		t.Fatal("expected unadvertised codex model to fail")
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-model"})
+	if err != nil {
+		t.Fatalf("an unavailable model must not fail the session: %v", err)
 	}
-	if !strings.Contains(err.Error(), "missing-model") || !strings.Contains(err.Error(), "fake-large") {
-		t.Fatalf("error must name the configured and advertised models: %v", err)
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	session, err := store.LoadSession(spawned.SessionID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if sessions, listErr := store.ListSessions(storage.SessionFilter{}); listErr != nil {
-		t.Fatal(listErr)
-	} else if len(sessions) != 0 {
-		t.Fatalf("rejected model must not persist a session: %#v", sessions)
+	if session.Status == storage.StatusError || session.Error != "" {
+		t.Fatalf("unexpected session error: %#v", session)
 	}
 }
 
