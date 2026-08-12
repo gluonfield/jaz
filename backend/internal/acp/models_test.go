@@ -151,87 +151,91 @@ func TestDefaultAgentReasoningEffort(t *testing.T) {
 	}
 }
 
-// Codex advertises per-effort model ids alongside the plain ids it accepts as a
-// config value, and only offers what the signed-in account may use.
-func TestCodexModelValidationUsesAdvertisedModels(t *testing.T) {
-	state := parseSessionModelState(json.RawMessage(`{
-		"models":{"availableModels":[{"modelId":"gpt-5.6-terra[low]"},{"modelId":"gpt-5.6-terra[xhigh]"},{"modelId":"gpt-5.5[high]"}]},
-		"configOptions":[{"id":"model","category":"model","options":[{"value":"gpt-5.6-terra"},{"value":"gpt-5.5"}]}]
-	}`))
-	policy := agentPolicyForAgent(AgentCodex)
-
-	if err := policy.validateConfiguredSessionModel(AgentCodex, "gpt-5.6-terra", "gpt-5.6-terra", state); err != nil {
-		t.Fatalf("advertised model rejected: %v", err)
-	}
-	err := policy.validateConfiguredSessionModel(AgentCodex, "gpt-5.6-sol", "gpt-5.6-sol", state)
-	if err == nil {
-		t.Fatal("expected an unavailable model to be rejected")
-	}
-	if got := err.Error(); !strings.Contains(got, "gpt-5.6-sol") || !strings.Contains(got, "gpt-5.5, gpt-5.6-terra") {
-		t.Fatalf("error must name the configured model and the selectable ids: %s", got)
-	}
-}
-
 // Codex repeats the session's current model in the model config option even when
 // the account cannot use it, so a thread pinned to an unavailable model would
-// otherwise be validated against Jaz's own request.
-func TestModelValidationIgnoresEchoedCurrentModel(t *testing.T) {
+// otherwise look advertised. Codex also spells one advertised id per reasoning
+// effort while accepting the bare id.
+func TestModelStateIgnoresEchoedCurrentModel(t *testing.T) {
 	state := parseSessionModelState(json.RawMessage(`{
-		"models":{"availableModels":[{"modelId":"gpt-5.6-terra[low]"},{"modelId":"gpt-5.6-terra[high]"}]},
-		"configOptions":[{"id":"model","category":"model","currentValue":"gpt-5.6-sol","options":[{"value":"gpt-5.6-sol"},{"value":"gpt-5.6-terra"}]}]
+		"models":{"availableModels":[{"modelId":"gpt-5.6-terra[low]"},{"modelId":"gpt-5.6-terra[high]"},{"modelId":"gpt-5.5[high]"}]},
+		"configOptions":[{"id":"model","category":"model","currentValue":"gpt-5.6-sol","options":[{"value":"gpt-5.6-sol"},{"value":"gpt-5.6-terra"},{"value":"gpt-5.5"}]}]
 	}`))
-	err := agentPolicyForAgent(AgentCodex).validateConfiguredSessionModel(AgentCodex, "gpt-5.6-sol", "gpt-5.6-sol", state)
-	if err == nil {
-		t.Fatal("expected the echoed current model to be rejected")
+	if _, ok := state.matchAdvertised("gpt-5.6-sol"); ok {
+		t.Fatal("the echoed current model must not count as advertised")
 	}
-	if got := err.Error(); !strings.HasSuffix(got, "available model ids: gpt-5.6-terra") {
-		t.Fatalf("error must list only what the agent advertises: %s", got)
+	if _, ok := state.matchAdvertised("gpt-5.6-terra"); !ok {
+		t.Fatal("advertised model was not matched through its per-effort ids")
+	}
+	if got := strings.Join(state.advertisedModels(), ","); got != "gpt-5.5,gpt-5.6-terra" {
+		t.Fatalf("advertised models = %q", got)
 	}
 }
 
-// An agent that describes its models only through the config option still gets
-// validated against that list.
-func TestModelValidationFallsBackToConfigOptions(t *testing.T) {
+// An agent that describes its models only through the config option is still
+// taken at its word.
+func TestModelStateFallsBackToConfigOptions(t *testing.T) {
 	state := parseSessionModelState(json.RawMessage(`{
 		"configOptions":[{"id":"model","category":"model","options":[{"value":"fake-large"}]}]
 	}`))
-	policy := agentPolicyForAgent(AgentCodex)
-	if err := policy.validateConfiguredSessionModel(AgentCodex, "fake-large", "fake-large", state); err != nil {
-		t.Fatalf("advertised model rejected: %v", err)
+	if _, ok := state.matchAdvertised("fake-large"); !ok {
+		t.Fatal("config option model was not matched")
 	}
-	if err := policy.validateConfiguredSessionModel(AgentCodex, "fake-small", "fake-small", state); err == nil {
-		t.Fatal("expected an unlisted model to be rejected")
+	if _, ok := state.matchAdvertised("fake-small"); ok {
+		t.Fatal("unlisted model was matched")
 	}
 }
 
-func TestResolveAdvertisedContextTag(t *testing.T) {
+// Codex model access follows the account's plan, so an unavailable model keeps
+// the agent's default; only agents with stable model ids reject.
+func TestUnadvertisedModelPolicyPerAgent(t *testing.T) {
+	state := parseSessionModelState(json.RawMessage(
+		`{"models":{"availableModels":[{"modelId":"gpt-5.6-terra[low]"}]}}`))
+	codex := agentPolicyForAgent(AgentCodex)
+
+	if model, err := codex.sessionModelToSend(AgentCodex, "gpt-5.6-sol", state); err != nil || model != "" {
+		t.Fatalf("unavailable codex model = %q, err %v; want the agent default", model, err)
+	}
+	// Codex accepts the bare id and would reject the per-effort spelling, so an
+	// available model must be sent exactly as configured.
+	if model, err := codex.sessionModelToSend(AgentCodex, "gpt-5.6-terra", state); err != nil || model != "gpt-5.6-terra" {
+		t.Fatalf("available codex model = %q, err %v", model, err)
+	}
+	if _, err := agentPolicyForAgent(AgentClaude).sessionModelToSend(AgentClaude, "claude-ghost-9", state); err == nil {
+		t.Fatal("claude must reject an unadvertised model")
+	}
+	// Agents with no policy leave the id to the agent to accept or refuse.
+	if model, err := agentPolicyForAgent(AgentKimi).sessionModelToSend(AgentKimi, "kimi-k3", state); err != nil || model != "kimi-k3" {
+		t.Fatalf("unpoliced model = %q, err %v", model, err)
+	}
+}
+
+func TestClaudeSendsAdvertisedContextTagSpelling(t *testing.T) {
 	// Claude Code alternates Fable's [1m] context tag between restarts; whichever
-	// spelling the catalog carries, resolution must land on the advertised one.
+	// spelling the catalog carries, the sent value must be the advertised one.
 	bare := parseSessionModelState(json.RawMessage(
 		`{"models":{"availableModels":[{"modelId":"claude-fable-5"},{"modelId":"default"},{"modelId":"opus[1m]"},{"modelId":"sonnet"}]}}`))
 	tagged := parseSessionModelState(json.RawMessage(
 		`{"models":{"availableModels":[{"modelId":"claude-fable-5[1m]"},{"modelId":"default"},{"modelId":"opus[1m]"},{"modelId":"sonnet"}]}}`))
-
-	if got := bare.resolveAdvertised("claude-fable-5[1m]"); got != "claude-fable-5" {
-		t.Fatalf("tagged config against bare advertisement = %q, want claude-fable-5", got)
-	}
-	if got := tagged.resolveAdvertised("claude-fable-5"); got != "claude-fable-5[1m]" {
-		t.Fatalf("bare config against tagged advertisement = %q, want claude-fable-5[1m]", got)
-	}
-	if got := tagged.resolveAdvertised("claude-fable-5[1m]"); got != "claude-fable-5[1m]" {
-		t.Fatalf("exact match should be unchanged, got %q", got)
-	}
-
 	policy := agentPolicyForAgent(AgentClaude)
-	for _, st := range []sessionModelState{bare, tagged} {
-		resolved := st.resolveAdvertised("claude-fable-5[1m]")
-		if err := policy.validateConfiguredSessionModel(AgentClaude, "claude-fable-5[1m]", resolved, st); err != nil {
-			t.Fatalf("validate after resolve: %v", err)
+
+	for _, test := range []struct {
+		name       string
+		state      sessionModelState
+		configured string
+		want       string
+	}{
+		{"tagged config against bare advertisement", bare, "claude-fable-5[1m]", "claude-fable-5"},
+		{"bare config against tagged advertisement", tagged, "claude-fable-5", "claude-fable-5[1m]"},
+		{"exact match is unchanged", tagged, "claude-fable-5[1m]", "claude-fable-5[1m]"},
+	} {
+		got, err := policy.sessionModelToSend(AgentClaude, test.configured, test.state)
+		if err != nil || got != test.want {
+			t.Fatalf("%s = %q (err %v), want %q", test.name, got, err, test.want)
 		}
 	}
 
 	// A genuinely unknown model must still be rejected.
-	if err := policy.validateConfiguredSessionModel(AgentClaude, "claude-ghost-9", bare.resolveAdvertised("claude-ghost-9"), bare); err == nil {
-		t.Fatal("expected unknown model to fail validation")
+	if _, err := policy.sessionModelToSend(AgentClaude, "claude-ghost-9", bare); err == nil {
+		t.Fatal("expected unknown model to fail")
 	}
 }

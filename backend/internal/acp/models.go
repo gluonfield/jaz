@@ -44,12 +44,21 @@ type setSessionModelRequest struct {
 	ModelID   string              `json:"modelId"`
 }
 
-type modelValidationKind int
+// unadvertisedModelPolicy decides what happens when the agent does not offer
+// the configured model.
+type unadvertisedModelPolicy int
 
 const (
-	modelValidationNone modelValidationKind = iota
-	modelValidationAdvertised
-	modelValidationAdvertisedContextTag
+	// unadvertisedModelSent leaves the model id to the agent to accept or refuse.
+	unadvertisedModelSent unadvertisedModelPolicy = iota
+	// unadvertisedModelSkipped keeps the agent's own default. Codex model access
+	// follows the signed-in account's plan, so a model that worked yesterday can
+	// disappear without anyone touching the settings; that must not cost the
+	// session.
+	unadvertisedModelSkipped
+	// unadvertisedModelRejected fails the session rather than running a model
+	// other than the configured one.
+	unadvertisedModelRejected
 )
 
 type agentPolicy struct {
@@ -61,7 +70,8 @@ type agentPolicy struct {
 	systemPromptAtLaunch    bool
 	promptPersistsOnRestore bool
 	materializesOnPrompt    bool
-	modelValidationKind     modelValidationKind
+	unadvertisedModel       unadvertisedModelPolicy
+	resolvesContextTag      bool
 	effortOptions           []ReasoningEffortOption
 	ultracodeSetting        bool
 }
@@ -96,7 +106,8 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			modelConfigID:        sessionConfigModel,
 			effortConfigID:       claudeSessionConfigEffort,
 			materializesOnPrompt: true,
-			modelValidationKind:  modelValidationAdvertisedContextTag,
+			unadvertisedModel:    unadvertisedModelRejected,
+			resolvesContextTag:   true,
 			effortOptions:        claudeReasoningEffortOptions,
 			ultracodeSetting:     true,
 		}
@@ -109,37 +120,32 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			systemPromptAtLaunch:    true,
 			promptPersistsOnRestore: true,
 			materializesOnPrompt:    true,
-			modelValidationKind:     modelValidationAdvertised,
+			unadvertisedModel:       unadvertisedModelSkipped,
 			effortOptions:           codexReasoningEffortOptions,
 		}
 	case AgentKimi:
 		return agentPolicy{
-			modelConfigID:       sessionConfigModel,
-			modelValidationKind: modelValidationNone,
+			modelConfigID: sessionConfigModel,
 		}
 	case AgentGrok:
 		return agentPolicy{
-			modelValidationKind: modelValidationNone,
-			effortOptions:       baseReasoningEffortOptions,
+			effortOptions: baseReasoningEffortOptions,
 		}
 	case AgentOpenCode:
 		return agentPolicy{
 			modelConfigID:           sessionConfigModel,
 			effortConfigID:          claudeSessionConfigEffort,
 			modelConfiguredAtLaunch: true,
-			modelValidationKind:     modelValidationNone,
 			effortOptions:           openCodeReasoningEffortOptions,
 		}
 	case AgentAntigravity:
 		return agentPolicy{
-			modelConfigID:       sessionConfigModel,
-			modelValidationKind: modelValidationNone,
+			modelConfigID: sessionConfigModel,
 		}
 	default:
 		return agentPolicy{
-			effortConfigID:      sessionConfigReasoningEffort,
-			modelValidationKind: modelValidationNone,
-			effortOptions:       baseReasoningEffortOptions,
+			effortConfigID: sessionConfigReasoningEffort,
+			effortOptions:  baseReasoningEffortOptions,
 		}
 	}
 }
@@ -270,15 +276,17 @@ type sessionConfigOptionsState struct {
 // levels valid for the newly selected model).
 func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, state sessionModelState) (json.RawMessage, error) {
 	policy := agentPolicyForAgent(agentName)
-	model := configuredSessionModel(rawModel)
-	if policy.modelValidationKind == modelValidationAdvertisedContextTag {
-		model = state.resolveAdvertised(model)
-	}
-	if err := policy.validateConfiguredSessionModel(agentName, rawModel, model, state); err != nil {
+	configured := configuredSessionModel(rawModel)
+	model, err := policy.sessionModelToSend(agentName, configured, state)
+	if err != nil {
 		return nil, err
 	}
-	model = strings.TrimSpace(model)
 	if model == "" {
+		if configured != "" {
+			m.log.Warn("acp agent does not offer the configured model; keeping the agent's default",
+				"agent", agentName, "model", configured,
+				"available", strings.Join(state.advertisedModels(), ", "))
+		}
 		return nil, nil
 	}
 	if policy.usesModelConfigOption() {
@@ -555,14 +563,27 @@ func parseConfigOptionValues(raw json.RawMessage) []string {
 	return values
 }
 
-func (p agentPolicy) validateConfiguredSessionModel(agentName, rawModel, effectiveModel string, state sessionModelState) error {
-	if p.modelValidationKind == modelValidationNone || strings.TrimSpace(rawModel) == "" || state.empty() {
-		return nil
+// sessionModelToSend resolves the model id to apply to a session. An empty id
+// means the session keeps whichever model the agent chose for itself.
+func (p agentPolicy) sessionModelToSend(agentName, rawModel string, state sessionModelState) (string, error) {
+	model := configuredSessionModel(rawModel)
+	if model == "" || state.empty() {
+		return model, nil
 	}
-	if _, ok := state.matchAdvertised(effectiveModel); ok {
-		return nil
+	if advertised, ok := state.matchAdvertised(model); ok {
+		if p.resolvesContextTag {
+			return advertised, nil
+		}
+		return model, nil
 	}
-	return fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available model ids: %s", agentName, effectiveModel, strings.Join(state.advertisedModels(), ", "))
+	switch p.unadvertisedModel {
+	case unadvertisedModelSkipped:
+		return "", nil
+	case unadvertisedModelRejected:
+		return "", fmt.Errorf("configured acp agent %q model %q is not advertised by the agent; available model ids: %s",
+			agentName, model, strings.Join(state.advertisedModels(), ", "))
+	}
+	return model, nil
 }
 
 func (s *sessionModelState) addExact(model string) {
@@ -619,15 +640,6 @@ func (s sessionModelState) matchAdvertised(model string) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// resolveAdvertised rewrites a configured model to the advertised spelling so
-// set_config_option gets a value the agent accepts.
-func (s sessionModelState) resolveAdvertised(model string) string {
-	if advertised, ok := s.matchAdvertised(model); ok {
-		return advertised
-	}
-	return strings.TrimSpace(model)
 }
 
 // advertisedModels lists the selectable model ids, stripped of the per-effort

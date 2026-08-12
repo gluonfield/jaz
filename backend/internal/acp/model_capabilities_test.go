@@ -100,6 +100,36 @@ func TestModelCapabilitiesUsesAgentScopedGrokEfforts(t *testing.T) {
 	}
 }
 
+// Which catalog describes an agent and provider decides every model list Jaz
+// offers and validates against, and an agent that owns its metadata is always
+// described by Jaz's own list.
+func TestModelCatalogRoutingByAgentAndProvider(t *testing.T) {
+	for _, test := range []struct {
+		agent     string
+		provider  string
+		agentOwns bool
+		curated   bool
+	}{
+		{AgentCodex, "", true, true},
+		{AgentClaude, "", true, true},
+		{AgentCodex, provider.ProviderOpenAI, true, true},
+		{AgentCodex, CodexProviderOpenAIAPIKey, true, true},
+		{AgentCodex, provider.ProviderOpenRouter, false, true},
+		{AgentCodex, provider.ProviderOllama, false, false},
+		{AgentOpenCode, provider.ProviderOpenRouter, false, true},
+		{AgentOpenCode, provider.ProviderOpenAI, false, false},
+		{AgentClaude, provider.ProviderOpenAI, false, false},
+	} {
+		name := test.agent + "/" + test.provider
+		if got := agentOwnsModelMetadata(test.agent, test.provider); got != test.agentOwns {
+			t.Errorf("%s agentOwnsModelMetadata = %v, want %v", name, got, test.agentOwns)
+		}
+		if got := usesCuratedModels(test.agent, test.provider); got != test.curated {
+			t.Errorf("%s usesCuratedModels = %v, want %v", name, got, test.curated)
+		}
+	}
+}
+
 func TestModelCapabilitiesUsesCodexHarnessForOpenAIModelsWithoutProviderMetadata(t *testing.T) {
 	capabilities := ModelCapabilities{Catalog: modelcatalog.NewService(nil)}
 	if err := capabilities.ValidateReasoningEffort(AgentCodex, provider.ProviderOpenAI, "gpt-5.3-codex-spark", "xhigh"); err != nil {

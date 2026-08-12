@@ -23,9 +23,7 @@ type codexModelMetadata struct {
 func (m *Manager) resolveCodexCustomProviderModelMetadata(name string, cfg AgentConfig) (string, error) {
 	providerID := strings.TrimSpace(cfg.ModelProvider)
 	modelID := strings.TrimSpace(cfg.Model)
-	usesNativeMetadata := codexNativeOpenAIProvider(providerID) ||
-		strings.EqualFold(providerID, CodexProviderOpenAIAPIKey)
-	if CanonicalAgentName(name) != AgentCodex || !cfg.UsesProvider() || usesNativeMetadata {
+	if CanonicalAgentName(name) != AgentCodex || !cfg.UsesProvider() || agentOwnsModelMetadata(name, providerID) {
 		return "", nil
 	}
 	if modelID == "" {
