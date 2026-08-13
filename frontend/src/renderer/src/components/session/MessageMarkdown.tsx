@@ -21,7 +21,6 @@ import { matchesPreviewPattern } from '../../../../shared/preview'
 import { CodeBlock } from './CodeBlock'
 import { encodeMention } from './mentionCodec'
 import { MentionPill } from './mentions'
-import { rehypeStreamTail, useStreamTail } from './streamReveal'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
 const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
@@ -209,13 +208,12 @@ function BaseMarkdown({
   Link: AnchorComponent
 }) {
   const prepared = useMemo(() => normalizeMath(text), [text])
-  const tail = useStreamTail(prepared)
   const components = useMemo<Components>(() => ({ a: Link, pre: CodeBlock, table: MarkdownTable }), [Link])
   return (
     <div className={className}>
       <Markdown
         remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences]}
-        rehypePlugins={[[rehypeStreamTail, tail], rehypeKatex]}
+        rehypePlugins={[rehypeKatex]}
         components={components}
       >
         {prepared}
