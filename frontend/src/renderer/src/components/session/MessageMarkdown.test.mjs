@@ -30,3 +30,15 @@ test('user bubbles render Markdown, LaTeX, and mentions', async () => {
   expect(html).toContain('<ul>')
   expect(html).toContain('<li>one</li>')
 })
+
+test('user bubbles preserve typed line breaks', async () => {
+  const { UserBubble } = await import('./Bubble')
+  const html = renderToStaticMarkup(
+    createElement(UserBubble, {
+      text: '(int(d) for d in "1234")\n[int(d) for d in "1234"]\n{int(d) for d in "1234"}',
+    }),
+  )
+
+  expect(html).toContain('class="chat-prose whitespace-pre-wrap"')
+  expect(html).toContain('(int(d) for d in &quot;1234&quot;)\n[int(d) for d in &quot;1234&quot;]\n{int(d) for d in &quot;1234&quot;}')
+})

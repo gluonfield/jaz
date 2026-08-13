@@ -300,7 +300,7 @@ export const RenderedMarkdown = memo(function RenderedMarkdown({
 // User messages already carry mentions as Markdown links, so they use the same
 // chat renderer without the assistant-only expansion of bare skill names.
 export const UserMessageMarkdown = memo(function UserMessageMarkdown({ text }: { text: string }) {
-  return <BaseMarkdown text={text} className="chat-prose" Link={MessageMarkdownLink} />
+  return <BaseMarkdown text={text} className="chat-prose whitespace-pre-wrap" Link={MessageMarkdownLink} />
 })
 
 // Shared renderer for assistant prose: GitHub-flavored Markdown + LaTeX via KaTeX.
