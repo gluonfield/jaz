@@ -23,7 +23,7 @@ export function useSessionQueue({
 }) {
   const queryClient = useQueryClient()
   const toast = useToast()
-  const mutationChain = useRef<Promise<unknown>>(Promise.resolve())
+  const mutationChain = useRef<Promise<void>>(Promise.resolve())
   const queuedPrompts = normalizeQueuedMessagesForDisplay(session?.queued_messages ?? [])
   const running = isSessionRunning({ session, acpState, streaming })
 
@@ -40,7 +40,6 @@ export function useSessionQueue({
         )
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.allSessions })
-        return updated.queued_messages ?? []
       } catch (error) {
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         throw error

@@ -8,17 +8,18 @@ import { AgentModelControls, useNewThreadControls } from '@/components/session/u
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
-import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
+import { listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import { agentLabel } from '@/lib/agentLabel'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { modelSuggestionLabel } from '@/lib/models'
 import { NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
-import { setPendingMessage } from '@/lib/pendingMessage'
+import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { submitNewSession } from './-newSessionSubmission'
 
 type NewSearch = {
   project?: string
@@ -87,7 +88,7 @@ function NewSessionPage() {
     }
   }, [directory, project, directoryInfo.error])
 
-  const startThread = async (title: string | undefined, prepare: (sessionId: string) => void) => {
+  const handleSend = async (text: string, options: SendMessageOptions = {}) => {
     if (!runtimeAvailable) {
       toast('Connect an agent in Settings before starting a session.', 'danger')
       return
@@ -100,28 +101,22 @@ function NewSessionPage() {
     }
     setCreating(true)
     try {
-      const session = await createSession(controls.sessionConfig({ directory, worktree }, title))
-      prepare(session.id)
-      sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
-      void deleteAttachmentDraft(NEW_SESSION_DRAFT_KEY, 'session')
-      queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.allSessions })
-      navigate({ to: '/sessions/$sessionId', params: { sessionId: session.id } })
+      await submitNewSession(
+        controls.sessionConfig({ directory, worktree }, text.trim() || undefined),
+        text,
+        options,
+        (sessionId) => {
+          sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
+          void deleteAttachmentDraft(NEW_SESSION_DRAFT_KEY, 'session')
+          invalidateSessionLists(queryClient, { session: sessionId })
+          void navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+        },
+      )
     } catch (error) {
       toast(`Couldn't start a session: ${(error as Error).message}`, 'danger')
       setCreating(false)
     }
   }
-
-  const handleSend = (text: string, options: SendMessageOptions = {}) =>
-    startThread(text.trim() || undefined, (id) =>
-      setPendingMessage(id, {
-        text,
-        planRequested: Boolean(options.planRequested),
-        goalRequested: Boolean(options.goalRequested),
-        files: options.files ?? [],
-      }),
-    )
 
   // Phone: the controls live in a header dropdown, which sits above the
   // composer, so their own popovers open downward.

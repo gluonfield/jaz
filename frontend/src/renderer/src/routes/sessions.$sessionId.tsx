@@ -48,7 +48,6 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
-import { setPendingMessage, takePendingMessage } from '@/lib/pendingMessage'
 import { keys } from '@/lib/query/keys'
 import { type PlanApprovalAction } from '@/lib/taskSurface'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
@@ -201,7 +200,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
 
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
-  const sentPendingRef = useRef<string | null>(null)
   const seenRequestedRef = useRef(false)
   const detailSession = detail.data?.session
   const sideChatAvailable = isCodexACPSession(detailSession)
@@ -351,23 +349,6 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
     storageKey: `${SESSION_DRAFT_KEY_PREFIX}${sessionId}`,
     storage: 'local',
   })
-
-  // First message handed over from the New-session page. Wait for the session
-  // detail query so StrictMode's initial effect cleanup cannot abort the send.
-  useEffect(() => {
-    if (!detail.isSuccess || sentPendingRef.current === sessionId) return
-    const pending = takePendingMessage(sessionId)
-    if (!pending) return
-    sentPendingRef.current = sessionId
-    void handleSend(pending.text, {
-      planRequested: pending.planRequested,
-      goalRequested: pending.goalRequested,
-      files: pending.files ?? [],
-    }).catch(() => {
-      setPendingMessage(sessionId, pending)
-      sentPendingRef.current = null
-    })
-  }, [detail.isSuccess, handleSend, sessionId])
 
   useEffect(() => {
     if (seenRequestedRef.current) return

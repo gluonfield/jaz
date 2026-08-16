@@ -355,17 +355,8 @@ export type QueueMutation =
   | { op: 'reorder'; ids: string[] }
   | { op: 'steer'; id: string }
 
-export async function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
-  const session = await post<Session>(`/v1/sessions/${id}/queue`, mutation)
-  if (mutation.op === 'append' && !mutation.message.action) {
-    telemetry.messageSent({
-      queued: true,
-      planRequested: Boolean(mutation.message.plan_requested),
-      goalRequested: Boolean(mutation.message.goal_requested),
-      attachmentCount: mutation.message.attachment_ids?.length ?? 0,
-    })
-  }
-  return session
+export function mutateSessionQueue(id: string, mutation: QueueMutation): Promise<Session> {
+  return post<Session>(`/v1/sessions/${id}/queue`, mutation)
 }
 
 export function answerSessionInteractiveResponse(

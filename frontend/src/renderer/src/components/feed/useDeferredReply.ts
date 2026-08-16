@@ -2,9 +2,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
-import { mutateSessionQueue, uploadSessionAttachment } from '@/lib/api/sessions'
+import { mutateSessionQueue } from '@/lib/api/sessions'
 import { keys } from '@/lib/query/keys'
-import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
+import { appendSessionPrompt } from '@/lib/sessionPrompt'
+import type { SendMessageOptions } from '@/lib/sendMessage'
 
 export const COUNTDOWN_SECONDS = 3
 
@@ -43,20 +44,9 @@ export function useDeferredReply(threadId: string, onCommit: () => void) {
 
   const send = useCallback(
     async (text: string, options: SendMessageOptions) => {
-      const uploaded = options.files?.length
-        ? await Promise.all(options.files.map((file) => uploadSessionAttachment(threadId, file)))
-        : []
-      const prepared = preparedSendMessage(options, uploaded)
-      await markThreadSeen(threadId)
-      await mutateSessionQueue(threadId, {
-        op: 'append',
-        message: {
-          text,
-          contexts: prepared.contexts,
-          attachment_ids: prepared.attachmentIds,
-          plan_requested: options.planRequested,
-          goal_requested: options.goalRequested,
-        },
+      await appendSessionPrompt(threadId, text, options, 'queued', async (mutation) => {
+        await markThreadSeen(threadId)
+        await mutateSessionQueue(threadId, mutation)
       })
     },
     [threadId],
