@@ -225,6 +225,11 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 	if !ok {
 		t.Fatalf("unknown probe agent %q", agent)
 	}
+	if command := strings.TrimSpace(os.Getenv("ACP_PROBE_COMMAND")); command != "" {
+		cfg.Command = command
+		cfg.Args = strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_ARGS")))
+		return cfg
+	}
 	switch agent {
 	case AgentCodex:
 		command := strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_COMMAND"))

@@ -382,6 +382,9 @@ func TestServiceAgentModelsIncludesAntigravityModels(t *testing.T) {
 		got = append(got, model.Value)
 	}
 	want := []string{
+		"gemini-3.7-flash-high",
+		"gemini-3.7-flash-medium",
+		"gemini-3.7-flash-low",
 		"gemini-3.6-flash-medium",
 		"gemini-3.6-flash-high",
 		"gemini-3.6-flash-low",

@@ -98,6 +98,9 @@ var (
 			modelWithoutProviderReasoning(GrokComposerModel, "Composer 2.5", "Cursor's coding model"),
 		},
 		"antigravity": {
+			modelWithoutProviderReasoning("gemini-3.7-flash-high", "Gemini 3.7 Flash", "High"),
+			modelWithoutProviderReasoning("gemini-3.7-flash-medium", "Gemini 3.7 Flash", "Medium"),
+			modelWithoutProviderReasoning("gemini-3.7-flash-low", "Gemini 3.7 Flash", "Low"),
 			modelWithoutProviderReasoning("gemini-3.6-flash-medium", "Gemini 3.6 Flash", "Medium"),
 			modelWithoutProviderReasoning("gemini-3.6-flash-high", "Gemini 3.6 Flash", "High"),
 			modelWithoutProviderReasoning("gemini-3.6-flash-low", "Gemini 3.6 Flash", "Low"),
