@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { liveTranscriptMessages } from './liveTranscript'
+import { optimisticTranscriptMessages } from '@/lib/optimisticUserMessage'
+import { liveOptimisticUserMessage } from './liveTranscript'
 
 const message = (seq, role, content) => ({
   seq,
@@ -22,11 +23,14 @@ const live = (user, baselineMessageSeq) => ({
   tools: [],
 })
 
+const projected = (messages, exchange) =>
+  optimisticTranscriptMessages(messages, liveOptimisticUserMessage(exchange))
+
 describe('live transcript projection', () => {
   test('adds the optimistic user message until it is persisted', () => {
     const messages = [message(1, 'assistant', 'ready')]
 
-    expect(liveTranscriptMessages(messages, live('hi', 1), true).map((item) => item.content)).toEqual([
+    expect(projected(messages, live('hi', 1)).map((item) => item.content)).toEqual([
       'ready',
       'hi',
     ])
@@ -39,10 +43,10 @@ describe('live transcript projection', () => {
       message(3, 'assistant', 'hello'),
     ]
 
-    const projected = liveTranscriptMessages(messages, live('hi', 1), true)
+    const result = projected(messages, live('hi', 1))
 
-    expect(projected.map((item) => item.content)).toEqual(['ready', 'hi', 'hello'])
-    expect(projected[1].created_at).toBe(new Date(1500).toISOString())
+    expect(result.map((item) => item.content)).toEqual(['ready', 'hi', 'hello'])
+    expect(result[1].created_at).toBe(new Date(1500).toISOString())
   })
 
   test('drops a stale optimistic message after a steered successor is persisted', () => {
@@ -52,7 +56,7 @@ describe('live transcript projection', () => {
       message(3, 'user', 'two'),
     ]
 
-    expect(liveTranscriptMessages(messages, live('hi', 0), true)).toBe(messages)
+    expect(projected(messages, live('hi', 0))).toBe(messages)
   })
 
   test('does not mistake the same text from before the send baseline for its message', () => {
@@ -61,7 +65,7 @@ describe('live transcript projection', () => {
       message(2, 'assistant', 'hello'),
     ]
 
-    expect(liveTranscriptMessages(messages, live('hi', 2), true).map((item) => item.content)).toEqual([
+    expect(projected(messages, live('hi', 2)).map((item) => item.content)).toEqual([
       'hi',
       'hello',
       'hi',

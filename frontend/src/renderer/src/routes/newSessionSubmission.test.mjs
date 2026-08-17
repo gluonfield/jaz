@@ -13,17 +13,20 @@ test('opens with the first prompt visible only after persisting it once', async 
       route: '/sessions/session-1',
       initialPrompt: {
         sessionId: 'session-1',
-        user: ' inspect this ',
         baselineMessageSeq: 0,
-        planRequested: true,
-        goalRequested: true,
-        contexts: [{ id: 'selection-1', type: 'selection', text: ' evidence ', comment: ' note ' }],
-        attachments: [{ id: 'attachment-1', name: 'evidence.txt' }],
-        reasoning: '',
-        assistant: '',
-        tools: [],
-        validTimestamp: true,
+        message: {
+          role: 'user',
+          content: 'inspect this',
+          blocks: [
+            { type: 'quote', text: 'evidence', comment: 'note' },
+            { type: 'text', text: 'inspect this' },
+            { type: 'attachment', id: 'attachment-1', name: 'evidence.txt' },
+          ],
+          validTimestamp: true,
+        },
       },
+      projectedBeforeHistory: ['inspect this'],
+      projectedAfterHistory: ['server copy'],
       requests: [
         { path: '/v1/sessions', body: { title: 'Inspect this' } },
         {

@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { layoutPoint, layoutRect, layoutViewport } from '@/lib/dom/zoom'
+import { bindPopoverEvents } from './popoverEvents'
 
 const GAP = 6
 
@@ -26,7 +27,7 @@ export function Popover({
   children,
   placement = 'above',
   align = 'start',
-  trackAnchor = false,
+  followAnchor = false,
 }: {
   open: boolean
   onClose: () => void
@@ -36,12 +37,13 @@ export function Popover({
   // 'end' anchors the panel to the trigger's right edge, for triggers near
   // the window's right side.
   align?: 'start' | 'end'
-  trackAnchor?: boolean
+  followAnchor?: boolean
 }) {
   const anchorRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const reducedMotion = useReducedMotion()
   const [rect, setRect] = useState<DOMRect | null>(null)
+  const wasOpen = useRef(false)
   const updateRect = useCallback(() => {
     const next = anchorRef.current ? layoutRect(anchorRef.current) : null
     setRect((current) => {
@@ -51,53 +53,21 @@ export function Popover({
   }, [])
 
   useLayoutEffect(() => {
-    if (open) updateRect()
-  }, [open, updateRect])
+    const shouldUpdate = open && (followAnchor || !wasOpen.current)
+    wasOpen.current = open
+    if (shouldUpdate) updateRect()
+  })
 
   useEffect(() => {
     if (!open) return
-    let frame = 0
-    const scheduleRectUpdate = () => {
-      window.cancelAnimationFrame(frame)
-      frame = window.requestAnimationFrame(updateRect)
-    }
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node
-      if (anchorRef.current?.contains(t) || menuRef.current?.contains(t)) return
-      onClose()
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      e.stopPropagation()
-      onClose()
-    }
-    // Most menus close when their surface moves. Long-lived menus can instead
-    // follow a trigger inside a changing or scrolling surface.
-    const onScroll = (e: Event) => {
-      if (menuRef.current?.contains(e.target as Node)) return
-      if (trackAnchor) {
-        scheduleRectUpdate()
-        return
-      }
-      onClose()
-    }
-    const onResize = trackAnchor ? scheduleRectUpdate : onClose
-    const layoutRoot = trackAnchor ? anchorRef.current?.closest('nav') : null
-    const mutationObserver = layoutRoot ? new MutationObserver(scheduleRectUpdate) : null
-    if (layoutRoot) mutationObserver?.observe(layoutRoot, { attributes: true, childList: true, subtree: true })
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', onResize)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      mutationObserver?.disconnect()
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-      window.removeEventListener('scroll', onScroll, true)
-      window.removeEventListener('resize', onResize)
-    }
-  }, [open, onClose, trackAnchor, updateRect])
+    return bindPopoverEvents({
+      anchor: () => anchorRef.current,
+      menu: () => menuRef.current,
+      followAnchor,
+      onAnchorMove: updateRect,
+      onClose,
+    })
+  }, [followAnchor, onClose, open, updateRect])
 
   const slide = reducedMotion ? 0 : placement === 'above' ? 6 : -6
   let style: CSSProperties = {}
@@ -115,7 +85,7 @@ export function Popover({
     <div ref={anchorRef} className="relative" data-escape-surface={open ? '' : undefined}>
       {trigger}
       {createPortal(
-        <AnimatePresence>
+        <AnimatePresence initial={false}>
           {open && rect ? (
             <motion.div
               ref={menuRef}

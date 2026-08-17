@@ -3,7 +3,7 @@ import {
   type QueueMutation,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
-import type { Attachment } from '@/lib/api/types'
+import type { Attachment, QueuedMessageInput } from '@/lib/api/types'
 import { normalizeQueuedMessageInput } from '@/lib/sessionQueue'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { telemetry } from '@/lib/telemetry'
@@ -11,6 +11,11 @@ import { telemetry } from '@/lib/telemetry'
 type AppendMutation = Extract<QueueMutation, { op: 'append' }>
 type Append = (mutation: AppendMutation) => Promise<void>
 type PromptKind = 'initial' | 'queued'
+
+export interface AppendedSessionPrompt {
+  message: QueuedMessageInput
+  attachments: Attachment[]
+}
 
 export async function appendSessionPrompt(
   sessionId: string,
@@ -20,7 +25,7 @@ export async function appendSessionPrompt(
   append: Append = async (mutation) => {
     await mutateSessionQueue(sessionId, mutation)
   },
-): Promise<Attachment[]> {
+): Promise<AppendedSessionPrompt | null> {
   const uploaded = options.files?.length
     ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
     : []
@@ -32,7 +37,7 @@ export async function appendSessionPrompt(
     plan_requested: options.planRequested,
     goal_requested: options.goalRequested,
   })
-  if (!prompt) return uploaded
+  if (!prompt) return null
   await append({ op: 'append', message: prompt })
   telemetry.messageSent({
     queued: kind === 'queued',
@@ -40,5 +45,5 @@ export async function appendSessionPrompt(
     goalRequested: Boolean(prompt.goal_requested),
     attachmentCount: prompt.attachment_ids?.length ?? 0,
   })
-  return uploaded
+  return { message: prompt, attachments: [...(options.attachments ?? []), ...uploaded] }
 }

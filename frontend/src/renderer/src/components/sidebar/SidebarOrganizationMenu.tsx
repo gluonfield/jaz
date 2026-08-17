@@ -37,7 +37,7 @@ export function SidebarOrganizationMenu({
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
   return (
-    <div className="group/organization flex h-[30px] items-center justify-between pl-2.5 pr-1 max-sm:h-11 max-sm:pl-3">
+    <div className="group/organization flex h-10 items-center justify-between pl-2.5 max-sm:h-11 max-sm:pl-3">
       <p className="text-[13px] font-semibold text-ink max-sm:text-[15px]">
         {organization === 'project' ? 'Projects' : 'Recents'}
       </p>
@@ -46,7 +46,7 @@ export function SidebarOrganizationMenu({
         onClose={close}
         placement="below"
         align="end"
-        trackAnchor
+        followAnchor
         trigger={
           <button
             type="button"
@@ -55,7 +55,7 @@ export function SidebarOrganizationMenu({
             aria-label="Organize sidebar"
             title="Organize sidebar"
             onClick={() => setOpen((value) => !value)}
-            className="grid size-6 place-items-center rounded-full text-ink-3 opacity-70 transition-[background-color,color,opacity] duration-150 hover:bg-list-hover hover:text-ink hover:opacity-100 focus-visible:ring-2 focus-visible:ring-primary/40 group-hover/organization:opacity-100 max-sm:size-11"
+            className="grid size-10 place-items-center rounded-full text-ink-3 opacity-70 transition-[background-color,color,opacity,scale] duration-150 hover:bg-list-hover hover:text-ink hover:opacity-100 active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-primary/40 group-hover/organization:opacity-100 max-sm:size-11"
           >
             <MoreHorizontal size={15} />
           </button>

@@ -50,13 +50,30 @@ await started.promise
 const beforeAcknowledgement = { route, settled }
 durable.resolve()
 await pending
-const { at, ...displayPrompt } = initialPrompt
+const { created_at, ...displayMessage } = initialPrompt.message
+const { optimisticTranscriptMessages, pendingOptimisticUserMessage } = await import('../lib/optimisticUserMessage')
+const beforeHistory = []
+const projectedBeforeHistory = optimisticTranscriptMessages(
+  beforeHistory,
+  pendingOptimisticUserMessage(beforeHistory, initialPrompt),
+).map((message) => message.content)
+const afterHistory = [{ ...initialPrompt.message, seq: 1, content: 'server copy' }]
+const projectedAfterHistory = optimisticTranscriptMessages(
+  afterHistory,
+  pendingOptimisticUserMessage(afterHistory, initialPrompt),
+).map((message) => message.content)
 globalThis.postMessage({
   beforeAcknowledgement,
   route,
   initialPrompt: {
-    ...displayPrompt,
-    validTimestamp: !Number.isNaN(Date.parse(at)),
+    sessionId: initialPrompt.sessionId,
+    baselineMessageSeq: initialPrompt.baselineMessageSeq,
+    message: {
+      ...displayMessage,
+      validTimestamp: !Number.isNaN(Date.parse(created_at)),
+    },
   },
+  projectedBeforeHistory,
+  projectedAfterHistory,
   requests,
 })

@@ -13,6 +13,7 @@ import { SessionErrorNotice, type SessionErrorAction } from '@/components/sessio
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { GoalStatusBar } from '@/components/session/GoalStatusBar'
 import { PendingSteerBubble } from '@/components/session/PendingSteerBubble'
+import { PendingSessionHistory } from '@/components/session/PendingSessionHistory'
 import { SidePanel, type SidePanelView } from '@/components/session/SidePanel'
 import { SidePanelResizeHandle } from '@/components/session/SidePanelResizeHandle'
 import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
@@ -27,11 +28,10 @@ import { deriveSessionView, isCodexACPSession, sessionEventErrorMessage } from '
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { useThreadFind } from '@/components/session/useThreadFind'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
-import { liveTranscriptMessages } from '@/components/session/liveTranscript'
+import { liveOptimisticUserMessage } from '@/components/session/liveTranscript'
 import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { FileDropScope } from '@/components/ui/FileDrop'
-import { Skeleton, SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
 import {
@@ -52,6 +52,10 @@ import { keys } from '@/lib/query/keys'
 import { type PlanApprovalAction } from '@/lib/taskSurface'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
+import {
+  optimisticTranscriptMessages,
+  pendingOptimisticUserMessage,
+} from '@/lib/optimisticUserMessage'
 import { useTitlebarActions, useTitlebarSlot } from '@/lib/titlebar'
 import type { InitialSessionPrompt } from './-newSessionSubmission'
 
@@ -390,23 +394,7 @@ function SessionPage({
     [data, events.data, overviewData],
   )
   if (detail.isPending) {
-    return (
-      <div className={`${THREAD_COLUMN_CLASS} pt-2`}>
-        {initialPrompt ? (
-          <UserBubble
-            text={initialPrompt.user}
-            contexts={initialPrompt.contexts}
-            attachments={initialPrompt.attachments}
-            attachmentSessionId={sessionId}
-          />
-        ) : (
-          <>
-            <Skeleton className="mb-6 h-7 w-64" />
-            <SkeletonRows count={5} />
-          </>
-        )}
-      </div>
-    )
+    return <PendingSessionHistory sessionId={sessionId} initialPrompt={initialPrompt} />
   }
 
   if (detail.isError) {
@@ -452,12 +440,13 @@ function SessionPage({
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
   const pendingSteer = session.pending_steer_message
-  const transcriptLive = live ?? initialPrompt ?? null
-  const empty = messages.length === 0 && transcriptEvents.length === 0 && !transcriptLive && !visibleSessionError && !sessionRunning
+  const initialUser = pendingOptimisticUserMessage(messages, initialPrompt ?? null)
+  const optimisticUser = isACP && live ? liveOptimisticUserMessage(live) : initialUser
+  const empty = messages.length === 0 && transcriptEvents.length === 0 && !optimisticUser && !visibleSessionError && !sessionRunning
   // ACP turns stream through events. While the request is active, the local
   // send time is the turn boundary; replayed user rows can be timestamped after
   // early live events and would otherwise fold those events into the prior turn.
-  const transcriptMessages = liveTranscriptMessages(messages, transcriptLive, isACP)
+  const transcriptMessages = optimisticTranscriptMessages(messages, optimisticUser)
   const goalStatusVisible = goalActive
   const canContinueFromInlineError =
     isACP && !sessionRunning && !streaming && (!live || Boolean(live.error)) && !hasBlockingPendingPermission
