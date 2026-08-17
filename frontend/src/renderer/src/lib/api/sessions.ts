@@ -383,8 +383,6 @@ export const archivedSessionsQuery = queryOptions({
   },
 })
 
-export const SIDEBAR_SESSION_LIMIT = 7
-
 function sessionTime(session: Session): number {
   const ms = Date.parse(session.last_attention_at || session.updated_at)
   return Number.isNaN(ms) ? 0 : ms
@@ -459,14 +457,6 @@ export const sidebarSessionsQuery = queryOptions({
   // Tighten the poll while a thread is running so status dots stay live.
   refetchInterval: (query) =>
     query.state.data?.some((item) => item.session.status === 'running') ? 3_000 : 15_000,
-})
-
-export const allSessionsQuery = queryOptions({
-  queryKey: keys.allSessions,
-  queryFn: async () => {
-    const data = await get<{ sessions: Session[] | null }>('/v1/sessions?include_children=true')
-    return groupSessionsForDisplay(data.sessions ?? [])
-  },
 })
 
 // Stored events carry only the acp session id and slug; session-constant

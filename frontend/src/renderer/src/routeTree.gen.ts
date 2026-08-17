@@ -13,7 +13,6 @@ import { Route as NewRouteImport } from './routes/new'
 import { Route as LauncherRouteImport } from './routes/launcher'
 import { Route as FeedRouteImport } from './routes/feed'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as SessionsIndexRouteImport } from './routes/sessions.index'
 import { Route as LoopsIndexRouteImport } from './routes/loops.index'
 import { Route as BoardsIndexRouteImport } from './routes/boards.index'
 import { Route as SessionsSessionIdRouteImport } from './routes/sessions.$sessionId'
@@ -38,11 +37,6 @@ const FeedRoute = FeedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SessionsIndexRoute = SessionsIndexRouteImport.update({
-  id: '/sessions/',
-  path: '/sessions/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoopsIndexRoute = LoopsIndexRouteImport.update({
@@ -81,7 +75,6 @@ export interface FileRoutesByFullPath {
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/boards/': typeof BoardsIndexRoute
   '/loops/': typeof LoopsIndexRoute
-  '/sessions/': typeof SessionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -93,7 +86,6 @@ export interface FileRoutesByTo {
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/boards': typeof BoardsIndexRoute
   '/loops': typeof LoopsIndexRoute
-  '/sessions': typeof SessionsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -106,7 +98,6 @@ export interface FileRoutesById {
   '/sessions/$sessionId': typeof SessionsSessionIdRoute
   '/boards/': typeof BoardsIndexRoute
   '/loops/': typeof LoopsIndexRoute
-  '/sessions/': typeof SessionsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -120,7 +111,6 @@ export interface FileRouteTypes {
     | '/sessions/$sessionId'
     | '/boards/'
     | '/loops/'
-    | '/sessions/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -132,7 +122,6 @@ export interface FileRouteTypes {
     | '/sessions/$sessionId'
     | '/boards'
     | '/loops'
-    | '/sessions'
   id:
     | '__root__'
     | '/'
@@ -144,7 +133,6 @@ export interface FileRouteTypes {
     | '/sessions/$sessionId'
     | '/boards/'
     | '/loops/'
-    | '/sessions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -157,7 +145,6 @@ export interface RootRouteChildren {
   SessionsSessionIdRoute: typeof SessionsSessionIdRoute
   BoardsIndexRoute: typeof BoardsIndexRoute
   LoopsIndexRoute: typeof LoopsIndexRoute
-  SessionsIndexRoute: typeof SessionsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -188,13 +175,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sessions/': {
-      id: '/sessions/'
-      path: '/sessions'
-      fullPath: '/sessions/'
-      preLoaderRoute: typeof SessionsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/loops/': {
@@ -245,7 +225,6 @@ const rootRouteChildren: RootRouteChildren = {
   SessionsSessionIdRoute: SessionsSessionIdRoute,
   BoardsIndexRoute: BoardsIndexRoute,
   LoopsIndexRoute: LoopsIndexRoute,
-  SessionsIndexRoute: SessionsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

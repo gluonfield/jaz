@@ -89,7 +89,6 @@ export function useLiveSessionSend({
         }
         await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.allSessions })
         queryClient.invalidateQueries({ queryKey: keys.usage })
         queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
         if (current) {

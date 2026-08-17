@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { type CSSProperties, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { layoutPoint, layoutRect, layoutViewport } from '@/lib/dom/zoom'
 
@@ -9,6 +9,10 @@ const GAP = 6
 // no-drag keeps the panel clickable when it overlaps the titlebar drag region.
 const menuPanelClass =
   'min-w-[176px] rounded-[14px] bg-surface p-1.5 shadow-xl ring-1 ring-border [-webkit-app-region:no-drag]'
+
+function sameRect(a: DOMRect | null, b: DOMRect): boolean {
+  return a?.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
+}
 
 // A floating menu anchored to its trigger, dismissed on outside-click/Escape.
 // The panel is portaled and fixed-positioned to the trigger so it can't be
@@ -22,6 +26,7 @@ export function Popover({
   children,
   placement = 'above',
   align = 'start',
+  trackAnchor = false,
 }: {
   open: boolean
   onClose: () => void
@@ -31,18 +36,31 @@ export function Popover({
   // 'end' anchors the panel to the trigger's right edge, for triggers near
   // the window's right side.
   align?: 'start' | 'end'
+  trackAnchor?: boolean
 }) {
   const anchorRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const reducedMotion = useReducedMotion()
   const [rect, setRect] = useState<DOMRect | null>(null)
+  const updateRect = useCallback(() => {
+    const next = anchorRef.current ? layoutRect(anchorRef.current) : null
+    setRect((current) => {
+      if (!next || sameRect(current, next)) return current
+      return next
+    })
+  }, [])
 
   useLayoutEffect(() => {
-    if (open && anchorRef.current) setRect(layoutRect(anchorRef.current))
-  }, [open])
+    if (open) updateRect()
+  }, [open, updateRect])
 
   useEffect(() => {
     if (!open) return
+    let frame = 0
+    const scheduleRectUpdate = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(updateRect)
+    }
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node
       if (anchorRef.current?.contains(t) || menuRef.current?.contains(t)) return
@@ -53,23 +71,33 @@ export function Popover({
       e.stopPropagation()
       onClose()
     }
-    // Fixed to the trigger: close rather than chase it when an outer surface
-    // scrolls or the window resizes. Scrolling inside the menu stays open.
+    // Most menus close when their surface moves. Long-lived menus can instead
+    // follow a trigger inside a changing or scrolling surface.
     const onScroll = (e: Event) => {
       if (menuRef.current?.contains(e.target as Node)) return
+      if (trackAnchor) {
+        scheduleRectUpdate()
+        return
+      }
       onClose()
     }
+    const onResize = trackAnchor ? scheduleRectUpdate : onClose
+    const layoutRoot = trackAnchor ? anchorRef.current?.closest('nav') : null
+    const mutationObserver = layoutRoot ? new MutationObserver(scheduleRectUpdate) : null
+    if (layoutRoot) mutationObserver?.observe(layoutRoot, { attributes: true, childList: true, subtree: true })
     document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey)
     window.addEventListener('scroll', onScroll, true)
-    window.addEventListener('resize', onClose)
+    window.addEventListener('resize', onResize)
     return () => {
+      window.cancelAnimationFrame(frame)
+      mutationObserver?.disconnect()
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('keydown', onKey)
       window.removeEventListener('scroll', onScroll, true)
-      window.removeEventListener('resize', onClose)
+      window.removeEventListener('resize', onResize)
     }
-  }, [open, onClose])
+  }, [open, onClose, trackAnchor, updateRect])
 
   const slide = reducedMotion ? 0 : placement === 'above' ? 6 : -6
   let style: CSSProperties = {}

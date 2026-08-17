@@ -271,7 +271,6 @@ function SessionPage({
       .finally(() => {
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.allSessions })
         queryClient.invalidateQueries({ queryKey: keys.usage })
       })
   }, [abortLiveMessage, queryClient, sessionId])
@@ -293,7 +292,6 @@ function SessionPage({
     // Never invalidate sessionEvents: its queryFn returns [], wiping the SSE cache.
     queryClient.invalidateQueries({ queryKey: keys.sessionMessages(targetSessionID) })
     queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-    queryClient.invalidateQueries({ queryKey: keys.allSessions })
     queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [handleSend, queryClient, sessionId])
 
@@ -332,7 +330,6 @@ function SessionPage({
     }
     queryClient.invalidateQueries({ queryKey: keys.sessionMessages(approval.sessionId) })
     queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-    queryClient.invalidateQueries({ queryKey: keys.allSessions })
     queryClient.invalidateQueries({ queryKey: keys.usage })
   }, [queryClient, sendACPFallback, sessionId])
 

@@ -39,7 +39,6 @@ export function useSessionQueue({
           prev ? { ...prev, session: { ...prev.session, ...updated } } : prev,
         )
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.allSessions })
       } catch (error) {
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         throw error
@@ -82,7 +81,6 @@ export function useSessionQueue({
         await mutateQueue({ op: 'steer', id })
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-        queryClient.invalidateQueries({ queryKey: keys.allSessions })
       } catch (error) {
         queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
         toast(`Couldn't steer prompt: ${(error as Error).message}`, 'danger')

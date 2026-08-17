@@ -71,7 +71,6 @@ function ArchivedRow({ session, child = false }: { session: Session; child?: boo
     onError: (error: Error) => toast(`Couldn't restore: ${error.message}`, 'danger'),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.allSessions })
       queryClient.invalidateQueries({ queryKey: keys.archivedSessions })
     },
   })

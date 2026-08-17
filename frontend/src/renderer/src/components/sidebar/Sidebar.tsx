@@ -11,7 +11,6 @@ import { feedQuery } from '@/lib/api/feed'
 import {
   projectsQuery,
   reorderProjects,
-  SIDEBAR_SESSION_LIMIT,
   sidebarSessionsQuery,
   type Project,
   type SessionListItem,
@@ -29,8 +28,7 @@ import {
 } from './SidebarOrganizationMenu'
 import { SessionRow } from './SessionRow'
 
-const PROJECT_SESSION_LIMIT = 5
-const DEFAULT_SESSION_LIMIT = 5
+const SESSION_PAGE_SIZE = 50
 const COLLAPSED_PROJECTS_KEY = 'jaz.sidebar.collapsedProjects'
 // pl-9 = row padding (10px) + icon gutter (18px) + gap (8px): the one column
 // every sidebar label starts on, whether or not the row draws a glyph there.
@@ -158,7 +156,7 @@ function storeCollapsedProjects(paths: Set<string>): void {
 }
 
 function projectSessionSlice(group: SessionProjectGroup, showAll: boolean): SessionListItem[] {
-  return showAll ? group.items : group.items.slice(0, PROJECT_SESSION_LIMIT)
+  return showAll ? group.items : group.items.slice(0, SESSION_PAGE_SIZE)
 }
 
 function sessionListItemTime(item: SessionListItem): number {
@@ -190,7 +188,7 @@ function sessionDisplayBlocks(
     const ungroupedBlock: SessionDisplayBlock = {
       kind: 'ungrouped',
       key: 'ungrouped',
-      items: ungrouped.slice(0, DEFAULT_SESSION_LIMIT),
+      items: showAllProjects.has('ungrouped') ? ungrouped : ungrouped.slice(0, SESSION_PAGE_SIZE),
       total: ungrouped.length,
     }
     const time = sessionListItemsTime(ungrouped)
@@ -336,10 +334,12 @@ function ProjectGroup({
 
 function UngroupedSessionsBlock({
   block,
+  onShowMore,
   shortcutByID,
   shortcutMode,
 }: {
   block: Extract<SessionDisplayBlock, { kind: 'ungrouped' }>
+  onShowMore: () => void
   shortcutByID: Map<string, number>
   shortcutMode: boolean
 }) {
@@ -360,15 +360,14 @@ function UngroupedSessionsBlock({
         No project
       </p>
       <SessionRows items={block.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
-      {block.total > DEFAULT_SESSION_LIMIT ? (
-        <Link
-          to="/sessions"
+      {block.items.length < block.total ? (
+        <button
+          type="button"
+          onClick={onShowMore}
           className={MORE_ACTION_CLASS}
-          activeOptions={{ exact: true }}
-          activeProps={{ className: 'bg-list-active! opacity-100!' }}
         >
-          Show all threads
-        </Link>
+          Show more
+        </button>
       ) : null}
     </Reorder.Item>
   )
@@ -383,7 +382,8 @@ function SessionsSection({ open }: { open: boolean }) {
   const recentSessionItems = withLocalChildState(
     (sessions.data ?? []).filter((item) => !item.session.pinned),
   )
-  const visibleRecentItems = recentSessionItems.slice(0, SIDEBAR_SESSION_LIMIT)
+  const [visibleRecentCount, setVisibleRecentCount] = useState(SESSION_PAGE_SIZE)
+  const visibleRecentItems = recentSessionItems.slice(0, visibleRecentCount)
   const sections = sessionsBySavedProject(
     recentSessionItems,
     projects.data ?? [],
@@ -511,6 +511,7 @@ function SessionsSection({ open }: { open: boolean }) {
                       <UngroupedSessionsBlock
                         key={block.key}
                         block={block}
+                        onShowMore={() => expandProject(block.key)}
                         shortcutByID={shortcutByID}
                         shortcutMode={shortcutMode}
                       />
@@ -527,15 +528,14 @@ function SessionsSection({ open }: { open: boolean }) {
                   shortcutByID={shortcutByID}
                   shortcutMode={shortcutMode}
                 />
-                {recentSessionItems.length > SIDEBAR_SESSION_LIMIT ? (
-                  <Link
-                    to="/sessions"
+                {visibleRecentItems.length < recentSessionItems.length ? (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleRecentCount((count) => count + SESSION_PAGE_SIZE)}
                     className={MORE_ACTION_CLASS}
-                    activeOptions={{ exact: true }}
-                    activeProps={{ className: 'bg-list-active! opacity-100!' }}
                   >
-                    Show all threads
-                  </Link>
+                    Show more
+                  </button>
                 ) : null}
               </div>
             ) : !hasSessions ? (
