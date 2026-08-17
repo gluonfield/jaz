@@ -8,13 +8,25 @@ import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { Collapse } from '@/components/ui/Collapse'
 import { UpdatePanel } from '@/components/update/UpdatePanel'
 import { feedQuery } from '@/lib/api/feed'
-import { projectsQuery, reorderProjects, sidebarSessionsQuery, type Project, type SessionListItem } from '@/lib/api/sessions'
+import {
+  projectsQuery,
+  reorderProjects,
+  SIDEBAR_SESSION_LIMIT,
+  sidebarSessionsQuery,
+  type Project,
+  type SessionListItem,
+} from '@/lib/api/sessions'
 import { useShowModelIcons } from '@/lib/appearance'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { keys } from '@/lib/query/keys'
 import { SkeletonRows } from '../ui/Skeleton'
+import {
+  SidebarOrganizationMenu,
+  type SidebarOrganization,
+  useSidebarOrganization,
+} from './SidebarOrganizationMenu'
 import { SessionRow } from './SessionRow'
 
 const PROJECT_SESSION_LIMIT = 5
@@ -339,6 +351,14 @@ function UngroupedSessionsBlock({
       transition={ROW_SPRING}
       dragListener={false}
     >
+      <p
+        className={`flex h-[30px] items-center gap-2 px-2.5 max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 ${SECTION_HEADING_CLASS}`}
+      >
+        <span className="grid size-[18px] shrink-0 place-items-center">
+          <Folder size={15} className="text-ink-3" />
+        </span>
+        No project
+      </p>
       <SessionRows items={block.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
       {block.total > DEFAULT_SESSION_LIMIT ? (
         <Link
@@ -358,9 +378,14 @@ function SessionsSection({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
   const sessions = useQuery(sidebarSessionsQuery)
   const projects = useQuery(projectsQuery)
+  const [organization, setOrganization] = useSidebarOrganization()
   const pinnedItems = withLocalChildState((sessions.data ?? []).filter((item) => item.session.pinned))
-  const sections = sessionsBySavedProject(
+  const recentSessionItems = withLocalChildState(
     (sessions.data ?? []).filter((item) => !item.session.pinned),
+  )
+  const visibleRecentItems = recentSessionItems.slice(0, SIDEBAR_SESSION_LIMIT)
+  const sections = sessionsBySavedProject(
+    recentSessionItems,
     projects.data ?? [],
   )
   const [showAllProjects, setShowAllProjects] = useState<Set<string>>(() => new Set())
@@ -378,23 +403,30 @@ function SessionsSection({ open }: { open: boolean }) {
     () => sessionDisplayBlocks(pinnedItems, groups, sections.ungrouped, showAllProjects, collapsedProjects),
     [collapsedProjects, groups, pinnedItems, sections.ungrouped, showAllProjects],
   )
-  const hasSessions = blocks.length > 0
+  const hasSessions = (sessions.data?.length ?? 0) > 0
+  const pinnedBlock = blocks.find((block): block is Extract<SessionDisplayBlock, { kind: 'pinned' }> =>
+    block.kind === 'pinned',
+  )
+  const sessionBlocks = blocks.filter((block) => block.kind !== 'pinned')
   const shortcutItems = useMemo(
-    () =>
-      blocks
-        .flatMap((block) => block.kind === 'project' && block.collapsed ? [] : block.items)
-        .slice(0, 9),
-    [blocks],
+    () => [
+      ...pinnedItems,
+      ...(organization === 'project'
+        ? sessionBlocks.flatMap((block) => block.kind === 'project' && block.collapsed ? [] : block.items)
+        : visibleRecentItems),
+    ].slice(0, 9),
+    [organization, pinnedItems, sessionBlocks, visibleRecentItems],
   )
   const shortcutByID = useMemo(
     () => new Map(shortcutItems.map((item, index) => [item.session.id, index + 1])),
     [shortcutItems],
   )
   const shortcutMode = useThreadShortcuts(shortcutItems, open && hasSessions)
-  const pinnedBlock = blocks.find((block): block is Extract<SessionDisplayBlock, { kind: 'pinned' }> =>
-    block.kind === 'pinned',
-  )
-  const sessionBlocks = blocks.filter((block) => block.kind !== 'pinned')
+
+  const changeOrganization = (next: SidebarOrganization) => {
+    setOrganization(next)
+    setDragOrder(null)
+  }
 
   const expandProject = (key: string) =>
     setShowAllProjects((current) => {
@@ -429,12 +461,10 @@ function SessionsSection({ open }: { open: boolean }) {
 
   return (
     <section className="shrink-0">
-      {sessions.isPending || projects.isPending ? (
+      {sessions.isPending || organization === 'project' && projects.isPending ? (
         <SkeletonRows count={4} />
       ) : sessions.isError ? (
         <p className="px-2.5 py-1 text-[13px] text-ink-3">Backend unreachable</p>
-      ) : !hasSessions ? (
-        <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
       ) : (
         <div className="flex flex-col gap-3">
           {pinnedBlock ? (
@@ -453,38 +483,65 @@ function SessionsSection({ open }: { open: boolean }) {
               <SessionRows items={pinnedBlock.items} shortcutByID={shortcutByID} shortcutMode={shortcutMode} />
             </div>
           ) : null}
-          {sessionBlocks.length > 0 ? (
-            <Reorder.Group
-              as="div"
-              axis="y"
-              values={sessionBlocks.map((block) => block.key)}
-              onReorder={setDragOrder}
-              className="flex flex-col gap-3"
-            >
-              {sessionBlocks.map((block) =>
-                block.kind === 'project' ? (
-                  <ProjectGroup
-                    key={block.key}
-                    group={block.group}
-                    items={block.items}
-                    collapsed={block.collapsed}
-                    onToggle={() => toggleProject(block.key)}
-                    onShowMore={() => expandProject(block.key)}
-                    onReorderEnd={commitReorder}
-                    shortcutByID={shortcutByID}
-                    shortcutMode={shortcutMode}
-                  />
-                ) : (
-                  <UngroupedSessionsBlock
-                    key={block.key}
-                    block={block}
-                    shortcutByID={shortcutByID}
-                    shortcutMode={shortcutMode}
-                  />
-                ),
-              )}
-            </Reorder.Group>
-          ) : null}
+          <div>
+            <SidebarOrganizationMenu organization={organization} onChange={changeOrganization} />
+            {organization === 'project' ? (
+              sessionBlocks.length > 0 ? (
+                <Reorder.Group
+                  as="div"
+                  axis="y"
+                  values={sessionBlocks.map((block) => block.key)}
+                  onReorder={setDragOrder}
+                  className="mt-1 flex flex-col gap-3"
+                >
+                  {sessionBlocks.map((block) =>
+                    block.kind === 'project' ? (
+                      <ProjectGroup
+                        key={block.key}
+                        group={block.group}
+                        items={block.items}
+                        collapsed={block.collapsed}
+                        onToggle={() => toggleProject(block.key)}
+                        onShowMore={() => expandProject(block.key)}
+                        onReorderEnd={commitReorder}
+                        shortcutByID={shortcutByID}
+                        shortcutMode={shortcutMode}
+                      />
+                    ) : (
+                      <UngroupedSessionsBlock
+                        key={block.key}
+                        block={block}
+                        shortcutByID={shortcutByID}
+                        shortcutMode={shortcutMode}
+                      />
+                    ),
+                  )}
+                </Reorder.Group>
+              ) : !hasSessions ? (
+                <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
+              ) : null
+            ) : visibleRecentItems.length > 0 ? (
+              <div>
+                <SessionRows
+                  items={visibleRecentItems}
+                  shortcutByID={shortcutByID}
+                  shortcutMode={shortcutMode}
+                />
+                {recentSessionItems.length > SIDEBAR_SESSION_LIMIT ? (
+                  <Link
+                    to="/sessions"
+                    className={MORE_ACTION_CLASS}
+                    activeOptions={{ exact: true }}
+                    activeProps={{ className: 'bg-list-active! opacity-100!' }}
+                  >
+                    Show all threads
+                  </Link>
+                ) : null}
+              </div>
+            ) : !hasSessions ? (
+              <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
+            ) : null}
+          </div>
         </div>
       )}
     </section>
