@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-test('opens the session only after persisting its first prompt once', async () => {
+test('opens with the first prompt visible only after persisting it once', async () => {
   const worker = new globalThis.Worker(new globalThis.URL('./newSessionSubmission.worker.mjs', import.meta.url).href)
   try {
     const result = await new Promise((resolve, reject) => {
@@ -11,6 +11,19 @@ test('opens the session only after persisting its first prompt once', async () =
     expect(result).toEqual({
       beforeAcknowledgement: { route: '/new', settled: false },
       route: '/sessions/session-1',
+      initialPrompt: {
+        sessionId: 'session-1',
+        user: ' inspect this ',
+        baselineMessageSeq: 0,
+        planRequested: true,
+        goalRequested: true,
+        contexts: [{ id: 'selection-1', type: 'selection', text: ' evidence ', comment: ' note ' }],
+        attachments: [{ id: 'attachment-1', name: 'evidence.txt' }],
+        reasoning: '',
+        assistant: '',
+        tools: [],
+        validTimestamp: true,
+      },
       requests: [
         { path: '/v1/sessions', body: { title: 'Inspect this' } },
         {

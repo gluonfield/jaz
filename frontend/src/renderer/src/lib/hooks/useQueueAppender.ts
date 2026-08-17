@@ -27,10 +27,12 @@ export function useQueueAppender(sessionId: string, append?: QueueAppendRunner) 
   }, [append, queryClient, sessionId])
 
   const queuePrompt: SendMessageHandler = useCallback((text, options = {}) => {
-    return appendSessionPrompt(sessionId, text, options, 'queued', appendQueue).catch((error) => {
-      toast(`Queue update failed: ${(error as Error).message}`, 'danger')
-      throw error
-    })
+    return appendSessionPrompt(sessionId, text, options, 'queued', appendQueue)
+      .then(() => undefined)
+      .catch((error) => {
+        toast(`Queue update failed: ${(error as Error).message}`, 'danger')
+        throw error
+      })
   }, [appendQueue, sessionId, toast])
 
   const queueAction = useCallback((action: QueuedAction, label: string) => {

@@ -1,5 +1,5 @@
 import { usePrefetchQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useLocation } from '@tanstack/react-router'
 import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
@@ -53,6 +53,7 @@ import { type PlanApprovalAction } from '@/lib/taskSurface'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { latestEventTimeISO } from '@/lib/sessionLiveness'
 import { useTitlebarActions, useTitlebarSlot } from '@/lib/titlebar'
+import type { InitialSessionPrompt } from './-newSessionSubmission'
 
 type SessionSearch = {
   message?: number
@@ -70,7 +71,15 @@ export const Route = createFileRoute('/sessions/$sessionId')({
 function SessionRoute() {
   const { sessionId } = Route.useParams()
   const search = Route.useSearch()
-  return <SessionPage key={sessionId} sessionId={sessionId} search={search} />
+  const initialPrompt = useLocation({ select: (location) => location.state.initialSessionPrompt })
+  return (
+    <SessionPage
+      key={sessionId}
+      sessionId={sessionId}
+      search={search}
+      initialPrompt={initialPrompt?.sessionId === sessionId ? initialPrompt : undefined}
+    />
+  )
 }
 
 function SessionTitlebar({
@@ -159,7 +168,15 @@ const SESSION_DRAFT_KEY_PREFIX = 'jaz.sessionDraft.'
 const TRANSCRIPT_DOCK_GAP_PX = 20
 const EMPTY_OVERVIEW: SessionOverview = { threads: [], subagents: [] }
 
-function SessionPage({ sessionId, search }: { sessionId: string; search: SessionSearch }) {
+function SessionPage({
+  sessionId,
+  search,
+  initialPrompt,
+}: {
+  sessionId: string
+  search: SessionSearch
+  initialPrompt?: InitialSessionPrompt
+}) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const reportHistoryError = useCallback((message: string) => {
@@ -377,9 +394,20 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   )
   if (detail.isPending) {
     return (
-      <div className="mx-auto max-w-[var(--thread-max)] px-10">
-        <Skeleton className="mb-6 h-7 w-64" />
-        <SkeletonRows count={5} />
+      <div className={`${THREAD_COLUMN_CLASS} pt-2`}>
+        {initialPrompt ? (
+          <UserBubble
+            text={initialPrompt.user}
+            contexts={initialPrompt.contexts}
+            attachments={initialPrompt.attachments}
+            attachmentSessionId={sessionId}
+          />
+        ) : (
+          <>
+            <Skeleton className="mb-6 h-7 w-64" />
+            <SkeletonRows count={5} />
+          </>
+        )}
       </div>
     )
   }
@@ -427,11 +455,12 @@ function SessionPage({ sessionId, search }: { sessionId: string; search: Session
   // Covers turns started elsewhere (parent-triggered, or refresh mid-turn).
   const sessionRunning = queue.sessionRunning
   const pendingSteer = session.pending_steer_message
-  const empty = messages.length === 0 && transcriptEvents.length === 0 && !live && !visibleSessionError && !sessionRunning
+  const transcriptLive = live ?? initialPrompt ?? null
+  const empty = messages.length === 0 && transcriptEvents.length === 0 && !transcriptLive && !visibleSessionError && !sessionRunning
   // ACP turns stream through events. While the request is active, the local
   // send time is the turn boundary; replayed user rows can be timestamped after
   // early live events and would otherwise fold those events into the prior turn.
-  const transcriptMessages = liveTranscriptMessages(messages, live, isACP)
+  const transcriptMessages = liveTranscriptMessages(messages, transcriptLive, isACP)
   const goalStatusVisible = goalActive
   const canContinueFromInlineError =
     isACP && !sessionRunning && !streaming && (!live || Boolean(live.error)) && !hasBlockingPendingPermission

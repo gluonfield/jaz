@@ -28,17 +28,19 @@ globalThis.fetch = async (input, init) => {
 const { submitNewSession } = await import('./-newSessionSubmission')
 let route = '/new'
 let settled = false
+let initialPrompt
 const pending = submitNewSession(
   { title: 'Inspect this' },
   ' inspect this ',
   {
     planRequested: true,
     goalRequested: true,
-    attachments: [{ id: 'attachment-1' }],
+    attachments: [{ id: 'attachment-1', name: 'evidence.txt' }],
     contexts: [{ id: 'selection-1', type: 'selection', text: ' evidence ', comment: ' note ' }],
   },
-  (sessionId) => {
-    route = `/sessions/${sessionId}`
+  (prompt) => {
+    route = `/sessions/${prompt.sessionId}`
+    initialPrompt = prompt
   },
 ).then(() => {
   settled = true
@@ -48,4 +50,13 @@ await started.promise
 const beforeAcknowledgement = { route, settled }
 durable.resolve()
 await pending
-globalThis.postMessage({ beforeAcknowledgement, route, requests })
+const { at, ...displayPrompt } = initialPrompt
+globalThis.postMessage({
+  beforeAcknowledgement,
+  route,
+  initialPrompt: {
+    ...displayPrompt,
+    validTimestamp: !Number.isNaN(Date.parse(at)),
+  },
+  requests,
+})

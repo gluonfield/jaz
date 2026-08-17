@@ -60,8 +60,8 @@
 :root {
   color-scheme: light;
 
-  --thread-max: 720px;
-  --prose-max: 76ch;
+  --thread-max: 760px;
+  --prose-max: 80ch;
 
   --z-dropdown: 10;
   /* App-shell / mobile-drawer ladder, below --z-modal so real modals cover it:

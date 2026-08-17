@@ -3,6 +3,7 @@ import {
   type QueueMutation,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
+import type { Attachment } from '@/lib/api/types'
 import { normalizeQueuedMessageInput } from '@/lib/sessionQueue'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { telemetry } from '@/lib/telemetry'
@@ -19,7 +20,7 @@ export async function appendSessionPrompt(
   append: Append = async (mutation) => {
     await mutateSessionQueue(sessionId, mutation)
   },
-): Promise<void> {
+): Promise<Attachment[]> {
   const uploaded = options.files?.length
     ? await Promise.all(options.files.map((file) => uploadSessionAttachment(sessionId, file)))
     : []
@@ -31,7 +32,7 @@ export async function appendSessionPrompt(
     plan_requested: options.planRequested,
     goal_requested: options.goalRequested,
   })
-  if (!prompt) return
+  if (!prompt) return uploaded
   await append({ op: 'append', message: prompt })
   telemetry.messageSent({
     queued: kind === 'queued',
@@ -39,4 +40,5 @@ export async function appendSessionPrompt(
     goalRequested: Boolean(prompt.goal_requested),
     attachmentCount: prompt.attachment_ids?.length ?? 0,
   })
+  return uploaded
 }
