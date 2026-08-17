@@ -306,7 +306,6 @@ func BuiltinAgents() AgentCatalog {
 		AgentGrok: {
 			Command: "grok",
 			Args: []string{
-				"--no-auto-update",
 				"agent",
 				"--no-leader",
 				"--always-approve",

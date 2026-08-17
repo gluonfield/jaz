@@ -228,27 +228,6 @@ func probeAgentConfig(t *testing.T, agent string) AgentConfig {
 	if command := strings.TrimSpace(os.Getenv("ACP_PROBE_COMMAND")); command != "" {
 		cfg.Command = command
 		cfg.Args = strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_ARGS")))
-		return cfg
-	}
-	switch agent {
-	case AgentCodex:
-		command := strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_COMMAND"))
-		if command != "" {
-			cfg.Command = command
-			cfg.Args = strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_CODEX_ARGS")))
-		}
-	case AgentClaude:
-		pkg := strings.TrimSpace(os.Getenv("ACP_PROBE_CLAUDE_PACKAGE"))
-		if pkg != "" {
-			cfg.Command = "npx"
-			cfg.Args = []string{"-y", pkg}
-		}
-	case AgentGrok:
-		command := strings.TrimSpace(os.Getenv("ACP_PROBE_GROK_COMMAND"))
-		if command != "" {
-			cfg.Command = command
-			cfg.Args = strings.Fields(strings.TrimSpace(os.Getenv("ACP_PROBE_GROK_ARGS")))
-		}
 	}
 	if model := strings.TrimSpace(os.Getenv("ACP_PROBE_MODEL")); model != "" {
 		cfg.Model = model

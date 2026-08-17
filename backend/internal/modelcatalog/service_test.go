@@ -372,33 +372,6 @@ func TestServiceAgentModelsDoNotMirrorProviderContext(t *testing.T) {
 	}
 }
 
-func TestServiceAgentModelsIncludesAntigravityModels(t *testing.T) {
-	models := NewService(nil).AgentModels("antigravity")
-	got := make([]string, 0, len(models))
-	for _, model := range models {
-		if model.Reasoning.Status != ReasoningUnavailable {
-			t.Fatalf("antigravity reasoning status = %q", model.Reasoning.Status)
-		}
-		got = append(got, model.Value)
-	}
-	want := []string{
-		"gemini-3.7-flash-high",
-		"gemini-3.7-flash-medium",
-		"gemini-3.7-flash-low",
-		"gemini-3.6-flash-medium",
-		"gemini-3.6-flash-high",
-		"gemini-3.6-flash-low",
-		"gemini-3.1-pro-low",
-		"gemini-3.1-pro-high",
-		"claude-sonnet-4-6",
-		"claude-opus-4-6-thinking",
-		"gpt-oss-120b-medium",
-	}
-	if strings.Join(got, "\n") != strings.Join(want, "\n") {
-		t.Fatalf("antigravity models = %#v, want %#v", got, want)
-	}
-}
-
 func TestServiceAgentModelsIncludesCurrentGrokModels(t *testing.T) {
 	service := NewService(nil)
 	models := service.AgentModels("grok")

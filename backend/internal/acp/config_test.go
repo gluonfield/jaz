@@ -1358,15 +1358,14 @@ func TestAutoAuthMethodReportsMissingGrokAuth(t *testing.T) {
 }
 
 func TestProcessCommandAddsGrokReasoningEffortArg(t *testing.T) {
-	_, args, err := processCommand("grok", AgentConfig{
-		Command:         "grok",
-		Args:            []string{"--no-auto-update", "agent", "--no-leader", "stdio"},
-		ReasoningEffort: "high",
-	})
+	cfg := BuiltinAgents()[AgentGrok]
+	cfg.Model = ""
+	cfg.ReasoningEffort = "high"
+	_, args, err := processCommand(AgentGrok, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "--no-auto-update agent --no-leader --always-approve --reasoning-effort high stdio"
+	want := "agent --no-leader --always-approve --reasoning-effort high stdio"
 	if strings.Join(args, " ") != want {
 		t.Fatalf("args = %q, want %q", strings.Join(args, " "), want)
 	}
