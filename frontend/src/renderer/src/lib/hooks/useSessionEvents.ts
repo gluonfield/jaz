@@ -57,7 +57,6 @@ export function useSessionEvents(
     const invalidateLists = () => {
       listsTimer = null
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.allSessions })
     }
     const stop = openSessionEvents(sessionId, afterSeq, (event: SessionEvent) => {
       onEvent?.(event)

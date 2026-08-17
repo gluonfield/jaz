@@ -35,6 +35,7 @@ export function SidebarOrganizationMenu({
   onChange: (organization: SidebarOrganization) => void
 }) {
   const [open, setOpen] = useState(false)
+  const close = useCallback(() => setOpen(false), [])
   return (
     <div className="group/organization flex h-[30px] items-center justify-between pl-2.5 pr-1 max-sm:h-11 max-sm:pl-3">
       <p className="text-[13px] font-semibold text-ink max-sm:text-[15px]">
@@ -42,9 +43,10 @@ export function SidebarOrganizationMenu({
       </p>
       <Popover
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={close}
         placement="below"
         align="end"
+        trackAnchor
         trigger={
           <button
             type="button"
@@ -64,7 +66,7 @@ export function SidebarOrganizationMenu({
           selected={organization === 'project'}
           onClick={() => {
             onChange('project')
-            setOpen(false)
+            close()
           }}
         >
           By project
@@ -73,7 +75,7 @@ export function SidebarOrganizationMenu({
           selected={organization === 'recent'}
           onClick={() => {
             onChange('recent')
-            setOpen(false)
+            close()
           }}
         >
           In one list

@@ -242,7 +242,6 @@ function ManageSection({
       queryClient.invalidateQueries({ queryKey: keys.session(session.id) })
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.allSessions })
       queryClient.invalidateQueries({ queryKey: keys.usage })
     },
   })
@@ -255,7 +254,6 @@ function ManageSection({
       queryClient.invalidateQueries({ queryKey: keys.session(session.id) })
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.allSessions })
       queryClient.invalidateQueries({ queryKey: keys.archivedSessions })
     },
   })

@@ -105,7 +105,6 @@ function QuestionPermissionCard({
       setLocalAnswered(true)
       await queryClient.invalidateQueries({ queryKey: keys.sessionMessages(event.session_id) })
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
-      queryClient.invalidateQueries({ queryKey: keys.allSessions })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Question response failed.')
     } finally {
