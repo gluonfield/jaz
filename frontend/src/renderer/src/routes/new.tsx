@@ -105,11 +105,16 @@ function NewSessionPage() {
         controls.sessionConfig({ directory, worktree }, text.trim() || undefined),
         text,
         options,
-        (sessionId) => {
+        (initialSessionPrompt) => {
+          const sessionId = initialSessionPrompt.sessionId
           sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
           void deleteAttachmentDraft(NEW_SESSION_DRAFT_KEY, 'session')
           invalidateSessionLists(queryClient, { session: sessionId })
-          void navigate({ to: '/sessions/$sessionId', params: { sessionId } })
+          void navigate({
+            to: '/sessions/$sessionId',
+            params: { sessionId },
+            state: { initialSessionPrompt },
+          })
         },
       )
     } catch (error) {
