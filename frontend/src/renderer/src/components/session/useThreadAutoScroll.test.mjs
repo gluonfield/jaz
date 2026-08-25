@@ -18,3 +18,26 @@ test('thread resize pins content growth while bottom following is active', () =>
   expect(scrollState.resize(viewport)).toBe(false)
   expect(viewport.scrollTop).toBe(1400)
 })
+
+test('layout scroll during send cannot cancel active bottom following', () => {
+  const scrollState = createThreadScrollState()
+  const viewport = { clientHeight: 600, scrollHeight: 1000, scrollTop: 400 }
+  scrollState.resize(viewport)
+  viewport.scrollTop = 400
+  viewport.scrollHeight = 1100
+
+  expect(scrollState.scroll(viewport)).toBe(false)
+  expect(viewport.scrollTop).toBe(1100)
+})
+
+test('viewport movement without content growth pauses bottom following', () => {
+  const scrollState = createThreadScrollState()
+  const viewport = { clientHeight: 600, scrollHeight: 1000, scrollTop: 400 }
+  scrollState.resize(viewport)
+  viewport.scrollTop = 300
+
+  expect(scrollState.scroll(viewport)).toBe(true)
+  viewport.scrollHeight = 1100
+  expect(scrollState.resize(viewport)).toBe(true)
+  expect(viewport.scrollTop).toBe(300)
+})

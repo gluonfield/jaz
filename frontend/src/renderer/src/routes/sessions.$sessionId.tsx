@@ -244,26 +244,36 @@ function SessionPage({
     onClickCapture: onThreadClickCapture,
     scrollToBottom,
     pinToBottom,
+    pauseFollowing,
   } = useThreadAutoScroll({ resetKey: sessionId })
-  const threadFind = useThreadFind(sessionId, scrollRef)
+  const currentSession = detail.data?.session
+  const queue = useSessionQueue({
+    sessionId,
+    session: currentSession,
+    acpState: detail.data?.acp_state,
+    streaming,
+    onSend: sendLiveMessage,
+  })
+  const sendMessage = queue.onSend
+  const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
+    pinToBottom()
+    return sendMessage(text, options)
+  }, [pinToBottom, sendMessage])
+  const threadFind = useThreadFind(sessionId, scrollRef, pauseFollowing)
   const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()
   const jumpedMessageRef = useRef(0)
 
   // The one way into a message: deep links and the outline rail both land here.
   // A jump only reveals and scrolls — it never marks or focuses the target.
   const jumpToMessage = useCallback((messageSeq: number) => {
+    pauseFollowing()
     setRevealedMessageSeq(messageSeq)
     requestAnimationFrame(() => {
       scrollRef.current
         ?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
         ?.scrollIntoView({ block: 'center', inline: 'nearest' })
     })
-  }, [scrollRef])
-
-  const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
-    pinToBottom()
-    return sendLiveMessage(text, options)
-  }, [pinToBottom, sendLiveMessage])
+  }, [pauseFollowing, scrollRef])
 
   // Cancelling clears any active goal server-side, so this doubles as the goal
   // off-switch: it stops a running turn and the auto-continuation loop.
@@ -355,14 +365,6 @@ function SessionPage({
     await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
   }, [queryClient, sessionId])
 
-  const currentSession = detail.data?.session
-  const queue = useSessionQueue({
-    sessionId,
-    session: currentSession,
-    acpState: detail.data?.acp_state,
-    streaming,
-    onSend: handleSend,
-  })
   const composerContexts = useComposerContexts({
     storageKey: `${SESSION_DRAFT_KEY_PREFIX}${sessionId}`,
     storage: 'local',
@@ -510,7 +512,7 @@ function SessionPage({
                       findActive={threadFind.open && Boolean(threadFind.query.trim())}
                       revealSeq={revealedMessageSeq}
                       errorAction={visibleSessionError ? undefined : continueErrorAction}
-                      onArtifactPrompt={queue.onSend}
+                      onArtifactPrompt={handleSend}
                       hasEarlierHistory={detail.data.has_earlier}
                       loadingEarlierHistory={loadingEarlierHistory}
                       onLoadEarlierHistory={loadEarlierHistory}
@@ -547,7 +549,7 @@ function SessionPage({
                                 ...tool,
                                 pending: streaming && tool.result === undefined,
                               }))}
-                              onArtifactPrompt={queue.onSend}
+                              onArtifactPrompt={handleSend}
                             />
                             {live.assistant ? (
                               <MessageMarkdown text={live.assistant} />
@@ -626,7 +628,7 @@ function SessionPage({
                     contexts={composerContexts.contexts}
                     onRemoveContext={composerContexts.removeContext}
                     onReplaceContexts={composerContexts.replaceContexts}
-                    onSend={queue.onSend}
+                    onSend={handleSend}
                     onStop={stopSession}
                     onClearGoal={stopSession}
                     onVoice={undefined}
@@ -678,7 +680,7 @@ function SessionPage({
               onOpenFile={sidePanel.openFile}
               onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
               onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
-              onSend={queue.onSend}
+              onSend={handleSend}
               onQueuePrompt={queue.onQueuePrompt}
               onQueueAction={queue.onQueueAction}
               onSendSideChat={handleSideChatSend}

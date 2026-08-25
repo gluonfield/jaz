@@ -117,7 +117,11 @@ function threadFindShortcutsDisabled(event: KeyboardEvent): boolean {
   return event.target instanceof Element && Boolean(event.target.closest('[data-thread-find-shortcuts="off"]'))
 }
 
-export function useThreadFind(contentKey: string, scrollRef: RefObject<HTMLElement | null>) {
+export function useThreadFind(
+  contentKey: string,
+  scrollRef: RefObject<HTMLElement | null>,
+  onNavigate: () => void,
+) {
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const rangesRef = useRef<Range[]>([])
@@ -227,13 +231,16 @@ export function useThreadFind(contentKey: string, scrollRef: RefObject<HTMLEleme
     const highlighted = paintHighlights(ranges, index)
     const activeRange = ranges[index]
     const scrollRoot = scrollRef.current
-    if (scrollRoot) scrollRangeIntoView(activeRange, scrollRoot)
+    if (scrollRoot) {
+      onNavigate()
+      scrollRangeIntoView(activeRange, scrollRoot)
+    }
     if (!highlighted) {
       const selection = window.getSelection()
       selection?.removeAllRanges()
       selection?.addRange(activeRange)
     }
-  }, [activeIndex, open, rangeVersion, scrollRef, trimmedQuery])
+  }, [activeIndex, onNavigate, open, rangeVersion, scrollRef, trimmedQuery])
 
   useEffect(() => clearHighlights, [])
 

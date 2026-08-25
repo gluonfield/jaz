@@ -10,6 +10,7 @@ function isNearBottom(el: ScrollViewport): boolean {
 
 export function createThreadScrollState() {
   let following = true
+  let scrollHeight: number | undefined
   return {
     follow() {
       following = true
@@ -18,10 +19,14 @@ export function createThreadScrollState() {
       following = false
     },
     scroll(el: ScrollViewport) {
-      following = isNearBottom(el)
+      const resized = scrollHeight !== undefined && el.scrollHeight !== scrollHeight
+      scrollHeight = el.scrollHeight
+      if (following && resized) el.scrollTop = el.scrollHeight
+      else following = isNearBottom(el)
       return !following
     },
     resize(el: ScrollViewport) {
+      scrollHeight = el.scrollHeight
       if (following) el.scrollTop = el.scrollHeight
       return !following
     },
@@ -40,7 +45,7 @@ export function useThreadAutoScroll({ resetKey }: { resetKey: string }) {
     scrollState.follow()
     setShowScrollToBottom(false)
     const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (el) scrollState.resize(el)
   }, [scrollState])
 
   // Re-pin on any content-box change (sent bubble, streaming deltas, composer
@@ -83,5 +88,6 @@ export function useThreadAutoScroll({ resetKey }: { resetKey: string }) {
     onClickCapture,
     scrollToBottom: pinToBottom,
     pinToBottom,
+    pauseFollowing: scrollState.pause,
   }
 }
