@@ -35,7 +35,7 @@ func TestLiveCodexArchive(t *testing.T) {
 		t.Fatalf("adapter --version: %s err=%v", output, err)
 	}
 	if output, err := exec.CommandContext(ctx, launch.Env["CODEX_PATH"], "--version").CombinedOutput(); err != nil ||
-		!strings.Contains(string(output), "codex-cli 0.147.0") {
+		!strings.Contains(string(output), "codex-cli 0.153.4") {
 		t.Fatalf("codex --version: %s err=%v", output, err)
 	}
 }

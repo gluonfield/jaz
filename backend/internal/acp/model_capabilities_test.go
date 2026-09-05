@@ -43,6 +43,8 @@ func TestCodexUltraModelsUseExplicitAllowlist(t *testing.T) {
 		model string
 		want  bool
 	}{
+		{provider.OpenAIModelGPT6Astra, true},
+		{provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT6Astra, true},
 		{provider.OpenAIModelGPT56Sol, true},
 		{provider.ProviderOpenAI + "/" + provider.OpenAIModelGPT56Terra, true},
 		{provider.OpenAIModelGPT56Luna, false},

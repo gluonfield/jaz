@@ -30,6 +30,7 @@ func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"data":[
+			{"id":"openai/gpt-6-astra","name":"OpenAI: GPT-6 Astra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-5.6-sol","name":"OpenAI: GPT-5.6 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-5.6-terra","name":"OpenAI: GPT-5.6 Terra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-5.6-luna","name":"OpenAI: GPT-5.6 Luna","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
@@ -233,13 +234,14 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		}
 	}
 	if got.ACP["codex"].Enabled ||
-		got.ACP["codex"].Model != provider.OpenAIModelGPT56Sol {
+		got.ACP["codex"].Model != provider.OpenAIModelGPT6Astra {
 		t.Fatalf("unexpected codex defaults %#v", got.ACP["codex"])
 	}
-	if !hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Sol, "none,low,medium,high,xhigh,max,ultra") ||
+	if !hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT6Astra, "none,low,medium,high,xhigh,max,ultra") ||
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Sol, "none,low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Terra, "none,low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT56Luna, "none,low,medium,high,xhigh,max") {
-		t.Fatalf("codex model options missing GPT-5.6 family %#v", got.ACPOptions["codex"].Models)
+		t.Fatalf("codex model options missing current OpenAI models %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
 		strings.Join(got.ACPOptions["codex"].ModelProviderIDs, ",") != "openai,openai-api-key,openrouter,ollama" {

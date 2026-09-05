@@ -68,6 +68,7 @@ var (
 		},
 	}
 	openAIModels = []Model{
+		openRouterBackedModel(provider.OpenAIModelGPT6Astra, "GPT-6 Astra", "Most capable for complex work", "openai/gpt-6-astra"),
 		openRouterBackedModel(provider.OpenAIModelGPT56Sol, "GPT-5.6 Sol", "Frontier capability", "openai/gpt-5.6-sol"),
 		openRouterBackedModel(provider.OpenAIModelGPT56Terra, "GPT-5.6 Terra", "Balanced capability and cost", "openai/gpt-5.6-terra"),
 		openRouterBackedModel(provider.OpenAIModelGPT56Luna, "GPT-5.6 Luna", "Efficient high-volume workloads", "openai/gpt-5.6-luna"),
@@ -77,6 +78,7 @@ var (
 	}
 	agentModels = map[string][]Model{
 		"codex": {
+			openRouterBackedModel(provider.OpenAIModelGPT6Astra, "GPT-6 Astra", "Most capable for complex work", "openai/gpt-6-astra"),
 			openRouterBackedModel(provider.OpenAIModelGPT56Sol, "GPT-5.6 Sol", "Frontier capability", "openai/gpt-5.6-sol"),
 			openRouterBackedModel(provider.OpenAIModelGPT56Terra, "GPT-5.6 Terra", "Balanced capability and cost", "openai/gpt-5.6-terra"),
 			openRouterBackedModel(provider.OpenAIModelGPT56Luna, "GPT-5.6 Luna", "Efficient high-volume workloads", "openai/gpt-5.6-luna"),
@@ -99,6 +101,7 @@ var (
 		},
 		"opencode": {
 			openRouterNativeModel(provider.DefaultOpenRouterModel, "GLM 5.2", "Default OpenRouter coding model"),
+			openRouterNativeModel("openai/"+provider.OpenAIModelGPT6Astra, "GPT-6 Astra", "Most capable for complex work"),
 			openRouterNativeModel("openai/"+provider.OpenAIModelGPT56Terra, "GPT-5.6 Terra", "Balanced capability and cost"),
 			openRouterNativeModel("openai/"+provider.OpenAIModelGPT56Sol, "GPT-5.6 Sol", "Frontier capability"),
 			openRouterNativeModel("openai/"+provider.OpenAIModelGPT56Luna, "GPT-5.6 Luna", "Efficient high-volume workloads"),

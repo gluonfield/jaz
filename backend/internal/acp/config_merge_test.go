@@ -25,7 +25,7 @@ func TestMergeAgentsCommandOverrideReplacesManagedAdapterLaunch(t *testing.T) {
 	if got.ManagedAdapter != "" || got.ManagedAdapterArgs != nil || got.Local || got.URL != "" || got.Token != "" {
 		t.Fatalf("mixed launch mode survived: %#v", got)
 	}
-	if got.Model != provider.OpenAIModelGPT56Sol || got.ReasoningEffort != "xhigh" {
+	if got.Model != provider.OpenAIModelGPT6Astra || got.ReasoningEffort != "xhigh" {
 		t.Fatalf("non-launch defaults lost: %#v", got)
 	}
 }

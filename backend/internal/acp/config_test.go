@@ -95,8 +95,8 @@ func TestCodexBuiltinAgentUsesManagedAdapter(t *testing.T) {
 	if cfg.Command != "" || cfg.ManagedAdapter != AgentCodex {
 		t.Fatalf("cfg = %#v, want managed adapter", cfg)
 	}
-	if cfg.Model != modelprovider.OpenAIModelGPT56Sol {
-		t.Fatalf("model = %q, want %q", cfg.Model, modelprovider.OpenAIModelGPT56Sol)
+	if cfg.Model != modelprovider.OpenAIModelGPT6Astra {
+		t.Fatalf("model = %q, want %q", cfg.Model, modelprovider.OpenAIModelGPT6Astra)
 	}
 	if cfg.ManagedAdapterArgs != nil {
 		t.Fatalf("managed args = %#v", cfg.ManagedAdapterArgs)

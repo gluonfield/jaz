@@ -105,7 +105,7 @@ func TestNormalizeAgentDefaultsAllowsCodexUltra(t *testing.T) {
 	codex.ReasoningEffort = "ultra"
 	input.ACP[acp.AgentCodex] = codex
 
-	service := warmSettingsModelCatalog(t, `{"data":[{"id":"openai/gpt-5.6-sol","reasoning":{"supported_efforts":["xhigh","high","medium","low"]}}]}`)
+	service := warmSettingsModelCatalog(t, `{"data":[{"id":"openai/gpt-6-astra","reasoning":{"supported_efforts":["xhigh","high","medium","low"]}}]}`)
 	normalized, err := NormalizeAgentDefaults(input, catalog, acp.ModelCapabilities{Catalog: service})
 	if err != nil {
 		t.Fatal(err)
@@ -229,6 +229,20 @@ func TestMergeAgentDefaultsMigratesRetiredGrokBuildModel(t *testing.T) {
 
 	if merged.ACP[acp.AgentGrok].Model != seed.ACP[acp.AgentGrok].Model {
 		t.Fatalf("grok model = %q, want %q", merged.ACP[acp.AgentGrok].Model, seed.ACP[acp.AgentGrok].Model)
+	}
+}
+
+func TestMergeAgentDefaultsPreservesSelectedCodexModel(t *testing.T) {
+	seed := testAgentDefaultsSeed()
+	stored := testAgentDefaultsSeed()
+	codex := stored.ACP[acp.AgentCodex]
+	codex.Model = provider.OpenAIModelGPT56Sol
+	stored.ACP[acp.AgentCodex] = codex
+
+	merged := MergeAgentDefaults(stored, seed, agentNames(seed))
+
+	if merged.ACP[acp.AgentCodex].Model != provider.OpenAIModelGPT56Sol {
+		t.Fatalf("codex model = %q, want selected model preserved", merged.ACP[acp.AgentCodex].Model)
 	}
 }
 

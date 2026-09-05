@@ -10,7 +10,7 @@ import (
 
 const (
 	CodexProviderOpenAIAPIKey = "openai-api-key"
-	CodexOpenAIDefaultModel   = modelprovider.OpenAIModelGPT56Sol
+	CodexOpenAIDefaultModel   = modelprovider.OpenAIModelGPT6Astra
 )
 
 func codexProvider(modelProvider string, providers map[string]modelprovider.ModelProviderConfig) (modelprovider.ModelProvider, bool) {

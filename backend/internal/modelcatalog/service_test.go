@@ -276,14 +276,14 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(models) == 0 || models[0].Value != provider.OpenAIModelGPT56Sol {
+	if len(models) == 0 || models[0].Value != provider.OpenAIModelGPT6Astra {
 		t.Fatalf("unexpected models %#v", models)
 	}
 	values := map[string]Model{}
 	for _, model := range models {
 		values[model.Value] = model
 	}
-	for _, value := range []string{provider.OpenAIModelGPT56Sol, provider.OpenAIModelGPT56Terra, provider.OpenAIModelGPT56Luna, "gpt-5.5", provider.DefaultOpenAIModel} {
+	for _, value := range []string{provider.OpenAIModelGPT6Astra, provider.OpenAIModelGPT56Sol, provider.OpenAIModelGPT56Terra, provider.OpenAIModelGPT56Luna, "gpt-5.5", provider.DefaultOpenAIModel} {
 		if _, ok := values[value]; !ok {
 			t.Fatalf("OpenAI catalog missing %s: %#v", value, models)
 		}
@@ -301,8 +301,8 @@ func TestServiceReturnsOpenAIBackendCatalog(t *testing.T) {
 	}
 
 	warmed := warmOpenRouterTestService(t, `{"data":[{
-		"id":"openai/gpt-5.6-sol",
-		"name":"OpenAI: GPT-5.6 Sol",
+		"id":"openai/gpt-6-astra",
+		"name":"OpenAI: GPT-6 Astra",
 		"reasoning":{"supported_efforts":["xhigh","high","medium","low","none"],"default_effort":"medium"}
 	}]}`)
 	models, err = warmed.ProviderModels(codexOpenAIAPIKeyProvider)
