@@ -89,7 +89,8 @@ var (
 		},
 		"claude": {
 			modelWithoutProviderReasoning("opus[1m]", "Opus 5", "Recommended"),
-			openRouterBackedModel("claude-fable-5[1m]", "Fable 5", "Most capable for the hardest tasks", "anthropic/claude-fable-5"),
+			openRouterBackedModel("claude-fable-5-1", "Fable 5.1", "Most capable for the hardest tasks", "anthropic/claude-fable-5.1"),
+			openRouterBackedModel("claude-fable-5[1m]", "Fable 5", "Previous Fable model", "anthropic/claude-fable-5"),
 			openRouterBackedModel("sonnet", "Sonnet 5", "Efficient for routine tasks", "anthropic/claude-sonnet-5"),
 			openRouterBackedModel("sonnet[1m]", "Sonnet 5 (1M context)", "Draws from usage credits", "anthropic/claude-sonnet-5"),
 			openRouterBackedModel("haiku", "Haiku 4.5", "Fastest for quick answers", "anthropic/claude-haiku-4.5"),

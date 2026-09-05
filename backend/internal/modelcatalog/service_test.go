@@ -339,6 +339,7 @@ func TestServiceDoesNotInventReasoningBeforeCatalogLoads(t *testing.T) {
 
 func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 	service := warmOpenRouterTestService(t, `{"data":[
+		{"id":"anthropic/claude-fable-5.1","name":"Anthropic: Claude Fable 5.1","reasoning":{"mandatory":true,"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"high"}},
 		{"id":"anthropic/claude-sonnet-5","name":"Anthropic: Claude Sonnet 5","reasoning":{"supported_efforts":["max","high","medium","low"],"default_effort":"medium"}},
 		{"id":"anthropic/claude-opus-5","name":"Anthropic: Claude Opus 5","reasoning":{"mandatory":true,"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
 		{"id":"anthropic/claude-haiku-4.5","name":"Anthropic: Claude Haiku 4.5","reasoning":{"mandatory":false}}
@@ -348,6 +349,14 @@ func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 	efforts := map[string]Model{}
 	for _, model := range models {
 		efforts[model.Value] = model
+	}
+	fable := efforts["claude-fable-5-1"]
+	if fable.Label != "Fable 5.1" || fable.OpenRouterID != "anthropic/claude-fable-5.1" {
+		t.Fatalf("fable model = %#v", fable)
+	}
+	if strings.Join(fable.Reasoning.Efforts, ",") != "low,medium,high,xhigh,max" ||
+		fable.Reasoning.DefaultEffort != "high" || !fable.Reasoning.Mandatory {
+		t.Fatalf("fable reasoning = %#v", fable.Reasoning)
 	}
 	if strings.Join(efforts["sonnet"].Reasoning.Efforts, ",") != "low,medium,high,max" {
 		t.Fatalf("sonnet efforts = %#v", efforts["sonnet"].Reasoning.Efforts)
