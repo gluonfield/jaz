@@ -33,7 +33,7 @@ export function DictationControls({
       <div className="flex min-w-0 flex-1 items-center justify-center" role="status" aria-live="polite">
         <span className={recording ? 'sr-only' : 'truncate text-sm text-ink-3'}>{labels[phase]}</span>
         {recording ? (
-          <svg className="h-8 w-full text-ink" viewBox="0 0 432 32" preserveAspectRatio="none" aria-hidden>
+          <svg className="h-4 w-full text-ink" viewBox="0 0 432 32" preserveAspectRatio="none" aria-hidden>
             {bars.map((level, index) => {
               const strength = Math.max(0, (level / peak - 0.12) / 0.88)
               const height = 3 + strength * 28

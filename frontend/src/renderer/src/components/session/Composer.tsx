@@ -404,24 +404,26 @@ export function ComposerCard({
           attachmentSessionId={attachmentSessionId}
           onRemove={attachmentDraft.removeAttachment}
         />
-        <MentionTextarea
-          mention={mention}
-          placeholder={placeholder}
-          disabled={disabled}
-          readOnly={dictation.phase !== null}
-          autoFocus={autoFocus}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              if (dictation.phase) {
-                void dictation.stop()
-              } else {
-                void submit()
+        <div className={dictation.phase && mention.isEmpty ? 'sr-only' : undefined}>
+          <MentionTextarea
+            mention={mention}
+            placeholder={placeholder}
+            disabled={disabled}
+            readOnly={dictation.phase !== null}
+            autoFocus={autoFocus}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                if (dictation.phase) {
+                  void dictation.stop()
+                } else {
+                  void submit()
+                }
               }
-            }
-          }}
-        />
-        {dictation.transcript ? <p className="max-h-32 overflow-y-auto px-2 text-sm leading-relaxed text-ink-2">{dictation.transcript}</p> : null}
+            }}
+          />
+        </div>
+        {dictation.transcript ? <p className="truncate px-2 text-sm leading-5 text-ink-2">{dictation.transcript}</p> : null}
         {dictation.error ? (
           <div className="flex items-center gap-2 pl-2 text-sm text-danger" role="alert">
             <span className="min-w-0 flex-1">{dictation.error}</span>
