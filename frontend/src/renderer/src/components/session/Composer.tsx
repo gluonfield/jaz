@@ -401,7 +401,7 @@ export function ComposerCard({
           attachmentSessionId={attachmentSessionId}
           onRemove={attachmentDraft.removeAttachment}
         />
-        <div className={dictation.phase && mention.isEmpty ? 'sr-only' : undefined}>
+        <div>
           <MentionTextarea
             mention={mention}
             placeholder={placeholder}
@@ -420,17 +420,17 @@ export function ComposerCard({
             }}
           />
         </div>
-        {dictation.transcript ? <p className="truncate px-2 text-sm leading-5 text-ink-2">{dictation.transcript}</p> : null}
         {dictation.error ? (
           <div className="flex items-center gap-2 pl-2 text-sm text-danger" role="alert">
             <span className="min-w-0 flex-1">{dictation.error}</span>
             <IconButton className="size-10" aria-label="Dismiss dictation error" onClick={dictation.dismissError}><X size={16} /></IconButton>
           </div>
         ) : null}
-        {dictation.phase ? (
-          <DictationControls dictation={dictation} canSend={!disabled && !attachmentBusy && (!streaming || canQueueWhileStreaming)} queue={streaming} />
-        ) : (
-          <div className="flex items-center justify-between gap-2.5 max-sm:items-end">
+        <div className="relative">
+          <div
+            className={`flex items-center justify-between gap-2.5 max-sm:items-end ${dictation.phase ? 'invisible' : ''}`}
+            inert={dictation.phase !== null}
+          >
             {/* Phone: the new-thread controls (agent, model, project, worktree)
                 outgrow one row, so let them wrap and keep send pinned bottom-right. */}
             <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap">
@@ -579,7 +579,12 @@ export function ComposerCard({
               )}
             </div>
           </div>
-        )}
+          {dictation.phase ? (
+            <div className="absolute inset-x-0 bottom-0">
+              <DictationControls dictation={dictation} canSend={!disabled && !attachmentBusy && (!streaming || canQueueWhileStreaming)} queue={streaming} />
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   )

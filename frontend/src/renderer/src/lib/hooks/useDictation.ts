@@ -13,7 +13,6 @@ export function useDictation({
   const api = typeof window === 'undefined' ? undefined : window.jaz?.dictation
   const [availability, setAvailability] = useState<DictationAvailability>({ available: false, reason: '' })
   const [phase, setPhase] = useState<DictationPhase | null>(null)
-  const [transcript, setTranscript] = useState('')
   const [level, setLevel] = useState(0)
   const [error, setError] = useState('')
   const session = useRef<{ id: string; identity: string; send: boolean } | null>(null)
@@ -24,7 +23,6 @@ export function useDictation({
     const active = session.current
     session.current = null
     setPhase(null)
-    setTranscript('')
     if (active) {
       void api?.cancel(active.id).catch(() => {})
     }
@@ -56,13 +54,9 @@ export function useDictation({
         case 'level':
           setLevel(event.level)
           break
-        case 'result':
-          setTranscript(event.text)
-          break
         case 'complete':
           session.current = null
           setPhase(null)
-          setTranscript('')
           if (event.text.trim()) {
             current.current.onComplete(event.text, active.send)
           } else {
@@ -72,7 +66,6 @@ export function useDictation({
         case 'error':
           session.current = null
           setPhase(null)
-          setTranscript('')
           setError(event.message)
           break
       }
@@ -100,7 +93,6 @@ export function useDictation({
     const active = { id: crypto.randomUUID(), identity, send: false }
     session.current = active
     setPhase('starting')
-    setTranscript('')
     setLevel(0)
     setError('')
     try {
@@ -133,5 +125,5 @@ export function useDictation({
     }
   }
 
-  return { showButton: Boolean(api), availability, phase, transcript, level, error, start, stop, cancel, dismissError: () => setError('') }
+  return { showButton: Boolean(api), availability, phase, level, error, start, stop, cancel, dismissError: () => setError('') }
 }
