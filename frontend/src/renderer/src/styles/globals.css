@@ -317,10 +317,9 @@
   align-items: baseline;
   max-width: 100%;
   color: var(--color-primary);
-  text-decoration-line: underline;
-  text-decoration-style: solid;
+  text-decoration-line: none;
+  text-decoration-style: dotted;
   text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in oklab, currentColor 65%, transparent);
   text-underline-offset: 0.18em;
   transition-property: color;
   transition-duration: 160ms;
@@ -338,7 +337,7 @@
 .chat-prose-link-button:hover,
 .chat-prose-link-button:focus-visible {
   color: var(--color-primary-strong);
-  text-decoration-color: currentColor;
+  text-decoration-line: underline;
 }
 .chat-prose-link-icon {
   display: inline-block;
