@@ -11,6 +11,7 @@ import { browserSettingsQuery, updateBrowserSettings } from '@/lib/api/settings'
 import type { BrowserMode, BrowserStatus } from '@/lib/api/types'
 import { apiAuthenticatedWebSocketUrl, apiBaseUrl } from '@/lib/api/client'
 import { keys } from '@/lib/query/keys'
+import { BrowserProfileImport } from '@/components/browser/BrowserProfileImport'
 
 function formatTime(value?: string): string {
   if (!value) return 'never'
@@ -110,7 +111,9 @@ export function BrowserSettings() {
             <p className="mt-0.5 text-[12px] text-ink-2">
               {mode === 'extension'
                 ? 'Use the signed-in Chrome tab bridge for real browser sessions.'
-                : 'Use an isolated background Chromium profile managed by Jaz.'}
+                : mode === 'desktop'
+                  ? 'Watch your agent browse in this conversation’s side panel, with a visible cursor.'
+                  : 'Use an isolated background Chromium profile managed by Jaz.'}
             </p>
             {mode === 'extension' && !connected ? (
               <p className="mt-1 text-[12px] text-danger">Connect the extension before using this mode.</p>
@@ -122,6 +125,7 @@ export function BrowserSettings() {
             disabled={setMode.isPending}
             onChange={(next) => setMode.mutate(next)}
             options={[
+              { value: 'desktop', label: 'Jaz side browser', icon: <Monitor size={14} /> },
               { value: 'extension', label: 'Extension', icon: <Puzzle size={14} /> },
               { value: 'managed', label: 'Background Chromium', icon: <Monitor size={14} /> },
             ]}
@@ -129,7 +133,15 @@ export function BrowserSettings() {
         </div>
       </SettingsCard>
 
-      <SettingsCard className="mt-4 overflow-hidden">
+      {mode === 'desktop' ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-[13px] text-ink-2">
+            Keep the conversation open in the desktop app while the agent browses. Closing the panel or leaving the conversation stops its browser work.
+          </p>
+          <BrowserProfileImport />
+        </div>
+      ) : null}
+      {mode === 'extension' ? <SettingsCard className="mt-4 overflow-hidden">
         <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
           <div>
             <p className="text-[13px] font-medium text-ink">Chrome extension</p>
@@ -178,7 +190,7 @@ export function BrowserSettings() {
             {extension.actions?.length ? extension.actions.join(', ') : 'Not reported'}
           </dd>
         </dl>
-      </SettingsCard>
+      </SettingsCard> : null}
     </section>
   )
 }

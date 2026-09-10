@@ -29,8 +29,8 @@ func TestScrollDelta(t *testing.T) {
 		t.Fatalf("up = %d, %d", dy, dx)
 	}
 	dy, dx = scrollDelta("right", 0)
-	if dy != 0 || dx != defaultScrollAmount {
-		t.Fatalf("right default = %d, %d", dy, dx)
+	if dy != 0 || dx != 0 {
+		t.Fatalf("zero scroll = %d, %d", dy, dx)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestKeyEventCopiesAreIndependent(t *testing.T) {
 
 func TestElementScriptsReturnActionCompletion(t *testing.T) {
 	script := resolvePointScript("button")
-	if strings.Index(script, "function jazFindElement") > strings.Index(script, "(function(q)") {
+	if strings.Index(script, "function jazFindElement") > strings.Index(script, "(function(q,") {
 		t.Fatalf("resolver helpers must be defined before action IIFE: %s", script)
 	}
 	if !strings.Contains(script, "jazDeepHit") || !strings.Contains(script, "target is obscured") {

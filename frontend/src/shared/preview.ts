@@ -1,3 +1,5 @@
+export const PREVIEW_PARTITION = 'persist:jaz-preview'
+
 const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i
 
 export function isPreviewURL(value: string): boolean {

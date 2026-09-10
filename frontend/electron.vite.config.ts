@@ -6,12 +6,17 @@ import { defineConfig } from 'electron-vite'
 import { defineTelemetryEnv } from './vite.telemetry'
 
 export default defineConfig(({ mode }) => ({
-  main: {},
-  preload: {},
+  main: {
+    resolve: { alias: { '@shared': resolve('src/shared'), '@main': resolve('src/main') } },
+  },
+  preload: {
+    resolve: { alias: { '@shared': resolve('src/shared') } },
+  },
   renderer: {
     define: defineTelemetryEnv(mode),
     resolve: {
       alias: {
+        '@shared': resolve('src/shared'),
         '@': resolve('src/renderer/src'),
       },
     },

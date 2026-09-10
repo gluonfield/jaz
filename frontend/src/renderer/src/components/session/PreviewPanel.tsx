@@ -30,17 +30,22 @@ import {
   type PreviewWebviewElement,
 } from './previewWebview'
 import type { PreviewTarget } from './previewTarget'
+import type { SideBrowser } from '@/lib/sideBrowser'
+import { BrowserProfileImport } from '@/components/browser/BrowserProfileImport'
+import { PREVIEW_PARTITION } from '@shared/preview'
 import { usePreviewFindControls } from './usePreviewFindControls'
 
 export const PREVIEW_PANEL_WIDTH = 640
 
 export function PreviewPanel({
+  browserControl,
   target,
   onTargetChange,
   onAddBrowserAnnotation,
   onUploadAttachment,
   onClose,
 }: {
+  browserControl?: SideBrowser
   target: PreviewTarget
   onTargetChange: (target: PreviewTarget) => void
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
@@ -48,6 +53,7 @@ export function PreviewPanel({
   onClose: () => void
 }) {
   const webviewRef = useRef<PreviewWebviewElement | null>(null)
+  const cursorLayer = useRef<HTMLDivElement | null>(null)
   const readyRef = useRef(false)
   const targetRef = useRef(target)
   const canUseWebview = clientRuntime.capabilities.previewWebview
@@ -61,6 +67,12 @@ export function PreviewPanel({
   const [canGoForward, setCanGoForward] = useState(false)
   const [annotating, setAnnotating] = useState(false)
   const [error, setError] = useState('')
+  useEffect(() => {
+    if (!browserControl || !webview || !webviewReady || !cursorLayer.current) {
+      return
+    }
+    return browserControl.attach(webview, cursorLayer.current)
+  }, [browserControl, webview, webviewReady])
   const find = usePreviewFindControls({
     webview,
     webviewReady,
@@ -82,6 +94,10 @@ export function PreviewPanel({
 
   useEffect(() => {
     let cancelled = false
+    if (readyRef.current && webviewRef.current?.getURL() === target.sourceUrl) {
+      setResolvedSourceUrl(target.sourceUrl)
+      return
+    }
     setResolvedSourceUrl(shouldProxyPreview(target.sourceUrl) ? '' : target.sourceUrl)
     if (!target.sourceUrl) return
     void resolvePreviewSource(target.sourceUrl)
@@ -169,7 +185,17 @@ export function PreviewPanel({
       webview.removeEventListener('did-fail-load', fail as EventListener)
       webview.removeEventListener('dom-ready', ready)
     }
-  }, [onTargetChange, resolvedSourceUrl, webview])
+  }, [onTargetChange, webview])
+
+  useEffect(() => {
+    if (!webview || !resolvedSourceUrl) {
+      return
+    }
+    const current = readyRef.current ? webview.getURL() : webview.src
+    if (current !== resolvedSourceUrl) {
+      webview.src = resolvedSourceUrl
+    }
+  }, [resolvedSourceUrl, webview])
 
   const openDraft = () => {
     const next = normalizePreviewURL(draft)
@@ -306,13 +332,14 @@ export function PreviewPanel({
       {error ? (
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
       ) : null}
+      <BrowserProfileImport offer />
       <div className="relative min-h-0 flex-1 bg-bg">
+        <div ref={cursorLayer} aria-hidden="true" className="pointer-events-none absolute inset-0 z-20 overflow-hidden" />
         <PreviewFindBar find={find} />
         {resolvedSourceUrl && canUseWebview ? (
           <webview
             ref={bindWebview}
-            src={resolvedSourceUrl}
-            partition="persist:jaz-preview"
+            partition={PREVIEW_PARTITION}
             allowpopups
             className="h-full w-full bg-bg"
           />

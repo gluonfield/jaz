@@ -19,6 +19,7 @@ type cdpConn struct {
 	pending  map[int64]chan cdpReply
 	closed   bool
 	closeErr error
+	done     chan struct{}
 }
 
 type cdpMessage struct {
@@ -44,16 +45,24 @@ func dialCDP(ctx context.Context, endpoint string) (*cdpConn, error) {
 	if err != nil {
 		return nil, err
 	}
+	return newCDPConn(ws), nil
+}
+
+func newCDPConn(ws *websocket.Conn) *cdpConn {
 	ws.SetReadLimit(browserWireReadLimit)
 	conn := &cdpConn{
 		ws:      ws,
 		pending: map[int64]chan cdpReply{},
+		done:    make(chan struct{}),
 	}
 	go conn.readLoop()
-	return conn, nil
+	return conn
 }
 
 func (c *cdpConn) call(ctx context.Context, method string, params any, out any) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	id, ch, err := c.reserve()
 	if err != nil {
 		return err
@@ -134,6 +143,7 @@ func (c *cdpConn) fail(err error) {
 		return
 	}
 	c.closed = true
+	close(c.done)
 	c.closeErr = err
 	pending := c.pending
 	c.pending = map[int64]chan cdpReply{}

@@ -64,7 +64,7 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 	case ActionClaimTab:
 		return b.claimTab(ctx, input.Session, input.TabID)
 	case ActionNavigate, ActionState, ActionFind, ActionScreenshot, ActionClick,
-		ActionFormInput, ActionPress, ActionScroll, ActionWait:
+		ActionHover, ActionDrag, ActionFormInput, ActionPress, ActionScroll, ActionWait:
 	default:
 		return ActionOutput{}, UnsupportedActionError{Action: input.Action}
 	}
@@ -86,7 +86,11 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 	if b.cachedPage(localPageKey(input.Session)) != page {
 		return ActionOutput{}, errors.New("browser session tab changed while the action was waiting; read the page again")
 	}
-	switch action {
+	return page.call(ctx, input)
+}
+
+func (page *browserPage) call(ctx context.Context, input ActionInput) (ActionOutput, error) {
+	switch input.Action {
 	case ActionNavigate:
 		return page.navigate(ctx, input.URL)
 	case ActionState:
@@ -97,6 +101,10 @@ func (b *LocalBackend) Call(ctx context.Context, input ActionInput) (ActionOutpu
 		return page.screenshot(ctx)
 	case ActionClick:
 		return page.click(ctx, input.Ref)
+	case ActionHover:
+		return page.hover(ctx, input.Ref)
+	case ActionDrag:
+		return page.drag(ctx, input.Ref, input.Text)
 	case ActionFormInput:
 		return page.formInput(ctx, input.Ref, input.Value)
 	case ActionPress:

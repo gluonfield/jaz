@@ -150,9 +150,12 @@ func (p *browserPage) press(ctx context.Context, ref, key string) (ActionOutput,
 func (p *browserPage) scroll(ctx context.Context, ref, direction string, amount int) (ActionOutput, error) {
 	x, y := 0.0, 0.0
 	if strings.TrimSpace(ref) != "" {
-		point, err := p.resolvePoint(ctx, ref)
-		if err != nil {
+		var point pointResult
+		if err := p.eval(ctx, pointScript(ref, amount != 0), &point); err != nil {
 			return ActionOutput{}, err
+		}
+		if !point.Found {
+			return ActionOutput{}, errors.New("scroll target is stale or outside the viewport; read the page again")
 		}
 		x, y = point.X, point.Y
 	} else {
@@ -166,6 +169,9 @@ func (p *browserPage) scroll(ctx context.Context, ref, direction string, amount 
 		x, y = viewport.X, viewport.Y
 	}
 	deltaY, deltaX := scrollDelta(direction, amount)
+	if err := p.mouse(ctx, "mouseMoved", x, y); err != nil {
+		return ActionOutput{}, err
+	}
 	params := map[string]any{
 		"type":   "mouseWheel",
 		"x":      x,

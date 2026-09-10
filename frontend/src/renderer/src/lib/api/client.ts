@@ -213,11 +213,12 @@ export function patch<T>(path: string, body: unknown): Promise<T> {
   })
 }
 
-export function post<T>(path: string, body?: unknown): Promise<T> {
+export function post<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   })
 }
 

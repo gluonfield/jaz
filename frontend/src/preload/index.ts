@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { BROWSER_COMMAND_CHANNEL, type BrowserCommandRequest } from '@shared/browserControl'
+import { BROWSER_PROFILE_CHANNELS, type BrowserProfileAPI } from '@shared/browserProfile'
 import {
   BROWSER_NAVIGATION_CHANNEL,
   type BrowserNavigationDirection,
@@ -19,6 +21,15 @@ const windowKind = process.argv.includes('--jaz-board-window')
 let previewURLTargetSubscriptions = 0
 
 contextBridge.exposeInMainWorld('jaz', {
+  browserProfiles: {
+    dismissed: () => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.dismissed),
+    dismiss: () => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.dismiss),
+    list: () => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.list),
+    sites: (profileId) => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.sites, profileId),
+    import: (profileId, domains) => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.import, profileId, domains),
+  } satisfies BrowserProfileAPI,
+  browserCommand: (request: BrowserCommandRequest): Promise<unknown> =>
+    ipcRenderer.invoke(BROWSER_COMMAND_CHANNEL, request),
   apiBaseUrl,
   windowKind,
   setNativeTheme: (source: 'light' | 'dark' | 'system') =>

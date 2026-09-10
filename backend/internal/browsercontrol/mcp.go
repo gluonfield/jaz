@@ -13,26 +13,20 @@ import (
 )
 
 const (
-	ToolStatus            = "browser_status"
-	ToolTabs              = "browser_tabs"
-	ToolClaimTab          = "browser_claim_tab"
-	ToolNavigate          = "browser_navigate"
-	ToolReadPage          = "browser_read_page"
-	ToolFind              = "browser_find"
-	ToolClick             = "browser_click"
-	ToolFormInput         = "browser_form_input"
-	ToolKey               = "browser_key"
-	ToolScroll            = "browser_scroll"
-	ToolWait              = "browser_wait"
-	ToolScreenshot        = "browser_screenshot"
-	browserToolTextLimit  = 12000
-	browserTabsJSONLimit  = 1 << 20
-	browserURLLimit       = 8192
-	browserQueryLimit     = 2000
-	browserKeyLimit       = 100
-	browserFormValueLimit = 100000
-	browserScrollLimit    = 1000000
-	browserWaitLimit      = 60000
+	ToolStatus           = "browser_status"
+	ToolTabs             = "browser_tabs"
+	ToolClaimTab         = "browser_claim_tab"
+	ToolNavigate         = "browser_navigate"
+	ToolReadPage         = "browser_read_page"
+	ToolFind             = "browser_find"
+	ToolClick            = "browser_click"
+	ToolFormInput        = "browser_form_input"
+	ToolKey              = "browser_key"
+	ToolScroll           = "browser_scroll"
+	ToolWait             = "browser_wait"
+	ToolScreenshot       = "browser_screenshot"
+	browserToolTextLimit = 12000
+	browserTabsJSONLimit = 1 << 20
 )
 
 var toolNames = []string{
@@ -43,6 +37,9 @@ var toolNames = []string{
 	ToolReadPage,
 	ToolFind,
 	ToolClick,
+	ToolHover,
+	ToolDrag,
+	ToolScript,
 	ToolFormInput,
 	ToolKey,
 	ToolScroll,
@@ -134,9 +131,9 @@ type ActionInput struct {
 type ActionOutput struct {
 	Status        string          `json:"status"`
 	Text          string          `json:"text,omitempty"`
-	ImageData     []byte          `json:"-"`
-	ImageMIMEType string          `json:"-"`
-	Data          json.RawMessage `json:"-"`
+	ImageData     []byte          `json:"image_base64,omitempty"`
+	ImageMIMEType string          `json:"image_mime_type,omitempty"`
+	Data          json.RawMessage `json:"data,omitempty"`
 }
 
 func AddMCPTools(server *mcp.Server, backend Backend) {
@@ -144,6 +141,9 @@ func AddMCPTools(server *mcp.Server, backend Backend) {
 		backend = UnavailableBackend{}
 	}
 	tools := directTools{backend: backend}
+	mcp.AddTool(server, destructiveBrowserTool(ToolScript, "Run browser JavaScript", "Run JavaScript in this conversation's persistent browser session. Requires the Jaz side browser. Call with empty code for API documentation. Use tab for the current page, await actions, then await tab.getState(). Browser API documentation is included on first use. This runtime exposes browser actions only."), tools.Script)
+	mcp.AddTool(server, browserActionTool(ToolHover, "Hover browser element", "Move the browser pointer to a ref from the latest page observation. Supported by the Jaz side browser and managed Chromium."), tools.Hover)
+	mcp.AddTool(server, destructiveBrowserTool(ToolDrag, "Drag browser element", "Drag between two visible refs from the latest page observation. Supported by the Jaz side browser and managed Chromium."), tools.Drag)
 	mcp.AddTool(server, readOnlyTool(ToolStatus, "Browser status", "Check whether the selected Jaz browser backend is connected."), tools.Status)
 	mcp.AddTool(server, readOnlyTool(ToolTabs, "List browser tabs", "List browser tabs and their ownership. This does not claim or modify a user tab."), tools.Tabs)
 	mcp.AddTool(server, browserActionTool(ToolClaimTab, "Claim browser tab", "Claim one existing tab by ID for this agent session. Use only when the user explicitly asks to work in that existing tab, then call browser_read_page."), tools.ClaimTab)
@@ -222,26 +222,12 @@ func (t directTools) Tabs(ctx context.Context, req *mcp.CallToolRequest, _ Empty
 }
 
 func (t directTools) ClaimTab(ctx context.Context, req *mcp.CallToolRequest, input ClaimTabInput) (*mcp.CallToolResult, ActionResult, error) {
-	tabID := strings.TrimSpace(input.TabID)
-	if tabID == "" {
-		return nil, ActionResult{}, errors.New("tab_id is required")
-	}
-	if len(tabID) > browserTabIDLimit {
-		return nil, ActionResult{}, errors.New("tab_id is too long")
-	}
-	out, err := t.call(ctx, req, ActionInput{Action: ActionClaimTab, TabID: tabID})
+	out, err := t.call(ctx, req, ActionInput{Action: ActionClaimTab, TabID: input.TabID})
 	return actionToolResult(out, err)
 }
 
 func (t directTools) Navigate(ctx context.Context, req *mcp.CallToolRequest, input NavigateInput) (*mcp.CallToolResult, ActionResult, error) {
-	url := strings.TrimSpace(input.URL)
-	if url == "" {
-		return nil, ActionResult{}, errors.New("url is required")
-	}
-	if len(url) > browserURLLimit {
-		return nil, ActionResult{}, errors.New("url is too long")
-	}
-	out, err := t.call(ctx, req, ActionInput{Action: ActionNavigate, URL: url})
+	out, err := t.call(ctx, req, ActionInput{Action: ActionNavigate, URL: input.URL})
 	return actionToolResult(out, err)
 }
 
@@ -258,14 +244,7 @@ func (t directTools) ReadPage(ctx context.Context, req *mcp.CallToolRequest, _ E
 }
 
 func (t directTools) Find(ctx context.Context, req *mcp.CallToolRequest, input FindInput) (*mcp.CallToolResult, PageState, error) {
-	query := strings.TrimSpace(input.Query)
-	if query == "" {
-		return nil, PageState{}, errors.New("query is required")
-	}
-	if len(query) > browserQueryLimit {
-		return nil, PageState{}, errors.New("query is too long")
-	}
-	out, err := t.call(ctx, req, ActionInput{Action: ActionFind, Text: query})
+	out, err := t.call(ctx, req, ActionInput{Action: ActionFind, Text: input.Query})
 	if err != nil {
 		return nil, PageState{}, err
 	}
@@ -277,108 +256,31 @@ func (t directTools) Find(ctx context.Context, req *mcp.CallToolRequest, input F
 }
 
 func (t directTools) Click(ctx context.Context, req *mcp.CallToolRequest, input RefInput) (*mcp.CallToolResult, ActionResult, error) {
-	ref, err := exactRef(input.Ref)
-	if err != nil {
-		return nil, ActionResult{}, err
-	}
-	out, callErr := t.call(ctx, req, ActionInput{Action: ActionClick, Ref: ref})
-	return actionToolResult(out, callErr)
+	out, err := t.call(ctx, req, ActionInput{Action: ActionClick, Ref: input.Ref})
+	return actionToolResult(out, err)
 }
 
 func (t directTools) FormInput(ctx context.Context, req *mcp.CallToolRequest, input FormInput) (*mcp.CallToolResult, ActionResult, error) {
-	ref, err := exactRef(input.Ref)
-	if err != nil {
-		return nil, ActionResult{}, err
-	}
-	if input.Value == nil {
-		return nil, ActionResult{}, errors.New("value is required")
-	}
-	if value, ok := input.Value.(string); ok && len(value) > browserFormValueLimit {
-		return nil, ActionResult{}, errors.New("form value is too long")
-	}
-	out, callErr := t.call(ctx, req, ActionInput{Action: ActionFormInput, Ref: ref, Value: input.Value})
-	return actionToolResult(out, callErr)
+	out, err := t.call(ctx, req, ActionInput{Action: ActionFormInput, Ref: input.Ref, Value: input.Value})
+	return actionToolResult(out, err)
 }
 
 func (t directTools) Key(ctx context.Context, req *mcp.CallToolRequest, input KeyInput) (*mcp.CallToolResult, ActionResult, error) {
-	key := strings.TrimSpace(input.Key)
-	if key == "" {
-		return nil, ActionResult{}, errors.New("key is required")
-	}
-	if len(key) > browserKeyLimit {
-		return nil, ActionResult{}, errors.New("key is too long")
-	}
-	var ref string
-	var err error
-	if input.Ref != "" {
-		ref, err = exactRef(input.Ref)
-		if err != nil {
-			return nil, ActionResult{}, err
-		}
-	}
-	out, callErr := t.call(ctx, req, ActionInput{Action: ActionPress, Key: key, Ref: ref})
-	return actionToolResult(out, callErr)
+	out, err := t.call(ctx, req, ActionInput{Action: ActionPress, Key: input.Key, Ref: input.Ref})
+	return actionToolResult(out, err)
 }
 
 func (t directTools) Scroll(ctx context.Context, req *mcp.CallToolRequest, input ScrollInput) (*mcp.CallToolResult, ActionResult, error) {
-	var ref string
-	var err error
-	if input.Ref != "" {
-		ref, err = exactRef(input.Ref)
-		if err != nil {
-			return nil, ActionResult{}, err
-		}
+	if input.Amount == 0 {
+		input.Amount = defaultScrollAmount
 	}
-	direction := strings.ToLower(strings.TrimSpace(input.Direction))
-	if direction == "" {
-		direction = "down"
-	}
-	switch direction {
-	case "up", "down", "left", "right":
-	default:
-		return nil, ActionResult{}, fmt.Errorf("unsupported scroll direction %q", direction)
-	}
-	if input.Amount < 0 {
-		return nil, ActionResult{}, errors.New("amount must be non-negative")
-	}
-	if input.Amount > browserScrollLimit {
-		return nil, ActionResult{}, fmt.Errorf("amount must not exceed %d", browserScrollLimit)
-	}
-	out, callErr := t.call(ctx, req, ActionInput{
-		Action: ActionScroll,
-		Ref:    ref,
-		Text:   direction,
-		Amount: input.Amount,
-	})
-	return actionToolResult(out, callErr)
+	out, err := t.call(ctx, req, ActionInput{Action: ActionScroll, Ref: input.Ref, Text: input.Direction, Amount: input.Amount})
+	return actionToolResult(out, err)
 }
 
 func (t directTools) Wait(ctx context.Context, req *mcp.CallToolRequest, input WaitInput) (*mcp.CallToolResult, ActionResult, error) {
-	var ref string
-	var err error
-	if input.Ref != "" {
-		ref, err = exactRef(input.Ref)
-		if err != nil {
-			return nil, ActionResult{}, err
-		}
-	}
-	if input.TimeoutMS < 0 {
-		return nil, ActionResult{}, errors.New("timeout_ms must be non-negative")
-	}
-	if input.TimeoutMS > browserWaitLimit {
-		return nil, ActionResult{}, fmt.Errorf("timeout_ms must not exceed %d", browserWaitLimit)
-	}
-	text := strings.TrimSpace(input.Text)
-	if len(text) > browserQueryLimit {
-		return nil, ActionResult{}, errors.New("wait text is too long")
-	}
-	out, callErr := t.call(ctx, req, ActionInput{
-		Action: ActionWait,
-		Ref:    ref,
-		Text:   text,
-		Amount: input.TimeoutMS,
-	})
-	return actionToolResult(out, callErr)
+	out, err := t.call(ctx, req, ActionInput{Action: ActionWait, Ref: input.Ref, Text: input.Text, Amount: input.TimeoutMS})
+	return actionToolResult(out, err)
 }
 
 func (t directTools) Screenshot(ctx context.Context, req *mcp.CallToolRequest, _ EmptyInput) (*mcp.CallToolResult, ActionResult, error) {
@@ -387,6 +289,10 @@ func (t directTools) Screenshot(ctx context.Context, req *mcp.CallToolRequest, _
 }
 
 func (t directTools) call(ctx context.Context, req *mcp.CallToolRequest, input ActionInput) (ActionOutput, error) {
+	input, err := NormalizeActionInput(input)
+	if err != nil {
+		return ActionOutput{}, err
+	}
 	input.Session = mcpsession.SessionID(req)
 	return t.backend.Call(ctx, input)
 }
@@ -397,17 +303,6 @@ func actionToolResult(out ActionOutput, err error) (*mcp.CallToolResult, ActionR
 	}
 	out = boundActionOutput(out)
 	return contentResult(out), ActionResult{Status: out.Status, Text: out.Text}, nil
-}
-
-func exactRef(value string) (string, error) {
-	ref := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(value), "ref="))
-	if ref == "" {
-		return "", errors.New("ref is required")
-	}
-	if len(ref) > stateRefLimit {
-		return "", errors.New("ref is too long")
-	}
-	return ref, nil
 }
 
 func (UnavailableBackend) Call(context.Context, ActionInput) (ActionOutput, error) {

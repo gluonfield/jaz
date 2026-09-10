@@ -8,6 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
+	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
 	feedapi "github.com/wins/jaz/backend/internal/httpapi/feed"
@@ -34,14 +35,14 @@ type routeDeps struct {
 	Devices         *deviceauth.Service `optional:"true"`
 	Store           storage.Store
 	AuthKey         RuntimeAuthKey
-	Config          serverconfig.Config             `optional:"true"`
-	Browser         *browsercontrol.ExtensionBridge `optional:"true"`
-	BrowserSettings *BrowserSettingsHandler         `optional:"true"`
-	Connections     *connections.Service            `optional:"true"`
-	ConnectionStart *connections.ConnectService     `optional:"true"`
-	ConnectionOAuth *connections.OAuthService       `optional:"true"`
-	ConnectionQR    *connections.QRService          `optional:"true"`
-	MCP             *mcpruntime.Manager             `optional:"true"`
+	Config          serverconfig.Config               `optional:"true"`
+	Browser         *browsercontrol.ConfiguredBackend `optional:"true"`
+	BrowserSettings *BrowserSettingsHandler           `optional:"true"`
+	Connections     *connections.Service              `optional:"true"`
+	ConnectionStart *connections.ConnectService       `optional:"true"`
+	ConnectionOAuth *connections.OAuthService         `optional:"true"`
+	ConnectionQR    *connections.QRService            `optional:"true"`
+	MCP             *mcpruntime.Manager               `optional:"true"`
 	Preview         *previewapi.Handler
 	SessionMessages *sessionsapi.MessagesHandler
 	SessionOverview *sessionsapi.OverviewHandler
@@ -57,7 +58,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.MCP, deps.Config)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Store, deps.Config, string(deps.AuthKey), deps.Jaz.Devices.DisablePairing)
-	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser)
+	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser, deps.Store)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
 
@@ -157,15 +158,19 @@ func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, setti
 	)
 }
 
-func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler, extension *browsercontrol.ExtensionBridge) server.Routes {
+func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler, backend *browsercontrol.ConfiguredBackend, store storage.Store) server.Routes {
 	if settings != nil {
 		routes = append(routes,
 			server.Route{Pattern: "GET /v1/browser", Handler: settings},
 			server.Route{Pattern: "PUT /v1/browser", Handler: settings},
 		)
 	}
-	if extension != nil {
-		routes = append(routes, server.Route{Pattern: "GET /v1/browser/extension", Handler: extension})
+	if backend != nil {
+		routes = append(routes,
+			server.Route{Pattern: "GET /v1/browser/extension", Handler: backend.ExtensionBridge},
+			server.Route{Pattern: "GET /v1/sessions/{session}/browser", Handler: browserapi.DesktopHandler{Backend: backend.Desktop, Store: store}},
+			server.Route{Pattern: "POST /v1/sessions/{session}/browser", Handler: browserapi.DesktopHandler{Backend: backend.Desktop, Store: store}},
+		)
 	}
 	return routes
 }

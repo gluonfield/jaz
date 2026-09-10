@@ -5,7 +5,7 @@ interface PermissionDetails {
   requestingUrl?: string
 }
 
-function isTrustedRendererURL(value: string | undefined): boolean {
+export function isTrustedRendererURL(value: string | undefined): boolean {
   if (!value) return false
   try {
     const url = new URL(value)

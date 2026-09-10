@@ -3,10 +3,14 @@ export {}
 import type { BrowserNavigationDirection } from '../shared/browserNavigation'
 import type { ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
+import type { BrowserCommandRequest } from '@shared/browserControl'
+import type { BrowserProfileAPI } from '@shared/browserProfile'
 
 declare global {
   interface Window {
     jaz?: {
+      browserProfiles: BrowserProfileAPI
+      browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       apiBaseUrl: string
       windowKind: 'main' | 'board' | 'launcher'
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void

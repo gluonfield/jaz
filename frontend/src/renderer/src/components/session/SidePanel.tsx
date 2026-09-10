@@ -1,6 +1,7 @@
 import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
+import type { SideBrowser } from '@/lib/sideBrowser'
 import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 import type { TaskSurface } from '@/lib/taskSurface'
@@ -25,6 +26,7 @@ export const SIDE_PANEL_LAYOUT: Record<SidePanelView, { width: number; resizable
 }
 
 export function SidePanel({
+  browserControl,
   session,
   progress,
   subagents,
@@ -46,6 +48,7 @@ export function SidePanel({
   onSendSideChat,
   onClose,
 }: {
+  browserControl?: SideBrowser
   session: Session
   progress?: TaskSurface
   subagents: ProviderSubagentView[]
@@ -96,6 +99,7 @@ export function SidePanel({
     case 'preview':
       return (
         <PreviewPanel
+          browserControl={browserControl}
           target={previewTarget}
           onTargetChange={onPreviewTargetChange}
           onAddBrowserAnnotation={onAddBrowserAnnotation}

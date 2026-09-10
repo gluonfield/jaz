@@ -6,9 +6,6 @@ import (
 )
 
 func scrollDelta(direction string, amount int) (int, int) {
-	if amount == 0 {
-		amount = defaultScrollAmount
-	}
 	switch strings.ToLower(strings.TrimSpace(direction)) {
 	case "up":
 		return -abs(amount), 0
