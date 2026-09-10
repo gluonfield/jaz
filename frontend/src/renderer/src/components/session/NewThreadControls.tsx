@@ -309,24 +309,23 @@ export function ProjectPicker({
       onClose={() => setOpen(false)}
       placement={placement}
       trigger={
-        <div className={`inline-flex max-w-[13rem] items-center ${disabled ? '' : 'group/project'}`}>
+        <div className={`inline-flex h-7 max-w-[13rem] items-center rounded-full text-[12px] font-medium text-ink-2 transition-[background-color,color,scale] duration-150 ${disabled ? 'opacity-50' : 'hover:bg-surface-2 hover:text-ink active:scale-[0.96]'}`}>
           {value ? (
-            <IconButton
-              size="sm"
+            <button
+              type="button"
               aria-label="No Project"
               title="No Project"
               disabled={disabled}
               onClick={() => select('', false)}
-              className="group/clear text-ink-2"
+              className="group/clear grid h-full w-7 shrink-0 cursor-pointer place-items-center rounded-full disabled:cursor-default"
             >
-              <Folder size={13} className="col-start-1 row-start-1 group-hover/project:invisible group-focus-visible/clear:invisible [@media(hover:none)]:group-enabled/clear:invisible" />
-              <X size={13} className="invisible col-start-1 row-start-1 group-hover/project:visible group-focus-visible/clear:visible [@media(hover:none)]:group-enabled/clear:visible" />
-            </IconButton>
+              <Folder size={13} className="col-start-1 row-start-1 group-enabled/clear:group-hover/clear:invisible group-focus-visible/clear:invisible [@media(hover:none)]:group-enabled/clear:invisible" />
+              <X size={13} className="invisible col-start-1 row-start-1 group-enabled/clear:group-hover/clear:visible group-focus-visible/clear:visible [@media(hover:none)]:group-enabled/clear:visible" />
+            </button>
           ) : null}
-          <Button
-            variant="secondary"
-            size="sm"
-            className={`min-w-0 flex-1 ${value ? 'pl-0' : ''}`}
+          <button
+            type="button"
+            className={`flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-2.5 disabled:cursor-default ${value ? 'pl-0' : ''}`}
             aria-haspopup="dialog"
             aria-expanded={open}
             aria-label={value ? `Project: ${value}` : 'Work in a Project'}
@@ -336,7 +335,7 @@ export function ProjectPicker({
           >
             {value ? null : <Folder size={13} className="shrink-0" />}
             <span className="truncate">{label}</span>
-          </Button>
+          </button>
         </div>
       }
     >
