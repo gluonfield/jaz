@@ -282,6 +282,11 @@ export function deriveSessionView(
       .map((message) => Date.parse(message.created_at))
       .filter((time) => !Number.isNaN(time)),
   )
+  const latestActivity = settledTranscriptEvents.findLast((event) => (
+    event.acp?.id === session.id &&
+    Date.parse(event.at) >= latestUserAt &&
+    (event.type === 'acp_thought' || event.type === 'acp_message' || event.type === 'acp_tool')
+  ))
   const latestPlanDecisionEvent = settledTranscriptEvents.findLast((event) => {
     const surface = approvalPlanSurfaceFromEvent(event)
     return Boolean(
@@ -320,6 +325,7 @@ export function deriveSessionView(
     sideChatEvents,
     displayEvents,
     latestUserAt,
+    acpThinking: latestActivity?.type === 'acp_thought',
     planAvailable,
     planActive,
     goalAvailable,

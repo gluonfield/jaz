@@ -109,7 +109,7 @@ test('the production transcript gives each agent action its own row between regu
   expect(html).not.toContain('Used tools')
 })
 
-test('the live production transcript keeps reasoning visible and tool details collapsed', () => {
+test('the live production transcript separates collapsed thoughts from visible commentary and tools', () => {
   const at = (seconds) => new Date(seconds * 1000).toISOString()
   const acp = (id, fields) => ({
     session_id: 'thread',
@@ -148,16 +148,19 @@ test('the live production transcript keeps reasoning visible and tool details co
   }))
 
   const ordered = [
-    'reasoning-one',
+    '>Thought<',
     'Read a file',
     'visible-commentary',
     'review-agent',
     'Independent review',
-    'reasoning-two',
+    '>Thinking<',
   ].map((value) => html.indexOf(value))
   expect(ordered.every((index) => index >= 0)).toBe(true)
   expect(ordered).toEqual([...ordered].sort((a, b) => a - b))
   expect(html).not.toContain('Read contract')
+  expect(html).not.toContain('reasoning-one')
+  expect(html).not.toContain('reasoning-two')
+  expect(html.match(/live-shimmer/g)).toHaveLength(1)
   expect(html).not.toContain('Thought process')
 })
 
@@ -193,7 +196,7 @@ test('a running assistant turn keeps message controls hidden until completion', 
   expect(copies(render([interim, work, answer]))).toBe(0)
 })
 
-test('search expansion reveals tool detail without hiding reasoning', () => {
+test('search expansion reveals both reasoning and tool detail', () => {
   const entries = [
     thought('visible-reasoning'),
     tool({ id: 'read', tool_name: 'read', title: 'Read hidden detail' }),
@@ -208,7 +211,7 @@ test('search expansion reveals tool detail without hiding reasoning', () => {
   expect(html).toContain('Read hidden detail')
 })
 
-test('mixed ACP snapshots use the same visible reasoning path', () => {
+test('mixed ACP snapshots fold reasoning while leaving the answer visible', () => {
   const html = renderToStaticMarkup(createElement(Transcript, {
     messages: [],
     events: [{
@@ -227,7 +230,8 @@ test('mixed ACP snapshots use the same visible reasoning path', () => {
     sessionId: 'thread',
   }))
 
-  expect(html).toContain('mixed-reasoning')
+  expect(html).not.toContain('mixed-reasoning')
+  expect(html).toContain('>Thought<')
   expect(html).toContain('mixed-answer')
   expect(html).not.toContain('Thought process')
 })

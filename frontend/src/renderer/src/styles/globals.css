@@ -557,7 +557,7 @@ img.chat-prose-link-icon {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: live-shimmer-sweep 4s linear infinite;
+  animation: live-shimmer-sweep 8s linear infinite;
 }
 
 .live-pulse {
@@ -581,7 +581,7 @@ img.chat-prose-link-icon {
 
 .live-pulse-sweep {
   stroke-dasharray: 6 22;
-  animation: live-pulse-beat 1.5s linear infinite;
+  animation: live-pulse-beat 3s linear infinite;
 }
 
 @keyframes live-pulse-beat {

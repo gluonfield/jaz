@@ -226,6 +226,7 @@ export const Transcript = memo(function Transcript({
             event={item.event}
             showHeader={item.showHeader}
             working={working}
+            findActive={findActive}
             showTaskSurface={
               Boolean(
                 taskSurface &&

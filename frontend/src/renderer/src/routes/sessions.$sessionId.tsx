@@ -412,6 +412,7 @@ function SessionPage({
   const {
     transcriptEvents,
     displayEvents,
+    acpThinking,
     planAvailable,
     planActive,
     goalAvailable,
@@ -523,6 +524,7 @@ function SessionPage({
                             <SessionLivenessIndicator
                               agent={session.runtime_ref?.agent}
                               running={sessionRunning}
+                              thinking={acpThinking}
                               activeOperation={detail.data?.acp_active_operation}
                               updatedAt={session.updated_at}
                               lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
