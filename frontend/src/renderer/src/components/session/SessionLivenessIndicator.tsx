@@ -1,7 +1,6 @@
 import { CircleAlert } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
-import { LivePulse } from '@/components/ui/LivePulse'
 import { agentLabel } from '@/lib/agentLabel'
 import {
   deriveSessionRunSignal,
@@ -73,9 +72,7 @@ export function SessionLivenessIndicator({
         >
           {stale ? (
             <CircleAlert className="size-3.5 shrink-0" aria-hidden />
-          ) : (
-            <LivePulse className="text-running" />
-          )}
+          ) : null}
           <span className="min-w-0 truncate">{label}</span>
           {detail ? (
             <span className="shrink-0 tabular-nums">{detail}</span>

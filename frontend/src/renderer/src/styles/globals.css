@@ -534,11 +534,9 @@ img.chat-prose-link-icon {
  * line left to right — the class sits on the line container so a single
  * background is clipped to all of its text (per-span backgrounds would each
  * run their own sweep, and any child opacity/transform would fall out of
- * the clip mask and vanish). The leading mark is a tiny ECG trace whose
- * bright segment beats along the line — a literal live pulse in the running
- * color. Band highlight lightens toward the page in light mode and toward
- * white in dark mode via --live-shimmer-hi. Seamless loop: size 300% +
- * repeat, so position -300% wraps to 0. */
+ * the clip mask and vanish). Band highlight lightens toward the page in
+ * light mode and toward white in dark mode via --live-shimmer-hi. Seamless
+ * loop: size 300% + repeat, so position -300% wraps to 0. */
 :root {
   --live-shimmer-hi: color-mix(in oklab, var(--color-ink-3) 30%, var(--color-bg));
 }
@@ -560,36 +558,6 @@ img.chat-prose-link-icon {
   animation: live-shimmer-sweep 8s linear infinite;
 }
 
-.live-pulse {
-  width: 16px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-.live-pulse-trace,
-.live-pulse-sweep {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.live-pulse-trace {
-  opacity: 0.3;
-}
-
-.live-pulse-sweep {
-  stroke-dasharray: 6 22;
-  animation: live-pulse-beat 3s linear infinite;
-}
-
-@keyframes live-pulse-beat {
-  to {
-    stroke-dashoffset: -28;
-  }
-}
-
 @keyframes live-shimmer-sweep {
   to {
     background-position: -300% 0;
@@ -602,21 +570,12 @@ img.chat-prose-link-icon {
     background: none;
     color: var(--color-ink-3);
   }
-  .live-pulse-sweep {
-    animation: none;
-    opacity: 0;
-  }
 }
 
 :root.jaz-no-effects .live-shimmer {
   animation: none;
   background: none;
   color: var(--color-ink-3);
-}
-
-:root.jaz-no-effects .live-pulse-sweep {
-  animation: none;
-  opacity: 0;
 }
 
 /* Ultra effort slider: the track ring breathes while the dither field burns. */
