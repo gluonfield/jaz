@@ -6,6 +6,36 @@ import { fileURLToPath, URL } from 'node:url'
 import { TextEncoder } from 'node:util'
 import { BrowserRepl } from './browserRepl'
 
+test('accessibility observations return text and numeric targets share browser actions', async () => {
+  const actions = []
+  const repl = new BrowserRepl(async (input) => {
+    actions.push(input)
+    return { status: 'ok', text: '0 RootWebArea\n1 button "Save"', data: '0 RootWebArea\n1 button "Save"' }
+  })
+  try {
+    const result = await repl.run(`const tree = await tab.getAXState({disableDiffing:true})
+if (!tree.includes('Save')) {
+  throw new Error('AX observation must return its text')
+}
+await tab.hover(1)
+await tab.click(1)
+await tab.setValue(1, 'value')
+await tab.scroll('down', 0, 1)`)
+    expect(result.text).toContain('1 button "Save"')
+    expect(actions).toEqual([
+      { action: 'ax_state', disable_diffing: true },
+      { action: 'hover', ref: 'ax:1' },
+      { action: 'click', ref: 'ax:1' },
+      { action: 'form_input', ref: 'ax:1', value: 'value' },
+      { action: 'scroll', text: 'down', amount: 0, ref: 'ax:1' },
+    ])
+    await expect(repl.run('await tab.click(-1)')).rejects.toThrow('non-negative integer')
+    await expect(repl.run('await tab.click(1.5)')).rejects.toThrow('non-negative integer')
+  } finally {
+    repl.cancel()
+  }
+})
+
 test('browser scripts retain variables, await actions, and emit documentation once', async () => {
   const actions = []
   const repl = new BrowserRepl(async (input) => {
@@ -84,7 +114,9 @@ test('browser scripts propagate an action failure instead of continuing', async 
     throw new Error('stale ref')
   })
   try {
+    await repl.run('const beforeFailure = 42')
     await expect(repl.run('await tab.click("p1:e1")\nnodeRepl.write("done")')).rejects.toThrow('stale ref')
+    expect((await repl.run('nodeRepl.write(beforeFailure)')).text).toContain('42')
   } finally {
     repl.cancel()
   }

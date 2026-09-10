@@ -5,9 +5,11 @@ import { join } from 'node:path'
 import { installBrowserControl } from '@main/browserControl'
 import { configurePreviewSession } from '@main/previewSession'
 import { assertUntrustedProfileCaller, prepareProfileFixture } from './profiles'
+import { accessibilityFixture, accessibilityFrame } from './accessibility'
 
 app.setName('Jaz')
 app.setPath('userData', join(process.env.JAZ_BROWSER_SMOKE_DIR!, `profile-${process.pid}`))
+const timeout = Number(process.env.JAZ_BROWSER_SMOKE_TIMEOUT_MS || 30000)
 installBrowserControl()
 process.on('unhandledRejection', (error) => {
   console.error(error)
@@ -19,6 +21,13 @@ let pendingProxy: { response: ServerResponse; url: string } | undefined
 let proxyWaiter: ServerResponse | undefined
 let firstNavigation: IncomingHttpHeaders | undefined
 const server = createServer(async (request, response) => {
+  if (request.url?.startsWith('/accessibility')) {
+    response.setHeader('Content-Type', 'text/html')
+    response.end(request.url.startsWith('/accessibility-frame')
+      ? accessibilityFrame(new URL(request.url, `http://${request.headers.host}`))
+      : accessibilityFixture(`http://${request.headers.host}`))
+    return
+  }
   if (request.url === '/target' && !firstNavigation) {
     firstNavigation = request.headers
   }
@@ -106,6 +115,6 @@ server.listen(0, '127.0.0.1', async () => {
     server.close()
     app.exit(result.ok ? 0 : 1)
   })
-  await window.loadURL(`http://127.0.0.1:${address.port}`)
+  await window.loadURL(`http://127.0.0.1:${address.port}?timeout=${timeout}`)
 })
-setTimeout(() => app.exit(2), 40_000)
+setTimeout(() => app.exit(2), timeout + 10000)

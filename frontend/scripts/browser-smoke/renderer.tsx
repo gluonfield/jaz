@@ -28,6 +28,9 @@ function Fixture() {
     },
   ))
   useEffect(() => {
+    const pending = new Map<number, string>()
+    let stage = 'opening, profile import and cursor checks'
+    const timeout = setTimeout(() => window.smoke.result({ ok: false, error: 'Browser smoke timed out', stage, pending: [...pending.values()] }), Number(new URLSearchParams(location.search).get('timeout') || 30000))
     const run = async () => {
       await browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/target` } })
       const evaluate = async (expression: string) => {
@@ -72,6 +75,7 @@ await rawCdp.send('Input.dispatchMouseEvent', {type:'mouseMoved',x:20,y:20,butto
       if (!await evaluate('document.querySelector("button").matches(":hover")') || cursorPoint() !== initialCursor) {
         throw new Error('Persistent CDP binding did not hover the page independently')
       }
+      stage = 'raw CDP cancellation'
       const pendingRaw = browser.call({ method: 'Jaz.run', params: { code: `await rawCdp.send('Runtime.evaluate', {
 expression:'new Promise(resolve => { window.finishRaw = resolve })',
 awaitPromise:true
@@ -91,6 +95,7 @@ awaitPromise:true
       if (!rawCancelled) {
         throw new Error('A pending raw CDP script did not cancel')
       }
+      stage = 'preview navigation cancellation'
       const originalURL = await evaluate('location.href')
       const preparingNavigation = browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/cancelled-navigation` } })
       await fetch('/wait-for-proxy')
@@ -105,6 +110,7 @@ awaitPromise:true
       if (!navigationCancelled || await evaluate('location.href') !== originalURL) {
         throw new Error('Cancelled navigation continued after its preview proxy resolved')
       }
+      stage = 'cursor cancellation and ownership'
       const cancelled = browser.call({ method: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: 20, y: 20 } })
       browser.cancel()
       let rejected = false
@@ -126,9 +132,17 @@ awaitPromise:true
       if (!foreignRejected) {
         throw new Error('Browser command escaped its webview')
       }
+      let foreignFrameRejected = false
+      try {
+        await window.jaz!.browserCommand({ webContentsId: Number(tab.id), method: 'Accessibility.getFullAXTree', sessionId: 'foreign-debugger-session' })
+      } catch {
+        foreignFrameRejected = true
+      }
+      if (!foreignFrameRejected) {
+        throw new Error('Browser command accepted an unowned debugger session')
+      }
       const backend = await window.smoke.backend()
-      const pending = new Map<number, string>()
-      const timeout = setTimeout(() => window.smoke.result({ ok: false, error: 'Browser smoke timed out', pending: [...pending.values()] }), 30000)
+      stage = 'MCP and accessibility'
       const socket = new WebSocket(`${backend.replace('http:', 'ws:')}/v1/sessions/browser-fixture/browser`)
       socket.onmessage = async (event) => {
         const request = JSON.parse(event.data)
@@ -158,13 +172,21 @@ await tab.scroll('down', 0, targetRef)` } })
       if (!exercise.ok) {
         throw new Error(await exercise.text())
       }
+      const accessibility = await fetch(`${backend}/exercise-accessibility?url=${encodeURIComponent(`${location.origin}/accessibility`)}`)
+      if (!accessibility.ok) {
+        throw new Error(await accessibility.text())
+      }
+      stage = 'native Codex MCP compatibility'
+      const codex = await fetch(`${backend}/exercise-codex?url=${encodeURIComponent(`${location.origin}/target?codex=1`)}`)
+      if (!codex.ok) {
+        throw new Error(await codex.text())
+      }
       await window.smoke.capture()
-      clearTimeout(timeout)
       socket.close()
       browser.dispose()
-      window.smoke.result({ ok: true, checks: ['native Chromium identity across first navigation, fetch, page, worker and client hints', 'cursor arrival precedes input', 'trusted click and hover', 'persistent direct CDP without overlay movement', 'zero scroll animates and hovers without scrolling', 'animated and raw-command cancellation', 'cancellation during preview URL resolution', 'webview ownership', 'MCP script through Go and Electron with verified page result', 'profile import rejects untrusted callers', 'selected encrypted cookies authenticate the side browser', 'import dismissal, profile selection, failure retry, themes and narrow layout'] })
+      window.smoke.result({ ok: true, checks: ['Chromium AX hierarchy, diffs, hidden-frame exclusion and root-index scrolling', 'trusted AX clicks on wrapped text, closed shadows and nested frames', 'hit-tested coordinates and obscured-target rejection', 'nested debugger sessions survive document replacement', 'native Chromium identity across first navigation, fetch, page, worker and client hints', 'cursor arrival precedes input', 'trusted click and hover', 'persistent direct CDP without overlay movement', 'zero scroll animates and hovers without scrolling', 'animated and raw-command cancellation', 'cancellation during preview URL resolution', 'webview ownership', 'MCP script through Go and Electron with verified page result', 'profile import rejects untrusted callers', 'selected encrypted cookies authenticate the side browser', 'import dismissal, profile selection, failure retry, themes and narrow layout'] })
     }
-    void run().catch((error) => window.smoke.result({ ok: false, error: error.message, stack: error.stack }))
+    void run().catch((error) => window.smoke.result({ ok: false, error: error.message, stack: error.stack, stage, pending: [...pending.values()] })).finally(() => clearTimeout(timeout))
   }, [browser])
   return <><div id="profile-settings" className="absolute left-4 top-4"><BrowserProfileImport /></div><PreviewPanel target={target} onTargetChange={setTarget} onClose={() => {}} browserControl={browser} /></>
 }

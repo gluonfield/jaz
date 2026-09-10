@@ -23,11 +23,12 @@ type cdpConn struct {
 }
 
 type cdpMessage struct {
-	ID     int64           `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Params any             `json:"params,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  *cdpError       `json:"error,omitempty"`
+	SessionID string          `json:"sessionId,omitempty"`
+	ID        int64           `json:"id,omitempty"`
+	Method    string          `json:"method,omitempty"`
+	Params    any             `json:"params,omitempty"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Error     *cdpError       `json:"error,omitempty"`
 }
 
 type cdpError struct {
@@ -60,6 +61,10 @@ func newCDPConn(ws *websocket.Conn) *cdpConn {
 }
 
 func (c *cdpConn) call(ctx context.Context, method string, params any, out any) error {
+	return c.callSession(ctx, "", method, params, out)
+}
+
+func (c *cdpConn) callSession(ctx context.Context, sessionID, method string, params any, out any) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -67,7 +72,7 @@ func (c *cdpConn) call(ctx context.Context, method string, params any, out any) 
 	if err != nil {
 		return err
 	}
-	msg := cdpMessage{ID: id, Method: method, Params: params}
+	msg := cdpMessage{ID: id, Method: method, Params: params, SessionID: sessionID}
 	c.writeMu.Lock()
 	err = c.ws.WriteJSON(msg)
 	c.writeMu.Unlock()

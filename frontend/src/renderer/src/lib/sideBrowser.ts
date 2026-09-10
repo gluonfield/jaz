@@ -1,6 +1,7 @@
 import { BrowserCursor } from '@/lib/browserCursor'
 import { BROWSER_CDP_METHODS, type BrowserCommand, type BrowserCommandRequest } from '@shared/browserControl'
-import { BrowserRepl, type BrowserAction, type BrowserActionResult } from '@/lib/browserRepl'
+import { BrowserRepl } from '@/lib/browserRepl'
+import type { BrowserAction, BrowserActionResult } from '@/lib/browserApi'
 import { previewDisplayUrl, resolvePreviewSource } from '@/lib/api/preview'
 
 export type BrowserViewport = {
@@ -38,7 +39,7 @@ export class SideBrowser {
     }
   }
 
-  async call({ method, params }: BrowserCommand): Promise<unknown> {
+  async call({ method, params, sessionId }: BrowserCommand): Promise<unknown> {
     const generation = this.generation
     const viewport = this.viewport
     if (method === 'Jaz.run') {
@@ -91,7 +92,7 @@ export class SideBrowser {
     if (this.viewport !== viewport || generation !== this.generation) {
       throw new Error('Side browser changed during the action')
     }
-    return this.command({ webContentsId: viewport.getWebContentsId(), method, params })
+    return this.command({ webContentsId: viewport.getWebContentsId(), method, params, sessionId })
   }
 
   private async sendCDP(command: BrowserCommand): Promise<BrowserActionResult> {

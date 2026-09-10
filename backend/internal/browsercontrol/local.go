@@ -35,6 +35,7 @@ type localBrowser struct {
 }
 
 type browserPage struct {
+	ax        axState
 	target    targetInfo
 	conn      *cdpConn
 	opMu      sync.Mutex

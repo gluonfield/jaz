@@ -3,6 +3,7 @@ package browsercontrol
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -91,6 +92,47 @@ func TestDesktopCancellationClosesPendingTransport(t *testing.T) {
 	_ = peer.SetReadDeadline(time.Now().Add(time.Second))
 	if err := peer.ReadJSON(&request); err == nil {
 		t.Fatal("cancelled request left the browser connection open")
+	}
+}
+
+func TestDesktopScreenshotTimeoutPreservesConnection(t *testing.T) {
+	backend := NewDesktopBackend()
+	peer := desktopPeer(t, backend, "thread-1")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := backend.Call(ctx, ActionInput{Session: "thread-1", Action: ActionScreenshot})
+		result <- err
+	}()
+	var request cdpMessage
+	if err := peer.ReadJSON(&request); err != nil || request.Method != "Page.captureScreenshot" {
+		t.Fatalf("screenshot command=%#v err=%v", request, err)
+	}
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("stalled screenshot error=%v", err)
+		}
+	case <-time.After(6 * time.Second):
+		t.Fatal("stalled screenshot did not return before the script deadline")
+	}
+	if err := peer.WriteJSON(cdpMessage{ID: request.ID, Result: json.RawMessage(`{"data":"late"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		_, err := backend.Call(ctx, ActionInput{Session: "thread-1", Action: ActionTabs})
+		result <- err
+	}()
+	_ = peer.SetReadDeadline(time.Now().Add(time.Second))
+	if err := peer.ReadJSON(&request); err != nil || request.Method != "Jaz.tab" {
+		t.Fatalf("screenshot timeout broke the next command: %#v err=%v", request, err)
+	}
+	if err := peer.WriteJSON(cdpMessage{ID: request.ID, Result: json.RawMessage(`{"id":"17"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-result; err != nil {
+		t.Fatalf("late screenshot response broke the next action: %v", err)
 	}
 }
 

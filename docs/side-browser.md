@@ -51,6 +51,12 @@ or will keep an account unrestricted.
 `browser_screenshot` use the selected backend. `browser_hover` and `browser_drag`
 also support the side browser and managed Chromium.
 
+`browser_get_ax_state` reads Chromium's actual accessibility tree in the side
+browser. It exposes computed names, roles, values and states, including closed
+shadow roots and documents in same-site and cross-site frames. Numeric indices
+identify DOM nodes within their document and stay stable across observations;
+removed nodes and replaced documents cannot reuse an earlier index.
+
 `browser_js` accepts `{ "code": "..." }` in side-browser mode. Its first successful result
 includes API documentation; empty code requests the documentation again.
 The persistent `tab` binding offers navigation, semantic observations, finding,
@@ -64,13 +70,20 @@ UTF-8 budget, with a marker when earlier output is truncated.
 
 ```javascript
 await tab.goto('https://example.com')
-const state = await tab.getState()
-nodeRepl.write(state.title)
+const tree = await tab.getAXState()
 ```
 
-Read fresh state before choosing a target. Observations expose opaque element
-refs and invalidate older refs. These are Jaz's semantic DOM observations;
-this API currently has no Playwright locator or native desktop-app surface.
+Prefer `tab.getAXState()` before choosing a target, then use its numeric index
+with `tab.click(index)`, `tab.hover(index)`, `tab.setValue(index, value)` or the
+other target-taking methods. It emits and returns the tree as text. Subsequent
+observations show added, changed and removed nodes. Pass `{disableDiffing: true}`
+for a full tree; structural moves and screenshots also force a full observation.
+Direct browser actions accept the same index as `ref: "ax:42"`.
+
+`getState()` and `find()` retain the semantic DOM interface with opaque refs
+that become stale after a new DOM observation or mutation. AX indices use
+Chromium node identities and survive unrelated page mutations. This API
+currently has no Playwright locator or native desktop-app surface.
 
 Both interaction paths run inside the same `browser_js` session:
 
@@ -89,7 +102,8 @@ await cdp.send('Input.dispatchMouseEvent', {
 `tab.hover` and `tab.scroll` animate Jaz's pointer before dispatching browser
 input. Scripted scroll distances use CSS pixels (default 800); explicit zero
 hovers without scrolling or clicking. A zero-scroll target must be visible.
-Jaz uses opaque refs rather than Codex's numeric accessibility indices.
+Scroll distances in this API remain CSS pixels, including when its optional
+target is a numeric accessibility index.
 
 `tab.cdp.send` sends a supported command directly to the current webview and
 returns Chromium's response. It never requests an overlay move or press.
@@ -104,6 +118,24 @@ Electron renderer. Go reuses the existing browser page driver. The renderer
 animates an overlay cursor, waits for arrival, then forwards input through an
 IPC method restricted to webviews owned by that window. Electron's debugger
 dispatches Chromium input. The system pointer stays under the user's control.
+
+Accessibility observations use `Accessibility.enable` and
+`Accessibility.getFullAXTree`. The desktop attaches only to iframe debugger
+targets belonging to the current webview. Go merges their trees under the
+corresponding exposed iframe nodes, flattens ignored ancestors, and omits hidden
+frame documents and duplicate inline text boxes. Indices bind to the frame,
+document loader and Chromium node identity. Actions resolve those DOM nodes into their frame's isolated world and
+reuse the existing browser actions. Frame geometry maps the hit-tested point
+into the top viewport; hit tests reject frames covered by another element.
+Removing a debugger session also removes its descendants.
+Target resolution scrolls instantly before measuring coordinates, so page CSS
+for smooth scrolling cannot leave the target moving while the cursor aims.
+
+This uses the same Chromium AX/CDP primitives as Codex. Tree rendering and diff
+selection are Jaz code; Codex's private accessibility WASM is not included.
+The full tree string is available inside `browser_js`; emitted tool text keeps
+the existing 12 KB output budget. Scripts can inspect a specific part of a large
+tree and print the relevant lines.
 
 Scripts run in a persistent QuickJS WASM context with memory, CPU and elapsed
 time limits. QuickJS evaluates scripts directly with its async-global flag; no
@@ -126,6 +158,32 @@ Node host, native-pipe discovery and companion accessibility WASM.
 Provider prompts, compaction, models, authentication and native tools remain
 provider-owned. Browser documentation arrives through the MCP tool result.
 
+### Codex compatibility and extension boundaries
+
+Codex uses the same Streamable HTTP MCP tools as other ACP agents. The ACP
+adapter forwards the conversation header through the provider's advertised HTTP
+MCP capability; browser behavior belongs to the shared browser service.
+[Codex supports this transport and per-server headers](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+Compatibility means Codex can discover and operate Jaz's tools. The JavaScript
+API is Jaz's documented API; Codex's private `cua` runtime and its Node,
+Playwright and native-app APIs are separate integrations.
+
+The implementation has these extension points:
+
+| Owner | Responsibility |
+| --- | --- |
+| `browserApi.ts` | JavaScript bindings, action contracts and first-use documentation |
+| `BrowserRepl` | Interpreter lifetime, limits, cancellation and output |
+| Go `browsercontrol` | Shared action validation, page operations and AX node identity |
+| `SideBrowser` / `BrowserCursor` | Conversation lifetime and cursor-before-input ordering |
+| Electron `browserControl` / `BrowserFrames` | Owned webview commands and iframe debugger sessions |
+
+Add browser behavior to the browser API and service, reuse existing page actions,
+and extend the Electron command allowlist only when a new primitive is needed.
+Provider adapters continue translating MCP configuration. Interpreter changes
+do not require changing page actions or the cursor; a future native-app or
+Playwright surface should advertise its own supported capabilities.
+
 ## Verification
 
 From `frontend`, run `bun run test:browser` with Go 1.26 and Electron installed.
@@ -139,6 +197,14 @@ including session-header binding, observed success after output truncation, and
 an image result. Each Electron process uses a fresh browser profile. The fixture
 reports pending commands on timeout and writes a screenshot into the printed
 temporary artifact directory.
+
+The same real MCP/HTTP/Electron path verifies AX names from labels, hidden and
+password exclusion, stable numeric indices, unchanged/full/diff observations,
+closed shadow roots, nested same-site and cross-site frame clicks and form input,
+hidden-frame exclusion, obscured-target rejection, wrapped text, smooth-scrolling pages, root-index
+scrolling, removed nodes, document replacement and full trees after screenshots.
+Unit checks cover ignored ancestors, frame hierarchy and
+structural moves. The cursor/input and direct-CDP checks run alongside these.
 
 The same fixture creates synthetic Chrome/Firefox profiles and exercises real
 SQLite reads, Chrome decryption/host verification, cookie flags, selected-site
@@ -156,9 +222,25 @@ unchanged. It fails against the original Electron/Jaz User-Agent.
 
 `bun test`, `bun run typecheck`, `bun run build:bundle`, and the Go browser,
 HTTP browser, settings, app and server suites cover the remaining contracts.
-Individual live ACP agents and native-CLI parity have not been exercised by
-this fixture; perform those checks before release.
+Run `bun run test:browser --codex` for an additional native Codex acceptance
+check. It uses the installed `codex` binary and existing ChatGPT OAuth login,
+ignores user configuration, removes inherited `OPENAI_API_KEY`, and preserves
+the provider's default model. Only the disposable fixture's `browser_js` tool
+is pre-approved in that test process; production approval behavior is unchanged.
+The check requires successful native MCP calls, a returned image, a completed
+turn and an exact final success message, then independently verifies the persistent
+JavaScript binding and exactly one trusted button click on the expected page.
+The test log records the CLI version; `codex.jsonl` in the temporary fixture
+directory retains its native events. This verifies browser MCP compatibility;
+full ACP prompt/reload/compaction/auth parity and other live providers need their
+separate release checks.
 
-During review, two Electron fixture runs timed out after 40 seconds. Subsequent
-repeated runs passed, including parallel test load and fresh browser profiles;
-the earlier timeout cause remains undiagnosed.
+Chromium screenshot capture can stall. High-level screenshots have a five-second
+deadline and return an error while preserving the browser connection and script
+bindings. A transport regression withholds the screenshot response, then delivers
+it late and verifies that the next command still succeeds. The cause of the
+intermittent Chromium stall remains unresolved; the deadline bounds its effect.
+Native Codex acceptance runs have reproduced the stall after successful AX
+observations and trusted clicks. Passing subsequent runs does not clear this
+reliability issue. Electron's `capturePage()` also stalled in a diagnostic probe;
+it was not retained as an alternative implementation.
