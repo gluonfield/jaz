@@ -14,7 +14,7 @@ export function useDictation({
   const [availability, setAvailability] = useState<DictationAvailability>({ available: false, reason: '' })
   const [phase, setPhase] = useState<DictationPhase | null>(null)
   const [transcript, setTranscript] = useState('')
-  const [levels, setLevels] = useState<number[]>([])
+  const [level, setLevel] = useState(0)
   const [error, setError] = useState('')
   const session = useRef<{ id: string; identity: string; send: boolean } | null>(null)
   const current = useRef({ identity, disabled, onComplete })
@@ -54,7 +54,7 @@ export function useDictation({
           setPhase(event.phase)
           break
         case 'level':
-          setLevels((previous) => [...previous.slice(-71), event.level])
+          setLevel(event.level)
           break
         case 'result':
           setTranscript(event.text)
@@ -101,7 +101,7 @@ export function useDictation({
     session.current = active
     setPhase('starting')
     setTranscript('')
-    setLevels([])
+    setLevel(0)
     setError('')
     try {
       await api.start(active.id)
@@ -133,5 +133,5 @@ export function useDictation({
     }
   }
 
-  return { showButton: Boolean(api), availability, phase, transcript, levels, error, start, stop, cancel, dismissError: () => setError('') }
+  return { showButton: Boolean(api), availability, phase, transcript, level, error, start, stop, cancel, dismissError: () => setError('') }
 }
