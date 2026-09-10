@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from 'react'
-import { Eye, FileText, Image as ImageIcon, ImageOff, LoaderCircle } from 'lucide-react'
+import { FileText, Image as ImageIcon, ImageOff, LoaderCircle } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { sessionAttachmentUrl } from '@/lib/api/sessions'
 
@@ -39,7 +39,7 @@ export function MessageAttachments({
   return (
     <div className="mt-2 flex max-w-full flex-col gap-2">
       {images.length ? (
-        <div className="flex max-w-full flex-wrap gap-2">
+        <div className="flex max-w-full flex-col items-start gap-2">
           {images.map((attachment, index) => (
             <ImageAttachmentTile
               key={attachmentKey(attachment, index)}
@@ -63,33 +63,60 @@ export function MessageAttachments({
 export function ImageAttachmentTile({
   attachment,
   attachmentSessionId,
+  compact = false,
 }: {
   attachment: MessageAttachment
   attachmentSessionId?: string
+  compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const [unavailable, setUnavailable] = useState(false)
+  const [failedSrc, setFailedSrc] = useState('')
   const objectUrl = useObjectUrl(attachment.file)
   const src = objectUrl || attachmentContentUrl(attachment, attachmentSessionId)
-  if (attachment.uploading && !src) {
-    return <ImageAttachmentPreview attachment={attachment} status="Uploading" uploading />
-  }
-  if (!src || unavailable) return <ImageAttachmentPreview attachment={attachment} status="Unavailable" unavailable />
+  const available = Boolean(src) && src !== failedSrc
+  const status = available || attachment.uploading ? attachmentStatus(attachment) : 'Unavailable'
   return (
     <>
-      <ImageAttachmentPreview
-        attachment={attachment}
-        status={attachmentStatus(attachment)}
-        uploading={attachment.uploading}
-        onOpen={() => setOpen(true)}
-      />
-      <ImageAttachmentModal
-        attachment={attachment}
-        src={src}
-        open={open}
-        onClose={() => setOpen(false)}
-        onError={() => setUnavailable(true)}
-      />
+      <button
+        type="button"
+        aria-label={`${available ? 'Open' : status} ${attachment.name}`}
+        title={attachmentTitle(attachment)}
+        disabled={!available}
+        className={`max-w-full overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70 enabled:cursor-zoom-in ${compact || !available ? 'w-24' : 'w-fit'}`}
+        onClick={() => setOpen(true)}
+      >
+        {available ? (
+          <img
+            src={src}
+            alt={attachment.name}
+            loading="lazy"
+            onError={() => setFailedSrc(src)}
+            className={`block max-w-full object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10 ${compact ? 'h-18 w-24' : 'max-h-[32rem] h-auto w-auto'}`}
+          />
+        ) : (
+          <div className="grid aspect-[4/3] place-items-center bg-surface-2 text-ink-3">
+            {attachment.uploading ? (
+              <LoaderCircle size={18} className="animate-spin" aria-hidden />
+            ) : (
+              <ImageOff size={18} aria-hidden />
+            )}
+          </div>
+        )}
+        <div className="flex min-w-0 items-center gap-1 px-1.5 py-1 text-[10px]">
+          <ImageIcon size={11} className="shrink-0 text-ink-3" aria-hidden />
+          <span className="min-w-0 flex-1 truncate text-ink">{attachment.name}</span>
+          {status ? <span className="shrink-0 text-ink-3">{status}</span> : null}
+        </div>
+      </button>
+      {available ? (
+        <ImageAttachmentModal
+          attachment={attachment}
+          src={src}
+          open={open}
+          onClose={() => setOpen(false)}
+          onError={() => setFailedSrc(src)}
+        />
+      ) : null}
     </>
   )
 }
@@ -106,69 +133,6 @@ function useObjectUrl(file?: File): string {
     return () => URL.revokeObjectURL(next)
   }, [file])
   return url
-}
-
-function ImageAttachmentPreview({
-  attachment,
-  onOpen,
-  status = formatAttachmentSize(attachment.size),
-  unavailable = false,
-  uploading = false,
-}: {
-  attachment: MessageAttachment
-  onOpen?: () => void
-  status?: string
-  unavailable?: boolean
-  uploading?: boolean
-}) {
-  const content = (
-    <>
-      <div className="relative grid aspect-[4/3] place-items-center overflow-hidden bg-surface-2">
-        <div className="relative grid size-7 place-items-center rounded-[6px] bg-bg/70 text-ink-3 shadow-sm ring-1 ring-border/70">
-          {uploading ? (
-            <LoaderCircle size={15} className="animate-spin" aria-hidden />
-          ) : unavailable ? (
-            <ImageOff size={15} aria-hidden />
-          ) : (
-            <ImageIcon size={15} aria-hidden />
-          )}
-        </div>
-        {onOpen ? (
-          <span className="absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-bg/90 text-ink shadow-sm ring-1 ring-border/70">
-            <Eye size={10} aria-hidden />
-          </span>
-        ) : null}
-      </div>
-      <div className="flex min-w-0 items-center gap-1 px-1.5 py-1 text-[10px]">
-        <ImageIcon size={11} className="shrink-0 text-ink-3" aria-hidden />
-        <span className="min-w-0 flex-1 truncate text-ink">{attachment.name}</span>
-        {status ? <span className="shrink-0 text-ink-3">{status}</span> : null}
-      </div>
-    </>
-  )
-
-  if (!onOpen) {
-    return (
-      <div
-        className="w-24 max-w-full overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70"
-        title={unavailable ? 'Attachment file is no longer available on the server' : attachmentTitle(attachment)}
-      >
-        {content}
-      </div>
-    )
-  }
-
-  return (
-    <button
-      type="button"
-      aria-label={`Open ${attachment.name}`}
-      title={attachmentTitle(attachment)}
-      className="w-24 max-w-full cursor-pointer overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70 transition-[background-color,transform] duration-150 hover:bg-surface-2 active:scale-[0.96]"
-      onClick={onOpen}
-    >
-      {content}
-    </button>
-  )
 }
 
 function ImageAttachmentModal({

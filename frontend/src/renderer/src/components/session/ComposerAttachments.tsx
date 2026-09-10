@@ -50,6 +50,7 @@ export function ComposerAttachmentList({
               <ImageAttachmentTile
                 attachment={messageAttachmentFromComposer(attachment)}
                 attachmentSessionId={attachmentSessionId}
+                compact
               />
               <button
                 type="button"

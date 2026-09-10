@@ -1,6 +1,7 @@
 import type { Project, SessionListItem } from '@/lib/api/sessions'
 
 export const SESSION_PAGE_SIZE = 50
+const PROJECT_SESSION_LIMIT = 5
 const UNGROUPED_BLOCK_KEY = 'ungrouped'
 export type SessionBlockKey = `project:${string}` | typeof UNGROUPED_BLOCK_KEY
 
@@ -147,7 +148,7 @@ export function sessionDisplayBlocks(
     kind: 'project',
     key: sessionProjectBlockKey(group.key),
     group,
-    items: sessionPage(group.items, expandedProjects.has(group.key) ? group.items.length : SESSION_PAGE_SIZE).items,
+    items: sessionPage(group.items, expandedProjects.has(group.key) ? group.items.length : PROJECT_SESSION_LIMIT).items,
     collapsed: collapsedProjects.has(group.key),
   }))
   if (!ungrouped.length) return blocks
@@ -155,7 +156,7 @@ export function sessionDisplayBlocks(
   const ungroupedBlock: SessionDisplayBlock = {
     kind: 'ungrouped',
     key: UNGROUPED_BLOCK_KEY,
-    ...sessionPage(ungrouped, showAllUngrouped ? ungrouped.length : SESSION_PAGE_SIZE),
+    ...sessionPage(ungrouped, showAllUngrouped ? ungrouped.length : PROJECT_SESSION_LIMIT),
   }
   const time = sessionListItemsTime(ungrouped)
   const index = groups.findIndex((group) => time > sessionListItemsTime(group.items))

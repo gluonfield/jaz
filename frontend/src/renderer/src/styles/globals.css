@@ -313,6 +313,9 @@
 }
 :where(.chat-prose, .file-prose) a,
 .chat-prose-link-button {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
   color: var(--color-primary);
   text-decoration-line: underline;
   text-decoration-style: solid;
@@ -324,7 +327,6 @@
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 .chat-prose-link-button {
-  display: inline;
   border: 0;
   background: none;
   padding: 0;
@@ -340,12 +342,18 @@
 }
 .chat-prose-link-icon {
   display: inline-block;
+  flex-shrink: 0;
   width: 0.82em;
   height: 0.82em;
   margin-right: 0.24em;
   opacity: 0.66;
-  vertical-align: -0.1em;
+  transform: translateY(0.1em);
   pointer-events: none;
+}
+img.chat-prose-link-icon {
+  width: 1em;
+  height: 1em;
+  opacity: 1;
 }
 /* A filled surface card is the user-turn shape; wearing it here made a pulled
  * quote read as a message someone sent. A rule marks the quote without

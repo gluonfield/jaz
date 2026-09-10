@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Globe } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import {
   createContext,
   memo,
@@ -14,6 +14,7 @@ import Markdown, { type Components, type ExtraProps } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
+import { Favicon } from '@/components/ui/Favicon'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { previewPatterns } from '@/lib/jazDefaults'
 import { findFileReferences, parseFileReference, type FileReference } from '../../../../shared/fileReader'
@@ -81,7 +82,7 @@ function localFileFromLink(href: unknown, children: unknown): FileReference | nu
   return parseFileReference(textFromChildren(children).trim())
 }
 
-function isUrlLink(href: unknown): boolean {
+function isUrlLink(href: unknown): href is string {
   return typeof href === 'string' && /^https?:\/\//i.test(href)
 }
 
@@ -250,7 +251,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
           size={13}
           strokeWidth={1.7}
         />
-        {children}
+        <span className="min-w-0">{children}</span>
       </button>
     )
   }
@@ -276,13 +277,8 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
         openPreview(href)
       }}
     >
-      <Globe
-        aria-hidden="true"
-        className="chat-prose-link-icon"
-        size={13}
-        strokeWidth={1.7}
-      />
-      {children}
+      <Favicon url={href} className="chat-prose-link-icon" />
+      <span className="min-w-0">{children}</span>
     </a>
   )
 }

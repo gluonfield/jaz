@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { memo, useState } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
+import { Favicon } from '@/components/ui/Favicon'
 import type { ACPToolCall } from '@/lib/api/types'
 import {
   isRunningToolStatus,
@@ -30,23 +31,6 @@ import { normalized } from './TranscriptUtils'
 function openExternal(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
-
-const Favicon = memo(function Favicon({ url }: { url: string }) {
-  const [failed, setFailed] = useState(false)
-  const domain = toolDomain(url)
-  if (failed || !domain) return <Globe size={14} className="size-3.5 shrink-0 text-ink-3" aria-hidden />
-  return (
-    <img
-      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`}
-      alt=""
-      width={14}
-      height={14}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="size-3.5 shrink-0 rounded-sm outline outline-1 outline-black/10 dark:outline-white/10"
-    />
-  )
-})
 
 const ResultRow = memo(function ResultRow({ url, title }: WebResult) {
   const domain = toolDomain(url)

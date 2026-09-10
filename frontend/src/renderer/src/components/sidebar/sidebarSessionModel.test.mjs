@@ -72,8 +72,25 @@ describe('sidebar session organization', () => {
 
     expect(sections.pinnedItems.map((entry) => entry.session.id)).toEqual(['pinned'])
     expect(project?.items).toHaveLength(55)
-    expect(ungrouped?.items).toHaveLength(50)
+    expect(ungrouped?.items).toHaveLength(5)
     expect(new Set(blocks.map((block) => block.key)).size).toBe(blocks.length)
+  })
+
+  test('shows five conversations per folder and expands only the requested folder', () => {
+    const groups = ['physicslab', 'jaz'].map((key) => ({
+      key,
+      label: key,
+      items: Array.from({ length: 12 }, (_, index) => item(`${key}-${index}`)),
+    }))
+    const initial = sessionDisplayBlocks(groups, [], new Set(), false, new Set())
+
+    expect(initial.map((block) => block.items.length)).toEqual([5, 5])
+    expect(initial[0].items.map((entry) => entry.session.id)).toEqual([
+      'physicslab-0', 'physicslab-1', 'physicslab-2', 'physicslab-3', 'physicslab-4',
+    ])
+
+    const expanded = sessionDisplayBlocks(groups, [], new Set(['physicslab']), false, new Set())
+    expect(expanded.map((block) => block.items.length)).toEqual([12, 5])
   })
 
   test('preserves project drag order around the fixed no-project block', () => {

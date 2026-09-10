@@ -42,3 +42,18 @@ test('user bubbles preserve typed line breaks', async () => {
   expect(html).toContain('class="chat-prose whitespace-pre-wrap"')
   expect(html).toContain('(int(d) for d in &quot;1234&quot;)\n[int(d) for d in &quot;1234&quot;]\n{int(d) for d in &quot;1234&quot;}')
 })
+
+test('inline links use website favicons and keep local file icons', async () => {
+  const { RenderedMarkdown, UserMessageMarkdown } = await import('./MessageMarkdown')
+  for (const component of [RenderedMarkdown, UserMessageMarkdown]) {
+    const html = renderToStaticMarkup(createElement(component, {
+      text: 'Opened [jaz.chat](https://jaz.chat/docs?section=links) and [app.tsx](/tmp/app.tsx:12).',
+    }))
+
+    expect(html).toContain('href="https://jaz.chat/docs?section=links"')
+    expect(html).toContain('src="https://www.google.com/s2/favicons?domain=jaz.chat&amp;sz=64"')
+    expect(html).toContain('alt=""')
+    expect(html).toContain('lucide-file-text')
+    expect(html.match(/<img\b/g)).toHaveLength(1)
+  }
+})
