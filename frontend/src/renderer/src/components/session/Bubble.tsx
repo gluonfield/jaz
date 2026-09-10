@@ -74,12 +74,14 @@ export function UserBubble({
 
 export function AssistantBubble({
   text,
+  createdAt,
   reasoning = '',
   tools = [],
   showCopy = true,
   onArtifactPrompt,
 }: {
   text: string
+  createdAt?: string
   reasoning?: string
   tools?: ToolBlock[]
   showCopy?: boolean
@@ -88,7 +90,7 @@ export function AssistantBubble({
   return (
     <div className="flex min-w-0 max-w-[var(--prose-max)] flex-col gap-2">
       <ThinkingBlock text={reasoning} />
-      {text ? <AssistantMarkdown text={text} showCopy={showCopy} /> : null}
+      {text ? <AssistantMarkdown text={text} createdAt={createdAt} showCopy={showCopy} /> : null}
       <ToolCalls
         calls={tools.map((block) => ({
           key: block.id,
@@ -128,6 +130,7 @@ export const Bubble = memo(function Bubble({
       return (
         <AssistantBubble
           text={messageText(message)}
+          createdAt={message.created_at}
           reasoning={messageReasoning(message)}
           tools={message.blocks?.filter(isVisibleToolBlock) ?? []}
           showCopy={showAssistantCopy}

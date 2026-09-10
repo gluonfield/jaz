@@ -269,6 +269,8 @@ test('the completed production transcript keeps one work fold with searchable ac
   }))
 
   expect(html.match(/Worked for/g)).toHaveLength(1)
+  expect(html.match(/<time /g)).toHaveLength(1)
+  expect(html).toContain(`dateTime="${at(4)}"`)
   const ordered = ['completed-reasoning', 'Read finished file', 'completed-answer']
     .map((value) => html.indexOf(value))
   expect(ordered.every((index) => index >= 0)).toBe(true)

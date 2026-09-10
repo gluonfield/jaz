@@ -50,7 +50,7 @@ export const LiveEvent = memo(function LiveEvent({
       ) : null}
       {loopCreated ? <LoopCreatedCard loop={loopCreated} /> : null}
       {event.content && !artifact ? (
-        <AssistantMarkdown text={event.content} showCopy={showCopy} />
+        <AssistantMarkdown text={event.content} createdAt={event.at} showCopy={showCopy} />
       ) : null}
       {event.acp?.error ? <SessionErrorNotice message={event.acp.error} action={errorAction} /> : null}
       {toolCalls?.length ? <ToolDisclosure calls={toolCalls} active={working} /> : null}

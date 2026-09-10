@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'bun:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 mock.module('@/lib/api/skills', () => ({
   skillsQuery: () => ({ queryKey: ['skills'], queryFn: async () => [] }),
@@ -55,5 +56,25 @@ test('inline links use website favicons and keep local file icons', async () => 
     expect(html).toContain('alt=""')
     expect(html).toContain('lucide-file-text')
     expect(html.match(/<img\b/g)).toHaveLength(1)
+  }
+})
+
+test('saved assistant messages show their timestamp beside copy and omit unknown dates', async () => {
+  const { Bubble } = await import('./Bubble')
+  const created = '2026-09-10T08:26:13Z'
+  for (const created_at of [created, undefined, 'invalid', '0001-01-01T00:00:00Z']) {
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() },
+      createElement(Bubble, {
+        message: { seq: 1, role: 'assistant', content: 'Saved reply', blocks: [], created_at },
+      }),
+    ))
+
+    expect(html).toContain('Copy message as Markdown')
+    if (created_at === created) {
+      expect(html).toContain(`dateTime="${created}"`)
+      expect(html.indexOf('Copy message as Markdown')).toBeLessThan(html.indexOf('<time'))
+    } else {
+      expect(html).not.toContain('<time')
+    }
   }
 })
