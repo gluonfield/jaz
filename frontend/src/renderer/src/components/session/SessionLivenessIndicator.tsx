@@ -28,12 +28,14 @@ function detailFor(signal: RunSignal, ageMs: number | undefined): string {
 export function SessionLivenessIndicator({
   agent,
   running,
+  thinking = false,
   activeOperation,
   updatedAt,
   lastActivityAt,
 }: {
   agent?: string
   running: boolean
+  thinking?: boolean
   activeOperation?: string
   updatedAt: string
   lastActivityAt?: string
@@ -54,7 +56,7 @@ export function SessionLivenessIndicator({
 
   const stale = signal === 'stale'
   const detail = detailFor(signal, ageMs)
-  const label = livenessLabel(agent, activeOperation, stale)
+  const label = livenessLabel(agent, activeOperation, stale, thinking)
 
   return (
     <AnimatePresence initial={false}>
@@ -65,7 +67,7 @@ export function SessionLivenessIndicator({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 4, scale: 0.98 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className={`flex w-fit max-w-full items-center gap-1.5 text-[12px] leading-5 ${
+          className={`flex w-fit max-w-full items-center gap-1.5 text-sm leading-5 ${
             stale ? 'text-danger' : 'text-ink-3 live-shimmer'
           }`}
         >
@@ -84,9 +86,10 @@ export function SessionLivenessIndicator({
   )
 }
 
-function livenessLabel(agent: string | undefined, activeOperation: string | undefined, stale: boolean): string {
+function livenessLabel(agent: string | undefined, activeOperation: string | undefined, stale: boolean, thinking: boolean): string {
   if (activeOperation === 'compact') {
     return stale ? 'Compaction is still marked running' : 'Compacting'
   }
-  return stale ? `${agentLabel(agent)} is still marked running` : 'Working'
+  if (stale) return `${agentLabel(agent)} is still marked running`
+  return thinking ? 'Thinking' : 'Working'
 }

@@ -41,3 +41,11 @@ test('stale sessions keep the agent name and alert treatment', () => {
   expect(html).toContain('no updates for 10m')
   expect(html).not.toContain('live-shimmer')
 })
+
+test('reported thinking changes the live label while compaction and stale state take precedence', () => {
+  expect(renderIndicator({ thinking: true })).toContain('Thinking')
+  expect(renderIndicator({ thinking: true, activeOperation: 'compact' })).toContain('Compacting')
+  expect(renderIndicator({ thinking: true, updatedAt: new Date(Date.now() - 600_000).toISOString() }))
+    .toContain('Codex is still marked running')
+  expect(renderIndicator({ thinking: true, running: false })).toBe('')
+})

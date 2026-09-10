@@ -16,7 +16,7 @@ import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
 import { useInlineDiffs, useInlineShellCommands } from '@/lib/appearance'
 import { ACPEventHeader } from './ACPEventHeader'
 import { EditDiffBlock, hasInlineDiff } from './EditDiffBlock'
-import { MessageMarkdown } from './MessageMarkdown'
+import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
 import { ToolCallDetail } from './ToolCallContent'
 import {
@@ -29,14 +29,6 @@ import {
 import type { ActivityEntry, ActivityHeader } from './timeline'
 
 type ToolEntry = Extract<ActivityEntry, { kind: 'tool' }>
-
-export const ACPThought = memo(function ACPThought({ text }: { text: string }) {
-  return (
-    <div className="min-w-0 py-1 text-pretty select-text">
-      <MessageMarkdown text={text} />
-    </div>
-  )
-})
 
 function toolRunIcon(categories: ToolCategory[]): LucideIcon {
   if (categories.includes('agent')) return Bot
@@ -148,7 +140,7 @@ export const ActivityBlock = memo(function ActivityBlock({
         const rowActive = active && index === rows.length - 1
         switch (row.kind) {
           case 'thought':
-            return <ACPThought key={row.entry.key} text={row.entry.text} />
+            return <ThinkingBlock key={row.entry.key} text={row.entry.text} pending={rowActive} findActive={findActive} />
           case 'tools':
             return (
               <ActivityToolDisclosure

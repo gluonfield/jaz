@@ -14,7 +14,6 @@ mock.module('./CodeBlock', () => ({
 }))
 mock.module('./MessageAttachments', () => ({ MessageAttachments: () => null }))
 mock.module('./MessageContexts', () => ({ MessageContexts: () => null }))
-mock.module('./ThinkingBlock', () => ({ ThinkingBlock: () => null }))
 mock.module('./ToolCalls', () => ({ ToolCalls: () => null }))
 
 test('user bubbles render Markdown, LaTeX, and mentions', async () => {

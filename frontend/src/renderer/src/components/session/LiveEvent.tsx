@@ -2,7 +2,7 @@ import { memo } from 'react'
 import type { ACPPermission, SessionEvent } from '@/lib/api/types'
 import { isParentChildACPEvent } from '@/lib/sessionEvents'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
-import { ACPThought } from './ActivityBlock'
+import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ACPEventHeader } from './ACPEventHeader'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
@@ -16,6 +16,7 @@ export const LiveEvent = memo(function LiveEvent({
   event,
   showHeader,
   working = false,
+  findActive = false,
   showCopy = true,
   permissionResolution,
   showTaskSurface,
@@ -26,6 +27,7 @@ export const LiveEvent = memo(function LiveEvent({
   event: SessionEvent
   showHeader: boolean
   working?: boolean
+  findActive?: boolean
   showCopy?: boolean
   permissionResolution?: ACPPermission
   showTaskSurface?: boolean
@@ -44,7 +46,7 @@ export const LiveEvent = memo(function LiveEvent({
       {showHeader && event.acp ? (
         <ACPEventHeader agent={event.acp.agent} title={event.acp.title} at={event.at} />
       ) : null}
-      {event.acp?.thought ? <ACPThought text={event.acp.thought} /> : null}
+      {event.acp?.thought ? <ThinkingBlock text={event.acp.thought} findActive={findActive} /> : null}
       {artifact ? (
         <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
       ) : null}

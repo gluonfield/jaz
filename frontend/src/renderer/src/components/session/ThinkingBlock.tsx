@@ -1,28 +1,35 @@
-import { LoaderCircle } from 'lucide-react'
+import { ScrollText } from 'lucide-react'
 import { useState } from 'react'
 import { Collapse } from '@/components/ui/Collapse'
 import { DisclosureTrigger } from '@/components/ui/DisclosureTrigger'
-import { ThinkingDetail } from './ThinkingDetail'
+import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 
-export function ThinkingBlock({ text, pending = false }: { text: string; pending?: boolean }) {
+export function ThinkingBlock({ text, pending = false, findActive = false }: {
+  text: string
+  pending?: boolean
+  findActive?: boolean
+}) {
   const [open, setOpen] = useState(false)
+  const effectiveOpen = open || findActive
   const trimmed = text.trim()
   if (!trimmed) return null
 
   return (
     <div className="flex w-full max-w-[var(--prose-max)] flex-col items-start">
       <DisclosureTrigger
-        label={pending ? 'Thinking' : 'Thought process'}
-        open={open}
+        label={(
+          <span className="flex min-w-0 items-center gap-2">
+            <ScrollText className="size-3.5 shrink-0" aria-hidden />
+            <span className={pending ? 'live-shimmer' : undefined}>{pending ? 'Thinking' : 'Thought'}</span>
+          </span>
+        )}
+        open={effectiveOpen}
         onClick={() => setOpen((value) => !value)}
-        accessory={pending ? (
-          <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
-        ) : undefined}
       />
 
-      <Collapse open={open} className="w-full">
-        <div className="relative w-full py-0.5 before:absolute before:bottom-4 before:left-[9px] before:top-4 before:w-px before:bg-border/75">
-          <ThinkingDetail text={trimmed} />
+      <Collapse open={effectiveOpen} className="w-full">
+        <div className="thinking-prose min-w-0 border-l border-border/75 py-1 pl-4 select-text">
+          <MessageMarkdown text={trimmed} />
         </div>
       </Collapse>
     </div>
