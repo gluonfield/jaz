@@ -118,7 +118,9 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 			return Job{}, err
 		}
 	}
-	if err := m.store.UpdateSessionStatus(job.ID, storage.StatusRunning, "", time.Now().UTC()); err != nil {
+	if err := m.store.StartSessionTurn(job.ID, storage.Turn{
+		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
+	}); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}
 	if opts.transcript == sendTranscriptUserMessage {
@@ -186,7 +188,6 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	}
 	handoff := m.cancelPendingPermissionsForSteer(job, done)
 	m.touchJobAttention(job)
-	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.eventView())
 	go m.runSteerCallAfterHandoff(context.Background(), job, done, handoff, method, promptReq)
 	return job.Snapshot(), nil
@@ -198,9 +199,18 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	if job.steerMethod == steerUnsupported || job.turn == nil || (job.State != StateRunning && job.State != StateStarting) {
 		return nil, ErrSteeringUnsupported
 	}
-	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
-		return nil, fmt.Errorf("append user message: %w", err)
+	previous := storage.Turn{
+		PlanRequested: job.turn.planRequested, GoalRequested: job.turn.goalRequested, ActiveOperation: job.ActiveOperation,
 	}
+	turn := previous
+	turn.GoalRequested = turn.GoalRequested || req.GoalRequested
+	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
+		return nil, fmt.Errorf("reserve steering: %w", err)
+	}
+	if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
+		return nil, errors.Join(fmt.Errorf("append user message: %w", err), m.store.StartSessionTurn(job.ID, previous))
+	}
+	job.turn.goalRequested = turn.GoalRequested
 	if req.ParentVisible {
 		job.ParentVisible = true
 	}

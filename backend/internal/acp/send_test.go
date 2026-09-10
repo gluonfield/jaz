@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -21,7 +20,7 @@ func (s rejectingMessageStore) AppendMessages(string, ...provider.Message) error
 
 type rejectingStatusStore struct{ Store }
 
-func (s rejectingStatusStore) UpdateSessionStatus(string, string, string, time.Time) error {
+func (s rejectingStatusStore) StartSessionTurn(string, storage.Turn) error {
 	return errors.New("status persistence failed")
 }
 
@@ -65,8 +64,8 @@ func TestSendDoesNotStartAgentWhenUserMessageCannotPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Status != storage.StatusIdle {
-		t.Fatalf("session status = %q, want idle", stored.Status)
+	if stored.Status != storage.StatusIdle || stored.Turn != nil {
+		t.Fatalf("session status = %q, turn = %+v, want idle without a turn", stored.Status, stored.Turn)
 	}
 }
 
@@ -120,9 +119,13 @@ func TestReserveSteerDoesNotQueuePromptWhenUserMessageCannotPersist(t *testing.T
 	job.steerMethod = steerPromptQueueing
 	job.startTurn(CompletionInline, false, false)
 
-	_, err = manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "keep me"}, nil)
+	_, err = manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "keep me", GoalRequested: true}, nil)
 	if err == nil || !strings.Contains(err.Error(), "append user message: message persistence failed") {
 		t.Fatalf("reserve steer error = %v", err)
+	}
+	stored, err := store.LoadSession(session.ID)
+	if err != nil || stored.Turn == nil || stored.Turn.GoalRequested {
+		t.Fatalf("failed steering changed turn settings: %+v, err = %v", stored.Turn, err)
 	}
 	if job.turn.promptCalls != 1 {
 		t.Fatalf("prompt calls = %d, want original prompt only", job.turn.promptCalls)

@@ -36,6 +36,7 @@ func Public(session storage.Session) Response {
 }
 
 func Canonical(session storage.Session) storage.Session {
+	session.Turn = nil
 	session.QueuedMessages = storage.PublicQueuedMessages(session.QueuedMessages)
 	session.ManualTitle = false
 	session.TitleLocked = false

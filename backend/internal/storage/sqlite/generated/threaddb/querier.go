@@ -30,6 +30,7 @@ type Querier interface {
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error
+	StartSessionTurn(ctx context.Context, arg StartSessionTurnParams) error
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error
 	TouchThread(ctx context.Context, arg TouchThreadParams) error
 	UpdateGoal(ctx context.Context, arg UpdateGoalParams) error

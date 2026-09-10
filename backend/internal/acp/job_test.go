@@ -31,6 +31,23 @@ func TestRequestShutdownOnlyMarksActiveTurns(t *testing.T) {
 	}
 }
 
+func TestShutdownPreservesUserCancellation(t *testing.T) {
+	job := &jobState{Job: Job{State: StateRunning}, turn: &activeTurn{done: make(chan struct{})}}
+	job.requestCancel()
+	if running, done := job.requestShutdown(); running || done != job.turn.done {
+		t.Fatal("shutdown must wait for the cancelled turn without making it resumable")
+	}
+	if reason, _ := job.cancelReason(); reason != StopReasonCancelled {
+		t.Fatalf("cancel reason = %q", reason)
+	}
+	job = &jobState{Job: Job{State: StateRunning}, turn: &activeTurn{done: make(chan struct{})}}
+	job.requestShutdown()
+	job.requestCancel()
+	if reason, _ := job.cancelReason(); reason != StopReasonCancelled {
+		t.Fatalf("user cancellation during shutdown = %q", reason)
+	}
+}
+
 func TestCompletedTurnPayloadIsReleasedAndRestoredOnDemand(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

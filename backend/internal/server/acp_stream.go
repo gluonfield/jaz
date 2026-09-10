@@ -114,13 +114,11 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 	for {
 		emitACPStream(w, flusher, stream, &emittedAssistant, &emittedThought, seenTools)
 		if stream.State == acp.StateFailed {
-			s.setSessionError(session, stream.Error)
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamError, Error: stream.Error})
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 			return
 		}
 		if isACPTerminal(stream.State) {
-			s.setSessionStatus(session, storage.StatusIdle)
 			writeSSE(w, flusher, agent.StreamEvent{Type: agent.StreamDone})
 			return
 		}

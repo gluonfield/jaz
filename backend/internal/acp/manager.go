@@ -46,6 +46,7 @@ type Store interface {
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
 	SaveSession(storage.Session) error
+	StartSessionTurn(string, storage.Turn) error
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error)
 	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)

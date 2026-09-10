@@ -5,7 +5,6 @@ import (
 	stdjson "encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
@@ -13,9 +12,7 @@ import (
 
 func (s *Store) resetStaleRunningThreads() error {
 	return threaddb.New(s.db).ResetRunningThreads(context.Background(), threaddb.ResetRunningThreadsParams{
-		Status:        storage.StatusError,
-		Error:         nullDBString("Server restarted while this thread was still running."),
-		UpdatedAtMs:   timeToMs(time.Now().UTC()),
+		Status:        storage.StatusInterrupted,
 		RunningStatus: storage.StatusRunning,
 	})
 }

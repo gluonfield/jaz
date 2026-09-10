@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -141,6 +142,7 @@ func serveOptions(args []string) []fx.Option {
 			app.StartModelCatalogWarmup,
 			startServer,
 			app.StartMCPManager,
+			app.StartSessionRecovery,
 		),
 	}
 }
@@ -345,6 +347,10 @@ func startServer(
 			if err := loopService.EnsureMemoryPaths(); err != nil {
 				return err
 			}
+			listener, err := net.Listen("tcp", srv.Addr)
+			if err != nil {
+				return err
+			}
 			loopCtx, cancelLoops := context.WithCancel(context.Background())
 			stopLoops = cancelLoops
 			go func() {
@@ -358,7 +364,7 @@ func startServer(
 				handler.PruneManagedWorktrees(ctx)
 			}()
 			go func() {
-				if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
 					fmt.Fprintln(os.Stderr, "serve:", err)
 				}
 			}()

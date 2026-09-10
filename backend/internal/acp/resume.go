@@ -160,7 +160,10 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	agentName = CanonicalAgentName(agentName)
 	storedID := session.RuntimeRef.SessionID
 	restoreMethod := sessionRestoreMethod(ac.initRaw)
-	if storedID != "" && restoreMethod != "" {
+	if storedID != "" {
+		if restoreMethod == "" {
+			return "", ModeState{}, false, fmt.Errorf("agent %q cannot restore stored session %s", agentName, storedID)
+		}
 		meta, err := m.sessionRestoreMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
 		if err != nil {
 			return "", ModeState{}, false, err
@@ -188,16 +191,14 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 			}), cfg)
 			return storedID, modes, true, err
 		}
-		if turnScopedAgentProcess(cfg) {
-			replaceable, inspectErr := m.replaceableUnmaterializedSession(session, agentName, cfg, err)
-			if inspectErr != nil {
-				return "", ModeState{}, false, inspectErr
-			}
-			if !replaceable {
-				return "", ModeState{}, false, fmt.Errorf("resume ACP session %s: %w", storedID, err)
-			}
-			m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
+		replaceable, inspectErr := m.replaceableUnmaterializedSession(session, agentName, cfg, err)
+		if inspectErr != nil {
+			return "", ModeState{}, false, inspectErr
 		}
+		if !replaceable {
+			return "", ModeState{}, false, fmt.Errorf("resume ACP session %s: %w", storedID, err)
+		}
+		m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
 	}
 	acpSession, err := m.newACPSession(mcpsession.With(ctx, session.ID), ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
