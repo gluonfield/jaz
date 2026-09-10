@@ -7,9 +7,10 @@
   "author": "Augustinas Malinauskas",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev --watch",
+    "dev": "bun run build:dictation && electron-vite dev --watch",
     "build": "bun run build:app",
-    "build:bundle": "electron-vite build",
+    "build:bundle": "bun run build:dictation && electron-vite build",
+    "build:dictation": "bun scripts/build-dictation.ts",
     "build:backend": "bun scripts/build-backend.ts",
     "build:app": "bun run build:backend && bun run build:bundle && electron-builder",
     "build:web": "vite build --config vite.web.config.ts",
@@ -17,6 +18,7 @@
     "preview:web": "vite preview --config vite.web.config.ts",
     "dev:web": "vite --config vite.web.config.ts",
     "test": "bun test",
+    "test:dictation": "bun scripts/test-dictation.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },

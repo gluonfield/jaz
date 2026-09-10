@@ -1,4 +1,4 @@
-import { ArrowUp, AudioLines, ListChecks, LoaderCircle, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, AudioLines, ListChecks, LoaderCircle, Mic, Plus, Square, X } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
@@ -9,6 +9,9 @@ import type { ComposerContext, SendMessageHandler } from '@/lib/sendMessage'
 import { Popover } from '@/components/ui/Popover'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { useEffectsEnabled } from '@/lib/appearance'
+import { useDictation } from '@/lib/hooks/useDictation'
+import { dictationText } from '@/lib/dictationText'
+import { DictationControls } from '@/components/session/DictationControls'
 import { ComposerAttachmentInput, ComposerAttachmentList, ComposerAttachmentMenuRow } from './ComposerAttachments'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
@@ -161,6 +164,19 @@ export function ComposerCard({
   const hasDraftContent = hasSendableDraft(mention.isEmpty)
   const submitDisabled = !hasDraftContent || disabled || attachmentBusy || (streaming && !canQueueWhileStreaming)
   const showStopButton = streaming && onStop && (!queueWhenStreaming || !hasDraftContent)
+  const dictation = useDictation({
+    identity: `${draftStorage}:${draftStorageKey ?? ''}`,
+    disabled,
+    onComplete: (transcript, send) => {
+      const draft = mention.currentDraft()
+      const start = mention.textareaRef.current?.selectionStart ?? draft.text.length
+      const end = mention.textareaRef.current?.selectionEnd ?? start
+      const value = mention.insertText(dictationText(draft.text, start, end, transcript))
+      if (send) {
+        void submit(value)
+      }
+    },
+  })
 
   const setGoalRequested = useCallback((next: boolean) => {
     if (goalRequestedRef.current === next) return
@@ -271,10 +287,10 @@ export function ComposerCard({
     }
   }
 
-  const submit = async () => {
+  const submit = async (value = mention.value()) => {
     // Tokens expand on the way out: tagged paths become absolute, skill
     // references pass through for the agent's skill catalog to resolve.
-    const trimmed = mention.value().trim()
+    const trimmed = value.trim()
     if (
       !hasSendableDraft(trimmed === '') ||
       disabled ||
@@ -307,13 +323,20 @@ export function ComposerCard({
       ref={dropTargetRef}
       className="relative"
       onPasteCapture={onPasteCapture}
+      onKeyDownCapture={(event) => {
+        if (dictation.phase && event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          dictation.cancel()
+        }
+      }}
       onFocusCapture={() => setFocused(true)}
       onBlurCapture={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false)
       }}
     >
       <FileDropOverlay visible={draggingFiles} />
-      <MentionSuggestions mention={mention} placement="above" />
+      {!dictation.phase ? <MentionSuggestions mention={mention} placement="above" /> : null}
       <AnimatePresence>
         {focused && effectsEnabled ? (
           <motion.div
@@ -385,146 +408,179 @@ export function ComposerCard({
           mention={mention}
           placeholder={placeholder}
           disabled={disabled}
+          readOnly={dictation.phase !== null}
           autoFocus={autoFocus}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              void submit()
+              if (dictation.phase) {
+                void dictation.stop()
+              } else {
+                void submit()
+              }
             }
           }}
         />
-        <div className="flex items-center justify-between gap-2.5 max-sm:items-end">
-          {/* Phone: the new-thread controls (agent, model, project, worktree)
-              outgrow one row, so let them wrap and keep send pinned bottom-right. */}
-          <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap">
-            <Popover
-              open={optionsOpen}
-              onClose={() => setOptionsOpen(false)}
-              trigger={
-                <IconButton
-                  variant="ghost"
-                  size="md"
-                  aria-haspopup="menu"
-                  aria-expanded={optionsOpen}
-                  aria-label="Composer options"
-                  title="Composer options"
-                  disabled={disabled}
-                  onClick={() => setOptionsOpen((value) => !value)}
-                >
-                  <Plus
-                    size={16}
-                    className={`transition-transform duration-200 ease-out ${
-                      optionsOpen ? 'rotate-45' : ''
-                    }`}
-                  />
-                </IconButton>
-              }
-            >
-              <ComposerAttachmentMenuRow
-                disabled={disabled}
-                onChoose={() => {
-                  setOptionsOpen(false)
-                  fileInputRef.current?.click()
-                }}
-              />
-              {planAvailable ? (
-                <PlanMenuToggle
-                  checked={planModeOn}
-                  disabled={disabled}
-                  onToggle={togglePlanMode}
-                />
-              ) : null}
-              {goalControlVisible ? (
-                goalAvailable ? (
-                  <GoalMenuToggle
-                    checked={goalEngaged || goalRequested}
-                    disabled={goalToggleDisabled}
-                    onToggle={toggleGoalRequested}
-                  />
-                ) : (
-                  <GoalUnsupportedRow />
-                )
-              ) : null}
-            </Popover>
-            {leftSlot}
-            <AnimatePresence initial={false}>
-              {planModeOn ? (
-                <motion.div
-                  key="plan-chip"
-                  initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
-                  animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                  exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
-                  transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                  className="group flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-                >
+        {dictation.transcript ? <p className="max-h-32 overflow-y-auto px-2 text-sm leading-relaxed text-ink-2">{dictation.transcript}</p> : null}
+        {dictation.error ? (
+          <div className="flex items-center gap-2 pl-2 text-sm text-danger" role="alert">
+            <span className="min-w-0 flex-1">{dictation.error}</span>
+            <IconButton className="size-10" aria-label="Dismiss dictation error" onClick={dictation.dismissError}><X size={16} /></IconButton>
+          </div>
+        ) : null}
+        {dictation.phase ? (
+          <DictationControls dictation={dictation} canSend={!disabled && !attachmentBusy && (!streaming || canQueueWhileStreaming)} queue={streaming} />
+        ) : (
+          <div className="flex items-center justify-between gap-2.5 max-sm:items-end">
+            {/* Phone: the new-thread controls (agent, model, project, worktree)
+                outgrow one row, so let them wrap and keep send pinned bottom-right. */}
+            <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap">
+              <Popover
+                open={optionsOpen}
+                onClose={() => setOptionsOpen(false)}
+                trigger={
                   <IconButton
                     variant="ghost"
-                    size="xs"
-                    aria-label="Remove plan mode"
-                    title="Remove plan mode"
+                    size="md"
+                    aria-haspopup="menu"
+                    aria-expanded={optionsOpen}
+                    aria-label="Composer options"
+                    title="Composer options"
                     disabled={disabled}
-                    className="grid"
-                    onClick={() => setPlanMode(false)}
+                    onClick={() => setOptionsOpen((value) => !value)}
                   >
-                    <ListChecks
-                      size={13}
-                      className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-                    />
-                    <X
-                      size={13}
-                      className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                    <Plus
+                      size={16}
+                      className={`transition-transform duration-200 ease-out ${
+                        optionsOpen ? 'rotate-45' : ''
+                      }`}
                     />
                   </IconButton>
-                  <span>Plan</span>
-                </motion.div>
-              ) : null}
-              {showGoalChip ? (
-                <GoalChip
-                  active={goalEngaged}
-                  requested={goalRequested || goalEngaged}
+                }
+              >
+                <ComposerAttachmentMenuRow
                   disabled={disabled}
-                  onRemove={turnGoalOff}
+                  onChoose={() => {
+                    setOptionsOpen(false)
+                    fileInputRef.current?.click()
+                  }}
                 />
+                {planAvailable ? (
+                  <PlanMenuToggle
+                    checked={planModeOn}
+                    disabled={disabled}
+                    onToggle={togglePlanMode}
+                  />
+                ) : null}
+                {goalControlVisible ? (
+                  goalAvailable ? (
+                    <GoalMenuToggle
+                      checked={goalEngaged || goalRequested}
+                      disabled={goalToggleDisabled}
+                      onToggle={toggleGoalRequested}
+                    />
+                  ) : (
+                    <GoalUnsupportedRow />
+                  )
+                ) : null}
+              </Popover>
+              {leftSlot}
+              <AnimatePresence initial={false}>
+                {planModeOn ? (
+                  <motion.div
+                    key="plan-chip"
+                    initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
+                    animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
+                    transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                    className="group flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+                  >
+                    <IconButton
+                      variant="ghost"
+                      size="xs"
+                      aria-label="Remove plan mode"
+                      title="Remove plan mode"
+                      disabled={disabled}
+                      className="grid"
+                      onClick={() => setPlanMode(false)}
+                    >
+                      <ListChecks
+                        size={13}
+                        className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+                      />
+                      <X
+                        size={13}
+                        className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                      />
+                    </IconButton>
+                    <span>Plan</span>
+                  </motion.div>
+                ) : null}
+                {showGoalChip ? (
+                  <GoalChip
+                    active={goalEngaged}
+                    requested={goalRequested || goalEngaged}
+                    disabled={disabled}
+                    onRemove={turnGoalOff}
+                  />
+                ) : null}
+              </AnimatePresence>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {dictation.showButton ? (
+                <IconButton
+                  variant="ghost"
+                  size="lg"
+                  className="size-10"
+                  aria-label="Dictate"
+                  title={dictation.availability.available ? 'Dictate' : dictation.availability.reason || 'Checking dictation availability…'}
+                  disabled={disabled || !dictation.availability.available}
+                  onClick={() => {
+                    setOptionsOpen(false)
+                    mention.textareaRef.current?.focus()
+                    void dictation.start()
+                  }}
+                >
+                  <Mic size={18} />
+                </IconButton>
               ) : null}
-            </AnimatePresence>
+              {onVoice ? (
+                <IconButton
+                  variant="ghost"
+                  size="lg"
+                  aria-label="Voice mode"
+                  title="Voice mode"
+                  disabled={streaming || disabled}
+                  onClick={onVoice}
+                >
+                  <AudioLines size={16} />
+                </IconButton>
+              ) : null}
+              {showStopButton ? (
+                <IconButton
+                  variant="primary"
+                  size="lg"
+                  aria-label="Stop response"
+                  title="Stop response"
+                  onClick={onStop}
+                >
+                  <Square size={13} fill="currentColor" strokeWidth={0} />
+                </IconButton>
+              ) : (
+                <IconButton
+                  variant="primary"
+                  size="lg"
+                  aria-label={streaming ? 'Queue message' : 'Send message'}
+                  title={streaming ? 'Queue message' : 'Send message'}
+                  disabled={submitDisabled}
+                  onClick={() => void submit()}
+                >
+                  <ArrowUp size={18} />
+                </IconButton>
+              )}
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {onVoice ? (
-              <IconButton
-                variant="ghost"
-                size="lg"
-                aria-label="Voice mode"
-                title="Voice mode"
-                disabled={streaming || disabled}
-                onClick={onVoice}
-              >
-                <AudioLines size={16} />
-              </IconButton>
-            ) : null}
-            {showStopButton ? (
-              <IconButton
-                variant="primary"
-                size="lg"
-                aria-label="Stop response"
-                title="Stop response"
-                onClick={onStop}
-              >
-                <Square size={13} fill="currentColor" strokeWidth={0} />
-              </IconButton>
-            ) : (
-              <IconButton
-                variant="primary"
-                size="lg"
-                aria-label={streaming ? 'Queue message' : 'Send message'}
-                title={streaming ? 'Queue message' : 'Send message'}
-                disabled={submitDisabled}
-                onClick={() => void submit()}
-              >
-                <ArrowUp size={18} />
-              </IconButton>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )

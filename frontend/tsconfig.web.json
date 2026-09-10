@@ -12,7 +12,8 @@
     "noEmit": true,
     "useDefineForClassFields": true,
     "paths": {
-      "@/*": ["./src/renderer/src/*"]
+      "@/*": ["./src/renderer/src/*"],
+      "@shared/*": ["./src/shared/*"]
     }
   },
   "include": ["src/renderer/src/**/*", "src/preload/index.d.ts", "src/shared/**/*"]

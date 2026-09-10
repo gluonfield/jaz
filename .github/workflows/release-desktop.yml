@@ -90,7 +90,7 @@ jobs:
         run: gh release upload "$RELEASE_TAG" dist/acp-adapters.json --clobber
 
   macos:
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
@@ -130,7 +130,9 @@ jobs:
 
       - name: Test frontend
         working-directory: frontend
-        run: bun run test
+        run: |
+          bun run test
+          bun run test:dictation
 
       - name: Import Apple certificate
         env:

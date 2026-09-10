@@ -162,7 +162,7 @@ export function SideChatPanel({
         <div className="shrink-0 border-t border-border bg-bg p-2">
           <ComposerCard
             streaming={pending}
-            disabled={pending}
+            disabled={pending || !visible}
             placeholder="Ask in side chat"
             draftStorageKey={`side-chat:${sideChatID}`}
             fileRoot={fileRoot}

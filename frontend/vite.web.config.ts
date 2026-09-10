@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': resolve('src/renderer/src'),
+      '@shared': resolve('src/shared'),
     },
   },
   plugins: [

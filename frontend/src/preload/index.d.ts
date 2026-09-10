@@ -3,10 +3,12 @@ export {}
 import type { BrowserNavigationDirection } from '../shared/browserNavigation'
 import type { ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
+import type { DictationAPI } from '../shared/dictation'
 
 declare global {
   interface Window {
     jaz?: {
+      dictation: DictationAPI
       apiBaseUrl: string
       windowKind: 'main' | 'board' | 'launcher'
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
