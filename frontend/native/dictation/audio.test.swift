@@ -26,7 +26,7 @@ struct AudioTest {
             }
             precondition(audio.buffer.format == target)
             precondition(audio.buffer.frameLength > 0 && audio.buffer.frameLength <= 1600)
-            precondition(abs(audio.level - 0.7993133) < 0.001)
+            precondition(abs(audio.level - 0.25) < 0.001)
             let last = Int(audio.buffer.frameLength) - 1
             precondition(abs(audio.buffer.floatChannelData![0][last] - 0.25) < 0.001)
         }

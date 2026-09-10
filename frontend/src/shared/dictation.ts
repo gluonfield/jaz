@@ -2,7 +2,7 @@ export type DictationPhase = 'starting' | 'downloading' | 'recording' | 'transcr
 
 export type DictationEvent =
   | { type: 'status'; phase: DictationPhase }
-  | { type: 'level'; level: number }
+  | { type: 'level'; level: number } // Linear RMS amplitude, from 0 to 1.
   | { type: 'result'; text: string }
   | { type: 'complete'; text: string }
   | { type: 'error'; message: string }
