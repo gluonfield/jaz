@@ -313,8 +313,8 @@ export function ProjectPicker({
           {value ? (
             <button
               type="button"
-              aria-label="No Project"
-              title="No Project"
+              aria-label="No project"
+              title="No project"
               disabled={disabled}
               onClick={() => select('', false)}
               className="group/clear grid h-full w-7 shrink-0 cursor-pointer place-items-center rounded-full disabled:cursor-default"
@@ -360,9 +360,6 @@ export function ProjectPicker({
               Add new project
             </button>
             <div className="my-1 border-t border-border" />
-            <MenuRow selected={value === ''} onClick={() => select('', false)}>
-              No Project
-            </MenuRow>
             <div className="max-h-[220px] overflow-y-auto">
               {projects.isLoading ? (
                 <div className="flex h-7 items-center gap-2 px-2 text-[13px] text-ink-3">
@@ -388,6 +385,13 @@ export function ProjectPicker({
             {projects.data && projects.data.length > 0 ? (
               <p className="px-2.5 pt-1.5 text-[11px] text-ink-3">Right-click a project to remove it.</p>
             ) : null}
+            <div className="my-1 border-t border-border" />
+            <MenuRow selected={value === ''} onClick={() => select('', false)}>
+              <span className="flex items-center gap-2">
+                <X size={13} className="shrink-0" />
+                No project
+              </span>
+            </MenuRow>
           </>
         )}
       </div>
