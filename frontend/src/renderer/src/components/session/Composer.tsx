@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
-import { clipboardFiles } from '@/components/ui/fileTransfer'
+import { composerPasteFiles } from '@/components/session/composerPasteFiles'
 import type { Attachment, QueuedMessage } from '@/lib/api/types'
 import type { ComposerContext, SendMessageHandler } from '@/lib/sendMessage'
 import { Popover } from '@/components/ui/Popover'
@@ -191,7 +191,10 @@ export function ComposerCard({
   })
 
   const onPasteCapture = (event: ClipboardEvent<HTMLDivElement>) => {
-    const files = clipboardFiles(event.clipboardData)
+    if (disabled || event.target !== mention.textareaRef.current) {
+      return
+    }
+    const files = composerPasteFiles(event.clipboardData)
     if (files.length === 0) return
     event.preventDefault()
     attachmentDraft.addFiles(files)
