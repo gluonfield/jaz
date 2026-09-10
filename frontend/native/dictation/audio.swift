@@ -41,8 +41,7 @@ nonisolated func dictationAudioTap(
             for index in 0..<Int(buffer.frameLength) {
                 energy += samples[index] * samples[index]
             }
-            let rms = sqrt(energy / Float(buffer.frameLength))
-            level = min(1, max(0, (20 * log10(max(rms, 0.0001)) + 60) / 60))
+            level = min(1, sqrt(energy / Float(buffer.frameLength)))
         }
         consume(.success(DictationAudio(buffer: converted, level: level)))
     }
