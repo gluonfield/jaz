@@ -1,6 +1,6 @@
 import { clipboardFiles } from '@/components/ui/fileTransfer'
 
-const LARGE_PASTE_CHAR_THRESHOLD = 1000
+const LARGE_PASTE_CHAR_THRESHOLD = 2000
 let pastedTextSequence = 0
 
 export function composerPasteFiles(data: DataTransfer): File[] {
