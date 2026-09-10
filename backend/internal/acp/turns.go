@@ -156,7 +156,9 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 				AwaitingApproval: true,
 			})
 		}
-		m.touchAttention(surfaceSessionIDs(event)...)
+		if snapshot.StopReason != StopReasonServerShutdown {
+			m.touchAttention(surfaceSessionIDs(event)...)
+		}
 	}
 	if m.TurnFinished != nil {
 		m.TurnFinished(context.Background(), snapshot)
@@ -164,7 +166,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	if done != nil {
 		close(done)
 	}
-	if completion.propagates() && parentVisible && !planRequested && m.Done != nil {
+	if completion.propagates() && parentVisible && !planRequested && snapshot.StopReason != StopReasonServerShutdown && m.Done != nil {
 		go m.Done(context.Background(), snapshot)
 	}
 	m.discardTurnResultWhenReleased(job)

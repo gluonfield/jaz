@@ -50,4 +50,5 @@ type Thread struct {
 	EventCompactionVersion int64          `json:"event_compaction_version"`
 	EventRevision          int64          `json:"event_revision"`
 	TranscriptRevision     int64          `json:"transcript_revision"`
+	Turn                   string         `json:"turn"`
 }

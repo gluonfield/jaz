@@ -364,6 +364,9 @@ func (s *Store) saveSessionLocked(session storage.Session, touchUpdated bool) er
 
 func insertSession(db threaddb.DBTX, session storage.Session) error {
 	session = storage.CanonicalSessionQueue(session)
+	if session.Status != storage.StatusRunning && session.Status != storage.StatusInterrupted {
+		session.Turn = nil
+	}
 	if session.LastAttentionAt.IsZero() {
 		storage.MarkSessionAttention(&session, storage.SessionAttentionAt(session))
 	}
@@ -418,10 +421,15 @@ func insertSession(db threaddb.DBTX, session storage.Session) error {
 		Unread:                boolInt(session.Unread),
 		PendingSteerMessage:   pendingSteerMessage,
 		Goal:                  goalState,
+		Turn:                  sessionTurnJSON(session.Turn),
 	})
 }
 
 func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
+	turn, err := parseSessionTurn(row.Turn)
+	if err != nil {
+		return storage.Session{}, fmt.Errorf("session turn: %w", err)
+	}
 	queuedMessages, err := storage.UnmarshalQueuedMessages(row.QueuedMessages)
 	if err != nil {
 		return storage.Session{}, err
@@ -442,6 +450,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		TitleLocked:     row.TitleLocked != 0,
 		ParentID:        row.ParentID.String,
 		Status:          row.Status,
+		Turn:            turn,
 		Error:           row.Error.String,
 		Runtime:         row.Runtime,
 		ModelProvider:   row.ModelProvider.String,

@@ -86,8 +86,8 @@ func TestCloseMarksRunningTurnAsServerShutdownWithoutTransportFailure(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if session.Status != storage.StatusIdle || session.Error != "" {
-		t.Fatalf("session status/error = %q/%q, want idle with no error", session.Status, session.Error)
+	if session.Status != storage.StatusInterrupted || session.Error != "" {
+		t.Fatalf("session status/error = %q/%q, want interrupted with no error", session.Status, session.Error)
 	}
 }
 

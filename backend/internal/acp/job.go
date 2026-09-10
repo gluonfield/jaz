@@ -428,6 +428,9 @@ func (j *jobState) requestTurnCancel(reason string) (bool, chan struct{}) {
 	if j.turn == nil {
 		return running, nil
 	}
+	if reason == StopReasonServerShutdown && j.turn.cancelRequested {
+		return false, j.turn.done
+	}
 	if running {
 		j.turn.cancelRequested = true
 		j.turn.cancelReason = reason

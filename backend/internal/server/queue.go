@@ -229,7 +229,7 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 	var completionErr error
 	if turnCompleted {
 		completionErr = s.Store.CompleteSession(job.ID, time.Now().UTC())
-	} else if status := storage.SessionStatusForACPState(job.State); status != "" {
+	} else if status := storage.SessionStatusForACPState(job.State, job.StopReason); status != "" {
 		s.setSessionStatusWithError(storage.Session{ID: job.ID}, status, job.Error)
 	}
 	unlock()

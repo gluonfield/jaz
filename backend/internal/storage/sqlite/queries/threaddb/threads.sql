@@ -141,7 +141,8 @@ INSERT INTO threads (
   pinned,
   pending_steer_message,
   unread,
-  goal
+  goal,
+  turn
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(slug),
@@ -179,7 +180,8 @@ INSERT INTO threads (
   sqlc.arg(pinned),
   sqlc.arg(pending_steer_message),
   sqlc.arg(unread),
-  sqlc.arg(goal)
+  sqlc.arg(goal),
+  sqlc.arg(turn)
 )
 ON CONFLICT(id) DO UPDATE SET
   slug = excluded.slug,
@@ -217,7 +219,8 @@ ON CONFLICT(id) DO UPDATE SET
   pinned = excluded.pinned,
   pending_steer_message = excluded.pending_steer_message,
   unread = excluded.unread,
-  goal = excluded.goal;
+  goal = excluded.goal,
+  turn = excluded.turn;
 
 -- name: ListSessionSubtree :many
 WITH RECURSIVE subtree(id) AS (
@@ -275,6 +278,7 @@ WHERE threads.id = sqlc.arg(id);
 UPDATE threads
 SET
   status = sqlc.arg(status),
+  turn = CASE sqlc.arg(status) WHEN 'idle' THEN '' WHEN 'error' THEN '' ELSE turn END,
   error = sqlc.narg(error),
   updated_at_ms = sqlc.arg(updated_at_ms),
   last_attention_at_ms = CASE
@@ -287,6 +291,7 @@ WHERE id = sqlc.arg(id);
 UPDATE threads
 SET
   status = 'idle',
+  turn = '',
   error = NULL,
   unread = 1,
   updated_at_ms = sqlc.arg(completed_at_ms),
@@ -341,9 +346,7 @@ WHERE id = sqlc.arg(id);
 UPDATE threads
 SET
   status = sqlc.arg(status),
-  error = sqlc.narg(error),
-  pending_steer_message = '',
-  updated_at_ms = sqlc.arg(updated_at_ms)
+  error = NULL
 WHERE status = sqlc.arg(running_status);
 
 -- name: ListErrorThreadIDsWithoutError :many

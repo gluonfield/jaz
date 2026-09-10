@@ -15,9 +15,10 @@ const (
 )
 
 const (
-	StatusIdle    = "idle"
-	StatusRunning = "running"
-	StatusError   = "error"
+	StatusIdle        = "idle"
+	StatusRunning     = "running"
+	StatusError       = "error"
+	StatusInterrupted = "interrupted"
 )
 
 const (
@@ -39,7 +40,10 @@ const (
 	BlockTypeBrowserAnnotation = "browser_annotation"
 )
 
-func SessionStatusForACPState(state string) string {
+func SessionStatusForACPState(state, stopReason string) string {
+	if state == "cancelled" && stopReason == "server_shutdown" {
+		return StatusInterrupted
+	}
 	switch state {
 	case "starting", "running":
 		return StatusRunning
@@ -131,6 +135,7 @@ type Session struct {
 	TitleLocked     bool            `json:"title_locked,omitempty"`
 	ParentID        string          `json:"parent_id,omitempty"`
 	Status          string          `json:"status"`
+	Turn            *Turn           `json:"turn,omitempty"`
 	Error           string          `json:"error,omitempty"`
 	Runtime         string          `json:"runtime"`
 	RuntimeRef      *RuntimeRef     `json:"runtime_ref,omitempty"`
@@ -149,6 +154,12 @@ type Session struct {
 	UpdatedAt       time.Time       `json:"updated_at"`
 	LastAttentionAt time.Time       `json:"last_attention_at"`
 	Unread          bool            `json:"unread,omitempty"`
+}
+
+type Turn struct {
+	PlanRequested   bool   `json:"plan_requested,omitempty"`
+	GoalRequested   bool   `json:"goal_requested,omitempty"`
+	ActiveOperation string `json:"active_operation,omitempty"`
 }
 
 type FeedItem struct {

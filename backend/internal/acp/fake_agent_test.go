@@ -429,7 +429,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				fakeAskThenBlock(conn, msg)
 				continue
 			}
-			if strings.Contains(string(msg.Params), "block until cancelled") {
+			if strings.Contains(string(msg.Params), "block until cancelled") || os.Getenv("JAZ_FAKE_ACP_BLOCK_PROMPT") == "1" {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": "fake-session",
 					"update": map[string]any{

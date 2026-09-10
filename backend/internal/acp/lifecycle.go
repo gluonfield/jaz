@@ -103,12 +103,10 @@ func (m *Manager) Close() {
 		if turns[i] != nil {
 			<-turns[i]
 		}
-		if stopping[i] {
-			job.setState(StateCancelled, StopReasonServerShutdown, "")
-			if err := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); err != nil {
-				m.log.Error("mark shutdown turn idle", "session", job.ID, "error", err)
+		if stopping[i] && job.Snapshot().StopReason == StopReasonServerShutdown {
+			if err := m.store.UpdateSessionStatus(job.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
+				m.log.Error("mark shutdown turn interrupted", "session", job.ID, "error", err)
 			}
-			m.publishACPStatus(job.eventView())
 		}
 		m.withACPTranscriptBarrier(job.eventView(), nil)
 		m.transcriptBuffers.delete(job.ID)

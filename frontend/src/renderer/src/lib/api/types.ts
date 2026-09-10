@@ -63,7 +63,7 @@ export interface Session {
   slug: string
   title?: string
   parent_id?: string
-  status: 'idle' | 'running' | 'error'
+  status: 'idle' | 'running' | 'error' | 'interrupted'
   error?: string
   archived?: boolean
   pinned?: boolean

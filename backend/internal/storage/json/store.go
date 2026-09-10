@@ -189,6 +189,9 @@ func (s *Store) ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error) {
 
 func (s *Store) saveSession(session storage.Session) error {
 	session = storage.CanonicalSessionQueue(session)
+	if session.Status != storage.StatusRunning && session.Status != storage.StatusInterrupted {
+		session.Turn = nil
+	}
 	if session.ID == "" {
 		return fmt.Errorf("session id is empty")
 	}
