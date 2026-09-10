@@ -45,14 +45,14 @@ func sessionRestoreMethod(raw json.RawMessage) string {
 }
 
 func validateProcessLifecycle(agent string, cfg AgentConfig, raw json.RawMessage) error {
-	if turnScopedAgentProcess(cfg) && sessionRestoreMethod(raw) == "" {
+	if (cfg.URL == "" && !cfg.Local) && sessionRestoreMethod(raw) == "" {
 		return fmt.Errorf("managed ACP agent %q requires session/resume or session/load support", CanonicalAgentName(agent))
 	}
 	return nil
 }
 
 func sessionMaterializesOnPrompt(agent string, cfg AgentConfig) bool {
-	return turnScopedAgentProcess(cfg) && agentPolicyForAgent(agent).materializesOnPrompt
+	return (cfg.URL == "" && !cfg.Local) && agentPolicyForAgent(agent).materializesOnPrompt
 }
 
 func metaPromptQueueing(meta map[string]any) bool {

@@ -4,6 +4,7 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
+	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	"github.com/wins/jaz/backend/internal/sessionoverview"
@@ -26,6 +27,7 @@ func HTTPModule() fx.Option {
 			sessionoverview.NewService,
 			fx.From(new(*sqlitestore.Store), new(*acp.Manager)),
 		),
+		fx.Annotate(agentsessionsapi.NewHandler, fx.From(new(*acp.Manager))),
 		sessionsapi.NewMessagesHandler,
 		sessionsapi.NewOverviewHandler,
 		NewRoutes,

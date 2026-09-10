@@ -738,8 +738,53 @@ export interface SessionOverviewThread {
 }
 
 export interface SessionOverview {
+  agent_events?: SessionEvent[]
   threads: SessionOverviewThread[]
   subagents: SessionOverviewSubagent[]
+}
+
+export interface AgentSessionState {
+  notices?: string[]
+  config_options: AgentSessionConfigOption[] | null
+  commands: AgentSessionCommand[] | null
+  auth?: {
+    kind: string
+    label: string
+    detail?: string
+    account?: { email?: string; organization?: string; plan?: string }
+  }
+}
+
+export interface AgentSessionConfigOption {
+  id: string
+  name: string
+  description?: string
+  category?: string
+  current_value: string
+  recommended_value?: string
+  options: { value: string; name: string; description?: string; group?: string }[]
+}
+
+export interface AgentSessionCommand {
+  name: string
+  description: string
+  input_hint?: string
+}
+
+export interface AgentTask {
+  id: string
+  name: string
+  type?: string
+  state: string
+  description?: string
+  summary?: string
+  last_tool_name?: string
+  output_file_path?: string
+  tool_call_id?: string
+  can_stop: boolean
+  connection_lost?: boolean
+  show_in_transcript: boolean
+  usage?: { total_tokens: number; tool_uses: number; duration_ms: number }
 }
 
 export interface ACPEvent {
@@ -846,6 +891,8 @@ export interface SessionEvent {
   artifact?: ArtifactEvent
   loop_created?: LoopCreatedEvent
   side_chat?: SideChatEvent
+  agent_session?: AgentSessionState
+  agent_task?: AgentTask
   provider_subagent?: ProviderSubagentEvent
   at: string
 }

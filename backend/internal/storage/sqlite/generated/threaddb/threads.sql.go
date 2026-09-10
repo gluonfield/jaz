@@ -194,7 +194,7 @@ func (q *Queries) GetTranscriptRevision(ctx context.Context, id string) (int64, 
 const hasSessionTranscript = `-- name: HasSessionTranscript :one
 SELECT CAST(
   EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = ?1)
-  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1)
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1 AND session_events.type != 'agent_session')
 AS INTEGER)
 FROM threads
 WHERE threads.id = ?1
@@ -835,6 +835,33 @@ type UpdateGoalParams struct {
 func (q *Queries) UpdateGoal(ctx context.Context, arg UpdateGoalParams) error {
 	_, err := q.db.ExecContext(ctx, updateGoal, arg.Goal, arg.UpdatedAtMs, arg.ID)
 	return err
+}
+
+const updateSessionModel = `-- name: UpdateSessionModel :execrows
+UPDATE threads
+SET context_window_tokens = CASE WHEN model IS ?1 THEN context_window_tokens ELSE 0 END,
+    model = ?1, reasoning_effort = ?2, updated_at_ms = ?3
+WHERE id = ?4
+`
+
+type UpdateSessionModelParams struct {
+	Model           sql.NullString `json:"model"`
+	ReasoningEffort sql.NullString `json:"reasoning_effort"`
+	UpdatedAtMs     int64          `json:"updated_at_ms"`
+	ID              string         `json:"id"`
+}
+
+func (q *Queries) UpdateSessionModel(ctx context.Context, arg UpdateSessionModelParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateSessionModel,
+		arg.Model,
+		arg.ReasoningEffort,
+		arg.UpdatedAtMs,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateSessionStatus = `-- name: UpdateSessionStatus :exec

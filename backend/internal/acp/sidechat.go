@@ -50,11 +50,10 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 	if CanonicalAgentName(job.ACPAgent) != AgentCodex {
 		return fmt.Errorf("side chat requires a codex acp session")
 	}
-	job, processLease, err := m.acquireSessionProcess(ctx, job)
+	job, err = m.acquireSessionProcess(ctx, job)
 	if err != nil {
 		return err
 	}
-	defer processLease.Release()
 	peer := m.peer(job.ID)
 	if peer == nil {
 		return fmt.Errorf("acp peer is not active")

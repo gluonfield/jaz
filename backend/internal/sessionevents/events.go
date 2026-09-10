@@ -11,6 +11,8 @@ import (
 )
 
 const (
+	TypeAgentSession     = "agent_session"
+	TypeAgentTask        = "agent_task"
 	TypeArtifact         = "artifact"
 	TypeSession          = "session"
 	TypeLoopCreated      = "loop_created"
@@ -34,6 +36,8 @@ type Event struct {
 	Artifact         *ArtifactEvent         `json:"artifact,omitempty"`
 	LoopCreated      *LoopCreatedEvent      `json:"loop_created,omitempty"`
 	SideChat         *SideChatEvent         `json:"side_chat,omitempty"`
+	AgentSession     *AgentSession          `json:"agent_session,omitempty"`
+	AgentTask        *AgentTask             `json:"agent_task,omitempty"`
 	ProviderSubagent *ProviderSubagentEvent `json:"provider_subagent,omitempty"`
 	At               time.Time              `json:"at"`
 	ProjectionKey    string                 `json:"projection_key,omitempty"`
@@ -100,6 +104,26 @@ func (e *Event) NormalizePayload() {
 		return
 	}
 	switch e.Type {
+	case TypeAgentSession:
+		if e.AgentSession == nil && e.Content != "" {
+			var state AgentSession
+			if json.Unmarshal([]byte(e.Content), &state) == nil {
+				e.AgentSession = &state
+			}
+		}
+		if e.AgentSession != nil {
+			e.Content = ""
+		}
+	case TypeAgentTask:
+		if e.AgentTask == nil && e.Content != "" {
+			var task AgentTask
+			if json.Unmarshal([]byte(e.Content), &task) == nil && task.ID != "" {
+				e.AgentTask = &task
+			}
+		}
+		if e.AgentTask != nil {
+			e.Content = ""
+		}
 	case TypeArtifact:
 		if e.Artifact != nil {
 			e.Content = ""
@@ -173,6 +197,18 @@ func (e *Event) NormalizePayload() {
 
 func (e Event) StorageContent() string {
 	switch e.Type {
+	case TypeAgentSession:
+		if e.AgentSession != nil {
+			if data, err := json.Marshal(e.AgentSession); err == nil {
+				return string(data)
+			}
+		}
+	case TypeAgentTask:
+		if e.AgentTask != nil {
+			if data, err := json.Marshal(e.AgentTask); err == nil {
+				return string(data)
+			}
+		}
 	case TypeArtifact:
 		if e.Artifact == nil {
 			return e.Content

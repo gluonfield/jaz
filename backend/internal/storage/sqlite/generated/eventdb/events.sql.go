@@ -288,7 +288,7 @@ func (q *Queries) ListLatestACPTurn(ctx context.Context, threadID string) ([]Lis
 	return items, nil
 }
 
-const listProviderSubagentEvents = `-- name: ListProviderSubagentEvents :many
+const listOverviewEvents = `-- name: ListOverviewEvents :many
 SELECT
   thread_id,
   seq,
@@ -302,11 +302,11 @@ SELECT
   created_at_ms
 FROM session_events
 WHERE thread_id = ?1
-  AND type = 'provider_subagent'
+  AND type IN ('provider_subagent', 'agent_session', 'agent_task')
 ORDER BY seq
 `
 
-type ListProviderSubagentEventsRow struct {
+type ListOverviewEventsRow struct {
 	ThreadID      string         `json:"thread_id"`
 	Seq           int64          `json:"seq"`
 	ProjectionKey string         `json:"projection_key"`
@@ -319,15 +319,15 @@ type ListProviderSubagentEventsRow struct {
 	CreatedAtMs   int64          `json:"created_at_ms"`
 }
 
-func (q *Queries) ListProviderSubagentEvents(ctx context.Context, threadID string) ([]ListProviderSubagentEventsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listProviderSubagentEvents, threadID)
+func (q *Queries) ListOverviewEvents(ctx context.Context, threadID string) ([]ListOverviewEventsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOverviewEvents, threadID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListProviderSubagentEventsRow{}
+	items := []ListOverviewEventsRow{}
 	for rows.Next() {
-		var i ListProviderSubagentEventsRow
+		var i ListOverviewEventsRow
 		if err := rows.Scan(
 			&i.ThreadID,
 			&i.Seq,

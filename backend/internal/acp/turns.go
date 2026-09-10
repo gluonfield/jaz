@@ -136,15 +136,12 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 		return
 	}
 	turn.closeFirstPromptSent()
-	processLease := turn.processLease
-	turn.processLease = nil
 	job.turn = nil
 	completion := turn.completion
 	planRequested := turn.planRequested
 	planDocument := turn.planDocument
 	parentVisible := job.ParentVisible
 	job.mu.Unlock()
-	processLease.Release()
 	m.cancelPendingPermissions(job.ID)
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()

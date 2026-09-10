@@ -3,8 +3,6 @@ package acp
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -12,7 +10,6 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
-	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
@@ -66,55 +63,12 @@ func (m *Manager) requestPermission(ctx context.Context, raw json.RawMessage) (j
 	return m.awaitPermission(ctx, job, req)
 }
 
-func (m *Manager) readTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
-	var req acpschema.ReadTextFileRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return nil, jsonrpc.InvalidParams("invalid fs/read_text_file", map[string]any{"error": err.Error()})
-	}
-	job := m.jobByACP(string(req.SessionID))
-	if job == nil {
-		return nil, jsonrpc.InvalidParams("unknown acp session", nil)
-	}
-	path, err := pathsafe.Resolve(job.Cwd, req.Path)
-	if err != nil {
-		return nil, jsonrpc.InvalidParams(err.Error(), nil)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, jsonrpc.InternalError(err.Error(), nil)
-	}
-	content := string(data)
-	if req.Limit > 0 && len(content) > req.Limit {
-		content = content[:req.Limit]
-	}
-	return jsonrpc.EncodeResult(acpschema.ReadTextFileResponse{Content: content})
-}
-
-func (m *Manager) writeTextFile(raw json.RawMessage) (json.RawMessage, *jsonrpc.Error) {
-	var req acpschema.WriteTextFileRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return nil, jsonrpc.InvalidParams("invalid fs/write_text_file", map[string]any{"error": err.Error()})
-	}
-	job := m.jobByACP(string(req.SessionID))
-	if job == nil {
-		return nil, jsonrpc.InvalidParams("unknown acp session", nil)
-	}
-	path, err := pathsafe.Resolve(job.Cwd, req.Path)
-	if err != nil {
-		return nil, jsonrpc.InvalidParams(err.Error(), nil)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, jsonrpc.InternalError(err.Error(), nil)
-	}
-	if err := os.WriteFile(path, []byte(req.Content), 0o644); err != nil {
-		return nil, jsonrpc.InternalError(err.Error(), nil)
-	}
-	return jsonrpc.EncodeResult(acpschema.WriteTextFileResponse{})
-}
-
 func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	job := m.jobByACP(acpSessionID)
 	if job == nil {
+		return
+	}
+	if m.applySessionControls(job, raw) || m.applyBackgroundTask(job, raw) {
 		return
 	}
 	m.recordRawUsage(job, raw)

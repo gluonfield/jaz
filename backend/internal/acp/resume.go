@@ -11,6 +11,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/promptmodule"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -62,7 +63,13 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 	if !ok {
 		return nil, fmt.Errorf("acp agent %q is not configured", agentName)
 	}
+	overview, err := m.store.LoadSessionOverviewEvents(session.ID)
+	if err != nil {
+		return nil, fmt.Errorf("restore agent session state: %w", err)
+	}
 	cfg.Model = strings.TrimSpace(session.Model)
+	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
+	restoreConfiguredChoices(&cfg, overview)
 	if cfg.UsesModelProvider() {
 		cfg.ModelProvider = strings.TrimSpace(session.ModelProvider)
 		cfg = cfg.NormalizeProviderModel(cfg.ModelProvider)
@@ -70,7 +77,6 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 			return nil, err
 		}
 	}
-	cfg.ReasoningEffort = strings.TrimSpace(session.ReasoningEffort)
 	if cfg.Local {
 		if sessionChanged {
 			if err := m.store.SaveSession(session); err != nil {
@@ -131,13 +137,22 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		}
 	}
 	job := newIdleJob(session, agentName, acpSessionID, cwd, modes)
+	job.backgroundTasks = make(map[string]sessionevents.AgentTask)
+	for _, event := range overview {
+		if event.AgentTask != nil {
+			job.backgroundTasks[event.AgentTask.ID] = *event.AgentTask
+		}
+	}
 	job.steerMethod = supportedSteerMethod(ac.initRaw)
 	var persistSessionID func()
 	if materializesOnPrompt {
 		persistSessionID = m.persistSessionOnPrompt(session.ID, agentName, acpSessionID)
 	}
 	ac.trackPromptSends(job, persistSessionID)
-	m.addJob(job, newAgentProcess(ac, turnScopedAgentProcess(cfg)))
+	m.addJob(job, newAgentProcess(ac))
+	m.disconnectBackgroundTasks(job)
+	ac.state.attach(m, job, cfg)
+	m.restoreSessionControls(ctx, job, overview)
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,
 		"acp_session", acpSessionID, "loaded", loaded)
 	return job, nil
@@ -185,7 +200,8 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 			if err := json.Unmarshal(raw, &resp); err != nil {
 				return "", ModeState{}, false, err
 			}
-			modes, err := m.configuredModeState(ctx, ac.peer, agentName, newACPSessionInfo(raw, acpschema.NewSessionResponse{
+			ac.state.initial = raw
+			modes, err := m.configuredModeState(ctx, ac, agentName, newACPSessionInfo(raw, acpschema.NewSessionResponse{
 				SessionID: acpschema.SessionID(storedID),
 				Modes:     resp.Modes,
 			}), cfg)
@@ -204,7 +220,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 	if err != nil {
 		return "", ModeState{}, false, err
 	}
-	modes, err := m.configuredModeState(ctx, ac.peer, agentName, acpSession, cfg)
+	modes, err := m.configuredModeState(ctx, ac, agentName, acpSession, cfg)
 	return string(acpSession.response.SessionID), modes, false, err
 }
 

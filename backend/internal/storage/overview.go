@@ -8,6 +8,8 @@ import (
 )
 
 type SessionOverview struct {
+	SessionID      string
+	AgentEvents    []sessionevents.Event
 	Threads        []OverviewThread
 	SubagentEvents []sessionevents.Event
 }

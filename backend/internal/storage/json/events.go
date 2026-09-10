@@ -20,6 +20,21 @@ func (s *Store) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
 	return s.loadSessionEvents(id)
 }
 
+func (s *Store) LoadSessionOverviewEvents(id string) ([]sessionevents.Event, error) {
+	events, err := s.LoadSessionEvents(id)
+	if err != nil {
+		return nil, err
+	}
+	overview := events[:0]
+	for _, event := range events {
+		switch event.Type {
+		case sessionevents.TypeAgentSession, sessionevents.TypeAgentTask, sessionevents.TypeProviderSubagent:
+			overview = append(overview, event)
+		}
+	}
+	return sessionevents.CompactTranscript(overview), nil
+}
+
 func (s *Store) LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error) {
 	if afterSeq <= 0 {
 		return s.LoadSessionEvents(id)

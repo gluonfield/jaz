@@ -29,6 +29,9 @@ func preferredBaselineModeID(agent string, modes []acpschema.SessionMode) string
 }
 
 func baselineModeID(agent string, modes ModeState) string {
+	if modes.userModeID != "" {
+		return modes.userModeID
+	}
 	if id := firstModeSnapshot(modes.AvailableModes, baselineModePriority[CanonicalAgentName(agent)]); id != "" {
 		return id
 	}

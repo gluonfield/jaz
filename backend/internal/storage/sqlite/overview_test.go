@@ -33,6 +33,8 @@ func TestLoadSessionOverviewIgnoresTranscriptWindowAndIncludesArchivedChildren(t
 	events := []sessionevents.Event{
 		providerSubagentEvent("/root/newton", "Newton"),
 		providerSubagentEvent("/root/noether", "Noether"),
+		{Type: sessionevents.TypeAgentSession, AgentSession: &sessionevents.AgentSession{Auth: &sessionevents.AgentAuthIdentity{Kind: "account", Label: "ChatGPT Pro"}}},
+		{Type: sessionevents.TypeAgentTask, AgentTask: &sessionevents.AgentTask{ID: "background", State: "running", CanStop: true}},
 	}
 	for i := range 300 {
 		events = append(events, sessionevents.Event{Type: "note", Content: fmt.Sprintf("filler-%d", i)})
@@ -50,6 +52,9 @@ func TestLoadSessionOverviewIgnoresTranscriptWindowAndIncludesArchivedChildren(t
 	}
 	if len(view.SubagentEvents) != 2 {
 		t.Fatalf("subagent events = %#v", view.SubagentEvents)
+	}
+	if len(view.AgentEvents) != 2 || view.AgentEvents[0].AgentSession.Auth.Label != "ChatGPT Pro" || view.AgentEvents[1].AgentTask.ID != "background" {
+		t.Fatalf("agent state outside transcript window = %#v", view.AgentEvents)
 	}
 }
 

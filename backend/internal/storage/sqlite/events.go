@@ -25,6 +25,22 @@ func (s *Store) LoadSessionEventsAfter(id string, afterSeq int64) ([]sessioneven
 	return s.loadSessionEventsAfter(id, afterSeq)
 }
 
+func (s *Store) LoadSessionOverviewEvents(id string) ([]sessionevents.Event, error) {
+	rows, err := eventdb.New(s.db).ListOverviewEvents(context.Background(), id)
+	if err != nil {
+		return nil, err
+	}
+	events := make([]sessionevents.Event, 0, len(rows))
+	for _, row := range rows {
+		event, err := eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return sessionevents.CompactTranscript(events), nil
+}
+
 func (s *Store) LoadLatestACPTurn(ctx context.Context, id string) ([]sessionevents.Event, error) {
 	rows, err := eventdb.New(s.db).ListLatestACPTurn(ctx, id)
 	if err != nil {

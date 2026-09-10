@@ -14,7 +14,7 @@ import (
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
-func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
+func TestManagerKeepsManagedProcessBetweenTurns(t *testing.T) {
 	for _, agent := range []string{acp.AgentClaude, acp.AgentCodex, acp.AgentGrok} {
 		t.Run(agent, func(t *testing.T) {
 			stateDir := t.TempDir()
@@ -41,10 +41,7 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: ref, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
 				t.Fatalf("first turn = %#v, %v", job, err)
 			}
-			firstTurnStarts := 2
-			if agent == acp.AgentClaude || agent == acp.AgentCodex {
-				firstTurnStarts = 1
-			}
+			firstTurnStarts := 1
 			if starts := processStarts(t, startLog); starts != firstTurnStarts {
 				t.Fatalf("process starts after first turn = %d, want %d", starts, firstTurnStarts)
 			}
@@ -76,8 +73,8 @@ func TestManagerReleasesManagedProcessAfterEachTurn(t *testing.T) {
 			if job, err := manager.Wait(ctx, acp.WaitRequest{Session: ref, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
 				t.Fatalf("second turn = %#v, %v", job, err)
 			}
-			if starts := processStarts(t, startLog); starts != firstTurnStarts+1 {
-				t.Fatalf("process starts = %d, want %d", starts, firstTurnStarts+1)
+			if starts := processStarts(t, startLog); starts != firstTurnStarts {
+				t.Fatalf("process starts = %d, want %d", starts, firstTurnStarts)
 			}
 		})
 	}
@@ -118,10 +115,21 @@ func TestManagerRejectsManagedAgentWithoutSessionRestore(t *testing.T) {
 
 func TestManagerPrefersSessionResume(t *testing.T) {
 	requestLog := filepath.Join(t.TempDir(), "requests")
-	manager, spawned := newNamedProcessTestManager(t, t.TempDir(), acp.AgentGrok, map[string]string{
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{
 		"JAZ_FAKE_ACP_RESUME":      "1",
 		"JAZ_FAKE_ACP_REQUEST_LOG": requestLog,
-	})
+	}
+	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentGrok, env, "", "")
+	t.Cleanup(manager.Close)
+	spawned, err := manager.Spawn(context.Background(), acp.SpawnRequest{ACPAgent: acp.AgentGrok, Slug: "resume-test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager = restartNamedProcessTestManager(t, manager, store, acp.AgentGrok, env)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -141,7 +149,7 @@ func TestManagerPrefersSessionResume(t *testing.T) {
 	}
 }
 
-func TestManagerReleasesManagedProcessAfterIdleSideChat(t *testing.T) {
+func TestManagerKeepsManagedProcessAfterIdleSideChat(t *testing.T) {
 	stateDir := t.TempDir()
 	startLog := filepath.Join(stateDir, "starts")
 	manager, spawned := newNamedProcessTestManager(t, t.TempDir(), acp.AgentCodex, map[string]string{
@@ -155,8 +163,8 @@ func TestManagerReleasesManagedProcessAfterIdleSideChat(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if starts := processStarts(t, startLog); starts != 2 {
-		t.Fatalf("process starts = %d, want the initial owner plus one restored side chat", starts)
+	if starts := processStarts(t, startLog); starts != 1 {
+		t.Fatalf("process starts = %d, want one owner for both side chats", starts)
 	}
 }
 

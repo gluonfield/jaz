@@ -39,6 +39,7 @@ export function useSessionEvents(
     const refetchMessages = () => {
       queryClient.invalidateQueries({ queryKey: keys.usage })
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+      queryClient.invalidateQueries({ queryKey: keys.sessionOverview(sessionId) })
       // Turn boundaries are when the working tree changes — refresh repo
       // state and the changes summary here instead of polling for them.
       queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
@@ -46,6 +47,7 @@ export function useSessionEvents(
     let pending: SessionEvent[] = []
     let flushTimer: ReturnType<typeof setTimeout> | null = null
     let listsTimer: ReturnType<typeof setTimeout> | null = null
+    let overviewChanged = false
     const flush = () => {
       flushTimer = null
       const batch = pending
@@ -57,9 +59,14 @@ export function useSessionEvents(
     const invalidateLists = () => {
       listsTimer = null
       queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
+      if (overviewChanged) {
+        overviewChanged = false
+        queryClient.invalidateQueries({ queryKey: keys.sessionOverview(sessionId) })
+      }
     }
     const stop = openSessionEvents(sessionId, afterSeq, (event: SessionEvent) => {
       onEvent?.(event)
+      overviewChanged ||= ['agent_session', 'agent_task', 'provider_subagent'].includes(event.type)
       // 'assistant' events are refresh signals, not transcript items.
       if (event.type === 'assistant') {
         refetchMessages()

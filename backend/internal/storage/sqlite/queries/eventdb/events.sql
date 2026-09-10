@@ -15,7 +15,7 @@ FROM session_events
 WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq;
 
--- name: ListProviderSubagentEvents :many
+-- name: ListOverviewEvents :many
 SELECT
   thread_id,
   seq,
@@ -29,7 +29,7 @@ SELECT
   created_at_ms
 FROM session_events
 WHERE thread_id = sqlc.arg(thread_id)
-  AND type = 'provider_subagent'
+  AND type IN ('provider_subagent', 'agent_session', 'agent_task')
 ORDER BY seq;
 
 -- name: ListLatestACPTurn :many

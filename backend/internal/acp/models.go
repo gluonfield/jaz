@@ -190,10 +190,11 @@ func (p agentPolicy) supportsReasoningEffort(value string) bool {
 }
 
 func (p agentPolicy) normalizeReasoningEffort(value string) (string, error) {
-	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
 	if len(p.effortOptions) == 0 {
-		return "", nil
+		return value, nil
 	}
+	value = strings.ToLower(value)
 	if value == "none" {
 		value = ""
 	}
@@ -318,46 +319,43 @@ func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.P
 	return nil, fmt.Errorf("set acp agent %q model %q: %w", agentName, model, err)
 }
 
-func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, effort, configID string) error {
-	effort, err := NormalizeAgentReasoningEffort(agentName, effort)
-	if err != nil {
-		return err
-	}
+func (m *Manager) setConfiguredReasoningEffort(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, effort, configID string) (json.RawMessage, error) {
 	if effort == "" {
-		return nil
+		return nil, nil
 	}
 	policy := agentPolicyForAgent(agentName)
 	if strings.TrimSpace(configID) == "" {
 		if !policy.usesReasoningEffortConfigOption() {
-			return nil
+			return nil, nil
 		}
 		configID = policy.reasoningEffortConfigID()
 	}
 	if strings.TrimSpace(configID) == "" {
-		return nil
+		return nil, nil
 	}
-	_, err = peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 		SessionID: sessionID,
 		ConfigID:  acpschema.SessionConfigID(configID),
 		Value:     acpschema.SessionConfigValueID(effort),
 	})
 	if err == nil {
-		return nil
+		return raw, nil
 	}
 	var rpcErr *jsonrpc.Error
 	if errors.As(err, &rpcErr) && rpcErr.Code == -32601 {
-		return fmt.Errorf("set acp agent %q reasoning effort %q: session/set_config_option is not supported; clear the reasoning effort in Settings > Agents or pass the effort through that agent's args or env", agentName, effort)
+		return nil, fmt.Errorf("set acp agent %q reasoning effort %q: session/set_config_option is not supported; clear the reasoning effort in Settings > Agents or pass the effort through that agent's args or env", agentName, effort)
 	}
-	return fmt.Errorf("set acp agent %q reasoning effort %q: %w", agentName, effort, err)
+	return nil, fmt.Errorf("set acp agent %q reasoning effort %q: %w", agentName, effort, err)
 }
 
 func (m *Manager) configuredModeState(
 	ctx context.Context,
-	peer *jsonrpc.Peer,
+	ac *agentConn,
 	agentName string,
 	session acpSessionInfo,
 	cfg AgentConfig,
 ) (ModeState, error) {
+	peer := ac.peer
 	policy := agentPolicyForAgent(agentName)
 	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
 	model := policy.sessionConfigModel(cfg)
@@ -374,6 +372,7 @@ func (m *Manager) configuredModeState(
 	if err != nil {
 		return ModeState{}, err
 	}
+	ac.state.configResponse(session.response.SessionID, modelRaw)
 	if !policy.effortEncodedInModel(model) {
 		options := session.configOptions
 		activeModelOptions := false
@@ -381,7 +380,7 @@ func (m *Manager) configuredModeState(
 			options = refreshed
 			activeModelOptions = true
 		}
-		if err := m.applyConfiguredReasoningEffort(
+		effortRaw, err := m.applyConfiguredReasoningEffort(
 			ctx,
 			peer,
 			agentName,
@@ -390,9 +389,11 @@ func (m *Manager) configuredModeState(
 			effort,
 			options,
 			activeModelOptions,
-		); err != nil {
+		)
+		if err != nil {
 			return ModeState{}, err
 		}
+		ac.state.configResponse(session.response.SessionID, effortRaw)
 	}
 	return m.initializeModeState(ctx, peer, agentName, session)
 }
@@ -406,18 +407,18 @@ func (m *Manager) applyConfiguredReasoningEffort(
 	effort string,
 	options sessionConfigOptionsState,
 	activeModelOptions bool,
-) error {
+) (json.RawMessage, error) {
 	if effort == "" {
-		return nil
+		return nil, nil
 	}
 	if !agentPolicyForAgent(agentName).usesReasoningEffortConfigOption() && options.effortConfigID == "" {
-		return nil
+		return nil, nil
 	}
 	if activeModelOptions && !options.effortConfigPresent {
-		return nil
+		return nil, nil
 	}
 	if options.effortConfigPresent && !configOptionValueAvailable(options.effortOptions, effort) {
-		return fmt.Errorf(
+		return nil, fmt.Errorf(
 			"set acp agent %q reasoning effort %q for model %q: the active model did not advertise that reasoning effort; advertised values: %s",
 			agentName,
 			effort,

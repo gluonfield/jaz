@@ -35,7 +35,7 @@ func (s *Store) LoadSessionOverview(ctx context.Context, ref string) (storage.Se
 	if err != nil {
 		return storage.SessionOverview{}, err
 	}
-	view := storage.SessionOverview{Threads: make([]storage.OverviewThread, 0, len(childRows))}
+	view := storage.SessionOverview{SessionID: parent.ID, Threads: make([]storage.OverviewThread, 0, len(childRows))}
 	for _, row := range childRows {
 		view.Threads = append(view.Threads, storage.OverviewThread{
 			ID: row.ID, Slug: row.Slug, Title: row.Title.String, Status: row.Status,
@@ -45,7 +45,7 @@ func (s *Store) LoadSessionOverview(ctx context.Context, ref string) (storage.Se
 		})
 	}
 
-	eventRows, err := eventdb.New(tx).ListProviderSubagentEvents(ctx, parent.ID)
+	eventRows, err := eventdb.New(tx).ListOverviewEvents(ctx, parent.ID)
 	if err != nil {
 		return storage.SessionOverview{}, err
 	}
@@ -55,7 +55,11 @@ func (s *Store) LoadSessionOverview(ctx context.Context, ref string) (storage.Se
 		if decodeErr != nil {
 			return storage.SessionOverview{}, decodeErr
 		}
-		view.SubagentEvents = append(view.SubagentEvents, event)
+		if event.Type == sessionevents.TypeProviderSubagent {
+			view.SubagentEvents = append(view.SubagentEvents, event)
+		} else {
+			view.AgentEvents = append(view.AgentEvents, event)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return storage.SessionOverview{}, err

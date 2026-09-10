@@ -107,6 +107,8 @@ type jobState struct {
 	mu                     sync.RWMutex
 	sendMu                 sync.Mutex
 	turnMu                 sync.Mutex
+	agentSession           sessionevents.AgentSession
+	backgroundTasks        map[string]sessionevents.AgentTask
 	steerMethod            steerMethod
 	turn                   *activeTurn
 	toolByID               map[string]sessionevents.ACPToolCall
@@ -134,7 +136,6 @@ type activeTurn struct {
 	promptHandoff         chan struct{}
 	promptCalls           int
 	planDocument          string
-	processLease          *processLease
 	cancel                context.CancelFunc
 }
 
@@ -143,6 +144,7 @@ type ModeState struct {
 	PlanModeID     string         `json:"plan_mode_id,omitempty"`
 	AvailableModes []ModeSnapshot `json:"available_modes,omitempty"`
 	planConfigID   string
+	userModeID     string
 }
 
 type ModeSnapshot struct {
@@ -287,12 +289,8 @@ func clonePlanEntries(in []sessionevents.PlanEntry) []sessionevents.PlanEntry {
 }
 
 func (s ModeState) Clone() ModeState {
-	return ModeState{
-		CurrentModeID:  s.CurrentModeID,
-		PlanModeID:     s.PlanModeID,
-		AvailableModes: append([]ModeSnapshot(nil), s.AvailableModes...),
-		planConfigID:   s.planConfigID,
-	}
+	s.AvailableModes = append([]ModeSnapshot(nil), s.AvailableModes...)
+	return s
 }
 
 func (j *jobState) setState(state, stopReason, errMsg string) {

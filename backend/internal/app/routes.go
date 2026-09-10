@@ -8,6 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	feedcore "github.com/wins/jaz/backend/internal/feed"
+	agentsessionsapi "github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
 	deviceapi "github.com/wins/jaz/backend/internal/httpapi/devices"
@@ -46,10 +47,13 @@ type routeDeps struct {
 	Preview         *previewapi.Handler
 	SessionMessages *sessionsapi.MessagesHandler
 	SessionOverview *sessionsapi.OverviewHandler
+	AgentSession    *agentsessionsapi.Handler
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := server.Routes{
+		{Pattern: "PUT /v1/sessions/{session}/agent/config", Handler: http.HandlerFunc(deps.AgentSession.SetConfig)},
+		{Pattern: "POST /v1/sessions/{session}/agent/tasks/{task}/stop", Handler: http.HandlerFunc(deps.AgentSession.StopTask)},
 		{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages},
 		{Pattern: "GET /v1/sessions/{session}/overview", Handler: deps.SessionOverview},
 	}

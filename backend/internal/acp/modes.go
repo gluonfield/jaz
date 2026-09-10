@@ -53,6 +53,13 @@ func (m *Manager) prepareModeForTurn(ctx context.Context, job *jobState, planReq
 			return err
 		}
 		value := "default"
+		job.mu.RLock()
+		for _, option := range job.agentSession.ConfigOptions {
+			if option.ID == modes.planConfigID && option.UserValue != nil {
+				value = *option.UserValue
+			}
+		}
+		job.mu.RUnlock()
 		if planRequested {
 			value = "plan"
 		}
@@ -82,7 +89,7 @@ func (m *Manager) applyTurnConfig(ctx context.Context, job *jobState, configID, 
 	if peer == nil {
 		return fmt.Errorf("acp peer is not active")
 	}
-	_, err := peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
+	raw, err := peer.Call(ctx, acpschema.AgentMethodSessionSetConfigOption, acpschema.SetSessionConfigOptionRequest{
 		SessionID: acpschema.SessionID(acpSessionID),
 		ConfigID:  acpschema.SessionConfigID(configID),
 		Value:     acpschema.SessionConfigValueID(value),
@@ -90,6 +97,7 @@ func (m *Manager) applyTurnConfig(ctx context.Context, job *jobState, configID, 
 	if err != nil {
 		return fmt.Errorf("set acp session %q config to %q: %w", configID, value, err)
 	}
+	m.applySessionControls(job, raw)
 	return nil
 }
 

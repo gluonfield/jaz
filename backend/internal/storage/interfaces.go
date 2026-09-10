@@ -13,6 +13,7 @@ type SessionStore interface {
 	EnsureSession(id string) error
 	LoadSession(ref string) (Session, error)
 	SaveSession(session Session) error
+	UpdateSessionModel(id, model, effort string) error
 	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)
 	CompleteSession(id string, completedAt time.Time) error
 	SetThreadUnread(id string, unread bool) error
@@ -55,6 +56,7 @@ type SessionEventAppender interface {
 type SessionEventStore interface {
 	SessionEventReader
 	SessionEventAppender
+	LoadSessionOverviewEvents(id string) ([]sessionevents.Event, error)
 }
 
 type UsageEventStore interface {
