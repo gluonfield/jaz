@@ -1,5 +1,5 @@
 import { CopyToggleIcon } from '@/components/ui/CopyToggleIcon'
-import { fullTime, hasTime } from '@/lib/format/time'
+import { hasTime, messageTime } from '@/lib/format/time'
 import { useCopyAction } from '@/lib/useCopyAction'
 import { MessageMarkdown } from './MessageMarkdown'
 import { PreviewSuggestions } from './PreviewSuggestion'
@@ -25,7 +25,7 @@ export function AssistantMarkdown({
 function AssistantMessageActions({ text, createdAt }: { text: string; createdAt?: string }) {
   const { copied, copy } = useCopyAction(text)
   return (
-    <div className="pointer-events-none mt-0.5 flex items-center gap-4 text-[11px] text-ink-3 opacity-0 transition-opacity duration-150 group-hover/message:pointer-events-auto group-hover/message:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 motion-reduce:transition-none">
+    <div className="pointer-events-none mt-0.5 flex items-center gap-4 [font-size:var(--prose-font-size,0.875rem)] text-ink-3 opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
       <button
         type="button"
         aria-label={copied ? 'Copied message as Markdown' : 'Copy message as Markdown'}
@@ -37,7 +37,7 @@ function AssistantMessageActions({ text, createdAt }: { text: string; createdAt?
       </button>
       {hasTime(createdAt) ? (
         <time dateTime={createdAt} title={new Date(createdAt).toLocaleString()} className="tabular-nums">
-          {fullTime(createdAt)}
+          {messageTime(createdAt)}
         </time>
       ) : null}
     </div>

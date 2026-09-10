@@ -49,3 +49,10 @@ export function fullTime(iso: string): string {
     minute: '2-digit',
   })
 }
+
+export function messageTime(iso: string, now = Date.now()): string {
+  const date = new Date(iso)
+  return date.toDateString() === new Date(now).toDateString()
+    ? date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    : fullTime(iso)
+}
