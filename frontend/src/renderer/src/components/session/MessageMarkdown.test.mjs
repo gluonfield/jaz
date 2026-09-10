@@ -59,13 +59,13 @@ test('inline links use website favicons and keep local file icons', async () => 
   }
 })
 
-test('saved assistant messages show their timestamp beside copy and omit unknown dates', async () => {
+test.each(['user', 'assistant'])('saved %s messages show their timestamp beside copy and omit unknown dates', async (role) => {
   const { Bubble } = await import('./Bubble')
   const created = '2026-09-10T08:26:13Z'
   for (const created_at of [created, undefined, 'invalid', '0001-01-01T00:00:00Z']) {
     const html = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() },
       createElement(Bubble, {
-        message: { seq: 1, role: 'assistant', content: 'Saved reply', blocks: [], created_at },
+        message: { seq: 1, role, content: 'Saved reply', blocks: [], created_at },
       }),
     ))
 

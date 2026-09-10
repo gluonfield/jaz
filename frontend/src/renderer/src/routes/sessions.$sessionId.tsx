@@ -538,6 +538,7 @@ function SessionPage({
                             >
                               <UserBubble
                                 text={live.user}
+                                createdAt={live.at}
                                 contexts={live.contexts}
                                 attachments={live.attachments}
                                 attachmentSessionId={sessionId}

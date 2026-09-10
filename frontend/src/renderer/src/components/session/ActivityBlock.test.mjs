@@ -161,7 +161,7 @@ test('the live production transcript keeps reasoning visible and tool details co
   expect(html).not.toContain('Thought process')
 })
 
-test('a running turn offers copy only on its trailing text, not on interim narration', () => {
+test('a running assistant turn keeps message controls hidden until completion', () => {
   const at = (seconds) => new Date(seconds * 1000).toISOString()
   const acp = (fields) => ({
     session_id: 'thread',
@@ -190,7 +190,7 @@ test('a running turn offers copy only on its trailing text, not on interim narra
   const answer = acp({ at: 4, content: 'trailing-answer' })
 
   expect(copies(render([interim, work]))).toBe(0)
-  expect(copies(render([interim, work, answer]))).toBe(1)
+  expect(copies(render([interim, work, answer]))).toBe(0)
 })
 
 test('search expansion reveals tool detail without hiding reasoning', () => {
