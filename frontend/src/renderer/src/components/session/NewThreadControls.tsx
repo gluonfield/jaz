@@ -11,6 +11,7 @@ import {
   Keyboard,
   LoaderCircle,
   Trash2,
+  X,
 } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentLogo, hasAgentLogo } from '@/components/acp/AgentLogo'
@@ -308,20 +309,35 @@ export function ProjectPicker({
       onClose={() => setOpen(false)}
       placement={placement}
       trigger={
-        <Button
-          variant="secondary"
-          size="sm"
-          className="max-w-[13rem]"
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          aria-label={value ? `Project: ${value}` : 'Work in a Project'}
-          title={value || 'Work in a Project'}
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <Folder size={13} className="shrink-0" />
-          <span className="truncate">{label}</span>
-        </Button>
+        <div className={`inline-flex max-w-[13rem] items-center ${disabled ? '' : 'group/project'}`}>
+          {value ? (
+            <IconButton
+              size="sm"
+              aria-label="No Project"
+              title="No Project"
+              disabled={disabled}
+              onClick={() => select('', false)}
+              className="group/clear text-ink-2"
+            >
+              <Folder size={13} className="col-start-1 row-start-1 group-hover/project:invisible group-focus-visible/clear:invisible [@media(hover:none)]:group-enabled/clear:invisible" />
+              <X size={13} className="invisible col-start-1 row-start-1 group-hover/project:visible group-focus-visible/clear:visible [@media(hover:none)]:group-enabled/clear:visible" />
+            </IconButton>
+          ) : null}
+          <Button
+            variant="secondary"
+            size="sm"
+            className={`min-w-0 flex-1 ${value ? 'pl-0' : ''}`}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            aria-label={value ? `Project: ${value}` : 'Work in a Project'}
+            title={value || 'Work in a Project'}
+            disabled={disabled}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {value ? null : <Folder size={13} className="shrink-0" />}
+            <span className="truncate">{label}</span>
+          </Button>
+        </div>
       }
     >
       <div className="w-[300px]">
@@ -346,7 +362,7 @@ export function ProjectPicker({
             </button>
             <div className="my-1 border-t border-border" />
             <MenuRow selected={value === ''} onClick={() => select('', false)}>
-              Default directory
+              No Project
             </MenuRow>
             <div className="max-h-[220px] overflow-y-auto">
               {projects.isLoading ? (
