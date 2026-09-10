@@ -6,6 +6,7 @@ import {
 import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
 import type { ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
+import type { DictationAPI, DictationEvent } from '../shared/dictation'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
 
@@ -19,6 +20,17 @@ const windowKind = process.argv.includes('--jaz-board-window')
 let previewURLTargetSubscriptions = 0
 
 contextBridge.exposeInMainWorld('jaz', {
+  dictation: {
+    availability: () => ipcRenderer.invoke('jaz:dictation:availability'),
+    start: (id) => ipcRenderer.invoke('jaz:dictation:start', id),
+    stop: (id) => ipcRenderer.invoke('jaz:dictation:stop', id),
+    cancel: (id) => ipcRenderer.invoke('jaz:dictation:cancel', id),
+    onEvent: (handler) => {
+      const listener = (_event: unknown, id: string, event: DictationEvent) => handler(id, event)
+      ipcRenderer.on('jaz:dictation:event', listener)
+      return () => ipcRenderer.removeListener('jaz:dictation:event', listener)
+    },
+  } satisfies DictationAPI,
   apiBaseUrl,
   windowKind,
   setNativeTheme: (source: 'light' | 'dark' | 'system') =>

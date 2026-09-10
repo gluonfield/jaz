@@ -28,8 +28,39 @@ Remote backend setup and the planned connected-device approval model are in
 
 - `bun run dev` — dev mode with HMR (vite on port 5180)
 - `bun run build` — distributable: compiles the Go backend, bundles, and packages the desktop app into `dist/` via electron-builder (alias of `build:app`; macOS notarizes when Apple credentials are in the env)
-- `bun run build:bundle` — just the electron-vite production bundle into `out/`
+- `bun run build:bundle` — native dictation helper and electron-vite production bundle into `out/`
+- `bun run build:dictation` — compile the macOS speech helper into `resources/bin/` (requires Xcode 26+; no-op on other platforms)
+- `bun run test:dictation` — verify native audio conversion and background callback isolation on macOS
 - `bun run typecheck` — renderer + main/preload TypeScript
+
+## Dictation
+
+The composer microphone uses Apple's on-device `SpeechAnalyzer` on macOS 26+
+and supported hardware/languages. The first use requests microphone access and
+may download a system-managed speech model. Audio stays on the client Mac,
+including when the Jaz backend runs remotely.
+
+Stop (or Enter in the editor) inserts the final transcript at the selection;
+the arrow finishes and sends or queues it. Cancel or Escape discards it.
+Interim text remains a preview, so cancellation and errors preserve the draft.
+
+`src/shared/dictation.ts` defines the OS-independent desktop contract;
+`src/main/dictation.ts` owns IPC and session ownership, and
+`native/dictation/main.swift` implements the macOS adapter. Windows/Linux
+adapters are not implemented. Web clients omit the button; unsupported desktop
+clients disable it with an explanation. The existing voice-conversation mode
+remains separate.
+
+To check native recognition without opening the microphone:
+
+```bash
+bun run build:dictation
+resources/bin/jaz-dictation --check --locale en-GB
+resources/bin/jaz-dictation --file /path/to/audio.aiff --locale en-GB
+```
+
+The macOS release job builds on macOS 26, bundles the helper, and includes it
+in code signing with the microphone entitlement.
 
 ## Release
 

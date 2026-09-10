@@ -20,6 +20,7 @@ import { startLocalBackend, stopLocalBackend } from './backend'
 import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } from './browserNavigation'
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
+import { registerDictation } from './dictation'
 import { canGrantAppPermission } from './permissions'
 import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
@@ -365,6 +366,7 @@ function openBoardWindow(boardId: string): void {
 
 app.whenReady().then(() => {
   installApplicationMenu()
+  registerDictation()
 
   // Renderer mirrors its theme choice here so the native chrome (macOS traffic
   // lights, native scrollbars) and any new window's paint color match.

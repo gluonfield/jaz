@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>CFBundleIdentifier</key>
+    <string>dev.wins.jaz.dictation</string>
+    <key>CFBundleName</key>
+    <string>Jaz Dictation</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Jaz uses the microphone to turn your speech into draft text on this Mac.</string>
+  </dict>
+</plist>

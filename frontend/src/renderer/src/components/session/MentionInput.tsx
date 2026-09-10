@@ -350,6 +350,18 @@ export function useMentionInput({
     placeCaret(draft.text.length)
   }
 
+  const insertText = (insert: string) => {
+    const draft = currentDraft()
+    const start = textareaRef.current?.selectionStart ?? draft.text.length
+    const end = textareaRef.current?.selectionEnd ?? start
+    const next = draft.text.slice(0, start) + insert + draft.text.slice(end)
+    setDraft({ text: next, tokens: draft.tokens })
+    setCaret(start + insert.length)
+    setDismissedAt(null)
+    placeCaret(start + insert.length)
+    return expandTokens(next, pruneTokens(draft.tokens, next))
+  }
+
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value
     // setDraft prunes tokens whose display no longer occurs in the text.
@@ -446,6 +458,7 @@ export function useMentionInput({
       return expandTokens(current, pruneTokens(draft.tokens, current))
     },
     currentDraft,
+    insertText,
     reset,
     restore,
     onFocus: () => setFocused(true),
@@ -544,6 +557,7 @@ export function MentionTextarea({
   mention,
   placeholder,
   disabled,
+  readOnly,
   autoFocus,
   minHeightClass = 'min-h-[30px]',
   onKeyDown,
@@ -551,6 +565,7 @@ export function MentionTextarea({
   mention: MentionInput
   placeholder?: string
   disabled?: boolean
+  readOnly?: boolean
   autoFocus?: boolean
   minHeightClass?: string
   /** runs only when the mention machinery didn't consume the key */
@@ -581,6 +596,7 @@ export function MentionTextarea({
         rows={1}
         autoFocus={autoFocus}
         disabled={disabled}
+        readOnly={readOnly}
         placeholder={placeholder}
         aria-autocomplete="list"
         aria-expanded={mention.menuOpen}
@@ -596,6 +612,10 @@ export function MentionTextarea({
         onSelect={mention.onSelect}
         onChange={mention.onChange}
         onKeyDown={(e) => {
+          if (readOnly) {
+            onKeyDown?.(e)
+            return
+          }
           if (mention.onKeyDown(e)) return
           onKeyDown?.(e)
         }}
