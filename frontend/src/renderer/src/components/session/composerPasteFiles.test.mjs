@@ -13,14 +13,14 @@ function clipboard(text, files = [], html = '') {
   }
 }
 
-test('pastes through 1,000 Unicode characters stay in the text field', () => {
-  for (const text of ['', 'short paste', 'a'.repeat(1000), '😀'.repeat(1000)]) {
+test('pastes through 2,000 Unicode characters stay in the text field', () => {
+  for (const text of ['', 'short paste', 'a'.repeat(2000), '😀'.repeat(2000)]) {
     expect(composerPasteFiles(clipboard(text))).toEqual([])
   }
 })
 
 test('larger pastes become UTF-8 text files with every character preserved', async () => {
-  for (const text of ['a'.repeat(1001), '😀'.repeat(1001), `  ${'α\tβ\r\n'.repeat(20000)}\n  `]) {
+  for (const text of ['a'.repeat(2001), '😀'.repeat(2001), `  ${'α\tβ\r\n'.repeat(20000)}\n  `]) {
     const files = composerPasteFiles(clipboard(text, [], '<p>Rich clipboard formatting</p>'))
     expect(files).toHaveLength(1)
     expect(files[0].name).toMatch(/^pasted-text-\d+\.txt$/)
@@ -31,8 +31,8 @@ test('larger pastes become UTF-8 text files with every character preserved', asy
 })
 
 test('repeated pastes have distinct attachment names and retain their own contents', async () => {
-  const firstText = 'a'.repeat(1001)
-  const secondText = 'b'.repeat(1001)
+  const firstText = 'a'.repeat(2001)
+  const secondText = 'b'.repeat(2001)
   const [first] = composerPasteFiles(clipboard(firstText))
   const [second] = composerPasteFiles(clipboard(secondText))
   expect(first.name).not.toBe(second.name)
@@ -46,7 +46,7 @@ test('clipboard images and files take precedence over accompanying text', () => 
     new File(['document'], 'notes.pdf', { type: 'application/pdf' }),
   ]
   for (const itemsAvailable of [true, false]) {
-    const data = clipboard('a'.repeat(1001), files)
+    const data = clipboard('a'.repeat(2001), files)
     if (!itemsAvailable) {
       data.items = []
     }
@@ -58,5 +58,5 @@ test('clipboard images and files take precedence over accompanying text', () => 
 })
 
 test('HTML without plain text stays with the browser paste handler', () => {
-  expect(composerPasteFiles(clipboard('', [], `<p>${'a'.repeat(1001)}</p>`))).toEqual([])
+  expect(composerPasteFiles(clipboard('', [], `<p>${'a'.repeat(2001)}</p>`))).toEqual([])
 })
