@@ -5,7 +5,7 @@ import { useCopyAction } from '@/lib/useCopyAction'
 export function MessageActions({ text, createdAt }: { text: string; createdAt?: string }) {
   const { copied, copy } = useCopyAction(text)
   return (
-    <div className="pointer-events-none mt-0.5 flex items-center gap-4 text-[13px] text-ink-3 opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
+    <div className="pointer-events-none mt-0.5 flex items-center gap-4 text-[12px] text-ink-3 opacity-0 group-hover/message:pointer-events-auto group-hover/message:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
       {text ? (
         <button
           type="button"
