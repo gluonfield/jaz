@@ -18,6 +18,7 @@ const (
 	ActionClaimTab   = "claim_tab"
 	ActionNavigate   = "navigate"
 	ActionState      = "state"
+	ActionAXState    = "ax_state"
 	ActionFind       = "find"
 	ActionScreenshot = "screenshot"
 	ActionClick      = "click"

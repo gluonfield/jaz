@@ -68,6 +68,9 @@ func (p *browserPage) find(ctx context.Context, query string) (ActionOutput, err
 }
 
 func (p *browserPage) screenshot(ctx context.Context) (ActionOutput, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	p.ax.forceFull = true
 	var out struct {
 		Data string `json:"data"`
 	}
@@ -75,7 +78,7 @@ func (p *browserPage) screenshot(ctx context.Context) (ActionOutput, error) {
 		"format":      "png",
 		"fromSurface": true,
 	}, &out); err != nil {
-		return ActionOutput{}, err
+		return ActionOutput{}, fmt.Errorf("capture browser screenshot: %w", err)
 	}
 	data, err := decodeImageBase64(out.Data)
 	if err != nil {
@@ -109,7 +112,7 @@ func (p *browserPage) click(ctx context.Context, ref string) (ActionOutput, erro
 
 func (p *browserPage) formInput(ctx context.Context, ref string, value any) (ActionOutput, error) {
 	var out elementResult
-	if err := p.eval(ctx, formInputScript(ref, value), &out); err != nil {
+	if err := p.evalRef(ctx, ref, formInputScript(ref, value), &out); err != nil {
 		return ActionOutput{}, err
 	}
 	if !out.Found {
@@ -151,7 +154,7 @@ func (p *browserPage) scroll(ctx context.Context, ref, direction string, amount 
 	x, y := 0.0, 0.0
 	if strings.TrimSpace(ref) != "" {
 		var point pointResult
-		if err := p.eval(ctx, pointScript(ref, amount != 0), &point); err != nil {
+		if err := p.evalRef(ctx, ref, pointScript(ref, amount != 0), &point); err != nil {
 			return ActionOutput{}, err
 		}
 		if !point.Found {
@@ -269,7 +272,7 @@ func (p *browserPage) eval(ctx context.Context, expression string, out any) erro
 		if err != nil {
 			return err
 		}
-		err = p.evalInContext(ctx, contextID, expression, out)
+		err = p.evalInSession(ctx, "", contextID, expression, out)
 		if err == nil {
 			return nil
 		}
@@ -282,16 +285,16 @@ func (p *browserPage) eval(ctx context.Context, expression string, out any) erro
 	return errors.New("browser execution context is unavailable")
 }
 
-func (p *browserPage) evalInContext(ctx context.Context, contextID int64, expression string, out any) error {
-	var result struct {
-		Result struct {
-			Type        string          `json:"type"`
-			Value       json.RawMessage `json:"value"`
-			Description string          `json:"description"`
-		} `json:"result"`
-		ExceptionDetails json.RawMessage `json:"exceptionDetails"`
-	}
-	err := p.conn.call(ctx, "Runtime.evaluate", map[string]any{
+type cdpEvaluation struct {
+	Result struct {
+		Value json.RawMessage `json:"value"`
+	} `json:"result"`
+	ExceptionDetails json.RawMessage `json:"exceptionDetails"`
+}
+
+func (p *browserPage) evalInSession(ctx context.Context, sessionID string, contextID int64, expression string, out any) error {
+	var result cdpEvaluation
+	err := p.conn.callSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    expression,
 		"returnByValue": true,
 		"awaitPromise":  true,
@@ -300,6 +303,10 @@ func (p *browserPage) evalInContext(ctx context.Context, contextID int64, expres
 	if err != nil {
 		return err
 	}
+	return result.decode(out)
+}
+
+func (result cdpEvaluation) decode(out any) error {
 	if len(result.ExceptionDetails) > 0 && !bytes.Equal(result.ExceptionDetails, []byte("null")) {
 		return fmt.Errorf("browser JavaScript failed: %s", string(result.ExceptionDetails))
 	}
@@ -390,7 +397,7 @@ func sameBrowserURL(left, right string) bool {
 
 func (p *browserPage) resolvePoint(ctx context.Context, ref string) (pointResult, error) {
 	var out pointResult
-	if err := p.eval(ctx, resolvePointScript(ref), &out); err != nil {
+	if err := p.evalRef(ctx, ref, resolvePointScript(ref), &out); err != nil {
 		return pointResult{}, err
 	}
 	if !out.Found {
@@ -407,7 +414,7 @@ func (p *browserPage) resolvePoint(ctx context.Context, ref string) (pointResult
 
 func (p *browserPage) focus(ctx context.Context, ref string) error {
 	var out elementResult
-	if err := p.eval(ctx, focusScript(ref), &out); err != nil {
+	if err := p.evalRef(ctx, ref, focusScript(ref), &out); err != nil {
 		return err
 	}
 	if !out.Found {
@@ -418,7 +425,7 @@ func (p *browserPage) focus(ctx context.Context, ref string) error {
 
 func (p *browserPage) probeRef(ctx context.Context, ref string) (elementResult, error) {
 	var out elementResult
-	if err := p.eval(ctx, probeRefScript(ref), &out); err != nil {
+	if err := p.evalRef(ctx, ref, probeRefScript(ref), &out); err != nil {
 		return elementResult{}, err
 	}
 	if !out.Found {

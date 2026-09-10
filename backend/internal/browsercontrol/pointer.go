@@ -27,7 +27,7 @@ func (p *browserPage) drag(ctx context.Context, from, to string) (ActionOutput, 
 		return ActionOutput{}, err
 	}
 	// Resolving the destination may scroll; locate the source again without scrolling.
-	if err := p.eval(ctx, pointScript(from, false), &start); err != nil {
+	if err := p.evalRef(ctx, from, pointScript(from, false), &start); err != nil {
 		return ActionOutput{}, err
 	}
 	if !start.Found {

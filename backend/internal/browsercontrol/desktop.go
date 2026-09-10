@@ -62,6 +62,8 @@ func (b *DesktopBackend) Call(ctx context.Context, input ActionInput) (ActionOut
 	stopCancel := context.AfterFunc(ctx, func() { page.close() })
 	defer stopCancel()
 	switch input.Action {
+	case ActionAXState:
+		return page.accessibilityState(ctx, input.DisableDiffing)
 	case ActionScript:
 		var result extensionWireOutput
 		if err := page.conn.call(ctx, "Jaz.run", map[string]any{"code": input.Text}, &result); err != nil {

@@ -44,14 +44,25 @@ func pointScript(ref string, scroll bool) string {
 	const el = jazFindElement(q);
 	if (!el) return {found:false};
 	if (el.disabled || el.getAttribute("aria-disabled") === "true") return {found:false, reason:"target is disabled"};
-	if (scroll) el.scrollIntoView({block:"center", inline:"center"});
-	const r = el.getBoundingClientRect();
-	if (r.width <= 0 || r.height <= 0) return {found:false, reason:"target is not visible"};
-	const x = r.left + r.width / 2;
-	const y = r.top + r.height / 2;
-	const hit = jazDeepHit(x, y);
-	if (!jazComposedContains(el, hit)) return {found:false, reason:"target is obscured; read the page again"};
-	return {found:true, x, y, label: jazLabel(el)};
+	if (scroll) {
+	  el.scrollIntoView({block:"center", inline:"center", behavior:"instant"});
+	}
+	for (const rect of el.getClientRects()) {
+	  const left = Math.max(0, rect.left);
+	  const right = Math.min(innerWidth, rect.right);
+	  const top = Math.max(0, rect.top);
+	  const bottom = Math.min(innerHeight, rect.bottom);
+	  if (left >= right || top >= bottom) {
+	    continue;
+	  }
+	  const x = (left + right) / 2;
+	  const y = (top + bottom) / 2;
+	  const hit = jazDeepHit(x, y, el.getRootNode());
+	  if (jazComposedContains(el, hit)) {
+	    return {found:true, x, y, label: jazLabel(el)};
+	  }
+	}
+	return {found:false, reason:"target is obscured or outside the viewport; read the page again"};
 	})` + "(" + jsString(strings.TrimSpace(ref)) + "," + fmt.Sprint(scroll) + ");"
 }
 
@@ -321,8 +332,8 @@ func elementResolverJS() string {
 	  }
 	  return String(chunks.join(" ")).replace(/\s+/g, " ").trim();
 	}
-	function jazDeepHit(x, y){
-	  let hit = document.elementFromPoint(x, y);
+	function jazDeepHit(x, y, root = document){
+	  let hit = root.elementFromPoint(x, y);
 	  while (hit && hit.shadowRoot && hit.shadowRoot.elementFromPoint) {
 	    const inner = hit.shadowRoot.elementFromPoint(x, y);
 	    if (!inner || inner === hit) break;

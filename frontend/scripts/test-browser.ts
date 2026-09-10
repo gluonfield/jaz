@@ -6,6 +6,10 @@ import { createRequire } from 'node:module'
 import tailwindcss from '@tailwindcss/vite'
 
 const output = await mkdtemp(join(tmpdir(), 'jaz-browser-smoke-'))
+const codex = process.argv.includes('--codex') ? Bun.which('codex') : ''
+if (codex === null) {
+  throw new Error('Install and sign in to the Codex CLI before running this check')
+}
 for (const entry of ['main.ts', 'preload.ts']) {
   const result = await Bun.build({
     entrypoints: [resolve('scripts/browser-smoke', entry)],
@@ -56,7 +60,13 @@ const electron = process.env.JAZ_ELECTRON_BINARY || createRequire(import.meta.ur
 console.log(`Browser smoke artifacts: ${output}`)
 const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './internal/browsercontrol', '-run=TestDesktopElectron', '-count=1', '-v'], {
   cwd: resolve('../backend'),
-  env: { ...process.env, JAZ_BROWSER_SMOKE_DIR: output, JAZ_ELECTRON_BINARY: electron },
+  env: {
+    ...process.env,
+    JAZ_BROWSER_SMOKE_DIR: output,
+    JAZ_ELECTRON_BINARY: electron,
+    JAZ_BROWSER_CODEX_BINARY: codex,
+    JAZ_BROWSER_SMOKE_TIMEOUT_MS: codex ? '180000' : '30000',
+  },
   stdout: 'inherit',
   stderr: 'inherit',
 })
