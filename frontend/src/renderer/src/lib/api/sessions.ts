@@ -534,11 +534,3 @@ export const healthQuery = queryOptions({
   retry: false,
   refetchInterval: (query) => (query.state.status === 'error' ? 3_000 : 30_000),
 })
-
-export function setAgentSessionConfig(sessionId: string, id: string, value: string): Promise<void> {
-  return put(`/v1/sessions/${encodeURIComponent(sessionId)}/agent/config`, { id, value })
-}
-
-export function stopAgentTask(sessionId: string, taskId: string): Promise<void> {
-  return post(`/v1/sessions/${encodeURIComponent(sessionId)}/agent/tasks/${encodeURIComponent(taskId)}/stop`, {})
-}
