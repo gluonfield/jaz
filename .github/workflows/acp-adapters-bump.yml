@@ -10,6 +10,20 @@ permissions:
   pull-requests: write
 
 jobs:
+  upstream:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check native runtimes and upstream adapters
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/check-acp-upstream.mjs
+
   bump:
     runs-on: ubuntu-latest
     steps:

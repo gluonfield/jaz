@@ -3,6 +3,7 @@ package sqlite
 import (
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -24,6 +25,15 @@ func TestRuntimeSessionMaterializationState(t *testing.T) {
 	}
 	if hasTranscript, err := store.HasSessionTranscript(session.ID); err != nil || hasTranscript {
 		t.Fatalf("empty transcript = %t, %v", hasTranscript, err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		SessionID: session.ID, Type: sessionevents.TypeAgentSession,
+		AgentSession: &sessionevents.AgentSession{Auth: &sessionevents.AgentAuthIdentity{Kind: "account", Label: "Signed in"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if hasTranscript, err := store.HasSessionTranscript(session.ID); err != nil || hasTranscript {
+		t.Fatalf("metadata-only transcript = %t, %v", hasTranscript, err)
 	}
 	if updated, err := store.ReplaceRuntimeSessionID(session.ID, "wrong", "new"); err != nil || updated {
 		t.Fatalf("mismatched replacement = %t, %v", updated, err)

@@ -182,7 +182,10 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 		switch model.Reasoning.Status {
 		case modelcatalog.ReasoningReady:
 			resolved.Reasoning.Scope = ReasoningScopeProvider
-			resolved.Reasoning.Efforts = intersectReasoningEfforts(model.Reasoning.Efforts, supported)
+			resolved.Reasoning.Efforts = append([]string(nil), model.Reasoning.Efforts...)
+			if !allowAgentCapabilities && len(agentPolicyForAgent(agent).effortOptions) > 0 {
+				resolved.Reasoning.Efforts = intersectReasoningEfforts(model.Reasoning.Efforts, supported)
+			}
 			resolved.Reasoning.DefaultEffort = model.Reasoning.DefaultEffort
 			resolved.Reasoning.Mandatory = model.Reasoning.Mandatory
 			resolved.Reasoning.Automatic = model.Reasoning.Automatic

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { BottomDock } from '@/components/session/BottomDock'
 import { UserBubble } from '@/components/session/Bubble'
+import { AgentSessionControls } from '@/components/session/AgentSessionControls'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
@@ -613,6 +614,14 @@ function SessionPage({
               ) : (
                 <>
                   {goalStatusVisible ? <GoalStatusBar goal={goal} /> : null}
+                  <AgentSessionControls
+                    key={session.id}
+                    sessionId={session.id}
+                    state={derived.agentSession}
+                    tasks={derived.agentTasks}
+                    running={sessionRunning}
+                    onCommand={handleSend}
+                  />
                   <Composer
                     streaming={sessionRunning}
                     planAvailable={planAvailable}

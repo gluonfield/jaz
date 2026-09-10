@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/provider"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -158,13 +159,20 @@ func (s *Store) HasSessionTranscript(id string) (bool, error) {
 	if _, err := s.loadSessionByID(id); err != nil {
 		return false, err
 	}
-	for _, name := range []string{"messages.jsonl", "events.jsonl"} {
-		info, err := os.Stat(filepath.Join(s.sessionDir(id), name))
-		if err == nil && info.Size() > 0 {
+	info, err := os.Stat(filepath.Join(s.sessionDir(id), "messages.jsonl"))
+	if err == nil && info.Size() > 0 {
+		return true, nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return false, err
+	}
+	events, err := s.loadSessionEvents(id)
+	if err != nil {
+		return false, err
+	}
+	for _, event := range events {
+		if event.Type != sessionevents.TypeAgentSession {
 			return true, nil
-		}
-		if err != nil && !os.IsNotExist(err) {
-			return false, err
 		}
 	}
 	return false, nil
@@ -665,4 +673,19 @@ func (s *Store) slugExists(slug, currentID string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+func (s *Store) UpdateSessionModel(id, model, effort string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	if session.Model != model {
+		session.Usage.ContextWindowTokens = 0
+	}
+	session.Model = model
+	session.ReasoningEffort = effort
+	return s.saveSession(session)
 }

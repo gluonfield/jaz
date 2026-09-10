@@ -266,7 +266,7 @@ WHERE id = sqlc.arg(id)
 -- name: HasSessionTranscript :one
 SELECT CAST(
   EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = sqlc.arg(id))
-  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id))
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id) AND session_events.type != 'agent_session')
 AS INTEGER)
 FROM threads
 WHERE threads.id = sqlc.arg(id);
@@ -364,4 +364,10 @@ WHERE id = sqlc.arg(id);
 -- name: AdvanceTranscriptRevision :exec
 UPDATE threads
 SET transcript_revision = transcript_revision + 1
+WHERE id = sqlc.arg(id);
+
+-- name: UpdateSessionModel :execrows
+UPDATE threads
+SET context_window_tokens = CASE WHEN model IS sqlc.narg(model) THEN context_window_tokens ELSE 0 END,
+    model = sqlc.narg(model), reasoning_effort = sqlc.narg(reasoning_effort), updated_at_ms = sqlc.arg(updated_at_ms)
 WHERE id = sqlc.arg(id);

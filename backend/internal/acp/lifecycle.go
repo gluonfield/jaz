@@ -2,7 +2,6 @@ package acp
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
@@ -10,29 +9,22 @@ import (
 )
 
 type agentProcess struct {
-	conn       jsonrpc.MessageConn
-	peer       *jsonrpc.Peer
-	cancel     context.CancelFunc
-	stderr     *processStderrTail
-	turnScoped bool
-	leases     int
-	serveErr   error
-	serveDone  chan struct{}
+	conn      jsonrpc.MessageConn
+	peer      *jsonrpc.Peer
+	cancel    context.CancelFunc
+	stderr    *processStderrTail
+	serveErr  error
+	serveDone chan struct{}
 }
 
-func newAgentProcess(ac *agentConn, turnScoped bool) *agentProcess {
+func newAgentProcess(ac *agentConn) *agentProcess {
 	return &agentProcess{
-		conn:       ac.conn,
-		peer:       ac.peer,
-		cancel:     ac.cancel,
-		stderr:     ac.stderr,
-		turnScoped: turnScoped,
-		serveDone:  make(chan struct{}),
+		conn:      ac.conn,
+		peer:      ac.peer,
+		cancel:    ac.cancel,
+		stderr:    ac.stderr,
+		serveDone: make(chan struct{}),
 	}
-}
-
-func turnScopedAgentProcess(cfg AgentConfig) bool {
-	return cfg.URL == "" && !cfg.Local
 }
 
 func (p *agentProcess) close() {
@@ -44,19 +36,6 @@ func (p *agentProcess) close() {
 	}
 	if p.cancel != nil {
 		p.cancel()
-	}
-}
-
-type processLease struct {
-	once    sync.Once
-	manager *Manager
-	job     *jobState
-	process *agentProcess
-}
-
-func (l *processLease) Release() {
-	if l != nil {
-		l.once.Do(func() { l.manager.releaseProcess(l.job, l.process) })
 	}
 }
 
@@ -111,83 +90,42 @@ func (m *Manager) Close() {
 			m.publishACPStatus(job.eventView())
 		}
 		m.withACPTranscriptBarrier(job.eventView(), nil)
+		m.disconnectBackgroundTasks(job)
 		m.transcriptBuffers.delete(job.ID)
 	}
 }
 
-func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jobState, *processLease, error) {
+func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jobState, error) {
 	for {
-		m.mu.Lock()
+		m.mu.RLock()
 		current := m.jobsByID[job.ID]
 		process := m.processes[job.ID]
-		if current == job && process != nil && process.serveErr == nil {
-			if !process.turnScoped {
-				m.mu.Unlock()
-				return job, nil, nil
-			}
-			process.leases++
-			m.mu.Unlock()
-			return job, &processLease{manager: m, job: job, process: process}, nil
-		}
 		var serveErr error
-		inUse := false
-		if current == job && process != nil {
+		if process != nil {
 			serveErr = process.serveErr
-			inUse = process.leases > 0
 		}
-		m.mu.Unlock()
-
+		m.mu.RUnlock()
 		if current != nil && current != job {
 			job = current
 			continue
 		}
-		if serveErr != nil && (job.turnDone() != nil || inUse) {
-			return nil, nil, serveErr
+		if current == job && process != nil && serveErr == nil {
+			return job, nil
+		}
+		if serveErr != nil && job.turnDone() != nil {
+			return nil, serveErr
 		}
 		var err error
 		job, err = m.restart(ctx, job)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 }
 
-func (m *Manager) releaseProcess(job *jobState, process *agentProcess) {
-	m.mu.Lock()
-	if m.jobsByID[job.ID] != job || m.processes[job.ID] != process {
-		m.mu.Unlock()
-		return
-	}
-	process.leases--
-	if !process.turnScoped || process.leases > 0 {
-		m.mu.Unlock()
-		return
-	}
-	delete(m.processes, job.ID)
-	m.mu.Unlock()
-	m.closeProcess(job, process)
-}
-
-func (m *Manager) closeUnusedProcess(job *jobState) {
-	m.mu.Lock()
-	process := m.processes[job.ID]
-	if m.jobsByID[job.ID] != job || process == nil || !process.turnScoped || process.leases > 0 {
-		m.mu.Unlock()
-		return
-	}
-	delete(m.processes, job.ID)
-	m.mu.Unlock()
-	m.closeProcess(job, process)
-}
-
-func (m *Manager) closeProcess(job *jobState, process *agentProcess) {
-	m.withACPTranscriptBarrier(job.eventView(), nil)
-	m.transcriptBuffers.delete(job.ID)
-	process.close()
-}
-
 func (m *Manager) teardown(id string) {
 	if job := m.jobByID(id); job != nil {
+		m.disconnectBackgroundTasks(job)
 		m.withACPTranscriptBarrier(job.eventView(), nil)
 	}
 	m.transcriptBuffers.delete(id)
@@ -260,6 +198,7 @@ func (m *Manager) recordServeErr(id string, process *agentProcess, err error) er
 	if job == nil {
 		return err
 	}
+	m.disconnectBackgroundTasks(job)
 	job.mu.RLock()
 	running := job.State == StateRunning || job.State == StateStarting
 	job.mu.RUnlock()

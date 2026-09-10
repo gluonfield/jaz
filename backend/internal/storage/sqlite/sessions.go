@@ -595,3 +595,21 @@ func firstNonEmpty(values ...string) string {
 	}
 	return ""
 }
+
+func (s *Store) UpdateSessionModel(id, model, effort string) error {
+	s.writeMu.Lock()
+	updated, err := threaddb.New(s.db).UpdateSessionModel(context.Background(), threaddb.UpdateSessionModelParams{
+		ID: id, Model: nullDBString(model), ReasoningEffort: nullDBString(effort), UpdatedAtMs: timeToMs(time.Now().UTC()),
+	})
+	s.writeMu.Unlock()
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
+		return storage.ErrSessionNotFound
+	}
+	if current, err := s.LoadSession(id); err == nil {
+		s.mirrorSession(current)
+	}
+	return nil
+}

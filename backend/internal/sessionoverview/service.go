@@ -21,8 +21,9 @@ type Service struct {
 }
 
 type View struct {
-	Threads   []Thread
-	Subagents []Subagent
+	AgentEvents []sessionevents.Event
+	Threads     []Thread
+	Subagents   []Subagent
 }
 
 type Thread struct {
@@ -54,7 +55,8 @@ func (s *Service) Load(ctx context.Context, ref string) (View, error) {
 	if err != nil {
 		return View{}, err
 	}
-	ids := make([]string, len(records.Threads))
+	ids := make([]string, len(records.Threads)+1)
+	ids[len(records.Threads)] = records.SessionID
 	for i := range records.Threads {
 		ids[i] = records.Threads[i].ID
 	}
@@ -64,6 +66,16 @@ func (s *Service) Load(ctx context.Context, ref string) (View, error) {
 		view.Threads = append(view.Threads, threadView(record, active[record.ID]))
 	}
 	view.Subagents = subagentViews(records.SubagentEvents)
+	view.AgentEvents = sessionevents.CompactTranscript(records.AgentEvents)
+	if active[records.SessionID].ID == "" {
+		for i := range view.AgentEvents {
+			if task := view.AgentEvents[i].AgentTask; task != nil && (task.State == "running" || task.State == "paused") {
+				copy := *task
+				copy.ConnectionLost = true
+				view.AgentEvents[i].AgentTask = &copy
+			}
+		}
+	}
 	return view, nil
 }
 

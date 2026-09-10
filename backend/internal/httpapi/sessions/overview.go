@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/httpapi"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionoverview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -15,8 +16,9 @@ type OverviewHandler struct {
 }
 
 type overviewResponse struct {
-	Threads   []overviewThreadResponse   `json:"threads"`
-	Subagents []overviewSubagentResponse `json:"subagents"`
+	AgentEvents []sessionevents.Event      `json:"agent_events,omitempty"`
+	Threads     []overviewThreadResponse   `json:"threads"`
+	Subagents   []overviewSubagentResponse `json:"subagents"`
 }
 
 type overviewThreadResponse struct {
@@ -63,8 +65,9 @@ func (h *OverviewHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := overviewResponse{
-		Threads:   make([]overviewThreadResponse, 0, len(view.Threads)),
-		Subagents: make([]overviewSubagentResponse, 0, len(view.Subagents)),
+		AgentEvents: view.AgentEvents,
+		Threads:     make([]overviewThreadResponse, 0, len(view.Threads)),
+		Subagents:   make([]overviewSubagentResponse, 0, len(view.Subagents)),
 	}
 	for _, thread := range view.Threads {
 		response.Threads = append(response.Threads, overviewThreadResponse{

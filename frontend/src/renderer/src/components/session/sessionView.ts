@@ -315,7 +315,11 @@ export function deriveSessionView(
   const sideChatEvents = coalesceSessionEvents(
     [...persistedEvents, ...liveEvents].filter((event) => sessionEventPlacement(event) === 'side_chat'),
   )
+  const agentEvents = coalesceSessionEvents([...(overview?.agent_events ?? []), ...persistedEvents, ...liveEvents])
+    .filter((event) => event.session_id === session.id)
   return {
+    agentSession: agentEvents.findLast((event) => event.type === 'agent_session')?.agent_session,
+    agentTasks: agentEvents.flatMap((event) => event.agent_task ? [event.agent_task] : []),
     transcriptEvents: settledTranscriptEvents,
     sideChatEvents,
     displayEvents,

@@ -76,9 +76,6 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	if err != nil {
 		return Job{}, err
 	}
-	if opts.requireCompactSupport && !AgentSupportsCompact(job.ACPAgent) {
-		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
-	}
 	local := m.localAgent(job.ACPAgent)
 	if m.configuredLocal(job.ACPAgent) && local == nil {
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
@@ -89,21 +86,17 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
 	}
 	job.sendMu.Unlock()
-	var processLease *processLease
 	if local == nil {
-		job, processLease, err = m.acquireSessionProcess(ctx, job)
+		job, err = m.acquireSessionProcess(ctx, job)
 		if err != nil {
 			return Job{}, err
 		}
 	}
+	if opts.requireCompactSupport && !m.supportsSessionCommand(job, "compact") {
+		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
+	}
 	job.sendMu.Lock()
 	defer job.sendMu.Unlock()
-	started := false
-	defer func() {
-		if !started {
-			processLease.Release()
-		}
-	}()
 	if job.turnDone() != nil {
 		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
 	}
@@ -132,10 +125,6 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation)
-	job.mu.Lock()
-	job.turn.processLease = processLease
-	job.mu.Unlock()
-	started = true
 	m.touchAttention(parentSessionIDs(job.eventView())...)
 	markGoalRequested(job, req.GoalRequested)
 	m.publishACP(job.eventView())

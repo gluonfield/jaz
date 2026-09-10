@@ -14,6 +14,23 @@ type overviewStore struct {
 	view storage.SessionOverview
 }
 
+func TestDisconnectedAgentTasksPreserveNativeCapabilities(t *testing.T) {
+	store := overviewStore{view: storage.SessionOverview{
+		SessionID:   "parent",
+		AgentEvents: []sessionevents.Event{{Type: sessionevents.TypeAgentTask, AgentTask: &sessionevents.AgentTask{ID: "task", State: "running", CanStop: true}}},
+	}}
+	view, err := NewService(store, overviewLive{}).Load(t.Context(), "parent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if task := view.AgentEvents[0].AgentTask; !task.ConnectionLost || !task.CanStop || task.State != "running" {
+		t.Fatalf("disconnected native task = %#v", task)
+	}
+	if store.view.AgentEvents[0].AgentTask.ConnectionLost {
+		t.Fatal("overview changed the stored task")
+	}
+}
+
 func (s overviewStore) LoadSessionOverview(context.Context, string) (storage.SessionOverview, error) {
 	return s.view, nil
 }

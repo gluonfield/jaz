@@ -17,6 +17,8 @@ export function sessionEventPlacement(event: SessionEvent): SessionEventPlacemen
   switch (event.type) {
     case 'acp':
       return isParentChildACPEvent(event) && !taskSurfaceFromEvent(event) ? 'overview' : 'transcript'
+    case 'agent_session':
+    case 'agent_task':
     case 'provider_subagent':
       return 'overview'
     case 'goal_update':

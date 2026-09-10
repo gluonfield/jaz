@@ -673,6 +673,25 @@ func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 }
 
 func sendResult(conn jsonrpc.MessageConn, req *jsonrpc.Message, result any) {
+	if raw := os.Getenv("JAZ_FAKE_ACP_SESSION_OPTIONS"); raw != "" && (req.Method == "session/new" || req.Method == "session/load" || req.Method == "session/resume" || req.Method == "session/set_config_option") {
+		var options []map[string]any
+		if err := json.Unmarshal([]byte(raw), &options); err != nil {
+			panic(err)
+		}
+		var selection struct {
+			ID    string `json:"configId"`
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal(req.Params, &selection); err != nil {
+			panic(err)
+		}
+		for _, option := range options {
+			if option["id"] == selection.ID {
+				option["currentValue"] = selection.Value
+			}
+		}
+		result.(map[string]any)["configOptions"] = options
+	}
 	resp, err := jsonrpc.NewResult(*req.ID, result)
 	if err == nil {
 		_ = conn.Send(context.Background(), resp)

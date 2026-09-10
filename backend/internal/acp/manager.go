@@ -46,6 +46,7 @@ type Store interface {
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
 	SaveSession(storage.Session) error
+	UpdateSessionModel(id, model, effort string) error
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error)
 	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)
@@ -214,6 +215,7 @@ func (m *Manager) providers() map[string]provider.ModelProviderConfig {
 }
 
 type agentConn struct {
+	state         *connectionState
 	conn          jsonrpc.MessageConn
 	peer          *jsonrpc.Peer
 	cancel        context.CancelFunc
@@ -284,7 +286,8 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		return nil, err
 	}
 	promptTracker := newPromptTrackingConn(conn)
-	peer := jsonrpc.NewPeer(promptTracker, handler)
+	state := &connectionState{}
+	peer := jsonrpc.NewPeer(promptTracker, state.handler(m, handler))
 	go func() {
 		err := peer.Serve(runCtx)
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -302,6 +305,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		ClientCapabilities: &acpschema.ClientCapabilities{
 			Meta: map[string]any{
 				"terminal-auth":  true,
+				"jetbrains":      map[string]any{"air": map[string]any{"version": 1, "capabilities": []string{"asyncTasks", "recommendedValue"}}},
 				"jaz.dev/widget": map[string]any{"version": 1},
 			},
 			FS: &acpschema.FileSystemCapabilities{
@@ -316,6 +320,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		cancel()
 		return nil, fmt.Errorf("initialize acp agent: %w", withProcessStderr(err, stderr))
 	}
+	state.capabilities(initRaw)
 	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
@@ -328,7 +333,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		cancel()
 		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
 	}
-	return &agentConn{conn: promptTracker, peer: peer, cancel: cancel, initRaw: initRaw, stderr: stderr, promptTracker: promptTracker}, nil
+	return &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, initRaw: initRaw, stderr: stderr, promptTracker: promptTracker}, nil
 }
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
@@ -383,6 +388,7 @@ func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, labe
 	if acpSession.SessionID == "" {
 		return acpSessionInfo{}, fmt.Errorf("acp session/new returned empty session id")
 	}
+	ac.state.initial = sessionRaw
 	return newACPSessionInfo(sessionRaw, acpSession), nil
 }
 
@@ -473,7 +479,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ac.close()
 		return fail(err)
 	}
-	modes, err := m.configuredModeState(ctx, ac.peer, req.ACPAgent, acpSession, cfg)
+	modes, err := m.configuredModeState(ctx, ac, req.ACPAgent, acpSession, cfg)
 	if err != nil {
 		ac.close()
 		return fail(err)
@@ -487,7 +493,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 			return fail(err)
 		}
 	}
-	process := newAgentProcess(ac, turnScopedAgentProcess(cfg))
+	process := newAgentProcess(ac)
 	job := newIdleJob(session, req.ACPAgent, acpSessionID, absCwd, modes)
 	job.steerMethod = supportedSteerMethod(ac.initRaw)
 	var persistSessionID func()
@@ -495,11 +501,8 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		persistSessionID = m.persistSessionOnPrompt(session.ID, req.ACPAgent, acpSessionID)
 	}
 	m.addJob(job, process)
-	if process.turnScoped && !materializesOnPrompt {
-		m.closeUnusedProcess(job)
-	} else {
-		ac.trackPromptSends(job, persistSessionID)
-	}
+	ac.state.attach(m, job, cfg)
+	ac.trackPromptSends(job, persistSessionID)
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
 
 	return SpawnResult{

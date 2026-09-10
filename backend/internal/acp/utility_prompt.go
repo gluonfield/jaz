@@ -97,7 +97,7 @@ func (m *Manager) newUtilitySession(ctx context.Context, ac *agentConn, agent st
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
-	if _, err := m.configuredModeState(ctx, ac.peer, agent, session, cfg); err != nil {
+	if _, err := m.configuredModeState(ctx, ac, agent, session, cfg); err != nil {
 		return acpSessionInfo{}, err
 	}
 	return session, nil
