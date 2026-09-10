@@ -219,6 +219,43 @@ func TestBoundedRawInput(t *testing.T) {
 	}
 }
 
+func TestCodexAgentIdentitySurvivesBoundedInputAndSparseUpdates(t *testing.T) {
+	meta := map[string]any{
+		"codex": map[string]any{"providerSubagents": []any{}},
+	}
+	for _, action := range []string{"spawnAgent", "sendInput", "resumeAgent", "wait", "closeAgent"} {
+		t.Run(action, func(t *testing.T) {
+			call := toolUpdateSnapshot(toolUpdateFields{
+				ID:       "agent-action",
+				Title:    action,
+				Meta:     meta,
+				RawInput: json.RawMessage(`{"prompt":"` + strings.Repeat("x", maxToolRawInputBytes) + `","senderThreadId":"parent","receiverThreadIds":["child"]}`),
+			})
+			status := acpschema.ToolCallStatusCompleted
+			mergeToolCall(&call, toolUpdateSnapshot(toolUpdateFields{ID: "agent-action", Status: &status}))
+			if call.ToolName != "codex."+action || call.RawInput != nil || call.Status != "completed" {
+				t.Fatalf("agent identity/status lost or oversized input retained: %+v", call)
+			}
+		})
+	}
+	for _, action := range []string{"started", "interacted", "interrupted", "completed"} {
+		call := toolUpdateSnapshot(toolUpdateFields{
+			ID:       "agent-activity",
+			Meta:     meta,
+			RawInput: json.RawMessage(`{"activityKind":"` + action + `","agentThreadId":"child"}`),
+		})
+		if call.ToolName != "codex."+action {
+			t.Fatalf("activity %q identity = %q", action, call.ToolName)
+		}
+	}
+	for _, otherMeta := range []map[string]any{nil, {"codex": map[string]any{}}} {
+		call := toolUpdateSnapshot(toolUpdateFields{ID: "wait", Title: "wait", Meta: otherMeta})
+		if call.ToolName != "" {
+			t.Fatalf("unrelated wait classified as agent action: %q", call.ToolName)
+		}
+	}
+}
+
 func TestClampToolTextRuneSafe(t *testing.T) {
 	long := strings.Repeat("é", maxToolContentText+50)
 	got := clampToolText(long)

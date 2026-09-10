@@ -2,6 +2,7 @@ import type { ACPToolCall, ACPToolContent } from '@/lib/api/types'
 import { normalized } from './TranscriptUtils'
 
 export type ToolCategory =
+  | 'agent'
   | 'web_search'
   | 'web_fetch'
   | 'edit'
@@ -70,6 +71,7 @@ const kindCategories: Record<string, ToolCategory> = {
 }
 
 const categoryPhrases: Record<ToolCategory, (count: number) => string> = {
+  agent: (count) => `worked with ${count === 1 ? 'an agent' : 'agents'}`,
   web_search: () => 'searched the web',
   web_fetch: (count) => `visited ${count === 1 ? 'a page' : 'pages'}`,
   edit: (count) => `edited ${count === 1 ? 'a file' : 'files'}`,
@@ -89,6 +91,7 @@ export function toolNameLabel(name?: string): string {
 }
 
 export function toolCallCategory(call: ACPToolCall): ToolCategory {
+  if (agentToolLabel(call)) return 'agent'
   const category =
     toolNames[toolNameKey(call.tool_name)]?.category || kindCategories[(call.kind ?? '').toLowerCase()]
   if (category) return category
@@ -117,6 +120,36 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
 function readField(value: unknown, key: string): string {
   const field = objectValue(value)?.[key]
   return typeof field === 'string' ? field.trim() : ''
+}
+
+const agentActions: Record<string, { active: string; completed: string; verb: string }> = {
+  spawnAgent: { active: 'Creating', completed: 'Created', verb: 'create' },
+  sendInput: { active: 'Messaging', completed: 'Messaged', verb: 'message' },
+  resumeAgent: { active: 'Resuming', completed: 'Resumed', verb: 'resume' },
+  wait: { active: 'Waiting for', completed: 'Waited for', verb: 'wait for' },
+  closeAgent: { active: 'Closing', completed: 'Closed', verb: 'close' },
+  started: { active: 'Creating', completed: 'Created', verb: 'create' },
+  interacted: { active: 'Interacting with', completed: 'Interacted with', verb: 'interact with' },
+  interrupted: { active: 'Interrupting', completed: 'Interrupted', verb: 'interrupt' },
+}
+
+function agentToolLabel(call: ACPToolCall): string | undefined {
+  const input = objectValue(call.raw_input) ?? {}
+  const activity = typeof input.agentThreadId === 'string' && typeof input.activityKind === 'string'
+    ? input.activityKind
+    : undefined
+  const receivers = Array.isArray(input.receiverThreadIds) ? input.receiverThreadIds : undefined
+  const collaboration = typeof input.senderThreadId === 'string' && receivers
+  const name = call.tool_name?.startsWith('codex.')
+    ? call.tool_name.slice('codex.'.length)
+    : activity ?? (collaboration ? call.title ?? '' : '')
+  if (name === 'completed') return 'Agent finished'
+  if (!Object.hasOwn(agentActions, name)) return undefined
+  const action = agentActions[name]
+  const count = collaboration ? receivers.length : 1
+  const target = count > 1 ? `${count} agents` : 'an agent'
+  if (normalized(call.status) === 'failed') return `Failed to ${action.verb} ${target}`
+  return `${isRunningToolStatus(call.status) ? action.active : action.completed} ${target}`
 }
 
 function cleanTitle(title?: string): string {
@@ -214,6 +247,8 @@ function commandText(call: ACPToolCall): string {
 }
 
 function callLabel(call: ACPToolCall, category: ToolCategory, command: string, description: string): string {
+  const agentLabel = agentToolLabel(call)
+  if (agentLabel) return agentLabel
   if (category === 'web_search') return searchQuery(call) || 'Web search'
   if (category === 'web_fetch') {
     const url = fetchURL(call)
@@ -273,6 +308,8 @@ export function hasToolCallDetail(call: ACPToolCall): boolean {
 }
 
 export function toolRunLabel(calls: ACPToolCall[]): string {
+  const agentLabel = calls.length === 1 ? agentToolLabel(calls[0]) : undefined
+  if (agentLabel) return agentLabel
   const counts = new Map<ToolCategory, number>()
   let failed = 0
   for (const call of calls) {

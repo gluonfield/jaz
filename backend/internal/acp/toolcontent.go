@@ -88,7 +88,7 @@ func toolUpdateSnapshot(fields toolUpdateFields) sessionevents.ACPToolCall {
 		ID:        string(fields.ID),
 		Title:     fields.Title,
 		Kind:      kindString(fields.Kind),
-		ToolName:  metadataToolName(fields.Meta),
+		ToolName:  toolUpdateName(fields),
 		Content:   normalizeToolContent(fields.Content),
 		Locations: normalizeToolLocations(fields.Locations),
 		RawInput:  boundedRawInput(fields.RawInput),
@@ -152,11 +152,28 @@ func normalizeToolLocations(locations []acpschema.ToolCallLocation) []sessioneve
 	return out
 }
 
-func metadataToolName(meta map[string]any) string {
-	if cc, ok := meta["claudeCode"].(map[string]any); ok {
+func toolUpdateName(fields toolUpdateFields) string {
+	if cc, ok := fields.Meta["claudeCode"].(map[string]any); ok {
 		if name, ok := cc["toolName"].(string); ok && name != "" {
 			return name
 		}
+	}
+	codex, ok := fields.Meta[codexMetaKey].(map[string]any)
+	if !ok {
+		return ""
+	}
+	if _, ok := codex[providerSubagentsMetaKey]; !ok {
+		return ""
+	}
+	var input struct {
+		ActivityKind string `json:"activityKind"`
+	}
+	action := fields.Title
+	if json.Unmarshal(fields.RawInput, &input) == nil && input.ActivityKind != "" {
+		action = input.ActivityKind
+	}
+	if action != "" {
+		return "codex." + action
 	}
 	return ""
 }

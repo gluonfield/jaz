@@ -1,6 +1,7 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import codexAgentCalls from '@/components/session/fixtures/codexAgentCalls.json'
 
 let inlineDiffs = false
 let inlineShellCommands = false
@@ -62,6 +63,51 @@ const { Transcript } = await import('./Transcript')
 
 const thought = (text, key = 'thought') => ({ kind: 'thought', text, key })
 const tool = (call, key = `tool-${call.id}`) => ({ kind: 'tool', call, key })
+
+test('an agent action spinner follows its own status within an active turn', () => {
+  const [call] = codexAgentCalls
+  for (const status of ['completed', 'failed', 'in_progress']) {
+    const html = renderToStaticMarkup(createElement(ActivityBlock, {
+      entries: [tool({ ...call, status })],
+      active: true,
+    }))
+    expect(html.includes('animate-spin')).toBe(status === 'in_progress')
+  }
+})
+
+test('the production transcript gives each agent action its own row between regular tool groups', () => {
+  const [collaboration, activity] = codexAgentCalls
+  const html = renderToStaticMarkup(createElement(Transcript, {
+    messages: [],
+    events: [{
+      session_id: 'thread',
+      type: 'acp_tool',
+      at: new Date(1000).toISOString(),
+      acp: {
+        id: 'thread', agent: 'codex', session_id: 'thread', state: 'running',
+        tool_calls: [
+          { id: 'command', tool_name: 'exec_command' },
+          { ...collaboration, id: 'first' },
+          { ...activity, id: 'second' },
+          { ...collaboration, id: 'resume', title: 'resumeAgent' },
+          { ...collaboration, id: 'message', title: 'sendInput' },
+          { id: 'read', tool_name: 'read' },
+        ],
+      },
+    }],
+    sessionId: 'thread',
+    working: true,
+  }))
+
+  expect(html.match(/Created an agent/g)).toHaveLength(2)
+  expect(html.match(/lucide-bot/g)).toHaveLength(4)
+  const ordered = ['Ran a command', 'Created an agent', 'Resumed an agent', 'Messaged an agent', 'Read a file']
+    .map((value) => html.indexOf(value))
+  expect(ordered.every((index) => index >= 0)).toBe(true)
+  expect(ordered).toEqual([...ordered].sort((a, b) => a - b))
+  expect(html).not.toContain('Find the current weather')
+  expect(html).not.toContain('Used tools')
+})
 
 test('the live production transcript keeps reasoning visible and tool details collapsed', () => {
   const at = (seconds) => new Date(seconds * 1000).toISOString()

@@ -35,6 +35,7 @@ import {
 } from './sidebarSessionModel'
 
 const COLLAPSED_PROJECTS_KEY = 'jaz.sidebar.collapsedProjects'
+const VISIBLE_PROJECT_COUNT = 5
 const MORE_ACTION_CLASS =
   'flex h-[30px] items-center rounded-full pl-9 pr-2.5 text-[13px] text-ink-3 opacity-80 transition-[background-color,color,opacity] duration-150 hover:bg-list-hover hover:text-ink hover:opacity-100 max-sm:h-11 max-sm:pl-10 max-sm:pr-3 max-sm:text-[15px]'
 const SECTION_HEADING_CLASS = 'text-[13px] font-semibold text-ink max-sm:text-[15px]'
@@ -325,6 +326,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
   const projects = useQuery(projectsQuery)
   const [organization, setOrganization] = useSidebarOrganization()
   const [visibleRecentCount, setVisibleRecentCount] = useState(SESSION_PAGE_SIZE)
+  const [showAllProjects, setShowAllProjects] = useState(false)
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set())
   const [showAllUngrouped, setShowAllUngrouped] = useState(false)
   const [collapsedProjects, setCollapsedProjects] = useState(storedCollapsedProjects)
@@ -341,13 +343,13 @@ export function SidebarSessions({ open }: { open: boolean }) {
   )
   const blocks = useMemo(
     () => sessionDisplayBlocks(
-      groups,
+      showAllProjects ? groups : groups.slice(0, VISIBLE_PROJECT_COUNT),
       sections.ungrouped,
       expandedProjects,
       showAllUngrouped,
       collapsedProjects,
     ),
-    [collapsedProjects, expandedProjects, groups, sections.ungrouped, showAllUngrouped],
+    [collapsedProjects, expandedProjects, groups, sections.ungrouped, showAllProjects, showAllUngrouped],
   )
   const recentPage = useMemo(
     () => sessionPage(sections.recentItems, visibleRecentCount),
@@ -433,6 +435,16 @@ export function SidebarSessions({ open }: { open: boolean }) {
             shortcutMode={shortcutMode}
           />
         )}
+        {organization === 'project' && groups.length > VISIBLE_PROJECT_COUNT ? (
+          <button
+            type="button"
+            aria-expanded={showAllProjects}
+            onClick={() => setShowAllProjects((current) => !current)}
+            className={`${MORE_ACTION_CLASS} min-h-10 w-full focus-visible:ring-2 focus-visible:ring-primary/40`}
+          >
+            {showAllProjects ? 'Show less' : `Show all projects (${groups.length})`}
+          </button>
+        ) : null}
         {!hasSessions ? (
           <p className="px-2.5 py-1 text-[13px] text-ink-3">No sessions yet</p>
         ) : null}

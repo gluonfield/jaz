@@ -1,4 +1,5 @@
 import {
+  Bot,
   CircleEllipsis,
   FilePenLine,
   FolderOpen,
@@ -20,6 +21,7 @@ import { ShellCommandBlock, hasInlineShellCommand } from './ShellCommandBlock'
 import { ToolCallDetail } from './ToolCallContent'
 import {
   hasToolCallDetail,
+  isRunningToolStatus,
   toolCallCategory,
   toolRunLabel,
   type ToolCategory,
@@ -37,6 +39,7 @@ export const ACPThought = memo(function ACPThought({ text }: { text: string }) {
 })
 
 function toolRunIcon(categories: ToolCategory[]): LucideIcon {
+  if (categories.includes('agent')) return Bot
   if (categories.includes('edit')) return FilePenLine
   if (categories.includes('read')) return FolderOpen
   if (categories.includes('command')) return SquareTerminal
@@ -73,7 +76,7 @@ const ActivityToolDisclosure = memo(function ActivityToolDisclosure({
         open={effectiveOpen}
         disabled={!expandable}
         onClick={() => setOpen((value) => !value)}
-        accessory={active ? (
+        accessory={active && calls.some((call) => isRunningToolStatus(call.status)) ? (
           <LoaderCircle className="size-3 animate-spin text-running" aria-hidden />
         ) : undefined}
       />
@@ -117,6 +120,11 @@ export const ActivityBlock = memo(function ActivityBlock({
     if (entry.kind === 'thought') {
       flushTools()
       rows.push({ kind: 'thought', entry })
+      continue
+    }
+    if (toolCallCategory(entry.call) === 'agent') {
+      flushTools()
+      rows.push({ kind: 'tools', entries: [entry], key: `tools-${entry.key}` })
       continue
     }
     if (inlineDiffs && hasInlineDiff(entry.call)) {

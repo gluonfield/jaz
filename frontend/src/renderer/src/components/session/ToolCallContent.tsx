@@ -1,4 +1,5 @@
 import {
+  Bot,
   ChevronRight,
   CircleEllipsis,
   ExternalLink,
@@ -110,6 +111,7 @@ function HumanToolPreview({
 }
 
 const categoryIcons: Record<ToolCategory, LucideIcon> = {
+  agent: Bot,
   command: SquareTerminal,
   edit: FilePenLine,
   image: Image,

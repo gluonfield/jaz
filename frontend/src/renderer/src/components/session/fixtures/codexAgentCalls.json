@@ -1,0 +1,33 @@
+[
+  {
+    "id": "call-spawn-weather",
+    "title": "spawnAgent",
+    "status": "completed",
+    "raw_input": {
+      "prompt": "Find the current weather in Paris.",
+      "senderThreadId": "thread-main",
+      "receiverThreadIds": [
+        "thread-paris"
+      ],
+      "agentsStates": {
+        "thread-paris": {
+          "status": "completed",
+          "message": null
+        }
+      },
+      "model": null,
+      "reasoningEffort": null,
+      "status": "completed"
+    }
+  },
+  {
+    "id": "call-spawn-weather",
+    "title": "Start subagent weather_research",
+    "status": "completed",
+    "raw_input": {
+      "agentThreadId": "thread-paris",
+      "agentPath": "/root/weather_research",
+      "activityKind": "started"
+    }
+  }
+]
