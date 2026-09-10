@@ -1160,7 +1160,7 @@ export interface BrowserStatus {
   extension: BrowserExtensionStatus
 }
 
-export type BrowserMode = 'extension' | 'managed'
+export type BrowserMode = 'extension' | 'managed' | 'desktop'
 
 export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   agent: string

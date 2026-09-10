@@ -13,6 +13,7 @@ const (
 	BrowserSettingsKey       = "settings"
 	BrowserModeExtension     = "extension"
 	BrowserModeManaged       = "managed"
+	BrowserModeDesktop       = "desktop"
 )
 
 type BrowserSettings struct {
@@ -75,8 +76,8 @@ func NormalizeBrowserMode(mode string) string {
 	switch strings.TrimSpace(mode) {
 	case "", BrowserModeExtension:
 		return BrowserModeExtension
-	case BrowserModeManaged:
-		return BrowserModeManaged
+	case BrowserModeManaged, BrowserModeDesktop:
+		return strings.TrimSpace(mode)
 	default:
 		return ""
 	}

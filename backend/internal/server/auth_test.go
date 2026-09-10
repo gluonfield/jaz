@@ -105,6 +105,27 @@ func TestAuthMiddlewareAcceptsQueryKeyForBrowserExtension(t *testing.T) {
 	}
 }
 
+func TestDesktopBrowserAuth(t *testing.T) {
+	for _, test := range []struct {
+		method string
+		key    string
+		status int
+	}{
+		{http.MethodGet, "secret", http.StatusNoContent},
+		{http.MethodGet, "wrong", http.StatusUnauthorized},
+		{http.MethodPost, "secret", http.StatusUnauthorized},
+	} {
+		req := httptest.NewRequest(test.method, "/v1/sessions/thread/browser?key="+test.key, nil)
+		res := httptest.NewRecorder()
+		(&Server{AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})).ServeHTTP(res, req)
+		if res.Code != test.status {
+			t.Fatalf("%s key=%s status=%d", test.method, test.key, res.Code)
+		}
+	}
+}
+
 func TestAuthMiddlewareAcceptsDeviceQueryKeyForSessionAttachmentAfterBootstrap(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {

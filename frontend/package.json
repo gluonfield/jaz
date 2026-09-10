@@ -19,6 +19,7 @@
     "dev:web": "vite --config vite.web.config.ts",
     "test": "bun test",
     "test:dictation": "bun scripts/test-dictation.ts",
+    "test:browser": "bun scripts/test-browser.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },
@@ -35,6 +36,7 @@
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource/instrument-serif": "^5.2.8",
+    "@jitl/quickjs-wasmfile-release-sync": "0.32.0",
     "@lezer/highlight": "^1.2.3",
     "@shikijs/core": "^4.2.0",
     "@shikijs/engine-javascript": "^4.2.0",
@@ -50,6 +52,7 @@
     "lucide-react": "^1.17.0",
     "motion": "^12.40.0",
     "qrcode": "^1.5.4",
+    "quickjs-emscripten-core": "0.32.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",

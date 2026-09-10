@@ -35,12 +35,16 @@ func jsString(value string) string {
 }
 
 func resolvePointScript(ref string) string {
+	return pointScript(ref, true)
+}
+
+func pointScript(ref string, scroll bool) string {
 	return elementResolverJS() + `
-	(function(q){
+	(function(q, scroll){
 	const el = jazFindElement(q);
 	if (!el) return {found:false};
 	if (el.disabled || el.getAttribute("aria-disabled") === "true") return {found:false, reason:"target is disabled"};
-	el.scrollIntoView({block:"center", inline:"center"});
+	if (scroll) el.scrollIntoView({block:"center", inline:"center"});
 	const r = el.getBoundingClientRect();
 	if (r.width <= 0 || r.height <= 0) return {found:false, reason:"target is not visible"};
 	const x = r.left + r.width / 2;
@@ -48,7 +52,7 @@ func resolvePointScript(ref string) string {
 	const hit = jazDeepHit(x, y);
 	if (!jazComposedContains(el, hit)) return {found:false, reason:"target is obscured; read the page again"};
 	return {found:true, x, y, label: jazLabel(el)};
-	})` + "(" + jsString(strings.TrimSpace(ref)) + ");"
+	})` + "(" + jsString(strings.TrimSpace(ref)) + "," + fmt.Sprint(scroll) + ");"
 }
 
 func focusScript(ref string) string {

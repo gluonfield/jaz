@@ -10,8 +10,8 @@ export default defineConfig(({ mode }) => ({
   define: defineTelemetryEnv(mode),
   resolve: {
     alias: {
-      '@': resolve('src/renderer/src'),
       '@shared': resolve('src/shared'),
+      '@': resolve('src/renderer/src'),
     },
   },
   plugins: [

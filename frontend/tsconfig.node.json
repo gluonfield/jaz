@@ -9,7 +9,11 @@
     "strict": true,
     "noUnusedLocals": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@shared/*": ["./src/shared/*"],
+      "@main/*": ["./src/main/*"]
+    }
   },
   "include": ["electron.vite.config.ts", "vite.web.config.ts", "vite.telemetry.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
 }

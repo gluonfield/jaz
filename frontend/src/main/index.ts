@@ -24,6 +24,9 @@ import { registerDictation } from './dictation'
 import { canGrantAppPermission } from './permissions'
 import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
+import { installBrowserControl } from '@main/browserControl'
+import { installBrowserProfileImport } from '@main/browserProfileImport'
+import { configurePreviewSession } from '@main/previewSession'
 import { setupLauncher, teardownLauncher } from './spotlight'
 import { createUpdateController } from './updater'
 
@@ -36,6 +39,8 @@ const APP_NAME = 'Jaz'
 app.setName(APP_NAME)
 app.setAppUserModelId('dev.wins.jaz')
 installMainDiagnostics()
+installBrowserControl()
+installBrowserProfileImport()
 
 let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
@@ -365,6 +370,7 @@ function openBoardWindow(boardId: string): void {
 }
 
 app.whenReady().then(() => {
+  configurePreviewSession()
   installApplicationMenu()
   registerDictation()
 
