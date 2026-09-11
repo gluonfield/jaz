@@ -48,7 +48,7 @@ export function UsageSettings() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-ink">Usage</p>
-          <p className="mt-0.5 text-[13px] text-ink-2">Daily token totals across all agent sessions.</p>
+          <p className="mt-0.5 text-[13px] text-ink-2">Daily input and output tokens across all agent sessions, excluding cache reads.</p>
         </div>
       </div>
 

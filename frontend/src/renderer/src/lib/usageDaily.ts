@@ -152,7 +152,7 @@ export function fullRateInputTokens(usage: UsageTotals): number {
 }
 
 export function totalUsageTokens(usage: UsageTotals): number {
-  return (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
+  return inputTokens(usage) + (usage.output_tokens ?? 0)
 }
 
 export function usageLevel(total: number, maxTotal: number): number {

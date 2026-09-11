@@ -406,7 +406,7 @@ func (s *Service) syncBrowserToolsFor(slot *serverSlot, surface toolSurface) {
 }
 
 func (s *Service) addMemoryTools(server *mcp.Server, surface toolSurface) {
-	if surface == searchWorkerSurface {
+	if surface == searchWorkerSurface || surface == sourceWorkerSurface {
 		s.Memory.AddWorkerMCPTools(server)
 		return
 	}
@@ -414,7 +414,7 @@ func (s *Service) addMemoryTools(server *mcp.Server, surface toolSurface) {
 }
 
 func (s *Service) removeMemoryTools(server *mcp.Server, surface toolSurface) {
-	if surface == searchWorkerSurface {
+	if surface == searchWorkerSurface || surface == sourceWorkerSurface {
 		s.Memory.RemoveWorkerMCPTools(server)
 		return
 	}

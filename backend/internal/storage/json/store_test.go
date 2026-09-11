@@ -238,9 +238,8 @@ func TestAddUsageStoresCachedTokens(t *testing.T) {
 		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 145 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
-	// Context reflects only the latest turn's input + output, never accumulates.
-	if loaded.Usage.ContextTokens != 15 {
-		t.Fatalf("context tokens = %d, want 15", loaded.Usage.ContextTokens)
+	if loaded.Usage.ContextTokens != 0 {
+		t.Fatalf("context tokens = %d, want unknown", loaded.Usage.ContextTokens)
 	}
 	daily, err := usagecore.NewService(store).Daily(usagecore.DailyQuery{Days: 1, Location: time.UTC})
 	if err != nil {

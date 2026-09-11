@@ -43,7 +43,7 @@ test('input excludes cache reads, so a long cached thread shows what it actually
   // Neither the uncached-tail reading (160) nor the raw inclusive one (16.06M).
   expect(html).not.toContain('>160<')
   expect(html).not.toContain('16.06M')
-  // Input + cache read + output add up to Total.
-  expect(html).toContain('16.22M')
+  // Activity total counts new input plus output.
+  expect(html).toContain('684.60k')
   expect(html).toContain('Cache write counts inside Input.')
 })

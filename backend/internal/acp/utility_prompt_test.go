@@ -12,11 +12,13 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/agent"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
 
 type utilityLocalRunner struct {
+	usage   *provider.Usage
 	seen    chan acp.LocalUtilityRequest
 	text    string
 	errText string
@@ -42,7 +44,7 @@ func (r utilityLocalRunner) RunUtility(_ context.Context, req acp.LocalUtilityRe
 		}
 		if r.errText != "" {
 			out <- agent.StreamEvent{Type: agent.StreamError, Error: r.errText}
-			out <- agent.StreamEvent{Type: agent.StreamDone}
+			out <- agent.StreamEvent{Type: agent.StreamDone, Usage: r.usage}
 			if r.drained != nil {
 				close(r.drained)
 			}
@@ -53,7 +55,7 @@ func (r utilityLocalRunner) RunUtility(_ context.Context, req acp.LocalUtilityRe
 			text = "local utility reply"
 		}
 		out <- agent.StreamEvent{Type: agent.StreamDelta, Delta: text}
-		out <- agent.StreamEvent{Type: agent.StreamDone}
+		out <- agent.StreamEvent{Type: agent.StreamDone, Usage: r.usage}
 	}()
 	return out
 }
@@ -203,5 +205,40 @@ func TestManagerRunUtilityPromptTimesOutStalledLocalStream(t *testing.T) {
 	})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want deadline exceeded", err)
+	}
+}
+
+func TestUtilityUsageIsRecordedOnSuccessAndFailure(t *testing.T) {
+	for _, failure := range []string{"", "failed after work"} {
+		t.Run(failure, func(t *testing.T) {
+			store, manager := newUtilityLocalManager(t, utilityLocalRunner{
+				errText: failure,
+				usage:   &provider.Usage{InputTokens: 120, CachedInputTokens: 100, OutputTokens: 10, TotalTokens: 130},
+			}, acp.AgentConfig{Local: true})
+			session, err := store.CreateSession(storage.CreateSession{Slug: "title-usage"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			session.Usage.ContextTokens = 999
+			if err := store.SaveSession(session); err != nil {
+				t.Fatal(err)
+			}
+			_, err = manager.RunUtilityPrompt(context.Background(), acp.UtilityPromptRequest{
+				SessionID: session.ID,
+				ACPAgent:  "local_helper",
+				Directory: ".",
+				Message:   "title",
+			})
+			if (err != nil) != (failure != "") {
+				t.Fatalf("error = %v", err)
+			}
+			loaded, err := store.LoadSession(session.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if loaded.Usage.InputTokens != 120 || loaded.Usage.CachedInputTokens != 100 || loaded.Usage.OutputTokens != 10 || loaded.Usage.ContextTokens != 999 {
+				t.Fatalf("title usage = %#v", loaded.Usage)
+			}
+		})
 	}
 }

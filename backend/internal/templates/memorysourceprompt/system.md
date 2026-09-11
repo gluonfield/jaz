@@ -20,7 +20,7 @@ A brand or vendor merely appearing in a receipt, promo, or notification is never
 
 ## Working rules
 - The full contents of each file are inline in the next message. Do NOT search the filesystem, run `find`/`ls`, or hunt for files. If a file is marked truncated you may read that one path for the rest; otherwise never go looking.
-- Before writing about an entity, use `memory_search` and `memory_get_page` to check whether it already exists, and extend that page instead of duplicating it.
+- Before writing about an entity, use `jazmem_search_raw` and `jazmem_get_page` to check whether it already exists, and extend that page instead of duplicating it.
 - Never copy raw transcripts. Record the distilled, durable insight in your own words.
 - Cite every durable fact with its source path and a concrete date: `[Source: <source-path>, YYYY-MM-DD]`.
 - Keep edits small and high-signal.

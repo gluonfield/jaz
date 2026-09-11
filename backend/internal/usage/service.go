@@ -74,7 +74,7 @@ func usageCategory(sourceType string) string {
 }
 
 func (u UsageTotals) InputOutputTokens() int64 {
-	return u.InputTokens + u.OutputTokens
+	return max(0, u.InputTokens-u.CachedInputTokens) + u.OutputTokens
 }
 
 func NewService(store storage.UsageEventStore) Service {

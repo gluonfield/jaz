@@ -31,7 +31,7 @@ func TestRenderListsEverySource(t *testing.T) {
 
 func TestSystemPromptStatesTheBar(t *testing.T) {
 	sys := System()
-	for _, want := range []string{"promotion bar", "memory_search", "Do NOT promote", "Do NOT search the filesystem"} {
+	for _, want := range []string{"promotion bar", "jazmem_search_raw", "jazmem_get_page", "Do NOT promote", "Do NOT search the filesystem"} {
 		if !strings.Contains(sys, want) {
 			t.Fatalf("system prompt missing %q", want)
 		}

@@ -118,15 +118,6 @@ func (u Usage) Countable() bool {
 		u.OutputTokens+u.ReasoningOutputTokens+u.TotalTokens > 0
 }
 
-// LiveContextTokens estimates the context occupied after a turn when the
-// runtime didn't report it: everything sent plus what the model produced.
-func (u Usage) LiveContextTokens() int64 {
-	if u.ContextTokens > 0 {
-		return u.ContextTokens
-	}
-	return u.ComponentTotal()
-}
-
 type Session struct {
 	ID              string          `json:"id"`
 	Slug            string          `json:"slug"`
