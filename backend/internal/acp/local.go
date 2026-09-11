@@ -59,7 +59,7 @@ func (m *Manager) configuredLocal(name string) bool {
 	return err == nil && ok && cfg.Local
 }
 
-func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, cfg AgentConfig, cwd, message string) (string, error) {
+func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, cfg AgentConfig, cwd, message string, record func(usageReport)) (string, error) {
 	runner := m.localAgent(req.ACPAgent)
 	if runner == nil {
 		return "", fmt.Errorf("local acp agent %q is not registered", req.ACPAgent)
@@ -98,6 +98,12 @@ func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, c
 					return out, nil
 				}
 				return "", fmt.Errorf("empty utility prompt response")
+			}
+			if event.Usage != nil {
+				raw, err := json.Marshal(event.Usage)
+				if err == nil {
+					record(usageReportFromRaw(raw))
+				}
 			}
 			switch event.Type {
 			case agent.StreamDelta:

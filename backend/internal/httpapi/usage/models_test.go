@@ -27,7 +27,7 @@ func TestModelsHandlerReturnsModelBreakdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.AddUsage(session.ID, storage.Usage{
-		InputTokens:       12,
+		InputTokens:       42,
 		CachedInputTokens: 30,
 		OutputTokens:      4,
 	}); err != nil {
@@ -60,7 +60,7 @@ func TestModelsHandlerReturnsModelBreakdown(t *testing.T) {
 	if model.Agent != "codex" || model.ModelProvider != "openai" || model.Model != "gpt-5.4" || model.SessionCount != 1 {
 		t.Fatalf("model = %#v", model)
 	}
-	if model.Usage["input_tokens"] != 12 ||
+	if model.Usage["input_tokens"] != 42 ||
 		model.Usage["cached_input_tokens"] != 30 ||
 		model.Usage["output_tokens"] != 4 ||
 		model.Usage["input_output_tokens"] != 16 {

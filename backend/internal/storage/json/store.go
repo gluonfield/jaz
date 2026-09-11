@@ -463,7 +463,7 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	session.Usage.OutputTokens += usage.OutputTokens
 	session.Usage.ReasoningOutputTokens += usage.ReasoningOutputTokens
 	session.Usage.TotalTokens += total
-	if context := usage.LiveContextTokens(); context > 0 {
+	if context := usage.ContextTokens; context > 0 {
 		session.Usage.ContextTokens = context
 	}
 	if usage.ContextWindowTokens > 0 {
@@ -472,7 +472,7 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	if err := s.saveSession(session); err != nil {
 		return err
 	}
-	return s.appendUsageEvent(session, usage, total, usage.LiveContextTokens(), time.Now().UTC())
+	return s.appendUsageEvent(session, usage, total, usage.ContextTokens, time.Now().UTC())
 }
 
 func (s *Store) LoadMessages(id string) ([]provider.Message, error) {

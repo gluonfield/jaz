@@ -27,7 +27,7 @@ func TestDailyHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.AddUsage(session.ID, storage.Usage{
-		InputTokens:       12,
+		InputTokens:       42,
 		CachedInputTokens: 30,
 		OutputTokens:      4,
 	}); err != nil {
@@ -63,7 +63,7 @@ func TestDailyHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got.Days) != 1 || got.Days[0].SessionCount != 1 ||
-		got.Days[0].Usage["input_tokens"] != 12 ||
+		got.Days[0].Usage["input_tokens"] != 42 ||
 		got.Days[0].Usage["cached_input_tokens"] != 30 ||
 		got.Days[0].Usage["output_tokens"] != 4 ||
 		got.Days[0].Usage["input_output_tokens"] != 16 {
@@ -77,16 +77,16 @@ func TestDailyHandler(t *testing.T) {
 	}
 	model := got.Days[0].Models[0]
 	if model.Agent != "codex" || model.ModelProvider != "openai" || model.Model != "gpt-5.4" ||
-		model.Usage["input_tokens"] != 12 || model.Usage["cached_input_tokens"] != 30 ||
-		model.Usage["output_tokens"] != 4 || model.SessionCount != 1 {
+		model.Usage["input_tokens"] != 42 || model.Usage["cached_input_tokens"] != 30 ||
+		model.Usage["output_tokens"] != 4 || model.Usage["input_output_tokens"] != 16 || model.SessionCount != 1 {
 		t.Fatalf("daily model = %#v", model)
 	}
 	if len(got.Days[0].Categories) != 1 {
 		t.Fatalf("daily categories = %#v", got.Days[0].Categories)
 	}
 	category := got.Days[0].Categories[0]
-	if category.Category != "chat" || category.Usage["input_tokens"] != 12 ||
-		category.Usage["output_tokens"] != 4 {
+	if category.Category != "chat" || category.Usage["input_tokens"] != 42 ||
+		category.Usage["output_tokens"] != 4 || category.Usage["input_output_tokens"] != 16 {
 		t.Fatalf("daily category = %#v", category)
 	}
 }

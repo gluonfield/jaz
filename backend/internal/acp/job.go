@@ -115,6 +115,7 @@ type jobState struct {
 	pendingToolUpdateByID  map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
 	usage                  storage.Usage
+	usageByID              map[string]storage.Usage
 	lastUsageDelta         storage.Usage
 	lastUsageDeltaSet      bool
 	turnResultDiscarded    bool

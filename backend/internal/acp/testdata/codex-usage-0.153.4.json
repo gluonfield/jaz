@@ -1,0 +1,98 @@
+{
+  "prompts": [
+    {
+      "updates": [
+        {
+          "sessionUpdate": "usage_update",
+          "used": 16380,
+          "size": 258400,
+          "_meta": {
+            "usageId": "01a08f4a-ba8e-71c0-8d9c-f726fc597d5b",
+            "usage": {
+              "totalTokens": 16380,
+              "inputTokens": 6302,
+              "cachedReadTokens": 9984,
+              "outputTokens": 94,
+              "thoughtTokens": 33
+            }
+          }
+        },
+        {
+          "sessionUpdate": "usage_update",
+          "used": 16468,
+          "size": 258400,
+          "_meta": {
+            "usageId": "01a08f4a-ba8e-71c0-8d9c-f726fc597d5b",
+            "usage": {
+              "totalTokens": 32848,
+              "inputTokens": 6581,
+              "cachedReadTokens": 26112,
+              "outputTokens": 155,
+              "thoughtTokens": 33
+            }
+          }
+        },
+        {
+          "sessionUpdate": "usage_update",
+          "used": 16504,
+          "size": 258400,
+          "_meta": {
+            "usageId": "01a08f4a-ba8e-71c0-8d9c-f726fc597d5b",
+            "usage": {
+              "totalTokens": 49352,
+              "inputTokens": 6950,
+              "cachedReadTokens": 42240,
+              "outputTokens": 162,
+              "thoughtTokens": 33
+            }
+          }
+        }
+      ],
+      "response": {
+        "stopReason": "end_turn",
+        "usage": {
+          "totalTokens": 49352,
+          "inputTokens": 6950,
+          "cachedReadTokens": 42240,
+          "outputTokens": 162,
+          "thoughtTokens": 33
+        },
+        "_meta": {
+          "usageId": "01a08f4a-ba8e-71c0-8d9c-f726fc597d5b"
+        }
+      }
+    },
+    {
+      "updates": [
+        {
+          "sessionUpdate": "usage_update",
+          "used": 19779,
+          "size": 258400,
+          "_meta": {
+            "usageId": "01a08f4a-dc96-7831-8975-9c180f0fb454",
+            "usage": {
+              "totalTokens": 19779,
+              "inputTokens": 3644,
+              "cachedReadTokens": 16128,
+              "outputTokens": 7,
+              "thoughtTokens": 0
+            }
+          }
+        }
+      ],
+      "response": {
+        "stopReason": "end_turn",
+        "usage": {
+          "totalTokens": 19779,
+          "inputTokens": 3644,
+          "cachedReadTokens": 16128,
+          "outputTokens": 7,
+          "thoughtTokens": 0
+        },
+        "_meta": {
+          "usageId": "01a08f4a-dc96-7831-8975-9c180f0fb454"
+        }
+      }
+    }
+  ]
+}

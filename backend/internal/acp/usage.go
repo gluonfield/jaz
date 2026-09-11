@@ -22,9 +22,11 @@ type goalUsageStore interface {
 }
 
 type usageReport struct {
-	Snapshot storage.Usage
-	Delta    storage.Usage
-	Context  storage.Usage
+	ID        string
+	Auxiliary bool
+	Snapshot  storage.Usage
+	Delta     storage.Usage
+	Context   storage.Usage
 }
 
 func (m *Manager) recordRawUsage(job *jobState, raw json.RawMessage) {
@@ -43,6 +45,13 @@ func (m *Manager) recordUsage(job *jobState, usage storage.Usage) {
 // context size updates. Keeping those separate avoids both max-merging deltas
 // and replaying cumulative totals as if they were turn-local.
 func (m *Manager) recordUsageReport(job *jobState, report usageReport) {
+	if report.Auxiliary {
+		report.Context = storage.Usage{}
+		report.Snapshot.ContextTokens = 0
+		report.Snapshot.ContextWindowTokens = 0
+		report.Delta.ContextTokens = 0
+		report.Delta.ContextWindowTokens = 0
+	}
 	if report.IsZero() {
 		return
 	}
@@ -50,8 +59,18 @@ func (m *Manager) recordUsageReport(job *jobState, report usageReport) {
 	job.mu.Lock()
 	if !report.Snapshot.IsZero() {
 		prev := job.usage
-		job.usage = mergeUsageSnapshot(prev, report.Snapshot)
-		curr := job.usage
+		if report.ID != "" {
+			prev = job.usageByID[report.ID]
+		}
+		curr := mergeUsageSnapshot(prev, report.Snapshot)
+		if report.ID == "" {
+			job.usage = curr
+		} else {
+			if job.usageByID == nil {
+				job.usageByID = make(map[string]storage.Usage)
+			}
+			job.usageByID[report.ID] = curr
+		}
 		if curr != prev {
 			write = addUsageDelta(write, usageDelta(prev, curr))
 		}
@@ -142,7 +161,7 @@ func mergeUsageContext(current, context storage.Usage) storage.Usage {
 
 // usageDelta is the write that advances the store from prev to curr. Counters
 // are differences the store adds; context/window are the latest cumulative
-// snapshot the store replaces. Context carries curr.LiveContextTokens() (never
+// snapshot the store replaces. Context carries curr.ContextTokens (never
 // a per-delta value) so a counters-only delta can't clobber the context column
 // with a component-total estimate of the increment.
 func usageDelta(prev, curr storage.Usage) storage.Usage {
@@ -153,7 +172,7 @@ func usageDelta(prev, curr storage.Usage) storage.Usage {
 		OutputTokens:          nonNegative(curr.OutputTokens - prev.OutputTokens),
 		ReasoningOutputTokens: nonNegative(curr.ReasoningOutputTokens - prev.ReasoningOutputTokens),
 		TotalTokens:           nonNegative(curr.TotalTokens - prev.TotalTokens),
-		ContextTokens:         curr.LiveContextTokens(),
+		ContextTokens:         curr.ContextTokens,
 		ContextWindowTokens:   curr.ContextWindowTokens,
 	}
 }
@@ -180,14 +199,23 @@ func usageReportFromRaw(raw json.RawMessage) usageReport {
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		return usageReport{}
 	}
+	report := usageReport{}
+	var meta struct {
+		UsageID string `json:"usageId"`
+		Codex   struct {
+			SideChat json.RawMessage `json:"sideChat"`
+		} `json:"codex"`
+	}
+	if json.Unmarshal(fields["_meta"], &meta) == nil {
+		report.ID = meta.UsageID
+		report.Auxiliary = len(meta.Codex.SideChat) > 0 && string(meta.Codex.SideChat) != "null"
+	}
 	if kind, ok := fields["sessionUpdate"]; ok {
 		var name string
 		if json.Unmarshal(kind, &name) == nil && name == "usage_update" {
-			report := usageReport{
-				Context: storage.Usage{
-					ContextTokens:       firstIntField(fields, "used"),
-					ContextWindowTokens: firstIntField(fields, "size"),
-				},
+			report.Context = storage.Usage{
+				ContextTokens:       firstIntField(fields, "used"),
+				ContextWindowTokens: firstIntField(fields, "size"),
 			}
 			if meta, ok := fields["_meta"]; ok {
 				report.Merge(usageReportFromRaw(meta))
@@ -195,7 +223,7 @@ func usageReportFromRaw(raw json.RawMessage) usageReport {
 			return report
 		}
 	}
-	report := usageReport{Snapshot: usageSnapshotFromRaw(raw)}
+	report.Snapshot = usageSnapshotFromRaw(raw)
 	if !report.Snapshot.Countable() {
 		report.Context = mergeUsageContext(report.Context, report.Snapshot)
 		report.Snapshot = storage.Usage{}

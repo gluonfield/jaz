@@ -548,12 +548,12 @@ func TestSourceWorkerSurfaceIsRestrictedToMemoryTools(t *testing.T) {
 	source, closeSource := connectClient(t, service.server(sourceWorkerSurface))
 	defer closeSource()
 
-	for _, name := range []string{"memory_search", "memory_get_page"} {
+	for _, name := range []string{"jazmem_search_raw", "jazmem_get_page"} {
 		if !hasTool(t, source, name) {
 			t.Fatalf("source worker surface missing %s", name)
 		}
 	}
-	for _, name := range []string{"jazagent_spawn", "thread_context", "google_calendar_get_events", "gmail_search_threads", "loop_list", "visualise_read_me"} {
+	for _, name := range []string{"memory_search", "memory_get_page", "jazagent_spawn", "thread_context", "google_calendar_get_events", "gmail_search_threads", "loop_list", "visualise_read_me"} {
 		if hasTool(t, source, name) {
 			t.Fatalf("source worker surface must not advertise %s", name)
 		}

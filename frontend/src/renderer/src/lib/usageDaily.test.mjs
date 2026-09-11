@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { fullRateInputTokens, inputTokens, totalUsageTokens } from './usageDaily'
+import { fullRateInputTokens, inputTokens, peakDay, sumCategoryUsage, sumModelUsage, sumUsage, totalUsageTokens } from './usageDaily'
 
 // The backend stores input inclusive of cache (normalizeInclusiveInput), so
 // these three turns are what a real Claude thread accumulates.
@@ -23,10 +23,29 @@ test('input only grows as turns accumulate', () => {
   expect(inputTokens(cumulative)).toBeGreaterThan(inputTokens(firstTurn))
 })
 
-test('input plus cache reads plus output is the total', () => {
+test('activity totals count new input and output, excluding cache reads', () => {
   for (const usage of [firstTurn, laterTurn, cumulative]) {
-    expect(inputTokens(usage) + usage.cached_input_tokens + usage.output_tokens).toBe(totalUsageTokens(usage))
+    expect(inputTokens(usage) + usage.output_tokens).toBe(totalUsageTokens(usage))
   }
+})
+
+test('daily, model, and activity breakdowns rank work consistently despite different cache hit rates', () => {
+  const chat = { input_tokens: 579_178, cached_input_tokens: 519_424, output_tokens: 3_711 }
+  const search = { input_tokens: 1_000_000, cached_input_tokens: 999_000, output_tokens: 200 }
+  const days = [
+    { date: '2026-09-09', usage: chat, categories: [{ category: 'chat', usage: chat }], models: [{ model: 'chat', usage: chat }] },
+    { date: '2026-09-10', usage: search, categories: [{ category: 'memory_search', usage: search }], models: [{ model: 'search', usage: search }] },
+  ]
+  expect(sumUsage(days).input_output_tokens).toBe(64_665)
+  expect(sumCategoryUsage(days).map((row) => [row.category, row.usage.input_output_tokens])).toEqual([
+    ['chat', 63_465],
+    ['memory_search', 1_200],
+  ])
+  expect(sumModelUsage(days).map((row) => [row.model, row.usage.input_output_tokens])).toEqual([
+    ['chat', 63_465],
+    ['search', 1_200],
+  ])
+  expect(peakDay(days).date).toBe('2026-09-09')
 })
 
 test('cost splits input into the full-rate slice and the cache write it paid for', () => {

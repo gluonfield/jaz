@@ -529,10 +529,8 @@ func TestAddUsageStoresCachedTokensAndMirrors(t *testing.T) {
 		loaded.Usage.OutputTokens != 30 || loaded.Usage.ReasoningOutputTokens != 7 || loaded.Usage.TotalTokens != 145 {
 		t.Fatalf("usage = %#v", loaded.Usage)
 	}
-	// Context reflects only the latest turn's input + output, never accumulates; the
-	// window keeps its last reported value when later turns omit it.
-	if loaded.Usage.ContextTokens != 15 || loaded.Usage.ContextWindowTokens != 400000 {
-		t.Fatalf("context = %d / %d, want 15 / 400000", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
+	if loaded.Usage.ContextTokens != 0 || loaded.Usage.ContextWindowTokens != 400000 {
+		t.Fatalf("context = %d / %d, want unknown / 400000", loaded.Usage.ContextTokens, loaded.Usage.ContextWindowTokens)
 	}
 
 	mirror, err := jsonstore.New(store.RootDir())

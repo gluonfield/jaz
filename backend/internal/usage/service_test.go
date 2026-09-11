@@ -99,7 +99,7 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 		daily[0].Usage.CachedInputTokens != 3 ||
 		daily[0].Usage.CachedWriteTokens != 4 ||
 		daily[0].Usage.OutputTokens != 7 ||
-		daily[0].Usage.InputOutputTokens() != 17 {
+		daily[0].Usage.InputOutputTokens() != 14 {
 		t.Fatalf("first bucket usage = %#v", daily[0].Usage)
 	}
 	if len(daily[0].Models) != 1 {
@@ -119,7 +119,7 @@ func TestDailyAggregatesUsageByLocalDay(t *testing.T) {
 		daily[1].Usage.CachedWriteTokens != 13 ||
 		daily[1].Usage.OutputTokens != 17 ||
 		daily[1].Usage.ReasoningOutputTokens != 19 ||
-		daily[1].Usage.InputOutputTokens() != 24 {
+		daily[1].Usage.InputOutputTokens() != 17 {
 		t.Fatalf("second bucket usage = %#v", daily[1].Usage)
 	}
 }
@@ -256,7 +256,7 @@ func TestModelsAggregatesACPUsageByModel(t *testing.T) {
 	if models[1].Usage.InputTokens != 10 ||
 		models[1].Usage.CachedInputTokens != 3 ||
 		models[1].Usage.OutputTokens != 12 ||
-		models[1].Usage.InputOutputTokens() != 22 ||
+		models[1].Usage.InputOutputTokens() != 19 ||
 		models[1].SessionCount != 1 {
 		t.Fatalf("second model totals = %#v", models[1])
 	}

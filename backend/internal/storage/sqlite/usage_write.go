@@ -21,7 +21,7 @@ func (s *Store) AddUsage(id string, usage storage.Usage) error {
 	}
 	// Counters accumulate, while context usage snapshots the latest turn and
 	// therefore may shrink after compaction.
-	liveContext := usage.LiveContextTokens()
+	liveContext := usage.ContextTokens
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

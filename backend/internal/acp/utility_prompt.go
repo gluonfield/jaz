@@ -13,6 +13,7 @@ import (
 )
 
 type UtilityPromptRequest struct {
+	SessionID       string
 	ACPAgent        string
 	Directory       string
 	Message         string
@@ -46,10 +47,17 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 	if err != nil {
 		return "", err
 	}
-	if cfg.Local {
-		return m.runLocalUtilityPrompt(callCtx, spawnReq, cfg, cwd, req.Message)
+	job := &jobState{Job: Job{ID: req.SessionID}}
+	record := func(report usageReport) {
+		if req.SessionID != "" {
+			report.Auxiliary = true
+			m.recordUsageReport(job, report)
+		}
 	}
-	collector := &utilityPromptCollector{}
+	if cfg.Local {
+		return m.runLocalUtilityPrompt(callCtx, spawnReq, cfg, cwd, req.Message, record)
+	}
+	collector := &utilityPromptCollector{record: record}
 	ac, err := m.connectWithHandler(callCtx, spawnReq.ACPAgent, cfg, cwd, "", "", nil, jsonrpc.HandlerFunc(collector.handleJSONRPC))
 	if err != nil {
 		return "", err
@@ -74,6 +82,7 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 	if err != nil {
 		return "", ac.withProcessStderr(err)
 	}
+	record(usageReportFromRaw(raw))
 	var resp struct {
 		StopReason string `json:"stopReason"`
 	}
@@ -112,6 +121,7 @@ func (m *Manager) closeProtocolSession(ac *agentConn, sessionID acpschema.Sessio
 }
 
 type utilityPromptCollector struct {
+	record    func(usageReport)
 	mu        sync.Mutex
 	sessionID string
 	assistant strings.Builder
@@ -157,6 +167,9 @@ func (c *utilityPromptCollector) handleSessionUpdate(params json.RawMessage) (js
 	c.mu.Unlock()
 	if sessionID != "" && note.SessionID != sessionID {
 		return jsonrpc.EncodeResult(map[string]any{})
+	}
+	if c.record != nil {
+		c.record(usageReportFromRaw(note.Update))
 	}
 	update, err := acpschema.DecodeSessionUpdate(note.Update)
 	if err != nil {
