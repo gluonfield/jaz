@@ -47,11 +47,11 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 	if err != nil {
 		return "", err
 	}
-	job := &jobState{Job: Job{ID: req.SessionID}}
+	var usage usageAccumulator
 	record := func(report usageReport) {
 		if req.SessionID != "" {
 			report.Auxiliary = true
-			m.recordUsageReport(job, report)
+			m.recordSessionUsage(req.SessionID, &usage, report)
 		}
 	}
 	if cfg.Local {

@@ -100,10 +100,7 @@ func (m *Manager) runLocalUtilityPrompt(ctx context.Context, req SpawnRequest, c
 				return "", fmt.Errorf("empty utility prompt response")
 			}
 			if event.Usage != nil {
-				raw, err := json.Marshal(event.Usage)
-				if err == nil {
-					record(usageReportFromRaw(raw))
-				}
+				record(usageReport{Snapshot: localUsage(*event.Usage)})
 			}
 			switch event.Type {
 			case agent.StreamDelta:
@@ -246,14 +243,7 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 			m.applyLocalToolResult(job, event.ToolName, event.Result, event.Error)
 		case agent.StreamDone:
 			if event.Usage != nil {
-				m.recordUsage(job, storage.Usage{
-					InputTokens:           event.Usage.InputTokens,
-					CachedInputTokens:     event.Usage.CachedInputTokens,
-					CachedWriteTokens:     event.Usage.CachedWriteTokens,
-					OutputTokens:          event.Usage.OutputTokens,
-					ReasoningOutputTokens: event.Usage.ReasoningOutputTokens,
-					TotalTokens:           event.Usage.TotalTokens,
-				})
+				m.recordUsage(job, localUsage(*event.Usage))
 			}
 			if !failed {
 				finalState = StateIdle
@@ -391,4 +381,15 @@ func localToolContent(result, errText string) []sessionevents.ACPToolContent {
 		return nil
 	}
 	return []sessionevents.ACPToolContent{{Type: "text", Text: clampToolText(text)}}
+}
+
+func localUsage(usage provider.Usage) storage.Usage {
+	return storage.Usage{
+		InputTokens:           usage.InputTokens,
+		CachedInputTokens:     usage.CachedInputTokens,
+		CachedWriteTokens:     usage.CachedWriteTokens,
+		OutputTokens:          usage.OutputTokens,
+		ReasoningOutputTokens: usage.ReasoningOutputTokens,
+		TotalTokens:           usage.TotalTokens,
+	}
 }
