@@ -73,35 +73,28 @@ export class BrowserRepl {
             await new Promise((resolve) => setTimeout(resolve, 0))
             this.deadline = Date.now() + 1500
             this.jobs.delete(job)
-            this.executeJobs(vm)
           })
           this.jobs.add(job)
-          void job.catch((error) => this.rejectRun?.(error))
           return pending.handle
         }).consume((fn) => vm.setProp(vm.global, '__hostAction', fn))
         vm.unwrapResult(vm.evalCode('const __action = async input => JSON.parse(await __hostAction(input))')).dispose()
         vm.unwrapResult(vm.evalCode(BROWSER_API)).dispose()
       }
       if (code.trim()) {
-        const handle = vm.unwrapResult(vm.evalCode(code, 'browser.js', JS_EVAL_FLAG_ASYNC))
-        try {
-          const completed = vm.resolvePromise(handle).then((result) => {
-            if (this.cancelled) {
-              result.dispose()
-              throw this.abort.signal.reason
+        using handle = vm.unwrapResult(vm.evalCode(code, 'browser.js', JS_EVAL_FLAG_ASYNC))
+        while (true) {
+          this.executeJobs(vm)
+          const state = vm.getPromiseState(handle)
+          if (state.type !== 'pending') {
+            vm.unwrapResult(state).dispose()
+            if (!this.jobs.size) {
+              break
             }
-            vm.unwrapResult(result).dispose()
-          })
+          }
           await new Promise<void>((resolve, reject) => {
             this.rejectRun = reject
-            completed.then(resolve, reject)
-            this.executeJobs(vm)
+            Promise.race(this.jobs).then(resolve, reject)
           })
-          while (this.jobs.size) {
-            await Promise.all(this.jobs)
-          }
-        } finally {
-          handle.dispose()
         }
       }
       this.output.text = documentation + outputTail(this.output.text || '', OUTPUT_BYTES - encoder.encode(documentation).length)

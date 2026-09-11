@@ -122,6 +122,24 @@ test('browser scripts propagate an action failure instead of continuing', async 
   }
 })
 
+test('scripts drain unawaited browser actions and their guest continuations', async () => {
+  const actions = []
+  const repl = new BrowserRepl(async (input) => {
+    actions.push(input.action)
+    return { status: 'ok', text: 'page is ready' }
+  })
+  try {
+    const result = await repl.run(`void tab.goto('https://example.com')
+  .then(() => tab.getState())
+  .then(() => nodeRepl.write('chain finished'))`)
+    expect(actions).toEqual(['navigate', 'state'])
+    expect(result.text).toContain('page is ready')
+    expect(result.text).toEndWith('chain finished')
+  } finally {
+    repl.cancel()
+  }
+})
+
 test('the interpreter rejects overlapping scripts without interrupting its active call', async () => {
   const started = Promise.withResolvers()
   const action = Promise.withResolvers()
@@ -227,8 +245,8 @@ test('bounded script output keeps first-use documentation and the latest UTF-8 o
   }
 })
 
-test('promise loops allow host cancellation, respect CPU deadlines, and recover cleanly', () => {
-  const script = `
+test('promise loops and CPU work after browser actions cancel and recover cleanly', () => {
+  const script = String.raw`
 import { BrowserRepl } from ${JSON.stringify(fileURLToPath(new URL('./browserRepl.ts', import.meta.url)))}
 const repl = new BrowserRepl(async () => {
   throw new Error('unsupported action')
@@ -252,6 +270,14 @@ if (!responsive) {
   throw new Error('The script starved host cancellation')
 }
 try {
+  await repl.run('try {\n  await tab.getState()\n} catch {}\nwhile (true) {}')
+  throw new Error('Endless CPU work after a browser action completed successfully')
+} catch (error) {
+  if (!/interrupted|time limit|cancelled/.test(error.message)) {
+    throw error
+  }
+}
+try {
   await repl.run('while (true) { await Promise.resolve() }')
   throw new Error('An endless guest promise loop completed successfully')
 } catch (error) {
@@ -264,7 +290,9 @@ if (!result.text.includes('recovered')) {
   throw new Error('The interpreter did not recover')
 }
 repl.cancel()
+console.log('browser repl recovered and disposed')
 `
   const result = spawnSync(process.execPath, ['run', '-'], { input: script, encoding: 'utf8', timeout: 2000 })
   expect({ status: result.status, error: result.error?.message, stderr: result.stderr }).toEqual({ status: 0, error: undefined, stderr: '' })
+  expect(result.stdout).toBe('browser repl recovered and disposed\n')
 })
