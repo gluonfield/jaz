@@ -295,7 +295,7 @@ export function ProjectPicker({
   })
 
   const selected = projects.data?.find((project) => project.path === value)
-  const label = value ? (selected?.name ?? directoryName(value)) : 'Work in a Project'
+  const label = value ? (selected?.name ?? directoryName(value)) : 'Choose a project'
 
   const select = (path: string, git: boolean) => {
     onChange(path, git)
@@ -328,8 +328,8 @@ export function ProjectPicker({
             className={`flex h-full min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-full px-2.5 disabled:cursor-default ${value ? 'pl-0' : ''}`}
             aria-haspopup="dialog"
             aria-expanded={open}
-            aria-label={value ? `Project: ${value}` : 'Work in a Project'}
-            title={value || 'Work in a Project'}
+            aria-label={value ? `Project: ${value}` : label}
+            title={value || label}
             disabled={disabled}
             onClick={() => setOpen((v) => !v)}
           >

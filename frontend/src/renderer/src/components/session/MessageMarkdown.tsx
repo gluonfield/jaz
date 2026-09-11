@@ -16,9 +16,7 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { Favicon } from '@/components/ui/Favicon'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
-import { previewPatterns } from '@/lib/jazDefaults'
 import { findFileReferences, parseFileReference, type FileReference } from '../../../../shared/fileReader'
-import { matchesPreviewPattern } from '../../../../shared/preview'
 import { CodeBlock } from './CodeBlock'
 import { encodeMention } from './mentionCodec'
 import { MentionPill } from './mentions'
@@ -232,8 +230,7 @@ const MessageMarkdownLink: AnchorComponent = ({ children, href, ...props }) => {
   return <PlainMarkdownLink {...props} href={href}>{children}</PlainMarkdownLink>
 }
 
-const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onClick, ...props }) => {
-  const openPreview = useContext(PreviewLinkContext)
+const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...props }) => {
   const openFile = useContext(FileReaderLinkContext)
   const localFile = localFileFromLink(href, children)
   if (localFile) {
@@ -263,19 +260,6 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, onCli
       href={href}
       target="_blank"
       rel="noreferrer"
-      onClick={(event) => {
-        onClick?.(event)
-        if (
-          !openPreview ||
-          typeof href !== 'string' ||
-          !matchesPreviewPattern(href, previewPatterns()) ||
-          !shouldPreviewLink(event)
-        ) {
-          return
-        }
-        event.preventDefault()
-        openPreview(href)
-      }}
     >
       <Favicon url={href} className="chat-prose-link-icon" />
       <span className="min-w-0">{children}</span>
