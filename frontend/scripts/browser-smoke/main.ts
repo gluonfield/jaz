@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session, webContents } from 'electron'
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from 'node:http'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -16,6 +16,7 @@ process.on('unhandledRejection', (error) => {
   app.exit(1)
 })
 ipcMain.handle('smoke:backend', () => process.env.JAZ_BROWSER_SMOKE_BACKEND)
+ipcMain.handle('smoke:browser-exists', (_event, id: number) => Boolean(webContents.fromId(id)))
 
 let pendingProxy: { response: ServerResponse; url: string } | undefined
 let proxyWaiter: ServerResponse | undefined

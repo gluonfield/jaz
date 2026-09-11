@@ -15,6 +15,7 @@ import {
   useState,
 } from 'react'
 import { ConnectOverlay } from '@/components/connection/ConnectOverlay'
+import { BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { isSettingsSection, type SettingsSection } from '@/components/settings/sections'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
@@ -49,7 +50,7 @@ function RootComponent() {
   if (clientRuntime.windowKind === 'launcher') {
     return <LauncherRoot />
   }
-  return <RootLayout />
+  return <BrowserWorkspace><RootLayout /></BrowserWorkspace>
 }
 
 function LauncherRoot() {

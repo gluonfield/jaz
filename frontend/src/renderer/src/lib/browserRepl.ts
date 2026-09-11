@@ -139,6 +139,7 @@ export class BrowserRepl {
     this.vm?.dispose()
     this.vm = undefined
     this.documented = false
+    this.output = { status: 'ok' }
   }
 
   private executeJobs(vm: QuickJSContext): void {

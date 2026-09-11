@@ -4,6 +4,7 @@ package browsercontrol_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -38,10 +39,78 @@ func TestDesktopElectron(t *testing.T) {
 	}
 	backend := browsercontrol.NewConfiguredBackend(t.TempDir(), store)
 	defer backend.Close()
+	if _, err := store.CreateSession(storage.CreateSession{Slug: "browser-background", Runtime: storage.RuntimeACP}); err != nil {
+		t.Fatal(err)
+	}
 	handler := browserapi.DesktopHandler{Backend: backend.Desktop, Store: store}
 	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "browsercontrol", Version: "test"}, nil)
 	browsercontrol.AddMCPTools(mcpServer, backend)
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/sessions/{session}", func(w http.ResponseWriter, r *http.Request) {
+		session, err := store.LoadSession(r.PathValue("session"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(session)
+	})
+	mux.HandleFunc("POST /exercise-status/{session}", func(w http.ResponseWriter, r *http.Request) {
+		session, err := store.LoadSession(r.PathValue("session"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		var state struct {
+			Status string `json:"status"`
+			Queued bool   `json:"queued"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&state); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		session.Status = state.Status
+		session.QueuedMessages = nil
+		if state.Queued {
+			session.QueuedMessages = []storage.QueuedMessage{storage.NewQueuedMessage("Continue browser work", nil)}
+		}
+		if err := store.SaveSession(session); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+	})
+	mux.HandleFunc("POST /exercise-script/{session}", func(w http.ResponseWriter, r *http.Request) {
+		thread, err := store.LoadSession(r.PathValue("session"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		var request struct {
+			Code string `json:"code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		result, err := backend.Call(r.Context(), browsercontrol.ActionInput{Session: thread.ID, Action: browsercontrol.ActionScript, Text: request.Code})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(result)
+	})
+	mux.HandleFunc("GET /v1/browser", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"enabled":true,"mode":"desktop"}`)
+	})
+	mux.HandleFunc("POST /v1/preview/proxies", func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			URL string `json:"url"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"url": request.URL})
+	})
 	mux.Handle("GET /v1/sessions/{session}/browser", handler)
 	mux.Handle("POST /v1/sessions/{session}/browser", handler)
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil))
@@ -250,6 +319,12 @@ nodeRepl.write('Accessibility checks completed')`, r.URL.Query().Get("url"), r.U
 	})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		mux.ServeHTTP(w, r)
 	}))
 	defer server.Close()

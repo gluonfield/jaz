@@ -3,7 +3,7 @@ import { Cookie, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { BrowserProfileImportDialog } from '@/components/browser/BrowserProfileImportDialog'
 
-export function BrowserProfileImport({ offer = false }: { offer?: boolean }) {
+export function BrowserProfileImport({ offer = false, active = true }: { offer?: boolean; active?: boolean }) {
   const api = window.jaz?.browserProfiles
   const [visible, setVisible] = useState(!offer)
   const [open, setOpen] = useState(false)
@@ -50,6 +50,6 @@ export function BrowserProfileImport({ offer = false }: { offer?: boolean }) {
     ) : !offer ? (
       <Button className="min-h-10" onClick={() => setOpen(true)}><Cookie size={15} />Import sign-ins</Button>
     ) : null}
-    {open ? <BrowserProfileImportDialog api={api} onClose={() => setOpen(false)} onImported={() => setVisible(false)} /> : null}
+    {open && active ? <BrowserProfileImportDialog api={api} onClose={() => setOpen(false)} onImported={() => setVisible(false)} /> : null}
   </>
 }

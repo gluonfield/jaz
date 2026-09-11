@@ -9,11 +9,13 @@ import {
 } from './previewWebview'
 
 export function usePreviewFindControls({
+  visible,
   webview,
   webviewReady,
   canUseWebview,
   onError,
 }: {
+  visible: boolean
   webview: PreviewWebviewElement | null
   webviewReady: boolean
   canUseWebview: boolean
@@ -102,7 +104,7 @@ export function usePreviewFindControls({
     }
   }, [clear, onError, open, query, webviewReady])
 
-  useEffect(() => clientRuntime.onPreviewFindShortcut?.(openFind), [openFind])
+  useEffect(() => visible ? clientRuntime.onPreviewFindShortcut?.(openFind) : undefined, [visible, openFind])
 
   useEffect(() => () => stopWebviewFind('clearSelection', false), [stopWebviewFind])
 

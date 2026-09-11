@@ -46,8 +46,8 @@ export async function createSession(input: CreateSessionInput = {}): Promise<Ses
   return session
 }
 
-export function getSession(id: string): Promise<Session> {
-  return get<Session>(`/v1/sessions/${id}`)
+export function getSession(id: string, signal?: AbortSignal): Promise<Session> {
+  return get<Session>(`/v1/sessions/${id}`, { signal })
 }
 
 export const sessionQuery = (id: string) =>

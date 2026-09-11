@@ -18,7 +18,6 @@ import { PendingSessionHistory } from '@/components/session/PendingSessionHistor
 import { SidePanel, type SidePanelView } from '@/components/session/SidePanel'
 import { SidePanelResizeHandle } from '@/components/session/SidePanelResizeHandle'
 import { SidePanelControl, useSidePanelState } from '@/components/session/SidePanelState'
-import { useSideBrowser } from '@/lib/hooks/useSideBrowser'
 import { RuntimeBadge } from '@/components/sidebar/RuntimeBadge'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
 import { ThreadFindBar } from '@/components/session/ThreadFindBar'
@@ -226,8 +225,7 @@ function SessionPage({
   const seenRequestedRef = useRef(false)
   const detailSession = detail.data?.session
   const sideChatAvailable = isCodexACPSession(detailSession)
-  const sidePanel = useSidePanelState(sideChatAvailable)
-  const browserControl = useSideBrowser(sessionId, sidePanel.openPreview)
+  const sidePanel = useSidePanelState(sessionId, sideChatAvailable)
   // Phone: the docked panel would crush the transcript to a sliver, so it
   // becomes a full-screen overlay (CSS `max-sm:w-full`) that slides in instead
   // of a column.
@@ -687,7 +685,6 @@ function SessionPage({
               visible={sidePanel.open}
               view={sidePanel.view}
               previewTarget={sidePanel.previewTarget}
-              browserControl={browserControl}
               fileRef={sidePanel.fileRef}
               sideChatAvailable={sideChatAvailable}
               sideChatEvents={sideChatEvents}

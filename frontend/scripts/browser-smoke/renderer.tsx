@@ -6,10 +6,11 @@ import { BrowserProfileImport } from '@/components/browser/BrowserProfileImport'
 import { exerciseProfileImport } from './profiles-ui'
 import { exerciseBrowserIdentity } from './identity'
 import '@/styles/globals.css'
+import { exerciseBrowserLifecycle } from './lifecycle'
 
 declare global {
   interface Window {
-    smoke: { backend(): Promise<string>; capture(name?: string): Promise<void>; resize(width: number, height: number): Promise<void>; result(result: unknown): void }
+    smoke: { backend(): Promise<string>; browserExists(id: number): Promise<boolean>; capture(name?: string): Promise<void>; resize(width: number, height: number): Promise<void>; result(result: unknown): void }
   }
 }
 
@@ -32,13 +33,21 @@ function Fixture() {
     let stage = 'opening, profile import and cursor checks'
     const timeout = setTimeout(() => window.smoke.result({ ok: false, error: 'Browser smoke timed out', stage, pending: [...pending.values()] }), Number(new URLSearchParams(location.search).get('timeout') || 30000))
     const run = async () => {
+      stage = 'background browser lifecycle'
+      await exerciseBrowserLifecycle(await window.smoke.backend(), (next) => {
+        stage = next
+      })
+      stage = 'opening, profile import and cursor checks'
       await browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/target` } })
       const evaluate = async (expression: string) => {
         const result = await browser.call({ method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }) as { result: { value: unknown } }
         return result.result.value
       }
+      stage = 'browser identity'
       await exerciseBrowserIdentity(evaluate)
+      stage = 'profile import'
       await exerciseProfileImport(evaluate)
+      stage = 'cursor ordering and cancellation'
       const point = await evaluate(`(() => {
         const r = document.querySelector('button').getBoundingClientRect()
         return {x:r.x+r.width/2,y:r.y+r.height/2}

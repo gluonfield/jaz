@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('jaz', {
 })
 contextBridge.exposeInMainWorld('smoke', {
   backend: () => ipcRenderer.invoke('smoke:backend'),
+  browserExists: (id: number) => ipcRenderer.invoke('smoke:browser-exists', id),
   capture: (name?: string) => ipcRenderer.invoke('smoke:capture', name),
   resize: (width: number, height: number) => ipcRenderer.invoke('smoke:resize', width, height),
   result: (result: unknown) => ipcRenderer.send('smoke:result', result),

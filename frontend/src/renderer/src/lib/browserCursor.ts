@@ -25,7 +25,7 @@ export class BrowserCursor {
       y: Math.max(0, Math.min(this.layer.clientHeight, (from.y + to.y) / 2 + (to.x - from.x) / Math.max(1, distance) * bend)),
     }
     this.arrow.style.opacity = '1'
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || distance < 0.5) {
+    if (document.hidden || this.layer.closest('[inert]') || window.matchMedia('(prefers-reduced-motion: reduce)').matches || distance < 0.5) {
       this.draw(to, 0, 1)
       return Promise.resolve()
     }

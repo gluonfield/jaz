@@ -1,10 +1,27 @@
 # Jaz side browser
 
 Enable browser tools in **Settings → Browser** and select **Jaz side browser**.
-Keep the conversation open in the desktop app while the agent works. The shared
-Jaz MCP tools expose this browser to any ACP provider that supports those tools.
-Closing the panel, leaving the conversation, or cancelling a running tool stops
-its browser work. Other conversation tabs cannot be claimed.
+Keep the desktop app running while the agent works. Once a conversation has
+connected, its browser can keep working while you switch chats, change panels,
+or hide the browser. Active conversations retain their own page, viewport and
+JavaScript bindings; opening their Preview panel shows the same page again.
+An agent can also open its first page after you leave that conversation.
+The shared Jaz MCP tools expose this browser to any ACP provider that supports
+those tools. Cancellation, disconnection, changing backend, or closing the app
+stops browser work. Other conversations' tabs cannot be claimed.
+
+Hidden browser sessions are eligible for unloading after five minutes without
+browser commands, including JavaScript sessions that have not opened a page.
+Cleanup checks the conversation's current status and keeps sessions for
+running agents, queued work and pending commands. Unknown or unavailable status
+keeps the page alive until a later check. Status requests time out after ten
+seconds and are cancelled when new work or visibility makes them obsolete.
+Visible pages remain loaded.
+Unloading releases the script context and any webview, preserving only the URL,
+panel dimensions and lightweight control connection. The next command or opening
+Preview reloads that URL. Empty chats create their browser surface on first use.
+Page-local state and script variables reset; imported sign-ins remain in the
+shared browser partition.
 
 ## Import browser sign-ins
 
@@ -174,8 +191,10 @@ The implementation has these extension points:
 | --- | --- |
 | `browserApi.ts` | JavaScript bindings, action contracts and first-use documentation |
 | `BrowserRepl` | Interpreter lifetime, limits, cancellation and output |
+| `BrowserRetention` | Idle deadline and protection against concurrent work or stale cleanup decisions |
 | Go `browsercontrol` | Shared action validation, page operations and AX node identity |
-| `SideBrowser` / `BrowserCursor` | Conversation lifetime and cursor-before-input ordering |
+| `BrowserSessions` / `BrowserWorkspace` | App-owned conversation browsers and their visible panel slots |
+| `SideBrowser` / `BrowserCursor` | Browser connection lifetime and cursor-before-input ordering |
 | Electron `browserControl` / `BrowserFrames` | Owned webview commands and iframe debugger sessions |
 
 Add browser behavior to the browser API and service, reuse existing page actions,
@@ -197,6 +216,24 @@ including session-header binding, observed success after output truncation, and
 an image result. Each Electron process uses a fresh browser profile. The fixture
 reports pending commands on timeout and writes a screenshot into the printed
 temporary artifact directory.
+
+The production browser workspace is also exercised across chat and panel
+switches: a pending script continues, hidden pages accept trusted clicks and
+screenshots, another chat opens its first page in the background, and returning
+preserves the original webview, page, dimensions and isolated script bindings.
+Abandoned annotations stop intercepting clicks when their panel is hidden;
+the retained surface preserves the resize handle's full hit area.
+With a shortened idle deadline, the fixture verifies native webview destruction,
+automatic background reload, visible-page retention, and protection during
+running turns, queued work and pending commands. It also verifies that a hidden
+script-only session expires and resumes with fresh bindings without ever creating
+a webview. Unit tests cover late cleanup
+replies racing new work or visibility changes and unavailable status retries.
+The Electron fixture also stalls a status request until its deadline and verifies
+that cleanup recovers and destroys the idle webview on the next check.
+Surfaces remain mounted at the app root. CSS anchors place the selected surface
+over its panel slot; inactive surfaces retain their size and stay transparent
+and inert so Chromium can still render them for capture.
 
 The same real MCP/HTTP/Electron path verifies AX names from labels, hidden and
 password exclusion, stable numeric indices, unchanged/full/diff observations,
