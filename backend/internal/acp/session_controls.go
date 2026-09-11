@@ -61,9 +61,6 @@ func (m *Manager) applySessionControls(job *jobState, raw json.RawMessage) bool 
 				}
 			}
 		}
-		if job.Model != model {
-			job.usage.ContextWindowTokens = 0
-		}
 		if job.Model != model || job.ReasoningEffort != effort {
 			if err := m.store.UpdateSessionModel(job.ID, job.Model, job.ReasoningEffort); err != nil {
 				m.log.Error("persist agent model selection", "session", job.ID, "error", err)

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/sessiongoal"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -34,99 +35,50 @@ func (m *Manager) recordRawUsage(job *jobState, raw json.RawMessage) {
 }
 
 func (m *Manager) recordUsage(job *jobState, usage storage.Usage) {
-	if usage.IsZero() {
-		return
-	}
 	m.recordUsageReport(job, usageReport{Snapshot: usage})
 }
 
-// recordUsageReport persists usage on arrival. ACP adapters can report three
-// different shapes: cumulative turn snapshots, per-request deltas, and live
-// context size updates. Keeping those separate avoids both max-merging deltas
-// and replaying cumulative totals as if they were turn-local.
 func (m *Manager) recordUsageReport(job *jobState, report usageReport) {
-	if report.Auxiliary {
-		report.Context = storage.Usage{}
-		report.Snapshot.ContextTokens = 0
-		report.Snapshot.ContextWindowTokens = 0
-		report.Delta.ContextTokens = 0
-		report.Delta.ContextWindowTokens = 0
-	}
-	if report.IsZero() {
-		return
-	}
-	var write storage.Usage
-	job.mu.Lock()
-	if !report.Snapshot.IsZero() {
-		prev := job.usage
-		if report.ID != "" {
-			prev = job.usageByID[report.ID]
-		}
-		curr := mergeUsageSnapshot(prev, report.Snapshot)
-		if report.ID == "" {
-			job.usage = curr
-		} else {
-			if job.usageByID == nil {
-				job.usageByID = make(map[string]storage.Usage)
-			}
-			job.usageByID[report.ID] = curr
-		}
-		if curr != prev {
-			write = addUsageDelta(write, usageDelta(prev, curr))
-		}
-	}
-	if !report.Delta.IsZero() {
-		if !job.isDuplicateUsageDelta(report) {
-			job.usage = addUsageDelta(job.usage, report.Delta)
-			write = addUsageDelta(write, report.Delta)
-		}
-	} else {
-		job.lastUsageDeltaSet = false
-	}
-	if !report.Context.IsZero() {
-		job.usage = mergeUsageContext(job.usage, report.Context)
-		write = mergeUsageContext(write, report.Context)
-	}
-	job.mu.Unlock()
-	if write.IsZero() {
-		return
-	}
+	m.recordSessionUsage(job.ID, &job.usage, report)
+}
+
+func (m *Manager) recordSessionUsage(sessionID string, accumulator *usageAccumulator, report usageReport) {
 	store, ok := m.store.(usageStore)
 	if !ok {
 		return
 	}
-	if err := store.AddUsage(job.ID, write); err != nil {
-		m.log.Error("persist acp usage failed", "session", job.ID, "error", err)
+	written, err := accumulator.record(report, func(usage storage.Usage) error {
+		return store.AddUsage(sessionID, usage)
+	})
+	if err != nil {
+		m.log.Error("persist acp usage failed", "session", sessionID, "error", err)
 		return
 	}
-	m.refreshGoalUsage(job)
-	m.publishSessionChanged(job.ID)
+	if written {
+		m.refreshGoalUsage(sessionID)
+		m.publishSessionChanged(sessionID)
+	}
 }
 
-func (m *Manager) refreshGoalUsage(job *jobState) {
+func (m *Manager) refreshGoalUsage(sessionID string) {
 	store, ok := m.store.(goalUsageStore)
 	if !ok {
 		return
 	}
 	service := sessiongoal.New(store, m.Events)
+	var startedAt time.Time
+	if job, err := m.job(sessionID); err == nil {
+		startedAt, _ = activeGoalTurnStartedAt(job)
+	}
 	var err error
-	if startedAt, ok := activeGoalTurnStartedAt(job); ok {
-		_, err = service.RefreshCurrentTurnSince(context.Background(), job.ID, startedAt)
+	if !startedAt.IsZero() {
+		_, err = service.RefreshCurrentTurnSince(context.Background(), sessionID, startedAt)
 	} else {
-		_, err = service.RefreshActive(context.Background(), job.ID)
+		_, err = service.RefreshActive(context.Background(), sessionID)
 	}
 	if err != nil {
-		m.log.Debug("refresh goal usage failed", "session", job.ID, "error", err)
+		m.log.Debug("refresh goal usage failed", "session", sessionID, "error", err)
 	}
-}
-
-func (j *jobState) isDuplicateUsageDelta(report usageReport) bool {
-	// Codex can repeat the same token_count notification; the ACP bridge only
-	// carries lastTokenUsage, so consecutive identical delta reports are replays.
-	duplicate := j.lastUsageDeltaSet && j.lastUsageDelta == report.Delta
-	j.lastUsageDelta = report.Delta
-	j.lastUsageDeltaSet = true
-	return duplicate
 }
 
 func addUsageDelta(current, delta storage.Usage) storage.Usage {
@@ -159,11 +111,6 @@ func mergeUsageContext(current, context storage.Usage) storage.Usage {
 	return current
 }
 
-// usageDelta is the write that advances the store from prev to curr. Counters
-// are differences the store adds; context/window are the latest cumulative
-// snapshot the store replaces. Context carries curr.ContextTokens (never
-// a per-delta value) so a counters-only delta can't clobber the context column
-// with a component-total estimate of the increment.
 func usageDelta(prev, curr storage.Usage) storage.Usage {
 	return storage.Usage{
 		InputTokens:           nonNegative(curr.InputTokens - prev.InputTokens),

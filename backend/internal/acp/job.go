@@ -114,10 +114,7 @@ type jobState struct {
 	toolByID               map[string]sessionevents.ACPToolCall
 	pendingToolUpdateByID  map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
-	usage                  storage.Usage
-	usageByID              map[string]storage.Usage
-	lastUsageDelta         storage.Usage
-	lastUsageDeltaSet      bool
+	usage                  usageAccumulator
 	turnResultDiscarded    bool
 	systemPromptExtensions promptmodule.Modules
 	assistantText          strings.Builder
@@ -332,9 +329,7 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.StopReason = ""
 	j.ActiveOperation = activeOperation
 	j.savedAssistantLen = 0
-	j.usage = storage.Usage{}
-	j.lastUsageDelta = storage.Usage{}
-	j.lastUsageDeltaSet = false
+	j.usage.startTurn()
 	j.turnResultDiscarded = false
 	j.turn = &activeTurn{
 		done:            make(chan struct{}),

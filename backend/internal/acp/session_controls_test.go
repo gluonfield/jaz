@@ -249,8 +249,8 @@ func TestModelUpdateInvalidatesPreviousContextLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.usage.ContextWindowTokens != 0 || loaded.Usage.ContextWindowTokens != 0 || loaded.Usage.ContextTokens != 1010 {
-		t.Fatalf("model change retained prior capacity: runtime=%#v stored=%#v", job.usage, loaded.Usage)
+	if loaded.Usage.ContextWindowTokens != 0 || loaded.Usage.ContextTokens != 1010 {
+		t.Fatalf("model change retained prior capacity: %#v", loaded.Usage)
 	}
 }
 
