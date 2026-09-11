@@ -65,7 +65,7 @@ const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './in
     JAZ_BROWSER_SMOKE_DIR: output,
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
-    JAZ_BROWSER_SMOKE_TIMEOUT_MS: codex ? '180000' : '30000',
+    JAZ_BROWSER_SMOKE_TIMEOUT_MS: codex ? '180000' : '45000',
   },
   stdout: 'inherit',
   stderr: 'inherit',

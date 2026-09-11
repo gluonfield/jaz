@@ -29,7 +29,7 @@ import {
   type PreviewNavigationEvent,
   type PreviewWebviewElement,
 } from './previewWebview'
-import type { PreviewTarget } from './previewTarget'
+import type { PreviewTarget } from '@/lib/browserSessions'
 import type { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserProfileImport } from '@/components/browser/BrowserProfileImport'
 import { PREVIEW_PARTITION } from '@shared/preview'
@@ -38,6 +38,7 @@ import { usePreviewFindControls } from './usePreviewFindControls'
 export const PREVIEW_PANEL_WIDTH = 640
 
 export function PreviewPanel({
+  visible = true,
   browserControl,
   target,
   onTargetChange,
@@ -45,6 +46,7 @@ export function PreviewPanel({
   onUploadAttachment,
   onClose,
 }: {
+  visible?: boolean
   browserControl?: SideBrowser
   target: PreviewTarget
   onTargetChange: (target: PreviewTarget) => void
@@ -68,12 +70,19 @@ export function PreviewPanel({
   const [annotating, setAnnotating] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => {
+    if (!visible || !webview || !annotating) return
+    return () => {
+      void clearBrowserAnnotationCapture(webview)
+    }
+  }, [visible, webview, annotating])
+  useEffect(() => {
     if (!browserControl || !webview || !webviewReady || !cursorLayer.current) {
       return
     }
     return browserControl.attach(webview, cursorLayer.current)
   }, [browserControl, webview, webviewReady])
   const find = usePreviewFindControls({
+    visible,
     webview,
     webviewReady,
     canUseWebview,
@@ -256,7 +265,7 @@ export function PreviewPanel({
   const canAnnotate = canUseWebview && !!onAddBrowserAnnotation
 
   return (
-    <SidePanelShell width={PREVIEW_PANEL_WIDTH} onKeyDownCapture={find.handleKeyDownCapture}>
+    <SidePanelShell width={PREVIEW_PANEL_WIDTH} className="pointer-events-auto" onKeyDownCapture={find.handleKeyDownCapture}>
       <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -332,7 +341,7 @@ export function PreviewPanel({
       {error ? (
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">{error}</p>
       ) : null}
-      <BrowserProfileImport offer />
+      <BrowserProfileImport offer active={visible} />
       <div className="relative min-h-0 flex-1 bg-bg">
         <div ref={cursorLayer} aria-hidden="true" className="pointer-events-none absolute inset-0 z-20 overflow-hidden" />
         <PreviewFindBar find={find} />

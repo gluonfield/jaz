@@ -1,7 +1,8 @@
 import type { Attachment, QueuedAction, Session, SessionEvent } from '@/lib/api/types'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import type { ProviderSubagentView } from '@/lib/providerSubagents'
-import type { SideBrowser } from '@/lib/sideBrowser'
+import { BrowserPanelSlot } from '@/components/browser/BrowserWorkspace'
+import { clientRuntime } from '@/lib/clientRuntime'
 import type { SendMessageHandler, SendMessageOptions } from '@/lib/sendMessage'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 import type { TaskSurface } from '@/lib/taskSurface'
@@ -10,7 +11,7 @@ import { CODE_DIFF_PANEL_WIDTH, CodeDiffPanel } from './CodeDiffPanel'
 import { FILE_READER_PANEL_WIDTH, FileReaderPanel } from './FileReaderPanel'
 import { OVERVIEW_PANEL_WIDTH, OverviewPanel } from './OverviewPanel'
 import { PREVIEW_PANEL_WIDTH, PreviewPanel } from './PreviewPanel'
-import type { PreviewTarget } from './previewTarget'
+import type { PreviewTarget } from '@/lib/browserSessions'
 import { SIDE_CHAT_PANEL_WIDTH, SideChatPanel } from './SideChatPanel'
 import { TERMINAL_PANEL_WIDTH, TerminalPanel } from './TerminalPanel'
 
@@ -26,7 +27,6 @@ export const SIDE_PANEL_LAYOUT: Record<SidePanelView, { width: number; resizable
 }
 
 export function SidePanel({
-  browserControl,
   session,
   progress,
   subagents,
@@ -48,7 +48,6 @@ export function SidePanel({
   onSendSideChat,
   onClose,
 }: {
-  browserControl?: SideBrowser
   session: Session
   progress?: TaskSurface
   subagents: ProviderSubagentView[]
@@ -97,9 +96,17 @@ export function SidePanel({
     case 'diff':
       return <CodeDiffPanel session={session} visible={visible} onClose={onClose} />
     case 'preview':
-      return (
+      return clientRuntime.capabilities.previewWebview ? (
+        <BrowserPanelSlot
+          sessionId={session.id}
+          visible={visible}
+          onClose={onClose}
+          onAddBrowserAnnotation={onAddBrowserAnnotation}
+          onUploadAttachment={onUploadAttachment}
+        />
+      ) : (
         <PreviewPanel
-          browserControl={browserControl}
+          visible={visible}
           target={previewTarget}
           onTargetChange={onPreviewTargetChange}
           onAddBrowserAnnotation={onAddBrowserAnnotation}

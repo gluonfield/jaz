@@ -6,6 +6,15 @@ import { fileURLToPath, URL } from 'node:url'
 import { TextEncoder } from 'node:util'
 import { BrowserRepl } from './browserRepl'
 
+test('disposing releases retained output without changing the delivered screenshot', async () => {
+  const repl = new BrowserRepl(async () => ({ status: 'ok', image_base64: 'c2NyZWVuc2hvdA==', image_mime_type: 'image/png' }))
+  const delivered = await repl.run('await tab.getScreenshot()')
+  repl.cancel()
+  expect(repl.output).toEqual({ status: 'ok' })
+  expect(delivered.image_base64).toBe('c2NyZWVuc2hvdA==')
+  expect(delivered.image_mime_type).toBe('image/png')
+})
+
 test('accessibility observations return text and numeric targets share browser actions', async () => {
   const actions = []
   const repl = new BrowserRepl(async (input) => {

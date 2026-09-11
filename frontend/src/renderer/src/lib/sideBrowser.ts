@@ -13,7 +13,7 @@ export type BrowserViewport = {
 export class SideBrowser {
   private viewport: BrowserViewport | null = null
   private cursor: BrowserCursor | null = null
-  private waiting: { resolve: () => void; reject: (error: Error) => void } | null = null
+  private waiting: { promise: Promise<void>; resolve: () => void; reject: (error: Error) => void } | null = null
   private generation = 0
   private readonly repl: BrowserRepl
 
@@ -31,12 +31,7 @@ export class SideBrowser {
     this.viewport = viewport
     this.cursor = new BrowserCursor(layer)
     this.waiting?.resolve()
-    return () => {
-      this.cancel()
-      this.cursor?.destroy()
-      this.cursor = null
-      this.viewport = null
-    }
+    return () => this.dispose()
   }
 
   async call({ method, params, sessionId }: BrowserCommand): Promise<unknown> {
@@ -47,17 +42,9 @@ export class SideBrowser {
     }
     if (method === 'Jaz.open') {
       if (!viewport) {
-        const ready = new Promise<void>((resolve, reject) => {
-          this.waiting = { resolve, reject }
-        })
-        const timeout = setTimeout(() => this.waiting?.reject(new Error('Side browser did not open')), 15_000)
+        const ready = this.waitForViewport()
         this.open(String(params?.url))
-        try {
-          await ready
-        } finally {
-          clearTimeout(timeout)
-          this.waiting = null
-        }
+        await ready
         return {}
       }
       const requested = String(params?.url)
@@ -93,6 +80,27 @@ export class SideBrowser {
       throw new Error('Side browser changed during the action')
     }
     return this.command({ webContentsId: viewport.getWebContentsId(), method, params, sessionId })
+  }
+
+  waitForViewport(): Promise<void> {
+    if (this.viewport) return Promise.resolve()
+    if (this.waiting) return this.waiting.promise
+    let resolve!: () => void
+    let reject!: (error: Error) => void
+    const promise = new Promise<void>((ready, failed) => {
+      resolve = ready
+      reject = failed
+    })
+    const timeout = setTimeout(() => reject(new Error('Side browser did not open')), 15_000)
+    this.waiting = {
+      promise: promise.finally(() => {
+        clearTimeout(timeout)
+        this.waiting = null
+      }),
+      resolve,
+      reject,
+    }
+    return this.waiting.promise
   }
 
   private async sendCDP(command: BrowserCommand): Promise<BrowserActionResult> {

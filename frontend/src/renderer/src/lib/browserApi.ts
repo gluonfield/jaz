@@ -20,7 +20,7 @@ export type BrowserActionResult = {
 }
 
 export const BROWSER_DOCUMENTATION = `# Jaz browser JavaScript
-The tab binding controls this conversation's side browser. Top-level declarations preserve JavaScript scope and persist until cancellation, the conversation closes, or the desktop reconnects. Use const for stable bindings and let for values you will reassign. Reuse bindings instead of redeclaring them. Imports and host filesystem access are unavailable.
+The tab binding controls this conversation's side browser. Active work survives switching chats or hiding the browser. Hidden browser sessions may unload after five minutes without browser activity when their agent is idle; the next use reloads the saved URL when present. Top-level declarations preserve JavaScript scope until cancellation, disconnection or idle unloading. Observe with getAXState() after resuming and derive fresh targets. Use const for stable bindings and let for values you will reassign. Reuse bindings instead of redeclaring them. Imports and host filesystem access are unavailable.
 
 await tab.goto(url)
 await tab.getAXState(options?) // Chromium accessibility tree with numeric indices; options: {disableDiffing: true} for a full tree
@@ -70,4 +70,3 @@ const tab = Object.freeze({
   waitFor: text => __action({action:'wait', text})
 })
 `
-

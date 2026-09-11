@@ -9,14 +9,14 @@ import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
-import type { PreviewTarget } from './previewTarget'
+import { useSessionPreview } from '@/lib/browserSessions'
 import { SIDE_PANEL_LAYOUT, type SidePanelView } from './SidePanel'
 
 const PANEL_OPEN_KEY = 'jaz.sessionPanel'
 const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
 
-export function useSidePanelState(sideChatAvailable = false) {
+export function useSidePanelState(sessionId: string, sideChatAvailable = false) {
   const [open, setOpen] = useState(() => {
     const stored = localStorage.getItem(PANEL_OPEN_KEY)
     return stored === 'open' ? true : stored === 'closed' ? false : !isMobileViewport()
@@ -24,7 +24,6 @@ export function useSidePanelState(sideChatAvailable = false) {
   const [view, setView] = useState<SidePanelView>('overview')
   const [widthOverride, setWidthOverride] = useState<number | null>(null)
   const [resizing, setResizing] = useState(false)
-  const [previewTarget, setPreviewTarget] = useState<PreviewTarget>({ displayUrl: '', sourceUrl: '' })
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
   const layout = SIDE_PANEL_LAYOUT[activeView]
@@ -44,11 +43,14 @@ export function useSidePanelState(sideChatAvailable = false) {
     setOpen(true)
   }, [])
 
+  const showPreview = useCallback(() => selectView('preview'), [selectView])
+  const { target: previewTarget, setTarget: setPreviewTarget } = useSessionPreview(sessionId, showPreview)
+
   const openPreview = useCallback((url: string) => {
     setPreviewTarget({ displayUrl: url, sourceUrl: url })
     setView('preview')
     setOpen(true)
-  }, [])
+  }, [setPreviewTarget])
 
   useEffect(() => clientRuntime.onOpenPreviewURL?.(openPreview), [openPreview])
 
