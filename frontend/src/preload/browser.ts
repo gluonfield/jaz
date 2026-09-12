@@ -4,8 +4,8 @@ import { PASSWORD_CAPTURE_CHANNEL, PASSWORD_FILL_CHANNEL, PASSWORD_RESULT_CHANNE
 
 function loginFields(root: Document | HTMLFormElement, operation: 'capture' | 'fill') {
   const inputs = Array.from(root instanceof HTMLFormElement ? root.elements : root.querySelectorAll('input'))
-    .filter((element): element is HTMLInputElement => element instanceof HTMLInputElement && !element.disabled)
-  const passwords = inputs.filter((input) => input.type === 'password' && input.getClientRects().length > 0 &&
+    .filter((element): element is HTMLInputElement => element instanceof HTMLInputElement)
+  const passwords = inputs.filter((input) => input.type === 'password' && !input.disabled && input.getClientRects().length > 0 &&
     (operation === 'capture' ? Boolean(input.value) : !input.readOnly && !input.matches('[autocomplete~="new-password" i]')))
   const password = passwords.find((input) => input.matches(operation === 'capture'
     ? '[autocomplete~="new-password" i]' : '[autocomplete~="current-password" i]')) ?? passwords[0]
@@ -53,7 +53,7 @@ export function installBrowserPasswordCapture(): void {
       return
     }
     const fields = loginFields(document, 'fill')
-    const usernameEditable = fields.username && !fields.username.readOnly && fields.username.getClientRects().length > 0
+    const usernameEditable = fields.username && !fields.username.disabled && !fields.username.readOnly && fields.username.getClientRects().length > 0
     if (!fields.password || (fields.username && !usernameEditable && fields.username.value !== credential.username)) {
       ipcRenderer.send(PASSWORD_RESULT_CHANNEL, false)
       return
