@@ -345,7 +345,7 @@ export function AppearanceSettings() {
               setHomeWordmark(event.currentTarget.value)
               setAppearance({ homeWordmark: event.currentTarget.value })
             }}
-            className="h-8 w-48 rounded-control bg-surface-2 px-2.5 text-[13px] text-ink outline-none ring-1 ring-border/60 placeholder:text-ink-3 focus:ring-primary"
+            className="h-8 w-72 rounded-control bg-surface-2 px-2.5 text-[13px] text-ink outline-none ring-1 ring-border/60 placeholder:text-ink-3 focus:ring-primary"
           />
         </Row>
       </SettingsCard>

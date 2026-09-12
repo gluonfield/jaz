@@ -236,31 +236,43 @@ export function DitherArt({
       role="img"
       aria-label={label}
       aria-hidden={label ? undefined : true}
-      style={{ width, height, display: 'block' }}
+      style={{ width, maxWidth: '100%', display: 'block' }}
     />
   )
 }
 
+const WORDMARK_FONT = "600 100px 'Inter Variable', 'Inter', sans-serif"
+const WORDMARK_ROWS = 48
+
 const drawText =
   (text: string): Silhouette =>
   (g, w, h) => {
-    const family = "600 100px 'Inter Variable', 'Inter', sans-serif"
-    g.font = family
+    g.font = WORDMARK_FONT
     g.textAlign = 'center'
     const probe = g.measureText(text)
     const probeHeight = probe.actualBoundingBoxAscent + probe.actualBoundingBoxDescent
     const size = 100 * Math.min((0.9 * w) / probe.width, (0.88 * h) / probeHeight)
-    g.font = family.replace('100px', `${size}px`)
+    g.font = WORDMARK_FONT.replace('100px', `${size}px`)
     const m = g.measureText(text)
     g.fillText(text, w / 2, h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2)
   }
 
+// Columns that hold the glyph height steady as the text grows, so a phrase
+// widens instead of shrinking into grain; "jaz" sets the floor.
+function wordmarkCols(text: string): number {
+  const g = new OffscreenCanvas(1, 1).getContext('2d')!
+  g.font = WORDMARK_FONT
+  const m = g.measureText(text)
+  const aspect = m.width / (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent)
+  return Math.max(112, Math.ceil((0.88 * WORDMARK_ROWS * aspect) / 0.9))
+}
+
 // A wordmark dissolving in as dithered brand grain: "jaz" on the boot and
 // onboarding screens, the user's own text above the new-thread composer.
-export function DitherWordmark({ text = 'jaz', dot = 3, delay = 0 }: { text?: string; dot?: number; delay?: number }) {
-  const draw = useMemo(() => drawText(text), [text])
+export function DitherWordmark({ text = 'jaz', delay = 0 }: { text?: string; delay?: number }) {
+  const { draw, cols } = useMemo(() => ({ draw: drawText(text), cols: wordmarkCols(text) }), [text])
   return (
-    <DitherArt draw={draw} cols={112} rows={48} dot={dot} delay={delay} waitForFonts buildKey={`wordmark:${text}:${dot}`} label={text} />
+    <DitherArt draw={draw} cols={cols} rows={WORDMARK_ROWS} delay={delay} waitForFonts buildKey={`wordmark:${text}`} label={text} />
   )
 }
 
