@@ -12,7 +12,6 @@ import {
   nativeTheme,
   session,
   shell,
-  systemPreferences,
 } from 'electron'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
 import { isPreviewURL } from '../shared/preview'
@@ -426,7 +425,6 @@ app.whenReady().then(() => {
       applicationVersion: app.getVersion(),
       iconPath: appIcon,
     })
-    void systemPreferences.askForMediaAccess('microphone')
   }
   setupLauncher()
   createWindow()
