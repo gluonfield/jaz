@@ -27,7 +27,7 @@ test('OS denial explains how to grant access and a later attempt can succeed', a
     .mockResolvedValueOnce(stream)
   installMicrophone(getUserMedia)
   const error = await requestMicrophone().catch((error) => error)
-  expect(error.message).toBe(`Microphone access is blocked. Enable ${import.meta.env.DEV ? 'Electron' : 'Jaz'} in System Settings → Privacy & Security → Microphone, then restart Jaz.`)
+  expect(error.message).toBe(`Microphone access is blocked. Enable ${import.meta.env.DEV ? 'the terminal app running Jaz' : 'Jaz'} in System Settings → Privacy & Security → Microphone, then restart Jaz.`)
   expect(error.cause).toBe(denied)
   expect(await requestMicrophone()).toBe(stream)
   expect(getUserMedia).toHaveBeenLastCalledWith({
