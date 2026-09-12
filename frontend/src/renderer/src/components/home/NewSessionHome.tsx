@@ -38,7 +38,7 @@ export function NewSessionHome({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: 'spring', stiffness: 320, damping: 28 }}
       >
-        <DitherWordmark text={wordmark} dot={2} />
+        <DitherWordmark text={wordmark} />
         <div className="w-full max-w-[640px]">
           <ComposerCard
             streaming={creating}
