@@ -13,6 +13,8 @@ func TestSupportedSteerMethod(t *testing.T) {
 	}{
 		{"prompt queue", `{"agentCapabilities":{"_meta":{"claudeCode":{"promptQueueing":true}}}}`, steerPromptQueueing},
 		{"native", `{"_meta":{"steering":{"supported":true,"waitForCompletion":true}}}`, steerNative},
+		{"Grok 1.0.25 initialization", `{"_meta":{"grokShell":true,"agentVersion":"1.0.25"}}`, steerGrokInterject},
+		{"unknown agent", `{"agentCapabilities":{"loadSession":true}}`, steerUnsupported},
 		{"prompt queue wins", `{"agentCapabilities":{"_meta":{"claudeCode":{"promptQueueing":true}}},"_meta":{"steering":{"supported":true,"waitForCompletion":true}}}`, steerPromptQueueing},
 	}
 	for _, test := range tests {

@@ -64,7 +64,7 @@ export function FloatingVoice({ voice, onReturn, level, reducedMotion }: {
           }
         }}
       >
-        <VoiceMode voice={voice} size={152} level={level} compact reducedMotion={reducedMotion} />
+        <VoiceMode voice={voice} size={128} level={level} compact reducedMotion={reducedMotion} />
       </button>
       <div className="flex items-center gap-3">
         <VoiceControls voice={voice} floating />

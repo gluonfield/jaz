@@ -12,6 +12,7 @@ type agentProcess struct {
 	conn      jsonrpc.MessageConn
 	peer      *jsonrpc.Peer
 	cancel    context.CancelFunc
+	closed    <-chan struct{}
 	stderr    *processStderrTail
 	serveErr  error
 	serveDone chan struct{}
@@ -22,6 +23,7 @@ func newAgentProcess(ac *agentConn) *agentProcess {
 		conn:      ac.conn,
 		peer:      ac.peer,
 		cancel:    ac.cancel,
+		closed:    ac.closed,
 		stderr:    ac.stderr,
 		serveDone: make(chan struct{}),
 	}

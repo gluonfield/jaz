@@ -148,13 +148,17 @@ func usageReportFromRaw(raw json.RawMessage) usageReport {
 	}
 	report := usageReport{}
 	var meta struct {
-		UsageID string `json:"usageId"`
-		Codex   struct {
+		UsageID  string `json:"usageId"`
+		PromptID string `json:"promptId"`
+		Codex    struct {
 			SideChat json.RawMessage `json:"sideChat"`
 		} `json:"codex"`
 	}
 	if json.Unmarshal(fields["_meta"], &meta) == nil {
 		report.ID = meta.UsageID
+		if report.ID == "" {
+			report.ID = meta.PromptID
+		}
 		report.Auxiliary = len(meta.Codex.SideChat) > 0 && string(meta.Codex.SideChat) != "null"
 	}
 	if kind, ok := fields["sessionUpdate"]; ok {

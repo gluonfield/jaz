@@ -13,6 +13,7 @@ const (
 	steerUnsupported    steerMethod = ""
 	steerPromptQueueing steerMethod = acpschema.AgentMethodSessionPrompt
 	steerNative         steerMethod = "_session/steering"
+	steerGrokInterject  steerMethod = "_x.ai/interject"
 )
 
 func supportedSteerMethod(raw json.RawMessage) steerMethod {
@@ -26,6 +27,9 @@ func supportedSteerMethod(raw json.RawMessage) steerMethod {
 	steering, _ := resp.Meta["steering"].(map[string]any)
 	if boolMeta(steering, "supported") && boolMeta(steering, "waitForCompletion") {
 		return steerNative
+	}
+	if boolMeta(resp.Meta, "grokShell") {
+		return steerGrokInterject
 	}
 	return steerUnsupported
 }

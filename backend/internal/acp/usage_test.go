@@ -30,9 +30,10 @@ func TestUsageFromRawReadsOpenRouterExtras(t *testing.T) {
 }
 
 func TestUsageFromRawReadsGrokPromptMeta(t *testing.T) {
-	usage := usageFromRaw(json.RawMessage(`{
+	report := usageReportFromRaw(json.RawMessage(`{
 		"stopReason": "end_turn",
 		"_meta": {
+			"promptId": "native-prompt",
 			"totalTokens": 14112,
 			"modelId": "grok-composer-2.5-fast",
 			"inputTokens": 14080,
@@ -41,6 +42,10 @@ func TestUsageFromRawReadsGrokPromptMeta(t *testing.T) {
 			"reasoningTokens": 0
 		}
 	}`))
+	usage := report.Usage()
+	if report.ID != "native-prompt" {
+		t.Fatalf("usage ID = %q, want native prompt ID", report.ID)
+	}
 	if usage.InputTokens != 14080 || usage.CachedInputTokens != 7628 ||
 		usage.OutputTokens != 32 || usage.TotalTokens != 14112 {
 		t.Fatalf("usage = %#v", usage)

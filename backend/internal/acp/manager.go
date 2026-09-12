@@ -220,6 +220,7 @@ type agentConn struct {
 	conn          jsonrpc.MessageConn
 	peer          *jsonrpc.Peer
 	cancel        context.CancelFunc
+	closed        <-chan struct{}
 	initRaw       json.RawMessage
 	stderr        *processStderrTail
 	promptTracker *promptTrackingConn
@@ -290,6 +291,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	state := &connectionState{}
 	peer := jsonrpc.NewPeer(promptTracker, state.handler(m, handler))
 	go func() {
+		defer cancel()
 		err := peer.Serve(runCtx)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			m.setServeErr(peer, err)
@@ -334,7 +336,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		cancel()
 		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
 	}
-	return &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, initRaw: initRaw, stderr: stderr, promptTracker: promptTracker}, nil
+	return &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, closed: runCtx.Done(), initRaw: initRaw, stderr: stderr, promptTracker: promptTracker}, nil
 }
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
