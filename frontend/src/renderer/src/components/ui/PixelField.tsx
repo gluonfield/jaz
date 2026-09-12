@@ -1,14 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
-import { DEFAULT_HOME_WORDMARK } from '@/lib/homeWordmark'
-import type {
-  PixelFieldActiveShapeState,
-  PixelFieldLifecycle,
-  PixelFieldShapeFrame,
-  PixelFieldShapeName,
-} from '@/components/ui/PixelField.types'
 
 const TAU = Math.PI * 2
+const WORDMARK = 'jaz'
 
 // A CSS mask keeps a soft clearing around the centered heading + composer; the
 // JS constants mirror it so constructions only form where the field is visible.
@@ -298,7 +292,7 @@ const SHAPES: Record<string, ShapeDef> = {
   ...Object.fromEntries(PHRASES.map(([p, f]) => [p, textShape(p, f)])),
 }
 
-const DEFAULT_PLAYLIST = Object.keys(SHAPES) as PixelFieldShapeName[]
+const PLAYLIST = Object.keys(SHAPES)
 
 /* ---------------- shaders ----------------
  * Every particle owns a `from` and `to` position, each in its own frame
@@ -414,46 +408,22 @@ function cssToRgb(css: string, scratch: CanvasRenderingContext2D): [number, numb
 // morphs into a construction — a spinning sphere or torus, a solid sun, bird,
 // paper plane, or a short encouraging phrase — holds, then flows home (or
 // chains into the next construction).
-// While `calm` (the user is typing), it returns home and dims.
-export function PixelField({
-  calm = false,
-  wordmark = DEFAULT_HOME_WORDMARK,
-  shapes,
-  onShapeFrame,
-  lifecycle,
-}: {
-  calm?: boolean
-  wordmark?: string
-  shapes?: PixelFieldShapeName[]
-  onShapeFrame?: (frame: PixelFieldShapeFrame | null) => void
-  lifecycle?: PixelFieldLifecycle
-}) {
+// While `calm` (a connect form is open or a connect is running), it returns
+// home and dims.
+export function PixelField({ calm = false }: { calm?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const calmRef = useRef(calm)
-  const onShapeFrameRef = useRef(onShapeFrame)
-  const lifecycleRef = useRef(lifecycle)
   const reducedMotion = useReducedEffectsMotion()
-  const playlistKey = JSON.stringify(shapes ?? DEFAULT_PLAYLIST)
 
   useEffect(() => {
     calmRef.current = calm
   }, [calm])
 
   useEffect(() => {
-    onShapeFrameRef.current = onShapeFrame
-  }, [onShapeFrame])
-
-  useEffect(() => {
-    lifecycleRef.current = lifecycle
-  }, [lifecycle])
-
-  useEffect(() => {
-    onShapeFrameRef.current?.(null)
     const canvas = canvasRef.current
     if (!canvas) return
     const gl = canvas.getContext('webgl2', { alpha: true, antialias: false })
     if (!gl) return
-    const playlist = JSON.parse(playlistKey) as PixelFieldShapeName[]
 
     /* ---- program ---- */
     const compile = (type: number, src: string) => {
@@ -560,14 +530,14 @@ export function PixelField({
       const font = '600 150px "Inter Variable", ui-sans-serif, sans-serif'
       g.font = font
       g.letterSpacing = '-4px'
-      const W = Math.max(280, Math.ceil(g.measureText(wordmark).width) + 80)
+      const W = Math.max(280, Math.ceil(g.measureText(WORDMARK).width) + 80)
       cv.width = W
       cv.height = H
       g.font = font
       g.textAlign = 'center'
       g.textBaseline = 'middle'
       g.letterSpacing = '-4px'
-      g.fillText(wordmark, W / 2, H / 2)
+      g.fillText(WORDMARK, W / 2, H / 2)
       const data = g.getImageData(0, 0, W, H).data
       const inked: number[] = []
       let minX = W
@@ -617,42 +587,10 @@ export function PixelField({
     let morphDur = 1.8
     let swirl = 0
     let homeTarget = true // frameTo is the wordmark
-    let activeShape: PixelFieldShapeName | null = null
-    let emittedShape: PixelFieldShapeName | null = null
-    let emittedCx = 0
-    let emittedCy = 0
-    let emittedScale = 0
-
-    const emitShapeFrame = (shape: PixelFieldShapeName | null) => {
-      const callback = onShapeFrameRef.current
-      if (!callback) return
-      if (!shape) {
-        if (emittedShape !== null) {
-          emittedShape = null
-          callback(null)
-        }
-        return
-      }
-      if (
-        emittedShape === shape &&
-        Math.abs(emittedCx - frameTo.cx) < 1 &&
-        Math.abs(emittedCy - frameTo.cy) < 1 &&
-        Math.abs(emittedScale - frameTo.scale) < 1
-      ) {
-        return
-      }
-      emittedShape = shape
-      emittedCx = frameTo.cx
-      emittedCy = frameTo.cy
-      emittedScale = frameTo.scale
-      callback({ shape, cx: frameTo.cx, cy: frameTo.cy, scale: frameTo.scale })
-    }
-
     let width = 0
     let height = 0
     let drawCount = N_MAX
     let alphaMul = 1
-    let emphasis = 0
     let lastT = 0
 
     const drawFrame = (t: number) => {
@@ -669,7 +607,7 @@ export function PixelField({
       gl.uniform2f(uni.centerFrom, frameFrom.cx, frameFrom.cy)
       gl.uniform2f(uni.centerTo, frameTo.cx, frameTo.cy)
       gl.uniform1f(uni.scaleFrom, frameFrom.scale)
-      gl.uniform1f(uni.scaleTo, frameTo.scale * (1 + emphasis * 0.08))
+      gl.uniform1f(uni.scaleTo, frameTo.scale)
       gl.uniform1f(uni.rotFrom, frameFrom.rot)
       gl.uniform1f(uni.rotTo, frameTo.rot)
       gl.drawArrays(gl.POINTS, 0, drawCount)
@@ -781,8 +719,6 @@ export function PixelField({
 
     const toHome = () => {
       homeTarget = true
-      activeShape = null
-      emitShapeFrame(null)
       homeU = rand(0.34, 0.66)
       // sometimes the mark settles above the composer instead of below
       homeV = Math.random() < 0.45 ? rand(0.12, 0.24) : rand(0.6, 0.82)
@@ -801,29 +737,17 @@ export function PixelField({
       )
     }
 
-    let lastShape: PixelFieldShapeName | null = null
-    let constructionCount = 0
+    let lastShape: string | null = null
     let holdRange: [number, number] = [3.5, 8]
     const defaultShape = () => {
-      if (!playlist.length) return null
-      if (playlist.length <= 1) return playlist[0]
-      const lastIndex = lastShape ? playlist.indexOf(lastShape) : -1
-      if (lastIndex < 0) return playlist[Math.floor(rand(0, playlist.length))]
-      return playlist[(lastIndex + 1 + Math.floor(rand(0, playlist.length - 1))) % playlist.length]
+      if (!PLAYLIST.length) return null
+      if (PLAYLIST.length <= 1) return PLAYLIST[0]
+      const lastIndex = lastShape ? PLAYLIST.indexOf(lastShape) : -1
+      if (lastIndex < 0) return PLAYLIST[Math.floor(rand(0, PLAYLIST.length))]
+      return PLAYLIST[(lastIndex + 1 + Math.floor(rand(0, PLAYLIST.length - 1))) % PLAYLIST.length]
     }
-    const chooseShape = () => {
-      const requested = lifecycleRef.current?.chooseNextShape?.({
-        playlist,
-        lastShape,
-        constructionCount,
-        defaultShape,
-      })
-      if (requested && playlist.includes(requested) && SHAPES[requested]) return requested
-      return defaultShape()
-    }
-
     const toConstruction = () => {
-      const shape = chooseShape()
+      const shape = defaultShape()
       if (!shape) return false
       const def = SHAPES[shape]
       const ay = def.aspect ? def.aspect() : 1
@@ -851,11 +775,8 @@ export function PixelField({
       }
       if (r === 0) return false
       lastShape = shape
-      constructionCount++
       holdRange = def.hold ?? [3.5, 8]
       homeTarget = false
-      activeShape = shape
-      emitShapeFrame(null)
       beginMorph(
         (out) => def.gen(out, N_MAX),
         {
@@ -958,18 +879,6 @@ export function PixelField({
       }
     }
 
-    const activeShapeState = () => {
-      if (!activeShape) return null
-      return lifecycleRef.current?.activeShape?.({
-        shape: activeShape,
-        frame: { shape: activeShape, cx: frameTo.cx, cy: frameTo.cy, scale: frameTo.scale },
-      })
-    }
-    const emphasisLevel = (value: PixelFieldActiveShapeState['emphasis']) => {
-      if (typeof value === 'number') return Math.max(0, Math.min(1, value))
-      return value ? 1 : 0
-    }
-
     /* ---- scheduler ---- */
     let state: 'home' | 'forming' | 'holding' = 'forming'
     let stateUntil = 0
@@ -984,10 +893,8 @@ export function PixelField({
       const t = ms / 1000
       lastT = t
       const calmNow = calmRef.current
-      const shapeState = activeShapeState()
 
       alphaMul += ((calmNow ? 0.55 : 1) - alphaMul) * (1 - Math.exp(-dt * 2.5))
-      emphasis += (emphasisLevel(shapeState?.emphasis) - emphasis) * (1 - Math.exp(-dt * 10))
       progress = Math.min(1, progress + dt / morphDur)
 
       for (const f of [frameFrom, frameTo]) {
@@ -1001,11 +908,9 @@ export function PixelField({
         if (progress >= 1) {
           if (homeTarget) {
             state = 'home'
-            emitShapeFrame(null)
             stateUntil = t + rand(5, 14)
           } else {
             state = 'holding'
-            emitShapeFrame(activeShape)
             stateUntil = t + rand(holdRange[0], holdRange[1])
           }
         }
@@ -1015,11 +920,7 @@ export function PixelField({
           else stateUntil = t + rand(2, 4)
         }
       } else if (state === 'holding') {
-        if (shapeState?.hold) {
-          stateUntil = t + (shapeState.holdGraceSeconds ?? 2.5)
-        } else if (calmNow) {
-          stateUntil = Math.min(stateUntil, t + 0.4)
-        }
+        if (calmNow) stateUntil = Math.min(stateUntil, t + 0.4)
         if (t > stateUntil) {
           const morphOn = !calmNow && chain < 3 && Math.random() < 0.65
           if (morphOn && toConstruction()) {
@@ -1041,7 +942,7 @@ export function PixelField({
       cancelAnimationFrame(raf)
       observer.disconnect()
     }
-  }, [reducedMotion, playlistKey, wordmark])
+  }, [reducedMotion])
 
   return (
     <canvas

@@ -1,25 +1,24 @@
-import { type ReactNode, useCallback } from 'react'
+import type { ReactNode } from 'react'
 import { motion } from 'motion/react'
-import { HomePixelField } from '@/components/home/HomePixelField'
+import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { ComposerCard } from '@/components/session/Composer'
 import { FileDropScope } from '@/components/ui/FileDrop'
+import { useHomeWordmark } from '@/lib/appearance'
 import type { SendMessageHandler } from '@/lib/sendMessage'
 
+// Welcome mode in the launcher's clothes: the dithered wordmark over a
+// spotlight-style composer, standing on the boot screen's brandscape under a
+// sky that follows the theme.
 export function NewSessionHome({
-  themeKey,
-  calm,
   creating,
   disabled = false,
   goalAvailable = false,
   leftSlot,
   draftStorageKey,
   fileRoot,
-  onDraftActivity,
   onSend,
   onVoice,
 }: {
-  themeKey: string
-  calm: boolean
   creating: boolean
   disabled?: boolean
   goalAvailable?: boolean
@@ -27,39 +26,25 @@ export function NewSessionHome({
   draftStorageKey?: string
   /** directory the composer's @-mention file picker indexes ('' = workspace root) */
   fileRoot?: string
-  onDraftActivity: (active: boolean) => void
   onSend: SendMessageHandler
   onVoice?: () => void
 }) {
-  const handleTextChange = useCallback(
-    (text: string) => onDraftActivity(text.trim().length > 0),
-    [onDraftActivity],
-  )
+  const wordmark = useHomeWordmark()
 
   return (
-    <FileDropScope className="relative flex h-full flex-col items-center justify-center overflow-hidden px-10 pb-16 max-sm:px-4">
-      <HomePixelField themeKey={themeKey} calm={calm} />
+    <FileDropScope className="relative flex h-full flex-col overflow-hidden">
       <motion.div
-        className="relative z-[2] w-full max-w-[640px]"
-        initial="hidden"
-        animate="show"
-        variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}
+        className="flex flex-1 flex-col items-center justify-center gap-8 px-10 py-8 max-sm:px-4"
+        initial={{ opacity: 0, y: 14, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', stiffness: 320, damping: 28 }}
       >
-        <motion.div
-          variants={{
-            hidden: { opacity: 0, y: 14, scale: 0.985 },
-            show: {
-              opacity: 1,
-              y: 0,
-              scale: 1,
-              transition: { type: 'spring', stiffness: 320, damping: 28 },
-            },
-          }}
-        >
+        <DitherWordmark text={wordmark} dot={2} />
+        <div className="w-full max-w-[720px]">
           <ComposerCard
+            variant="launcher"
             streaming={creating}
             autoFocus
-            translucent
             placeholder="Ask anything, or hand your assistant a task…"
             planAvailable
             goalControlVisible
@@ -71,10 +56,12 @@ export function NewSessionHome({
             fileRoot={fileRoot}
             onSend={onSend}
             onVoice={onVoice}
-            onTextChange={handleTextChange}
           />
-        </motion.div>
+        </div>
       </motion.div>
+      {/* in flow, so the hero centers in whatever the brandscape leaves; a short
+          window shrinks the sky, never the composer */}
+      <DitherTerrain sky className="flex min-h-0 shrink flex-col justify-end" />
     </FileDropScope>
   )
 }

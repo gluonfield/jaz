@@ -1,5 +1,5 @@
 import { useReducedMotion } from 'motion/react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useEffectsEnabled } from '@/lib/appearance'
 import { useTheme } from '@/lib/theme'
 
@@ -241,21 +241,27 @@ export function DitherArt({
   )
 }
 
-const drawJaz: Silhouette = (g, w, h) => {
-  const family = "600 100px 'Inter Variable', 'Inter', sans-serif"
-  g.font = family
-  g.textAlign = 'center'
-  const probe = g.measureText('jaz')
-  const probeHeight = probe.actualBoundingBoxAscent + probe.actualBoundingBoxDescent
-  const size = 100 * Math.min((0.9 * w) / probe.width, (0.88 * h) / probeHeight)
-  g.font = family.replace('100px', `${size}px`)
-  const m = g.measureText('jaz')
-  g.fillText('jaz', w / 2, h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2)
-}
+const drawText =
+  (text: string): Silhouette =>
+  (g, w, h) => {
+    const family = "600 100px 'Inter Variable', 'Inter', sans-serif"
+    g.font = family
+    g.textAlign = 'center'
+    const probe = g.measureText(text)
+    const probeHeight = probe.actualBoundingBoxAscent + probe.actualBoundingBoxDescent
+    const size = 100 * Math.min((0.9 * w) / probe.width, (0.88 * h) / probeHeight)
+    g.font = family.replace('100px', `${size}px`)
+    const m = g.measureText(text)
+    g.fillText(text, w / 2, h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2)
+  }
 
-// The boot wordmark: "jaz" dissolving in as dithered brand grain.
-export function DitherWordmark({ delay = 0 }: { delay?: number }) {
-  return <DitherArt draw={drawJaz} cols={112} rows={48} delay={delay} waitForFonts buildKey="jaz-wordmark" label="jaz" />
+// A wordmark dissolving in as dithered brand grain: "jaz" on the boot and
+// onboarding screens, the user's own text above the new-thread composer.
+export function DitherWordmark({ text = 'jaz', dot = 3, delay = 0 }: { text?: string; dot?: number; delay?: number }) {
+  const draw = useMemo(() => drawText(text), [text])
+  return (
+    <DitherArt draw={draw} cols={112} rows={48} dot={dot} delay={delay} waitForFonts buildKey={`wordmark:${text}:${dot}`} label={text} />
+  )
 }
 
 const TERRAIN_SEED = 77
@@ -288,10 +294,66 @@ const drawTerrain: Silhouette = (g, w, h) => {
   g.globalAlpha = 1
 }
 
-// Full-bleed dithered brandscape for the bottom of launch/onboarding screens.
-// Sized to its container; a resize re-dissolves the terrain at the new width.
-export function DitherTerrain({ className = '', rows = 44, delay = 0 }: { className?: string; rows?: number; delay?: number }) {
+const TERRAIN_ROWS = 44
+const SKY_ROWS = 26
+type Sky = 'sun' | 'moon'
+
+// Theme-keyed sky over the ridgelines, in cell units: a dithered sun by day, a
+// crescent with stars by night. Anchored right of center, above the front range.
+const drawSky =
+  (sky: Sky): Silhouette =>
+  (g, w, h) => {
+    const cx = Math.round(w * 0.82)
+    const cy = 18
+    const r = 10
+    const disc = (x: number, y: number, radius: number) => {
+      g.beginPath()
+      g.arc(x, y, radius, 0, Math.PI * 2)
+      g.fill()
+    }
+    if (sky === 'sun') {
+      g.globalAlpha = 0.85
+      disc(cx, cy, r)
+      g.lineWidth = 2
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2
+        g.beginPath()
+        g.moveTo(cx + Math.cos(a) * (r + 3), cy + Math.sin(a) * (r + 3))
+        g.lineTo(cx + Math.cos(a) * (r + 7), cy + Math.sin(a) * (r + 7))
+        g.stroke()
+      }
+      g.globalAlpha = 1
+      return
+    }
+    disc(cx, cy, r)
+    g.globalCompositeOperation = 'destination-out'
+    disc(cx + 5, cy - 3, r - 1)
+    g.globalCompositeOperation = 'source-over'
+    for (let i = 0; i < 24; i++) {
+      const x = hash(i * 131 + 3) % w
+      const y = hash(i * 197 + 5) % h
+      if (Math.hypot(x - cx, y - cy) < r + 4) continue
+      const size = i % 6 === 0 ? 2 : 1
+      g.fillRect(x, y, size, size)
+    }
+  }
+
+const drawScene =
+  (sky: Sky): Silhouette =>
+  (g, w, h) => {
+    drawSky(sky)(g, w, SKY_ROWS)
+    g.translate(0, h - TERRAIN_ROWS)
+    drawTerrain(g, w, TERRAIN_ROWS)
+  }
+
+const SCENES: Record<Sky, Silhouette> = { sun: drawScene('sun'), moon: drawScene('moon') }
+
+// Full-bleed dithered brandscape for the bottom of launch/onboarding screens
+// and, under a `sky` that follows the theme, the new-thread home. Sized to its
+// container; a resize re-dissolves the terrain at the new width.
+export function DitherTerrain({ className = '', sky = false, delay = 0 }: { className?: string; sky?: boolean; delay?: number }) {
   const wrapRef = useRef<HTMLDivElement>(null)
+  const { resolved } = useTheme()
   const [cols, setCols] = useState(0)
   useLayoutEffect(() => {
     const el = wrapRef.current!
@@ -307,7 +369,15 @@ export function DitherTerrain({ className = '', rows = 44, delay = 0 }: { classN
   }, [])
   return (
     <div ref={wrapRef} aria-hidden className={`pointer-events-none overflow-hidden ${className}`}>
-      {cols > 1 ? <DitherArt draw={drawTerrain} cols={cols} rows={rows} delay={delay} buildKey="jaz-terrain" /> : null}
+      {cols > 1 ? (
+        <DitherArt
+          draw={sky ? SCENES[resolved === 'dark' ? 'moon' : 'sun'] : drawTerrain}
+          cols={cols}
+          rows={sky ? TERRAIN_ROWS + SKY_ROWS : TERRAIN_ROWS}
+          delay={delay}
+          buildKey={sky ? `jaz-terrain-${resolved}` : 'jaz-terrain'}
+        />
+      ) : null}
     </div>
   )
 }

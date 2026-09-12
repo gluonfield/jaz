@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowUp, LoaderCircle, Sparkles, X } from 'lucide-react'
+import { ArrowUp, LoaderCircle, X } from 'lucide-react'
 import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { LauncherLayout } from '@/components/session/ComposerLayouts'
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
 import { dataURLToFile } from '@/components/ui/fileTransfer'
 import { IconButton } from '@/components/ui/IconButton'
@@ -172,9 +173,10 @@ function LauncherPage() {
       ) : null}
 
       <div className="absolute bottom-[12%] left-1/2 w-[720px] max-w-[calc(100vw-2rem)] -translate-x-1/2">
-        <div className="overflow-hidden rounded-[18px] bg-surface shadow-[0_18px_50px_-12px_rgba(0,0,0,0.45)] ring-1 ring-border/60">
-          <div className="flex items-center gap-3 px-4 py-3">
-            <Sparkles size={20} className="shrink-0 text-primary" />
+        <LauncherLayout
+          hint="drag to screenshot · ↩ send · esc dismiss"
+          onSurfaceClick={focusInput}
+          textarea={
             <textarea
               ref={inputRef}
               rows={1}
@@ -186,8 +188,10 @@ function LauncherPage() {
               }}
               onKeyDown={onKeyDown}
               placeholder="What can I help you with today?"
-              className="max-h-32 flex-1 resize-none self-center bg-transparent text-[15px] leading-6 text-ink placeholder:text-ink-3 focus:outline-none"
+              className="block max-h-32 w-full resize-none bg-transparent text-[15px] leading-6 text-ink placeholder:text-ink-3 focus:outline-none"
             />
+          }
+          actions={
             <IconButton
               variant="primary"
               size="lg"
@@ -198,41 +202,43 @@ function LauncherPage() {
             >
               {sending ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowUp size={18} />}
             </IconButton>
-          </div>
-
-          {shots.length > 0 ? (
-            <div className="flex flex-wrap gap-2 px-4 pb-3">
-              {shots.map((shot) => (
-                <div key={shot.id} className="relative">
-                  <img
-                    src={shot.dataUrl}
-                    alt="Captured screenshot"
-                    className="h-14 w-20 rounded-lg object-cover ring-1 ring-border/60"
-                  />
-                  <button
-                    type="button"
-                    aria-label="Remove screenshot"
-                    onClick={() => removeShot(shot.id)}
-                    className="absolute -top-1.5 -right-1.5 grid size-5 cursor-pointer place-items-center rounded-full bg-ink text-bg shadow-sm transition-colors hover:bg-ink/80"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
+          }
+          extras={
+            shots.length > 0 ? (
+              <div className="flex flex-wrap gap-2 px-1.5">
+                {shots.map((shot) => (
+                  <div key={shot.id} className="relative">
+                    <img
+                      src={shot.dataUrl}
+                      alt="Captured screenshot"
+                      className="h-14 w-20 rounded-lg object-cover ring-1 ring-border/60"
+                    />
+                    <button
+                      type="button"
+                      aria-label="Remove screenshot"
+                      onClick={() => removeShot(shot.id)}
+                      className="absolute -top-1.5 -right-1.5 grid size-5 cursor-pointer place-items-center rounded-full bg-ink text-bg shadow-sm transition-colors hover:bg-ink/80"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null
+          }
+          error={
+            error ? (
+              <p className="text-[13px] text-danger" role="alert">
+                {error}
+              </p>
+            ) : null
+          }
+          tools={
+            <div className="flex items-center gap-1.5">
+              <AgentModelControls controls={controls} placement="above" disabled={sending} />
             </div>
-          ) : null}
-
-          {error ? (
-            <p className="px-4 pb-2 text-[13px] text-danger" role="alert">
-              {error}
-            </p>
-          ) : null}
-
-          <div className="flex items-center gap-1.5 border-t border-border/40 px-3 py-2">
-            <AgentModelControls controls={controls} placement="above" disabled={sending} />
-            <span className="ml-auto pr-1 text-[12px] text-ink-3">drag to screenshot · ↩ send · esc dismiss</span>
-          </div>
-        </div>
+          }
+        />
       </div>
     </div>
   )

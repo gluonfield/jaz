@@ -333,7 +333,7 @@ export function AppearanceSettings() {
         </Row>
         <Row
           title="Home wordmark"
-          description="Text the particle field returns to on the new-thread screen. Leave blank for “jaz”."
+          description="Dithered above the composer on the new-thread screen. Leave blank for “jaz”."
         >
           <input
             type="text"
@@ -346,16 +346,6 @@ export function AppearanceSettings() {
               setAppearance({ homeWordmark: event.currentTarget.value })
             }}
             className="h-8 w-48 rounded-control bg-surface-2 px-2.5 text-[13px] text-ink outline-none ring-1 ring-border/60 placeholder:text-ink-3 focus:ring-primary"
-          />
-        </Row>
-        <Row
-          title="Wordmark only"
-          description="Hide the particle field’s shapes, phrases, music, and rocket from the main menu."
-        >
-          <Switch
-            checked={settings.homeWordmarkOnly}
-            onChange={(value) => setAppearance({ homeWordmarkOnly: value })}
-            aria-label="Wordmark only"
           />
         </Row>
       </SettingsCard>

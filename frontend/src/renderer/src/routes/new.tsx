@@ -17,7 +17,6 @@ import { NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessi
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
-import { useTheme } from '@/lib/theme'
 import { useGlobalVoice } from '@/lib/voice/VoiceProvider'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { submitNewSession } from './-newSessionSubmission'
@@ -52,7 +51,6 @@ function NewSessionPage() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const [creating, setCreating] = useState(false)
-  const [composing, setComposing] = useState(false)
   const controls = useNewThreadControls()
   const { runtimeAvailable, runtime } = controls
   const [directory, setDirectory] = useState(
@@ -71,8 +69,6 @@ function NewSessionPage() {
     retry: false,
   })
   const directoryIsGit = project?.git ?? directoryInfo.data?.git ?? false
-  // PixelField samples the palette at mount; remount it when the theme flips.
-  const { resolved } = useTheme()
 
   useEffect(() => {
     if (search.project === undefined) return
@@ -218,8 +214,6 @@ function NewSessionPage() {
         </NewThreadOptions>
       ) : null}
       <NewSessionHome
-        themeKey={resolved}
-        calm={composing || creating}
         creating={creating}
         disabled={!runtimeAvailable}
         goalAvailable={acpAgentSupportsGoal(runtime)}
@@ -229,7 +223,6 @@ function NewSessionPage() {
         // the directory after tagging keeps old tags valid rather than rebasing
         // them.
         fileRoot={directory}
-        onDraftActivity={setComposing}
         onSend={handleStart}
         onVoice={() => void handleStart()}
       />

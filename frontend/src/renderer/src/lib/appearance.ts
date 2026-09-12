@@ -26,10 +26,8 @@ export interface AppearanceSettings {
   wideLayout: boolean
   /** show ACP agent/model marks in the left sidebar */
   showModelIcons: boolean
-  /** custom particle wordmark on the new-thread screen; '' keeps "jaz" */
+  /** custom dithered wordmark on the new-thread screen; '' keeps "jaz" */
   homeWordmark: string
-  /** keep the new-thread particle field on its wordmark */
-  homeWordmarkOnly: boolean
 }
 
 export const DEFAULTS: AppearanceSettings = {
@@ -42,7 +40,6 @@ export const DEFAULTS: AppearanceSettings = {
   wideLayout: false,
   showModelIcons: true,
   homeWordmark: '',
-  homeWordmarkOnly: false,
 }
 
 // Whole-UI zoom steps. The chrome is built largely with px sizes, so scaling the
@@ -131,7 +128,6 @@ const FIELDS: { [K in keyof AppearanceSettings]: Field<AppearanceSettings[K]> } 
     (c) => c.homeWordmark,
     normalizeHomeWordmark,
   ),
-  homeWordmarkOnly: boolField('jaz.appearance.homeWordmarkOnly', (c) => c.homeWordmarkOnly),
 }
 
 const FIELD_KEYS = Object.keys(FIELDS) as (keyof AppearanceSettings)[]
@@ -253,8 +249,4 @@ export function useShowModelIcons(): boolean {
 
 export function useHomeWordmark(): string {
   return useSyncExternalStore(subscribe, () => effectiveHomeWordmark(current.homeWordmark))
-}
-
-export function useHomeWordmarkOnly(): boolean {
-  return useSyncExternalStore(subscribe, () => current.homeWordmarkOnly)
 }
