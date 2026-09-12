@@ -12,7 +12,6 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /v1/auth/check", s.handleAuthCheck)
-	mux.HandleFunc("GET /v1/sessions", s.handleListSessions)
 	mux.HandleFunc("GET /v1/sessions/", s.handleGetSession)
 	mux.HandleFunc("POST /v1/sessions", s.handleCreateSession)
 	mux.HandleFunc("POST /v1/sessions/{session}/side-chat", s.handleSessionSideChat)

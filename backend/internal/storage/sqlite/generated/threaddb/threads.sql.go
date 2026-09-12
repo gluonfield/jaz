@@ -222,19 +222,25 @@ WHERE parent_id = ?1
     OR COALESCE(source_type, '') = ''
   )
   AND (?7 = 0 OR updated_at_ms > ?7)
+  AND (CAST(?8 AS TEXT) = '' OR instr(lower(COALESCE(title, '') || char(10) || slug), lower(?8)) > 0)
+  AND last_attention_at_ms <= ?9
+  AND (last_attention_at_ms < ?9 OR id > CAST(?10 AS TEXT))
 ORDER BY last_attention_at_ms DESC, id
-LIMIT CASE WHEN ?8 > 0 THEN ?8 ELSE -1 END
+LIMIT CASE WHEN ?11 > 0 THEN ?11 ELSE -1 END
 `
 
 type ListChildSessionsParams struct {
-	FilterParentID       sql.NullString `json:"filter_parent_id"`
-	FilterArchived       int64          `json:"filter_archived"`
-	FilterRuntime        interface{}    `json:"filter_runtime"`
-	FilterSourceType     interface{}    `json:"filter_source_type"`
-	FilterSourceID       interface{}    `json:"filter_source_id"`
-	FilterIncludeSourced interface{}    `json:"filter_include_sourced"`
-	FilterUpdatedSinceMs interface{}    `json:"filter_updated_since_ms"`
-	FilterLimit          interface{}    `json:"filter_limit"`
+	FilterParentID         sql.NullString `json:"filter_parent_id"`
+	FilterArchived         int64          `json:"filter_archived"`
+	FilterRuntime          interface{}    `json:"filter_runtime"`
+	FilterSourceType       interface{}    `json:"filter_source_type"`
+	FilterSourceID         interface{}    `json:"filter_source_id"`
+	FilterIncludeSourced   interface{}    `json:"filter_include_sourced"`
+	FilterUpdatedSinceMs   interface{}    `json:"filter_updated_since_ms"`
+	FilterQuery            string         `json:"filter_query"`
+	FilterAfterAttentionMs int64          `json:"filter_after_attention_ms"`
+	FilterAfterID          string         `json:"filter_after_id"`
+	FilterLimit            interface{}    `json:"filter_limit"`
 }
 
 func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error) {
@@ -246,6 +252,9 @@ func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsPa
 		arg.FilterSourceID,
 		arg.FilterIncludeSourced,
 		arg.FilterUpdatedSinceMs,
+		arg.FilterQuery,
+		arg.FilterAfterAttentionMs,
+		arg.FilterAfterID,
 		arg.FilterLimit,
 	)
 	if err != nil {
@@ -457,22 +466,28 @@ WHERE archived = ?1
     OR COALESCE(source_type, '') = ''
   )
   AND (?10 = 0 OR updated_at_ms > ?10)
+  AND (CAST(?11 AS TEXT) = '' OR instr(lower(COALESCE(title, '') || char(10) || slug), lower(?11)) > 0)
+  AND last_attention_at_ms <= ?12
+  AND (last_attention_at_ms < ?12 OR id > CAST(?13 AS TEXT))
 ORDER BY last_attention_at_ms DESC, id
-LIMIT CASE WHEN ?11 > 0 THEN ?11 ELSE -1 END
+LIMIT CASE WHEN ?14 > 0 THEN ?14 ELSE -1 END
 `
 
 type ListSessionsParams struct {
-	FilterArchived        int64          `json:"filter_archived"`
-	FilterIncludeChildren interface{}    `json:"filter_include_children"`
-	FilterRootOnly        interface{}    `json:"filter_root_only"`
-	FilterParentOnly      interface{}    `json:"filter_parent_only"`
-	FilterParentID        sql.NullString `json:"filter_parent_id"`
-	FilterRuntime         interface{}    `json:"filter_runtime"`
-	FilterSourceType      interface{}    `json:"filter_source_type"`
-	FilterSourceID        interface{}    `json:"filter_source_id"`
-	FilterIncludeSourced  interface{}    `json:"filter_include_sourced"`
-	FilterUpdatedSinceMs  interface{}    `json:"filter_updated_since_ms"`
-	FilterLimit           interface{}    `json:"filter_limit"`
+	FilterArchived         int64          `json:"filter_archived"`
+	FilterIncludeChildren  interface{}    `json:"filter_include_children"`
+	FilterRootOnly         interface{}    `json:"filter_root_only"`
+	FilterParentOnly       interface{}    `json:"filter_parent_only"`
+	FilterParentID         sql.NullString `json:"filter_parent_id"`
+	FilterRuntime          interface{}    `json:"filter_runtime"`
+	FilterSourceType       interface{}    `json:"filter_source_type"`
+	FilterSourceID         interface{}    `json:"filter_source_id"`
+	FilterIncludeSourced   interface{}    `json:"filter_include_sourced"`
+	FilterUpdatedSinceMs   interface{}    `json:"filter_updated_since_ms"`
+	FilterQuery            string         `json:"filter_query"`
+	FilterAfterAttentionMs int64          `json:"filter_after_attention_ms"`
+	FilterAfterID          string         `json:"filter_after_id"`
+	FilterLimit            interface{}    `json:"filter_limit"`
 }
 
 func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error) {
@@ -487,6 +502,9 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]T
 		arg.FilterSourceID,
 		arg.FilterIncludeSourced,
 		arg.FilterUpdatedSinceMs,
+		arg.FilterQuery,
+		arg.FilterAfterAttentionMs,
+		arg.FilterAfterID,
 		arg.FilterLimit,
 	)
 	if err != nil {

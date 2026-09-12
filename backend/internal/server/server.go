@@ -240,49 +240,6 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"skills": catalog.Skills})
 }
 
-func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query()
-	if query.Get("last") == "true" {
-		session, err := s.Store.LastRootSession()
-		if err != nil {
-			writeError(w, http.StatusNotFound, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, sessionview.Public(session))
-		return
-	}
-	limit := 0
-	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
-		_, _ = fmt.Sscanf(raw, "%d", &limit)
-	}
-	filter := storage.SessionFilter{
-		ParentID:        query.Get("parent_id"),
-		ParentOnly:      query.Has("parent_id"),
-		RootOnly:        query.Get("root") == "true",
-		Runtime:         query.Get("runtime"),
-		IncludeChildren: query.Get("include_children") == "true",
-		SourceType:      query.Get("source_type"),
-		SourceID:        query.Get("source_id"),
-		IncludeSourced:  query.Get("include_sourced") == "true",
-		Archived:        query.Get("archived") == "true",
-		Limit:           limit,
-	}
-	if raw := strings.TrimSpace(query.Get("updated_since")); raw != "" {
-		parsed, err := time.Parse(time.RFC3339, raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("updated_since must be RFC3339: %w", err))
-			return
-		}
-		filter.UpdatedSince = parsed
-	}
-	sessions, err := s.Store.ListSessions(filter)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"sessions": sessionview.Responses(sessions)})
-}
-
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
 	sessionRef, action, hasAction := strings.Cut(rest, "/")
