@@ -16,6 +16,9 @@ WHERE archived = sqlc.arg(filter_archived)
     OR COALESCE(source_type, '') = ''
   )
   AND (sqlc.arg(filter_updated_since_ms) = 0 OR updated_at_ms > sqlc.arg(filter_updated_since_ms))
+  AND (CAST(sqlc.arg(filter_query) AS TEXT) = '' OR instr(lower(COALESCE(title, '') || char(10) || slug), lower(sqlc.arg(filter_query))) > 0)
+  AND last_attention_at_ms <= sqlc.arg(filter_after_attention_ms)
+  AND (last_attention_at_ms < sqlc.arg(filter_after_attention_ms) OR id > CAST(sqlc.arg(filter_after_id) AS TEXT))
 ORDER BY last_attention_at_ms DESC, id
 LIMIT CASE WHEN sqlc.arg(filter_limit) > 0 THEN sqlc.arg(filter_limit) ELSE -1 END;
 
@@ -34,6 +37,9 @@ WHERE parent_id = sqlc.arg(filter_parent_id)
     OR COALESCE(source_type, '') = ''
   )
   AND (sqlc.arg(filter_updated_since_ms) = 0 OR updated_at_ms > sqlc.arg(filter_updated_since_ms))
+  AND (CAST(sqlc.arg(filter_query) AS TEXT) = '' OR instr(lower(COALESCE(title, '') || char(10) || slug), lower(sqlc.arg(filter_query))) > 0)
+  AND last_attention_at_ms <= sqlc.arg(filter_after_attention_ms)
+  AND (last_attention_at_ms < sqlc.arg(filter_after_attention_ms) OR id > CAST(sqlc.arg(filter_after_id) AS TEXT))
 ORDER BY last_attention_at_ms DESC, id
 LIMIT CASE WHEN sqlc.arg(filter_limit) > 0 THEN sqlc.arg(filter_limit) ELSE -1 END;
 

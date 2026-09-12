@@ -1,10 +1,13 @@
 package sqlite
 
 import (
+	"context"
+	"io/fs"
 	"reflect"
 	"testing"
 	"time"
 
+	"github.com/pressly/goose/v3"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -63,10 +66,15 @@ func TestMigrationRecoversOnlyRestartErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := store.db.Exec(`DELETE FROM goose_db_version WHERE version_id = 49`); err != nil {
+	migrations, err := fs.Sub(sqliteMigrations, "migrations")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.db.Exec(`ALTER TABLE threads DROP COLUMN turn`); err != nil {
+	provider, err := goose.NewProvider(goose.DialectSQLite3, store.db, migrations, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(context.Background(), 48); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.migrate(); err != nil {

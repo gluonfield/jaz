@@ -1,5 +1,6 @@
 import { Search, X } from 'lucide-react'
-import { IconButton } from './IconButton'
+import { useRef } from 'react'
+import { IconButton } from '@/components/ui/IconButton'
 
 // The pill search input used across settings surfaces. Height and
 // responsive tweaks come from the caller via `className`.
@@ -14,6 +15,8 @@ export function SearchField({
   placeholder: string
   className?: string
 }) {
+  const input = useRef<HTMLInputElement>(null)
+
   return (
     <div className="relative">
       <Search
@@ -21,6 +24,7 @@ export function SearchField({
         className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3"
       />
       <input
+        ref={input}
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -32,7 +36,10 @@ export function SearchField({
         <IconButton
           size="xs"
           aria-label="Clear search"
-          onClick={() => onChange('')}
+          onClick={() => {
+            onChange('')
+            input.current?.focus()
+          }}
           className="absolute right-1.5 top-1/2 -translate-y-1/2"
         >
           <X size={12} />

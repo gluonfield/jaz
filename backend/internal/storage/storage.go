@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/goal"
@@ -227,6 +228,8 @@ type CreateSession struct {
 }
 
 type SessionFilter struct {
+	Query           string
+	After           *SessionPosition
 	ParentID        string
 	ParentOnly      bool
 	RootOnly        bool
@@ -242,7 +245,22 @@ type SessionFilter struct {
 	Limit    int
 }
 
+type SessionPosition struct {
+	AttentionAt time.Time
+	ID          string
+}
+
 func SessionMatchesFilter(session Session, filter SessionFilter) bool {
+	if filter.Query != "" && !strings.Contains(strings.ToLower(session.Title+"\n"+session.Slug), strings.ToLower(filter.Query)) {
+		return false
+	}
+	if filter.After != nil {
+		at := SessionAttentionAt(session).UnixMilli()
+		after := filter.After.AttentionAt.UnixMilli()
+		if at > after || (at == after && session.ID <= filter.After.ID) {
+			return false
+		}
+	}
 	if filter.RootOnly && session.ParentID != "" {
 		return false
 	}

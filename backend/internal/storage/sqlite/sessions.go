@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -228,14 +229,17 @@ func (s *Store) listSessions(ctx context.Context, filter storage.SessionFilter) 
 	)
 	if filter.ParentOnly && filter.ParentID != "" {
 		rows, err = q.ListChildSessions(ctx, threaddb.ListChildSessionsParams{
-			FilterParentID:       params.FilterParentID,
-			FilterArchived:       params.FilterArchived,
-			FilterRuntime:        params.FilterRuntime,
-			FilterSourceType:     params.FilterSourceType,
-			FilterSourceID:       params.FilterSourceID,
-			FilterIncludeSourced: params.FilterIncludeSourced,
-			FilterUpdatedSinceMs: params.FilterUpdatedSinceMs,
-			FilterLimit:          params.FilterLimit,
+			FilterParentID:         params.FilterParentID,
+			FilterArchived:         params.FilterArchived,
+			FilterRuntime:          params.FilterRuntime,
+			FilterSourceType:       params.FilterSourceType,
+			FilterSourceID:         params.FilterSourceID,
+			FilterIncludeSourced:   params.FilterIncludeSourced,
+			FilterUpdatedSinceMs:   params.FilterUpdatedSinceMs,
+			FilterLimit:            params.FilterLimit,
+			FilterQuery:            params.FilterQuery,
+			FilterAfterID:          params.FilterAfterID,
+			FilterAfterAttentionMs: params.FilterAfterAttentionMs,
 		})
 	} else {
 		rows, err = q.ListSessions(ctx, params)
@@ -291,19 +295,26 @@ func sessionListParams(filter storage.SessionFilter) threaddb.ListSessionsParams
 	if !filter.UpdatedSince.IsZero() {
 		updatedSinceMs = timeToMs(filter.UpdatedSince)
 	}
-	return threaddb.ListSessionsParams{
-		FilterArchived:        boolInt(filter.Archived),
-		FilterIncludeChildren: boolInt(filter.IncludeChildren),
-		FilterRootOnly:        boolInt(filter.RootOnly),
-		FilterParentOnly:      boolInt(filter.ParentOnly),
-		FilterParentID:        sql.NullString{String: filter.ParentID, Valid: true},
-		FilterRuntime:         filter.Runtime,
-		FilterSourceType:      filter.SourceType,
-		FilterSourceID:        filter.SourceID,
-		FilterIncludeSourced:  boolInt(filter.IncludeSourced),
-		FilterUpdatedSinceMs:  updatedSinceMs,
-		FilterLimit:           int64(filter.Limit),
+	params := threaddb.ListSessionsParams{
+		FilterQuery:            filter.Query,
+		FilterAfterAttentionMs: math.MaxInt64,
+		FilterArchived:         boolInt(filter.Archived),
+		FilterIncludeChildren:  boolInt(filter.IncludeChildren),
+		FilterRootOnly:         boolInt(filter.RootOnly),
+		FilterParentOnly:       boolInt(filter.ParentOnly),
+		FilterParentID:         sql.NullString{String: filter.ParentID, Valid: true},
+		FilterRuntime:          filter.Runtime,
+		FilterSourceType:       filter.SourceType,
+		FilterSourceID:         filter.SourceID,
+		FilterIncludeSourced:   boolInt(filter.IncludeSourced),
+		FilterUpdatedSinceMs:   updatedSinceMs,
+		FilterLimit:            int64(filter.Limit),
 	}
+	if filter.After != nil {
+		params.FilterAfterID = filter.After.ID
+		params.FilterAfterAttentionMs = filter.After.AttentionAt.UnixMilli()
+	}
+	return params
 }
 
 func (s *Store) LastRootSession() (storage.Session, error) {

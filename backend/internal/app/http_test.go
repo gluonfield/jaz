@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -82,6 +83,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "GET /v1/usage/daily")
 	requireRoute(t, routes, "GET /v1/usage/models")
 	requireRoute(t, routes, "GET /v1/feed")
+	requireRoute(t, routes, "GET /v1/sessions")
 	requireRoute(t, routes, "GET /v1/feed/completions")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/messages")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/overview")
@@ -91,6 +93,13 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "POST /v1/voice/connect")
 	requireRoute(t, routes, "POST /v1/sessions/{session}/voice/transcript")
 	requireRoute(t, routes, "/v1/preview/")
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/sessions?archived=true&limit=1", nil)
+	request.Header.Set("Authorization", "Bearer secret")
+	(&server.Server{Store: store, Routes: routes, AuthKey: "secret"}).Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("session list status = %d: %s", response.Code, response.Body.String())
+	}
 	if len(publicRoutes) != 1 ||
 		publicRoutes[0].Match == nil ||
 		publicRoutes[0].Handler == nil {

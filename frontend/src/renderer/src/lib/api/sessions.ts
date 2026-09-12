@@ -364,16 +364,6 @@ export function answerSessionInteractiveResponse(
   return post<{ ok: boolean }>(`/v1/sessions/${id}/interactive-response`, input)
 }
 
-export const archivedSessionsQuery = queryOptions({
-  queryKey: keys.archivedSessions,
-  queryFn: async () => {
-    const data = await get<{ sessions: Session[] | null }>(
-      '/v1/sessions?archived=true&include_children=true',
-    )
-    return groupSessionsForDisplay(data.sessions ?? [])
-  },
-})
-
 function sessionTime(session: Session): number {
   const ms = Date.parse(session.last_attention_at || session.updated_at)
   return Number.isNaN(ms) ? 0 : ms
