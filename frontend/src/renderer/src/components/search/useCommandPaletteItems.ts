@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { Server, Settings2, SquarePen } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import { useDebouncedValue } from '@/lib/hooks/useDebouncedValue'
 import {
   type SettingsSection,
   useExperimentalFeaturesEnabled,
@@ -10,15 +11,6 @@ import {
 import { searchThreads } from '@/lib/api/search'
 import { keys } from '@/lib/query/keys'
 import type { PaletteCommand, PaletteThread } from './commandPaletteTypes'
-
-function useDebouncedValue(value: string, delay: number): string {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay)
-    return () => window.clearTimeout(timer)
-  }, [delay, value])
-  return debounced
-}
 
 function commandMatches(item: PaletteCommand, query: string): boolean {
   const needle = query.trim().toLocaleLowerCase()

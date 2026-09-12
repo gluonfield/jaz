@@ -1,18 +1,21 @@
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { copyFile, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { build } from 'vite'
 import { createRequire } from 'node:module'
+import { execFileSync } from 'node:child_process'
 import tailwindcss from '@tailwindcss/vite'
 
 const output = await mkdtemp(join(tmpdir(), 'jaz-browser-smoke-'))
+execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(output, 'key.pem'), '-out', join(output, 'cert.pem'), '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost'], { stdio: 'ignore' })
 const codex = process.argv.includes('--codex') ? Bun.which('codex') : ''
 if (codex === null) {
   throw new Error('Install and sign in to the Codex CLI before running this check')
 }
-for (const entry of ['main.ts', 'preload.ts']) {
+await copyFile(resolve('out/preload/index.js'), join(output, 'index.js'))
+for (const entry of ['scripts/browser-smoke/main.ts', 'scripts/browser-smoke/preload.ts']) {
   const result = await Bun.build({
-    entrypoints: [resolve('scripts/browser-smoke', entry)],
+    entrypoints: [resolve(entry)],
     outdir: output,
     target: 'node',
     format: 'cjs',
@@ -20,8 +23,8 @@ for (const entry of ['main.ts', 'preload.ts']) {
     plugins: [{
       name: 'source-paths',
       setup(build) {
-        build.onResolve({ filter: /^@(?:main|shared)?\// }, (args) => {
-          const file = args.path.replace('@main/', 'src/main/').replace('@shared/', 'src/shared/').replace('@/', 'src/renderer/src/')
+        build.onResolve({ filter: /^@(?:main|shared|preload)?\// }, (args) => {
+          const file = args.path.replace('@main/', 'src/main/').replace('@shared/', 'src/shared/').replace('@preload/', 'src/preload/').replace('@/', 'src/renderer/src/')
           return { path: Bun.resolveSync(resolve(file), process.cwd()) }
         })
       },
@@ -65,7 +68,7 @@ const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './in
     JAZ_BROWSER_SMOKE_DIR: output,
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
-    JAZ_BROWSER_SMOKE_TIMEOUT_MS: codex ? '180000' : '45000',
+    JAZ_BROWSER_SMOKE_TIMEOUT_MS: codex ? '180000' : '75000',
   },
   stdout: 'inherit',
   stderr: 'inherit',

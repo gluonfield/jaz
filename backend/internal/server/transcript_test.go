@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -83,46 +82,5 @@ func TestSessionTranscriptFiltersToolsAndRoles(t *testing.T) {
 	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/transcript?max_tool_chars=-1", nil))
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request for negative max_tool_chars, got %d", res.Code)
-	}
-}
-
-func TestListSessionsUpdatedSince(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	old, err := store.CreateSession(storage.CreateSession{Slug: "old", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(5 * time.Millisecond)
-	cutoff := time.Now().UTC()
-	time.Sleep(5 * time.Millisecond)
-	fresh, err := store.CreateSession(storage.CreateSession{Slug: "fresh", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler := (&Server{Store: store}).Handler()
-
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/sessions?updated_since="+cutoff.Format(time.RFC3339Nano), nil))
-	if res.Code != http.StatusOK {
-		t.Fatalf("list status = %d, body = %s", res.Code, res.Body.String())
-	}
-	var listed struct {
-		Sessions []storage.Session `json:"sessions"`
-	}
-	if err := json.Unmarshal(res.Body.Bytes(), &listed); err != nil {
-		t.Fatal(err)
-	}
-	if len(listed.Sessions) != 1 || listed.Sessions[0].ID != fresh.ID {
-		t.Fatalf("expected only fresh session %s, got %#v (old=%s)", fresh.ID, listed.Sessions, old.ID)
-	}
-
-	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/sessions?updated_since=not-a-time", nil))
-	if res.Code != http.StatusBadRequest {
-		t.Fatalf("expected bad request for malformed updated_since, got %d", res.Code)
 	}
 }

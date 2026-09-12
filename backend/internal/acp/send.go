@@ -28,7 +28,7 @@ func (j *jobState) sendConflict() *turnInProgressError {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	if j.turn != nil {
-		return &turnInProgressError{done: j.turn.done, finishing: j.State != StateRunning && j.State != StateStarting}
+		return &turnInProgressError{done: j.turn.done, finishing: j.turn.promptCalls == 0 || (j.State != StateRunning && j.State != StateStarting)}
 	}
 	if j.finishing != nil {
 		return &turnInProgressError{done: j.finishing, finishing: true}
@@ -230,7 +230,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext) (chan struct{}, error) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
-	if job.turn == nil || (job.State != StateRunning && job.State != StateStarting) {
+	if job.turn == nil || job.turn.promptCalls == 0 || (job.State != StateRunning && job.State != StateStarting) {
 		return nil, errTurnEnded
 	}
 	if job.steerMethod == steerUnsupported {
@@ -308,5 +308,7 @@ func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, d
 		m.runPromptCall(ctx, job, done, prompt)
 	case steerNative:
 		m.runNativeSteerCall(ctx, job, done, prompt)
+	case steerGrokInterject:
+		m.runGrokInterject(ctx, job, done, prompt)
 	}
 }

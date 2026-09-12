@@ -19,7 +19,7 @@
     "dev:web": "vite --config vite.web.config.ts",
     "test": "bun test",
     "test:dictation": "bun scripts/test-dictation.ts",
-    "test:browser": "bun scripts/test-browser.ts",
+    "test:browser": "bun run build:bundle && bun scripts/test-browser.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json"
   },

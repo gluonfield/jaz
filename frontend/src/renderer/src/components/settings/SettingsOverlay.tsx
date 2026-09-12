@@ -225,7 +225,7 @@ function SectionContent({
 }) {
   switch (section) {
     case 'voice':
-      return <VoiceSettings onNavigate={onNavigate} />
+      return <VoiceSettings />
     case 'general':
       return <GeneralSettings />
     case 'appearance':

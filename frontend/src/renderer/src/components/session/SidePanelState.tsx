@@ -1,6 +1,6 @@
 import { ChevronDown } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import { clientRuntime } from '@/lib/clientRuntime'
@@ -10,6 +10,7 @@ import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { useSessionPreview } from '@/lib/browserSessions'
+import { SidebarVisibility } from '@/lib/sidebar'
 import { SIDE_PANEL_LAYOUT, type SidePanelView } from './SidePanel'
 
 const PANEL_OPEN_KEY = 'jaz.sessionPanel'
@@ -17,46 +18,61 @@ const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
 
 export function useSidePanelState(sessionId: string, sideChatAvailable = false) {
+  const setSidebarOpen = useContext(SidebarVisibility)
+  const [containerWidth, setContainerWidth] = useState(0)
+  const containerRef = useCallback((element: HTMLDivElement | null) => {
+    if (!element) {
+      return
+    }
+    const observer = new ResizeObserver(([entry]) => setContainerWidth(Math.round(entry.contentRect.width)))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   const [open, setOpen] = useState(() => {
     const stored = localStorage.getItem(PANEL_OPEN_KEY)
     return stored === 'open' ? true : stored === 'closed' ? false : !isMobileViewport()
   })
   const [view, setView] = useState<SidePanelView>('overview')
-  const [widthOverride, setWidthOverride] = useState<number | null>(null)
+  const [widthOverrides, setWidthOverrides] = useState<Partial<Record<SidePanelView, number>>>({})
   const [resizing, setResizing] = useState(false)
   const [fileRef, setFileRef] = useState<FileReference | null>(null)
   const activeView = view === 'side-chat' && !sideChatAvailable ? 'overview' : view
   const layout = SIDE_PANEL_LAYOUT[activeView]
-  const defaultWidth = layout.width
-  const maxWidth = sidePanelMaxWidth(defaultWidth)
-  const width = layout.resizable ? clampSidePanelWidth(widthOverride ?? defaultWidth, defaultWidth) : defaultWidth
+  const availableWidth = containerWidth - PANEL_MIN_THREAD_WIDTH
+  const minWidth = activeView === 'preview' ? Math.min(400, Math.max(240, availableWidth)) : layout.width
+  const defaultWidth = activeView === 'preview' ? Math.max(layout.width, Math.round(containerWidth * 0.6)) : layout.width
+  const maxWidth = Math.max(minWidth, activeView === 'preview' ? availableWidth : Math.min(PANEL_MAX_WIDTH, availableWidth))
+  const width = layout.resizable ? clampSidePanelWidth(widthOverrides[activeView] ?? defaultWidth, minWidth, maxWidth) : defaultWidth
 
   useEffect(() => {
     localStorage.setItem(PANEL_OPEN_KEY, open ? 'open' : 'closed')
   }, [open])
 
-  const toggle = useCallback(() => setOpen((value) => !value), [])
-  const resize = useCallback((next: number) => setWidthOverride(clampSidePanelWidth(next, defaultWidth)), [defaultWidth])
+  const toggle = useCallback(() => {
+    if (!open && activeView === 'preview') {
+      setSidebarOpen?.(false)
+    }
+    setOpen(!open)
+  }, [open, activeView, setSidebarOpen])
+  const resize = useCallback((next: number) => setWidthOverrides((current) => ({ ...current, [activeView]: clampSidePanelWidth(next, minWidth, maxWidth) })), [activeView, minWidth, maxWidth])
 
   const selectView = useCallback((next: SidePanelView) => {
+    if (next === 'preview') {
+      setSidebarOpen?.(false)
+    }
     setView(next)
     setOpen(true)
-  }, [])
+  }, [setSidebarOpen])
 
   const showPreview = useCallback(() => selectView('preview'), [selectView])
   const { target: previewTarget, setTarget: setPreviewTarget } = useSessionPreview(sessionId, showPreview)
 
   const openPreview = useCallback((url: string) => {
     setPreviewTarget({ displayUrl: url, sourceUrl: url })
-    setView('preview')
-    setOpen(true)
-  }, [setPreviewTarget])
+    selectView('preview')
+  }, [setPreviewTarget, selectView])
 
   useEffect(() => clientRuntime.onOpenPreviewURL?.(openPreview), [openPreview])
-
-  useWindowEvent('resize', () => {
-    setWidthOverride((current) => (current === null ? null : clampSidePanelWidth(current, defaultWidth)))
-  })
 
   const openFile = useCallback((file: string | FileReference) => {
     const ref = typeof file === 'string' ? parseFileReference(file) : file
@@ -88,6 +104,7 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false) 
   })
 
   return {
+    containerRef,
     fileRef,
     open,
     previewTarget,
@@ -99,7 +116,7 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false) 
     toggle,
     view: activeView,
     width,
-    defaultWidth,
+    minWidth,
     maxWidth,
     resizable: layout.resizable,
     openFile,
@@ -107,13 +124,8 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false) 
   }
 }
 
-function clampSidePanelWidth(width: number, minWidth: number): number {
-  return Math.round(Math.min(Math.max(width, minWidth), sidePanelMaxWidth(minWidth)))
-}
-
-function sidePanelMaxWidth(minWidth: number): number {
-  if (typeof window === 'undefined') return PANEL_MAX_WIDTH
-  return Math.max(minWidth, Math.min(PANEL_MAX_WIDTH, window.innerWidth - PANEL_MIN_THREAD_WIDTH))
+function clampSidePanelWidth(width: number, minWidth: number, maxWidth: number): number {
+  return Math.round(Math.min(Math.max(width, minWidth), maxWidth))
 }
 
 const SIDE_PANEL_VIEW_LABEL: Record<SidePanelView, string> = {

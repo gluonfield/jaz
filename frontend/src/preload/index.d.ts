@@ -6,6 +6,7 @@ import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI } from '../shared/dictation'
 import type { BrowserCommandRequest } from '@shared/browserControl'
 import type { BrowserProfileAPI } from '@shared/browserProfile'
+import type { BrowserPasswordAPI } from '@shared/browserPasswords'
 import type { VoiceOverlayAPI } from '@shared/voice'
 
 declare global {
@@ -14,6 +15,7 @@ declare global {
       voiceOverlay: VoiceOverlayAPI
       dictation: DictationAPI
       browserProfiles: BrowserProfileAPI
+      browserPasswords: BrowserPasswordAPI
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       apiBaseUrl: string
       windowKind: 'main' | 'board' | 'launcher' | 'voice'

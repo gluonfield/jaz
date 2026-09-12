@@ -406,12 +406,12 @@ func (s *Store) listSessionsLocked(filter storage.SessionFilter) ([]storage.Sess
 		sessions = append(sessions, session)
 	}
 	sort.Slice(sessions, func(i, j int) bool {
-		left := storage.SessionAttentionAt(sessions[i])
-		right := storage.SessionAttentionAt(sessions[j])
-		if left.Equal(right) {
+		left := storage.SessionAttentionAt(sessions[i]).UnixMilli()
+		right := storage.SessionAttentionAt(sessions[j]).UnixMilli()
+		if left == right {
 			return sessions[i].ID < sessions[j].ID
 		}
-		return left.After(right)
+		return left > right
 	})
 	if filter.Limit > 0 && len(sessions) > filter.Limit {
 		sessions = sessions[:filter.Limit]

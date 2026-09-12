@@ -68,12 +68,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		return fmt.Sprintf("fake:%s:%d", kind, messageSeq)
 	}
 	var pendingPrompt *jsonrpc.Message
+	grokInterjections := 0
 	cancelArrived := false
 	for {
 		msg, err := conn.Receive(context.Background())
 		if err != nil {
 			os.Exit(0)
 		}
+		logFakeACPRequest(t, msg)
 		if !msg.IsRequest() {
 			if msg.Method == "session/cancel" {
 				if pendingPrompt != nil {
@@ -85,7 +87,6 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			continue
 		}
-		logFakeACPRequest(t, msg)
 		switch msg.Method {
 		case "initialize":
 			if os.Getenv("JAZ_FAKE_ACP_EXPECT_TERMINAL_AUTH") == "1" {
@@ -133,6 +134,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				response["_meta"] = map[string]any{
 					"steering": map[string]any{"supported": true, "waitForCompletion": true},
 				}
+			}
+			if os.Getenv("JAZ_FAKE_ACP_GROK_INTERJECT") == "1" {
+				response["_meta"] = map[string]any{"grokShell": true, "agentVersion": "1.0.25"}
 			}
 			sendResult(conn, msg, response)
 		case "session/load", "session/resume":
@@ -342,6 +346,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			currentEffort = req.Value
 			sendResult(conn, msg, map[string]any{})
+		case "_x.ai/interject":
+			grokInterjections++
+			pendingPrompt = fakeGrokInterject(t, conn, msg, pendingPrompt, grokInterjections)
 		case "_session/steering":
 			var req struct {
 				WaitForCompletion bool `json:"waitForCompletion"`

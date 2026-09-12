@@ -73,13 +73,11 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	}
 	job.mu.Lock()
 	turn := job.turn
-	if turn == nil || turn.done != done {
+	if turn == nil || turn.done != done || turn.promptCalls == 0 {
 		job.mu.Unlock()
 		return
 	}
-	if turn.promptCalls > 0 {
-		turn.promptCalls--
-	}
+	turn.promptCalls--
 	remaining := turn.promptCalls
 	if remaining > 0 && !cancelRequested {
 		handoff := turn.promptHandoff
@@ -115,12 +113,9 @@ func hasVisibleTurnResult(job *jobState, turn *activeTurn) bool {
 func (m *Manager) failPromptCall(done chan struct{}, job *jobState, err error) {
 	job.mu.Lock()
 	turn := job.turn
-	if turn == nil || turn.done != done {
+	if turn == nil || turn.done != done || turn.promptCalls == 0 {
 		job.mu.Unlock()
 		return
-	}
-	if turn.promptCalls > 0 {
-		turn.promptCalls--
 	}
 	turn.promptCalls = 0
 	job.mu.Unlock()

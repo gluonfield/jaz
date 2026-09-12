@@ -54,6 +54,7 @@ type routeDeps struct {
 
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := server.Routes{
+		{Pattern: "GET /v1/sessions", Handler: sessionsapi.NewListHandler(deps.Store)},
 		{Pattern: "PUT /v1/sessions/{session}/agent/config", Handler: http.HandlerFunc(deps.AgentSession.SetConfig)},
 		{Pattern: "POST /v1/sessions/{session}/agent/tasks/{task}/stop", Handler: http.HandlerFunc(deps.AgentSession.StopTask)},
 		{Pattern: "POST /v1/sessions/{session}/agent/input", Handler: http.HandlerFunc(deps.AgentSession.Input)},

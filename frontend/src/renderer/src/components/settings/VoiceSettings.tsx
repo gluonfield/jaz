@@ -1,13 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SettingsCard } from '@/components/settings/SettingsCard'
-import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Select } from '@/components/ui/Select'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { updateVoiceSettings, voiceSettingsQuery } from '@/lib/api/liveVoice'
-import type { SettingsSection } from '@/components/settings/sections'
 
-export function VoiceSettings({ onNavigate }: { onNavigate: (section: SettingsSection) => void }) {
+export function VoiceSettings() {
   const query = useQuery(voiceSettingsQuery)
   const client = useQueryClient()
   const save = useMutation({
@@ -73,17 +71,6 @@ export function VoiceSettings({ onNavigate }: { onNavigate: (section: SettingsSe
         </div>
         {save.isError ? <p role="alert" className="py-3 text-[12px] text-danger">{save.error.message}</p> : null}
       </SettingsCard>
-      <p className="mt-4 text-[13px] text-ink-2">
-        Your thread keeps its selected agent and model, including Claude. Tool approvals appear in the chat. Provider changes apply to your next voice conversation.
-      </p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" onClick={() => onNavigate('agents')}>
-          Manage OAuth sign-in
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => onNavigate('providers')}>
-          Manage API key
-        </Button>
-      </div>
     </section>
   )
 }

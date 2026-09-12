@@ -7,10 +7,12 @@ import { exerciseProfileImport } from './profiles-ui'
 import { exerciseBrowserIdentity } from './identity'
 import '@/styles/globals.css'
 import { exerciseBrowserLifecycle } from './lifecycle'
+import { exercisePasswords } from './passwords'
+import { exerciseBrowserLayout } from './layout'
 
 declare global {
   interface Window {
-    smoke: { backend(): Promise<string>; browserExists(id: number): Promise<boolean>; capture(name?: string): Promise<void>; resize(width: number, height: number): Promise<void>; result(result: unknown): void }
+    smoke: { backend(): Promise<string>; browserExists(id: number): Promise<boolean>; passwordStore(): Promise<{ count: number; plaintext: boolean }>; pointer(type: string, x: number, y: number): Promise<void>; capture(name?: string): Promise<void>; resize(width: number, height: number): Promise<void>; result(result: unknown): void }
   }
 }
 
@@ -33,6 +35,8 @@ function Fixture() {
     let stage = 'opening, profile import and cursor checks'
     const timeout = setTimeout(() => window.smoke.result({ ok: false, error: 'Browser smoke timed out', stage, pending: [...pending.values()] }), Number(new URLSearchParams(location.search).get('timeout') || 30000))
     const run = async () => {
+      stage = 'browser layout, navigation collapse and resize grip'
+      await exerciseBrowserLayout()
       stage = 'background browser lifecycle'
       await exerciseBrowserLifecycle(await window.smoke.backend(), (next) => {
         stage = next
@@ -47,6 +51,8 @@ function Fixture() {
       await exerciseBrowserIdentity(evaluate)
       stage = 'profile import'
       await exerciseProfileImport(evaluate)
+      stage = 'password saving, filling and origin isolation'
+      await exercisePasswords(browser)
       stage = 'cursor ordering and cancellation'
       const point = await evaluate(`(() => {
         const r = document.querySelector('button').getBoundingClientRect()
@@ -193,7 +199,7 @@ await tab.scroll('down', 0, targetRef)` } })
       await window.smoke.capture()
       socket.close()
       browser.dispose()
-      window.smoke.result({ ok: true, checks: ['Chromium AX hierarchy, diffs, hidden-frame exclusion and root-index scrolling', 'trusted AX clicks on wrapped text, closed shadows and nested frames', 'hit-tested coordinates and obscured-target rejection', 'nested debugger sessions survive document replacement', 'native Chromium identity across first navigation, fetch, page, worker and client hints', 'cursor arrival precedes input', 'trusted click and hover', 'persistent direct CDP without overlay movement', 'zero scroll animates and hovers without scrolling', 'animated and raw-command cancellation', 'cancellation during preview URL resolution', 'webview ownership', 'MCP script through Go and Electron with verified page result', 'profile import rejects untrusted callers', 'selected encrypted cookies authenticate the side browser', 'import dismissal, profile selection, failure retry, themes and narrow layout'] })
+      window.smoke.result({ ok: true, checks: ['browser opening collapses navigation, wider defaults, pointer and keyboard resizing', 'HTTPS password save/update/fill/delete, encrypted reload, consent and origin isolation', 'Chromium AX hierarchy, diffs, hidden-frame exclusion and root-index scrolling', 'trusted AX clicks on wrapped text, closed shadows and nested frames', 'hit-tested coordinates and obscured-target rejection', 'nested debugger sessions survive document replacement', 'native Chromium identity across first navigation, fetch, page, worker and client hints', 'cursor arrival precedes input', 'trusted click and hover', 'persistent direct CDP without overlay movement', 'zero scroll animates and hovers without scrolling', 'animated and raw-command cancellation', 'cancellation during preview URL resolution', 'webview ownership', 'MCP script through Go and Electron with verified page result', 'profile import rejects untrusted callers', 'selected encrypted cookies authenticate the side browser', 'import dismissal, profile selection, failure retry, themes and narrow layout'] })
     }
     void run().catch((error) => window.smoke.result({ ok: false, error: error.message, stack: error.stack, stage, pending: [...pending.values()] })).finally(() => clearTimeout(timeout))
   }, [browser])

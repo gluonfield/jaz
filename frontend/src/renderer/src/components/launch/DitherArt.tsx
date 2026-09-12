@@ -236,7 +236,7 @@ export function DitherArt({
       role="img"
       aria-label={label}
       aria-hidden={label ? undefined : true}
-      style={{ width, maxWidth: '100%', display: 'block' }}
+      style={{ width, maxWidth: '100%', marginInline: 'auto', display: 'block' }}
     />
   )
 }
@@ -268,11 +268,17 @@ function wordmarkCols(text: string): number {
 }
 
 // A wordmark dissolving in as dithered brand grain: "jaz" on the boot and
-// onboarding screens, the user's own text above the new-thread composer.
-export function DitherWordmark({ text = 'jaz', delay = 0 }: { text?: string; delay?: number }) {
-  const { draw, cols } = useMemo(() => ({ draw: drawText(text), cols: wordmarkCols(text) }), [text])
+// onboarding screens, the user's own text above the new-thread composer. Under
+// a `maxWidth`, longer text steps to a finer grain rather than growing past it;
+// past that, the canvas scales down as one image (its max-width).
+export function DitherWordmark({ text = 'jaz', delay = 0, maxWidth = Infinity }: { text?: string; delay?: number; maxWidth?: number }) {
+  const { draw, cols, dot } = useMemo(() => {
+    const cols = wordmarkCols(text)
+    const dot = [3, 2].find((size) => cols * (size + 1) - 1 <= maxWidth) ?? 2
+    return { draw: drawText(text), cols, dot }
+  }, [text, maxWidth])
   return (
-    <DitherArt draw={draw} cols={cols} rows={WORDMARK_ROWS} delay={delay} waitForFonts buildKey={`wordmark:${text}`} label={text} />
+    <DitherArt draw={draw} cols={cols} rows={WORDMARK_ROWS} dot={dot} delay={delay} waitForFonts buildKey={`wordmark:${text}`} label={text} />
   )
 }
 

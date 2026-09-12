@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/log v0.4.2
 	github.com/creack/pty v1.1.24
 	github.com/gluonfield/acp-transport v0.0.0-20260707222133-89e81dff59f0
-	github.com/gluonfield/jazmem v0.0.0-20260629183144-772a456cd714
+	github.com/gluonfield/jazmem v0.0.0-20260912084437-4d801b950d2b
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3

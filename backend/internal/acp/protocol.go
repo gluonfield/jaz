@@ -20,6 +20,8 @@ const (
 
 func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {
 	switch req.Method {
+	case "_x.ai/session/interjection", "_x.ai/session_notification":
+		return m.grokInterjectionEvent(req)
 	case acpschema.ClientMethodSessionUpdate:
 		var note struct {
 			SessionID string          `json:"sessionId"`

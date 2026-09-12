@@ -1,7 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	"image/png"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -23,10 +27,6 @@ func TestSessionFileRead(t *testing.T) {
 	}
 	file := filepath.Join(dir, "src", "previewWebview.ts")
 	if err := os.WriteFile(file, []byte("export type Preview = string\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	pdf := filepath.Join(dir, "paper.pdf")
-	if err := os.WriteFile(pdf, []byte("%PDF-1.7\nbody"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := jsonstore.New(t.TempDir())
@@ -78,20 +78,59 @@ func TestSessionFileRead(t *testing.T) {
 		t.Fatalf("file URL read = %#v", fileURL)
 	}
 
-	rawReq := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/file?raw=1&path=paper.pdf", nil)
-	rawRes := httptest.NewRecorder()
-	handler.ServeHTTP(rawRes, rawReq)
-	if rawRes.Code != http.StatusOK {
-		t.Fatalf("raw file status = %d, body = %s", rawRes.Code, rawRes.Body.String())
+	pixels := image.NewNRGBA(image.Rect(0, 0, 1024, 512))
+	if _, err := rand.New(rand.NewSource(1)).Read(pixels.Pix); err != nil {
+		t.Fatal(err)
 	}
-	if ctype := rawRes.Header().Get("Content-Type"); ctype != "application/pdf" {
-		t.Fatalf("raw Content-Type = %q", ctype)
+	var encoded bytes.Buffer
+	if err := png.Encode(&encoded, pixels); err != nil {
+		t.Fatal(err)
 	}
-	if disposition := rawRes.Header().Get("Content-Disposition"); !strings.Contains(disposition, "inline") || !strings.Contains(disposition, "paper.pdf") {
-		t.Fatalf("raw Content-Disposition = %q", disposition)
+	if encoded.Len() <= sessionFileReadLimit {
+		t.Fatal("image must exceed the text preview limit")
 	}
-	if !strings.HasPrefix(rawRes.Body.String(), "%PDF") {
-		t.Fatalf("raw body = %q", rawRes.Body.String())
+	rawHandler := (&Server{Store: store, AuthKey: "image-key"}).Handler()
+	for _, asset := range []struct {
+		name        string
+		contentType string
+		content     []byte
+	}{
+		{"paper.pdf", "application/pdf", []byte("%PDF-1.7\nbody")},
+		{"chart #1.png", "image/png", encoded.Bytes()},
+		{"chart #1.svg", "image/svg+xml", []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle cx="5" cy="5" r="4"/></svg>`)},
+	} {
+		t.Run(asset.name, func(t *testing.T) {
+			file := filepath.Join(dir, asset.name)
+			if err := os.WriteFile(file, asset.content, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			for _, reference := range []string{asset.name, file, filepathx.FileURI(file)} {
+				for _, key := range []string{"", "wrong-key", "image-key"} {
+					params := url.Values{"path": {reference}, "raw": {"1"}, "key": {key}}
+					req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/file?"+params.Encode(), nil)
+					res := httptest.NewRecorder()
+					rawHandler.ServeHTTP(res, req)
+					if key != "image-key" {
+						if res.Code != http.StatusUnauthorized {
+							t.Fatalf("unauthenticated raw file status = %d", res.Code)
+						}
+						continue
+					}
+					if res.Code != http.StatusOK || !bytes.Equal(res.Body.Bytes(), asset.content) {
+						t.Fatalf("raw file %q: status = %d, received %d bytes, want %d", reference, res.Code, res.Body.Len(), len(asset.content))
+					}
+					if got := res.Header().Get("Content-Type"); got != asset.contentType {
+						t.Fatalf("Content-Type = %q, want %q", got, asset.contentType)
+					}
+					if got := res.Header().Get("Content-Disposition"); !strings.HasPrefix(got, "inline;") || !strings.Contains(got, asset.name) {
+						t.Fatalf("Content-Disposition = %q", got)
+					}
+					if got := res.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+						t.Fatalf("X-Content-Type-Options = %q", got)
+					}
+				}
+			}
+		})
 	}
 
 	tempFile := filepath.Join(t.TempDir(), "agent-output.txt")
