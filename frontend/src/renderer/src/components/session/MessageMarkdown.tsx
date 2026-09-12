@@ -10,12 +10,14 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
-import Markdown, { type Components, type ExtraProps } from 'react-markdown'
+import Markdown, { defaultUrlTransform, type Components, type ExtraProps } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import { Favicon } from '@/components/ui/Favicon'
+import { MarkdownImage, MarkdownImageLinkContext } from '@/components/session/MarkdownImage'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
+import { markdownImageSource } from '@/lib/markdownImages'
 import { findFileReferences, parseFileReference, type FileReference } from '../../../../shared/fileReader'
 import { CodeBlock } from './CodeBlock'
 import { encodeMention } from './mentionCodec'
@@ -23,6 +25,10 @@ import { MentionPill } from './mentions'
 
 const PreviewLinkContext = createContext<((url: string) => void) | null>(null)
 const FileReaderLinkContext = createContext<((file: FileReference) => void) | null>(null)
+const MarkdownFileContext = createContext<{
+  sessionId: string
+  documentPath?: string
+} | null>(null)
 
 export function usePreviewLink() {
   return useContext(PreviewLinkContext)
@@ -40,12 +46,21 @@ export function PreviewLinkProvider({
 
 export function FileReaderLinkProvider({
   onOpen,
+  sessionId,
+  documentPath,
   children,
 }: {
   onOpen: (file: FileReference) => void
+  sessionId: string
+  documentPath?: string
   children: ReactNode
 }) {
-  return <FileReaderLinkContext.Provider value={onOpen}>{children}</FileReaderLinkContext.Provider>
+  const fileContext = useMemo(() => ({ sessionId, documentPath }), [sessionId, documentPath])
+  return (
+    <FileReaderLinkContext.Provider value={onOpen}>
+      <MarkdownFileContext value={fileContext}>{children}</MarkdownFileContext>
+    </FileReaderLinkContext.Provider>
+  )
 }
 
 // Models often emit \[...\] / \(...\) math delimiters; remark-math only
@@ -206,14 +221,18 @@ function BaseMarkdown({
   className: string
   Link: AnchorComponent
 }) {
+  const files = useContext(MarkdownFileContext)
   const prepared = useMemo(() => normalizeMath(text), [text])
-  const components = useMemo<Components>(() => ({ a: Link, pre: CodeBlock, table: MarkdownTable }), [Link])
+  const components = useMemo<Components>(() => ({ a: Link, img: MarkdownImage, pre: CodeBlock, table: MarkdownTable }), [Link])
   return (
     <div className={className}>
       <Markdown
         remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences]}
         rehypePlugins={[rehypeKatex]}
         components={components}
+        urlTransform={(url, key, node) => key === 'src' && node.tagName === 'img'
+          ? markdownImageSource(url, files?.sessionId, files?.documentPath)
+          : defaultUrlTransform(url)}
       >
         {prepared}
       </Markdown>
@@ -233,6 +252,7 @@ const MessageMarkdownLink: AnchorComponent = ({ children, href, ...props }) => {
 const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...props }) => {
   const openFile = useContext(FileReaderLinkContext)
   const localFile = localFileFromLink(href, children)
+  const linkedChildren = <MarkdownImageLinkContext value={true}>{children}</MarkdownImageLinkContext>
   if (localFile) {
     return (
       <button
@@ -248,7 +268,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
           size={13}
           strokeWidth={1.7}
         />
-        <span className="min-w-0">{children}</span>
+        <span className="min-w-0">{linkedChildren}</span>
       </button>
     )
   }
@@ -262,7 +282,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
       rel="noreferrer"
     >
       <Favicon url={href} className="chat-prose-link-icon" />
-      <span className="min-w-0">{children}</span>
+      <span className="min-w-0">{linkedChildren}</span>
     </a>
   )
 }

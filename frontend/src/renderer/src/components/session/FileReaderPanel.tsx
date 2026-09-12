@@ -109,7 +109,8 @@ export function FileReaderPanel({
           <p className="px-3 py-4 text-[12px] text-ink-3">Binary file — no text preview.</p>
         ) : (
           <FilePreview
-            path={file.data.relative_path || file.data.path}
+            sessionId={session.id}
+            path={file.data.path}
             content={file.data.content ?? ''}
             highlightLine={fileRef?.line}
             onOpenFile={onOpenFile}
@@ -121,11 +122,13 @@ export function FileReaderPanel({
 }
 
 function FilePreview({
+  sessionId,
   path,
   content,
   highlightLine,
   onOpenFile,
 }: {
+  sessionId: string
   path: string
   content: string
   highlightLine?: number
@@ -133,8 +136,8 @@ function FilePreview({
 }) {
   if (isMarkdownPath(path)) {
     return (
-      <FileReaderLinkProvider onOpen={onOpenFile}>
-        <FileMarkdownView content={content} />
+      <FileReaderLinkProvider sessionId={sessionId} documentPath={path} onOpen={onOpenFile}>
+        <RenderedMarkdown text={content} className="file-prose" />
       </FileReaderLinkProvider>
     )
   }
@@ -179,10 +182,6 @@ function FileTextView({
       </table>
     </div>
   )
-}
-
-function FileMarkdownView({ content }: { content: string }) {
-  return <RenderedMarkdown text={content} className="file-prose" />
 }
 
 function PDFFileView({ url }: { url: string }) {
