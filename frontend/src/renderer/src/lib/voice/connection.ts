@@ -1,5 +1,6 @@
 import { connectVoice, type VoiceProvider } from '@/lib/api/liveVoice'
 import { decodeVoiceEvent, voiceContextEvents, type VoiceEvent } from '@/lib/voice/protocol'
+import { requestMicrophone } from '@/lib/voice/microphone'
 
 export class VoiceConnection {
   private peer = new RTCPeerConnection()
@@ -66,9 +67,7 @@ export class VoiceConnection {
   private async prepareMicrophone() {
     await this.context.resume()
     if (this.closed || this.ending) return
-    const microphone = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    })
+    const microphone = await requestMicrophone()
     if (this.closed || this.ending) {
       microphone.getTracks().forEach((track) => track.stop())
       return
