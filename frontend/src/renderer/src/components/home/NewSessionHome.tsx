@@ -6,6 +6,9 @@ import { FileDropScope } from '@/components/ui/FileDrop'
 import { useHomeWordmark } from '@/lib/appearance'
 import type { SendMessageHandler } from '@/lib/sendMessage'
 
+// One column, as wide as the composer card: the wordmark never outgrows it.
+const HOME_WIDTH = 640
+
 // Welcome mode: the dithered wordmark over the composer card, standing on
 // the boot screen's brandscape under a sky that follows the theme.
 export function NewSessionHome({
@@ -33,13 +36,13 @@ export function NewSessionHome({
   return (
     <FileDropScope className="relative flex h-full flex-col overflow-hidden">
       <motion.div
-        className="flex flex-1 flex-col items-center justify-center gap-8 px-10 py-8 max-sm:px-4"
+        className="flex flex-1 items-center justify-center px-10 py-8 max-sm:px-4"
         initial={{ opacity: 0, y: 14, scale: 0.985 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: 'spring', stiffness: 320, damping: 28 }}
       >
-        <DitherWordmark text={wordmark} />
-        <div className="w-full max-w-[640px]">
+        <div className="flex w-full flex-col gap-8" style={{ maxWidth: HOME_WIDTH }}>
+          <DitherWordmark text={wordmark} maxWidth={HOME_WIDTH} />
           <ComposerCard
             streaming={creating}
             autoFocus
