@@ -5,7 +5,6 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
-import { PanelLeft } from 'lucide-react'
 import { motion } from 'motion/react'
 import {
   type PointerEvent as ReactPointerEvent,
@@ -20,6 +19,7 @@ import { CommandPalette } from '@/components/search/CommandPalette'
 import { isSettingsSection, type SettingsSection } from '@/components/settings/sections'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
+import { TitlebarNavigation } from '@/components/sidebar/TitlebarNavigation'
 import { ToastProvider } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { SidebarVisibility } from '@/lib/sidebar'
@@ -169,6 +169,8 @@ function RootLayout() {
   // over the thread rather than a resizable column, and auto-dismisses on
   // navigation to reveal the thread underneath.
   const isMobile = useIsMobile()
+  const titlebarInset = (isMacDesktop && !isMobile ? 80 : 8)
+    + (sidebarOpen ? 40 : 80) + (isMobile ? 0 : 80) + 8
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   useEffect(() => {
     if (isMobile) setSidebarOpen(false)
@@ -288,12 +290,9 @@ function RootLayout() {
           </motion.div>
 
           <main className={`flex min-w-0 flex-1 flex-col ${onBoard ? 'bg-surface' : 'bg-bg'}`}>
-            {/* When collapsed, the content owns the window's top-left, so its
-                header indents past the traffic lights and the pinned toggle. */}
             <div
-              className={`titlebar-drag flex h-[52px] shrink-0 items-center gap-2 pr-3 ${
-                sidebarOpen ? 'pl-3' : isMobile ? 'pl-14' : isMacDesktop ? 'pl-[108px]' : 'pl-12'
-              }`}
+              className="titlebar-drag flex h-[52px] shrink-0 items-center gap-2 pl-3 pr-3"
+              style={{ paddingLeft: sidebarOpen ? undefined : titlebarInset }}
             >
               <div id="titlebar-slot" className="relative z-shell flex min-w-0 items-center gap-1.5">
                 <TitlebarSlotOutlet />
@@ -309,24 +308,17 @@ function RootLayout() {
             </div>
           </main>
 
-          {/* Sidebar toggle, pinned beside the macOS traffic lights and sized to
-              match them. Kept LAST and explicitly no-drag because Electron unions
+          {/* Kept LAST and explicitly no-drag because Electron unions
               the .titlebar-drag strips then subtracts no-drag rects in document
               order — so this cutout only stays clickable when subtracted after
               the strips it overlaps. */}
-          <button
-            type="button"
-            aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-            title={`${sidebarOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
-            onClick={() => setSidebarOpen((open) => !open)}
-            className={`absolute z-drawer grid cursor-pointer place-items-center rounded-full text-ink-2 transition-colors duration-150 [-webkit-app-region:no-drag] hover:bg-surface-2 hover:text-ink ${
-              isMobile
-                ? 'top-2.5 left-3 size-9'
-                : `top-[11px] size-7 ${isMacDesktop ? 'left-[80px]' : 'left-2'}`
-            }`}
-          >
-            <PanelLeft size={isMobile ? 20 : 16} />
-          </button>
+          <TitlebarNavigation
+            sidebarOpen={sidebarOpen}
+            isMobile={isMobile}
+            isMacDesktop={isMacDesktop}
+            onToggleSidebar={() => setSidebarOpen((open) => !open)}
+            onNavigate={handleBrowserNavigation}
+          />
         </div>
         <SettingsOverlay
           open={settingsOpen}
