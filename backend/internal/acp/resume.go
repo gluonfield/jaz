@@ -86,7 +86,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		return m.resumeLocalSession(session, agentName, cfg)
 	}
 	if session.RuntimeRef.SessionID == "" {
-		hasTranscript, err := m.store.HasSessionTranscript(session.ID)
+		hasTranscript, err := m.store.HasAgentTranscript(session.ID)
 		if err != nil {
 			return nil, fmt.Errorf("inspect ACP session transcript: %w", err)
 		}
@@ -230,7 +230,7 @@ func (m *Manager) replaceableUnmaterializedSession(session storage.Session, agen
 		!errors.As(loadErr, &rpcErr) || rpcErr.Code != int(acpschema.ErrorCode32002) {
 		return false, nil
 	}
-	hasTranscript, err := m.store.HasSessionTranscript(session.ID)
+	hasTranscript, err := m.store.HasAgentTranscript(session.ID)
 	if err != nil {
 		return false, fmt.Errorf("inspect ACP session transcript: %w", err)
 	}

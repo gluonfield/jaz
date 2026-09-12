@@ -3,6 +3,7 @@ import type { ACPPermission, SessionEvent } from '@/lib/api/types'
 import { isParentChildACPEvent } from '@/lib/sessionEvents'
 import { taskSurfaceFromEvent } from '@/lib/taskSurface'
 import { ThinkingBlock } from '@/components/session/ThinkingBlock'
+import { Bubble } from '@/components/session/Bubble'
 import { ACPEventHeader } from './ACPEventHeader'
 import { ArtifactBlock } from './ArtifactBlock'
 import { AssistantMarkdown } from './AssistantMarkdown'
@@ -35,6 +36,9 @@ export const LiveEvent = memo(function LiveEvent({
   onArtifactPrompt?: (text: string) => void
   errorAction?: SessionErrorAction
 }) {
+  if (event.voice) {
+    return <Bubble message={{ seq: event.seq ?? 0, role: event.voice.role, content: event.voice.text, blocks: [], created_at: event.voice.at }} showAssistantCopy={showCopy} />
+  }
   const eventTaskSurface = taskSurfaceFromEvent(event)
   const taskSurface = showTaskSurface ? eventTaskSurface : undefined
   const parentChild = isParentChildACPEvent(event)

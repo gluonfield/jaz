@@ -17,7 +17,7 @@ type Querier interface {
 	GetThreadIDByID(ctx context.Context, id string) (string, error)
 	GetThreadIDBySlug(ctx context.Context, slug string) (string, error)
 	GetTranscriptRevision(ctx context.Context, id string) (int64, error)
-	HasSessionTranscript(ctx context.Context, id string) (int64, error)
+	HasAgentTranscript(ctx context.Context, id string) (int64, error)
 	ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error)
 	ListErrorThreadIDsWithoutError(ctx context.Context, status string) ([]string, error)
 	ListOverviewChildren(ctx context.Context, parentID sql.NullString) ([]ListOverviewChildrenRow, error)

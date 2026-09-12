@@ -8,7 +8,7 @@ import { AgentModelControls, useNewThreadControls } from '@/components/session/u
 import { Checkbox } from '@/components/ui/Checkbox'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
-import { listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
+import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
 import { agentLabel } from '@/lib/agentLabel'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
@@ -18,11 +18,18 @@ import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useTheme } from '@/lib/theme'
+import { useGlobalVoice } from '@/lib/voice/VoiceProvider'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { submitNewSession } from './-newSessionSubmission'
 
 type NewSearch = {
   project?: string
+}
+
+declare module '@tanstack/history' {
+  interface HistoryState {
+    startVoice?: boolean
+  }
 }
 
 function storedString(key: string): string {
@@ -39,6 +46,7 @@ export const Route = createFileRoute('/new')({
 // group in the middle of the page; the conversation view takes over once the
 // first message is on its way.
 function NewSessionPage() {
+  const voice = useGlobalVoice()
   const navigate = useNavigate()
   const search = Route.useSearch()
   const queryClient = useQueryClient()
@@ -88,7 +96,11 @@ function NewSessionPage() {
     }
   }, [directory, project, directoryInfo.error])
 
-  const handleSend = async (text: string, options: SendMessageOptions = {}) => {
+  const handleStart = async (text?: string, options: SendMessageOptions = {}) => {
+    if (text === undefined && voice.sessionId && voice.phase !== 'off') {
+      await navigate({ to: '/sessions/$sessionId', params: { sessionId: voice.sessionId } })
+      return
+    }
     if (!runtimeAvailable) {
       toast('Connect an agent in Settings before starting a session.', 'danger')
       return
@@ -101,8 +113,19 @@ function NewSessionPage() {
     }
     setCreating(true)
     try {
+      const input = controls.sessionConfig({ directory, worktree }, text?.trim() || undefined)
+      if (text === undefined) {
+        const session = await createSession(input)
+        invalidateSessionLists(queryClient, { session: session.id })
+        await navigate({
+          to: '/sessions/$sessionId',
+          params: { sessionId: session.id },
+          state: { startVoice: true },
+        })
+        return
+      }
       await submitNewSession(
-        controls.sessionConfig({ directory, worktree }, text.trim() || undefined),
+        input,
         text,
         options,
         (initialSessionPrompt) => {
@@ -207,8 +230,8 @@ function NewSessionPage() {
         // them.
         fileRoot={directory}
         onDraftActivity={setComposing}
-        onSend={handleSend}
-        onVoice={undefined}
+        onSend={handleStart}
+        onVoice={() => void handleStart()}
       />
     </>
   )

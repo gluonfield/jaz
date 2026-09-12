@@ -6,15 +6,17 @@ import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI } from '../shared/dictation'
 import type { BrowserCommandRequest } from '@shared/browserControl'
 import type { BrowserProfileAPI } from '@shared/browserProfile'
+import type { VoiceOverlayAPI } from '@shared/voice'
 
 declare global {
   interface Window {
     jaz?: {
+      voiceOverlay: VoiceOverlayAPI
       dictation: DictationAPI
       browserProfiles: BrowserProfileAPI
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       apiBaseUrl: string
-      windowKind: 'main' | 'board' | 'launcher'
+      windowKind: 'main' | 'board' | 'launcher' | 'voice'
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
       getDeviceIdentity: () => Promise<{ device_id: string; public_key: string }>

@@ -17,6 +17,7 @@ import (
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	usageapi "github.com/wins/jaz/backend/internal/httpapi/usage"
+	voiceapi "github.com/wins/jaz/backend/internal/httpapi/voice"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/server"
@@ -48,14 +49,20 @@ type routeDeps struct {
 	SessionMessages *sessionsapi.MessagesHandler
 	SessionOverview *sessionsapi.OverviewHandler
 	AgentSession    *agentsessionsapi.Handler
+	Voice           *voiceapi.Handler
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := server.Routes{
 		{Pattern: "PUT /v1/sessions/{session}/agent/config", Handler: http.HandlerFunc(deps.AgentSession.SetConfig)},
 		{Pattern: "POST /v1/sessions/{session}/agent/tasks/{task}/stop", Handler: http.HandlerFunc(deps.AgentSession.StopTask)},
+		{Pattern: "POST /v1/sessions/{session}/agent/input", Handler: http.HandlerFunc(deps.AgentSession.Input)},
 		{Pattern: "GET /v1/sessions/{session}/messages", Handler: deps.SessionMessages},
 		{Pattern: "GET /v1/sessions/{session}/overview", Handler: deps.SessionOverview},
+		{Pattern: "GET /v1/settings/voice", Handler: http.HandlerFunc(deps.Voice.Settings)},
+		{Pattern: "PUT /v1/settings/voice", Handler: http.HandlerFunc(deps.Voice.Settings)},
+		{Pattern: "POST /v1/voice/connect", Handler: http.HandlerFunc(deps.Voice.Connect)},
+		{Pattern: "POST /v1/sessions/{session}/voice/transcript", Handler: http.HandlerFunc(deps.Voice.Transcript)},
 	}
 	routes = append(routes, usageRoutes(deps.Usage)...)
 	routes = append(routes, feedRoutes(deps.Feed)...)

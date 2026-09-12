@@ -153,7 +153,7 @@ func (s *Store) SaveSession(session storage.Session) error {
 	return s.saveSession(session)
 }
 
-func (s *Store) HasSessionTranscript(id string) (bool, error) {
+func (s *Store) HasAgentTranscript(id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, err := s.loadSessionByID(id); err != nil {
@@ -171,7 +171,7 @@ func (s *Store) HasSessionTranscript(id string) (bool, error) {
 		return false, err
 	}
 	for _, event := range events {
-		if event.Type != sessionevents.TypeAgentSession {
+		if event.Type != sessionevents.TypeAgentSession && event.Type != sessionevents.TypeVoiceMessage {
 			return true, nil
 		}
 	}

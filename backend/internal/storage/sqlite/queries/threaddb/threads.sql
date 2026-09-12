@@ -266,10 +266,10 @@ SET
 WHERE id = sqlc.arg(id)
   AND COALESCE(acp_session_id, '') = sqlc.arg(old_session_id);
 
--- name: HasSessionTranscript :one
+-- name: HasAgentTranscript :one
 SELECT CAST(
   EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = sqlc.arg(id))
-  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id) AND session_events.type != 'agent_session')
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id) AND session_events.type NOT IN ('agent_session', 'voice_message'))
 AS INTEGER)
 FROM threads
 WHERE threads.id = sqlc.arg(id);

@@ -136,6 +136,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 		return
 	}
 	turn.closeFirstPromptSent()
+	job.finishing = done
 	job.turn = nil
 	completion := turn.completion
 	planRequested := turn.planRequested
@@ -160,9 +161,12 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	if m.TurnFinished != nil {
 		m.TurnFinished(context.Background(), snapshot)
 	}
+	job.mu.Lock()
+	job.finishing = nil
 	if done != nil {
 		close(done)
 	}
+	job.mu.Unlock()
 	if completion.propagates() && parentVisible && !planRequested && snapshot.StopReason != StopReasonServerShutdown && m.Done != nil {
 		go m.Done(context.Background(), snapshot)
 	}

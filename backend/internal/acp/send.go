@@ -13,6 +13,29 @@ import (
 
 var ErrSteeringUnsupported = errors.New("acp steering unsupported")
 
+var errTurnEnded = fmt.Errorf("%w: agent turn ended before steering", ErrSteeringUnsupported)
+
+type turnInProgressError struct {
+	done      <-chan struct{}
+	finishing bool
+}
+
+func (e *turnInProgressError) Error() string {
+	return "session is already running"
+}
+
+func (j *jobState) sendConflict() *turnInProgressError {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	if j.turn != nil {
+		return &turnInProgressError{done: j.turn.done, finishing: j.State != StateRunning && j.State != StateStarting}
+	}
+	if j.finishing != nil {
+		return &turnInProgressError{done: j.finishing, finishing: true}
+	}
+	return nil
+}
+
 type sendTranscriptMode int
 
 const (
@@ -66,6 +89,24 @@ func (m *Manager) Compact(ctx context.Context, req CompactRequest) (Job, error) 
 }
 
 func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (Job, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return Job{}, err
+		}
+		job, err := m.sendOnce(ctx, req, opts)
+		var active *turnInProgressError
+		if !errors.As(err, &active) || !active.finishing {
+			return job, err
+		}
+		select {
+		case <-active.done:
+		case <-ctx.Done():
+			return Job{}, ctx.Err()
+		}
+	}
+}
+
+func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOptions) (Job, error) {
 	if !storage.HasMessageContent(req.Message, req.Contexts, req.Attachments) {
 		return Job{}, fmt.Errorf("message is required")
 	}
@@ -81,9 +122,9 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
 	}
 	job.sendMu.Lock()
-	if job.turnDone() != nil {
+	if err := job.sendConflict(); err != nil {
 		job.sendMu.Unlock()
-		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
+		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
 	job.sendMu.Unlock()
 	if local == nil {
@@ -97,8 +138,8 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 	}
 	job.sendMu.Lock()
 	defer job.sendMu.Unlock()
-	if job.turnDone() != nil {
-		return Job{}, fmt.Errorf("session %s is already running", job.Slug)
+	if err := job.sendConflict(); err != nil {
+		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
@@ -148,7 +189,11 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	}
 	job.mu.RLock()
 	method := job.steerMethod
+	running := job.turn != nil && (job.State == StateRunning || job.State == StateStarting)
 	job.mu.RUnlock()
+	if !running {
+		return Job{}, errTurnEnded
+	}
 	if method == steerUnsupported {
 		return Job{}, ErrSteeringUnsupported
 	}
@@ -185,7 +230,10 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext) (chan struct{}, error) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
-	if job.steerMethod == steerUnsupported || job.turn == nil || (job.State != StateRunning && job.State != StateStarting) {
+	if job.turn == nil || (job.State != StateRunning && job.State != StateStarting) {
+		return nil, errTurnEnded
+	}
+	if job.steerMethod == steerUnsupported {
 		return nil, ErrSteeringUnsupported
 	}
 	previous := storage.Turn{

@@ -23,6 +23,28 @@ type emptyLiveReader struct{}
 
 func (emptyLiveReader) HydrationJobs([]string) map[string]acp.HydrationView { return nil }
 
+type liveReader map[string]acp.HydrationView
+
+func (r liveReader) HydrationJobs([]string) map[string]acp.HydrationView { return r }
+
+func TestLoadPreservesClaimedTurnBeforeRuntimeStarts(t *testing.T) {
+	for name, live := range map[string]liveReader{
+		"first turn": nil,
+		"next turn":  {"thread": {ID: "thread", State: acp.StateIdle, StopReason: "end_turn"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := &readStore{session: storage.Session{ID: "thread", Runtime: storage.RuntimeACP, Status: storage.StatusRunning}}
+			view, err := NewService(store, live).Load(t.Context(), "thread", storage.TranscriptPageRequest{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if view.Session.Status != storage.StatusRunning {
+				t.Fatalf("claimed turn reported %q before its prompt or runtime job exists", view.Session.Status)
+			}
+		})
+	}
+}
+
 func (s *readStore) LoadTranscriptSession(context.Context, string) (storage.Session, error) {
 	return s.session, nil
 }

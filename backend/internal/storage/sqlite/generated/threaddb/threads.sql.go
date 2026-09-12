@@ -191,17 +191,17 @@ func (q *Queries) GetTranscriptRevision(ctx context.Context, id string) (int64, 
 	return transcript_revision, err
 }
 
-const hasSessionTranscript = `-- name: HasSessionTranscript :one
+const hasAgentTranscript = `-- name: HasAgentTranscript :one
 SELECT CAST(
   EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = ?1)
-  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1 AND session_events.type != 'agent_session')
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1 AND session_events.type NOT IN ('agent_session', 'voice_message'))
 AS INTEGER)
 FROM threads
 WHERE threads.id = ?1
 `
 
-func (q *Queries) HasSessionTranscript(ctx context.Context, id string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, hasSessionTranscript, id)
+func (q *Queries) HasAgentTranscript(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, hasAgentTranscript, id)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err

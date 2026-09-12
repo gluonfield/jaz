@@ -11,19 +11,23 @@ import (
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestManagerSteerUsesNativeHarnessSteering(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
+func TestManagerInputStartsAndNativelySteersWithoutQueueing(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	requestLog := filepath.Join(t.TempDir(), "requests.jsonl")
 	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
 		"JAZ_FAKE_ACP_NATIVE_STEERING": "1",
 		"JAZ_FAKE_ACP_REQUEST_LOG":     requestLog,
 	})
+	t.Cleanup(manager.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -33,10 +37,13 @@ func TestManagerSteerUsesNativeHarnessSteering(t *testing.T) {
 	}
 	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
 
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "block until cancelled", Completion: acp.CompletionInline}); err != nil {
+	if _, err := manager.Input(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "block until cancelled"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "native follow-up"}); err != nil {
+	if _, err := manager.Input(ctx, acp.SteerRequest{
+		Session: spawned.SessionID, Message: "native follow-up",
+		Contexts: []storage.MessageContext{{Type: storage.ContextTypeVoice, ID: "call", RequestID: "follow-up", Text: "User: Check disk space"}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
@@ -53,7 +60,9 @@ func TestManagerSteerUsesNativeHarnessSteering(t *testing.T) {
 	requestText := string(requests)
 	if strings.Count(requestText, `"method":"session/prompt"`) != 1 ||
 		strings.Count(requestText, `"method":"_session/steering"`) != 1 ||
-		!strings.Contains(requestText, `"waitForCompletion":true`) {
+		!strings.Contains(requestText, "User: Check disk space") ||
+		!strings.Contains(requestText, `"waitForCompletion":true`) ||
+		strings.Contains(requestText, `"method":"session/cancel"`) {
 		t.Fatalf("native steer requests = %s", requestText)
 	}
 	messages, err := store.LoadMessages(spawned.SessionID)

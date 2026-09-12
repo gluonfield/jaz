@@ -206,7 +206,7 @@ function markEventHeaders(items: TimelineItem[], sessionId?: string): void {
 function splitTurns(items: TimelineItem[]): Turn[] {
   const turns: Turn[] = []
   for (const item of items) {
-    if (item.kind === 'message' && item.message.role === 'user') {
+    if ((item.kind === 'message' && item.message.role === 'user') || (item.kind === 'event' && item.event.voice?.role === 'user')) {
       turns.push({ opener: item, items: [] })
       continue
     }
@@ -403,7 +403,7 @@ export function buildTimeline(
       if (event.type === 'loop_created') return Boolean(event.loop_created)
       if (!acp) {
         if (taskSurface) return true
-        return Boolean(event.content || event.permission)
+        return Boolean(event.content || event.permission || event.voice)
       }
       if (!hasVisibleACPSurface(event)) return false
       // This page's own running state has nothing to render — drop the event
@@ -429,8 +429,21 @@ export function buildTimeline(
     }
   }
 
-  const visibleMessages = messages.filter((message) => message.role === 'user' || message.role === 'assistant')
-  const merged = mergeTimeline(visibleMessages, renderedEvents)
+  const spokenCalls = new Set(events.flatMap((event) => event.voice?.role === 'user' ? [event.voice.call_id] : []))
+  const visibleMessages = messages.filter((message) =>
+    (message.role === 'user' || message.role === 'assistant') &&
+    !message.blocks?.some((block) => block.type === 'voice_context' && spokenCalls.has(block.id)),
+  )
+  const merged = mergeTimeline(visibleMessages, renderedEvents.filter(({ event }) => !event.voice))
+  const spoken = renderedEvents.filter(({ event }) => event.voice)
+    .sort((a, b) => itemTime(a.event.voice?.at) - itemTime(b.event.voice?.at))
+  for (const { event, index } of spoken) {
+    const at = itemTime(event.voice?.at)
+    const position = merged.findIndex((item) => item.at > at)
+    merged.splice(position < 0 ? merged.length : position, 0, {
+      kind: 'event', event, eventIndex: index, at, showHeader: false,
+    })
+  }
   // Live state isn't history: pending questions and working status anchor at
   // the bottom; an answered question returns to its chronological spot.
   const isPendingCard = (item: TimelineItem) =>

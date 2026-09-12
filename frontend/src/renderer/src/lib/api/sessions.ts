@@ -1,8 +1,9 @@
+import { readAPIResponse } from '@/lib/api/response'
 import { queryOptions } from '@tanstack/react-query'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
-import { apiEmbeddedGetUrl, apiFetch, ApiError, del, get, post, put } from './client'
+import { apiEmbeddedGetUrl, apiFetch, del, get, post, put } from './client'
 import {
   fileKey,
   type Attachment,
@@ -87,17 +88,7 @@ export async function uploadSessionAttachment(sessionId: string, file: File, sig
     body: form,
     signal,
   })
-  if (!res.ok) {
-    let message = `${res.status} ${res.statusText}`
-    try {
-      const body = (await res.json()) as { error?: string }
-      if (body.error) message = body.error
-    } catch {
-      // keep status text
-    }
-    throw new ApiError(res.status, message)
-  }
-  return (await res.json()) as Attachment
+  return readAPIResponse<Attachment>(res)
 }
 
 // Configured ACP agents the new-thread page can offer as a runtime. Resilient

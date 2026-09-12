@@ -33,6 +33,7 @@ const (
 
 const (
 	BlockTypeText              = "text"
+	BlockTypeVoiceContext      = "voice_context"
 	BlockTypeReasoning         = "reasoning"
 	BlockTypeTool              = "tool"
 	BlockTypeAttachment        = "attachment"
@@ -191,6 +192,7 @@ type Block struct {
 	Text       string      `json:"text,omitempty"`
 	Comment    string      `json:"comment,omitempty"`
 	ID         string      `json:"id,omitempty"`
+	RequestID  string      `json:"request_id,omitempty"`
 	Name       string      `json:"name,omitempty"`
 	URI        string      `json:"uri,omitempty"`
 	MimeType   string      `json:"mime_type,omitempty"`

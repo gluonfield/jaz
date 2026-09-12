@@ -11,6 +11,7 @@ import (
 )
 
 const (
+	TypeVoiceMessage     = "voice_message"
 	TypeAgentSession     = "agent_session"
 	TypeAgentTask        = "agent_task"
 	TypeArtifact         = "artifact"
@@ -24,7 +25,16 @@ const (
 	TypeACPThought       = "acp_thought"
 )
 
+type VoiceMessage struct {
+	ID     string    `json:"id"`
+	CallID string    `json:"call_id"`
+	Role   string    `json:"role"`
+	Text   string    `json:"text"`
+	At     time.Time `json:"at"`
+}
+
 type Event struct {
+	Voice            *VoiceMessage          `json:"voice,omitempty"`
 	Seq              int64                  `json:"seq,omitempty"`
 	SessionID        string                 `json:"session_id"`
 	Type             string                 `json:"type"`
@@ -104,6 +114,16 @@ func (e *Event) NormalizePayload() {
 		return
 	}
 	switch e.Type {
+	case TypeVoiceMessage:
+		if e.Voice == nil && e.Content != "" {
+			var message VoiceMessage
+			if json.Unmarshal([]byte(e.Content), &message) == nil && message.ID != "" {
+				e.Voice = &message
+			}
+		}
+		if e.Voice != nil {
+			e.Content = ""
+		}
 	case TypeAgentSession:
 		if e.AgentSession == nil && e.Content != "" {
 			var state AgentSession
@@ -197,6 +217,12 @@ func (e *Event) NormalizePayload() {
 
 func (e Event) StorageContent() string {
 	switch e.Type {
+	case TypeVoiceMessage:
+		if e.Voice != nil {
+			if data, err := json.Marshal(e.Voice); err == nil {
+				return string(data)
+			}
+		}
 	case TypeAgentSession:
 		if e.AgentSession != nil {
 			if data, err := json.Marshal(e.AgentSession); err == nil {

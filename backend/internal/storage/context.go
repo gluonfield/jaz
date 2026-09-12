@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	ContextTypeVoice             = messagepayload.ContextTypeVoice
 	ContextTypeSelection         = messagepayload.ContextTypeSelection
 	ContextTypeBrowserAnnotation = messagepayload.ContextTypeBrowserAnnotation
 )

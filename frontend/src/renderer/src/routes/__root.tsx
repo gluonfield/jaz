@@ -22,6 +22,9 @@ import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { VoiceProvider } from '@/lib/voice/VoiceProvider'
+import { GlobalVoice } from '@/components/session/FloatingVoice'
+import { VoiceDesktopBridge } from '@/lib/voice/VoiceDesktopBridge'
 import { drawerSlide } from '@/lib/dom/drawer'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { isMobileViewport, useIsMobile } from '@/lib/hooks/useIsMobile'
@@ -50,7 +53,7 @@ function RootComponent() {
   if (clientRuntime.windowKind === 'launcher') {
     return <LauncherRoot />
   }
-  return <BrowserWorkspace><RootLayout /></BrowserWorkspace>
+  return <VoiceProvider><VoiceDesktopBridge /><BrowserWorkspace><RootLayout /></BrowserWorkspace></VoiceProvider>
 }
 
 function LauncherRoot() {
@@ -336,6 +339,7 @@ function RootLayout() {
           onOpenSettings={openSettings}
           onOpenConnect={() => setConnectOpen(true)}
         />
+        <GlobalVoice />
       </ToastProvider>
     </TitlebarProvider>
   )

@@ -1,14 +1,16 @@
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
 import type { ThreadNotificationConfig } from '../../../shared/notifications'
 import type { UpdateStatus } from '../../../shared/update'
+import type { VoiceOverlayAPI } from '@shared/voice'
 
 export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5299'
 
 export type ClientRuntimeKind = 'electron' | 'web'
 export type ClientPlatform = 'desktop' | 'browser'
-export type ClientWindowKind = 'main' | 'board' | 'launcher'
+export type ClientWindowKind = 'main' | 'board' | 'launcher' | 'voice'
 
 export interface ClientRuntime {
+  voiceOverlay?: VoiceOverlayAPI
   kind: ClientRuntimeKind
   platform: ClientPlatform
   deviceKind: ClientPlatform
@@ -86,6 +88,7 @@ function createRuntime(): ClientRuntime {
       onOpenPreviewURL: electron.onOpenPreviewURL,
       onBrowserNavigation: electron.onBrowserNavigation,
       onPreviewFindShortcut: electron.onPreviewFindShortcut,
+      voiceOverlay: electron.voiceOverlay,
     }
   }
   return {

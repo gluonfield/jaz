@@ -4,10 +4,13 @@ import "strings"
 
 const (
 	ContextTypeSelection         = "selection"
+	ContextTypeVoice             = "voice"
 	ContextTypeBrowserAnnotation = "browser_annotation"
 )
 
 type MessageContext struct {
+	ID                string             `json:"id,omitempty"`
+	RequestID         string             `json:"request_id,omitempty"`
 	Type              string             `json:"type"`
 	Text              string             `json:"text,omitempty"`
 	Comment           string             `json:"comment,omitempty"`
@@ -73,6 +76,10 @@ func NormalizeMessageContexts(contexts []MessageContext) []MessageContext {
 	out := make([]MessageContext, 0, len(contexts))
 	for _, context := range contexts {
 		switch context.Type {
+		case ContextTypeVoice:
+			if id := strings.TrimSpace(context.ID); id != "" {
+				out = append(out, MessageContext{Type: ContextTypeVoice, ID: id, RequestID: strings.TrimSpace(context.RequestID), Text: strings.TrimSpace(context.Text)})
+			}
 		case ContextTypeSelection:
 			text := strings.TrimSpace(context.Text)
 			if text != "" {

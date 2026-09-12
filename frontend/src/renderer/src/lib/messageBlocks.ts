@@ -9,11 +9,16 @@ export function userInputMessageBlocks(
   attachments: MessageAttachmentInput[] = [],
 ): MessageBlock[] {
   return [
-    ...contexts.flatMap<MessageBlock>((context) =>
-      context.type === 'selection'
-        ? context.text ? [{ type: 'quote', text: context.text, comment: context.comment }] : []
-        : [{ type: 'browser_annotation', input_json: JSON.stringify(context.browser_annotation ?? {}) }],
-    ),
+    ...contexts.flatMap<MessageBlock>((context) => {
+      switch (context.type) {
+        case 'selection':
+          return context.text ? [{ type: 'quote', text: context.text, comment: context.comment }] : []
+        case 'voice':
+          return [{ type: 'voice_context', id: context.id, request_id: context.request_id, text: context.text }]
+        case 'browser_annotation':
+          return [{ type: 'browser_annotation', input_json: JSON.stringify(context.browser_annotation) }]
+      }
+    }),
     { type: 'text', text: content },
     ...attachments.flatMap<MessageBlock>((attachment) =>
       attachment.id

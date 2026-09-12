@@ -5,6 +5,7 @@ export function openSessionEvents(
   sessionId: string,
   afterSeq: number,
   onEvent: (event: SessionEvent) => void,
+  onConnection?: (connected: boolean) => void,
 ): () => void {
   const suffix = afterSeq > 0 ? `?after_seq=${afterSeq}` : ''
   const es = new EventSource(apiEventSourceUrl(`/v1/sessions/${sessionId}/events${suffix}`))
@@ -18,6 +19,8 @@ export function openSessionEvents(
   }
 
   es.onmessage = handle
+  es.onopen = () => onConnection?.(true)
+  es.onerror = () => onConnection?.(false)
 
   return () => es.close()
 }

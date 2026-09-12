@@ -40,6 +40,8 @@ func UserMessageRecord(message string, contexts []MessageContext, attachments []
 	blocks := make([]Block, 0, len(contexts)+1+len(attachments))
 	for _, context := range contexts {
 		switch context.Type {
+		case ContextTypeVoice:
+			blocks = append(blocks, Block{Type: BlockTypeVoiceContext, ID: context.ID, RequestID: context.RequestID, Text: context.Text})
 		case ContextTypeSelection:
 			blocks = append(blocks, QuoteBlock(context.Text, context.Comment))
 		case ContextTypeBrowserAnnotation:

@@ -60,9 +60,6 @@ func (s *Service) Load(ctx context.Context, ref string, request storage.Transcri
 	if session.Runtime == storage.RuntimeACP {
 		snapshot := sessionSnapshot(session, active)
 		view.Snapshot = &snapshot
-		if status := storage.SessionStatusForACPState(snapshot.State, snapshot.StopReason); session.Status == storage.StatusRunning && status != "" {
-			view.Session.Status = status
-		}
 	}
 	return view, nil
 }

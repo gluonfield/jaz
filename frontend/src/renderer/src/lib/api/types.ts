@@ -505,6 +505,7 @@ export interface ToolCallJSON {
 }
 
 export type MessageBlock =
+  | { type: 'voice_context'; id: string; request_id?: string; text: string }
   | { type: 'text'; text?: string }
   | { type: 'reasoning'; text?: string }
   | { type: 'quote'; text?: string; comment?: string }
@@ -877,7 +878,16 @@ export interface ACPPermission {
   selected_option_id?: string
 }
 
+export interface VoiceMessage {
+  id: string
+  call_id: string
+  role: 'user' | 'assistant'
+  text: string
+  at: string
+}
+
 export interface SessionEvent {
+  voice?: VoiceMessage
   seq?: number
   projection_key?: string
   projection_op?: 'append' | 'replace'

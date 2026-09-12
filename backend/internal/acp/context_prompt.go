@@ -23,7 +23,7 @@ func messageWithNormalizedContext(message string, contexts []storage.MessageCont
 	if len(contexts) == 0 {
 		return message
 	}
-	out := taggedBlock("message_context", selectionContext(contexts)+browserAnnotationContext(contexts))
+	out := taggedBlock("message_context", selectionContext(contexts)+browserAnnotationContext(contexts)+voiceContext(contexts))
 	if strings.TrimSpace(message) != "" {
 		out += "\n\n" + taggedBlock("user_request", message)
 	}
@@ -149,4 +149,14 @@ func contextTextFence(value string) string {
 		return "```"
 	}
 	return strings.Repeat("`", longest+1)
+}
+
+func voiceContext(contexts []storage.MessageContext) string {
+	var out strings.Builder
+	for _, context := range contexts {
+		if context.Type == storage.ContextTypeVoice && context.Text != "" {
+			out.WriteString(taggedSection("voice_conversation", fencedText(context.Text)))
+		}
+	}
+	return out.String()
 }

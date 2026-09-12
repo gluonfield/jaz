@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { buildTimeline } from './timeline'
+import { buildTimeline, classifyTurnItems, stableEventKey } from './timeline'
 
 const acpEvent = (id, type, at, fields = {}) => ({
   session_id: 'thread',
@@ -12,6 +12,32 @@ const acpEvent = (id, type, at, fields = {}) => ({
     state: 'running',
     ...fields,
   },
+})
+
+test('speech forms normal turns while typed handoff context stays off the reading axis', () => {
+  const at = (second) => new Date(second * 1000).toISOString()
+  const speech = (id, role, text, second) => ({
+    type: 'voice_message', session_id: 'thread', seq: second + 100, at: at(100),
+    projection_key: 'voice:thread:call:' + id, projection_op: 'replace',
+    voice: { id, call_id: 'call', role, text, at: at(second) },
+  })
+  const messages = [
+    { seq: 1, role: 'user', content: 'List the files', blocks: [{ type: 'voice_context', id: 'call', text: 'User: Hello\nVoice: Hi.' }], created_at: at(3) },
+    { seq: 2, role: 'user', content: 'A typed follow-up', blocks: [], created_at: at(9) },
+  ]
+  const answer = { ...acpEvent('thread', 'acp_message', 5), content: 'Files: **README.md**, backend/, frontend/.' }
+  const user = speech('user', 'user', 'What files are here?', 1)
+  const spoken = speech('reply', 'assistant', 'I’ll check the directory.', 2)
+  const events = [answer, spoken, user]
+  const result = buildTimeline(messages, events, 'thread', true)
+  expect(result.turns).toHaveLength(2)
+  expect(result.turns[0].opener.event.voice.text).toBe('What files are here?')
+  expect(result.turns[0].items.map((item) => item.event)).toEqual([spoken, answer])
+  expect(result.turns[1].opener.message.content).toBe('A typed follow-up')
+  const classified = classifyTurnItems(result.turns[0].items, new Set(), new Map())
+  expect(classified.resultItems.map((item) => item.event)).toEqual([spoken, answer])
+  expect(stableEventKey(user)).toBe(stableEventKey({ ...user, seq: 999 }))
+  expect(buildTimeline(messages, [answer], 'thread', true).turns[0].opener.message.content).toBe('List the files')
 })
 
 describe('ACP activity timeline', () => {

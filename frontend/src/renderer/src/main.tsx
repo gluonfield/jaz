@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client'
 import { BackendTransition } from './components/connection/BackendTransition'
 import { LaunchScreen, ReconnectingBanner } from './components/launch/LaunchScreen'
 import { ThreadNotifications } from '@/components/notifications/ThreadNotifications'
+import { VoiceOverlay } from '@/components/session/VoiceOverlay'
 import { devPreview } from './lib/devPreview'
 import { OnboardingGate } from './components/onboarding/OnboardingGate'
 import { installFileDropGuard } from './components/ui/FileDrop'
@@ -32,7 +33,7 @@ installFileDropGuard()
 // returning users from the per-install distinct id.
 if (clientRuntime.windowKind === 'main') telemetry.appOpened()
 
-if (clientRuntime.windowKind === 'launcher') {
+if (clientRuntime.windowKind === 'launcher' || clientRuntime.windowKind === 'voice') {
   document.documentElement.classList.add('launcher')
   // zoom 1 keeps drag coordinates 1:1 with screen pixels for region capture.
   document.documentElement.style.zoom = '1'
@@ -89,7 +90,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       {clientRuntime.windowKind === 'main' ? <ThreadNotifications /> : null}
-      <App />
+      {clientRuntime.windowKind === 'voice' ? <VoiceOverlay /> : <App />}
     </QueryClientProvider>
   </StrictMode>,
 )

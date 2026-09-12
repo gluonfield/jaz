@@ -1,143 +1,107 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
+import { BotEngine } from '@/lib/vendor/bloub/engine'
+import { EXPRESSION_BY_ID } from '@/lib/vendor/bloub/expressions'
+import type { StateId } from '@/lib/vendor/bloub/states'
+import { audioLevel } from '@/lib/voice/audioLevel'
 
-type Phase = 'connecting' | 'listening' | 'thinking' | 'speaking' | 'paused' | 'error'
+const restingFrame = new BotEngine(100).sample(0)
 
-const BARS = 72
-
-function readPalette() {
-  const s = getComputedStyle(document.documentElement)
-  const rainbow = Array.from({ length: 5 }, (_, i) =>
-    s.getPropertyValue(`--color-rainbow-${i + 1}`).trim(),
-  )
-  return { rainbow }
-}
-
-// Circular spectrum + breathing core, rendered on a canvas and driven by the
-// live analyser of whatever is making sound (mic while listening, the assistant
-// while speaking). When nothing is flowing it falls back to a calm idle pulse,
-// so the orb always feels alive but only *reacts* to real audio.
-export function VoiceVisualizer({
-  analyser,
-  phase,
-  reducedMotion,
-  size = 248,
-}: {
+export function VoiceVisualizer({ analyser, active, reducedMotion, connecting = false, working = false, level = 0, size = 88 }: {
   analyser: AnalyserNode | null
-  phase: Phase
-  reducedMotion: boolean | null
+  active: boolean
+  reducedMotion: boolean
+  connecting?: boolean
+  working?: boolean
+  level?: number
   size?: number
 }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const analyserRef = useRef(analyser)
-  const phaseRef = useRef(phase)
-  analyserRef.current = analyser
-  phaseRef.current = phase
+  const id = useId()
+  const input = useRef({ analyser, active, connecting, working, level })
+  const redraw = useRef(() => {})
+  const [frame, setFrame] = useState({ pose: restingFrame, scale: 1, state: 'idle' as StateId })
+  useEffect(() => {
+    input.current = { analyser, active, connecting, working, level }
+    if (reducedMotion) {
+      redraw.current()
+    }
+  }, [analyser, active, connecting, working, level, reducedMotion])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    const dpr = window.devicePixelRatio || 1
-    canvas.width = size * dpr
-    canvas.height = size * dpr
-    ctx.scale(dpr, dpr)
-
-    let palette = readPalette()
-    // re-read tokens if the theme flips while voice mode is open
-    const observer = new MutationObserver(() => {
-      palette = readPalette()
-    })
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
-
-    let freq = new Uint8Array(0)
-    const amps = new Array(BARS).fill(0)
-    const cx = size / 2
-    const cy = size / 2
-    const R = size * 0.3
-    let rot = 0
-    let level = 0
+    const engine = new BotEngine(100)
+    let previous = 0
+    let clock = 0
+    let mode = ''
+    let modeSince = 0
+    let amplitude = 0
     let raf = 0
-
-    const frame = (now: number) => {
-      raf = requestAnimationFrame(frame)
-      const a = analyserRef.current
-      const p = phaseRef.current
-      let target: number
-
-      if (a && (p === 'listening' || p === 'speaking')) {
-        if (freq.length !== a.frequencyBinCount) freq = new Uint8Array(a.frequencyBinCount)
-        a.getByteFrequencyData(freq)
-        const usable = Math.floor(freq.length * 0.62) // voice band, skip dead highs
-        let sum = 0
-        for (let i = 0; i < BARS; i++) {
-          const v = freq[Math.floor((i / BARS) * usable)] / 255
-          amps[i] += (v - amps[i]) * 0.4
-          sum += amps[i]
-        }
-        target = sum / BARS
-      } else {
-        // idle / thinking: gentle synthetic shimmer, no claim of input
-        const breathe = reducedMotion ? 0.05 : 0.05 + 0.04 * Math.sin(now / 700)
-        for (let i = 0; i < BARS; i++) {
-          const v = reducedMotion ? 0.05 : breathe + 0.03 * Math.sin(now / 320 + i * 0.5)
-          amps[i] += (v - amps[i]) * 0.2
-        }
-        target = breathe
+    let samples = new Uint8Array(0)
+    const draw = (now: number) => {
+      const dt = previous ? Math.min((now - previous) / 1000, 0.064) : 0
+      previous = now
+      clock += reducedMotion ? 0 : dt
+      const { analyser, active, connecting, working, level } = input.current
+      if (analyser && samples.length !== analyser.fftSize) {
+        samples = new Uint8Array(analyser.fftSize)
       }
-      level += (target - level) * 0.25
-
-      const spin = reducedMotion ? 0 : p === 'thinking' ? 0.016 : p === 'listening' ? 0.004 : 0.002
-      rot += spin
-
-      ctx.clearRect(0, 0, size, size)
-      ctx.save()
-      ctx.translate(cx, cy)
-
-      // glowing core
-      const orbR = R * (0.74 + level * 0.55)
-      const grad = ctx.createRadialGradient(0, 0, orbR * 0.15, 0, 0, orbR)
-      grad.addColorStop(0, palette.rainbow[2])
-      grad.addColorStop(0.55, palette.rainbow[3])
-      grad.addColorStop(1, palette.rainbow[4])
-      ctx.globalAlpha = 0.16 + level * 0.5
-      ctx.fillStyle = grad
-      ctx.beginPath()
-      ctx.arc(0, 0, orbR, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.globalAlpha = 1
-
-      // spectrum corona
-      ctx.lineCap = 'round'
-      ctx.lineWidth = size * 0.012
-      for (let i = 0; i < BARS; i++) {
-        const ang = (i / BARS) * Math.PI * 2 + rot
-        const len = R * 0.16 + amps[i] * R * 0.78
-        const cos = Math.cos(ang)
-        const sin = Math.sin(ang)
-        ctx.strokeStyle = palette.rainbow[Math.floor((i / BARS) * 5) % 5]
-        ctx.globalAlpha = 0.5 + amps[i] * 0.5
-        ctx.beginPath()
-        ctx.moveTo(cos * R, sin * R)
-        ctx.lineTo(cos * (R + len), sin * (R + len))
-        ctx.stroke()
+      const target = reducedMotion ? 0 : analyser ? audioLevel(analyser, samples) : level
+      amplitude += (target - amplitude) * (1 - Math.exp(-dt / 0.09))
+      const nextMode = connecting ? 'connecting' : !active ? 'muted' : working ? 'working' : 'ready'
+      if (mode !== nextMode) {
+        mode = nextMode
+        modeSince = clock
+        engine.setExpression(mode === 'muted' ? EXPRESSION_BY_ID.get('somnolent')! : null, clock - (reducedMotion ? 1 : 0))
       }
-      ctx.restore()
+      const elapsed = clock - modeSince
+      let state: StateId = 'idle'
+      if (mode === 'connecting') {
+        state = elapsed % 6 < 3.6 ? 'orbit' : 'hexagon'
+      } else if (mode === 'working') {
+        state = elapsed % 6 < 3 ? 'hexagon' : 'orbit'
+      } else if (mode === 'ready' && (elapsed < 1.4 || amplitude > 0.08 || (engine.state === 'wide' && amplitude > 0.03))) {
+        state = 'wide'
+      }
+      if (engine.state !== state) {
+        engine.setState(state, clock - (reducedMotion ? 1 : 0))
+      }
+      setFrame({ pose: engine.sample(clock), scale: 1 + amplitude * 0.09, state })
+      if (!reducedMotion) {
+        raf = requestAnimationFrame(draw)
+      }
     }
-    raf = requestAnimationFrame(frame)
-
+    redraw.current = () => draw(performance.now())
+    redraw.current()
     return () => {
       cancelAnimationFrame(raf)
-      observer.disconnect()
+      redraw.current = () => {}
     }
-  }, [size, reducedMotion])
+  }, [reducedMotion])
 
+  const { pose } = frame
   return (
-    <canvas
-      ref={canvasRef}
-      aria-hidden
-      style={{ width: size, height: size }}
-      className="pointer-events-none"
-    />
+    <svg width={size} height={size} viewBox="-160 -160 320 320" fill="currentColor" aria-hidden="true" data-avatar="bloub" data-state={frame.state}>
+      <defs>
+        <mask id={`${id}-body`} maskUnits="userSpaceOnUse" x="-160" y="-160" width="320" height="320">
+          <path data-body d={pose.bodyPath} fill="white" />
+          {pose.eyes.map((eye, i) => <path key={i} data-eye d={eye.d} transform={eye.matrix} opacity={eye.alpha} fill="black" />)}
+        </mask>
+        {pose.arcs.map((arc) => (
+          <linearGradient key={arc.id} id={`${id}-${arc.id}`} gradientUnits="userSpaceOnUse" x1={arc.grad.x1} y1={arc.grad.y1} x2={arc.grad.x2} y2={arc.grad.y2}>
+            {arc.grad.stops.map((color, i) => <stop key={i} offset={i / (arc.grad.stops.length - 1)} stopColor={color} />)}
+          </linearGradient>
+        ))}
+      </defs>
+      <g transform={`scale(${frame.scale})`}>
+        <g fill="none" strokeLinecap="round">
+          {pose.arcs.map((arc) => <path key={arc.id} d={arc.back} stroke={`url(#${id}-${arc.id})`} strokeWidth={arc.width} opacity={arc.opacity} />)}
+        </g>
+        <g opacity={pose.bodyAlpha}>
+          <path d={pose.bodyPath} fill="var(--color-bg)" />
+          <rect x="-160" y="-160" width="320" height="320" mask={`url(#${id}-body)`} />
+        </g>
+        <g fill="none" strokeLinecap="round">
+          {pose.arcs.map((arc) => <path key={arc.id} d={arc.front} stroke={`url(#${id}-${arc.id})`} strokeWidth={arc.width} opacity={arc.opacity} />)}
+        </g>
+      </g>
+    </svg>
   )
 }

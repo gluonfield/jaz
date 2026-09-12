@@ -37,7 +37,7 @@ func TestAgentConnectionRetainsInitialControlsAndAuth(t *testing.T) {
 	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "native"}}
 	manager.addJob(job, nil)
 	state.attach(manager, job, AgentConfig{})
-	if hasTranscript, err := store.HasSessionTranscript(session.ID); err != nil || hasTranscript {
+	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || hasTranscript {
 		t.Fatalf("agent metadata materialized a conversation: %t, %v", hasTranscript, err)
 	}
 	if got := job.agentSession; got.Auth.Account.Plan != "pro" || len(got.Commands) != 1 || got.ConfigOptions[0].RecommendedValue != "standard" {

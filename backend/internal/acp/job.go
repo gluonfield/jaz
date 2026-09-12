@@ -111,6 +111,7 @@ type jobState struct {
 	backgroundTasks        map[string]sessionevents.AgentTask
 	steerMethod            steerMethod
 	turn                   *activeTurn
+	finishing              chan struct{}
 	toolByID               map[string]sessionevents.ACPToolCall
 	pendingToolUpdateByID  map[string]sessionevents.ACPToolCall
 	savedAssistantLen      int
@@ -393,7 +394,7 @@ func (j *jobState) turnDone() chan struct{} {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	if j.turn == nil {
-		return nil
+		return j.finishing
 	}
 	return j.turn.done
 }
@@ -420,7 +421,7 @@ func (j *jobState) requestTurnCancel(reason string) (bool, chan struct{}) {
 	defer j.mu.Unlock()
 	running := j.State == StateRunning || j.State == StateStarting
 	if j.turn == nil {
-		return running, nil
+		return running, j.finishing
 	}
 	if reason == StopReasonServerShutdown && j.turn.cancelRequested {
 		return false, j.turn.done

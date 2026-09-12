@@ -9,6 +9,7 @@ import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
 import type { ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI, DictationEvent } from '../shared/dictation'
+import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/voice'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
 
@@ -16,12 +17,30 @@ const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
 // the app chrome (sidebar, titlebar) and render that surface full-bleed.
 const windowKind = process.argv.includes('--jaz-board-window')
   ? 'board'
-  : process.argv.includes('--jaz-launcher-window')
-    ? 'launcher'
-    : 'main'
+  : process.argv.includes('--jaz-voice-window')
+    ? 'voice'
+    : process.argv.includes('--jaz-launcher-window')
+      ? 'launcher'
+      : 'main'
 let previewURLTargetSubscriptions = 0
 
 contextBridge.exposeInMainWorld('jaz', {
+  voiceOverlay: {
+    drag: (point) => ipcRenderer.send('jaz:voice:drag', point),
+    publish: (state) => ipcRenderer.send('jaz:voice:publish', state),
+    subscribe: (handler) => {
+      const listener = (_event: unknown, state: VoiceOverlayState | null) => handler(state)
+      ipcRenderer.on('jaz:voice:state', listener)
+      ipcRenderer.send('jaz:voice:ready')
+      return () => ipcRenderer.removeListener('jaz:voice:state', listener)
+    },
+    command: (command) => ipcRenderer.send('jaz:voice:command', command),
+    onCommand: (handler) => {
+      const listener = (_event: unknown, command: VoiceCommand) => handler(command)
+      ipcRenderer.on('jaz:voice:command', listener)
+      return () => ipcRenderer.removeListener('jaz:voice:command', listener)
+    },
+  } satisfies VoiceOverlayAPI,
   dictation: {
     availability: () => ipcRenderer.invoke('jaz:dictation:availability'),
     start: (id) => ipcRenderer.invoke('jaz:dictation:start', id),

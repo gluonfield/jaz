@@ -30,6 +30,7 @@ import {
   visibleSettingsSections,
 } from './sections'
 import { UsageSettings } from './UsageSettings'
+import { VoiceSettings } from '@/components/settings/VoiceSettings'
 
 type SectionNavigationOptions = { replace?: boolean }
 
@@ -223,6 +224,8 @@ function SectionContent({
   onNavigate: (section: SettingsSection, options?: SectionNavigationOptions) => void
 }) {
   switch (section) {
+    case 'voice':
+      return <VoiceSettings onNavigate={onNavigate} />
     case 'general':
       return <GeneralSettings />
     case 'appearance':

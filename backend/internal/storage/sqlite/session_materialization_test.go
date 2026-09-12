@@ -23,7 +23,7 @@ func TestRuntimeSessionMaterializationState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hasTranscript, err := store.HasSessionTranscript(session.ID); err != nil || hasTranscript {
+	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || hasTranscript {
 		t.Fatalf("empty transcript = %t, %v", hasTranscript, err)
 	}
 	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
@@ -32,8 +32,17 @@ func TestRuntimeSessionMaterializationState(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if hasTranscript, err := store.HasSessionTranscript(session.ID); err != nil || hasTranscript {
+	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || hasTranscript {
 		t.Fatalf("metadata-only transcript = %t, %v", hasTranscript, err)
+	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		SessionID: session.ID, Type: sessionevents.TypeVoiceMessage,
+		Voice: &sessionevents.VoiceMessage{ID: "speech", CallID: "call", Role: "user", Text: "Count the files"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || hasTranscript {
+		t.Fatalf("voice-only agent transcript = %t, %v", hasTranscript, err)
 	}
 	if updated, err := store.ReplaceRuntimeSessionID(session.ID, "wrong", "new"); err != nil || updated {
 		t.Fatalf("mismatched replacement = %t, %v", updated, err)
@@ -51,7 +60,7 @@ func TestRuntimeSessionMaterializationState(t *testing.T) {
 	if err := storage.AppendUserMessage(store, session.ID, "started", nil, nil); err != nil {
 		t.Fatal(err)
 	}
-	if hasTranscript, err := store.HasSessionTranscript(session.ID); err != nil || !hasTranscript {
+	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || !hasTranscript {
 		t.Fatalf("started transcript = %t, %v", hasTranscript, err)
 	}
 }

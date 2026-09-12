@@ -1,5 +1,5 @@
 import { usePrefetchQuery, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createFileRoute, useLocation } from '@tanstack/react-router'
+import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
@@ -48,6 +48,8 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
+import { useVoiceMode } from '@/lib/hooks/useVoiceMode'
+import { VoiceMode, VoiceControls } from '@/components/session/VoiceMode'
 import { keys } from '@/lib/query/keys'
 import { type PlanApprovalAction } from '@/lib/taskSurface'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
@@ -187,6 +189,15 @@ function SessionPage({
     toast(`Couldn't load earlier history: ${message}`, 'danger')
   }, [toast])
   const detail = useSessionHistory(sessionId, reportHistoryError)
+  const voice = useVoiceMode(sessionId)
+  const { start: startVoiceConversation } = voice
+  const startVoice = useLocation({ select: (location) => location.state.startVoice })
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (!startVoice) return
+    void navigate({ replace: true, state: (previous) => ({ ...previous, startVoice: undefined }) })
+    startVoiceConversation()
+  }, [navigate, startVoice, startVoiceConversation])
   const overview = useQuery(sessionOverviewQuery(sessionId))
   usePrefetchQuery(sessionRepoQuery(sessionId))
   const events = useQuery<SessionEvent[]>({
@@ -593,9 +604,11 @@ function SessionPage({
               before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}
               onHeightChange={setBottomDockHeight}
             >
+              <VoiceMode voice={voice} />
               {showPlanDecision ? (
                 <PlanDecisionCard
                   pending={planDecisionPending}
+                  controls={voice.phase === 'off' ? undefined : <VoiceControls voice={voice} />}
                   onImplement={() => {
                     if (!planDecisionApproval) return
                     setPlanDecisionPending(true)
@@ -634,7 +647,8 @@ function SessionPage({
                     onSend={handleSend}
                     onStop={stopSession}
                     onClearGoal={stopSession}
-                    onVoice={undefined}
+                    onVoice={voice.phase === 'off' ? voice.start : undefined}
+                    voiceControls={voice.phase === 'off' ? undefined : <VoiceControls voice={voice} />}
                     onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
                     onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
                     onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}

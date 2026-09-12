@@ -34,6 +34,7 @@ export type ComposerContext =
     }
 
 export type MessageContextInput =
+  | { type: 'voice'; id: string; request_id: string; text: string }
   | { type: 'selection'; text: string; comment?: string }
   | { type: 'browser_annotation'; browser_annotation: BrowserAnnotation }
 

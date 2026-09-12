@@ -78,8 +78,8 @@ func (s *Store) SaveSession(session storage.Session) error {
 	return nil
 }
 
-func (s *Store) HasSessionTranscript(id string) (bool, error) {
-	hasTranscript, err := threaddb.New(s.db).HasSessionTranscript(context.Background(), id)
+func (s *Store) HasAgentTranscript(id string) (bool, error) {
+	hasTranscript, err := threaddb.New(s.db).HasAgentTranscript(context.Background(), id)
 	return hasTranscript != 0, err
 }
 

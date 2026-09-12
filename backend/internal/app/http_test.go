@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/serverconfig"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	usagecore "github.com/wins/jaz/backend/internal/usage"
@@ -67,7 +68,8 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	var publicRoutes server.PublicRoutes
 	app := fx.New(
 		fx.NopLogger,
-		fx.Supply(Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager),
+		fx.Supply(Config{}, RuntimeAuthKey("secret"), serverconfig.Config{}, store, manager, acp.AgentCatalog{}, runtimefiles.New(store.RootDir())),
+		fx.Provide(NewProviderSource, sessionevents.New),
 		fx.Provide(func() storage.Store { return store }),
 		fx.Provide(func() storage.UsageEventStore { return fakeUsageStore{} }),
 		fx.Provide(func() storage.FeedStore { return fakeFeedStore{} }),
@@ -83,6 +85,11 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "GET /v1/feed/completions")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/messages")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/overview")
+	requireRoute(t, routes, "POST /v1/sessions/{session}/agent/input")
+	requireRoute(t, routes, "GET /v1/settings/voice")
+	requireRoute(t, routes, "PUT /v1/settings/voice")
+	requireRoute(t, routes, "POST /v1/voice/connect")
+	requireRoute(t, routes, "POST /v1/sessions/{session}/voice/transcript")
 	requireRoute(t, routes, "/v1/preview/")
 	if len(publicRoutes) != 1 ||
 		publicRoutes[0].Match == nil ||
@@ -253,7 +260,7 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 	app := fx.New(
 		fx.NopLogger,
 		fx.Supply(runtimefiles.New(t.TempDir()), acp.AgentCatalog{}, Config{}, serverconfig.Config{}),
-		fx.Provide(NewStore, NewRuntimeAuthKey),
+		fx.Provide(NewStore, NewRuntimeAuthKey, NewProviderSource, sessionevents.New),
 		fx.Provide(func(store *sqlitestore.Store) *acp.Manager {
 			return acp.NewManager(store, acp.Config{}, nil)
 		}),

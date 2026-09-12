@@ -9,6 +9,7 @@ import {
   Link2,
   type LucideIcon,
   MonitorSmartphone,
+  AudioLines,
   Palette,
   Plug,
   SlidersHorizontal,
@@ -29,6 +30,7 @@ export type SettingsSection =
   | 'mcp'
   | 'providers'
   | 'agents'
+  | 'voice'
   | 'archived'
 
 type SettingsNavItem = {
@@ -52,6 +54,7 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'mcp', label: 'MCP servers', icon: Plug },
   { id: 'providers', label: 'Model Providers', icon: Boxes },
   { id: 'agents', label: 'Agents (ACP)', icon: Bot },
+  { id: 'voice', label: 'Voice', icon: AudioLines },
   { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
 ]
 

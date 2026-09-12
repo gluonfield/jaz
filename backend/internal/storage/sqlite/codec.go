@@ -184,7 +184,7 @@ func unmarshalBlocks(raw string) ([]storage.Block, error) {
 func validateBlocks(blocks []storage.Block) error {
 	for i, block := range blocks {
 		switch block.Type {
-		case blockText, blockReasoning, blockQuote:
+		case blockText, blockReasoning, blockQuote, storage.BlockTypeVoiceContext:
 		case blockBrowserAnnotation:
 			if strings.TrimSpace(block.InputJSON) == "" {
 				return fmt.Errorf("browser annotation block %d missing input_json", i)

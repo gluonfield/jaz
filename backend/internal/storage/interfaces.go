@@ -27,7 +27,7 @@ type SessionStore interface {
 }
 
 type SessionTranscriptReader interface {
-	HasSessionTranscript(id string) (bool, error)
+	HasAgentTranscript(id string) (bool, error)
 }
 
 type MessageStore interface {

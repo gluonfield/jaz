@@ -1,0 +1,89 @@
+{
+  "session": {
+    "id": "20260911T194959-543cf6fe",
+    "status": "running"
+  },
+  "messages": [
+    {
+      "seq": 1,
+      "role": "user",
+      "content": "So, how much disk space I have",
+      "blocks": [
+        {
+          "type": "voice_context",
+          "id": "461f726a-3b69-402a-8421-5c2f62edbfc4",
+          "request_id": "item_EN1YV4mQKy6TSyRNn8YaH"
+        },
+        {
+          "type": "text",
+          "text": "So, how much disk space I have"
+        }
+      ],
+      "created_at": "2026-09-11T19:50:32.969000+00:00"
+    }
+  ],
+  "events": [
+    {
+      "seq": 46,
+      "session_id": "20260911T194959-543cf6fe",
+      "type": "acp_message",
+      "content": "I’ll check your Mac’s available disk space.\n",
+      "acp": {
+        "id": "20260911T194959-543cf6fe",
+        "slug": "chat-2026-09-11-194959",
+        "agent": "codex",
+        "session_id": "01a09205-8e8d-79b3-816a-11c0372a443f",
+        "state": "running",
+        "text_run_id": "message:msg_03c9d28b59df789a016aa45b8de1f487d2ae5e39ea4a903e74",
+        "goal_requested": false,
+        "last_event_at": "2026-09-11T19:50:37.930261Z"
+      },
+      "at": "2026-09-11T19:50:38.187000+00:00",
+      "projection_key": "acp_text:20260911T194959-543cf6fe:20260911T194959-543cf6fe:acp_message:message:msg_03c9d28b59df789a016aa45b8de1f487d2ae5e39ea4a903e74:1789156237965817000:8",
+      "projection_op": "append"
+    },
+    {
+      "seq": 49,
+      "session_id": "20260911T194959-543cf6fe",
+      "type": "acp_message",
+      "content": "You have about **42 GB free** on your Mac’s **1 TB drive**. It’s roughly **96% full**.",
+      "acp": {
+        "id": "20260911T194959-543cf6fe",
+        "slug": "chat-2026-09-11-194959",
+        "agent": "codex",
+        "session_id": "01a09205-8e8d-79b3-816a-11c0372a443f",
+        "state": "running",
+        "text_run_id": "message:msg_03c9d28b59df789a016aa45b94411c87d2a8d90cf0cd82e2d3",
+        "goal_requested": false,
+        "last_event_at": "2026-09-11T19:50:44.254544Z",
+        "last_tool_at": "2026-09-11T19:50:39.410548Z"
+      },
+      "at": "2026-09-11T19:50:44.318000+00:00",
+      "projection_key": "acp_text:20260911T194959-543cf6fe:20260911T194959-543cf6fe:acp_message:message:msg_03c9d28b59df789a016aa45b94411c87d2a8d90cf0cd82e2d3:1789156244318312000:13",
+      "projection_op": "append"
+    },
+    {
+      "seq": 51,
+      "session_id": "20260911T194959-543cf6fe",
+      "type": "acp",
+      "content": "",
+      "acp": {
+        "id": "20260911T194959-543cf6fe",
+        "slug": "chat-2026-09-11-194959",
+        "agent": "codex",
+        "session_id": "01a09205-8e8d-79b3-816a-11c0372a443f",
+        "state": "idle",
+        "stop_reason": "end_turn",
+        "goal_requested": false,
+        "last_event_at": "2026-09-11T19:50:44.331314Z",
+        "last_tool_at": "2026-09-11T19:50:39.410548Z"
+      },
+      "at": "2026-09-11T19:50:44.332000+00:00",
+      "projection_key": "acp_status:20260911T194959-543cf6fe",
+      "projection_op": "replace"
+    }
+  ],
+  "latest_event_seq": 51,
+  "history_revision": 1,
+  "has_earlier": false
+}

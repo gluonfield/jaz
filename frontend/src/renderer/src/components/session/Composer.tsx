@@ -87,6 +87,7 @@ export function ComposerCard({
   onStop,
   onClearGoal,
   onVoice,
+  voiceControls,
   onUploadAttachment,
   onRemoveContext,
   onReplaceContexts,
@@ -120,11 +121,13 @@ export function ComposerCard({
   /** stops the goal auto-continuation loop server-side */
   onClearGoal?: () => void
   onVoice?: () => void
+  voiceControls?: ReactNode
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onRemoveContext?: (id: string) => void
   onReplaceContexts?: (contexts: ComposerContext[]) => void
   onTextChange?: (text: string) => void
 }) {
+  const voiceActive = Boolean(voiceControls)
   const [focused, setFocused] = useState(false)
   const [optionsOpen, setOptionsOpen] = useState(false)
   const [planModeOverride, setPlanModeOverride] = useState<boolean | null>(null)
@@ -162,11 +165,13 @@ export function ComposerCard({
     attachmentDraft.files.length > 0 || attachmentDraft.uploaded.length > 0 || contexts.length > 0
   const hasSendableDraft = (messageEmpty: boolean) => !messageEmpty || hasNonTextDraftContent
   const hasDraftContent = hasSendableDraft(mention.isEmpty)
+  const showVoiceButton = !hasDraftContent && Boolean(onVoice)
+  const actionLabel = showVoiceButton ? 'Voice mode' : streaming ? 'Queue message' : 'Send message'
   const submitDisabled = !hasDraftContent || disabled || attachmentBusy || (streaming && !canQueueWhileStreaming)
-  const showStopButton = streaming && onStop && (!queueWhenStreaming || !hasDraftContent)
+  const showStopButton = !voiceActive && streaming && onStop && (!queueWhenStreaming || !hasDraftContent)
   const dictation = useDictation({
     identity: `${draftStorage}:${draftStorageKey ?? ''}`,
-    disabled,
+    disabled: disabled || voiceActive,
     onComplete: (transcript, send) => {
       const draft = mention.currentDraft()
       const start = mention.textareaRef.current?.selectionStart ?? draft.text.length
@@ -528,58 +533,49 @@ export function ComposerCard({
                 ) : null}
               </AnimatePresence>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              {dictation.showButton ? (
+            <div className="flex min-h-10 shrink-0 items-center gap-2">
+              {dictation.showButton && !voiceActive ? (
                 <IconButton
                   variant="ghost"
                   size="lg"
-                  className="size-10"
+                  className="relative after:absolute after:-inset-0.5"
                   aria-label="Dictate"
                   title={dictation.availability.available ? 'Dictate' : dictation.availability.reason || 'Checking dictation availability…'}
-                  disabled={disabled || !dictation.availability.available}
+                  disabled={disabled || voiceActive || !dictation.availability.available}
                   onClick={() => {
                     setOptionsOpen(false)
                     mention.textareaRef.current?.focus()
                     void dictation.start()
                   }}
                 >
-                  <Mic size={18} />
+                  <Mic size={16} />
                 </IconButton>
               ) : null}
-              {onVoice ? (
-                <IconButton
-                  variant="ghost"
-                  size="lg"
-                  aria-label="Voice mode"
-                  title="Voice mode"
-                  disabled={streaming || disabled}
-                  onClick={onVoice}
-                >
-                  <AudioLines size={16} />
-                </IconButton>
-              ) : null}
+              {voiceControls}
               {showStopButton ? (
                 <IconButton
                   variant="primary"
-                  size="lg"
+                  size="md"
+                  className="relative after:absolute after:-inset-1"
                   aria-label="Stop response"
                   title="Stop response"
                   onClick={onStop}
                 >
-                  <Square size={13} fill="currentColor" strokeWidth={0} />
+                  <Square size={12} fill="currentColor" strokeWidth={0} />
                 </IconButton>
-              ) : (
+              ) : !voiceActive || hasDraftContent ? (
                 <IconButton
                   variant="primary"
-                  size="lg"
-                  aria-label={streaming ? 'Queue message' : 'Send message'}
-                  title={streaming ? 'Queue message' : 'Send message'}
-                  disabled={submitDisabled}
-                  onClick={() => void submit()}
+                  size="md"
+                  className="relative after:absolute after:-inset-1"
+                  aria-label={actionLabel}
+                  title={actionLabel}
+                  disabled={showVoiceButton ? disabled || Boolean(dictation.phase) : submitDisabled}
+                  onClick={showVoiceButton ? onVoice : () => void submit()}
                 >
-                  <ArrowUp size={18} />
+                  {showVoiceButton ? <AudioLines size={16} /> : <ArrowUp size={16} />}
                 </IconButton>
-              )}
+              ) : null}
             </div>
           </div>
           {dictation.phase ? (
@@ -612,6 +608,7 @@ export function Composer({
   onStop,
   onClearGoal,
   onVoice,
+  voiceControls,
   onUploadAttachment,
   onRemoveContext,
   onReplaceContexts,
@@ -639,6 +636,7 @@ export function Composer({
   onStop: () => void
   onClearGoal?: () => void
   onVoice?: () => void
+  voiceControls?: ReactNode
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onRemoveContext?: (id: string) => void
   onReplaceContexts?: (contexts: ComposerContext[]) => void
@@ -685,6 +683,7 @@ export function Composer({
         onStop={onStop}
         onClearGoal={onClearGoal}
         onVoice={onVoice}
+        voiceControls={voiceControls}
         onUploadAttachment={onUploadAttachment}
         onRemoveContext={onRemoveContext}
         onReplaceContexts={onReplaceContexts}
@@ -696,11 +695,13 @@ export function Composer({
 export function PlanDecisionCard({
   disabled,
   pending,
+  controls,
   onImplement,
   onClarify,
 }: {
   disabled?: boolean
   pending?: boolean
+  controls?: ReactNode
   onImplement: () => void
   onClarify: (text: string) => void
 }) {
@@ -788,6 +789,7 @@ export function PlanDecisionCard({
           </motion.button>
         )}
       </div>
+      {controls ? <div className="mt-1 flex min-h-10 items-center justify-end gap-2">{controls}</div> : null}
     </div>
   )
 }

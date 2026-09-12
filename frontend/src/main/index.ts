@@ -28,6 +28,7 @@ import { installBrowserControl } from '@main/browserControl'
 import { installBrowserProfileImport } from '@main/browserProfileImport'
 import { configurePreviewSession } from '@main/previewSession'
 import { setupLauncher, teardownLauncher } from './spotlight'
+import { attachVoiceOverlay } from './voiceOverlay'
 import { createUpdateController } from './updater'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
@@ -271,6 +272,7 @@ function createWindow(): void {
   })
 
   mainWindow = win
+  attachVoiceOverlay(win)
   attachWindowLifecycle(win, { label: 'main', onDidFinishLoad: () => updates.sendStatusTo(win) })
   attachBrowserNavigationCommands(win)
   win.on('closed', () => {
