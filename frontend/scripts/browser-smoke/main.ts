@@ -1,9 +1,14 @@
 import { app, BrowserWindow, ipcMain, session, webContents } from 'electron'
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from 'node:http'
+import { createServer as createSecureServer } from 'node:https'
+import { X509Certificate } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { installBrowserControl } from '@main/browserControl'
-import { configurePreviewSession } from '@main/previewSession'
+import { attachPreviewWebviews, configurePreviewSession } from '@main/previewSession'
+import { installBrowserPasswords } from '@main/browserPasswords'
+import { BrowserPasswordStore } from '@main/browserPasswordStore'
+import { PREVIEW_PARTITION } from '@shared/preview'
 import { assertUntrustedProfileCaller, prepareProfileFixture } from './profiles'
 import { accessibilityFixture, accessibilityFrame } from './accessibility'
 
@@ -11,6 +16,7 @@ app.setName('Jaz')
 app.setPath('userData', join(process.env.JAZ_BROWSER_SMOKE_DIR!, `profile-${process.pid}`))
 const timeout = Number(process.env.JAZ_BROWSER_SMOKE_TIMEOUT_MS || 30000)
 installBrowserControl()
+installBrowserPasswords()
 process.on('unhandledRejection', (error) => {
   console.error(error)
   app.exit(1)
@@ -21,7 +27,12 @@ ipcMain.handle('smoke:browser-exists', (_event, id: number) => Boolean(webConten
 let pendingProxy: { response: ServerResponse; url: string } | undefined
 let proxyWaiter: ServerResponse | undefined
 let firstNavigation: IncomingHttpHeaders | undefined
+let passwordOrigin = ''
 const server = createServer(async (request, response) => {
+  if (request.url === '/password-origin') {
+    response.end(passwordOrigin)
+    return
+  }
   if (request.url?.startsWith('/accessibility')) {
     response.setHeader('Content-Type', 'text/html')
     response.end(request.url.startsWith('/accessibility-frame')
@@ -85,6 +96,29 @@ server.listen(0, '127.0.0.1', async () => {
   configurePreviewSession()
   await prepareProfileFixture(process.env.JAZ_BROWSER_SMOKE_DIR!)
   process.env.ELECTRON_RENDERER_URL = `http://127.0.0.1:${address.port}`
+  const cert = await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'cert.pem'))
+  const fingerprint = new X509Certificate(cert).fingerprint256
+  session.fromPartition(PREVIEW_PARTITION).setCertificateVerifyProc(({ hostname, certificate }, callback) => {
+    callback(hostname === 'localhost' && new X509Certificate(certificate.data).fingerprint256 === fingerprint ? 0 : -3)
+  })
+  const secureServer = createSecureServer({ cert, key: await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'key.pem')) }, async (request, response) => {
+    response.setHeader('Content-Type', 'text/html')
+    if (request.method === 'POST') {
+      request.resume()
+      response.writeHead(303, { Location: '/welcome' })
+      response.end()
+      return
+    }
+    response.end(request.url === '/welcome' ? '<h1>Signed in</h1>' : `<!doctype html><html><head><style>
+body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{display:grid;gap:16px;max-width:340px}input,button{font:inherit;padding:12px;border:1px solid #ccc;border-radius:8px}h1{font-weight:550}
+</style></head><body><h1>Account sign in</h1><form method="post"><label>Email<input name="username" autocomplete="username" type="email"></label><label>Password<input name="password" autocomplete="current-password" type="password"></label><button>Sign in</button></form></body></html>`)
+  })
+  await new Promise<void>((resolve) => secureServer.listen(0, '127.0.0.1', resolve))
+  const secureAddress = secureServer.address()
+  if (!secureAddress || typeof secureAddress === 'string') {
+    throw new Error('Missing HTTPS fixture address')
+  }
+  passwordOrigin = `https://localhost:${secureAddress.port}`
   const window = new BrowserWindow({
     width: 1050,
     height: 850,
@@ -94,6 +128,28 @@ server.listen(0, '127.0.0.1', async () => {
       sandbox: true,
       preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'preload.js'),
     },
+  })
+  attachPreviewWebviews(window.webContents, join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'))
+  ipcMain.handle('smoke:password-store', async () => {
+    const file = join(app.getPath('userData'), 'browser-passwords.enc')
+    const encrypted = await readFile(file)
+    const records = new BrowserPasswordStore(file).read()
+    return { count: records.length, plaintext: records.some((record) => encrypted.includes(Buffer.from(record.password)) || encrypted.includes(Buffer.from(record.username))) }
+  })
+  let pointerPressed = false
+  ipcMain.handle('smoke:pointer', async (_event, type: 'mouseDown' | 'mouseMove' | 'mouseUp', x: number, y: number) => {
+    if (!window.isFocused()) {
+      window.focus()
+      window.webContents.focus()
+    }
+    if (type === 'mouseDown') {
+      pointerPressed = true
+    }
+    if (type === 'mouseUp') {
+      pointerPressed = false
+    }
+    window.webContents.sendInputEvent({ type, x, y, button: 'left', clickCount: 1, modifiers: pointerPressed ? ['leftButtonDown'] : [] })
+    await new Promise((resolve) => setTimeout(resolve, 20))
   })
   window.webContents.on('console-message', ({ level, message }) => {
     if (level === 'warning' || level === 'error') {
@@ -114,6 +170,7 @@ server.listen(0, '127.0.0.1', async () => {
   ipcMain.on('smoke:result', (_event, result) => {
     console.log(JSON.stringify(result))
     server.close()
+    secureServer.close()
     app.exit(result.ok ? 0 : 1)
   })
   await window.loadURL(`http://127.0.0.1:${address.port}?timeout=${timeout}`)

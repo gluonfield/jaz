@@ -32,10 +32,11 @@ import {
 import type { PreviewTarget } from '@/lib/browserSessions'
 import type { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserProfileImport } from '@/components/browser/BrowserProfileImport'
+import { BrowserPasswords } from '@/components/browser/BrowserPasswords'
 import { PREVIEW_PARTITION } from '@shared/preview'
 import { usePreviewFindControls } from './usePreviewFindControls'
 
-export const PREVIEW_PANEL_WIDTH = 640
+export const PREVIEW_PANEL_WIDTH = 800
 
 export function PreviewPanel({
   visible = true,
@@ -319,6 +320,7 @@ export function PreviewPanel({
         >
           <ExternalLink size={14} />
         </IconButton>
+        <BrowserPasswords webContentsId={webviewReady && webview ? webview.getWebContentsId() : null} visible={visible} />
         <IconButton
           size="sm"
           aria-label={annotating ? 'Stop annotation' : 'Annotate preview'}

@@ -12,6 +12,7 @@
     "noEmit": true,
     "paths": {
       "@shared/*": ["./src/shared/*"],
+      "@preload/*": ["./src/preload/*"],
       "@main/*": ["./src/main/*"]
     }
   },

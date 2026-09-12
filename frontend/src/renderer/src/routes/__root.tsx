@@ -22,6 +22,7 @@ import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { ToastProvider } from '@/components/ui/toast'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { SidebarVisibility } from '@/lib/sidebar'
 import { VoiceProvider } from '@/lib/voice/VoiceProvider'
 import { GlobalVoice } from '@/components/session/FloatingVoice'
 import { VoiceDesktopBridge } from '@/lib/voice/VoiceDesktopBridge'
@@ -302,7 +303,9 @@ function RootLayout() {
               </div>
             </div>
             <div className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">
-              <Outlet />
+              <SidebarVisibility.Provider value={setSidebarOpen}>
+                <Outlet />
+              </SidebarVisibility.Provider>
             </div>
           </main>
 
