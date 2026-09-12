@@ -6,7 +6,7 @@ import { messageText } from '@/lib/messageText'
 import { MessageActions } from '@/components/session/MessageActions'
 import { AssistantMarkdown } from './AssistantMarkdown'
 import { UserMessageMarkdown } from './MessageMarkdown'
-import { MessageAttachments, type MessageAttachment } from './MessageAttachments'
+import { MessageAttachments, type MessageAttachment } from '@/components/session/MessageAttachments'
 import { MessageContexts } from './MessageContexts'
 import { ThinkingBlock } from './ThinkingBlock'
 import { ToolCalls } from './ToolCalls'
@@ -66,11 +66,13 @@ export function UserBubble({
 }) {
   return (
     <div className="group/message flex flex-col items-end gap-1">
-      <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm [overflow-wrap:break-word] select-text">
-        <MessageContexts contexts={contexts} />
-        <UserMessageMarkdown text={text} />
-        <MessageAttachments attachments={attachments} attachmentSessionId={attachmentSessionId} />
-      </div>
+      <MessageAttachments attachments={attachments} attachmentSessionId={attachmentSessionId} />
+      {text || contexts.length ? (
+        <div className="min-w-0 max-w-[84%] rounded-card bg-surface px-3.5 py-2.5 text-sm [overflow-wrap:break-word] select-text">
+          <MessageContexts contexts={contexts} />
+          <UserMessageMarkdown text={text} />
+        </div>
+      ) : null}
       <MessageActions text={text} createdAt={createdAt} />
     </div>
   )
