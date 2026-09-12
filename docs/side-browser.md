@@ -23,6 +23,43 @@ Preview reloads that URL. Empty chats create their browser surface on first use.
 Page-local state and script variables reset; imported sign-ins remain in the
 shared browser partition.
 
+Opening Preview hides the left navigation and gives the browser about 60% of
+the available content area, with an 800-pixel default minimum when space permits. The conversation
+keeps at least 360 pixels on desktop. The visible grip on the panel's left edge
+can be dragged in either direction or clicked and adjusted with the arrow keys.
+Each panel view retains its own resized width while the conversation is mounted.
+Reopening or resizing navigation reduces the browser width to fit the remaining
+content area; closing navigation restores the preferred browser width.
+
+## Saved passwords
+
+Submitting a top-level HTTPS login form offers **Save password?** or
+**Update password?** in the browser toolbar. Saving requires clicking **Save**
+or **Update**. **Not now** dismisses the proposal. An unchanged saved login
+does not prompt again.
+
+Use the toolbar's **Passwords** key button to fill a saved login or delete it.
+Filling requires selecting an account and matches the exact HTTPS origin,
+including the port. **Save login on this page** can capture filled login fields
+on sites that do not submit a standard HTML form. Embedded login frames and
+passkeys are outside this password feature.
+
+Capture retains hidden and read-only usernames used by email-first sign-in flows.
+Filling selects a login field even when a sign-up form appears earlier on the page.
+A hidden or read-only username must match the selected saved account before its
+password can be filled.
+
+The desktop stores passwords in `browser-passwords.enc` under Electron's app
+data directory, encrypted with Electron `safeStorage` and the operating system's
+key storage. Passwords are shared by the side-browser tabs on that computer.
+Saving is unavailable without OS encryption; Linux's `basic_text` fallback is
+rejected. A failed write preserves the previous file.
+
+The isolated browser preload sends submitted credentials directly to Electron's
+main process. The app toolbar receives only origin, username and prompt metadata.
+The Jaz server and browser MCP tools have no password-store API. Autofill writes
+the selected credential into the matching page's login fields.
+
 ## Import browser sign-ins
 
 The desktop side browser offers **Import sign-ins** on first use. Choose a
@@ -205,7 +242,7 @@ Playwright surface should advertise its own supported capabilities.
 
 ## Verification
 
-From `frontend`, run `bun run test:browser` with Go 1.26 and Electron installed.
+From `frontend`, run `bun run test:browser` with Go 1.26, Electron and OpenSSL installed.
 `JAZ_ELECTRON_BINARY` can select an existing Electron executable. The command
 builds the production preview/controller/IPC modules into a temporary fixture
 and runs the Go test tagged `browserintegration`. It checks cursor-before-input
@@ -216,6 +253,16 @@ including session-header binding, observed success after output truncation, and
 an image result. Each Electron process uses a fresh browser profile. The fixture
 reports pending commands on timeout and writes a screenshot into the printed
 temporary artifact directory.
+
+The command builds the desktop bundle and tests the actual sandboxed preload.
+A temporary HTTPS login site checks save/update consent, encrypted store reload,
+account selection, deletion, dismissal, origin checks and rapid return-to-login
+navigation, hidden/read-only account identities and pages with multiple forms.
+The production panel controls are exercised with native mouse input:
+opening hides navigation, the browser gets its wider default, and the visible
+divider supports dragging and subsequent keyboard resizing. Reopening/resizing
+navigation checks the remaining conversation width. Captures cover both
+themes. These password checks use only synthetic credentials in a fresh profile.
 
 The production browser workspace is also exercised across chat and panel
 switches: a pending script continues, hidden pages accept trusted clicks and

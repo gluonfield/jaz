@@ -1,4 +1,5 @@
 export const PREVIEW_PARTITION = 'persist:jaz-preview'
+export const BROWSER_PRELOAD_ARGUMENT = '--jaz-side-browser'
 
 const SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i
 

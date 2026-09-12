@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => ({
     resolve: { alias: { '@shared': resolve('src/shared'), '@main': resolve('src/main') } },
   },
   preload: {
-    resolve: { alias: { '@shared': resolve('src/shared') } },
+    resolve: { alias: { '@shared': resolve('src/shared'), '@preload': resolve('src/preload') } },
   },
   renderer: {
     define: defineTelemetryEnv(mode),

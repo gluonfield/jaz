@@ -6,7 +6,6 @@ import {
   type MenuItemConstructorOptions,
   type Rectangle,
   type WebContents,
-  type WebPreferences,
   app,
   ipcMain,
   nativeTheme,
@@ -25,7 +24,8 @@ import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
 import { installBrowserControl } from '@main/browserControl'
 import { installBrowserProfileImport } from '@main/browserProfileImport'
-import { configurePreviewSession } from '@main/previewSession'
+import { attachPreviewWebviews, configurePreviewSession } from '@main/previewSession'
+import { installBrowserPasswords } from '@main/browserPasswords'
 import { setupLauncher, teardownLauncher } from './spotlight'
 import { attachVoiceOverlay } from './voiceOverlay'
 import { createUpdateController } from './updater'
@@ -41,6 +41,7 @@ app.setAppUserModelId('dev.wins.jaz')
 installMainDiagnostics()
 installBrowserControl()
 installBrowserProfileImport()
+installBrowserPasswords()
 
 let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
@@ -103,17 +104,6 @@ function installApplicationMenu(): void {
     },
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
-}
-
-function lockPreviewWebviewPreferences(webPreferences: WebPreferences): void {
-  const prefs = webPreferences as WebPreferences & { preloadURL?: string }
-  delete prefs.preload
-  delete prefs.preloadURL
-  webPreferences.nodeIntegration = false
-  webPreferences.contextIsolation = true
-  webPreferences.sandbox = true
-  webPreferences.webSecurity = true
-  webPreferences.allowRunningInsecureContent = false
 }
 
 function attachExternalOpenHandler(contents: WebContents): void {
@@ -278,13 +268,7 @@ function createWindow(): void {
     if (mainWindow === win) mainWindow = null
   })
 
-  win.webContents.on('will-attach-webview', (event, webPreferences, params) => {
-    if (!isPreviewURL(params.src)) {
-      event.preventDefault()
-      return
-    }
-    lockPreviewWebviewPreferences(webPreferences)
-  })
+  attachPreviewWebviews(win.webContents, join(__dirname, '../preload/index.js'))
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
