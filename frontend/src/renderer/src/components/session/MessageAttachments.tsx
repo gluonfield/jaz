@@ -1,9 +1,9 @@
 import { useLayoutEffect, useState } from 'react'
-import { FileText, Image as ImageIcon, ImageOff, LoaderCircle } from 'lucide-react'
+import { File as FileIcon, Image as ImageIcon, LoaderCircle } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { sessionAttachmentUrl } from '@/lib/api/sessions'
 
-const RENDERABLE_IMAGE_MIME_TYPES = new Set([
+const IMAGE_MIME_TYPES = new Set([
   'image/avif',
   'image/bmp',
   'image/gif',
@@ -33,56 +33,49 @@ export function MessageAttachments({
   attachments: MessageAttachment[]
   attachmentSessionId?: string
 }) {
-  if (!attachments.length) return null
-  const images = attachments.filter(isImageAttachment)
-  const files = attachments.filter((attachment) => !isImageAttachment(attachment))
+  if (!attachments.length) {
+    return null
+  }
   return (
-    <div className="mt-2 flex max-w-full flex-col gap-2">
-      {images.length ? (
-        <div className="flex max-w-full flex-col items-start gap-2">
-          {images.map((attachment, index) => (
-            <ImageAttachmentTile
-              key={attachmentKey(attachment, index)}
-              attachment={attachment}
-              attachmentSessionId={attachmentSessionId}
-            />
-          ))}
-        </div>
-      ) : null}
-      {files.length ? (
-        <div className="flex flex-wrap gap-1">
-          {files.map((attachment, index) => (
-            <FileAttachmentPill key={attachmentKey(attachment, index)} attachment={attachment} />
-          ))}
-        </div>
-      ) : null}
+    <div className="mb-1 flex max-w-[84%] flex-col items-end gap-2">
+      {attachments.map((attachment, index) => (
+        <AttachmentTile
+          key={attachmentKey(attachment, index)}
+          attachment={attachment}
+          attachmentSessionId={attachmentSessionId}
+        />
+      ))}
     </div>
   )
 }
 
-export function ImageAttachmentTile({
+export function AttachmentTile({
   attachment,
   attachmentSessionId,
-  compact = false,
+  variant = 'message',
 }: {
   attachment: MessageAttachment
   attachmentSessionId?: string
-  compact?: boolean
+  variant?: 'composer' | 'message'
 }) {
   const [open, setOpen] = useState(false)
   const [failedSrc, setFailedSrc] = useState('')
-  const objectUrl = useObjectUrl(attachment.file)
+  const isImage = isImageAttachment(attachment)
+  const objectUrl = useObjectUrl(isImage ? attachment.file : undefined)
   const src = objectUrl || attachmentContentUrl(attachment, attachmentSessionId)
-  const available = Boolean(src) && src !== failedSrc
-  const status = available || attachment.uploading ? attachmentStatus(attachment) : 'Unavailable'
+  const available = isImage && Boolean(src) && src !== failedSrc
+  const status = attachmentStatus(attachment)
+  if (!available && variant === 'message') {
+    return <FileAttachmentPill attachment={attachment} />
+  }
   return (
     <>
       <button
         type="button"
-        aria-label={`${available ? 'Open' : status} ${attachment.name}`}
+        aria-label={`${available ? 'Open ' : ''}${attachment.name}`}
         title={attachmentTitle(attachment)}
         disabled={!available}
-        className={`max-w-full overflow-hidden rounded-[8px] bg-bg text-left shadow-sm ring-1 ring-border/70 enabled:cursor-zoom-in ${compact || !available ? 'w-24' : 'w-fit'}`}
+        className={`relative block max-w-full shrink-0 overflow-hidden rounded-[10px] bg-bg text-left enabled:cursor-zoom-in focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${variant === 'message' ? 'size-20' : available ? 'size-30' : 'h-30 w-40'}`}
         onClick={() => setOpen(true)}
       >
         {available ? (
@@ -91,22 +84,25 @@ export function ImageAttachmentTile({
             alt={attachment.name}
             loading="lazy"
             onError={() => setFailedSrc(src)}
-            className={`block max-w-full object-contain outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10 ${compact ? 'h-18 w-24' : 'max-h-[32rem] h-auto w-auto'}`}
+            className="block size-full rounded-[10px] object-cover outline outline-1 -outline-offset-1 outline-black/10 dark:outline-white/10"
           />
         ) : (
-          <div className="grid aspect-[4/3] place-items-center bg-surface-2 text-ink-3">
-            {attachment.uploading ? (
-              <LoaderCircle size={18} className="animate-spin" aria-hidden />
-            ) : (
-              <ImageOff size={18} aria-hidden />
-            )}
+          <div className="flex h-full flex-col">
+            <div className="grid min-h-0 flex-1 place-items-center text-ink-3">
+              <FileIcon size={20} aria-hidden />
+            </div>
+            <div className="flex min-w-0 items-center gap-1.5 px-2.5 py-2 text-xs text-ink">
+              <FileIcon size={13} className="shrink-0" aria-hidden />
+              <span className="truncate">{attachment.name}</span>
+            </div>
           </div>
         )}
-        <div className="flex min-w-0 items-center gap-1 px-1.5 py-1 text-[10px]">
-          <ImageIcon size={11} className="shrink-0 text-ink-3" aria-hidden />
-          <span className="min-w-0 flex-1 truncate text-ink">{attachment.name}</span>
-          {status ? <span className="shrink-0 text-ink-3">{status}</span> : null}
-        </div>
+        {status ? (
+          <span role="status" className={`absolute top-2 left-2 flex items-center gap-1 rounded-md bg-bg/95 px-1.5 py-1 text-[10px] ${attachment.error ? 'text-danger' : 'text-ink-2'}`}>
+            {attachment.uploading ? <LoaderCircle size={11} className="animate-spin" aria-hidden /> : null}
+            {status}
+          </span>
+        ) : null}
       </button>
       {available ? (
         <ImageAttachmentModal
@@ -161,7 +157,7 @@ function ImageAttachmentModal({
         </div>
         <figcaption className="flex min-h-9 items-center gap-2 px-3 py-2 text-[12px] text-white/70 sm:px-4">
           <span className="min-w-0 flex-1 truncate text-white/85">{attachment.name}</span>
-          <span className="shrink-0 tabular-nums">{attachmentStatus(attachment)}</span>
+          <span className="shrink-0 tabular-nums">{attachmentStatus(attachment) || formatAttachmentSize(attachment.size)}</span>
         </figcaption>
       </figure>
     </Modal>
@@ -169,21 +165,27 @@ function ImageAttachmentModal({
 }
 
 function FileAttachmentPill({ attachment }: { attachment: MessageAttachment }) {
+  const Icon = isImageAttachment(attachment) ? ImageIcon : FileIcon
+  const status = attachmentStatus(attachment)
   return (
     <span
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-bg px-2.5 py-1 text-xs text-ink-2"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface px-2.5 py-1.5 text-sm text-ink-2 ring-1 ring-inset ring-border/70"
       title={attachmentTitle(attachment)}
     >
-      <FileText size={13} className="shrink-0 text-ink-3" />
-      <span className="max-w-[220px] truncate text-ink">{attachment.name}</span>
-      <span className="shrink-0 text-ink-3">{attachmentStatus(attachment)}</span>
+      <Icon size={13} className="shrink-0 text-ink-3" aria-hidden />
+      <span className="min-w-0 truncate text-ink">{attachment.name}</span>
+      {status ? (
+        <span role="status" className={`shrink-0 ${attachment.error ? 'text-danger' : 'text-ink-3'}`}>{status}</span>
+      ) : null}
     </span>
   )
 }
 
 function attachmentStatus(attachment: MessageAttachment): string {
-  if (attachment.error) return 'Failed'
-  return attachment.uploading ? 'Uploading' : formatAttachmentSize(attachment.size)
+  if (attachment.error) {
+    return 'Failed'
+  }
+  return attachment.uploading ? 'Uploading' : ''
 }
 
 function attachmentContentUrl(attachment: MessageAttachment, attachmentSessionId?: string): string {
@@ -192,9 +194,9 @@ function attachmentContentUrl(attachment: MessageAttachment, attachmentSessionId
   return ''
 }
 
-export function isImageAttachment(attachment: MessageAttachment): boolean {
+function isImageAttachment(attachment: MessageAttachment): boolean {
   const mime = attachment.mime_type?.split(';', 1)[0]?.trim().toLowerCase() ?? ''
-  return RENDERABLE_IMAGE_MIME_TYPES.has(mime) || /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(attachment.name)
+  return IMAGE_MIME_TYPES.has(mime) || /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/i.test(attachment.name)
 }
 
 function formatAttachmentSize(size?: number): string {
@@ -205,7 +207,7 @@ function formatAttachmentSize(size?: number): string {
 }
 
 function attachmentTitle(attachment: MessageAttachment): string {
-  return attachment.uri ?? attachment.name
+  return attachment.error ?? attachment.uri ?? attachment.name
 }
 
 function attachmentKey(attachment: MessageAttachment, index: number): string {
