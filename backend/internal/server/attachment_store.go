@@ -14,7 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-const defaultAttachmentMaxBytes int64 = 32 << 20
+const defaultAttachmentMaxBytes int64 = 128 << 20
 
 func (s *Server) resolveAttachments(sessionID string, ids []string) ([]storage.Attachment, error) {
 	if len(ids) == 0 {
