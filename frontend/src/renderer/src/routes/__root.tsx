@@ -169,8 +169,7 @@ function RootLayout() {
   // over the thread rather than a resizable column, and auto-dismisses on
   // navigation to reveal the thread underneath.
   const isMobile = useIsMobile()
-  const titlebarInset = (isMacDesktop && !isMobile ? 80 : 8)
-    + (sidebarOpen ? 40 : 80) + (isMobile ? 0 : 80) + 8
+  const titlebarInset = (isMacDesktop && !isMobile ? 80 : 8) + 88
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   useEffect(() => {
     if (isMobile) setSidebarOpen(false)
