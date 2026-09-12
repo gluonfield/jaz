@@ -1,5 +1,6 @@
 import type { ChatMessage, SessionMessages } from '@/lib/api/types'
 import { voiceThreadEvents } from '@/lib/voice/transcript'
+import type { VoiceWorkActivity } from '@shared/voice'
 
 export interface VoiceTask {
   id: string
@@ -22,6 +23,13 @@ function voiceTaskWindow(user: ChatMessage, snapshot: SessionMessages) {
   const events = voiceThreadEvents(snapshot).filter((event) => Date.parse(event.at) >= Date.parse(user.created_at)
     && (!nextUser || Date.parse(event.at) < Date.parse(nextUser.created_at)))
   return { after, nextUser, events }
+}
+
+export function voiceTaskActivity(task: VoiceTask, snapshot: SessionMessages): VoiceWorkActivity {
+  const latest = task.user && voiceTaskWindow(task.user, snapshot).events.findLast((event) =>
+    ['acp_thought', 'acp_message', 'acp_tool'].includes(event.type),
+  )
+  return latest?.type === 'acp_thought' ? 'thinking' : 'working'
 }
 
 export function voiceReplyChunks(task: VoiceTask, snapshot: SessionMessages, completed: boolean): string[] {

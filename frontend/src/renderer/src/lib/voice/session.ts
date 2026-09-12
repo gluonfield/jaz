@@ -11,9 +11,10 @@ import type { VoiceStatus } from '@shared/voice'
 
 export type VoiceState = VoiceStatus & {
   analyser: AnalyserNode | null
+  outputAnalyser: AnalyserNode | null
 }
 
-export const initialVoiceState: VoiceState = { phase: 'off', muted: false, speakerMuted: false, working: false, error: '', analyser: null }
+export const initialVoiceState: VoiceState = { phase: 'off', muted: false, speakerMuted: false, activity: null, error: '', analyser: null, outputAnalyser: null }
 
 export class VoiceSession {
   private state = initialVoiceState
@@ -54,8 +55,8 @@ export class VoiceSession {
     const stream = new VoiceTaskStream({
       read: () => getSessionMessagesPage(this.sessionId, { turns: 32 }, abort.signal),
       subscribe: (after, onEvent, onConnection) => openSessionEvents(this.sessionId, after, onEvent, onConnection),
-    }, recorder.callId, (text, speak, id) => connection.append(text, speak, id), (working, error) => {
-      this.update({ working, ...(error || this.state.error === followError ? { error } : {}) })
+    }, recorder.callId, (text, speak, id) => connection.append(text, speak, id), (activity, error) => {
+      this.update({ activity, ...(error || this.state.error === followError ? { error } : {}) })
       followError = error
     })
     this.stop = () => {
@@ -88,7 +89,7 @@ export class VoiceSession {
         if (abort.signal.aborted) {
           return
         }
-        this.update({ error: '', working: true })
+        this.update({ error: '' })
         connection.append(`Agent request accepted: ${JSON.stringify({ request: request.text, status: 'running' })}`, false, event.id)
         stream.follow(task)
         this.refresh()
@@ -126,7 +127,7 @@ export class VoiceSession {
         }
         switch (event.type) {
           case 'ready': {
-            this.update({ phase: 'listening', analyser: connection.analyser })
+            this.update({ phase: 'listening', analyser: connection.analyser, outputAnalyser: connection.outputAnalyser })
             stream.start()
             break
           }
@@ -149,7 +150,7 @@ export class VoiceSession {
         connection.dispose()
         this.connection = undefined
         this.stop()
-        this.update({ phase: 'error', analyser: null, error: error.message })
+        this.update({ ...initialVoiceState, phase: 'error', error: error.message })
       })
     } catch (error) {
       this.stop()

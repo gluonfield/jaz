@@ -13,8 +13,8 @@ export function VoiceOverlay() {
     return null
   }
   const command = clientRuntime.voiceOverlay!.command
-  const voice = { ...state, analyser: null,
+  const voice = { ...state, analyser: null, outputAnalyser: null,
     start: () => command('reconnect'), end: () => command('exit'), dismiss: () => command('exit'),
     mute: () => command('mute'), muteSpeaker: () => command('muteSpeaker') }
-  return <div className="grid h-full place-items-center p-3"><FloatingVoice voice={voice} level={state.level} reducedMotion={state.reducedMotion} onReturn={() => command('return')} /></div>
+  return <div className="grid h-full place-items-center p-3"><FloatingVoice voice={voice} level={state.level} outputLevel={state.outputLevel} reducedMotion={state.reducedMotion} onReturn={() => command('return')} /></div>
 }

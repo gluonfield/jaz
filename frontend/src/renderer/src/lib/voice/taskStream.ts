@@ -1,7 +1,8 @@
 import type { SessionEvent, SessionMessages } from '@/lib/api/types'
 import { coalesceSessionEvents, mergeSessionEvent } from '@/lib/sessionEvents'
-import { taskFinished, voiceAgentRunning, voiceReplyChunks, voiceTaskUpdate, type VoiceTask } from '@/lib/voice/delegation'
+import { taskFinished, voiceAgentRunning, voiceReplyChunks, voiceTaskActivity, voiceTaskUpdate, type VoiceTask } from '@/lib/voice/delegation'
 import { voiceChatContext } from '@/lib/voice/transcript'
+import type { VoiceWorkActivity } from '@shared/voice'
 
 type Source = {
   read: () => Promise<SessionMessages>
@@ -16,13 +17,14 @@ export class VoiceTaskStream {
   private dirty = false
   private stopped = false
   private lastContext = ''
+  private status?: { activity: VoiceWorkActivity; error: string }
   private retry?: ReturnType<typeof setTimeout>
 
   constructor(
     private source: Source,
     private callId: string,
     private append: (text: string, speak: boolean, id?: string) => void,
-    private onState: (working: boolean, error: string) => void,
+    private onState: (activity: VoiceWorkActivity, error: string) => void,
   ) {}
 
   async context() {
@@ -53,13 +55,14 @@ export class VoiceTaskStream {
       if (connected) {
         void this.refresh()
       } else if (!this.stopped) {
-        this.onState(this.tasks.length > 0, 'Reconnecting to agent updates…')
+        this.publish('Reconnecting to agent updates…')
       }
     })
   }
 
   follow(task: VoiceTask) {
     this.tasks.push(task)
+    this.publish()
     void this.refresh()
   }
 
@@ -92,10 +95,9 @@ export class VoiceTaskStream {
         }
         this.snapshot = snapshot
         this.deliver(following.filter((task) => this.tasks.includes(task)))
-        this.onState(this.tasks.length > 0, '')
       } catch (error) {
         if (!this.stopped) {
-          this.onState(this.tasks.length > 0, `Couldn't follow agent work: ${(error as Error).message}`)
+          this.publish(`Couldn't follow agent work: ${(error as Error).message}`)
           this.retry = setTimeout(() => void this.refresh(), 1000)
         }
       }
@@ -132,15 +134,24 @@ export class VoiceTaskStream {
       }
       if (finished) {
         this.tasks.splice(this.tasks.indexOf(task), 1)
-        this.onState(this.tasks.length > 0, '')
       }
     }
+    this.publish()
     if (!this.tasks.length && !voiceAgentRunning(snapshot)) {
       const context = voiceChatContext(snapshot, this.callId)
       if (context !== this.lastContext) {
         this.append(context, false)
         this.lastContext = context
       }
+    }
+  }
+
+  private publish(error = '') {
+    const task = this.tasks.at(-1)
+    const activity = task ? voiceTaskActivity(task, this.snapshot!) : null
+    if (activity !== this.status?.activity || error !== this.status?.error) {
+      this.status = { activity, error }
+      this.onState(activity, error)
     }
   }
 

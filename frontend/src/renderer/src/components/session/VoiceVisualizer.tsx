@@ -1,106 +1,133 @@
-import { useEffect, useId, useRef, useState } from 'react'
-import { BotEngine } from '@/lib/vendor/bloub/engine'
-import { EXPRESSION_BY_ID } from '@/lib/vendor/bloub/expressions'
-import type { StateId } from '@/lib/vendor/bloub/states'
+import { useEffect, useRef, useState } from 'react'
+import { motion, useMotionValue, useSpring } from 'motion/react'
+import { shapeById, type ShapeId } from '@/lib/vendor/mote/shapes'
+import { eyeById, type EyeId } from '@/lib/vendor/mote/eyes'
 import { audioLevel } from '@/lib/voice/audioLevel'
+import { VoiceAvatarActivity, type VoiceAvatarState } from '@/lib/voice/avatar'
+import type { VoiceState } from '@/lib/voice/session'
 
-const restingFrame = new BotEngine(100).sample(0)
+const poses: Record<VoiceAvatarState, { shape: ShapeId; eyes: EyeId; tilt: number; gaze: number; duration: number }> = {
+  listening: { shape: 'orb', eyes: 'listening', tilt: -3, gaze: 3, duration: 5.6 },
+  thinking: { shape: 'cloud', eyes: 'thinking', tilt: -5, gaze: -7, duration: 4.8 },
+  working: { shape: 'squircle', eyes: 'focused', tilt: 2, gaze: 9, duration: 3.2 },
+  speaking: { shape: 'blob', eyes: 'joyful', tilt: 3, gaze: 3, duration: 2.8 },
+  connecting: { shape: 'egg', eyes: 'searching', tilt: -4, gaze: 8, duration: 3.6 },
+  muted: { shape: 'pebble', eyes: 'sleepy', tilt: 0, gaze: 0, duration: 7 },
+  error: { shape: 'pebble', eyes: 'uneasy', tilt: -4, gaze: 0, duration: 7 },
+}
 
-export function VoiceVisualizer({ analyser, active, reducedMotion, connecting = false, working = false, level = 0, size = 88 }: {
-  analyser: AnalyserNode | null
-  active: boolean
+export function VoiceVisualizer({ voice, reducedMotion, level = 0, outputLevel = 0, size = 88 }: {
+  voice: VoiceState
   reducedMotion: boolean
-  connecting?: boolean
-  working?: boolean
   level?: number
+  outputLevel?: number
   size?: number
 }) {
-  const id = useId()
-  const input = useRef({ analyser, active, connecting, working, level })
-  const redraw = useRef(() => {})
-  const [frame, setFrame] = useState({ pose: restingFrame, scale: 1, state: 'idle' as StateId })
-  useEffect(() => {
-    input.current = { analyser, active, connecting, working, level }
-    if (reducedMotion) {
-      redraw.current()
-    }
-  }, [analyser, active, connecting, working, level, reducedMotion])
+  const input = useRef({ voice, level, outputLevel })
+  const [meter] = useState(() => new VoiceAvatarActivity())
+  const [state, setState] = useState(() => meter.sample(voice, level, outputLevel, performance.now()))
+  const amplitude = useSpring(1, { stiffness: 280, damping: 26 })
+  const lift = useSpring(0, { stiffness: 160, damping: 24 })
+  const rotation = useSpring(0, { stiffness: 160, damping: 24 })
+  const gazeX = useSpring(0, { stiffness: 160, damping: 24 })
+  const gazeY = useSpring(0, { stiffness: 160, damping: 24 })
+  const leftBlink = useMotionValue(1)
+  const rightBlink = useMotionValue(1)
+  const pose = poses[state]
 
   useEffect(() => {
-    const engine = new BotEngine(100)
-    let previous = 0
-    let clock = 0
-    let mode = ''
-    let modeSince = 0
-    let amplitude = 0
+    input.current = { voice, level, outputLevel }
+  }, [voice, level, outputLevel])
+
+  useEffect(() => {
     let raf = 0
+    let timer: ReturnType<typeof setTimeout>
     let samples = new Uint8Array(0)
-    const draw = (now: number) => {
-      const dt = previous ? Math.min((now - previous) / 1000, 0.064) : 0
-      previous = now
-      clock += reducedMotion ? 0 : dt
-      const { analyser, active, connecting, working, level } = input.current
-      if (analyser && samples.length !== analyser.fftSize) {
-        samples = new Uint8Array(analyser.fftSize)
+    let outputSamples = new Uint8Array(0)
+    let previous: VoiceAvatarState | undefined
+    let lastFrame = performance.now()
+    let cycle = 0
+    let blinkAt = lastFrame + 2200 + Math.random() * 1800
+    let wink = false
+    let winkUntil = 0
+    const draw = () => {
+      const now = performance.now()
+      const { voice, level, outputLevel } = input.current
+      if (voice.analyser && samples.length !== voice.analyser.fftSize) {
+        samples = new Uint8Array(voice.analyser.fftSize)
       }
-      const target = reducedMotion ? 0 : analyser ? audioLevel(analyser, samples) : level
-      amplitude += (target - amplitude) * (1 - Math.exp(-dt / 0.09))
-      const nextMode = connecting ? 'connecting' : !active ? 'muted' : working ? 'working' : 'ready'
-      if (mode !== nextMode) {
-        mode = nextMode
-        modeSince = clock
-        engine.setExpression(mode === 'muted' ? EXPRESSION_BY_ID.get('somnolent')! : null, clock - (reducedMotion ? 1 : 0))
+      if (voice.outputAnalyser && outputSamples.length !== voice.outputAnalyser.fftSize) {
+        outputSamples = new Uint8Array(voice.outputAnalyser.fftSize)
       }
-      const elapsed = clock - modeSince
-      let state: StateId = 'idle'
-      if (mode === 'connecting') {
-        state = elapsed % 6 < 3.6 ? 'orbit' : 'hexagon'
-      } else if (mode === 'working') {
-        state = elapsed % 6 < 3 ? 'hexagon' : 'orbit'
-      } else if (mode === 'ready' && (elapsed < 1.4 || amplitude > 0.08 || (engine.state === 'wide' && amplitude > 0.03))) {
-        state = 'wide'
+      const incoming = voice.muted ? 0 : voice.analyser ? audioLevel(voice.analyser, samples) : level
+      const outgoing = voice.outputAnalyser ? audioLevel(voice.outputAnalyser, outputSamples) : outputLevel
+      const next = meter.sample(voice, incoming, outgoing, now)
+      const pose = poses[next]
+      const still = reducedMotion || next === 'muted' || next === 'error'
+      setState(next)
+      if (!still) {
+        cycle += Math.min(now - lastFrame, 64) / (pose.duration * 1000) * Math.PI * 2
       }
-      if (engine.state !== state) {
-        engine.setState(state, clock - (reducedMotion ? 1 : 0))
+      lastFrame = now
+      for (const [value, target] of [
+        [amplitude, still ? 1 : 1 + (next === 'speaking' ? outgoing : incoming) * 0.12],
+        [lift, still ? 0 : Math.cos(cycle) * 3 - 3],
+        [rotation, still ? pose.tilt : pose.tilt * Math.cos(cycle)],
+        [gazeX, still ? 0 : pose.gaze * Math.sin(cycle)],
+        [gazeY, !still && next === 'thinking' ? -5 : 0],
+      ] as const) {
+        if (reducedMotion) {
+          value.jump(target)
+        } else {
+          value.set(target)
+        }
       }
-      setFrame({ pose: engine.sample(clock), scale: 1 + amplitude * 0.09, state })
-      if (!reducedMotion) {
+      const acknowledged = previous && ['connecting', 'thinking', 'working'].includes(previous) && (next === 'listening' || next === 'speaking')
+      if (!still && acknowledged && now > winkUntil) {
+        wink = true
+        blinkAt = now + 500
+        winkUntil = blinkAt + 6000
+      }
+      previous = next
+      if (now > blinkAt + (wink ? 480 : 280)) {
+        blinkAt = now + 3200 + Math.random() * 2400
+        wink = false
+      }
+      const progress = Math.max(0, Math.min(1, (now - blinkAt) / (wink ? 480 : 280)))
+      const eyelid = 1 - 0.94 * Math.sin(Math.PI * progress)
+      leftBlink.set(still || wink ? 1 : eyelid)
+      rightBlink.set(still ? 1 : eyelid)
+      if (reducedMotion) {
+        timer = setTimeout(draw, 100)
+      } else {
         raf = requestAnimationFrame(draw)
       }
     }
-    redraw.current = () => draw(performance.now())
-    redraw.current()
+    draw()
     return () => {
       cancelAnimationFrame(raf)
-      redraw.current = () => {}
+      clearTimeout(timer)
     }
-  }, [reducedMotion])
+  }, [amplitude, gazeX, gazeY, leftBlink, lift, meter, reducedMotion, rightBlink, rotation])
 
-  const { pose } = frame
+  const eyes = eyeById(pose.eyes)
+  const morph = { type: 'spring', duration: reducedMotion ? 0 : 0.55, bounce: 0 } as const
   return (
-    <svg width={size} height={size} viewBox="-160 -160 320 320" fill="currentColor" aria-hidden="true" data-avatar="bloub" data-state={frame.state}>
-      <defs>
-        <mask id={`${id}-body`} maskUnits="userSpaceOnUse" x="-160" y="-160" width="320" height="320">
-          <path data-body d={pose.bodyPath} fill="white" />
-          {pose.eyes.map((eye, i) => <path key={i} data-eye d={eye.d} transform={eye.matrix} opacity={eye.alpha} fill="black" />)}
-        </mask>
-        {pose.arcs.map((arc) => (
-          <linearGradient key={arc.id} id={`${id}-${arc.id}`} gradientUnits="userSpaceOnUse" x1={arc.grad.x1} y1={arc.grad.y1} x2={arc.grad.x2} y2={arc.grad.y2}>
-            {arc.grad.stops.map((color, i) => <stop key={i} offset={i / (arc.grad.stops.length - 1)} stopColor={color} />)}
-          </linearGradient>
-        ))}
-      </defs>
-      <g transform={`scale(${frame.scale})`}>
-        <g fill="none" strokeLinecap="round">
-          {pose.arcs.map((arc) => <path key={arc.id} d={arc.back} stroke={`url(#${id}-${arc.id})`} strokeWidth={arc.width} opacity={arc.opacity} />)}
-        </g>
-        <g opacity={pose.bodyAlpha}>
-          <path d={pose.bodyPath} fill="var(--color-bg)" />
-          <rect x="-160" y="-160" width="320" height="320" mask={`url(#${id}-body)`} />
-        </g>
-        <g fill="none" strokeLinecap="round">
-          {pose.arcs.map((arc) => <path key={arc.id} d={arc.front} stroke={`url(#${id}-${arc.id})`} strokeWidth={arc.width} opacity={arc.opacity} />)}
-        </g>
+    <svg width={size} height={size} viewBox="0 0 360 360" role="img" aria-label={`Voice ${state}`} data-avatar="mote" data-state={state} data-shape={pose.shape}>
+      <g transform="translate(20 20)">
+        <motion.g style={{ scale: amplitude, transformOrigin: '160px 160px' }}>
+          <motion.g style={{ y: lift, rotate: rotation, transformOrigin: '160px 160px' }}>
+            <motion.path data-body fill="#2f8de3" initial={false} animate={{ d: shapeById(pose.shape).path }} transition={morph} />
+            <motion.g style={{ x: gazeX, y: gazeY }}>
+              <motion.g style={{ scaleY: leftBlink, transformOrigin: `${eyes.leftCenter.x}px ${eyes.leftCenter.y}px` }}>
+                <motion.path data-eye="left" fill="#f4f2eb" initial={false} animate={{ d: eyes.leftPath }} transition={morph} />
+              </motion.g>
+              <motion.g style={{ scaleY: rightBlink, transformOrigin: `${eyes.rightCenter.x}px ${eyes.rightCenter.y}px` }}>
+                <motion.path data-eye="right" fill="#f4f2eb" initial={false} animate={{ d: eyes.rightPath }} transition={morph} />
+              </motion.g>
+            </motion.g>
+          </motion.g>
+        </motion.g>
       </g>
     </svg>
   )

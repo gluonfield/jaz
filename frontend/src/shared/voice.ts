@@ -1,8 +1,10 @@
+export type VoiceWorkActivity = 'thinking' | 'working' | null
+
 export type VoiceStatus = {
   phase: 'off' | 'connecting' | 'listening' | 'ending' | 'error'
   muted: boolean
   speakerMuted: boolean
-  working: boolean
+  activity: VoiceWorkActivity
   error: string
 }
 
@@ -10,6 +12,7 @@ export type VoiceOverlayState = VoiceStatus & {
   sessionId: string
   docked: boolean
   level: number
+  outputLevel: number
   dark: boolean
   reducedMotion: boolean
 }

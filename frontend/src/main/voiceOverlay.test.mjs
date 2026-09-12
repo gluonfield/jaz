@@ -72,7 +72,7 @@ mock.module('electron', () => ({
 const { attachVoiceOverlay } = await import('./voiceOverlay')
 afterAll(() => mock.restore())
 const sender = (window) => ({ sender: window.webContents, senderFrame: window.webContents.mainFrame })
-const state = { sessionId: 'original', phase: 'listening', docked: true, muted: false, speakerMuted: false, working: false, error: '', level: 0, dark: false, reducedMotion: false }
+const state = { sessionId: 'original', phase: 'listening', docked: true, muted: false, speakerMuted: false, activity: null, error: '', level: 0, outputLevel: 0, dark: false, reducedMotion: false }
 
 test('one overlay follows chat selection and owner focus without activating itself', () => {
   const owner = new Window()

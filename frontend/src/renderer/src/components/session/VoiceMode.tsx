@@ -4,7 +4,7 @@ import { VoiceVisualizer } from '@/components/session/VoiceVisualizer'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import type { VoiceHandle } from '@/lib/voice/session'
 
-export function VoiceMode({ voice, size, level, compact = false, reducedMotion: reducedOverride }: { voice: VoiceHandle; size?: number; level?: number; compact?: boolean; reducedMotion?: boolean }) {
+export function VoiceMode({ voice, size, level, outputLevel, compact = false, reducedMotion: reducedOverride }: { voice: VoiceHandle; size?: number; level?: number; outputLevel?: number; compact?: boolean; reducedMotion?: boolean }) {
   const reducedMotion = useReducedEffectsMotion()
   if (voice.phase === 'off') {
     return voice.error ? <p role="alert" className="mb-3 text-center text-xs text-danger">{voice.error}</p> : null
@@ -14,12 +14,11 @@ export function VoiceMode({ voice, size, level, compact = false, reducedMotion: 
     : voice.phase === 'error' ? 'Voice disconnected'
     : voice.muted ? 'Microphone muted' : ''
   const label = compact && voice.error ? voice.error : status
-  const ready = voice.phase === 'listening' && !voice.muted
 
   return (
     <div className="mb-3 flex flex-col items-center" aria-label="Voice conversation">
-      <div role="img" aria-label="Voice activity" className={`pointer-events-none transition-colors duration-200 ${ready ? 'text-ink' : 'text-ink-3'}`}>
-        <VoiceVisualizer analyser={voice.analyser} active={ready} connecting={voice.phase === 'connecting'} working={voice.working} reducedMotion={reducedOverride ?? reducedMotion} size={size} level={level} />
+      <div className="pointer-events-none">
+        <VoiceVisualizer voice={voice} reducedMotion={reducedOverride ?? reducedMotion} size={size} level={level} outputLevel={outputLevel} />
       </div>
       <p title={voice.error || status} className="mt-1 flex h-5 max-w-[164px] items-center text-xs text-ink-2">
         {label ? <span role={compact && voice.error ? 'alert' : 'status'} aria-atomic="true" className="truncate">{label}</span> : null}

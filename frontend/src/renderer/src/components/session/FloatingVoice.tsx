@@ -5,10 +5,11 @@ import { useGlobalVoice } from '@/lib/voice/VoiceProvider'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useRef, useState } from 'react'
 
-export function FloatingVoice({ voice, onReturn, level, reducedMotion }: {
+export function FloatingVoice({ voice, onReturn, level, outputLevel, reducedMotion }: {
   voice: VoiceHandle
   onReturn: () => void
   level?: number
+  outputLevel?: number
   reducedMotion?: boolean
 }) {
   const [offset, setOffset] = useState({ x: 0, y: 0 })
@@ -64,7 +65,7 @@ export function FloatingVoice({ voice, onReturn, level, reducedMotion }: {
           }
         }}
       >
-        <VoiceMode voice={voice} size={152} level={level} compact reducedMotion={reducedMotion} />
+        <VoiceMode voice={voice} size={152} level={level} outputLevel={outputLevel} compact reducedMotion={reducedMotion} />
       </button>
       <div className="flex items-center gap-3">
         <VoiceControls voice={voice} floating />

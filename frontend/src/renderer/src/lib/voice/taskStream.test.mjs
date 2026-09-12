@@ -36,7 +36,7 @@ const fixture = () => {
     },
   }, disk.messages[0].blocks.find((block) => block.type === 'voice_context').id,
   (text, speak, id) => sent.push({ text, speak, id }),
-  (working, error) => states.push({ working, error }))
+  (activity, error) => states.push({ activity, error }))
   const task = () => {
     const context = disk.messages[0].blocks.find((block) => block.type === 'voice_context')
     return { id: context.request_id, callId: context.id }
@@ -53,6 +53,50 @@ const fixture = () => {
 }
 
 describe('voice consumes the existing agent event stream', () => {
+  test('streaming text publishes activity transitions without republishing each token', async () => {
+    const f = fixture()
+    await f.stream.context()
+    f.stream.start()
+    f.stream.follow(f.task())
+    expect(f.states).toEqual([{ activity: 'working', error: '' }])
+    await f.stream.refresh()
+    f.states.length = 0
+    const event = disk.events[0]
+    for (let seq = event.seq; seq < event.seq + 30; seq += 1) {
+      f.emit({ ...event, seq, type: 'acp_thought', content: 'Thinking', projection_key: 'thought' })
+    }
+    expect(f.states).toEqual([{ activity: 'thinking', error: '' }])
+    f.connect(false)
+    f.connect(false)
+    expect(f.states).toHaveLength(2)
+    expect(f.states.at(-1).error).toContain('Reconnecting')
+    await f.stream.refresh()
+    expect(f.states).toHaveLength(3)
+    expect(f.states.at(-1)).toEqual({ activity: 'thinking', error: '' })
+    f.stream.stop()
+  })
+
+  test('the current root task switches thinking to working while reasoning stays out of spoken context', async () => {
+    const f = fixture()
+    await f.stream.context()
+    f.stream.start()
+    f.stream.follow(f.task())
+    await f.stream.refresh()
+    const event = disk.events[0]
+    const thought = { ...event, type: 'acp_thought', content: 'Private reasoning', projection_key: 'thought' }
+    const tool = { ...event, seq: event.seq + 1, type: 'acp_tool', projection_key: 'tool', content: undefined }
+    f.emit(thought)
+    expect(f.states.at(-1).activity).toBe('thinking')
+    f.emit({ ...tool, acp: { ...tool.acp, id: 'child', parent_id: disk.session.id } })
+    expect(f.states.at(-1).activity).toBe('thinking')
+    f.emit(tool)
+    expect(f.states.at(-1).activity).toBe('working')
+    f.emit(disk.events.findLast((event) => event.type === 'acp'))
+    expect(f.states.at(-1).activity).toBe(null)
+    expect(f.sent.some((item) => item.text.includes(thought.content))).toBe(false)
+    f.stream.stop()
+  })
+
   test('the real disk answer reaches voice before idle, without polling or speaking it twice', async () => {
     const f = fixture()
     await f.stream.context()
@@ -64,12 +108,12 @@ describe('voice consumes the existing agent event stream', () => {
     const terminal = disk.events.findLast((event) => event.type === 'acp')
     f.emit(final)
     expect(f.sent.filter((item) => item.speak).map((item) => item.text).join('')).toContain('42 GB free')
-    expect(f.states.at(-1).working).toBe(true)
+    expect(f.states.at(-1).activity).toBe('working')
     expect(f.reads()).toBe(reads)
     f.emit(terminal)
     f.emit(final)
     expect(f.sent.filter((item) => item.speak).map((item) => item.text).join('')).toBe(final.content)
-    expect(f.states.at(-1).working).toBe(false)
+    expect(f.states.at(-1).activity).toBe(null)
     expect(f.reads()).toBe(reads)
     f.stream.stop()
     expect(f.closed()).toBe(true)
@@ -112,7 +156,7 @@ describe('voice consumes the existing agent event stream', () => {
     f.connect(true)
     await f.stream.refresh()
     expect(f.sent.filter((item) => item.speak).map((item) => item.text).join('')).toBe(final.content)
-    expect(f.states.at(-1)).toEqual({ working: false, error: '' })
+    expect(f.states.at(-1)).toEqual({ activity: null, error: '' })
     f.stream.stop()
     const count = f.sent.length
     f.emit({ ...final, seq: 1000 })
@@ -150,7 +194,7 @@ describe('voice consumes the existing agent event stream', () => {
     await f.stream.refresh()
     expect(f.sent.at(-1).speak).toBe(true)
     expect(f.sent.at(-1).text).toContain('needs your approval')
-    expect(f.states.at(-1).working).toBe(true)
+    expect(f.states.at(-1).activity).toBe('working')
     f.setRead(async () => ({ ...structuredClone(disk), events: [], latest_event_seq: 0, acp_permissions: [] }))
     f.emit({ type: 'permission_response', session_id: disk.session.id, permission: { ...permission, status: 'resolved' }, at: new Date().toISOString() })
     await f.stream.refresh()
@@ -174,7 +218,7 @@ describe('voice consumes the existing agent event stream', () => {
     await f.stream.refresh()
     expect(f.sent.filter((item) => item.speak)).toEqual([])
     expect(f.sent.at(-1).text).toContain('superseded')
-    expect(f.states.at(-1).working).toBe(false)
+    expect(f.states.at(-1).activity).toBe(null)
     f.stream.stop()
   })
 

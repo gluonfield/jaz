@@ -15,10 +15,12 @@ export class VoiceConnection {
   private closed = false
   private timer?: ReturnType<typeof setTimeout>
   readonly analyser = this.context.createAnalyser()
+  readonly outputAnalyser = this.context.createAnalyser()
 
   constructor(private onEvent: (event: VoiceEvent) => void) {
     this.audio.autoplay = true
     this.analyser.fftSize = 256
+    this.outputAnalyser.fftSize = 256
     this.channel.onmessage = ({ data }: MessageEvent<string>) => {
       try {
         const event = decodeVoiceEvent(data)
@@ -47,7 +49,7 @@ export class VoiceConnection {
       if (track.kind !== 'audio' || this.closed) return
       const stream = new MediaStream([track])
       this.audio.srcObject = stream
-      this.context.createMediaStreamSource(stream).connect(this.analyser)
+      this.context.createMediaStreamSource(stream).connect(this.outputAnalyser)
       void this.audio.play().catch(() => this.fail('Audio playback was blocked. Start voice again to allow playback.'))
     }
   }
