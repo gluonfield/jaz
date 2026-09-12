@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -117,10 +118,26 @@ func (m *Manager) failPromptCall(done chan struct{}, job *jobState, err error) {
 		job.mu.Unlock()
 		return
 	}
+	if shouldCompleteClosedGrokPrompt(job, turn, err) {
+		stopReason := turn.grokStopReason
+		job.mu.Unlock()
+		m.completePromptCall(done, job, stopReason)
+		return
+	}
 	turn.promptCalls = 0
 	job.mu.Unlock()
 	m.failTurn(job, err)
 	m.finishTurn(done, job)
+}
+
+func shouldCompleteClosedGrokPrompt(job *jobState, turn *activeTurn, err error) bool {
+	if job.steerMethod != steerGrokInterject || turn.grokStopReason == "" {
+		return false
+	}
+	if !jsonrpc.IsClosed(err) && !errors.Is(err, io.EOF) {
+		return false
+	}
+	return hasVisibleTurnResult(job, turn)
 }
 
 func (m *Manager) finishTurn(done chan struct{}, job *jobState) {

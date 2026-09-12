@@ -135,6 +135,7 @@ type activeTurn struct {
 	promptHandoff         chan struct{}
 	promptCalls           int
 	grokInterjections     map[string]*grokInterjection
+	grokStopReason        string
 	planDocument          string
 	cancel                context.CancelFunc
 }

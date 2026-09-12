@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
@@ -68,7 +69,12 @@ func (m *Manager) runGrokInterject(ctx context.Context, job *jobState, done chan
 	case <-process.closed:
 		select {
 		case reason = <-request.result:
-		default:
+		case <-done:
+			return
+		case <-ctx.Done():
+			m.failPromptCall(done, job, ctx.Err())
+			return
+		case <-time.After(100 * time.Millisecond):
 			m.failPromptCall(done, job, jsonrpc.ErrClosed)
 			return
 		}
@@ -113,11 +119,16 @@ func (m *Manager) grokInterjectionEvent(req jsonrpc.Request) (json.RawMessage, *
 				request.applied = true
 			}
 		} else {
+			delivered := false
 			for id, request := range job.turn.grokInterjections {
 				if request.applied {
 					request.result <- update.StopReason
 					delete(job.turn.grokInterjections, id)
+					delivered = true
 				}
+			}
+			if delivered {
+				job.turn.grokStopReason = update.StopReason
 			}
 		}
 	}
