@@ -473,7 +473,7 @@ function SessionPage({
     } : undefined
 
   return (
-    <FileReaderLinkProvider onOpen={sidePanel.openFile}>
+    <FileReaderLinkProvider sessionId={session.id} onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
             clip horizontal overflow so it can't be revealed by scrolling. */}

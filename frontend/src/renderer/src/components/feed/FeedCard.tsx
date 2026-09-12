@@ -149,7 +149,7 @@ export function FeedCard({
             <div className="bg-surface-2 px-3.5 py-3">
               <div className="max-h-[42vh] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {lastTurn && detail.data ? (
-                  <FileReaderLinkProvider onOpen={openThread}>
+                  <FileReaderLinkProvider sessionId={item.id} onOpen={openThread}>
                     <PreviewLinkProvider onOpen={openThread}>
                       <Transcript
                         messages={lastTurn.messages}

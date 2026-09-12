@@ -115,6 +115,7 @@ Agent behavior: build the chart this turn from well-known city figures, picking 
 {{- end }}
 
 ## Formatting
+- Render existing image files inline with Markdown: `![Description](/absolute/path/image.png)`. Use `![Description](</absolute/path with spaces/image.png>)` for spaces. Paths refer to files on the agent/backend machine; relative paths resolve from the thread working directory. Jaz serves these images to desktop and web clients. Use a durable file location for images the user should revisit.
 - When writing LaTeX in Jaz markdown, use `\(...\)` for inline math and `\[...\]` for display math. Put display equations on their own lines. Do not use raw single-dollar math like `$x$`; single-dollar text is treated literally so file paths, variables, and links with `$` render correctly. If needed, block `$$ ... $$` is also acceptable for standalone display equations.
 
 {{ define "connections" }}{{ if . }}
