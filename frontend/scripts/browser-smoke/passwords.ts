@@ -141,12 +141,13 @@ document.querySelector('form').requestSubmit()`)
     throw new Error('Dismissing the prompt saved the password')
   }
 
-  const accounts = ['hidden', 'readonly', 'hidden-type']
+  const accounts = ['hidden', 'readonly', 'hidden-type', 'disabled']
   for (const mode of accounts) {
     await navigate(origin + '/login')
     await evaluate(`document.querySelector('[name=username]').autocomplete = 'section-login username'
 document.querySelector('[name=username]').style.display = ${JSON.stringify(mode === 'hidden' ? 'none' : 'block')}
 document.querySelector('[name=username]').readOnly = ${mode === 'readonly'}
+document.querySelector('[name=username]').disabled = ${mode === 'disabled'}
 document.querySelector('[name=username]').type = ${JSON.stringify(mode === 'hidden-type' ? 'hidden' : 'email')}`)
     const username = `${mode}@example.test`
     await submit(`fixture-password-${mode}`, username)
@@ -168,8 +169,9 @@ document.querySelector('[name=username]').type = ${JSON.stringify(mode === 'hidd
   if (!await evaluate("document.querySelector('#signup input[type=password]').value === '' && document.querySelector('#login [name=username]').value === 'hidden@example.test'")) {
     throw new Error('Autofill chose the signup form or a username outside the login form')
   }
-  for (const mode of ['readonly', 'hidden']) {
+  for (const mode of ['readonly', 'hidden', 'disabled']) {
     await evaluate(`document.querySelector('#login [name=username]').readOnly = ${mode === 'readonly'}
+document.querySelector('#login [name=username]').disabled = ${mode === 'disabled'}
 document.querySelector('#login [name=username]').style.display = ${JSON.stringify(mode === 'hidden' ? 'none' : 'block')}
 document.querySelector('#login [name=password]').value = ''`)
     await api.act(id, { kind: 'fill', origin, username: 'readonly@example.test' })

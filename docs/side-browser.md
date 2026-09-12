@@ -44,9 +44,9 @@ including the port. **Save login on this page** can capture filled login fields
 on sites that do not submit a standard HTML form. Embedded login frames and
 passkeys are outside this password feature.
 
-Capture retains hidden and read-only usernames used by email-first sign-in flows.
+Capture retains hidden, read-only and disabled usernames used by email-first sign-in flows.
 Filling selects a login field even when a sign-up form appears earlier on the page.
-A hidden or read-only username must match the selected saved account before its
+A hidden, read-only or disabled username must match the selected saved account before its
 password can be filled.
 
 The desktop stores passwords in `browser-passwords.enc` under Electron's app
@@ -82,6 +82,49 @@ excluded because Electron's cookie setter cannot preserve their isolation.
 Session cookies keep their original lifetime; some sites may require signing in
 again. Unsupported or damaged cookies are reported as failed imports.
 Database access uses Electron's built-in Node SQLite API and adds no dependency.
+
+### Google sign-in
+
+Google can reject the side browser with “This browser or app may not be secure.”
+Its [supported-browser policy](https://support.google.com/accounts/answer/7675428)
+restricts embedded and automated browsers. Chromium compatibility and saved
+passwords do not establish support for signing in to Google inside Electron.
+
+Sign in to the destination site in Chrome first, then use **Import sign-ins**
+with that Chrome profile and select the relevant Google and destination-site
+domains. Open the destination URL again in Jaz, such as
+`https://console.firebase.google.com/`; reloading Google's `/signin/rejected`
+page can leave the rejection screen displayed. This attempts to reuse the
+existing session; Google may still require authentication in a supported browser.
+Signing in externally alone does not update Jaz's separate cookie partition.
+
+### Codex Desktop browser runtime
+
+Inspection on September 12, 2026 of the installed Codex Desktop build
+`26.908.40834` (bundle ID `com.openai.codex`, installed as `ChatGPT.app`) found
+`runtimeName: "owl"` in `Resources/owl-electron-app.json` and a native Codex
+Framework built on Chromium `152.0.7977.83`. The JavaScript app retains Electron
+APIs, but the packaged runtime supplies additional native browser functionality.
+
+Its browser uses a persistent `codex-browser-app` partition, native password-manager
+context-menu commands and settings events, Chromium settings pages, and native
+child-tab adoption that preserves the contents created by `window.open`.
+These are runtime capabilities beyond Jaz's standard Electron webview. The
+User-Agent header rewriting found in its JavaScript bundle belongs to its
+app-sandbox integration; it does not establish a Google-login fix for the browser.
+
+[OpenAI describes OWL](https://openai.com/index/building-chatgpt-atlas/) as a
+Chromium service with browser profiles, embedded web contents, native rendering
+and input, extensions and autofill. Matching that architecture inside Jaz
+requires integrating a full browser runtime. Installing Chrome by itself does
+not replace Electron's webview or share its cookies.
+
+Jaz's existing [Chrome extension](browser-extension.md) offers a full-browser
+alternative using a Chrome profile's own sessions and password manager. It opens
+pages in Chrome rather than the Jaz side panel and supports remote Jaz backends.
+The managed Chromium mode instead launches on the backend machine, which may
+be a remote server. Neither path establishes live Google-login success until
+the user completes sign-in and the destination page confirms it.
 
 ## Browser identity
 
