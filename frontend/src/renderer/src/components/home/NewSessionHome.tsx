@@ -6,9 +6,8 @@ import { FileDropScope } from '@/components/ui/FileDrop'
 import { useHomeWordmark } from '@/lib/appearance'
 import type { SendMessageHandler } from '@/lib/sendMessage'
 
-// Welcome mode in the launcher's clothes: the dithered wordmark over a
-// spotlight-style composer, standing on the boot screen's brandscape under a
-// sky that follows the theme.
+// Welcome mode: the dithered wordmark over the composer card, standing on
+// the boot screen's brandscape under a sky that follows the theme.
 export function NewSessionHome({
   creating,
   disabled = false,
@@ -40,9 +39,8 @@ export function NewSessionHome({
         transition={{ type: 'spring', stiffness: 320, damping: 28 }}
       >
         <DitherWordmark text={wordmark} dot={2} />
-        <div className="w-full max-w-[720px]">
+        <div className="w-full max-w-[640px]">
           <ComposerCard
-            variant="launcher"
             streaming={creating}
             autoFocus
             placeholder="Ask anything, or hand your assistant a task…"

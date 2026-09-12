@@ -560,7 +560,6 @@ export function MentionTextarea({
   readOnly,
   autoFocus,
   minHeightClass = 'min-h-[30px]',
-  textClass = TEXT_CLASSES,
   onKeyDown,
 }: {
   mention: MentionInput
@@ -569,7 +568,6 @@ export function MentionTextarea({
   readOnly?: boolean
   autoFocus?: boolean
   minHeightClass?: string
-  textClass?: string
   /** runs only when the mention machinery didn't consume the key */
   onKeyDown?: (e: KeyboardEvent<HTMLTextAreaElement>) => void
 }) {
@@ -578,7 +576,7 @@ export function MentionTextarea({
       <div
         ref={mention.mirrorRef}
         aria-hidden
-        className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap [overflow-wrap:break-word] ${textClass} text-ink`}
+        className={`pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap [overflow-wrap:break-word] ${TEXT_CLASSES} text-ink`}
       >
         {mention.segments.map((segment, index) =>
           segment.token ? (
@@ -604,7 +602,7 @@ export function MentionTextarea({
         aria-expanded={mention.menuOpen}
         // No spellcheck: squiggles under skill/path tokens read as errors.
         spellCheck={false}
-        className={`composer-input relative z-[1] w-full resize-none bg-transparent ${minHeightClass} ${textClass} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
+        className={`composer-input relative z-[1] w-full resize-none bg-transparent ${minHeightClass} ${TEXT_CLASSES} text-transparent caret-ink select-text placeholder:text-ink-3 disabled:cursor-default`}
         style={{ maxHeight: mention.maxHeight }}
         onFocus={mention.onFocus}
         onBlur={mention.onBlur}
