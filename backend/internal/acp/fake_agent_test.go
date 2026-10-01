@@ -32,7 +32,15 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		var config struct {
 			Features map[string]bool `json:"features"`
 		}
-		if err := json.Unmarshal([]byte(os.Getenv("CODEX_CONFIG")), &config); err != nil {
+		raw := []byte(os.Getenv("CODEX_CONFIG"))
+		if strings.HasPrefix(string(raw), "@") {
+			var err error
+			raw, err = os.ReadFile(strings.TrimPrefix(string(raw), "@"))
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := json.Unmarshal(raw, &config); err != nil {
 			t.Fatalf("parse Codex config: %v", err)
 		}
 		disabled, ok := config.Features["goals"]

@@ -258,3 +258,25 @@ func TestProcessEnvBindsCodexCustomProviderKey(t *testing.T) {
 		t.Fatalf("custom provider key leaked into OPENAI_API_KEY: %#v", env)
 	}
 }
+
+func TestConfigureCodexEnvReadsFileOverride(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config with spaces.json")
+	if err := os.WriteFile(path, []byte(`{"features":{"existing":true},"custom":"preserved"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"CODEX_CONFIG": "@" + path}
+	if err := configureCodexEnv(env, AgentConfig{}, nil, "instructions"); err != nil {
+		t.Fatal(err)
+	}
+	config, err := decodeCodexConfig(env["CODEX_CONFIG"])
+	if err != nil || config["custom"] != "preserved" || config["developer_instructions"] != "instructions" {
+		t.Fatalf("config = %#v, err = %v", config, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	env["CODEX_CONFIG"] = "@" + path
+	if err := configureCodexEnv(env, AgentConfig{}, nil, "instructions"); err == nil {
+		t.Fatal("missing config file was accepted")
+	}
+}

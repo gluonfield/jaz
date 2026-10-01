@@ -3,6 +3,7 @@ package acp
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
@@ -116,7 +117,35 @@ func codexLaunchProvider(
 	return meta.ID, provider
 }
 
+func writeCodexConfig(env map[string]string) (string, error) {
+	file, err := os.CreateTemp("", "jaz-codex-config-*.json")
+	if err != nil {
+		return "", fmt.Errorf("create Codex config: %w", err)
+	}
+	path := file.Name()
+	_, writeErr := file.WriteString(env["CODEX_CONFIG"])
+	closeErr := file.Close()
+	if writeErr != nil {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("write Codex config: %w", writeErr)
+	}
+	if closeErr != nil {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("close Codex config: %w", closeErr)
+	}
+	env["CODEX_CONFIG"] = "@" + path
+	return path, nil
+}
+
 func decodeCodexConfig(raw string) (map[string]any, error) {
+	if strings.HasPrefix(raw, "@") {
+		data, err := os.ReadFile(strings.TrimPrefix(raw, "@"))
+		if err != nil {
+			return nil, fmt.Errorf("read CODEX_CONFIG: %w", err)
+		}
+		raw = string(data)
+	}
+
 	if strings.TrimSpace(raw) == "" {
 		return map[string]any{}, nil
 	}

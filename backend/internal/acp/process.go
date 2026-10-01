@@ -127,8 +127,20 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if cfg.Command == "" {
 		return nil, nil, fmt.Errorf("acp agent %q has no command", name)
 	}
+	var configPath string
+	started := false
+	defer func() {
+		if !started && configPath != "" {
+			_ = os.Remove(configPath)
+		}
+	}()
 	if CanonicalAgentName(name) == AgentCodex {
 		if err := configureCodexEnv(env, cfg, m.providers(), systemPrompt); err != nil {
+			return nil, nil, err
+		}
+		var err error
+		configPath, err = writeCodexConfig(env)
+		if err != nil {
 			return nil, nil, err
 		}
 	}
@@ -162,9 +174,13 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		return nil, stderr, fmt.Errorf("prepare acp agent %q process: %w", name, err)
 	}
 	conn := stdio.New(stdout, stdin)
+	started = true
 	go func() {
 		waitErr := cmd.Wait()
 		_ = process.terminate()
+		if configPath != "" {
+			_ = os.Remove(configPath)
+		}
 		stderr.close(waitErr)
 		_ = conn.Close()
 	}()
