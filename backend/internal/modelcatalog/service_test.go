@@ -350,7 +350,7 @@ func TestServiceAgentModelsUseRawOpenRouterReasoning(t *testing.T) {
 	for _, model := range models {
 		efforts[model.Value] = model
 	}
-	fable := efforts["claude-fable-5-1"]
+	fable := efforts["fable[1m]"]
 	if fable.Label != "Fable 5.1" || fable.OpenRouterID != "anthropic/claude-fable-5.1" {
 		t.Fatalf("fable model = %#v", fable)
 	}
