@@ -3,6 +3,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Composer } from '@/components/session/Composer'
 import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
+import { useComposerContexts } from '@/components/session/useComposerContexts'
+import { deleteAttachmentDraft, loadAttachmentDraft } from '@/components/session/composerAttachmentDraftStore'
 
 export async function exerciseComposerSend(): Promise<void> {
   const key = (id: string) => `composer-send-smoke:${id}`
@@ -16,8 +18,9 @@ export async function exerciseComposerSend(): Promise<void> {
   }[] = []
   const originalFetch = window.fetch
   window.fetch = async (input, init) => {
-    if (!String(input).endsWith('/messages:stream')) {
-      return Response.json([])
+    const url = new URL(String(input), window.location.href)
+    if (url.pathname !== '/v1/sessions/a/messages:stream' && url.pathname !== '/v1/sessions/b/messages:stream') {
+      return originalFetch(input, init)
     }
     const response = Promise.withResolvers<Response>()
     let body!: ReadableStreamDefaultController<Uint8Array>
@@ -67,17 +70,23 @@ export async function exerciseComposerSend(): Promise<void> {
   }
   function Chat({ id }: { id: string }) {
     const live = useLiveSessionSend({ sessionId: id, onCriticalError: () => {} })
-    return <div data-chat={id}><Composer streaming={live.streaming} onSend={live.send} onStop={live.abort} draftStorageKey={key(id)} /></div>
+    const contexts = useComposerContexts({ storageKey: key(id), storage: 'local' })
+    return <div data-chat={id}>
+      <button data-add-context onClick={() => contexts.addSelection('New quote')}>Quote</button>
+      <button data-clear-context onClick={() => contexts.replaceContexts([])}>Clear Quote</button>
+      <Composer streaming={live.streaming} onSend={live.send} onStop={live.abort} draftStorageKey={key(id)}
+        contexts={contexts.contexts} onReplaceContexts={contexts.replaceContexts} />
+    </div>
   }
   const render = async (id: string) => {
     root.render(<StrictMode><QueryClientProvider client={client}><Chat key={id} id={id} /></QueryClientProvider></StrictMode>)
     await until(() => element.querySelector('[data-chat]')?.getAttribute('data-chat') === id)
   }
   const textarea = () => element.querySelector<HTMLTextAreaElement>('textarea')!
-  const type = async (text: string) => {
+  const type = async (text: string, id = 'a') => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea(), text)
     textarea().dispatchEvent(new Event('input', { bubbles: true }))
-    await until(() => JSON.parse(localStorage.getItem(key('a')) ?? '{}').text === text)
+    await until(() => JSON.parse(localStorage.getItem(key(id)) ?? '{}').text === text)
   }
   const send = async () => {
     const before = requests.length
@@ -160,6 +169,75 @@ export async function exerciseComposerSend(): Promise<void> {
       throw new Error('Previous send overwrote the next draft')
     }
 
+    const delayedRejection = await send()
+    delayedRejection.headers()
+    await render('b')
+    await render('a')
+    await type('New draft after returning')
+    delayedRejection.reject()
+    await until(() => delayedRejection.signal.aborted)
+    await render('b')
+    await render('a')
+    if (textarea().value !== 'New draft after returning') {
+      throw new Error('A detached failed send overwrote the new draft: ' + textarea().value)
+    }
+
+    const returning = await send()
+    returning.headers()
+    await render('b')
+    await render('a')
+    returning.reject()
+    await until(() => textarea().value === returning.message && returning.signal.aborted)
+
+    const otherChat = await send()
+    otherChat.headers()
+    await render('b')
+    await type('Other chat draft', 'b')
+    otherChat.reject()
+    await until(() => otherChat.signal.aborted)
+    if (textarea().value !== 'Other chat draft') {
+      throw new Error('A rejected send changed another chat')
+    }
+    await render('a')
+    if (textarea().value !== otherChat.message) {
+      throw new Error('Another chat invalidated restoration of a rejected send')
+    }
+
+    const withNewFile = await send()
+    withNewFile.headers()
+    await render('b')
+    await render('a')
+    const transfer = new DataTransfer()
+    transfer.items.add(new File(['new attachment'], 'new-draft.txt', { type: 'text/plain' }))
+    const fileInput = element.querySelector<HTMLInputElement>('input[type="file"]')!
+    fileInput.files = transfer.files
+    fileInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await until(() => element.textContent!.includes('new-draft.txt'))
+    withNewFile.reject()
+    await until(() => withNewFile.signal.aborted)
+    const attachments = await loadAttachmentDraft(key('a'), 'local')
+    if (textarea().value || attachments.length !== 1 || attachments[0].name !== 'new-draft.txt') {
+      throw new Error('A detached failed send replaced the new attachment draft')
+    }
+    await deleteAttachmentDraft(key('a'), 'local')
+    await render('b')
+    await render('a')
+
+    await type('Send before quoting')
+    const withNewQuote = await send()
+    withNewQuote.headers()
+    await render('b')
+    await render('a')
+    element.querySelector<HTMLButtonElement>('[data-add-context]')!.click()
+    await until(() => JSON.parse(localStorage.getItem(key('a') + '.contexts') ?? '[]').length === 1)
+    withNewQuote.reject()
+    await until(() => withNewQuote.signal.aborted)
+    if (textarea().value || JSON.parse(localStorage.getItem(key('a') + '.contexts') ?? '[]')[0]?.text !== 'New quote') {
+      throw new Error('A detached failed send replaced the new quoted context')
+    }
+    element.querySelector<HTMLButtonElement>('[data-clear-context]')!.click()
+    await until(() => !localStorage.getItem(key('a') + '.contexts'))
+    await type('Stopped message')
     const stopped = await send()
     await until(() => Boolean(element.querySelector('button[aria-label="Stop response"]')))
     element.querySelector<HTMLButtonElement>('button[aria-label="Stop response"]')!.click()
@@ -169,8 +247,10 @@ export async function exerciseComposerSend(): Promise<void> {
     client.clear()
     element.remove()
     window.fetch = originalFetch
+    await deleteAttachmentDraft(key('a'), 'local')
     for (const id of ['a', 'b']) {
       localStorage.removeItem(key(id))
+      localStorage.removeItem(key(id) + '.contexts')
     }
   }
 }

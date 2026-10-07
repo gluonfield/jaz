@@ -4,6 +4,7 @@ import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useRef, us
 import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
 import { composerPasteFiles } from '@/components/session/composerPasteFiles'
+import { subscribeComposerDraft } from '@/components/session/composerDraftChanges'
 import type { AgentSessionCommand, Attachment, QueuedMessage } from '@/lib/api/types'
 import type { ComposerContext, SendMessageHandler } from '@/lib/sendMessage'
 import { Popover } from '@/components/ui/Popover'
@@ -270,20 +271,28 @@ export function ComposerCard({
     contextsRef.current = []
     onReplaceContexts?.([])
     setGoalRequested(false)
-    return () => {
+    let unchanged = true
+    const dispose = subscribeComposerDraft(draftStorage, draftStorageKey, () => {
+      unchanged = false
+    })
+    const restore = () => {
       if (
+        !unchanged ||
         generation !== clearGenerationRef.current ||
         mention.currentDraft().text !== '' ||
         attachmentDraft.currentAttachments().length > 0 ||
         contextsRef.current.length > 0 ||
         goalRequestedRef.current
-      ) return
+      ) {
+        return
+      }
       mention.restore(sent.editor)
       attachmentDraft.replaceAttachments(sent.attachments)
       contextsRef.current = sent.contexts
       onReplaceContexts?.(sent.contexts)
       setGoalRequested(sent.goalRequested)
     }
+    return { restore, dispose }
   }
 
   const submit = async (value = mention.value(), handler = onSend) => {
@@ -306,14 +315,20 @@ export function ComposerCard({
         attachments: attachmentDraft.uploaded,
         ...(contexts.length > 0 ? { contexts } : {}),
       })
-    let restore: (() => void) | undefined
+    let rollback: ReturnType<typeof clearDraft> | undefined
     try {
       const pending = send()
-      if (clearTiming === 'immediate') restore = clearDraft()
+      if (clearTiming === 'immediate') {
+        rollback = clearDraft()
+      }
       await pending
-      if (clearTiming === 'resolved') clearDraft()
+      if (clearTiming === 'resolved') {
+        clearDraft().dispose()
+      }
     } catch {
-      restore?.()
+      rollback?.restore()
+    } finally {
+      rollback?.dispose()
     }
   }
 
