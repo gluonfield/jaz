@@ -17,8 +17,14 @@ var errKimiModelNotConfigured = errors.New("Kimi sign-in did not finish configur
 type kimiConfig struct {
 	DefaultModel    string                    `toml:"default_model"`
 	DefaultProvider string                    `toml:"default_provider"`
-	Providers       map[string]any            `toml:"providers"`
+	Providers       map[string]kimiProvider   `toml:"providers"`
 	Models          map[string]kimiModelAlias `toml:"models"`
+}
+
+type kimiProvider struct {
+	OAuth struct {
+		Key string `toml:"key"`
+	} `toml:"oauth"`
 }
 
 type kimiModelAlias struct {
@@ -31,7 +37,7 @@ func resolveKimiAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map
 	mode := auth.Mode
 	if mode == AuthModeAuto || mode == "" {
 		mode = AuthModeJazProfile
-		if !kimiAuthFileAvailable(jaz) && kimiAuthFileAvailable(existing) {
+		if !kimiTokenAvailable(kimiAuthPath(jaz)) && kimiTokenAvailable(kimiAuthPath(existing)) {
 			mode = AuthModeExistingCLI
 		}
 	}
@@ -46,7 +52,7 @@ func resolveKimiAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map
 		StoragePath: storagePath,
 		Source:      source,
 	}
-	if kimiAuthFileAvailable(home) {
+	if kimiTokenAvailable(storagePath) {
 		status.markAuthenticated("oauth_json", AuthKindOAuth)
 	} else {
 		status.Reason = "Kimi login at " + storagePath
@@ -54,8 +60,8 @@ func resolveKimiAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map
 	return status
 }
 
-func kimiAuthFileAvailable(home string) bool {
-	data, err := os.ReadFile(kimiAuthPath(home))
+func kimiTokenAvailable(path string) bool {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
@@ -65,17 +71,26 @@ func kimiAuthFileAvailable(home string) bool {
 	return json.Unmarshal(data, &token) == nil && token.AccessToken != ""
 }
 
+// kimiAuthPath follows the token slot Kimi recorded for its managed login;
+// a kimi.ai login uses a scoped slot instead of the default kimi-code.
 func kimiAuthPath(home string) string {
-	return filepath.Join(home, "credentials", "kimi-code.json")
+	cfg, _ := readKimiConfig(home)
+	key := firstNonEmpty(cfg.Providers["managed:kimi-code"].OAuth.Key, "oauth/kimi-code")
+	return filepath.Join(home, "credentials", filepath.Base(strings.TrimPrefix(key, "oauth/"))+".json")
+}
+
+func readKimiConfig(home string) (kimiConfig, bool) {
+	var cfg kimiConfig
+	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil || toml.Unmarshal(data, &cfg) != nil {
+		return kimiConfig{}, false
+	}
+	return cfg, true
 }
 
 func kimiModelConfigReady(home string) error {
-	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
-	if err != nil {
-		return errKimiModelNotConfigured
-	}
-	var cfg kimiConfig
-	if toml.Unmarshal(data, &cfg) != nil {
+	cfg, ok := readKimiConfig(home)
+	if !ok {
 		return errKimiModelNotConfigured
 	}
 	modelID := strings.TrimSpace(cfg.DefaultModel)

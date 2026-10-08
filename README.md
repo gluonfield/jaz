@@ -2,8 +2,13 @@
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![Bun](https://img.shields.io/badge/Bun-1.3-000000?logo=bun&logoColor=white)
 ![Electron](https://img.shields.io/badge/Electron-2B2E3A?logo=electron&logoColor=9FEAF9)
+![Codex](https://img.shields.io/badge/Codex-000000?logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI%2BIDxwYXRoIGQ9Ik0yMi4yODE5IDkuODIxMWE1Ljk4NDcgNS45ODQ3IDAgMCAwLS41MTU3LTQuOTEwOCA2LjA0NjIgNi4wNDYyIDAgMCAwLTYuNTA5OC0yLjlBNi4wNjUxIDYuMDY1MSAwIDAgMCA0Ljk4MDcgNC4xODE4YTUuOTg0NyA1Ljk4NDcgMCAwIDAtMy45OTc3IDIuOSA2LjA0NjIgNi4wNDYyIDAgMCAwIC43NDI3IDcuMDk2NiA1Ljk4IDUuOTggMCAwIDAgLjUxMSA0LjkxMDcgNi4wNTEgNi4wNTEgMCAwIDAgNi41MTQ2IDIuOTAwMUE1Ljk4NDcgNS45ODQ3IDAgMCAwIDEzLjI1OTkgMjRhNi4wNTU3IDYuMDU1NyAwIDAgMCA1Ljc3MTgtNC4yMDU4IDUuOTg5NCA1Ljk4OTQgMCAwIDAgMy45OTc3LTIuOTAwMSA2LjA1NTcgNi4wNTU3IDAgMCAwLS43NDc1LTcuMDcyOXptLTkuMDIyIDEyLjYwODFhNC40NzU1IDQuNDc1NSAwIDAgMS0yLjg3NjQtMS4wNDA4bC4xNDE5LS4wODA0IDQuNzc4My0yLjc1ODJhLjc5NDguNzk0OCAwIDAgMCAuMzkyNy0uNjgxM3YtNi43MzY5bDIuMDIgMS4xNjg2YS4wNzEuMDcxIDAgMCAxIC4wMzguMDUydjUuNTgyNmE0LjUwNCA0LjUwNCAwIDAgMS00LjQ5NDUgNC40OTQ0em0tOS42NjA3LTQuMTI1NGE0LjQ3MDggNC40NzA4IDAgMCAxLS41MzQ2LTMuMDEzN2wuMTQyLjA4NTIgNC43ODMgMi43NTgyYS43NzEyLjc3MTIgMCAwIDAgLjc4MDYgMGw1Ljg0MjgtMy4zNjg1djIuMzMyNGEuMDgwNC4wODA0IDAgMCAxLS4wMzMyLjA2MTVMOS43NCAxOS45NTAyYTQuNDk5MiA0LjQ5OTIgMCAwIDEtNi4xNDA4LTEuNjQ2NHpNMi4zNDA4IDcuODk1NmE0LjQ4NSA0LjQ4NSAwIDAgMSAyLjM2NTUtMS45NzI4VjExLjZhLjc2NjQuNzY2NCAwIDAgMCAuMzg3OS42NzY1bDUuODE0NCAzLjM1NDMtMi4wMjAxIDEuMTY4NWEuMDc1Ny4wNzU3IDAgMCAxLS4wNzEgMGwtNC44MzAzLTIuNzg2NUE0LjUwNCA0LjUwNCAwIDAgMSAyLjM0MDggNy44NzJ6bTE2LjU5NjMgMy44NTU4TDEzLjEwMzggOC4zNjQgMTUuMTE5MiA3LjJhLjA3NTcuMDc1NyAwIDAgMSAuMDcxIDBsNC44MzAzIDIuNzkxM2E0LjQ5NDQgNC40OTQ0IDAgMCAxLS42NzY1IDguMTA0MnYtNS42NzcyYS43OS43OSAwIDAgMC0uNDA3LS42Njd6bTIuMDEwNy0zLjAyMzFsLS4xNDItLjA4NTItNC43NzM1LTIuNzgxOGEuNzc1OS43NzU5IDAgMCAwLS43ODU0IDBMOS40MDkgOS4yMjk3VjYuODk3NGEuMDY2Mi4wNjYyIDAgMCAxIC4wMjg0LS4wNjE1bDQuODMwMy0yLjc4NjZhNC40OTkyIDQuNDk5MiAwIDAgMSA2LjY4MDIgNC42NnpNOC4zMDY1IDEyLjg2M2wtMi4wMi0xLjE2MzhhLjA4MDQuMDgwNCAwIDAgMS0uMDM4LS4wNTY3VjYuMDc0MmE0LjQ5OTIgNC40OTkyIDAgMCAxIDcuMzc1Ny0zLjQ1MzdsLS4xNDIuMDgwNUw4LjcwNCA1LjQ1OWEuNzk0OC43OTQ4IDAgMCAwLS4zOTI3LjY4MTN6bTEuMDk3Ni0yLjM2NTRsMi42MDItMS40OTk4IDIuNjA2OSAxLjQ5OTh2Mi45OTk0bC0yLjU5NzQgMS40OTk3LTIuNjA2Ny0xLjQ5OTdaIiAvPiA8L3N2Zz4%3D)
 ![Claude](https://img.shields.io/badge/Claude-D97757?logo=claude&logoColor=white)
-![Codex](https://img.shields.io/badge/Codex-000000?logo=openai&logoColor=white)
+![Kimi](https://img.shields.io/badge/Kimi-000000?logo=kimi&logoColor=white)
+![Antigravity](https://img.shields.io/badge/Antigravity-4285F4?logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNSIgZmlsbD0iI2ZmZmZmZiI%2BIDxwYXRoIGQ9Ik0xNC4wNzc3IDEzLjk4NEMxNC45NDUgMTQuNjM0NSAxNi4yNDU4IDE0LjIwMDggMTUuMDUzMyAxMy4wMDg0QzExLjQ3NiA5LjUzOTQ5IDEyLjIzNDkgMCA3Ljc5MDMzIDBDMy4zNDU3OSAwIDQuMTA0NjEgOS41Mzk0OSAwLjUyNzI5NSAxMy4wMDg0Qy0wLjc3MzU0MyAxNC4zMDkyIDAuNjM1NjkyIDE0LjYzNDUgMS41MDI5MyAxMy45ODRDNC44NjM0NCAxMS43MDc2IDQuNjQ2NjMgNy42OTY2NCA3Ljc5MDMzIDcuNjk2NjRDMTAuOTM0IDcuNjk2NjQgMTAuNzE3MiAxMS43MDc2IDE0LjA3NzcgMTMuOTg0WiIgLz4gPC9zdmc%2B)
+![Grok](https://img.shields.io/badge/Grok-000000?logo=x&logoColor=white)
+![Muse](https://img.shields.io/badge/Muse-0866FF?logo=meta&logoColor=white)
+![OpenCode](https://img.shields.io/badge/OpenCode-000000?logo=opencode&logoColor=white)
 [![X](https://img.shields.io/badge/@amgauge-000000?logo=x&logoColor=white)](https://x.com/amgauge)
 
 # Jaz
@@ -16,7 +21,7 @@ memory, and git control. Client/server split, always-on, open source end to end.
 ## Guiding Principles
 
 - Use the major coding agents. Frontier labs are investing heavily in coding agents and benchmarks. Jaz should reuse that work, not reinvent it.
-- Bring your existing Pro plans. Carry Claude and Codex plans forward, with API-key support and open-source agents alongside them.
+- Bring your existing plans. Sign in with the ChatGPT, Claude, Kimi, Grok, Google, or Meta account you already have, with API keys and open-source agents alongside them.
 - Unified memory that you control and can export.
 - Connect core apps. Telegram, WhatsApp, Gmail, Calendar, and Slack should plug into the same owned context.
 - Open source.
@@ -55,7 +60,7 @@ Track usage
 
 <img width="3696" height="2712" alt="image" src="https://github.com/user-attachments/assets/fb7714a7-8494-4e34-a1f0-690412f606df" />
 
-Connect your coding agent and reuse subscription (Codex, Claude Code, Open Code, Antigravity, Kimi)
+Connect your coding agents and reuse your subscriptions
 
 <img width="3656" height="2690" alt="image" src="https://github.com/user-attachments/assets/b4ee3750-8b35-4d33-a78e-dc7b2c4c6a54" />
 
@@ -78,19 +83,21 @@ https://github.com/user-attachments/assets/de550dc1-75cc-43bb-aca0-f34c99573d47
 Grab the latest desktop build from [**Releases**](https://github.com/gluonfield/jaz/releases/latest),
 or [run it from source](#development).
 
-Jaz ships with three coding agents, and you pick one per thread:
+Jaz runs seven coding agents over [ACP](https://agentclientprotocol.com), and you pick one per thread:
 
-| Agent | How it connects |
-|---|---|
-| **Codex** | Sign in with your **ChatGPT Pro plan** to use its discounted tokens, or an OpenAI API key |
-| **Claude** | Sign in with your **Claude Pro/Max plan** to use its discounted tokens, or an Anthropic API key |
-| **OpenCode** | Connects to OpenAI, OpenRouter, or Anthropic by API token |
-
-You can also connect **OpenRouter**, **OpenAI**, or **Anthropic** directly and pay per token.
+| Agent | Provider | Sign in with |
+|---|---|---|
+| **Codex** | OpenAI | ChatGPT plan, or OpenAI or OpenRouter API key |
+| **Claude Code** | Anthropic | Claude Pro/Max plan, or Anthropic API key |
+| **Kimi Code** | Moonshot AI | kimi.ai account |
+| **Antigravity** | Google | Google account |
+| **Grok** | xAI | Grok account, or xAI API key |
+| **Muse Code** | Meta | Meta account, or Meta API key |
+| **OpenCode** | Open source | OpenRouter or OpenAI API key |
 
 ## Features
 
-- **Pick the agent per thread** — Codex, Claude, or OpenCode.
+- **Pick the agent per thread** — any agent in the table above.
 - **Loops** — scheduled prompts that run overnight.
 - **Boards** — multi-window dashboards of live artifacts.
 - **Memory** — survives the thread.
