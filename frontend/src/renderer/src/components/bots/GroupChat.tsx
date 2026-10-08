@@ -1,19 +1,17 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUp } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ComposerFrame } from '@/components/session/ComposerFrame'
-import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
+import { ComposerCard } from '@/components/session/Composer'
 import { SidePanelControl } from '@/components/session/SidePanelControl'
 import { panelSpring } from '@/components/session/SidePanelDrawer'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { IconButton } from '@/components/ui/IconButton'
+import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { botsQuery, sendGroupMessage } from '@/lib/api/bots'
 import { markThreadSeen } from '@/lib/api/feed'
-import { sessionEventsQuery } from '@/lib/api/sessions'
+import { sessionEventsQuery, uploadSessionAttachment } from '@/lib/api/sessions'
 import type { Bot } from '@/lib/api/types'
 import { botAvatars, botChat } from '@/lib/bots'
 import { modalDialogOpen } from '@/lib/dom/modal'
@@ -21,6 +19,7 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
+import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
 import { useTitlebarActions, useTitlebarSlot } from '@/lib/titlebar'
@@ -78,9 +77,19 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
     e.preventDefault()
     setDetailsOpen((open) => !open)
   })
+  const send = async (text: string, options: SendMessageOptions = {}) => {
+    try {
+      const uploaded = await Promise.all((options.files ?? []).map((file) => uploadSessionAttachment(group.id, file)))
+      await sendGroupMessage(group.id, text, preparedSendMessage(options, uploaded).attachmentIds)
+    } catch (error) {
+      toast(`Couldn't send: ${(error as Error).message}`, 'danger')
+      throw error
+    }
+    pinToBottom()
+  }
 
   return (
-    <div className="relative flex h-full">
+    <FileDropScope className="relative flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={attachScroll} onScroll={onScroll} className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">
           <div className={`${THREAD_COLUMN_CLASS} py-6`}>
@@ -100,7 +109,17 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
           </div>
         </div>
         <div className={`${THREAD_COLUMN_CLASS} w-full pb-4`}>
-          <GroupComposer group={group} onSent={pinToBottom} />
+          <ComposerCard
+            streaming={false}
+            placeholder={`Message ${group.name}`}
+            showOptions={false}
+            clearTiming="immediate"
+            draftStorageKey={`jaz.groupDraft.${group.id}`}
+            draftStorage="local"
+            attachmentSessionId={group.id}
+            onSend={send}
+            onUploadAttachment={(file) => uploadSessionAttachment(group.id, file)}
+          />
         </div>
       </div>
       <motion.div
@@ -112,52 +131,6 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
       >
         <GroupDetails group={group} bots={bots} />
       </motion.div>
-    </div>
-  )
-}
-
-function GroupComposer({ group, onSent }: { group: Bot; onSent: () => void }) {
-  const toast = useToast()
-  const mention = useMentionInput({ storageKey: `jaz.groupDraft.${group.id}`, storage: 'local' })
-  const send = useMutation({
-    mutationFn: (text: string) => sendGroupMessage(group.id, text),
-    onSuccess: () => {
-      mention.reset()
-      onSent()
-    },
-    onError: (error) => toast(`Couldn't send: ${error.message}`, 'danger'),
-  })
-  const submit = () => {
-    const text = mention.value().trim()
-    if (text && !send.isPending) send.mutate(text)
-  }
-
-  return (
-    <div className="relative">
-      <MentionSuggestions mention={mention} placement="above" />
-      <ComposerFrame className="flex items-end gap-2">
-        <div className="min-w-0 flex-1">
-          <MentionTextarea
-            mention={mention}
-            placeholder={`Message ${group.name}`}
-            onKeyDown={(e) => {
-              if (e.key !== 'Enter' || e.shiftKey) return
-              e.preventDefault()
-              submit()
-            }}
-          />
-        </div>
-        <IconButton
-          variant="primary"
-          size="md"
-          aria-label="Send message"
-          title="Send message"
-          disabled={mention.isEmpty || send.isPending}
-          onClick={submit}
-        >
-          <ArrowUp size={16} />
-        </IconButton>
-      </ComposerFrame>
-    </div>
+    </FileDropScope>
   )
 }

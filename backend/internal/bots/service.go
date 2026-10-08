@@ -19,12 +19,13 @@ import (
 type Service struct {
 	store Store
 	// homes is where each bot's own directory lives, named after its id.
-	homes    string
-	threads  Threads
-	queue    TurnQueue
-	routines Routines
-	events   Publisher
-	log      *log.Logger
+	homes       string
+	threads     Threads
+	queue       TurnQueue
+	attachments Attachments
+	routines    Routines
+	events      Publisher
+	log         *log.Logger
 
 	mu        sync.Mutex
 	followUps map[string]int
@@ -33,17 +34,18 @@ type Service struct {
 	delivering map[string]*sync.Mutex
 }
 
-func NewService(store Store, homes string, threads Threads, queue TurnQueue, routines Routines, events Publisher, logger *log.Logger) *Service {
+func NewService(store Store, homes string, threads Threads, queue TurnQueue, attachments Attachments, routines Routines, events Publisher, logger *log.Logger) *Service {
 	return &Service{
-		store:      store,
-		homes:      homes,
-		threads:    threads,
-		queue:      queue,
-		routines:   routines,
-		events:     events,
-		log:        logger.WithPrefix("bots"),
-		followUps:  map[string]int{},
-		delivering: map[string]*sync.Mutex{},
+		store:       store,
+		homes:       homes,
+		threads:     threads,
+		queue:       queue,
+		attachments: attachments,
+		routines:    routines,
+		events:      events,
+		log:         logger.WithPrefix("bots"),
+		followUps:   map[string]int{},
+		delivering:  map[string]*sync.Mutex{},
 	}
 }
 
@@ -374,6 +376,9 @@ func (s *Service) preview(threadID string, group bool) string {
 		return ""
 	}
 	text := event.RoomMessage.Text
+	if text == "" && len(event.RoomMessage.Attachments) > 0 {
+		text = event.RoomMessage.Attachments[0].Name
+	}
 	if group {
 		text = event.RoomMessage.Name + ": " + text
 	}

@@ -30,6 +30,11 @@ func Event(event sessionevents.Event) EventResponse {
 		sideChat.Attachments = attachments(sideChat.Attachments)
 		event.SideChat = &sideChat
 	}
+	if event.RoomMessage != nil && len(event.RoomMessage.Attachments) > 0 {
+		room := *event.RoomMessage
+		room.Attachments = attachments(room.Attachments)
+		event.RoomMessage = &room
+	}
 	return EventResponse{Event: event, Goal: publicGoal}
 }
 

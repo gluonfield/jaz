@@ -15,21 +15,17 @@ import (
 )
 
 const (
-	// maxFollowUps bounds how often members' posts reach each other between two
-	// posts from the user, as a new turn or mid-turn, so bots answering each
-	// other cannot run on.
+	// maxFollowUps bounds how many members' posts reach the others between two
+	// posts from the user, so bots answering each other cannot run on.
 	maxFollowUps = 12
 	maxHistory   = 20
 	// steerTimeout bounds how long handing messages to a running turn waits.
 	steerTimeout = time.Minute
 )
 
-// Post adds the user's message to a group.
-func (s *Service) Post(groupID, text string) error {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return errors.New("message is required")
-	}
+// Post adds the user's message to a group, with the files uploaded to the
+// group's thread that attachmentIDs name.
+func (s *Service) Post(groupID, text string, attachmentIDs []string) error {
 	record, _, err := s.load(groupID)
 	if err != nil {
 		return err
@@ -37,64 +33,61 @@ func (s *Service) Post(groupID, text string) error {
 	if record.Kind != KindGroup {
 		return errors.New("not a group")
 	}
-	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text})
+	attachments, err := s.attachments.ResolveAttachments(record.ThreadID, attachmentIDs)
+	if err != nil {
+		return err
+	}
+	text = strings.TrimSpace(text)
+	if text == "" && len(attachments) == 0 {
+		return errors.New("message is required")
+	}
+	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text, Attachments: attachments})
 }
 
-// post records a message in a group and hands it to every other member that
-// should hear it: the members it addresses, and any member taking a turn in
-// the group as it is posted.
+// post records a message in a group and hands it to every other member, which
+// decides for itself whether to answer.
 func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessageEvent) error {
-	text, mentioned := s.resolveMentions(message.Text, group.Members)
-	message.Text = text
+	message.Text = s.linkMentions(message.Text, group.Members)
 	if err := s.appendEvent(sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
 		return err
 	}
-	fromMember := slices.Contains(group.Members, message.BotID)
-	wake := addressed(group.Members, mentioned, fromMember)
-	if !fromMember {
-		s.mu.Lock()
-		s.followUps[group.ThreadID] = 0
-		s.mu.Unlock()
+	if !s.admit(group.ThreadID, slices.Contains(group.Members, message.BotID)) {
+		return nil
 	}
 	for _, member := range group.Members {
-		if member != message.BotID && (slices.Contains(wake, member) || s.inGroupTurn(group.ThreadID, member)) {
-			go s.deliver(group, member, fromMember)
+		if member != message.BotID {
+			go s.deliver(group, member)
 		}
 	}
 	return nil
 }
 
-// inGroupTurn reports whether member's thread for the group is taking a turn.
-func (s *Service) inGroupTurn(groupID, member string) bool {
-	membership, err := s.store.LoadMembership(groupID, member)
-	if err != nil {
+// admit reports whether a post reaches the other members. The user's or an
+// outsider's always does and restores the group's follow-ups; a member's
+// spends one, and once they run out it is only saved, for members to see with
+// the next post that reaches them.
+func (s *Service) admit(groupID string, fromMember bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !fromMember {
+		s.followUps[groupID] = 0
+		return true
+	}
+	if s.followUps[groupID] >= maxFollowUps {
 		return false
 	}
-	thread, err := s.store.LoadSession(membership.ThreadID)
-	return err == nil && thread.Turn != nil
-}
-
-// addressed is who a group message wakes: the members it mentions or, with no
-// mention, every member when the user or an outsider wrote it and nobody when
-// a member did, since bots follow up on each other only when addressed.
-func addressed(members, mentioned []string, fromMember bool) []string {
-	switch {
-	case mentioned != nil:
-		return mentioned
-	case fromMember:
-		return nil
-	}
-	return members
+	s.followUps[groupID]++
+	return true
 }
 
 // deliver shows member the group messages it has not seen, one delivery at a
 // time per member so none is shown twice, and tells the group when member
 // cannot be reached.
-func (s *Service) deliver(group storage.BotRecord, member string, fromMember bool) {
+func (s *Service) deliver(group storage.BotRecord, member string) {
 	lock := s.deliveryLock(group.ThreadID, member)
 	lock.Lock()
 	defer lock.Unlock()
-	if err := s.deliverLocked(group, member, fromMember); err != nil {
+	if err := s.deliverLocked(group, member); err != nil {
 		s.log.Warn("group delivery failed", "group", group.ThreadID, "member", member, "error", err)
 		s.announce(group.ThreadID, sessionevents.BotActivityEvent{Kind: "unreachable", Label: s.name(member) + " · " + err.Error()})
 	}
@@ -102,9 +95,8 @@ func (s *Service) deliver(group storage.BotRecord, member string, fromMember boo
 
 // deliverLocked hands the messages to the turn member's thread for the group
 // is taking or, when it takes none or that turn cannot take them, queues a
-// turn for them on that thread, and marks them seen. Deliveries prompted by a
-// member's post spend the group's follow-ups.
-func (s *Service) deliverLocked(group storage.BotRecord, member string, fromMember bool) error {
+// turn for them on that thread, and marks them seen.
+func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 	membership, err := s.store.LoadMembership(group.ThreadID, member)
 	if errors.Is(err, storage.ErrMembershipNotFound) {
 		membership, err = s.join(group.ThreadID, member)
@@ -119,9 +111,6 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string, fromMemb
 	thread, err := s.store.LoadSession(membership.ThreadID)
 	if err != nil {
 		return err
-	}
-	if fromMember && !s.spendFollowUp(group.ThreadID) {
-		return nil
 	}
 	if thread.Turn != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), steerTimeout)
@@ -157,18 +146,6 @@ func (s *Service) deliveryLock(groupID, member string) *sync.Mutex {
 		s.delivering[key] = lock
 	}
 	return lock
-}
-
-// spendFollowUp takes one of the group's follow-ups, reporting false once
-// they are spent.
-func (s *Service) spendFollowUp(groupID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.followUps[groupID] >= maxFollowUps {
-		return false
-	}
-	s.followUps[groupID]++
-	return true
 }
 
 // join creates the thread member takes the group's turns in: a hidden thread

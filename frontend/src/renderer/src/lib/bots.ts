@@ -142,7 +142,7 @@ export function botChat(
     const room = event.room_message
     const activity = event.bot_activity
     if (room) {
-      if (room.speaker === 'user') entries.push({ kind: 'user', key, at, text: room.text })
+      if (room.speaker === 'user') entries.push({ kind: 'user', key, at, text: room.text, attachments: room.attachments, attachmentSessionId: self.id })
       else entries.push({ kind: 'bot', key, at, botId: room.bot_id, name: room.name, text: room.text })
     } else if (activity) {
       // Messaging another bot happens within a turn; anything else starts one.

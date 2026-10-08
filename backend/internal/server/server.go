@@ -461,7 +461,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		attachments, err := s.resolveAttachments(session.ID, req.AttachmentIDs)
+		attachments, err := s.ResolveAttachments(session.ID, req.AttachmentIDs)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return

@@ -79,7 +79,7 @@ func TestBotPreservesConfiguredModelAndExplicitSelection(t *testing.T) {
 	bus := sessionevents.New()
 	logger := log.New(io.Discard)
 	handler := &server.Server{Store: store, ACP: manager, Locks: sessionlock.New(), Events: bus}
-	service := bots.NewService(store, root, manager, handler, loops.NewService(store, nil, logger), bus, logger)
+	service := bots.NewService(store, root, manager, handler, handler, loops.NewService(store, nil, logger), bus, logger)
 	for _, model := range []string{"", "explicit-model"} {
 		bot, err := service.Create(t.Context(), bots.CreateBot{Name: "Bot " + model, Agent: acp.AgentCodex, Model: model})
 		if err != nil {

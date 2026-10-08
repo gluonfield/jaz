@@ -132,10 +132,11 @@ type BotActivityEvent struct {
 // RoomMessageEvent is one message in a group chat, spoken by the user or a
 // member bot.
 type RoomMessageEvent struct {
-	Speaker string `json:"speaker"`
-	BotID   string `json:"bot_id,omitempty"`
-	Name    string `json:"name"`
-	Text    string `json:"text"`
+	Speaker     string                      `json:"speaker"`
+	BotID       string                      `json:"bot_id,omitempty"`
+	Name        string                      `json:"name"`
+	Text        string                      `json:"text"`
+	Attachments []messagepayload.Attachment `json:"attachments,omitempty"`
 }
 
 type LoopBoardRef struct {

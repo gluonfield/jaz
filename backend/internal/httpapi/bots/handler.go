@@ -32,7 +32,8 @@ type pinsRequest struct {
 }
 
 type messageRequest struct {
-	Text string `json:"text"`
+	Text          string   `json:"text"`
+	AttachmentIDs []string `json:"attachment_ids"`
 }
 
 func (h *Handler) List(w http.ResponseWriter, _ *http.Request) {
@@ -101,7 +102,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	if err := h.bots.Post(r.PathValue("bot"), input.Text); err != nil {
+	if err := h.bots.Post(r.PathValue("bot"), input.Text, input.AttachmentIDs); err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return
 	}

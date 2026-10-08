@@ -307,7 +307,7 @@ func startServer(
 		loops.WithPromptExtra(widgetService.LoopPromptExtra),
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 	)
-	botService := bots.NewService(store, layout.Bots, manager, handler, loopService, events, logger)
+	botService := bots.NewService(store, layout.Bots, manager, handler, handler, loopService, events, logger)
 	mcpManager.AppVisible = botService.AppVisible
 	loopRunner.Bots = botService
 	jazTools.SetLoops(loopService,

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -16,9 +15,9 @@ import (
 
 var namedMention = regexp.MustCompile(`\[@([^\[\]\r\n]+)\]`)
 
-// An unresolved mention returns an empty slice, so a user's ambiguous tag
-// does not fall back to waking the entire group.
-func (s *Service) resolveMentions(message string, members []string) (string, []string) {
+// linkMentions points each [@Name] that names exactly one member at that
+// member's bot, so the mention keeps its recipient when bots are renamed.
+func (s *Service) linkMentions(message string, members []string) string {
 	names := make(map[string]string, len(members))
 	for _, id := range members {
 		name := s.name(id)
@@ -26,15 +25,6 @@ func (s *Service) resolveMentions(message string, members []string) (string, []s
 			names[name] = ""
 		} else {
 			names[name] = id
-		}
-	}
-	var ids []string
-	add := func(id string) {
-		if ids == nil {
-			ids = []string{}
-		}
-		if id != "" && !slices.Contains(ids, id) {
-			ids = append(ids, id)
 		}
 	}
 	source := []byte(message)
@@ -46,12 +36,7 @@ func (s *Service) resolveMentions(message string, members []string) (string, []s
 			return ast.WalkContinue, nil
 		}
 		switch node := node.(type) {
-		case *ast.Link:
-			if id, ok := strings.CutPrefix(string(node.Destination), "bot:"); ok {
-				add(id)
-			}
-			return ast.WalkSkipChildren, nil
-		case *ast.CodeSpan, *ast.Image:
+		case *ast.Link, *ast.CodeSpan, *ast.Image:
 			return ast.WalkSkipChildren, nil
 		case *ast.Text:
 			if previous, ok := node.PreviousSibling().(*ast.Text); ok && previous.Segment.Stop == node.Segment.Start {
@@ -67,9 +52,7 @@ func (s *Service) resolveMentions(message string, members []string) (string, []s
 			}
 			start := node.Segment.Start
 			for _, match := range namedMention.FindAllSubmatchIndex(source[start:end], -1) {
-				id := names[mentionName(source[start+match[2]:start+match[3]])]
-				add(id)
-				if id != "" {
+				if id := names[mentionName(source[start+match[2]:start+match[3]])]; id != "" {
 					stop := start + match[1]
 					linked.Write(source[written:stop])
 					fmt.Fprintf(&linked, "(bot:%s)", id)
@@ -80,10 +63,10 @@ func (s *Service) resolveMentions(message string, members []string) (string, []s
 		return ast.WalkContinue, nil
 	})
 	if written == 0 {
-		return message, ids
+		return message
 	}
 	linked.Write(source[written:])
-	return linked.String(), ids
+	return linked.String()
 }
 
 func mentionName(raw []byte) string {
