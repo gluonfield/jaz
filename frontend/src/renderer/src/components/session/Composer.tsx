@@ -1,9 +1,10 @@
-import { ArrowUp, AudioLines, ListChecks, LoaderCircle, Mic, Plus, Square, X } from 'lucide-react'
+import { ArrowUp, AudioLines, ListChecks, LoaderCircle, Mic, Plus, Square, Target, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
-import { SwitchTrack } from '@/components/ui/Switch'
+import { SwitchRow } from '@/components/ui/Switch'
+import { useToast } from '@/components/ui/toast'
 import { composerPasteFiles } from '@/components/session/composerPasteFiles'
 import { subscribeComposerDraft } from '@/components/session/composerDraftChanges'
 import { apiBaseUrl, isLocalBackendUrl } from '@/lib/api/client'
@@ -18,35 +19,9 @@ import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionI
 import { QueuedPromptList } from './QueuedPromptList'
 import { ComposerFrame } from './ComposerFrame'
 import { ContextChip } from './ContextChip'
-import { GoalChip, GoalMenuToggle, GoalUnsupportedRow } from './GoalControls'
+import { GoalChip, GoalUnsupportedRow } from './GoalControls'
 import { useComposerAttachments } from './useComposerAttachments'
 import type { ComposerDraftStorage } from './useComposerDraft'
-
-function PlanMenuToggle({
-  checked,
-  disabled,
-  onToggle,
-}: {
-  checked: boolean
-  disabled?: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={onToggle}
-      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
-        checked ? 'text-ink' : 'text-ink-2'
-      }`}
-    >
-      <span className="min-w-0 flex-1 truncate">Plan</span>
-      <SwitchTrack checked={checked} compact />
-    </button>
-  )
-}
 
 // Composer in the agent-council style: borderless auto-growing textarea on a
 // raised card, toolbar row beneath with the send/stop action. The card is the
@@ -188,15 +163,19 @@ export function ComposerCard({
     if (!goalAvailable || goalEngaged) setGoalRequested(false)
   }, [goalEngaged, goalAvailable, setGoalRequested])
 
+  const toast = useToast()
   const { dropTargetRef, dragging: draggingFiles } = useFileDropTarget<HTMLDivElement>({
     disabled,
     onDrop: (files, folders) => {
       attachmentDraft.addFiles(files)
-      const paths = folders.map((folder) => (isLocalBackendUrl(apiBaseUrl()) && window.jaz?.pathForFile(folder)) || '')
-      if (!paths.every(Boolean)) {
-        attachmentDraft.addFiles(folders, 'Folders attach only in the desktop app with a local backend')
-      } else if (paths.length > 0) {
-        mention.insertPaths(paths)
+      if (folders.length === 0) {
+        return
+      }
+      const pathFor = isLocalBackendUrl(apiBaseUrl()) ? window.jaz?.pathForFile : undefined
+      if (pathFor) {
+        mention.insertPaths(folders.map((folder) => pathFor(folder)))
+      } else {
+        toast('Folders attach only in the desktop app with a local backend', 'danger')
       }
     },
   })
@@ -443,18 +422,22 @@ export function ComposerCard({
                   }}
                 />
                 {planAvailable ? (
-                  <PlanMenuToggle
+                  <SwitchRow
+                    icon={<ListChecks size={13} className="shrink-0" />}
+                    label="Plan"
                     checked={planModeOn}
                     disabled={disabled}
-                    onToggle={togglePlanMode}
+                    onChange={togglePlanMode}
                   />
                 ) : null}
                 {goalControlVisible ? (
                   goalAvailable ? (
-                    <GoalMenuToggle
+                    <SwitchRow
+                      icon={<Target size={13} className="shrink-0" />}
+                      label="Goal"
                       checked={goalEngaged || goalRequested}
                       disabled={goalToggleDisabled}
-                      onToggle={toggleGoalRequested}
+                      onChange={toggleGoalRequested}
                     />
                   ) : (
                     <GoalUnsupportedRow />

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { Composer } from '@/components/session/Composer'
+import { ToastProvider } from '@/components/ui/toast'
 import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
 import { DEFAULT_API_BASE_URL } from '@/lib/clientRuntime'
 
@@ -24,21 +25,20 @@ export async function exerciseFolderDrop(): Promise<void> {
     }
   }
   const textarea = () => element.querySelector<HTMLTextAreaElement>('textarea')!
-  const sendButton = () => element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')
   const drop = () => {
     const rect = textarea().getBoundingClientRect()
     return window.smoke.dropFolder(Math.round(rect.x + rect.width / 2), Math.round(rect.y + rect.height / 2))
   }
   try {
-    root.render(<QueryClientProvider client={client}><Composer streaming={false} onSend={(text) => {
+    root.render(<QueryClientProvider client={client}><ToastProvider><Composer streaming={false} onSend={(text) => {
       sent.push(text)
-    }} /></QueryClientProvider>)
+    }} /></ToastProvider></QueryClientProvider>)
     await until(() => Boolean(element.querySelector('textarea')))
 
     setApiBaseUrl(DEFAULT_API_BASE_URL)
     const folder = await drop()
     await until(() => textarea().value === '@Folder fixture ')
-    sendButton()!.click()
+    element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click()
     await until(() => sent.length === 1)
     if (sent[0] !== `[@Folder fixture](<${folder}>)`) {
       throw new Error('A dropped folder did not send its absolute path: ' + sent[0])
@@ -46,9 +46,9 @@ export async function exerciseFolderDrop(): Promise<void> {
 
     setApiBaseUrl(originalBase)
     await drop()
-    await until(() => Boolean(element.querySelector('[title="Folders attach only in the desktop app with a local backend"]')))
-    if (textarea().value || !sendButton()?.disabled) {
-      throw new Error('A remote backend accepted a client folder path')
+    await until(() => element.textContent!.includes('Folders attach only in the desktop app with a local backend'))
+    if (textarea().value || element.querySelector('button[aria-label^="Remove "]')) {
+      throw new Error('A remote backend accepted a client folder')
     }
   } finally {
     setApiBaseUrl(originalBase)

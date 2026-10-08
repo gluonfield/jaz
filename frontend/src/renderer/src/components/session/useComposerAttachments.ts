@@ -68,20 +68,18 @@ export function useComposerAttachments({
     void saveAttachmentDraft(storageKey, storage, next).catch(() => {})
   }, [storage, storageKey])
 
-  const addFiles = useCallback((files: File[], error?: string) => {
+  const addFiles = useCallback((files: File[]) => {
     if (disabled || files.length === 0) return
     const items: ComposerAttachment[] = files.map((file) => ({
       localId: crypto.randomUUID(),
       name: file.name,
-      ...(error ? { error } : {
-        size: file.size,
-        ...(file.type ? { mime_type: file.type } : {}),
-        file,
-        uploading: Boolean(onUploadAttachment),
-      }),
+      size: file.size,
+      ...(file.type ? { mime_type: file.type } : {}),
+      file,
+      uploading: Boolean(onUploadAttachment),
     }))
     commitAttachments([...attachmentsRef.current, ...items])
-    if (!onUploadAttachment || error) return
+    if (!onUploadAttachment) return
     for (const item of items) {
       const file = pendingUploadFile(item)
       if (!file) continue

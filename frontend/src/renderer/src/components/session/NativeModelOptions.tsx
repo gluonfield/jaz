@@ -1,15 +1,11 @@
+import { Zap } from 'lucide-react'
 import { Select } from '@/components/ui/Select'
-import { Switch } from '@/components/ui/Switch'
+import { SwitchRow } from '@/components/ui/Switch'
 import { fastModeOption, type FastModeControl } from '@/lib/agentConfig'
 import type { AgentSessionConfigOption } from '@/lib/api/types'
 
 export function FastModeOption({ checked, disabled, onChange }: FastModeControl) {
-  return <div className="px-2.5 py-1">
-    <div className="flex min-h-10 items-center justify-between gap-3">
-      <span className="text-[13px] text-ink-2">Fast Mode</span>
-      <Switch aria-label="Fast Mode" checked={checked} disabled={disabled} onChange={onChange} />
-    </div>
-  </div>
+  return <SwitchRow icon={<Zap size={13} className="shrink-0" />} label="Fast Mode" checked={checked} disabled={disabled} onChange={onChange} />
 }
 
 export function NativeModelOptions({ options, running, pending, onChange }: {

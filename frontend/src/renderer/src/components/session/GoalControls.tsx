@@ -1,34 +1,6 @@
 import { Target, X } from 'lucide-react'
 import { motion } from 'motion/react'
 import { IconButton } from '@/components/ui/IconButton'
-import { SwitchTrack } from '@/components/ui/Switch'
-
-export function GoalMenuToggle({
-  checked,
-  disabled,
-  onToggle,
-}: {
-  checked: boolean
-  disabled?: boolean
-  onToggle: () => void
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={onToggle}
-      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
-        checked ? 'text-ink' : 'text-ink-2'
-      }`}
-    >
-      <Target size={13} className="shrink-0" />
-      <span className="min-w-0 flex-1 truncate">Goal</span>
-      <SwitchTrack checked={checked} compact />
-    </button>
-  )
-}
 
 export function GoalUnsupportedRow() {
   return (

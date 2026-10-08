@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import { Button } from '@/components/ui/Button'
 import { applyPreset, resetScheme, THEME_PRESETS } from '@/lib/appearanceScheme'
@@ -7,7 +8,7 @@ export async function exerciseAccentText(): Promise<void> {
   const element = document.createElement('div')
   document.body.append(element)
   const root = createRoot(element)
-  root.render(<Button variant="primary" style={{ transition: 'none' }}>Send</Button>)
+  flushSync(() => root.render(<Button variant="primary" style={{ transition: 'none' }}>Send</Button>))
   const expectText = async (id: string, mode: 'light' | 'dark', color: string) => {
     applyPreset(mode, THEME_PRESETS.find((preset) => preset.id === id)!)
     document.documentElement.classList.toggle('dark', mode === 'dark')

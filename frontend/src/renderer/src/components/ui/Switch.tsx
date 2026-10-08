@@ -1,8 +1,9 @@
 import { motion } from 'motion/react'
+import type { ReactNode } from 'react'
 
 // iOS-style toggle. On = brand-filled track; off = faint track; the knob stays
-// white in both. Menu rows that are themselves the switch reuse the track.
-export function SwitchTrack({ checked, compact = false }: { checked: boolean; compact?: boolean }) {
+// white in both.
+function SwitchTrack({ checked, compact = false }: { checked: boolean; compact?: boolean }) {
   return (
     <span
       aria-hidden
@@ -45,6 +46,39 @@ export function Switch({
       className={`relative inline-flex shrink-0 cursor-pointer rounded-full disabled:cursor-default disabled:opacity-50 ${className}`}
     >
       <SwitchTrack checked={checked} />
+    </button>
+  )
+}
+
+// A menu row that is itself the switch.
+export function SwitchRow({
+  icon,
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  icon?: ReactNode
+  label: string
+  checked: boolean
+  disabled?: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
+        checked ? 'text-ink' : 'text-ink-2'
+      }`}
+    >
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <SwitchTrack checked={checked} compact />
     </button>
   )
 }
