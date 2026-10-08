@@ -137,5 +137,8 @@ func groupUpdatePrompt(messages []sessionevents.RoomMessageEvent) string {
 func writeMessages(b *strings.Builder, messages []sessionevents.RoomMessageEvent) {
 	for _, message := range messages {
 		fmt.Fprintf(b, "%s: %s\n", message.Name, message.Text)
+		for _, attachment := range message.Attachments {
+			fmt.Fprintf(b, "  attached file %s: %s\n", attachment.Name, attachment.ServerPath)
+		}
 	}
 }

@@ -374,6 +374,9 @@ func (s *Service) preview(threadID string, group bool) string {
 		return ""
 	}
 	text := event.RoomMessage.Text
+	if text == "" && len(event.RoomMessage.Attachments) > 0 {
+		text = event.RoomMessage.Attachments[0].Name
+	}
 	if group {
 		text = event.RoomMessage.Name + ": " + text
 	}

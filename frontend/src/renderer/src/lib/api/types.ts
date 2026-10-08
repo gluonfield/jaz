@@ -731,6 +731,7 @@ export interface RoomMessageEvent {
   bot_id?: string
   name: string
   text: string
+  attachments?: Attachment[]
 }
 
 export interface LoopCreatedEvent {

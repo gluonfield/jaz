@@ -24,10 +24,10 @@ const (
 	steerTimeout = time.Minute
 )
 
-// Post adds the user's message to a group.
-func (s *Service) Post(groupID, text string) error {
+// Post adds the user's message, with the files attached to it, to a group.
+func (s *Service) Post(groupID, text string, attachments []storage.Attachment) error {
 	text = strings.TrimSpace(text)
-	if text == "" {
+	if text == "" && len(attachments) == 0 {
 		return errors.New("message is required")
 	}
 	record, _, err := s.load(groupID)
@@ -37,7 +37,7 @@ func (s *Service) Post(groupID, text string) error {
 	if record.Kind != KindGroup {
 		return errors.New("not a group")
 	}
-	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text})
+	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text, Attachments: attachments})
 }
 
 // post records a message in a group and hands it to every other member that

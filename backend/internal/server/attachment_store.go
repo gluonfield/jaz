@@ -16,7 +16,7 @@ import (
 
 const defaultAttachmentMaxBytes int64 = 128 << 20
 
-func (s *Server) resolveAttachments(sessionID string, ids []string) ([]storage.Attachment, error) {
+func (s *Server) ResolveAttachments(sessionID string, ids []string) ([]storage.Attachment, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}

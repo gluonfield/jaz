@@ -501,7 +501,7 @@ func TestMembersFollowUpOnlyWhenMentioned(t *testing.T) {
 	release := make(chan struct{})
 	world.held[research] = release
 
-	if err := service.Post(group.ID, "[@Marketing](bot:b) where is the launch draft?"); err != nil {
+	if err := service.Post(group.ID, "[@Marketing](bot:b) where is the launch draft?", nil); err != nil {
 		t.Fatal(err)
 	}
 	// Research answers after Marketing's turn has ended, as a real agent's
@@ -531,7 +531,7 @@ func progressDuringTurn(t *testing.T, world *fakeWorld, service *Service, group 
 	t.Helper()
 	world.held[research] = make(chan struct{})
 	world.held[marketing] = releaseMarketing
-	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing"); err != nil {
+	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool { return world.running(research) })
@@ -613,7 +613,7 @@ func TestMessagesAQueueRefusedReachTheNextTurn(t *testing.T) {
 	group, _, marketing := newGroup(t, service)
 	world.unqueueable[marketing] = true
 
-	if err := service.Post(group.ID, "[@Marketing](bot:b) draft the launch post"); err != nil {
+	if err := service.Post(group.ID, "[@Marketing](bot:b) draft the launch post", nil); err != nil {
 		t.Fatal(err)
 	}
 	unreachable := func() bool {
@@ -624,7 +624,7 @@ func TestMessagesAQueueRefusedReachTheNextTurn(t *testing.T) {
 		})
 	}
 	waitUntil(t, unreachable)
-	if err := service.Post(group.ID, "[@Marketing](bot:b) and keep it short"); err != nil {
+	if err := service.Post(group.ID, "[@Marketing](bot:b) and keep it short", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool { return world.promptCount(marketing) == 1 })
@@ -647,7 +647,7 @@ func TestMentionPingPongStopsAtTheFollowUpCap(t *testing.T) {
 	}
 	turns := func() int { return world.promptCount(research) + world.promptCount(marketing) }
 
-	if err := service.Post(group.ID, "who goes first?"); err != nil {
+	if err := service.Post(group.ID, "who goes first?", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool {
@@ -671,7 +671,7 @@ func TestASlowMemberDoesNotHoldUpTheOthers(t *testing.T) {
 	world.replies[research] = []string{"Here is a meme."}
 	world.replies[marketing] = []string{"Quick one."}
 
-	if err := service.Post(group.ID, "a good meme please"); err != nil {
+	if err := service.Post(group.ID, "a good meme please", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Marketing: Quick one.") })
@@ -770,7 +770,7 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	world.held["a"] = make(chan struct{})
 	world.replies["thread-Research in Launch"] = []string{"On it."}
 
-	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing"); err != nil {
+	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: On it.") })
@@ -796,6 +796,27 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	}
 	if created := world.created[len(world.created)-1]; created.SourceType != storage.SourceBotMember || created.SourceID != "a" {
 		t.Fatalf("group thread created as %+v", created)
+	}
+}
+
+func TestFilesPostedToAGroupReachEveryMember(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	service := newTestService(world)
+	group, research, marketing := newGroup(t, service)
+	report := storage.Attachment{ID: "f1", Name: "report.pdf", ServerPath: "/attachments/launch/f1-report.pdf"}
+
+	if err := service.Post(group.ID, "", []storage.Attachment{report}); err != nil {
+		t.Fatal(err)
+	}
+	world.settle(t)
+	world.mu.Lock()
+	defer world.mu.Unlock()
+	for _, thread := range []string{research, marketing} {
+		if prompts := world.prompts[thread]; len(prompts) != 1 || !strings.Contains(prompts[0], "report.pdf: /attachments/launch/f1-report.pdf") {
+			t.Fatalf("%s was shown %q", thread, prompts)
+		}
 	}
 }
 

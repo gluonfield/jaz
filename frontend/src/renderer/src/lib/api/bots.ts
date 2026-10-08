@@ -33,6 +33,6 @@ export function deleteBot(id: string): Promise<void> {
   return del<void>(`/v1/bots/${id}`)
 }
 
-export function sendGroupMessage(id: string, text: string): Promise<void> {
-  return post<void>(`/v1/bots/${id}/messages`, { text })
+export function sendGroupMessage(id: string, text: string, attachmentIds: string[]): Promise<void> {
+  return post<void>(`/v1/bots/${id}/messages`, { text, attachment_ids: attachmentIds })
 }

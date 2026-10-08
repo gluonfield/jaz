@@ -86,7 +86,7 @@ func TestNamedGroupMentionKeepsItsRecipientAfterRename(t *testing.T) {
 		t.Fatal(err)
 	}
 	opportunist := memberThread(t, service, group.ID, "b")
-	if err := service.Post(group.ID, "[@Business Opportunist] Please check this."); err != nil {
+	if err := service.Post(group.ID, "[@Business Opportunist] Please check this.", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool { return world.promptCount(opportunist) == 1 })
@@ -116,7 +116,7 @@ func TestUnresolvedUserMentionDoesNotBroadcast(t *testing.T) {
 	}
 	first, second := memberThread(t, service, group.ID, "a"), memberThread(t, service, group.ID, "b")
 	for _, message := range []string{"[@Research] Check this.", "[@Missing] Check this."} {
-		if err := service.Post(group.ID, message); err != nil {
+		if err := service.Post(group.ID, message, nil); err != nil {
 			t.Fatal(err)
 		}
 		world.settle(t)
@@ -124,7 +124,7 @@ func TestUnresolvedUserMentionDoesNotBroadcast(t *testing.T) {
 			t.Fatal("unresolved mention woke the group")
 		}
 	}
-	if err := service.Post(group.ID, "Hello everyone."); err != nil {
+	if err := service.Post(group.ID, "Hello everyone.", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool { return world.promptCount(first) == 1 && world.promptCount(second) == 1 })

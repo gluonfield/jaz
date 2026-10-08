@@ -96,7 +96,7 @@ func (s *Server) handleAttachmentContent(w http.ResponseWriter, r *http.Request,
 		writeError(w, http.StatusNotFound, fmt.Errorf("attachment not found"))
 		return
 	}
-	attachments, err := s.resolveAttachments(session.ID, []string{id})
+	attachments, err := s.ResolveAttachments(session.ID, []string{id})
 	if err != nil || len(attachments) != 1 {
 		writeError(w, http.StatusNotFound, fmt.Errorf("attachment not found"))
 		return
