@@ -85,18 +85,15 @@ or [run it from source](#development).
 
 Jaz runs seven coding agents over [ACP](https://agentclientprotocol.com), and you pick one per thread:
 
-| Agent | Provider | Sign in with | Install |
-|---|---|---|---|
-| **Codex** | OpenAI | ChatGPT plan, or OpenAI API key | Managed by Jaz |
-| **Claude Code** | Anthropic | Claude Pro/Max plan, or Anthropic API key | Managed by Jaz |
-| **Kimi Code** | Moonshot AI | Kimi account | Managed by Jaz |
-| **Antigravity** | Google | Google account | Managed by Jaz |
-| **Grok** | xAI | Grok account, or xAI API key | Your `grok` CLI |
-| **Muse Code** | Meta | Meta account, or Meta API key | Your [Muse Code](https://dev.meta.ai/docs/muse-code) CLI |
-| **OpenCode** | Open source | OpenRouter or OpenAI API key | Runs through `npx` (Node.js) |
-
-Jaz downloads and version-pins managed agents on first use. Codex can also run
-on an **OpenRouter** key.
+| Agent | Provider | Sign in with |
+|---|---|---|
+| **Codex** | OpenAI | ChatGPT plan, or OpenAI or OpenRouter API key |
+| **Claude Code** | Anthropic | Claude Pro/Max plan, or Anthropic API key |
+| **Kimi Code** | Moonshot AI | kimi.com account |
+| **Antigravity** | Google | Google account |
+| **Grok** | xAI | Grok account, or xAI API key |
+| **Muse Code** | Meta | Meta account, or Meta API key |
+| **OpenCode** | Open source | OpenRouter or OpenAI API key |
 
 ## Features
 
