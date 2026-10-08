@@ -15,9 +15,8 @@ import (
 )
 
 const (
-	// maxFollowUps bounds how often members' posts reach each other between two
-	// posts from the user, as a new turn or mid-turn, so bots answering each
-	// other cannot run on.
+	// maxFollowUps bounds how many members' posts reach the others between two
+	// posts from the user, so bots answering each other cannot run on.
 	maxFollowUps = 12
 	maxHistory   = 20
 	// steerTimeout bounds how long handing messages to a running turn waits.
@@ -52,28 +51,43 @@ func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessag
 	if err := s.appendEvent(sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
 		return err
 	}
-	fromMember := slices.Contains(group.Members, message.BotID)
-	if !fromMember {
-		s.mu.Lock()
-		s.followUps[group.ThreadID] = 0
-		s.mu.Unlock()
+	if !s.admit(group.ThreadID, slices.Contains(group.Members, message.BotID)) {
+		return nil
 	}
 	for _, member := range group.Members {
 		if member != message.BotID {
-			go s.deliver(group, member, fromMember)
+			go s.deliver(group, member)
 		}
 	}
 	return nil
 }
 
+// admit reports whether a post reaches the other members. The user's or an
+// outsider's always does and restores the group's follow-ups; a member's
+// spends one, and once they run out it is only saved, for members to see with
+// the next post that reaches them.
+func (s *Service) admit(groupID string, fromMember bool) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !fromMember {
+		s.followUps[groupID] = 0
+		return true
+	}
+	if s.followUps[groupID] >= maxFollowUps {
+		return false
+	}
+	s.followUps[groupID]++
+	return true
+}
+
 // deliver shows member the group messages it has not seen, one delivery at a
 // time per member so none is shown twice, and tells the group when member
 // cannot be reached.
-func (s *Service) deliver(group storage.BotRecord, member string, fromMember bool) {
+func (s *Service) deliver(group storage.BotRecord, member string) {
 	lock := s.deliveryLock(group.ThreadID, member)
 	lock.Lock()
 	defer lock.Unlock()
-	if err := s.deliverLocked(group, member, fromMember); err != nil {
+	if err := s.deliverLocked(group, member); err != nil {
 		s.log.Warn("group delivery failed", "group", group.ThreadID, "member", member, "error", err)
 		s.announce(group.ThreadID, sessionevents.BotActivityEvent{Kind: "unreachable", Label: s.name(member) + " · " + err.Error()})
 	}
@@ -81,9 +95,8 @@ func (s *Service) deliver(group storage.BotRecord, member string, fromMember boo
 
 // deliverLocked hands the messages to the turn member's thread for the group
 // is taking or, when it takes none or that turn cannot take them, queues a
-// turn for them on that thread, and marks them seen. Deliveries prompted by a
-// member's post spend the group's follow-ups.
-func (s *Service) deliverLocked(group storage.BotRecord, member string, fromMember bool) error {
+// turn for them on that thread, and marks them seen.
+func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 	membership, err := s.store.LoadMembership(group.ThreadID, member)
 	if errors.Is(err, storage.ErrMembershipNotFound) {
 		membership, err = s.join(group.ThreadID, member)
@@ -98,9 +111,6 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string, fromMemb
 	thread, err := s.store.LoadSession(membership.ThreadID)
 	if err != nil {
 		return err
-	}
-	if fromMember && !s.spendFollowUp(group.ThreadID) {
-		return nil
 	}
 	if thread.Turn != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), steerTimeout)
@@ -136,18 +146,6 @@ func (s *Service) deliveryLock(groupID, member string) *sync.Mutex {
 		s.delivering[key] = lock
 	}
 	return lock
-}
-
-// spendFollowUp takes one of the group's follow-ups, reporting false once
-// they are spent.
-func (s *Service) spendFollowUp(groupID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.followUps[groupID] >= maxFollowUps {
-		return false
-	}
-	s.followUps[groupID]++
-	return true
 }
 
 // join creates the thread member takes the group's turns in: a hidden thread
