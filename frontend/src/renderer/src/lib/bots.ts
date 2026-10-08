@@ -147,14 +147,14 @@ export function botChat(
     const key = `${event.session_id}:${event.seq ?? at}`
     const room = event.room_message
     const activity = event.bot_activity
+    if (opensBotTurn(event)) {
+      turn = activity ? { at, user: false, activity } : { at, user: true }
+    }
     if (room) {
       if (room.speaker === 'user') entries.push({ kind: 'user', key, at, text: room.text, attachments: room.attachments, attachmentSessionId: self.id })
       else entries.push({ kind: 'bot', key, at, botId: room.bot_id, name: room.name, text: room.text })
     } else if (activity) {
-      // Messaging another bot happens within a turn; anything else starts one.
-      const opens = activity.kind !== 'message_sent'
       if (activity.kind === 'message_sent' || activity.kind === 'message_received' || activity.kind === 'unreachable') entries.push({ kind: 'activity', key, at, event })
-      if (opens) turn = { at, user: false, activity }
     } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })
     } else if (event.type === 'permission_request' && event.permission && hasPermissionSurface(event.permission)) {
