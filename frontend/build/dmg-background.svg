@@ -8,10 +8,6 @@
   </defs>
   <rect width="540" height="380" fill="#f7f6f2"/>
   <rect width="540" height="118" fill="url(#header)"/>
-  <circle cx="34" cy="31" r="7" fill="#00d4ff" opacity="0.95"/>
-  <circle cx="58" cy="31" r="7" fill="#ffe66d" opacity="0.95"/>
-  <circle cx="82" cy="31" r="7" fill="#ff6b8a" opacity="0.95"/>
-  <circle cx="106" cy="31" r="7" fill="#72f29a" opacity="0.95"/>
   <text x="270" y="58" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#ffffff">Install Jaz</text>
   <text x="270" y="86" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="600" fill="#d5d8df">Drag Jaz into Applications</text>
   <path d="M70 270H470" stroke="#dedbd4" stroke-width="1"/>
