@@ -361,8 +361,18 @@ func (fakeThreads) SwitchAgent(context.Context, string, string) error {
 }
 
 func newTestService(world *fakeWorld) *Service {
-	world.service = NewService(world, "/bots", fakeThreads{world: world}, fakeThreads{world: world}, world, world, log.New(nil))
+	world.service = NewService(world, "/bots", fakeThreads{world: world}, fakeThreads{world: world}, world, world, world, log.New(nil))
 	return world.service
+}
+
+// ResolveAttachments finds each id as a file uploaded to thread, as the
+// server's attachment store does.
+func (w *fakeWorld) ResolveAttachments(thread string, ids []string) ([]storage.Attachment, error) {
+	attachments := make([]storage.Attachment, 0, len(ids))
+	for _, id := range ids {
+		attachments = append(attachments, storage.Attachment{ID: id, Name: id + ".pdf", ServerPath: "/attachments/" + thread + "/" + id + ".pdf"})
+	}
+	return attachments, nil
 }
 
 func (w *fakeWorld) addBot(id, name string) {
@@ -805,16 +815,15 @@ func TestFilesPostedToAGroupReachEveryMember(t *testing.T) {
 	world.addBot("b", "Marketing")
 	service := newTestService(world)
 	group, research, marketing := newGroup(t, service)
-	report := storage.Attachment{ID: "f1", Name: "report.pdf", ServerPath: "/attachments/launch/f1-report.pdf"}
 
-	if err := service.Post(group.ID, "", []storage.Attachment{report}); err != nil {
+	if err := service.Post(group.ID, "", []string{"report"}); err != nil {
 		t.Fatal(err)
 	}
 	world.settle(t)
 	world.mu.Lock()
 	defer world.mu.Unlock()
 	for _, thread := range []string{research, marketing} {
-		if prompts := world.prompts[thread]; len(prompts) != 1 || !strings.Contains(prompts[0], "report.pdf: /attachments/launch/f1-report.pdf") {
+		if prompts := world.prompts[thread]; len(prompts) != 1 || !strings.Contains(prompts[0], "report.pdf: /attachments/"+group.ID+"/report.pdf") {
 			t.Fatalf("%s was shown %q", thread, prompts)
 		}
 	}

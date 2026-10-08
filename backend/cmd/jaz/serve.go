@@ -307,7 +307,7 @@ func startServer(
 		loops.WithPromptExtra(widgetService.LoopPromptExtra),
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 	)
-	botService := bots.NewService(store, layout.Bots, manager, handler, loopService, events, logger)
+	botService := bots.NewService(store, layout.Bots, manager, handler, handler, loopService, events, logger)
 	mcpManager.AppVisible = botService.AppVisible
 	loopRunner.Bots = botService
 	jazTools.SetLoops(loopService,
@@ -317,7 +317,7 @@ func startServer(
 		loops.WithOwner(botService.RoutineOwner),
 	)
 	jazTools.SetBots(bots.NewMCPTools(botService))
-	handler.Routes = append(handler.Routes, app.BotRoutes(botsapi.NewHandler(botService, handler))...)
+	handler.Routes = append(handler.Routes, app.BotRoutes(botsapi.NewHandler(botService))...)
 	handler.PublicRoutes = append(handler.PublicRoutes, app.HookRoute(hooksapi.NewHandler(loopService)))
 	handler.RoutineOwner = botService.RoutineOwner
 	recordObservers.Add(loopService.HandleIncoming)

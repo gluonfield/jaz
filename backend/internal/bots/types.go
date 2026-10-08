@@ -76,6 +76,11 @@ type TurnQueue interface {
 	QueueInternalTurn(context.Context, string, storage.QueuedMessage) error
 }
 
+// Attachments finds the files uploaded to a thread by their ids.
+type Attachments interface {
+	ResolveAttachments(threadID string, ids []string) ([]storage.Attachment, error)
+}
+
 // Store keeps bot records and the threads they live in.
 type Store interface {
 	PromptStore

@@ -127,7 +127,7 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	bus := sessionevents.New()
 	handler := &server.Server{Store: store, Locks: sessionlock.New(), Events: bus}
 	routines := loops.NewService(store, nil, logger)
-	service := bots.NewService(store, root, first, handler, routines, bus, logger)
+	service := bots.NewService(store, root, first, handler, handler, routines, bus, logger)
 	spoke := make(chan error, 1)
 	handler.ACP = earlyReplyManager{Manager: first, speak: func(id string) error {
 		err := service.Say(id, "The complete reply.")
@@ -152,7 +152,7 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	t.Cleanup(second.Close)
 	handler.ACP = second
 	second.TurnFinished = handler.HandleACPTurnFinished
-	service = bots.NewService(store, root, second, handler, routines, bus, logger)
+	service = bots.NewService(store, root, second, handler, handler, routines, bus, logger)
 	if service.AppVisible(ids[1]) {
 		t.Fatal("interrupted private reply became publicly visible")
 	}

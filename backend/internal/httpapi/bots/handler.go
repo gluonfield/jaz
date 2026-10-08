@@ -11,17 +11,11 @@ import (
 )
 
 type Handler struct {
-	bots        *botcore.Service
-	attachments Attachments
+	bots *botcore.Service
 }
 
-// Attachments finds the files uploaded to a thread by their ids.
-type Attachments interface {
-	ResolveAttachments(sessionID string, ids []string) ([]storage.Attachment, error)
-}
-
-func NewHandler(bots *botcore.Service, attachments Attachments) *Handler {
-	return &Handler{bots: bots, attachments: attachments}
+func NewHandler(bots *botcore.Service) *Handler {
+	return &Handler{bots: bots}
 }
 
 type listResponse struct {
@@ -108,13 +102,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &input) {
 		return
 	}
-	group := r.PathValue("bot")
-	attachments, err := h.attachments.ResolveAttachments(group, input.AttachmentIDs)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusBadRequest, err)
-		return
-	}
-	if err := h.bots.Post(group, input.Text, attachments); err != nil {
+	if err := h.bots.Post(r.PathValue("bot"), input.Text, input.AttachmentIDs); err != nil {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return
 	}
