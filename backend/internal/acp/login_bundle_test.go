@@ -3,6 +3,7 @@ package acp
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -61,8 +62,8 @@ func TestAgentLoginInvocationForUsesBundledKimi(t *testing.T) {
 	if !inv.Available || inv.Executable != want {
 		t.Fatalf("Kimi login invocation = %#v", inv)
 	}
-	if len(inv.Args) != 1 || inv.Args[0] != "login" {
-		t.Fatalf("Kimi login args = %#v, want login", inv.Args)
+	if want := []string{"login", "--region", "global"}; !slices.Equal(inv.Args, want) {
+		t.Fatalf("Kimi login args = %#v, want %#v", inv.Args, want)
 	}
 	if got, want := inv.Env["KIMI_CODE_HOME"], filepath.Join(root, "acp", "kimi"); got != want {
 		t.Fatalf("KIMI_CODE_HOME = %q, want %q", got, want)

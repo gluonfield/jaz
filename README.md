@@ -89,7 +89,7 @@ Jaz runs seven coding agents over [ACP](https://agentclientprotocol.com), and yo
 |---|---|---|
 | **Codex** | OpenAI | ChatGPT plan, or OpenAI or OpenRouter API key |
 | **Claude Code** | Anthropic | Claude Pro/Max plan, or Anthropic API key |
-| **Kimi Code** | Moonshot AI | kimi.com account |
+| **Kimi Code** | Moonshot AI | kimi.ai account |
 | **Antigravity** | Google | Google account |
 | **Grok** | xAI | Grok account, or xAI API key |
 | **Muse Code** | Meta | Meta account, or Meta API key |

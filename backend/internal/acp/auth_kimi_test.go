@@ -32,6 +32,32 @@ func TestProbeAgentAuthDetectsKimiOAuthProfile(t *testing.T) {
 	}
 }
 
+func TestProbeAgentAuthFollowsKimiGlobalLoginSlot(t *testing.T) {
+	clearHostEnv(t)
+	root := t.TempDir()
+	home := filepath.Join(root, "acp", "kimi")
+	writeKimiCredential(t, home, `{"access_token":"mainland"}`)
+	config := `[providers."managed:kimi-code".oauth]
+storage = "file"
+key = "oauth/kimi-code-env-0123456789abcdef"
+oauthHost = "https://auth.kimi.ai"
+`
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if status := ProbeAgentAuth(AgentKimi, AgentConfig{}, root, nil); status.Authenticated {
+		t.Fatalf("default slot authenticated a kimi.ai login: %#v", status)
+	}
+	global := filepath.Join(home, "credentials", "kimi-code-env-0123456789abcdef.json")
+	if err := os.WriteFile(global, []byte(`{"access_token":"global"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	status := ProbeAgentAuth(AgentKimi, AgentConfig{}, root, nil)
+	if !status.Authenticated || status.StoragePath != global {
+		t.Fatalf("Kimi global auth = %#v, want token at %s", status, global)
+	}
+}
+
 func TestProbeReadinessRequiresProvisionedKimiModel(t *testing.T) {
 	clearHostEnv(t)
 	root := t.TempDir()

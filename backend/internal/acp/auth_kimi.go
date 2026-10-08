@@ -17,8 +17,14 @@ var errKimiModelNotConfigured = errors.New("Kimi sign-in did not finish configur
 type kimiConfig struct {
 	DefaultModel    string                    `toml:"default_model"`
 	DefaultProvider string                    `toml:"default_provider"`
-	Providers       map[string]any            `toml:"providers"`
+	Providers       map[string]kimiProvider   `toml:"providers"`
 	Models          map[string]kimiModelAlias `toml:"models"`
+}
+
+type kimiProvider struct {
+	OAuth struct {
+		Key string `toml:"key"`
+	} `toml:"oauth"`
 }
 
 type kimiModelAlias struct {
@@ -65,17 +71,28 @@ func kimiAuthFileAvailable(home string) bool {
 	return json.Unmarshal(data, &token) == nil && token.AccessToken != ""
 }
 
+// kimiAuthPath follows the slot Kimi recorded for its managed login: a
+// kimi.ai login stores its token under a scoped name, not kimi-code.
 func kimiAuthPath(home string) string {
-	return filepath.Join(home, "credentials", "kimi-code.json")
+	name := "kimi-code"
+	if cfg, ok := readKimiConfig(home); ok {
+		key := strings.TrimPrefix(cfg.Providers["managed:kimi-code"].OAuth.Key, "oauth/")
+		if filepath.Base(key) == key && !strings.HasPrefix(key, ".") {
+			name = key
+		}
+	}
+	return filepath.Join(home, "credentials", name+".json")
+}
+
+func readKimiConfig(home string) (kimiConfig, bool) {
+	var cfg kimiConfig
+	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	return cfg, err == nil && toml.Unmarshal(data, &cfg) == nil
 }
 
 func kimiModelConfigReady(home string) error {
-	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
-	if err != nil {
-		return errKimiModelNotConfigured
-	}
-	var cfg kimiConfig
-	if toml.Unmarshal(data, &cfg) != nil {
+	cfg, ok := readKimiConfig(home)
+	if !ok {
 		return errKimiModelNotConfigured
 	}
 	modelID := strings.TrimSpace(cfg.DefaultModel)
