@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { subscribeComposerDraft } from '@/components/session/composerDraftChanges'
 import type { Attachment } from '@/lib/api/types'
 import type { ComposerDraftStorage } from './useComposerDraft'
 import {
@@ -47,8 +48,16 @@ export function useComposerAttachments({
       attachmentsRef.current = restored
       setAttachments(restored)
     }, () => {})
+    const unsubscribe = subscribeComposerDraft(storage, storageKey, (change) => {
+      if (change.field === 'attachments' && attachmentsRef.current !== change.value) {
+        revisionRef.current += 1
+        attachmentsRef.current = change.value
+        setAttachments(change.value)
+      }
+    })
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [storage, storageKey])
 

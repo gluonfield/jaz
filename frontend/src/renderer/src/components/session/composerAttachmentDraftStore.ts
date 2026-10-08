@@ -63,7 +63,7 @@ export function saveAttachmentDraft(
 ): Promise<void> {
   const recordKey = draftRecordKey(key, storage)
   if (!recordKey) return Promise.resolve()
-  notifyComposerDraft(storage, key)
+  notifyComposerDraft(storage, key, { field: 'attachments', value: items })
   return queueWrite(recordKey, async () => {
     const storedItems = items.flatMap((item) => {
       const stored = storedAttachmentFrom(item)
@@ -83,7 +83,7 @@ export function saveAttachmentDraft(
 export function deleteAttachmentDraft(key: string | undefined, storage: ComposerDraftStorage): Promise<void> {
   const recordKey = draftRecordKey(key, storage)
   if (!recordKey) return Promise.resolve()
-  notifyComposerDraft(storage, key)
+  notifyComposerDraft(storage, key, { field: 'attachments', value: [] })
   return queueWrite(recordKey, async () => {
     const db = await openDB()
     await request(db.transaction(DRAFT_STORE, 'readwrite').objectStore(DRAFT_STORE).delete(recordKey))

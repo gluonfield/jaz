@@ -73,7 +73,7 @@ function writeStoredDraft(
     } else {
       draftStore(kind).setItem(key, JSON.stringify(storedDraftFrom(draft)))
     }
-    notifyComposerDraft(kind, key)
+    notifyComposerDraft(kind, key, { field: 'text', value: draft })
   } catch {
     // Draft persistence must never block typing.
   }
@@ -117,10 +117,9 @@ export function useComposerDraft({
       onTextChange?.(next.text)
     }
     restore(readStoredDraft(storageKey, storage) ?? fallback)
-    return subscribeComposerDraft(storage, storageKey, () => {
-      const next = readStoredDraft(storageKey, storage) ?? fallback
-      if (!sameDraft(draftRef.current, next)) {
-        restore(next)
+    return subscribeComposerDraft(storage, storageKey, (change) => {
+      if (change.field === 'text' && !sameDraft(draftRef.current, change.value)) {
+        restore(change.value)
       }
     })
   }, [storage, storageKey, fallback, onTextChange])

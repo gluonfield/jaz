@@ -10,6 +10,8 @@ export async function exerciseComposerSend(): Promise<void> {
   const key = (id: string) => `composer-send-smoke:${id}`
   const requests: {
     message: string
+    attachmentIds: string[]
+    contexts: unknown[]
     signal: AbortSignal
     persisted: boolean
     headers: () => void
@@ -33,8 +35,11 @@ export async function exerciseComposerSend(): Promise<void> {
     const frame = (type: string, error?: string) => {
       body.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type, error })}\n\n`))
     }
+    const payload = JSON.parse(String(init!.body))
     const request = {
-      message: JSON.parse(String(init!.body)).message as string,
+      message: payload.message as string,
+      attachmentIds: payload.attachment_ids as string[],
+      contexts: payload.contexts as unknown[],
       signal,
       persisted: false,
       headers: () => response.resolve(new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })),
@@ -75,6 +80,7 @@ export async function exerciseComposerSend(): Promise<void> {
       <button data-add-context onClick={() => contexts.addSelection('New quote')}>Quote</button>
       <button data-clear-context onClick={() => contexts.replaceContexts([])}>Clear Quote</button>
       <Composer streaming={live.streaming} onSend={live.send} onStop={live.abort} draftStorageKey={key(id)}
+        onUploadAttachment={async (file) => ({ id: 'uploaded-' + file.name, name: file.name, size: file.size })}
         contexts={contexts.contexts} onReplaceContexts={contexts.replaceContexts} />
     </div>
   }
@@ -182,14 +188,31 @@ export async function exerciseComposerSend(): Promise<void> {
       throw new Error('A detached failed send overwrote the new draft: ' + textarea().value)
     }
 
+    const restoredFile = new DataTransfer()
+    restoredFile.items.add(new File(['original attachment'], 'rejected.txt', { type: 'text/plain' }))
+    const restoredInput = element.querySelector<HTMLInputElement>('input[type="file"]')!
+    restoredInput.files = restoredFile.files
+    restoredInput.dispatchEvent(new Event('change', { bubbles: true }))
+    await until(() => Boolean(element.querySelector('button[aria-label="Send message"]:not(:disabled)')))
+    element.querySelector<HTMLButtonElement>('[data-add-context]')!.click()
+    await until(() => element.textContent!.includes('New quote'))
     const returning = await send()
     returning.headers()
     await render('b')
     await render('a')
     returning.reject()
     await until(() => textarea().value === returning.message && returning.signal.aborted)
+    if (!element.textContent!.includes('New quote')) {
+      throw new Error('A rejected send restored its text but lost its quote after returning')
+    }
+    if (!element.querySelector('button[aria-label="Remove rejected.txt"]')) {
+      throw new Error('A rejected send restored its text but lost its attachment after returning')
+    }
 
     const otherChat = await send()
+    if (otherChat.attachmentIds[0] !== 'uploaded-rejected.txt' || otherChat.contexts.length !== 1) {
+      throw new Error('Retry omitted the restored attachment or quote')
+    }
     otherChat.headers()
     await render('b')
     await type('Other chat draft', 'b')

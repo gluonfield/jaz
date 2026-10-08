@@ -24,3 +24,12 @@ Follow-up review found a rollback defect missed by the initial checks: return be
 Draft persistence now publishes changes per storage scope and key. A pending rollback subscribes after clearing and becomes invalid when any later text, attachment or context mutation occurs. The subscription ends when the send settles. Text editors subscribe to the same changes, so a rejection can restore the draft into an already reopened editor. Existing component checks continue to protect ephemeral fields and goal state.
 
 The browser check now covers late rejection after remount with new text, a new file or a quote; rejection after an empty return; and draft isolation between chats. The HTTP fixture intercepts only its two test-chat stream endpoints. All cases pass. Final review found no remaining blockers; full backend tests, 307 frontend tests, typecheck, lint and web/desktop bundle builds passed.
+
+Explanation and renewed strict review — 2026-10-08:
+
+- [x] Explain the two composer fixes and distinguish them from the read-only latency diagnosis.
+- [x] Reproduce a rejected send restoring text but leaving its original quote and file absent from an already reopened composer.
+- [x] Carry typed draft values in the existing notification so every draft owner receives restoration directly; protect newer attachment changes from an older asynchronous load.
+- [x] Verify the reopened composer displays the restored quote/file and includes them in a retry; run all checks and commit the correction.
+
+The prior notification told consumers only that something changed; only the text editor subscribed. It now carries the changed field and its value. Text, attachment and context hooks consume their own field, without rereading storage on each notification. The rollback still subscribes to all fields to protect any newer draft. Controlled browser checks fail when quote or attachment synchronization is removed and pass on the final revision. Full Go and frontend suites, typecheck, lint and web/desktop bundle builds pass.
