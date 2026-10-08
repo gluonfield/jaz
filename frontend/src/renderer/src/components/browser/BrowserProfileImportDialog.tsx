@@ -77,12 +77,12 @@ export function BrowserProfileImportDialog({ api, onClose }: {
         <div className="flex min-h-14 items-center gap-3">
           <KeyRound size={20} className="shrink-0 text-ink-2" />
           <span className="flex-1 text-[14px] text-ink">Saved passwords</span>
-          <Switch className="before:absolute before:-inset-2.5 aria-checked:bg-[#3686ff] [&>span]:bg-white" aria-label="Import saved passwords" checked={selection.passwords} disabled={importing || !profile?.passwords || Boolean(complete)} onChange={setPasswords} />
+          <Switch className="before:absolute before:-inset-2.5" aria-label="Import saved passwords" checked={selection.passwords} disabled={importing || !profile?.passwords || Boolean(complete)} onChange={setPasswords} />
         </div>
         <div className="flex min-h-14 items-center gap-3">
           <Cookie size={20} className="shrink-0 text-ink-2" />
           <span className="flex-1 text-[14px] text-ink">Cookies</span>
-          <Switch className="before:absolute before:-inset-2.5 aria-checked:bg-[#3686ff] [&>span]:bg-white" aria-label="Import cookies" checked={selection.cookies} disabled={importing || !profile?.cookies || Boolean(complete)} onChange={setCookies} />
+          <Switch className="before:absolute before:-inset-2.5" aria-label="Import cookies" checked={selection.cookies} disabled={importing || !profile?.cookies || Boolean(complete)} onChange={setCookies} />
         </div>
       </div>
       <p className="mt-3 text-[12px] leading-relaxed text-ink-2">

@@ -19,6 +19,7 @@ import { exerciseKeyboardFocus } from './keyboard-focus'
 import { exerciseSessionConfig } from './session-config'
 import { exerciseComposerSend } from './composer-send'
 import { exerciseFolderDrop } from './folder-drop'
+import { exerciseAccentText } from './accent-text'
 
 declare global {
   interface Window {
@@ -89,8 +90,10 @@ function Fixture() {
       await exerciseModelPicker()
       stage = 'existing composer setting changes across menu closure'
       await exerciseSessionConfig()
+      stage = 'readable text on custom accents'
+      await exerciseAccentText()
       if (new URLSearchParams(location.search).get('suite') === 'model-picker') {
-        window.smoke.result({ ok: true, checks: ['Tab-only focus rings; Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence; existing composer pending settings survive menu closure and await refreshed state'] })
+        window.smoke.result({ ok: true, checks: ['Tab-only focus rings; Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence; existing composer pending settings survive menu closure and await refreshed state; custom accents keep readable button text'] })
         return
       }
       stage = 'cancellation while opening the browser panel'

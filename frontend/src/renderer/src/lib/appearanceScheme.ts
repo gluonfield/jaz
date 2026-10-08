@@ -99,10 +99,11 @@ function luminance(hex: string): number {
   return 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4)
 }
 
-// Pragmatic luminance threshold: above ~0.3 the accent is light enough to need
-// dark text (amber, light cyans), while saturated mid-tone blues/purples keep
-// the conventional white text. (Pure WCAG crossover 0.179 over-darkens blues.)
-const onColor = (hex: string): string => (luminance(hex) > 0.3 ? '#10131a' : '#ffffff')
+// Pragmatic luminance threshold: above ~0.34 the accent is light enough to need
+// dark text (amber, light cyans, pastel blues), while saturated mid-tone blues
+// and reds keep the conventional white text — Codex #339cff and Raycast #ff6363
+// sit at 0.31–0.32. (Pure WCAG crossover 0.179 over-darkens blues.)
+const onColor = (hex: string): string => (luminance(hex) > 0.34 ? '#10131a' : '#ffffff')
 
 // Map a scheme to the --color-* token set. Surfaces step from the background
 // toward the foreground; the ink ramp steps from the foreground toward the

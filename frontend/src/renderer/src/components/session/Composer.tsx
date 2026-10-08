@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
+import { SwitchTrack } from '@/components/ui/Switch'
 import { composerPasteFiles } from '@/components/session/composerPasteFiles'
 import { subscribeComposerDraft } from '@/components/session/composerDraftChanges'
 import { apiBaseUrl, isLocalBackendUrl } from '@/lib/api/client'
@@ -42,22 +43,7 @@ function PlanMenuToggle({
       }`}
     >
       <span className="min-w-0 flex-1 truncate">Plan</span>
-      {/* mirrors the shared Switch primitive: spring-driven layout thumb, no
-          forbidden transition-all */}
-      <span
-        aria-hidden
-        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors duration-150 ${
-          checked ? 'bg-primary' : 'bg-ink/20'
-        }`}
-      >
-        <motion.span
-          layout
-          transition={{ type: 'spring', stiffness: 500, damping: 34 }}
-          className={`absolute size-3 rounded-full ${
-            checked ? 'right-0.5 bg-on-primary' : 'left-0.5 bg-ink/60'
-          }`}
-        />
-      </span>
+      <SwitchTrack checked={checked} compact />
     </button>
   )
 }
