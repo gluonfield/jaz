@@ -16,7 +16,7 @@ memory, and git control. Client/server split, always-on, open source end to end.
 ## Guiding Principles
 
 - Use the major coding agents. Frontier labs are investing heavily in coding agents and benchmarks. Jaz should reuse that work, not reinvent it.
-- Bring your existing Pro plans. Carry Claude and Codex plans forward, with API-key support and open-source agents alongside them.
+- Bring your existing plans. Sign in with the ChatGPT, Claude, Kimi, Grok, Google, or Meta account you already have, with API keys and open-source agents alongside them.
 - Unified memory that you control and can export.
 - Connect core apps. Telegram, WhatsApp, Gmail, Calendar, and Slack should plug into the same owned context.
 - Open source.
@@ -55,7 +55,7 @@ Track usage
 
 <img width="3696" height="2712" alt="image" src="https://github.com/user-attachments/assets/fb7714a7-8494-4e34-a1f0-690412f606df" />
 
-Connect your coding agent and reuse subscription (Codex, Claude Code, Open Code, Antigravity, Kimi)
+Connect your coding agents and reuse your subscriptions
 
 <img width="3656" height="2690" alt="image" src="https://github.com/user-attachments/assets/b4ee3750-8b35-4d33-a78e-dc7b2c4c6a54" />
 
@@ -78,19 +78,24 @@ https://github.com/user-attachments/assets/de550dc1-75cc-43bb-aca0-f34c99573d47
 Grab the latest desktop build from [**Releases**](https://github.com/gluonfield/jaz/releases/latest),
 or [run it from source](#development).
 
-Jaz ships with three coding agents, and you pick one per thread:
+Jaz runs seven coding agents over [ACP](https://agentclientprotocol.com), and you pick one per thread:
 
-| Agent | How it connects |
-|---|---|
-| **Codex** | Sign in with your **ChatGPT Pro plan** to use its discounted tokens, or an OpenAI API key |
-| **Claude** | Sign in with your **Claude Pro/Max plan** to use its discounted tokens, or an Anthropic API key |
-| **OpenCode** | Connects to OpenAI, OpenRouter, or Anthropic by API token |
+| Agent | Provider | Sign in with | Install |
+|---|---|---|---|
+| **Codex** | OpenAI | ChatGPT plan, or OpenAI API key | Managed by Jaz |
+| **Claude Code** | Anthropic | Claude Pro/Max plan, or Anthropic API key | Managed by Jaz |
+| **Kimi Code** | Moonshot AI | Kimi account | Managed by Jaz |
+| **Antigravity** | Google | Google account | Managed by Jaz |
+| **Grok** | xAI | Grok account, or xAI API key | Your `grok` CLI |
+| **Muse Code** | Meta | Meta account, or Meta API key | Your [Muse Code](https://dev.meta.ai/docs/muse-code) CLI |
+| **OpenCode** | Open source | OpenRouter or OpenAI API key | Runs through `npx` (Node.js) |
 
-You can also connect **OpenRouter**, **OpenAI**, or **Anthropic** directly and pay per token.
+Jaz downloads and version-pins managed agents on first use. Codex can also run
+on an **OpenRouter** key.
 
 ## Features
 
-- **Pick the agent per thread** — Codex, Claude, or OpenCode.
+- **Pick the agent per thread** — any of the seven above.
 - **Loops** — scheduled prompts that run overnight.
 - **Boards** — multi-window dashboards of live artifacts.
 - **Memory** — survives the thread.
