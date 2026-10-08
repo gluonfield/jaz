@@ -16,6 +16,20 @@ import { accessibilityFixture, accessibilityFrame } from './accessibility'
 import { exerciseBrowserPopups } from './popups'
 
 app.setName('Jaz')
+// The suite runs on the developer's own desktop: no Dock icon, no focus and no
+// visible windows (popups included). Input is injected; focus is emulated over CDP.
+if (process.platform === 'darwin') {
+  app.setActivationPolicy('prohibited')
+}
+app.on('web-contents-created', (_event, contents) => {
+  const setWindowOpenHandler = contents.setWindowOpenHandler.bind(contents)
+  contents.setWindowOpenHandler = (handler) => setWindowOpenHandler((details) => {
+    const response = handler(details)
+    return response.action === 'allow'
+      ? { ...response, overrideBrowserWindowOptions: { ...response.overrideBrowserWindowOptions, show: false } }
+      : response
+  })
+})
 app.setPath('userData', join(process.env.JAZ_BROWSER_SMOKE_DIR!, `profile-${process.pid}`))
 app.commandLine.appendSwitch('host-resolver-rules', 'MAP linkedin.com 127.0.0.1, MAP www.linkedin.com 127.0.0.1')
 const timeout = Number(process.env.JAZ_BROWSER_SMOKE_TIMEOUT_MS || 30000)
@@ -188,6 +202,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
   const window = new BrowserWindow({
     width: 1050,
     height: 850,
+    show: false,
     webPreferences: {
       webviewTag: true,
       backgroundThrottling: false,
@@ -205,10 +220,6 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
   })
   let pointerPressed = false
   ipcMain.handle('smoke:pointer', async (_event, type: 'mouseDown' | 'mouseMove' | 'mouseUp', x: number, y: number, button: 'left' | 'right' = 'left') => {
-    if (!window.isFocused()) {
-      window.focus()
-      window.webContents.focus()
-    }
     if (type === 'mouseDown') {
       pointerPressed = true
     }
