@@ -97,7 +97,7 @@ Jaz runs seven coding agents over [ACP](https://agentclientprotocol.com), and yo
 
 ## Features
 
-- **Pick the agent per thread** — any of the seven above.
+- **Pick the agent per thread** — any agent in the table above.
 - **Loops** — scheduled prompts that run overnight.
 - **Boards** — multi-window dashboards of live artifacts.
 - **Memory** — survives the thread.

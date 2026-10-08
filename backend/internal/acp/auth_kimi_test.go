@@ -126,7 +126,7 @@ func TestKimiCredentialRequiresAccessToken(t *testing.T) {
 	for _, content := range []string{`{}`, `{"access_token":""}`, `{not-json`} {
 		home := t.TempDir()
 		writeKimiCredential(t, home, content)
-		if kimiAuthFileAvailable(home) {
+		if kimiTokenAvailable(kimiAuthPath(home)) {
 			t.Fatalf("credential %q was accepted", content)
 		}
 	}
