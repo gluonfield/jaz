@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { notifyComposerDraft, subscribeComposerDraft } from '@/components/session/composerDraftChanges'
 import { pruneTokens, type InlineToken } from './composerTokens'
 
 export type ComposerDraftStorage = 'session' | 'local'
@@ -69,9 +70,10 @@ function writeStoredDraft(
   try {
     if (!draft.text && draft.tokens.size === 0) {
       draftStore(kind).removeItem(key)
-      return
+    } else {
+      draftStore(kind).setItem(key, JSON.stringify(storedDraftFrom(draft)))
     }
-    draftStore(kind).setItem(key, JSON.stringify(storedDraftFrom(draft)))
+    notifyComposerDraft(kind, key, { field: 'text', value: draft })
   } catch {
     // Draft persistence must never block typing.
   }
@@ -109,10 +111,17 @@ export function useComposerDraft({
   const draftRef = useRef(draft)
 
   useLayoutEffect(() => {
-    const next = readStoredDraft(storageKey, storage) ?? fallback
-    draftRef.current = next
-    setDraftState((current) => (sameDraft(current, next) ? current : next))
-    onTextChange?.(next.text)
+    const restore = (next: ComposerDraft) => {
+      draftRef.current = next
+      setDraftState((current) => (sameDraft(current, next) ? current : next))
+      onTextChange?.(next.text)
+    }
+    restore(readStoredDraft(storageKey, storage) ?? fallback)
+    return subscribeComposerDraft(storage, storageKey, (change) => {
+      if (change.field === 'text' && !sameDraft(draftRef.current, change.value)) {
+        restore(change.value)
+      }
+    })
   }, [storage, storageKey, fallback, onTextChange])
 
   const setDraft = useCallback(

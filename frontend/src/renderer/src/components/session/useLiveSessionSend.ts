@@ -18,9 +18,14 @@ export function useLiveSessionSend({
   const queryClient = useQueryClient()
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
+  const sendRef = useRef<{ controller: AbortController; accepted: Promise<void> } | null>(null)
 
-  useEffect(() => () => abortRef.current?.abort(), [sessionId])
+  useEffect(() => () => {
+    const pending = sendRef.current
+    if (pending) {
+      void pending.accepted.finally(() => pending.controller.abort()).catch(() => {})
+    }
+  }, [sessionId])
 
   const send = useCallback((text: string, options: SendMessageOptions = {}): Promise<void> => {
     const controller = new AbortController()
@@ -28,7 +33,6 @@ export function useLiveSessionSend({
     const draftAttachments = options.attachments ?? []
     const draftContexts = options.contexts ?? []
     const contextAttachments = liveContextAttachments(draftContexts)
-    abortRef.current = controller
     setLive({
       user: text,
       at: new Date().toISOString(),
@@ -52,7 +56,7 @@ export function useLiveSessionSend({
       const attachments = files.length
         ? await Promise.all(files.map((file) => uploadSessionAttachment(sessionId, file, controller.signal)))
         : []
-      if (attachments.length && abortRef.current === controller) {
+      if (attachments.length && sendRef.current?.controller === controller) {
         setLive((prev) =>
           prev ? { ...prev, attachments: [...draftAttachments, ...contextAttachments, ...attachments] } : prev,
         )
@@ -67,16 +71,22 @@ export function useLiveSessionSend({
         goalRequested: options.goalRequested,
         signal: controller.signal,
         onEvent: (event) => {
-          if (abortRef.current !== controller) return
+          if (sendRef.current?.controller !== controller) {
+            return
+          }
           setLive((prev) => (prev ? mergeLiveStreamEvent(prev, event) : prev))
         },
       })
     })()
+    const accepted = started.then((stream) => stream.accepted)
+    sendRef.current = { controller, accepted }
 
     void started
       .then((stream) => stream.finished)
       .catch((err: Error) => {
-        if (controller.signal.aborted || abortRef.current !== controller) return
+        if (controller.signal.aborted || sendRef.current?.controller !== controller) {
+          return
+        }
         onCriticalError(err.message || 'Something went wrong.')
         setLive((prev) =>
           prev ? { ...prev, attachments: finishLiveAttachments(prev.attachments), error: err.message } : prev,
@@ -87,20 +97,22 @@ export function useLiveSessionSend({
         queryClient.invalidateQueries({ queryKey: keys.sidebarSessions })
         queryClient.invalidateQueries({ queryKey: keys.usage })
         queryClient.invalidateQueries({ queryKey: keys.sessionRepo(sessionId) })
-        if (abortRef.current === controller) {
+        if (sendRef.current?.controller === controller) {
           setStreaming(false)
-          abortRef.current = null
+          sendRef.current = null
           setLive((prev) => (prev?.error ? prev : null))
         }
       })
-    return started.then((stream) => stream.accepted)
+    return accepted
   }, [onCriticalError, queryClient, sessionId])
 
   const abort = useCallback(() => {
-    const controller = abortRef.current
-    if (!controller) return
-    controller.abort()
-    abortRef.current = null
+    const pending = sendRef.current
+    if (!pending) {
+      return
+    }
+    pending.controller.abort()
+    sendRef.current = null
     setStreaming(false)
     setLive(null)
   }, [])

@@ -17,6 +17,7 @@ import { exerciseMermaid } from './mermaid'
 import { exerciseModelPicker } from './model-picker'
 import { exerciseKeyboardFocus } from './keyboard-focus'
 import { exerciseSessionConfig } from './session-config'
+import { exerciseComposerSend } from './composer-send'
 
 declare global {
   interface Window {
@@ -70,6 +71,12 @@ function Fixture() {
         stage = 'side panel tabs and retained resources'
         await exerciseSidePanelTabs()
         window.smoke.result({ ok: true, checks: ['side panel and Overview shortcut visibility; compact tabs, browser retention, terminal, side chat, mobile layout and per-chat restoration'] })
+        return
+      }
+      stage = 'composer submission across chat navigation'
+      await exerciseComposerSend()
+      if (new URLSearchParams(location.search).get('suite') === 'composer') {
+        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; Stop cancels immediately'] })
         return
       }
       stage = 'Tab-only focus rings'

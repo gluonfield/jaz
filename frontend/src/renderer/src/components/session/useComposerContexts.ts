@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { notifyComposerDraft, subscribeComposerDraft } from '@/components/session/composerDraftChanges'
 import type { Attachment } from '@/lib/api/types'
 import { browserAnnotationFromUnknown, normalizeBrowserAnnotation } from '@/lib/messageContext'
 import type { BrowserAnnotation, ComposerContext } from '@/lib/sendMessage'
@@ -83,9 +84,10 @@ function writeContexts(key: string | undefined, storage: ComposerDraftStorage, i
       contextStore(storage).removeItem(storedKey)
       const legacyKey = legacyQuoteKey(key)
       if (legacyKey) contextStore(storage).removeItem(legacyKey)
-      return
+    } else {
+      contextStore(storage).setItem(storedKey, JSON.stringify(persisted))
     }
-    contextStore(storage).setItem(storedKey, JSON.stringify(persisted))
+    notifyComposerDraft(storage, key, { field: 'contexts', value: items })
   } catch {
     // Draft persistence must never block composing.
   }
@@ -127,6 +129,12 @@ export function useComposerContexts({
     const next = readContexts(storageKey, storage)
     contextsRef.current = next
     setContexts(next)
+    return subscribeComposerDraft(storage, storageKey, (change) => {
+      if (change.field === 'contexts' && contextsRef.current !== change.value) {
+        contextsRef.current = change.value
+        setContexts(change.value)
+      }
+    })
   }, [storage, storageKey])
 
   const commitContexts = useCallback((next: ComposerContext[]) => {
