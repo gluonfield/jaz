@@ -500,61 +500,55 @@ func TestRoutineOwnerChecksNamedBotsKeepsBotThreadAndGivesOtherThreadsANewBot(t 
 	}
 }
 
-func TestMembersFollowUpOnlyWhenMentioned(t *testing.T) {
+func TestAMembersPostReachesTheOthersAfterTheirTurnsEnd(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("a", "Research")
 	world.addBot("b", "Marketing")
 	service := newTestService(world)
 	group, research, marketing := newGroup(t, service)
-	world.replies[marketing] = []string{"[@Research] can you check the numbers?"}
-	world.replies[research] = []string{"Checked."}
+	world.replies[marketing] = []string{"@Research can you check the numbers?"}
 	release := make(chan struct{})
-	world.held[research] = release
+	world.held[marketing] = release
 
-	if err := service.Post(group.ID, "[@Marketing](bot:b) where is the launch draft?", nil); err != nil {
+	if err := service.Post(group.ID, "where is the launch draft?", nil); err != nil {
 		t.Fatal(err)
 	}
-	// Research answers after Marketing's turn has ended, as a real agent's
-	// slower turn would, so the answer reaches Marketing only if it is
-	// addressed.
+	// Marketing answers once Research's turn has ended, with a plain-text tag
+	// that names no member.
 	waitUntil(t, func() bool {
-		return world.running(research) && world.promptCount(marketing) == 1 && !world.running(marketing)
+		return world.promptCount(research) == 1 && !world.running(research) && world.running(marketing)
 	})
 	close(release)
-	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: Checked.") })
-	time.Sleep(20 * time.Millisecond)
-	if world.promptCount(research) != 1 || world.promptCount(marketing) != 1 {
-		t.Fatalf("turns: Research %d, Marketing %d", world.promptCount(research), world.promptCount(marketing))
-	}
+	waitUntil(t, func() bool { return world.promptCount(research) == 2 })
+	world.settle(t)
 	world.mu.Lock()
-	prompt := world.prompts[research][0]
-	world.mu.Unlock()
-	if !strings.Contains(prompt, "can you check the numbers?") {
-		t.Fatalf("follow-up prompt misses the mention:\n%s", prompt)
+	defer world.mu.Unlock()
+	if prompt := world.prompts[research][1]; !strings.Contains(prompt, "Marketing: @Research can you check the numbers?") {
+		t.Fatalf("Research's second turn:\n%s", prompt)
+	}
+	if len(world.prompts[marketing]) != 1 {
+		t.Fatalf("Marketing took %d turns: %q", len(world.prompts[marketing]), world.prompts[marketing])
 	}
 }
 
-// progressDuringTurn has Research, working on its turn, mention Marketing with
-// a first finding and then post two more while Marketing works on its own
-// turn, and returns once Marketing's agent has taken or refused them.
+// progressDuringTurn has Research post three findings while it and Marketing
+// both work on their turns for the user's post.
 func progressDuringTurn(t *testing.T, world *fakeWorld, service *Service, group Bot, research, marketing string, releaseMarketing chan struct{}) {
 	t.Helper()
 	world.held[research] = make(chan struct{})
 	world.held[marketing] = releaseMarketing
-	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing", nil); err != nil {
+	if err := service.Post(group.ID, "dig into pricing", nil); err != nil {
 		t.Fatal(err)
 	}
-	waitUntil(t, func() bool { return world.running(research) })
-	say := func(text string) {
-		if err := service.Say(research, text); err != nil {
+	waitUntil(t, func() bool { return world.running(research) && world.running(marketing) })
+	for _, finding := range findings {
+		if err := service.Say(research, finding); err != nil {
 			t.Fatal(err)
 		}
 	}
-	say("[@Marketing](bot:b) first finding")
-	waitUntil(t, func() bool { return world.running(marketing) })
-	say("second finding")
-	say("third finding")
 }
+
+var findings = []string{"first finding", "second finding", "third finding"}
 
 func TestPostsDuringAMembersTurnReachItBeforeTheTurnEnds(t *testing.T) {
 	world := newFakeWorld()
@@ -570,11 +564,14 @@ func TestPostsDuringAMembersTurnReachItBeforeTheTurnEnds(t *testing.T) {
 		defer world.mu.Unlock()
 		return strings.Join(world.steered[marketing], "\n")
 	}
-	waitUntil(t, func() bool {
-		return strings.Contains(steered(), "Research: second finding") && strings.Contains(steered(), "Research: third finding")
-	})
-	if strings.Count(steered(), "second finding") != 1 || strings.Contains(steered(), "first finding") {
-		t.Fatalf("Marketing was handed:\n%s", steered())
+	waitUntil(t, func() bool { return strings.Contains(steered(), "Research: third finding") })
+	for _, finding := range findings {
+		if strings.Count(steered(), "Research: "+finding) != 1 {
+			t.Fatalf("Marketing was handed:\n%s", steered())
+		}
+	}
+	if strings.Contains(steered(), "dig into pricing") {
+		t.Fatalf("Marketing was handed its turn's own post again:\n%s", steered())
 	}
 	close(release)
 	close(world.held[research])
@@ -593,7 +590,7 @@ func TestPostsAnAgentCannotTakeMidTurnReachItInTurnsAfterIt(t *testing.T) {
 	world.steerless = true
 	service := newTestService(world)
 	group, research, marketing := newGroup(t, service)
-	world.replies[marketing] = []string{"Looking at the first one."}
+	world.replies[marketing] = []string{"On it."}
 	release := make(chan struct{})
 	progressDuringTurn(t, world, service, group, research, marketing, release)
 
@@ -606,11 +603,14 @@ func TestPostsAnAgentCannotTakeMidTurnReachItInTurnsAfterIt(t *testing.T) {
 		}
 		return strings.Join(world.prompts[marketing][1:], "\n")
 	}
-	waitUntil(t, func() bool {
-		return strings.Contains(later(), "second finding") && strings.Contains(later(), "third finding")
-	})
+	waitUntil(t, func() bool { return strings.Contains(later(), "third finding") })
 	close(world.held[research])
-	if strings.Contains(later(), "first finding") {
+	for _, finding := range findings {
+		if strings.Count(later(), finding) != 1 {
+			t.Fatalf("Marketing's later turns:\n%s", later())
+		}
+	}
+	if strings.Contains(later(), "dig into pricing") {
 		t.Fatalf("Marketing's later turns repeat what it had seen:\n%s", later())
 	}
 }
@@ -623,7 +623,7 @@ func TestMessagesAQueueRefusedReachTheNextTurn(t *testing.T) {
 	group, _, marketing := newGroup(t, service)
 	world.unqueueable[marketing] = true
 
-	if err := service.Post(group.ID, "[@Marketing](bot:b) draft the launch post", nil); err != nil {
+	if err := service.Post(group.ID, "draft the launch post", nil); err != nil {
 		t.Fatal(err)
 	}
 	unreachable := func() bool {
@@ -634,7 +634,7 @@ func TestMessagesAQueueRefusedReachTheNextTurn(t *testing.T) {
 		})
 	}
 	waitUntil(t, unreachable)
-	if err := service.Post(group.ID, "[@Marketing](bot:b) and keep it short", nil); err != nil {
+	if err := service.Post(group.ID, "and keep it short", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool { return world.promptCount(marketing) == 1 })
@@ -645,15 +645,15 @@ func TestMessagesAQueueRefusedReachTheNextTurn(t *testing.T) {
 	}
 }
 
-func TestMentionPingPongStopsAtTheFollowUpCap(t *testing.T) {
+func TestBotsAnsweringEachOtherStopAtTheFollowUpCap(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("a", "Research")
 	world.addBot("b", "Marketing")
 	service := newTestService(world)
 	group, research, marketing := newGroup(t, service)
 	for range 20 {
-		world.replies[research] = append(world.replies[research], "[@Marketing](bot:b) you?")
-		world.replies[marketing] = append(world.replies[marketing], "[@Research](bot:a) no, you?")
+		world.replies[research] = append(world.replies[research], "you?")
+		world.replies[marketing] = append(world.replies[marketing], "no, you?")
 	}
 	turns := func() int { return world.promptCount(research) + world.promptCount(marketing) }
 
@@ -780,7 +780,7 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	world.held["a"] = make(chan struct{})
 	world.replies["thread-Research in Launch"] = []string{"On it."}
 
-	if err := service.Post(group.ID, "[@Research](bot:a) dig into pricing", nil); err != nil {
+	if err := service.Post(group.ID, "dig into pricing", nil); err != nil {
 		t.Fatal(err)
 	}
 	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: On it.") })
@@ -804,8 +804,10 @@ func TestGroupTurnsRunInTheBotsGroupThreadAndPostAsTheBot(t *testing.T) {
 	if len(world.prompts["a"]) != 0 || len(world.prompts[membership.ThreadID]) != 1 {
 		t.Fatalf("turns in Research's chat %q, in its group thread %q", world.prompts["a"], world.prompts[membership.ThreadID])
 	}
-	if created := world.created[len(world.created)-1]; created.SourceType != storage.SourceBotMember || created.SourceID != "a" {
-		t.Fatalf("group thread created as %+v", created)
+	if !slices.ContainsFunc(world.created, func(req acp.SpawnRequest) bool {
+		return req.Title == "Research in Launch" && req.SourceType == storage.SourceBotMember && req.SourceID == "a"
+	}) {
+		t.Fatalf("group threads created as %+v", world.created)
 	}
 }
 

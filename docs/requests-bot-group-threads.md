@@ -31,3 +31,21 @@ Verification: full Go tests, bot tests 50 times plain and 10 times under race, a
 CEO's group thread was never created: thread creation copied the bot's stored model provider, which for Claude is the agent's own name, and the effort check then looked for a provider catalog named "claude" ("unknown model provider"). Bot subtasks copied it the same way, which is why no bot worker has ever been created. The agent manager now creates a bot's subtasks and group threads alike from the bot, passing its provider only when it is a real one, and the group shows "Couldn't reach CEO · …" when a delivery fails instead of failing silently.
 
 Verification: a real-manager regression with a Claude bot creates both threads and fails with the old copy on the same error; full Go and 307 frontend tests, typecheck and lint pass; bot tests pass 40 times plain and 10 under race; removing the notice fails its test.
+
+## Files In Group Chats
+
+- [x] Accept dragged and pasted files in a group chat, as bot chats do.
+- [x] Strict review: resolve the files against the loaded group's thread.
+
+A group now uses the bot chat composer inside a file drop scope. Files upload to the group's thread, travel on the room message (server paths hidden from clients, as with side chats) and appear under the message in each member's group turn with their server path. A post can be files alone. Review: the bots handler resolved ids against the raw `{bot}` path value before the group was loaded, and Go's router delivers `..` and `a/../b` from encoded segments; `Post` now loads the group first.
+
+Verification: full Go and 310 frontend tests, typecheck and lint pass; removing the prompt line, the path stripping or resolving against another thread each fails its test. An isolated backend with a fake agent showed the drop overlay, the uploaded chips, both posts and the members' queued turns naming each file's server path.
+
+## Every Post Reaches Every Member
+
+- [x] Find why CEO stopped answering in "Business Research".
+- [x] Hand every group post to every other member and let each decide whether to answer.
+
+The Researcher (Codex) addressed CEO as plain-text `@CEO` after CEO's turn had ended. Only `[@Name]` and `bot:` links counted as mentions, and a member's post with none woke nobody, so the post was stored but never delivered. Mention-only waking was introduced on 30 September to cut silent reaction turns; the user's rule is that no member misses a post. Every post now goes to every other member; mentions only link a name to its bot. The follow-up cap still bounds bots answering each other between the user's posts, holding the excess as unseen until the next user post.
+
+Verification: the plain-tag regression fails under the old rule; bot tests pass 40 times plain and 10 under race; full Go tests pass.

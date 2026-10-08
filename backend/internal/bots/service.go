@@ -19,7 +19,7 @@ import (
 type Service struct {
 	store Store
 	// homes is where each bot's own directory lives, named after its id.
-	homes    string
+	homes       string
 	threads     Threads
 	queue       TurnQueue
 	attachments Attachments

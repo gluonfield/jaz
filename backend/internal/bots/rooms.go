@@ -45,51 +45,25 @@ func (s *Service) Post(groupID, text string, attachmentIDs []string) error {
 	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text, Attachments: attachments})
 }
 
-// post records a message in a group and hands it to every other member that
-// should hear it: the members it addresses, and any member taking a turn in
-// the group as it is posted.
+// post records a message in a group and hands it to every other member, which
+// decides for itself whether to answer.
 func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessageEvent) error {
-	text, mentioned := s.resolveMentions(message.Text, group.Members)
-	message.Text = text
+	message.Text = s.linkMentions(message.Text, group.Members)
 	if err := s.appendEvent(sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
 		return err
 	}
 	fromMember := slices.Contains(group.Members, message.BotID)
-	wake := addressed(group.Members, mentioned, fromMember)
 	if !fromMember {
 		s.mu.Lock()
 		s.followUps[group.ThreadID] = 0
 		s.mu.Unlock()
 	}
 	for _, member := range group.Members {
-		if member != message.BotID && (slices.Contains(wake, member) || s.inGroupTurn(group.ThreadID, member)) {
+		if member != message.BotID {
 			go s.deliver(group, member, fromMember)
 		}
 	}
 	return nil
-}
-
-// inGroupTurn reports whether member's thread for the group is taking a turn.
-func (s *Service) inGroupTurn(groupID, member string) bool {
-	membership, err := s.store.LoadMembership(groupID, member)
-	if err != nil {
-		return false
-	}
-	thread, err := s.store.LoadSession(membership.ThreadID)
-	return err == nil && thread.Turn != nil
-}
-
-// addressed is who a group message wakes: the members it mentions or, with no
-// mention, every member when the user or an outsider wrote it and nobody when
-// a member did, since bots follow up on each other only when addressed.
-func addressed(members, mentioned []string, fromMember bool) []string {
-	switch {
-	case mentioned != nil:
-		return mentioned
-	case fromMember:
-		return nil
-	}
-	return members
 }
 
 // deliver shows member the group messages it has not seen, one delivery at a

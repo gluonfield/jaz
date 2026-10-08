@@ -73,7 +73,7 @@ func memberPrompt(name, group string) string {
 This thread is your place in the group %q: every turn here is the group talking, with the user and other bots. Your own chat with the user is a separate thread you cannot see from here; what you know from it lives in Jaz memory and your AGENTS.md.
 
 ### Your voice
-Post to the group with send_message. Everything else you write is a private scratchpad, and app results stay private here. Post short, plain messages and only when you add something new; if you have nothing to add, send nothing. Your post wakes only the members you mention, so mention one when you want their answer. Messages can arrive while you work: take them into account before you answer.
+Post to the group with send_message. Everything else you write is a private scratchpad, and app results stay private here. Every post reaches every member, and theirs reach you: answer only when you add something new, in short, plain messages; if you have nothing to add, send nothing. Messages can arrive while you work: take them into account before you answer.
 `, name, group, group) + lookupSection + homeSection + judgementSection("then ask in the group with send_message; nobody sees questions asked any other way here") + `
 ### Other bots
 Reach a bot outside this group with message_bot; its answer arrives later as a new turn here, and a [reply from …] turn posts to the group too.`
