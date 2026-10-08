@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import type { HistoryPaging } from '@/lib/hooks/useSessionHistory'
 
-export function useHistoryScroll({
+function useHistoryScroll({
   scrollRef,
   firstKey,
   hasMore,
@@ -47,4 +48,49 @@ export function useHistoryScroll({
   }, [firstKey, hasMore, scrollRef])
 
   return { historyRef, sentinelRef }
+}
+
+// Renders the newest `initial` of `count` items and reveals `batch` more as the
+// reader scrolls up, fetching earlier pages once every loaded item is shown.
+export function useHistoryWindow({
+  scrollRef,
+  count,
+  initial,
+  batch,
+  keyAt,
+  paging,
+  showAll = false,
+}: {
+  scrollRef: RefObject<HTMLDivElement | null>
+  count: number
+  initial: number
+  batch: number
+  keyAt: (index: number) => string | undefined
+  paging?: HistoryPaging
+  showAll?: boolean
+}) {
+  const [visible, setVisible] = useState(initial)
+
+  useEffect(() => {
+    setVisible((current) => Math.min(count, Math.max(current, initial)))
+  }, [count, initial])
+
+  const start = showAll ? 0 : Math.max(0, count - visible)
+  const reveal = () => {
+    if (start > 0) {
+      setVisible((current) => Math.min(count, current + batch))
+      return
+    }
+    if (!paging || paging.loading) return
+    void paging.loadEarlier().then((loaded) => {
+      if (loaded) setVisible(Number.MAX_SAFE_INTEGER)
+    })
+  }
+  const scroll = useHistoryScroll({
+    scrollRef,
+    firstKey: keyAt(start),
+    hasMore: start > 0 || Boolean(paging?.hasEarlier),
+    onLoadMore: reveal,
+  })
+  return { start, ...scroll }
 }

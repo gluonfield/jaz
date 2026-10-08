@@ -40,7 +40,7 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
   const history = useSessionHistory(group.id, reportHistoryError)
   const live = useQuery(sessionEventsQuery(group.id))
   useSessionEvents(group.id, history.data?.latest_event_seq)
-  const { attachScroll, onScroll, pinToBottom } = useThreadAutoScroll({ resetKey: group.id })
+  const { scrollRef, attachScroll, onScroll, pinToBottom } = useThreadAutoScroll({ resetKey: group.id })
   const [detailsOpen, setDetailsOpen] = useState(false)
   const entries = useMemo(
     () => botChat([], coalesceSessionEvents([...(history.data?.events ?? []), ...live.data]), group, []).entries,
@@ -104,6 +104,8 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
                 mentionBots={members}
                 named
                 working={working.map((bot) => ({ bot }))}
+                scrollRef={scrollRef}
+                paging={history.paging}
               />
             )}
           </div>

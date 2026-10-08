@@ -1,10 +1,12 @@
-import { useMemo } from 'react'
+import { memo, useMemo, type RefObject } from 'react'
 import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
 import { MessageActions } from '@/components/session/MessageActions'
 import { MessageAttachments } from '@/components/session/MessageAttachments'
 import { PermissionCard } from '@/components/session/TranscriptPermissions'
 import { UserMessageMarkdown } from '@/components/session/MessageMarkdown'
 import { SystemEventRow } from '@/components/session/SystemEventRow'
+import { useHistoryWindow } from '@/components/session/useHistoryWindow'
+import type { HistoryPaging } from '@/lib/hooks/useSessionHistory'
 import type { Bot, BotAvatar as Avatar } from '@/lib/api/types'
 import { botInk, botTarget, type BotWork, type ChatEntry } from '@/lib/bots'
 import { messageTime } from '@/lib/format/time'
@@ -12,6 +14,8 @@ import { BotAvatar } from './BotAvatar'
 
 const GONE: Avatar = { shape: 'circle', color: 'gray' }
 const QUIET_GAP_MS = 30 * 60_000
+const INITIAL_VISIBLE_ENTRIES = 60
+const VISIBLE_ENTRY_BATCH = 60
 
 // A messenger-style log shared by a bot's chat and a group: bubbles, the time
 // after a quiet gap, activity rows, and who is working now and on what. `named` labels each speaker with a name and face, which only a
@@ -23,6 +27,8 @@ export function ChatLog({
   named,
   working,
   onOpenRoutines,
+  scrollRef,
+  paging,
 }: {
   entries: ChatEntry[]
   bots: Bot[]
@@ -31,6 +37,8 @@ export function ChatLog({
   working: ({ bot: Bot } & BotWork)[]
   // Opens the routines a "Created routine" line names.
   onOpenRoutines?: () => void
+  scrollRef: RefObject<HTMLDivElement | null>
+  paging: HistoryPaging
 }) {
   const avatar = (id?: string) => bots.find((bot) => bot.id === id)?.avatar ?? GONE
   const mentions = useMemo(() => {
@@ -40,9 +48,18 @@ export function ChatLog({
     }
     return targets
   }, [mentionBots])
+  const { start, historyRef, sentinelRef } = useHistoryWindow({
+    scrollRef,
+    count: entries.length,
+    initial: INITIAL_VISIBLE_ENTRIES,
+    batch: VISIBLE_ENTRY_BATCH,
+    keyAt: (index) => entries[index]?.key,
+    paging,
+  })
   return (
-    <div className="@container flex flex-col">
-      {entries.map((entry, index) => {
+    <div ref={historyRef} className="@container relative flex flex-col" aria-busy={paging.loading}>
+      {entries.slice(start).map((entry, offset) => {
+        const index = start + offset
         const previous = entries[index - 1]
         const next = entries[index + 1]
         const stamped = !previous || Date.parse(entry.at) - Date.parse(previous.at) > QUIET_GAP_MS
@@ -103,6 +120,7 @@ export function ChatLog({
           </div>
         </div>
       ))}
+      <div ref={sentinelRef} className="pointer-events-none absolute inset-x-0 top-0 h-px" aria-hidden />
     </div>
   )
 }
@@ -110,7 +128,7 @@ export function ChatLog({
 // One message, rounded like a messenger's: the person's own on the right in the
 // brand tint, a bot's on the left, with copy and time beside it on hover. A
 // narrow log drops them so they never squeeze the message.
-function ChatBubble({ text, at, mentions, mine = false }: {
+const ChatBubble = memo(function ChatBubble({ text, at, mentions, mine = false }: {
   text: string
   at: string
   mentions: ReadonlyMap<string, string>
@@ -130,4 +148,4 @@ function ChatBubble({ text, at, mentions, mine = false }: {
       </div>
     </div>
   )
-}
+})

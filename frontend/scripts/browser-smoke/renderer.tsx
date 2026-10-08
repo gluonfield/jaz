@@ -19,6 +19,7 @@ import { exerciseKeyboardFocus } from './keyboard-focus'
 import { exerciseSessionConfig } from './session-config'
 import { exerciseComposerSend } from './composer-send'
 import { exerciseFolderDrop } from './folder-drop'
+import { exerciseChatHistory } from './chat-history'
 import { exerciseAccentText } from './accent-text'
 
 declare global {
@@ -80,8 +81,10 @@ function Fixture() {
       await exerciseComposerSend()
       stage = 'folder drops into the composer'
       await exerciseFolderDrop()
+      stage = 'bot chat history window'
+      await exerciseChatHistory()
       if (new URLSearchParams(location.search).get('suite') === 'composer') {
-        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends'] })
+        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll'] })
         return
       }
       stage = 'Tab-only focus rings'

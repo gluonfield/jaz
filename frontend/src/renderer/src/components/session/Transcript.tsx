@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ReactNode, type RefObject } from 'react'
+import { memo, useMemo, useState, type ReactNode, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ChatMessage, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
@@ -11,7 +11,8 @@ import {
   stableEventKey,
   type TimelineItem,
 } from './timeline'
-import { useHistoryScroll } from '@/components/session/useHistoryScroll'
+import { useHistoryWindow } from '@/components/session/useHistoryWindow'
+import type { HistoryPaging } from '@/lib/hooks/useSessionHistory'
 import { SpokenReply } from '@/components/session/SpokenReply'
 import { ActivityBlock } from './ActivityBlock'
 import { Bubble } from './Bubble'
@@ -109,9 +110,7 @@ export const Transcript = memo(function Transcript({
   errorAction,
   onApprovePlan,
   onArtifactPrompt,
-  hasEarlierHistory = false,
-  loadingEarlierHistory = false,
-  onLoadEarlierHistory,
+  paging,
 }: {
   messages: ChatMessage[]
   events: SessionEvent[]
@@ -128,9 +127,7 @@ export const Transcript = memo(function Transcript({
   errorAction?: SessionErrorAction
   onApprovePlan?: () => void
   onArtifactPrompt?: (text: string) => void
-  hasEarlierHistory?: boolean
-  loadingEarlierHistory?: boolean
-  onLoadEarlierHistory?: () => Promise<boolean>
+  paging?: HistoryPaging
 }) {
   const entrypoints = useQuery(mcpEntrypointsQuery).data ?? NO_ENTRYPOINTS
   const {
@@ -144,49 +141,25 @@ export const Transcript = memo(function Transcript({
     () => buildTimeline(messages, events, sessionId, groupTurns, entrypoints),
     [messages, events, sessionId, groupTurns, entrypoints],
   )
-  const [visibleHistoryCount, setVisibleHistoryCount] = useState(
-    groupTurns ? INITIAL_VISIBLE_TURNS : INITIAL_VISIBLE_ITEMS,
-  )
-  const historyCount = groupTurns ? turns.length : chronological.length
-  const baselineVisibleHistory = groupTurns ? INITIAL_VISIBLE_TURNS : INITIAL_VISIBLE_ITEMS
-  const historyBatchSize = groupTurns ? VISIBLE_TURN_BATCH : VISIBLE_ITEM_BATCH
-
-  useEffect(() => {
-    setVisibleHistoryCount((count) =>
-      Math.min(historyCount, Math.max(count, baselineVisibleHistory)),
-    )
-  }, [baselineVisibleHistory, historyCount])
-
-  useEffect(() => {
-    if (revealSeq) setVisibleHistoryCount(historyCount)
-  }, [revealSeq, historyCount])
-
-  const historyStart = findActive ? 0 : Math.max(0, historyCount - visibleHistoryCount)
-  const hiddenHistoryCount = historyStart
+  const firstItemAt = (index: number) =>
+    groupTurns ? turns[index]?.opener ?? turns[index]?.items[0] : chronological[index]
+  const { start: historyStart, historyRef, sentinelRef } = useHistoryWindow({
+    scrollRef,
+    count: groupTurns ? turns.length : chronological.length,
+    initial: groupTurns ? INITIAL_VISIBLE_TURNS : INITIAL_VISIBLE_ITEMS,
+    batch: groupTurns ? VISIBLE_TURN_BATCH : VISIBLE_ITEM_BATCH,
+    keyAt: (index) => {
+      const item = firstItemAt(index)
+      return item && itemKey(item)
+    },
+    paging,
+    // A find or a jump target must be able to land anywhere in the history.
+    showAll: findActive || Boolean(revealSeq),
+  })
   const visibleChronological = chronological.slice(historyStart)
   const visibleTurns = turns.slice(historyStart)
   const errorActionEventIndex = errorAction ? trailingErrorEventIndex(chronological, anchored) : undefined
 
-  const revealEarlierHistory = () => {
-    if (hiddenHistoryCount > 0) {
-      setVisibleHistoryCount((count) => Math.min(historyCount, count + historyBatchSize))
-      return
-    }
-    if (!onLoadEarlierHistory || loadingEarlierHistory) return
-    void onLoadEarlierHistory().then((loaded) => {
-      if (loaded) setVisibleHistoryCount(Number.MAX_SAFE_INTEGER)
-    })
-  }
-
-  const firstItem = groupTurns
-    ? visibleTurns[0]?.opener ?? visibleTurns[0]?.items[0]
-    : visibleChronological[0]
-  const { historyRef, sentinelRef } = useHistoryScroll({
-    scrollRef,
-    firstKey: firstItem && itemKey(firstItem),
-    hasMore: hiddenHistoryCount > 0 || hasEarlierHistory,
-    onLoadMore: revealEarlierHistory,
-  })
   const historySentinel = <div ref={sentinelRef} className="pointer-events-none absolute inset-x-0 top-0 h-px" aria-hidden />
 
   const renderItem = (item: TimelineItem, options: RenderOptions = {}): ReactNode => {
@@ -251,7 +224,7 @@ export const Transcript = memo(function Transcript({
 
   if (!groupTurns) {
     return (
-      <div ref={historyRef} className="relative flex flex-col gap-2" aria-busy={loadingEarlierHistory}>
+      <div ref={historyRef} className="relative flex flex-col gap-2" aria-busy={paging?.loading}>
         {visibleChronological.map((item, index) =>
           renderItem(item, {
             activityActive: working && index === visibleChronological.length - 1,
@@ -267,7 +240,7 @@ export const Transcript = memo(function Transcript({
   return (
     // Turns are spaced wider than the sections inside one turn; at the same gap
     // there is nothing marking where a turn ends and the next begins.
-    <div ref={historyRef} className="relative flex flex-col gap-7" aria-busy={loadingEarlierHistory}>
+    <div ref={historyRef} className="relative flex flex-col gap-7" aria-busy={paging?.loading}>
       {visibleTurns.map((turn, visibleTurnIndex) => {
         const turnIndex = historyStart + visibleTurnIndex
         const active = working && turnIndex === turns.length - 1

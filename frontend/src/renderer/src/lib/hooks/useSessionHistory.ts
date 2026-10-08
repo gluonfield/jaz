@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getSessionMessagesPage } from '@/lib/api/sessions'
 import { ApiError } from '@/lib/api/client'
 import type { SessionMessages } from '@/lib/api/types'
@@ -19,6 +19,13 @@ function fetchCompleteHistoryBatch(
       turns: 24,
     }, signal),
   )
+}
+
+// Earlier history the server still holds, fetched a page at a time.
+export interface HistoryPaging {
+  hasEarlier: boolean
+  loading: boolean
+  loadEarlier: () => Promise<boolean>
 }
 
 export function useSessionHistory(sessionId: string, onLoadError: (message: string) => void) {
@@ -94,5 +101,10 @@ export function useSessionHistory(sessionId: string, onLoadError: (message: stri
     }
   }, [onLoadError, queryClient, refetch, sessionId])
 
-  return { ...query, loadingEarlierHistory, loadEarlierHistory }
+  const hasEarlier = query.data?.has_earlier ?? false
+  const paging = useMemo<HistoryPaging>(
+    () => ({ hasEarlier, loading: loadingEarlierHistory, loadEarlier: loadEarlierHistory }),
+    [hasEarlier, loadingEarlierHistory, loadEarlierHistory],
+  )
+  return { ...query, paging }
 }

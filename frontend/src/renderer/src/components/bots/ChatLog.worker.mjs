@@ -18,6 +18,7 @@ mock.module('@/lib/clientRuntime', () => ({
 globalThis.localStorage = { getItem: () => null }
 
 const { ChatLog } = await import('./ChatLog')
+const history = { scrollRef: { current: null }, paging: { hasEarlier: false, loading: false, loadEarlier: async () => false } }
 const { botChat } = await import('@/lib/bots')
 const client = new QueryClient()
 const self = { id: 'bot-1', name: 'Bot' }
@@ -35,7 +36,7 @@ const html = ['', 'Read these'].map((text) => {
   }]
   const { entries } = botChat(messages, [], self, [])
   return renderToStaticMarkup(createElement(QueryClientProvider, { client },
-    createElement(ChatLog, { entries, bots: [], named: false, working: [] }),
+    createElement(ChatLog, { entries, bots: [], named: false, working: [], ...history }),
   ))
 })
 const bots = [
@@ -69,7 +70,7 @@ const events = messages.map((text, index) => ({
 const entries = botChat([], events, self, []).entries
 const rootRoute = createRootRoute({
   component: () => createElement(ChatLog, {
-    entries, bots, mentionBots: bots.filter((bot) => bot.id !== 'outside'), named: false, working: [],
+    entries, bots, mentionBots: bots.filter((bot) => bot.id !== 'outside'), named: false, working: [], ...history,
   }),
 })
 const router = createRouter({

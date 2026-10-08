@@ -98,6 +98,23 @@ describe('session history ownership', () => {
     expect(loaded.events[0].content).toBe('startmiddleend')
   })
 
+  test('stops a bot thread at the page where a turn opens instead of loading its whole history', async () => {
+    const room = (seq, speaker) => ({ seq, session_id: 'bot', type: 'room_message', room_message: { speaker, text: `${speaker} ${seq}` }, at: new Date(seq * 1000).toISOString() })
+    const current = { session, history_revision: 3, messages: [], events: [room(900, 'bot')], has_earlier: true, before_event_seq: 900 }
+    const pages = [
+      { ...current, events: [room(600, 'bot')], before_event_seq: 600 },
+      { ...current, events: [room(300, 'user'), room(400, 'bot')], before_event_seq: 300 },
+      { ...current, events: [room(100, 'user')], has_earlier: false, before_event_seq: undefined },
+    ]
+    let calls = 0
+
+    const loaded = await loadCompleteHistoryBatch(current, async () => pages[calls++])
+
+    expect(calls).toBe(2)
+    expect(loaded.events.map((event) => event.seq)).toEqual([300, 400, 600, 900])
+    expect(loaded.has_earlier).toBe(true)
+  })
+
   test('rejects a continuation page whose cursors do not advance', async () => {
     const current = {
       session,

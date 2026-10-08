@@ -1,4 +1,5 @@
 import type { ChatMessage, SessionMessages } from '@/lib/api/types'
+import { opensBotTurn } from '@/lib/bots'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
 
 export function mergeLatestHistory(current: SessionMessages | undefined, latest: SessionMessages): SessionMessages {
@@ -57,7 +58,7 @@ export async function loadCompleteHistoryBatch(
     }
     pages.push(page)
     cursor = page
-    if (page.messages.some((message) => message.role === 'user')) break
+    if (page.messages.some((message) => message.role === 'user') || page.events.some(opensBotTurn)) break
   }
   return mergeEarlierHistory(current, ...pages)
 }

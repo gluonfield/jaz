@@ -3,7 +3,7 @@ import { usePrefetchQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BottomDock } from '@/components/session/BottomDock'
 import { UserBubble } from '@/components/session/Bubble'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
@@ -51,7 +51,7 @@ import {
 import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } from '@/lib/api/types'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
-import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
+import { type HistoryPaging, useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
 import { useVoiceMode } from '@/lib/hooks/useVoiceMode'
 import { VoiceMode } from '@/components/session/VoiceMode'
@@ -102,6 +102,8 @@ const EMPTY_OVERVIEW: SessionOverview = { threads: [], subagents: [] }
 export interface ThreadChatView {
   messages: ChatMessage[]
   events: SessionEvent[]
+  scrollRef: RefObject<HTMLDivElement | null>
+  paging: HistoryPaging
   working: boolean
   threads: SpawnedThreadView[]
   send: (text: string) => void
@@ -182,7 +184,7 @@ export function ThreadView({
   useEffect(() => setLastSessionEventAt(undefined), [sessionId])
   useSessionEvents(sessionId, detail.data?.latest_event_seq, handleSessionEvent)
 
-  const { loadingEarlierHistory, loadEarlierHistory } = detail
+  const { paging } = detail
 
   const [planDecisionPending, setPlanDecisionPending] = useState(false)
   const [planDecisionError, setPlanDecisionError] = useState('')
@@ -355,12 +357,12 @@ export function ThreadView({
   useEffect(() => {
     if (!detail.isSuccess || !message || jumpedMessageRef.current === message) return
     if (!detail.data.messages.some((item) => item.seq === message)) {
-      if (detail.data.has_earlier && !loadingEarlierHistory) void loadEarlierHistory()
+      if (paging.hasEarlier && !paging.loading) void paging.loadEarlier()
       return
     }
     jumpedMessageRef.current = message
     jumpToMessage(message)
-  }, [detail.data, detail.isSuccess, jumpToMessage, loadEarlierHistory, loadingEarlierHistory, message])
+  }, [detail.data, detail.isSuccess, jumpToMessage, paging, message])
 
   const data = detail.data
   const overviewData = overview.data ?? (overview.isError ? undefined : EMPTY_OVERVIEW)
@@ -484,7 +486,7 @@ export function ThreadView({
               >
                 {chat ? (
                   <>
-                    {chat({ messages: transcriptMessages, events: displayEvents, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails })}
+                    {chat({ messages: transcriptMessages, events: displayEvents, scrollRef, paging, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails })}
                     {errorNotice}
                   </>
                 ) : empty ? (
@@ -505,9 +507,7 @@ export function ThreadView({
                       revealSeq={revealedMessageSeq}
                       errorAction={visibleSessionError ? undefined : continueErrorAction}
                       onArtifactPrompt={handleSend}
-                      hasEarlierHistory={detail.data.has_earlier}
-                      loadingEarlierHistory={loadingEarlierHistory}
-                      onLoadEarlierHistory={loadEarlierHistory}
+                      paging={paging}
                       tail={
                         isACP ? (
                           <>
