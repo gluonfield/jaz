@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, session, webContents } from 'electron'
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from 'node:http'
 import { createServer as createSecureServer } from 'node:https'
 import { X509Certificate } from 'node:crypto'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { installBrowserControl } from '@main/browserControl'
 import { attachWindowOpenHandler } from '@main/browserPopups'
@@ -248,6 +248,15 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
   })
   ipcMain.handle('smoke:resize', (_event, width: number, height: number) => {
     window.setContentSize(width, height)
+  })
+  ipcMain.handle('smoke:drop-folder', async (_event, x: number, y: number) => {
+    const folder = join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'Folder fixture')
+    await mkdir(folder, { recursive: true })
+    const data = { items: [], files: [folder], dragOperationsMask: 1 }
+    for (const type of ['dragEnter', 'dragOver', 'drop']) {
+      await window.webContents.debugger.sendCommand('Input.dispatchDragEvent', { type, x, y, data })
+    }
+    return folder
   })
   ipcMain.on('smoke:result', (_event, result) => {
     console.log(JSON.stringify(result))

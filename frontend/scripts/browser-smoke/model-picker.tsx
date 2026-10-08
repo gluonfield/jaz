@@ -103,6 +103,9 @@ export async function exerciseModelPicker(): Promise<void> {
     if (heading.height > 28 || heading.width >= slider().getBoundingClientRect().width - 20) {
       throw new Error('Model hover surface is too large')
     }
+    if ((button('Fast Mode')?.getBoundingClientRect().height ?? 0) > heading.height) {
+      throw new Error('Fast Mode enlarges the picker header')
+    }
     assertNoFocusBorder(document.activeElement!)
     await window.smoke.pointer('mouseMove', Math.round(heading.x + heading.width / 2), Math.round(heading.y + heading.height / 2))
   }
@@ -151,7 +154,15 @@ export async function exerciseModelPicker(): Promise<void> {
     await click(button('Fast Mode'))
     await until(() => controls.sessionConfig({ directory: '', worktree: false }).config_options?.['fast-mode'] === 'on')
     await close()
+    if (!document.activeElement?.getAttribute('aria-label')?.endsWith(', Fast Mode')) {
+      throw new Error('The closed picker hides that Fast Mode is on')
+    }
     await openPicker()
+    await window.smoke.key('Tab')
+    if (document.activeElement !== button('Fast Mode')) {
+      throw new Error('Natural Tab sequence missed Fast Mode')
+    }
+    assertNoFocusBorder(document.activeElement!)
     await window.smoke.key('Tab')
     if (document.activeElement !== slider()) {
       throw new Error('Natural Tab sequence missed the slider')
@@ -178,6 +189,7 @@ export async function exerciseModelPicker(): Promise<void> {
     await openModels()
     await click(button('GPT-6 Astra'))
     await until(() => slider()?.getAttribute('aria-label') === 'Reasoning effort')
+    await window.smoke.key('Tab')
     await window.smoke.key('Tab')
     if (document.activeElement !== slider()) {
       throw new Error('Model selection lost keyboard focus: ' + document.activeElement?.outerHTML)

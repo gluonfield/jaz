@@ -24,6 +24,7 @@ declare global {
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       apiBaseUrl: string
       windowKind: 'main' | 'board' | 'launcher' | 'voice'
+      pathForFile: (file: File) => string
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
       getDeviceIdentity: () => Promise<{ device_id: string; public_key: string }>

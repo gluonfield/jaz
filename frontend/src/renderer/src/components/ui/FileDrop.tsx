@@ -61,10 +61,12 @@ export function useFileDropTarget<T extends HTMLElement>({
   onDrop,
 }: {
   disabled?: boolean
-  onDrop: (files: File[]) => void
+  onDrop: (files: File[], folders: File[]) => void
 }): { dropTargetRef: RefObject<T | null>; dragging: boolean } {
   const scope = useContext(FileDropScopeContext)
   const dropTargetRef = useRef<T>(null)
+  const onDropRef = useRef(onDrop)
+  onDropRef.current = onDrop
   const [dragging, setDragging] = useState(false)
   useEffect(() => {
     const target = dropTargetRef.current
@@ -124,9 +126,18 @@ export function useFileDropTarget<T extends HTMLElement>({
         return
       }
       event.preventDefault()
-      const dropped = Array.from(event.dataTransfer?.files ?? [])
+      const files: File[] = []
+      const folders: File[] = []
+      for (const item of Array.from(event.dataTransfer?.items ?? [])) {
+        const file = item.kind === 'file' ? item.getAsFile() : null
+        if (file) {
+          (item.webkitGetAsEntry()?.isDirectory ? folders : files).push(file)
+        }
+      }
       clear()
-      if (dropped.length > 0) onDrop(dropped)
+      if (files.length + folders.length > 0) {
+        onDropRef.current(files, folders)
+      }
     }
     window.addEventListener('dragenter', onDragEnter)
     window.addEventListener('dragover', onDragOver)
@@ -139,7 +150,7 @@ export function useFileDropTarget<T extends HTMLElement>({
       window.removeEventListener('dragleave', onDragLeave)
       window.removeEventListener('drop', onTargetDrop)
     }
-  }, [disabled, onDrop, scope])
+  }, [disabled, scope])
   return { dropTargetRef, dragging }
 }
 

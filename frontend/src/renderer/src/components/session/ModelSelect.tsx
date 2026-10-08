@@ -3,7 +3,6 @@ import { motion, useReducedMotion } from 'motion/react'
 import { useRef, useState } from 'react'
 import { ReasoningEffortSlider } from '@/components/acp/ReasoningEffortSlider'
 import { Button } from '@/components/ui/Button'
-import { IconButton } from '@/components/ui/IconButton'
 import { Popover } from '@/components/ui/Popover'
 import type { ReasoningEffortOption } from '@/lib/api/types'
 import type { FastModeControl } from '@/lib/agentConfig'
@@ -46,9 +45,10 @@ export function ModelSelect({
     ? 'Thinking'
     : reasoningEffortLabel(effortValue, options)
   const ultra = effortValue === 'ultra' || effortValue === 'ultracode'
+  const fast = fastMode?.checked === true
   const height = view === 'models'
     ? Math.min(224, Math.max(1, suggestions.length) * 28)
-    : (options.length > 1 ? 64 : 28) + (fastMode ? 16 : 0)
+    : options.length > 1 ? 64 : 28
 
   const selectModel = (model: ModelPickerOption) => {
     onChange({
@@ -75,8 +75,8 @@ export function ModelSelect({
           className="model-picker max-w-[13rem] focus-visible:bg-surface-2"
           aria-haspopup="dialog"
           aria-expanded={open}
-          aria-label={`Model: ${label}, reasoning effort: ${effortLabel}`}
-          title={`${label} ${effortLabel}`}
+          aria-label={`Model: ${label}, reasoning effort: ${effortLabel}${fast ? ', Fast Mode' : ''}`}
+          title={`${label} ${effortLabel}${fast ? ' · Fast Mode' : ''}`}
           disabled={disabled}
           onClick={() => {
             setView('slider')
@@ -85,6 +85,7 @@ export function ModelSelect({
         >
           <span className="truncate">{label}</span>
           <span className={`shrink-0 ${ultra ? 'jaz-gradient' : 'text-ink-3'}`}>{effortLabel}</span>
+          {fast ? <Zap size={12} fill="currentColor" className="shrink-0 text-primary" /> : null}
           <ChevronDown size={13} className="shrink-0" />
         </Button>
       }
@@ -106,21 +107,6 @@ export function ModelSelect({
           {view === 'slider' ? (
             <div className="px-2 pb-1">
               <div className="flex items-center gap-1">
-                {fastMode ? (
-                  <IconButton
-                    variant="ghost"
-                    size="sm"
-                    role="switch"
-                    aria-label="Fast Mode"
-                    aria-checked={fastMode.checked}
-                    title={`Fast Mode ${fastMode.checked ? 'On' : 'Off'}`}
-                    disabled={fastMode.disabled}
-                    className={`size-10 shrink-0 ${fastMode.checked ? 'text-primary' : 'text-ink-3'}`}
-                    onClick={() => fastMode.onChange(!fastMode.checked)}
-                  >
-                    <Zap size={15} fill={fastMode.checked ? 'currentColor' : 'none'} />
-                  </IconButton>
-                ) : null}
                 <button
                   autoFocus
                   type="button"
@@ -133,6 +119,22 @@ export function ModelSelect({
                   </span>
                   {loading ? <LoaderCircle size={13} className="shrink-0 animate-spin text-ink-3" /> : <ChevronRight size={13} className="shrink-0 text-ink-3" />}
                 </button>
+                {fastMode ? (
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label="Fast Mode"
+                    aria-checked={fast}
+                    disabled={fastMode.disabled}
+                    onClick={() => fastMode.onChange(!fast)}
+                    className={`ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[12px] font-medium transition-colors disabled:opacity-50 ${fast
+                      ? 'bg-primary text-on-primary'
+                      : 'text-ink-3 enabled:hover:bg-surface-2 enabled:hover:text-ink'}`}
+                  >
+                    <Zap size={12} fill={fast ? 'currentColor' : 'none'} />
+                    Fast
+                  </button>
+                ) : null}
               </div>
               {options.length > 1 ? (
                 <ReasoningEffortSlider

@@ -5,6 +5,7 @@ import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
 import { composerPasteFiles } from '@/components/session/composerPasteFiles'
 import { subscribeComposerDraft } from '@/components/session/composerDraftChanges'
+import { apiBaseUrl, isLocalBackendUrl } from '@/lib/api/client'
 import type { AgentSessionCommand, Attachment, QueuedMessage } from '@/lib/api/types'
 import type { ComposerContext, SendMessageHandler } from '@/lib/sendMessage'
 import { Popover } from '@/components/ui/Popover'
@@ -203,7 +204,15 @@ export function ComposerCard({
 
   const { dropTargetRef, dragging: draggingFiles } = useFileDropTarget<HTMLDivElement>({
     disabled,
-    onDrop: attachmentDraft.addFiles,
+    onDrop: (files, folders) => {
+      attachmentDraft.addFiles(files)
+      const paths = folders.map((folder) => (isLocalBackendUrl(apiBaseUrl()) && window.jaz?.pathForFile(folder)) || '')
+      if (!paths.every(Boolean)) {
+        attachmentDraft.addFiles(folders, 'Folders attach only in the desktop app with a local backend')
+      } else if (paths.length > 0) {
+        mention.insertPaths(paths)
+      }
+    },
   })
 
   const onPasteCapture = (event: ClipboardEvent<HTMLDivElement>) => {

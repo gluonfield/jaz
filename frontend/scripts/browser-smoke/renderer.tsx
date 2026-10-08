@@ -18,6 +18,7 @@ import { exerciseModelPicker } from './model-picker'
 import { exerciseKeyboardFocus } from './keyboard-focus'
 import { exerciseSessionConfig } from './session-config'
 import { exerciseComposerSend } from './composer-send'
+import { exerciseFolderDrop } from './folder-drop'
 
 declare global {
   interface Window {
@@ -32,6 +33,7 @@ declare global {
       key(key: string, modifiers?: string[]): Promise<void>
       capture(name?: string): Promise<void>
       resize(width: number, height: number): Promise<void>
+      dropFolder(x: number, y: number): Promise<string>
       result(result: unknown): void
     }
   }
@@ -75,8 +77,10 @@ function Fixture() {
       }
       stage = 'composer submission across chat navigation'
       await exerciseComposerSend()
+      stage = 'folder drops into the composer'
+      await exerciseFolderDrop()
       if (new URLSearchParams(location.search).get('suite') === 'composer') {
-        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; Stop cancels immediately'] })
+        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends'] })
         return
       }
       stage = 'Tab-only focus rings'

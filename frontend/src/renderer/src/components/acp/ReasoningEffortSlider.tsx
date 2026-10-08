@@ -48,7 +48,7 @@ export function ReasoningEffortSlider({
         {options.map((option, i) => (
           <span
             key={option.value}
-            className="pointer-events-none absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink/30"
+            className={`pointer-events-none absolute top-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full ${i < index && !ultra ? 'bg-on-primary/50' : 'bg-ink/30'}`}
             style={{ left: stopPosition(i, options.length) }}
           />
         ))}
@@ -57,7 +57,7 @@ export function ReasoningEffortSlider({
           aria-hidden
           className={`pointer-events-none absolute top-1/2 size-(--effort-thumb) -translate-x-1/2 -translate-y-1/2 rounded-full group-focus-within:brightness-110 ${transition} ${reducedMotion ? '' : 'group-active:scale-105'} ${ultra
             ? 'bg-primary shadow-[0_1px_3px_rgba(0,0,0,0.35),0_0_12px_var(--color-primary)]'
-            : 'bg-ink shadow-[0_1px_3px_rgba(0,0,0,0.35)]'}`}
+            : 'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.35)]'}`}
           style={{ left: position, opacity: index < 0 ? 0 : 1 }}
         />
         <input

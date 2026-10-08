@@ -399,16 +399,28 @@ export function useMentionInput({
     placeCaret(draft.text.length)
   }
 
-  const insertText = (insert: string) => {
+  const insertText = (insert: string, added: InlineToken[] = []) => {
     const draft = currentDraft()
     const start = textareaRef.current?.selectionStart ?? draft.text.length
     const end = textareaRef.current?.selectionEnd ?? start
     const next = draft.text.slice(0, start) + insert + draft.text.slice(end)
-    setDraft({ text: next, tokens: draft.tokens })
+    const tokens = new Map([...draft.tokens, ...added.map((token) => [token.display, token] as const)])
+    setDraft({ text: next, tokens })
     setCaret(start + insert.length)
     setDismissedAt(null)
     placeCaret(start + insert.length)
-    return expandTokens(next, pruneTokens(draft.tokens, next))
+    return expandTokens(next, pruneTokens(tokens, next))
+  }
+
+  const insertPaths = (paths: string[]) => {
+    const draft = currentDraft()
+    const start = textareaRef.current?.selectionStart ?? draft.text.length
+    const added = paths.map((path) => {
+      const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path
+      return { trigger: '@' as const, display: `@${name}`, expansion: encodeMention('@', name, path) }
+    })
+    const lead = start > 0 && !/\s/.test(draft.text[start - 1]) ? ' ' : ''
+    insertText(lead + added.map((token) => `${token.display} `).join(''), added)
   }
 
   const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -508,6 +520,7 @@ export function useMentionInput({
     },
     currentDraft,
     insertText,
+    insertPaths,
     reset,
     restore,
     onFocus: () => setFocused(true),

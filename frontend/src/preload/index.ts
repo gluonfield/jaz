@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { COMPUTER_CHANNEL, type ComputerAPI } from '@shared/computerControl'
 import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
@@ -79,6 +79,7 @@ if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
       ipcRenderer.invoke(BROWSER_COMMAND_CHANNEL, request),
     apiBaseUrl,
     windowKind,
+    pathForFile: (file: File) => webUtils.getPathForFile(file),
     setNativeTheme: (source: 'light' | 'dark' | 'system') =>
       ipcRenderer.send('jaz:set-native-theme', source),
     startLocalBackend: (): Promise<{ ok: boolean; url?: string; key?: string; error?: string }> =>

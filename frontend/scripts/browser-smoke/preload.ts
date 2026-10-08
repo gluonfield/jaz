@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
 import { BROWSER_COMMAND_CHANNEL } from '@shared/browserControl'
@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('jaz', {
     import: (id, selection) => ipcRenderer.invoke(BROWSER_PROFILE_CHANNELS.import, id, selection),
   } satisfies BrowserProfileAPI,
   windowKind: 'main',
+  pathForFile: (file: File) => webUtils.getPathForFile(file),
   openExternalURL: (url: string) => ipcRenderer.send('jaz:open-external-url', url),
   onOpenPreviewURL: (handler: (url: string) => void) => {
     const listener = (_event: unknown, url: string) => handler(url)
@@ -38,5 +39,6 @@ contextBridge.exposeInMainWorld('smoke', {
   key: (key: string, modifiers?: string[]) => ipcRenderer.invoke('smoke:key', key, modifiers),
   capture: (name?: string) => ipcRenderer.invoke('smoke:capture', name),
   resize: (width: number, height: number) => ipcRenderer.invoke('smoke:resize', width, height),
+  dropFolder: (x: number, y: number) => ipcRenderer.invoke('smoke:drop-folder', x, y),
   result: (result: unknown) => ipcRenderer.send('smoke:result', result),
 })
