@@ -242,6 +242,9 @@ func TestRenderStandaloneModules(t *testing.T) {
 			t.Fatalf("connections prompt missing %q:\n%s", want, connectionsPrompt)
 		}
 	}
+	if strings.Contains(connectionsPrompt, "connect link") {
+		t.Fatalf("connected-only prompt explains connect links:\n%s", connectionsPrompt)
+	}
 	if empty, err := RenderConnections(nil); err != nil || empty != "" {
 		t.Fatalf("empty connections = %q err=%v", empty, err)
 	}
