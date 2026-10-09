@@ -1,5 +1,4 @@
-import { copyFile, mkdtemp, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { copyFile, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { build } from 'vite'
 import { createRequire } from 'node:module'
@@ -7,7 +6,8 @@ import { execFileSync } from 'node:child_process'
 import tailwindcss from '@tailwindcss/vite'
 import { utils, write } from 'xlsx'
 
-const output = await mkdtemp(join(tmpdir(), 'jaz-browser-smoke-'))
+await mkdir(resolve('../runs'), { recursive: true })
+const output = await mkdtemp(resolve('../runs/browser-smoke-'))
 const workbook = utils.book_new()
 utils.book_append_sheet(workbook, utils.aoa_to_sheet([['Part', 'Cost'], ['Motor', 12.5]]), 'BOM')
 utils.book_append_sheet(workbook, utils.aoa_to_sheet([['Volume'], [500]]), 'Scenarios')
@@ -26,6 +26,9 @@ if (codex === null) {
   throw new Error('Install and sign in to the Codex CLI before running this check')
 }
 await copyFile(resolve('out/preload/index.js'), join(output, 'index.js'))
+const navigationApp = await Bun.build({ entrypoints: [resolve('scripts/browser-smoke/navigation-app.ts')], target: 'browser', format: 'esm' })
+if (!navigationApp.success) throw new Error(navigationApp.logs.join('\n'))
+await writeFile(join(output, 'navigation-app.html'), `<html><body><script type="module">${await navigationApp.outputs[0].text()}</script></body></html>`)
 for (const entry of ['scripts/browser-smoke/main.ts', 'scripts/browser-smoke/preload.ts']) {
   const result = await Bun.build({
     entrypoints: [resolve(entry)],
@@ -82,7 +85,7 @@ const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './in
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
     JAZ_BROWSER_SMOKE_TIMEOUT_MS: codex ? '180000' : '75000',
-    JAZ_BROWSER_SMOKE_SUITE: ['model-picker', 'side-panel', 'linkedin', 'composer'].find(suite => process.argv.includes(`--${suite}`)) || '',
+    JAZ_BROWSER_SMOKE_SUITE: ['model-picker', 'side-panel', 'linkedin', 'composer', 'app-navigation'].find(suite => process.argv.includes(`--${suite}`)) || '',
   },
   stdout: 'inherit',
   stderr: 'inherit',

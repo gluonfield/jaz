@@ -159,7 +159,7 @@ const server = createServer(async (request, response) => {
     return
   }
   const pathname = new URL(request.url!, 'http://localhost').pathname
-  const name = pathname === '/target' ? 'target.html' : /\.(m?js|wasm|css|woff2?)$/.test(pathname) ? pathname.slice(1) : 'index.html'
+  const name = pathname === '/target' ? 'target.html' : pathname === '/navigation-app.html' ? 'navigation-app.html' : /\.(m?js|wasm|css|woff2?)$/.test(pathname) ? pathname.slice(1) : 'index.html'
   response.setHeader('Content-Type', /\.m?js$/.test(name) ? 'text/javascript' : name.endsWith('.wasm') ? 'application/wasm' : name.endsWith('.css') ? 'text/css' : name.endsWith('.woff2') ? 'font/woff2' : 'text/html')
   response.end(await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, name)))
 })

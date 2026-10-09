@@ -354,7 +354,7 @@ function RootLayout() {
                 </SidebarVisibility.Provider>
               </main>
 
-              <MCPApps activeKey={tab.startsWith('/apps/') ? tab.slice('/apps/'.length) : undefined} />
+              <MCPApps />
 
               <SettingsOverlay
                 open={settingsOpen}

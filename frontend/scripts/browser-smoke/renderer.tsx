@@ -22,6 +22,7 @@ import { exerciseFolderDrop } from './folder-drop'
 import { exerciseChatHistory } from './chat-history'
 import { exerciseConnectCard } from './connect-card'
 import { exerciseAccentText } from './accent-text'
+import { exerciseAppNavigation } from './app-navigation'
 
 declare global {
   interface Window {
@@ -76,6 +77,12 @@ function Fixture() {
         stage = 'side panel tabs and retained resources'
         await exerciseSidePanelTabs()
         window.smoke.result({ ok: true, checks: ['side panel and Overview shortcut visibility; compact tabs, browser retention, terminal, side chat, mobile layout, per-chat restoration and browsers surviving a backend reconnect'] })
+        return
+      }
+      stage = 'app page navigation across Jaz history'
+      await exerciseAppNavigation()
+      if (new URLSearchParams(location.search).get('suite') === 'app-navigation') {
+        window.smoke.result({ ok: true, checks: ['sandboxed app page history, cross-app Back/Forward, remembered pages, tool-target entry, repeated opens, query restoration and focused keyboard shortcuts'] })
         return
       }
       stage = 'composer submission across chat navigation'
