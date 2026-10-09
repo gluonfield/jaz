@@ -1,12 +1,13 @@
 export {}
 
-import type { ComputerAPI, PermissionGuideAPI } from '@shared/computerControl'
+import type { ComputerAPI } from '@shared/computerControl'
+import type { PermissionGuideAPI, SystemPermissionsAPI } from '@shared/systemPermissions'
+import type { WindowKind } from '@shared/windowKind'
 
 import type { BrowserNavigationDirection } from '../shared/browserNavigation'
-import type { NotificationsAPI, ThreadNotificationConfig } from '../shared/notifications'
+import type { ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI } from '../shared/dictation'
-import type { MicrophoneAPI } from '@shared/microphone'
 import type { BrowserCommandRequest } from '@shared/browserControl'
 import type { BrowserProfileAPI } from '@shared/browserProfile'
 import type { BrowserPasswordAPI } from '@shared/browserPasswords'
@@ -17,6 +18,7 @@ declare global {
   interface Window {
     jaz?: {
       computer: ComputerAPI
+      systemPermissions: SystemPermissionsAPI
       permissionGuide: PermissionGuideAPI
       voiceOverlay: VoiceOverlayAPI
       dictation: DictationAPI
@@ -25,7 +27,7 @@ declare global {
       browserDownloads: BrowserDownloadAPI
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       apiBaseUrl: string
-      windowKind: 'main' | 'board' | 'launcher' | 'voice' | 'permission'
+      windowKind: WindowKind
       pathForFile: (file: File) => string
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
@@ -38,8 +40,6 @@ declare global {
         app_version: string
       }>
       configureThreadNotifications: (config: ThreadNotificationConfig) => Promise<boolean>
-      microphone: MicrophoneAPI
-      notifications: NotificationsAPI
       getUpdateStatus: () => Promise<UpdateStatus>
       installUpdate: () => Promise<{ ok: boolean; error?: string }>
       onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void

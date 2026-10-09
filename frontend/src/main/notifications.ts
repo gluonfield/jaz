@@ -18,14 +18,10 @@ export function createThreadNotificationMonitor(openInMain: (path: string) => vo
   })
 }
 
-let asked = false
-
-// The first notification also asks macOS for permission, and it fails until
-// the user answers that prompt, so the first test keeps retrying for a while.
-// Resolves false when the system refuses to show it.
-export async function sendTestNotification(): Promise<boolean> {
-  const attempts = asked ? 1 : 20
-  asked = true
+// Resolves whether macOS showed a test notification. Until the user answers
+// the permission prompt the first notification raises, notifications fail, so
+// callers that may have just raised it retry.
+export async function sendTestNotification(attempts: number): Promise<boolean> {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     if (await showTestNotification()) {
       return true
@@ -39,21 +35,14 @@ export async function sendTestNotification(): Promise<boolean> {
 
 function showTestNotification(): Promise<boolean> {
   return new Promise((resolve) => {
-    const notification = new Notification({
-      title: 'Jaz',
-      body: 'Notifications are on.',
-      ...(process.platform === 'linux' ? { icon: appIcon } : {}),
-    })
+    const notification = new Notification({ title: 'Jaz', body: 'Notifications are on.' })
     notification.once('show', () => resolve(true))
     notification.once('failed', () => resolve(false))
     notification.show()
   })
 }
 
-export async function openNotificationSettings(): Promise<void> {
-  if (process.platform !== 'darwin') {
-    return shell.openExternal('ms-settings:notifications')
-  }
+export function openNotificationSettings(): Promise<void> {
   const id = readFileSync(join(process.execPath, '../../Info.plist'), 'utf8').match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)</)?.[1]
   return shell.openExternal(`x-apple.systempreferences:com.apple.preference.notifications?id=${id}`)
 }

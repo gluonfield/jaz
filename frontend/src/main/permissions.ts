@@ -1,4 +1,4 @@
-import type { WebContents } from 'electron'
+import type { IpcMainInvokeEvent, WebContents } from 'electron'
 
 interface PermissionDetails {
   isMainFrame: boolean
@@ -26,4 +26,13 @@ export function canGrantAppPermission(
   if (!contents || contents.isDestroyed() || contents.getType() !== 'window') return false
   if (!details.isMainFrame) return false
   return isTrustedRendererURL(details.requestingUrl || contents.getURL())
+}
+
+// IPC that drives the machine (computer use, system permission prompts) only
+// answers Jaz's own top-level renderer; returns the sender's id.
+export function trustedWindow(event: IpcMainInvokeEvent): number {
+  if (event.sender.getType() !== 'window' || event.senderFrame !== event.sender.mainFrame || !isTrustedRendererURL(event.senderFrame.url)) {
+    throw new Error('Requires a trusted Jaz window')
+  }
+  return event.sender.id
 }

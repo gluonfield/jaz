@@ -1,5 +1,6 @@
 import { ArrowRight } from 'lucide-react'
 import { motion } from 'motion/react'
+import type { SystemPermission } from '@shared/systemPermissions'
 import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
 import { Button } from '@/components/ui/Button'
 import { type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
@@ -42,13 +43,12 @@ function heroGlow(g: Parameters<Silhouette>[0], w: number, h: number) {
   g.fillStyle = '#fff'
 }
 
-// The setup slides in order; the gate drops the permission slides where the
-// platform has no such permissions, and the last slide finishes setup.
+// The setup slides in order; the last one finishes setup.
 export const SETUP_STEPS: SetupStep[] = ['agents', 'memory', 'connections', 'computer', 'voice', 'loops']
 
 // Everything that defines a setup slide lives in this one table: the dithered
-// hero mark and the copy.
-export const SLIDES: Record<SetupStep, { motif: Silhouette; title: string; subtitle: string }> = {
+// hero mark, the copy, and the system permissions it asks for.
+export const SLIDES: Record<SetupStep, { motif: Silhouette; title: string; subtitle: string; permissions?: SystemPermission[] }> = {
   agents: {
     title: 'Connect your agents',
     subtitle: 'jaz runs on the coding agents you already use.',
@@ -99,6 +99,7 @@ export const SLIDES: Record<SetupStep, { motif: Silhouette; title: string; subti
   computer: {
     title: 'Let jaz use your computer',
     subtitle: 'Agents can click, type and read apps to finish tasks while you are away.',
+    permissions: ['accessibility', 'screenRecording'],
     motif: (g, w, h) => {
       heroGlow(g, w, h)
       g.lineWidth = h * 0.08
@@ -125,6 +126,7 @@ export const SLIDES: Record<SetupStep, { motif: Silhouette; title: string; subti
   voice: {
     title: 'Talk to jaz',
     subtitle: 'Speak instead of typing, and get notified when a thread finishes.',
+    permissions: ['microphone', 'notifications'],
     motif: (g, w, h) => {
       heroGlow(g, w, h)
       const bars = [0.25, 0.5, 0.8, 0.55, 1, 0.6, 0.85, 0.45, 0.3]

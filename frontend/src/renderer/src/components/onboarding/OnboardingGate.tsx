@@ -25,12 +25,13 @@ import {
   slideStagger,
   slideExit,
 } from './OnboardingParts'
-import { PermissionList, permissionsOnboarding, usePermissionRows } from './OnboardingPermissions'
+import { SystemPermissionRows } from '@/components/settings/SystemPermissionRows'
+import { hasSystemPermissions, useSystemPermissions } from '@/lib/systemPermissions'
 import { LoopsBoardsShowcase, SETUP_STEPS, SLIDES, WelcomeStep, slideFooter } from './OnboardingSlides'
 
 const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'kimi', 'opencode', 'antigravity', 'grok']
 
-const STEPS = permissionsOnboarding ? SETUP_STEPS : SETUP_STEPS.filter((step) => step !== 'computer' && step !== 'voice')
+const STEPS = SETUP_STEPS.filter((step) => hasSystemPermissions || !SLIDES[step].permissions)
 
 // Granting Screen Recording makes macOS restart Jaz, so setup resumes on the
 // step it left.
@@ -199,12 +200,13 @@ function OnboardingScreen({
     },
   })
 
-  const permissions = usePermissionRows(step)
-  const skippable =
-    step === 'connections' ? !anyConnected : permissions.length > 0 && !permissions.some((row) => row.state === 'granted')
   const position = STEPS.findIndex((value) => value === step)
   const next = STEPS[position + 1]
   const slide = step === 'welcome' ? null : SLIDES[step]
+  const permissions = slide?.permissions
+  const { status: systemPermissions } = useSystemPermissions(Boolean(permissions))
+  const skippable =
+    step === 'connections' ? !anyConnected : (permissions?.every((permission) => systemPermissions?.[permission] !== 'granted') ?? false)
   const footer = step === 'welcome' ? null : slideFooter(step, { canContinue, memoryReady, skippable })
 
   return (
@@ -263,8 +265,13 @@ function OnboardingScreen({
             />
           ) : step === 'connections' ? (
             <ConnectionsList />
-          ) : permissions.length > 0 ? (
-            <PermissionList rows={permissions} />
+          ) : permissions ? (
+            <>
+              <div className="divide-y divide-border rounded-[14px] bg-surface">
+                <SystemPermissionRows permissions={permissions} />
+              </div>
+              <p className="mt-2.5 text-center text-[12px] text-ink-3">You can change these any time in Settings.</p>
+            </>
           ) : (
             <LoopsBoardsShowcase />
           )}
