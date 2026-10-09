@@ -392,7 +392,7 @@ export function ThreadView({
   const {
     transcriptEvents,
     displayEvents,
-    acpThinking,
+    activity,
     planAvailable,
     planActive,
     goalAvailable,
@@ -514,7 +514,7 @@ export function ThreadView({
                             <SessionLivenessIndicator
                               agent={session.runtime_ref?.agent}
                               running={sessionRunning}
-                              thinking={acpThinking}
+                              activity={activity}
                               activeOperation={detail.data?.acp_active_operation}
                               updatedAt={session.updated_at}
                               lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}

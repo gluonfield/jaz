@@ -42,8 +42,9 @@ test('thinking follows the latest own ACP activity across persisted and streamed
   const expected = [false, true, false, true, false]
   for (let count = 0; count <= events.length; count += 1) {
     const current = events.slice(0, count)
-    expect(deriveSessionView(data(current), []).acpThinking).toBe(expected[count])
-    expect(deriveSessionView(data(current.slice(0, -1)), current.slice(-1)).acpThinking).toBe(expected[count])
+    const activity = expected[count] ? 'thinking' : 'working'
+    expect(deriveSessionView(data(current), []).activity).toBe(activity)
+    expect(deriveSessionView(data(current.slice(0, -1)), current.slice(-1)).activity).toBe(activity)
   }
 })
 
@@ -60,13 +61,21 @@ test('thought updates keep their signal after coalescing and ignore metadata and
     event(6, 'acp_tool', { acp: { id: 'child', parent_id: 'thread' } }),
     event(7, 'provider_subagent'),
   ]
-  expect(deriveSessionView(data([first, tool]), [next, ...unrelated]).acpThinking).toBe(true)
+  expect(deriveSessionView(data([first, tool]), [next, ...unrelated]).activity).toBe('thinking')
 })
 
 test('a new user turn or an aggregate snapshot cannot inherit an old thinking signal', () => {
   const old = event(2, 'acp_thought', { acp: { id: 'thread', thought: 'Old reasoning' } })
-  expect(deriveSessionView(data([old], 3), []).acpThinking).toBe(false)
-  expect(deriveSessionView({ ...data(), acp_thought: 'Unknown order' }, []).acpThinking).toBe(false)
+  expect(deriveSessionView(data([old], 3), []).activity).toBe('working')
+  expect(deriveSessionView({ ...data(), acp_thought: 'Unknown order' }, []).activity).toBe('working')
+})
+
+test('a starting agent stays starting until it streams its own first event', () => {
+  const starting = { ...data(), acp_state: 'starting' }
+  expect(deriveSessionView(starting, []).activity).toBe('starting')
+  expect(deriveSessionView(starting, [event(3, 'acp_tool', { acp: { id: 'child', parent_id: 'thread' } })]).activity).toBe('starting')
+  expect(deriveSessionView(starting, [event(3, 'acp')]).activity).toBe('working')
+  expect(deriveSessionView({ ...data(), acp_state: 'running' }, []).activity).toBe('working')
 })
 
 test('clearing goal mode stays off when streamed status replaces an earlier cache entry', () => {

@@ -13,3 +13,4 @@ activepieces/io/**
 !activepieces/io/**/
 !activepieces/io/**/.gitkeep
 .claude
+runs/

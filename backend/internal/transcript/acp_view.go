@@ -16,7 +16,18 @@ func sessionSnapshot(session storage.Session, active map[string]acp.HydrationVie
 	if job, ok := active[session.ID]; ok {
 		return canonicalJob(withSessionLabels(session, job.Job()))
 	}
-	return canonicalJob(inactiveJob(jobFromSession(session)))
+	job := inactiveJob(jobFromSession(session))
+	if promptAwaitsAgent(session) {
+		job.State = acp.StateStarting
+	}
+	return canonicalJob(job)
+}
+
+// promptAwaitsAgent reports a claimed prompt that no agent process has
+// received yet; with no live job, the agent is still starting.
+func promptAwaitsAgent(session storage.Session) bool {
+	turn := session.Turn
+	return session.Status == storage.StatusRunning && turn != nil && turn.PendingMessage != nil && !turn.PendingMessage.IsAction()
 }
 
 func childSnapshots(parentID string, events []sessionevents.Event, children []storage.TranscriptSession, active map[string]acp.HydrationView) ([]acp.Job, []sessionevents.ACPPermission) {

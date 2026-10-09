@@ -1091,8 +1091,8 @@ func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sessions) != 0 {
-		t.Fatalf("unsupported model created sessions: %#v", sessions)
+	if len(sessions) != 1 || sessions[0].Status != storage.StatusError || !strings.Contains(sessions[0].Error, "available model ids: default, sonnet") {
+		t.Fatalf("unsupported model session = %#v, want one session recording the rejection", sessions)
 	}
 }
 
