@@ -49,3 +49,16 @@ Verification: full Go and 310 frontend tests, typecheck and lint pass; removing 
 The Researcher (Codex) addressed CEO as plain-text `@CEO` after CEO's turn had ended. Only `[@Name]` and `bot:` links counted as mentions, and a member's post with none woke nobody, so the post was stored but never delivered. Mention-only waking was introduced on 30 September to cut silent reaction turns; the user's rule is that no member misses a post. Every post now goes to every other member; mentions only link a name to its bot. The follow-up cap still bounds bots answering each other between the user's posts; it is now decided once per post, since spending it per recipient shrank it with group size (six bot posts in a three-bot group). Posts past the cap are saved and reach members with the next delivered post.
 
 Verification: the plain-tag regression fails under the old rule; bot tests pass 40 times plain and 10 under race; full Go tests pass.
+
+## Only Mentioned Members Answer
+
+- [x] Find why the Researcher also answered "give me TLDR [@CEO]" in "Business Research".
+- [x] Give a turn only to the members a post mentions, and to every other member when it mentions nobody, from the user or a bot.
+- [x] Keep every member's context: posts it was not given reach it with its next turn, uncapped.
+- [x] Make a mention a handoff in the prompt: answer every post that mentions you, even mid-work, and mention everyone who must act.
+
+Every post started a turn for every member, so both bots took the post at 10:33:38–40; CEO posted at 10:33:47 and the Researcher at 10:33:52, before it had seen CEO's answer. CEO, which did see the Researcher's post, stayed quiet, so "answer only when you add something new" works only when members are not answering at once. Grok Bot's rooms (0.66 bundle) work the same way: a member turn carries the messages since that member's last turn, and a turn ends SENT, PASS or SKIPPED.
+
+A post now gives a turn to the members it mentions, or to every other member when it mentions none; a member mentioning only itself counts as mentioning none. The others' read position stays put, so their next turn opens with every post since. The 20-post cap on that catch-up is gone, since it dropped the posts a member had sat out. The 8 October plain `@CEO` post now counts as mentioning nobody and reaches everyone. The group prompt and every delivery say to answer each post that mentions you, and to mention everyone who must act, including the member you are answering, because a post with mentions gives nobody else a turn.
+
+Verification: full Go tests pass; bot tests pass 40 times plain and 10 under race. Linked and named mentions, the post-to-all fallback, the self-mention rule and the uncapped catch-up each fail the new regression when removed, on the expected assertion.
