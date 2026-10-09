@@ -326,9 +326,9 @@
   padding: 0;
   font-size: 0.8125rem;
 }
-.chat-prose-link,
-.chat-prose-link-button {
+.chat-prose-link {
   color: var(--color-primary);
+  cursor: pointer;
   text-decoration-line: none;
   text-decoration-style: dotted;
   text-decoration-thickness: 1px;
@@ -337,28 +337,13 @@
   transition-duration: 160ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
-/* Links stay inline so text after a wrapped link continues on its last line;
-   a button can't flow inline, so the file link lines its icon up with flex. */
-.chat-prose-link-button {
-  display: inline-flex;
-  align-items: baseline;
-  max-width: 100%;
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-}
 .chat-prose-link:hover,
-.chat-prose-link:focus-visible,
-.chat-prose-link-button:hover,
-.chat-prose-link-button:focus-visible {
+.chat-prose-link:focus-visible {
   color: var(--color-primary-strong);
   text-decoration-line: underline;
 }
 .chat-prose-link-icon {
   display: inline-block;
-  flex-shrink: 0;
   width: 0.82em;
   height: 0.82em;
   margin-right: 0.24em;

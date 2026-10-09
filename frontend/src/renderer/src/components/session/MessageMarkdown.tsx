@@ -294,12 +294,17 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   const localFile = localFileFromLink(href, children, files?.documentPath)
   const linkedChildren = <MarkdownImageLinkContext value={true}>{children}</MarkdownImageLinkContext>
   if (localFile) {
+    // An inline link role rather than a button, so the text around it flows on.
     return (
-      <button
-        type="button"
-        className="chat-prose-link-button"
+      <span
+        role="link"
+        tabIndex={0}
+        className="chat-prose-link"
         onClick={(event) => {
           if (openFile && shouldPreviewLink(event)) openFile(localFile)
+        }}
+        onKeyDown={(event) => {
+          if (openFile && event.key === 'Enter') openFile(localFile)
         }}
       >
         <FileText
@@ -308,8 +313,8 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
           size={13}
           strokeWidth={1.7}
         />
-        <span className="min-w-0">{linkedChildren}</span>
-      </button>
+        {linkedChildren}
+      </span>
     )
   }
   const urlLink = isUrlLink(href)
