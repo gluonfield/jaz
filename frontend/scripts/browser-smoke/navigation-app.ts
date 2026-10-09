@@ -37,7 +37,7 @@ app.ontoolinput = ({ arguments: input }) => {
 }
 window.addEventListener('message', (event) => {
   if (event.source !== window.parent || event.data?.type !== 'navigation-peer-action') return
-  if (event.data.key) window.dispatchEvent(new KeyboardEvent('keydown', { key: event.data.key, metaKey: true, cancelable: true }))
+  if (event.data.key) window.dispatchEvent(new KeyboardEvent('keydown', { key: event.data.key, code: event.data.code, metaKey: true, cancelable: true }))
   else document.getElementById(event.data.button)?.click()
 })
 await app.connect(new PostMessageTransport(window.parent, window.parent))
