@@ -1,6 +1,6 @@
 export {}
 
-import type { ComputerAPI } from '@shared/computerControl'
+import type { ComputerAPI, PermissionGuideAPI } from '@shared/computerControl'
 
 import type { BrowserNavigationDirection } from '../shared/browserNavigation'
 import type { ThreadNotificationConfig } from '../shared/notifications'
@@ -16,6 +16,7 @@ declare global {
   interface Window {
     jaz?: {
       computer: ComputerAPI
+      permissionGuide: PermissionGuideAPI
       voiceOverlay: VoiceOverlayAPI
       dictation: DictationAPI
       browserProfiles: BrowserProfileAPI
@@ -23,7 +24,7 @@ declare global {
       browserDownloads: BrowserDownloadAPI
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
       apiBaseUrl: string
-      windowKind: 'main' | 'board' | 'launcher' | 'voice'
+      windowKind: 'main' | 'board' | 'launcher' | 'voice' | 'permission'
       pathForFile: (file: File) => string
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>

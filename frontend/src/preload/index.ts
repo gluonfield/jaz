@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { COMPUTER_CHANNEL, type ComputerAPI } from '@shared/computerControl'
+import { COMPUTER_CHANNEL, PERMISSION_GUIDE_CHANNEL, type ComputerAPI, type PermissionGuideAPI } from '@shared/computerControl'
 import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
 import { installBrowserPasswordCapture } from '@preload/browser'
@@ -18,15 +18,9 @@ import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/v
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
 
-// Board and launcher windows are spawned with a flag so the renderer can drop
+// Secondary windows are spawned with a flag so the renderer can drop
 // the app chrome (sidebar, titlebar) and render that surface full-bleed.
-const windowKind = process.argv.includes('--jaz-board-window')
-  ? 'board'
-  : process.argv.includes('--jaz-voice-window')
-    ? 'voice'
-    : process.argv.includes('--jaz-launcher-window')
-      ? 'launcher'
-      : 'main'
+const windowKind = (['board', 'voice', 'launcher', 'permission'] as const).find((kind) => process.argv.includes(`--jaz-${kind}-window`)) ?? 'main'
 let previewURLTargetSubscriptions = 0
 
 if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
@@ -37,13 +31,16 @@ if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
     browserDownloads,
     computer: {
       status: () => ipcRenderer.invoke(COMPUTER_CHANNEL + 'status'),
-      requestPermissions: () => ipcRenderer.invoke(COMPUTER_CHANNEL + 'permissions'),
-      openScreenRecordingSettings: () => ipcRenderer.invoke(COMPUTER_CHANNEL + 'screen-settings'),
+      allow: (permission) => ipcRenderer.invoke(COMPUTER_CHANNEL + 'allow', permission),
       begin: (id, session) => ipcRenderer.invoke(COMPUTER_CHANNEL + 'begin', id, session),
       call: (id, action) => ipcRenderer.invoke(COMPUTER_CHANNEL + 'call', id, action),
       end: (id) => ipcRenderer.invoke(COMPUTER_CHANNEL + 'end', id),
       cancel: (id) => ipcRenderer.invoke(COMPUTER_CHANNEL + 'cancel', id),
     } satisfies ComputerAPI,
+    permissionGuide: {
+      drag: () => ipcRenderer.send(PERMISSION_GUIDE_CHANNEL + 'drag'),
+      close: () => ipcRenderer.send(PERMISSION_GUIDE_CHANNEL + 'close'),
+    } satisfies PermissionGuideAPI,
     voiceOverlay: {
       drag: (point) => ipcRenderer.send('jaz:voice:drag', point),
       publish: (state) => ipcRenderer.send('jaz:voice:publish', state),

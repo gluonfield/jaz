@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { ComputerPermission } from '@shared/computerControl'
 import { Button } from '@/components/ui/Button'
 import { Switch } from '@/components/ui/Switch'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/toast'
 import { SettingsCard } from '@/components/settings/SettingsCard'
+import { PERMISSION_NAMES } from '@/components/settings/PermissionGuide'
 import { computerSettingsQuery, updateComputerSettings } from '@/lib/api/settings'
 import { keys } from '@/lib/query/keys'
 
@@ -23,15 +25,8 @@ export function ComputerSettings() {
     onSuccess: (next) => client.setQueryData(keys.computerSettings, next),
     onError: (error: Error) => toast(error.message, 'danger'),
   })
-  const permission = useMutation({
-    mutationFn: async (openSettings: boolean) => {
-      if (openSettings) {
-        await host!.openScreenRecordingSettings()
-      } else {
-        await host!.requestPermissions()
-      }
-      await status.refetch()
-    },
+  const allow = useMutation({
+    mutationFn: (permission: ComputerPermission) => host!.allow(permission),
     onError: (error: Error) => toast(error.message, 'danger'),
   })
   if (settings.isError) {
@@ -58,21 +53,15 @@ export function ComputerSettings() {
       {!host ? <p className="mt-4 text-sm text-ink-2">Open Jaz desktop to use computer control.</p> : (
         <SettingsCard className="mt-4 px-4 py-3">
           {permissions ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-4 text-[13px]">
-                <span className="text-ink">Accessibility</span>
-                <span className="text-ink-2">{permissions.accessibility ? 'Allowed' : 'Permission needed'}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 text-[13px]">
-                <span className="text-ink">Screen Recording</span>
-                <span className="text-ink-2">{permissions.screenRecording ? 'Allowed' : 'Permission needed'}</span>
-              </div>
-              {(!permissions.accessibility || !permissions.screenRecording) && (
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="secondary" className="min-h-10" disabled={permission.isPending} onClick={() => permission.mutate(false)}>Allow permissions</Button>
-                  {!permissions.screenRecording && <Button variant="ghost" className="min-h-10" disabled={permission.isPending} onClick={() => permission.mutate(true)}>Screen Recording settings</Button>}
+            <div className="space-y-1">
+              {(Object.keys(PERMISSION_NAMES) as ComputerPermission[]).map((name) => (
+                <div key={name} className="flex min-h-8 items-center justify-between gap-4 text-[13px]">
+                  <span className="text-ink">{PERMISSION_NAMES[name]}</span>
+                  {permissions[name]
+                    ? <span className="text-ink-2">Allowed</span>
+                    : <Button variant="primary" disabled={allow.isPending} onClick={() => allow.mutate(name)}>Allow</Button>}
                 </div>
-              )}
+              ))}
             </div>
           ) : <p className="text-[13px] text-ink-2">{status.error?.message || status.data?.reason || (status.isPending ? 'Checking availability…' : 'Ready')}</p>}
           {status.data?.owner && <p className="mt-3 text-[13px] text-ink-2">An agent is controlling this computer.</p>}

@@ -7,7 +7,7 @@ export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5299'
 
 export type ClientRuntimeKind = 'electron' | 'web'
 export type ClientPlatform = 'desktop' | 'browser'
-export type ClientWindowKind = 'main' | 'board' | 'launcher' | 'voice'
+export type ClientWindowKind = 'main' | 'board' | 'launcher' | 'voice' | 'permission'
 
 export interface ClientRuntime {
   voiceOverlay?: VoiceOverlayAPI

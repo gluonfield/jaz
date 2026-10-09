@@ -10,12 +10,8 @@ if (process.env.JAZ_COMPUTER_IPC_TEST_CHILD === '1') {
   const app = new EventEmitter()
   app.quit = () => {}
   app.getAppPath = () => process.cwd()
-  let prompts = 0
   const sdk = {
     currentMacOsPermissionStatus: () => ({ accessibility: false, screenRecording: false }),
-    requestMacOsPermissions: () => {
-      prompts += 1
-    },
   }
   mock.module('electron', () => ({
     app,
@@ -35,20 +31,18 @@ if (process.env.JAZ_COMPUTER_IPC_TEST_CHILD === '1') {
   test('computer IPC denies webviews, foreign documents and subframes', async () => {
     for (const request of [event('webview'), event('window', 'https://untrusted.example/renderer/index.html'), { ...event(), senderFrame: { url: 'file:///renderer/index.html' } }]) {
       expect(() => invoke('status', request)).toThrow('trusted Jaz window')
-      await expect(invoke('permissions', request)).rejects.toThrow('trusted Jaz window')
+      await expect(invoke('allow', request, 'accessibility')).rejects.toThrow('trusted Jaz window')
       expect(() => invoke('begin', request, 'request', 'thread')).toThrow('trusted Jaz window')
     }
   })
 
-  test('status never prompts and permission requests come through the distinct UI operation', async () => {
+  test('status reports permissions and allow accepts only the guided permissions', async () => {
     const status = await invoke('status', event())
-    expect(prompts).toBe(0)
     expect(status.platform).toBe(process.platform)
     if (process.platform === 'darwin') {
       expect(status.permissions).toEqual({ accessibility: false, screenRecording: false })
-      await invoke('permissions', event())
-      expect(prompts).toBe(1)
     }
+    await expect(invoke('allow', event(), 'camera')).rejects.toThrow('Invalid computer permission')
   })
 
   test('computer IPC rejects malformed IDs and non-object arguments before native execution', () => {

@@ -429,6 +429,19 @@ img.chat-prose-link-icon {
   }
 }
 
+/* Lifts the icon in the System Settings permission panel toward the list it
+ * should be dragged into. */
+@keyframes permission-nudge {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-4px);
+  }
+}
+
 @keyframes feed-countdown {
   to {
     stroke-dashoffset: var(--ring-circumference);

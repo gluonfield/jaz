@@ -1,7 +1,7 @@
 import { app, ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { COMPUTER_CHANNEL, type ComputerAction, type ComputerStatus } from '@shared/computerControl'
+import { COMPUTER_CHANNEL, type ComputerAction, type ComputerPermission, type ComputerStatus } from '@shared/computerControl'
 import { ComputerRuntime } from '@main/computerRuntime'
 import { isTrustedRendererURL } from '@main/permissions'
 
@@ -40,18 +40,15 @@ export function installComputerControl(): void {
     validate(event)
     return runtime.status()
   })
-  ipcMain.handle(COMPUTER_CHANNEL + 'permissions', async (event) => {
+  ipcMain.handle(COMPUTER_CHANNEL + 'allow', async (event, permission: ComputerPermission) => {
     validate(event)
+    if (permission !== 'accessibility' && permission !== 'screenRecording') {
+      throw new Error('Invalid computer permission')
+    }
     if (process.platform === 'darwin') {
       const sdk = await loadDriver()
-      sdk.requestMacOsPermissions()
-    }
-  })
-  ipcMain.handle(COMPUTER_CHANNEL + 'screen-settings', async (event) => {
-    validate(event)
-    if (process.platform === 'darwin') {
-      const sdk = await import('@trycua/cua-driver/electron')
-      await sdk.openMacOSScreenRecordingSettings()
+      const { guidePermission } = await import('@main/permissionGuide')
+      await guidePermission(permission, () => sdk.currentMacOsPermissionStatus()[permission])
     }
   })
   ipcMain.handle(COMPUTER_CHANNEL + 'begin', (event, id: string, session: string) => {
