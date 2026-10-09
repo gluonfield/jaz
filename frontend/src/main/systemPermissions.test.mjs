@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url'
 if (process.env.JAZ_SYSTEM_PERMISSIONS_TEST_CHILD === '1') {
   const handlers = new Map()
   const opened = []
+  const app = { isPackaged: true }
+  let tests = 0
   mock.module('electron', () => ({
+    app,
     ipcMain: { handle: (name, handler) => handlers.set(name, handler) },
     shell: { openExternal: async (url) => opened.push(url) },
     systemPreferences: {
@@ -20,7 +23,7 @@ if (process.env.JAZ_SYSTEM_PERMISSIONS_TEST_CHILD === '1') {
   mock.module('@trycua/cua-driver', () => ({
     currentMacOsPermissionStatus: () => ({ accessibility: true, screenRecording: false }),
   }))
-  mock.module('@main/notifications', () => ({ sendTestNotification: async () => false, openNotificationSettings: async () => opened.push('notifications') }))
+  mock.module('@main/notifications', () => ({ sendTestNotification: async () => (tests++, false), openNotificationSettings: async () => opened.push('notifications') }))
   mock.module('@main/permissionGuide', () => ({ guidePermission: async () => {} }))
   const { installSystemPermissions } = await import('./systemPermissions')
   installSystemPermissions()
@@ -53,6 +56,14 @@ if (process.env.JAZ_SYSTEM_PERMISSIONS_TEST_CHILD === '1') {
     expect(opened).not.toContain('notifications')
     await invoke('allow', event(), 'notifications')
     expect(opened).toContain('notifications')
+  })
+
+  test('a development build reports notifications unavailable and never tries one', async () => {
+    app.isPackaged = false
+    const before = tests
+    expect((await invoke('status', event())).notifications).toBe('unavailable')
+    await invoke('allow', event(), 'notifications')
+    expect(tests).toBe(before)
   })
 } else {
   test('system permission IPC in an isolated Electron module fixture', () => {

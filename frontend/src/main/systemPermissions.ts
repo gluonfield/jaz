@@ -1,4 +1,4 @@
-import { ipcMain, shell, systemPreferences } from 'electron'
+import { app, ipcMain, shell, systemPreferences } from 'electron'
 import {
   SYSTEM_PERMISSIONS,
   SYSTEM_PERMISSIONS_CHANNEL,
@@ -24,7 +24,7 @@ async function status(): Promise<SystemPermissionStatus> {
     accessibility: computer.accessibility ? 'granted' : 'needed',
     screenRecording: computer.screenRecording ? 'granted' : 'needed',
     microphone: microphone === 'granted' ? 'granted' : microphone === 'denied' || microphone === 'restricted' ? 'off' : 'needed',
-    notifications,
+    notifications: app.isPackaged ? notifications : 'unavailable',
   }
 }
 
@@ -41,8 +41,12 @@ async function allow(permission: SystemPermission): Promise<void> {
     await systemPreferences.askForMediaAccess('microphone')
     return
   }
-  // An undecided permission is being asked for right now: wait for the answer.
-  const shown = await sendTestNotification(notifications === 'needed' ? 20 : 1)
+  if (!app.isPackaged) {
+    return
+  }
+  // An undecided permission is being asked for right now: give the user a
+  // moment to answer the prompt.
+  const shown = await sendTestNotification(notifications === 'needed' ? 8 : 1)
   if (!shown && notifications === 'off') {
     await openNotificationSettings()
   }
