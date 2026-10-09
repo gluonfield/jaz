@@ -123,6 +123,14 @@ export class SideBrowser {
     const focused = document.activeElement
     const viewport = this.viewport
     try {
+      // Chromium hands key and text input to the frame focused in the window,
+      // which is otherwise Jaz's own composer, so the page takes focus first.
+      if (request.method === 'Input.dispatchKeyEvent' || request.method === 'Input.insertText') {
+        viewport?.focus()
+        if (document.activeElement !== viewport) {
+          throw new Error('The side browser could not take keyboard focus')
+        }
+      }
       return await this.execute(request)
     } finally {
       if (focused instanceof HTMLElement && focused !== viewport && document.activeElement === viewport) {

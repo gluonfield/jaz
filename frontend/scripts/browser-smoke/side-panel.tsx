@@ -193,7 +193,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     setThemePref('dark')
     root.render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
     await until(() => Boolean(button('Side Panel')))
-    await click(element.querySelector('[data-tab-chat] button'))
+    await click(element.querySelector('[data-tab-chat] [role="link"]'))
     await until(() => panel?.activeTab?.kind === 'file' && Boolean(element.querySelector('[role="tabpanel"] h1')))
     if (button('Overview')?.getAttribute('aria-pressed') !== 'false' || button('Side Panel')?.getAttribute('aria-pressed') !== 'true') {
       throw new Error('File links did not select the tabbed panel exclusively')
@@ -205,7 +205,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     if (tabsBounds.height > 28 || Math.abs(tabsBounds.y - controlsBounds.y) > 1 || tabsBounds.right > controlsBounds.left) {
       throw new Error('Tabs and panel controls do not share a compact top row')
     }
-    await click(element.querySelector('[role="tabpanel"] .chat-prose-link-button'))
+    await click(element.querySelector('[role="tabpanel"] .chat-prose-link[role="link"]'))
     await until(() => panel.tabs.length === 2 && panel.activeTab?.id === 'file:/NOTES.md')
     await click(tab('file:/ANALYSIS.md'))
     await window.smoke.key('Right')
@@ -233,7 +233,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     if (panel.activeTab?.id !== 'file:/NOTES.md') {
       throw new Error('Control+P in a file input was intercepted by the browser tab shortcut')
     }
-    await click(button('Local report')!)
+    await click([...element.querySelectorAll('[data-tab-chat] [role="link"]')].find((item) => item.textContent === 'Local report')!)
     await until(() => ready('tabs'))
     const report = webview('tabs')
     await until(async () => await evaluate(report, 'document.querySelector("output")?.textContent') === 'Relative script loaded')

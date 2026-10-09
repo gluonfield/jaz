@@ -22,15 +22,17 @@ function useHistoryScroll({
   })
 
   useLayoutEffect(() => {
-    // Native anchoring also preserves the reading position through later image reflow.
-    if (CSS.supports('overflow-anchor', 'auto')) return
     const viewport = scrollRef.current
     const history = historyRef.current
     const first = history?.firstElementChild
     if (!history || !first) return
     const contentTop = (element: Element) => element.getBoundingClientRect().top - history.getBoundingClientRect().top
     const previous = anchor.current
-    if (viewport && previous && previous.element !== first && previous.element.isConnected) {
+    // Native anchoring also preserves the reading position through later image
+    // reflow, but Chromium skips it at scroll offset 0, where a reader would be
+    // left on the oldest revealed item with the sentinel still in view.
+    const nativeAnchoring = CSS.supports('overflow-anchor', 'auto') && Boolean(viewport?.scrollTop)
+    if (viewport && !nativeAnchoring && previous && previous.element !== first && previous.element.isConnected) {
       viewport.scrollTop += contentTop(previous.element) - previous.top
     }
     anchor.current = { element: first, top: contentTop(first) }

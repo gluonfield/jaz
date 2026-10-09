@@ -232,9 +232,10 @@ type AnchorComponent = ComponentType<ComponentProps<'a'> & ExtraProps>
 
 // Wide tables can't shrink below their column min-widths; left bare they force
 // the prose column wider than the viewport. A scroll wrapper (min-content 0)
-// keeps the table inside its own horizontal scroll without stretching the chat.
+// keeps the table inside its own horizontal scroll without stretching the chat,
+// on the same card as a code block.
 const MarkdownTable: ComponentType<ComponentProps<'table'> & ExtraProps> = ({ node: _node, ...props }) => (
-  <div className="chat-table-scroll">
+  <div className="my-3 max-w-full overflow-x-auto rounded-card bg-surface px-3.5 py-1 ring-1 ring-border/60">
     <table {...props} />
   </div>
 )
@@ -292,13 +293,18 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   const files = useContext(MarkdownFileContext)
   const localFile = localFileFromLink(href, children, files?.documentPath)
   const linkedChildren = <MarkdownImageLinkContext value={true}>{children}</MarkdownImageLinkContext>
-  if (localFile) {
+  if (localFile && openFile) {
+    // An inline link role rather than a button, so the text around it flows on.
     return (
-      <button
-        type="button"
-        className="chat-prose-link-button"
+      <span
+        role="link"
+        tabIndex={0}
+        className="chat-prose-link"
         onClick={(event) => {
-          if (openFile && shouldPreviewLink(event)) openFile(localFile)
+          if (shouldPreviewLink(event)) openFile(localFile)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') openFile(localFile)
         }}
       >
         <FileText
@@ -307,8 +313,8 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
           size={13}
           strokeWidth={1.7}
         />
-        <span className="min-w-0">{linkedChildren}</span>
-      </button>
+        {linkedChildren}
+      </span>
     )
   }
   const urlLink = isUrlLink(href)
@@ -328,7 +334,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
       }}
     >
       <Favicon url={href} className="chat-prose-link-icon" />
-      <span className="min-w-0">{linkedChildren}</span>
+      {linkedChildren}
     </a>
   )
 }

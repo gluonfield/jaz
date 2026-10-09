@@ -114,7 +114,7 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
           <ComposerCard
             streaming={false}
             placeholder={`Message ${group.name}`}
-            showOptions={false}
+            chat
             clearTiming="immediate"
             draftStorageKey={`jaz.groupDraft.${group.id}`}
             draftStorage="local"

@@ -35,6 +35,7 @@ export async function exerciseChatHistory(): Promise<void> {
   }
   const shown = () => [...element.querySelectorAll('p')].filter((paragraph) => paragraph.textContent?.startsWith('Reply ')).map((paragraph) => paragraph.textContent)
   const viewport = () => element.firstElementChild as HTMLDivElement
+  const topShown = () => [...element.querySelectorAll('p')].find((paragraph) => paragraph.textContent?.startsWith('Reply ') && paragraph.getBoundingClientRect().bottom > viewport().getBoundingClientRect().top)?.textContent
   try {
     root.render(<QueryClientProvider client={new QueryClient()}><Chat /></QueryClientProvider>)
     await until(() => shown().length > 0)
@@ -45,6 +46,9 @@ export async function exerciseChatHistory(): Promise<void> {
     }
     viewport().scrollTop = 0
     await until(() => shown().length === 120)
+    if (topShown() !== 'Reply 90') {
+      throw new Error(`Revealing earlier entries at the very top moved the reader from Reply 90 to ${topShown()}`)
+    }
     viewport().scrollTop = 0
     await until(() => shown().length === 150)
     if (earlierLoads !== 0) {

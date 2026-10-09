@@ -326,12 +326,9 @@
   padding: 0;
   font-size: 0.8125rem;
 }
-.chat-prose-link,
-.chat-prose-link-button {
-  display: inline-flex;
-  align-items: baseline;
-  max-width: 100%;
+.chat-prose-link {
   color: var(--color-primary);
+  cursor: pointer;
   text-decoration-line: none;
   text-decoration-style: dotted;
   text-decoration-thickness: 1px;
@@ -340,23 +337,13 @@
   transition-duration: 160ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
-.chat-prose-link-button {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
-}
 .chat-prose-link:hover,
-.chat-prose-link:focus-visible,
-.chat-prose-link-button:hover,
-.chat-prose-link-button:focus-visible {
+.chat-prose-link:focus-visible {
   color: var(--color-primary-strong);
   text-decoration-line: underline;
 }
 .chat-prose-link-icon {
   display: inline-block;
-  flex-shrink: 0;
   width: 0.82em;
   height: 0.82em;
   margin-right: 0.24em;
@@ -379,26 +366,32 @@ img.chat-prose-link-icon {
   padding: 0.1em 0 0.1em 0.75em;
   color: var(--color-ink);
 }
-/* Tables render wrapped in .chat-table-scroll so a wide one scrolls inside its
-   own box instead of widening the prose column past the viewport. */
-.chat-table-scroll {
-  margin: 0.6em 0;
-  max-width: 100%;
-  overflow-x: auto;
-}
+/* Rows read across without column lines: a heavier rule closes the header and
+   hairlines divide rows, inset to the padding of the card MarkdownTable wraps
+   tables in. */
 :where(.chat-prose, .file-prose) table {
+  width: 100%;
   margin: 0;
   border-collapse: collapse;
-  font-size: 0.8125rem;
 }
 :where(.chat-prose, .file-prose) th,
 :where(.chat-prose, .file-prose) td {
-  border: 1px solid var(--color-border);
-  padding: 0.3em 0.6em;
+  padding: 0.6em 0.75em;
+  text-align: start;
+  vertical-align: top;
+}
+:where(.chat-prose, .file-prose) :is(th, td):first-child {
+  padding-left: 0;
+}
+:where(.chat-prose, .file-prose) :is(th, td):last-child {
+  padding-right: 0;
 }
 :where(.chat-prose, .file-prose) th {
-  background: var(--color-surface);
+  border-bottom: 2px solid var(--color-border);
   font-weight: 600;
+}
+:where(.chat-prose, .file-prose) tbody tr + tr > td {
+  border-top: 1px solid var(--color-border);
 }
 :where(.chat-prose, .file-prose) hr {
   margin: 1em 0;
