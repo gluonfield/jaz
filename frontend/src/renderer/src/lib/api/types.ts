@@ -145,6 +145,8 @@ export interface ConnectionSearchResult {
   title: string
   url: string
   text?: string
+  // Opens the result in its server's sidebar app by calling the app's tool.
+  app?: { tool: string; arguments?: Record<string, unknown> }
 }
 
 export interface QueuedMessage {

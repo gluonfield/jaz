@@ -19,10 +19,36 @@ const searchTool = "search"
 const searchTimeout = 5 * time.Second
 
 type SearchResult struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	URL   string `json:"url"`
-	Text  string `json:"text,omitempty"`
+	ID    string     `json:"id"`
+	Title string     `json:"title"`
+	URL   string     `json:"url"`
+	Text  string     `json:"text,omitempty"`
+	App   *SearchApp `json:"app,omitempty"`
+}
+
+// SearchApp opens a result in its server's sidebar app by calling the app's
+// tool with these arguments.
+type SearchApp struct {
+	Tool      string          `json:"tool"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+}
+
+// previewTarget is where OpenAI's MCP extensions open an item, declared in
+// its _meta["openai/preview"].
+type previewTarget struct {
+	Type      string          `json:"type"`
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments"`
+}
+
+// open is the sidebar app a preview target opens, or nil when it names no
+// sidebar app of the server.
+func (a *serverApps) open(target previewTarget) *SearchApp {
+	global := slices.ContainsFunc(a.entrypoints, func(point Entrypoint) bool { return point.Type == "global" && point.Tool == target.Name })
+	if target.Type != "mcp_app_tool" || !global {
+		return nil
+	}
+	return &SearchApp{Tool: target.Name, Arguments: target.Arguments}
 }
 
 // SearchSection is what one connected server found.
@@ -67,7 +93,8 @@ func (m *Manager) Search(ctx context.Context, query string) ([]SearchSection, er
 	return slices.DeleteFunc(sections, func(section SearchSection) bool { return len(section.Results) == 0 }), nil
 }
 
-// search keeps the results a person can open: titled, with a web link.
+// search keeps the results a person can open: titled, with a web link, and
+// opens those that target a sidebar app there.
 func (s *serverSession) search(ctx context.Context, query string) ([]SearchResult, error) {
 	result, err := s.callTool(ctx, &mcpsdk.CallToolParams{Name: searchTool, Arguments: map[string]string{"query": query}})
 	if err != nil {
@@ -77,7 +104,14 @@ func (s *serverSession) search(ctx context.Context, query string) ([]SearchResul
 		return nil, errors.New("search tool returned an error")
 	}
 	var found struct {
-		Results []SearchResult `json:"results"`
+		Results []struct {
+			SearchResult
+			Meta struct {
+				Preview struct {
+					Target previewTarget `json:"target"`
+				} `json:"openai/preview"`
+			} `json:"_meta"`
+		} `json:"results"`
 	}
 	data, err := json.Marshal(result.StructuredContent)
 	if err != nil {
@@ -86,8 +120,15 @@ func (s *serverSession) search(ctx context.Context, query string) ([]SearchResul
 	if err := json.Unmarshal(data, &found); err != nil {
 		return nil, err
 	}
-	return slices.DeleteFunc(found.Results, func(hit SearchResult) bool {
+	var hits []SearchResult
+	for _, item := range found.Results {
+		hit := item.SearchResult
 		link, err := url.Parse(hit.URL)
-		return hit.Title == "" || err != nil || link.Host == "" || link.Scheme != "http" && link.Scheme != "https"
-	}), nil
+		if hit.Title == "" || err != nil || link.Host == "" || link.Scheme != "http" && link.Scheme != "https" {
+			continue
+		}
+		hit.App = s.apps.open(item.Meta.Preview.Target)
+		hits = append(hits, hit)
+	}
+	return hits, nil
 }

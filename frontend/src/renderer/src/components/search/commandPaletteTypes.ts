@@ -19,6 +19,7 @@ export type PaletteThread = {
 export type PaletteConnectionResult = {
   id: string
   kind: 'connection'
+  serverId: string
   result: ConnectionSearchResult
 }
 

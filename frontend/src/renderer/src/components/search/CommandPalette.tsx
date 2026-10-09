@@ -58,7 +58,16 @@ export function CommandPalette({
       }
       close()
       if (item.kind === 'connection') {
-        window.open(item.result.url, '_blank', 'noopener,noreferrer')
+        const { app, url } = item.result
+        if (app) {
+          navigate({
+            to: '/apps/$serverId/$tool',
+            params: { serverId: item.serverId, tool: app.tool },
+            search: { input: app.arguments ?? {} },
+          })
+          return
+        }
+        window.open(url, '_blank', 'noopener,noreferrer')
         return
       }
       navigate({

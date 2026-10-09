@@ -141,6 +141,7 @@ export function useCommandPaletteItems({
             items: section.results.map((result) => ({
               id: `connection-${section.server_id}-${result.id}`,
               kind: 'connection',
+              serverId: section.server_id,
               result,
             })),
           }))

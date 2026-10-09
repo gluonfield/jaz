@@ -13,10 +13,10 @@ import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
 // Every sidebar app stays mounted over the content card, so opening its
 // section is instant and finds the app as the user left it; only the active
-// one is visible, and a deep link's path reaches it.
+// one is visible, and a deep link's path or a new call's input reaches it.
 export function MCPApps({ activeKey }: { activeKey?: string }) {
   const entrypoints = useQuery(mcpEntrypointsQuery).data ?? []
-  const { path } = useSearch({ strict: false })
+  const { path, input } = useSearch({ strict: false })
   const navigate = useNavigate()
   return entrypoints
     .filter((entry) => entry.type === 'global')
@@ -29,7 +29,8 @@ export function MCPApps({ activeKey }: { activeKey?: string }) {
             app={entry}
             active={active}
             deepLink={active ? path : undefined}
-            onDeepLink={() => void navigate({ to: '/apps/$serverId/$tool', params: { serverId: entry.server_id, tool: entry.tool }, replace: true })}
+            toolInput={active ? input : undefined}
+            onDelivered={() => void navigate({ to: '/apps/$serverId/$tool', params: { serverId: entry.server_id, tool: entry.tool }, replace: true })}
           />
         </div>
       )
@@ -42,13 +43,14 @@ export function MCPApps({ activeKey }: { activeKey?: string }) {
 // input and result once it initializes. Tool calls reach the app's own server
 // through Jaz, which holds the authenticated MCP session, so the sandboxed
 // page never sees a token.
-export function MCPAppFrame({ app, active, file, call, deepLink, onDeepLink }: {
+export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onDelivered }: {
   app: Pick<MCPEntrypoint, 'server_id' | 'tool'> & { title?: string }
   active: boolean
   file?: OpenedFile
   call?: Pick<MCPAppEvent, 'arguments' | 'result'>
   deepLink?: string
-  onDeepLink?: () => void
+  toolInput?: Record<string, unknown>
+  onDelivered?: () => void
 }) {
   const { server_id: serverId, tool } = app
   const title = app.title ?? tool
@@ -68,7 +70,12 @@ export function MCPAppFrame({ app, active, file, call, deepLink, onDeepLink }: {
   const { refetch } = query
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const delivered = useEffectEvent(() => onDeepLink?.())
+  const delivered = useEffectEvent(() => onDelivered?.())
+  const callTool = useEffectEvent((input: Record<string, unknown>) =>
+    callMCPAppTool(serverId, { name: tool, arguments: input }).catch(
+      (error: Error): CallToolResult => ({ content: [{ type: 'text', text: error.message }], isError: true }),
+    ),
+  )
 
   useWindowEvent('message', (event) => {
     if (event.source !== frame.current?.contentWindow || document.activeElement !== frame.current) return
@@ -93,11 +100,7 @@ export function MCPAppFrame({ app, active, file, call, deepLink, onDeepLink }: {
   // The opening input and result: the agent's call, or a call to the entrypoint.
   const open = useEffectEvent(() => {
     const input = call?.arguments ?? (file ? { file: { name: file.name, resourceUri: file.uri } } : {})
-    const result = call
-      ? Promise.resolve(call.result)
-      : callMCPAppTool(serverId, { name: tool, arguments: input }).catch(
-          (error: Error): CallToolResult => ({ content: [{ type: 'text', text: error.message }], isError: true }),
-        )
+    const result = call ? Promise.resolve(call.result) : callTool(input)
     return { input, result }
   })
 
@@ -168,6 +171,16 @@ export function MCPAppFrame({ app, active, file, call, deepLink, onDeepLink }: {
     current.setHostContext({ ...mcpAppHostContext(displayMode), 'openai/deepLink': undefined })
     delivered()
   }, [deepLink, readyFor, html, displayMode])
+
+  // A preview target reaches the running app as a new call of its tool, then
+  // clears like a deep link.
+  useEffect(() => {
+    const current = bridge.current
+    if (!toolInput || !current || readyFor !== html) return
+    void current.sendToolInput({ arguments: toolInput })
+    void callTool(toolInput).then((result) => current.sendToolResult(result))
+    delivered()
+  }, [toolInput, readyFor, html])
 
   if (unsupported) return null
   if (html === undefined && query.isError) {
