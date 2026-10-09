@@ -62,3 +62,10 @@ Every post started a turn for every member, so both bots took the post at 10:33:
 A post now gives a turn to the members it mentions, or to every other member when it mentions none; a member mentioning only itself counts as mentioning none. The others' read position stays put, so their next turn opens with every post since. The 20-post cap on that catch-up is gone, since it dropped the posts a member had sat out. The 8 October plain `@CEO` post now counts as mentioning nobody and reaches everyone. The group prompt and every delivery say to answer each post that mentions you, and to mention everyone who must act, including the member you are answering, because a post with mentions gives nobody else a turn.
 
 Verification: full Go tests pass; bot tests pass 40 times plain and 10 under race. Linked and named mentions, the post-to-all fallback, the self-mention rule and the uncapped catch-up each fail the new regression when removed, on the expected assertion.
+
+### Requested Strict Review
+
+- [x] Audit the change for structure, duplicated rules and reach into existing threads.
+- [x] Fix confirmed findings, verify and commit.
+
+Codex keeps the instructions a thread started with (`promptPersistsOnRestore`), so existing Codex group threads, including the Researcher's, never see a new group identity. The per-delivery line carried only "answer posts that mention you", not the rule that a post with mentions gives nobody else a turn, which is what keeps a handoff chain from skipping a member. The same rules were also written twice, in the identity and the delivery line. Now the identity states how the group works (who a post gives a turn to, and that skipped posts arrive with the next turn), and every delivery states what to do: answer each mention before the turn ends, post about the rest only to add something new, and mention everyone who must act. Routing code and tests were unchanged by the review; the routing in `post` is one condition in the layer that owns delivery, and no file approaches 1k lines.
