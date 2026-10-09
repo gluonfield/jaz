@@ -328,7 +328,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
       }}
     >
       <Favicon url={href} className="chat-prose-link-icon" />
-      <span className="min-w-0">{linkedChildren}</span>
+      {linkedChildren}
     </a>
   )
 }

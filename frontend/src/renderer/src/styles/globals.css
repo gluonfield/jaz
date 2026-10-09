@@ -328,9 +328,6 @@
 }
 .chat-prose-link,
 .chat-prose-link-button {
-  display: inline-flex;
-  align-items: baseline;
-  max-width: 100%;
   color: var(--color-primary);
   text-decoration-line: none;
   text-decoration-style: dotted;
@@ -340,7 +337,12 @@
   transition-duration: 160ms;
   transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
+/* Links stay inline so text after a wrapped link continues on its last line;
+   a button can't flow inline, so the file link lines its icon up with flex. */
 .chat-prose-link-button {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
   border: 0;
   background: none;
   padding: 0;
