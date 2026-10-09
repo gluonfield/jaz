@@ -430,12 +430,26 @@ export function ComposerCard({
             <IconButton className="size-10" aria-label="Dismiss dictation error" onClick={dictation.dismissError}><X size={16} /></IconButton>
           </div>
         ) : null}
-        {/* Chat is messenger style: the textarea shares the controls' row, its
-            bottom padding centring its last line on them, and isolate keeps
-            its z-index under the dictation overlay. */}
+        {/* Chat is messenger style: attach, textarea and controls share one row,
+            the textarea's bottom padding centring its last line on them, and
+            isolate keeps its z-index under the dictation overlay. */}
         <div className={`relative flex ${chat ? 'items-end gap-1' : 'items-center justify-between gap-2.5 max-sm:items-end'}`}>
           {chat ? (
-            <div className="isolate min-w-0 flex-1 pb-1.5">{textarea}</div>
+            <>
+              <IconButton
+                variant="ghost"
+                size="md"
+                className="mb-1"
+                aria-label="Attach files"
+                title="Attach files"
+                disabled={disabled}
+                inert={dictation.phase !== null}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Plus size={16} />
+              </IconButton>
+              <div className="isolate min-w-0 flex-1 pb-1.5">{textarea}</div>
+            </>
           ) : (
             // Phone: the new-thread controls (agent, model, project, worktree)
             // outgrow one row, so let them wrap and keep send pinned bottom-right.

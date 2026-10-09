@@ -6,7 +6,7 @@ import { useEffectsEnabled } from '@/lib/appearance'
 // Borderless card, agent-council style: the surface tone IS the card. While
 // focused a rainbow conic ring circles it; with effects off the ring is a calm
 // static border that never animates. A chat card is a messenger pill whose end
-// cap is concentric with its 40px row of controls.
+// caps are concentric with the attach and send buttons in its 40px row.
 export function ComposerFrame({ chat = false, className = '', ...card }: { chat?: boolean } & ComponentProps<'div'>) {
   const ref = useRef<HTMLDivElement>(null)
   const [focused, setFocused] = useState(false)
