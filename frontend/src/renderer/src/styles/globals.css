@@ -381,19 +381,9 @@ img.chat-prose-link-icon {
   padding: 0.1em 0 0.1em 0.75em;
   color: var(--color-ink);
 }
-/* Tables render wrapped in .chat-table-scroll so a wide one scrolls inside its
-   own card (the code block's chrome) instead of widening the prose column past
-   the viewport. Rows read across without column lines: a heavier rule closes
-   the header and hairlines divide rows, inset to the card's padding. */
-.chat-table-scroll {
-  margin: 0.6em 0;
-  max-width: 100%;
-  overflow-x: auto;
-  padding: 0.25em 1em;
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-border) 60%, transparent);
-}
+/* Rows read across without column lines: a heavier rule closes the header and
+   hairlines divide rows, inset to the padding of the card MarkdownTable wraps
+   tables in. */
 :where(.chat-prose, .file-prose) table {
   width: 100%;
   margin: 0;

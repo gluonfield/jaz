@@ -430,135 +430,131 @@ export function ComposerCard({
             <IconButton className="size-10" aria-label="Dismiss dictation error" onClick={dictation.dismissError}><X size={16} /></IconButton>
           </div>
         ) : null}
-        {/* Chat shares one row between the input and its controls, messenger
-            style: the textarea's bottom padding centres its last line on them,
-            and isolate keeps its z-index under the dictation overlay. */}
-        <div className={`relative ${chat ? 'flex items-end gap-1' : ''}`}>
-          {chat ? <div className="isolate min-w-0 flex-1 pb-1.5">{textarea}</div> : null}
-          <div
-            className={`flex items-center justify-between gap-2.5 max-sm:items-end ${dictation.phase ? 'invisible' : ''}`}
-            inert={dictation.phase !== null}
-          >
-            {/* Phone: the new-thread controls (agent, model, project, worktree)
-                outgrow one row, so let them wrap and keep send pinned bottom-right. */}
-            {chat ? null : (
-              <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap">
-                <Popover
-                  open={optionsOpen}
-                  onClose={() => setOptionsOpen(false)}
-                  trigger={
-                    <IconButton
-                      variant="ghost"
-                      size="md"
-                      aria-haspopup="menu"
-                      aria-expanded={optionsOpen}
-                      aria-label="Composer options"
-                      title="Composer options"
-                      disabled={disabled}
-                      onClick={() => setOptionsOpen((value) => !value)}
-                    >
-                      <Plus
-                        size={16}
-                        className={`transition-transform duration-200 ease-out ${
-                          optionsOpen ? 'rotate-45' : ''
-                        }`}
-                      />
-                    </IconButton>
-                  }
-                >
-                  <ComposerAttachmentMenuRow
+        {/* Chat is messenger style: the textarea shares the controls' row, its
+            bottom padding centring its last line on them, and isolate keeps
+            its z-index under the dictation overlay. */}
+        <div className={`relative flex ${chat ? 'items-end gap-1' : 'items-center justify-between gap-2.5 max-sm:items-end'}`}>
+          {chat ? (
+            <div className="isolate min-w-0 flex-1 pb-1.5">{textarea}</div>
+          ) : (
+            // Phone: the new-thread controls (agent, model, project, worktree)
+            // outgrow one row, so let them wrap and keep send pinned bottom-right.
+            <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap" inert={dictation.phase !== null}>
+              <Popover
+                open={optionsOpen}
+                onClose={() => setOptionsOpen(false)}
+                trigger={
+                  <IconButton
+                    variant="ghost"
+                    size="md"
+                    aria-haspopup="menu"
+                    aria-expanded={optionsOpen}
+                    aria-label="Composer options"
+                    title="Composer options"
                     disabled={disabled}
-                    onChoose={() => {
-                      setOptionsOpen(false)
-                      fileInputRef.current?.click()
-                    }}
-                  />
-                  {planAvailable ? (
-                    <SwitchRow
-                      icon={<ListChecks size={13} className="shrink-0" />}
-                      label="Plan"
-                      checked={planModeOn}
-                      disabled={disabled}
-                      onChange={togglePlanMode}
+                    onClick={() => setOptionsOpen((value) => !value)}
+                  >
+                    <Plus
+                      size={16}
+                      className={`transition-transform duration-200 ease-out ${
+                        optionsOpen ? 'rotate-45' : ''
+                      }`}
                     />
-                  ) : null}
-                  {goalControlVisible ? (
-                    goalAvailable ? (
-                      <SwitchRow
-                        icon={<Target size={13} className="shrink-0" />}
-                        label="Goal"
-                        checked={goalEngaged || goalRequested}
-                        disabled={goalToggleDisabled}
-                        onChange={toggleGoalRequested}
-                      />
-                    ) : (
-                      <GoalUnsupportedRow />
-                    )
-                  ) : null}
-                  {optionsSlot}
-                </Popover>
-                {leftSlot}
-                {chips}
-              </div>
-            )}
-            <div className="flex min-h-10 shrink-0 items-center gap-2">
-              {dictation.showButton && !voiceActive ? (
-                <IconButton
-                  variant="ghost"
-                  size="lg"
-                  className="relative after:absolute after:-inset-0.5"
-                  aria-label="Dictate"
-                  title={dictation.availability.available ? 'Dictate' : dictation.availability.reason || 'Checking dictation availability…'}
-                  disabled={disabled || voiceActive || !dictation.availability.available}
-                  onClick={() => {
+                  </IconButton>
+                }
+              >
+                <ComposerAttachmentMenuRow
+                  disabled={disabled}
+                  onChoose={() => {
                     setOptionsOpen(false)
-                    mention.textareaRef.current?.focus()
-                    void dictation.start()
+                    fileInputRef.current?.click()
                   }}
-                >
-                  <Mic size={16} />
-                </IconButton>
-              ) : null}
-              {streaming && onQueuePrompt && hasDraftContent && !voiceActive ? (
-                <button
-                  type="button"
-                  title="Queue message (Tab)"
-                  aria-label="Queue message"
-                  disabled={submitDisabled}
-                  onClick={() => void submit(mention.value(), onQueuePrompt)}
-                  className="h-10 rounded-full px-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-50"
-                >
-                  Queue
-                </button>
-              ) : null}
-              {showStopButton ? (
-                <IconButton
-                  variant="primary"
-                  size="md"
-                  className="relative after:absolute after:-inset-1"
-                  aria-label="Stop response"
-                  title="Stop response"
-                  onClick={onStop}
-                >
-                  <Square size={12} fill="currentColor" strokeWidth={0} />
-                </IconButton>
-              ) : !voiceActive || hasDraftContent ? (
-                <IconButton
-                  variant="primary"
-                  size="md"
-                  className="relative after:absolute after:-inset-1"
-                  aria-label={actionLabel}
-                  title={actionLabel}
-                  disabled={showVoiceButton ? disabled || Boolean(dictation.phase) : submitDisabled}
-                  onClick={showVoiceButton ? onVoice : () => void submit()}
-                >
-                  {showVoiceButton ? <AudioLines size={16} /> : <ArrowUp size={16} />}
-                </IconButton>
-              ) : null}
+                />
+                {planAvailable ? (
+                  <SwitchRow
+                    icon={<ListChecks size={13} className="shrink-0" />}
+                    label="Plan"
+                    checked={planModeOn}
+                    disabled={disabled}
+                    onChange={togglePlanMode}
+                  />
+                ) : null}
+                {goalControlVisible ? (
+                  goalAvailable ? (
+                    <SwitchRow
+                      icon={<Target size={13} className="shrink-0" />}
+                      label="Goal"
+                      checked={goalEngaged || goalRequested}
+                      disabled={goalToggleDisabled}
+                      onChange={toggleGoalRequested}
+                    />
+                  ) : (
+                    <GoalUnsupportedRow />
+                  )
+                ) : null}
+                {optionsSlot}
+              </Popover>
+              {leftSlot}
+              {chips}
             </div>
+          )}
+          <div className="flex min-h-10 shrink-0 items-center gap-2" inert={dictation.phase !== null}>
+            {dictation.showButton && !voiceActive ? (
+              <IconButton
+                variant="ghost"
+                size="lg"
+                className="relative after:absolute after:-inset-0.5"
+                aria-label="Dictate"
+                title={dictation.availability.available ? 'Dictate' : dictation.availability.reason || 'Checking dictation availability…'}
+                disabled={disabled || voiceActive || !dictation.availability.available}
+                onClick={() => {
+                  setOptionsOpen(false)
+                  mention.textareaRef.current?.focus()
+                  void dictation.start()
+                }}
+              >
+                <Mic size={16} />
+              </IconButton>
+            ) : null}
+            {streaming && onQueuePrompt && hasDraftContent && !voiceActive ? (
+              <button
+                type="button"
+                title="Queue message (Tab)"
+                aria-label="Queue message"
+                disabled={submitDisabled}
+                onClick={() => void submit(mention.value(), onQueuePrompt)}
+                className="h-10 rounded-full px-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-50"
+              >
+                Queue
+              </button>
+            ) : null}
+            {showStopButton ? (
+              <IconButton
+                variant="primary"
+                size="md"
+                className="relative after:absolute after:-inset-1"
+                aria-label="Stop response"
+                title="Stop response"
+                onClick={onStop}
+              >
+                <Square size={12} fill="currentColor" strokeWidth={0} />
+              </IconButton>
+            ) : !voiceActive || hasDraftContent ? (
+              <IconButton
+                variant="primary"
+                size="md"
+                className="relative after:absolute after:-inset-1"
+                aria-label={actionLabel}
+                title={actionLabel}
+                disabled={showVoiceButton ? disabled || Boolean(dictation.phase) : submitDisabled}
+                onClick={showVoiceButton ? onVoice : () => void submit()}
+              >
+                {showVoiceButton ? <AudioLines size={16} /> : <ArrowUp size={16} />}
+              </IconButton>
+            ) : null}
           </div>
-          {/* Opaque, so in chat it also covers the draft while the textarea
-              keeps focus for Enter and Escape. */}
+          {/* Opaque, so it hides the controls and, in chat, the draft while the
+              textarea keeps focus for Enter and Escape. */}
           {dictation.phase ? (
             <div className="absolute inset-0 flex flex-col justify-end bg-surface">
               <DictationControls dictation={dictation} canSend={!disabled && !attachmentBusy && (!streaming || canSendWhileStreaming)} queue={false} />
