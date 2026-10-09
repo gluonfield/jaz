@@ -2,7 +2,7 @@ import { ArrowRight } from 'lucide-react'
 import { motion } from 'motion/react'
 import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
 import { Button } from '@/components/ui/Button'
-import { type OnboardingStep, type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
+import { type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
 
 // The first thing a new user ever sees: the wordmark assembles itself out of
 // dither grain, then one line of copy and the CTA rise in underneath it.
@@ -42,18 +42,16 @@ function heroGlow(g: Parameters<Silhouette>[0], w: number, h: number) {
   g.fillStyle = '#fff'
 }
 
+// The setup slides in order; the gate drops the permission slides where the
+// platform has no such permissions, and the last slide finishes setup.
+export const SETUP_STEPS: SetupStep[] = ['agents', 'memory', 'connections', 'computer', 'voice', 'loops']
+
 // Everything that defines a setup slide lives in this one table: the dithered
-// hero mark, the copy, and where Back/Continue go. The gate only walks it; a
-// slide without `next` is the finishing step.
-export const SLIDES: Record<
-  SetupStep,
-  { motif: Silhouette; title: string; subtitle: string; back: OnboardingStep; next?: OnboardingStep }
-> = {
+// hero mark and the copy.
+export const SLIDES: Record<SetupStep, { motif: Silhouette; title: string; subtitle: string }> = {
   agents: {
     title: 'Connect your agents',
     subtitle: 'jaz runs on the coding agents you already use.',
-    back: 'welcome',
-    next: 'memory',
     motif: (g, w, h) => {
       heroGlow(g, w, h)
       g.lineWidth = h * 0.16
@@ -72,8 +70,6 @@ export const SLIDES: Record<
   memory: {
     title: 'Give jaz a memory',
     subtitle: 'Preferences, decisions, projects — agents start warm, not cold.',
-    back: 'agents',
-    next: 'connections',
     motif: (g, w, h) => {
       heroGlow(g, w, h)
       for (const [y, half] of [
@@ -90,8 +86,6 @@ export const SLIDES: Record<
   connections: {
     title: 'Connect your world',
     subtitle: 'Your email and chats become context agents can use.',
-    back: 'memory',
-    next: 'loops',
     motif: (g, w, h) => {
       heroGlow(g, w, h)
       g.lineWidth = h * 0.12
@@ -102,10 +96,50 @@ export const SLIDES: Record<
       }
     },
   },
+  computer: {
+    title: 'Let jaz use your computer',
+    subtitle: 'Agents can click, type and read apps to finish tasks while you are away.',
+    motif: (g, w, h) => {
+      heroGlow(g, w, h)
+      g.lineWidth = h * 0.08
+      g.beginPath()
+      g.roundRect(w * 0.36, h * 0.12, w * 0.25, h * 0.62, h * 0.08)
+      g.stroke()
+      const x = w * 0.53
+      const y = h * 0.4
+      const s = h * 0.56
+      const cursor = new Path2D()
+      cursor.moveTo(x, y)
+      cursor.lineTo(x, y + s)
+      cursor.lineTo(x + s * 0.3, y + s * 0.76)
+      cursor.lineTo(x + s * 0.66, y + s * 0.76)
+      cursor.closePath()
+      // A cut-out halo keeps the cursor legible where it overlaps the window.
+      g.globalCompositeOperation = 'destination-out'
+      g.lineWidth = h * 0.18
+      g.stroke(cursor)
+      g.globalCompositeOperation = 'source-over'
+      g.fill(cursor)
+    },
+  },
+  voice: {
+    title: 'Talk to jaz',
+    subtitle: 'Speak instead of typing, and get notified when a thread finishes.',
+    motif: (g, w, h) => {
+      heroGlow(g, w, h)
+      const bars = [0.25, 0.5, 0.8, 0.55, 1, 0.6, 0.85, 0.45, 0.3]
+      const step = w * 0.05
+      bars.forEach((size, index) => {
+        const height = h * 0.76 * size
+        g.beginPath()
+        g.roundRect(w * 0.5 + (index - (bars.length - 1) / 2) * step - step * 0.25, (h - height) / 2, step * 0.5, height, step * 0.25)
+        g.fill()
+      })
+    },
+  },
   loops: {
     title: 'Always working',
     subtitle: 'Loops run agents on a schedule. Boards show their results live.',
-    back: 'connections',
     motif: (g, w, h) => {
       heroGlow(g, w, h)
       g.lineWidth = h * 0.12
@@ -128,11 +162,10 @@ export const SLIDES: Record<
 // The two footer bits that depend on live state rather than the table.
 export function slideFooter(
   step: SetupStep,
-  state: { canContinue: boolean; memoryReady: boolean; anyConnected: boolean },
+  state: { canContinue: boolean; memoryReady: boolean; skippable: boolean },
 ): { nextLabel: string; nextDisabled: boolean } {
   return {
-    nextLabel:
-      step === 'loops' ? 'Launch jaz' : step === 'connections' && !state.anyConnected ? 'Skip for now' : 'Continue',
+    nextLabel: step === 'loops' ? 'Launch jaz' : state.skippable ? 'Skip for now' : 'Continue',
     nextDisabled: step === 'agents' ? !state.canContinue : step === 'memory' ? !state.memoryReady : false,
   }
 }

@@ -36,6 +36,7 @@ export const keys = {
   connectionQR: (id: string) => ['connections', 'qr', id] as const,
   computerSettings: ['computer', 'settings'] as const,
   computerStatus: ['computer', 'status'] as const,
+  microphoneAccess: ['microphone', 'access'] as const,
   browserSettings: ['browser', 'settings'] as const,
   mcp: ['mcp'] as const,
   mcpServers: ['mcp', 'servers'] as const,

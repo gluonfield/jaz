@@ -6,6 +6,7 @@ import type { BrowserNavigationDirection } from '../shared/browserNavigation'
 import type { NotificationsAPI, ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI } from '../shared/dictation'
+import type { MicrophoneAPI } from '@shared/microphone'
 import type { BrowserCommandRequest } from '@shared/browserControl'
 import type { BrowserProfileAPI } from '@shared/browserProfile'
 import type { BrowserPasswordAPI } from '@shared/browserPasswords'
@@ -37,6 +38,7 @@ declare global {
         app_version: string
       }>
       configureThreadNotifications: (config: ThreadNotificationConfig) => Promise<boolean>
+      microphone: MicrophoneAPI
       notifications: NotificationsAPI
       getUpdateStatus: () => Promise<UpdateStatus>
       installUpdate: () => Promise<{ ok: boolean; error?: string }>

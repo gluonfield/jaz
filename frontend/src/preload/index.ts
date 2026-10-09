@@ -14,6 +14,7 @@ import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
 import type { NotificationsAPI, ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI, DictationEvent } from '../shared/dictation'
+import type { MicrophoneAPI } from '@shared/microphone'
 import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/voice'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
@@ -92,6 +93,10 @@ if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
     }> => ipcRenderer.invoke('jaz:get-device-metadata'),
     configureThreadNotifications: (config: ThreadNotificationConfig): Promise<boolean> =>
       ipcRenderer.invoke('jaz:configure-thread-notifications', config),
+    microphone: {
+      status: () => ipcRenderer.invoke('jaz:microphone:status'),
+      allow: () => ipcRenderer.invoke('jaz:microphone:allow'),
+    } satisfies MicrophoneAPI,
     notifications: {
       test: () => ipcRenderer.invoke('jaz:notifications:test'),
       openSettings: () => ipcRenderer.invoke('jaz:notifications:open-settings'),

@@ -18,8 +18,26 @@ export function createThreadNotificationMonitor(openInMain: (path: string) => vo
   })
 }
 
-// Resolves false when the system refuses to show the notification.
-export function sendTestNotification(): Promise<boolean> {
+let asked = false
+
+// The first notification also asks macOS for permission, and it fails until
+// the user answers that prompt, so the first test keeps retrying for a while.
+// Resolves false when the system refuses to show it.
+export async function sendTestNotification(): Promise<boolean> {
+  const attempts = asked ? 1 : 20
+  asked = true
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (await showTestNotification()) {
+      return true
+    }
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
+  return false
+}
+
+function showTestNotification(): Promise<boolean> {
   return new Promise((resolve) => {
     const notification = new Notification({
       title: 'Jaz',

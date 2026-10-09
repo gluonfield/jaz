@@ -4,7 +4,7 @@ import { Select } from '@/components/ui/Select'
 import { Switch } from '@/components/ui/Switch'
 import { onboardingAgentLabel } from '@/lib/agentLabel'
 
-export type OnboardingStep = 'welcome' | 'agents' | 'memory' | 'connections' | 'loops'
+export type OnboardingStep = 'welcome' | 'agents' | 'memory' | 'connections' | 'computer' | 'voice' | 'loops'
 export type SetupStep = Exclude<OnboardingStep, 'welcome'>
 
 // The onboarding motion vocabulary, shared by the gate and the slides.
@@ -27,15 +27,13 @@ export const slideExit = {
   transition: { duration: 0.16, ease: onboardingEase },
 }
 
-const PROGRESS_STEPS = ['agents', 'memory', 'connections', 'loops'] as const
-
 // Positional pixels in the brand's dither language: square dots, the active
 // step stretching into a short bar, past steps tinted toward the brand.
-export function OnboardingProgress({ step }: { step: OnboardingStep }) {
-  const position = PROGRESS_STEPS.findIndex((value) => value === step)
+export function OnboardingProgress({ step, steps }: { step: OnboardingStep; steps: SetupStep[] }) {
+  const position = steps.findIndex((value) => value === step)
   return (
     <div aria-label="Setup progress" className="flex shrink-0 items-center gap-[5px]">
-      {PROGRESS_STEPS.map((value, index) => (
+      {steps.map((value, index) => (
         <span
           key={value}
           aria-current={index === position ? 'step' : undefined}
@@ -52,6 +50,7 @@ export function OnboardingProgress({ step }: { step: OnboardingStep }) {
 // primary action on the right — the one fixed anchor across every slide.
 export function OnboardingFooter({
   step,
+  steps,
   nextLabel,
   nextDisabled = false,
   busy = false,
@@ -60,6 +59,7 @@ export function OnboardingFooter({
   onNext,
 }: {
   step: OnboardingStep
+  steps: SetupStep[]
   nextLabel: string
   nextDisabled?: boolean
   busy?: boolean
@@ -75,7 +75,7 @@ export function OnboardingFooter({
           <ArrowLeft size={14} />
           Back
         </Button>
-        <OnboardingProgress step={step} />
+        <OnboardingProgress step={step} steps={steps} />
         <Button
           variant="primary"
           size="lg"
