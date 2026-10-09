@@ -1,6 +1,6 @@
 import { apiFetch } from './client'
 import { readAPIResponse } from '@/lib/api/response'
-import type { ThreadSearchResult } from './types'
+import type { ConnectionSearchSection, ThreadSearchResult } from './types'
 
 export async function searchThreads(input: {
   query: string
@@ -14,4 +14,9 @@ export async function searchThreads(input: {
   const res = await apiFetch(`/v1/search/threads?${params}`, { signal: input.signal })
   const data = await readAPIResponse<{ results?: ThreadSearchResult[] | null }>(res)
   return data.results ?? []
+}
+
+export async function searchConnections(query: string, signal?: AbortSignal): Promise<ConnectionSearchSection[]> {
+  const res = await apiFetch(`/v1/search/connections?${new URLSearchParams({ q: query })}`, { signal })
+  return (await readAPIResponse<{ sections: ConnectionSearchSection[] }>(res)).sections
 }

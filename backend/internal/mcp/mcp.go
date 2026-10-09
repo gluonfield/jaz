@@ -121,9 +121,10 @@ func WithBuiltinServerProvider(server mcpconfig.Server, provider func() *mcpsdk.
 
 type serverSession struct {
 	*serverConnection
-	key   [32]byte
-	tools []remoteTool
-	apps  *serverApps
+	key        [32]byte
+	tools      []remoteTool
+	apps       *serverApps
+	searchable bool
 }
 
 type remoteTool struct {

@@ -10,9 +10,10 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { AppIcon } from '@/components/apps/AppIcon'
 import type { SettingsSection } from '@/components/settings/sections'
 import type { PaletteItem } from './commandPaletteTypes'
-import { CommandRow, ThreadRow } from './CommandPaletteRows'
+import { CommandRow, ConnectionRow, ThreadRow } from './CommandPaletteRows'
 import { useCommandPaletteItems } from './useCommandPaletteItems'
 
 // Panel enters with a quick, calm spring; no bounce so it never feels rubbery.
@@ -37,7 +38,7 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
-  const { debouncedQuery, items, commandItems, threadItems, archivedItems, searchEnabled, threadSearch } =
+  const { debouncedQuery, items, commandItems, sections, searchEnabled, searching } =
     useCommandPaletteItems({
       open,
       query,
@@ -56,6 +57,10 @@ export function CommandPalette({
         return
       }
       close()
+      if (item.kind === 'connection') {
+        window.open(item.result.url, '_blank', 'noopener,noreferrer')
+        return
+      }
       navigate({
         to: '/sessions/$sessionId',
         params: { sessionId: item.result.thread_id },
@@ -126,9 +131,19 @@ export function CommandPalette({
     }
   }
 
-  const showSkeleton = threadSearch.isFetching && searchEnabled && items.length === commandItems.length
-  const showNoMatches = !threadSearch.isFetching && searchEnabled && items.length === 0
+  const showSkeleton = searching && searchEnabled && items.length === commandItems.length
+  const showNoMatches = !searching && searchEnabled && items.length === 0
   const showEmpty = !searchEnabled && items.length === 0
+  const rowProps = (item: PaletteItem) => {
+    const index = items.indexOf(item)
+    return {
+      active: index === activeIndex,
+      index,
+      reduceMotion: Boolean(reduceMotion),
+      onActive: () => setActiveIndex(index),
+      onSelect: () => selectItem(item),
+    }
+  }
 
   return createPortal(
     <AnimatePresence initial={false}>
@@ -158,8 +173,8 @@ export function CommandPalette({
                 ref={inputRef}
                 value={query}
                 onChange={(event) => setQuery(event.currentTarget.value)}
-                placeholder="Search threads or run a command"
-                aria-label="Search threads or run a command"
+                placeholder="Search or run a command"
+                aria-label="Search or run a command"
                 className="h-10 min-w-0 flex-1 bg-transparent text-[16px] text-ink outline-none placeholder:text-ink-3"
               />
               {query ? (
@@ -182,49 +197,30 @@ export function CommandPalette({
               {commandItems.length ? (
                 <div className="px-3 pb-1 pt-2 text-[13px] text-ink-3">Actions</div>
               ) : null}
-              {commandItems.map((item, index) => (
-                <CommandRow
-                  key={item.id}
-                  item={item}
-                  active={index === activeIndex}
-                  index={index}
-                  reduceMotion={Boolean(reduceMotion)}
-                  onActive={() => setActiveIndex(index)}
-                  onSelect={() => selectItem(item)}
-                />
+              {commandItems.map((item) => (
+                <CommandRow key={item.id} item={item} {...rowProps(item)} />
               ))}
 
-              {[
-                { label: 'Threads', sectionItems: threadItems },
-                { label: 'Archived', sectionItems: archivedItems },
-              ].map(({ label, sectionItems }) =>
-                sectionItems.length ? (
-                  <Fragment key={label}>
-                    <motion.div
-                      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 2 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={LABEL_TRANSITION}
-                      className="px-3 pb-1 pt-3 text-[13px] text-ink-3"
-                    >
-                      {label}
-                    </motion.div>
-                    {sectionItems.map((item) => {
-                      const itemIndex = items.indexOf(item)
-                      return (
-                        <ThreadRow
-                          key={item.id}
-                          result={item.result}
-                          active={itemIndex === activeIndex}
-                          index={itemIndex}
-                          reduceMotion={Boolean(reduceMotion)}
-                          onActive={() => setActiveIndex(itemIndex)}
-                          onSelect={() => selectItem(item)}
-                        />
-                      )
-                    })}
-                  </Fragment>
-                ) : null,
-              )}
+              {sections.map((section) => (
+                <Fragment key={section.id}>
+                  <motion.div
+                    initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 2 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={LABEL_TRANSITION}
+                    className="flex items-center gap-2 px-3 pb-1 pt-3 text-[13px] text-ink-3"
+                  >
+                    {section.app ? <AppIcon app={section.app} size={14} /> : null}
+                    {section.label}
+                  </motion.div>
+                  {section.items.map((item) =>
+                    item.kind === 'thread' ? (
+                      <ThreadRow key={item.id} result={item.result} {...rowProps(item)} />
+                    ) : (
+                      <ConnectionRow key={item.id} result={item.result} {...rowProps(item)} />
+                    ),
+                  )}
+                </Fragment>
+              ))}
 
               {showSkeleton ? (
                 <div className="flex flex-col gap-1 px-0.5 pb-1 pt-1.5">
@@ -243,7 +239,7 @@ export function CommandPalette({
               ) : null}
               {showNoMatches ? (
                 <div className="grid min-h-28 place-items-center px-6 text-center">
-                  <p className="text-[13px] text-ink-3">No thread matches "{debouncedQuery}".</p>
+                  <p className="text-[13px] text-ink-3">No matches for "{debouncedQuery}".</p>
                 </div>
               ) : null}
               {showEmpty ? (

@@ -1,0 +1,16 @@
+# Connection Search in Cmd+K
+
+- [x] Jaz Tasks exposes a read-only `search` tool following OpenAI's MCP search convention; committed and pushed as `5a4f536`.
+- [x] Jaz CRM exposes a read-only `search` tool across every object; committed and pushed as `eeaea7d`.
+- [x] Jaz searches every connected server with such a tool and returns typed results per connection.
+- [x] Cmd+K shows one section per connection; choosing a result opens its URL in the side browser.
+- [x] Run a thermo-nuclear code quality review and fix its findings.
+- [x] Commit the verified Jaz change.
+
+Contract: `search({query})` returns `{results: [{id, title, url, text?}]}` as structured content ([OpenAI MCP docs](https://developers.openai.com/api/docs/mcp)). Jaz calls only tools named `search` that declare `readOnlyHint`, because it calls them on every debounced keystroke. `GET /v1/search/connections?q=` asks all such servers at once with a 5 s deadline and drops untitled results and non-web links. Sections arrive together, between Threads and Archived; a failing or slow server is left out and logged.
+
+Tasks returns up to 10 issues (title; identifier, state and assignee as text). CRM returns the newest 3 matches of each object (record name; object name as text).
+
+Verification: Go suites pass in all three repos; Jaz frontend 315 tests, typecheck and lint pass. The Jaz manager test runs real MCP servers and fails with the read-only guard or the link filter removed. End to end, this branch's backend in a scratch home searched a locally run, seeded Tasks server, and headless Chrome drove the real palette: the Tasks section rendered, arrow keys and Enter opened the issue URL, and an unmatched query showed "No matches". CRM was verified through its MCP test, not run locally.
+
+Review: two thermo-nuclear passes. Fixes: CRM search builds results in one loop and always returns an array; failure logging skips requests the palette cancelled, judged from Jaz's own context.

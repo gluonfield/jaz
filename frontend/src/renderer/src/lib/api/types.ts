@@ -131,6 +131,22 @@ export interface ThreadSearchResult {
   last_attention_at: string
 }
 
+// ConnectionSearchSection is what one connected MCP server's search tool found,
+// in the shape of OpenAI's MCP search convention.
+export interface ConnectionSearchSection {
+  server_id: string
+  name: string
+  icon?: string
+  results: ConnectionSearchResult[]
+}
+
+export interface ConnectionSearchResult {
+  id: string
+  title: string
+  url: string
+  text?: string
+}
+
 export interface QueuedMessage {
   id: string
   text: string

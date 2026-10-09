@@ -10,6 +10,7 @@ export const keys = {
   feed: ['feed'] as const,
   threadSearch: (query: string, includeArchived = false) =>
     ['search', 'threads', query, includeArchived] as const,
+  connectionSearch: (query: string) => ['search', 'connections', query] as const,
   sessionMessages: (id: string) => ['sessions', id, 'messages'] as const,
   sessionOverview: (id: string) => ['sessions', id, 'overview'] as const,
   sessionRepo: (id: string) => ['sessions', id, 'repo'] as const,

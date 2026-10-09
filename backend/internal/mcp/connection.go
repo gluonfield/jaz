@@ -141,11 +141,13 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 	return sha256.Sum256(data), err
 }
 
-// loadCatalog reads the server's agent tools and what its tools declare for MCP Apps.
+// loadCatalog reads the server's agent tools, what its tools declare for MCP
+// Apps and whether it offers search.
 func (c *serverConnection) loadCatalog(ctx context.Context, server mcpconfig.Server) (*serverSession, error) {
 	var items []remoteTool
 	session := c.current()
 	apps := newServerApps(server.ID, session.InitializeResult())
+	searches := false
 	for tool, err := range session.Tools(ctx, nil) {
 		if err != nil {
 			return nil, err
@@ -153,6 +155,7 @@ func (c *serverConnection) loadCatalog(ctx context.Context, server mcpconfig.Ser
 		if tool == nil || tool.Name == "" {
 			continue
 		}
+		searches = searches || isSearchTool(tool)
 		meta := readToolMeta(tool)
 		apps.add(tool, meta)
 		if !meta.visibleTo("model") {
@@ -169,5 +172,5 @@ func (c *serverConnection) loadCatalog(ctx context.Context, server mcpconfig.Ser
 			spec:       spec,
 		})
 	}
-	return &serverSession{serverConnection: c, tools: items, apps: apps}, nil
+	return &serverSession{serverConnection: c, tools: items, apps: apps, searchable: searches}, nil
 }
