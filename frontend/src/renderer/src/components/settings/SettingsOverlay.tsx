@@ -16,6 +16,7 @@ import { AgentProvidersSettings } from './AgentProvidersSettings'
 import { AppearanceSettings } from './AppearanceSettings'
 import { ArchivedThreadsSettings } from './ArchivedThreadsSettings'
 import { ComputerSettings } from '@/components/settings/ComputerSettings'
+import { NotificationsSettings } from '@/components/settings/NotificationsSettings'
 import { BrowserSettings } from './BrowserSettings'
 import { ConnectionsSettings } from './ConnectionsSettings'
 import { DevicesSettings } from './DevicesSettings'
@@ -229,6 +230,8 @@ function SectionContent({
       return <VoiceSettings />
     case 'general':
       return <GeneralSettings />
+    case 'notifications':
+      return <NotificationsSettings />
     case 'appearance':
       return <AppearanceSettings />
     case 'keyboard':

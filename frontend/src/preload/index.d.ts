@@ -3,7 +3,7 @@ export {}
 import type { ComputerAPI, PermissionGuideAPI } from '@shared/computerControl'
 
 import type { BrowserNavigationDirection } from '../shared/browserNavigation'
-import type { ThreadNotificationConfig } from '../shared/notifications'
+import type { NotificationsAPI, ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI } from '../shared/dictation'
 import type { BrowserCommandRequest } from '@shared/browserControl'
@@ -37,6 +37,7 @@ declare global {
         app_version: string
       }>
       configureThreadNotifications: (config: ThreadNotificationConfig) => Promise<boolean>
+      notifications: NotificationsAPI
       getUpdateStatus: () => Promise<UpdateStatus>
       installUpdate: () => Promise<{ ok: boolean; error?: string }>
       onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void

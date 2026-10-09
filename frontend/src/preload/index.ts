@@ -11,7 +11,7 @@ import {
   type BrowserNavigationDirection,
 } from '../shared/browserNavigation'
 import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
-import type { ThreadNotificationConfig } from '../shared/notifications'
+import type { NotificationsAPI, ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI, DictationEvent } from '../shared/dictation'
 import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/voice'
@@ -92,6 +92,10 @@ if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
     }> => ipcRenderer.invoke('jaz:get-device-metadata'),
     configureThreadNotifications: (config: ThreadNotificationConfig): Promise<boolean> =>
       ipcRenderer.invoke('jaz:configure-thread-notifications', config),
+    notifications: {
+      test: () => ipcRenderer.invoke('jaz:notifications:test'),
+      openSettings: () => ipcRenderer.invoke('jaz:notifications:open-settings'),
+    } satisfies NotificationsAPI,
     getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('jaz:get-update-status'),
     installUpdate: (): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('jaz:install-update'),

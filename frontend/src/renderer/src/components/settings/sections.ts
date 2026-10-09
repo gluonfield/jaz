@@ -1,5 +1,6 @@
 import {
   ArchiveRestore,
+  Bell,
   Bot,
   Boxes,
   Brain,
@@ -19,6 +20,7 @@ import { useSyncExternalStore } from 'react'
 
 export type SettingsSection =
   | 'general'
+  | 'notifications'
   | 'appearance'
   | 'personalization'
   | 'memory'
@@ -44,6 +46,7 @@ type SettingsNavItem = {
 
 export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
   { id: 'memory', label: 'Memory', icon: Brain },
