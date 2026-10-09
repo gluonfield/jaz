@@ -15,6 +15,9 @@ interaction and hide the agent cursor while their browser work continues.
 The shared Jaz MCP tools expose this browser to any ACP provider that supports
 those tools. Cancellation, disconnection, changing backend, or closing the app
 stops browser work. Other conversations' tabs cannot be claimed.
+Pages and panels outlive a backend outage, including one long enough to show
+the launch screen, and reconnect when the backend returns. Changing backend or
+closing the app clears them.
 
 With **This machine** selected (a loopback backend on port 5299), localhost
 previews load directly and keep their original URLs, including paths, queries

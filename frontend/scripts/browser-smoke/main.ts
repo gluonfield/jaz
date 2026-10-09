@@ -73,6 +73,11 @@ let proxyWaiter: ServerResponse | undefined
 let firstNavigation: IncomingHttpHeaders | undefined
 let passwordOrigin = ''
 const server = createServer(async (request, response) => {
+  if (request.url === '/health') {
+    response.setHeader('Content-Type', 'application/json')
+    response.end('{"ok":true}')
+    return
+  }
   if (request.url === '/navigation-frame') {
     response.setHeader('Content-Type', 'text/html')
     response.end('<script>addEventListener("message", () => { location.hash = "check" })</script>')

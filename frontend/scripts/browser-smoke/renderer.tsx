@@ -75,7 +75,7 @@ function Fixture() {
       if (new URLSearchParams(location.search).get('suite') === 'side-panel') {
         stage = 'side panel tabs and retained resources'
         await exerciseSidePanelTabs()
-        window.smoke.result({ ok: true, checks: ['side panel and Overview shortcut visibility; compact tabs, browser retention, terminal, side chat, mobile layout and per-chat restoration'] })
+        window.smoke.result({ ok: true, checks: ['side panel and Overview shortcut visibility; compact tabs, browser retention, terminal, side chat, mobile layout, per-chat restoration and browsers surviving a backend reconnect'] })
         return
       }
       stage = 'composer submission across chat navigation'

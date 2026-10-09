@@ -14,8 +14,6 @@ import {
   useState,
 } from 'react'
 import { ConnectOverlay } from '@/components/connection/ConnectOverlay'
-import { BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
-import { SidePanelStateProvider } from '@/components/session/SidePanelState'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { isSettingsSection, type SettingsSection } from '@/components/settings/sections'
 import { MCPApps } from '@/components/apps/MCPAppFrame'
@@ -59,7 +57,7 @@ function RootComponent() {
   if (clientRuntime.windowKind === 'launcher') {
     return <LauncherRoot />
   }
-  return <VoiceProvider><VoiceDesktopBridge /><BrowserWorkspace><SidePanelStateProvider><RootLayout /></SidePanelStateProvider></BrowserWorkspace></VoiceProvider>
+  return <VoiceProvider><VoiceDesktopBridge /><RootLayout /></VoiceProvider>
 }
 
 function LauncherRoot() {
