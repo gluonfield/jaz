@@ -293,7 +293,7 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   const files = useContext(MarkdownFileContext)
   const localFile = localFileFromLink(href, children, files?.documentPath)
   const linkedChildren = <MarkdownImageLinkContext value={true}>{children}</MarkdownImageLinkContext>
-  if (localFile) {
+  if (localFile && openFile) {
     // An inline link role rather than a button, so the text around it flows on.
     return (
       <span
@@ -301,10 +301,10 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
         tabIndex={0}
         className="chat-prose-link"
         onClick={(event) => {
-          if (openFile && shouldPreviewLink(event)) openFile(localFile)
+          if (shouldPreviewLink(event)) openFile(localFile)
         }}
         onKeyDown={(event) => {
-          if (openFile && event.key === 'Enter') openFile(localFile)
+          if (event.key === 'Enter') openFile(localFile)
         }}
       >
         <FileText

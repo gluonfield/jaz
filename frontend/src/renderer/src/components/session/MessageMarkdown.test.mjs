@@ -56,11 +56,13 @@ test('user bubbles keep typed line breaks without preserving block whitespace', 
 })
 
 test('inline links use website favicons and keep local file icons', async () => {
-  const { RenderedMarkdown, UserMessageMarkdown } = await import('./MessageMarkdown')
+  const { FileReaderLinkProvider, RenderedMarkdown, UserMessageMarkdown } = await import('./MessageMarkdown')
   for (const component of [RenderedMarkdown, UserMessageMarkdown]) {
-    const html = renderToStaticMarkup(createElement(component, {
-      text: 'Opened [jaz.chat](https://jaz.chat/docs?section=links) and [app.tsx](/tmp/app.tsx:12).',
-    }))
+    const html = renderToStaticMarkup(createElement(FileReaderLinkProvider, { sessionId: 'session-1', onOpen: () => {} },
+      createElement(component, {
+        text: 'Opened [jaz.chat](https://jaz.chat/docs?section=links) and [app.tsx](/tmp/app.tsx:12).',
+      }),
+    ))
 
     expect(html).toContain('href="https://jaz.chat/docs?section=links"')
     expect(html).toContain('src="https://jaz.chat/favicon.ico"')
@@ -187,4 +189,12 @@ test('linked images keep their link without nesting interactive controls', async
   expect(html).toContain('target="_blank"')
   expect(html).toContain('src="https://images.example/chart.png"')
   expect(html).not.toContain('<button')
+})
+
+test('file references stay plain text where no file reader can open them', async () => {
+  const { RenderedMarkdown } = await import('./MessageMarkdown')
+  const html = renderToStaticMarkup(createElement(RenderedMarkdown, { text: 'Read [the notes](/NOTES.md).' }))
+  expect(html).toContain('Read the notes.')
+  expect(html).not.toContain('role="link"')
+  expect(html).not.toContain('lucide-file-text')
 })
