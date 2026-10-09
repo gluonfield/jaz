@@ -25,9 +25,22 @@ import {
   slideStagger,
   slideExit,
 } from './OnboardingParts'
-import { LoopsBoardsShowcase, SLIDES, WelcomeStep, slideFooter } from './OnboardingSlides'
+import { SystemPermissionRows } from '@/components/settings/SystemPermissionRows'
+import { hasSystemPermissions, useSystemPermissions } from '@/lib/systemPermissions'
+import { LoopsBoardsShowcase, SETUP_STEPS, SLIDES, WelcomeStep, slideFooter } from './OnboardingSlides'
 
 const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'kimi', 'opencode', 'antigravity', 'grok']
+
+const STEPS = SETUP_STEPS.filter((step) => hasSystemPermissions || !SLIDES[step].permissions)
+
+// Granting Screen Recording makes macOS restart Jaz, so setup resumes on the
+// step it left.
+const STEP_KEY = 'jaz.onboarding.step'
+
+function savedStep(): OnboardingStep {
+  const value = window.localStorage.getItem(STEP_KEY)
+  return STEPS.find((step) => step === value) ?? 'welcome'
+}
 
 // `?onboarding` pins the gate open so the flow can be iterated in a browser
 // against a live, already-onboarded backend.
@@ -80,7 +93,7 @@ function OnboardingScreen({
   const toast = useToast()
   const connection = useConnection()
   const remote = !isLocalBackendUrl(connection.url)
-  const [step, setStep] = useState<OnboardingStep>('welcome')
+  const [step, setStep] = useState<OnboardingStep>(savedStep)
   const [draft, setDraft] = useState(() => draftFromStatus(status))
   const [acpKeysByAgent, setACPKeysByAgent] = useState<Record<string, string>>({})
   const [memoryEnabled, setMemoryEnabled] = useState(status.memory?.enabled ?? true)
@@ -97,6 +110,10 @@ function OnboardingScreen({
   useEffect(() => {
     setDraft(draftFromStatus(status))
   }, [status])
+
+  useEffect(() => {
+    window.localStorage.setItem(STEP_KEY, step)
+  }, [step])
 
   const { loginJobs, trackLoginJob } = useACPLoginPolling(() => {
     queryClient.invalidateQueries({ queryKey: keys.onboarding })
@@ -174,6 +191,7 @@ function OnboardingScreen({
       })
     },
     onSuccess: (saved) => {
+      window.localStorage.removeItem(STEP_KEY)
       queryClient.setQueryData(keys.onboarding, saved)
       queryClient.setQueryData(keys.onboardingState, { completed: saved.completed })
       queryClient.invalidateQueries({ queryKey: keys.agentSettings })
@@ -182,8 +200,14 @@ function OnboardingScreen({
     },
   })
 
+  const position = STEPS.findIndex((value) => value === step)
+  const next = STEPS[position + 1]
   const slide = step === 'welcome' ? null : SLIDES[step]
-  const footer = step === 'welcome' ? null : slideFooter(step, { canContinue, memoryReady, anyConnected })
+  const permissions = slide?.permissions
+  const { status: systemPermissions } = useSystemPermissions(Boolean(permissions))
+  const skippable =
+    step === 'connections' ? !anyConnected : (permissions?.every((permission) => systemPermissions?.[permission] !== 'granted') ?? false)
+  const footer = step === 'welcome' ? null : slideFooter(step, { canContinue, memoryReady, skippable })
 
   return (
     <AnimatePresence mode="wait">
@@ -241,6 +265,13 @@ function OnboardingScreen({
             />
           ) : step === 'connections' ? (
             <ConnectionsList />
+          ) : permissions ? (
+            <>
+              <div className="divide-y divide-border rounded-[14px] bg-surface">
+                <SystemPermissionRows permissions={permissions} />
+              </div>
+              <p className="mt-2.5 text-center text-[12px] text-ink-3">You can change these any time in Settings.</p>
+            </>
           ) : (
             <LoopsBoardsShowcase />
           )}
@@ -249,12 +280,13 @@ function OnboardingScreen({
         <motion.div variants={slideRise} className="w-full">
           <OnboardingFooter
             step={step}
+            steps={STEPS}
             nextLabel={footer.nextLabel}
             nextDisabled={footer.nextDisabled}
-            busy={!slide.next && save.isPending}
-            error={slide.next ? undefined : save.error?.message}
-            onBack={() => setStep(slide.back)}
-            onNext={() => (slide.next ? setStep(slide.next) : save.mutate())}
+            busy={!next && save.isPending}
+            error={next ? undefined : save.error?.message}
+            onBack={() => setStep(STEPS[position - 1] ?? 'welcome')}
+            onNext={() => (next ? setStep(next) : save.mutate())}
           />
           </motion.div>
         </motion.div>

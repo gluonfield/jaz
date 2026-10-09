@@ -1,9 +1,9 @@
-import { app, ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron'
+import { app, ipcMain, type WebContents } from 'electron'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { COMPUTER_CHANNEL, type ComputerAction, type ComputerPermission, type ComputerStatus } from '@shared/computerControl'
+import { COMPUTER_CHANNEL, type ComputerAction, type ComputerStatus } from '@shared/computerControl'
 import { ComputerRuntime } from '@main/computerRuntime'
-import { isTrustedRendererURL } from '@main/permissions'
+import { trustedWindow } from '@main/permissions'
 
 const loadDriver = () => import('@trycua/cua-driver')
 
@@ -30,29 +30,12 @@ async function availability(): Promise<ComputerStatus> {
 export function installComputerControl(): void {
   const runtime = new ComputerRuntime(async () => (await loadDriver()).CuaDriver.create(undefined), availability)
   const watching = new WeakSet<WebContents>()
-  const validate = (event: IpcMainInvokeEvent): number => {
-    if (event.sender.getType() !== 'window' || event.senderFrame !== event.sender.mainFrame || !isTrustedRendererURL(event.senderFrame.url)) {
-      throw new Error('Computer use requires a trusted Jaz window')
-    }
-    return event.sender.id
-  }
   ipcMain.handle(COMPUTER_CHANNEL + 'status', (event) => {
-    validate(event)
+    trustedWindow(event)
     return runtime.status()
   })
-  ipcMain.handle(COMPUTER_CHANNEL + 'allow', async (event, permission: ComputerPermission) => {
-    validate(event)
-    if (permission !== 'accessibility' && permission !== 'screenRecording') {
-      throw new Error('Invalid computer permission')
-    }
-    if (process.platform === 'darwin') {
-      const sdk = await loadDriver()
-      const { guidePermission } = await import('@main/permissionGuide')
-      await guidePermission(permission, () => sdk.currentMacOsPermissionStatus()[permission])
-    }
-  })
   ipcMain.handle(COMPUTER_CHANNEL + 'begin', (event, id: string, session: string) => {
-    const owner = validate(event)
+    const owner = trustedWindow(event)
     id = commandID(id)
     if (typeof session !== 'string' || session.length > 256) {
       throw new Error('Invalid computer session')
@@ -71,7 +54,7 @@ export function installComputerControl(): void {
     return runtime.begin(owner, id, session)
   })
   ipcMain.handle(COMPUTER_CHANNEL + 'call', (event, id: string, action: ComputerAction) => {
-    const owner = validate(event)
+    const owner = trustedWindow(event)
     id = commandID(id)
     if (!action || typeof action !== 'object' || (action.name !== undefined && (typeof action.name !== 'string' || action.name.length > 100)) ||
       (action.args !== undefined && (!action.args || typeof action.args !== 'object' || Array.isArray(action.args))) ||
@@ -81,7 +64,7 @@ export function installComputerControl(): void {
     return runtime.call(owner, id, action)
   })
   for (const method of ['end', 'cancel'] as const) {
-    ipcMain.handle(COMPUTER_CHANNEL + method, (event, id: string) => runtime[method](validate(event), commandID(id)))
+    ipcMain.handle(COMPUTER_CHANNEL + method, (event, id: string) => runtime[method](trustedWindow(event), commandID(id)))
   }
   let stopped = false
   app.on('before-quit', (event) => {

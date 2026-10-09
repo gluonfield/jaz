@@ -31,18 +31,16 @@ if (process.env.JAZ_COMPUTER_IPC_TEST_CHILD === '1') {
   test('computer IPC denies webviews, foreign documents and subframes', async () => {
     for (const request of [event('webview'), event('window', 'https://untrusted.example/renderer/index.html'), { ...event(), senderFrame: { url: 'file:///renderer/index.html' } }]) {
       expect(() => invoke('status', request)).toThrow('trusted Jaz window')
-      await expect(invoke('allow', request, 'accessibility')).rejects.toThrow('trusted Jaz window')
       expect(() => invoke('begin', request, 'request', 'thread')).toThrow('trusted Jaz window')
     }
   })
 
-  test('status reports permissions and allow accepts only the guided permissions', async () => {
+  test('status reports the computer use permissions', async () => {
     const status = await invoke('status', event())
     expect(status.platform).toBe(process.platform)
     if (process.platform === 'darwin') {
       expect(status.permissions).toEqual({ accessibility: false, screenRecording: false })
     }
-    await expect(invoke('allow', event(), 'camera')).rejects.toThrow('Invalid computer permission')
   })
 
   test('computer IPC rejects malformed IDs and non-object arguments before native execution', () => {

@@ -2,19 +2,19 @@ import type { BrowserNavigationDirection } from '../../../shared/browserNavigati
 import type { ThreadNotificationConfig } from '../../../shared/notifications'
 import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
+import type { WindowKind } from '@shared/windowKind'
 
 export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5299'
 
 export type ClientRuntimeKind = 'electron' | 'web'
 export type ClientPlatform = 'desktop' | 'browser'
-export type ClientWindowKind = 'main' | 'board' | 'launcher' | 'voice' | 'permission'
 
 export interface ClientRuntime {
   voiceOverlay?: VoiceOverlayAPI
   kind: ClientRuntimeKind
   platform: ClientPlatform
   deviceKind: ClientPlatform
-  windowKind: ClientWindowKind
+  windowKind: WindowKind
   capabilities: {
     localBackend: boolean
     updates: boolean

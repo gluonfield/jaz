@@ -1,14 +1,10 @@
 import { spawn } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
-import { BrowserWindow, ipcMain, nativeImage, screen, shell, type IpcMainEvent } from 'electron'
+import { BrowserWindow, ipcMain, nativeImage, screen, shell, type IpcMainEvent, type Rectangle } from 'electron'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
-import { PERMISSION_GUIDE_CHANNEL, type ComputerPermission } from '@shared/computerControl'
+import { PERMISSION_GUIDE_CHANNEL, type GuidedPermission } from '@shared/systemPermissions'
 
-const PANES: Record<ComputerPermission, string> = {
-  accessibility: 'Privacy_Accessibility',
-  screenRecording: 'Privacy_ScreenCapture',
-}
 // Where the privacy list sits inside the System Settings window on macOS 26.
 const LIST = { left: 243, right: 20, firstRow: 108 }
 // The panel docks beside the window with its row level with the list's first
@@ -57,7 +53,7 @@ let close: (() => void) | undefined
 
 // Opens the permission's System Settings list with a panel docked to the
 // window: dragging Jaz from the panel into the list grants the permission.
-export async function guidePermission(permission: ComputerPermission, granted: () => boolean): Promise<void> {
+export async function guidePermission(permission: GuidedPermission, settings: string, granted: () => boolean): Promise<void> {
   close?.()
   const panel = new BrowserWindow({
     show: false,
@@ -135,7 +131,8 @@ export async function guidePermission(permission: ComputerPermission, granted: (
       panel.hide()
       return
     }
-    const area = screen.getDisplayMatching({ x, y, width, height }).workArea
+    const frame = { x, y, width, height }
+    const area = screen.getDisplayMatching(frame).workArea
     if (side === undefined) {
       side = x + width + SIDE.width <= area.x + area.width
       const search = side ? 'side' : ''
@@ -145,15 +142,20 @@ export async function guidePermission(permission: ComputerPermission, granted: (
         void panel.loadFile(join(__dirname, '../renderer/index.html'), { search, hash: permission })
       }
     }
-    const bounds = side
-      ? { width: SIDE.width, height: SIDE.height, x: x + width, y: y + LIST.firstRow - SIDE.row }
-      : { width: Math.max(360, width - LIST.left - LIST.right + 2 * BELOW.margin), height: BELOW.height, x: x + LIST.left - BELOW.margin, y: y + height }
-    panel.setBounds({
-      ...bounds,
-      x: Math.round(Math.min(Math.max(bounds.x, area.x), area.x + area.width - bounds.width)),
-      y: Math.round(Math.min(Math.max(bounds.y, area.y), area.y + area.height - bounds.height)),
-    })
+    panel.setBounds(panelBounds(frame, area, side))
     panel.showInactive()
   })
-  await shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${PANES[permission]}`)
+  await shell.openExternal(settings)
+}
+
+// Beside the Settings window, or under it, kept on the window's display.
+function panelBounds(frame: Rectangle, area: Rectangle, side: boolean): Rectangle {
+  const bounds = side
+    ? { width: SIDE.width, height: SIDE.height, x: frame.x + frame.width, y: frame.y + LIST.firstRow - SIDE.row }
+    : { width: Math.max(360, frame.width - LIST.left - LIST.right + 2 * BELOW.margin), height: BELOW.height, x: frame.x + LIST.left - BELOW.margin, y: frame.y + frame.height }
+  return {
+    ...bounds,
+    x: Math.round(Math.min(Math.max(bounds.x, area.x), area.x + area.width - bounds.width)),
+    y: Math.round(Math.min(Math.max(bounds.y, area.y), area.y + area.height - bounds.height)),
+  }
 }

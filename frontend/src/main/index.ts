@@ -21,9 +21,10 @@ import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
 import { canGrantAppPermission } from './permissions'
-import { createThreadNotificationMonitor, openNotificationSettings, sendTestNotification } from './notifications'
+import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
 import { installComputerControl } from '@main/computerControl'
+import { installSystemPermissions } from '@main/systemPermissions'
 import { installBrowserControl } from '@main/browserControl'
 import { installBrowserProfileImport } from '@main/browserProfileImport'
 import { attachPreviewWebviews, configurePreviewSession } from '@main/previewSession'
@@ -44,6 +45,9 @@ app.setAppUserModelId('dev.wins.jaz')
 installMainDiagnostics()
 installBrowserControl()
 installComputerControl()
+if (process.platform === 'darwin') {
+  installSystemPermissions()
+}
 installBrowserProfileImport()
 installBrowserPasswords()
 
@@ -357,8 +361,6 @@ app.whenReady().then(() => {
   ipcMain.handle('jaz:configure-thread-notifications', (_event, config) =>
     threadNotifications.configure(config),
   )
-  ipcMain.handle('jaz:notifications:test', () => sendTestNotification())
-  ipcMain.handle('jaz:notifications:open-settings', () => openNotificationSettings())
   updates.registerIpc()
 
   ipcMain.on('jaz:open-board-window', (_event, boardId) => {

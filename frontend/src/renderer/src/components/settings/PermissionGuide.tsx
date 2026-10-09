@@ -1,10 +1,8 @@
 import { GripVertical, X } from 'lucide-react'
-import type { ComputerPermission } from '@shared/computerControl'
+import { SYSTEM_PERMISSION_TITLES, type GuidedPermission } from '@shared/systemPermissions'
 import { IconButton } from '@/components/ui/IconButton'
 
 const APP_ICON = 'size-5 rounded-[5px] shadow-[0_0_0_0.5px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.2)]'
-
-export const PERMISSION_NAMES: Record<ComputerPermission, string> = { accessibility: 'Accessibility', screenRecording: 'Screen Recording' }
 
 // The panel docked to System Settings. Its row mirrors the entry Jaz gets in
 // the privacy list and drags the app bundle. Beside the window (?side) the
@@ -13,7 +11,7 @@ export const PERMISSION_NAMES: Record<ComputerPermission, string> = { accessibil
 // this window's top. A ghost of the icon travels the arrow into the list.
 export function PermissionGuide() {
   const guide = window.jaz!.permissionGuide
-  const permission = window.location.hash.slice(1) as ComputerPermission
+  const permission = window.location.hash.slice(1) as GuidedPermission
   const side = window.location.search === '?side'
   return (
     <div className={`relative h-full ${side ? 'py-3 pr-3 pl-12' : 'px-3 pt-11'}`}>
@@ -50,7 +48,7 @@ export function PermissionGuide() {
         <div className="flex items-center gap-2 pt-2 pl-1.5">
           <p className="flex-1 text-[12.5px] leading-snug">
             <span className="block font-medium text-ink">Drag Jaz into the list</span>
-            <span className="block text-ink-2">to allow {PERMISSION_NAMES[permission]}</span>
+            <span className="block text-ink-2">to allow {SYSTEM_PERMISSION_TITLES[permission]}</span>
           </p>
           <IconButton size="xs" aria-label="Close" onClick={guide.close}><X className="size-3.5" /></IconButton>
         </div>

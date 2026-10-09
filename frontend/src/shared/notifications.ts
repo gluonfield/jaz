@@ -5,11 +5,6 @@ export interface ThreadCompletion {
   completedAt: string
 }
 
-export interface NotificationsAPI {
-  test(): Promise<boolean>
-  openSettings(): Promise<void>
-}
-
 export type ThreadCompletionHistory = ReadonlyMap<string, number>
 
 export type ThreadNotificationConfig =

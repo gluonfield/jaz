@@ -18,25 +18,31 @@ export function createThreadNotificationMonitor(openInMain: (path: string) => vo
   })
 }
 
-// The first notification makes macOS ask whether Jaz may notify; resolves false
-// when the system refuses it.
-export function sendTestNotification(): Promise<boolean> {
+// Resolves whether macOS showed a test notification. Until the user answers
+// the permission prompt the first notification raises, notifications fail, so
+// callers that may have just raised it retry.
+export async function sendTestNotification(attempts: number): Promise<boolean> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (await showTestNotification()) {
+      return true
+    }
+    if (attempt < attempts) {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
+  return false
+}
+
+function showTestNotification(): Promise<boolean> {
   return new Promise((resolve) => {
-    const notification = new Notification({
-      title: 'Jaz',
-      body: 'Notifications are on.',
-      ...(process.platform === 'linux' ? { icon: appIcon } : {}),
-    })
+    const notification = new Notification({ title: 'Jaz', body: 'Notifications are on.' })
     notification.once('show', () => resolve(true))
     notification.once('failed', () => resolve(false))
     notification.show()
   })
 }
 
-export async function openNotificationSettings(): Promise<void> {
-  if (process.platform !== 'darwin') {
-    return shell.openExternal('ms-settings:notifications')
-  }
+export function openNotificationSettings(): Promise<void> {
   const id = readFileSync(join(process.execPath, '../../Info.plist'), 'utf8').match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)</)?.[1]
-  return shell.openExternal(`x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=${id}`)
+  return shell.openExternal(`x-apple.systempreferences:com.apple.preference.notifications?id=${id}`)
 }
