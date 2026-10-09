@@ -11,7 +11,7 @@
 
 Contract: `search({query})` returns `{results: [{id, title, url, text?}]}` as structured content ([OpenAI MCP docs](https://developers.openai.com/api/docs/mcp)). Jaz calls only tools named `search` that declare `readOnlyHint`, because it calls them on every debounced keystroke. `GET /v1/search/connections?q=` asks all such servers at once with a 5 s deadline and drops untitled results and non-web links. Sections arrive together, between Threads and Archived; a failing or slow server is left out and logged.
 
-Tasks returns up to 10 issues (title; identifier, state and assignee as text). CRM returns the newest 3 matches of each object (record name; object name as text).
+Tasks returns up to 10 issues (title; identifier, state and assignee as text). CRM returns 3 matches of each object, name matches first (record name; object name as text).
 
 Verification: Go suites pass in all three repos; Jaz frontend 315 tests, typecheck and lint pass. The Jaz manager test runs real MCP servers and fails with the read-only guard or the link filter removed. End to end, this branch's backend in a scratch home searched a locally run, seeded Tasks server, and headless Chrome drove the real palette: the Tasks section rendered, arrow keys and Enter opened the issue URL, and an unmatched query showed "No matches". CRM was verified through its MCP test, not run locally.
 
