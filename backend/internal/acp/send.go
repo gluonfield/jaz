@@ -207,11 +207,8 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	m.touchAttention(parentSessionIDs(job.eventView())...)
 	markGoalRequested(job, req.GoalRequested)
 	if err := m.publishACP(job.eventView()); err != nil {
-		// Completion may need the caller's session lock; do not wait for it here.
 		go m.failPromptCall(done, job, fmt.Errorf("persist initial session events: %w", err))
-		return job.Snapshot(), nil
-	}
-	if local != nil {
+	} else if local != nil {
 		go m.runLocalPrompt(context.WithoutCancel(ctx), job, local, promptMessage, req.Attachments)
 	} else {
 		go m.runPrompt(context.Background(), job, prompt)

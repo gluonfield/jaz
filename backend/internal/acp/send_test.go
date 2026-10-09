@@ -42,25 +42,32 @@ func (r recordingLocalRunner) Run(context.Context, LocalAgentRequest) <-chan age
 	return events
 }
 
-func TestSendDoesNotStartAgentWhenUserMessageCannotPersist(t *testing.T) {
+func newLocalSendFixture(t *testing.T, wrap func(Store) Store) (*Manager, *jsonstore.Store, storage.Session, recordingLocalRunner) {
+	t.Helper()
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "persist-before-send", Runtime: storage.RuntimeACP})
+	session, err := store.CreateSession(storage.CreateSession{Slug: "send", Runtime: storage.RuntimeACP})
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	const localAgent = "local"
-	manager := NewManager(rejectingMessageStore{Store: store}, Config{
+	manager := NewManager(wrap(store), Config{
 		Agents: map[string]AgentConfig{localAgent: {Local: true}},
 	}, nil)
 	runner := recordingLocalRunner{called: make(chan struct{})}
 	manager.RegisterLocalAgent(localAgent, runner)
 	manager.addJob(newIdleJob(session, localAgent, "runtime-session", "", ModeState{}), nil)
+	return manager, store, session, runner
+}
 
-	_, err = manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"})
+func TestSendDoesNotStartAgentWhenUserMessageCannotPersist(t *testing.T) {
+	manager, store, session, runner := newLocalSendFixture(t, func(store Store) Store {
+		return rejectingMessageStore{Store: store}
+	})
+
+	_, err := manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"})
 	if err == nil || !strings.Contains(err.Error(), "append user message: message persistence failed") {
 		t.Fatalf("send error = %v", err)
 	}
@@ -79,22 +86,9 @@ func TestSendDoesNotStartAgentWhenUserMessageCannotPersist(t *testing.T) {
 }
 
 func TestSendDoesNotStartAgentWhenInitialEventsCannotPersist(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "persist-events-before-send", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	const localAgent = "local"
-	manager := NewManager(&failOnceEventStore{Store: store, fail: true}, Config{
-		Agents: map[string]AgentConfig{localAgent: {Local: true}},
-	}, nil)
-	runner := recordingLocalRunner{called: make(chan struct{})}
-	manager.RegisterLocalAgent(localAgent, runner)
-	job := newIdleJob(session, localAgent, "runtime-session", "", ModeState{})
-	manager.addJob(job, nil)
+	manager, _, session, runner := newLocalSendFixture(t, func(store Store) Store {
+		return &failOnceEventStore{Store: store, fail: true}
+	})
 	finished := make(chan Job, 1)
 	manager.TurnFinished = func(_ context.Context, result Job) { finished <- result }
 
@@ -117,24 +111,11 @@ func TestSendDoesNotStartAgentWhenInitialEventsCannotPersist(t *testing.T) {
 }
 
 func TestSendDoesNotPersistMessageWhenTurnCannotBeReserved(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "status-before-message", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
+	manager, store, session, runner := newLocalSendFixture(t, func(store Store) Store {
+		return rejectingStatusStore{Store: store}
+	})
 
-	const localAgent = "local"
-	manager := NewManager(rejectingStatusStore{Store: store}, Config{
-		Agents: map[string]AgentConfig{localAgent: {Local: true}},
-	}, nil)
-	runner := recordingLocalRunner{called: make(chan struct{})}
-	manager.RegisterLocalAgent(localAgent, runner)
-	manager.addJob(newIdleJob(session, localAgent, "runtime-session", "", ModeState{}), nil)
-
-	_, err = manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"})
+	_, err := manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"})
 	if err == nil || !strings.Contains(err.Error(), "mark session running: status persistence failed") {
 		t.Fatalf("send error = %v", err)
 	}

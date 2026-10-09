@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -164,18 +165,17 @@ func (m *Manager) recordAndPublishDirect(event sessionevents.Event) {
 }
 
 func (m *Manager) recordAndPublishEventListDirect(events []sessionevents.Event) error {
+	var errs []error
 	for len(events) > 0 {
 		sessionID := events[0].SessionID
 		n := 1
 		for n < len(events) && events[n].SessionID == sessionID {
 			n++
 		}
-		if err := m.recordAndPublishEventsDirect(sessionID, events[:n]); err != nil {
-			return err
-		}
+		errs = append(errs, m.recordAndPublishEventsDirect(sessionID, events[:n]))
 		events = events[n:]
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (m *Manager) recordAndPublishEventsDirect(sessionID string, events []sessionevents.Event) error {

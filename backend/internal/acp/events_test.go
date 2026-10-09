@@ -188,6 +188,33 @@ func TestRecordAndPublishCommitsProjectionStateWithEventAppend(t *testing.T) {
 	}
 }
 
+func TestPublishACPKeepsParentEventsWhenChildAppendFails(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.CreateSession(storage.CreateSession{Slug: "child", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(&failOnceEventStore{Store: store, fail: true}, Config{}, nil)
+
+	if err := manager.publishACP(eventView{ID: child.ID, ParentID: parent.ID, ParentVisible: true, State: StateRunning}); err == nil {
+		t.Fatal("child append failure was not reported")
+	}
+	stored, err := store.LoadSessionEvents(parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 {
+		t.Fatalf("parent events = %d, want 1", len(stored))
+	}
+}
+
 func TestTranscriptChunksFlushBeforeStatus(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
