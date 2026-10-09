@@ -175,20 +175,23 @@ export function useConnectionSignIn({ onStartAccepted }: { onStartAccepted?: () 
 
   return {
     plugins,
-    activeQR,
     connectingPluginID: connect.variables?.pluginID,
     isConnecting: connect.isPending,
-    qrStatus: qrStatus.data,
-    qrLoading: qrStatus.isFetching,
-    qrRefreshing:
-      connect.isPending &&
-      connect.variables?.pluginID === activeQR?.plugin.id &&
-      connect.variables?.replacingSessionID === activeQR?.qr.session_id,
-    qrPasswordSubmitting: qrPassword.isPending,
-    closeQR,
-    refreshQR,
-    submitQRPassword,
     start,
+    qrModal: {
+      plugin: activeQR?.plugin,
+      qr: activeQR?.qr,
+      status: qrStatus.data,
+      loading: qrStatus.isFetching,
+      refreshing:
+        connect.isPending &&
+        connect.variables?.pluginID === activeQR?.plugin.id &&
+        connect.variables?.replacingSessionID === activeQR?.qr.session_id,
+      passwordSubmitting: qrPassword.isPending,
+      onClose: closeQR,
+      onRefresh: refreshQR,
+      onSubmitPassword: submitQRPassword,
+    },
   }
 }
 

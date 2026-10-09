@@ -18,7 +18,6 @@ const (
 	// maxFollowUps bounds how many members' posts reach the others between two
 	// posts from the user, so bots answering each other cannot run on.
 	maxFollowUps = 12
-	maxHistory   = 20
 	// steerTimeout bounds how long handing messages to a running turn waits.
 	steerTimeout = time.Minute
 )
@@ -44,10 +43,14 @@ func (s *Service) Post(groupID, text string, attachmentIDs []string) error {
 	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text, Attachments: attachments})
 }
 
-// post records a message in a group and hands it to every other member, which
-// decides for itself whether to answer.
+// post records a message in a group and hands it to the other members it
+// mentions or, when it mentions none, to every other member, which decides for
+// itself whether to answer. The rest see it with the next post that reaches
+// them.
 func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessageEvent) error {
-	message.Text = s.linkMentions(message.Text, group.Members)
+	text, mentioned := s.linkMentions(message.Text, group.Members)
+	message.Text = text
+	mentioned = slices.DeleteFunc(mentioned, func(member string) bool { return member == message.BotID })
 	if err := s.appendEvent(sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
 		return err
 	}
@@ -55,7 +58,7 @@ func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessag
 		return nil
 	}
 	for _, member := range group.Members {
-		if member != message.BotID {
+		if member != message.BotID && (len(mentioned) == 0 || slices.Contains(mentioned, member)) {
 			go s.deliver(group, member)
 		}
 	}
@@ -195,9 +198,6 @@ func (s *Service) unseen(groupID, member string, after int64) ([]sessionevents.R
 		case after == 0:
 			messages = messages[:0]
 		}
-	}
-	if len(messages) > maxHistory {
-		messages = messages[len(messages)-maxHistory:]
 	}
 	return messages, seen, nil
 }

@@ -442,9 +442,6 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdS
 	if err != nil {
 		return createdSession{}, err
 	}
-	if err := m.validateSpawnModelBeforePersist(ctx, req, cfg); err != nil {
-		return createdSession{}, err
-	}
 	if req.Directory == "" && req.Home == "" && !req.Worktree {
 		req.Home = runtimefiles.New(m.cfg.Root).Chats
 	}

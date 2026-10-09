@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 mock.module('@/lib/clientRuntime', () => ({
   DEFAULT_API_BASE_URL: 'http://127.0.0.1:5299',
   clientRuntime: { platform: 'browser', defaultApiBaseUrl: () => 'https://jaz.example' },
+  openExternal: () => {},
 }))
 const storage = new Map([['jaz.backendAuth.https://jaz.example', 'test-image-key']])
 globalThis.localStorage = {
@@ -81,6 +82,54 @@ test('bot mentions keep their bot: target through link sanitizing', async () => 
 
     expect(html).toContain('<span>@Inbox bot</span>')
   }
+})
+
+test('connect links on their own line render live connect cards in assistant and bot chats only', async () => {
+  const { MessageMarkdown, RenderedMarkdown, UserMessageMarkdown } = await import('./MessageMarkdown')
+  const plugin = (id, name, extra = {}) => ({
+    id,
+    name,
+    description: `${name} tools`,
+    provider: { id, name },
+    icon: { kind: 'initials', value: name.slice(0, 2) },
+    auth: [{ kind: 'oauth' }],
+    capabilities: [],
+    multi_account: false,
+    implementation: { status: 'available', owner: 'jaz' },
+    connection: { status: 'not_connected' },
+    ...extra,
+  })
+  const client = new QueryClient()
+  client.setQueryData(['connections', 'plugins'], [
+    plugin('slack', 'Slack'),
+    plugin('mail', 'Mail', { multi_account: true, connection: { status: 'connected', accounts: [{ id: 'mail:work', account_id: 'august@work.example' }] } }),
+    plugin('tasks', 'Tasks', { connection: { status: 'connected', accounts: [{ id: 'tasks', account_name: 'Team tasks' }] } }),
+  ])
+  for (const component of [MessageMarkdown, UserMessageMarkdown]) {
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(component, {
+      text: 'Slack is not connected.\n\njaz://connect/slack\n\n[Connect Mail](jaz://connect/mail)\njaz://connect/tasks\n\nCopy `jaz://connect/slack` or open jaz://connect/slack later.\n\n`jaz://connect/mail`\n\njaz://connect/unknown',
+    })))
+
+    expect(html).toContain('Slack tools')
+    expect(html).toContain('>Connect</button>')
+    expect(html).toContain('august@work.example')
+    expect(html).toContain('>Add account</button>')
+    expect(html).toContain('Team tasks')
+    expect(html).toContain('Connected</span>')
+    expect(html).toContain('<code>jaz://connect/slack</code>')
+    expect(html).toContain('open jaz://connect/slack later.')
+    expect(html).toContain('<p><code>jaz://connect/mail</code></p>')
+    expect(html).toContain('<p>jaz://connect/unknown</p>')
+    expect(html.match(/jaz:\/\/connect\//g)).toHaveLength(4)
+  }
+
+  const loading = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() },
+    createElement(MessageMarkdown, { text: 'jaz://connect/slack' }),
+  ))
+  expect(loading).toContain('animate-pulse')
+  expect(loading).not.toContain('jaz://connect/slack')
+
+  expect(renderToStaticMarkup(createElement(RenderedMarkdown, { text: 'jaz://connect/slack' }))).toContain('<p>jaz://connect/slack</p>')
 })
 
 test.each(['user', 'assistant'])('saved %s messages show their timestamp beside copy and omit unknown dates', async (role) => {

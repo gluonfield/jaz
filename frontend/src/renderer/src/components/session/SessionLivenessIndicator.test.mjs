@@ -43,9 +43,15 @@ test('stale sessions keep the agent name and alert treatment', () => {
 })
 
 test('reported thinking changes the live label while compaction and stale state take precedence', () => {
-  expect(renderIndicator({ thinking: true })).toContain('Thinking')
-  expect(renderIndicator({ thinking: true, activeOperation: 'compact' })).toContain('Compacting')
-  expect(renderIndicator({ thinking: true, updatedAt: new Date(Date.now() - 600_000).toISOString() }))
+  expect(renderIndicator({ activity: 'thinking' })).toContain('Thinking')
+  expect(renderIndicator({ activity: 'thinking', activeOperation: 'compact' })).toContain('Compacting')
+  expect(renderIndicator({ activity: 'thinking', updatedAt: new Date(Date.now() - 600_000).toISOString() }))
     .toContain('Codex is still marked running')
-  expect(renderIndicator({ thinking: true, running: false })).toBe('')
+  expect(renderIndicator({ activity: 'thinking', running: false })).toBe('')
+})
+
+test('a starting session names its agent until stale state takes over', () => {
+  expect(renderIndicator({ activity: 'starting' })).toContain('Starting Codex')
+  expect(renderIndicator({ activity: 'starting', updatedAt: new Date(Date.now() - 600_000).toISOString() }))
+    .toContain('Codex is still marked running')
 })

@@ -68,6 +68,9 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 				Kind:        connections.AgentPathKindMemoryPrefix,
 				Explanation: "Materialized chat days.",
 			}},
+		}, {
+			PluginID:     "slack",
+			ProviderName: "Slack",
 		}},
 		Skills: "skills-block",
 	})
@@ -90,10 +93,12 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Agent-owned self-realizations only.",
 		"prefer deletion fixes",
 		"## connections",
-		"Connected accounts and agent-relevant memory paths",
+		"Connected accounts, agent-relevant memory paths, and providers available to connect",
+		"write its connect link alone on its own line",
 		"Telegram: personal (42)",
 		"`sources/chat/telegram/42/contacts.md` (memory_page)",
 		"`sources/chat/telegram/42/conversations/` (memory_prefix)",
+		"- Slack: not connected, jaz://connect/slack\n",
 		"## Jaz threads",
 		"one of: `codex`, `claude`",
 		"## Browser tools",
@@ -236,6 +241,9 @@ func TestRenderStandaloneModules(t *testing.T) {
 		if !strings.Contains(connectionsPrompt, want) {
 			t.Fatalf("connections prompt missing %q:\n%s", want, connectionsPrompt)
 		}
+	}
+	if strings.Contains(connectionsPrompt, "connect link") {
+		t.Fatalf("connected-only prompt explains connect links:\n%s", connectionsPrompt)
 	}
 	if empty, err := RenderConnections(nil); err != nil || empty != "" {
 		t.Fatalf("empty connections = %q err=%v", empty, err)

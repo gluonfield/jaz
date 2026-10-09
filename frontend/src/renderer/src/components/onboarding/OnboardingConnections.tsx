@@ -40,17 +40,7 @@ export function ConnectionsList() {
       )}
       <p className="mt-3 text-center text-[12px] text-ink-3">Optional — add more anytime in Settings.</p>
 
-      <ConnectionQRModal
-        plugin={signIn.activeQR?.plugin}
-        qr={signIn.activeQR?.qr}
-        status={signIn.qrStatus}
-        loading={signIn.qrLoading}
-        refreshing={signIn.qrRefreshing}
-        passwordSubmitting={signIn.qrPasswordSubmitting}
-        onClose={signIn.closeQR}
-        onRefresh={signIn.refreshQR}
-        onSubmitPassword={signIn.submitQRPassword}
-      />
+      <ConnectionQRModal {...signIn.qrModal} />
     </div>
   )
 }

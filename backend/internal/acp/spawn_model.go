@@ -1,7 +1,6 @@
 package acp
 
 import (
-	"context"
 	"strings"
 	"unicode"
 
@@ -45,43 +44,4 @@ func modelAliasKey(value string) string {
 		}
 	}
 	return b.String()
-}
-
-func (m *Manager) validateSpawnModelBeforePersist(ctx context.Context, req SpawnRequest, cfg AgentConfig) error {
-	policy := agentPolicyForAgent(req.ACPAgent)
-	if cfg.Local || policy.unadvertisedModel != unadvertisedModelRejected {
-		return nil
-	}
-	model := policy.sessionConfigModel(cfg)
-	if strings.TrimSpace(model) == "" {
-		return nil
-	}
-	info, err := m.probeAgentSession(ctx, req, cfg)
-	if err != nil {
-		return err
-	}
-	_, err = policy.sessionModelToSend(req.ACPAgent, model, info.modelState)
-	return err
-}
-
-func (m *Manager) probeAgentSession(ctx context.Context, req SpawnRequest, cfg AgentConfig) (acpSessionInfo, error) {
-	cwd, err := m.resolveCwd(cfg.Cwd)
-	if err != nil {
-		return acpSessionInfo{}, err
-	}
-	ac, err := m.connect(ctx, req.ACPAgent, cfg, cwd, req.ArtifactSurface, req.MCPServerPolicy, req.SystemPromptExtensions)
-	if err != nil {
-		return acpSessionInfo{}, err
-	}
-	defer ac.close()
-	info, err := m.newACPProtocolSession(ctx, ac, "model probe", newSessionRequest{
-		Meta:       agentPolicyForAgent(req.ACPAgent).mergeSessionMeta(nil, cfg),
-		Cwd:        cwd,
-		MCPServers: m.mcpServersForAgent(ctx, ac.initRaw, req.MCPServerPolicy),
-	})
-	if err != nil {
-		return acpSessionInfo{}, err
-	}
-	defer m.closeProtocolSession(ac, info.response.SessionID)
-	return info, nil
 }

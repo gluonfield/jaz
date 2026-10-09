@@ -20,6 +20,7 @@ import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { markdownImageSource } from '@/lib/markdownImages'
 import { findFileReferences, parseFileReference, resolveFileLink, type FileReference } from '@shared/fileReader'
 import { CodeBlock } from './CodeBlock'
+import { ConnectCard } from './ConnectCard'
 import { encodeMention } from './mentionCodec'
 import { MentionPill } from '@/components/session/mentions'
 import { botIdFromTarget } from '@/lib/bots'
@@ -141,6 +142,39 @@ type MarkdownNode = {
   url?: string
   title?: string | null
   children?: MarkdownNode[]
+  data?: { hName: string; hProperties: Record<string, string> }
+}
+
+const CONNECT_LINK = /^jaz:\/\/connect\/([\w-]+)$/
+
+// A paragraph holding only jaz://connect/<plugin> links, bare or labelled,
+// becomes one connect card per link. In a sentence or code the link stays text.
+function remarkConnectCards() {
+  return function replace(node: MarkdownNode): void {
+    if (!node.children) return
+    node.children = node.children.flatMap((child) => {
+      const plugins = child.type === 'paragraph' ? connectCardPlugins(child) : null
+      if (!plugins) {
+        replace(child)
+        return [child]
+      }
+      return plugins.map((plugin) => ({ type: 'connectCard', data: { hName: 'connect-card', hProperties: { plugin } } }))
+    })
+  }
+}
+
+function connectCardPlugins(paragraph: MarkdownNode): string[] | null {
+  const plugins: string[] = []
+  for (const child of paragraph.children ?? []) {
+    if (child.type !== 'link' && child.type !== 'text' && child.type !== 'break') return null
+    const links = child.type === 'link' ? [child.url ?? ''] : (child.value ?? '').split(/\s+/).filter(Boolean)
+    for (const link of links) {
+      const plugin = CONNECT_LINK.exec(link)?.[1]
+      if (!plugin) return null
+      plugins.push(plugin)
+    }
+  }
+  return plugins.length ? plugins : null
 }
 
 function remarkFileReferences() {
@@ -241,7 +275,8 @@ const MarkdownTable: ComponentType<ComponentProps<'table'> & ExtraProps> = ({ no
 )
 
 const REMARK_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences] satisfies Options['remarkPlugins']
-const USER_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkLineBreaks]
+const CHAT_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkConnectCards]
+const USER_REMARK_PLUGINS = [...CHAT_REMARK_PLUGINS, remarkLineBreaks]
 
 function BaseMarkdown({
   text,
@@ -261,7 +296,7 @@ function BaseMarkdown({
     ? [...remarkPlugins, [remarkMentions, mentions]] satisfies Options['remarkPlugins']
     : remarkPlugins, [mentions, remarkPlugins])
   const prepared = useMemo(() => normalizeMath(text), [text])
-  const components = useMemo<Components>(() => ({ a: Link, img: MarkdownImage, pre: CodeBlock, table: MarkdownTable }), [Link])
+  const components = useMemo<Components>(() => ({ a: Link, img: MarkdownImage, pre: CodeBlock, table: MarkdownTable, 'connect-card': ConnectCard }), [Link])
   return (
     <div className={className}>
       <Markdown
@@ -368,7 +403,7 @@ export const UserMessageMarkdown = memo(function UserMessageMarkdown({
 export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
   const skills = useQuery(skillsQuery())
   const prepared = useMemo(() => linkifyKnownSkills(text, skills.data ?? []), [text, skills.data])
-  return <BaseMarkdown text={prepared} className="chat-prose" Link={MessageMarkdownLink} />
+  return <BaseMarkdown text={prepared} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={CHAT_REMARK_PLUGINS} />
 })
 
 const TEXT_REMARK_PLUGINS = [remarkGfm]

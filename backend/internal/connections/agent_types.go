@@ -12,6 +12,7 @@ type AgentPath struct {
 }
 
 type AgentConnection struct {
+	PluginID      string      `json:"plugin_id"`
 	ProviderID    string      `json:"provider_id"`
 	ProviderName  string      `json:"provider_name"`
 	Account       string      `json:"account"`
