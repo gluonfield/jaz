@@ -123,7 +123,7 @@ func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, erro
 		if connection.ProviderName == "" {
 			connection.ProviderName = plugin.Name
 		}
-		if len(plugin.Connection.Accounts) == 0 && plugin.Implementation.Status == "available" {
+		if len(plugin.Connection.Accounts) == 0 && plugin.Available() {
 			out = append(out, connection)
 		}
 		for _, account := range plugin.Connection.Accounts {

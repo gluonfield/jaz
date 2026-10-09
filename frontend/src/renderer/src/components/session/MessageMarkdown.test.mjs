@@ -82,8 +82,8 @@ test('bot mentions keep their bot: target through link sanitizing', async () => 
   }
 })
 
-test('connect links on their own line render live connect cards in assistant and bot chats', async () => {
-  const { MessageMarkdown, UserMessageMarkdown } = await import('./MessageMarkdown')
+test('connect links on their own line render live connect cards in assistant and bot chats only', async () => {
+  const { MessageMarkdown, RenderedMarkdown, UserMessageMarkdown } = await import('./MessageMarkdown')
   const plugin = (id, name, extra = {}) => ({
     id,
     name,
@@ -120,6 +120,14 @@ test('connect links on their own line render live connect cards in assistant and
     expect(html).toContain('<p>jaz://connect/unknown</p>')
     expect(html.match(/jaz:\/\/connect\//g)).toHaveLength(4)
   }
+
+  const loading = renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() },
+    createElement(MessageMarkdown, { text: 'jaz://connect/slack' }),
+  ))
+  expect(loading).toContain('animate-pulse')
+  expect(loading).not.toContain('jaz://connect/slack')
+
+  expect(renderToStaticMarkup(createElement(RenderedMarkdown, { text: 'jaz://connect/slack' }))).toContain('<p>jaz://connect/slack</p>')
 })
 
 test.each(['user', 'assistant'])('saved %s messages show their timestamp beside copy and omit unknown dates', async (role) => {

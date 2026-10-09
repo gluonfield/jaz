@@ -47,7 +47,7 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 	}
 	switch authKind {
 	case integrations.AuthKindOAuth:
-		if plugin.Implementation.Status != "available" {
+		if !plugin.Available() {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
 		}
 		if s.oauth == nil {
@@ -71,7 +71,7 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 		}
 		return ConnectResult{Start: ConnectStart{Type: "qr", QR: &start}}, nil
 	case integrations.AuthKindRemoteMCP:
-		if plugin.Implementation.Status != "available" {
+		if !plugin.Available() {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
 		}
 		if s.remoteMCP == nil {
@@ -83,7 +83,7 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 		}
 		return ConnectResult{Start: ConnectStart{Type: "mcp", MCP: &start}, MCPServersChanged: true}, nil
 	case integrations.AuthKindMCPConnection:
-		if plugin.Implementation.Status != "available" {
+		if !plugin.Available() {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
 		}
 		if s.mcpConnection == nil {
@@ -95,7 +95,7 @@ func (s *ConnectService) Start(ctx context.Context, pluginID string, opts StartO
 		}
 		return ConnectResult{Start: ConnectStart{Type: "oauth", AuthURL: start.AuthURL}}, nil
 	default:
-		if plugin.Implementation.Status != "available" {
+		if !plugin.Available() {
 			return ConnectResult{}, fmt.Errorf("connection plugin %q is %s", pluginID, plugin.Implementation.Status)
 		}
 		return ConnectResult{}, fmt.Errorf("connection plugin %q uses unsupported sign-in method %q", pluginID, authKind)

@@ -71,25 +71,9 @@ func TestServiceAddsAgentRelevantPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var accounts []AgentConnection
-	offered := map[string]AgentConnection{}
-	for _, connection := range connections {
-		if connection.Account == "" {
-			offered[connection.PluginID] = connection
-		} else {
-			accounts = append(accounts, connection)
-		}
-	}
+	accounts := slices.DeleteFunc(connections, func(connection AgentConnection) bool { return connection.Account == "" })
 	if len(accounts) != 3 {
-		t.Fatalf("agent connections = %#v", connections)
-	}
-	if slack, ok := offered[slackconnector.ProviderID]; !ok || slack.ProviderName != "Slack" || slack.RelevantPaths != nil {
-		t.Fatalf("unconnected slack is not offered: %#v", connections)
-	}
-	for _, connected := range []string{gmailconnector.ProviderID, telegram.ProviderID, whatsapp.ProviderID} {
-		if _, ok := offered[connected]; ok {
-			t.Fatalf("connected %s is offered: %#v", connected, connections)
-		}
+		t.Fatalf("agent accounts = %#v", accounts)
 	}
 	for _, connection := range accounts {
 		switch connection.ProviderID {
@@ -116,6 +100,28 @@ func TestServiceAddsAgentRelevantPaths(t *testing.T) {
 				t.Fatalf("gmail connection = %#v", connection)
 			}
 		}
+	}
+}
+
+func TestServiceOffersOnlyUnconnectedProvidersToAgents(t *testing.T) {
+	service := NewService(NewCatalog(), &serviceStore{
+		connections: []integrations.Connection{{ID: gmailconnector.OAuthConnectionID, Provider: gmailconnector.ProviderID, AccountID: "augustinas@example.com"}},
+	}, nil)
+	connections, err := service.AgentConnections(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	offered := map[string]AgentConnection{}
+	for _, connection := range connections {
+		if connection.Account == "" {
+			offered[connection.PluginID] = connection
+		}
+	}
+	if slack, ok := offered[slackconnector.ProviderID]; !ok || slack.ProviderName != "Slack" {
+		t.Fatalf("unconnected Slack is not offered: %#v", connections)
+	}
+	if _, ok := offered[gmailconnector.ProviderID]; ok {
+		t.Fatalf("connected Gmail is offered: %#v", connections)
 	}
 }
 

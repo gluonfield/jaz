@@ -273,8 +273,9 @@ const MarkdownTable: ComponentType<ComponentProps<'table'> & ExtraProps> = ({ no
   </div>
 )
 
-const REMARK_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkConnectCards, remarkFileReferences] satisfies Options['remarkPlugins']
-const USER_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkLineBreaks]
+const REMARK_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences] satisfies Options['remarkPlugins']
+const CHAT_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkConnectCards]
+const USER_REMARK_PLUGINS = [...CHAT_REMARK_PLUGINS, remarkLineBreaks]
 
 function BaseMarkdown({
   text,
@@ -396,7 +397,7 @@ export const UserMessageMarkdown = memo(function UserMessageMarkdown({
 export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
   const skills = useQuery(skillsQuery())
   const prepared = useMemo(() => linkifyKnownSkills(text, skills.data ?? []), [text, skills.data])
-  return <BaseMarkdown text={prepared} className="chat-prose" Link={MessageMarkdownLink} />
+  return <BaseMarkdown text={prepared} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={CHAT_REMARK_PLUGINS} />
 })
 
 const TEXT_REMARK_PLUGINS = [remarkGfm]
