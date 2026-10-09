@@ -120,7 +120,8 @@ export interface ThreadDetailsView {
 // One thread's full view: transcript, composer, and side panel. `header` and
 // `details` let an owning surface (a bot) replace the titlebar identity and the
 // Overview panel, and `openDetails` decide whether that panel starts open;
-// `chat` replaces the agent transcript with a chat log.
+// `chat` replaces the agent transcript with a chat log and the composer with
+// its messenger layout.
 export function ThreadView({
   sessionId,
   message,
@@ -130,7 +131,6 @@ export function ThreadView({
   openDetails,
   placeholder,
   chat,
-  showOptions,
 }: {
   sessionId: string
   message?: number
@@ -140,7 +140,6 @@ export function ThreadView({
   openDetails?: boolean
   placeholder?: string
   chat?: (view: ThreadChatView) => ReactNode
-  showOptions?: boolean
 }) {
   const queryClient = useQueryClient()
   const config = useSessionConfig(sessionId)
@@ -608,7 +607,7 @@ export function ThreadView({
                     streaming={sessionRunning}
                     commands={derived.agentSession?.commands ?? undefined}
                     optionsSlot={<NativeModelOptions options={derived.agentSession?.config_options} running={sessionRunning} pending={config.isPending} onChange={(id, value) => config.mutate({ id, value })} />}
-                    showOptions={showOptions}
+                    chat={chat !== undefined}
                     planAvailable={planAvailable}
                     planModeActive={Boolean(live?.planRequested) || planActive}
                     goalControlVisible

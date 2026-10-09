@@ -41,7 +41,7 @@ export function ComposerCard({
   draftStorage = 'session',
   clearTiming = 'resolved',
   leftSlot,
-  showOptions = true,
+  chat = false,
   fileRoot,
   attachmentSessionId,
   contexts = [],
@@ -73,7 +73,8 @@ export function ComposerCard({
   clearTiming?: 'immediate' | 'resolved' | 'never'
   /** leading toolbar content (e.g. the new-thread runtime/project controls) */
   leftSlot?: ReactNode
-  showOptions?: boolean
+  /** messenger layout for bot chats: one row, no options menu */
+  chat?: boolean
   /** server-side directory the @-mention file picker indexes (a project path,
       session cwd, or '' for the workspace root). undefined disables files */
   fileRoot?: string
@@ -306,6 +307,76 @@ export function ComposerCard({
     }
   }
 
+  const textarea = (
+    <MentionTextarea
+      mention={mention}
+      placeholder={placeholder}
+      disabled={disabled}
+      readOnly={dictation.phase !== null}
+      autoFocus={autoFocus}
+      onKeyDown={(e) => {
+        if (
+          e.key === 'Tab' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
+          streaming && onQueuePrompt && hasDraftContent && !dictation.phase
+        ) {
+          e.preventDefault()
+          void submit(mention.value(), onQueuePrompt)
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          if (dictation.phase) {
+            void dictation.stop()
+          } else {
+            void submit()
+          }
+        }
+      }}
+    />
+  )
+
+  const chips = (
+    <AnimatePresence initial={false}>
+      {planModeOn ? (
+        <motion.div
+          key="plan-chip"
+          initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
+          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
+          transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+          className="group flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+        >
+          <IconButton
+            variant="ghost"
+            size="xs"
+            aria-label="Remove plan mode"
+            title="Remove plan mode"
+            disabled={disabled}
+            className="grid"
+            onClick={() => setPlanMode(false)}
+          >
+            <ListChecks
+              size={13}
+              className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
+            />
+            <X
+              size={13}
+              className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            />
+          </IconButton>
+          <span>Plan</span>
+        </motion.div>
+      ) : null}
+      {showGoalChip ? (
+        <GoalChip
+          active={goalEngaged}
+          requested={goalRequested || goalEngaged}
+          disabled={disabled}
+          onRemove={turnGoalOff}
+        />
+      ) : null}
+    </AnimatePresence>
+  )
+
   return (
     <div
       ref={dropTargetRef}
@@ -323,6 +394,7 @@ export function ComposerCard({
       {!dictation.phase ? <MentionSuggestions mention={mention} placement="above" /> : null}
       {/* The whole card is a click target for the textarea. */}
       <ComposerFrame
+        chat={chat}
         className={`flex cursor-text flex-col gap-1.5 ${draggingFiles ? 'shadow-[0_0_0_1px_var(--color-primary),0_10px_35px_rgba(0,0,0,0.16)]' : ''}`}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('button, textarea, input')) return
@@ -351,142 +423,84 @@ export function ComposerCard({
           attachmentSessionId={attachmentSessionId}
           onRemove={attachmentDraft.removeAttachment}
         />
-        <div>
-          <MentionTextarea
-            mention={mention}
-            placeholder={placeholder}
-            disabled={disabled}
-            readOnly={dictation.phase !== null}
-            autoFocus={autoFocus}
-            onKeyDown={(e) => {
-              if (
-                e.key === 'Tab' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
-                streaming && onQueuePrompt && hasDraftContent && !dictation.phase
-              ) {
-                e.preventDefault()
-                void submit(mention.value(), onQueuePrompt)
-              }
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                if (dictation.phase) {
-                  void dictation.stop()
-                } else {
-                  void submit()
-                }
-              }
-            }}
-          />
-        </div>
+        {chat ? <div className="flex flex-wrap gap-1.5 empty:hidden">{chips}</div> : <div>{textarea}</div>}
         {dictation.error ? (
           <div className="flex items-center gap-2 pl-2 text-sm text-danger" role="alert">
             <span className="min-w-0 flex-1">{dictation.error}</span>
             <IconButton className="size-10" aria-label="Dismiss dictation error" onClick={dictation.dismissError}><X size={16} /></IconButton>
           </div>
         ) : null}
-        <div className="relative">
+        {/* Chat shares one row between the input and its controls, messenger
+            style: the textarea's bottom padding centres its last line on them,
+            and isolate keeps its z-index under the dictation overlay. */}
+        <div className={`relative ${chat ? 'flex items-end gap-1' : ''}`}>
+          {chat ? <div className="isolate min-w-0 flex-1 pb-1.5">{textarea}</div> : null}
           <div
             className={`flex items-center justify-between gap-2.5 max-sm:items-end ${dictation.phase ? 'invisible' : ''}`}
             inert={dictation.phase !== null}
           >
             {/* Phone: the new-thread controls (agent, model, project, worktree)
                 outgrow one row, so let them wrap and keep send pinned bottom-right. */}
-            <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap">
-              {showOptions ? <Popover
-                open={optionsOpen}
-                onClose={() => setOptionsOpen(false)}
-                trigger={
-                  <IconButton
-                    variant="ghost"
-                    size="md"
-                    aria-haspopup="menu"
-                    aria-expanded={optionsOpen}
-                    aria-label="Composer options"
-                    title="Composer options"
-                    disabled={disabled}
-                    onClick={() => setOptionsOpen((value) => !value)}
-                  >
-                    <Plus
-                      size={16}
-                      className={`transition-transform duration-200 ease-out ${
-                        optionsOpen ? 'rotate-45' : ''
-                      }`}
-                    />
-                  </IconButton>
-                }
-              >
-                <ComposerAttachmentMenuRow
-                  disabled={disabled}
-                  onChoose={() => {
-                    setOptionsOpen(false)
-                    fileInputRef.current?.click()
-                  }}
-                />
-                {planAvailable ? (
-                  <SwitchRow
-                    icon={<ListChecks size={13} className="shrink-0" />}
-                    label="Plan"
-                    checked={planModeOn}
-                    disabled={disabled}
-                    onChange={togglePlanMode}
-                  />
-                ) : null}
-                {goalControlVisible ? (
-                  goalAvailable ? (
-                    <SwitchRow
-                      icon={<Target size={13} className="shrink-0" />}
-                      label="Goal"
-                      checked={goalEngaged || goalRequested}
-                      disabled={goalToggleDisabled}
-                      onChange={toggleGoalRequested}
-                    />
-                  ) : (
-                    <GoalUnsupportedRow />
-                  )
-                ) : null}
-                {optionsSlot}
-              </Popover> : null}
-              {showOptions ? leftSlot : null}
-              <AnimatePresence initial={false}>
-                {planModeOn ? (
-                  <motion.div
-                    key="plan-chip"
-                    initial={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
-                    animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                    exit={{ opacity: 0, scale: 0.8, filter: 'blur(4px)' }}
-                    transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                    className="group flex h-8 shrink-0 items-center gap-1 rounded-full pr-2.5 pl-1 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
-                  >
+            {chat ? null : (
+              <div className="flex min-w-0 items-center gap-1.5 max-sm:flex-1 max-sm:flex-wrap">
+                <Popover
+                  open={optionsOpen}
+                  onClose={() => setOptionsOpen(false)}
+                  trigger={
                     <IconButton
                       variant="ghost"
-                      size="xs"
-                      aria-label="Remove plan mode"
-                      title="Remove plan mode"
+                      size="md"
+                      aria-haspopup="menu"
+                      aria-expanded={optionsOpen}
+                      aria-label="Composer options"
+                      title="Composer options"
                       disabled={disabled}
-                      className="grid"
-                      onClick={() => setPlanMode(false)}
+                      onClick={() => setOptionsOpen((value) => !value)}
                     >
-                      <ListChecks
-                        size={13}
-                        className="col-start-1 row-start-1 transition-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-                      />
-                      <X
-                        size={13}
-                        className="col-start-1 row-start-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                      <Plus
+                        size={16}
+                        className={`transition-transform duration-200 ease-out ${
+                          optionsOpen ? 'rotate-45' : ''
+                        }`}
                       />
                     </IconButton>
-                    <span>Plan</span>
-                  </motion.div>
-                ) : null}
-                {showGoalChip ? (
-                  <GoalChip
-                    active={goalEngaged}
-                    requested={goalRequested || goalEngaged}
+                  }
+                >
+                  <ComposerAttachmentMenuRow
                     disabled={disabled}
-                    onRemove={turnGoalOff}
+                    onChoose={() => {
+                      setOptionsOpen(false)
+                      fileInputRef.current?.click()
+                    }}
                   />
-                ) : null}
-              </AnimatePresence>
-            </div>
+                  {planAvailable ? (
+                    <SwitchRow
+                      icon={<ListChecks size={13} className="shrink-0" />}
+                      label="Plan"
+                      checked={planModeOn}
+                      disabled={disabled}
+                      onChange={togglePlanMode}
+                    />
+                  ) : null}
+                  {goalControlVisible ? (
+                    goalAvailable ? (
+                      <SwitchRow
+                        icon={<Target size={13} className="shrink-0" />}
+                        label="Goal"
+                        checked={goalEngaged || goalRequested}
+                        disabled={goalToggleDisabled}
+                        onChange={toggleGoalRequested}
+                      />
+                    ) : (
+                      <GoalUnsupportedRow />
+                    )
+                  ) : null}
+                  {optionsSlot}
+                </Popover>
+                {leftSlot}
+                {chips}
+              </div>
+            )}
             <div className="flex min-h-10 shrink-0 items-center gap-2">
               {dictation.showButton && !voiceActive ? (
                 <IconButton
@@ -543,8 +557,10 @@ export function ComposerCard({
               ) : null}
             </div>
           </div>
+          {/* Opaque, so in chat it also covers the draft while the textarea
+              keeps focus for Enter and Escape. */}
           {dictation.phase ? (
-            <div className="absolute inset-x-0 bottom-0">
+            <div className="absolute inset-0 flex flex-col justify-end bg-surface">
               <DictationControls dictation={dictation} canSend={!disabled && !attachmentBusy && (!streaming || canSendWhileStreaming)} queue={false} />
             </div>
           ) : null}
@@ -573,7 +589,7 @@ export function Composer({
   onQueuePrompt,
   commands,
   optionsSlot,
-  showOptions,
+  chat,
   onStop,
   onClearGoal,
   onVoice,
@@ -605,7 +621,7 @@ export function Composer({
   onQueuePrompt?: SendMessageHandler
   commands?: AgentSessionCommand[]
   optionsSlot?: ReactNode
-  showOptions?: boolean
+  chat?: boolean
   onStop: () => void
   onClearGoal?: () => void
   onVoice?: () => void
@@ -656,7 +672,7 @@ export function Composer({
         onQueuePrompt={onQueuePrompt}
         commands={commands}
         optionsSlot={optionsSlot}
-        showOptions={showOptions}
+        chat={chat}
         onStop={onStop}
         onClearGoal={onClearGoal}
         onVoice={onVoice}
