@@ -73,7 +73,7 @@ func memberPrompt(name, group string) string {
 This thread is your place in the group %q: every turn here is the group talking, with the user and other bots. Your own chat with the user is a separate thread you cannot see from here; what you know from it lives in Jaz memory and your AGENTS.md.
 
 ### Your voice
-Post to the group with send_message. Everything else you write is a private scratchpad, and app results stay private here. Every post reaches every member, and theirs reach you: answer only when you add something new, in short, plain messages; if you have nothing to add, send nothing. Messages can arrive while you work: take them into account before you answer.
+Post to the group with send_message, in short, plain messages. Everything else you write is a private scratchpad, and app results stay private here. A post that mentions members as [@Name] gives only them a turn; a post that mentions nobody gives every other member one. Posts meant for others reach you with your next turn, so you always have the whole conversation. Messages can arrive while you work: take them into account before you answer.
 `, name, group, group) + lookupSection + homeSection + judgementSection("then ask in the group with send_message; nobody sees questions asked any other way here") + `
 ### Other bots
 Reach a bot outside this group with message_bot; its answer arrives later as a new turn here, and a [reply from …] turn posts to the group too.`
@@ -121,6 +121,7 @@ func groupTurnPrompt(peers []string, messages []sessionevents.RoomMessageEvent) 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Also here: %s and the user.\n\nNew messages:\n", strings.Join(peers, ", "))
 	writeMessages(&b, messages)
+	b.WriteString(answerRule)
 	return b.String()
 }
 
@@ -130,9 +131,13 @@ func groupUpdatePrompt(messages []sessionevents.RoomMessageEvent) string {
 	var b strings.Builder
 	b.WriteString("New messages while you work:\n")
 	writeMessages(&b, messages)
-	b.WriteString("\nWork them into what you are doing. Post with send_message only when you add something new.")
+	b.WriteString("\nWork them into what you are doing." + answerRule)
 	return b.String()
 }
+
+// answerRule ends every group delivery. Codex keeps the instructions a thread
+// started with, so this is how its older group threads learn the rule.
+const answerRule = "\nAnswer each post that mentions you before your turn ends; post about the rest only when you add something new, and send nothing otherwise. A post with mentions gives only those members a turn, so to pass on work or a question, mention everyone who must act, including anyone you are answering."
 
 func writeMessages(b *strings.Builder, messages []sessionevents.RoomMessageEvent) {
 	for _, message := range messages {

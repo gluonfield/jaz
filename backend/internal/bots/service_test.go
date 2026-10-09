@@ -531,6 +531,44 @@ func TestAMembersPostReachesTheOthersAfterTheirTurnsEnd(t *testing.T) {
 	}
 }
 
+func TestAMentionGivesOnlyItsMemberATurnAndTheOthersSeeItLater(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	service := newTestService(world)
+	group, research, marketing := newGroup(t, service)
+	questions := 25
+
+	// The composer links its mentions; bots write bare names.
+	for i := range questions {
+		mention := []string{"[@Research](bot:a)", "[@Research]"}[i%2]
+		if err := service.Post(group.ID, fmt.Sprintf("%s question %d", mention, i), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	world.settle(t)
+	if world.promptCount(research) == 0 || world.promptCount(marketing) != 0 {
+		t.Fatalf("Research took %d turns and Marketing %d", world.promptCount(research), world.promptCount(marketing))
+	}
+	// Naming itself addresses nobody else, so the post reaches every member.
+	if err := service.Say(research, "I, [@Research], found the numbers."); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, func() bool { return world.promptCount(marketing) == 1 })
+	world.settle(t)
+	world.mu.Lock()
+	defer world.mu.Unlock()
+	prompt := world.prompts[marketing][0]
+	for i := range questions {
+		if !strings.Contains(prompt, fmt.Sprintf("question %d\n", i)) {
+			t.Fatalf("Marketing's turn lacks question %d:\n%s", i, prompt)
+		}
+	}
+	if !strings.Contains(prompt, "Research: I, [@Research](bot:a), found the numbers.") || len(world.prompts[marketing]) != 1 {
+		t.Fatalf("Marketing's turns: %q", world.prompts[marketing])
+	}
+}
+
 // progressDuringTurn has Research post three findings while it and Marketing
 // both work on their turns for the user's post.
 func progressDuringTurn(t *testing.T, world *fakeWorld, service *Service, group Bot, research, marketing string, releaseMarketing chan struct{}) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -16,8 +17,9 @@ import (
 var namedMention = regexp.MustCompile(`\[@([^\[\]\r\n]+)\]`)
 
 // linkMentions points each [@Name] that names exactly one member at that
-// member's bot, so the mention keeps its recipient when bots are renamed.
-func (s *Service) linkMentions(message string, members []string) string {
+// member's bot, so the mention keeps its recipient when bots are renamed, and
+// returns the members the message mentions.
+func (s *Service) linkMentions(message string, members []string) (string, []string) {
 	names := make(map[string]string, len(members))
 	for _, id := range members {
 		name := s.name(id)
@@ -25,6 +27,12 @@ func (s *Service) linkMentions(message string, members []string) string {
 			names[name] = ""
 		} else {
 			names[name] = id
+		}
+	}
+	var mentioned []string
+	mention := func(id string) {
+		if slices.Contains(members, id) && !slices.Contains(mentioned, id) {
+			mentioned = append(mentioned, id)
 		}
 	}
 	source := []byte(message)
@@ -36,7 +44,12 @@ func (s *Service) linkMentions(message string, members []string) string {
 			return ast.WalkContinue, nil
 		}
 		switch node := node.(type) {
-		case *ast.Link, *ast.CodeSpan, *ast.Image:
+		case *ast.Link:
+			if id, ok := strings.CutPrefix(string(node.Destination), "bot:"); ok {
+				mention(id)
+			}
+			return ast.WalkSkipChildren, nil
+		case *ast.CodeSpan, *ast.Image:
 			return ast.WalkSkipChildren, nil
 		case *ast.Text:
 			if previous, ok := node.PreviousSibling().(*ast.Text); ok && previous.Segment.Stop == node.Segment.Start {
@@ -53,6 +66,7 @@ func (s *Service) linkMentions(message string, members []string) string {
 			start := node.Segment.Start
 			for _, match := range namedMention.FindAllSubmatchIndex(source[start:end], -1) {
 				if id := names[mentionName(source[start+match[2]:start+match[3]])]; id != "" {
+					mention(id)
 					stop := start + match[1]
 					linked.Write(source[written:stop])
 					fmt.Fprintf(&linked, "(bot:%s)", id)
@@ -63,10 +77,10 @@ func (s *Service) linkMentions(message string, members []string) string {
 		return ast.WalkContinue, nil
 	})
 	if written == 0 {
-		return message
+		return message, mentioned
 	}
 	linked.Write(source[written:])
-	return linked.String()
+	return linked.String(), mentioned
 }
 
 func mentionName(raw []byte) string {
