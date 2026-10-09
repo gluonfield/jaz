@@ -19,6 +19,7 @@ import (
 	filesystemapi "github.com/wins/jaz/backend/internal/httpapi/filesystem"
 	hooksapi "github.com/wins/jaz/backend/internal/httpapi/hooks"
 	mcpappsapi "github.com/wins/jaz/backend/internal/httpapi/mcpapps"
+	mcpsearchapi "github.com/wins/jaz/backend/internal/httpapi/mcpsearch"
 	modelcapabilitiesapi "github.com/wins/jaz/backend/internal/httpapi/modelcapabilities"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
 	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
@@ -89,7 +90,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		)
 	}
 	routes = appendBrowserRoutes(routes, deps.BrowserSettings, deps.Browser, deps.Store)
-	routes = appendMCPAppRoutes(routes, deps.MCP)
+	routes = appendMCPRoutes(routes, deps.MCP)
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
 
@@ -106,7 +107,7 @@ func modelCapabilityRoutes(catalog *modelcatalog.Service) server.Routes {
 	}
 }
 
-func appendMCPAppRoutes(routes server.Routes, mcp *mcpruntime.Manager) server.Routes {
+func appendMCPRoutes(routes server.Routes, mcp *mcpruntime.Manager) server.Routes {
 	if mcp == nil {
 		return routes
 	}
@@ -115,6 +116,7 @@ func appendMCPAppRoutes(routes server.Routes, mcp *mcpruntime.Manager) server.Ro
 		server.Route{Pattern: "GET /v1/mcp/apps", Handler: httpHandlerFunc(handler.List)},
 		server.Route{Pattern: "GET /v1/mcp/apps/{server}/resource", Handler: httpHandlerFunc(handler.Resource)},
 		server.Route{Pattern: "POST /v1/mcp/apps/{server}/tools/call", Handler: httpHandlerFunc(handler.CallTool)},
+		server.Route{Pattern: "GET /v1/search/connections", Handler: mcpsearchapi.NewHandler(mcp)},
 	)
 }
 

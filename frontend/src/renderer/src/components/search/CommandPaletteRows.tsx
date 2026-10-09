@@ -2,7 +2,7 @@ import { motion, type Transition } from 'motion/react'
 import type { ReactNode } from 'react'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
 import { KeyboardShortcut } from '@/components/ui/KeyboardShortcut'
-import type { ThreadSearchResult } from '@/lib/api/types'
+import type { ConnectionSearchResult, ThreadSearchResult } from '@/lib/api/types'
 import { useShowModelIcons } from '@/lib/appearance'
 import { relativeTime } from '@/lib/format/time'
 import { threadSearchTitle } from '@/lib/threadDisplay'
@@ -154,6 +154,20 @@ export function ThreadRow({
       <span className="shrink-0 text-[13px] tabular-nums text-ink-3">
         {relativeTime(result.last_attention_at || result.updated_at)}
       </span>
+    </PaletteRow>
+  )
+}
+
+export function ConnectionRow({
+  result,
+  ...row
+}: {
+  result: ConnectionSearchResult
+} & Omit<PaletteRowProps, 'children'>) {
+  return (
+    <PaletteRow {...row}>
+      <span className="min-w-0 flex-1 truncate">{result.title}</span>
+      {result.text ? <span className="max-w-[45%] shrink-0 truncate text-[13px] text-ink-3">{result.text}</span> : null}
     </PaletteRow>
   )
 }

@@ -8,9 +8,9 @@ import {
   useExperimentalFeaturesEnabled,
   visibleSettingsSections,
 } from '@/components/settings/sections'
-import { searchThreads } from '@/lib/api/search'
+import { searchConnections, searchThreads } from '@/lib/api/search'
 import { keys } from '@/lib/query/keys'
-import type { PaletteCommand, PaletteThread } from './commandPaletteTypes'
+import type { PaletteCommand, PaletteSection, PaletteThread } from './commandPaletteTypes'
 
 function commandMatches(item: PaletteCommand, query: string): boolean {
   const needle = query.trim().toLocaleLowerCase()
@@ -108,10 +108,17 @@ export function useCommandPaletteItems({
     staleTime: 15_000,
   })
 
-  // Each section is its own typed list (rendering consumes them directly) plus
-  // a flat `items` whose order — commands, threads, archived threads — is the
-  // index space for keyboard navigation.
-  const { commandItems, threadItems, archivedItems, items } = useMemo(() => {
+  // Connected servers' search tools answer in sections of their own.
+  const connectionSearch = useQuery({
+    queryKey: keys.connectionSearch(debouncedQuery),
+    queryFn: ({ signal }) => searchConnections(debouncedQuery, signal),
+    enabled: searchEnabled,
+    staleTime: 15_000,
+  })
+
+  // Rendering consumes the commands and the result sections directly; the
+  // flat `items` in the same order is the index space for keyboard navigation.
+  const { commandItems, sections, items } = useMemo(() => {
     const baseItems = commands.filter((item) => commandMatches(item, query))
     const sectionItems = query.trim()
       ? settingsCommands.filter((item) => commandMatches(item, query))
@@ -125,23 +132,37 @@ export function useCommandPaletteItems({
             result,
           }))
         : []
-    const threadItems = threads.filter((item) => !item.result.archived)
-    const archivedItems = threads.filter((item) => item.result.archived)
+    const connections: PaletteSection[] =
+      searchEnabled && connectionSearch.data
+        ? connectionSearch.data.map((section) => ({
+            id: `connection-${section.server_id}`,
+            label: section.name,
+            app: { title: section.name, icon: section.icon },
+            items: section.results.map((result) => ({
+              id: `connection-${section.server_id}-${result.id}`,
+              kind: 'connection',
+              result,
+            })),
+          }))
+        : []
+    const sections: PaletteSection[] = [
+      { id: 'threads', label: 'Threads', items: threads.filter((item) => !item.result.archived) },
+      ...connections,
+      { id: 'archived', label: 'Archived', items: threads.filter((item) => item.result.archived) },
+    ].filter((section) => section.items.length > 0)
     return {
       commandItems,
-      threadItems,
-      archivedItems,
-      items: [...commandItems, ...threadItems, ...archivedItems],
+      sections,
+      items: [...commandItems, ...sections.flatMap((section) => section.items)],
     }
-  }, [commands, settingsCommands, query, searchEnabled, threadSearch.data])
+  }, [commands, settingsCommands, query, searchEnabled, threadSearch.data, connectionSearch.data])
 
   return {
     debouncedQuery,
     items,
     commandItems,
-    threadItems,
-    archivedItems,
+    sections,
     searchEnabled,
-    threadSearch,
+    searching: threadSearch.isFetching || connectionSearch.isFetching,
   }
 }
