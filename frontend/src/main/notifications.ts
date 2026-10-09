@@ -18,8 +18,7 @@ export function createThreadNotificationMonitor(openInMain: (path: string) => vo
   })
 }
 
-// The first notification makes macOS ask whether Jaz may notify; resolves false
-// when the system refuses it.
+// Resolves false when the system refuses to show the notification.
 export function sendTestNotification(): Promise<boolean> {
   return new Promise((resolve) => {
     const notification = new Notification({
@@ -38,5 +37,5 @@ export async function openNotificationSettings(): Promise<void> {
     return shell.openExternal('ms-settings:notifications')
   }
   const id = readFileSync(join(process.execPath, '../../Info.plist'), 'utf8').match(/<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)</)?.[1]
-  return shell.openExternal(`x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=${id}`)
+  return shell.openExternal(`x-apple.systempreferences:com.apple.preference.notifications?id=${id}`)
 }

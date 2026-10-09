@@ -4,6 +4,7 @@ import {
   BrowserWindow,
   Menu,
   type MenuItemConstructorOptions,
+  Notification,
   type Rectangle,
   type WebContents,
   app,
@@ -357,6 +358,9 @@ app.whenReady().then(() => {
   ipcMain.handle('jaz:configure-thread-notifications', (_event, config) =>
     threadNotifications.configure(config),
   )
+  // Creating Electron's notification presenter asks macOS for permission, so
+  // Jaz asks at launch rather than racing the prompt with its first notification.
+  Notification.isSupported()
   ipcMain.handle('jaz:notifications:test', () => sendTestNotification())
   ipcMain.handle('jaz:notifications:open-settings', () => openNotificationSettings())
   updates.registerIpc()
