@@ -1096,24 +1096,6 @@ func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
 	}
 }
 
-func TestManagerCreateSessionDoesNotLaunchAgent(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
-		Agents: map[string]acp.AgentConfig{
-			"claude": {Command: filepath.Join(t.TempDir(), "missing-agent"), Model: "opus"},
-		},
-	}, log.New(io.Discard))
-
-	if _, err := manager.CreateSession(context.Background(), acp.SpawnRequest{ACPAgent: "claude", Slug: "no-launch"}); err != nil {
-		t.Fatalf("create session launched the agent: %v", err)
-	}
-}
-
 func TestManagerSpawnAcceptsConfiguredClaudeModelLabel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

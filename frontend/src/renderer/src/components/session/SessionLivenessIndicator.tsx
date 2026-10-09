@@ -16,17 +16,19 @@ function detailFor(signal: RunSignal, ageMs: number | undefined): string {
   return ''
 }
 
+export type TurnActivity = 'starting' | 'thinking' | 'working'
+
 export function SessionLivenessIndicator({
   agent,
   running,
-  thinking = false,
+  activity = 'working',
   activeOperation,
   updatedAt,
   lastActivityAt,
 }: {
   agent?: string
   running: boolean
-  thinking?: boolean
+  activity?: TurnActivity
   activeOperation?: string
   updatedAt: string
   lastActivityAt?: string
@@ -47,7 +49,7 @@ export function SessionLivenessIndicator({
 
   const stale = signal === 'stale'
   const detail = detailFor(signal, ageMs)
-  const label = livenessLabel(agent, activeOperation, stale, thinking)
+  const label = livenessLabel(agent, activeOperation, stale, activity)
 
   return (
     <AnimatePresence initial={false}>
@@ -75,10 +77,11 @@ export function SessionLivenessIndicator({
   )
 }
 
-function livenessLabel(agent: string | undefined, activeOperation: string | undefined, stale: boolean, thinking: boolean): string {
+function livenessLabel(agent: string | undefined, activeOperation: string | undefined, stale: boolean, activity: TurnActivity): string {
   if (activeOperation === 'compact') {
     return stale ? 'Compaction is still marked running' : 'Compacting'
   }
   if (stale) return `${agentLabel(agent)} is still marked running`
-  return thinking ? 'Thinking' : 'Working'
+  if (activity === 'starting') return `Starting ${agentLabel(agent)}`
+  return activity === 'thinking' ? 'Thinking' : 'Working'
 }

@@ -8,11 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	sessionsapi "github.com/wins/jaz/backend/internal/httpapi/sessions"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/transcript"
 )
 
 func TestCreateACPSessionUsesTitleForInitialSlug(t *testing.T) {
@@ -116,5 +119,63 @@ func TestProjectlessChatsKeepSeparateFilesAfterRestart(t *testing.T) {
 		if res.Code != http.StatusOK || res.Body.String() != contents[i] {
 			t.Fatalf("file for chat %s = %d %q, want %q", session.ID, res.Code, res.Body.String(), contents[i])
 		}
+	}
+}
+
+func TestNewThreadOpensWhileAgentStarts(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	workspace := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(workspace, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	silentAgent := acp.AgentConfig{Command: "/bin/sh", Args: []string{"-c", "cat >/dev/null"}, Model: "opus"}
+	manager := acp.NewManager(store, acp.Config{
+		Root:      root,
+		Workspace: workspace,
+		Agents:    map[string]acp.AgentConfig{acp.AgentClaude: silentAgent},
+	}, nil)
+	t.Cleanup(manager.Close)
+	handler := (&Server{Store: store, ACP: manager, Routes: Routes{{
+		Pattern: "GET /v1/sessions/{session}/messages",
+		Handler: sessionsapi.NewMessagesHandler(transcript.NewService(store, manager)),
+	}}}).Handler()
+	serve := func(method, path, body string) []byte {
+		t.Helper()
+		res := httptest.NewRecorder()
+		done := make(chan struct{})
+		go func() {
+			handler.ServeHTTP(res, httptest.NewRequest(method, path, strings.NewReader(body)))
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s %s waited for the agent to start", method, path)
+		}
+		if res.Code != http.StatusOK {
+			t.Fatalf("%s %s status = %d, body = %s", method, path, res.Code, res.Body.String())
+		}
+		return res.Body.Bytes()
+	}
+
+	var session storage.Session
+	if err := json.Unmarshal(serve(http.MethodPost, "/v1/sessions", `{"agent":"claude"}`), &session); err != nil {
+		t.Fatal(err)
+	}
+	serve(http.MethodPost, "/v1/sessions/"+session.ID+"/queue", `{"op":"append","message":{"text":"hello"}}`)
+	var view struct {
+		Session  storage.Session `json:"session"`
+		ACPState string          `json:"acp_state"`
+	}
+	if err := json.Unmarshal(serve(http.MethodGet, "/v1/sessions/"+session.ID+"/messages", ""), &view); err != nil {
+		t.Fatal(err)
+	}
+	if view.Session.Status != storage.StatusRunning || view.ACPState != acp.StateStarting {
+		t.Fatalf("thread status = %q, acp state = %q; want running while the agent starts", view.Session.Status, view.ACPState)
 	}
 }

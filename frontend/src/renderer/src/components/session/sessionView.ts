@@ -17,6 +17,7 @@ import {
   taskSurfaceBelongsToSession,
 } from '@/lib/taskSurface'
 import { coalesceSessionEvents, sessionEventPlacement } from '@/lib/sessionEvents'
+import type { TurnActivity } from '@/components/session/SessionLivenessIndicator'
 import {
   activePermissionIDs,
   isPermissionAwaitingResponse,
@@ -322,6 +323,10 @@ export function deriveSessionView(
   const sideChatEvents = coalesceSessionEvents(
     [...persistedEvents, ...liveEvents].filter((event) => sessionEventPlacement(event) === 'side_chat'),
   )
+  // The snapshot says no agent has received the claimed prompt yet; the
+  // agent's first streamed event for this session ends that wait.
+  const agentStarting = acpState === 'starting' && !liveEvents.some((event) => event.acp?.id === session.id)
+  const activity: TurnActivity = agentStarting ? 'starting' : latestActivity?.type === 'acp_thought' ? 'thinking' : 'working'
   const agentSession = coalesceSessionEvents([
     ...(overview?.agent_events ?? []), ...persistedEvents, ...liveEvents,
   ]).findLast((event) => event.session_id === session.id && (event.agent_session || event.type === 'agent_switch'))?.agent_session
@@ -331,7 +336,7 @@ export function deriveSessionView(
     sideChatEvents,
     displayEvents,
     latestUserAt,
-    acpThinking: latestActivity?.type === 'acp_thought',
+    activity,
     planAvailable,
     planActive,
     goalAvailable,
