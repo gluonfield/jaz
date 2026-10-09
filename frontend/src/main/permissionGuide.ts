@@ -9,7 +9,13 @@ const PANES: Record<ComputerPermission, string> = {
   accessibility: 'Privacy_Accessibility',
   screenRecording: 'Privacy_ScreenCapture',
 }
-const SIZE = { width: 360, height: 76 }
+// Where the privacy list sits inside the System Settings window (macOS 26), so
+// the panel's row, inset by the page's MARGIN, lines up under it. The panel
+// window starts at the Settings window's bottom edge, where its arrow points
+// into the list.
+const LIST = { left: 243, right: 20 }
+const MARGIN = 12
+const HEIGHT = 172
 
 // Reports the largest on-screen System Settings window as "x y width height
 // front" on every change, and "none" once a reported window has been gone for
@@ -53,7 +59,8 @@ let close: (() => void) | undefined
 export async function guidePermission(permission: ComputerPermission, granted: () => boolean): Promise<void> {
   close?.()
   const panel = new BrowserWindow({
-    ...SIZE,
+    width: 480,
+    height: HEIGHT,
     show: false,
     frame: false,
     transparent: true,
@@ -129,10 +136,12 @@ export async function guidePermission(permission: ComputerPermission, granted: (
       return
     }
     const area = screen.getDisplayMatching({ x, y, width, height }).workArea
+    const panelWidth = Math.max(360, width - LIST.left - LIST.right + 2 * MARGIN)
     panel.setBounds({
-      ...SIZE,
-      x: Math.round(Math.min(Math.max(x + (width - SIZE.width) / 2, area.x), area.x + area.width - SIZE.width)),
-      y: Math.round(Math.min(y + height + 12, area.y + area.height - SIZE.height)),
+      width: panelWidth,
+      height: HEIGHT,
+      x: Math.round(Math.min(Math.max(x + LIST.left - MARGIN, area.x), area.x + area.width - panelWidth)),
+      y: Math.round(Math.min(y + height, area.y + area.height - HEIGHT)),
     })
     panel.showInactive()
   })

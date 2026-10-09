@@ -429,16 +429,25 @@ img.chat-prose-link-icon {
   }
 }
 
-/* Lifts the icon in the System Settings permission panel toward the list it
- * should be dragged into. */
-@keyframes permission-nudge {
+/* A ghost of Jaz's icon rising from the permission panel into the System
+ * Settings list it should be dragged to. */
+@keyframes permission-ghost {
   0%,
-  60%,
-  100% {
-    transform: translateY(0);
+  15% {
+    opacity: 0;
+    transform: translateY(0) scale(1);
   }
   30% {
-    transform: translateY(-4px);
+    opacity: 0.9;
+    transform: translateY(-8px) scale(1.15);
+  }
+  80% {
+    opacity: 0.9;
+    transform: translateY(-60px) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-72px) scale(1);
   }
 }
 
