@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -74,6 +75,44 @@ func TestSendDoesNotStartAgentWhenUserMessageCannotPersist(t *testing.T) {
 	}
 	if stored.Status != storage.StatusIdle || stored.Turn != nil {
 		t.Fatalf("session status = %q, turn = %+v, want idle without a turn", stored.Status, stored.Turn)
+	}
+}
+
+func TestSendDoesNotStartAgentWhenInitialEventsCannotPersist(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "persist-events-before-send", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const localAgent = "local"
+	manager := NewManager(&failOnceEventStore{Store: store, fail: true}, Config{
+		Agents: map[string]AgentConfig{localAgent: {Local: true}},
+	}, nil)
+	runner := recordingLocalRunner{called: make(chan struct{})}
+	manager.RegisterLocalAgent(localAgent, runner)
+	job := newIdleJob(session, localAgent, "runtime-session", "", ModeState{})
+	manager.addJob(job, nil)
+	finished := make(chan Job, 1)
+	manager.TurnFinished = func(_ context.Context, result Job) { finished <- result }
+
+	if _, err := manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case result := <-finished:
+		if result.State != StateFailed || !strings.Contains(result.Error, "injected event append failure") {
+			t.Fatalf("turn result = %s: %s", result.State, result.Error)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("failed turn was not completed")
+	}
+	select {
+	case <-runner.called:
+		t.Fatal("agent started without durable initial events")
+	default:
 	}
 }
 

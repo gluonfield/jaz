@@ -203,10 +203,14 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		}
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
-	job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation, opts.allowSilence)
+	done := job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation, opts.allowSilence)
 	m.touchAttention(parentSessionIDs(job.eventView())...)
 	markGoalRequested(job, req.GoalRequested)
-	m.publishACP(job.eventView())
+	if err := m.publishACP(job.eventView()); err != nil {
+		// Completion may need the caller's session lock; do not wait for it here.
+		go m.failPromptCall(done, job, fmt.Errorf("persist initial session events: %w", err))
+		return job.Snapshot(), nil
+	}
 	if local != nil {
 		go m.runLocalPrompt(context.WithoutCancel(ctx), job, local, promptMessage, req.Attachments)
 	} else {

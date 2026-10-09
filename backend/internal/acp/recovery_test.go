@@ -2,7 +2,6 @@ package acp_test
 
 import (
 	"context"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,10 +19,10 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-type unavailableEventStore struct{ acp.Store }
+type missingTranscriptStore struct{ acp.Store }
 
-func (s unavailableEventStore) AppendSessionEvents(string, ...sessionevents.Event) error {
-	return errors.New("transcript unavailable")
+func (s missingTranscriptStore) AppendSessionEvents(string, ...sessionevents.Event) error {
+	return nil
 }
 
 func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
@@ -40,7 +39,7 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 				if agent == acp.AgentCodex {
 					planConfig = "1"
 				}
-				first := newFakeNamedAgentManagerWithOptions(t, unavailableEventStore{Store: store}, root, agent, map[string]string{
+				first := newFakeNamedAgentManagerWithOptions(t, missingTranscriptStore{Store: store}, root, agent, map[string]string{
 					"JAZ_FAKE_ACP_BLOCK_PROMPT":    "1",
 					"JAZ_FAKE_ACP_PROMPT_QUEUEING": "1",
 					"JAZ_FAKE_ACP_PLAN_CONFIG":     planConfig,

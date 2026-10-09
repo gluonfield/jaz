@@ -35,7 +35,7 @@ func (m *Manager) publishSessionChanged(sessionID string) {
 	m.Events.Publish(sessionevents.Event{SessionID: sessionID, Type: sessionevents.TypeSession})
 }
 
-func (m *Manager) publishACP(job eventView) {
+func (m *Manager) publishACP(job eventView) error {
 	acp := eventFromView(job)
 	events := make([]sessionevents.Event, 0, 2)
 	for _, sessionID := range childSessionIDs(job) {
@@ -54,7 +54,7 @@ func (m *Manager) publishACP(job eventView) {
 			At:        time.Now().UTC(),
 		})
 	}
-	m.publishOrderedACPEvents(job, events...)
+	return m.publishOrderedACPEvents(job, events...)
 }
 
 func (m *Manager) publishACPStatus(job eventView) {
@@ -151,31 +151,36 @@ func (m *Manager) publishProviderSubagents(job eventView, subagents []sessioneve
 	m.publishOrderedACPEvents(job, events...)
 }
 
-func (m *Manager) publishOrderedACPEvents(job eventView, events ...sessionevents.Event) {
+func (m *Manager) publishOrderedACPEvents(job eventView, events ...sessionevents.Event) error {
+	var err error
 	m.withACPTranscriptBarrier(job, func() {
-		m.recordAndPublishEventListDirect(events)
+		err = m.recordAndPublishEventListDirect(events)
 	})
+	return err
 }
 
 func (m *Manager) recordAndPublishDirect(event sessionevents.Event) {
 	m.recordAndPublishEventListDirect([]sessionevents.Event{event})
 }
 
-func (m *Manager) recordAndPublishEventListDirect(events []sessionevents.Event) {
+func (m *Manager) recordAndPublishEventListDirect(events []sessionevents.Event) error {
 	for len(events) > 0 {
 		sessionID := events[0].SessionID
 		n := 1
 		for n < len(events) && events[n].SessionID == sessionID {
 			n++
 		}
-		m.recordAndPublishEventsDirect(sessionID, events[:n])
+		if err := m.recordAndPublishEventsDirect(sessionID, events[:n]); err != nil {
+			return err
+		}
 		events = events[n:]
 	}
+	return nil
 }
 
-func (m *Manager) recordAndPublishEventsDirect(sessionID string, events []sessionevents.Event) {
+func (m *Manager) recordAndPublishEventsDirect(sessionID string, events []sessionevents.Event) error {
 	if len(events) == 0 {
-		return
+		return nil
 	}
 	now := time.Now().UTC()
 	projection := m.eventProjection(sessionID)
@@ -199,12 +204,12 @@ func (m *Manager) recordAndPublishEventsDirect(sessionID string, events []sessio
 	if sessionID != "" {
 		if err := m.store.AppendSessionEvents(sessionID, storedEvents...); err != nil {
 			m.log.Error("persist session events", "session", sessionID, "error", err)
-			return
+			return err
 		}
 	}
 	projection.annotator = annotator
 	if m.Events == nil {
-		return
+		return nil
 	}
 	for i := range events {
 		events[i].Seq = storedEvents[i].Seq
@@ -214,6 +219,7 @@ func (m *Manager) recordAndPublishEventsDirect(sessionID string, events []sessio
 		}
 		m.Events.Publish(events[i])
 	}
+	return nil
 }
 
 func (m *Manager) eventProjection(sessionID string) *eventProjection {
