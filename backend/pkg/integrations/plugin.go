@@ -106,6 +106,10 @@ func (p Plugin) PrimaryAuthKind() AuthKind {
 	return p.Auth[0].Kind
 }
 
+func (p Plugin) Available() bool {
+	return p.Implementation.Status == "available"
+}
+
 func (p Plugin) UsesConnectionMCP() bool {
 	if p.RemoteMCP == nil {
 		return false
