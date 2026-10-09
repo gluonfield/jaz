@@ -1,18 +1,19 @@
 import { exerciseFrameNavigation } from './links'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router'
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet } from '@tanstack/react-router'
 import { useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
+import { App } from '@/App'
 import { SidePanel } from '@/components/session/SidePanel'
 import { SessionTitlebar } from '@/components/session/SessionTitlebar'
 import { SidePanelDrawer } from '@/components/session/SidePanelDrawer'
-import { SidePanelStateProvider, useSidePanelState } from '@/components/session/SidePanelState'
+import { useSidePanelState } from '@/components/session/SidePanelState'
 import { FileReaderLinkProvider, PreviewLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { isPreviewWebviewPending, type PreviewWebviewElement } from '@/components/session/previewWebview'
 import type { Session } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { setApiBaseUrl } from '@/lib/api/client'
+import { connectRemote, disconnectBackend } from '@/lib/connection'
 import type { BrowserAction, BrowserActionResult } from '@/lib/browserApi'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { setThemePref } from '@/lib/theme'
@@ -25,6 +26,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
   document.body.append(element)
   const root = createRoot(element)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  queryClient.setQueryData(keys.onboardingState, { completed: true })
   queryClient.setQueryData(keys.browserSettings, { enabled: false, mode: 'desktop' })
   queryClient.setQueryData(keys.health, { capabilities: { session_file_read: true } })
   queryClient.setQueryData(keys.sessionRepo('tabs'), { git: false })
@@ -107,7 +109,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     </div>
   }
   const rootRoute = createRootRoute({
-    component: () => <BrowserWorkspace><SidePanelStateProvider><TitlebarProvider><Outlet /></TitlebarProvider></SidePanelStateProvider></BrowserWorkspace>,
+    component: () => <TitlebarProvider><Outlet /></TitlebarProvider>,
   })
   const chatRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -191,7 +193,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
   try {
     await window.smoke.resize(1440, 900)
     setThemePref('dark')
-    root.render(<QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>)
+    root.render(<QueryClientProvider client={queryClient}><App router={router} /></QueryClientProvider>)
     await until(() => Boolean(button('Side Panel')))
     await click(element.querySelector('[data-tab-chat] [role="link"]'))
     await until(() => panel?.activeTab?.kind === 'file' && Boolean(element.querySelector('[role="tabpanel"] h1')))
@@ -644,6 +646,20 @@ await tab.cdp.send('Runtime.evaluate', { expression: 'window.visibilityProbe += 
       throw new Error('First bot navigation succeeded without showing its browser panel')
     }
     await window.smoke.capture('fresh-bot-browser')
+    const botID = webview('browser-background').getWebContentsId()
+    disconnectBackend()
+    await until(() => !document.querySelector('[data-tab-chat]'))
+    if (await connectRemote(location.origin)) {
+      throw new Error('The smoke backend did not reconnect')
+    }
+    setApiBaseUrl(backend)
+    await until(() => panel.open && panel.activeTab?.id === 'browser-background' && !document.querySelector<HTMLElement>('[data-browser-session="browser-background"]')!.inert)
+    if (webview('browser-background').getWebContentsId() !== botID || webview('tabs').getWebContentsId() !== agentID || await evaluate(agentView, 'window.visibilityProbe') !== 74) {
+      throw new Error('A dropped backend connection replaced the agents\' browsers')
+    }
+    await action({ action: 'state' })
+    await navigate('tabs')
+    await until(shown)
   } catch (error) {
     await window.smoke.capture('side-panel-tabs-failure')
     throw error
