@@ -165,6 +165,23 @@ function Fixture() {
       if (!clicked) {
         throw new Error('Expected one trusted click with hover')
       }
+      stage = 'agent typing stays in the page while the composer keeps focus'
+      const draft = document.createElement('textarea')
+      draft.value = 'my draft'
+      document.body.append(draft)
+      draft.focus()
+      await evaluate(`document.body.prepend(Object.assign(document.createElement('input'), { id: 'agent-input' }))
+document.querySelector('#agent-input').focus()`)
+      await browser.call({ method: 'Input.insertText', params: { text: 'agent' } })
+      for (const type of ['keyDown', 'keyUp']) {
+        await browser.call({ method: 'Input.dispatchKeyEvent', params: { type, key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 } })
+      }
+      const typed = await evaluate(`document.querySelector('#agent-input').value`)
+      if (typed !== 'agen' || draft.value !== 'my draft' || document.activeElement !== draft) {
+        throw new Error(`Agent keyboard input left the page: page ${JSON.stringify(typed)}, composer ${JSON.stringify(draft.value)}, composer focused ${document.activeElement === draft}`)
+      }
+      draft.remove()
+      await evaluate(`document.querySelector('#agent-input').remove()`)
       await window.smoke.capture()
       const script = await browser.call({ method: 'Jaz.run', params: { code: 'const smokeCount = 7\nnodeRepl.write(smokeCount)' } }) as { text: string }
       if (!script.text.includes('7')) {
@@ -296,7 +313,7 @@ await tab.scroll('down', 0, targetRef)` } })
       browser.dispose()
       window.smoke.result({ ok: true, checks: [
           'side panel tabs: files, multiple browsers, side-chat drafts, persistent terminal, keyboard and mobile controls',
-          'Overview and tabs are exclusive; independent browser tabs preserve agent control and reopen after close','new-tab links stay in Jaz without replacing preview; popup callbacks and session are preserved', 'annotation survives renderer updates and reaches the composer; cancellation cleans up', 'browser opening collapses navigation, wider defaults, pointer and keyboard resizing', 'HTTPS password save/update/fill/delete, encrypted reload, consent and origin isolation', 'Chromium AX hierarchy, diffs, hidden-frame exclusion and root-index scrolling', 'trusted AX clicks on wrapped text, closed shadows and nested frames', 'hit-tested coordinates and obscured-target rejection', 'nested debugger sessions survive document replacement', 'native Chromium identity across first navigation, fetch, page, worker and client hints', 'cursor arrival precedes input', 'trusted click and hover', 'persistent direct CDP without overlay movement', 'zero scroll animates and hovers without scrolling', 'animated and raw-command cancellation', 'cancellation during preview URL resolution', 'webview ownership', 'MCP script through Go and Electron with verified page result', 'profile import rejects untrusted callers', 'encrypted cookies and passwords import with type selection and existing-login preservation', 'browser menu, profile selection, partial import retry, themes and narrow layout'] })
+          'Overview and tabs are exclusive; independent browser tabs preserve agent control and reopen after close','new-tab links stay in Jaz without replacing preview; popup callbacks and session are preserved', 'annotation survives renderer updates and reaches the composer; cancellation cleans up', 'browser opening collapses navigation, wider defaults, pointer and keyboard resizing', 'HTTPS password save/update/fill/delete, encrypted reload, consent and origin isolation', 'Chromium AX hierarchy, diffs, hidden-frame exclusion and root-index scrolling', 'trusted AX clicks on wrapped text, closed shadows and nested frames', 'hit-tested coordinates and obscured-target rejection', 'nested debugger sessions survive document replacement', 'native Chromium identity across first navigation, fetch, page, worker and client hints', 'cursor arrival precedes input', 'trusted click and hover', 'agent typing reaches the page while the composer keeps focus and its draft', 'persistent direct CDP without overlay movement', 'zero scroll animates and hovers without scrolling', 'animated and raw-command cancellation', 'cancellation during preview URL resolution', 'webview ownership', 'MCP script through Go and Electron with verified page result', 'profile import rejects untrusted callers', 'encrypted cookies and passwords import with type selection and existing-login preservation', 'browser menu, profile selection, partial import retry, themes and narrow layout'] })
     }
     void run().catch((error) => window.smoke.result({ ok: false, error: error.message, stack: error.stack, stage, pending: [...pending.values()] })).finally(() => clearTimeout(timeout))
   }, [browser])
