@@ -71,10 +71,27 @@ func TestServiceAddsAgentRelevantPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(connections) != 3 {
+	var accounts []AgentConnection
+	offered := map[string]AgentConnection{}
+	for _, connection := range connections {
+		if connection.Account == "" {
+			offered[connection.PluginID] = connection
+		} else {
+			accounts = append(accounts, connection)
+		}
+	}
+	if len(accounts) != 3 {
 		t.Fatalf("agent connections = %#v", connections)
 	}
-	for _, connection := range connections {
+	if slack, ok := offered[slackconnector.ProviderID]; !ok || slack.ProviderName != "Slack" || slack.RelevantPaths != nil {
+		t.Fatalf("unconnected slack is not offered: %#v", connections)
+	}
+	for _, connected := range []string{gmailconnector.ProviderID, telegram.ProviderID, whatsapp.ProviderID} {
+		if _, ok := offered[connected]; ok {
+			t.Fatalf("connected %s is offered: %#v", connected, connections)
+		}
+	}
+	for _, connection := range accounts {
 		switch connection.ProviderID {
 		case telegram.ProviderID:
 			if len(connection.RelevantPaths) != 2 ||

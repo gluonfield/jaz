@@ -128,10 +128,11 @@ Device: {{ .Device }}
 
 ## connections
 
-Connected accounts and agent-relevant memory paths:
+Connected accounts, agent-relevant memory paths, and providers available to connect:
 Use the available memory search tool first. `memory_page` entries are directly readable with the available get-page tool; `memory_prefix` entries identify materialized source-page roots to search before reading exact returned pages.
+When a task needs a provider that is not connected, write its connect link alone on its own line; Jaz renders it as a card the user clicks to connect. Inside a code span the link stays copyable text.
 {{ range . }}
-- {{ .ProviderName }}: {{ .Account }}
+- {{ .ProviderName }}: {{ if .Account }}{{ .Account }}{{ else }}not connected, jaz://connect/{{ .PluginID }}{{ end }}
 {{ range .RelevantPaths }}
   - `{{ .Path }}`{{ if .Kind }} ({{ .Kind }}){{ end }}: {{ .Explanation }}
 {{ end }}

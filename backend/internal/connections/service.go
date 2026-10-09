@@ -107,29 +107,29 @@ func (s *Service) DisconnectAccount(ctx context.Context, id string) (DisconnectR
 	return DisconnectResult{MCPServersChanged: usesConnectionMCP}, nil
 }
 
+// AgentConnections lists every connected account, and one entry without an
+// account for each available provider that has none, so agents can offer it.
 func (s *Service) AgentConnections(ctx context.Context) ([]AgentConnection, error) {
-	plugins := s.catalog.ListPlugins()
+	plugins, err := s.ListPlugins(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var out []AgentConnection
 	for _, plugin := range plugins {
-		providerID := plugin.Provider.ID
-		if providerID == "" {
+		if plugin.Connection == nil {
 			continue
 		}
-		accounts, err := s.store.ListConnections(ctx, providerID)
-		if err != nil {
-			return nil, err
+		connection := AgentConnection{PluginID: plugin.ID, ProviderID: plugin.Provider.ID, ProviderName: plugin.Provider.Name}
+		if connection.ProviderName == "" {
+			connection.ProviderName = plugin.Name
 		}
-		providerName := plugin.Provider.Name
-		if providerName == "" {
-			providerName = plugin.Name
+		if len(plugin.Connection.Accounts) == 0 && plugin.Implementation.Status == "available" {
+			out = append(out, connection)
 		}
-		for _, account := range accounts {
-			out = append(out, AgentConnection{
-				ProviderID:    providerID,
-				ProviderName:  providerName,
-				Account:       accountLabel(account),
-				RelevantPaths: s.relevantPaths(account),
-			})
+		for _, account := range plugin.Connection.Accounts {
+			connection.Account = accountLabel(account)
+			connection.RelevantPaths = s.relevantPaths(account)
+			out = append(out, connection)
 		}
 	}
 	return out, nil
