@@ -429,25 +429,25 @@ img.chat-prose-link-icon {
   }
 }
 
-/* A ghost of Jaz's icon rising from the permission panel into the System
- * Settings list it should be dragged to. */
+/* A ghost of Jaz's icon travelling from the permission panel into the System
+ * Settings list it should be dragged to, by (--ghost-x, --ghost-y). */
 @keyframes permission-ghost {
   0%,
   15% {
     opacity: 0;
-    transform: translateY(0) scale(1);
+    transform: translate(0, 0) scale(1);
   }
   30% {
     opacity: 0.9;
-    transform: translateY(-8px) scale(1.15);
+    transform: translate(calc(var(--ghost-x) * 0.12), calc(var(--ghost-y) * 0.12)) scale(1.15);
   }
   80% {
     opacity: 0.9;
-    transform: translateY(-60px) scale(1.15);
+    transform: translate(calc(var(--ghost-x) * 0.88), calc(var(--ghost-y) * 0.88)) scale(1.15);
   }
   100% {
     opacity: 0;
-    transform: translateY(-72px) scale(1);
+    transform: translate(var(--ghost-x), var(--ghost-y)) scale(1);
   }
 }
 

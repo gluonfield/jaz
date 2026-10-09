@@ -9,13 +9,14 @@ const PANES: Record<ComputerPermission, string> = {
   accessibility: 'Privacy_Accessibility',
   screenRecording: 'Privacy_ScreenCapture',
 }
-// Where the privacy list sits inside the System Settings window (macOS 26), so
-// the panel's row, inset by the page's MARGIN, lines up under it. The panel
-// window starts at the Settings window's bottom edge, where its arrow points
-// into the list.
-const LIST = { left: 243, right: 20 }
-const MARGIN = 12
-const HEIGHT = 172
+// Where the privacy list sits inside the System Settings window on macOS 26.
+const LIST = { left: 243, right: 20, firstRow: 108 }
+// The panel docks beside the window with its row level with the list's first
+// row (43px down the panel) and its arrow touching the window's right edge.
+// Without room there it docks under the window, spanning the list's width
+// inside a 12px margin, its arrow touching the bottom edge.
+const SIDE = { width: 360, height: 150, row: 43 }
+const BELOW = { margin: 12, height: 172 }
 
 // Reports the largest on-screen System Settings window as "x y width height
 // front" on every change, and "none" once a reported window has been gone for
@@ -54,13 +55,11 @@ while ($.getppid() === parent) {
 
 let close: (() => void) | undefined
 
-// Opens the permission's System Settings list with a panel docked under the
+// Opens the permission's System Settings list with a panel docked to the
 // window: dragging Jaz from the panel into the list grants the permission.
 export async function guidePermission(permission: ComputerPermission, granted: () => boolean): Promise<void> {
   close?.()
   const panel = new BrowserWindow({
-    width: 480,
-    height: HEIGHT,
     show: false,
     frame: false,
     transparent: true,
@@ -124,6 +123,7 @@ export async function guidePermission(permission: ComputerPermission, granted: (
   ipcMain.on(PERMISSION_GUIDE_CHANNEL + 'close', dismiss)
   panel.once('closed', finish)
   tracker.once('error', finish)
+  let side: boolean | undefined
   lines.on('line', (line) => {
     clearTimeout(abandoned)
     if (line === 'none') {
@@ -136,19 +136,24 @@ export async function guidePermission(permission: ComputerPermission, granted: (
       return
     }
     const area = screen.getDisplayMatching({ x, y, width, height }).workArea
-    const panelWidth = Math.max(360, width - LIST.left - LIST.right + 2 * MARGIN)
+    if (side === undefined) {
+      side = x + width + SIDE.width <= area.x + area.width
+      const search = side ? 'side' : ''
+      if (process.env.ELECTRON_RENDERER_URL) {
+        void panel.loadURL(`${process.env.ELECTRON_RENDERER_URL}?${search}#${permission}`)
+      } else {
+        void panel.loadFile(join(__dirname, '../renderer/index.html'), { search, hash: permission })
+      }
+    }
+    const bounds = side
+      ? { width: SIDE.width, height: SIDE.height, x: x + width, y: y + LIST.firstRow - SIDE.row }
+      : { width: Math.max(360, width - LIST.left - LIST.right + 2 * BELOW.margin), height: BELOW.height, x: x + LIST.left - BELOW.margin, y: y + height }
     panel.setBounds({
-      width: panelWidth,
-      height: HEIGHT,
-      x: Math.round(Math.min(Math.max(x + LIST.left - MARGIN, area.x), area.x + area.width - panelWidth)),
-      y: Math.round(Math.min(y + height, area.y + area.height - HEIGHT)),
+      ...bounds,
+      x: Math.round(Math.min(Math.max(bounds.x, area.x), area.x + area.width - bounds.width)),
+      y: Math.round(Math.min(Math.max(bounds.y, area.y), area.y + area.height - bounds.height)),
     })
     panel.showInactive()
   })
-  if (process.env.ELECTRON_RENDERER_URL) {
-    void panel.loadURL(`${process.env.ELECTRON_RENDERER_URL}#${permission}`)
-  } else {
-    void panel.loadFile(join(__dirname, '../renderer/index.html'), { hash: permission })
-  }
   await shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${PANES[permission]}`)
 }
