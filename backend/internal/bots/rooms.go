@@ -119,7 +119,7 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 	}
 	note := ""
 	if agentsChangedSince(thread, shown) {
-		note = relearnNote
+		note = rereadNote
 	}
 	if thread.Turn != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), steerTimeout)

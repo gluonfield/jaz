@@ -78,3 +78,12 @@ Codex keeps the instructions a thread started with (`promptPersistsOnRestore`), 
 A bot's own chat and its group threads are separate agent sessions in one home, and the agents load the home's AGENTS.md natively: Claude Code 2.1.289 as project instructions, but only when no CLAUDE.md sits above the home (none does under `~/.jaz/bots`); Codex as its AGENTS.md instructions. They load it when a session starts. Claude reloads it at its next session start; a Codex routine turn ran on the old copy 16 hours after an edit, and the new one arrived about 7 hours later. The home section of both identities now makes the home the bot's memory: taught rules and facts go in AGENTS.md, longer material in files AGENTS.md lists, saved before the bot says it is saved. A group delivery opens with a reread note when AGENTS.md changed after the last group message the member was shown; a new group thread loads the current file itself. Taught in a group, the bot's own chat sees it from its next session start. Codex threads keep the identity they started with, so existing Codex bots keep the old home section; the reread note reaches them.
 
 Verification: full Go tests and vet pass; bot tests pass 30 times plain and 10 under race. The regression fails when the change check always reports a change (unchanged file flagged) and when it never does (teaching missed). Live Claude Code probe in a home with the same parent chain as `~/.jaz/bots`: told to remember three facts, the 1:1 session wrote them to AGENTS.md before confirming; a fresh session with the group identity and every file tool blocked answered all three.
+
+### Requested Strict Review
+
+- [x] Audit the change for structure, duplicated rules and naming.
+- [x] Fix confirmed findings, verify and commit.
+
+The group identity restated, in one clause, what the shared home section says in full; the clause is gone. The note constant is named for what it asks (reread). Kept: the time of the last shown message returned by `unseen`, its only caller, since a stored column or a second event scan adds more; the cwd guard, because delivery runs in a goroutine and an empty cwd would stat the server's own directory; and the note composed once in `deliverLocked` rather than a flag on both prompt builders.
+
+Verification: go vet and bot tests pass 20 times plain and 5 under race.

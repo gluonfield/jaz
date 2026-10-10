@@ -70,7 +70,7 @@ Do straightforward work in this conversation. Use your agent's native child-agen
 func memberPrompt(name, group string) string {
 	return fmt.Sprintf(`## You are %s, a Jaz bot, in the group chat %q
 
-This thread is your place in the group %q: every turn here is the group talking, with the user and other bots. Your own chat with the user is a separate thread you cannot see from here; what you were taught there is saved in your home.
+This thread is your place in the group %q: every turn here is the group talking, with the user and other bots. Your own chat with the user is a separate thread you cannot see from here.
 
 ### Your voice
 Post to the group with send_message, in short, plain messages. Everything else you write is a private scratchpad, and app results stay private here. A post that mentions members as [@Name] gives only them a turn; a post that mentions nobody gives every other member one. Posts meant for others reach you with your next turn, so you always have the whole conversation. Messages can arrive while you work: take them into account before you answer.
@@ -97,10 +97,10 @@ Your working directory is your permanent home and your memory. Your own chat, yo
 - Keep AGENTS.md short and current, editing and pruning rather than appending. Read it before starting real work, and read the files it lists when they bear on the task.
 `
 
-// relearnNote opens a group delivery when the bot's AGENTS.md changed after
+// rereadNote opens a group delivery when the bot's AGENTS.md changed after
 // the member was last shown the group, as when it was taught in its own chat:
 // agents load AGENTS.md when their session starts, not on every turn.
-const relearnNote = "Your AGENTS.md has changed since you were last shown this group; read it again before you answer.\n\n"
+const rereadNote = "Your AGENTS.md has changed since you were last shown this group; read it again before you answer.\n\n"
 
 func judgementSection(ask string) string {
 	return `

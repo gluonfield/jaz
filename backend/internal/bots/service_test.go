@@ -924,17 +924,17 @@ func TestAMemberTaughtOutsideTheGroupRereadsItsAgentsFileInItsNextGroupTurn(t *t
 	}
 
 	post("what do we know about pricing?")
-	if prompt := post("and churn?"); strings.Contains(prompt, relearnNote) {
+	if prompt := post("and churn?"); strings.Contains(prompt, rereadNote) {
 		t.Fatalf("told to reread an unchanged AGENTS.md:\n%s", prompt)
 	}
 	taught := time.Now()
 	if err := os.Chtimes(agents, taught, taught); err != nil {
 		t.Fatal(err)
 	}
-	if prompt := post("what should we charge?"); !strings.HasPrefix(prompt, relearnNote) {
+	if prompt := post("what should we charge?"); !strings.HasPrefix(prompt, rereadNote) {
 		t.Fatalf("the turn after teaching was not told to reread AGENTS.md:\n%s", prompt)
 	}
-	if prompt := post("thanks"); strings.Contains(prompt, relearnNote) {
+	if prompt := post("thanks"); strings.Contains(prompt, rereadNote) {
 		t.Fatalf("told again about a change already shown:\n%s", prompt)
 	}
 }
