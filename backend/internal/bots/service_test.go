@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -892,5 +894,47 @@ func TestRoutinesFromAGroupThreadBelongToItsBot(t *testing.T) {
 	_, research, _ := newGroup(t, service)
 	if owner, err := service.RoutineOwner(research, loops.CreateLoop{Name: "Watch prices"}); err != nil || owner != "a" {
 		t.Fatalf("owner = %q, %v", owner, err)
+	}
+}
+
+func TestAMemberTaughtOutsideTheGroupRereadsItsAgentsFileInItsNextGroupTurn(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	service := newTestService(world)
+	group, research, _ := newGroup(t, service)
+	home := t.TempDir()
+	agents := filepath.Join(home, "AGENTS.md")
+	if err := os.WriteFile(agents, []byte("# Research\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Like the manager, a bot's group thread works in the bot's home.
+	world.sessions[research].RuntimeRef.Cwd = home
+	post := func(text string) string {
+		t.Helper()
+		turns := world.promptCount(research)
+		if err := service.Post(group.ID, text, nil); err != nil {
+			t.Fatal(err)
+		}
+		waitUntil(t, func() bool { return world.promptCount(research) == turns+1 })
+		world.settle(t)
+		world.mu.Lock()
+		defer world.mu.Unlock()
+		return world.prompts[research][turns]
+	}
+
+	post("what do we know about pricing?")
+	if prompt := post("and churn?"); strings.Contains(prompt, relearnNote) {
+		t.Fatalf("told to reread an unchanged AGENTS.md:\n%s", prompt)
+	}
+	taught := time.Now()
+	if err := os.Chtimes(agents, taught, taught); err != nil {
+		t.Fatal(err)
+	}
+	if prompt := post("what should we charge?"); !strings.HasPrefix(prompt, relearnNote) {
+		t.Fatalf("the turn after teaching was not told to reread AGENTS.md:\n%s", prompt)
+	}
+	if prompt := post("thanks"); strings.Contains(prompt, relearnNote) {
+		t.Fatalf("told again about a change already shown:\n%s", prompt)
 	}
 }
