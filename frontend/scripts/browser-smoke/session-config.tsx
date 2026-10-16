@@ -125,6 +125,17 @@ export async function exerciseSessionConfig(): Promise<void> {
       messages: [], events: [], latest_event_seq: 0,
     })
     await until(() => Boolean(element.querySelector('.canvas')))
+    const chatToggle = () => element.querySelector<HTMLButtonElement>('button[aria-label$=" chat"]')!
+    const boardLeft = () => element.querySelector('.canvas')!.getBoundingClientRect().left
+    const chatBoardLeft = boardLeft()
+    chatToggle().click()
+    await until(() => chatToggle().getAttribute('aria-label') === 'Show chat' && boardLeft() < chatBoardLeft, 'Hiding the chat did not give the board its width')
+    const draft = element.querySelector('textarea')!.getBoundingClientRect()
+    if (element.querySelector('.scrollbar-quiet.overflow-y-auto')!.checkVisibility({ visibilityProperty: true }) || !document.elementFromPoint(draft.x + draft.width / 2, draft.y + draft.height / 2)?.closest('textarea')) {
+      throw new Error('Hiding the chat did not leave only the composer')
+    }
+    chatToggle().click()
+    await until(() => chatToggle().getAttribute('aria-label') === 'Hide chat' && boardLeft() === chatBoardLeft)
     const panelButton = element.querySelector<HTMLButtonElement>('button[aria-label="Side Panel"]')
     if (!panelButton || !element.querySelector('button[aria-label="Overview"]')) {
       throw new Error('Canvas mode hides the side panel controls')

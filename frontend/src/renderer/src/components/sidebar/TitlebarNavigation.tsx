@@ -15,35 +15,6 @@ const NewChatIcon = createLucideIcon('new-chat-rounded', [
   ['path', { d: 'm17 3-8.5 8.5L7 17l5.5-1.5L21 7a2.83 2.83 0 0 0-4-4Z', key: 'pen' }],
 ])
 
-export function PanelToggle({ label, shortcut, open, onToggle }: {
-  label: string
-  shortcut: string
-  open: boolean
-  onToggle: () => void
-}) {
-  const action = open ? 'Hide' : 'Show'
-  return (
-    <button
-      type="button"
-      aria-label={`${action} ${label}`}
-      aria-expanded={open}
-      title={`${action} ${label} (${shortcut})`}
-      onClick={onToggle}
-      className={CONTROL_CLASS}
-    >
-      <SidebarIcon className="size-4 max-sm:size-[18px]" strokeWidth={1.75} aria-hidden>
-        <path
-          d="M9 3H7a4 4 0 0 0-4 4v10a4 4 0 0 0 4 4h2Z"
-          fill="currentColor"
-          fillOpacity={open ? 1 : 0}
-          stroke="none"
-          className="transition-[fill-opacity] duration-150 motion-reduce:transition-none"
-        />
-      </SidebarIcon>
-    </button>
-  )
-}
-
 function subscribe(onChange: () => void) {
   window.navigation.addEventListener('currententrychange', onChange)
   return () => window.navigation.removeEventListener('currententrychange', onChange)
@@ -66,7 +37,26 @@ export function TitlebarNavigation({
 
   return (
     <div role="group" aria-label="Window navigation" className="flex items-center [&_svg]:stroke-[1.75]">
-      {hasPanel && <PanelToggle label="sidebar" shortcut="⌘S" open={panelOpen} onToggle={onToggleSidebar} />}
+      {hasPanel && (
+        <button
+          type="button"
+          aria-label={panelOpen ? 'Hide sidebar' : 'Show sidebar'}
+          aria-expanded={panelOpen}
+          title={`${panelOpen ? 'Hide' : 'Show'} sidebar (⌘S)`}
+          onClick={onToggleSidebar}
+          className={CONTROL_CLASS}
+        >
+          <SidebarIcon className="size-4 max-sm:size-[18px]" aria-hidden>
+            <path
+              d="M9 3H7a4 4 0 0 0-4 4v10a4 4 0 0 0 4 4h2Z"
+              fill="currentColor"
+              fillOpacity={panelOpen ? 1 : 0}
+              stroke="none"
+              className="transition-[fill-opacity] duration-150 motion-reduce:transition-none"
+            />
+          </SidebarIcon>
+        </button>
+      )}
       {!isMobile && (
         <>
           <button

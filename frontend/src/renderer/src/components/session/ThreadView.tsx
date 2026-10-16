@@ -12,7 +12,7 @@ import { useSessionConfig } from '@/components/session/useSessionConfig'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
-import { useCanvasChat } from '@/components/canvas/useCanvasChat'
+import { CanvasChatToggle, useCanvasChat } from '@/components/canvas/CanvasChat'
 import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
@@ -468,7 +468,6 @@ export function ThreadView({
             sideChatAvailable={sideChatAvailable}
             header={header}
             overviewLabel={details ? 'Details' : undefined}
-            chat={canvas ? canvasChat : undefined}
           />
           {/* Phone: the open panel covers the chat full-width, so the only
               non-panel area left is the title bar. This catches taps on its empty
@@ -479,14 +478,12 @@ export function ThreadView({
           {sidePanel.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
           {/* A canvas thread keeps its chat in a narrow column beside the board;
-              a hidden chat slides out past the left edge. */}
-          <div
-            inert={!canvasChat.shown}
-            className={`relative h-full min-w-0 ${canvas ? `w-[360px] shrink-0 border-r border-border transition-[margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none ${canvasChat.shown ? '' : '-ml-[360px]'}` : 'flex-1'}`}
-          >
+              a hidden chat leaves only its composer, floating over the board. */}
+          <div className={`h-full min-w-0 ${!canvas ? 'relative flex-1' : canvasChat.shown ? 'relative w-[360px] shrink-0 border-r border-border' : 'pointer-events-none absolute inset-y-0 left-0 z-10 w-[360px]'}`}>
             <div
               ref={attachScroll}
-              className="scrollbar-quiet relative z-0 h-full overflow-y-auto"
+              inert={!canvasChat.shown}
+              className={`scrollbar-quiet relative z-0 h-full overflow-y-auto ${canvasChat.shown ? '' : 'invisible'}`}
               onScroll={onThreadScroll}
               onClickCapture={onThreadClickCapture}
             >
@@ -587,8 +584,9 @@ export function ThreadView({
               </p>
             ) : null}
             <BottomDock
-              before={<ScrollToBottomButton visible={showScrollToBottom} onClick={scrollToBottom} />}
+              before={<ScrollToBottomButton visible={showScrollToBottom && canvasChat.shown} onClick={scrollToBottom} />}
               compact={canvas}
+              floating={!canvasChat.shown}
               onHeightChange={setBottomDockHeight}
             >
               <VoiceMode voice={voice} face={voice.bot?.avatar ?? null} />
@@ -642,6 +640,7 @@ export function ThreadView({
                     voiceActive={voice.phase !== 'off'}
                     onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
                     attachable={!canvas}
+                    leftSlot={canvas ? <CanvasChatToggle chat={canvasChat} /> : undefined}
                     onSteerQueuedPrompt={queue.onSteerQueuedPrompt}
                     onDeleteQueuedPrompt={queue.onDeleteQueuedPrompt}
                     onEditQueuedPrompt={queue.onEditQueuedPrompt}

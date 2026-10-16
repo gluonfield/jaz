@@ -604,6 +604,7 @@ export function Composer({
   onQueuePrompt,
   commands,
   optionsSlot,
+  leftSlot,
   attachable,
   chat,
   onStop,
@@ -637,6 +638,7 @@ export function Composer({
   onQueuePrompt?: SendMessageHandler
   commands?: AgentSessionCommand[]
   optionsSlot?: ReactNode
+  leftSlot?: ReactNode
   attachable?: boolean
   chat?: boolean
   onStop: () => void
@@ -689,6 +691,7 @@ export function Composer({
         onQueuePrompt={onQueuePrompt}
         commands={commands}
         optionsSlot={optionsSlot}
+        leftSlot={leftSlot}
         attachable={attachable}
         chat={chat}
         onStop={onStop}
