@@ -4,7 +4,6 @@ import { flushSync } from 'react-dom'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useBackendChange } from '@/lib/connection'
 import { modalDialogOpen } from '@/lib/dom/modal'
-import { isMobileViewport } from '@/lib/hooks/useIsMobile'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { isHTMLPath, parseFileReference, type FileReference } from '@shared/fileReader'
 import { entrypointKey, fileEntrypoint, mcpEntrypointsQuery } from '@/lib/api/mcp'
@@ -14,7 +13,6 @@ import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
 import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
-const PANEL_OPEN_KEY = 'jaz.sessionPanel'
 const PANEL_MAX_WIDTH = 1180
 const PANEL_MIN_THREAD_WIDTH = 360
 
@@ -27,9 +25,8 @@ export function SidePanelStateProvider({ children }: { children: ReactNode }) {
   return <PanelStates.Provider value={panels}>{children}</PanelStates.Provider>
 }
 
-// A panel starts open or closed as the user last left one, unless its owner
-// decides with `startOpen`; that choice and its toggles stay out of the shared
-// preference.
+// A thread's panel starts closed unless its owner opens it with `startOpen`,
+// then keeps its own state while the app runs.
 export function useSidePanelState(sessionId: string, sideChatAvailable = false, startOpen?: boolean) {
   const panels = useContext(PanelStates)
   if (!panels) {
@@ -59,16 +56,7 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false, 
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
-  const [open, setOpen] = useState(() => {
-    if (saved) {
-      return saved.open
-    }
-    if (startOpen !== undefined) {
-      return startOpen
-    }
-    const stored = localStorage.getItem(PANEL_OPEN_KEY)
-    return stored === 'open' ? true : stored === 'closed' ? false : !isMobileViewport()
-  })
+  const [open, setOpen] = useState(() => saved?.open ?? startOpen ?? false)
   const [mode, setMode] = useState<SidePanelMode>(saved?.mode ?? 'overview')
   const [widthOverride, setWidthOverride] = useState(saved?.widthOverride)
   const [resizing, setResizing] = useState(false)
@@ -88,12 +76,6 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false, 
   useLayoutEffect(() => {
     panels.set(sessionId, { state, open, mode, widthOverride })
   }, [panels, sessionId, state, open, mode, widthOverride])
-
-  useEffect(() => {
-    if (startOpen === undefined) {
-      localStorage.setItem(PANEL_OPEN_KEY, open ? 'open' : 'closed')
-    }
-  }, [open, startOpen])
 
   const showTabs = useCallback(() => {
     setSidebarOpen?.(false)

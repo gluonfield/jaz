@@ -490,8 +490,8 @@ export async function exerciseSidePanelTabs(): Promise<void> {
       await until(() => activeSessionId === sessionId)
     }
     await navigate('other-chat')
-    if (panel.tabs.length || panel.mode !== 'overview') {
-      throw new Error('A new chat inherited another chat\'s tabs or mode')
+    if (panel.open || panel.tabs.length || panel.mode !== 'overview') {
+      throw new Error('A new chat inherited another chat\'s open panel, tabs or mode')
     }
     if (!document.querySelector<HTMLElement>(`[data-browser-session="${retainedTabId}"]`)!.inert) {
       throw new Error('Navigating away left the previous chat browser active')
