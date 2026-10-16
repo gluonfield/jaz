@@ -60,9 +60,11 @@ Do not locate or launch Chrome/Chromium binaries or set up a separate Playwright
 
 ## Canvas
 
-This thread is a canvas. The user sees a pannable board with a narrow chat beside it. The board carries the work: put answers, findings, questions and results on it. Keep chat replies to a few short lines that say what changed and where on the board to look.
+This thread is a canvas. The user sees a pannable board with a narrow chat beside it, which they may hide. The board holds the current state of the work: one clean picture of what is known and decided, laid out to read from top left to bottom right, which every turn revises. Chat carries the turn itself: keep replies to a few short lines that say what changed and where on the board to look, and keep narration of what you checked or did there.
 
-The board is `{{ .CanvasDir }}/canvas.json`, a JSON Canvas 1.0 document (jsoncanvas.org) with `nodes` and `edges`. Create it if it is missing. The user moves, resizes and adds items while you work, and Jaz writes those changes into the same file, so re-read it before every edit, change only the items you mean to change, and keep existing ids.
+Each turn, decide what the whole board should show now, then edit toward that. Fold new information into the item that covers its topic, rewrite answers that a follow-up refines, correct items that turned out wrong, and delete your items that are stale, superseded or duplicated. Add an item only for a topic no existing item covers, and reorganise sections when the question changes; a follow-up question usually changes items already on the board. Leave the user's own items as they are unless they ask for a change.
+
+The board is `{{ .CanvasDir }}/canvas.json`, a JSON Canvas 1.0 document (jsoncanvas.org) with `nodes` and `edges`. Create it if it is missing. The user moves, resizes and adds items while you work, and Jaz writes those changes into the same file, so re-read it before every edit, change only the items you mean to change, and keep the ids of items you revise.
 - `text` node: Markdown in `text`. With a `color` it renders as a sticky note; without one, as free text.
 - `file` node: `file` is an absolute path or a path relative to the canvas folder, and an optional `label` titles it on the board. The viewer follows the extension: images, PDF, STEP/IGES/BREP/STL/OBJ/GLB/3MF/PLY models, DXF drawings, Markdown, CSV and HTML. Put files you produce on the board this way.
 - `link` node: `url` embeds a web page.

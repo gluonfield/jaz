@@ -110,6 +110,11 @@ document.querySelector('button').onclick = () => {
     await until(() => Boolean(node('report')?.querySelector('p')))
     await new Promise((resolve) => setTimeout(resolve, 100))
     await until(() => Boolean(node('cad')?.textContent?.includes('Could not open STL')))
+    const reportLeft = node('report').getBoundingClientRect().left
+    for (const edge of ['360px', '0px']) {
+      element.style.left = edge
+      await until(() => Math.abs(node('report').getBoundingClientRect().left - reportLeft) < 1, `Items moved on screen when the board edge moved to ${edge}`)
+    }
     const status = node('cad').querySelector<HTMLElement>('.canvas-viewer-toolbar')!
     if (getComputedStyle(status).opacity === '0') {
       throw new Error('The CAD load error is hidden until the item is hovered or selected')

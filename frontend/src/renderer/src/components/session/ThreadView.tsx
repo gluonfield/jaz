@@ -12,6 +12,7 @@ import { useSessionConfig } from '@/components/session/useSessionConfig'
 import { SelectionContextToolbar } from '@/components/session/SelectionContextToolbar'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
+import { useCanvasChat } from '@/components/canvas/useCanvasChat'
 import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
@@ -373,6 +374,7 @@ export function ThreadView({
     () => (data ? deriveSessionView(data, events.data, overviewData) : undefined),
     [data, events.data, overviewData],
   )
+  const canvasChat = useCanvasChat(canvas, Boolean(derived?.hasBlockingPendingPermission))
   if (detail.isPending) {
     return <PendingSessionHistory sessionId={sessionId} initialPrompt={initialPrompt} />
   }
@@ -466,6 +468,7 @@ export function ThreadView({
             sideChatAvailable={sideChatAvailable}
             header={header}
             overviewLabel={details ? 'Details' : undefined}
+            chat={canvas ? canvasChat : undefined}
           />
           {/* Phone: the open panel covers the chat full-width, so the only
               non-panel area left is the title bar. This catches taps on its empty
@@ -475,8 +478,12 @@ export function ThreadView({
           ) : null}
           {sidePanel.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
-          {/* A canvas thread keeps its chat in a narrow column beside the board. */}
-          <div className={`relative h-full min-w-0 ${canvas ? 'w-[360px] shrink-0 border-r border-border' : 'flex-1'}`}>
+          {/* A canvas thread keeps its chat in a narrow column beside the board;
+              a hidden chat slides out past the left edge. */}
+          <div
+            inert={!canvasChat.shown}
+            className={`relative h-full min-w-0 ${canvas ? `w-[360px] shrink-0 border-r border-border transition-[margin] duration-200 ease-[cubic-bezier(0.4,0,0.2,1)] motion-reduce:transition-none ${canvasChat.shown ? '' : '-ml-[360px]'}` : 'flex-1'}`}
+          >
             <div
               ref={attachScroll}
               className="scrollbar-quiet relative z-0 h-full overflow-y-auto"

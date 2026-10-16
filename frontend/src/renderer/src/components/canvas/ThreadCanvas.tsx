@@ -91,6 +91,22 @@ function Board({ sessionId, selection, onSelect, onPrompt, view, local, commit, 
   const theme = useArtifactThemeCSS()
   const container = useRef<HTMLDivElement>(null)
   const { flash, news, show, touch } = useAgentFollow(view, local, container)
+  // The chat or sidebar opening beside the board moves its left edge; the
+  // camera moves with it so items stay where they are on screen.
+  useEffect(() => {
+    const element = container.current
+    if (!element) return
+    let left = element.getBoundingClientRect().left
+    const observer = new ResizeObserver(() => {
+      const next = element.getBoundingClientRect().left
+      if (next === left) return
+      const { x, y, zoom } = flow.getViewport()
+      void flow.setViewport({ x: x + left - next, y, zoom })
+      left = next
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [flow])
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
