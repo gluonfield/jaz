@@ -27,7 +27,7 @@ export function SidePanelStateProvider({ children }: { children: ReactNode }) {
 
 // A thread's panel starts closed unless its owner opens it with `startOpen`,
 // then keeps its own state while the app runs.
-export function useSidePanelState(sessionId: string, sideChatAvailable = false, startOpen?: boolean) {
+export function useSidePanelState(sessionId: string, sideChatAvailable = false, startOpen = false) {
   const panels = useContext(PanelStates)
   if (!panels) {
     throw new Error('Side panel state requires SidePanelStateProvider')
@@ -56,7 +56,7 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false, 
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
-  const [open, setOpen] = useState(() => saved?.open ?? startOpen ?? false)
+  const [open, setOpen] = useState(() => saved?.open ?? startOpen)
   const [mode, setMode] = useState<SidePanelMode>(saved?.mode ?? 'overview')
   const [widthOverride, setWidthOverride] = useState(saved?.widthOverride)
   const [resizing, setResizing] = useState(false)

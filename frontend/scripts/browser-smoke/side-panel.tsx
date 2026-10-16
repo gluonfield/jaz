@@ -81,7 +81,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
   const noop = async () => {}
   function Chat({ sessionId }: { sessionId: string }) {
     chatRenders += 1
-    const state = useSidePanelState(sessionId, true, sessionId === 'browser-background' ? false : undefined)
+    const state = useSidePanelState(sessionId, true)
     const currentSession = { ...session, id: sessionId }
     const isMobile = useIsMobile()
     useLayoutEffect(() => {

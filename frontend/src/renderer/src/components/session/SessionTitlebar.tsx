@@ -1,5 +1,6 @@
 import { type ReactNode, useMemo } from 'react'
 import { SidePanelControl } from '@/components/session/SidePanelControl'
+import type { useCanvasChat } from '@/components/canvas/useCanvasChat'
 import type { useSidePanelState } from '@/components/session/SidePanelState'
 import { SidePanelTabs } from '@/components/session/SidePanelTabs'
 import { TokenStats } from '@/components/session/TokenStats'
@@ -15,7 +16,7 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
   sideChatAvailable: boolean
   header?: ReactNode
   overviewLabel?: string
-  chat?: { shown: boolean; toggle: () => void }
+  chat?: ReturnType<typeof useCanvasChat>
 }) {
   const { open, mode, tabs, activeTab, width, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode } = panel
   const activeId = activeTab?.id
