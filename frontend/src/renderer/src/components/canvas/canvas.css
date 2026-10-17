@@ -368,11 +368,15 @@
   inset: 0;
 }
 
-/* Stickies stay paper-coloured in both themes, so their ink stays dark. */
+/* Stickies stay paper-coloured in both themes, so their ink stays dark and
+ * tables and code sit on a lighter wash of the paper. */
 .canvas-sticky {
   --color-ink: oklch(0.23 0.012 264);
   --color-ink-2: oklch(0.38 0.012 264);
   --color-ink-3: oklch(0.46 0.012 264);
+  --color-surface: color-mix(in oklab, #fff 50%, transparent);
+  --color-surface-2: color-mix(in oklab, #fff 55%, transparent);
+  --color-border: color-mix(in oklab, var(--color-ink) 16%, transparent);
   padding: 16px;
   border-radius: 4px;
   font-size: 16px;
