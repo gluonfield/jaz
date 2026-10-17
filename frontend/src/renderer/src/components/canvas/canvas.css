@@ -17,18 +17,44 @@
   position: absolute;
   inset: 0;
   background: var(--canvas-bg);
-  transition: --canvas-inset 380ms cubic-bezier(0.2, 0, 0, 1);
 }
 
-/* The chat lies over the board's left edge; overlays centre in the rest. */
+/* The chat's transcript lies over the board's left edge, whose overlays
+ * centre in the rest. Collapsing sinks the transcript into its composer
+ * while the overlays recentre, on one curve. */
 @property --canvas-inset {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;
 }
 
+.canvas,
+.canvas-chat {
+  transition-duration: 380ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.canvas {
+  transition-property: --canvas-inset;
+}
+
+.canvas-chat {
+  transition-property: opacity, translate, scale, visibility;
+  transform-origin: bottom;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.canvas-chat.collapsed {
+  visibility: hidden;
+  opacity: 0;
+  translate: 0 24px;
+  scale: 0.97;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .canvas {
+  .canvas,
+  .canvas-chat {
     transition: none;
   }
 }
