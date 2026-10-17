@@ -28,7 +28,7 @@ export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean
   const remoteMCPAuth = plugin.auth[0]?.kind === 'remote_mcp'
   if (!pluginCanConnect(plugin)) return titleCase(plugin.implementation.status)
   if (remoteMCPAuth) return 'Add MCP server'
-  if (plugin.multi_account && plugin.connection?.status === 'connected') return 'Add account'
+  if (plugin.connection?.status === 'connected') return plugin.multi_account ? 'Add account' : 'Reconnect'
   return 'Connect'
 }
 

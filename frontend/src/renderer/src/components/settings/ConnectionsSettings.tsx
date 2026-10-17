@@ -6,15 +6,16 @@ import { useToast } from '@/components/ui/toast'
 import { disconnectConnectionAccount } from '@/lib/api/connections'
 import { keys } from '@/lib/query/keys'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
+import { SettingsCard } from '@/components/settings/SettingsCard'
 import {
+  AvailablePluginRow,
+  ConnectedPluginRow,
   ConnectionSection,
-  ConnectedAccountRow,
-  PluginCatalogRow,
-} from './ConnectionRows'
-import { ConnectionPluginDetailModal } from './ConnectionPluginDetailModal'
-import { ConnectionQRModal } from './ConnectionQRModal'
-import { accountLabel, categoryLabel } from './connectionFormatting'
-import { useConnectionSignIn } from './useConnectionSignIn'
+} from '@/components/settings/ConnectionRows'
+import { ConnectionPluginDetailModal } from '@/components/settings/ConnectionPluginDetailModal'
+import { ConnectionQRModal } from '@/components/settings/ConnectionQRModal'
+import { accountLabel, categoryLabel } from '@/components/settings/connectionFormatting'
+import { useConnectionSignIn } from '@/components/settings/useConnectionSignIn'
 
 export function ConnectionsSettings() {
   const queryClient = useQueryClient()
@@ -38,27 +39,10 @@ export function ConnectionsSettings() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.connectionPlugins }),
   })
   const query = search.trim().toLowerCase()
-  const connectedAccounts = useMemo(
-    () =>
-      sortedPlugins.flatMap((plugin) =>
-        (plugin.connection?.accounts ?? []).map((account) => ({ plugin, account })),
-      ),
-    [sortedPlugins],
-  )
-  const visibleAccounts = connectedAccounts.filter(({ plugin, account }) =>
-    matchesQuery(query, plugin, accountLabel(account)),
-  )
-  const catalogGroups = useMemo(() => {
-    const groups = new Map<string, IntegrationPlugin[]>()
-    for (const plugin of sortedPlugins) {
-      if (!matchesQuery(query, plugin)) continue
-      const category = categoryLabel(plugin.category)
-      groups.set(category, [...(groups.get(category) ?? []), plugin])
-    }
-    return [...groups.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([category, items]) => ({ category, items }))
-  }, [sortedPlugins, query])
+  const visiblePlugins = sortedPlugins.filter((plugin) => matchesQuery(query, plugin))
+  const connected = visiblePlugins.filter((plugin) => plugin.connection?.accounts?.length)
+  const available = visiblePlugins.filter((plugin) => !plugin.connection?.accounts?.length)
+  const connectingID = signIn.isConnecting ? signIn.connectingPluginID : undefined
   const disconnectAccount = (account: IntegrationConnectionAccount) => {
     if (window.confirm(`Disconnect ${accountLabel(account)}?`)) disconnect.mutate(account.id)
   }
@@ -90,44 +74,49 @@ export function ConnectionsSettings() {
               className="h-9"
             />
 
-            <div className="mt-4 space-y-5">
-              {visibleAccounts.length > 0 ? (
-                <ConnectionSection title="Connected">
-                  {visibleAccounts.map(({ plugin, account }) => (
-                    <ConnectedAccountRow
-                      key={account.id}
-                      plugin={plugin}
-                      account={account}
-                      disconnecting={disconnect.isPending && disconnect.variables === account.id}
-                      onOpen={() => setSelectedPluginID(plugin.id)}
-                      onDisconnect={() => disconnectAccount(account)}
-                    />
-                  ))}
+            <div className="mt-5 space-y-6">
+              {connected.length > 0 ? (
+                <ConnectionSection title="Connected" count={connected.length}>
+                  <SettingsCard className="divide-y divide-border/60">
+                    {connected.map((plugin) => (
+                      <ConnectedPluginRow
+                        key={plugin.id}
+                        plugin={plugin}
+                        adding={connectingID === plugin.id}
+                        disconnectingID={disconnect.isPending ? disconnect.variables : undefined}
+                        onOpen={() => setSelectedPluginID(plugin.id)}
+                        onAddAccount={() => signIn.start(plugin)}
+                        onDisconnect={disconnectAccount}
+                      />
+                    ))}
+                  </SettingsCard>
                 </ConnectionSection>
               ) : null}
 
-              {catalogGroups.map(({ category, items }) => (
-                <ConnectionSection key={category} title={category}>
-                  {items.map((plugin) => (
-                    <PluginCatalogRow
-                      key={plugin.id}
-                      plugin={plugin}
-                      connecting={signIn.isConnecting && signIn.connectingPluginID === plugin.id}
-                      onOpen={() => setSelectedPluginID(plugin.id)}
-                      onConnect={() => signIn.start(plugin)}
-                    />
-                  ))}
+              {available.length > 0 ? (
+                <ConnectionSection title="Available" count={available.length}>
+                  <div className="-mx-3 grid grid-cols-1 gap-x-2 lg:grid-cols-2">
+                    {available.map((plugin) => (
+                      <AvailablePluginRow
+                        key={plugin.id}
+                        plugin={plugin}
+                        connecting={connectingID === plugin.id}
+                        onOpen={() => setSelectedPluginID(plugin.id)}
+                        onConnect={() => signIn.start(plugin)}
+                      />
+                    ))}
+                  </div>
                 </ConnectionSection>
-              ))}
+              ) : null}
 
-              {visibleAccounts.length === 0 && catalogGroups.length === 0 ? (
+              {visiblePlugins.length === 0 ? (
                 <p className="py-2 text-[13px] text-ink-3">No connections match “{search.trim()}”.</p>
               ) : null}
             </div>
 
             <ConnectionPluginDetailModal
               plugin={selectedPlugin}
-              connecting={signIn.isConnecting && signIn.connectingPluginID === selectedPlugin?.id}
+              connecting={connectingID === selectedPlugin?.id}
               onClose={() => setSelectedPluginID(null)}
               onConnect={signIn.start}
             />
@@ -139,12 +128,12 @@ export function ConnectionsSettings() {
   )
 }
 
-function matchesQuery(query: string, plugin: IntegrationPlugin, accountText = ''): boolean {
+function matchesQuery(query: string, plugin: IntegrationPlugin): boolean {
   if (!query) return true
-  return (
-    plugin.name.toLowerCase().includes(query) ||
-    (plugin.description ?? '').toLowerCase().includes(query) ||
-    categoryLabel(plugin.category).toLowerCase().includes(query) ||
-    accountText.toLowerCase().includes(query)
-  )
+  return [
+    plugin.name,
+    plugin.description ?? '',
+    categoryLabel(plugin.category),
+    ...(plugin.connection?.accounts ?? []).map(accountLabel),
+  ].some((text) => text.toLowerCase().includes(query))
 }
