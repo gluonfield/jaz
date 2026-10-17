@@ -17,6 +17,20 @@
   position: absolute;
   inset: 0;
   background: var(--canvas-bg);
+  transition: --canvas-inset 380ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* The chat lies over the board's left edge; overlays centre in the rest. */
+@property --canvas-inset {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas {
+    transition: none;
+  }
 }
 
 :root:where(.dark) .canvas {
@@ -546,7 +560,7 @@
 .canvas-dock {
   position: absolute;
   bottom: 14px;
-  left: 50%;
+  left: calc(50% + var(--canvas-inset) / 2);
   display: flex;
   gap: 6px;
   padding: 6px;
@@ -663,7 +677,7 @@
 .canvas-banner {
   position: absolute;
   top: 12px;
-  left: 50%;
+  left: calc(50% + var(--canvas-inset) / 2);
   display: flex;
   align-items: center;
   gap: 10px;

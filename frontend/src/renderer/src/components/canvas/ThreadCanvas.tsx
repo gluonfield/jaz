@@ -46,7 +46,7 @@ import {
 import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
 import { ConnectorEdge, FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
-import { FIT, useAgentFollow } from './useAgentFollow'
+import { fitPadding, useAgentFollow } from './useAgentFollow'
 import type { CanvasPick } from './useCanvasContexts'
 import { useCanvasInput, type Bindings } from './useCanvasInput'
 import { useCanvasSync } from './useCanvasSync'
@@ -54,6 +54,8 @@ import { useSectionDrag } from './useSectionDrag'
 
 interface Props {
   sessionId: string
+  // Width of the board's left edge that the chat covers.
+  inset: number
   working: boolean
   selection: string[]
   onSelect: (picks: CanvasPick[]) => void
@@ -85,28 +87,12 @@ interface BoardProps extends Props {
   error: Error | null
 }
 
-function Board({ sessionId, selection, onSelect, onPrompt, view, local, commit, replay, error }: BoardProps) {
+function Board({ sessionId, inset, selection, onSelect, onPrompt, view, local, commit, replay, error }: BoardProps) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
   const container = useRef<HTMLDivElement>(null)
-  const { flash, news, show, touch } = useAgentFollow(view, local, container)
-  // The chat or sidebar opening beside the board moves its left edge; the
-  // camera moves with it so items stay where they are on screen.
-  useEffect(() => {
-    const element = container.current
-    if (!element) return
-    let left = element.getBoundingClientRect().left
-    const observer = new ResizeObserver(() => {
-      const next = element.getBoundingClientRect().left
-      if (next === left) return
-      const { x, y, zoom } = flow.getViewport()
-      void flow.setViewport({ x: x + left - next, y, zoom })
-      left = next
-    })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [flow])
+  const { flash, news, show, touch } = useAgentFollow(view, local, container, inset)
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
@@ -241,7 +227,7 @@ function Board({ sessionId, selection, onSelect, onPrompt, view, local, commit, 
     <div
       ref={container}
       className={`canvas tool-${tool}${busy || dragging ? ' canvas-busy' : ''}${tool === 'connector' ? ' canvas-connecting' : ''}`}
-      style={{ '--canvas-zoom': zoom } as CSSProperties}
+      style={{ '--canvas-zoom': zoom, '--canvas-inset': `${inset}px` } as CSSProperties}
       onPointerDownCapture={touch}
       onWheelCapture={touch}
       onKeyDownCapture={touch}
@@ -311,7 +297,7 @@ function Board({ sessionId, selection, onSelect, onPrompt, view, local, commit, 
               <button type="button" aria-label="Zoom out" onClick={() => void flow.zoomOut({ duration: 200 })}>
                 <Minus size={14} />
               </button>
-              <button type="button" title="Fit everything" onClick={() => void flow.fitView({ duration: 300, ...FIT })}>
+              <button type="button" title="Fit everything" onClick={() => void flow.fitView({ duration: 300, ...fitPadding(inset) })}>
                 {Math.round(zoom * 100)}%
               </button>
               <button type="button" aria-label="Zoom in" onClick={() => void flow.zoomIn({ duration: 200 })}>

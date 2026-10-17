@@ -477,13 +477,14 @@ export function ThreadView({
           ) : null}
           {sidePanel.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
-          {/* A canvas thread keeps its chat in a narrow column beside the board;
-              a hidden chat leaves only its composer, floating over the board. */}
-          <div className={`h-full min-w-0 ${!canvas ? 'relative flex-1' : canvasChat.shown ? 'relative w-[360px] shrink-0 border-r border-border' : 'pointer-events-none absolute inset-y-0 left-0 z-10 w-[360px]'}`}>
+          {/* A canvas thread's chat lies over the board's left edge, as Figma's
+              panels do. Hiding it sinks the transcript into the composer, which
+              stays; the board never moves. */}
+          <div className={`h-full min-w-0 ${canvas ? `absolute inset-y-0 left-0 z-10 w-[360px] ${canvasChat.shown ? '' : 'pointer-events-none'}` : 'relative flex-1'}`}>
             <div
               ref={attachScroll}
               inert={!canvasChat.shown}
-              className={`scrollbar-quiet relative z-0 h-full overflow-y-auto ${canvasChat.shown ? '' : 'invisible'}`}
+              className={`scrollbar-quiet relative z-0 h-full overflow-y-auto ${canvas ? `origin-bottom border-r border-border bg-bg transition-[opacity,translate,scale,visibility] duration-[380ms] ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none ${canvasChat.shown ? '' : 'invisible translate-y-6 scale-[0.97] opacity-0'}` : ''}`}
               onScroll={onThreadScroll}
               onClickCapture={onThreadClickCapture}
             >
@@ -653,7 +654,7 @@ export function ThreadView({
           <div ref={canvas ? sidePanel.containerRef : undefined} className={canvas ? 'flex h-full min-w-0 flex-1' : 'contents'}>
             {canvas ? (
               <div className="relative h-full min-w-0 flex-1">
-                <ThreadCanvas sessionId={session.id} working={sessionRunning} selection={canvasContexts.selection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
+                <ThreadCanvas sessionId={session.id} inset={canvasChat.shown ? 360 : 0} working={sessionRunning} selection={canvasContexts.selection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
               </div>
             ) : null}
 

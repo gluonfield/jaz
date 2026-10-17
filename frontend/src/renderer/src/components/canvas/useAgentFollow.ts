@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { CanvasView } from '@/lib/api/canvas'
 import { changedNodeIds, rectOfNode, type BoardEdge, type BoardNode } from './board'
 
-export const FIT = { padding: { top: '56px', bottom: '96px', left: '56px', right: '56px' } } as const
+// `inset` is the width of the board's left edge that the chat covers.
+export const fitPadding = (inset: number) => ({ padding: { top: '56px', bottom: '96px', left: `${56 + inset}px`, right: '56px' } }) as const
 // After this long without input the camera may follow the agent's edits.
 const IDLE_MS = 3000
 
@@ -11,7 +12,7 @@ const IDLE_MS = 3000
 // someone else's edits: the user's own are already on screen. Those items
 // flash; the camera follows them while the user is idle, otherwise a pill
 // offers to.
-export function useAgentFollow(view: CanvasView, local: CanvasView, container: RefObject<HTMLDivElement | null>) {
+export function useAgentFollow(view: CanvasView, local: CanvasView, container: RefObject<HTMLDivElement | null>, inset: number) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const touched = useRef(0)
   const shown = useRef<{ view: CanvasView; local: CanvasView } | null>(null)
@@ -19,14 +20,14 @@ export function useAgentFollow(view: CanvasView, local: CanvasView, container: R
   const [news, setNews] = useState<string[]>([])
   const show = useCallback((ids: string[]) => {
     setNews([])
-    requestAnimationFrame(() => void flow.fitView({ nodes: ids.map((id) => ({ id })), duration: 600, maxZoom: 1, ...FIT }))
-  }, [flow])
+    requestAnimationFrame(() => void flow.fitView({ nodes: ids.map((id) => ({ id })), duration: 600, maxZoom: 1, ...fitPadding(inset) }))
+  }, [flow, inset])
 
   useEffect(() => {
     const before = shown.current
     shown.current = { view, local }
     if (!before) {
-      requestAnimationFrame(() => void flow.fitView({ maxZoom: 1, ...FIT }))
+      requestAnimationFrame(() => void flow.fitView({ maxZoom: 1, ...fitPadding(inset) }))
       return
     }
     if (view === before.view) return
@@ -40,12 +41,12 @@ export function useAgentFollow(view: CanvasView, local: CanvasView, container: R
       const node = flow.getNode(id)
       if (!node || !box) return false
       const rect = rectOfNode(node)
-      return rect.x * zoom + x >= 0 && rect.y * zoom + y >= 0 && (rect.x + rect.width) * zoom + x <= box.width && (rect.y + rect.height) * zoom + y <= box.height
+      return rect.x * zoom + x >= inset && rect.y * zoom + y >= 0 && (rect.x + rect.width) * zoom + x <= box.width && (rect.y + rect.height) * zoom + y <= box.height
     }
     if (changed.every(visible)) return
     if (now - touched.current > IDLE_MS) show(changed)
     else setNews(changed)
-  }, [view, local, flow, show, container])
+  }, [view, local, flow, show, container, inset])
 
   const touch = useCallback(() => {
     touched.current = Date.now()

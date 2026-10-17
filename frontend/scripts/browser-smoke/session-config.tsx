@@ -126,16 +126,18 @@ export async function exerciseSessionConfig(): Promise<void> {
     })
     await until(() => Boolean(element.querySelector('.canvas')))
     const chatToggle = () => element.querySelector<HTMLButtonElement>('button[aria-label$=" chat"]')!
-    const boardLeft = () => element.querySelector('.canvas')!.getBoundingClientRect().left
-    const chatBoardLeft = boardLeft()
+    const transcript = element.querySelector('.scrollbar-quiet.overflow-y-auto')!
+    const chatArea = transcript.getBoundingClientRect()
+    const boardLeft = element.querySelector('.canvas')!.getBoundingClientRect().left
+    const onBoard = () => Boolean(document.elementFromPoint(chatArea.x + chatArea.width / 2, chatArea.y + chatArea.height / 3)?.closest('.canvas'))
     chatToggle().click()
-    await until(() => chatToggle().getAttribute('aria-label') === 'Show chat' && boardLeft() < chatBoardLeft, 'Hiding the chat did not give the board its width')
+    await until(() => chatToggle().getAttribute('aria-label') === 'Show chat' && !transcript.checkVisibility({ visibilityProperty: true }), 'Hiding the chat left the transcript visible')
     const draft = element.querySelector('textarea')!.getBoundingClientRect()
-    if (element.querySelector('.scrollbar-quiet.overflow-y-auto')!.checkVisibility({ visibilityProperty: true }) || !document.elementFromPoint(draft.x + draft.width / 2, draft.y + draft.height / 2)?.closest('textarea')) {
-      throw new Error('Hiding the chat did not leave only the composer')
+    if (!onBoard() || element.querySelector('.canvas')!.getBoundingClientRect().left !== boardLeft || !document.elementFromPoint(draft.x + draft.width / 2, draft.y + draft.height / 2)?.closest('textarea')) {
+      throw new Error('Hiding the chat did not leave only the composer over an unmoved board')
     }
     chatToggle().click()
-    await until(() => chatToggle().getAttribute('aria-label') === 'Hide chat' && boardLeft() === chatBoardLeft)
+    await until(() => chatToggle().getAttribute('aria-label') === 'Hide chat' && transcript.checkVisibility({ visibilityProperty: true }) && !onBoard())
     const panelButton = element.querySelector<HTMLButtonElement>('button[aria-label="Side Panel"]')
     if (!panelButton || !element.querySelector('button[aria-label="Overview"]')) {
       throw new Error('Canvas mode hides the side panel controls')

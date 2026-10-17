@@ -29,17 +29,15 @@ export function BottomDock({
   }, [onHeightChange])
 
   return (
-    <div
-      ref={ref}
-      // The fade has to finish where the composer starts (pt-6). As a share of
-      // the dock's height it was still half-transparent at that edge, so the
-      // last line of the thread got sliced by the composer instead of fading
-      // out under it.
-      className={`pointer-events-none absolute inset-x-0 bottom-0 z-[1] pt-6 pb-5 ${floating ? '' : '[background:linear-gradient(to_bottom,transparent,var(--color-bg)_24px)]'}`}
-    >
+    <div ref={ref} className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] pt-6 pb-5">
+      {/* The fade has to finish where the composer starts (pt-6). As a share of
+          the dock's height it was still half-transparent at that edge, so the
+          last line of the thread got sliced by the composer instead of fading
+          out under it. */}
+      <div aria-hidden className={`absolute inset-0 -z-10 transition-opacity duration-300 [background:linear-gradient(to_bottom,transparent,var(--color-bg)_24px)] ${floating ? 'opacity-0' : ''}`} />
       <div className={`pointer-events-none relative ${compact ? 'px-3' : THREAD_COLUMN_CLASS}`}>
         <div className="pointer-events-auto absolute inset-x-0 bottom-full">{before}</div>
-        <div className={`pointer-events-auto ${floating ? 'rounded-[12px] shadow-raised' : ''}`}>
+        <div className={`pointer-events-auto rounded-[12px] transition-shadow duration-300 ${floating ? 'shadow-raised' : ''}`}>
           {children}
         </div>
       </div>

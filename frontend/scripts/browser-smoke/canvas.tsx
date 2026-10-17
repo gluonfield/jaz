@@ -66,9 +66,9 @@ document.querySelector('button').onclick = () => {
     }
     return Response.json(view)
   }
-  function Fixture() {
+  function Fixture({ inset = 0 }: { inset?: number }) {
     const { selection, onSelect } = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} })
-    return <ThreadCanvas sessionId={sessionId} working={false} selection={selection} onSelect={onSelect} onPrompt={() => {}} />
+    return <ThreadCanvas sessionId={sessionId} inset={inset} working={false} selection={selection} onSelect={onSelect} onPrompt={() => {}} />
   }
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;background:var(--color-bg)'
@@ -110,11 +110,6 @@ document.querySelector('button').onclick = () => {
     await until(() => Boolean(node('report')?.querySelector('p')))
     await new Promise((resolve) => setTimeout(resolve, 100))
     await until(() => Boolean(node('cad')?.textContent?.includes('Could not open STL')))
-    const reportLeft = node('report').getBoundingClientRect().left
-    for (const edge of ['360px', '0px']) {
-      element.style.left = edge
-      await until(() => Math.abs(node('report').getBoundingClientRect().left - reportLeft) < 1, `Items moved on screen when the board edge moved to ${edge}`)
-    }
     const status = node('cad').querySelector<HTMLElement>('.canvas-viewer-toolbar')!
     if (getComputedStyle(status).opacity === '0') {
       throw new Error('The CAD load error is hidden until the item is hovered or selected')
@@ -255,6 +250,10 @@ document.querySelector('button').onclick = () => {
       }
     }
     await window.smoke.capture('canvas')
+    root.render(<QueryClientProvider client={client}><Fixture inset={360} /></QueryClientProvider>)
+    await until(() => element.querySelector<HTMLElement>('.canvas')!.style.getPropertyValue('--canvas-inset') === '360px')
+    element.querySelector<HTMLButtonElement>('button[title="Fit everything"]')!.click()
+    await until(() => Math.min(...view.nodes.map((item) => node(item.id).getBoundingClientRect().left)) >= element.getBoundingClientRect().left + 360, 'Fit placed items under the chat')
   } finally {
     window.removeEventListener('message', onArtifactMessage)
     root.unmount()
