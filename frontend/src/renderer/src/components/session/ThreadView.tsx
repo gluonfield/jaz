@@ -484,7 +484,7 @@ export function ThreadView({
             <div
               ref={attachScroll}
               inert={!canvasChat.shown}
-              className={`scrollbar-quiet relative z-0 h-full overflow-y-auto ${canvas ? `origin-bottom border-r border-border bg-bg transition-[opacity,translate,scale,visibility] duration-[380ms] ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none ${canvasChat.shown ? '' : 'invisible translate-y-6 scale-[0.97] opacity-0'}` : ''}`}
+              className={`scrollbar-quiet relative z-0 h-full overflow-y-auto ${canvas ? `canvas-chat${canvasChat.shown ? '' : ' collapsed'}` : ''}`}
               onScroll={onThreadScroll}
               onClickCapture={onThreadClickCapture}
             >
