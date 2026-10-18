@@ -290,10 +290,16 @@ func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, er
 }
 
 // BotOf returns the bot a thread belongs to: the bot's own thread, one of its
-// subtasks or its seat in a group. Empty for any other thread.
+// subtasks, its seat in a group or a thread one of its routines runs in. Empty
+// for any other thread.
 func (s *Service) BotOf(threadID string) string {
-	if session, err := s.store.LoadSession(threadID); err == nil && (session.SourceType == storage.SourceBotWorker || session.SourceType == storage.SourceBotMember) {
-		threadID = session.SourceID
+	if session, err := s.store.LoadSession(threadID); err == nil {
+		switch session.SourceType {
+		case storage.SourceBotWorker, storage.SourceBotMember:
+			threadID = session.SourceID
+		case storage.SourceLoopRun:
+			threadID = session.ParentID
+		}
 	}
 	if s.isBot(threadID) {
 		return threadID

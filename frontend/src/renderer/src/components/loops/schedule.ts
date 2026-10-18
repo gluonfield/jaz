@@ -229,9 +229,15 @@ const SOURCES: Record<Exclude<LoopTrigger['kind'], 'webhook'>, string> = {
 }
 
 // When a loop runs: on what triggers it, or on its schedule.
-export function loopWhen({ trigger, schedule }: Loop, paused = false): string {
-  if (!trigger) return compactSchedule(schedule.expr, paused)
+// catchesUp marks a routine that makes up for runs missed while Jaz was off.
+export const catchesUp = ({ when_missed }: Pick<Loop, 'when_missed'>) =>
+  when_missed === 'catch_up' ? ' · catches up if missed' : ''
+
+export function loopWhen(loop: Loop, paused = false): string {
+  const { trigger, schedule } = loop
+  const missed = catchesUp(loop)
+  if (!trigger) return compactSchedule(schedule.expr, paused) + missed
   if (trigger.kind === 'webhook') return 'Webhook'
   const where = trigger.kind === 'slack' && trigger.subject ? ` in ${trigger.subject}` : ''
-  return `New ${SOURCES[trigger.kind]}${trigger.from ? ` from ${trigger.from}` : ''}${where}`
+  return `New ${SOURCES[trigger.kind]}${trigger.from ? ` from ${trigger.from}` : ''}${where}${missed}`
 }

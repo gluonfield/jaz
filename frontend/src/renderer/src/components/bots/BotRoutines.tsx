@@ -58,7 +58,9 @@ function RoutineRow({ loop }: { loop: Loop }) {
       <div className="min-w-0 flex-1">
         <p className={`truncate text-[13px] ${paused ? 'text-ink-3' : 'text-ink'}`}>{loop.name}</p>
         <p className="truncate text-[12px] text-ink-3">
-          {tone === 'running' ? <span className="text-running">Running now · </span> : null}
+          {tone === 'running' ? (
+            <span className="text-running">{loop.last_run_status === 'starting' ? 'Queued' : 'Running now'} · </span>
+          ) : null}
           {tone === 'failed' ? <span className="text-danger">Last run failed · </span> : null}
           {[loopWhen(loop), next].filter(Boolean).join(' · ')}
         </p>

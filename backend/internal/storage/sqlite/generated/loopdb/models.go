@@ -34,6 +34,8 @@ type Loop struct {
 	BotID           string         `json:"bot_id"`
 	EventTrigger    string         `json:"event_trigger"`
 	WebhookHash     string         `json:"webhook_hash"`
+	WhenMissed      string         `json:"when_missed"`
+	Thread          string         `json:"thread"`
 }
 
 type LoopRun struct {
@@ -46,4 +48,5 @@ type LoopRun struct {
 	Status         string         `json:"status"`
 	Error          sql.NullString `json:"error"`
 	CreatedAtMs    int64          `json:"created_at_ms"`
+	Reason         string         `json:"reason"`
 }

@@ -50,6 +50,8 @@ func (s *Server) handleCreateLoop(w http.ResponseWriter, r *http.Request) {
 		Directory:       req.Directory,
 		BotID:           req.BotID,
 		Trigger:         req.Trigger,
+		WhenMissed:      req.WhenMissed,
+		Thread:          req.Thread,
 	}, req.BoardIDs, "")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -154,6 +156,8 @@ func (s *Server) handlePatchLoop(w http.ResponseWriter, r *http.Request, loopID 
 		Model:           req.Model,
 		ReasoningEffort: req.ReasoningEffort,
 		Directory:       req.Directory,
+		WhenMissed:      req.WhenMissed,
+		Thread:          req.Thread,
 	}, req.BoardIDs)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -188,6 +192,8 @@ type loopRequest struct {
 	Directory       string         `json:"directory,omitempty"`
 	BotID           string         `json:"bot_id,omitempty"`
 	Trigger         *loops.Trigger `json:"trigger,omitempty"`
+	WhenMissed      string         `json:"when_missed,omitempty"`
+	Thread          string         `json:"thread,omitempty"`
 	// BoardIDs assigns the loop's widget to boards; assignment is what enables
 	// widget publishing (there is no separate toggle).
 	BoardIDs []string `json:"board_ids,omitempty"`
@@ -204,5 +210,7 @@ type patchLoopRequest struct {
 	Model           *string         `json:"model,omitempty"`
 	ReasoningEffort *string         `json:"reasoning_effort,omitempty"`
 	Directory       *string         `json:"directory,omitempty"`
+	WhenMissed      *string         `json:"when_missed,omitempty"`
+	Thread          *string         `json:"thread,omitempty"`
 	BoardIDs        *[]string       `json:"board_ids,omitempty"`
 }

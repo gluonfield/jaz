@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/goal"
+	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -51,7 +54,7 @@ func (s *Server) updateSessionQueue(sessionID string, req queueRequest) (storage
 		return storage.Session{}, err
 	}
 	s.publishMessagesChanged(sessionID)
-	if updated.Status == storage.StatusIdle && len(updated.QueuedMessages) > 0 && s.canStartQueuedTurn(updated) {
+	if takesQueuedTurns(updated.Status) && len(updated.QueuedMessages) > 0 && s.canStartQueuedTurn(updated) {
 		s.drainQueueSoon(sessionID)
 	}
 	return updated, nil
@@ -268,7 +271,7 @@ func (s *Server) enqueueInternalTurn(sessionID string, prompt storage.QueuedMess
 		return "", false, fmt.Errorf("session runtime is not configured")
 	}
 	session.QueuedMessages = s.assignQueuedMessageIDs(append(session.QueuedMessages, prompt.AsInternal()))
-	idle := session.Status == storage.StatusIdle && !s.sessionRuntimeRunning(session)
+	idle := takesQueuedTurns(session.Status) && !s.sessionRuntimeRunning(session)
 	if err := s.Store.SaveSession(session); err != nil {
 		return "", false, err
 	}
@@ -307,10 +310,30 @@ func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, pr
 	}
 	if err := s.startQueuedPrompt(ctx, session, *prompt); err != nil {
 		s.logger().Error("queued prompt start failed", "session", session.ID, "error", err)
+		if run := prompt.Output.LoopRun(); run != "" {
+			s.failRunStart(session.ID, run, err)
+			return
+		}
 		s.restoreQueuedPrompt(session.ID, *prompt, 0, err.Error())
 		return
 	}
 	s.publishMessagesChanged(session.ID)
+}
+
+// failRunStart ends a routine run whose turn could not start, as a run that
+// failed, so its routine's next fire is not held behind it.
+func (s *Server) failRunStart(sessionID, run string, cause error) {
+	if err := s.Loops.Finish(run, loops.RunStatusError, cause.Error()); err != nil {
+		s.logger().Error("finish loop run", "session", sessionID, "run", run, "error", err)
+	}
+	unlock := s.lockSession(sessionID)
+	err := s.Store.FinishSessionTurn(sessionID, storage.StatusError, cause.Error(), time.Now().UTC(), nil)
+	unlock()
+	if err != nil {
+		s.logger().Error("finish unstarted turn", "session", sessionID, "error", err)
+	}
+	s.publishSessionChanged(sessionID)
+	s.drainQueueSoon(sessionID)
 }
 
 func (s *Server) startGoalContinuation(ctx context.Context, session storage.Session) {
@@ -344,14 +367,15 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeACP
 	}
-	if s.sessionRuntimeRunning(session) || session.Status != storage.StatusIdle {
+	if s.sessionRuntimeRunning(session) || !takesQueuedTurns(session.Status) {
 		return session, nil, false, nil
 	}
 	prompts := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
 	if len(prompts) == 0 {
 		// Empty queue still yields work when a goal is live; otherwise drop any
-		// stale (non-canonical) entries and report nothing to run.
-		if goal.Continuable(session.Goal) && session.Runtime == storage.RuntimeACP && s.ACP != nil {
+		// stale (non-canonical) entries and report nothing to run. A goal goes
+		// on only after a turn that ended well, so a failing one stops.
+		if session.Status == storage.StatusIdle && goal.Continuable(session.Goal) && session.Runtime == storage.RuntimeACP && s.ACP != nil {
 			session.QueuedMessages = nil
 			markSessionRunning(&session)
 			if err := s.Store.SaveSession(session); err != nil {
@@ -385,6 +409,13 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 		s.maybeGenerateSessionTitle(session, prompt.Text)
 	}
 	return session, &prompt, true, nil
+}
+
+// takesQueuedTurns reports whether a thread in status can start its next
+// queued turn: its last turn ended, even if it failed, so a failure costs only
+// that turn and not the work queued behind it.
+func takesQueuedTurns(status string) bool {
+	return status == storage.StatusIdle || status == storage.StatusError
 }
 
 func nextQueuedPromptIndex(prompts []storage.QueuedMessage) int {
@@ -600,6 +631,12 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			return err
 		}
 		if prompt.IsInternal() {
+			var loop loops.Loop
+			if run := prompt.Output.LoopRun(); run != "" {
+				if loop, prompt.Text, err = s.Loops.Begin(run, session.ID); err != nil {
+					return err
+				}
+			}
 			if _, err := s.ACP.StartInternalTurn(ctx, acp.InternalTurnRequest{
 				Session:      session.ID,
 				Message:      prompt.Text,
@@ -607,6 +644,11 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 				AllowSilence: true,
 			}); err != nil {
 				return acpSendError(session, err)
+			}
+			if loop.BotID == session.ID {
+				if err := bots.Announce(s.Store, s.Events, session.ID, sessionevents.BotActivityEvent{Kind: "routine", Label: loop.Name}); err != nil {
+					s.logger().Warn("append bot activity failed", "thread", session.ID, "error", err)
+				}
 			}
 			return nil
 		}

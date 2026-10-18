@@ -7,6 +7,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -40,7 +41,16 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 			}
 		}
 		if output := session.Turn.Output; output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
-			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: storage.NewInternalQueuedMessage(bots.ReplyPrompt(session.Title, strings.Join(output.Replies, "\n\n")))})
+			reply := bots.ReplyPrompt
+			if output.Run != "" {
+				reply = loops.Report
+			}
+			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: storage.NewInternalQueuedMessage(reply(session.Title, strings.Join(output.Replies, "\n\n")))})
+		}
+		// The run closes before its turn does; a restart in between finds the
+		// run closed and only finishes the turn's bookkeeping.
+		if run := loopRun(session); run != "" && err == nil {
+			err = s.Loops.Finish(run, LoopRunStatus(job.State), job.Error)
 		}
 		if err == nil {
 			err = s.Store.FinishSessionTurn(job.ID, status, job.Error, time.Now().UTC(), deliveries)
@@ -63,9 +73,40 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 		s.publishSessionChanged(delivery.SessionID)
 		s.drainQueueSoon(delivery.SessionID)
 	}
-	if job.State == acp.StateIdle {
+	if job.State == acp.StateIdle || job.State == acp.StateFailed {
 		s.drainQueueSoon(job.ID)
 	}
+}
+
+// loopRun is the routine run a thread's current turn does: the one its turn
+// or claimed message names.
+func loopRun(session storage.Session) string {
+	if session.Turn == nil {
+		return ""
+	}
+	if session.Turn.PendingMessage != nil {
+		return session.Turn.PendingMessage.Output.LoopRun()
+	}
+	return session.Turn.Output.LoopRun()
+}
+
+// ResumeLoopRuns settles the routine runs the last process left open, once
+// resumed turns and queues hold theirs again.
+func (s *Server) ResumeLoopRuns(ctx context.Context) error {
+	sessions, err := s.Store.ListSessions(storage.SessionFilter{Runtime: storage.RuntimeACP, IncludeChildren: true, IncludeSourced: true})
+	if err != nil {
+		return err
+	}
+	held := map[string]bool{}
+	for _, session := range sessions {
+		for _, message := range session.QueuedMessages {
+			held[message.Output.LoopRun()] = true
+		}
+		if session.Status == storage.StatusRunning {
+			held[loopRun(session)] = true
+		}
+	}
+	return s.Loops.Resume(ctx, held)
 }
 
 func (s *Server) ResumeQueuedTurns() error {
@@ -74,7 +115,7 @@ func (s *Server) ResumeQueuedTurns() error {
 		return err
 	}
 	for _, session := range sessions {
-		if session.Status == storage.StatusIdle && len(session.QueuedMessages) > 0 {
+		if takesQueuedTurns(session.Status) && len(session.QueuedMessages) > 0 {
 			s.drainQueueSoon(session.ID)
 		}
 	}
@@ -85,6 +126,17 @@ func (s *Server) ResumeInterruptedTurn(ctx context.Context, id string) error {
 	session, err := s.Store.LoadSession(id)
 	if err != nil {
 		return err
+	}
+	if run := loopRun(session); run != "" {
+		closed, err := s.Loops.Closed(run)
+		if err != nil {
+			return err
+		}
+		if closed {
+			// Recovery holds this thread's lock, which the bookkeeping takes.
+			go s.HandleACPTurnFinished(context.WithoutCancel(ctx), acp.Job{ID: id, State: acp.StateIdle})
+			return nil
+		}
 	}
 	if session.Turn != nil && session.Turn.PendingMessage != nil {
 		if session.Turn.PendingMessage.IsAction() {

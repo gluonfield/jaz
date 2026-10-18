@@ -24,7 +24,9 @@ INSERT INTO loops (
   model,
   bot_id,
   event_trigger,
-  webhook_hash
+  webhook_hash,
+  when_missed,
+  thread
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(name),
@@ -50,7 +52,9 @@ INSERT INTO loops (
   sqlc.arg(model),
   sqlc.arg(bot_id),
   sqlc.arg(event_trigger),
-  sqlc.arg(webhook_hash)
+  sqlc.arg(webhook_hash),
+  sqlc.arg(when_missed),
+  sqlc.arg(thread)
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -69,6 +73,8 @@ ON CONFLICT(id) DO UPDATE SET
   bot_id = excluded.bot_id,
   event_trigger = excluded.event_trigger,
   webhook_hash = excluded.webhook_hash,
+  when_missed = excluded.when_missed,
+  thread = excluded.thread,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -104,7 +110,9 @@ SELECT
   model,
   bot_id,
   event_trigger,
-  webhook_hash
+  webhook_hash,
+  when_missed,
+  thread
 FROM loops
 WHERE id = sqlc.arg(id)
 LIMIT 1;
@@ -135,7 +143,9 @@ SELECT
   model,
   bot_id,
   event_trigger,
-  webhook_hash
+  webhook_hash,
+  when_missed,
+  thread
 FROM loops
 WHERE status <> sqlc.arg(deleted_status)
 ORDER BY updated_at_ms DESC;
@@ -158,7 +168,8 @@ INSERT INTO loop_runs (
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  reason
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(loop_id),
@@ -168,7 +179,8 @@ INSERT INTO loop_runs (
   sqlc.arg(finished_at_ms),
   sqlc.arg(status),
   sqlc.narg(error),
-  sqlc.arg(created_at_ms)
+  sqlc.arg(created_at_ms),
+  sqlc.arg(reason)
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -178,7 +190,8 @@ ON CONFLICT(id) DO UPDATE SET
   finished_at_ms = excluded.finished_at_ms,
   status = excluded.status,
   error = excluded.error,
-  created_at_ms = excluded.created_at_ms;
+  created_at_ms = excluded.created_at_ms,
+  reason = excluded.reason;
 
 -- name: GetRun :one
 SELECT
@@ -190,25 +203,10 @@ SELECT
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  reason
 FROM loop_runs
 WHERE id = sqlc.arg(id)
-LIMIT 1;
-
--- name: GetLatestRunByThread :one
-SELECT
-  id,
-  loop_id,
-  thread_id,
-  scheduled_for_ms,
-  started_at_ms,
-  finished_at_ms,
-  status,
-  error,
-  created_at_ms
-FROM loop_runs
-WHERE thread_id = sqlc.arg(thread_id)
-ORDER BY created_at_ms DESC
 LIMIT 1;
 
 -- name: ListRunsByLoop :many
@@ -221,18 +219,46 @@ SELECT
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  reason
 FROM loop_runs
 WHERE loop_id = sqlc.arg(loop_id)
 ORDER BY created_at_ms DESC
 LIMIT sqlc.arg(limit);
 
--- name: GetActiveRunIDForLoop :one
-SELECT id
+-- name: ListActiveRunsForLoop :many
+SELECT
+  id,
+  loop_id,
+  thread_id,
+  scheduled_for_ms,
+  started_at_ms,
+  finished_at_ms,
+  status,
+  error,
+  created_at_ms,
+  reason
 FROM loop_runs
 WHERE loop_id = sqlc.arg(loop_id)
   AND status IN (sqlc.arg(starting_status), sqlc.arg(running_status))
-LIMIT 1;
+ORDER BY created_at_ms ASC;
+
+-- name: GetLastFinishedAt :one
+SELECT CAST(COALESCE(MAX(finished_at_ms), 0) AS INTEGER)
+FROM loop_runs
+WHERE loop_id = sqlc.arg(loop_id) AND status = sqlc.arg(status);
+
+-- name: LoopEventSeen :one
+SELECT EXISTS (
+  SELECT 1 FROM loop_events WHERE loop_id = sqlc.arg(loop_id) AND event_id = sqlc.arg(event_id)
+);
+
+-- name: GetLatestLoopEventAt :one
+SELECT CAST(COALESCE(MAX(at_ms), 0) AS INTEGER) FROM loop_events WHERE loop_id = sqlc.arg(loop_id);
+
+-- name: InsertLoopEvent :exec
+INSERT OR IGNORE INTO loop_events (loop_id, event_id, run_id, at_ms)
+VALUES (sqlc.arg(loop_id), sqlc.arg(event_id), sqlc.arg(run_id), sqlc.arg(at_ms));
 
 -- name: ListActiveRunIDs :many
 SELECT id

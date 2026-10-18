@@ -10,59 +10,33 @@ import (
 	"database/sql"
 )
 
-const getActiveRunIDForLoop = `-- name: GetActiveRunIDForLoop :one
-SELECT id
+const getLastFinishedAt = `-- name: GetLastFinishedAt :one
+SELECT CAST(COALESCE(MAX(finished_at_ms), 0) AS INTEGER)
 FROM loop_runs
-WHERE loop_id = ?1
-  AND status IN (?2, ?3)
-LIMIT 1
+WHERE loop_id = ?1 AND status = ?2
 `
 
-type GetActiveRunIDForLoopParams struct {
-	LoopID         string `json:"loop_id"`
-	StartingStatus string `json:"starting_status"`
-	RunningStatus  string `json:"running_status"`
+type GetLastFinishedAtParams struct {
+	LoopID string `json:"loop_id"`
+	Status string `json:"status"`
 }
 
-func (q *Queries) GetActiveRunIDForLoop(ctx context.Context, arg GetActiveRunIDForLoopParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getActiveRunIDForLoop, arg.LoopID, arg.StartingStatus, arg.RunningStatus)
-	var id string
-	err := row.Scan(&id)
-	return id, err
+func (q *Queries) GetLastFinishedAt(ctx context.Context, arg GetLastFinishedAtParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getLastFinishedAt, arg.LoopID, arg.Status)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
-const getLatestRunByThread = `-- name: GetLatestRunByThread :one
-SELECT
-  id,
-  loop_id,
-  thread_id,
-  scheduled_for_ms,
-  started_at_ms,
-  finished_at_ms,
-  status,
-  error,
-  created_at_ms
-FROM loop_runs
-WHERE thread_id = ?1
-ORDER BY created_at_ms DESC
-LIMIT 1
+const getLatestLoopEventAt = `-- name: GetLatestLoopEventAt :one
+SELECT CAST(COALESCE(MAX(at_ms), 0) AS INTEGER) FROM loop_events WHERE loop_id = ?1
 `
 
-func (q *Queries) GetLatestRunByThread(ctx context.Context, threadID sql.NullString) (LoopRun, error) {
-	row := q.db.QueryRowContext(ctx, getLatestRunByThread, threadID)
-	var i LoopRun
-	err := row.Scan(
-		&i.ID,
-		&i.LoopID,
-		&i.ThreadID,
-		&i.ScheduledForMs,
-		&i.StartedAtMs,
-		&i.FinishedAtMs,
-		&i.Status,
-		&i.Error,
-		&i.CreatedAtMs,
-	)
-	return i, err
+func (q *Queries) GetLatestLoopEventAt(ctx context.Context, loopID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getLatestLoopEventAt, loopID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const getLoop = `-- name: GetLoop :one
@@ -91,7 +65,9 @@ SELECT
   model,
   bot_id,
   event_trigger,
-  webhook_hash
+  webhook_hash,
+  when_missed,
+  thread
 FROM loops
 WHERE id = ?1
 LIMIT 1
@@ -126,6 +102,8 @@ func (q *Queries) GetLoop(ctx context.Context, id string) (Loop, error) {
 		&i.BotID,
 		&i.EventTrigger,
 		&i.WebhookHash,
+		&i.WhenMissed,
+		&i.Thread,
 	)
 	return i, err
 }
@@ -140,7 +118,8 @@ SELECT
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  reason
 FROM loop_runs
 WHERE id = ?1
 LIMIT 1
@@ -159,8 +138,31 @@ func (q *Queries) GetRun(ctx context.Context, id string) (LoopRun, error) {
 		&i.Status,
 		&i.Error,
 		&i.CreatedAtMs,
+		&i.Reason,
 	)
 	return i, err
+}
+
+const insertLoopEvent = `-- name: InsertLoopEvent :exec
+INSERT OR IGNORE INTO loop_events (loop_id, event_id, run_id, at_ms)
+VALUES (?1, ?2, ?3, ?4)
+`
+
+type InsertLoopEventParams struct {
+	LoopID  string `json:"loop_id"`
+	EventID string `json:"event_id"`
+	RunID   string `json:"run_id"`
+	AtMs    int64  `json:"at_ms"`
+}
+
+func (q *Queries) InsertLoopEvent(ctx context.Context, arg InsertLoopEventParams) error {
+	_, err := q.db.ExecContext(ctx, insertLoopEvent,
+		arg.LoopID,
+		arg.EventID,
+		arg.RunID,
+		arg.AtMs,
+	)
+	return err
 }
 
 const listActiveRunIDs = `-- name: ListActiveRunIDs :many
@@ -187,6 +189,64 @@ func (q *Queries) ListActiveRunIDs(ctx context.Context, arg ListActiveRunIDsPara
 			return nil, err
 		}
 		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActiveRunsForLoop = `-- name: ListActiveRunsForLoop :many
+SELECT
+  id,
+  loop_id,
+  thread_id,
+  scheduled_for_ms,
+  started_at_ms,
+  finished_at_ms,
+  status,
+  error,
+  created_at_ms,
+  reason
+FROM loop_runs
+WHERE loop_id = ?1
+  AND status IN (?2, ?3)
+ORDER BY created_at_ms ASC
+`
+
+type ListActiveRunsForLoopParams struct {
+	LoopID         string `json:"loop_id"`
+	StartingStatus string `json:"starting_status"`
+	RunningStatus  string `json:"running_status"`
+}
+
+func (q *Queries) ListActiveRunsForLoop(ctx context.Context, arg ListActiveRunsForLoopParams) ([]LoopRun, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveRunsForLoop, arg.LoopID, arg.StartingStatus, arg.RunningStatus)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []LoopRun{}
+	for rows.Next() {
+		var i LoopRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.LoopID,
+			&i.ThreadID,
+			&i.ScheduledForMs,
+			&i.StartedAtMs,
+			&i.FinishedAtMs,
+			&i.Status,
+			&i.Error,
+			&i.CreatedAtMs,
+			&i.Reason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -260,7 +320,9 @@ SELECT
   model,
   bot_id,
   event_trigger,
-  webhook_hash
+  webhook_hash,
+  when_missed,
+  thread
 FROM loops
 WHERE status <> ?1
 ORDER BY updated_at_ms DESC
@@ -301,6 +363,8 @@ func (q *Queries) ListLoops(ctx context.Context, deletedStatus string) ([]Loop, 
 			&i.BotID,
 			&i.EventTrigger,
 			&i.WebhookHash,
+			&i.WhenMissed,
+			&i.Thread,
 		); err != nil {
 			return nil, err
 		}
@@ -325,7 +389,8 @@ SELECT
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  reason
 FROM loop_runs
 WHERE loop_id = ?1
 ORDER BY created_at_ms DESC
@@ -356,6 +421,7 @@ func (q *Queries) ListRunsByLoop(ctx context.Context, arg ListRunsByLoopParams) 
 			&i.Status,
 			&i.Error,
 			&i.CreatedAtMs,
+			&i.Reason,
 		); err != nil {
 			return nil, err
 		}
@@ -368,6 +434,24 @@ func (q *Queries) ListRunsByLoop(ctx context.Context, arg ListRunsByLoopParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const loopEventSeen = `-- name: LoopEventSeen :one
+SELECT EXISTS (
+  SELECT 1 FROM loop_events WHERE loop_id = ?1 AND event_id = ?2
+)
+`
+
+type LoopEventSeenParams struct {
+	LoopID  string `json:"loop_id"`
+	EventID string `json:"event_id"`
+}
+
+func (q *Queries) LoopEventSeen(ctx context.Context, arg LoopEventSeenParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, loopEventSeen, arg.LoopID, arg.EventID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const upsertLoop = `-- name: UpsertLoop :exec
@@ -396,7 +480,9 @@ INSERT INTO loops (
   model,
   bot_id,
   event_trigger,
-  webhook_hash
+  webhook_hash,
+  when_missed,
+  thread
 ) VALUES (
   ?1,
   ?2,
@@ -422,7 +508,9 @@ INSERT INTO loops (
   ?22,
   ?23,
   ?24,
-  ?25
+  ?25,
+  ?26,
+  ?27
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -441,6 +529,8 @@ ON CONFLICT(id) DO UPDATE SET
   bot_id = excluded.bot_id,
   event_trigger = excluded.event_trigger,
   webhook_hash = excluded.webhook_hash,
+  when_missed = excluded.when_missed,
+  thread = excluded.thread,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -477,6 +567,8 @@ type UpsertLoopParams struct {
 	BotID           string         `json:"bot_id"`
 	EventTrigger    string         `json:"event_trigger"`
 	WebhookHash     string         `json:"webhook_hash"`
+	WhenMissed      string         `json:"when_missed"`
+	Thread          string         `json:"thread"`
 }
 
 func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
@@ -506,6 +598,8 @@ func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
 		arg.BotID,
 		arg.EventTrigger,
 		arg.WebhookHash,
+		arg.WhenMissed,
+		arg.Thread,
 	)
 	return err
 }
@@ -520,7 +614,8 @@ INSERT INTO loop_runs (
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  reason
 ) VALUES (
   ?1,
   ?2,
@@ -530,7 +625,8 @@ INSERT INTO loop_runs (
   ?6,
   ?7,
   ?8,
-  ?9
+  ?9,
+  ?10
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -540,7 +636,8 @@ ON CONFLICT(id) DO UPDATE SET
   finished_at_ms = excluded.finished_at_ms,
   status = excluded.status,
   error = excluded.error,
-  created_at_ms = excluded.created_at_ms
+  created_at_ms = excluded.created_at_ms,
+  reason = excluded.reason
 `
 
 type UpsertRunParams struct {
@@ -553,6 +650,7 @@ type UpsertRunParams struct {
 	Status         string         `json:"status"`
 	Error          sql.NullString `json:"error"`
 	CreatedAtMs    int64          `json:"created_at_ms"`
+	Reason         string         `json:"reason"`
 }
 
 func (q *Queries) UpsertRun(ctx context.Context, arg UpsertRunParams) error {
@@ -566,6 +664,7 @@ func (q *Queries) UpsertRun(ctx context.Context, arg UpsertRunParams) error {
 		arg.Status,
 		arg.Error,
 		arg.CreatedAtMs,
+		arg.Reason,
 	)
 	return err
 }

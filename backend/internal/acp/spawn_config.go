@@ -88,14 +88,15 @@ func (m *Manager) validateAgentModelProvider(agent string, cfg AgentConfig) erro
 }
 
 // botThread makes a thread work like the bot it serves: a thread the bot
-// starts becomes its subtask, and the thread it takes a group's turns in names
-// it as source. Either starts in the bot's home and, as Codex and Grok
-// sub-agents do, runs on the bot's agent and model unless asked otherwise.
+// starts becomes its subtask, the thread it takes a group's turns in names it
+// as source, and a routine run's thread has it as parent. Each starts in the
+// bot's home and, as Codex and Grok sub-agents do, runs on the bot's agent and
+// model unless asked otherwise.
 func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 	botID := req.SourceID
 	switch {
 	case req.SourceType == storage.SourceBotMember:
-	case req.ParentID != "" && req.SourceType == "":
+	case req.ParentID != "" && (req.SourceType == "" || req.SourceType == storage.SourceLoopRun):
 		botID = req.ParentID
 	default:
 		return req, nil

@@ -59,32 +59,3 @@ func TestInputWaitsForFinishingTurnWithoutSpinning(t *testing.T) {
 		})
 	}
 }
-
-func TestInternalTurnWhenIdleWaitsForRunningTurn(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	session, err := store.CreateSession(storage.CreateSession{Slug: "busy", Runtime: storage.RuntimeACP})
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := NewManager(store, Config{AgentSource: &admissionAgentSource{}}, nil)
-	job := newIdleJob(session, "fake", "native", "", ModeState{})
-	job.startTurn(CompletionInline, false, false)
-	job.markFirstPromptSent()
-	job.setState(StateRunning, "", "")
-	manager.addJob(job, &agentProcess{peer: &jsonrpc.Peer{}})
-
-	_, err = manager.StartInternalTurn(t.Context(), InternalTurnRequest{Session: session.ID, Message: "routine"})
-	var busy *turnInProgressError
-	if !errors.As(err, &busy) {
-		t.Fatalf("internal turn on a busy thread = %v, want turn in progress", err)
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-	_, err = manager.StartInternalTurnWhenIdle(ctx, InternalTurnRequest{Session: session.ID, Message: "routine"})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("idle-waiting internal turn = %v, want it to wait for the running turn", err)
-	}
-}

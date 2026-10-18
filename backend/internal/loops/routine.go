@@ -10,26 +10,114 @@ import (
 	"time"
 )
 
-// runPrompt is what a run sends: what fired it, then the routine's prompt. A
-// turn in the bot's own thread is also labelled with the routine and the local
-// time, which a run in a fresh thread gets from its system prompt.
-func runPrompt(loop Loop, now time.Time, event string, inThread bool) string {
+// runPrompt is what a run sends: why it runs, then the routine's prompt, then
+// how a bot's routine delivers. A turn in the bot's own thread is also labelled
+// with the routine and the local time, which a run in a thread of its own gets
+// from its system prompt.
+func runPrompt(loop Loop, run Run, now time.Time, thread string) string {
 	var b strings.Builder
-	if inThread {
-		loc, _, err := scheduleLocation(loop.Schedule.Timezone)
-		if err != nil {
-			loc = time.UTC
-		}
-		fmt.Fprintf(&b, "[routine] %s · %s\n", loop.Name, now.In(loc).Format("Mon 2 Jan 2006 15:04 MST"))
+	if thread == ThreadMain {
+		fmt.Fprintf(&b, "[routine] %s · %s\n", loop.Name, now.In(location(loop)).Format("Mon 2 Jan 2006 15:04 MST"))
 	}
-	if event != "" {
-		fmt.Fprintf(&b, "Triggered by: %s\n", event)
+	if run.Reason != "" {
+		fmt.Fprintf(&b, "%s\n", run.Reason)
 	}
 	if b.Len() > 0 {
 		b.WriteString("\n")
 	}
 	b.WriteString(loop.Prompt)
+	switch thread {
+	case ThreadMain:
+		b.WriteString("\n\nDeliver this routine's outcome with send_message or an app presentation tool unless the routine says to stay quiet. When a tool confirms that Jaz presented its result, that view is already the answer; do not repeat it in a text message.")
+	case ThreadChild:
+		b.WriteString("\n\nYou run this routine for the bot that owns it, in the bot's home, which is your working directory. Send what the user should hear from this run with send_message; it reaches the bot, which tells the user. Send nothing when nothing came of it.")
+	}
 	return b.String()
+}
+
+// Report hands a bot what a run of its routine sent from a thread of its own.
+func Report(routine, text string) string {
+	return fmt.Sprintf("[routine] %s\n\n%s\n\nThis is what a run of this routine sent from its own thread; pass it on to the user.", routine, text)
+}
+
+// missedAfter is how late a slot or an event may be and still count as on
+// time; anything later was missed while Jaz was not running.
+const missedAfter = 15 * time.Minute
+
+// reasonBudget bounds how much event text one run gathers.
+const reasonBudget = 20000
+
+const moreEvents = "More matching messages arrived after these; look them up before you act."
+
+// foldReason adds an event that fires a run to the run's reason.
+func foldReason(reason, event string) string {
+	switch {
+	case reason == "":
+		return "Triggered by: " + event
+	case strings.HasSuffix(reason, moreEvents):
+		return reason
+	case len(reason)+len(event) > reasonBudget:
+		return reason + "\n\n" + moreEvents
+	}
+	return reason + "\n\n" + event
+}
+
+type missed struct {
+	count       int
+	first, last time.Time
+	// due is the slot after the missed ones that is still on time, if any.
+	due time.Time
+}
+
+// missedSlots walks schedule's slots from first up to now.
+func missedSlots(schedule Schedule, first, now time.Time) (missed, error) {
+	loc, _, err := scheduleLocation(schedule.Timezone)
+	if err != nil {
+		return missed{}, err
+	}
+	parsed, err := cronParser.Parse(schedule.Expr)
+	if err != nil {
+		return missed{}, err
+	}
+	result := missed{first: first}
+	for slot := first; !slot.IsZero() && !slot.After(now); slot = parsed.Next(slot.In(loc)).UTC() {
+		if now.Sub(slot) <= missedAfter {
+			result.due = slot
+			break
+		}
+		result.count++
+		result.last = slot
+	}
+	return result, nil
+}
+
+func missedText(loop Loop, missed missed) string {
+	if missed.count == 1 {
+		return "Jaz was not running at " + localTime(loop, missed.first)
+	}
+	return fmt.Sprintf("Jaz was not running for %d scheduled runs, %s to %s", missed.count, localTime(loop, missed.first), localTime(loop, missed.last))
+}
+
+// catchUpReason tells the run that covers missed slots what it covers and
+// where the last good run left off, so it does not repeat that run's work.
+func catchUpReason(loop Loop, missed missed, lastOK time.Time) string {
+	since := "No run of this routine has finished successfully yet."
+	if !lastOK.IsZero() {
+		since = "The last successful run finished " + localTime(loop, lastOK) + "; cover everything since then in this run."
+	}
+	return "Catching up: " + missedText(loop, missed) + ". " + since
+}
+
+func localTime(loop Loop, at time.Time) string {
+	return at.In(location(loop)).Format("Mon 2 Jan 15:04 MST")
+}
+
+func location(loop Loop) *time.Location {
+	loc, _, err := scheduleLocation(loop.Schedule.Timezone)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 // ensureWebhookSecret gives a webhook routine a secret the first time it needs

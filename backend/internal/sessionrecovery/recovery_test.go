@@ -72,7 +72,7 @@ func TestResumeInterruptedBotsAndWorkersAlongsideChats(t *testing.T) {
 		}
 	}
 	var want []string
-	for _, i := range []int{13, 11, 10, 7, 6, 5, 4, 3, 2, 1, 0} {
+	for _, i := range []int{13, 12, 11, 10, 7, 6, 5, 4, 3, 2, 1, 0} {
 		want = append(want, sessions[i].ID)
 	}
 	if !reflect.DeepEqual(resumed, want) {

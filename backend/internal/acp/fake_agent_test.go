@@ -1,6 +1,7 @@
 package acp_test
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,9 +21,16 @@ import (
 
 var fakeSubagentReport = regexp.MustCompile(`subagent (\w+)=(\w+)`)
 
+// fakeSessionID is the provider session id the fake agent reports; agents
+// that run side by side need their own, as real ones have.
+var fakeSessionID = "fake-session"
+
 func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
 		return
+	}
+	if os.Getenv("JAZ_FAKE_ACP_UNIQUE_SESSION") == "1" {
+		fakeSessionID = fmt.Sprintf("fake-session-%d", os.Getpid())
 	}
 	if path := os.Getenv("JAZ_FAKE_ACP_MUSE_CONFIG_CAPTURE"); path != "" {
 		if err := os.WriteFile(path, []byte(os.Getenv("XDG_CONFIG_HOME")), 0o600); err != nil {
@@ -189,7 +197,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				SessionID  string            `json:"sessionId"`
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
-			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != "fake-session" {
+			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != fakeSessionID {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("unknown session", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -219,7 +227,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if msg.Method == "session/load" {
 				// History replay arrives before the load result resolves.
 				notify(conn, "session/update", map[string]any{
-					"sessionId": "fake-session",
+					"sessionId": fakeSessionID,
 					"update": map[string]any{
 						"sessionUpdate": "agent_message_chunk",
 						"messageId":     "fake:replay:1",
@@ -269,7 +277,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			result := map[string]any{
-				"sessionId": "fake-session",
+				"sessionId": fakeSessionID,
 			}
 			if modes := fakeModes(); modes != nil {
 				result["modes"] = modes
@@ -301,7 +309,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				ModelID   string `json:"modelId"`
 			}
 			want := os.Getenv("JAZ_FAKE_ACP_EXPECT_MODEL")
-			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != "fake-session" || (want != "" && req.ModelID != want) {
+			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != fakeSessionID || (want != "" && req.ModelID != want) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected configured model", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -319,7 +327,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				ConfigID  string `json:"configId"`
 				Value     string `json:"value"`
 			}
-			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != "fake-session" {
+			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != fakeSessionID {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected configured option", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -393,7 +401,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			notify(conn, "session/update", map[string]any{
-				"sessionId": "fake-session",
+				"sessionId": fakeSessionID,
 				"update": map[string]any{
 					"sessionUpdate": "agent_message_chunk",
 					"messageId":     nextMessageID("native-steer"),
@@ -413,6 +421,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			if os.Getenv("JAZ_FAKE_ACP_PROMPT_DELAY") == "1" {
 				time.Sleep(200 * time.Millisecond)
+			}
+			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
+				// The turn works until the test creates the release file, then
+				// ends as usual.
+				notify(conn, "session/update", map[string]any{
+					"sessionId": fakeSessionID,
+					"update":    map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tool-held", "title": "held work", "status": "in_progress"},
+				})
+				for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
+					time.Sleep(10 * time.Millisecond)
+				}
 			}
 			var promptReq struct {
 				Meta map[string]any `json:"_meta"`
@@ -454,7 +473,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			if path := os.Getenv("JAZ_FAKE_ACP_MATERIALIZED_SESSION"); path != "" {
-				if err := os.WriteFile(path, []byte("fake-session"), 0o600); err != nil {
+				if err := os.WriteFile(path, []byte(fakeSessionID), 0o600); err != nil {
 					resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError(err.Error(), nil))
 					_ = conn.Send(context.Background(), resp)
 					continue
@@ -462,7 +481,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			for _, report := range fakeSubagentReport.FindAllStringSubmatch(string(msg.Params), -1) {
 				notify(conn, "session/update", map[string]any{
-					"sessionId": "fake-session",
+					"sessionId": fakeSessionID,
 					"update": map[string]any{
 						"sessionUpdate": "session_info_update",
 						"_meta": map[string]any{"jaz": map[string]any{"providerSubagent": map[string]any{
@@ -473,7 +492,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
 				notify(conn, "session/update", map[string]any{
-					"sessionId": "fake-session",
+					"sessionId": fakeSessionID,
 					"update": map[string]any{
 						"sessionUpdate": "agent_message_chunk",
 						"_meta":         promptReq.Meta,
@@ -490,7 +509,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			if strings.Contains(string(msg.Params), "block until cancelled") || os.Getenv("JAZ_FAKE_ACP_BLOCK_PROMPT") == "1" {
 				notify(conn, "session/update", map[string]any{
-					"sessionId": "fake-session",
+					"sessionId": fakeSessionID,
 					"update": map[string]any{
 						"sessionUpdate": "tool_call",
 						"toolCallId":    "tool-slow",
@@ -508,7 +527,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			if currentMode == "plan" || currentCollaborationMode == "plan" {
 				notify(conn, "session/update", map[string]any{
-					"sessionId": "fake-session",
+					"sessionId": fakeSessionID,
 					"update": map[string]any{
 						"sessionUpdate": "plan",
 						"entries": []map[string]any{
@@ -521,7 +540,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			notify(conn, "session/update", map[string]any{
-				"sessionId": "fake-session",
+				"sessionId": fakeSessionID,
 				"update": map[string]any{
 					"sessionUpdate": "agent_message_chunk",
 					"messageId":     nextMessageID("message"),
@@ -529,7 +548,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				},
 			})
 			notify(conn, "session/update", map[string]any{
-				"sessionId": "fake-session",
+				"sessionId": fakeSessionID,
 				"update": map[string]any{
 					"sessionUpdate": "tool_call",
 					"toolCallId":    "tool-1",
@@ -666,7 +685,7 @@ func fakeModeSupported(mode string) bool {
 func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 	req, err := jsonrpc.NewRequest(json.RawMessage(`"fake-elicit-1"`), "elicitation/create", map[string]any{
 		"mode":      "form",
-		"sessionId": "fake-session",
+		"sessionId": fakeSessionID,
 		"message":   "Which workspace?",
 		"requestedSchema": map[string]any{
 			"type": "object",
@@ -684,7 +703,7 @@ func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 	finishSteered := func(steered *jsonrpc.Message) {
 		messageSeq++
 		notify(conn, "session/update", map[string]any{
-			"sessionId": "fake-session",
+			"sessionId": fakeSessionID,
 			"update": map[string]any{
 				"sessionUpdate": "agent_message_chunk",
 				"messageId":     fmt.Sprintf("fake:steered:%d", messageSeq),

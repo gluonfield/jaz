@@ -589,6 +589,20 @@ func TestBotOnlyToolsStayOnTheBotSurface(t *testing.T) {
 	if service.surface(req) != botSurface {
 		t.Fatal("bot query did not select the bot surface")
 	}
+	// A bot's routine run speaks through the bot; a run with no bot cannot.
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "gimli", Runtime: storage.RuntimeACP, SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for parent, want := range map[string]toolSurface{bot.ID: botSurface, "": threadSurface} {
+		run, err := store.CreateSession(storage.CreateSession{Slug: "run", Runtime: storage.RuntimeACP, SourceType: storage.SourceLoopRun, ParentID: parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := service.surface(sessionRequest(run.ID)); got != want {
+			t.Fatalf("routine run with parent %q got surface %v, want %v", parent, got, want)
+		}
+	}
 }
 
 func TestLegacyBrowserTaskUsesRetiredEmptySurface(t *testing.T) {
