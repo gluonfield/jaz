@@ -6,12 +6,14 @@ import (
 	"github.com/wins/jaz/backend/internal/templates/acpcompletion"
 )
 
-func CompletionPrompt(job Job) string {
+// CompletionPrompt hands a finished session's result to its parent, to report
+// to recipient.
+func CompletionPrompt(job Job, recipient string) string {
 	prompt, err := acpcompletion.Render(acpcompletion.Data{
-		Slug: job.Slug, Agent: job.ACPAgent, State: job.State, Error: job.Error, Assistant: job.Assistant,
+		Slug: job.Slug, Agent: job.ACPAgent, State: job.State, Error: job.Error, Assistant: job.Assistant, Recipient: recipient,
 	})
 	if err != nil {
-		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Continue from this result and report/update the user with relevant details.", job.Slug, job.ACPAgent, job.State)
+		return fmt.Sprintf("ACP session %s (%s) completed with state %s. Continue from this result and report/update %s with relevant details.", job.Slug, job.ACPAgent, job.State, recipient)
 	}
 	return prompt
 }

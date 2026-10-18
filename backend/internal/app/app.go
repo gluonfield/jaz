@@ -690,7 +690,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		return
 	}
 	// Append-only: a full-list save would clobber rows persisted after our load.
-	completion := provider.DeveloperMessage(acp.CompletionPrompt(job))
+	completion := provider.DeveloperMessage(acp.CompletionPrompt(job, "the user"))
 	if err := store.AppendMessages(job.ParentID, completion); err != nil {
 		logger.Error("appending completion note failed", "parent", job.ParentID, "error", err)
 		setStoredSessionError(store, job.ParentID, err.Error())

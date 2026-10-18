@@ -6,7 +6,7 @@ import (
 )
 
 func TestRenderFullAndMinimal(t *testing.T) {
-	full, err := Render(Data{Slug: "codex-plan", Agent: "codex", State: "idle", Error: "boom", Assistant: "did the thing"})
+	full, err := Render(Data{Slug: "codex-plan", Agent: "codex", State: "idle", Error: "boom", Assistant: "did the thing", Recipient: "the user"})
 	if err != nil {
 		t.Fatal(err)
 	}

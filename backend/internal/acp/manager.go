@@ -146,6 +146,8 @@ type SendRequest struct {
 	ParentVisible bool
 	// FromAgent marks Message as an agent's, not the user's.
 	FromAgent bool
+	// From is the thread whose agent sent Message, when known.
+	From string
 }
 
 type CompactRequest struct {
