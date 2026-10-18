@@ -103,7 +103,8 @@ const (
 )
 
 // UnmarshalJSON reads the words Codex and Claude send, and older rows hold,
-// as one of the four. A word not listed is a subagent still at work.
+// as one of the four. Codex reports an interrupted agent as such, so one it
+// shut down or closed ended normally. A word not listed is one still at work.
 func (s *ProviderSubagentStatus) UnmarshalJSON(data []byte) error {
 	var raw string
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -112,11 +113,11 @@ func (s *ProviderSubagentStatus) UnmarshalJSON(data []byte) error {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "":
 		*s = ""
-	case "completed", "done":
+	case "completed", "done", "shutdown", "stopped", "closed":
 		*s = SubagentCompleted
 	case "failed", "error", "errored", "not_found":
 		*s = SubagentFailed
-	case "cancelled", "canceled", "interrupted", "stopped", "shutdown", "closed":
+	case "cancelled", "canceled", "interrupted":
 		*s = SubagentCancelled
 	default:
 		*s = SubagentRunning

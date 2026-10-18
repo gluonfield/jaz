@@ -162,9 +162,11 @@ func (s *Store) replaceMessagesLocked(id string, records []storage.Message) erro
 	for i, record := range records {
 		record.ThreadID = id
 		record.Seq = int64(i + 1)
-		// Already-stored rows keep their timestamps; only new rows are stamped.
+		// Already-stored rows keep their timestamps and writers; only new rows
+		// are stamped.
 		if i < len(existing) && existing[i].Role == record.Role {
 			record.CreatedAt = existing[i].CreatedAt
+			record.FromAgent = existing[i].FromAgent
 			record = storage.MergeDurableBlocks(record, existing[i])
 		} else if record.CreatedAt.IsZero() {
 			record.CreatedAt = now.Add(time.Duration(i+1) * time.Millisecond)

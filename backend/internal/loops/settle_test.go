@@ -109,14 +109,11 @@ func TestRoutinesWaitUntilTheRunsJazLeftOpenAreSettled(t *testing.T) {
 		left = append(left, runs[0].ID)
 		waiting[runs[1].ID] = name
 	}
-	hook, err := service.Create(loops.CreateLoop{Name: "Hook", Prompt: "handle the hook", ACPAgent: "codex", Trigger: &loops.Trigger{Kind: loops.TriggerWebhook}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	exec := database(t, root)
+	service.Now = func() time.Time { return time.Now().Add(time.Hour) }
 
-	// Every try fails to read the runs: the scheduler gives up, and no routine
-	// starts, not even one an event fires once the database is back.
+	// Every try fails to read the runs: the scheduler gives up without
+	// starting or skipping a due slot.
 	loops.SetSettleDelays(t, time.Millisecond, time.Millisecond)
 	exec("ALTER TABLE loop_runs RENAME TO loop_runs_lost")
 	gaveUp := make(chan error, 1)
@@ -132,16 +129,15 @@ func TestRoutinesWaitUntilTheRunsJazLeftOpenAreSettled(t *testing.T) {
 		t.Fatal("the scheduler ran on with the open runs unsettled")
 	}
 	exec("ALTER TABLE loop_runs_lost RENAME TO loop_runs")
-	waitBlocked(t, service, "routines wait until it restarts", "no such table: loop_runs")
-	fired, err := service.RunTriggered(ctx, hook.ID, "webhook")
+	waitBlocked(t, service, "scheduled runs wait until Jaz restarts")
+	started.none(t, "before the open runs settled")
+	items, err := service.List()
 	if err != nil {
 		t.Fatal(err)
 	}
-	waiting[fired.ID] = "Hook"
-	started.none(t, "before the open runs settled")
-	for _, id := range left {
-		if run, err := store.LoadRun(id); err != nil || run.Status != loops.RunStatusRunning {
-			t.Fatalf("run left open = %+v, %v; want it untouched", run, err)
+	for _, loop := range items {
+		if runs, err := service.Runs(loop.ID, 10); err != nil || len(runs) != 2 || runs[0].Status == loops.RunStatusSkipped {
+			t.Fatalf("%s runs = %+v, %v; want only the two left open", loop.Name, runs, err)
 		}
 	}
 
@@ -149,6 +145,7 @@ func TestRoutinesWaitUntilTheRunsJazLeftOpenAreSettled(t *testing.T) {
 	// close the other. The second try closes it, and every waiting run starts
 	// once.
 	next := loops.NewService(store, started, log.New(io.Discard))
+	next.Now = service.Now
 	loops.SetSettleDelays(t, 500*time.Millisecond, 500*time.Millisecond)
 	exec(`CREATE TRIGGER close_one BEFORE UPDATE OF status ON loop_runs
 		WHEN NEW.status = 'error' AND (SELECT count(*) FROM loop_runs WHERE status = 'error') > 0
@@ -156,7 +153,7 @@ func TestRoutinesWaitUntilTheRunsJazLeftOpenAreSettled(t *testing.T) {
 	go func() {
 		_ = loops.StartScheduler(ctx, next, time.Hour, func(ctx context.Context) error { return next.Resume(ctx, nil) })
 	}()
-	waitBlocked(t, next, "routines wait while it tries again", "disk I/O error")
+	waitBlocked(t, next, "scheduled runs wait while it tries again")
 	exec("DROP TRIGGER close_one")
 	for range len(waiting) {
 		run := started.next(t)
@@ -171,7 +168,7 @@ func TestRoutinesWaitUntilTheRunsJazLeftOpenAreSettled(t *testing.T) {
 			t.Fatalf("run left open = %+v, %v; want it closed", run, err)
 		}
 	}
-	items, err := next.List()
+	items, err = next.List()
 	if err != nil {
 		t.Fatal(err)
 	}

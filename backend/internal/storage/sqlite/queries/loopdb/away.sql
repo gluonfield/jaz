@@ -16,7 +16,7 @@ SELECT CAST(MAX(
   ), 0),
   COALESCE((
     SELECT MAX(unixepoch(json_extract(q.value, '$.sent_at'), 'subsec') * 1000)
-    FROM threads AS t, json_each(NULLIF(t.queued_messages, '')) AS q
+    FROM threads AS t, json_each(CASE WHEN json_valid(t.queued_messages) THEN t.queued_messages END) AS q
   ), 0),
   COALESCE((
     SELECT created_at_ms

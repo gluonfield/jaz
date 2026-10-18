@@ -37,8 +37,8 @@ type Service struct {
 	ours map[string]bool
 	// away holds bots' routines while the user is away; see GuardAway.
 	away bool
-	// unsettled says why the runs a previous process left open are not
-	// settled after a failed try. No run starts while it is set; see settle.
+	// unsettled says why scheduled runs wait: the runs a previous process left
+	// open are not settled after a failed try. See settle.
 	unsettled string
 }
 
@@ -172,13 +172,13 @@ func (s *Service) List() ([]Loop, error) {
 	return s.blocked(items), err
 }
 
-// blocked tells each active loop why its runs cannot start, if they cannot.
+// blocked tells each active scheduled loop why its runs wait, if they do.
 func (s *Service) blocked(items []Loop) []Loop {
 	s.mu.Lock()
 	reason := s.unsettled
 	s.mu.Unlock()
 	for i := range items {
-		if items[i].Status == StatusActive {
+		if items[i].Status == StatusActive && items[i].Schedule.Kind == ScheduleCron {
 			items[i].Blocked = reason
 		}
 	}
@@ -479,8 +479,6 @@ func (s *Service) Resume(ctx context.Context, held map[string]bool) error {
 		for _, start := range starts {
 			delete(s.ours, start.run.ID)
 		}
-	} else {
-		s.unsettled = ""
 	}
 	s.mu.Unlock()
 	if err != nil {
@@ -553,9 +551,6 @@ func active(run Run) bool {
 }
 
 func (s *Service) start(ctx context.Context, loop Loop, run Run) {
-	if s.waits(run) {
-		return
-	}
 	if s.Executor == nil {
 		_ = s.Finish(run.ID, RunStatusError, "loop executor is not configured", false)
 		return
@@ -573,17 +568,6 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run) {
 		ArtifactSurface:        s.artifactSurface(loop, run),
 		Controller:             s,
 	})
-}
-
-// waits leaves run pending while the runs a previous process left open are
-// unsettled; the try that settles them starts it.
-func (s *Service) waits(run Run) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.unsettled != "" {
-		delete(s.ours, run.ID)
-	}
-	return s.unsettled != ""
 }
 
 // thread is where a run of loop happens: ThreadMain or ThreadChild for a
@@ -806,7 +790,8 @@ var settleDelays = []time.Duration{2 * time.Second, 8 * time.Second, 30 * time.S
 
 // StartScheduler settles the runs a previous process left open with settle,
 // then starts due routines every tick. A failed try waits and tries again, up
-// to settleDelays; until one succeeds no routine starts, and each says why.
+// to settleDelays; until one succeeds no scheduled run starts, and each
+// scheduled routine says why.
 func StartScheduler(ctx context.Context, service *Service, tick time.Duration, settle func(context.Context) error) error {
 	if service == nil {
 		<-ctx.Done()
@@ -835,23 +820,20 @@ func StartScheduler(ctx context.Context, service *Service, tick time.Duration, s
 	}
 }
 
+const unsettledReason = "Jaz could not check the runs it left open when it last stopped, so scheduled runs wait "
+
 func (s *Service) settle(ctx context.Context, settle func(context.Context) error) error {
 	for attempt := 0; ; attempt++ {
 		err := settle(ctx)
 		if err == nil || ctx.Err() != nil {
+			s.setUnsettled("")
 			return ctx.Err()
 		}
-		last := attempt == len(settleDelays)
-		wait := "while it tries again"
-		if last {
-			wait = "until it restarts"
-		}
-		s.mu.Lock()
-		s.unsettled = fmt.Sprintf("Jaz could not check the runs it left open when it last stopped, so routines wait %s: %v", wait, err)
-		s.mu.Unlock()
-		if last {
+		if attempt == len(settleDelays) {
+			s.setUnsettled(unsettledReason + "until Jaz restarts.")
 			return fmt.Errorf("routines did not start: %w", err)
 		}
+		s.setUnsettled(unsettledReason + "while it tries again.")
 		s.Log.Warn("checking the routine runs left open failed; trying again", "error", err)
 		select {
 		case <-ctx.Done():
@@ -859,6 +841,12 @@ func (s *Service) settle(ctx context.Context, settle func(context.Context) error
 		case <-time.After(settleDelays[attempt]):
 		}
 	}
+}
+
+func (s *Service) setUnsettled(reason string) {
+	s.mu.Lock()
+	s.unsettled = reason
+	s.mu.Unlock()
 }
 
 func normalizeRunStatus(status string) string {

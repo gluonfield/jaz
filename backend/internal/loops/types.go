@@ -97,7 +97,7 @@ type Loop struct {
 	WhenMissed  string   `json:"when_missed"`
 	Thread      string   `json:"thread"`
 	KeepRunning bool     `json:"keep_running,omitempty"`
-	// Blocked says why the routine cannot start runs now. Jaz never stores it.
+	// Blocked says why the routine's scheduled runs wait. Jaz never stores it.
 	Blocked     string `json:"blocked,omitempty"`
 	WebhookHash string `json:"-"`
 	// WebhookSecret is returned once, when a webhook trigger is created.

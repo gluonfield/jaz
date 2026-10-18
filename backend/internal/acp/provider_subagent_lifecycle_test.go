@@ -41,10 +41,9 @@ func TestEveryProviderSubagentStateReadsAsRunningOrEnded(t *testing.T) {
 	)
 	sent := map[string]sessionevents.ProviderSubagentStatus{
 		"running": running, "starting": running, "pending_init": running,
-		"completed": completed, "done": completed,
+		"completed": completed, "done": completed, "stopped": completed, "shutdown": completed, "closed": completed,
 		"failed": failed, "error": failed, "errored": failed, "not_found": failed,
 		"cancelled": cancelled, "canceled": cancelled, "interrupted": cancelled,
-		"stopped": cancelled, "shutdown": cancelled, "closed": cancelled,
 	}
 	store := newProviderSubagentStore(t)
 	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentClaude, nil, "", "")
