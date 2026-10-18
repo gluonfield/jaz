@@ -16,7 +16,7 @@ const TYPING_MS = 900
 export const BotChat = memo(function BotChat({ bot, bots, newBot, messages, events, scrollRef, paging, working, threads, send, showDetails }: ThreadChatView & { bot: Bot; bots: Bot[]; newBot: boolean }) {
   const entrypoints = useQuery(mcpEntrypointsQuery).data ?? NO_ENTRYPOINTS
   const chat = useMemo(() => botChat(messages, events, bot, entrypoints), [messages, events, bot, entrypoints])
-  const [helloAt, setHelloAt] = useState(newBot ? '' : bot.created_at)
+  const [helloAt, setHelloAt] = useState(newBot ? '' : bot.created_at ?? bot.updated_at)
   useEffect(() => {
     if (helloAt) return
     const timer = setTimeout(() => setHelloAt(new Date().toISOString()), TYPING_MS)

@@ -734,7 +734,8 @@ export interface Bot {
   unread: boolean
   status: Session['status']
   preview?: string
-  created_at: string
+  // Absent from servers that predate it.
+  created_at?: string
   updated_at: string
   agent?: string
   model?: string
