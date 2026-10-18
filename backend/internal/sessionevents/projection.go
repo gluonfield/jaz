@@ -122,15 +122,7 @@ func (a *Annotator) Annotate(event Event) Event {
 }
 
 func providerSubagentProjectionOpen(subagent *ProviderSubagentEvent) bool {
-	if subagent == nil {
-		return false
-	}
-	switch strings.ToLower(subagent.Status) {
-	case "completed", "failed", "cancelled", "canceled", "done", "stopped":
-		return false
-	default:
-		return true
-	}
+	return subagent != nil && !subagent.Status.Ended()
 }
 
 func EnsureStatelessProjection(event Event) Event {

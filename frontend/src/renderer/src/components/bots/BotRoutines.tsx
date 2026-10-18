@@ -50,7 +50,8 @@ function RoutineRow({ loop, Icon, onOpen }: { loop: Loop; Icon: LucideIcon; onOp
       </span>
       <span className="min-w-0 flex-1">
         <span className={`block truncate text-[13px] font-medium ${paused ? 'text-ink-3' : 'text-ink'}`}>{loop.name}</span>
-        <span className="block truncate text-[12px] text-ink-3">
+        <span className="block truncate text-[12px] text-ink-3" title={loop.blocked}>
+          {loop.blocked ? <span className="text-danger">Not starting · </span> : null}
           {paused ? 'Paused · ' : null}
           {tone === 'running' ? <span className="text-running">{loop.last_run_status === 'starting' ? 'Queued' : 'Running now'} · </span> : null}
           {tone === 'failed' ? <span className="text-danger">Last run failed · </span> : null}

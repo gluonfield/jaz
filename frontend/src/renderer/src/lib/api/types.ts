@@ -479,6 +479,9 @@ export interface Loop {
   last_run_thread_id?: string
   last_run_status?: LoopRunStatus
   last_error?: string
+  // Why the routine's scheduled runs wait, as when Jaz could not check the runs
+  // it left open when it last stopped.
+  blocked?: string
   created_at: string
   updated_at: string
 }
@@ -807,6 +810,10 @@ export interface SideChatEvent {
   attachments?: Attachment[]
 }
 
+// Where a provider's subagent stands, as the backend reads every word Codex and
+// Claude use for it. Absent reports no change.
+export type ProviderSubagentStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+
 export interface ProviderSubagentEvent {
   provider?: string
   id: string
@@ -815,7 +822,7 @@ export interface ProviderSubagentEvent {
   name?: string
   task?: string
   role?: string
-  status?: string
+  status?: ProviderSubagentStatus
   summary?: string
   prompt?: string
   model?: string

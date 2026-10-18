@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"time"
@@ -12,19 +11,11 @@ import (
 )
 
 // LastUserMessageAt is when the user last wrote to Jaz: a message in a chat or
-// bot chat of their own, a group post or a voice message.
+// bot chat of their own, sent or queued, an answer to an agent, a group post or
+// a voice message.
 func (s *Store) LastUserMessageAt() (time.Time, error) {
-	ctx := context.Background()
-	q := loopdb.New(s.db)
-	written, err := q.GetLastUserMessageAt(ctx)
-	if err != nil {
-		return time.Time{}, err
-	}
-	spoken, err := q.GetLastUserSpeechAt(ctx)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return time.Time{}, err
-	}
-	return msToTime(max(written, spoken)), nil
+	last, err := loopdb.New(s.db).GetLastUserMessageAt(context.Background())
+	return msToTime(last), err
 }
 
 func (s *Store) AwaySince() (time.Time, error) {

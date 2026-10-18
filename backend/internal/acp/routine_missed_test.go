@@ -160,7 +160,7 @@ func TestRestartAcrossAMissedSlotCatchesUpOnceAndSkipsTheJoke(t *testing.T) {
 	jaz.loops.Now = func() time.Time { return slot.Add(40 * time.Minute) }
 	ctx, stop := context.WithCancel(jaz.ctx)
 	defer stop()
-	go func() { _ = loops.StartScheduler(ctx, jaz.loops, 10*time.Millisecond) }()
+	go func() { _ = loops.StartScheduler(ctx, jaz.loops, 10*time.Millisecond, jaz.server.ResumeLoopRuns) }()
 	jaz.eventually("both routines settled", func() bool { return len(jaz.runs(sync.ID)) == 1 && len(jaz.runs(joke.ID)) == 1 })
 	stop()
 	caughtUp := jaz.runs(sync.ID)[0]

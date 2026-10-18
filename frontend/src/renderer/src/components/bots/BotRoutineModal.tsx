@@ -78,6 +78,7 @@ export function BotRoutineModal({ bot, loopId, onClose }: { bot: Bot; loopId: st
       }
     >
       <div className="flex flex-col gap-4">
+        {loop.blocked ? <p className="text-[13px] leading-relaxed text-danger">{loop.blocked}</p> : null}
         <p className="max-h-48 overflow-y-auto rounded-lg bg-surface px-3 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{loop.prompt}</p>
         <dl className="flex flex-col">
           <Fact label="Runs">

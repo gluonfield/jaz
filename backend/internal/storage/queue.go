@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type QueuedMessage struct {
@@ -17,6 +18,8 @@ type QueuedMessage struct {
 	PlanRequested bool              `json:"plan_requested,omitempty"`
 	GoalRequested bool              `json:"goal_requested,omitempty"`
 	Output        *TurnOutput       `json:"output,omitempty"`
+	// SentAt is when the user queued the message; Jaz's own have none.
+	SentAt time.Time `json:"sent_at,omitzero"`
 }
 
 type QueuedMessageKind string

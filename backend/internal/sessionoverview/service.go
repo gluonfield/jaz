@@ -3,7 +3,6 @@ package sessionoverview
 import (
 	"context"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -134,21 +133,12 @@ func subagentViews(events []sessionevents.Event) []Subagent {
 		out = append(out, subagent)
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if active := subagentActive(out[i]) != subagentActive(out[j]); active {
-			return subagentActive(out[i])
+		if ended := out[j].Status.Ended(); out[i].Status.Ended() != ended {
+			return ended
 		}
 		return out[i].UpdatedAt.After(out[j].UpdatedAt)
 	})
 	return out
-}
-
-func subagentActive(subagent Subagent) bool {
-	switch strings.ToLower(subagent.Status) {
-	case "completed", "failed", "cancelled", "canceled", "shutdown", "closed":
-		return false
-	default:
-		return true
-	}
 }
 
 func first(values ...string) string {

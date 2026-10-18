@@ -144,6 +144,8 @@ type SendRequest struct {
 	PlanRequested bool
 	GoalRequested bool
 	ParentVisible bool
+	// FromAgent marks Message as an agent's, not the user's.
+	FromAgent bool
 }
 
 type CompactRequest struct {

@@ -10,10 +10,12 @@ import (
 
 type Querier interface {
 	GetLastFinishedAt(ctx context.Context, arg GetLastFinishedAtParams) (int64, error)
-	// Agents write the prompts of child threads and of automated sources, so only
-	// top-level chats and bot chats hold messages the user typed.
+	// The user's latest message of their own, queued message, answer to an agent,
+	// group post or voice message. Agents write the prompts of child threads and of
+	// automated sources, and the messages they send other threads, so only the
+	// user's own messages in top-level chats and bot chats count. A queued message
+	// counts from when the user sent it, which only the user's messages record.
 	GetLastUserMessageAt(ctx context.Context) (int64, error)
-	GetLastUserSpeechAt(ctx context.Context) (int64, error)
 	GetLatestLoopEventAt(ctx context.Context, loopID string) (int64, error)
 	GetLoop(ctx context.Context, id string) (Loop, error)
 	GetRun(ctx context.Context, id string) (LoopRun, error)

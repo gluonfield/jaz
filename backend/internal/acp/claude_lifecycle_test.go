@@ -179,7 +179,7 @@ func TestManagerDoesNotReplaceEstablishedLazySession(t *testing.T) {
 			if test.event {
 				err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
 			} else {
-				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil, false)
 			}
 			if err != nil {
 				t.Fatal(err)
@@ -208,7 +208,7 @@ func TestManagerDoesNotForkEstablishedLazySessionWithoutProviderID(t *testing.T)
 			if test.event {
 				err = store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior turn"})
 			} else {
-				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil)
+				err = storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil, false)
 			}
 			if err != nil {
 				t.Fatal(err)

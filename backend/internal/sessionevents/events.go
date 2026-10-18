@@ -3,6 +3,7 @@ package sessionevents
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,20 +75,58 @@ type SideChatEvent struct {
 }
 
 type ProviderSubagentEvent struct {
-	Provider        string `json:"provider,omitempty"`
-	ID              string `json:"id"`
-	ThreadID        string `json:"thread_id,omitempty"`
-	ParentID        string `json:"parent_id,omitempty"`
-	Name            string `json:"name,omitempty"`
-	Task            string `json:"task,omitempty"`
-	Role            string `json:"role,omitempty"`
-	Status          string `json:"status,omitempty"`
-	Summary         string `json:"summary,omitempty"`
-	Prompt          string `json:"prompt,omitempty"`
-	Model           string `json:"model,omitempty"`
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	StartedAtMs     int64  `json:"started_at_ms,omitempty"`
-	CompletedAtMs   int64  `json:"completed_at_ms,omitempty"`
+	Provider        string                 `json:"provider,omitempty"`
+	ID              string                 `json:"id"`
+	ThreadID        string                 `json:"thread_id,omitempty"`
+	ParentID        string                 `json:"parent_id,omitempty"`
+	Name            string                 `json:"name,omitempty"`
+	Task            string                 `json:"task,omitempty"`
+	Role            string                 `json:"role,omitempty"`
+	Status          ProviderSubagentStatus `json:"status,omitempty"`
+	Summary         string                 `json:"summary,omitempty"`
+	Prompt          string                 `json:"prompt,omitempty"`
+	Model           string                 `json:"model,omitempty"`
+	ReasoningEffort string                 `json:"reasoning_effort,omitempty"`
+	StartedAtMs     int64                  `json:"started_at_ms,omitempty"`
+	CompletedAtMs   int64                  `json:"completed_at_ms,omitempty"`
+}
+
+// ProviderSubagentStatus is where a provider's subagent stands: running, or
+// ended as completed, failed or cancelled. Empty reports no change.
+type ProviderSubagentStatus string
+
+const (
+	SubagentRunning   ProviderSubagentStatus = "running"
+	SubagentCompleted ProviderSubagentStatus = "completed"
+	SubagentFailed    ProviderSubagentStatus = "failed"
+	SubagentCancelled ProviderSubagentStatus = "cancelled"
+)
+
+// UnmarshalJSON reads the words Codex and Claude send, and older rows hold,
+// as one of the four. Codex reports an interrupted agent as such, so one it
+// shut down or closed ended normally. A word not listed is one still at work.
+func (s *ProviderSubagentStatus) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		*s = ""
+	case "completed", "done", "shutdown", "stopped", "closed":
+		*s = SubagentCompleted
+	case "failed", "error", "errored", "not_found":
+		*s = SubagentFailed
+	case "cancelled", "canceled", "interrupted":
+		*s = SubagentCancelled
+	default:
+		*s = SubagentRunning
+	}
+	return nil
+}
+
+func (s ProviderSubagentStatus) Ended() bool {
+	return s == SubagentCompleted || s == SubagentFailed || s == SubagentCancelled
 }
 
 type ArtifactEvent struct {

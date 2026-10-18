@@ -12,7 +12,7 @@ const providerSubagentsMetaKey = "providerSubagents"
 
 type providerSubagentHint struct {
 	summary string
-	status  string
+	status  sessionevents.ProviderSubagentStatus
 }
 
 type providerSubagentUpdate struct {
@@ -33,9 +33,9 @@ func providerSubagentFromUpdate(job *jobState, update acpschema.DecodedSessionUp
 	case acpschema.ToolCallUpdateSessionUpdate:
 		return job.toolCallSubagent(event.ToolCallID, event.Meta)
 	case acpschema.AgentMessageChunkUpdate:
-		return providerSubagentUpdate{subagents: providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: "running"})}
+		return providerSubagentUpdate{subagents: providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent message", status: sessionevents.SubagentRunning})}
 	case acpschema.AgentThoughtChunkUpdate:
-		return providerSubagentUpdate{subagents: providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: "running"})}
+		return providerSubagentUpdate{subagents: providerSubagentsFromMeta(agent, event.Meta, providerSubagentHint{summary: "Subagent thinking", status: sessionevents.SubagentRunning})}
 	default:
 		return providerSubagentUpdate{}
 	}
@@ -56,7 +56,7 @@ func (j *jobState) toolCallSubagent(id acpschema.ToolCallID, meta map[string]any
 	}
 	_, nested := j.subagentToolIDs[string(id)]
 	return providerSubagentUpdate{
-		subagents: providerSubagentsFromMeta(j.ACPAgent, meta, providerSubagentHint{status: "running"}),
+		subagents: providerSubagentsFromMeta(j.ACPAgent, meta, providerSubagentHint{status: sessionevents.SubagentRunning}),
 		consume:   nested,
 	}
 }
@@ -75,9 +75,8 @@ func (m *Manager) interruptProviderSubagents(job *jobState) {
 		if subagent == nil || event.ProjectionKey != sessionevents.ProviderSubagentProjectionKey(job.ID, *subagent) {
 			continue
 		}
-		switch subagent.Status {
-		case "", "running", "starting", "pending_init":
-			interrupted = append(interrupted, sessionevents.ProviderSubagentEvent{Provider: subagent.Provider, ID: subagent.ID, Status: "cancelled"})
+		if !subagent.Status.Ended() {
+			interrupted = append(interrupted, sessionevents.ProviderSubagentEvent{Provider: subagent.Provider, ID: subagent.ID, Status: sessionevents.SubagentCancelled})
 		}
 	}
 	m.publishProviderSubagents(job.eventView(), interrupted)
