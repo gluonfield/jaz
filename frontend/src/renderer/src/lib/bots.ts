@@ -1,4 +1,4 @@
-import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
+import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { messageText } from '@/lib/messageText'
 import { isPresentedApp } from '@/lib/mcpApps'
 import { hasPermissionSurface } from '@/lib/sessionPermissions'
@@ -20,6 +20,9 @@ export const BOT_COLORS: Record<BotColor, string> = {
   pink: '#f47fbf',
   gray: '#a3a3ad',
 }
+
+// What a bot's identity files are called on screen.
+export const BOT_FILE_LABELS: Record<BotFileName, string> = { 'AGENTS.md': 'Soul', 'MEMORY.md': 'Memory' }
 
 // A bot's colour drawn as text or marks: mixed toward ink, so white and the
 // pale colours stay readable in either theme.

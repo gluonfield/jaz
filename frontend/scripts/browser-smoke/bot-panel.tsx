@@ -170,13 +170,17 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('Delete did not delete and close the routine', () => requests.some((request) => request.method === 'DELETE') && !document.querySelector('[role="dialog"]'))
 
     await click('Identity')
-    await until('the identity cards are missing', () => text().includes('Who it is') && text().includes('What it knows') && text().includes('Updated Oct 9'))
+    const cards = () => [...document.querySelectorAll<HTMLElement>('.identity-card')]
+    await until('the identity cards are missing', () => cards().length === 2 && text().includes('Who it is') && text().includes('What it knows'))
+    if (cards().some((card) => card.textContent?.includes('.md'))) {
+      throw new Error('Bot panel: an identity card shows a file name: ' + cards().map((card) => card.textContent).join(' | '))
+    }
     await capture('bot-panel-identity')
     dark(true)
     await capture('bot-panel-identity-dark')
     dark(false)
 
-    await click('AGENTS.md')
+    await click('Soul')
     await until('AGENTS.md did not open', () => Boolean(editor()))
     if (document.querySelector('[role="dialog"]')!.getBoundingClientRect().width >= window.innerWidth * 0.9) {
       throw new Error('Bot panel: AGENTS.md opened over the whole window instead of in a modal')
@@ -187,14 +191,14 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: opening and closing a file without editing saved it')
     }
 
-    await click('MEMORY.md')
+    await click('Memory')
     await until('MEMORY.md did not open as a document', () => editor()?.querySelector('h1')?.textContent === 'Memory' && editor()!.querySelectorAll('li').length === 2)
     await window.smoke.key('Escape')
     await until('MEMORY.md did not close', () => !editor())
     if (requests.some((request) => request.method === 'PUT')) {
       throw new Error('Bot panel: opening and closing a file that ends in a list saved it')
     }
-    await click('MEMORY.md')
+    await click('Memory')
     await until('MEMORY.md did not reopen for editing', () => Boolean(editor()))
     await type('Owls')
     await click('Bold')
@@ -209,11 +213,11 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: the edit saved as ' + JSON.stringify(save.body))
     }
 
-    await click('MEMORY.md')
+    await click('Memory')
     await until('MEMORY.md did not reopen', () => Boolean(editor()))
     memory = { ...memory, content: memory.content + '\n- The bot wrote this meanwhile', version: 'bot-write' }
     await type('Bees')
-    await until('a save over the bot\'s newer write was not refused', () => text().includes('changed MEMORY.md while you were editing'))
+    await until('a save over the bot\'s newer write was not refused', () => text().includes('changed Memory while you were editing'))
     await capture('bot-file-conflict')
     await click('Keep mine')
     await until('Keep mine did not save over the version now on disk', () => memory.version === 'bot-write+' && !text().includes('while you were editing'))
@@ -223,7 +227,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await window.smoke.key('Escape')
     await until('Escape did not close the editor', () => !editor())
 
-    await click('MEMORY.md')
+    await click('Memory')
     await until('MEMORY.md did not open a third time', () => Boolean(editor()))
     await type('Cats')
     await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'side-a' } })
@@ -231,7 +235,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
 
     await click('Identity')
-    await click('MEMORY.md')
+    await click('Memory')
     await until('MEMORY.md did not open a fourth time', () => Boolean(editor()))
     memory = { ...memory, content: memory.content + '\n- The bot wrote this too', version: 'bot-write-2' }
     await type('Dogs')
