@@ -38,6 +38,16 @@ const SHAPES: Record<BotShape, { eyes: number; body: (fill: string) => ReactNode
   drop: { eyes: 60, body: () => <path d="M50 4s36 38 36 59a36 36 0 0 1-72 0C14 42 50 4 50 4z" /> },
 }
 
+// A bot's shape alone, in its colour, for use as a backdrop.
+export function BotSilhouette({ avatar, size }: { avatar: Avatar; size: number }) {
+  const fill = BOT_COLORS[avatar.color]
+  return (
+    <svg aria-hidden viewBox="0 0 100 100" width={size} height={size} className="shrink-0 overflow-visible">
+      <g fill={fill}>{SHAPES[avatar.shape].body(fill)}</g>
+    </svg>
+  )
+}
+
 // A working face bobs and glances around, unless motion is reduced.
 const LOOP = { repeat: Infinity, ease: 'easeInOut' } as const
 
