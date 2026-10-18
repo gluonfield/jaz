@@ -29,6 +29,7 @@ import type { ComposerDraftStorage } from './useComposerDraft'
 // focus surface — while focused, a rainbow conic ring circles the card.
 export function ComposerCard({
   streaming,
+  suggestedPrompt,
   autoFocus,
   placeholder = 'Ask anything, or hand your assistant a task…',
   disabled = false,
@@ -61,6 +62,8 @@ export function ComposerCard({
   onTextChange,
 }: {
   streaming: boolean
+  /** the prompt the agent predicts comes next, offered in an empty idle draft */
+  suggestedPrompt?: string
   autoFocus?: boolean
   placeholder?: string
   disabled?: boolean
@@ -158,6 +161,10 @@ export function ComposerCard({
       }
     },
   })
+
+  // Claude Code's ghost text: it takes the placeholder's place while the idle
+  // draft is empty, and Tab writes it into the draft.
+  const suggestion = !streaming && !disabled && !dictation.phase && mention.text === '' ? suggestedPrompt : undefined
 
   const setGoalRequested = useCallback((next: boolean) => {
     if (goalRequestedRef.current === next) return
@@ -323,15 +330,17 @@ export function ComposerCard({
   const textarea = (
     <MentionTextarea
       mention={mention}
-      placeholder={placeholder}
+      placeholder={suggestion || placeholder}
       disabled={disabled}
       readOnly={dictation.phase !== null}
       autoFocus={autoFocus}
       onKeyDown={(e) => {
-        if (
-          e.key === 'Tab' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey &&
-          streaming && onQueuePrompt && hasDraftContent && !dictation.phase
-        ) {
+        const plainTab = e.key === 'Tab' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey
+        if (plainTab && suggestion) {
+          e.preventDefault()
+          mention.insertText(suggestion)
+        }
+        if (plainTab && streaming && onQueuePrompt && hasDraftContent && !dictation.phase) {
           e.preventDefault()
           void submit(mention.value(), onQueuePrompt)
         }
@@ -606,6 +615,7 @@ export function ComposerCard({
 
 export function Composer({
   streaming,
+  suggestedPrompt,
   disabled,
   placeholder,
   planAvailable,
@@ -639,6 +649,7 @@ export function Composer({
   onReorderQueuedPrompts,
 }: {
   streaming: boolean
+  suggestedPrompt?: string
   disabled?: boolean
   placeholder?: string
   planAvailable?: boolean
@@ -692,6 +703,7 @@ export function Composer({
       </AnimatePresence>
       <ComposerCard
         streaming={streaming}
+        suggestedPrompt={suggestedPrompt}
         disabled={disabled}
         placeholder={placeholder}
         planAvailable={planAvailable}

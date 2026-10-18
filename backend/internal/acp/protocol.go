@@ -178,6 +178,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			currentTitle = job.Title
 			title = nextTitle
 		}
+		if prompt, ok := suggestedPrompt(event.Meta); ok && prompt != job.suggestedPrompt {
+			job.suggestedPrompt = prompt
+			publishACP = true
+		}
 	}
 	job.UpdatedAt = now
 	job.LastEventAt = now
