@@ -1,3 +1,4 @@
+import { Star } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { ReactNode, SVGProps } from 'react'
 import type { BotAvatar as Avatar, BotShape } from '@/lib/api/types'
@@ -79,12 +80,14 @@ export function BotAvatar({
 }
 
 // One face for a bot; a group overlaps its first two members. A working bot
-// wears a green dot, like someone online; otherwise `badge` may mark it.
-export function BotIcon({ avatars, size, working = false, badge }: {
+// wears a green dot, like someone online; otherwise `badge` may mark it. The
+// main bot wears a star at the bottom right.
+export function BotIcon({ avatars, size, working = false, badge, main = false }: {
   avatars: Avatar[]
   size: number
   working?: boolean
   badge?: { title: string; className: string } | null
+  main?: boolean
 }) {
   const member = Math.round(size * 0.72)
   const dot = working ? { title: 'Working', className: 'bg-ok' } : badge
@@ -104,6 +107,15 @@ export function BotIcon({ avatars, size, working = false, badge }: {
           className={`absolute -top-px -right-px rounded-full ring-2 ring-panel ${dot.className}`}
           style={{ width: Math.max(7, Math.round(size * 0.24)), height: Math.max(7, Math.round(size * 0.24)) }}
         />
+      ) : null}
+      {main ? (
+        <span
+          title="Main bot"
+          className="absolute -right-0.5 -bottom-0.5 grid place-items-center rounded-full bg-accent text-white ring-2 ring-panel"
+          style={{ width: Math.round(size * 0.32), height: Math.round(size * 0.32) }}
+        >
+          <Star size={Math.round(size * 0.19)} fill="currentColor" strokeWidth={0} aria-hidden />
+        </span>
       ) : null}
     </span>
   )
