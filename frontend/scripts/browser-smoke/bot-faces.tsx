@@ -81,7 +81,7 @@ export async function exerciseBotFaces(): Promise<void> {
     await window.smoke.capture('bot-faces')
 
     show({ ...moods, a: 'working' })
-    await until('a working face never hopped', () => offset('a').y < -5)
+    await until('a working face never bobbed', () => offset('a').y < -1.5)
 
     show({ ...moods, a: 'idle', b: 'failed' })
     await until('finishing work did not cheer', () => eyes('a').includes('q6 -10'), 800)
