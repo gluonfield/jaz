@@ -313,7 +313,7 @@ func TestProviderSubagentInterruptLeavesVisibleChildRecords(t *testing.T) {
 		got[event.ProjectionKey] = event.ProviderSubagent.Status
 	}
 	want := map[string]string{
-		sessionevents.ProviderSubagentProjectionKey(parent.ID, parentWorker): "interrupted",
+		sessionevents.ProviderSubagentProjectionKey(parent.ID, parentWorker): "cancelled",
 		sessionevents.ProviderSubagentProjectionKey(child.ID, childWorker):   "running",
 	}
 	if !maps.Equal(got, want) {

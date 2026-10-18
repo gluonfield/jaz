@@ -23,7 +23,7 @@ func TestCloseInterruptsRunningProviderSubagents(t *testing.T) {
 	sendAndWait(t, ctx, manager, spawned.SessionID, "subagent toolu_bg=running subagent toolu_done=running subagent toolu_done=completed")
 	wantSubagentStatuses(t, store, spawned.SessionID, map[string]string{"toolu_bg": "running", "toolu_done": "completed"})
 	manager.Close()
-	wantSubagentStatuses(t, store, spawned.SessionID, map[string]string{"toolu_bg": "interrupted", "toolu_done": "completed"})
+	wantSubagentStatuses(t, store, spawned.SessionID, map[string]string{"toolu_bg": "cancelled", "toolu_done": "completed"})
 }
 
 func TestResumeAfterCrashInterruptsSubagentsUntilReportedAgain(t *testing.T) {
@@ -42,7 +42,7 @@ func TestResumeAfterCrashInterruptsSubagentsUntilReportedAgain(t *testing.T) {
 	restarted := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentClaude, nil, "", "")
 	t.Cleanup(restarted.Close)
 	sendAndWait(t, ctx, restarted, spawned.SessionID, "after restart")
-	wantSubagentStatuses(t, store, spawned.SessionID, map[string]string{"toolu_bg": "interrupted", "toolu_done": "completed"})
+	wantSubagentStatuses(t, store, spawned.SessionID, map[string]string{"toolu_bg": "cancelled", "toolu_done": "completed"})
 	sendAndWait(t, ctx, restarted, spawned.SessionID, "subagent toolu_bg=running")
 	wantSubagentStatuses(t, store, spawned.SessionID, map[string]string{"toolu_bg": "running", "toolu_done": "completed"})
 }

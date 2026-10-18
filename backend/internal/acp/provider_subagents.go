@@ -77,7 +77,7 @@ func (m *Manager) interruptProviderSubagents(job *jobState) {
 		}
 		switch subagent.Status {
 		case "", "running", "starting", "pending_init":
-			interrupted = append(interrupted, sessionevents.ProviderSubagentEvent{Provider: subagent.Provider, ID: subagent.ID, Status: "interrupted"})
+			interrupted = append(interrupted, sessionevents.ProviderSubagentEvent{Provider: subagent.Provider, ID: subagent.ID, Status: "cancelled"})
 		}
 	}
 	m.publishProviderSubagents(job.eventView(), interrupted)

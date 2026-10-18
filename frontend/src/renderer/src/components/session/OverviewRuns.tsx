@@ -265,7 +265,7 @@ function subagentStatus(status: string | undefined): SubagentStatus {
   if (normalized === 'failed' || normalized === 'errored' || normalized === 'error' || normalized === 'not_found') {
     return 'failed'
   }
-  if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'interrupted') return 'cancelled'
+  if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'interrupted' || normalized === 'stopped') return 'cancelled'
   return 'working'
 }
 
