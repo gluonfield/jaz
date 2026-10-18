@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RunList } from '@/components/session/OverviewRuns'
+import { OverviewRuns } from '@/components/session/OverviewRuns'
 import { SidePanelShell } from '@/components/session/SidePanelShell'
 import type { ThreadDetailsView } from '@/components/session/ThreadView'
 import { Popover } from '@/components/ui/Popover'
@@ -39,7 +39,7 @@ export function BotDetails({ bot, focusName, agentSession, working, threads, sub
         <BotRoutines bot={bot} />
       ) : tab === 'subtasks' ? (
         threads.length || subagents.length ? (
-          <RunList threads={threads} subagents={subagents} />
+          <OverviewRuns threads={threads} subagents={subagents} />
         ) : (
           <p className="text-[13px] text-ink-3">{bot.name} hands longer work to subtasks that run in the background.</p>
         )
