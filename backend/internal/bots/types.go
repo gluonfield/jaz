@@ -32,6 +32,7 @@ type Bot struct {
 	Prompt          string    `json:"prompt,omitempty"`
 	Avatar          Avatar    `json:"avatar"`
 	Pinned          int       `json:"pinned,omitempty"`
+	Main            bool      `json:"main,omitempty"`
 	Unread          bool      `json:"unread"`
 	Status          string    `json:"status"`
 	Preview         string    `json:"preview,omitempty"`
@@ -53,6 +54,7 @@ type CreateBot struct {
 	Model  string  `json:"model,omitempty"`
 	// StoredModel marks Model as saved earlier, as an adopted routine's is.
 	StoredModel bool `json:"-"`
+	Main        bool `json:"-"`
 }
 
 type UpdateBot struct {

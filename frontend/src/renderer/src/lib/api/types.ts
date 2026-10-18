@@ -733,6 +733,8 @@ export interface Bot {
   avatar: BotAvatar
   // The bot's place among the pins, from 1; absent when it is not pinned.
   pinned?: number
+  // The user's main bot, which cannot be deleted.
+  main?: boolean
   unread: boolean
   status: Session['status']
   preview?: string
