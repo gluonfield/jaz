@@ -55,10 +55,10 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
     contentType: 'markdown',
     autofocus: 'end',
     editorProps: { attributes: { class: 'editor-prose outline-none', 'aria-label': file.name } },
-    onCreate: ({ editor }) => {
+    // Development's StrictMode builds the editor twice, and only the one being
+    // typed in is known to be on screen, so that is the one saved.
+    onUpdate: ({ editor }) => {
       view.current = editor
-    },
-    onUpdate: () => {
       edited.current = true
       window.clearTimeout(timer.current)
       timer.current = window.setTimeout(() => void save(), 800)
