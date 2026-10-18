@@ -9,7 +9,7 @@ import { MarkdownText } from '@/components/session/MessageMarkdown'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { botsQuery } from '@/lib/api/bots'
 import type { Bot } from '@/lib/api/types'
-import { botAvatars, dragSections, pinOrder, placePin } from '@/lib/bots'
+import { botAvatars, botMood, dragSections, pinOrder, placePin } from '@/lib/bots'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import { BotIcon } from './BotAvatar'
 import { BotMenu } from './BotMenu'
@@ -122,8 +122,8 @@ function BotEntry({ ref, bot, bots, tile = false, dragged, hidden, onDrag }: {
   const menuTriggers = useContextMenuTrigger(setMenu)
   // A working bot shows it on its face. Unread and failed show as a dot: on a
   // tile's face, so its name keeps the full width, and beside a row's name.
-  const working = bot.status === 'running'
-  const state = working ? null : stateDot(bot)
+  const mood = botMood(bot)
+  const state = mood === 'working' ? null : stateDot(bot)
   const dot = state ? <span title={state.title} className={`size-1.5 shrink-0 rounded-full ${state.className}`} /> : null
   const name = renaming ? (
     <BotNameInput
@@ -178,7 +178,7 @@ function BotEntry({ ref, bot, bots, tile = false, dragged, hidden, onDrag }: {
             : 'flex h-13 items-center gap-2.5 px-2.5 text-[13px] max-sm:h-16 max-sm:text-[15px]'
         }`}
       >
-        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} working={working} badge={tile ? state : null} main={bot.main} />
+        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} mood={mood} live badge={tile ? state : null} main={bot.main} />
         {tile ? (
           name
         ) : (

@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"slices"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
@@ -53,6 +54,25 @@ func (m *Manager) awaitPermissionAnswer(ctx context.Context, job *jobState, perm
 		m.publishPermission(job, permission, "permission_response")
 		return permissionAnswer{}
 	}
+}
+
+// AwaitsAnswer reports whether a question or plan decision held open right
+// now shows in sessionID's thread, its own or one a child thread surfaces
+// there. Only these wait on the person: ordinary tool permissions are granted
+// as they arrive, and a restart drops what was pending.
+func (m *Manager) AwaitsAnswer(sessionID string) bool {
+	m.permissionMu.Lock()
+	asking := make([]string, 0, len(m.pendingPermission))
+	for _, pending := range m.pendingPermission {
+		asking = append(asking, pending.sessionID)
+	}
+	m.permissionMu.Unlock()
+	for _, id := range asking {
+		if job := m.jobByID(id); job != nil && slices.Contains(surfaceSessionIDs(job.eventView()), sessionID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Manager) cancelPendingPermissions(sessionID string) {

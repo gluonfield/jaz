@@ -62,10 +62,11 @@ func (s *Service) List() ([]Bot, error) {
 	for _, record := range records {
 		byThread[record.ThreadID] = record
 	}
+	held := s.routines.HeldBots()
 	out := make([]Bot, 0, len(sessions))
 	for _, session := range sessions {
 		if record, ok := byThread[session.ID]; ok {
-			out = append(out, s.view(record, session))
+			out = append(out, s.view(record, session, held))
 		}
 	}
 	return out, nil
@@ -76,7 +77,7 @@ func (s *Service) Load(id string) (Bot, error) {
 	if err != nil {
 		return Bot{}, err
 	}
-	return s.view(record, session), nil
+	return s.view(record, session, s.routines.HeldBots()), nil
 }
 
 func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
@@ -388,7 +389,9 @@ func (s *Service) isBot(id string) bool {
 	return err == nil && record.Kind == KindBot
 }
 
-func (s *Service) view(record storage.BotRecord, session storage.Session) Bot {
+// view is a bot as the API shows it; held names the bots whose routines wait
+// for the user.
+func (s *Service) view(record storage.BotRecord, session storage.Session, held map[string]bool) Bot {
 	bot := Bot{
 		ID:        session.ID,
 		Kind:      record.Kind,
@@ -408,6 +411,8 @@ func (s *Service) view(record storage.BotRecord, session storage.Session) Bot {
 		bot.Working = s.working(record)
 		return bot
 	}
+	bot.Waiting = s.threads.AwaitsAnswer(session.ID)
+	bot.Away = held[session.ID]
 	bot.Model = session.Model
 	bot.ReasoningEffort = session.ReasoningEffort
 	bot.ContextTokens = session.Usage.ContextTokens

@@ -43,7 +43,7 @@ export function VoicePill({ voice, face, level = 0, outputLevel = 0, onReturn, t
   transcript?: { shown: boolean; toggle: () => void }
 }) {
   const avatar = face
-    ? <BotAvatar avatar={face} size={34} working={voice.phase === 'connecting' || Boolean(voice.activity)} />
+    ? <BotAvatar avatar={face} size={34} mood={voice.phase === 'connecting' || voice.activity ? 'working' : 'idle'} live />
     : <VoiceVisualizer voice={voice} size={44} level={level} outputLevel={outputLevel} />
   return (
     <div className="flex items-center gap-2 rounded-full border border-border bg-bg p-1.5 shadow-(--shadow-raised) dark:bg-surface">

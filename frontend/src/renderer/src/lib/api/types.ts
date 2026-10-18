@@ -752,6 +752,11 @@ export interface Bot {
   members?: string[]
   // The members taking a turn in a group.
   working?: string[]
+  // Set while the bot's thread holds a question or plan decision for the
+  // person.
+  waiting?: boolean
+  // Set while the bot's routines wait for the person to come back.
+  away?: boolean
 }
 
 export interface BotActivityEvent {

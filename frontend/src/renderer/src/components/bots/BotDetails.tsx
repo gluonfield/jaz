@@ -5,7 +5,7 @@ import type { ThreadDetailsView } from '@/components/session/ThreadView'
 import { Popover } from '@/components/ui/Popover'
 import { Segmented } from '@/components/ui/Segmented'
 import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
-import { BOT_COLORS, BOT_SHAPES } from '@/lib/bots'
+import { BOT_COLORS, BOT_SHAPES, botMood } from '@/lib/bots'
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
 import { BotActivity } from './BotActivity'
 import { BotAgentSettings } from './BotAgentSettings'
@@ -78,7 +78,7 @@ function AvatarEditor({ bot }: { bot: Bot }) {
           onClick={() => setOpen((value) => !value)}
           className="group relative grid size-[72px] cursor-pointer place-items-center rounded-full transition-transform duration-150 hover:scale-[1.03] active:scale-[0.97]"
         >
-          <BotAvatar avatar={avatar} size={64} />
+          <BotAvatar avatar={avatar} size={64} mood={botMood(bot)} live />
           <span className="absolute right-0 bottom-0 grid size-6 place-items-center rounded-full border border-border bg-surface text-ink-2 shadow-sm transition-colors duration-150 group-hover:text-ink">
             <Pencil size={12} aria-hidden />
           </span>

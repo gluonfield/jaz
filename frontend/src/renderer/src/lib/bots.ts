@@ -21,6 +21,24 @@ export const BOT_COLORS: Record<BotColor, string> = {
   gray: '#a3a3ad',
 }
 
+// What a bot's face acts out. Waiting on the person wins over working, and a
+// working or failed bot shows that even while its routines wait for the
+// person to come back.
+export type BotMood = 'idle' | 'working' | 'waiting' | 'failed' | 'away'
+
+export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'working' | 'away'>): BotMood {
+  if (bot.waiting) {
+    return 'waiting'
+  }
+  if (bot.status === 'running' || bot.working?.length) {
+    return 'working'
+  }
+  if (bot.status === 'error') {
+    return 'failed'
+  }
+  return bot.away ? 'away' : 'idle'
+}
+
 // What a bot's identity files are called on screen.
 export const BOT_FILE_LABELS: Record<BotFileName, string> = { 'AGENTS.md': 'Agents', 'MEMORY.md': 'Memory' }
 

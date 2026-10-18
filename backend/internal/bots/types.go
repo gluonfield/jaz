@@ -46,6 +46,11 @@ type Bot struct {
 	Members         []string  `json:"members,omitempty"`
 	// Working lists the members taking a turn in a group.
 	Working []string `json:"working,omitempty"`
+	// Waiting is set while the bot's thread holds a question or plan decision
+	// for the user.
+	Waiting bool `json:"waiting,omitempty"`
+	// Away is set while the bot's routines wait for the user to come back.
+	Away bool `json:"away,omitempty"`
 	// The bot's context fill as its agent last reported it; the fill is
 	// unknown while either is zero.
 	ContextTokens       int64 `json:"context_tokens,omitempty"`
@@ -82,6 +87,7 @@ type Threads interface {
 	SteerInternal(ctx context.Context, session, message string) (acp.Job, error)
 	SwitchAgent(ctx context.Context, sessionID, agent string) error
 	SetModel(ctx context.Context, sessionID, model, effort string) error
+	AwaitsAnswer(sessionID string) bool
 }
 
 type TurnQueue interface {
@@ -129,6 +135,7 @@ type Routines interface {
 	Update(string, loops.UpdateLoop) (loops.Loop, error)
 	Delete(string) error
 	OnBoard(loops.Loop) bool
+	HeldBots() map[string]bool
 }
 
 type Publisher interface {

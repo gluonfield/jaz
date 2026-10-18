@@ -45,6 +45,29 @@ func (s *Service) GuardAway() error {
 	return nil
 }
 
+// HeldBots are the bots with routines whose runs wait for the user to come
+// back; nil while the user is around.
+func (s *Service) HeldBots() map[string]bool {
+	s.mu.Lock()
+	away := s.away
+	s.mu.Unlock()
+	if !away {
+		return nil
+	}
+	items, err := s.Repo.ListLoops()
+	if err != nil {
+		s.Log.Warn("listing held routines failed", "error", err)
+		return nil
+	}
+	held := map[string]bool{}
+	for _, loop := range items {
+		if loop.Status == StatusActive && loop.BotID != "" && !loop.KeepRunning {
+			held[loop.BotID] = true
+		}
+	}
+	return held
+}
+
 // heldAway reports whether loop's runs wait for the user to come back.
 func (s *Service) heldAway(loop Loop) bool {
 	return s.away && loop.BotID != "" && !loop.KeepRunning
