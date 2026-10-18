@@ -14,6 +14,13 @@ export function accountLabel(account: IntegrationConnectionAccount): string {
   return accountAddress(account) || account.id
 }
 
+// The account's address when it says more than the plugin's own name, which
+// is all a single-endpoint MCP connection records.
+export function accountDetail(plugin: IntegrationPlugin, account: IntegrationConnectionAccount): string {
+  const address = accountAddress(account)
+  return address === plugin.name ? '' : address
+}
+
 export function accountSyncLabel(account: IntegrationConnectionAccount): string {
   if (!hasTime(account.last_synced_at)) return ''
   const value = relativeTime(account.last_synced_at)

@@ -1,25 +1,31 @@
 import { ArrowUp, Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
+import type { IntegrationConnectionAccount, IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
 import {
+  accountDetail,
+  accountSyncLabel,
   categoryLabel,
   pluginActionLabel,
   pluginCanConnect,
   titleCase,
-} from './connectionFormatting'
-import { PluginGlyph } from './ConnectionPluginVisuals'
+} from '@/components/settings/connectionFormatting'
+import { PluginGlyph } from '@/components/settings/ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
   plugin,
   connecting,
+  disconnectingID,
   onClose,
   onConnect,
+  onDisconnect,
 }: {
   plugin: IntegrationPlugin | null
   connecting: boolean
+  disconnectingID?: string
   onClose: () => void
   onConnect: (plugin: IntegrationPlugin) => void
+  onDisconnect: (account: IntegrationConnectionAccount) => void
 }) {
   if (!plugin) return null
 
@@ -27,6 +33,14 @@ export function ConnectionPluginDetailModal({
     <Modal open onClose={onClose} title={plugin.name} size="wide" chromeless>
       <Hero plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
       <div className="space-y-9 px-8 pb-9">
+        {plugin.connection?.accounts?.length ? (
+          <AccountsSection
+            plugin={plugin}
+            accounts={plugin.connection.accounts}
+            disconnectingID={disconnectingID}
+            onDisconnect={onDisconnect}
+          />
+        ) : null}
         {plugin.examples?.length ? <ExamplesBand plugin={plugin} /> : null}
         {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
         <InformationSection plugin={plugin} />
@@ -89,6 +103,43 @@ function ConnectButton({
       <Icon size={14} className={connecting ? 'animate-spin' : undefined} />
       {pluginActionLabel(plugin, connecting)}
     </Button>
+  )
+}
+
+function AccountsSection({
+  plugin,
+  accounts,
+  disconnectingID,
+  onDisconnect,
+}: {
+  plugin: IntegrationPlugin
+  accounts: IntegrationConnectionAccount[]
+  disconnectingID?: string
+  onDisconnect: (account: IntegrationConnectionAccount) => void
+}) {
+  return (
+    <section>
+      <SectionLabel count={accounts.length}>Accounts</SectionLabel>
+      <div className="divide-y divide-border/60">
+        {accounts.map((account) => {
+          const label = [accountDetail(plugin, account) || 'Connected', accountSyncLabel(account)]
+            .filter(Boolean)
+            .join(' · ')
+          const disconnecting = disconnectingID === account.id
+          return (
+            <div key={account.id} className="flex items-center gap-2.5 py-1.5 text-[13px] text-ink">
+              <span className="size-1.5 shrink-0 rounded-full bg-ok" aria-hidden />
+              <span className="min-w-0 flex-1 truncate" title={label}>
+                {label}
+              </span>
+              <Button variant="danger" size="sm" disabled={disconnecting} onClick={() => onDisconnect(account)}>
+                {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+              </Button>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

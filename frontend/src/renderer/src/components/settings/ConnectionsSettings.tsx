@@ -6,10 +6,9 @@ import { useToast } from '@/components/ui/toast'
 import { disconnectConnectionAccount } from '@/lib/api/connections'
 import { keys } from '@/lib/query/keys'
 import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
-import { SettingsCard } from '@/components/settings/SettingsCard'
 import {
   AvailablePluginRow,
-  ConnectedPluginRow,
+  ConnectedPluginTile,
   ConnectionSection,
 } from '@/components/settings/ConnectionRows'
 import { ConnectionPluginDetailModal } from '@/components/settings/ConnectionPluginDetailModal'
@@ -77,19 +76,15 @@ export function ConnectionsSettings() {
             <div className="mt-5 space-y-6">
               {connected.length > 0 ? (
                 <ConnectionSection title="Connected" count={connected.length}>
-                  <SettingsCard className="divide-y divide-border/60">
+                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                     {connected.map((plugin) => (
-                      <ConnectedPluginRow
+                      <ConnectedPluginTile
                         key={plugin.id}
                         plugin={plugin}
-                        adding={connectingID === plugin.id}
-                        disconnectingID={disconnect.isPending ? disconnect.variables : undefined}
                         onOpen={() => setSelectedPluginID(plugin.id)}
-                        onAddAccount={() => signIn.start(plugin)}
-                        onDisconnect={disconnectAccount}
                       />
                     ))}
-                  </SettingsCard>
+                  </div>
                 </ConnectionSection>
               ) : null}
 
@@ -117,8 +112,10 @@ export function ConnectionsSettings() {
             <ConnectionPluginDetailModal
               plugin={selectedPlugin}
               connecting={connectingID === selectedPlugin?.id}
+              disconnectingID={disconnect.isPending ? disconnect.variables : undefined}
               onClose={() => setSelectedPluginID(null)}
               onConnect={signIn.start}
+              onDisconnect={disconnectAccount}
             />
             <ConnectionQRModal {...signIn.qrModal} />
           </>

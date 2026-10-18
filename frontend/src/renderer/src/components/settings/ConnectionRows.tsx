@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react'
-import { Loader2, Plus } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
+import type { IntegrationPlugin } from '@/lib/api/types'
 import {
-  accountAddress,
-  accountSyncLabel,
+  accountDetail,
   pluginActionLabel,
   pluginCanConnect,
 } from '@/components/settings/connectionFormatting'
@@ -30,89 +29,30 @@ export function ConnectionSection({
   )
 }
 
-export function ConnectedPluginRow({
-  plugin,
-  adding,
-  disconnectingID,
-  onOpen,
-  onAddAccount,
-  onDisconnect,
-}: {
-  plugin: IntegrationPlugin
-  adding: boolean
-  disconnectingID?: string
-  onOpen: () => void
-  onAddAccount: () => void
-  onDisconnect: (account: IntegrationConnectionAccount) => void
-}) {
-  return (
-    <div className="flex gap-3 px-3 py-2">
-      <span className="mt-2 shrink-0 self-start">
-        <PluginIcon plugin={plugin} compact />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex h-6 items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onOpen}
-            className="min-w-0 cursor-pointer truncate text-[13px] font-medium text-ink"
-          >
-            {plugin.name}
-          </button>
-          {plugin.multi_account && pluginCanConnect(plugin) ? (
-            <Button size="sm" variant="ghost" disabled={adding} onClick={onAddAccount}>
-              {adding ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-              {pluginActionLabel(plugin, adding)}
-            </Button>
-          ) : null}
-        </div>
-        {plugin.connection?.accounts?.map((account) => (
-          <AccountLine
-            key={account.id}
-            plugin={plugin}
-            account={account}
-            disconnecting={disconnectingID === account.id}
-            onDisconnect={() => onDisconnect(account)}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function AccountLine({
-  plugin,
-  account,
-  disconnecting,
-  onDisconnect,
-}: {
-  plugin: IntegrationPlugin
-  account: IntegrationConnectionAccount
-  disconnecting: boolean
-  onDisconnect: () => void
-}) {
-  const address = accountAddress(account)
-  const label = [address && address !== plugin.name ? address : 'Connected', accountSyncLabel(account)]
-    .filter(Boolean)
-    .join(' · ')
+export function ConnectedPluginTile({ plugin, onOpen }: { plugin: IntegrationPlugin; onOpen: () => void }) {
+  const summary =
+    (plugin.connection?.accounts ?? [])
+      .map((account) => accountDetail(plugin, account))
+      .filter(Boolean)
+      .join(', ') || 'Connected'
 
   return (
-    <div className="group/account flex h-6 items-center gap-2 text-[12px] text-ink-2">
-      <span className="size-1.5 shrink-0 rounded-full bg-ok" aria-hidden />
-      <span className="min-w-0 truncate" title={label}>
-        {label}
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex min-w-0 cursor-pointer items-center gap-3 rounded-card bg-surface px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2"
+    >
+      <PluginIcon plugin={plugin} compact />
+      <span className="min-w-0">
+        <span className="block truncate text-[13px] font-medium text-ink">{plugin.name}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-5 text-ink-2">
+          <span className="size-1.5 shrink-0 rounded-full bg-ok" aria-hidden />
+          <span className="truncate" title={summary}>
+            {summary}
+          </span>
+        </span>
       </span>
-      <Button
-        variant="danger"
-        size="sm"
-        disabled={disconnecting}
-        onClick={onDisconnect}
-        aria-label={`Disconnect ${plugin.name} ${label}`}
-        className={`ml-auto focus-visible:opacity-100 group-hover/account:opacity-100 [@media(hover:none)]:opacity-100 ${disconnecting ? '' : 'opacity-0'}`}
-      >
-        {disconnecting ? 'Disconnecting…' : 'Disconnect'}
-      </Button>
-    </div>
+    </button>
   )
 }
 
