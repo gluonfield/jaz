@@ -14,8 +14,7 @@ import { markdownKit } from './markdownKit'
 
 type SaveState = 'saved' | 'saving' | 'conflict' | 'failed'
 
-// A bot's Soul (AGENTS.md) or Memory (MEMORY.md), edited as a document in a
-// modal. Only the
+// A bot's AGENTS.md or MEMORY.md, edited as a document in a modal. Only the
 // person's edits are saved, each over the version read, so the bot's own
 // writes meanwhile are never overwritten unseen.
 export function BotFileEditor({ bot, name, onClose }: { bot: Bot; name: BotFileName; onClose: () => void }) {

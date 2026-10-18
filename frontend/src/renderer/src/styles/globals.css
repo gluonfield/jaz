@@ -398,57 +398,6 @@
     color: var(--color-ink-2);
   }
 }
-/* A bot's Soul and Memory cards: a saturated wash under a slowly drifting
-   glow and film grain. */
-.identity-card {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  background: linear-gradient(150deg, var(--card-from), var(--card-to));
-  &::before {
-    content: '';
-    position: absolute;
-    inset: -45%;
-    z-index: -1;
-    background:
-      radial-gradient(closest-side at 68% 32%, var(--card-glow), transparent),
-      radial-gradient(closest-side at 28% 78%, var(--card-deep), transparent);
-    animation: identity-drift 16s var(--card-delay, 0s) ease-in-out infinite alternate;
-  }
-  &::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
-    mix-blend-mode: soft-light;
-    opacity: 0.75;
-  }
-}
-.identity-card-soul {
-  --card-from: oklch(0.5 0.17 22);
-  --card-to: oklch(0.36 0.13 16);
-  --card-glow: oklch(0.66 0.2 26 / 0.85);
-  --card-deep: oklch(0.3 0.11 12 / 0.8);
-}
-.identity-card-memory {
-  --card-from: oklch(0.48 0.14 268);
-  --card-to: oklch(0.4 0.17 270);
-  --card-glow: oklch(0.72 0.08 222 / 0.9);
-  --card-deep: oklch(0.3 0.2 276 / 0.85);
-  --card-delay: -7s;
-}
-.identity-card-still::before {
-  animation: none;
-}
-@keyframes identity-drift {
-  from {
-    transform: translate3d(-7%, 5%, 0) rotate(0deg) scale(1);
-  }
-  to {
-    transform: translate3d(8%, -6%, 0) rotate(28deg) scale(1.18);
-  }
-}
 .chat-prose-link {
   color: var(--color-primary);
   cursor: pointer;

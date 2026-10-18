@@ -170,7 +170,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('Delete did not delete and close the routine', () => requests.some((request) => request.method === 'DELETE') && !document.querySelector('[role="dialog"]'))
 
     await click('Identity')
-    const cards = () => [...document.querySelectorAll<HTMLElement>('.identity-card')]
+    const cards = () => [...document.querySelectorAll<HTMLElement>('button')].filter((card) => /Who it is|What it knows/.test(card.textContent ?? ''))
     await until('the identity cards are missing', () => cards().length === 2 && text().includes('Who it is') && text().includes('What it knows'))
     if (cards().some((card) => card.textContent?.includes('.md'))) {
       throw new Error('Bot panel: an identity card shows a file name: ' + cards().map((card) => card.textContent).join(' | '))
@@ -180,7 +180,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await capture('bot-panel-identity-dark')
     dark(false)
 
-    await click('Soul')
+    await click('Agents')
     await until('AGENTS.md did not open', () => Boolean(editor()))
     if (document.querySelector('[role="dialog"]')!.getBoundingClientRect().width >= window.innerWidth * 0.9) {
       throw new Error('Bot panel: AGENTS.md opened over the whole window instead of in a modal')
