@@ -18,6 +18,7 @@ import { exerciseModelPicker } from './model-picker'
 import { exerciseKeyboardFocus } from './keyboard-focus'
 import { exerciseSessionConfig } from './session-config'
 import { exerciseComposerSend } from './composer-send'
+import { exerciseComposerWrap } from './composer-wrap'
 import { exerciseFolderDrop } from './folder-drop'
 import { exerciseChatHistory } from './chat-history'
 import { exerciseConnectCard } from './connect-card'
@@ -101,6 +102,8 @@ function Fixture() {
       }
       stage = 'composer submission across chat navigation'
       await exerciseComposerSend()
+      stage = 'bot chat composer rows as the draft wraps'
+      await exerciseComposerWrap()
       stage = 'folder drops into the composer'
       await exerciseFolderDrop()
       stage = 'bot chat history window'
@@ -108,7 +111,7 @@ function Fixture() {
       stage = 'connect card sign-in from chat'
       await exerciseConnectCard()
       if (new URLSearchParams(location.search).get('suite') === 'composer') {
-        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; connect cards start OAuth from chat and show the new account'] })
+        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; connect cards start OAuth from chat and show the new account'] })
         return
       }
       stage = 'Tab-only focus rings'
