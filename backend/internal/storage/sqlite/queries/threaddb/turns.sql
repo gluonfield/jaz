@@ -22,9 +22,10 @@ WHERE id = sqlc.arg(id) AND status = 'running'
   AND json_extract(NULLIF(turn, ''), '$.output.reply_to') IS NOT NULL;
 
 -- name: FinishSessionTurn :execrows
+-- A compact brings the user nothing new to read.
 UPDATE threads
 SET status = sqlc.arg(status), turn = '', error = sqlc.narg(error),
-    unread = CASE WHEN sqlc.arg(status) = 'idle' THEN 1 ELSE unread END,
+    unread = CASE WHEN sqlc.arg(status) = 'idle' AND json_extract(turn, '$.active_operation') IS NOT 'compact' THEN 1 ELSE unread END,
     updated_at_ms = sqlc.arg(finished_at_ms),
     last_attention_at_ms = sqlc.arg(finished_at_ms),
     last_completed_at_ms = CASE WHEN sqlc.arg(status) = 'idle' THEN sqlc.arg(finished_at_ms) ELSE last_completed_at_ms END

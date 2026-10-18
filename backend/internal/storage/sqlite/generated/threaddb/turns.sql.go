@@ -79,7 +79,7 @@ func (q *Queries) ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams
 const finishSessionTurn = `-- name: FinishSessionTurn :execrows
 UPDATE threads
 SET status = ?1, turn = '', error = ?2,
-    unread = CASE WHEN ?1 = 'idle' THEN 1 ELSE unread END,
+    unread = CASE WHEN ?1 = 'idle' AND json_extract(turn, '$.active_operation') IS NOT 'compact' THEN 1 ELSE unread END,
     updated_at_ms = ?3,
     last_attention_at_ms = ?3,
     last_completed_at_ms = CASE WHEN ?1 = 'idle' THEN ?3 ELSE last_completed_at_ms END
@@ -93,6 +93,7 @@ type FinishSessionTurnParams struct {
 	ID           string         `json:"id"`
 }
 
+// A compact brings the user nothing new to read.
 func (q *Queries) FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, finishSessionTurn,
 		arg.Status,

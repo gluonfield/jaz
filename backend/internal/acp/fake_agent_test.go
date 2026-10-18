@@ -22,6 +22,9 @@ import (
 
 var fakeSubagentReport = regexp.MustCompile(`subagent (\w+)=(\w+)`)
 
+// fakeCommandOffer makes a prompt advertise commands with or without compact.
+var fakeCommandOffer = regexp.MustCompile(`(offer|withdraw) compact`)
+
 // fakeContextFill makes a prompt report its context as used/size tokens.
 var fakeContextFill = regexp.MustCompile(`context (\d+)/(\d+)`)
 
@@ -435,10 +438,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if os.Getenv("JAZ_FAKE_ACP_PROMPT_DELAY") == "1" {
 				time.Sleep(200 * time.Millisecond)
 			}
-			if strings.Contains(string(msg.Params), "withdraw compact") {
+			for _, offer := range fakeCommandOffer.FindAllStringSubmatch(string(msg.Params), -1) {
+				commands := []map[string]any{{"name": "review", "description": "Review changes"}}
+				if offer[1] == "offer" {
+					commands = append(commands, map[string]any{"name": "compact", "description": "Compact the conversation"})
+				}
 				notify(conn, "session/update", map[string]any{
 					"sessionId": fakeSessionID,
-					"update":    map[string]any{"sessionUpdate": "available_commands_update", "availableCommands": []map[string]any{{"name": "review", "description": "Review changes"}}},
+					"update":    map[string]any{"sessionUpdate": "available_commands_update", "availableCommands": commands},
 				})
 			}
 			for _, fill := range fakeContextFill.FindAllStringSubmatch(string(msg.Params), -1) {
