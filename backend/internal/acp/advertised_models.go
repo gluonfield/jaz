@@ -24,16 +24,17 @@ func (m *Manager) rememberAdvertisedModels(agent string, cfg AgentConfig, state 
 // agent has advertised, the configured model is taken as is.
 func (m *Manager) startingModel(agent string, cfg AgentConfig) (string, error) {
 	policy := agentPolicyForAgent(agent)
-	return policy.sessionModelToSend(agent, policy.sessionConfigModel(cfg), m.latestAdvertisedModels(agent, cfg))
+	return policy.sessionModelToSend(agent, policy.sessionConfigModel(cfg), m.latestAdvertisedModels(agent, cfg), cfg.ModelRequested)
 }
 
-// startableModels drops the models a new session would refuse or replace.
+// startableModels drops the models a request naming them would be refused.
 func (m *Manager) startableModels(agent string, cfg AgentConfig, models []AgentModel) []AgentModel {
 	return slices.DeleteFunc(models, func(model AgentModel) bool {
 		candidate := cfg
 		candidate.Model = model.Value
-		started, err := m.startingModel(agent, candidate)
-		return err != nil || started == ""
+		candidate.ModelRequested = true
+		_, err := m.startingModel(agent, candidate)
+		return err != nil
 	})
 }
 

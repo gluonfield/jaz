@@ -1216,6 +1216,45 @@ func TestManagerUsesCodexProviderNativeModel(t *testing.T) {
 	}
 }
 
+// Codex lists its own models whichever provider it runs on, and an OpenRouter
+// model rides its launch instead, so a request naming one starts.
+func TestManagerStartsRequestedOpenRouterModelCodexDoesNotList(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := acp.NewManager(store, acp.Config{
+		Root:         t.TempDir(),
+		Workspace:    t.TempDir(),
+		ModelCatalog: warmedManagerModelCatalog(t),
+		Agents: map[string]acp.AgentConfig{
+			"codex": {
+				Command:       os.Args[0],
+				Args:          []string{"-test.run=TestFakeACPAgentProcess", "--"},
+				ProviderMode:  acp.AgentProviderModeAgentDefaults,
+				ModelProvider: provider.ProviderOpenRouter,
+				Env: map[string]string{
+					"JAZ_FAKE_ACP_AGENT":                 "1",
+					"JAZ_FAKE_ACP_EXPECT_CODEX_METADATA": "openai/gpt-5.5",
+					"JAZ_FAKE_ACP_MODELS":                "gpt-6-sol,gpt-6-luna",
+					"JAZ_FAKE_ACP_SET_CONFIG":            "1",
+				},
+			},
+		},
+	}, log.New(io.Discard))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-openrouter-request", Model: "openai/gpt-5.5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+	if session, err := store.LoadSession(spawned.SessionID); err != nil || session.Model != "openai/gpt-5.5" {
+		t.Fatalf("session = %#v, %v", session, err)
+	}
+}
+
 func TestManagerUsesOpenCodeLaunchModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

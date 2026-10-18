@@ -51,6 +51,8 @@ type CreateBot struct {
 	Avatar *Avatar `json:"avatar,omitempty"`
 	Agent  string  `json:"agent,omitempty"`
 	Model  string  `json:"model,omitempty"`
+	// StoredModel marks Model as saved earlier, as an adopted routine's is.
+	StoredModel bool `json:"-"`
 }
 
 type UpdateBot struct {

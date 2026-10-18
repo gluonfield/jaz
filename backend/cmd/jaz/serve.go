@@ -307,6 +307,7 @@ func startServer(
 		loops.WithPromptExtras(bots.RoutineInstructions(store), widgetService.LoopPromptExtra),
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 		loops.WithRunCheck(widgetService.RequireRunPublished),
+		loops.WithModelCheck(loopRunner.CheckModel),
 	)
 	botService := bots.NewService(store, layout.Bots, manager, handler, handler, loopService, events, logger)
 	mcpManager.AppVisible = botService.AppVisible

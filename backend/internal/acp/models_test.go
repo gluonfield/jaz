@@ -186,26 +186,30 @@ func TestModelStateFallsBackToConfigOptions(t *testing.T) {
 	}
 }
 
-// Codex model access follows the account's plan, so an unavailable model keeps
-// the agent's default; only agents with stable model ids reject.
+// Codex model access follows the account's plan, so an unavailable model saved
+// earlier keeps the agent's default while a requested one is refused; agents
+// with stable model ids refuse both.
 func TestUnadvertisedModelPolicyPerAgent(t *testing.T) {
 	state := parseSessionModelState(json.RawMessage(
 		`{"models":{"availableModels":[{"modelId":"gpt-5.6-terra[low]"}]}}`))
 	codex := agentPolicyForAgent(AgentCodex)
 
-	if model, err := codex.sessionModelToSend(AgentCodex, "gpt-5.6-sol", state); err != nil || model != "" {
-		t.Fatalf("unavailable codex model = %q, err %v; want the agent default", model, err)
+	if model, err := codex.sessionModelToSend(AgentCodex, "gpt-5.6-sol", state, false); err != nil || model != "" {
+		t.Fatalf("unavailable saved codex model = %q, err %v; want the agent default", model, err)
+	}
+	if _, err := codex.sessionModelToSend(AgentCodex, "gpt-5.6-sol", state, true); err == nil || !strings.Contains(err.Error(), "available model ids: gpt-5.6-terra") {
+		t.Fatalf("unavailable requested codex model err = %v, want the advertised models", err)
 	}
 	// Codex accepts the bare id and would reject the per-effort spelling, so an
 	// available model must be sent exactly as configured.
-	if model, err := codex.sessionModelToSend(AgentCodex, "gpt-5.6-terra", state); err != nil || model != "gpt-5.6-terra" {
+	if model, err := codex.sessionModelToSend(AgentCodex, "gpt-5.6-terra", state, true); err != nil || model != "gpt-5.6-terra" {
 		t.Fatalf("available codex model = %q, err %v", model, err)
 	}
-	if _, err := agentPolicyForAgent(AgentClaude).sessionModelToSend(AgentClaude, "claude-ghost-9", state); err == nil {
+	if _, err := agentPolicyForAgent(AgentClaude).sessionModelToSend(AgentClaude, "claude-ghost-9", state, false); err == nil {
 		t.Fatal("claude must reject an unadvertised model")
 	}
 	// Agents with no policy leave the id to the agent to accept or refuse.
-	if model, err := agentPolicyForAgent(AgentKimi).sessionModelToSend(AgentKimi, "kimi-k3", state); err != nil || model != "kimi-k3" {
+	if model, err := agentPolicyForAgent(AgentKimi).sessionModelToSend(AgentKimi, "kimi-k3", state, true); err != nil || model != "kimi-k3" {
 		t.Fatalf("unpoliced model = %q, err %v", model, err)
 	}
 }
@@ -229,14 +233,14 @@ func TestClaudeSendsAdvertisedContextTagSpelling(t *testing.T) {
 		{"bare config against tagged advertisement", tagged, "claude-fable-5", "claude-fable-5[1m]"},
 		{"exact match is unchanged", tagged, "claude-fable-5[1m]", "claude-fable-5[1m]"},
 	} {
-		got, err := policy.sessionModelToSend(AgentClaude, test.configured, test.state)
+		got, err := policy.sessionModelToSend(AgentClaude, test.configured, test.state, false)
 		if err != nil || got != test.want {
 			t.Fatalf("%s = %q (err %v), want %q", test.name, got, err, test.want)
 		}
 	}
 
 	// A genuinely unknown model must still be rejected.
-	if _, err := policy.sessionModelToSend(AgentClaude, "claude-ghost-9", bare); err == nil {
+	if _, err := policy.sessionModelToSend(AgentClaude, "claude-ghost-9", bare, false); err == nil {
 		t.Fatal("expected unknown model to fail")
 	}
 }

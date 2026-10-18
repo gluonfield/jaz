@@ -126,6 +126,8 @@ func (f *fakeACPManager) Spawn(_ context.Context, req acp.SpawnRequest) (acp.Spa
 	}, nil
 }
 
+func (f *fakeACPManager) CheckSpawn(acp.SpawnRequest) error { return nil }
+
 func (f *fakeACPManager) Agents() []string { return nil }
 
 func (f *fakeACPManager) RunUtilityPrompt(_ context.Context, req acp.UtilityPromptRequest) (string, error) {

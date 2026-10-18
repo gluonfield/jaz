@@ -92,12 +92,13 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 		avatar = *input.Avatar
 	}
 	session, err := s.threads.CreateSession(ctx, acp.SpawnRequest{
-		ACPAgent:   strings.TrimSpace(input.Agent),
-		Slug:       "bot " + name,
-		Title:      name,
-		Home:       s.homes,
-		Model:      strings.TrimSpace(input.Model),
-		SourceType: storage.SourceBot,
+		ACPAgent:    strings.TrimSpace(input.Agent),
+		Slug:        "bot " + name,
+		Title:       name,
+		Home:        s.homes,
+		Model:       strings.TrimSpace(input.Model),
+		StoredModel: input.StoredModel,
+		SourceType:  storage.SourceBot,
 	})
 	if err != nil {
 		return Bot{}, err
@@ -318,7 +319,7 @@ func (s *Service) AdoptLoops(ctx context.Context) error {
 		if routine.BotID != "" || s.routines.OnBoard(routine) {
 			continue
 		}
-		bot, err := s.Create(ctx, CreateBot{Name: routine.Name, Agent: routine.ACPAgent, Model: routine.Model})
+		bot, err := s.Create(ctx, CreateBot{Name: routine.Name, Agent: routine.ACPAgent, Model: routine.Model, StoredModel: true})
 		if err != nil {
 			return fmt.Errorf("adopt loop %s: %w", routine.ID, err)
 		}

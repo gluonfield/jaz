@@ -26,7 +26,10 @@ type Service struct {
 	// RunCheck can fail a run whose turn ended well but left its work undone,
 	// as a widget run that published nothing.
 	RunCheck func(Loop, Run) error
-	mu       sync.Mutex
+	// ModelCheck refuses a routine whose runs would not start on the model it
+	// names.
+	ModelCheck func(Loop) error
+	mu         sync.Mutex
 	// ours holds the runs this process created and has not finished, which a
 	// previous process cannot have left behind.
 	ours map[string]bool
@@ -85,6 +88,12 @@ func WithRunCheck(check func(Loop, Run) error) Option {
 	}
 }
 
+func WithModelCheck(check func(Loop) error) Option {
+	return func(s *Service) {
+		s.ModelCheck = check
+	}
+}
+
 func NewService(repo Repository, executor Executor, logger *log.Logger, opts ...Option) *Service {
 	if logger == nil {
 		logger = log.Default()
@@ -126,6 +135,9 @@ func (s *Service) Create(input CreateLoop) (Loop, error) {
 		WhenMissed:      input.WhenMissed,
 		Thread:          input.Thread,
 	}
+	if err := s.checkModel(Loop{}, loop); err != nil {
+		return Loop{}, err
+	}
 	ensureWebhookSecret(&loop)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -161,6 +173,9 @@ func (s *Service) Update(id string, input UpdateLoop) (Loop, error) {
 	if err != nil {
 		return Loop{}, err
 	}
+	if err := s.checkModel(current, next); err != nil {
+		return Loop{}, err
+	}
 	next.UpdatedAt = now
 	ensureWebhookSecret(&next)
 	if err := s.Repo.SaveLoop(next); err != nil {
@@ -169,6 +184,17 @@ func (s *Service) Update(id string, input UpdateLoop) (Loop, error) {
 	saved, err := s.Repo.LoadLoop(id)
 	saved.WebhookSecret = next.WebhookSecret
 	return saved, err
+}
+
+// checkModel refuses the model next's runs would start on when the request
+// chose it. A model the routine saved earlier stays as it is: a plan change can
+// withdraw one, and its runs then start on the agent's default.
+func (s *Service) checkModel(current, next Loop) error {
+	unchanged := next.ACPAgent == current.ACPAgent && next.ModelProvider == current.ModelProvider && next.Model == current.Model
+	if s.ModelCheck == nil || next.Model == "" || unchanged {
+		return nil
+	}
+	return s.ModelCheck(next)
 }
 
 func (s *Service) Delete(id string) error {

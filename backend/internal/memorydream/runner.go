@@ -93,6 +93,7 @@ func (r *Runner) RunDream(ctx context.Context, req jazmem.DreamRequest) (report 
 		Title:           "Memory Dream " + date.Format("2006-01-02 15:04"),
 		Directory:       req.Root,
 		Model:           settings.WorkerModel(agentDefaults),
+		StoredModel:     true,
 		ReasoningEffort: settings.WorkerReasoningEffort(agentDefaults),
 		SourceType:      storage.SourceMemoryDream,
 		SourceID:        suffix,
