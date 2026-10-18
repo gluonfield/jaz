@@ -14,11 +14,16 @@ export function accountLabel(account: IntegrationConnectionAccount): string {
   return accountAddress(account) || account.id
 }
 
-// The account's address when it says more than the plugin's own name, which
-// is all a single-endpoint MCP connection records.
+// An MCP connection records the server it reaches, not who signed in to it.
 export function accountDetail(plugin: IntegrationPlugin, account: IntegrationConnectionAccount): string {
-  const address = accountAddress(account)
-  return address === plugin.name ? '' : address
+  return plugin.auth[0]?.kind === 'mcp_connection' ? '' : accountAddress(account)
+}
+
+export function accountsSummary(plugin: IntegrationPlugin): string {
+  return (plugin.connection?.accounts ?? [])
+    .map((account) => accountDetail(plugin, account))
+    .filter(Boolean)
+    .join(', ')
 }
 
 export function accountSyncLabel(account: IntegrationConnectionAccount): string {

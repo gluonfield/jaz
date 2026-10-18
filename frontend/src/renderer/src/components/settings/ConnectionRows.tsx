@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import type { IntegrationPlugin } from '@/lib/api/types'
 import {
-  accountDetail,
+  accountsSummary,
   pluginActionLabel,
   pluginCanConnect,
 } from '@/components/settings/connectionFormatting'
@@ -30,11 +30,7 @@ export function ConnectionSection({
 }
 
 export function ConnectedPluginTile({ plugin, onOpen }: { plugin: IntegrationPlugin; onOpen: () => void }) {
-  const summary =
-    (plugin.connection?.accounts ?? [])
-      .map((account) => accountDetail(plugin, account))
-      .filter(Boolean)
-      .join(', ') || 'Connected'
+  const summary = accountsSummary(plugin) || 'Connected'
 
   return (
     <button
