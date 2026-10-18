@@ -61,6 +61,28 @@ func (j *jobState) toolCallSubagent(id acpschema.ToolCallID, meta map[string]any
 	}
 }
 
+// interruptProviderSubagents closes the subagents the session's agent process
+// left open, since no process remains to report their end.
+func (m *Manager) interruptProviderSubagents(job *jobState) {
+	events, err := m.store.LoadSessionOverviewEvents(job.ID)
+	if err != nil {
+		m.log.Error("load provider subagents", "session", job.ID, "error", err)
+		return
+	}
+	var interrupted []sessionevents.ProviderSubagentEvent
+	for _, event := range events {
+		subagent := event.ProviderSubagent
+		if subagent == nil || event.ProjectionKey != sessionevents.ProviderSubagentProjectionKey(job.ID, *subagent) {
+			continue
+		}
+		switch subagent.Status {
+		case "", "running", "starting", "pending_init":
+			interrupted = append(interrupted, sessionevents.ProviderSubagentEvent{Provider: subagent.Provider, ID: subagent.ID, Status: "interrupted"})
+		}
+	}
+	m.publishProviderSubagents(job.eventView(), interrupted)
+}
+
 func providerSubagentsFromMeta(agent string, meta map[string]any, hint providerSubagentHint) []sessionevents.ProviderSubagentEvent {
 	if meta == nil {
 		return nil

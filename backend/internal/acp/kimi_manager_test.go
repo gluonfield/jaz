@@ -51,12 +51,12 @@ func TestKimiSystemPromptStaysInSessionMetadataAcrossManagerRestart(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	sendAndWaitKimi(t, ctx, manager, spawned.SessionID, "first")
+	sendAndWait(t, ctx, manager, spawned.SessionID, "first")
 	manager.Close()
 
 	manager = newManager()
 	t.Cleanup(manager.Close)
-	sendAndWaitKimi(t, ctx, manager, spawned.SessionID, "after manager restart")
+	sendAndWait(t, ctx, manager, spawned.SessionID, "after manager restart")
 
 	requests := readFakeACPRequests(t, requestLog)
 	attachments := 0
@@ -84,17 +84,6 @@ func TestKimiSystemPromptStaysInSessionMetadataAcrossManagerRestart(t *testing.T
 	}
 	if attachments < 2 || prompts != 2 {
 		t.Fatalf("Kimi request counts = %d session attaches, %d prompts; want at least 2 and exactly 2", attachments, prompts)
-	}
-}
-
-func sendAndWaitKimi(t *testing.T, ctx context.Context, manager *acp.Manager, sessionID, message string) {
-	t.Helper()
-	if _, err := manager.Send(ctx, acp.SendRequest{Session: sessionID, Message: message, Completion: acp.CompletionInline}); err != nil {
-		t.Fatal(err)
-	}
-	job, err := manager.Wait(ctx, acp.WaitRequest{Session: sessionID, Timeout: 10 * time.Second})
-	if err != nil || job.State != acp.StateIdle {
-		t.Fatalf("Kimi %q turn = %#v, %v", message, job, err)
 	}
 }
 

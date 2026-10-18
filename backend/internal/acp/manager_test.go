@@ -1623,6 +1623,17 @@ func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, ag
 	}, log.New(io.Discard))
 }
 
+func sendAndWait(t *testing.T, ctx context.Context, manager *acp.Manager, sessionID, message string) {
+	t.Helper()
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: sessionID, Message: message, Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: sessionID, Timeout: 10 * time.Second})
+	if err != nil || job.State != acp.StateIdle {
+		t.Fatalf("%q turn = %#v, %v", message, job, err)
+	}
+}
+
 func TestManagerResumesStoredSessionAfterRestart(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

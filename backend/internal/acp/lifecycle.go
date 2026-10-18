@@ -99,7 +99,7 @@ func (m *Manager) Close() {
 			}
 		}
 		m.withACPTranscriptBarrier(job.eventView(), nil)
-		m.disconnectBackgroundTasks(job)
+		m.disconnectAgentWork(job)
 		m.transcriptBuffers.delete(job.ID)
 	}
 }
@@ -134,7 +134,6 @@ func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jo
 
 func (m *Manager) teardown(id string) {
 	if job := m.jobByID(id); job != nil {
-		m.disconnectBackgroundTasks(job)
 		m.withACPTranscriptBarrier(job.eventView(), nil)
 	}
 	m.transcriptBuffers.delete(id)
@@ -155,6 +154,14 @@ func (m *Manager) teardown(id string) {
 	if process != nil {
 		process.close()
 	}
+	if job != nil {
+		m.disconnectAgentWork(job)
+	}
+}
+
+func (m *Manager) disconnectAgentWork(job *jobState) {
+	m.disconnectBackgroundTasks(job)
+	m.interruptProviderSubagents(job)
 }
 
 func (m *Manager) addJob(job *jobState, process *agentProcess) {
@@ -207,7 +214,7 @@ func (m *Manager) recordServeErr(id string, process *agentProcess, err error) er
 	if job == nil {
 		return err
 	}
-	m.disconnectBackgroundTasks(job)
+	m.disconnectAgentWork(job)
 	job.mu.RLock()
 	running := job.State == StateRunning || job.State == StateStarting
 	job.mu.RUnlock()

@@ -52,12 +52,12 @@ func TestCanvasThreadKeepsItsBoardAcrossManagerRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sendAndWaitKimi(t, ctx, manager, spawned.SessionID, "first")
+	sendAndWait(t, ctx, manager, spawned.SessionID, "first")
 	manager.Close()
 
 	manager = newManager()
 	t.Cleanup(manager.Close)
-	sendAndWaitKimi(t, ctx, manager, spawned.SessionID, "after manager restart")
+	sendAndWait(t, ctx, manager, spawned.SessionID, "after manager restart")
 
 	board := filepath.Join(root, "canvases", spawned.SessionID, "canvas.json")
 	restored := false

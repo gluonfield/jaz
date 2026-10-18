@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
@@ -16,6 +17,8 @@ import (
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 )
+
+var fakeSubagentReport = regexp.MustCompile(`subagent (\w+)=(\w+)`)
 
 func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
@@ -456,6 +459,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					_ = conn.Send(context.Background(), resp)
 					continue
 				}
+			}
+			for _, report := range fakeSubagentReport.FindAllStringSubmatch(string(msg.Params), -1) {
+				notify(conn, "session/update", map[string]any{
+					"sessionId": "fake-session",
+					"update": map[string]any{
+						"sessionUpdate": "session_info_update",
+						"_meta": map[string]any{"jaz": map[string]any{"providerSubagent": map[string]any{
+							"provider": "claude", "id": report[1], "status": report[2],
+						}}},
+					},
+				})
 			}
 			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
 				notify(conn, "session/update", map[string]any{
