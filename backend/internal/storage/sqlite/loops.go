@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"time"
 
@@ -94,15 +93,9 @@ func (s *Store) ActiveRuns(loopID string) ([]loops.Run, error) {
 	return runs, nil
 }
 
-func (s *Store) LastRunWithStatus(loopID, status string) (loops.Run, bool, error) {
-	row, err := loopdb.New(s.db).GetLastRunWithStatus(context.Background(), loopdb.GetLastRunWithStatusParams{LoopID: loopID, Status: status})
-	if err == sql.ErrNoRows {
-		return loops.Run{}, false, nil
-	}
-	if err != nil {
-		return loops.Run{}, false, err
-	}
-	return runFromDB(row), true, nil
+func (s *Store) LastFinishedAt(loopID, status string) (time.Time, error) {
+	ms, err := loopdb.New(s.db).GetLastFinishedAt(context.Background(), loopdb.GetLastFinishedAtParams{LoopID: loopID, Status: status})
+	return msToTime(ms), err
 }
 
 func (s *Store) EventSeen(loopID, eventID string) (bool, error) {
@@ -113,21 +106,6 @@ func (s *Store) EventSeen(loopID, eventID string) (bool, error) {
 func (s *Store) LatestEventAt(loopID string) (time.Time, error) {
 	ms, err := loopdb.New(s.db).GetLatestLoopEventAt(context.Background(), loopID)
 	return msToTime(ms), err
-}
-
-func (s *Store) SaveEvents(events []loops.SeenEvent) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	return s.withLoopTxLocked(func(q *loopdb.Queries) error {
-		for _, event := range events {
-			if err := q.InsertLoopEvent(context.Background(), loopdb.InsertLoopEventParams{
-				LoopID: event.LoopID, EventID: event.ID, RunID: event.RunID, AtMs: loopTimeToMs(event.At),
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }
 
 func (s *Store) SaveLoop(loop loops.Loop) error {
@@ -158,28 +136,25 @@ func (s *Store) SaveLoops(items []loops.Loop) error {
 	})
 }
 
-func (s *Store) SaveLoopAndRun(loop loops.Loop, run loops.Run) error {
+func (s *Store) SaveRunAndLoop(run loops.Run, loop *loops.Loop, taken ...loops.SeenEvent) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return s.withLoopTxLocked(func(q *loopdb.Queries) error {
-		if err := upsertRun(context.Background(), q, run); err != nil {
+		ctx := context.Background()
+		if err := upsertRun(ctx, q, run); err != nil {
 			return err
 		}
-		return upsertLoop(context.Background(), q, loop)
-	})
-}
-
-func (s *Store) SaveRunAndLoop(run loops.Run, loop *loops.Loop) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	return s.withLoopTxLocked(func(q *loopdb.Queries) error {
-		if err := upsertRun(context.Background(), q, run); err != nil {
-			return err
+		for _, event := range taken {
+			if err := q.InsertLoopEvent(ctx, loopdb.InsertLoopEventParams{
+				LoopID: event.LoopID, EventID: event.ID, RunID: event.RunID, AtMs: loopTimeToMs(event.At),
+			}); err != nil {
+				return err
+			}
 		}
 		if loop == nil {
 			return nil
 		}
-		return upsertLoop(context.Background(), q, *loop)
+		return upsertLoop(ctx, q, *loop)
 	})
 }
 

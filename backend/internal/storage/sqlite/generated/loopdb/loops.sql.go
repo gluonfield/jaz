@@ -10,45 +10,22 @@ import (
 	"database/sql"
 )
 
-const getLastRunWithStatus = `-- name: GetLastRunWithStatus :one
-SELECT
-  id,
-  loop_id,
-  thread_id,
-  scheduled_for_ms,
-  started_at_ms,
-  finished_at_ms,
-  status,
-  error,
-  created_at_ms,
-  reason
+const getLastFinishedAt = `-- name: GetLastFinishedAt :one
+SELECT CAST(COALESCE(MAX(finished_at_ms), 0) AS INTEGER)
 FROM loop_runs
 WHERE loop_id = ?1 AND status = ?2
-ORDER BY finished_at_ms DESC
-LIMIT 1
 `
 
-type GetLastRunWithStatusParams struct {
+type GetLastFinishedAtParams struct {
 	LoopID string `json:"loop_id"`
 	Status string `json:"status"`
 }
 
-func (q *Queries) GetLastRunWithStatus(ctx context.Context, arg GetLastRunWithStatusParams) (LoopRun, error) {
-	row := q.db.QueryRowContext(ctx, getLastRunWithStatus, arg.LoopID, arg.Status)
-	var i LoopRun
-	err := row.Scan(
-		&i.ID,
-		&i.LoopID,
-		&i.ThreadID,
-		&i.ScheduledForMs,
-		&i.StartedAtMs,
-		&i.FinishedAtMs,
-		&i.Status,
-		&i.Error,
-		&i.CreatedAtMs,
-		&i.Reason,
-	)
-	return i, err
+func (q *Queries) GetLastFinishedAt(ctx context.Context, arg GetLastFinishedAtParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getLastFinishedAt, arg.LoopID, arg.Status)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const getLatestLoopEventAt = `-- name: GetLatestLoopEventAt :one

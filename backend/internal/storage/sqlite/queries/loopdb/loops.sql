@@ -243,22 +243,10 @@ WHERE loop_id = sqlc.arg(loop_id)
   AND status IN (sqlc.arg(starting_status), sqlc.arg(running_status))
 ORDER BY created_at_ms ASC;
 
--- name: GetLastRunWithStatus :one
-SELECT
-  id,
-  loop_id,
-  thread_id,
-  scheduled_for_ms,
-  started_at_ms,
-  finished_at_ms,
-  status,
-  error,
-  created_at_ms,
-  reason
+-- name: GetLastFinishedAt :one
+SELECT CAST(COALESCE(MAX(finished_at_ms), 0) AS INTEGER)
 FROM loop_runs
-WHERE loop_id = sqlc.arg(loop_id) AND status = sqlc.arg(status)
-ORDER BY finished_at_ms DESC
-LIMIT 1;
+WHERE loop_id = sqlc.arg(loop_id) AND status = sqlc.arg(status);
 
 -- name: LoopEventSeen :one
 SELECT EXISTS (

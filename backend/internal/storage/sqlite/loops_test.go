@@ -302,6 +302,44 @@ func TestResumeSettlesTheRunsAPreviousProcessLeftOpen(t *testing.T) {
 	}
 }
 
+func TestResumeStartsTheRunWaitingBehindALostOne(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 2)}
+	service := newLoopServiceForTest(store, executor)
+	loop, err := service.Create(loops.CreateLoop{Prompt: "triage quotes", Trigger: &loops.Trigger{Kind: loops.TriggerWebhook}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lost := loops.Run{ID: store.NewRunID(), LoopID: loop.ID, Status: loops.RunStatusRunning, CreatedAt: time.Now().UTC()}
+	if err := store.SaveRun(lost); err != nil {
+		t.Fatal(err)
+	}
+
+	// A webhook arrives while recovery runs; its run waits for the lost one.
+	follow, err := service.RunTriggered(context.Background(), loop.ID, "webhook")
+	if err != nil || len(executor.started) != 0 {
+		t.Fatalf("follow-up = %+v, %v, started %d; want it waiting", follow, err, len(executor.started))
+	}
+	if err := service.Resume(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := store.LoadRun(lost.ID); err != nil || stored.Status != loops.RunStatusError {
+		t.Fatalf("lost run = %+v, %v", stored, err)
+	}
+	select {
+	case started := <-executor.started:
+		if started.Run.ID != follow.ID {
+			t.Fatalf("started %s, want the follow-up", started.Run.ID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the follow-up behind the lost run never started")
+	}
+}
+
 func TestDeleteLoopSoftDeletesAndKeepsRuns(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

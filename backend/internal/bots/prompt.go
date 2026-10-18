@@ -119,12 +119,6 @@ func messagePrompt(from, text string) string {
 	return fmt.Sprintf("[message from %s]\n\n%s\n\nAnswer %s with send_message.", from, text, from)
 }
 
-// RoutineReport hands a bot what one of its routine's runs sent from a
-// thread of its own.
-func RoutineReport(routine, text string) string {
-	return fmt.Sprintf("[routine] %s\n\n%s\n\nThis is what a run of this routine sent from its own thread; pass it on to the user.", routine, text)
-}
-
 func ReplyPrompt(from, text string) string {
 	return fmt.Sprintf("[reply from %s]\n\n%s\n\nThis answers your message to %s. Use message_bot to write back to %s.", from, text, from, from)
 }

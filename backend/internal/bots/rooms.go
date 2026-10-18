@@ -53,7 +53,7 @@ func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessag
 	text, mentioned := s.linkMentions(message.Text, group.Members)
 	message.Text = text
 	mentioned = slices.DeleteFunc(mentioned, func(member string) bool { return member == message.BotID })
-	if err := s.appendEvent(sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
+	if err := appendEvent(s.store, s.events, sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
 		return err
 	}
 	if !s.admit(group.ThreadID, slices.Contains(group.Members, message.BotID)) {

@@ -267,7 +267,7 @@ func (s *Service) RunTriggered(ctx context.Context, loopID, event string) (Run, 
 	var run Run
 	start := false
 	if err == nil {
-		loop, run, start, err = s.fireLocked(loop, []string{event}, now)
+		loop, run, start, err = s.fireLocked(loop, []string{event}, nil, now)
 	}
 	s.mu.Unlock()
 	if err != nil {
@@ -281,8 +281,9 @@ func (s *Service) RunTriggered(ctx context.Context, loopID, event string) (Run, 
 
 // fireLocked hands events to loop: into its pending run when one waits, or
 // into a new run. The new run starts now unless a begun run of the loop is
-// still going, in which case it waits for that run to finish.
-func (s *Service) fireLocked(loop Loop, events []string, now time.Time) (Loop, Run, bool, error) {
+// still going, in which case it waits for that run to finish. taken records the
+// observed messages behind events, saved with the run that now holds them.
+func (s *Service) fireLocked(loop Loop, events []string, taken []SeenEvent, now time.Time) (Loop, Run, bool, error) {
 	if loop.Status == StatusDeleted {
 		return Loop{}, Run{}, false, fmt.Errorf("loop %s has been deleted", loop.ID)
 	}
@@ -298,20 +299,22 @@ func (s *Service) fireLocked(loop Loop, events []string, now time.Time) (Loop, R
 	for _, event := range events {
 		run.Reason = foldReason(run.Reason, event)
 	}
+	for i := range taken {
+		taken[i].RunID = run.ID
+	}
 	if len(runs) > 0 {
 		if pending < 0 {
 			s.ours[run.ID] = true
 		}
-		return Loop{}, run, false, s.Repo.SaveRun(run)
+		return Loop{}, run, false, s.Repo.SaveRunAndLoop(run, nil, taken...)
 	}
-	promptLoop, err := s.newRunLocked(loop, run, now)
+	promptLoop, err := s.newRunLocked(loop, run, now, taken...)
 	return promptLoop, run, err == nil, err
 }
 
-// Begin starts a pending run's turn in threadID, or in its bot's thread when
-// threadID is empty, and returns the run's loop and what the turn sends. A run
-// already begun, as one whose turn is started again after a restart, keeps its
-// first start.
+// Begin starts a pending run's turn in threadID and returns the run's loop
+// and what the turn sends. A run already begun, as one whose turn is started
+// again after a restart, keeps its first start.
 func (s *Service) Begin(runID, threadID string) (Loop, string, error) {
 	now := s.now()
 	s.mu.Lock()
@@ -332,7 +335,14 @@ func (s *Service) Begin(runID, threadID string) (Loop, string, error) {
 	if err != nil {
 		return Loop{}, "", err
 	}
-	return loop, runPrompt(loop, run, now, s.thread(loop)), nil
+	thread := ThreadChild
+	switch {
+	case loop.BotID != "" && threadID == loop.BotID:
+		thread = ThreadMain
+	case s.thread(loop) == "":
+		thread = ""
+	}
+	return loop, runPrompt(loop, run, now, thread), nil
 }
 
 // Finish closes a run that is still open, then starts the run waiting behind
@@ -396,27 +406,31 @@ func (s *Service) nextRunLocked(loopID string, now time.Time) (Loop, Run, error)
 // finish it; a pending one starts again unless it waits behind a begun run.
 func (s *Service) Resume(ctx context.Context, held map[string]bool) error {
 	s.mu.Lock()
-	restart, err := s.resumeLocked(held, s.now())
+	starts, err := s.resumeLocked(held)
 	s.mu.Unlock()
 	if err != nil {
 		return err
 	}
-	for _, run := range restart {
-		loop, err := s.Repo.LoadLoop(run.LoopID)
-		if err != nil {
-			return err
-		}
-		s.start(ctx, loop, run)
+	for _, start := range starts {
+		s.start(ctx, start.loop, start.run)
 	}
 	return nil
 }
 
-func (s *Service) resumeLocked(held map[string]bool, now time.Time) ([]Run, error) {
+// dispatch is a run to hand its executor, with its loop as the run's prompt
+// describes it.
+type dispatch struct {
+	loop Loop
+	run  Run
+}
+
+func (s *Service) resumeLocked(held map[string]bool) ([]dispatch, error) {
 	ids, err := s.Repo.ListActiveRunIDs()
 	if err != nil {
 		return nil, err
 	}
 	var pending []Run
+	var starts []dispatch
 	for _, id := range ids {
 		if held[id] || s.ours[id] {
 			continue
@@ -429,25 +443,30 @@ func (s *Service) resumeLocked(held map[string]bool, now time.Time) ([]Run, erro
 			pending = append(pending, run)
 			continue
 		}
-		run.Status = RunStatusError
-		run.Error = "Jaz stopped before this run finished."
-		run.FinishedAt = now
-		if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
+		loop, next, err := s.finishLocked(id, RunStatusError, "Jaz stopped before this run finished.")
+		if err != nil {
 			return nil, err
 		}
+		if next.ID != "" {
+			starts = append(starts, dispatch{loop, next})
+		}
 	}
-	var restart []Run
 	for _, run := range pending {
 		runs, err := s.Repo.ActiveRuns(run.LoopID)
 		if err != nil {
 			return nil, err
 		}
-		if !slices.ContainsFunc(runs, begun) {
-			s.ours[run.ID] = true
-			restart = append(restart, run)
+		if s.ours[run.ID] || slices.ContainsFunc(runs, begun) {
+			continue
 		}
+		loop, err := s.Repo.LoadLoop(run.LoopID)
+		if err != nil {
+			return nil, err
+		}
+		s.ours[run.ID] = true
+		starts = append(starts, dispatch{loop, run})
 	}
-	return restart, nil
+	return starts, nil
 }
 
 func begun(run Run) bool {
@@ -543,14 +562,11 @@ func (s *Service) claimDueRunLocked(now time.Time) (Loop, Run, bool, error) {
 		switch {
 		case missed.count == 0:
 		case loop.WhenMissed == MissedCatchUp:
-			last, ok, err := s.Repo.LastRunWithStatus(loop.ID, RunStatusOK)
+			lastOK, err := s.Repo.LastFinishedAt(loop.ID, RunStatusOK)
 			if err != nil {
 				return Loop{}, Run{}, false, err
 			}
-			if !ok {
-				last = Run{}
-			}
-			run.Reason = catchUpReason(loop, missed, last.FinishedAt)
+			run.Reason = catchUpReason(loop, missed, lastOK)
 		case missed.due.IsZero():
 			if err := s.skipRunLocked(loop, scheduledFor, nextRun, now, "Skipped: "+missedText(loop, missed)+"."); err != nil {
 				return Loop{}, Run{}, false, err
@@ -584,9 +600,10 @@ func (s *Service) startManualRunLocked(loopID string, now time.Time) (Loop, Run,
 	return promptLoop, run, err
 }
 
-// newRunLocked saves run as loop's latest and returns loop as the run's
-// prompt describes it, with the run before it as the previous one.
-func (s *Service) newRunLocked(loop Loop, run Run, now time.Time) (Loop, error) {
+// newRunLocked saves run as loop's latest, with the messages it takes, and
+// returns loop as the run's prompt describes it, with the run before it as the
+// previous one.
+func (s *Service) newRunLocked(loop Loop, run Run, now time.Time, taken ...SeenEvent) (Loop, error) {
 	promptLoop := loop
 	loop.LastRunAt = now
 	loop.LastRunID = run.ID
@@ -594,7 +611,7 @@ func (s *Service) newRunLocked(loop Loop, run Run, now time.Time) (Loop, error) 
 	loop.LastRunStatus = run.Status
 	loop.LastError = ""
 	loop.UpdatedAt = now
-	if err := s.Repo.SaveLoopAndRun(loop, run); err != nil {
+	if err := s.Repo.SaveRunAndLoop(run, &loop, taken...); err != nil {
 		return Loop{}, err
 	}
 	s.ours[run.ID] = true
@@ -632,7 +649,7 @@ func (s *Service) skipRunLocked(loop Loop, scheduledFor, nextRun, now time.Time,
 	loop.LastRunStatus = run.Status
 	loop.LastError = reason
 	loop.UpdatedAt = now
-	return s.Repo.SaveLoopAndRun(loop, run)
+	return s.Repo.SaveRunAndLoop(run, &loop)
 }
 
 func (s *Service) saveRunAndLoopUpdateLocked(run Run, now time.Time) error {

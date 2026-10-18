@@ -422,6 +422,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if os.Getenv("JAZ_FAKE_ACP_PROMPT_DELAY") == "1" {
 				time.Sleep(200 * time.Millisecond)
 			}
+			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
+				// The turn works until the test creates the release file, then
+				// ends as usual.
+				notify(conn, "session/update", map[string]any{
+					"sessionId": fakeSessionID,
+					"update":    map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tool-held", "title": "held work", "status": "in_progress"},
+				})
+				for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
 			var promptReq struct {
 				Meta map[string]any `json:"_meta"`
 			}
@@ -495,17 +506,6 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if strings.Contains(string(msg.Params), "ask then block") {
 				fakeAskThenBlock(conn, msg)
 				continue
-			}
-			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
-				// The turn works until the test creates the release file, then
-				// ends as usual.
-				notify(conn, "session/update", map[string]any{
-					"sessionId": fakeSessionID,
-					"update":    map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tool-held", "title": "held work", "status": "in_progress"},
-				})
-				for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
-					time.Sleep(10 * time.Millisecond)
-				}
 			}
 			if strings.Contains(string(msg.Params), "block until cancelled") || os.Getenv("JAZ_FAKE_ACP_BLOCK_PROMPT") == "1" {
 				notify(conn, "session/update", map[string]any{

@@ -121,3 +121,8 @@ type Routines interface {
 type Publisher interface {
 	Publish(sessionevents.Event)
 }
+
+// EventStore keeps a thread's events.
+type EventStore interface {
+	AppendSessionEvents(id string, events ...sessionevents.Event) error
+}

@@ -372,3 +372,25 @@ func TestRestartMidChildRunResumesTheChildAndClosesItsRun(t *testing.T) {
 		t.Fatalf("child after its resumed turn = %+v, %v", session, err)
 	}
 }
+
+func TestARoutineQueuedBehindAFailingTurnStillRuns(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.bot("Gimli")
+	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain})
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "crash transport until released", Completion: acp.CompletionAsync}); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
+	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jaz.eventually("the run queued", func() bool { return len(jaz.queued(bot.ID)) == 1 })
+
+	jaz.release()
+	jaz.waitRun(run.ID, loops.RunStatusOK)
+	if session, err := store.LoadSession(bot.ID); err != nil || session.Status != storage.StatusIdle {
+		t.Fatalf("bot = %+v, %v; want the routine's turn to have run after the failed one", session, err)
+	}
+}

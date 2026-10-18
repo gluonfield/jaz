@@ -79,7 +79,7 @@ func (s *Service) Say(threadID, text string) error {
 	}
 	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: botSession.Title, Text: text}
 	if !inGroup {
-		return s.appendEvent(sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()})
+		return appendEvent(s.store, s.events, sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()})
 	}
 	group, _, err := s.load(membership.GroupID)
 	if err != nil {
@@ -93,19 +93,24 @@ func (s *Service) announce(threadID string, activity sessionevents.BotActivityEv
 	if threadID == "" {
 		return
 	}
-	if err := s.appendEvent(sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeBotActivity, BotActivity: &activity, At: time.Now().UTC()}); err != nil {
+	if err := Announce(s.store, s.events, threadID, activity); err != nil {
 		s.log.Warn("append bot activity failed", "thread", threadID, "error", err)
 	}
 }
 
+// Announce notes in a bot's thread what woke it.
+func Announce(store EventStore, events Publisher, threadID string, activity sessionevents.BotActivityEvent) error {
+	return appendEvent(store, events, sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeBotActivity, BotActivity: &activity, At: time.Now().UTC()})
+}
+
 // appendEvent stores event and streams the stored copy, whose seq lets
 // clients match it to the same event in history.
-func (s *Service) appendEvent(event sessionevents.Event) error {
+func appendEvent(store EventStore, bus Publisher, event sessionevents.Event) error {
 	events := []sessionevents.Event{event}
-	if err := s.store.AppendSessionEvents(event.SessionID, events...); err != nil {
+	if err := store.AppendSessionEvents(event.SessionID, events...); err != nil {
 		return err
 	}
-	s.events.Publish(events[0])
+	bus.Publish(events[0])
 	return nil
 }
 

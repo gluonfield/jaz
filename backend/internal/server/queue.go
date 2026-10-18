@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -53,7 +54,7 @@ func (s *Server) updateSessionQueue(sessionID string, req queueRequest) (storage
 		return storage.Session{}, err
 	}
 	s.publishMessagesChanged(sessionID)
-	if updated.Status == storage.StatusIdle && len(updated.QueuedMessages) > 0 && s.canStartQueuedTurn(updated) {
+	if takesQueuedTurns(updated.Status) && len(updated.QueuedMessages) > 0 && s.canStartQueuedTurn(updated) {
 		s.drainQueueSoon(sessionID)
 	}
 	return updated, nil
@@ -270,7 +271,7 @@ func (s *Server) enqueueInternalTurn(sessionID string, prompt storage.QueuedMess
 		return "", false, fmt.Errorf("session runtime is not configured")
 	}
 	session.QueuedMessages = s.assignQueuedMessageIDs(append(session.QueuedMessages, prompt.AsInternal()))
-	idle := session.Status == storage.StatusIdle && !s.sessionRuntimeRunning(session)
+	idle := takesQueuedTurns(session.Status) && !s.sessionRuntimeRunning(session)
 	if err := s.Store.SaveSession(session); err != nil {
 		return "", false, err
 	}
@@ -346,14 +347,15 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeACP
 	}
-	if s.sessionRuntimeRunning(session) || session.Status != storage.StatusIdle {
+	if s.sessionRuntimeRunning(session) || !takesQueuedTurns(session.Status) {
 		return session, nil, false, nil
 	}
 	prompts := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
 	if len(prompts) == 0 {
 		// Empty queue still yields work when a goal is live; otherwise drop any
-		// stale (non-canonical) entries and report nothing to run.
-		if goal.Continuable(session.Goal) && session.Runtime == storage.RuntimeACP && s.ACP != nil {
+		// stale (non-canonical) entries and report nothing to run. A goal goes
+		// on only after a turn that ended well, so a failing one stops.
+		if session.Status == storage.StatusIdle && goal.Continuable(session.Goal) && session.Runtime == storage.RuntimeACP && s.ACP != nil {
 			session.QueuedMessages = nil
 			markSessionRunning(&session)
 			if err := s.Store.SaveSession(session); err != nil {
@@ -387,6 +389,13 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 		s.maybeGenerateSessionTitle(session, prompt.Text)
 	}
 	return session, &prompt, true, nil
+}
+
+// takesQueuedTurns reports whether a thread in status can start its next
+// queued turn: its last turn ended, even if it failed, so a failure costs only
+// that turn and not the work queued behind it.
+func takesQueuedTurns(status string) bool {
+	return status == storage.StatusIdle || status == storage.StatusError
 }
 
 func nextQueuedPromptIndex(prompts []storage.QueuedMessage) int {
@@ -604,7 +613,7 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 		if prompt.IsInternal() {
 			var loop loops.Loop
 			if run := prompt.Output.LoopRun(); run != "" {
-				if loop, prompt.Text, err = s.Loops.Begin(run, ""); err != nil {
+				if loop, prompt.Text, err = s.Loops.Begin(run, session.ID); err != nil {
 					return err
 				}
 			}
@@ -616,8 +625,10 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			}); err != nil {
 				return acpSendError(session, err)
 			}
-			if loop.ID != "" {
-				s.announce(session.ID, sessionevents.BotActivityEvent{Kind: "routine", Label: loop.Name})
+			if loop.BotID == session.ID {
+				if err := bots.Announce(s.Store, s.Events, session.ID, sessionevents.BotActivityEvent{Kind: "routine", Label: loop.Name}); err != nil {
+					s.logger().Warn("append bot activity failed", "thread", session.ID, "error", err)
+				}
 			}
 			return nil
 		}
@@ -636,17 +647,6 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 	default:
 		return fmt.Errorf("unknown session runtime %q", session.Runtime)
 	}
-}
-
-// announce notes in a thread what woke its bot; the note is best-effort.
-func (s *Server) announce(threadID string, activity sessionevents.BotActivityEvent) {
-	event := sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeBotActivity, BotActivity: &activity, At: time.Now().UTC()}
-	events := []sessionevents.Event{event}
-	if err := s.Store.AppendSessionEvents(threadID, events...); err != nil {
-		s.logger().Warn("append bot activity failed", "thread", threadID, "error", err)
-		return
-	}
-	s.Events.Publish(events[0])
 }
 
 func (s *Server) restoreQueuedPrompt(sessionID string, prompt storage.QueuedMessage, index int, message string) {

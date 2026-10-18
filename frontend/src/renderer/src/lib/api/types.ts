@@ -493,7 +493,6 @@ export interface LoopRun {
   status: LoopRunStatus
   error?: string
   created_at: string
-  reason?: string
 }
 
 export interface Board {

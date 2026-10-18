@@ -7,6 +7,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -41,8 +42,8 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 		}
 		if output := session.Turn.Output; output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
 			reply := bots.ReplyPrompt
-			if session.SourceType == storage.SourceLoopRun {
-				reply = bots.RoutineReport
+			if output.Run != "" {
+				reply = loops.Report
 			}
 			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: storage.NewInternalQueuedMessage(reply(session.Title, strings.Join(output.Replies, "\n\n")))})
 		}
@@ -74,26 +75,21 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 		s.publishSessionChanged(delivery.SessionID)
 		s.drainQueueSoon(delivery.SessionID)
 	}
-	if job.State == acp.StateIdle {
+	if job.State == acp.StateIdle || job.State == acp.StateFailed {
 		s.drainQueueSoon(job.ID)
 	}
 }
 
 // loopRun is the routine run a thread's current turn does: the one its turn
-// or claimed message names, or the run the thread was started for.
+// or claimed message names.
 func loopRun(session storage.Session) string {
-	if turn := session.Turn; turn != nil {
-		if turn.PendingMessage != nil {
-			return turn.PendingMessage.Output.LoopRun()
-		}
-		if run := turn.Output.LoopRun(); run != "" {
-			return run
-		}
+	if session.Turn == nil {
+		return ""
 	}
-	if session.SourceType == storage.SourceLoopRun {
-		return session.SourceID
+	if session.Turn.PendingMessage != nil {
+		return session.Turn.PendingMessage.Output.LoopRun()
 	}
-	return ""
+	return session.Turn.Output.LoopRun()
 }
 
 // ResumeLoopRuns settles the routine runs the last process left open, once
@@ -121,7 +117,7 @@ func (s *Server) ResumeQueuedTurns() error {
 		return err
 	}
 	for _, session := range sessions {
-		if session.Status == storage.StatusIdle && len(session.QueuedMessages) > 0 {
+		if takesQueuedTurns(session.Status) && len(session.QueuedMessages) > 0 {
 			s.drainQueueSoon(session.ID)
 		}
 	}

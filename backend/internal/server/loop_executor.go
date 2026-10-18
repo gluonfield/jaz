@@ -37,62 +37,46 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	}
 	loop := execution.Loop
 	run := execution.Run
-	if execution.Thread == loops.ThreadMain {
-		// The run waits in its bot thread's queue, after the user's messages;
-		// the queue begins it when its turn starts.
-		if err := r.server.QueueInternalTurn(context.Background(), loop.BotID, storage.QueuedMessage{Text: loop.Prompt, Output: &storage.TurnOutput{Run: run.ID}}); err != nil {
-			r.finishLoopRun(execution, loops.RunStatusError, err.Error())
+	thread := loop.BotID
+	output := &storage.TurnOutput{Run: run.ID}
+	if execution.Thread != loops.ThreadMain {
+		startCtx, cancel := serverACPBootstrapContext()
+		defer cancel()
+		// An empty agent stays empty: the ACP manager resolves the canonical
+		// default at spawn time, the same default sessions get. A bot's child
+		// starts in the bot's home unless the routine names a directory.
+		directory := strings.TrimSpace(loop.Directory)
+		if directory == "" && execution.Thread != loops.ThreadChild {
+			directory = "."
 		}
-		return
-	}
-	startCtx, cancel := serverACPBootstrapContext()
-	defer cancel()
-	// An empty agent stays empty: the ACP manager resolves the canonical
-	// default at spawn time, the same default sessions get. A bot's child
-	// starts in the bot's home unless the routine names a directory.
-	agent := strings.TrimSpace(loop.ACPAgent)
-	directory := strings.TrimSpace(loop.Directory)
-	if directory == "" && execution.Thread != loops.ThreadChild {
-		directory = "."
-	}
-	spawned, err := r.server.ACP.Spawn(startCtx, acp.SpawnRequest{
-		ACPAgent:               agent,
-		Slug:                   loopRunSlug(loop, run),
-		Title:                  loop.Name,
-		ParentID:               loop.BotID,
-		Directory:              directory,
-		ModelProvider:          loop.ModelProvider,
-		Model:                  loop.Model,
-		ReasoningEffort:        loop.ReasoningEffort,
-		SourceType:             storage.SourceLoopRun,
-		SourceID:               run.ID,
-		ArtifactSurface:        execution.ArtifactSurface,
-		SystemPromptExtensions: execution.SystemPromptExtensions,
-	})
-	if err != nil {
-		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
-		return
-	}
-	_, prompt, err := execution.Controller.Begin(run.ID, spawned.SessionID)
-	if err != nil {
-		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
-		return
-	}
-	sendCtx, cancel := serverACPBootstrapContext()
-	defer cancel()
-	if execution.Thread == loops.ThreadChild {
+		spawned, err := r.server.ACP.Spawn(startCtx, acp.SpawnRequest{
+			ACPAgent:               strings.TrimSpace(loop.ACPAgent),
+			Slug:                   loopRunSlug(loop, run),
+			Title:                  loop.Name,
+			ParentID:               loop.BotID,
+			Directory:              directory,
+			ModelProvider:          loop.ModelProvider,
+			Model:                  loop.Model,
+			ReasoningEffort:        loop.ReasoningEffort,
+			SourceType:             storage.SourceLoopRun,
+			SourceID:               run.ID,
+			ArtifactSurface:        execution.ArtifactSurface,
+			SystemPromptExtensions: execution.SystemPromptExtensions,
+		})
+		if err != nil {
+			r.finishLoopRun(execution, loops.RunStatusError, err.Error())
+			return
+		}
+		thread = spawned.SessionID
 		// A bot's child speaks as the bot does: what it sends reaches the bot,
 		// and a run with nothing to say leaves the bot alone.
-		_, err = r.server.ACP.StartInternalTurn(sendCtx, acp.InternalTurnRequest{
-			Session:      spawned.SessionID,
-			Message:      prompt,
-			Output:       &storage.TurnOutput{ReplyTo: loop.BotID, Run: run.ID},
-			AllowSilence: true,
-		})
-	} else {
-		_, err = r.server.ACP.Send(sendCtx, acp.SendRequest{Session: spawned.SessionID, Message: prompt, Completion: acp.CompletionAsync})
+		if execution.Thread == loops.ThreadChild {
+			output.ReplyTo = loop.BotID
+		}
 	}
-	if err != nil {
+	// The run waits in its thread's queue, after the user's messages; the
+	// queue begins it when its turn starts.
+	if err := r.server.QueueInternalTurn(context.Background(), thread, storage.QueuedMessage{Text: loop.Prompt, Output: output}); err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 	}
 }

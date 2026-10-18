@@ -122,8 +122,9 @@ func TestLoopAPICarriesReasoningEffortAndDirectory(t *testing.T) {
 	}
 	defer store.Close()
 	manager := &fakeACPManager{spawnStore: store}
-	service := newLoopServiceForTest(store, NewLoopRunner(&Server{Store: store, ACP: manager}))
-	srv := &Server{Store: store, Loops: service, ACP: manager}
+	srv := &Server{Store: store, ACP: manager, Locks: sessionlock.New(), Events: sessionevents.New()}
+	service := newLoopServiceForTest(store, NewLoopRunner(srv))
+	srv.Loops = service
 
 	create := httptest.NewRequest(http.MethodPost, "/v1/loops", strings.NewReader(`{
 		"prompt":"audit the repo",
@@ -164,7 +165,7 @@ func TestLoopAPICarriesReasoningEffortAndDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForACPSendContaining(t, manager, "audit the repo")
+	waitForInternalTurn(t, manager, "audit the repo")
 	manager.mu.Lock()
 	spawned := manager.spawned
 	manager.mu.Unlock()
@@ -186,7 +187,7 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	}
 	defer store.Close()
 	manager := &fakeACPManager{spawnStore: store}
-	srv := &Server{Store: store, ACP: manager}
+	srv := &Server{Store: store, ACP: manager, Locks: sessionlock.New(), Events: sessionevents.New()}
 	service := newLoopServiceForTest(store, NewLoopRunner(srv))
 	srv.Loops = service
 	loop, err := service.Create(loops.CreateLoop{
@@ -204,12 +205,9 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sent := waitForACPSendContaining(t, manager, "check status")
-	if sent.Session == "" {
-		t.Fatalf("missing sent session: %#v", sent)
-	}
-	if sent.Message != "check status" {
-		t.Fatalf("sent message = %q, want loop task only", sent.Message)
+	sent := waitForInternalTurn(t, manager, "check status")
+	if sent.Message != "check status" || sent.Output.LoopRun() != run.ID {
+		t.Fatalf("run turn = %+v, want the loop task alone, naming its run", sent)
 	}
 	manager.mu.Lock()
 	spawned := manager.spawned
@@ -229,7 +227,7 @@ func TestACPLoopRunCreatesHiddenThreadAndFinishesFromCallback(t *testing.T) {
 	}
 
 	waitForLoopRun(t, service, loop.ID, run.ID, loops.RunStatusRunning)
-	if err := store.StartSessionTurn(sent.Session, storage.Turn{}); err != nil {
+	if err := store.StartSessionTurn(sent.Session, storage.Turn{Output: sent.Output}); err != nil {
 		t.Fatal(err)
 	}
 	srv.HandleACPTurnFinished(context.Background(), acp.Job{ID: sent.Session, State: acp.StateIdle})
@@ -325,14 +323,16 @@ func waitForLoopRun(t *testing.T, service *loops.Service, loopID, runID, status 
 	})
 }
 
-func waitForACPSendContaining(t *testing.T, manager *fakeACPManager, text string) acp.SendRequest {
+func waitForInternalTurn(t *testing.T, manager *fakeACPManager, text string) acp.InternalTurnRequest {
 	t.Helper()
-	var sent acp.SendRequest
+	var turn acp.InternalTurnRequest
 	waitFor(t, time.Second, func() bool {
-		sent = sentACPRequest(manager)
-		return strings.Contains(sent.Message, text)
+		manager.mu.Lock()
+		defer manager.mu.Unlock()
+		turn = manager.internal
+		return strings.Contains(turn.Message, text)
 	})
-	return sent
+	return turn
 }
 
 func sessionForRun(t *testing.T, store *sqlitestore.Store, runID string) storage.Session {
@@ -459,7 +459,7 @@ func newWidgetLoopFinishTest(t *testing.T, threadID string) (*Server, *widgets.S
 	if err := store.SaveRun(run); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+	if err := store.StartSessionTurn(session.ID, storage.Turn{Output: &storage.TurnOutput{Run: run.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	widgetService := widgets.NewService(store, nil)

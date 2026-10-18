@@ -35,6 +35,11 @@ func runPrompt(loop Loop, run Run, now time.Time, thread string) string {
 	return b.String()
 }
 
+// Report hands a bot what a run of its routine sent from a thread of its own.
+func Report(routine, text string) string {
+	return fmt.Sprintf("[routine] %s\n\n%s\n\nThis is what a run of this routine sent from its own thread; pass it on to the user.", routine, text)
+}
+
 // missedAfter is how late a slot or an event may be and still count as on
 // time; anything later was missed while Jaz was not running.
 const missedAfter = 15 * time.Minute

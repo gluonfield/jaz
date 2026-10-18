@@ -73,14 +73,7 @@ func (s *Service) take(routine Loop, messages []integrationingest.Incoming) (Loo
 	if len(taken) == 0 {
 		return Loop{}, Run{}, false, nil
 	}
-	loop, run, start, err := s.fireLocked(routine, events, now)
-	if err != nil {
-		return Loop{}, Run{}, false, err
-	}
-	for i := range taken {
-		taken[i].RunID = run.ID
-	}
-	return loop, run, start, s.Repo.SaveEvents(taken)
+	return s.fireLocked(routine, events, taken, now)
 }
 
 func (t *Trigger) matches(in integrationingest.Incoming) bool {

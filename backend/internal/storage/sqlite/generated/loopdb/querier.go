@@ -9,7 +9,7 @@ import (
 )
 
 type Querier interface {
-	GetLastRunWithStatus(ctx context.Context, arg GetLastRunWithStatusParams) (LoopRun, error)
+	GetLastFinishedAt(ctx context.Context, arg GetLastFinishedAtParams) (int64, error)
 	GetLatestLoopEventAt(ctx context.Context, loopID string) (int64, error)
 	GetLoop(ctx context.Context, id string) (Loop, error)
 	GetRun(ctx context.Context, id string) (LoopRun, error)

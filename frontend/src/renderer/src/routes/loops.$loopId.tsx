@@ -4,7 +4,7 @@ import { ArrowLeft, ChevronRight, MoreHorizontal, Pencil, Play, Trash2 } from 'l
 import { useState } from 'react'
 import { LoopBoardAssignments } from '@/components/loops/LoopBoardAssignments'
 import { LoopModal } from '@/components/loops/LoopModal'
-import { describeSchedule, draftFromLoop } from '@/components/loops/schedule'
+import { catchesUp, describeSchedule, draftFromLoop } from '@/components/loops/schedule'
 import { MentionText } from '@/components/session/mentions'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconButton } from '@/components/ui/IconButton'
@@ -95,9 +95,7 @@ function LoopDetail({
   }
 
   const paused = loop.status === 'paused'
-  const summary =
-    describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused)) +
-    (loop.when_missed === 'catch_up' ? ' · catches up if missed' : '')
+  const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused)) + catchesUp(loop)
   const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
 
   return (

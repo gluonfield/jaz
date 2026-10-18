@@ -190,22 +190,19 @@ type Repository interface {
 	ListActiveRunIDs() ([]string, error)
 	// ActiveRuns lists a loop's pending and begun runs, oldest first.
 	ActiveRuns(loopID string) ([]Run, error)
-	LastRunWithStatus(loopID, status string) (Run, bool, error)
+	LastFinishedAt(loopID, status string) (time.Time, error)
 	EventSeen(loopID, eventID string) (bool, error)
 	LatestEventAt(loopID string) (time.Time, error)
-	SaveEvents(events []SeenEvent) error
 	SaveLoop(loop Loop) error
 	SaveRun(run Run) error
 	SaveLoops(loops []Loop) error
-	SaveLoopAndRun(loop Loop, run Run) error
-	SaveRunAndLoop(run Run, loop *Loop) error
+	// SaveRunAndLoop saves run, and with it loop when given and the messages
+	// the run takes, in one write.
+	SaveRunAndLoop(run Run, loop *Loop, taken ...SeenEvent) error
 }
 
-// RunController moves a run through its life: Begin when its turn starts in
-// threadID ("" for a turn in its bot's thread), returning what the turn sends,
-// and Finish when it ends.
+// RunController closes a run its executor could not start.
 type RunController interface {
-	Begin(runID, threadID string) (Loop, string, error)
 	Finish(runID, status, errText string) error
 }
 
