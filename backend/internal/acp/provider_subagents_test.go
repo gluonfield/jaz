@@ -173,6 +173,78 @@ func TestProviderSubagentSessionInfoUpdatePublishesAndStores(t *testing.T) {
 	}
 }
 
+// The Claude adapter sends each subagent change alone on a session_info_update.
+func TestClaudeSubagentSessionInfoUpdatesCloseTheNamedRecord(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	session, err := store.CreateSession(storage.CreateSession{Slug: "claude-subagents", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := sessionevents.New()
+	manager := NewManager(store, Config{}, nil)
+	manager.Events = events
+	manager.jobsByID[session.ID] = &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentClaude, ACPSession: "acp-session"}}
+	manager.jobsByACP["acp-session"] = manager.jobsByID[session.ID]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	sub := events.Subscribe(ctx, session.ID)
+	send := func(record map[string]any) sessionevents.Event {
+		t.Helper()
+		_, rpcErr := manager.handleJSONRPC(ctx, jsonrpc.Request{
+			Method: acpschema.ClientMethodSessionUpdate,
+			Params: mustJSON(t, map[string]any{
+				"sessionId": "acp-session",
+				"update": map[string]any{
+					"sessionUpdate": "session_info_update",
+					"_meta":         map[string]any{"jaz": map[string]any{"providerSubagent": record}},
+				},
+			}),
+		})
+		if rpcErr != nil {
+			t.Fatal(rpcErr)
+		}
+		select {
+		case event := <-sub:
+			return event
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+			return sessionevents.Event{}
+		}
+	}
+
+	started := send(map[string]any{
+		"provider": "claude", "id": "toolu_bg", "status": "running",
+		"name": "Review the diff", "role": "general-purpose", "prompt": "Review it",
+	})
+	if started.Type != sessionevents.TypeProviderSubagent || started.ProviderSubagent == nil ||
+		started.ProviderSubagent.Provider != AgentClaude || started.ProviderSubagent.Name != "Review the diff" ||
+		started.ProviderSubagent.Role != "general-purpose" || started.ProviderSubagent.Status != "running" {
+		t.Fatalf("started = %#v", started.ProviderSubagent)
+	}
+	ended := send(map[string]any{"provider": "claude", "id": "toolu_bg", "status": "completed"})
+	if ended.ProviderSubagent == nil || ended.ProviderSubagent.Name != "Review the diff" ||
+		ended.ProviderSubagent.Prompt != "Review it" || ended.ProviderSubagent.Status != "completed" {
+		t.Fatalf("ended = %#v", ended.ProviderSubagent)
+	}
+
+	stored, err := store.LoadSessionEvents(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 1 || stored[0].ProviderSubagent == nil ||
+		stored[0].ProviderSubagent.Name != "Review the diff" || stored[0].ProviderSubagent.Status != "completed" {
+		t.Fatalf("stored events = %#v", stored)
+	}
+	if got := manager.jobsByID[session.ID].Title; got != "" {
+		t.Fatalf("subagent metadata changed title: %q", got)
+	}
+}
+
 func TestProviderSubagentSparseUpdateAfterManagerRestartPublishesCompleteSnapshot(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
