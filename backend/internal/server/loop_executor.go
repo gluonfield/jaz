@@ -37,16 +37,20 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	}
 	loop := execution.Loop
 	run := execution.Run
+	mode := execution.Thread
+	if mode == loops.ThreadMain && r.contextFull(loop.BotID) {
+		mode = loops.ThreadChild
+	}
 	thread := loop.BotID
 	output := &storage.TurnOutput{Run: run.ID}
-	if execution.Thread != loops.ThreadMain {
+	if mode != loops.ThreadMain {
 		startCtx, cancel := serverACPBootstrapContext()
 		defer cancel()
 		// An empty agent stays empty: the ACP manager resolves the canonical
 		// default at spawn time, the same default sessions get. A bot's child
 		// starts in the bot's home unless the routine names a directory.
 		directory := strings.TrimSpace(loop.Directory)
-		if directory == "" && execution.Thread != loops.ThreadChild {
+		if directory == "" && mode != loops.ThreadChild {
 			directory = "."
 		}
 		spawned, err := r.server.ACP.Spawn(startCtx, acp.SpawnRequest{
@@ -70,7 +74,7 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 		thread = spawned.SessionID
 		// A bot's child speaks as the bot does: what it sends reaches the bot,
 		// and a run with nothing to say leaves the bot alone.
-		if execution.Thread == loops.ThreadChild {
+		if mode == loops.ThreadChild {
 			output.ReplyTo = loop.BotID
 		}
 	}
@@ -79,6 +83,15 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	if err := r.server.QueueInternalTurn(context.Background(), thread, storage.QueuedMessage{Text: loop.Prompt, Output: output}); err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 	}
+}
+
+// contextFull reports whether a bot's thread is at least 80% full by its
+// provider's own count, so a run meant for it does better in a child. A fill
+// the provider does not report keeps the run in the thread.
+func (r *LoopRunner) contextFull(botID string) bool {
+	session, err := r.server.Store.LoadSession(botID)
+	usage := session.Usage
+	return err == nil && usage.ContextWindowTokens > 0 && usage.ContextTokens*5 >= usage.ContextWindowTokens*4
 }
 
 // LoopRunStatus is the status a finished turn gives the loop run it served.

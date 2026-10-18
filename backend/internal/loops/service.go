@@ -19,9 +19,9 @@ type Service struct {
 	Log         *log.Logger
 	Now         func() time.Time
 	MemoryPaths *MemoryPaths
-	// PromptExtra appends capability sections (e.g. widget instructions) to the
-	// metadata prompt of each run.
-	PromptExtra     func(Loop, Run) string
+	// PromptExtras append sections, such as widget instructions or the
+	// owning bot's saved prompt, to the metadata prompt of each run.
+	PromptExtras    []func(Loop, Run) string
 	ArtifactSurface func(Loop, Run) string
 	// RunCheck can fail a run whose turn ended well but left its work undone,
 	// as a widget run that published nothing.
@@ -33,14 +33,14 @@ type Service struct {
 }
 
 type RuntimePromptBuilder struct {
-	Repo        Repository
-	PromptExtra func(Loop, Run) string
+	Repo         Repository
+	PromptExtras []func(Loop, Run) string
 }
 
 func (b RuntimePromptBuilder) For(loop Loop, run Run, now time.Time) promptmodule.Modules {
 	var extras []string
-	if b.PromptExtra != nil {
-		if extra := strings.TrimSpace(b.PromptExtra(loop, run)); extra != "" {
+	for _, section := range b.PromptExtras {
+		if extra := strings.TrimSpace(section(loop, run)); extra != "" {
 			extras = append(extras, extra)
 		}
 	}
@@ -67,9 +67,9 @@ func WithMemoryPaths(paths *MemoryPaths) Option {
 	}
 }
 
-func WithPromptExtra(extra func(Loop, Run) string) Option {
+func WithPromptExtras(extras ...func(Loop, Run) string) Option {
 	return func(s *Service) {
-		s.PromptExtra = extra
+		s.PromptExtras = append(s.PromptExtras, extras...)
 	}
 }
 
@@ -97,7 +97,7 @@ func NewService(repo Repository, executor Executor, logger *log.Logger, opts ...
 }
 
 func (s *Service) RuntimePromptBuilder() RuntimePromptBuilder {
-	return RuntimePromptBuilder{Repo: s.Repo, PromptExtra: s.PromptExtra}
+	return RuntimePromptBuilder{Repo: s.Repo, PromptExtras: s.PromptExtras}
 }
 
 func (s *Service) Create(input CreateLoop) (Loop, error) {
@@ -343,6 +343,12 @@ func (s *Service) Begin(runID, threadID string) (Loop, string, error) {
 		thread = ""
 	}
 	return loop, runPrompt(loop, run, now, thread), nil
+}
+
+// Closed reports whether a run has ended.
+func (s *Service) Closed(runID string) (bool, error) {
+	run, err := s.Repo.LoadRun(runID)
+	return err == nil && !active(run), err
 }
 
 // Finish closes a run that is still open, then starts the run waiting behind

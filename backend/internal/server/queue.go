@@ -310,10 +310,30 @@ func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, pr
 	}
 	if err := s.startQueuedPrompt(ctx, session, *prompt); err != nil {
 		s.logger().Error("queued prompt start failed", "session", session.ID, "error", err)
+		if run := prompt.Output.LoopRun(); run != "" {
+			s.failRunStart(session.ID, run, err)
+			return
+		}
 		s.restoreQueuedPrompt(session.ID, *prompt, 0, err.Error())
 		return
 	}
 	s.publishMessagesChanged(session.ID)
+}
+
+// failRunStart ends a routine run whose turn could not start, as a run that
+// failed, so its routine's next fire is not held behind it.
+func (s *Server) failRunStart(sessionID, run string, cause error) {
+	if err := s.Loops.Finish(run, loops.RunStatusError, cause.Error()); err != nil {
+		s.logger().Error("finish loop run", "session", sessionID, "run", run, "error", err)
+	}
+	unlock := s.lockSession(sessionID)
+	err := s.Store.FinishSessionTurn(sessionID, storage.StatusError, cause.Error(), time.Now().UTC(), nil)
+	unlock()
+	if err != nil {
+		s.logger().Error("finish unstarted turn", "session", sessionID, "error", err)
+	}
+	s.publishSessionChanged(sessionID)
+	s.drainQueueSoon(sessionID)
 }
 
 func (s *Server) startGoalContinuation(ctx context.Context, session storage.Session) {

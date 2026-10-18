@@ -3,7 +3,9 @@ package bots
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -36,6 +38,7 @@ func TestABotsLoopToolsSeeOnlyItsOwnRoutines(t *testing.T) {
 	gimli, legolas := bot("Gimli"), bot("Legolas")
 	subtask := thread(storage.CreateSession{SourceType: storage.SourceBotWorker, SourceID: gimli})
 	seat := thread(storage.CreateSession{SourceType: storage.SourceBotMember, SourceID: gimli})
+	run := thread(storage.CreateSession{SourceType: storage.SourceLoopRun, ParentID: gimli})
 	chat := thread(storage.CreateSession{Title: "Chat"})
 
 	routines := loops.NewService(store, nil, log.New(nil))
@@ -57,7 +60,7 @@ func TestABotsLoopToolsSeeOnlyItsOwnRoutines(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	for threadID, want := range map[string][]string{gimli: {own}, subtask: {own}, seat: {own}, chat: {own, theirs, unowned}} {
+	for threadID, want := range map[string][]string{gimli: {own}, subtask: {own}, seat: {own}, run: {own}, chat: {own, theirs, unowned}} {
 		_, out, err := tools.List(ctx, from(threadID), loops.MCPListInput{})
 		if err != nil {
 			t.Fatal(err)
@@ -86,6 +89,32 @@ func TestABotsLoopToolsSeeOnlyItsOwnRoutines(t *testing.T) {
 		}
 		if loop, err := routines.Load(id); err != nil || loop.Status != loops.StatusActive {
 			t.Fatalf("routine %s after foreign calls = %+v, %v", id, loop, err)
+		}
+	}
+}
+
+func TestARoutineRunOfItsOwnCarriesItsBotsSavedPrompt(t *testing.T) {
+	store, err := sqlite.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Title: "Gimli", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBot(storage.BotRecord{ThreadID: bot.ID, Kind: KindBot, Prompt: "Sign every report as Gimli."}); err != nil {
+		t.Fatal(err)
+	}
+	routines := loops.NewService(store, nil, log.New(nil), loops.WithPromptExtras(RoutineInstructions(store)))
+	for owner, want := range map[string]bool{bot.ID: true, "": false} {
+		loop, err := routines.Create(loops.CreateLoop{Prompt: "write the report", BotID: owner, Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		prompt := strings.Join(routines.RuntimePromptBuilder().For(loop, loops.Run{ID: "run"}, time.Now()), "\n")
+		if strings.Contains(prompt, "Sign every report as Gimli.") != want {
+			t.Fatalf("routine of %q: system prompt = %q, want the bot's saved prompt %v", owner, prompt, want)
 		}
 	}
 }

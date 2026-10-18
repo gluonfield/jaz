@@ -304,7 +304,7 @@ func startServer(
 	loopService := loops.NewService(store, loopRunner, logger,
 		loops.WithMemoryPaths(loopMemoryPaths),
 		// Board assignment is the widget enablement: no boards, no section.
-		loops.WithPromptExtra(widgetService.LoopPromptExtra),
+		loops.WithPromptExtras(bots.RoutineInstructions(store), widgetService.LoopPromptExtra),
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
 		loops.WithRunCheck(widgetService.RequireRunPublished),
 	)

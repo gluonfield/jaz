@@ -48,7 +48,7 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 	locks := sessionlock.New()
 	events := sessionevents.New()
 	handler := &server.Server{Store: store, ACP: manager, Locks: locks, Events: events}
-	service := loops.NewService(store, server.NewLoopRunner(handler), log.New(io.Discard))
+	service := loops.NewService(store, server.NewLoopRunner(handler), log.New(io.Discard), loops.WithPromptExtras(bots.RoutineInstructions(store)))
 	handler.Loops = service
 	manager.TurnFinished = handler.HandleACPTurnFinished
 	botService := bots.NewService(store, root, manager, handler, handler, service, events, log.New(io.Discard))
@@ -392,5 +392,63 @@ func TestARoutineQueuedBehindAFailingTurnStillRuns(t *testing.T) {
 	jaz.waitRun(run.ID, loops.RunStatusOK)
 	if session, err := store.LoadSession(bot.ID); err != nil || session.Status != storage.StatusIdle {
 		t.Fatalf("bot = %+v, %v; want the routine's turn to have run after the failed one", session, err)
+	}
+}
+
+func TestRestartAfterARunClosedFinishesItsTurnWithoutRunningItAgain(t *testing.T) {
+	store, root := newTestStore(t)
+	ctx := testContext(t)
+	jaz := startJaz(t, ctx, store, root, map[string]string{})
+	bot := jaz.bot("Gimli")
+	routine := jaz.routine(loops.CreateLoop{Name: "Report", Prompt: "write the report until released", BotID: bot.ID})
+	run, err := jaz.loops.RunNow(ctx, routine.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jaz.say(run.ID, "The report is ready.")
+	child := jaz.run(run.ID).ThreadID
+	// Jaz dies after the run closes and before the turn's own bookkeeping.
+	jaz.manager.TurnFinished = func(context.Context, acp.Job) {
+		_ = jaz.loops.Finish(run.ID, loops.RunStatusOK, "")
+	}
+	jaz.release()
+	jaz.waitRun(run.ID, loops.RunStatusOK)
+	jaz.manager.Close()
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	jaz = startJaz(t, ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	jaz.recover()
+	jaz.eventually("the run's report reaching the bot", func() bool { return len(jaz.reports()) == 1 })
+	jaz.eventually("the child's turn closing", func() bool {
+		session, err := store.LoadSession(child)
+		return err == nil && session.Status == storage.StatusIdle && session.Turn == nil
+	})
+	if got := jaz.promptsContaining("Continue from where you left off"); got != 0 {
+		t.Fatalf("a turn whose run had closed ran again: %q", jaz.prompts())
+	}
+}
+
+func TestARoutineThatCannotStartClosesAsFailed(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{"JAZ_FAKE_ACP_EXIT_BEFORE_INIT": "sign-in expired"})
+	bot := jaz.bot("Gimli")
+	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain})
+	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := jaz.waitRun(run.ID, loops.RunStatusError)
+	if failed.Error == "" || len(jaz.queued(bot.ID)) != 0 {
+		t.Fatalf("run = %+v, queue = %+v; want the run closed with its cause and nothing left queued", failed, jaz.queued(bot.ID))
+	}
+	if _, err := jaz.loops.RunNow(jaz.ctx, routine.ID); err != nil {
+		t.Fatalf("the failed run still holds its routine: %v", err)
 	}
 }

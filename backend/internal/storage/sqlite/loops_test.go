@@ -214,7 +214,7 @@ func TestLoopExecutionCarriesPromptExtraAndArtifactSurface(t *testing.T) {
 	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 1)}
 	service := loops.NewService(store, executor, nil,
 		loops.WithMemoryPaths(loops.NewMemoryPaths(filepath.Join(store.RootDir(), "automations"))),
-		loops.WithPromptExtra(func(loop loops.Loop, run loops.Run) string {
+		loops.WithPromptExtras(func(loop loops.Loop, run loops.Run) string {
 			return "## Widget instructions\n\n- loop " + loop.ID + " run " + run.ID
 		}),
 		loops.WithArtifactSurface(func(loops.Loop, loops.Run) string {

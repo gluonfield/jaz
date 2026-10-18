@@ -340,9 +340,9 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	cfg.ACP.ModelCatalog = modelCatalog
 	cfg.ACP.SystemPrompt = prompts
 	cfg.ACP.MCPStore = mcpServers
-	promptBuilder := loops.RuntimePromptBuilder{Repo: store}
+	promptBuilder := loops.RuntimePromptBuilder{Repo: store, PromptExtras: []func(loops.Loop, loops.Run) string{bots.RoutineInstructions(store)}}
 	if widgetService != nil {
-		promptBuilder.PromptExtra = widgetService.LoopPromptExtra
+		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, widgetService.LoopPromptExtra)
 	}
 	cfg.ACP.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
 		switch session.SourceType {

@@ -484,8 +484,11 @@ func TestRoutineOwnerChecksNamedBotsKeepsBotThreadAndGivesOtherThreadsANewBot(t 
 		t.Fatalf("named owner = %q, %v", owner, err)
 	}
 	world.sessions["research"] = storage.Session{ID: "research", SourceType: storage.SourceBotWorker, SourceID: "gimli"}
-	if owner, err := service.RoutineOwner("research", loops.CreateLoop{Name: "Watch"}); err != nil || owner != "gimli" || len(world.created) != 1 {
-		t.Fatalf("a subtask's routine went to %q (%v), %d bots created", owner, err, len(world.created))
+	world.sessions["inbox-run"] = storage.Session{ID: "inbox-run", SourceType: storage.SourceLoopRun, ParentID: "gimli"}
+	for _, thread := range []string{"research", "inbox-run"} {
+		if owner, err := service.RoutineOwner(thread, loops.CreateLoop{Name: "Watch"}); err != nil || owner != "gimli" || len(world.created) != 1 {
+			t.Fatalf("a routine made in %s went to %q (%v), %d bots created", thread, owner, err, len(world.created))
+		}
 	}
 	world.sessions["crew"] = storage.Session{ID: "crew", Title: "Crew"}
 	world.records["crew"] = storage.BotRecord{ThreadID: "crew", Kind: KindGroup}

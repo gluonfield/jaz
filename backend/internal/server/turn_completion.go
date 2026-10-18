@@ -47,12 +47,10 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 			}
 			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: storage.NewInternalQueuedMessage(reply(session.Title, strings.Join(output.Replies, "\n\n")))})
 		}
-		// The run closes before its turn does: a restart in between resumes the
-		// turn, whose end then finds the run already closed.
-		if run := loopRun(session); run != "" {
-			if finishErr := s.Loops.Finish(run, LoopRunStatus(job.State), job.Error); finishErr != nil {
-				s.logger().Error("finish loop run", "session", job.ID, "run", run, "error", finishErr)
-			}
+		// The run closes before its turn does; a restart in between finds the
+		// run closed and only finishes the turn's bookkeeping.
+		if run := loopRun(session); run != "" && err == nil {
+			err = s.Loops.Finish(run, LoopRunStatus(job.State), job.Error)
 		}
 		if err == nil {
 			err = s.Store.FinishSessionTurn(job.ID, status, job.Error, time.Now().UTC(), deliveries)
@@ -128,6 +126,17 @@ func (s *Server) ResumeInterruptedTurn(ctx context.Context, id string) error {
 	session, err := s.Store.LoadSession(id)
 	if err != nil {
 		return err
+	}
+	if run := loopRun(session); run != "" {
+		closed, err := s.Loops.Closed(run)
+		if err != nil {
+			return err
+		}
+		if closed {
+			// Recovery holds this thread's lock, which the bookkeeping takes.
+			go s.HandleACPTurnFinished(context.WithoutCancel(ctx), acp.Job{ID: id, State: acp.StateIdle})
+			return nil
+		}
 	}
 	if session.Turn != nil && session.Turn.PendingMessage != nil {
 		if session.Turn.PendingMessage.IsAction() {

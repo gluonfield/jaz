@@ -118,3 +118,25 @@ func TestRestartMidChildRunResumesItAndReportsToTheBotOnce(t *testing.T) {
 		t.Fatalf("report = %q", reports[0])
 	}
 }
+
+func TestARoutineMovesToAChildWhenItsBotsThreadIsFull(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	for _, fill := range []storage.Usage{{ContextTokens: 90_000, ContextWindowTokens: 100_000}, {ContextTokens: 90_000}} {
+		bot := jaz.bot("Gimli")
+		bot.Usage = fill
+		if err := store.SaveSession(bot); err != nil {
+			t.Fatal(err)
+		}
+		routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain})
+		run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ran := jaz.waitRun(run.ID, loops.RunStatusOK)
+		moved := ran.ThreadID != bot.ID
+		if want := fill.ContextWindowTokens > 0; moved != want {
+			t.Fatalf("with usage %+v the run went to %s, moved = %v, want %v", fill, ran.ThreadID, moved, want)
+		}
+	}
+}
