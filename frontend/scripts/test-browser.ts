@@ -55,7 +55,9 @@ await build({
   configFile: false,
   plugins: [tailwindcss()],
   resolve: { alias: { '@': resolve('src/renderer/src'), '@shared': resolve('src/shared') } },
-  define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"production"' },
+  // A development build, like the app in development, so StrictMode mounts
+  // twice and bugs that only show then fail here too.
+  define: { 'import.meta.env': '{}', 'process.env.NODE_ENV': '"development"' },
   build: {
     outDir: output,
     emptyOutDir: false,

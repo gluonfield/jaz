@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router'
+import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BotDetails } from '@/components/bots/BotDetails'
 import type { Bot, BotActivity, BotFile, Loop, LoopRun } from '@/lib/api/types'
@@ -95,10 +96,14 @@ export async function exerciseBotPanel(): Promise<void> {
   const threadRoute = createRoute({ getParentRoute: () => rootRoute, path: '/sessions/$sessionId', component: () => <p>thread</p> })
   const router = createRouter({ routeTree: rootRoute.addChildren([botRoute, threadRoute]), history: createMemoryHistory({ initialEntries: ['/bots/panel'] }) })
   const root = createRoot(element)
+  // The app renders in StrictMode, which mounts every component twice in
+  // development; the panel must work the same way here.
   root.render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>,
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
   )
 
   const until = async (what: string, check: () => boolean) => {
