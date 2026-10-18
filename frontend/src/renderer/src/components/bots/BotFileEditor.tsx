@@ -1,32 +1,24 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useBlocker } from '@tanstack/react-router'
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react'
-import { Bold, Italic, List, ListOrdered, X } from 'lucide-react'
+import { Bold, Italic, List, ListOrdered } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/Button'
-import { IconButton } from '@/components/ui/IconButton'
+import { Modal } from '@/components/ui/Modal'
 import { botFilesQuery, saveBotFile } from '@/lib/api/bots'
 import { ApiError } from '@/lib/api/client'
 import type { Bot, BotFile, BotFileName } from '@/lib/api/types'
-import { isMacDesktop } from '@/lib/clientRuntime'
-import { consumeEscapeKey, createEscapeLayerID, isTopEscapeLayer, pushEscapeLayer } from '@/lib/dom/escapeLayers'
 import { keys } from '@/lib/query/keys'
 import { markdownKit } from './markdownKit'
 
 type SaveState = 'saved' | 'saving' | 'conflict' | 'failed'
 
-// A bot's AGENTS.md or MEMORY.md, edited as a document over the whole window.
-// Only the person's edits are saved, each over the version read, so the bot's
-// own writes meanwhile are never overwritten unseen.
+// A bot's AGENTS.md or MEMORY.md, edited as a document in a modal. Only the
+// person's edits are saved, each over the version read, so the bot's own
+// writes meanwhile are never overwritten unseen.
 export function BotFileEditor({ bot, name, onClose }: { bot: Bot; name: BotFileName; onClose: () => void }) {
   const file = useQuery(botFilesQuery(bot.id)).data?.find((item) => item.name === name)
-  return createPortal(
-    <div role="dialog" aria-modal="true" aria-label={name} className="fixed inset-0 z-modal flex flex-col bg-bg">
-      {file ? <FileDocument key={`${bot.id}:${name}`} bot={bot} file={file} onClose={onClose} /> : <Header name={name} onClose={onClose} />}
-    </div>,
-    document.body,
-  )
+  return file ? <FileDocument key={`${bot.id}:${name}`} bot={bot} file={file} onClose={onClose} /> : null
 }
 
 function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose: () => void }) {
@@ -62,7 +54,7 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
     content: file.content,
     contentType: 'markdown',
     autofocus: 'end',
-    editorProps: { attributes: { class: 'editor-prose min-h-full outline-none', 'aria-label': file.name } },
+    editorProps: { attributes: { class: 'editor-prose outline-none', 'aria-label': file.name } },
     onCreate: ({ editor }) => {
       view.current = editor
     },
@@ -106,74 +98,54 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
   })
   useEffect(() => () => void save(), [save])
 
+  // A fixed height keeps the modal from resizing as the document grows or the
+  // conflict choice appears.
   return (
-    <>
-      <Header name={file.name} onClose={() => void close()} state={state}>
-        {editor ? <Toolbar editor={editor} /> : null}
-      </Header>
-      {state === 'conflict' ? (
-        <div className="flex items-center justify-center gap-3 border-b border-border bg-surface px-4 py-2 text-[13px] text-ink-2">
-          <span>
-            {bot.name} changed {file.name} while you were editing.
+    <Modal
+      open
+      onClose={() => void close()}
+      title={file.name}
+      size="wide"
+      className="h-[min(720px,calc(100dvh-3rem))]"
+      // The negative margin keeps the toolbar on the title's line.
+      headerAccessory={
+        <div className="-my-1.5 flex items-center gap-2">
+          <span role="status" className={`text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>
+            {SAVE_LABEL[state]}
           </span>
-          <Button size="sm" variant="ghost" onClick={() => void takeTheirs()}>
-            Use theirs
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => void keepMine()}>
-            Keep mine
-          </Button>
+          {editor ? (
+            <span className="flex items-center gap-0.5">
+              <Toolbar editor={editor} />
+            </span>
+          ) : null}
         </div>
-      ) : null}
-      <div className="min-h-0 flex-1 overflow-y-auto" onClick={() => editor?.commands.focus()}>
-        <div className="mx-auto max-w-[720px] px-8 py-12">
-          <EditorContent editor={editor} />
-        </div>
+      }
+      footer={
+        state === 'conflict' ? (
+          <>
+            <span className="text-[13px] text-ink-2">
+              {bot.name} changed {file.name} while you were editing.
+            </span>
+            <span className="flex shrink-0 gap-2">
+              <Button size="sm" variant="ghost" onClick={() => void takeTheirs()}>
+                Use theirs
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => void keepMine()}>
+                Keep mine
+              </Button>
+            </span>
+          </>
+        ) : undefined
+      }
+    >
+      <div className="min-h-full cursor-text" onClick={() => editor?.commands.focus()}>
+        <EditorContent editor={editor} />
       </div>
-    </>
+    </Modal>
   )
 }
 
 const SAVE_LABEL: Record<SaveState, string> = { saved: '', saving: 'Saving…', conflict: 'Not saved', failed: "Couldn't save" }
-
-function Header({ name, state = 'saved', onClose, children }: { name: string; state?: SaveState; onClose: () => void; children?: ReactNode }) {
-  useEscape(onClose)
-  return (
-    <header
-      className="titlebar-drag grid h-[52px] shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-border pr-3"
-      style={{ paddingLeft: isMacDesktop ? 84 : 16 }}
-    >
-      <span className="truncate text-[14px] font-semibold text-ink">{name}</span>
-      <div className="flex items-center gap-0.5">{children}</div>
-      <div className="flex items-center justify-end gap-2">
-        <span role="status" className={`text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>
-          {SAVE_LABEL[state]}
-        </span>
-        <IconButton size="sm" aria-label="Close" title="Close" onClick={onClose}>
-          <X size={16} />
-        </IconButton>
-      </div>
-    </header>
-  )
-}
-
-function useEscape(onEscape: () => void) {
-  const latest = useRef(onEscape)
-  latest.current = onEscape
-  useEffect(() => {
-    const id = createEscapeLayerID('bot-file')
-    const unregister = pushEscapeLayer(id)
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || !isTopEscapeLayer(id)) return
-      consumeEscapeKey(event)
-      latest.current()
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => {
-      document.removeEventListener('keydown', onKey, true)
-      unregister()
-    }
-  }, [])
-}
 
 function Toolbar({ editor }: { editor: Editor }) {
   const active = useEditorState({

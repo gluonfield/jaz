@@ -143,8 +143,8 @@ export async function exerciseBotPanel(): Promise<void> {
   try {
     dark(false)
     await until('Activity never listed Now and today', () => text().includes('Now') && text().includes('Running for 14m') && text().includes('Today') && text().includes('Learned something new'))
-    if (!text().includes('Working on 1 side chat') || !text().includes('Reviewer')) {
-      throw new Error('Bot panel: the status line or the running helper is missing')
+    if (!text().includes('Reviewer')) {
+      throw new Error('Bot panel: the running helper is missing')
     }
     await capture('bot-panel-activity')
     dark(true)
@@ -173,6 +173,9 @@ export async function exerciseBotPanel(): Promise<void> {
 
     await click('AGENTS.md')
     await until('AGENTS.md did not open', () => Boolean(editor()))
+    if (document.querySelector('[role="dialog"]')!.getBoundingClientRect().width >= window.innerWidth * 0.9) {
+      throw new Error('Bot panel: AGENTS.md opened over the whole window instead of in a modal')
+    }
     await click('Close')
     await until('AGENTS.md did not close', () => !editor())
     if (requests.some((request) => request.method === 'PUT')) {

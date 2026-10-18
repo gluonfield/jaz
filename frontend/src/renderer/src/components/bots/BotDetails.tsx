@@ -1,14 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
 import { Fingerprint, List, Pencil, Repeat, SlidersHorizontal } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { SidePanelShell } from '@/components/session/SidePanelShell'
 import type { ThreadDetailsView } from '@/components/session/ThreadView'
 import { Popover } from '@/components/ui/Popover'
 import { Segmented } from '@/components/ui/Segmented'
-import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
 import { BOT_COLORS, BOT_SHAPES } from '@/lib/bots'
-import { subagentRunning } from '@/lib/providerSubagents'
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
 import { BotActivity } from './BotActivity'
 import { BotAgentSettings } from './BotAgentSettings'
@@ -43,7 +40,6 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
           autoFocus={focusName}
           className="mt-2 w-full rounded-md px-1 text-center text-[16px] font-semibold hover:bg-list-hover focus:bg-list-hover"
         />
-        <BotStatus bot={bot} working={working} helpers={subagents.filter(subagentRunning).length} />
       </header>
       <div className="flex justify-center">
         <Segmented value={tab} options={TABS} onChange={setTab} layoutId={`bot-details-${bot.id}`} iconOnly />
@@ -60,19 +56,6 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
       {routine ? <BotRoutineModal bot={bot} loopId={routine} onClose={() => setRoutine(null)} /> : null}
       {file ? <BotFileEditor bot={bot} name={file} onClose={() => setFile(null)} /> : null}
     </SidePanelShell>
-  )
-}
-
-// What the bot is busy with: the side chats it runs, or its own turn and
-// helpers.
-function BotStatus({ bot, working, helpers }: { bot: Bot; working: boolean; helpers: number }) {
-  const chats = useQuery(botActivityQuery(bot.id)).data?.filter((item) => item.running && item.kind === 'side_chat').length ?? 0
-  const busy = chats > 0 || working || helpers > 0
-  return (
-    <p className="flex items-center gap-1.5 text-[13px] text-ink-2">
-      <span className={`size-1.5 rounded-full ${busy ? 'bg-running' : 'bg-ink-3/40'}`} aria-hidden />
-      {chats ? `Working on ${chats} side chat${chats === 1 ? '' : 's'}` : busy ? 'Working' : 'Idle'}
-    </p>
   )
 }
 
