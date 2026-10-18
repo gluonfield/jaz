@@ -195,6 +195,7 @@ func insertMessage(q *messagedb.Queries, record storage.Message) error {
 		Reasoning:   nullDBString(record.Reasoning),
 		Blocks:      blocks,
 		CreatedAtMs: timeToMs(record.CreatedAt),
+		FromAgent:   boolInt(record.FromAgent),
 	})
 }
 
@@ -211,5 +212,6 @@ func messageFromDB(row messagedb.Message) (storage.Message, error) {
 		Reasoning: row.Reasoning.String,
 		Blocks:    blocks,
 		CreatedAt: msToTime(row.CreatedAtMs),
+		FromAgent: row.FromAgent != 0,
 	}, nil
 }

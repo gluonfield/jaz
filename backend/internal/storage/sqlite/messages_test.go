@@ -19,7 +19,7 @@ func TestAppendUserMessageWithSelectionContextPersists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := storage.AppendUserMessage(store, session.ID, "what is this", storage.SelectionContexts([]string{"selected text"}), nil); err != nil {
+	if err := storage.AppendUserMessage(store, session.ID, "what is this", storage.SelectionContexts([]string{"selected text"}), nil, false); err != nil {
 		t.Fatalf("append user message with selection context: %v", err)
 	}
 

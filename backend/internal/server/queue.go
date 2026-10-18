@@ -77,6 +77,7 @@ func (s *Server) mutateSessionQueue(sessionID string, req queueRequest) (storage
 		if err := s.validateQueuedMessage(session, queue[len(queue)-1]); err != nil {
 			return storage.Session{}, err
 		}
+		queue[len(queue)-1].SentAt = time.Now().UTC()
 	}
 	if err := s.validateQueueAttachmentMutation(session.ID, req); err != nil {
 		return storage.Session{}, err

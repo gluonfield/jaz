@@ -255,6 +255,9 @@ type Message struct {
 	Reasoning string    `json:"reasoning,omitempty"`
 	Blocks    []Block   `json:"blocks"`
 	CreatedAt time.Time `json:"created_at"`
+	// FromAgent marks a user-role message an agent wrote, as when it sends
+	// another thread a message, rather than the user.
+	FromAgent bool `json:"from_agent,omitempty"`
 }
 
 type CreateSession struct {

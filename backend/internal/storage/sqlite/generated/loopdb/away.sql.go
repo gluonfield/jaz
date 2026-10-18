@@ -10,35 +10,42 @@ import (
 )
 
 const getLastUserMessageAt = `-- name: GetLastUserMessageAt :one
-SELECT CAST(COALESCE(MAX(m.created_at_ms), 0) AS INTEGER)
-FROM messages AS m
-JOIN threads AS t ON t.id = m.thread_id
-WHERE m.role = 'user'
-  AND COALESCE(t.parent_id, '') = ''
-  AND COALESCE(t.source_type, '') IN ('', 'bot')
+SELECT CAST(MAX(
+  COALESCE((
+    SELECT MAX(m.created_at_ms)
+    FROM messages AS m
+    JOIN threads AS t ON t.id = m.thread_id
+    WHERE m.role = 'user'
+      AND m.from_agent = 0
+      AND COALESCE(t.parent_id, '') = ''
+      AND COALESCE(t.source_type, '') IN ('', 'bot')
+  ), 0),
+  COALESCE((
+    SELECT MAX(unixepoch(json_extract(q.value, '$.sent_at'), 'subsec') * 1000)
+    FROM threads AS t, json_each(NULLIF(t.queued_messages, '')) AS q
+  ), 0),
+  COALESCE((
+    SELECT created_at_ms
+    FROM session_events
+    WHERE type IN ('room_message', 'voice_message', 'permission_response')
+      AND CASE type
+        WHEN 'permission_response' THEN json_extract(permission, '$.status') = 'selected'
+        ELSE 'user' IN (json_extract(content, '$.speaker'), json_extract(content, '$.role'))
+      END
+    ORDER BY created_at_ms DESC
+    LIMIT 1
+  ), 0)
+) AS INTEGER)
 `
 
-// Agents write the prompts of child threads and of automated sources, so only
-// top-level chats and bot chats hold messages the user typed.
+// The user's latest message of their own, queued message, answer to an agent,
+// group post or voice message. Agents write the prompts of child threads and of
+// automated sources, and the messages they send other threads, so only the
+// user's own messages in top-level chats and bot chats count. A queued message
+// counts from when the user sent it, which only the user's messages record.
 func (q *Queries) GetLastUserMessageAt(ctx context.Context) (int64, error) {
 	row := q.db.QueryRowContext(ctx, getLastUserMessageAt)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
-}
-
-const getLastUserSpeechAt = `-- name: GetLastUserSpeechAt :one
-SELECT created_at_ms
-FROM session_events
-WHERE type IN ('room_message', 'voice_message')
-  AND 'user' IN (json_extract(content, '$.speaker'), json_extract(content, '$.role'))
-ORDER BY created_at_ms DESC
-LIMIT 1
-`
-
-func (q *Queries) GetLastUserSpeechAt(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getLastUserSpeechAt)
-	var created_at_ms int64
-	err := row.Scan(&created_at_ms)
-	return created_at_ms, err
 }

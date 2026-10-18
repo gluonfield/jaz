@@ -113,7 +113,7 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 	}
 	job, err := t.Service.Send(ctx, SendRequest{
 		Session: result.SessionID, Message: input.Prompt, PlanRequested: input.Plan,
-		Completion: CompletionAsync, ParentVisible: true,
+		Completion: CompletionAsync, ParentVisible: true, FromAgent: true,
 	})
 	if err != nil {
 		return nil, ThreadSnapshot{}, fmt.Errorf("thread %s was created but its prompt could not start: %w", result.SessionID, err)
@@ -130,7 +130,7 @@ type MCPSendInput struct {
 func (t *MCPTools) Send(ctx context.Context, _ *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {
 	job, err := t.Service.Send(ctx, SendRequest{
 		Session: input.ThreadID, Message: input.Prompt, PlanRequested: input.Plan,
-		Completion: CompletionAsync, ParentVisible: true,
+		Completion: CompletionAsync, ParentVisible: true, FromAgent: true,
 	})
 	return nil, snapshotThread(job), err
 }

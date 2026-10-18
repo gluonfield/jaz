@@ -47,7 +47,8 @@ INSERT INTO messages (
   content,
   reasoning,
   blocks,
-  created_at_ms
+  created_at_ms,
+  from_agent
 ) VALUES (
   ?1,
   ?2,
@@ -55,7 +56,8 @@ INSERT INTO messages (
   ?4,
   ?5,
   ?6,
-  ?7
+  ?7,
+  ?8
 )
 `
 
@@ -67,6 +69,7 @@ type InsertMessageParams struct {
 	Reasoning   sql.NullString `json:"reasoning"`
 	Blocks      string         `json:"blocks"`
 	CreatedAtMs int64          `json:"created_at_ms"`
+	FromAgent   int64          `json:"from_agent"`
 }
 
 func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) error {
@@ -78,6 +81,7 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) er
 		arg.Reasoning,
 		arg.Blocks,
 		arg.CreatedAtMs,
+		arg.FromAgent,
 	)
 	return err
 }
@@ -181,7 +185,8 @@ SELECT
   content,
   reasoning,
   blocks,
-  created_at_ms
+  created_at_ms,
+  from_agent
 FROM messages
 WHERE thread_id = ?1
 ORDER BY seq
@@ -204,6 +209,7 @@ func (q *Queries) ListMessagesByThread(ctx context.Context, threadID string) ([]
 			&i.Reasoning,
 			&i.Blocks,
 			&i.CreatedAtMs,
+			&i.FromAgent,
 		); err != nil {
 			return nil, err
 		}
@@ -226,7 +232,8 @@ SELECT
   content,
   reasoning,
   blocks,
-  created_at_ms
+  created_at_ms,
+  from_agent
 FROM messages
 WHERE thread_id = ?1
   AND seq >= ?2
@@ -257,6 +264,7 @@ func (q *Queries) ListMessagesByThreadRange(ctx context.Context, arg ListMessage
 			&i.Reasoning,
 			&i.Blocks,
 			&i.CreatedAtMs,
+			&i.FromAgent,
 		); err != nil {
 			return nil, err
 		}

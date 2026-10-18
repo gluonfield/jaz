@@ -50,7 +50,7 @@ func TestSwitchAgentStartsAFreshNativeSessionThatSurvivesARestart(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil); err != nil {
+	if err := storage.AppendUserMessage(store, spawned.SessionID, "prior turn", nil, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AppendSessionEvents(spawned.SessionID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior reply"}); err != nil {

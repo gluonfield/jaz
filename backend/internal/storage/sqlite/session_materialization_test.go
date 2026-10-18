@@ -66,7 +66,7 @@ func TestRuntimeSessionMaterializationState(t *testing.T) {
 	if loaded.RuntimeRef.SessionID != "new" {
 		t.Fatalf("runtime session = %q", loaded.RuntimeRef.SessionID)
 	}
-	if err := storage.AppendUserMessage(store, session.ID, "started", nil, nil); err != nil {
+	if err := storage.AppendUserMessage(store, session.ID, "started", nil, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || !hasTranscript {
@@ -92,7 +92,7 @@ func TestAgentSwitchStartsTheTranscriptOver(t *testing.T) {
 		}
 		return hasTranscript
 	}
-	if err := storage.AppendUserMessage(store, session.ID, "prior turn", nil, nil); err != nil {
+	if err := storage.AppendUserMessage(store, session.ID, "prior turn", nil, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{Type: sessionevents.TypeACPMessage, Content: "prior reply"}); err != nil {

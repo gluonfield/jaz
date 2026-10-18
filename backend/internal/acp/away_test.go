@@ -1,6 +1,8 @@
 package acp_test
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -163,4 +165,104 @@ func TestOnlyTheUsersNextWordsLetRoutinesRunAgain(t *testing.T) {
 	}
 	jaz.dueAt(slot.Add(time.Hour + time.Second))
 	jaz.waitRun(jaz.runs(inbox.ID)[0].ID, loops.RunStatusOK)
+}
+
+// awayFrom has the user write to a new bot with a routine, then go three days
+// without writing, so the bot's routines wait.
+func (p *jazProcess) awayFrom(name string) bots.Bot {
+	p.t.Helper()
+	bot := p.newBot(name)
+	p.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain, Schedule: hourly})
+	p.write(bot.ID, "hello")
+	p.guard(time.Now().Add(73 * time.Hour))
+	if notices := p.notices(bot.ID); len(notices) != 1 {
+		p.t.Fatalf("notices = %q, want the routines waiting", notices)
+	}
+	return bot
+}
+
+// back reports whether the user's last act let bot's routines run again.
+func (p *jazProcess) back(bot string) bool {
+	p.t.Helper()
+	p.guard(time.Now())
+	return len(p.notices(bot)) == 2
+}
+
+func TestAnAgentsMessageToATopLevelChatIsNotTheUserComingBack(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.awayFrom("Gimli")
+	chat, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "notes", Title: "Notes", Directory: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := acp.NewMCPTools(jaz.manager).Send(jaz.ctx, toolCallFrom(bot.ID), acp.MCPSendInput{ThreadID: chat.ID, Prompt: "follow up on the notes"}); err != nil {
+		t.Fatal(err)
+	}
+	jaz.idle(chat.ID)
+	if jaz.back(bot.ID) {
+		t.Fatal("the bot's message to a chat let its routines run again")
+	}
+	jaz.write(chat.ID, "thanks")
+	if !jaz.back(bot.ID) {
+		t.Fatal("the user's own message in the chat did not let the routines run again")
+	}
+}
+
+func TestAnAnswerToAnAgentsQuestionIsTheUserComingBack(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.awayFrom("Gimli")
+
+	answered := make(chan error, 1)
+	go func() {
+		_, _, err := acp.NewMCPTools(jaz.manager).AskUser(jaz.ctx, toolCallFrom(bot.ID), acp.AskUserInput{Questions: []acp.UserQuestion{{ID: "when", Question: "When should I check the inbox?", Options: []string{"Now", "Tonight"}}}})
+		answered <- err
+	}()
+	var question string
+	jaz.eventually("the question in the bot's chat", func() bool {
+		events, err := jaz.store.LoadSessionEvents(bot.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, event := range events {
+			if event.Type == "permission_request" && event.Permission != nil && len(event.Permission.Questions) > 0 {
+				question = event.Permission.ID
+			}
+		}
+		return question != ""
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+bot.ID+"/interactive-response", strings.NewReader(`{"request_id":"`+question+`","answers":{"when":{"answers":["Now"]}}}`))
+	res := httptest.NewRecorder()
+	jaz.server.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("answer status = %d, body = %s", res.Code, res.Body.String())
+	}
+	if err := <-answered; err != nil {
+		t.Fatal(err)
+	}
+	if !jaz.back(bot.ID) {
+		t.Fatal("the user's answer did not let the routines run again")
+	}
+}
+
+func TestAMessageQueuedBehindABusyTurnIsTheUserComingBack(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.awayFrom("Gimli")
+	if err := jaz.server.QueueInternalTurn(jaz.ctx, bot.ID, storage.NewInternalQueuedMessage("tidy the notes until released")); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
+
+	jaz.queueUser(bot.ID, `{"text":"one more thing"}`)
+	if !jaz.back(bot.ID) {
+		t.Fatal("the message the user queued did not let the routines run again")
+	}
+	if queued := jaz.queued(bot.ID); len(queued) != 1 || queued[0].Text != "one more thing" {
+		t.Fatalf("queue = %+v, want the user's message still waiting", queued)
+	}
+	jaz.release()
+	jaz.idle(bot.ID)
 }

@@ -225,7 +225,7 @@ func BuildRequest(ctx context.Context, store Store, prompts PromptSource, req Re
 	userPrompt := MessageWithAttachmentLinks(req.Message, req.Attachments)
 	messages = append(messages, provider.UserMessage(userPrompt))
 	if req.AppendUser {
-		if err := storage.AppendUserMessage(store, req.Session.ID, req.Message, nil, req.Attachments); err != nil {
+		if err := storage.AppendUserMessage(store, req.Session.ID, req.Message, nil, req.Attachments, false); err != nil {
 			return TurnRequest{}, err
 		}
 	}
