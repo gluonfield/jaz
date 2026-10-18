@@ -18,13 +18,13 @@ export async function exerciseBotFaces(): Promise<void> {
   element.style.cssText = 'position:fixed;inset:0;z-index:50;background:var(--color-bg)'
   document.body.append(element)
   const root = createRoot(element)
-  const show = (moods: Record<FaceID, BotMood>) => {
+  const show = (moods: Record<FaceID, BotMood>, shapes: Partial<Record<FaceID, Avatar['shape']>> = {}) => {
     root.render(
       <StrictMode>
         <div style={{ display: 'flex', gap: 32, padding: 48 }}>
           {FACES.map((id) => (
             <span key={id} data-test-face={id}>
-              <BotAvatar avatar={AVATAR} size={64} mood={moods[id]} live />
+              <BotAvatar avatar={{ ...AVATAR, shape: shapes[id] ?? AVATAR.shape }} size={64} mood={moods[id]} live />
             </span>
           ))}
           <span data-test-face="still">
@@ -95,8 +95,17 @@ export async function exerciseBotFaces(): Promise<void> {
       await new Promise(requestAnimationFrame)
     }
 
+    // A new shape moves the eyes to that shape's eye line.
+    show(moods, { a: 'cloud' })
+    await until('a face that changed shape kept the old eyes', () => eyes('a') === 'M45 47l4 14')
+
+    // Effects going off as a mood changes leaves the new mood's eyes.
     setAppearance({ effects: false })
+    show({ ...moods, c: 'idle' }, { a: 'cloud' })
     await until('turning effects off did not still the faces', () => FACES.every((id) => moved(id) === null))
+    if (eyes('c') !== 'M45 39l4 14' || eyes('a') !== 'M45 47l4 14') {
+      throw new Error(`Bot faces: stilled faces kept stale eyes: ${eyes('c')} / ${eyes('a')}`)
+    }
     await wait(200)
     if (FACES.some((id) => moved(id) !== null)) {
       throw new Error('Bot faces: a face moved with effects off')

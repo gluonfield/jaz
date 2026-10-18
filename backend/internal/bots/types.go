@@ -135,7 +135,7 @@ type Routines interface {
 	Update(string, loops.UpdateLoop) (loops.Loop, error)
 	Delete(string) error
 	OnBoard(loops.Loop) bool
-	HeldBots() map[string]bool
+	HeldBots() (map[string]bool, error)
 }
 
 type Publisher interface {

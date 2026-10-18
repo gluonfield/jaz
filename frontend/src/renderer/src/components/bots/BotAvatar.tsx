@@ -119,8 +119,10 @@ export function BotAvatar({
           </>
         ) : null}
         <g stroke="#1c1c1f" strokeWidth="7" strokeLinecap="round" fill="none">
-          <path data-face="eye" d={eyePath(eyes, 47, shape.eyeLine)} />
-          <path data-face="eye" d={eyePath(eyes, 67, shape.eyeLine)} />
+          {[47, 67].map((x) => {
+            const d = eyePath(eyes, x, shape.eyeLine)
+            return <path key={x} data-face="eye" data-rest={d} d={d} />
+          })}
         </g>
       </g>
     </svg>
@@ -150,6 +152,8 @@ export function BotIcon({ avatars, size, mood, live = false, badge, main = false
       )}
       {badge ? (
         <span
+          role="img"
+          aria-label={badge.title}
           title={badge.title}
           className={`absolute -top-px -right-px rounded-full ring-2 ring-panel ${badge.className}`}
           style={{ width: Math.max(7, Math.round(size * 0.24)), height: Math.max(7, Math.round(size * 0.24)) }}

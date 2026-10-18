@@ -79,6 +79,9 @@ type LiveFace = {
   since: number
   clip: { name: Clip; start: number } | null
   visible: boolean
+  // Where the face is on screen, measured at most every BOX_AGE ms while the
+  // cursor moves near it.
+  box: { rect: DOMRect; at: number } | null
   yaw: number
   pitch: number
   drawn: EyeKind
@@ -203,11 +206,13 @@ function apply(face: LiveFace, pose: Pose) {
   })
 }
 
+// Hands the face back as React last rendered it: React keeps each eye's
+// resting path in data-rest, current for the shape and mood it now shows.
 function rest(face: LiveFace) {
   face.body.removeAttribute('transform')
-  face.eyes.forEach((eye, index) => {
+  face.eyes.forEach((eye) => {
     eye.removeAttribute('transform')
-    eye.setAttribute('d', eyePath(restingEyes(face.mood), EYE_X[index], face.geometry.eyeLine))
+    eye.setAttribute('d', eye.dataset.rest ?? '')
   })
 }
 
@@ -216,10 +221,27 @@ const pointer = { x: 0, y: 0, at: -Infinity }
 let frame = 0
 let observer: IntersectionObserver | null = null
 
+const BOX_AGE = 250
+// How far from a face the cursor still draws its eyes.
+const REACH = 320
+
 function onPointer(event: PointerEvent) {
   pointer.x = event.clientX
   pointer.y = event.clientY
   pointer.at = performance.now()
+}
+
+function lookAt(face: LiveFace, now: number): { yaw: number; pitch: number } | null {
+  if (!face.box || now - face.box.at > BOX_AGE) {
+    face.box = { rect: face.svg.getBoundingClientRect(), at: now }
+  }
+  const { rect } = face.box
+  const dx = pointer.x - rect.left - rect.width / 2
+  const dy = pointer.y - rect.top - rect.height / 2
+  if (Math.hypot(dx, dy) > REACH) {
+    return null
+  }
+  return { yaw: Math.max(-1, Math.min(1, dx / 220)), pitch: Math.max(-1, Math.min(1, dy / 220)) }
 }
 
 function tick(now: number) {
@@ -229,14 +251,8 @@ function tick(now: number) {
   const shown = [...faces.values()].filter((face) => face.visible)
   // Rects are read for every face before any face is written.
   const targets = shown.map((face) => {
-    if (face.follow && recent) {
-      const box = face.svg.getBoundingClientRect()
-      return {
-        yaw: Math.max(-1, Math.min(1, (pointer.x - box.left - box.width / 2) / 220)),
-        pitch: Math.max(-1, Math.min(1, (pointer.y - box.top - box.height / 2) / 220)),
-      }
-    }
-    return { yaw: track(WANDER, time + face.seed * 11) * 0.8, pitch: Math.sin(time * 0.4 + face.seed * 5) * 0.3 }
+    const looking = face.follow && recent ? lookAt(face, now) : null
+    return looking ?? { yaw: track(WANDER, time + face.seed * 11) * 0.8, pitch: Math.sin(time * 0.4 + face.seed * 5) * 0.3 }
   })
   shown.forEach((face, index) => {
     face.yaw += (targets[index].yaw - face.yaw) * 0.1
@@ -252,7 +268,7 @@ function tick(now: number) {
 }
 
 function schedule() {
-  if (!frame && [...faces.values()].some((face) => face.visible)) {
+  if (!frame && !document.hidden && [...faces.values()].some((face) => face.visible)) {
     frame = requestAnimationFrame(tick)
   }
 }
@@ -264,6 +280,7 @@ function watch(face: LiveFace) {
         const seen = faces.get(entry.target)
         if (seen) {
           seen.visible = entry.isIntersecting
+          seen.box = null
         }
       }
       schedule()
@@ -287,12 +304,14 @@ export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMo
     since: performance.now() / 1000,
     clip: null,
     visible: false,
+    box: null,
     yaw: 0,
     pitch: 0,
     drawn: restingEyes(mood),
   }
   if (!faces.size) {
     window.addEventListener('pointermove', onPointer, { passive: true })
+    document.addEventListener('visibilitychange', schedule)
   }
   faces.set(svg, face)
   watch(face)
@@ -313,6 +332,7 @@ export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMo
       rest(face)
       if (!faces.size) {
         window.removeEventListener('pointermove', onPointer)
+        document.removeEventListener('visibilitychange', schedule)
         cancelAnimationFrame(frame)
         frame = 0
       }

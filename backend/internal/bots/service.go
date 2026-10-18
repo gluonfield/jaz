@@ -62,7 +62,10 @@ func (s *Service) List() ([]Bot, error) {
 	for _, record := range records {
 		byThread[record.ThreadID] = record
 	}
-	held := s.routines.HeldBots()
+	held, err := s.routines.HeldBots()
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Bot, 0, len(sessions))
 	for _, session := range sessions {
 		if record, ok := byThread[session.ID]; ok {
@@ -77,7 +80,11 @@ func (s *Service) Load(id string) (Bot, error) {
 	if err != nil {
 		return Bot{}, err
 	}
-	return s.view(record, session, s.routines.HeldBots()), nil
+	held, err := s.routines.HeldBots()
+	if err != nil {
+		return Bot{}, err
+	}
+	return s.view(record, session, held), nil
 }
 
 func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {

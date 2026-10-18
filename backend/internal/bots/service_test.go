@@ -263,8 +263,8 @@ func (w *fakeWorld) OnBoard(loop loops.Loop) bool {
 	return strings.HasPrefix(loop.ID, "widget-")
 }
 
-func (w *fakeWorld) HeldBots() map[string]bool {
-	return nil
+func (w *fakeWorld) HeldBots() (map[string]bool, error) {
+	return nil, nil
 }
 
 type fakeThreads struct {
