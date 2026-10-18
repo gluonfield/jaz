@@ -155,8 +155,8 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 	process.mcpPolicy = mcpServerPolicy
 	process.mcpRevision = mcpRevision
 	process.mcpRefresh = supportedMCPRefresh(ac.initRaw, mcpServerPolicy)
+	m.disconnectAgentWork(job)
 	m.addJob(job, process)
-	m.disconnectBackgroundTasks(job)
 	ac.state.attach(m, job, cfg)
 	m.restoreSessionControls(ctx, job, overview)
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,

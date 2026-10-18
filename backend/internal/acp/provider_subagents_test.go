@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"testing"
 	"time"
 
@@ -278,6 +279,45 @@ func TestProviderSubagentSparseUpdateAfterManagerRestartPublishesCompleteSnapsho
 	}
 	if len(stored) != 1 || stored[0].ProviderSubagent == nil || stored[0].ProviderSubagent.Name != "Newton" || stored[0].ProviderSubagent.Task != "audit" {
 		t.Fatalf("stored provider snapshot = %#v", stored)
+	}
+}
+
+func TestProviderSubagentInterruptLeavesVisibleChildRecords(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	parent, err := store.CreateSession(storage.CreateSession{Slug: "interrupt-parent", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.CreateSession(storage.CreateSession{Slug: "interrupt-child", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	parentWorker := sessionevents.ProviderSubagentEvent{Provider: AgentClaude, ID: "parent-worker", Status: "running"}
+	childWorker := sessionevents.ProviderSubagentEvent{Provider: AgentClaude, ID: "child-worker", Status: "running"}
+	manager.publishProviderSubagents(eventView{ID: child.ID, ParentID: parent.ID, ParentVisible: true}, []sessionevents.ProviderSubagentEvent{childWorker})
+	manager.publishProviderSubagents(eventView{ID: parent.ID}, []sessionevents.ProviderSubagentEvent{parentWorker})
+
+	manager.interruptProviderSubagents(&jobState{Job: Job{ID: parent.ID}})
+
+	view, err := store.LoadSessionOverview(t.Context(), parent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]string)
+	for _, event := range view.SubagentEvents {
+		got[event.ProjectionKey] = event.ProviderSubagent.Status
+	}
+	want := map[string]string{
+		sessionevents.ProviderSubagentProjectionKey(parent.ID, parentWorker): "cancelled",
+		sessionevents.ProviderSubagentProjectionKey(child.ID, childWorker):   "running",
+	}
+	if !maps.Equal(got, want) {
+		t.Fatalf("parent subagent statuses = %v, want %v", got, want)
 	}
 }
 
