@@ -30,13 +30,13 @@ func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, e
 		if err != nil {
 			return nil, err
 		}
-		return promptmodule.New(memberPrompt(bot.Title, group.Title), record.Prompt), nil
+		return promptmodule.New(memberPrompt(bot.Title, group.Title), record.Prompt, homeModule(bot, memoryFile)), nil
 	}
 	record, err := store.LoadBot(session.ID)
 	if err != nil || record.Kind != KindBot {
 		return nil, err
 	}
-	return promptmodule.New(identityPrompt(session.Title, record.Main), record.Prompt), nil
+	return promptmodule.New(identityPrompt(session.Title, record.Main), record.Prompt, homeModule(session, memoryFile)), nil
 }
 
 func identityPrompt(name string, main bool) string {
@@ -99,7 +99,7 @@ Reach a bot outside this group with message_bot; its answer arrives later as a n
 const lookupSection = `
 ### Finding things out
 Never invent facts, numbers, names, links or sources. Look first, cheapest first:
-1. What you already have: this conversation, your home (AGENTS.md and the files it lists) and Jaz memory. Search memory with memory_search before answering about people, companies, projects, past decisions or the user's preferences.
+1. What you already have: this conversation, your home (AGENTS.md, MEMORY.md and the files they list) and Jaz memory. Search memory with memory_search before answering about people, companies, projects, past decisions or the user's preferences.
 2. The user's connected services, for live data: email, calendar, chats, tasks, CRM and the other tools you have.
 3. Past Jaz conversations, with search_threads and read_thread.
 4. The web, for public information.
@@ -108,16 +108,13 @@ If none of them has it, say what you checked and what would get the answer. Ask 
 
 const homeSection = `
 ### Your home
-Your working directory is your permanent home and your memory. Your own chat, your group chats and the threads you start all work in it, and anything not saved there is forgotten outside the thread it was said in.
-- When the user teaches you something or asks you to remember it, save it in your home before you say it is saved: rules, preferences and short facts in AGENTS.md; longer material such as notes, transcripts and references in files that AGENTS.md lists with what each holds.
-- Also keep in AGENTS.md what you learn about doing this user's work: where things live, how they like things done, steps that worked and mistakes not to repeat.
-- Keep AGENTS.md short and current, editing and pruning rather than appending. Read it before starting real work, and read the files it lists when they bear on the task.
+Your working directory is your permanent home. Your own chat, your group chats and the threads you start all work in it, and anything not saved there is forgotten outside the thread it was said in.
+- AGENTS.md is who you are and how you work: the user's standing rules and preferences, where things live, steps that worked and mistakes not to repeat. Your agent loads it when a session starts.
+- MEMORY.md is what you know: facts about the user, their work and the world that you will need again. It is in this prompt, up to its first 8,000 characters.
+- When the user teaches you something or asks you to remember it, save it in the right one before you say it is saved. Keep longer material such as notes, transcripts and references in files that AGENTS.md lists with what each holds, and read them when they bear on the task.
+- Keep both short and current: edit and prune them rather than append.
+- When a turn opens by saying one of them changed, read it again before anything else.
 `
-
-// rereadNote opens a group delivery when the bot's AGENTS.md changed after
-// the member was last shown the group, as when it was taught in its own chat:
-// agents load AGENTS.md when their session starts, not on every turn.
-const rereadNote = "Your AGENTS.md has changed since you were last shown this group; read it again before you answer.\n\n"
 
 func judgementSection(ask string) string {
 	return `
@@ -127,14 +124,21 @@ Act by default: choose the sensible option, go ahead and say what you assumed. A
 }
 
 // RoutineInstructions gives a run of a bot's routine, in a thread of its own,
-// the prompt saved for the bot, which the bot's own thread starts with.
+// the prompt saved for the bot and its MEMORY.md, which the bot's own thread
+// starts with. A run working in a directory of its own, outside the bot's
+// home, gets the bot's AGENTS.md too, since its agent loads that directory's.
 func RoutineInstructions(store PromptStore) func(loops.Loop, loops.Run) string {
 	return func(loop loops.Loop, _ loops.Run) string {
 		record, err := store.LoadBot(loop.BotID)
 		if err != nil || record.Kind != KindBot {
 			return ""
 		}
-		return record.Prompt
+		bot, _ := store.LoadSession(loop.BotID)
+		agents := ""
+		if strings.TrimSpace(loop.Directory) != "" {
+			agents = homeModule(bot, agentsFile)
+		}
+		return promptmodule.New(record.Prompt, agents, homeModule(bot, memoryFile)).Text()
 	}
 }
 

@@ -1,6 +1,7 @@
 package sessionevents
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -332,6 +333,11 @@ func StorageCoalesceKey(event Event) string {
 	}
 	if event.Type == "acp" && event.ACP != nil && event.ACP.ID != "" && acpStatusKeepsTextStreamOpen(event.ACP) {
 		return "acp_status:" + event.ACP.ID
+	}
+	// A bot's identity file changed at one time once, however many turns
+	// ending together observe it.
+	if event.Type == TypeBotActivity && event.BotActivity != nil && event.BotActivity.Kind == "file_changed" {
+		return fmt.Sprintf("bot_file:%s:%d", event.BotActivity.Label, event.At.UnixMilli())
 	}
 	return ""
 }

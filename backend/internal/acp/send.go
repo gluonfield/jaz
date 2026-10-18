@@ -168,6 +168,13 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		return Job{}, err
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	if m.cfg.TurnNote != nil && opts.activeOperation != ActiveOperationCompact {
+		session, err := m.store.LoadSession(job.ID)
+		if err != nil {
+			return Job{}, err
+		}
+		promptMessage = m.cfg.TurnNote(session) + promptMessage
+	}
 	var prompt acpschema.PromptRequest
 	if local == nil {
 		prompt, err = m.promptRequest(job, goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments)
