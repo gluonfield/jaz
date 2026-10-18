@@ -37,7 +37,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, t.CreateDefinition(), t.Create)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolSendMessageToThread,
-		Description: "Send a follow-up prompt to an idle Jaz thread. The prompt becomes a visible user message. Use threadId from create_thread, list_threads, or search_threads. Returns after dispatch; use wait_threads to follow progress.",
+		Description: "Send a follow-up prompt to an idle Jaz thread. The prompt becomes a visible user message. Use threadId from create_thread, list_threads, or search_threads. Returns after dispatch.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolWaitThreads,
@@ -84,7 +84,7 @@ func (t *MCPTools) CreateDefinition() *mcp.Tool {
 	}
 	return &mcp.Tool{
 		Name:        ToolCreateThread,
-		Description: "Create a separate, saved Jaz conversation and start its initial prompt. A thread has an ID, message history, working directory, and agent settings, and appears in the user's sidebar. Use only when the user or your instructions ask for a separate thread or agent session; otherwise use native child-agent tools for subtasks. Returns after dispatch; follow progress with wait_threads. Omit model unless the user requests one. Use list_agent_options for available agents and models.",
+		Description: "Create a separate, saved Jaz conversation and start its initial prompt. A thread has an ID, message history, working directory, and agent settings, and appears in the user's sidebar. Use only when the user or your instructions ask for a separate thread or agent session. Returns after dispatch. Omit model unless the user requests one. Use list_agent_options for available agents and models.",
 		InputSchema: schema,
 	}
 }
