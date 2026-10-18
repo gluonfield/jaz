@@ -109,12 +109,12 @@ function Fixture() {
       await exerciseFolderDrop()
       stage = 'bot chat history window'
       await exerciseChatHistory()
-      stage = 'a new bot typing its first message'
+      stage = 'a bot chat opening with its hello'
       await exerciseBotWelcome()
       stage = 'connect card sign-in from chat'
       await exerciseConnectCard()
       if (new URLSearchParams(location.search).get('suite') === 'composer') {
-        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; a new bot types before its first message arrives and a picked starter sends; connect cards start OAuth from chat and show the new account'] })
+        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; a bot chat opens with a hello that a new bot types first, starters send and leave once the person speaks; connect cards start OAuth from chat and show the new account'] })
         return
       }
       stage = 'Tab-only focus rings'

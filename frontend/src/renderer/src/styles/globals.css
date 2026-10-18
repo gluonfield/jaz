@@ -425,6 +425,14 @@ img.chat-prose-link-icon {
   animation: jaz-slide 5s linear infinite;
 }
 
+/* A message arriving in an open chat rises into place. */
+@keyframes message-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 @keyframes jaz-slide {
   to {
     background-position: 300% 0;
