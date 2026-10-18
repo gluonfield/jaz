@@ -72,7 +72,7 @@ func (s *Store) insertNewSessionLocked(session storage.Session, commitment int64
 			return err
 		}
 		if linked == 0 {
-			return fmt.Errorf("commitment %d: %w", commitment, storage.ErrCommitmentNotOpen)
+			return fmt.Errorf("#%d: %w", commitment, storage.ErrCommitmentNotOpen)
 		}
 	}
 	return tx.Commit()

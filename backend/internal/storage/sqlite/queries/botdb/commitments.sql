@@ -40,10 +40,10 @@ SELECT * FROM bot_commitments WHERE id = ?;
 
 -- name: LinkCommitmentThread :execrows
 INSERT INTO bot_commitment_threads (thread_id, commitment_id)
-SELECT sqlc.arg(thread_id), id FROM bot_commitments
-WHERE id = sqlc.arg(commitment_id) AND bot_id = sqlc.arg(bot_id) AND status = 'open';
+SELECT sqlc.arg(thread_id), c.id FROM bot_commitments c
+WHERE c.id = sqlc.arg(commitment_id) AND c.bot_id = sqlc.arg(bot_id) AND c.status = 'open';
 
 -- name: ListCommitmentThreads :many
 SELECT commitment_id, thread_id, slug, title, state FROM bot_commitment_thread_states
 WHERE commitment_id IN (sqlc.slice(ids))
-ORDER BY thread_id;
+ORDER BY linked;

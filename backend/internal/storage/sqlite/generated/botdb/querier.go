@@ -21,7 +21,7 @@ type Querier interface {
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
 	ListBots(ctx context.Context) ([]Bot, error)
 	ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error)
-	ListCommitmentThreads(ctx context.Context, ids []int64) ([]BotCommitmentThreadState, error)
+	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)
 	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error)
 	PinBot(ctx context.Context, arg PinBotParams) error

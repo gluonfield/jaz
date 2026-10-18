@@ -165,32 +165,7 @@ func ResultPrompt(job acp.Job) string {
 	return "[result for the bot that asked]\n\n" + acp.CompletionPrompt(job, "the bot that asked you") + "\n\nAnswer that bot with send_message."
 }
 
-// Answer is the delivery of the answer a finished turn gave the bot it
-// answers, if any: a routine run's report when a thread answers the bot it
-// works for, or else a reply, which a bot's own chat takes back for its user
-// when the bot it answers is gone.
-func Answer(session storage.Session) *storage.TurnDelivery {
-	output := session.Turn.Output
-	if output == nil || output.ReplyTo == "" || len(output.Replies) == 0 {
-		return nil
-	}
-	answer := strings.Join(output.Replies, "\n\n")
-	text := ReplyPrompt(session.Title, answer)
-	if output.ReplyTo == owner(session) {
-		text = loops.Report(session.Title, answer)
-	}
-	// The answer continues the exchange between bots that led to it.
-	message := storage.NewInternalQueuedMessage(text)
-	message.Output = &storage.TurnOutput{Hops: output.Hops}
-	delivery := &storage.TurnDelivery{SessionID: output.ReplyTo, Message: message, Closes: output.Done}
-	if session.SourceType == storage.SourceBot {
-		undelivered := storage.NewInternalQueuedMessage("[undelivered] The bot you answered is gone, so your answer never reached it:\n\n" + answer + "\n\nPass on to the user, with send_message, what of it matters to them.")
-		delivery.Fallback = &undelivered
-	}
-	return delivery
-}
-
-func ReplyPrompt(from, text string) string {
+func replyPrompt(from, text string) string {
 	return fmt.Sprintf("[reply from %s]\n\n%s\n\nThis answers your message to %s. Use message_bot to write back to %s.", from, text, from, from)
 }
 

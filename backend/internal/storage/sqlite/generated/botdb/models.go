@@ -30,14 +30,6 @@ type BotCommitment struct {
 	ClosedAtMs sql.NullInt64 `json:"closed_at_ms"`
 }
 
-type BotCommitmentThreadState struct {
-	CommitmentID int64          `json:"commitment_id"`
-	ThreadID     string         `json:"thread_id"`
-	Slug         string         `json:"slug"`
-	Title        sql.NullString `json:"title"`
-	State        string         `json:"state"`
-}
-
 type BotMembership struct {
 	GroupID  string `json:"group_id"`
 	BotID    string `json:"bot_id"`

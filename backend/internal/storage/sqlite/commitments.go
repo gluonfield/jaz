@@ -31,7 +31,7 @@ func (s *Store) UpdateCommitment(commitment storage.Commitment) error {
 		ID: commitment.ID, BotID: commitment.BotID, Request: commitment.Request, Note: commitment.Note,
 	})
 	if err == nil && updated == 0 {
-		return storage.ErrCommitmentNotOpen
+		return fmt.Errorf("#%d: %w", commitment.ID, storage.ErrCommitmentNotOpen)
 	}
 	return err
 }

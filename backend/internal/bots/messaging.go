@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -149,6 +150,31 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 		return err
 	}
 	return s.post(group, message, false)
+}
+
+// Answer is the delivery of the answer a finished turn gave the bot it
+// answers, if any: a routine run's report when a thread answers the bot it
+// works for, or else a reply, which a bot's own chat takes back for its user
+// when the bot it answers is gone.
+func Answer(session storage.Session) *storage.TurnDelivery {
+	output := session.Turn.Output
+	if output == nil || output.ReplyTo == "" || len(output.Replies) == 0 {
+		return nil
+	}
+	answer := strings.Join(output.Replies, "\n\n")
+	text := replyPrompt(session.Title, answer)
+	if output.ReplyTo == owner(session) {
+		text = loops.Report(session.Title, answer)
+	}
+	// The answer continues the exchange between bots that led to it.
+	message := storage.NewInternalQueuedMessage(text)
+	message.Output = &storage.TurnOutput{Hops: output.Hops}
+	delivery := &storage.TurnDelivery{SessionID: output.ReplyTo, Message: message, Closes: output.Done}
+	if session.SourceType == storage.SourceBot {
+		undelivered := storage.NewInternalQueuedMessage("[undelivered] The bot you answered is gone, so your answer never reached it:\n\n" + answer + "\n\nPass on to the user, with send_message, what of it matters to them.")
+		delivery.Fallback = &undelivered
+	}
+	return delivery
 }
 
 // Notice posts a bot's message in its own chat outside any turn, as news the

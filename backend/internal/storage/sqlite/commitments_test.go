@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 )
 
 func TestADeliveryAndADropOfOneCommitmentCannotBothHappen(t *testing.T) {
@@ -54,5 +55,35 @@ func TestADeliveryAndADropOfOneCommitmentCannotBothHappen(t *testing.T) {
 		if commitment, err := store.LoadCommitment(id); err != nil || commitment.Status != want {
 			t.Fatalf("commitment %d = %+v, %v; want %s", id, commitment, err, want)
 		}
+	}
+}
+
+func TestACommitmentListsItsThreadsInTheOrderTheyWereStarted(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Ship it"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Thread ids share a second and differ in a random suffix, so the later
+	// thread can sort first.
+	for _, id := range []string{"20261019T000000-ffffffff", "20261019T000000-00000000"} {
+		if err := store.SaveSession(storage.Session{ID: id, Slug: id, SourceType: storage.SourceBotWorker, SourceID: bot.ID}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := botdb.New(store.db).LinkCommitmentThread(t.Context(), botdb.LinkCommitmentThreadParams{ThreadID: id, CommitmentID: commitment.ID, BotID: bot.ID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := store.LoadCommitment(commitment.ID)
+	if err != nil || len(loaded.Threads) != 2 || loaded.Threads[0].ID != "20261019T000000-ffffffff" {
+		t.Fatalf("threads = %+v, %v; want the first started first", loaded.Threads, err)
 	}
 }

@@ -116,8 +116,8 @@ func (q *Queries) InsertCommitment(ctx context.Context, arg InsertCommitmentPara
 
 const linkCommitmentThread = `-- name: LinkCommitmentThread :execrows
 INSERT INTO bot_commitment_threads (thread_id, commitment_id)
-SELECT ?1, id FROM bot_commitments
-WHERE id = ?2 AND bot_id = ?3 AND status = 'open'
+SELECT ?1, c.id FROM bot_commitments c
+WHERE c.id = ?2 AND c.bot_id = ?3 AND c.status = 'open'
 `
 
 type LinkCommitmentThreadParams struct {
@@ -180,10 +180,18 @@ func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommi
 const listCommitmentThreads = `-- name: ListCommitmentThreads :many
 SELECT commitment_id, thread_id, slug, title, state FROM bot_commitment_thread_states
 WHERE commitment_id IN (/*SLICE:ids*/?)
-ORDER BY thread_id
+ORDER BY linked
 `
 
-func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]BotCommitmentThreadState, error) {
+type ListCommitmentThreadsRow struct {
+	CommitmentID int64          `json:"commitment_id"`
+	ThreadID     string         `json:"thread_id"`
+	Slug         string         `json:"slug"`
+	Title        sql.NullString `json:"title"`
+	State        string         `json:"state"`
+}
+
+func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error) {
 	query := listCommitmentThreads
 	var queryParams []interface{}
 	if len(ids) > 0 {
@@ -199,9 +207,9 @@ func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]Bot
 		return nil, err
 	}
 	defer rows.Close()
-	items := []BotCommitmentThreadState{}
+	items := []ListCommitmentThreadsRow{}
 	for rows.Next() {
-		var i BotCommitmentThreadState
+		var i ListCommitmentThreadsRow
 		if err := rows.Scan(
 			&i.CommitmentID,
 			&i.ThreadID,
