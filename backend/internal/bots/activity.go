@@ -23,23 +23,46 @@ const (
 var listedActivity = []string{"message_sent", "message_received", "file_changed", "file_edited"}
 
 // Activity is one thing a bot is doing or did: a side chat, a routine run,
-// a message to or from another bot, or a change to its identity files.
+// a message to or from another bot, a change to its identity files, or a
+// commitment.
 type Activity struct {
-	// Kind is side_chat, routine, or the kind of the bot activity event.
+	// Kind is side_chat, routine, commitment, or the kind of the bot activity
+	// event.
 	Kind string `json:"kind"`
-	// At is when a running item started, or else when it happened or ended.
+	// At is when a running item started, or else when it happened or ended;
+	// when an open commitment was opened.
 	At      time.Time `json:"at"`
 	Running bool      `json:"running,omitempty"`
-	// Title is the side chat's or routine's name, the other bot's name or the
-	// file's name.
-	Title    string `json:"title"`
+	// Title is the side chat's or routine's name, the other bot's name, the
+	// file's name or what a commitment was asked.
+	Title string `json:"title"`
+	// Text is a message's text, a run's error, or a commitment's next step or
+	// why it was dropped.
 	Text     string `json:"text,omitempty"`
 	Status   string `json:"status,omitempty"`
 	ThreadID string `json:"thread_id,omitempty"`
 	LoopID   string `json:"loop_id,omitempty"`
+	// For names the bot a commitment is owed to; empty for the user.
+	For string `json:"for,omitempty"`
+	// Threads serve a commitment.
+	Threads []ActivityThread `json:"threads,omitempty"`
 }
 
-// Activity lists what a bot is doing, then what it did in the last
+// ActivityThread is a thread serving a commitment and how far it has got.
+type ActivityThread struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// State is working, finished, failed, idle or gone.
+	State string `json:"state"`
+}
+
+// current reports whether an item stays at the top of Activity: what runs
+// and what the bot still owes.
+func (a Activity) current() bool {
+	return a.Running || a.Kind == "commitment" && a.Status == storage.CommitmentOpen
+}
+
+// Activity lists what a bot is doing and owes, then what it did in the last
 // activityWindow, newest first.
 func (s *Service) Activity(botID string) ([]Activity, error) {
 	if !s.isBot(botID) {
@@ -88,6 +111,26 @@ func (s *Service) Activity(botID string) ([]Activity, error) {
 			}
 		}
 	}
+	commitments, err := s.store.ListCommitments(botID, since)
+	if err != nil {
+		return nil, err
+	}
+	for _, commitment := range commitments {
+		item := Activity{Kind: "commitment", At: cmp.Or(commitment.ClosedAt, commitment.OpenedAt), Title: commitment.Request, Text: commitment.Note, Status: commitment.Status}
+		if to, name := owedTo(s.store, commitment); to != "" {
+			item.For = name
+		}
+		for _, id := range commitment.Threads {
+			thread, err := s.store.LoadSession(id)
+			if err != nil {
+				continue
+			}
+			state := threadState(thread)
+			item.Threads = append(item.Threads, ActivityThread{ID: id, Title: cmp.Or(thread.Title, thread.Slug), State: state})
+			item.Running = item.Running || state == "working" && commitment.Status == storage.CommitmentOpen
+		}
+		out = append(out, item)
+	}
 	events, err := s.store.LoadBotActivity(botID, since)
 	if err != nil {
 		return nil, err
@@ -98,7 +141,7 @@ func (s *Service) Activity(botID string) ([]Activity, error) {
 		}
 	}
 	slices.SortStableFunc(out, func(a, b Activity) int { return b.At.Compare(a.At) })
-	running := slices.DeleteFunc(slices.Clone(out), func(item Activity) bool { return !item.Running })
-	done := slices.DeleteFunc(out, func(item Activity) bool { return item.Running })
-	return append(running, done[:min(len(done), activityShown)]...), nil
+	current := slices.DeleteFunc(slices.Clone(out), func(item Activity) bool { return !item.current() })
+	done := slices.DeleteFunc(out, Activity.current)
+	return append(current, done[:min(len(done), activityShown)]...), nil
 }

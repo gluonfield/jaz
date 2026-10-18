@@ -7,13 +7,18 @@ import { BotsPanel } from '@/components/bots/BotsPanel'
 import { getAppearance, setAppearance } from '@/lib/appearance'
 import type { Bot, BotActivity, BotFile, Loop, LoopRun } from '@/lib/api/types'
 
-// A bot's side panel against a stubbed server: what it is doing and did, its
-// routines and their actions, and its AGENTS.md and MEMORY.md edited as
-// documents, saved only when edited and never over the bot's newer write.
+// A bot's side panel against a stubbed server: what it owes, is doing and
+// did, its routines and their actions, and its AGENTS.md and MEMORY.md edited
+// as documents, saved only when edited and never over the bot's newer write.
 export async function exerciseBotPanel(): Promise<void> {
   const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString()
   const bot: Bot = { id: 'panel', kind: 'bot', name: 'Jaz Self Improvement Bot', avatar: { shape: 'hex', color: 'amber' }, unread: false, status: 'idle', updated_at: minutes(0) }
   const activity: BotActivity[] = [
+    { kind: 'commitment', at: minutes(14), running: true, title: 'Bot commitments and lost results', status: 'open', text: 'check its report, then send it', threads: [{ id: 'side-a', title: 'Jaz bot routine queue fixes', state: 'working' }] },
+    { kind: 'commitment', at: minutes(95), title: 'Which fixes matter this week', status: 'open', for: 'Priorities Bot', threads: [{ id: 'side-b', title: 'Merged both reviews into one plan', state: 'finished' }] },
+    { kind: 'commitment', at: minutes(60 * 3), title: 'Pause prompt suggestions on hidden turns', status: 'open', text: 'wait for his OK, then start the fork change' },
+    { kind: 'commitment', at: minutes(20), title: 'Calmer bot faces', status: 'done', threads: [{ id: 'side-d', title: 'Calmer faces', state: 'finished' }] },
+    { kind: 'commitment', at: minutes(60 * 24 + 40), title: 'Muse-style identity cards', status: 'dropped', text: 'He chose option A instead' },
     { kind: 'side_chat', at: minutes(14), running: true, title: 'Jaz bot routine queue fixes', status: 'running', thread_id: 'side-a' },
     { kind: 'side_chat', at: minutes(30), title: 'Merged both reviews into one plan', status: 'idle', thread_id: 'side-b' },
     { kind: 'file_changed', at: minutes(62), title: 'MEMORY.md' },
@@ -160,6 +165,24 @@ export async function exerciseBotPanel(): Promise<void> {
   try {
     dark(false)
     await until('Activity never listed Now and today', () => text().includes('Now') && text().includes('Running for 14m') && text().includes('Today') && text().includes('Learned something new'))
+    const headings = [...document.querySelectorAll('h3')].map((heading) => heading.textContent)
+    if (headings.indexOf('Owed') !== 0 || headings.indexOf('Now') !== 1) {
+      throw new Error(`Bot panel: what the bot owes is not listed first: ${headings.join(', ')}`)
+    }
+    for (const owed of ['For you · Working · Next: check its report, then send it', 'For Priorities Bot · Result in', 'For you · Next: wait for his OK, then start the fork change', 'Delivered to you', 'Dropped · He chose option A instead']) {
+      if (!text().includes(owed)) {
+        throw new Error(`Bot panel: Activity does not say "${owed}"`)
+      }
+    }
+    await click('Pause prompt suggestions on hidden turns')
+    await until('a commitment without a thread did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: wait for his OK') ?? false)
+    await click('Close')
+    await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
+    await click('Bot commitments and lost results')
+    await until('a commitment did not link its thread', () => document.querySelector<HTMLAnchorElement>('[role="dialog"] a')?.textContent === 'Jaz bot routine queue fixesWorking')
+    await capture('bot-panel-commitment')
+    await click('Close')
+    await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     if (!text().includes('Reviewer')) {
       throw new Error('Bot panel: the running helper is missing')
     }

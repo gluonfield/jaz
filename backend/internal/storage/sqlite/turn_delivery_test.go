@@ -86,7 +86,7 @@ func TestTurnIntentUpdateKeepsRepliesWrittenAfterSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AppendTurnReply(session.ID, "Reply after intent was read"); err != nil {
+	if err := store.AppendTurnReply(session.ID, "Reply after intent was read", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetTurnIntent(session.ID, true, before.Turn.ParentVisible, before.Turn.NotifyParent); err != nil {

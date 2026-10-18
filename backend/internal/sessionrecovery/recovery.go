@@ -13,6 +13,9 @@ import (
 
 type Runtime interface {
 	ResumeInterruptedTurn(context.Context, string) error
+	// FailInterruptedTurn ends a chat's interrupted turn that cannot resume
+	// as a turn that failed while it ran ends.
+	FailInterruptedTurn(ctx context.Context, id, message string) error
 }
 
 // retryDelays are the waits before each further try at the chats whose resume
@@ -80,8 +83,8 @@ func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, id
 	retry := err != nil && !last && startCtx.Err() == nil
 	if err != nil && !retry && ctx.Err() == nil {
 		message := fmt.Sprintf("Could not resume chat after restart: %v", err)
-		if saveErr := store.UpdateSessionStatus(session.ID, storage.StatusError, message, time.Time{}); saveErr != nil {
-			return false, fmt.Errorf("%s: %w", message, saveErr)
+		if failErr := runtime.FailInterruptedTurn(ctx, session.ID, message); failErr != nil {
+			return false, fmt.Errorf("%s: %w", message, failErr)
 		}
 	}
 	events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})

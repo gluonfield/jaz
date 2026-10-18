@@ -127,6 +127,9 @@ func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 		return req, nil
 	}
 	if req.SourceType == "" {
+		if req.Commitment == 0 {
+			return req, errors.New("a thread you start serves one of your commitments: open one with the commitment tool, then pass its number as commitment")
+		}
 		req.SourceType, req.SourceID = storage.SourceBotWorker, bot.ID
 	}
 	if req.Directory == "" && req.Home == "" && !req.Worktree {
@@ -186,6 +189,7 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 		ReasoningEffort: effort,
 		SourceType:      req.SourceType,
 		SourceID:        req.SourceID,
+		Commitment:      req.Commitment,
 		RuntimeRef: &storage.RuntimeRef{
 			Type:            storage.RuntimeACP,
 			Agent:           req.ACPAgent,

@@ -133,6 +133,8 @@ type SpawnRequest struct {
 	// SystemPromptExtensions are runtime-only prompt modules appended at
 	// session creation. They are not persisted in thread storage.
 	SystemPromptExtensions promptmodule.Modules
+	// Commitment is the bot's commitment a thread it starts serves.
+	Commitment int64
 }
 
 type SendRequest struct {
@@ -447,6 +449,9 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdS
 	req, err := m.botThread(req)
 	if err != nil {
 		return createdSession{}, err
+	}
+	if req.Commitment != 0 && req.SourceType != storage.SourceBotWorker {
+		return createdSession{}, errors.New("commitment is only for threads a bot starts from its own chat")
 	}
 	req, cfg, effort, err := m.spawnConfig(req)
 	if err != nil {

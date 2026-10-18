@@ -72,6 +72,9 @@ func (s *Store) NewSessionID() string {
 }
 
 func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, error) {
+	if input.Commitment != 0 {
+		return storage.Session{}, fmt.Errorf("JSON storage does not keep commitments")
+	}
 	now := time.Now().UTC()
 	runtime := input.Runtime
 	if runtime == "" {

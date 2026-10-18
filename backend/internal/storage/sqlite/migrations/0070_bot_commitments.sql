@@ -1,0 +1,24 @@
+-- +goose Up
+-- What a bot owes beyond the turn it was asked in, and the threads it started
+-- for each; a thread serves at most one.
+CREATE TABLE bot_commitments (
+  id INTEGER PRIMARY KEY,
+  bot_id TEXT NOT NULL,
+  requester TEXT NOT NULL DEFAULT '',
+  request TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open',
+  opened_at_ms INTEGER NOT NULL,
+  closed_at_ms INTEGER
+);
+CREATE INDEX idx_bot_commitments_bot ON bot_commitments(bot_id, status);
+
+CREATE TABLE bot_commitment_threads (
+  thread_id TEXT PRIMARY KEY,
+  commitment_id INTEGER NOT NULL REFERENCES bot_commitments(id)
+);
+CREATE INDEX idx_bot_commitment_threads_commitment ON bot_commitment_threads(commitment_id);
+
+-- +goose Down
+DROP TABLE bot_commitment_threads;
+DROP TABLE bot_commitments;

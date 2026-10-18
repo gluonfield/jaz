@@ -9,14 +9,21 @@ import (
 )
 
 type Querier interface {
+	CloseCommitment(ctx context.Context, arg CloseCommitmentParams) (int64, error)
 	GetBot(ctx context.Context, threadID string) (Bot, error)
+	GetCommitment(ctx context.Context, id int64) (BotCommitment, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (BotMembership, error)
 	GetMembershipByThread(ctx context.Context, threadID string) (BotMembership, error)
+	InsertCommitment(ctx context.Context, arg InsertCommitmentParams) (int64, error)
+	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
+	ListBotCommitments(ctx context.Context, arg ListBotCommitmentsParams) ([]BotCommitment, error)
 	ListBots(ctx context.Context) ([]Bot, error)
+	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)
 	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	PinBot(ctx context.Context, arg PinBotParams) error
 	SaveMembership(ctx context.Context, arg SaveMembershipParams) error
 	UnpinBots(ctx context.Context) error
+	UpdateCommitment(ctx context.Context, arg UpdateCommitmentParams) (int64, error)
 	UpsertBot(ctx context.Context, arg UpsertBotParams) error
 }
 

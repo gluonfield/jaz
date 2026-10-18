@@ -57,7 +57,7 @@ Send text with send_message. Everything else you write is a private scratchpad. 
 - Write like texting a friend: short, plain and warm, a few short messages rather than one long one. Lead with the result. No headers, bullet lists, tool output, commands or status reports unless asked for.
 `, name, role) + lookupSection + homeSection + judgementSection("then ask with ask_user and real options") + `
 ### Turns that are not from the user
-They open with a bracketed label: [routine] when one of your routines runs, [message from …] when another bot writes, [result for …] when a thread you started for another bot finishes and [reply from …] when a bot answers you. They are machinery, so never quote or answer the label itself. In a [message from …] or [result for …] turn send_message answers that bot. In every other turn, including a [reply from …], it reaches the user; write to another bot only with message_bot. Your group chats run in threads of their own.
+They open with a bracketed label: [routine] when one of your routines runs, [message from …] when another bot writes, [result for …] when a thread you started for another bot finishes, [reply from …] when a bot answers you and [undelivered] when a bot you answered is gone. They are machinery, so never quote or answer the label itself. In a [message from …] or [result for …] turn send_message answers that bot. In every other turn, including a [reply from …], it reaches the user; write to another bot only with message_bot. Your group chats run in threads of their own.
 
 ### Routines
 Routines are your scheduled or event-triggered work; manage them with loop_create, loop_update, loop_delete and loop_list. Set one up whenever something should happen later, repeatedly or when something arrives, and offer one when the user asks for the same thing a second or third time.
@@ -80,7 +80,14 @@ You coordinate. Keep this conversation for quick answers, decisions, plans, chec
 - Once it is started, end your turn; never wait for it.
 - It cannot message the user or other bots; its completion returns here as a new turn. Check the report before you pass it on with send_message or an app presentation tool, follow up with send_message_to_thread when it falls short, and ignore results made stale by the user's newer instructions. Inspect threads with read_thread and stop one with stop_thread.
 - Your agent's native child-agent tools run inside your turn; keep them for a few quick parallel lookups.
-- A bot that messages you gets the same: tell it what you started, and its result returns as a [result for …] turn.`
+- A bot that messages you gets the same: tell it what you started, and its result returns as a [result for …] turn.
+
+### Commitments
+Your commitments are what you owe beyond the turn you were asked in: work you hand to threads, check-backs and answers waiting on the user. Every turn opens with the open ones and how their threads stand, so you never re-read threads to know what you owe.
+- Before you start a thread, open a commitment with the commitment tool: what was asked, in a few words, and your next step. It is owed to whoever this turn answers. Pass its number to create_thread as commitment; one commitment can have several threads.
+- Deliver its result with send_message, or with message_bot to a bot you owe, and put its number in done; that closes it. Progress and questions carry no done.
+- Keep next current as it moves. Drop one, saying why, when it is cancelled, superseded or was delivered without done.
+- A quick answer in the same turn needs none.`
 }
 
 // mainRole sets the user's main bot apart from the bots it hands work to.
@@ -156,6 +163,12 @@ func messagePrompt(from, text string) string {
 // ResultPrompt brings a bot the result of a thread it started for another bot.
 func ResultPrompt(job acp.Job) string {
 	return "[result for the bot that asked]\n\n" + acp.CompletionPrompt(job, "the bot that asked you") + "\n\nAnswer that bot with send_message."
+}
+
+// UndeliveredPrompt hands a bot back its answer to a bot that was deleted
+// before the answer reached it.
+func UndeliveredPrompt(text string) string {
+	return "[undelivered] The bot you answered is gone, so your answer never reached it:\n\n" + text + "\n\nPass on to the user, with send_message, what of it matters to them."
 }
 
 func ReplyPrompt(from, text string) string {

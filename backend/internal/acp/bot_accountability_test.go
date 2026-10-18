@@ -111,7 +111,7 @@ func TestARoutineRunInItsBotsThreadRecordsWhetherItDelivered(t *testing.T) {
 	}
 }
 
-func TestARoutinesThreadsWriteToOtherBotsAsTheirBot(t *testing.T) {
+func TestARoutinesThreadWritesToOtherBotsAsItsBotAndAThreadItStartedCannot(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{"JAZ_FAKE_ACP_UNIQUE_SESSION": "1"})
 	gimli := jaz.namedBot("Gimli")
@@ -122,21 +122,23 @@ func TestARoutinesThreadsWriteToOtherBotsAsTheirBot(t *testing.T) {
 		t.Fatal(err)
 	}
 	child := jaz.waitRun(run.ID, loops.RunStatusRunning).ThreadID
-	worker, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "errand", ParentID: gimli})
+	worker, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "errand", ParentID: gimli, Commitment: owe(t, store, gimli)})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, thread := range []string{child, worker.ID} {
-		if err := jaz.bots.Message(thread, "Legolas", "Orcs to the east."); err != nil {
-			t.Fatal(err)
-		}
-		if err := jaz.bots.Message(thread, "Gimli", "Orcs to the east."); err == nil {
-			t.Fatal("a thread of Gimli's wrote to Gimli as another bot")
-		}
+	if err := jaz.bots.Message(child, "Legolas", "Orcs to the east."); err != nil {
+		t.Fatal(err)
+	}
+	if err := jaz.bots.Message(child, "Gimli", "Orcs to the east."); err == nil {
+		t.Fatal("a thread of Gimli's wrote to Gimli as another bot")
+	}
+	// Gimli's own threads report to Gimli, which speaks for them.
+	if err := jaz.bots.Message(worker.ID, "Legolas", "Orcs to the west."); err == nil || !strings.Contains(err.Error(), "cannot message bots") {
+		t.Fatalf("a thread Gimli started wrote to another bot: %v", err)
 	}
 	jaz.release()
-	jaz.eventually("both messages reaching Legolas", func() bool { return jaz.promptsContaining("[message from Gimli]") == 2 })
+	jaz.eventually("the run's message reaching Legolas", func() bool { return jaz.promptsContaining("[message from Gimli]") == 1 })
 	if got := jaz.promptsContaining("[message from Jaz]"); got != 0 {
 		t.Fatalf("%d messages signed as Jaz", got)
 	}

@@ -1,6 +1,9 @@
 package storage
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var ErrBotNotFound = errors.New("bot not found")
 
@@ -30,4 +33,32 @@ type BotMembership struct {
 	BotID    string
 	ThreadID string
 	Seen     int64
+}
+
+const (
+	CommitmentOpen    = "open"
+	CommitmentDone    = "done"
+	CommitmentDropped = "dropped"
+)
+
+// ErrCommitmentNotOpen refuses work on a commitment that is closed or belongs
+// to another bot.
+var ErrCommitmentNotOpen = errors.New("no such open commitment")
+
+// Commitment is something a bot owes beyond the turn it was asked in. It
+// closes as done only with a delivery to its requester, or as dropped.
+type Commitment struct {
+	ID    int64
+	BotID string
+	// Requester is the thread answers to it go to, another bot's; empty for
+	// the user.
+	Requester string
+	Request   string
+	// Note is the bot's next step while it is open, or why it was dropped.
+	Note     string
+	Status   string
+	OpenedAt time.Time
+	ClosedAt time.Time
+	// Threads are the threads the bot started for it, oldest first.
+	Threads []string
 }

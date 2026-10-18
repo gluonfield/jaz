@@ -107,7 +107,7 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 				bus := sessionevents.New()
 				handler := &server.Server{Store: store, ACP: second, Locks: locks, Events: bus}
 				second.TurnFinished = handler.HandleACPTurnFinished
-				if err := sessionrecovery.Resume(ctx, store, second, locks, bus, log.New(io.Discard)); err != nil {
+				if err := sessionrecovery.Resume(ctx, store, handler, locks, bus, log.New(io.Discard)); err != nil {
 					t.Fatal(err)
 				}
 				job, err := second.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID})

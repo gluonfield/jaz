@@ -340,7 +340,11 @@ func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, er
 // subtasks, its seat in a group or a thread one of its routines runs in. Empty
 // for any other thread.
 func (s *Service) BotOf(threadID string) string {
-	if session, err := s.store.LoadSession(threadID); err == nil {
+	return botOf(s.store, threadID)
+}
+
+func botOf(store PromptStore, threadID string) string {
+	if session, err := store.LoadSession(threadID); err == nil {
 		switch session.SourceType {
 		case storage.SourceBotWorker, storage.SourceBotMember:
 			threadID = session.SourceID
@@ -348,7 +352,7 @@ func (s *Service) BotOf(threadID string) string {
 			threadID = session.ParentID
 		}
 	}
-	if s.isBot(threadID) {
+	if isBot(store, threadID) {
 		return threadID
 	}
 	return ""
@@ -392,8 +396,16 @@ func (s *Service) load(id string) (storage.BotRecord, storage.Session, error) {
 }
 
 func (s *Service) isBot(id string) bool {
-	record, _, err := s.load(id)
-	return err == nil && record.Kind == KindBot
+	return isBot(s.store, id)
+}
+
+func isBot(store PromptStore, id string) bool {
+	record, err := store.LoadBot(id)
+	if err != nil || record.Kind != KindBot {
+		return false
+	}
+	session, err := store.LoadSession(id)
+	return err == nil && !session.Archived
 }
 
 // view is a bot as the API shows it; held names the bots whose routines wait

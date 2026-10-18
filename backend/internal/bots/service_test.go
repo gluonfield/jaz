@@ -19,6 +19,8 @@ import (
 )
 
 type fakeWorld struct {
+	// CommitmentStore is left unset: these tests keep no commitments.
+	CommitmentStore
 	mu        sync.Mutex
 	records   map[string]storage.BotRecord
 	sessions  map[string]storage.Session
@@ -308,7 +310,7 @@ func (t fakeThreads) drain(id string) {
 	}
 }
 
-func (w *fakeWorld) AppendTurnReply(id, message string) error {
+func (w *fakeWorld) AppendTurnReply(id, message string, _ []int64) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	session := w.sessions[id]

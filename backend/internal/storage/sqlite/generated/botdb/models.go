@@ -4,6 +4,10 @@
 
 package botdb
 
+import (
+	"database/sql"
+)
+
 type Bot struct {
 	ThreadID string `json:"thread_id"`
 	Kind     string `json:"kind"`
@@ -13,6 +17,17 @@ type Bot struct {
 	Pinned   int64  `json:"pinned"`
 	Prompt   string `json:"prompt"`
 	Main     int64  `json:"main"`
+}
+
+type BotCommitment struct {
+	ID         int64         `json:"id"`
+	BotID      string        `json:"bot_id"`
+	Requester  string        `json:"requester"`
+	Request    string        `json:"request"`
+	Note       string        `json:"note"`
+	Status     string        `json:"status"`
+	OpenedAtMs int64         `json:"opened_at_ms"`
+	ClosedAtMs sql.NullInt64 `json:"closed_at_ms"`
 }
 
 type BotMembership struct {

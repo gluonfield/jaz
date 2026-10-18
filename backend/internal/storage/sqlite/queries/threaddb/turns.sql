@@ -17,7 +17,11 @@ WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
 -- name: AppendTurnReply :execrows
 UPDATE threads
-SET turn = json_set(turn, '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', sqlc.arg(message)))
+SET turn = json_set(turn,
+    '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', sqlc.arg(message)),
+    '$.output.done', json((SELECT json_group_array(value) FROM (
+        SELECT value FROM json_each(COALESCE(json_extract(turn, '$.output.done'), '[]'))
+        UNION ALL SELECT value FROM json_each(sqlc.arg(done))))))
 WHERE id = sqlc.arg(id) AND status = 'running'
   AND json_extract(NULLIF(turn, ''), '$.output.reply_to') IS NOT NULL;
 

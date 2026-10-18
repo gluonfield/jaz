@@ -3,10 +3,12 @@ package sqlite
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
 
@@ -25,10 +27,19 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn) error {
 	return err
 }
 
-func (s *Store) AppendTurnReply(id, message string) error {
+// AppendTurnReply adds a reply to the running turn's answer, with the
+// commitments it delivers.
+func (s *Store) AppendTurnReply(id, message string, done []int64) error {
+	if done == nil {
+		done = []int64{}
+	}
+	ids, err := json.Marshal(done)
+	if err != nil {
+		return err
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	updated, err := threaddb.New(s.db).AppendTurnReply(context.Background(), threaddb.AppendTurnReplyParams{ID: id, Message: message})
+	updated, err := threaddb.New(s.db).AppendTurnReply(context.Background(), threaddb.AppendTurnReplyParams{ID: id, Message: message, Done: string(ids)})
 	if err == nil && updated == 0 {
 		return fmt.Errorf("%s has no active reply turn", id)
 	}
@@ -103,21 +114,40 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 		return err
 	}
 	for _, delivery := range deliveries {
-		message := delivery.Message
-		message.ID = s.NewSessionID()
-		raw, err := storage.MarshalQueuedMessage(&message)
+		queued, err := s.queueDelivery(ctx, q, delivery)
 		if err != nil {
 			return err
 		}
-		updated, err := q.AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: delivery.SessionID, Message: raw})
-		if err != nil {
-			return err
+		if !queued && delivery.Otherwise != nil {
+			queued, err = s.queueDelivery(ctx, q, *delivery.Otherwise)
+			if err != nil {
+				return err
+			}
+			delivery.Closes = nil
 		}
-		if updated == 0 {
+		if !queued {
 			return fmt.Errorf("delivery target %s is unavailable", delivery.SessionID)
+		}
+		for _, id := range delivery.Closes {
+			if err := closeCommitment(ctx, botdb.New(tx), id, storage.CommitmentDone, "", at); err != nil && !errors.Is(err, storage.ErrCommitmentNotOpen) {
+				return err
+			}
 		}
 	}
 	return tx.Commit()
+}
+
+// queueDelivery queues a delivery's message unless its thread is archived or
+// gone.
+func (s *Store) queueDelivery(ctx context.Context, q *threaddb.Queries, delivery storage.TurnDelivery) (bool, error) {
+	message := delivery.Message
+	message.ID = s.NewSessionID()
+	raw, err := storage.MarshalQueuedMessage(&message)
+	if err != nil {
+		return false, err
+	}
+	updated, err := q.AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: delivery.SessionID, Message: raw})
+	return updated > 0, err
 }
 
 func sessionTurnJSON(turn *storage.Turn) string {

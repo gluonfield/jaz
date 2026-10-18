@@ -194,11 +194,22 @@ func replaceFile(path, content string) error {
 	return os.Rename(temp.Name(), path)
 }
 
-// TurnNote opens a turn in a bot's own thread or one of its group threads
-// with a note to reread the identity files that changed since its last
-// successful turn started. Agents load them as a session starts, not every
-// turn, and Codex keeps the prompt its thread started with.
-func TurnNote(thread storage.Session) string {
+// TurnNote opens a turn in a bot's own thread with its open commitments,
+// and there or in one of its group threads with a note to reread the identity
+// files that changed since its last successful turn started. Agents load them
+// as a session starts, not every turn, and Codex keeps the prompt its thread
+// started with.
+func TurnNote(store NoteStore) func(storage.Session) string {
+	return func(thread storage.Session) string {
+		note := changedFilesNote(thread)
+		if thread.SourceType == storage.SourceBot {
+			note += commitmentNote(store, thread.ID)
+		}
+		return note
+	}
+}
+
+func changedFilesNote(thread storage.Session) string {
 	if thread.SourceType != storage.SourceBot && thread.SourceType != storage.SourceBotMember || thread.RuntimeRef == nil || thread.RuntimeRef.Cwd == "" {
 		return ""
 	}

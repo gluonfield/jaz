@@ -51,14 +51,20 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 		}
 		output := session.Turn.Output
 		if output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
+			answer := strings.Join(output.Replies, "\n\n")
 			reply := bots.ReplyPrompt
-			if output.Run != "" {
+			if session.SourceType == storage.SourceLoopRun {
 				reply = loops.Report
 			}
 			// The answer continues the exchange between bots that led to it.
-			message := storage.NewInternalQueuedMessage(reply(session.Title, strings.Join(output.Replies, "\n\n")))
+			message := storage.NewInternalQueuedMessage(reply(session.Title, answer))
 			message.Output = &storage.TurnOutput{Hops: output.Hops}
-			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: message})
+			delivery := storage.TurnDelivery{SessionID: output.ReplyTo, Message: message, Closes: output.Done}
+			// When the bot it answers is gone, a bot's answer is the user's.
+			if session.SourceType == storage.SourceBot {
+				delivery.Otherwise = &storage.TurnDelivery{SessionID: job.ID, Message: storage.NewInternalQueuedMessage(bots.UndeliveredPrompt(answer))}
+			}
+			deliveries = append(deliveries, delivery)
 		}
 		// The run closes before its turn does; a restart in between finds the
 		// run closed and only finishes the turn's bookkeeping.
@@ -152,6 +158,22 @@ func (s *Server) ResumeQueuedTurns() error {
 			s.drainQueueSoon(session.ID)
 		}
 	}
+	return nil
+}
+
+// FailInterruptedTurn ends an interrupted turn that cannot resume as failed,
+// so the thread or bot waiting on it hears, as when a running turn fails.
+func (s *Server) FailInterruptedTurn(ctx context.Context, id, message string) error {
+	session, err := s.Store.LoadSession(id)
+	if err != nil {
+		return err
+	}
+	job := acp.Job{ID: id, Slug: session.Slug, State: acp.StateFailed, Error: message}
+	if session.RuntimeRef != nil {
+		job.ACPAgent = session.RuntimeRef.Agent
+	}
+	// Recovery holds this thread's lock, which the bookkeeping takes.
+	go s.HandleACPTurnFinished(context.WithoutCancel(ctx), job)
 	return nil
 }
 

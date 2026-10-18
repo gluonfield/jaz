@@ -31,18 +31,23 @@ func (q *Queries) AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnPara
 
 const appendTurnReply = `-- name: AppendTurnReply :execrows
 UPDATE threads
-SET turn = json_set(turn, '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', ?1))
-WHERE id = ?2 AND status = 'running'
+SET turn = json_set(turn,
+    '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', ?1),
+    '$.output.done', json((SELECT json_group_array(value) FROM (
+        SELECT value FROM json_each(COALESCE(json_extract(turn, '$.output.done'), '[]'))
+        UNION ALL SELECT value FROM json_each(?2)))))
+WHERE id = ?3 AND status = 'running'
   AND json_extract(NULLIF(turn, ''), '$.output.reply_to') IS NOT NULL
 `
 
 type AppendTurnReplyParams struct {
 	Message interface{} `json:"message"`
+	Done    interface{} `json:"done"`
 	ID      string      `json:"id"`
 }
 
 func (q *Queries) AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, appendTurnReply, arg.Message, arg.ID)
+	result, err := q.db.ExecContext(ctx, appendTurnReply, arg.Message, arg.Done, arg.ID)
 	if err != nil {
 		return 0, err
 	}

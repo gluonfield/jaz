@@ -187,13 +187,16 @@ type TurnOutput struct {
 	// Shown records that the turn sent a message or presented an app in its
 	// own chat.
 	Shown bool `json:"shown,omitempty"`
+	// Done are the commitments the replies deliver; they close as the replies
+	// reach ReplyTo.
+	Done []int64 `json:"done,omitempty"`
 }
 
 // Continuation is the output of a later turn that goes on answering the bot
 // this turn answers; nil when it answers none. A routine run closes with its
-// turn, so nothing continues it.
+// turn, so a later turn answers its bot without it.
 func (o *TurnOutput) Continuation() *TurnOutput {
-	if o == nil || o.ReplyTo == "" || o.Run != "" {
+	if o == nil || o.ReplyTo == "" {
 		return nil
 	}
 	return &TurnOutput{ReplyTo: o.ReplyTo, Hops: o.Hops}
@@ -210,6 +213,11 @@ func (o *TurnOutput) LoopRun() string {
 type TurnDelivery struct {
 	SessionID string
 	Message   QueuedMessage
+	// Closes are the commitments that close as done once the message is
+	// queued.
+	Closes []int64
+	// Otherwise is queued instead when SessionID is archived or gone.
+	Otherwise *TurnDelivery
 }
 
 type FeedItem struct {
@@ -285,6 +293,9 @@ type CreateSession struct {
 	ReasoningEffort string
 	SourceType      string
 	SourceID        string
+	// Commitment is the open commitment of the bot SourceID that the thread
+	// serves.
+	Commitment int64
 }
 
 type SessionFilter struct {

@@ -1626,12 +1626,12 @@ func newFakeCodexManager(t *testing.T, store acp.Store, root string, extraEnv ma
 	return newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, extraEnv, "", "")
 }
 
-func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, agent string, extraEnv map[string]string, model, effort string) *acp.Manager {
+func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, agent string, extraEnv map[string]string, model, effort string, configure ...func(*acp.Config)) *acp.Manager {
 	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_LOAD": "1"}
 	for key, value := range extraEnv {
 		env[key] = value
 	}
-	return acp.NewManager(store, acp.Config{
+	cfg := acp.Config{
 		Root:      root,
 		Workspace: t.TempDir(),
 		Agents: map[string]acp.AgentConfig{
@@ -1643,7 +1643,11 @@ func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, ag
 				Env:             env,
 			},
 		},
-	}, log.New(io.Discard))
+	}
+	for _, change := range configure {
+		change(&cfg)
+	}
+	return acp.NewManager(store, cfg, log.New(io.Discard))
 }
 
 // abandonedSession returns the session a failed spawn recorded its error on,

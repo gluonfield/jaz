@@ -771,7 +771,7 @@ export interface BotActivityEvent {
 // running item started, or else when it happened or ended; `title` names the
 // side chat, routine, other bot or file.
 export interface BotActivity {
-  kind: 'side_chat' | 'routine' | 'message_sent' | 'message_received' | 'file_changed' | 'file_edited'
+  kind: 'side_chat' | 'routine' | 'commitment' | 'message_sent' | 'message_received' | 'file_changed' | 'file_edited'
   at: string
   running?: boolean
   title: string
@@ -779,6 +779,16 @@ export interface BotActivity {
   status?: string
   thread_id?: string
   loop_id?: string
+  // For a commitment: the bot it is owed to (none for you) and the threads
+  // serving it.
+  for?: string
+  threads?: BotActivityThread[]
+}
+
+export interface BotActivityThread {
+  id: string
+  title: string
+  state: 'working' | 'finished' | 'failed' | 'idle' | 'gone'
 }
 
 export type BotFileName = 'AGENTS.md' | 'MEMORY.md'

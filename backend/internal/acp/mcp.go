@@ -65,6 +65,7 @@ type MCPCreateInput struct {
 	Model         string `json:"model,omitempty" jsonschema:"Model override. Omit unless the user requests a specific model."`
 	Thinking      string `json:"thinking,omitempty" jsonschema:"Reasoning effort supported by the selected model. Omit to use its configured default."`
 	Plan          bool   `json:"plan,omitempty" jsonschema:"Request the agent's plan mode for this prompt."`
+	Commitment    int64  `json:"commitment,omitempty" jsonschema:"For a Jaz bot's own chat: the number of the open commitment this thread serves."`
 }
 
 func (t *MCPTools) AskUser(ctx context.Context, req *mcp.CallToolRequest, input AskUserInput) (*mcp.CallToolResult, AskUserOutput, error) {
@@ -107,6 +108,7 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 		ModelProvider:   input.ModelProvider,
 		Model:           input.Model,
 		ReasoningEffort: input.Thinking,
+		Commitment:      input.Commitment,
 	})
 	if err != nil {
 		return nil, ThreadSnapshot{}, err

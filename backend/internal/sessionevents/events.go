@@ -179,6 +179,8 @@ type RoomMessageEvent struct {
 	Name        string                      `json:"name"`
 	Text        string                      `json:"text"`
 	Attachments []messagepayload.Attachment `json:"attachments,omitempty"`
+	// Done are the commitments the message delivers.
+	Done []int64 `json:"done,omitempty"`
 }
 
 type LoopBoardRef struct {

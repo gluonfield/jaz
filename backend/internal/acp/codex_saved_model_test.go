@@ -54,7 +54,7 @@ func TestSavedCodexModelsStartOnCodexDefaultAfterAPlanWithdrawsThem(t *testing.T
 
 	jaz = jaz.restart(codexPlan("gpt-6-sol,gpt-6-luna"))
 	sendAndWait(t, jaz.ctx, jaz.manager, bot.ID, "hello again")
-	_, subtask, err := acp.NewMCPTools(jaz.manager).Create(jaz.ctx, toolCallFrom(bot.ID), acp.MCPCreateInput{Prompt: "summarise the inbox"})
+	_, subtask, err := acp.NewMCPTools(jaz.manager).Create(jaz.ctx, toolCallFrom(bot.ID), acp.MCPCreateInput{Prompt: "summarise the inbox", Commitment: owe(t, store, bot.ID)})
 	if err != nil {
 		t.Fatalf("a thread the bot starts on its saved model: %v", err)
 	}

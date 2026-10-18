@@ -12,6 +12,7 @@ import (
 	"github.com/wins/jaz/backend/internal/goal"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/eventdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
@@ -201,6 +202,16 @@ func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Tim
 	if slices.ContainsFunc(events, sessionevents.Event.Delivers) {
 		if err := threadq.MarkTurnShown(ctx, id); err != nil {
 			return false, err
+		}
+	}
+	for _, event := range events {
+		if event.RoomMessage == nil {
+			continue
+		}
+		for _, commitment := range event.RoomMessage.Done {
+			if err := closeCommitment(ctx, botdb.New(tx), commitment, storage.CommitmentDone, "", now); err != nil {
+				return false, err
+			}
 		}
 	}
 	if goalSeen {

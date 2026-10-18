@@ -344,7 +344,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	if widgetService != nil {
 		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, widgetService.LoopPromptExtra)
 	}
-	cfg.ACP.TurnNote = bots.TurnNote
+	cfg.ACP.TurnNote = bots.TurnNote(store)
 	cfg.ACP.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
 		switch session.SourceType {
 		case storage.SourceLoopRun:
