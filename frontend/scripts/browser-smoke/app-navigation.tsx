@@ -32,6 +32,7 @@ export async function exerciseAppNavigation() {
   const prompts: { message: { text: string } }[] = []
   const originalAgent = localStorage.getItem(NEW_SESSION_AGENT_KEY)
   const originalDirectory = localStorage.getItem(NEW_SESSION_DIRECTORY_KEY)
+  const originalSidebar = localStorage.getItem('jaz.sidebar')
   localStorage.setItem(NEW_SESSION_AGENT_KEY, 'codex')
   localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, '')
   window.addEventListener('message', observe)
@@ -62,6 +63,7 @@ export async function exerciseAppNavigation() {
       createRoute({ getParentRoute: () => rootRoute, path: '/apps/$serverId/$tool', validateSearch: appRoute.options.validateSearch }),
       createRoute({ getParentRoute: () => rootRoute, path: '/new', component: newRoute.options.component, validateSearch: newRoute.options.validateSearch }),
       createRoute({ getParentRoute: () => rootRoute, path: '/sessions/$sessionId', component: () => <p>Thread</p> }),
+      createRoute({ getParentRoute: () => rootRoute, path: '/bots', component: () => <p>Bots</p> }),
     ]),
     history,
   })
@@ -179,6 +181,22 @@ export async function exerciseAppNavigation() {
     if (sessions.length !== 1) {
       throw new Error('Going back from the app thread started it again')
     }
+
+    // With the sidebar hidden, Chats offer a new chat in the titlebar and
+    // Bots, which start bots from their own panel, do not.
+    const toggle = () => element.querySelector<HTMLButtonElement>('button[aria-label="Hide sidebar"], button[aria-label="Show sidebar"]')
+    const newChat = () => element.querySelector('a[aria-label="New chat"]')
+    await router.navigate({ to: '/new' })
+    await until(() => Boolean(toggle()))
+    if (toggle()!.getAttribute('aria-label') === 'Hide sidebar') {
+      await click(toggle()!)
+    }
+    await until(() => Boolean(newChat()))
+    await router.navigate({ to: '/bots' })
+    await until(() => router.state.location.pathname === '/bots' && toggle()?.getAttribute('aria-label') === 'Show sidebar')
+    if (newChat()) {
+      throw new Error('Bots offered a new chat in the titlebar')
+    }
   } catch (error) {
     await window.smoke.capture('app-navigation-failure')
     throw error
@@ -191,7 +209,7 @@ export async function exerciseAppNavigation() {
     window.fetch = originalFetch
     window.removeEventListener('message', observe)
     sessionStorage.removeItem(NEW_SESSION_DRAFT_KEY)
-    for (const [key, value] of [[NEW_SESSION_AGENT_KEY, originalAgent], [NEW_SESSION_DIRECTORY_KEY, originalDirectory]] as const) {
+    for (const [key, value] of [[NEW_SESSION_AGENT_KEY, originalAgent], [NEW_SESSION_DIRECTORY_KEY, originalDirectory], ['jaz.sidebar', originalSidebar]] as const) {
       if (value === null) {
         localStorage.removeItem(key)
       } else {

@@ -284,6 +284,8 @@ function RootLayout() {
               <TitlebarNavigation
                 hasPanel={hasPanel}
                 panelOpen={panelOpen}
+                // Bots start bots from their own panel, not threads.
+                newChat={hasPanel && !panelOpen && tab !== '/bots'}
                 isMobile={isMobile}
                 onToggleSidebar={() => setSidebarOpen((open) => !open)}
                 onNavigate={handleBrowserNavigation}
