@@ -238,6 +238,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			result := map[string]any{
 				"modes": fakeModes(),
 			}
+			addFakeModels(result)
 			addFakePlanConfig(result)
 			sendResult(conn, msg, result)
 		case "session/new":

@@ -11,6 +11,17 @@ import (
 	"github.com/wins/jaz/backend/internal/visualize"
 )
 
+// CheckSpawn fails as Spawn would for req before it creates anything, as for a
+// model the agent does not offer.
+func (m *Manager) CheckSpawn(req SpawnRequest) error {
+	req, err := m.botThread(req)
+	if err != nil {
+		return err
+	}
+	_, _, _, err = m.spawnConfig(req)
+	return err
+}
+
 func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, string, error) {
 	req.ACPAgent = CanonicalAgentName(req.ACPAgent)
 	req.Directory = strings.TrimSpace(req.Directory)
@@ -66,6 +77,7 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 		cfg.Model = strings.TrimSpace(cfg.Model[:strings.LastIndex(cfg.Model, "/")])
 	}
 	cfg.Model = m.resolveAgentModelAlias(req.ACPAgent, cfg)
+	cfg.ModelRequested = modelOverridden && !req.StoredModel
 	if _, err := m.startingModel(req.ACPAgent, cfg); err != nil {
 		return SpawnRequest{}, AgentConfig{}, "", err
 	}
@@ -126,6 +138,7 @@ func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 	req.ACPAgent = bot.RuntimeRef.Agent
 	if req.Model == "" && req.ModelProvider == "" {
 		req.ModelProvider, req.Model = requestedModelProvider(bot.RuntimeRef.Agent, bot.ModelProvider), bot.Model
+		req.StoredModel = true
 		if req.ReasoningEffort == "" {
 			req.ReasoningEffort = bot.ReasoningEffort
 		}

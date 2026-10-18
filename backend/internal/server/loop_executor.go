@@ -46,27 +46,21 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	if mode != loops.ThreadMain {
 		startCtx, cancel := serverACPBootstrapContext()
 		defer cancel()
-		// An empty agent stays empty: the ACP manager resolves the canonical
-		// default at spawn time, the same default sessions get. A bot's child
-		// starts in the bot's home unless the routine names a directory.
+		// A bot's child starts in the bot's home unless the routine names a
+		// directory.
 		directory := strings.TrimSpace(loop.Directory)
 		if directory == "" && mode != loops.ThreadChild {
 			directory = "."
 		}
-		spawned, err := r.server.ACP.Spawn(startCtx, acp.SpawnRequest{
-			ACPAgent:               strings.TrimSpace(loop.ACPAgent),
-			Slug:                   loopRunSlug(loop, run),
-			Title:                  loop.Name,
-			ParentID:               loop.BotID,
-			Directory:              directory,
-			ModelProvider:          loop.ModelProvider,
-			Model:                  loop.Model,
-			ReasoningEffort:        loop.ReasoningEffort,
-			SourceType:             storage.SourceLoopRun,
-			SourceID:               run.ID,
-			ArtifactSurface:        execution.ArtifactSurface,
-			SystemPromptExtensions: execution.SystemPromptExtensions,
-		})
+		req := loopRunSpawn(loop)
+		req.Slug = loopRunSlug(loop, run)
+		req.Title = loop.Name
+		req.Directory = directory
+		req.StoredModel = true
+		req.SourceID = run.ID
+		req.ArtifactSurface = execution.ArtifactSurface
+		req.SystemPromptExtensions = execution.SystemPromptExtensions
+		spawned, err := r.server.ACP.Spawn(startCtx, req)
 		if err != nil {
 			r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 			return
@@ -83,6 +77,27 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	if err := r.server.QueueInternalTurn(context.Background(), thread, storage.QueuedMessage{Text: loop.Prompt, Output: output}); err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 	}
+}
+
+// loopRunSpawn is the part of a run's spawn that decides the agent and model
+// it starts on: the routine's, else its bot's. An empty agent stays empty: the
+// ACP manager resolves the canonical default at spawn time, the same default
+// sessions get.
+func loopRunSpawn(loop loops.Loop) acp.SpawnRequest {
+	return acp.SpawnRequest{
+		ACPAgent:        strings.TrimSpace(loop.ACPAgent),
+		ParentID:        loop.BotID,
+		ModelProvider:   loop.ModelProvider,
+		Model:           loop.Model,
+		ReasoningEffort: loop.ReasoningEffort,
+		SourceType:      storage.SourceLoopRun,
+	}
+}
+
+// CheckModel refuses a routine whose runs would not start on the model it
+// names, as one its agent does not offer.
+func (r *LoopRunner) CheckModel(loop loops.Loop) error {
+	return r.server.ACP.CheckSpawn(loopRunSpawn(loop))
 }
 
 // contextFull reports whether a bot's thread is at least 80% full by its

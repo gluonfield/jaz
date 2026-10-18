@@ -23,15 +23,13 @@ type advertisingAgent struct {
 	missing    string
 }
 
-// rejectingAgents refuse to start a session on a model they do not advertise;
-// Codex starts on its own default instead.
-var (
-	rejectingAgents = []advertisingAgent{
-		{name: AgentGrok, advertised: []string{"grok-4.5", "grok-4.6"}, missing: "grok-4.7"},
-		{name: AgentClaude, advertised: []string{"opus[1m]", "sonnet"}, missing: "haiku"},
-	}
-	advertisingAgents = append(rejectingAgents, advertisingAgent{name: AgentCodex, advertised: []string{"gpt-6-sol", "gpt-6-luna"}, missing: "gpt-6-astra"})
-)
+// advertisingAgents refuse to start a session on a model a request names that
+// they do not advertise.
+var advertisingAgents = []advertisingAgent{
+	{name: AgentGrok, advertised: []string{"grok-4.5", "grok-4.6"}, missing: "grok-4.7"},
+	{name: AgentClaude, advertised: []string{"opus[1m]", "sonnet"}, missing: "haiku"},
+	{name: AgentCodex, advertised: []string{"gpt-6-sol", "gpt-6-luna"}, missing: "gpt-6-astra"},
+}
 
 func threadToolsFor(t *testing.T, agent advertisingAgent) (*mcp.ClientSession, *sqlitestore.Store, string) {
 	t.Helper()
@@ -104,7 +102,7 @@ func agentRequests(t *testing.T, requestLog, method string) int {
 }
 
 func TestCreateThreadWithModelAgentDoesNotAdvertiseLeavesNoThread(t *testing.T) {
-	for _, agent := range rejectingAgents {
+	for _, agent := range advertisingAgents {
 		t.Run(agent.name, func(t *testing.T) {
 			client, store, requestLog := threadToolsFor(t, agent)
 			create := map[string]any{"prompt": "Review the bot design", "agent": agent.name, "model": agent.missing, "slug": "bots-design-council"}
@@ -112,6 +110,11 @@ func TestCreateThreadWithModelAgentDoesNotAdvertiseLeavesNoThread(t *testing.T) 
 			res := callThreadTool(t, client, ToolCreateThread, create)
 			if !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "not advertised") {
 				t.Fatalf("first create_thread = %#v", res.Content)
+			}
+			for _, model := range agent.advertised {
+				if !strings.Contains(res.Content[0].(*mcp.TextContent).Text, contextTagBase(model)) {
+					t.Fatalf("refusal %q does not name advertised model %s", res.Content[0].(*mcp.TextContent).Text, model)
+				}
 			}
 			if visible := storedSessions(t, store, false); len(visible) != 0 {
 				t.Fatalf("failed create_thread left threads in the sidebar: %#v", visible)

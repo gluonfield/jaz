@@ -32,6 +32,7 @@ func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest
 		Directory:       req.Directory,
 		ModelProvider:   req.ModelProvider,
 		Model:           req.Model,
+		StoredModel:     true,
 		ReasoningEffort: req.ReasoningEffort,
 	})
 	if err != nil {

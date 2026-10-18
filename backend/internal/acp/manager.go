@@ -116,6 +116,9 @@ type SpawnRequest struct {
 	// Model overrides the agent's configured model for this session (empty
 	// keeps the agent default).
 	Model string
+	// StoredModel marks Model as saved earlier, as a bot's, a routine's or a
+	// Settings worker's is, rather than named by this request.
+	StoredModel bool
 	// ModelProvider selects the provider for in-process agents such as Jaz.
 	ModelProvider string
 	// ReasoningEffort overrides the agent's configured reasoning effort for this

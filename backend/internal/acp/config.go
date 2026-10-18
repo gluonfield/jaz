@@ -134,6 +134,9 @@ type AgentConfig struct {
 	// before PATH for companion CLIs. Runtime-only, never persisted.
 	AdapterBinDir string
 	LoginBinDir   string
+	// ModelRequested marks Model as named by the request that starts the
+	// session rather than saved earlier. Runtime-only, never persisted.
+	ModelRequested bool
 }
 
 func (c AgentConfig) RequiresCommand() bool {

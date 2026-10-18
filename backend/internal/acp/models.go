@@ -51,10 +51,11 @@ type unadvertisedModelPolicy int
 const (
 	// unadvertisedModelSent leaves the model id to the agent to accept or refuse.
 	unadvertisedModelSent unadvertisedModelPolicy = iota
-	// unadvertisedModelSkipped keeps the agent's own default. Codex model access
-	// follows the signed-in account's plan, so a model that worked yesterday can
-	// disappear without anyone touching the settings; that must not cost the
-	// session.
+	// unadvertisedModelSkipped keeps the agent's own default for a model saved
+	// earlier. Codex model access follows the signed-in account's plan, so a
+	// model that worked yesterday can disappear without anyone touching the
+	// settings; that must not cost the session. A model the request names is
+	// refused, so whoever named it learns it is not on offer.
 	unadvertisedModelSkipped
 	// unadvertisedModelRejected fails the session rather than running a model
 	// other than the configured one.
@@ -310,10 +311,10 @@ type sessionConfigOptionsState struct {
 // session advertised and applies it unless it already rode the launch or
 // session/new. It returns the agent's raw response: it carries refreshed
 // config options (e.g. the effort levels valid for the newly selected model).
-func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, state sessionModelState) (json.RawMessage, error) {
+func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, requested bool, state sessionModelState) (json.RawMessage, error) {
 	policy := agentPolicyForAgent(agentName)
 	configured := configuredSessionModel(rawModel)
-	model, err := policy.sessionModelToSend(agentName, configured, state)
+	model, err := policy.sessionModelToSend(agentName, configured, state, requested)
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +399,10 @@ func (m *Manager) configuredModeState(
 	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
 	model := policy.sessionConfigModel(cfg)
 	m.rememberAdvertisedModels(agentName, cfg, session.modelState)
-	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, model, session.modelState)
+	// Codex lists its own models whichever provider it runs on, while another
+	// provider's model rides the launch, so only its own list can refuse one.
+	requested := cfg.ModelRequested && agentOwnsModelMetadata(agentName, cfg.ModelProvider)
+	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, model, requested, session.modelState)
 	if err != nil {
 		return ModeState{}, err
 	}
@@ -596,7 +600,8 @@ func parseConfigOptionValues(raw json.RawMessage) []string {
 
 // sessionModelToSend resolves the model id to apply to a session. An empty id
 // means the session keeps whichever model the agent chose for itself.
-func (p agentPolicy) sessionModelToSend(agentName, rawModel string, state sessionModelState) (string, error) {
+// requested says the request starting the session named the model.
+func (p agentPolicy) sessionModelToSend(agentName, rawModel string, state sessionModelState, requested bool) (string, error) {
 	model := configuredSessionModel(rawModel)
 	if model == "" || state.empty() {
 		return model, nil
@@ -609,7 +614,10 @@ func (p agentPolicy) sessionModelToSend(agentName, rawModel string, state sessio
 	}
 	switch p.unadvertisedModel {
 	case unadvertisedModelSkipped:
-		return "", nil
+		if !requested {
+			return "", nil
+		}
+		fallthrough
 	case unadvertisedModelRejected:
 		return "", unadvertisedModelError(agentName, model, state)
 	}
