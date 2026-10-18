@@ -94,6 +94,8 @@ type Manager struct {
 
 	// serializes resumes so concurrent sends can't start two agent processes
 	resumeMu sync.Mutex
+
+	advertisedModels sync.Map
 }
 
 type SpawnRequest struct {
@@ -449,22 +451,26 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdS
 	if err != nil {
 		return createdSession{}, err
 	}
-	fail := func(err error) (createdSession, error) {
-		session.Status = storage.StatusError
-		session.Error = err.Error()
-		_ = m.store.SaveSession(session)
-		return createdSession{}, err
-	}
 	absCwd, projectPath, err := m.prepareSessionDir(ctx, req, cfg, session.Slug, session.ID)
 	if err != nil {
-		return fail(err)
+		return createdSession{}, m.abandonSession(session, err)
 	}
 	session.RuntimeRef.Cwd = absCwd
 	session.RuntimeRef.ProjectPath = projectPath
 	if err := m.store.SaveSession(session); err != nil {
-		return fail(err)
+		return createdSession{}, m.abandonSession(session, err)
 	}
 	return createdSession{Request: req, Config: cfg, Session: session}, nil
+}
+
+// abandonSession records why a session never started and archives it, so a
+// request that failed leaves no thread behind in the sidebar.
+func (m *Manager) abandonSession(session storage.Session, err error) error {
+	session.Status = storage.StatusError
+	session.Error = err.Error()
+	session.Archived = true
+	_ = m.store.SaveSession(session)
+	return err
 }
 
 func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
@@ -475,12 +481,6 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	req = created.Request
 	cfg := created.Config
 	session := created.Session
-	fail := func(err error) (SpawnResult, error) {
-		session.Status = storage.StatusError
-		session.Error = err.Error()
-		_ = m.store.SaveSession(session)
-		return SpawnResult{}, err
-	}
 	absCwd := session.RuntimeRef.Cwd
 	ctx = mcpsession.With(ctx, session.ID)
 	if cfg.Local {
@@ -488,22 +488,22 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	}
 	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
 	if err != nil {
-		return fail(err)
+		return SpawnResult{}, m.abandonSession(session, err)
 	}
 	if err := validateProcessLifecycle(req.ACPAgent, cfg, ac.initRaw); err != nil {
 		ac.close()
-		return fail(err)
+		return SpawnResult{}, m.abandonSession(session, err)
 	}
 	mcpRevision := m.mcpRevision()
 	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
 	if err != nil {
 		ac.close()
-		return fail(err)
+		return SpawnResult{}, m.abandonSession(session, err)
 	}
 	modes, err := m.configuredModeState(ctx, ac, req.ACPAgent, acpSession, cfg)
 	if err != nil {
 		ac.close()
-		return fail(err)
+		return SpawnResult{}, m.abandonSession(session, err)
 	}
 	acpSessionID := string(acpSession.response.SessionID)
 	materializesOnPrompt := sessionMaterializesOnPrompt(req.ACPAgent, cfg)
@@ -511,7 +511,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		session.RuntimeRef.SessionID = acpSessionID
 		if err := m.store.SaveSession(session); err != nil {
 			ac.close()
-			return fail(err)
+			return SpawnResult{}, m.abandonSession(session, err)
 		}
 	}
 	process := newAgentProcess(ac)

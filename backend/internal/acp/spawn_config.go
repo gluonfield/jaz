@@ -66,6 +66,9 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 		cfg.Model = strings.TrimSpace(cfg.Model[:strings.LastIndex(cfg.Model, "/")])
 	}
 	cfg.Model = m.resolveAgentModelAlias(req.ACPAgent, cfg)
+	if _, err := m.startingModel(req.ACPAgent, cfg); err != nil {
+		return SpawnRequest{}, AgentConfig{}, "", err
+	}
 	if m.cfg.ModelCatalog != nil {
 		if err := (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).ValidateReasoningEffort(req.ACPAgent, cfg.ModelProvider, cfg.Model, effort); err != nil {
 			return SpawnRequest{}, AgentConfig{}, "", err

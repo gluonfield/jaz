@@ -132,10 +132,7 @@ func localModeState() ModeState {
 func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd string, systemPromptExtensions promptmodule.Modules) (SpawnResult, error) {
 	session.RuntimeRef.SessionID = session.ID
 	if err := m.store.SaveSession(session); err != nil {
-		session.Status = storage.StatusError
-		session.Error = err.Error()
-		_ = m.store.SaveSession(session)
-		return SpawnResult{}, err
+		return SpawnResult{}, m.abandonSession(session, err)
 	}
 	job := m.newLocalJob(session, agentName, cwd)
 	job.systemPromptExtensions = systemPromptExtensions.Strings()
