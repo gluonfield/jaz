@@ -512,6 +512,7 @@ export function useMentionInput({
     textareaRef,
     mirrorRef,
     maxHeight,
+    autoGrow,
     /** the current value in wire form (encoded mentions) */
     value: () => {
       const draft = currentDraft()

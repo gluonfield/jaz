@@ -38,7 +38,7 @@ function BotRoute() {
       details={(view) => <BotDetails bot={bot} focusName={newBot} {...view} />}
       openDetails={newBot}
       placeholder={`Message ${bot.name}`}
-      chat={(view) => <BotChat bot={bot} bots={bots.data ?? []} {...view} />}
+      chat={(view) => <BotChat bot={bot} bots={bots.data ?? []} newBot={newBot} {...view} />}
     />
   )
 }

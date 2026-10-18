@@ -1,6 +1,6 @@
 import { ArrowUp, AudioLines, ListChecks, LoaderCircle, Mic, Plus, Square, Target, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
+import { type ClipboardEvent, type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FileDropOverlay, useFileDropTarget } from '@/components/ui/FileDrop'
 import { IconButton } from '@/components/ui/IconButton'
 import { SwitchRow } from '@/components/ui/Switch'
@@ -21,6 +21,7 @@ import { ComposerFrame } from './ComposerFrame'
 import { ContextChip } from './ContextChip'
 import { GoalChip, GoalUnsupportedRow } from './GoalControls'
 import { useComposerAttachments } from './useComposerAttachments'
+import { useFitsOneRow } from './useFitsOneRow'
 import type { ComposerDraftStorage } from './useComposerDraft'
 
 // Composer in the agent-council style: borderless auto-growing textarea on a
@@ -119,6 +120,15 @@ export function ComposerCard({
     storage: draftStorage,
     onTextChange,
   })
+  // Chat keeps attach, draft and controls on one row until the draft wraps;
+  // then the draft takes the full width and the buttons drop below it.
+  const rowRef = useRef<HTMLDivElement>(null)
+  const oneRow = useFitsOneRow(rowRef, mention.textareaRef, mention.text)
+  // Moving the buttons rewraps the draft at a new width; refit its height.
+  const { autoGrow } = mention
+  useLayoutEffect(() => {
+    autoGrow()
+  }, [oneRow, autoGrow])
   const attachmentDraft = useComposerAttachments({
     storageKey: draftStorageKey,
     storage: draftStorage,
@@ -434,15 +444,24 @@ export function ComposerCard({
           </div>
         ) : null}
         {/* Chat is messenger style: attach, textarea and controls share one row,
-            the textarea's bottom padding centring its last line on them, and
-            isolate keeps its z-index under the dictation overlay. */}
-        <div className={`relative flex ${chat ? 'items-end gap-1' : 'items-center justify-between gap-2.5 max-sm:items-end'}`}>
+            the textarea's bottom padding centring its line on them, until the
+            draft wraps and takes the full width above them. isolate keeps the
+            textarea's z-index under the dictation overlay. */}
+        <div
+          ref={chat ? rowRef : undefined}
+          data-wrapped={chat && !oneRow ? '' : undefined}
+          className={`relative ${
+            chat
+              ? "grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-1 [grid-template-areas:'attach_draft_controls'] data-wrapped:[grid-template-areas:'draft_draft_draft'_'attach_._controls']"
+              : 'flex items-center justify-between gap-2.5 max-sm:items-end'
+          }`}
+        >
           {chat ? (
             <>
               <IconButton
                 variant="ghost"
                 size="md"
-                className="mb-1"
+                className="mb-1 [grid-area:attach]"
                 aria-label="Attach files"
                 title="Attach files"
                 disabled={disabled}
@@ -451,7 +470,7 @@ export function ComposerCard({
               >
                 <Plus size={16} />
               </IconButton>
-              <div className="isolate min-w-0 flex-1 pb-1.5">{textarea}</div>
+              <div className="isolate min-w-0 pb-1.5 [grid-area:draft]">{textarea}</div>
             </>
           ) : (
             // Phone: the new-thread controls (agent, model, project, worktree)
@@ -517,7 +536,7 @@ export function ComposerCard({
               {chips}
             </div>
           )}
-          <div className="flex min-h-10 shrink-0 items-center gap-2" inert={dictation.phase !== null}>
+          <div className="flex min-h-10 shrink-0 items-center gap-2 [grid-area:controls]" inert={dictation.phase !== null}>
             {dictation.showButton && !voiceActive ? (
               <IconButton
                 variant="ghost"

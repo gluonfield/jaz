@@ -1,4 +1,4 @@
-import { memo, useMemo, type RefObject } from 'react'
+import { memo, useMemo, useState, type RefObject } from 'react'
 import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
 import { MessageActions } from '@/components/session/MessageActions'
 import { MessageAttachments } from '@/components/session/MessageAttachments'
@@ -9,6 +9,7 @@ import { useHistoryWindow } from '@/components/session/useHistoryWindow'
 import type { HistoryPaging } from '@/lib/hooks/useSessionHistory'
 import type { Bot, BotAvatar as Avatar } from '@/lib/api/types'
 import { botInk, botTarget, type BotWork, type ChatEntry } from '@/lib/bots'
+import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import { messageTime } from '@/lib/format/time'
 import { BotAvatar } from './BotAvatar'
 
@@ -16,6 +17,9 @@ const GONE: Avatar = { shape: 'circle', color: 'gray' }
 const QUIET_GAP_MS = 30 * 60_000
 const INITIAL_VISIBLE_ENTRIES = 60
 const VISIBLE_ENTRY_BATCH = 60
+
+// How a message that arrives while the chat is open comes in.
+export const ARRIVE = 'animate-[message-arrive_0.35s_cubic-bezier(0.2,0,0,1)_both]'
 
 // A messenger-style log shared by a bot's chat and a group: bubbles, the time
 // after a quiet gap, activity rows, and who is working now and on what. `named` labels each speaker with a name and face, which only a
@@ -56,6 +60,9 @@ export function ChatLog({
     keyAt: (index) => entries[index]?.key,
     paging,
   })
+  // Messages newer than the open chat arrive; the rest are simply there.
+  const [openedAt] = useState(Date.now)
+  const reduced = useReducedEffectsMotion()
   return (
     <div ref={historyRef} className="@container relative flex flex-col" aria-busy={paging.loading}>
       {entries.slice(start).map((entry, offset) => {
@@ -69,7 +76,7 @@ export function ChatLog({
         const opensRun = stamped || !sameSpeaker(previous)
         const closesRun = nextStamped || !sameSpeaker(next)
         return (
-          <div key={entry.key} className={opensRun ? 'mt-4 first:mt-0' : 'mt-1'}>
+          <div key={entry.key} className={`${opensRun ? 'mt-4 first:mt-0' : 'mt-1'} ${!reduced && Date.parse(entry.at) > openedAt ? ARRIVE : ''}`}>
             {stamped ? <p className="pb-3 text-center text-[12px] text-ink-3">{messageTime(entry.at)}</p> : null}
             {entry.kind === 'user' ? (
               <>
