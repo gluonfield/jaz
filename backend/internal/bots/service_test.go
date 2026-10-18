@@ -263,6 +263,10 @@ func (w *fakeWorld) OnBoard(loop loops.Loop) bool {
 	return strings.HasPrefix(loop.ID, "widget-")
 }
 
+func (w *fakeWorld) HeldBots() (map[string]bool, error) {
+	return nil, nil
+}
+
 type fakeThreads struct {
 	world *fakeWorld
 }
@@ -377,6 +381,10 @@ func (t fakeThreads) SetModel(_ context.Context, sessionID, model, effort string
 
 func (fakeThreads) SwitchAgent(context.Context, string, string) error {
 	return nil
+}
+
+func (fakeThreads) AwaitsAnswer(string) bool {
+	return false
 }
 
 func newTestService(world *fakeWorld) *Service {

@@ -45,6 +45,27 @@ func (s *Service) GuardAway() error {
 	return nil
 }
 
+// HeldBots are the bots with routines whose runs wait for the user to come
+// back; nil while the user is around. It reads the stored hold, which holds
+// from the moment Jaz starts, before the guard first runs.
+func (s *Service) HeldBots() (map[string]bool, error) {
+	since, err := s.Repo.AwaySince()
+	if err != nil || since.IsZero() {
+		return nil, err
+	}
+	items, err := s.Repo.ListLoops()
+	if err != nil {
+		return nil, err
+	}
+	held := map[string]bool{}
+	for _, loop := range items {
+		if loop.Status == StatusActive && loop.BotID != "" && !loop.KeepRunning {
+			held[loop.BotID] = true
+		}
+	}
+	return held, nil
+}
+
 // heldAway reports whether loop's runs wait for the user to come back.
 func (s *Service) heldAway(loop Loop) bool {
 	return s.away && loop.BotID != "" && !loop.KeepRunning

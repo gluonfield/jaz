@@ -24,6 +24,7 @@ import { exerciseFolderDrop } from './folder-drop'
 import { exerciseChatHistory } from './chat-history'
 import { exerciseBotWelcome } from './bot-welcome'
 import { exerciseBotPanel } from './bot-panel'
+import { exerciseBotFaces } from './bot-faces'
 import { exerciseConnectCard } from './connect-card'
 import { exerciseAccentText } from './accent-text'
 import { exerciseAppNavigation } from './app-navigation'
@@ -117,10 +118,12 @@ function Fixture() {
       await exerciseBotWelcome()
       stage = 'a bot side panel: activity, routines and identity files'
       await exerciseBotPanel()
+      stage = 'live bot faces: idle motion, moods, one-off moves and effects off'
+      await exerciseBotFaces()
       stage = 'connect card sign-in from chat'
       await exerciseConnectCard()
       if (new URLSearchParams(location.search).get('suite') === 'composer') {
-        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; an empty idle thread or bot chat composer offers the predicted prompt, Tab writes it and a draft or running turn hides it; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; a bot chat opens with a hello that a new bot types first, starters send and leave once the person speaks; a bot panel lists what runs now and what the bot did by day, runs, pauses and deletes routines from their modal, and saves AGENTS.md and MEMORY.md only when edited and never over a newer write by the bot; connect cards start OAuth from chat and show the new account'] })
+        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; an empty idle thread or bot chat composer offers the predicted prompt, Tab writes it and a draft or running turn hides it; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; a bot chat opens with a hello that a new bot types first, starters send and leave once the person speaks; a bot panel lists what runs now and what the bot did by day, runs, pauses and deletes routines from their modal, and saves AGENTS.md and MEMORY.md only when edited and never over a newer write by the bot; live bot faces move, act out each change of mood once and hold still with effects off or off screen; connect cards start OAuth from chat and show the new account'] })
         return
       }
       stage = 'Tab-only focus rings'

@@ -266,3 +266,39 @@ func TestAMessageQueuedBehindABusyTurnIsTheUserComingBack(t *testing.T) {
 	jaz.release()
 	jaz.idle(bot.ID)
 }
+
+// The bots list shows a bot away only while routines of its own wait for the
+// user: not one whose routines keep running, nor one with none, and none once
+// the user is back.
+func TestTheBotsListShowsAwayOnlyBotsWhoseRoutinesWait(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	watching := jaz.newBot("Legolas")
+	jaz.routine(loops.CreateLoop{Name: "Monitor", Prompt: "watch the furnace", BotID: watching.ID, Thread: loops.ThreadMain, Schedule: hourly, KeepRunning: true})
+	jaz.newBot("Frodo")
+	resting := jaz.awayFrom("Gimli")
+	away := func() []string {
+		t.Helper()
+		list, err := jaz.bots.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var names []string
+		for _, bot := range list {
+			if bot.Away {
+				names = append(names, bot.Name)
+			}
+		}
+		return names
+	}
+	if names := away(); len(names) != 1 || names[0] != "Gimli" {
+		t.Fatalf("away bots = %q, want only Gimli, whose routine waits", names)
+	}
+	jaz.write(resting.ID, "back now")
+	if !jaz.back(resting.ID) {
+		t.Fatal("the user's message did not let the routines run again")
+	}
+	if names := away(); len(names) != 0 {
+		t.Fatalf("away bots = %q after the user came back, want none", names)
+	}
+}

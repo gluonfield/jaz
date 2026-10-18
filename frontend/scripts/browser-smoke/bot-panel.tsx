@@ -3,6 +3,8 @@ import { createMemoryHistory, createRootRoute, createRoute, createRouter, Router
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BotDetails } from '@/components/bots/BotDetails'
+import { BotsPanel } from '@/components/bots/BotsPanel'
+import { getAppearance, setAppearance } from '@/lib/appearance'
 import type { Bot, BotActivity, BotFile, Loop, LoopRun } from '@/lib/api/types'
 
 // A bot's side panel against a stubbed server: what it is doing and did, its
@@ -35,6 +37,13 @@ export async function exerciseBotPanel(): Promise<void> {
   const originalFetch = window.fetch
   window.fetch = async (input, init) => {
     const url = new URL(String(input), location.href)
+    if (url.pathname === '/v1/bots') {
+      const sidebar: Bot[] = [
+        { ...bot, id: 'asking', name: 'Asking Bot', status: 'running', waiting: true },
+        { ...bot, id: 'busy', name: 'Busy Bot', status: 'running' },
+      ]
+      return new Response(JSON.stringify({ bots: sidebar }), { headers: { 'Content-Type': 'application/json' } })
+    }
     if (!url.pathname.startsWith('/v1/bots/panel/') && !url.pathname.startsWith('/v1/loops')) {
       return originalFetch(input, init)
     }
@@ -82,6 +91,9 @@ export async function exerciseBotPanel(): Promise<void> {
     path: '/bots/$botId',
     component: () => (
       <>
+        <aside className="flex w-[260px] flex-col">
+          <BotsPanel mobile={false} />
+        </aside>
         <div className="min-w-0 flex-1" />
         <BotDetails
           bot={bot}
@@ -151,6 +163,18 @@ export async function exerciseBotPanel(): Promise<void> {
     if (!text().includes('Reviewer')) {
       throw new Error('Bot panel: the running helper is missing')
     }
+    // In the sidebar a bot waiting on the person always has a dot; a working
+    // one has its face, and a dot only once effects are off and the face
+    // holds still.
+    const dotOf = (name: string) => [...document.querySelectorAll('a')].find((link) => link.textContent?.includes(name))?.querySelector('[role="img"]')?.getAttribute('aria-label') ?? null
+    await until('the sidebar never listed the bots', () => text().includes('Asking Bot') && text().includes('Busy Bot'))
+    if (dotOf('Asking Bot') !== 'Waiting for your answer' || dotOf('Busy Bot') !== null) {
+      throw new Error(`Bot panel: sidebar dots are ${dotOf('Asking Bot')} and ${dotOf('Busy Bot')}`)
+    }
+    const effects = getAppearance().effects
+    setAppearance({ effects: false })
+    await until('a working bot with a still face showed no dot', () => dotOf('Busy Bot') === 'Running')
+    setAppearance({ effects })
     await capture('bot-panel-activity')
     dark(true)
     await capture('bot-panel-activity-dark')
