@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { botChat, dragSections, placePin } from './bots'
+import { optimisticTranscriptMessages } from './optimisticUserMessage'
 
 describe('bot chat log', () => {
   const self = { id: 'gimli', name: 'Gimli' }
@@ -76,6 +77,22 @@ describe('bot chat log', () => {
     expect(botChat([user(1, 1, 'hi')], [...events, woke(5, 'routine', 'Say hi')], self, []).work).toEqual({ doing: 'running Say hi' })
     expect(botChat([user(1, 1, 'hi'), user(2, 6, 'still there?')], events, self, []).work.doing).toBeUndefined()
   })
+})
+
+// A message the person sends shows at once, is saved with a number of its
+// own and is then reloaded with the server's time; it stays one message
+// throughout, so the chat neither remounts it nor plays its arrival again.
+test('a sent message keeps its place in the chat from send to save', () => {
+  const self = { id: 'gimli', name: 'Gimli' }
+  const earlier = { seq: 7, role: 'user', content: 'check the inbox', blocks: [], created_at: '2026-10-18T19:00:00Z' }
+  const typed = { baselineMessageSeq: 7, message: { role: 'user', content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.100Z' } }
+  const saved = { seq: 8, role: 'user', content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.450Z' }
+  const keys = (messages) => botChat(messages, [], self, []).entries.map((entry) => entry.key)
+  const sending = keys(optimisticTranscriptMessages([earlier], typed))
+  const accepted = keys(optimisticTranscriptMessages([earlier, saved], typed))
+  const reloaded = keys([earlier, saved])
+  expect(accepted).toEqual(sending)
+  expect(reloaded).toEqual(sending)
 })
 
 test('a question the bot asks shows in its chat, carries its answer and stands in for a written reply', () => {
