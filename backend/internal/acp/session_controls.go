@@ -269,6 +269,13 @@ func (m *Manager) restoreSessionControls(ctx context.Context, job *jobState, eve
 	}
 }
 
+// CanCompact reports whether the agent of a session's live process offers
+// its own compact.
+func (m *Manager) CanCompact(sessionID string) bool {
+	job, err := m.job(sessionID)
+	return err == nil && m.supportsSessionCommand(job, "compact")
+}
+
 func (m *Manager) supportsSessionCommand(job *jobState, name string) bool {
 	job.mu.RLock()
 	defer job.mu.RUnlock()

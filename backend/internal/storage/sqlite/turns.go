@@ -93,7 +93,7 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 		return err
 	}
 	for _, delivery := range deliveries {
-		message := delivery.Message.AsInternal()
+		message := delivery.Message
 		message.ID = s.NewSessionID()
 		raw, err := storage.MarshalQueuedMessage(&message)
 		if err != nil {

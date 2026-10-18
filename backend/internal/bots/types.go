@@ -43,6 +43,10 @@ type Bot struct {
 	Members         []string  `json:"members,omitempty"`
 	// Working lists the members taking a turn in a group.
 	Working []string `json:"working,omitempty"`
+	// The bot's context fill as its agent last reported it; the fill is
+	// unknown while either is zero.
+	ContextTokens       int64 `json:"context_tokens,omitempty"`
+	ContextWindowTokens int64 `json:"context_window_tokens,omitempty"`
 }
 
 type CreateBot struct {

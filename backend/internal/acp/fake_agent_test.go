@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -20,6 +21,9 @@ import (
 )
 
 var fakeSubagentReport = regexp.MustCompile(`subagent (\w+)=(\w+)`)
+
+// fakeContextFill makes a prompt report its context as used/size tokens.
+var fakeContextFill = regexp.MustCompile(`context (\d+)/(\d+)`)
 
 // fakeSessionID is the provider session id the fake agent reports; agents
 // that run side by side need their own, as real ones have.
@@ -430,6 +434,20 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			if os.Getenv("JAZ_FAKE_ACP_PROMPT_DELAY") == "1" {
 				time.Sleep(200 * time.Millisecond)
+			}
+			if strings.Contains(string(msg.Params), "withdraw compact") {
+				notify(conn, "session/update", map[string]any{
+					"sessionId": fakeSessionID,
+					"update":    map[string]any{"sessionUpdate": "available_commands_update", "availableCommands": []map[string]any{{"name": "review", "description": "Review changes"}}},
+				})
+			}
+			for _, fill := range fakeContextFill.FindAllStringSubmatch(string(msg.Params), -1) {
+				used, _ := strconv.Atoi(fill[1])
+				size, _ := strconv.Atoi(fill[2])
+				notify(conn, "session/update", map[string]any{
+					"sessionId": fakeSessionID,
+					"update":    map[string]any{"sessionUpdate": "usage_update", "used": used, "size": size},
+				})
 			}
 			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
 				// The turn works until the test creates the release file, then

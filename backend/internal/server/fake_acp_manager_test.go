@@ -170,6 +170,10 @@ func (f *fakeACPManager) Compact(ctx context.Context, req acp.CompactRequest) (a
 	return f.job, f.compactErr
 }
 
+func (f *fakeACPManager) CanCompact(string) bool {
+	return false
+}
+
 func (f *fakeACPManager) Steer(ctx context.Context, req acp.SteerRequest) (acp.Job, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -48,6 +48,7 @@ type ACPManager interface {
 	StartInternalTurn(context.Context, acp.InternalTurnRequest) (acp.Job, error)
 	ContinueGoal(context.Context, string) (acp.Job, error)
 	Compact(context.Context, acp.CompactRequest) (acp.Job, error)
+	CanCompact(string) bool
 	Steer(context.Context, acp.SteerRequest) (acp.Job, error)
 	SendSideChat(context.Context, acp.SideChatRequest) error
 	Status(string) (acp.Job, error)
