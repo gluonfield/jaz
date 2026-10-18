@@ -172,3 +172,59 @@ func TestRestartAcrossAMissedSlotCatchesUpOnceAndSkipsTheJoke(t *testing.T) {
 		t.Fatalf("joke run = %+v, want it skipped", skipped)
 	}
 }
+
+func TestTakenMessagesArePrunedToWhatDedupeAndCatchUpStillNeed(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.bot("Gimli")
+	start := time.Now()
+	at := func(offset time.Duration) {
+		jaz.loops.Now = func() time.Time { return start.Add(offset) }
+	}
+	at(0)
+	routine := jaz.routine(loops.CreateLoop{Name: "Quotes", Prompt: "triage the quote", BotID: bot.ID, Thread: loops.ThreadMain, Trigger: quotes})
+	take := func(messages []integrationingest.Incoming, runs int) {
+		t.Helper()
+		jaz.loops.HandleIncoming(jaz.ctx, messages)
+		got := jaz.runs(routine.ID)
+		if len(got) != runs {
+			t.Fatalf("runs = %+v, want %d", got, runs)
+		}
+		jaz.waitRun(got[0].ID, loops.RunStatusOK)
+	}
+	seen := func(id string) bool {
+		t.Helper()
+		seen, err := store.EventSeen(routine.ID, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return seen
+	}
+	take(quote("m1", "First quote", start), 1)
+	at(26 * time.Hour)
+	take(append(quote("m2", "Second quote", start.Add(26*time.Hour)), quote("m2a", "Quote just before", start.Add(26*time.Hour-5*time.Minute))...), 2)
+	at(26*time.Hour + 30*time.Minute)
+	take(quote("m2", "Second quote", start.Add(26*time.Hour)), 2)
+	if seen("m1") || !seen("m2a") || !seen("m2") {
+		t.Fatalf("seen m1 = %v, m2a = %v, m2 = %v; want only the day-old message forgotten", seen("m1"), seen("m2a"), seen("m2"))
+	}
+	// With the clock set back, a message it took a moment ago stays taken.
+	at(26*time.Hour + 5*time.Minute)
+	take(quote("m2a", "Quote just before", start.Add(26*time.Hour-5*time.Minute)), 2)
+
+	// Long after, the newest taken message is the only one left, and it is
+	// where the routine catches up from once it is told to.
+	at(60 * time.Hour)
+	take(quote("m2", "Second quote", start.Add(26*time.Hour)), 2)
+	if seen("m2a") || !seen("m2") {
+		t.Fatalf("seen m2a = %v, m2 = %v; want only the newest kept", seen("m2a"), seen("m2"))
+	}
+	catchUp := loops.MissedCatchUp
+	if _, err := jaz.loops.Update(routine.ID, loops.UpdateLoop{WhenMissed: &catchUp}); err != nil {
+		t.Fatal(err)
+	}
+	take(append(quote("m3", "Quote missed while down", start.Add(40*time.Hour)), quote("m0", "Quote from before", start.Add(20*time.Hour))...), 3)
+	if reason := jaz.runs(routine.ID)[0].Reason; !strings.Contains(reason, "Quote missed while down") || strings.Contains(reason, "Quote from before") {
+		t.Fatalf("catch-up reason = %q, want only the message after the newest taken one", reason)
+	}
+}

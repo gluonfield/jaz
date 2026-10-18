@@ -10,6 +10,10 @@ import (
 
 type Querier interface {
 	GetLastFinishedAt(ctx context.Context, arg GetLastFinishedAtParams) (int64, error)
+	// Agents write the prompts of child threads and of automated sources, so only
+	// top-level chats and bot chats hold messages the user typed.
+	GetLastUserMessageAt(ctx context.Context) (int64, error)
+	GetLastUserSpeechAt(ctx context.Context) (int64, error)
 	GetLatestLoopEventAt(ctx context.Context, loopID string) (int64, error)
 	GetLoop(ctx context.Context, id string) (Loop, error)
 	GetRun(ctx context.Context, id string) (LoopRun, error)
@@ -20,6 +24,7 @@ type Querier interface {
 	ListLoops(ctx context.Context, deletedStatus string) ([]Loop, error)
 	ListRunsByLoop(ctx context.Context, arg ListRunsByLoopParams) ([]LoopRun, error)
 	LoopEventSeen(ctx context.Context, arg LoopEventSeenParams) (bool, error)
+	PruneLoopEvents(ctx context.Context, arg PruneLoopEventsParams) error
 	UpsertLoop(ctx context.Context, arg UpsertLoopParams) error
 	UpsertRun(ctx context.Context, arg UpsertRunParams) error
 }

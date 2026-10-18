@@ -96,6 +96,7 @@ type Store interface {
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	UpdateSessionTitle(id, title string) error
 	SetArchived(id string, archived bool) error
+	SetThreadUnread(id string, unread bool) error
 	LoadSessionEvents(id string) ([]sessionevents.Event, error)
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
 	LoadLatestSessionEvent(id, eventType string) (sessionevents.Event, bool, error)

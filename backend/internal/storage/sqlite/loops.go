@@ -108,6 +108,12 @@ func (s *Store) LatestEventAt(loopID string) (time.Time, error) {
 	return msToTime(ms), err
 }
 
+func (s *Store) PruneEvents(loopID string, before time.Time) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return loopdb.New(s.db).PruneLoopEvents(context.Background(), loopdb.PruneLoopEventsParams{LoopID: loopID, BeforeMs: loopTimeToMs(before)})
+}
+
 func (s *Store) SaveLoop(loop loops.Loop) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -199,6 +205,7 @@ func upsertLoop(ctx context.Context, q *loopdb.Queries, loop loops.Loop) error {
 		WebhookHash:     loop.WebhookHash,
 		WhenMissed:      loop.WhenMissed,
 		Thread:          loop.Thread,
+		KeepRunning:     boolInt(loop.KeepRunning),
 	})
 }
 
@@ -244,6 +251,7 @@ func loopFromDB(row loopdb.Loop) loops.Loop {
 		WebhookHash:     row.WebhookHash,
 		WhenMissed:      row.WhenMissed,
 		Thread:          row.Thread,
+		KeepRunning:     row.KeepRunning != 0,
 	}
 }
 

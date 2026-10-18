@@ -310,6 +310,7 @@ func startServer(
 		loops.WithModelCheck(loopRunner.CheckModel),
 	)
 	botService := bots.NewService(store, layout.Bots, manager, handler, handler, loopService, events, logger)
+	loopService.Notice = botService.Notice
 	mcpManager.AppVisible = botService.AppVisible
 	jazTools.SetLoops(loopService,
 		loops.WithBoards(widgetService.LoopBoards()),

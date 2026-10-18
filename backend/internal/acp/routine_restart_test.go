@@ -53,6 +53,7 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 	handler.Loops = service
 	manager.TurnFinished = handler.HandleACPTurnFinished
 	botService := bots.NewService(store, root, manager, handler, handler, service, events, log.New(io.Discard))
+	service.Notice = botService.Notice
 	return &jazProcess{t: t, ctx: ctx, store: store, root: root, manager: manager, server: handler, loops: service, bots: botService, locks: locks, events: events}
 }
 

@@ -96,6 +96,7 @@ type Loop struct {
 	Trigger     *Trigger `json:"trigger,omitempty"`
 	WhenMissed  string   `json:"when_missed"`
 	Thread      string   `json:"thread"`
+	KeepRunning bool     `json:"keep_running,omitempty"`
 	WebhookHash string   `json:"-"`
 	// WebhookSecret is returned once, when a webhook trigger is created.
 	WebhookSecret string `json:"webhook_secret,omitempty"`
@@ -140,6 +141,7 @@ type CreateLoop struct {
 	Trigger         *Trigger
 	WhenMissed      string
 	Thread          string
+	KeepRunning     bool
 }
 
 type UpdateLoop struct {
@@ -157,6 +159,7 @@ type UpdateLoop struct {
 	BotID           *string
 	WhenMissed      *string
 	Thread          *string
+	KeepRunning     *bool
 	Reschedule      bool
 	RescheduleAt    time.Time
 }
@@ -193,6 +196,15 @@ type Repository interface {
 	LastFinishedAt(loopID, status string) (time.Time, error)
 	EventSeen(loopID, eventID string) (bool, error)
 	LatestEventAt(loopID string) (time.Time, error)
+	// PruneEvents drops the messages a loop took before before, keeping its
+	// newest.
+	PruneEvents(loopID string, before time.Time) error
+	// LastUserMessageAt is when the user last wrote to Jaz, zero if never.
+	LastUserMessageAt() (time.Time, error)
+	// AwaySince is the last message before the user went away, zero while
+	// they are not away.
+	AwaySince() (time.Time, error)
+	SetAwaySince(time.Time) error
 	SaveLoop(loop Loop) error
 	SaveRun(run Run) error
 	SaveLoops(loops []Loop) error

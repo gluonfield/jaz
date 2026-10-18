@@ -181,6 +181,15 @@ func (w *fakeWorld) SetArchived(id string, archived bool) error {
 	return nil
 }
 
+func (w *fakeWorld) SetThreadUnread(id string, unread bool) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	session := w.sessions[id]
+	session.Unread = unread
+	w.sessions[id] = session
+	return nil
+}
+
 func (w *fakeWorld) LoadSessionEvents(id string) ([]sessionevents.Event, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

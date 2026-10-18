@@ -36,6 +36,7 @@ type Loop struct {
 	WebhookHash     string         `json:"webhook_hash"`
 	WhenMissed      string         `json:"when_missed"`
 	Thread          string         `json:"thread"`
+	KeepRunning     int64          `json:"keep_running"`
 }
 
 type LoopRun struct {
