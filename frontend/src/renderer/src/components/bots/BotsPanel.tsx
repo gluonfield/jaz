@@ -178,7 +178,7 @@ function BotEntry({ ref, bot, bots, tile = false, dragged, hidden, onDrag }: {
             : 'flex h-13 items-center gap-2.5 px-2.5 text-[13px] max-sm:h-16 max-sm:text-[15px]'
         }`}
       >
-        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} working={working} badge={tile ? state : null} />
+        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} working={working} badge={tile ? state : null} main={bot.main} />
         {tile ? (
           name
         ) : (
