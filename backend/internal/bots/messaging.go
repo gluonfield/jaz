@@ -22,8 +22,8 @@ func (s *Service) AppVisible(threadID string) bool {
 // Message sends text from a thread to a bot or a group, named by id, mention
 // target or name. A bot answers in a turn of its own and the answer returns to
 // the sender as a new turn; a group gets the text as a post and its members
-// take their turns. Bots writing to each other without the user stop after
-// maxHops messages.
+// take their turns. A chain of direct messages between bots, each sent from a
+// turn the one before it led to, stops after maxHops without the user.
 func (s *Service) Message(fromThread, ref, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {

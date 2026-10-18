@@ -423,7 +423,8 @@ func TestARunsPromptNamesTheRunBeforeItAndWhetherItDelivered(t *testing.T) {
 	if err := service.Finish(first.ID, loops.RunStatusOK, "", true); err != nil {
 		t.Fatal(err)
 	}
-	now = now.Add(time.Hour)
+	// Within the same millisecond, the run created first is still the one
+	// before.
 	second, err := service.RunNow(context.Background(), loop.ID)
 	if err != nil {
 		t.Fatal(err)

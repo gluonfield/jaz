@@ -13,7 +13,7 @@ type Querier interface {
 	GetLatestLoopEventAt(ctx context.Context, loopID string) (int64, error)
 	GetLoop(ctx context.Context, id string) (Loop, error)
 	GetRun(ctx context.Context, id string) (LoopRun, error)
-	GetRunBefore(ctx context.Context, arg GetRunBeforeParams) (LoopRun, error)
+	GetRunBefore(ctx context.Context, id string) (LoopRun, error)
 	InsertLoopEvent(ctx context.Context, arg InsertLoopEventParams) error
 	ListActiveRunIDs(ctx context.Context, arg ListActiveRunIDsParams) ([]string, error)
 	ListActiveRunsForLoop(ctx context.Context, arg ListActiveRunsForLoopParams) ([]LoopRun, error)

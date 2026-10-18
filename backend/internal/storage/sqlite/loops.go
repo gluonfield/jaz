@@ -65,9 +65,9 @@ func (s *Store) LoadRun(id string) (loops.Run, error) {
 	return runFromDB(row), nil
 }
 
-// RunBefore is the run of run's loop created before it, if any.
-func (s *Store) RunBefore(run loops.Run) (loops.Run, error) {
-	row, err := loopdb.New(s.db).GetRunBefore(context.Background(), loopdb.GetRunBeforeParams{LoopID: run.LoopID, CreatedAtMs: loopTimeToMs(run.CreatedAt)})
+// RunBefore is the run of the same loop created before runID, if any.
+func (s *Store) RunBefore(runID string) (loops.Run, error) {
+	row, err := loopdb.New(s.db).GetRunBefore(context.Background(), runID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return loops.Run{}, nil
 	}

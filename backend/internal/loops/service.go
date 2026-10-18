@@ -40,18 +40,18 @@ type RuntimePromptBuilder struct {
 	PromptExtras []func(Loop, Run) string
 }
 
-func (b RuntimePromptBuilder) For(loop Loop, run Run, now time.Time) promptmodule.Modules {
+func (b RuntimePromptBuilder) For(loop Loop, run Run, now time.Time) (promptmodule.Modules, error) {
 	var extras []string
 	for _, section := range b.PromptExtras {
 		if extra := strings.TrimSpace(section(loop, run)); extra != "" {
 			extras = append(extras, extra)
 		}
 	}
-	previous, err := b.Repo.RunBefore(run)
+	previous, err := b.Repo.RunBefore(run.ID)
 	if err != nil {
-		previous = Run{}
+		return nil, err
 	}
-	return SystemPromptExtensions(loop, run, previous, now, extras...)
+	return SystemPromptExtensions(loop, run, previous, now, extras...), nil
 }
 
 func (b RuntimePromptBuilder) ForRun(runID string, now time.Time) (promptmodule.Modules, error) {
@@ -63,7 +63,7 @@ func (b RuntimePromptBuilder) ForRun(runID string, now time.Time) (promptmodule.
 	if err != nil {
 		return nil, err
 	}
-	return b.For(loop, run, now), nil
+	return b.For(loop, run, now)
 }
 
 type Option func(*Service)
@@ -519,11 +519,16 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run) {
 		_ = s.Finish(run.ID, RunStatusError, "loop executor is not configured", false)
 		return
 	}
+	extensions, err := s.RuntimePromptBuilder().For(loop, run, s.now())
+	if err != nil {
+		_ = s.Finish(run.ID, RunStatusError, err.Error(), false)
+		return
+	}
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
 		Loop:                   loop,
 		Run:                    run,
 		Thread:                 s.thread(loop),
-		SystemPromptExtensions: s.systemPromptExtensions(loop, run, s.now()),
+		SystemPromptExtensions: extensions,
 		ArtifactSurface:        s.artifactSurface(loop, run),
 		Controller:             s,
 	})
@@ -544,10 +549,6 @@ func (s *Service) artifactSurface(loop Loop, run Run) string {
 		return ""
 	}
 	return strings.TrimSpace(s.ArtifactSurface(loop, run))
-}
-
-func (s *Service) systemPromptExtensions(loop Loop, run Run, now time.Time) promptmodule.Modules {
-	return s.RuntimePromptBuilder().For(loop, run, now)
 }
 
 func SystemPromptExtensions(loop Loop, run, previous Run, now time.Time, extras ...string) promptmodule.Modules {

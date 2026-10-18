@@ -233,20 +233,21 @@ LIMIT sqlc.arg(limit);
 
 -- name: GetRunBefore :one
 SELECT
-  id,
-  loop_id,
-  thread_id,
-  scheduled_for_ms,
-  started_at_ms,
-  finished_at_ms,
-  status,
-  error,
-  created_at_ms,
-  reason,
-  delivered
-FROM loop_runs
-WHERE loop_id = sqlc.arg(loop_id) AND created_at_ms < sqlc.arg(created_at_ms)
-ORDER BY created_at_ms DESC
+  r.id,
+  r.loop_id,
+  r.thread_id,
+  r.scheduled_for_ms,
+  r.started_at_ms,
+  r.finished_at_ms,
+  r.status,
+  r.error,
+  r.created_at_ms,
+  r.reason,
+  r.delivered
+FROM loop_runs r, loop_runs this
+WHERE this.id = sqlc.arg(id) AND r.loop_id = this.loop_id
+  AND (r.created_at_ms < this.created_at_ms OR r.created_at_ms = this.created_at_ms AND r.rowid < this.rowid)
+ORDER BY r.created_at_ms DESC, r.rowid DESC
 LIMIT 1;
 
 -- name: ListActiveRunsForLoop :many

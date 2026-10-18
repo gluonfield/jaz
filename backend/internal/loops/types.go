@@ -189,8 +189,9 @@ type Repository interface {
 	ListLoops() ([]Loop, error)
 	ListRuns(loopID string, limit int) ([]Run, error)
 	LoadRun(id string) (Run, error)
-	// RunBefore is the run of run's loop created before it, or a zero Run.
-	RunBefore(run Run) (Run, error)
+	// RunBefore is the run of the same loop created before runID, or a zero
+	// Run.
+	RunBefore(runID string) (Run, error)
 	ListDueLoopIDs(now time.Time) ([]string, error)
 	ListActiveRunIDs() ([]string, error)
 	// ActiveRuns lists a loop's pending and begun runs, oldest first.

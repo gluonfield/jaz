@@ -18,6 +18,9 @@ type BotRecord struct {
 	Main     bool
 }
 
+// ErrMainBot refuses archiving the user's main bot, which stays.
+var ErrMainBot = errors.New("the main bot cannot be archived")
+
 var ErrMembershipNotFound = errors.New("bot membership not found")
 
 // BotMembership is a bot's place in a group: the thread it takes its group
