@@ -70,7 +70,7 @@ export function ChatLog({
         const closesRun = nextStamped || !sameSpeaker(next)
         return (
           <div key={entry.key} className={opensRun ? 'mt-4 first:mt-0' : 'mt-1'}>
-            {stamped ? <p className="pb-3 text-center text-[12px] text-ink-3">{messageTime(entry.at)}</p> : null}
+            {stamped ? <ChatStamp at={entry.at} /> : null}
             {entry.kind === 'user' ? (
               <>
                 <div className="flex flex-col items-end">
@@ -125,10 +125,15 @@ export function ChatLog({
   )
 }
 
+// The time over a message that follows a quiet gap.
+export function ChatStamp({ at }: { at: string }) {
+  return <p className="pb-3 text-center text-[12px] text-ink-3">{messageTime(at)}</p>
+}
+
 // One message, rounded like a messenger's: the person's own on the right in the
 // brand tint, a bot's on the left, with copy and time beside it on hover. A
 // narrow log drops them so they never squeeze the message.
-const ChatBubble = memo(function ChatBubble({ text, at, mentions, mine = false }: {
+export const ChatBubble = memo(function ChatBubble({ text, at, mentions, mine = false }: {
   text: string
   at: string
   mentions: ReadonlyMap<string, string>

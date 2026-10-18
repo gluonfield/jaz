@@ -21,6 +21,7 @@ import { exerciseComposerSend } from './composer-send'
 import { exerciseComposerWrap } from './composer-wrap'
 import { exerciseFolderDrop } from './folder-drop'
 import { exerciseChatHistory } from './chat-history'
+import { exerciseBotWelcome } from './bot-welcome'
 import { exerciseConnectCard } from './connect-card'
 import { exerciseAccentText } from './accent-text'
 import { exerciseAppNavigation } from './app-navigation'
@@ -108,10 +109,12 @@ function Fixture() {
       await exerciseFolderDrop()
       stage = 'bot chat history window'
       await exerciseChatHistory()
+      stage = 'a new bot typing its first message'
+      await exerciseBotWelcome()
       stage = 'connect card sign-in from chat'
       await exerciseConnectCard()
       if (new URLSearchParams(location.search).get('suite') === 'composer') {
-        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; connect cards start OAuth from chat and show the new account'] })
+        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; a new bot types before its first message arrives and a picked starter sends; connect cards start OAuth from chat and show the new account'] })
         return
       }
       stage = 'Tab-only focus rings'

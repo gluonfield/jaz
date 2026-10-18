@@ -353,6 +353,7 @@ func (s *Service) view(record storage.BotRecord, session storage.Session) Bot {
 		Pinned:    record.Pinned,
 		Unread:    session.Unread,
 		Status:    session.Status,
+		CreatedAt: session.CreatedAt,
 		UpdatedAt: session.UpdatedAt,
 		Members:   record.Members,
 		Preview:   s.preview(session.ID, record.Kind == KindGroup),
