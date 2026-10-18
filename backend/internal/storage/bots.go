@@ -46,7 +46,7 @@ var ErrCommitmentNotOpen = errors.New("no such open commitment")
 
 // ErrCommitmentWorking refuses closing a commitment while one of its threads
 // works.
-var ErrCommitmentWorking = errors.New("one of its threads is still working; wait for its result or stop it with stop_thread")
+var ErrCommitmentWorking = errors.New("a thread serving it is still working")
 
 // Commitment is something a bot owes beyond the turn it was asked in. It
 // closes as done only with a delivery to its requester, or as dropped.

@@ -20,7 +20,8 @@ type Runtime interface {
 
 // retryDelays are the waits before each further try at the chats whose resume
 // failed, as when an agent's process dies on its way up. A chat that fails its
-// last try ends its turn as failed, so no later startup tries it again.
+// last try ends its turn as failed, so no later startup tries it again; one
+// whose failure cannot be recorded stays interrupted for the next startup.
 var retryDelays = []time.Duration{2 * time.Second, 8 * time.Second}
 
 // resumeTimeout bounds one try.
@@ -59,8 +60,11 @@ func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, lo
 				failed = append(failed, id)
 			case err != nil:
 				logger.Error("resume interrupted chat", "session", id, "error", err)
-				if ctx.Err() == nil {
-					giveUp(ctx, store, runtime, id, err)
+				if ctx.Err() != nil {
+					break
+				}
+				if err := runtime.FailInterruptedTurn(ctx, id, fmt.Sprintf("Could not resume chat after restart: %v", err)); err != nil {
+					logger.Error("end a chat that cannot resume", "session", id, "error", err)
 				}
 			}
 			events.Publish(sessionevents.Event{SessionID: id, Type: sessionevents.TypeSession})
@@ -84,15 +88,6 @@ func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, id
 	defer cancel()
 	err = runtime.ResumeInterruptedTurn(startCtx, session.ID)
 	return err != nil && !last && startCtx.Err() == nil, err
-}
-
-// giveUp ends the turn of a chat that cannot resume as failed, so whoever
-// waits on it hears; if even that fails, the chat is left in error.
-func giveUp(ctx context.Context, store storage.SessionStore, runtime Runtime, id string, cause error) {
-	message := fmt.Sprintf("Could not resume chat after restart: %v", cause)
-	if err := runtime.FailInterruptedTurn(ctx, id, message); err != nil {
-		_ = store.UpdateSessionStatus(id, storage.StatusError, message, time.Time{})
-	}
 }
 
 // resumable reports whether chats with this source resume after a restart:

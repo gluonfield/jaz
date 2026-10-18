@@ -45,23 +45,18 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		return storage.Session{}, err
 	}
 	session.Slug = slug
-	if input.Commitment != 0 {
-		err = s.createServingLocked(session, input.Commitment)
-	} else {
-		err = s.saveSessionLocked(session, false)
-	}
+	err = s.insertNewSessionLocked(session, input.Commitment)
+	s.writeMu.Unlock()
 	if err != nil {
-		s.writeMu.Unlock()
 		return storage.Session{}, err
 	}
-	s.writeMu.Unlock()
 	s.mirrorSession(session)
 	return session, nil
 }
 
-// createServingLocked saves a new thread of a bot together with its link to
-// the open commitment of that bot it serves.
-func (s *Store) createServingLocked(session storage.Session, commitment int64) error {
+// insertNewSessionLocked saves a new thread together with its link to the
+// open commitment of its bot it serves, if any.
+func (s *Store) insertNewSessionLocked(session storage.Session, commitment int64) error {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -71,12 +66,14 @@ func (s *Store) createServingLocked(session storage.Session, commitment int64) e
 	if err := insertSession(tx, session); err != nil {
 		return err
 	}
-	linked, err := botdb.New(tx).LinkCommitmentThread(ctx, botdb.LinkCommitmentThreadParams{ThreadID: session.ID, CommitmentID: commitment, BotID: session.SourceID})
-	if err != nil {
-		return err
-	}
-	if linked == 0 {
-		return fmt.Errorf("commitment %d: %w", commitment, storage.ErrCommitmentNotOpen)
+	if commitment != 0 {
+		linked, err := botdb.New(tx).LinkCommitmentThread(ctx, botdb.LinkCommitmentThreadParams{ThreadID: session.ID, CommitmentID: commitment, BotID: session.SourceID})
+		if err != nil {
+			return err
+		}
+		if linked == 0 {
+			return fmt.Errorf("commitment %d: %w", commitment, storage.ErrCommitmentNotOpen)
+		}
 	}
 	return tx.Commit()
 }

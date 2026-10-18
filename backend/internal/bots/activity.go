@@ -63,89 +63,79 @@ type OwedThread struct {
 	State string `json:"state"`
 }
 
-// Owed lists what a bot still owes, oldest first.
-func (s *Service) Owed(botID string) ([]Owed, error) {
-	if !isBot(s.store, botID) {
-		return nil, storage.ErrBotNotFound
-	}
-	open, err := s.store.ListOpenCommitments(botID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Owed, 0, len(open))
-	for _, commitment := range open {
-		owed := Owed{ID: commitment.ID, Request: commitment.Request, For: forName(s.store, commitment), Next: commitment.Note, OpenedAt: commitment.OpenedAt}
-		for _, id := range commitment.Threads {
-			if thread, err := s.store.LoadSession(id); err == nil {
-				owed.Threads = append(owed.Threads, OwedThread{ID: id, Title: cmp.Or(thread.Title, thread.Slug), State: threadState(thread)})
-			}
-		}
-		out = append(out, owed)
-	}
-	return out, nil
+// ActivityView is what a bot owes, oldest first, and what it is doing and
+// did.
+type ActivityView struct {
+	Items []Activity `json:"items"`
+	Owed  []Owed     `json:"owed"`
 }
 
-// forName is who a commitment is owed to as Activity names them: the bot, or
-// empty for the user.
-func forName(store PromptStore, commitment storage.Commitment) string {
-	if recipient(store, commitment.Requester) == "" {
-		return ""
-	}
-	return owedName(store, commitment)
-}
-
-// Activity lists what a bot is doing, then what it did in the last
-// activityWindow, newest first. A thread serving a commitment shows through
-// the commitment instead.
-func (s *Service) Activity(botID string) ([]Activity, error) {
+// Activity lists what a bot owes, then what it is doing and what it did in
+// the last activityWindow, newest first. A thread serving a commitment shows
+// through the commitment, unless it runs again after the commitment closed.
+func (s *Service) Activity(botID string) (ActivityView, error) {
 	if !isBot(s.store, botID) {
-		return nil, storage.ErrBotNotFound
+		return ActivityView{}, storage.ErrBotNotFound
 	}
 	since := time.Now().Add(-activityWindow)
 	open, err := s.store.ListOpenCommitments(botID)
 	if err != nil {
-		return nil, err
+		return ActivityView{}, err
 	}
 	closed, err := s.store.ListClosedCommitments(botID, since)
 	if err != nil {
-		return nil, err
+		return ActivityView{}, err
+	}
+	view := ActivityView{Owed: make([]Owed, 0, len(open))}
+	owing, served := map[string]bool{}, map[string]bool{}
+	for _, commitment := range open {
+		_, name, err := owedTo(s.store, commitment)
+		if err != nil {
+			return ActivityView{}, err
+		}
+		owed := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note, OpenedAt: commitment.OpenedAt}
+		for _, id := range commitment.Threads {
+			owing[id] = true
+			if thread, err := s.store.LoadSession(id); err == nil {
+				owed.Threads = append(owed.Threads, OwedThread{ID: id, Title: cmp.Or(thread.Title, thread.Slug), State: threadState(thread)})
+			}
+		}
+		view.Owed = append(view.Owed, owed)
 	}
 	var out []Activity
-	served := map[string]bool{}
-	for _, commitment := range append(open, closed...) {
-		for _, thread := range commitment.Threads {
-			served[thread] = true
-		}
-	}
 	for _, commitment := range closed {
-		item := Activity{Kind: "commitment", At: commitment.ClosedAt, Title: commitment.Request, Status: commitment.Status, For: forName(s.store, commitment)}
+		_, name, err := owedTo(s.store, commitment)
+		if err != nil {
+			return ActivityView{}, err
+		}
+		item := Activity{Kind: "commitment", At: commitment.ClosedAt, Title: commitment.Request, Status: commitment.Status, For: name}
 		if commitment.Status == storage.CommitmentDropped {
 			item.Text = commitment.Note
 		}
-		if n := len(commitment.Threads); n > 0 {
-			item.ThreadID = commitment.Threads[n-1]
+		for _, id := range commitment.Threads {
+			item.ThreadID, served[id] = id, true
 		}
 		out = append(out, item)
 	}
 	for _, archived := range []bool{false, true} {
 		chats, err := s.store.ListSessions(storage.SessionFilter{SourceType: storage.SourceBotWorker, SourceID: botID, IncludeChildren: true, Archived: archived, UpdatedSince: since})
 		if err != nil {
-			return nil, err
+			return ActivityView{}, err
 		}
 		for _, chat := range chats {
-			if served[chat.ID] {
-				continue
-			}
 			item := Activity{Kind: "side_chat", At: cmp.Or(chat.CompletedAt, chat.UpdatedAt), Title: chat.Title, Status: chat.Status, ThreadID: chat.ID}
 			if chat.Status == storage.StatusRunning && chat.Turn != nil {
 				item.Running, item.At = true, cmp.Or(chat.Turn.StartedAt, chat.UpdatedAt)
+			}
+			if owing[chat.ID] || served[chat.ID] && !item.Running {
+				continue
 			}
 			out = append(out, item)
 		}
 	}
 	routines, err := s.routines.List()
 	if err != nil {
-		return nil, err
+		return ActivityView{}, err
 	}
 	for _, routine := range routines {
 		if routine.BotID != botID {
@@ -153,7 +143,7 @@ func (s *Service) Activity(botID string) ([]Activity, error) {
 		}
 		runs, err := s.routines.Runs(routine.ID, runsShown)
 		if err != nil {
-			return nil, err
+			return ActivityView{}, err
 		}
 		for _, run := range runs {
 			item := Activity{
@@ -173,7 +163,7 @@ func (s *Service) Activity(botID string) ([]Activity, error) {
 	}
 	events, err := s.store.LoadBotActivity(botID, since)
 	if err != nil {
-		return nil, err
+		return ActivityView{}, err
 	}
 	for _, event := range events {
 		if activity := event.BotActivity; activity != nil && slices.Contains(listedActivity, activity.Kind) {
@@ -183,5 +173,6 @@ func (s *Service) Activity(botID string) ([]Activity, error) {
 	slices.SortStableFunc(out, func(a, b Activity) int { return b.At.Compare(a.At) })
 	running := slices.DeleteFunc(slices.Clone(out), func(item Activity) bool { return !item.Running })
 	done := slices.DeleteFunc(out, func(item Activity) bool { return item.Running })
-	return append(running, done[:min(len(done), activityShown)]...), nil
+	view.Items = append(running, done[:min(len(done), activityShown)]...)
+	return view, nil
 }

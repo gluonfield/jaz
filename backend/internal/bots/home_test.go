@@ -271,7 +271,7 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		commitments[title] = owed.ID
 		return session.ID
 	}
-	finished, working, archived := sideChat(research.ID, "Plan review"), sideChat(research.ID, "Queue fixes"), sideChat(research.ID, "Old idea")
+	finished, working, archived, rerun := sideChat(research.ID, "Plan review"), sideChat(research.ID, "Queue fixes"), sideChat(research.ID, "Old idea"), sideChat(research.ID, "Rerun")
 	sideChat(operations.ID, "Their chat")
 	// A side chat from before commitments serves none.
 	legacy, err := store.CreateSession(storage.CreateSession{Slug: "legacy", Title: "Legacy notes", ParentID: research.ID, SourceType: storage.SourceBotWorker, SourceID: research.ID})
@@ -279,7 +279,7 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		t.Fatal(err)
 	}
 	running := legacy.ID
-	for _, id := range []string{finished, archived} {
+	for _, id := range []string{finished, archived, rerun} {
 		if err := store.StartSessionTurn(id, storage.Turn{}); err != nil {
 			t.Fatal(err)
 		}
@@ -294,7 +294,11 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if _, err := service.Commit(research.ID, Commit{ID: commitments["Old idea"], Drop: "Abandoned"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{working, running} {
+	// A thread taken up again after its commitment closed runs on its own.
+	if _, err := service.Commit(research.ID, Commit{ID: commitments["Rerun"], Drop: "Superseded"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{working, running, rerun} {
 		if err := store.StartSessionTurn(id, storage.Turn{}); err != nil {
 			t.Fatal(err)
 		}
@@ -332,10 +336,11 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	service.NoteHomeChanges(running)
 	service.NoteHomeChanges(finished)
 
-	items, err := service.Activity(research.ID)
+	view, err := service.Activity(research.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	items := view.Items
 	var got []string
 	for i, item := range items {
 		if i > 0 && (item.Running && !items[i-1].Running || item.Running == items[i-1].Running && item.At.After(items[i-1].At)) {
@@ -354,22 +359,20 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	// Side chats that serve commitments show through them.
 	want := []string{
 		"commitment:Old idea:Abandoned:dropped",
+		"commitment:Rerun:Superseded:dropped",
 		"file_changed:MEMORY.md::",
 		"message_received:Operations:The queue fixes.:",
 		"message_sent:Operations:Which fixes matter this week?:",
 		"routine:Morning brief::ok",
 		"routine:Morning brief:Gmail sign-in expired:error",
 		"side_chat:Legacy notes::running:running",
+		"side_chat:Rerun::running:running",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("activity =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	owed, err := service.Owed(research.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var lines []string
-	for _, item := range owed {
+	for _, item := range view.Owed {
 		for _, thread := range item.Threads {
 			lines = append(lines, fmt.Sprintf("#%d %s: %s %s %s", item.ID, item.Request, thread.ID, thread.Title, thread.State))
 		}
@@ -390,14 +393,14 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		}
 	}
 	busy, err := service.Activity(research.ID)
-	if err != nil || len(busy) != activityShown+1 || busy[0].ThreadID != running {
-		t.Fatalf("after %d newer items the running side chat is gone: %d items, first %+v, %v", activityShown, len(busy), busy[0], err)
+	if err != nil || len(busy.Items) != activityShown+2 || !busy.Items[0].Running || !busy.Items[1].Running {
+		t.Fatalf("after %d newer items the running side chats are gone: %d items, first %+v, %v", activityShown, len(busy.Items), busy.Items[:2], err)
 	}
 	theirs, err := service.Activity(operations.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(theirs, func(item Activity) bool {
+	if !slices.ContainsFunc(theirs.Items, func(item Activity) bool {
 		return item.Kind == "message_received" && item.Text == "Which fixes matter this week?"
 	}) {
 		t.Fatalf("the bot written to has no record of the message: %+v", theirs)

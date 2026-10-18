@@ -233,9 +233,10 @@ func TestRecoveryShutdownLeavesInterruptedChatResumable(t *testing.T) {
 }
 
 // endlessRuntime cannot resume a chat, nor end its turn.
-type endlessRuntime struct{}
+type endlessRuntime struct{ tries *int }
 
-func (endlessRuntime) ResumeInterruptedTurn(context.Context, string) error {
+func (r endlessRuntime) ResumeInterruptedTurn(context.Context, string) error {
+	*r.tries++
 	return errors.New("provider unavailable")
 }
 
@@ -243,7 +244,7 @@ func (endlessRuntime) FailInterruptedTurn(context.Context, string, string) error
 	return errors.New("store unavailable")
 }
 
-func TestAChatWhoseTurnCannotEndAfterItsLastTryIsLeftInError(t *testing.T) {
+func TestAChatWhoseFailureCannotBeRecordedIsTriedAgainAtTheNextStartup(t *testing.T) {
 	delays := retryDelays
 	retryDelays = []time.Duration{0, 0}
 	t.Cleanup(func() { retryDelays = delays })
@@ -259,11 +260,14 @@ func TestAChatWhoseTurnCannotEndAfterItsLastTryIsLeftInError(t *testing.T) {
 	if err := store.UpdateSessionStatus(session.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Resume(t.Context(), store, endlessRuntime{}, sessionlock.New(), sessionevents.New(), log.New(io.Discard)); err != nil {
-		t.Fatal(err)
+	tries := 0
+	for range 2 {
+		if err := Resume(t.Context(), store, endlessRuntime{tries: &tries}, sessionlock.New(), sessionevents.New(), log.New(io.Discard)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	stored, err := store.LoadSession(session.ID)
-	if err != nil || stored.Status != storage.StatusError || stored.Error != "Could not resume chat after restart: provider unavailable" {
-		t.Fatalf("stored = %+v, %v; want the chat left in error so no later startup tries it", stored, err)
+	if err != nil || stored.Status != storage.StatusInterrupted || tries != 6 {
+		t.Fatalf("stored = %+v, tries = %d, %v; want the chat tried again at the next startup", stored, tries, err)
 	}
 }

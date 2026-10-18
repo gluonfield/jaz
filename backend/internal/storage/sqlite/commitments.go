@@ -62,14 +62,33 @@ func closeDelivered(ctx context.Context, q *botdb.Queries, ids []int64, at time.
 	return nil
 }
 
+// closeAnswered closes as done the commitments a finished turn's answer
+// delivers. The answer was refused up front for any that could not close, so
+// one that cannot close now was taken up again later in the turn and stays
+// open.
+func closeAnswered(ctx context.Context, q *botdb.Queries, ids []int64, at time.Time) error {
+	for _, id := range ids {
+		err := closeCommitment(ctx, q, id, storage.CommitmentDone, "", at)
+		if err != nil && !errors.Is(err, storage.ErrCommitmentNotOpen) && !errors.Is(err, storage.ErrCommitmentWorking) {
+			return err
+		}
+	}
+	return nil
+}
+
+// closable refuses a commitment one of whose threads still works.
+func closable(ctx context.Context, q *botdb.Queries, id int64) error {
+	working, err := q.CommitmentWorking(ctx, id)
+	if err == nil && working {
+		err = storage.ErrCommitmentWorking
+	}
+	return err
+}
+
 // closeCommitment closes an open commitment none of whose threads works.
 func closeCommitment(ctx context.Context, q *botdb.Queries, id int64, status, note string, at time.Time) error {
-	working, err := q.CommitmentWorking(ctx, id)
-	if err != nil {
+	if err := closable(ctx, q, id); err != nil {
 		return err
-	}
-	if working {
-		return storage.ErrCommitmentWorking
 	}
 	closed, err := q.CloseCommitment(ctx, botdb.CloseCommitmentParams{
 		ID: id, Status: status, Note: nullDBString(note), ClosedAtMs: sql.NullInt64{Int64: timeToMs(at), Valid: true},

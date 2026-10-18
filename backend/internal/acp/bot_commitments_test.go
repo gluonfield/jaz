@@ -168,7 +168,7 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 	}
 }
 
-func TestACommitmentClosesOnlyWithAnAnswerToTheThreadThatAsked(t *testing.T) {
+func TestAnAnswerWithDoneGoesToTheThreadThatAsked(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	asker, helper := jaz.newBot("Asker"), jaz.newBot("Helper")
@@ -193,11 +193,25 @@ func TestACommitmentClosesOnlyWithAnAnswerToTheThreadThatAsked(t *testing.T) {
 	}
 	id := <-opened
 	jaz.idle(helper.ID)
-	if err := jaz.bots.Message(helper.ID, "Asker", "It costs four pounds.", id); err == nil || !strings.Contains(err.Error(), "where they asked") {
-		t.Fatalf("an answer to Asker's own chat closed what its routine asked: %v", err)
+	if err := jaz.bots.Say(helper.ID, "It costs four pounds.", id); err == nil || !strings.Contains(err.Error(), "owed to Asker") {
+		t.Fatalf("an answer to the user closed what Asker asked: %v", err)
 	}
-	if commitment := jaz.commitment(id); commitment.Requester != child || commitment.Status != storage.CommitmentOpen {
-		t.Fatalf("commitment = %+v, want it open and owed to the routine's thread", commitment)
+	if err := jaz.bots.Message(helper.ID, "Asker", "It costs four pounds.", id); err != nil {
+		t.Fatal(err)
+	}
+	if commitment := jaz.commitment(id); commitment.Requester != child || commitment.Status != storage.CommitmentDone {
+		t.Fatalf("commitment = %+v, want it closed by the answer to the routine's thread", commitment)
+	}
+	answer := func(thread string) bool {
+		for _, message := range jaz.queued(thread) {
+			if strings.Contains(message.Text, "It costs four pounds.") {
+				return true
+			}
+		}
+		return false
+	}
+	if !answer(child) || answer(asker.ID) {
+		t.Fatalf("the answer went to %v, want only the routine's thread %s", map[string]bool{"routine": answer(child), "Asker's chat": answer(asker.ID)}, child)
 	}
 	jaz.release()
 }

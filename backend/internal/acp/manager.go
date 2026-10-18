@@ -450,9 +450,6 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdS
 	if err != nil {
 		return createdSession{}, err
 	}
-	if req.Commitment != 0 && req.SourceType != storage.SourceBotWorker {
-		return createdSession{}, errors.New("commitment is only for threads a bot starts from its own chat")
-	}
 	req, cfg, effort, err := m.spawnConfig(req)
 	if err != nil {
 		return createdSession{}, err

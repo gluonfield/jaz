@@ -70,7 +70,7 @@ func (t *MCPTools) List(context.Context, *mcp.CallToolRequest, MCPListInput) (*m
 type MCPMessageInput struct {
 	Bot     string  `json:"bot" jsonschema:"bot or group id, a bot:<id> mention target, or the exact name"`
 	Message string  `json:"message"`
-	Done    []int64 `json:"done,omitempty" jsonschema:"Your commitments to this bot that the message delivers; they close as it arrives."`
+	Done    []int64 `json:"done,omitempty" jsonschema:"Your commitments to this bot that the message delivers; it goes to the thread of the bot that asked and they close as it arrives."`
 }
 
 type MCPMessageOutput struct {

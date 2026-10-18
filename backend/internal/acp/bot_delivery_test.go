@@ -208,6 +208,9 @@ func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *test
 					return err
 				}
 				worker <- thread.ThreadID
+				if err := p.bots.Say(req.Session, "Done already.", owed); err == nil || !strings.Contains(err.Error(), "still working") {
+					t.Errorf("an answer took done for a commitment whose thread still works: %v", err)
+				}
 				return p.bots.Say(req.Session, "On it.")
 			case strings.HasPrefix(req.Message, "[result for the bot that asked]"):
 				if err := p.bots.Say(req.Session, "The parser is done.", owed); err != nil {

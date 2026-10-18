@@ -1,6 +1,7 @@
 package bots
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -36,12 +37,9 @@ type Commit struct {
 // Commit applies change from a turn in a bot's own thread and returns the
 // commitment's id. A commitment opens owed to whoever the turn answers.
 func (s *Service) Commit(threadID string, change Commit) (int64, error) {
-	if !isBot(s.store, threadID) {
+	record, session, err := s.load(threadID)
+	if err != nil || record.Kind != KindBot {
 		return 0, errors.New("commitments are kept in a bot's own chat")
-	}
-	session, err := s.store.LoadSession(threadID)
-	if err != nil {
-		return 0, err
 	}
 	var output storage.TurnOutput
 	if session.Turn != nil && session.Turn.Output != nil {
@@ -64,7 +62,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 			return 0, fmt.Errorf("#%d is delivered by this turn's answer", commitment.ID)
 		}
 		if err := s.store.DropCommitment(commitment.ID, drop, time.Now()); err != nil {
-			return 0, fmt.Errorf("#%d: %w", commitment.ID, err)
+			return 0, fmt.Errorf("#%d: %w", commitment.ID, explain(err))
 		}
 		return commitment.ID, nil
 	}
@@ -82,15 +80,25 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 // must be the bot's, open and owed to exactly that thread.
 func (s *Service) delivers(threadID, to string, done []int64) error {
 	for _, id := range done {
-		commitment, err := s.open(threadID, id)
+		thread, name, err := s.owed(threadID, id)
 		if err != nil {
 			return err
 		}
-		if recipient(s.store, commitment.Requester) != to {
-			return fmt.Errorf("#%d is owed to %s; deliver it where they asked", id, owedName(s.store, commitment))
+		if thread != to {
+			return fmt.Errorf("#%d is owed to %s; deliver it where they asked", id, cmp.Or(name, "the user"))
 		}
 	}
 	return nil
+}
+
+// owed is the thread one of a bot's open commitments is owed to and who asked
+// there.
+func (s *Service) owed(botID string, id int64) (string, string, error) {
+	commitment, err := s.open(botID, id)
+	if err != nil {
+		return "", "", err
+	}
+	return owedTo(s.store, commitment)
 }
 
 func (s *Service) open(botID string, id int64) (storage.Commitment, error) {
@@ -104,14 +112,23 @@ func (s *Service) open(botID string, id int64) (storage.Commitment, error) {
 	return commitment, nil
 }
 
-// owedName names who a commitment is owed to: the bot that asked, or the user
-// when it was the user or the bot is gone.
-func owedName(store PromptStore, commitment storage.Commitment) string {
-	if recipient(store, commitment.Requester) == "" {
-		return "the user"
+// owedTo is the thread a commitment's result goes to and the name of who
+// asked there; both empty when the user asked or that thread is gone.
+func owedTo(store PromptStore, commitment storage.Commitment) (string, string, error) {
+	thread, err := recipient(store, commitment.Requester)
+	if thread == "" || err != nil {
+		return "", "", err
 	}
-	_, name := author(store, commitment.Requester)
-	return name
+	_, name := author(store, thread)
+	return thread, name, nil
+}
+
+// explain tells an agent what to do about a commitment that cannot close.
+func explain(err error) error {
+	if errors.Is(err, storage.ErrCommitmentWorking) {
+		return fmt.Errorf("%w; wait for its result or stop it with stop_thread", err)
+	}
+	return err
 }
 
 // threadState is how far a thread has got with its work.
@@ -148,7 +165,11 @@ func commitmentNote(store NoteStore, bot string) string {
 	var b strings.Builder
 	b.WriteString("Your open commitments. Deliver each result with done set to its number; drop what is no longer wanted:\n")
 	for _, commitment := range open {
-		fmt.Fprintf(&b, "#%d for %s: %s", commitment.ID, owedName(store, commitment), commitment.Request)
+		_, name, err := owedTo(store, commitment)
+		if err != nil {
+			return fmt.Sprintf("Your open commitments could not be read: %v.\n\n", err)
+		}
+		fmt.Fprintf(&b, "#%d for %s: %s", commitment.ID, cmp.Or(name, "the user"), commitment.Request)
 		for _, id := range commitment.Threads {
 			if thread, err := store.LoadSession(id); err == nil {
 				fmt.Fprintf(&b, " · thread %s %s", thread.Slug, threadState(thread))

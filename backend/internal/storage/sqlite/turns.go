@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -37,13 +36,27 @@ func (s *Store) AppendTurnReply(id, message string, done []int64) error {
 	if err != nil {
 		return err
 	}
+	ctx := context.Background()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	updated, err := threaddb.New(s.db).AppendTurnReply(context.Background(), threaddb.AppendTurnReplyParams{ID: id, Message: message, Done: string(ids)})
-	if err == nil && updated == 0 {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, commitment := range done {
+		if err := closable(ctx, botdb.New(tx), commitment); err != nil {
+			return err
+		}
+	}
+	updated, err := threaddb.New(tx).AppendTurnReply(ctx, threaddb.AppendTurnReplyParams{ID: id, Message: message, Done: string(ids)})
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
 		return fmt.Errorf("%s has no active reply turn", id)
 	}
-	return err
+	return tx.Commit()
 }
 
 // ResetTurnHops ends the bot-to-bot exchange a running turn is part of, as
@@ -126,12 +139,8 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 		if !queued {
 			continue
 		}
-		// The answer is on its way however its commitments stand; one that a
-		// thread took up again stays open.
-		for _, commitment := range delivery.Closes {
-			if err := closeCommitment(ctx, botdb.New(tx), commitment, storage.CommitmentDone, "", at); err != nil && !errors.Is(err, storage.ErrCommitmentNotOpen) && !errors.Is(err, storage.ErrCommitmentWorking) {
-				return err
-			}
+		if err := closeAnswered(ctx, botdb.New(tx), delivery.Closes, at); err != nil {
+			return err
 		}
 	}
 	return tx.Commit()
