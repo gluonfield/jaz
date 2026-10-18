@@ -54,6 +54,7 @@ type sendOptions struct {
 	requireActiveGoal     bool
 	allowSilence          bool
 	output                *storage.TurnOutput
+	parentOutput          *storage.TurnOutput
 }
 
 type InternalTurnRequest struct {
@@ -175,6 +176,18 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		}
 		promptMessage = m.cfg.TurnNote(session) + promptMessage
 	}
+	notifyParent := req.ParentVisible && req.Completion.propagates() && !req.PlanRequested
+	// Work a parent starts while answering a bot reports back to that bot.
+	parentOutput := opts.parentOutput
+	if notifyParent && req.From != "" && req.From == job.ParentID {
+		parent, err := m.store.LoadSession(req.From)
+		if err != nil {
+			return Job{}, err
+		}
+		if parent.Turn != nil {
+			parentOutput = parent.Turn.Output.Continuation()
+		}
+	}
 	var prompt acpschema.PromptRequest
 	if local == nil {
 		prompt, err = m.promptRequest(job, goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments)
@@ -184,8 +197,8 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	}
 	if err := m.store.StartSessionTurn(job.ID, storage.Turn{
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
-		ParentVisible: req.ParentVisible, NotifyParent: req.ParentVisible && req.Completion.propagates() && !req.PlanRequested,
-		AllowSilence: opts.allowSilence, Output: opts.output,
+		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
+		AllowSilence: opts.allowSilence, Output: opts.output, ParentOutput: parentOutput,
 	}); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}

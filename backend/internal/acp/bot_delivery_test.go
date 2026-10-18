@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -87,13 +89,13 @@ func TestRestartResumesBotAndWorkerAndReturnsResult(t *testing.T) {
 
 type earlyReplyManager struct {
 	*acp.Manager
-	speak func(string) error
+	speak func(acp.InternalTurnRequest) error
 }
 
 func (m earlyReplyManager) StartInternalTurn(ctx context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
 	job, err := m.Manager.StartInternalTurn(ctx, req)
 	if err == nil {
-		err = m.speak(req.Session)
+		err = m.speak(req)
 	}
 	return job, err
 }
@@ -129,8 +131,8 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	routines := loops.NewService(store, nil, logger)
 	service := bots.NewService(store, root, first, handler, handler, routines, bus, logger)
 	spoke := make(chan error, 1)
-	handler.ACP = earlyReplyManager{Manager: first, speak: func(id string) error {
-		err := service.Say(id, "The complete reply.")
+	handler.ACP = earlyReplyManager{Manager: first, speak: func(req acp.InternalTurnRequest) error {
+		err := service.Say(req.Session, "The complete reply.")
 		spoke <- err
 		return err
 	}}
@@ -179,6 +181,135 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	if !service.AppVisible(ids[1]) {
 		t.Fatal("completed peer turn kept future output private")
 	}
+}
+
+func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	asker, helper := jaz.newBot("Asker"), jaz.newBot("Helper")
+	turns := make(chan acp.InternalTurnRequest, 8)
+	worker := make(chan string, 1)
+	// The helper hands the asker's request to a thread, then reports what
+	// the thread found.
+	act := func(p *jazProcess) earlyReplyManager {
+		return earlyReplyManager{Manager: p.manager, speak: func(req acp.InternalTurnRequest) error {
+			turns <- req
+			switch {
+			case strings.HasPrefix(req.Message, "[message from Asker]"):
+				_, thread, err := acp.NewMCPTools(p.manager).Create(p.ctx, callAs(helper.ID), acp.MCPCreateInput{Prompt: "Write the parser until released"})
+				if err != nil {
+					return err
+				}
+				worker <- thread.ThreadID
+				return p.bots.Say(req.Session, "On it.")
+			case strings.HasPrefix(req.Message, "[result for the bot that asked]"):
+				return p.bots.Say(req.Session, "The parser is done.")
+			}
+			return nil
+		}}
+	}
+	jaz.server.ACP = act(jaz)
+	if err := jaz.bots.Message(asker.ID, helper.ID, "Build a parser until released"); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, <-worker)
+
+	jaz.manager.Close()
+	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	jaz.server.ACP = act(jaz)
+	jaz.recover()
+	var result acp.InternalTurnRequest
+	var answers []acp.InternalTurnRequest
+	for len(answers) < 2 {
+		select {
+		case req := <-turns:
+			if strings.HasPrefix(req.Message, "[result for the bot that asked]") {
+				result = req
+			}
+			if req.Session == asker.ID {
+				answers = append(answers, req)
+			}
+		case <-jaz.ctx.Done():
+			t.Fatalf("the asker got %+v, want the helper's acknowledgement and the thread's result", answers)
+		}
+	}
+	if result.Session != helper.ID || result.Output == nil || result.Output.ReplyTo != asker.ID || result.Output.Hops != 1 {
+		t.Fatalf("result turn = %+v, want the helper answering the asker", result)
+	}
+	for i, want := range []string{"On it.", "The parser is done."} {
+		if answer := answers[i]; !strings.HasPrefix(answer.Message, "[reply from Helper]") || !strings.Contains(answer.Message, want) || answer.Output.Hops != 1 {
+			t.Fatalf("answer %d = %+v, want the helper's reply %q one hop from the user", i, answer, want)
+		}
+	}
+	events, err := store.LoadSessionEvents(helper.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.RoomMessage != nil {
+			t.Fatalf("the answer for the asker reached the helper's user: %+v", event.RoomMessage)
+		}
+	}
+}
+
+func TestThreadResultReachesTheUserWhenNoBotWaitsForIt(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	asker, helper, other := jaz.newBot("Asker"), jaz.newBot("Helper"), jaz.newBot("Other")
+	tools := acp.NewMCPTools(jaz.manager)
+	completions := make(chan acp.InternalTurnRequest, 4)
+	worker := make(chan string, 1)
+	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, speak: func(req acp.InternalTurnRequest) error {
+		switch {
+		case req.Session == helper.ID && strings.HasPrefix(req.Message, "[message from Asker]"):
+			_, thread, err := tools.Create(jaz.ctx, callAs(helper.ID), acp.MCPCreateInput{Prompt: "Draft the report until released"})
+			worker <- thread.ThreadID
+			return err
+		case req.Session == helper.ID:
+			completions <- req
+		case req.Session == other.ID:
+			// A bot that is not the thread's parent follows it up while it
+			// answers a bot itself.
+			_, _, err := tools.Send(jaz.ctx, callAs(other.ID), acp.MCPSendInput{ThreadID: <-worker, Prompt: "Add a summary"})
+			return err
+		}
+		return nil
+	}}
+	if err := jaz.bots.Message(asker.ID, helper.ID, "Draft a report until released"); err != nil {
+		t.Fatal(err)
+	}
+	thread := <-worker
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread)
+	// The asker is deleted before the thread it asked for finishes.
+	if err := jaz.bots.Delete(asker.ID); err != nil {
+		t.Fatal(err)
+	}
+	jaz.release()
+	await := func() acp.InternalTurnRequest {
+		select {
+		case req := <-completions:
+			return req
+		case <-jaz.ctx.Done():
+			t.Fatal("the thread's result never reached the helper")
+		}
+		return acp.InternalTurnRequest{}
+	}
+	results := []acp.InternalTurnRequest{await()}
+	worker <- thread
+	if err := jaz.bots.Message(helper.ID, other.ID, "Follow up on the report, block until cancelled"); err != nil {
+		t.Fatal(err)
+	}
+	results = append(results, await())
+	for i, result := range results {
+		if result.Output != nil || !strings.HasPrefix(result.Message, "ACP session") {
+			t.Fatalf("result %d = %+v, want a plain report for the helper's user", i, result)
+		}
+	}
+}
+
+// callAs is a tool call made from thread.
+func callAs(thread string) *mcp.CallToolRequest {
+	return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(thread)}}
 }
 
 func waitForBlockingTool(t *testing.T, ctx context.Context, manager *acp.Manager, id string) {

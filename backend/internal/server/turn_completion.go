@@ -37,7 +37,16 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 			if loadErr != nil {
 				err = loadErr
 			} else if !parent.Archived && parent.RuntimeRef != nil && parent.RuntimeRef.Agent != acp.AgentJaz {
-				deliveries = append(deliveries, storage.TurnDelivery{SessionID: parent.ID, Message: storage.NewInternalQueuedMessage(acp.CompletionPrompt(job))})
+				message := storage.NewInternalQueuedMessage(acp.CompletionPrompt(job, "the user"))
+				// Work started for another bot reports to that bot while it is
+				// still there.
+				if output := session.Turn.ParentOutput; output != nil {
+					if asker, err := s.Store.LoadSession(output.ReplyTo); err == nil && !asker.Archived {
+						message.Text = bots.ResultPrompt(job)
+						message.Output = output
+					}
+				}
+				deliveries = append(deliveries, storage.TurnDelivery{SessionID: parent.ID, Message: message})
 			}
 		}
 		output := session.Turn.Output

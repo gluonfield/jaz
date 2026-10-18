@@ -113,7 +113,7 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 	}
 	job, err := t.Service.Send(ctx, SendRequest{
 		Session: result.SessionID, Message: input.Prompt, PlanRequested: input.Plan,
-		Completion: CompletionAsync, ParentVisible: true, FromAgent: true,
+		Completion: CompletionAsync, ParentVisible: true, FromAgent: true, From: mcpsession.SessionID(req),
 	})
 	if err != nil {
 		return nil, ThreadSnapshot{}, fmt.Errorf("thread %s was created but its prompt could not start: %w", result.SessionID, err)
@@ -127,10 +127,10 @@ type MCPSendInput struct {
 	Plan     bool   `json:"plan,omitempty" jsonschema:"Request the agent's plan mode for this prompt."`
 }
 
-func (t *MCPTools) Send(ctx context.Context, _ *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {
+func (t *MCPTools) Send(ctx context.Context, req *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {
 	job, err := t.Service.Send(ctx, SendRequest{
 		Session: input.ThreadID, Message: input.Prompt, PlanRequested: input.Plan,
-		Completion: CompletionAsync, ParentVisible: true, FromAgent: true,
+		Completion: CompletionAsync, ParentVisible: true, FromAgent: true, From: mcpsession.SessionID(req),
 	})
 	return nil, snapshotThread(job), err
 }

@@ -170,6 +170,10 @@ type Turn struct {
 	AllowSilence    bool           `json:"allow_silence,omitempty"`
 	Output          *TurnOutput    `json:"output,omitempty"`
 	PendingMessage  *QueuedMessage `json:"pending_message,omitempty"`
+	// ParentOutput is the output of the parent turn this one's result opens:
+	// the exchange with another bot the parent was answering when it started
+	// this turn.
+	ParentOutput *TurnOutput `json:"parent_output,omitempty"`
 }
 
 type TurnOutput struct {
@@ -183,6 +187,16 @@ type TurnOutput struct {
 	// Shown records that the turn sent a message or presented an app in its
 	// own chat.
 	Shown bool `json:"shown,omitempty"`
+}
+
+// Continuation is the output of a later turn that goes on answering the bot
+// this turn answers; nil when it answers none. A routine run closes with its
+// turn, so nothing continues it.
+func (o *TurnOutput) Continuation() *TurnOutput {
+	if o == nil || o.ReplyTo == "" || o.Run != "" {
+		return nil
+	}
+	return &TurnOutput{ReplyTo: o.ReplyTo, Hops: o.Hops}
 }
 
 // LoopRun is the routine run a turn with this output does, if any.
