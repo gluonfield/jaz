@@ -268,6 +268,77 @@ func (q *Queries) LatestSessionEventSeq(ctx context.Context, threadID string) (i
 	return seq, err
 }
 
+const listBotActivityEvents = `-- name: ListBotActivityEvents :many
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = ?1
+  AND type = 'bot_activity'
+  AND created_at_ms >= ?2
+ORDER BY seq
+`
+
+type ListBotActivityEventsParams struct {
+	ThreadID string `json:"thread_id"`
+	SinceMs  int64  `json:"since_ms"`
+}
+
+type ListBotActivityEventsRow struct {
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) ListBotActivityEvents(ctx context.Context, arg ListBotActivityEventsParams) ([]ListBotActivityEventsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listBotActivityEvents, arg.ThreadID, arg.SinceMs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBotActivityEventsRow{}
+	for rows.Next() {
+		var i ListBotActivityEventsRow
+		if err := rows.Scan(
+			&i.ThreadID,
+			&i.Seq,
+			&i.ProjectionKey,
+			&i.ProjectionOp,
+			&i.Type,
+			&i.Content,
+			&i.Acp,
+			&i.Plan,
+			&i.Permission,
+			&i.CreatedAtMs,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLatestACPTurn = `-- name: ListLatestACPTurn :many
 WITH boundary AS (
   SELECT seq

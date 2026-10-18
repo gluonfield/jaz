@@ -370,3 +370,21 @@ func marshalOptionalJSON(value any) (sql.NullString, error) {
 	}
 	return sql.NullString{String: string(data), Valid: true}, nil
 }
+
+// LoadBotActivity returns the bot activity events in a thread from since on,
+// oldest first.
+func (s *Store) LoadBotActivity(id string, since time.Time) ([]sessionevents.Event, error) {
+	rows, err := eventdb.New(s.db).ListBotActivityEvents(context.Background(), eventdb.ListBotActivityEventsParams{ThreadID: id, SinceMs: timeToMs(since)})
+	if err != nil {
+		return nil, err
+	}
+	events := make([]sessionevents.Event, 0, len(rows))
+	for _, row := range rows {
+		event, err := eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}

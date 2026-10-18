@@ -463,6 +463,8 @@ export interface Loop {
   trigger?: LoopTrigger
   // What the routine does about runs missed while Jaz was not running.
   when_missed: 'skip' | 'catch_up'
+  // Where a bot's routine runs: in the bot's own chat, or a side chat of its own.
+  thread: 'main' | 'child'
   status: 'active' | 'paused' | 'deleted'
   runtime: 'acp'
   acp_agent?: string
@@ -750,8 +752,35 @@ export interface Bot {
 }
 
 export interface BotActivityEvent {
-  kind: 'routine' | 'message_sent' | 'message_received' | 'group' | 'unreachable'
+  kind: 'routine' | 'message_sent' | 'message_received' | 'group' | 'unreachable' | 'file_changed' | 'file_edited'
   label: string
+  // What a message between bots said.
+  text?: string
+}
+
+// One thing a bot is doing or did: a side chat, a routine run, a message to or
+// from another bot, or a change to its AGENTS.md or MEMORY.md. `at` is when a
+// running item started, or else when it happened or ended; `title` names the
+// side chat, routine, other bot or file.
+export interface BotActivity {
+  kind: 'side_chat' | 'routine' | 'message_sent' | 'message_received' | 'file_changed' | 'file_edited'
+  at: string
+  running?: boolean
+  title: string
+  text?: string
+  status?: string
+  thread_id?: string
+  loop_id?: string
+}
+
+export type BotFileName = 'AGENTS.md' | 'MEMORY.md'
+
+// One of a bot's identity files; `version` is empty before it is first written.
+export interface BotFile {
+  name: BotFileName
+  content: string
+  version: string
+  updated_at?: string
 }
 
 export interface RoomMessageEvent {
@@ -797,7 +826,7 @@ export interface ProviderSubagentEvent {
 
 export interface SessionOverviewSubagent extends Pick<
   ProviderSubagentEvent,
-  'provider' | 'id' | 'name' | 'task' | 'role' | 'status' | 'summary' | 'prompt' | 'model' | 'reasoning_effort'
+  'provider' | 'id' | 'name' | 'task' | 'role' | 'status' | 'summary' | 'prompt' | 'model' | 'reasoning_effort' | 'started_at_ms'
 > {
   key: string
   seq: number

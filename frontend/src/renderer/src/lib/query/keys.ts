@@ -59,6 +59,8 @@ export const keys = {
   // Under loops so a routine change refreshes every loop view with one prefix.
   botRoutines: (botId: string) => ['loops', 'bot', botId] as const,
   bots: ['bots'] as const,
+  botActivity: (botId: string) => ['bots', botId, 'activity'] as const,
+  botFiles: (botId: string) => ['bots', botId, 'files'] as const,
   boards: ['boards'] as const,
   boardDetail: (id: string) => ['boards', id] as const,
 }

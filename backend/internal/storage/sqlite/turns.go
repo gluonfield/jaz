@@ -11,9 +11,10 @@ import (
 )
 
 func (s *Store) StartSessionTurn(id string, turn storage.Turn) error {
+	turn.StartedAt = time.Now().UTC()
 	s.writeMu.Lock()
 	err := threaddb.New(s.db).StartSessionTurn(context.Background(), threaddb.StartSessionTurnParams{
-		ID: id, Turn: sessionTurnJSON(&turn), StartedAtMs: timeToMs(time.Now().UTC()),
+		ID: id, Turn: sessionTurnJSON(&turn), StartedAtMs: timeToMs(turn.StartedAt),
 	})
 	s.writeMu.Unlock()
 	if err == nil {
@@ -59,11 +60,12 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 	if err != nil {
 		return err
 	}
+	now := time.Now().UTC()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return threaddb.New(s.db).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
 		ID: session.ID, QueuedMessages: queue, Title: nullDBString(session.Title),
-		Turn: sessionTurnJSON(&storage.Turn{PendingMessage: &prompt}), StartedAtMs: timeToMs(time.Now().UTC()),
+		Turn: sessionTurnJSON(&storage.Turn{StartedAt: now, PendingMessage: &prompt}), StartedAtMs: timeToMs(now),
 	})
 }
 

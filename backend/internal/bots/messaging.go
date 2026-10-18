@@ -56,8 +56,16 @@ func (s *Service) Message(fromThread, ref, text string) error {
 	}); err != nil {
 		return err
 	}
-	s.announce(fromThread, sessionevents.BotActivityEvent{Kind: "message_sent", Label: session.Title})
+	s.exchanged(from, sender, to, session.Title, text)
 	return nil
+}
+
+// exchanged records a message between bots in the threads of both, whichever
+// of their threads it was sent from.
+func (s *Service) exchanged(from, sender, to, recipient, text string) {
+	now := time.Now()
+	s.record(from, sessionevents.BotActivityEvent{Kind: "message_sent", Label: recipient, Text: text}, now)
+	s.record(to, sessionevents.BotActivityEvent{Kind: "message_received", Label: sender, Text: text}, now)
 }
 
 // Say posts a bot's message: in a turn answering another bot, to that bot;
@@ -73,7 +81,17 @@ func (s *Service) Say(threadID, text string) error {
 		return err
 	}
 	if session.Turn != nil && session.Turn.Output != nil && session.Turn.Output.ReplyTo != "" {
-		return s.store.AppendTurnReply(threadID, text)
+		output := session.Turn.Output
+		if err := s.store.AppendTurnReply(threadID, text); err != nil {
+			return err
+		}
+		// A routine's child reports to its bot; any other reply answers a bot.
+		if output.Run == "" {
+			from, sender := s.author(threadID)
+			to, recipient := s.author(output.ReplyTo)
+			s.exchanged(from, sender, to, recipient, text)
+		}
+		return nil
 	}
 	membership, err := s.store.LoadMembershipByThread(threadID)
 	inGroup := err == nil
@@ -114,12 +132,12 @@ func (s *Service) Notice(botID, text string) error {
 	return nil
 }
 
-// announce notes in a thread what woke its bot; the note is best-effort.
-func (s *Service) announce(threadID string, activity sessionevents.BotActivityEvent) {
+// record notes in a thread what its bot did at, best-effort.
+func (s *Service) record(threadID string, activity sessionevents.BotActivityEvent, at time.Time) {
 	if threadID == "" {
 		return
 	}
-	if err := Announce(s.store, s.events, threadID, activity); err != nil {
+	if err := appendEvent(s.store, s.events, sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeBotActivity, BotActivity: &activity, At: at.UTC()}); err != nil {
 		s.log.Warn("append bot activity failed", "thread", threadID, "error", err)
 	}
 }

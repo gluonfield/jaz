@@ -24,7 +24,7 @@ import { ChatPanel } from '@/components/sidebar/ChatPanel'
 import { Sidebar } from '@/components/sidebar/Sidebar'
 import { TitlebarNavigation } from '@/components/sidebar/TitlebarNavigation'
 import { ToastProvider } from '@/components/ui/toast'
-import { clientRuntime } from '@/lib/clientRuntime'
+import { clientRuntime, isMacDesktop } from '@/lib/clientRuntime'
 import { SidebarVisibility } from '@/lib/sidebar'
 import { VoiceProvider } from '@/lib/voice/VoiceProvider'
 import { GlobalVoice } from '@/components/session/FloatingVoice'
@@ -97,12 +97,6 @@ const SIDEBAR_MIN_WIDTH = 200
 const SIDEBAR_MAX_WIDTH = 480
 const SIDEBAR_PREF_KEY = 'jaz.sidebar'
 const SIDEBAR_WIDTH_KEY = 'jaz.sidebarWidth'
-
-// The macOS traffic lights only exist in the desktop app, which hides the
-// native titlebar and redraws its own; the toggle and content header clear
-// them there. The browser client (even on a Mac) keeps the OS title bar, so
-// there is nothing at the window's top-left to dodge.
-const isMacDesktop = clientRuntime.kind === 'electron' && /Mac/.test(navigator.platform)
 
 const clampSidebarWidth = (w: number) =>
   Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(w)))

@@ -109,6 +109,9 @@ type Config struct {
 	SystemPrompt   SystemPromptSource
 	MCPStore       mcpconfig.ServerReader
 	ResumePrompt   SessionPromptExtensionResolver
+	// TurnNote is text a thread's next turn opens with for its agent alone,
+	// such as a note that a file the agent loaded has changed.
+	TurnNote func(storage.Session) string
 }
 
 type AgentConfig struct {

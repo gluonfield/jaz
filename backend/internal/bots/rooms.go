@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -98,7 +96,7 @@ func (s *Service) deliver(group storage.BotRecord, member string) {
 	defer lock.Unlock()
 	if err := s.deliverLocked(group, member); err != nil {
 		s.log.Warn("group delivery failed", "group", group.ThreadID, "member", member, "error", err)
-		s.announce(group.ThreadID, sessionevents.BotActivityEvent{Kind: "unreachable", Label: s.name(member) + " · " + err.Error()})
+		s.record(group.ThreadID, sessionevents.BotActivityEvent{Kind: "unreachable", Label: s.name(member) + " · " + err.Error()}, time.Now())
 	}
 }
 
@@ -113,7 +111,7 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 	if err != nil {
 		return err
 	}
-	messages, seen, shown, err := s.unseen(group.ThreadID, member, membership.Seen)
+	messages, seen, err := s.unseen(group.ThreadID, member, membership.Seen)
 	if err != nil || len(messages) == 0 {
 		return err
 	}
@@ -121,13 +119,9 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 	if err != nil {
 		return err
 	}
-	note := ""
-	if agentsChangedSince(thread, shown) {
-		note = rereadNote
-	}
 	if thread.Turn != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), steerTimeout)
-		_, err := s.threads.SteerInternal(ctx, membership.ThreadID, note+groupUpdatePrompt(messages))
+		_, err := s.threads.SteerInternal(ctx, membership.ThreadID, groupUpdatePrompt(messages))
 		cancel()
 		if err == nil {
 			membership.Seen = seen
@@ -141,7 +135,7 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 			peers = append(peers, fmt.Sprintf("[@%s](bot:%s)", s.name(other), other))
 		}
 	}
-	if err := s.queue.QueueInternalTurn(context.Background(), membership.ThreadID, storage.NewInternalQueuedMessage(note+groupTurnPrompt(peers, messages))); err != nil {
+	if err := s.queue.QueueInternalTurn(context.Background(), membership.ThreadID, storage.NewInternalQueuedMessage(groupTurnPrompt(peers, messages))); err != nil {
 		return err
 	}
 	membership.Seen = seen
@@ -186,22 +180,18 @@ func (s *Service) join(groupID, member string) (storage.BotMembership, error) {
 }
 
 // unseen returns the group messages after seq after that member did not post,
-// with the seq that marks them seen and when the message at after was posted.
-// With after zero, as before member has been shown anything in its group
-// thread, it returns those after member's own last post.
-func (s *Service) unseen(groupID, member string, after int64) ([]sessionevents.RoomMessageEvent, int64, time.Time, error) {
+// with the seq that marks them seen. With after zero, as before member has
+// been shown anything in its group thread, it returns those after member's
+// own last post.
+func (s *Service) unseen(groupID, member string, after int64) ([]sessionevents.RoomMessageEvent, int64, error) {
 	events, err := s.store.LoadSessionEvents(groupID)
 	if err != nil {
-		return nil, 0, time.Time{}, err
+		return nil, 0, err
 	}
 	seen := after
-	var shown time.Time
 	var messages []sessionevents.RoomMessageEvent
 	for _, event := range events {
 		message := event.RoomMessage
-		if message != nil && event.Seq == after {
-			shown = event.At
-		}
 		if message == nil || event.Seq <= after {
 			continue
 		}
@@ -213,15 +203,5 @@ func (s *Service) unseen(groupID, member string, after int64) ([]sessionevents.R
 			messages = messages[:0]
 		}
 	}
-	return messages, seen, shown, nil
-}
-
-// agentsChangedSince reports whether the AGENTS.md in thread's home changed
-// after at.
-func agentsChangedSince(thread storage.Session, at time.Time) bool {
-	if at.IsZero() || thread.RuntimeRef == nil || thread.RuntimeRef.Cwd == "" {
-		return false
-	}
-	info, err := os.Stat(filepath.Join(thread.RuntimeRef.Cwd, "AGENTS.md"))
-	return err == nil && info.ModTime().After(at)
+	return messages, seen, nil
 }

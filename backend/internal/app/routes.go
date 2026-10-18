@@ -234,6 +234,9 @@ func BotRoutes(handler *botsapi.Handler) server.Routes {
 		{Pattern: "PATCH /v1/bots/{bot}", Handler: httpHandlerFunc(handler.Update)},
 		{Pattern: "DELETE /v1/bots/{bot}", Handler: httpHandlerFunc(handler.Delete)},
 		{Pattern: "POST /v1/bots/{bot}/messages", Handler: httpHandlerFunc(handler.Post)},
+		{Pattern: "GET /v1/bots/{bot}/activity", Handler: httpHandlerFunc(handler.Activity)},
+		{Pattern: "GET /v1/bots/{bot}/files", Handler: httpHandlerFunc(handler.Files)},
+		{Pattern: "PUT /v1/bots/{bot}/files/{name}", Handler: httpHandlerFunc(handler.SaveFile)},
 	}
 }
 

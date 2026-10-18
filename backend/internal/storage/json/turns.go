@@ -14,10 +14,11 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn) error {
 	if err != nil {
 		return err
 	}
+	turn.StartedAt = time.Now().UTC()
 	session.Status = storage.StatusRunning
 	session.Error = ""
 	session.Turn = &turn
-	storage.MarkSessionAttention(&session, time.Now().UTC())
+	storage.MarkSessionAttention(&session, turn.StartedAt)
 	return s.saveSession(session)
 }
 
@@ -26,8 +27,8 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 	defer s.mu.Unlock()
 	session.Status = storage.StatusRunning
 	session.Error = ""
-	session.Turn = &storage.Turn{PendingMessage: &prompt}
-	storage.MarkSessionAttention(&session, time.Now().UTC())
+	session.Turn = &storage.Turn{StartedAt: time.Now().UTC(), PendingMessage: &prompt}
+	storage.MarkSessionAttention(&session, session.Turn.StartedAt)
 	return s.saveSession(session)
 }
 

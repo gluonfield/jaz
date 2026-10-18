@@ -128,10 +128,13 @@ function subagentUpdateIsNewer(previous: ProviderSubagentView, current: Provider
   return eventTime(current.updated_at) >= eventTime(previous.updated_at)
 }
 
-function subagentActiveRank(subagent: ProviderSubagentView): number {
+export function subagentRunning(subagent: ProviderSubagentView): boolean {
   const status = subagent.status?.toLowerCase()
-  if (!status || status === 'running' || status === 'starting' || status === 'pending_init') return 0
-  return 1
+  return !status || status === 'running' || status === 'starting' || status === 'pending_init'
+}
+
+function subagentActiveRank(subagent: ProviderSubagentView): number {
+  return subagentRunning(subagent) ? 0 : 1
 }
 
 function eventTime(value: string): number {

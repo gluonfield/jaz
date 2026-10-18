@@ -153,10 +153,15 @@ type Session struct {
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 	LastAttentionAt time.Time       `json:"last_attention_at"`
-	Unread          bool            `json:"unread,omitempty"`
+	// CompletedAt is when the thread's last successful turn ended, and
+	// CompletedTurnStartedAt when it started.
+	CompletedAt            time.Time `json:"completed_at,omitzero"`
+	CompletedTurnStartedAt time.Time `json:"completed_turn_started_at,omitzero"`
+	Unread                 bool      `json:"unread,omitempty"`
 }
 
 type Turn struct {
+	StartedAt       time.Time      `json:"started_at,omitzero"`
 	PlanRequested   bool           `json:"plan_requested,omitempty"`
 	GoalRequested   bool           `json:"goal_requested,omitempty"`
 	ActiveOperation string         `json:"active_operation,omitempty"`

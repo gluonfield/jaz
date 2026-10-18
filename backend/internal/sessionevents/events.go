@@ -123,10 +123,13 @@ type LoopCreatedEvent struct {
 }
 
 // BotActivityEvent is a one-line row in a bot's thread naming what woke the
-// bot: a routine, another bot's message, or a group chat turn.
+// bot or what it did: a routine, a message to or from another bot, a group
+// chat turn, or a change to its AGENTS.md or MEMORY.md.
 type BotActivityEvent struct {
 	Kind  string `json:"kind"`
 	Label string `json:"label"`
+	// Text is what a message between bots said.
+	Text string `json:"text,omitempty"`
 }
 
 // RoomMessageEvent is one message in a group chat, spoken by the user or a

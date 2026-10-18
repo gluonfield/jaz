@@ -108,6 +108,7 @@ type Store interface {
 	LoadSessionEvents(id string) ([]sessionevents.Event, error)
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
 	LoadLatestSessionEvent(id, eventType string) (sessionevents.Event, bool, error)
+	LoadBotActivity(id string, since time.Time) ([]sessionevents.Event, error)
 	SaveMembership(storage.BotMembership) error
 	LoadMembership(groupID, botID string) (storage.BotMembership, error)
 	ListMemberships() ([]storage.BotMembership, error)
@@ -123,6 +124,7 @@ type PromptStore interface {
 // Routines is the loop service seen as a bot's routines.
 type Routines interface {
 	List() ([]loops.Loop, error)
+	Runs(loopID string, limit int) ([]loops.Run, error)
 	Create(loops.CreateLoop) (loops.Loop, error)
 	Update(string, loops.UpdateLoop) (loops.Loop, error)
 	Delete(string) error

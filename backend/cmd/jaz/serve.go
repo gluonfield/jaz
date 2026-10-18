@@ -345,7 +345,10 @@ func startServer(
 			Warnings: warnings,
 		}, nil
 	}
-	manager.TurnFinished = handler.HandleACPTurnFinished
+	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
+		handler.HandleACPTurnFinished(ctx, job)
+		botService.NoteHomeChanges(job.ID)
+	}
 	srv := &http.Server{
 		Addr:    serverConfig.Addr,
 		Handler: handler.Handler(),

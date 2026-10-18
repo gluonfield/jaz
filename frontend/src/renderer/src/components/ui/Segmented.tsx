@@ -13,6 +13,7 @@ export function Segmented<T extends string>({
   layoutId,
   disabled = false,
   compact = false,
+  iconOnly = false,
 }: {
   value: T
   options: { value: T; label: string; icon?: ReactNode }[]
@@ -22,12 +23,14 @@ export function Segmented<T extends string>({
   disabled?: boolean
   /** inactive options with an icon show only the icon */
   compact?: boolean
+  /** every option shows only its icon, its label left to hover and assistive tech */
+  iconOnly?: boolean
 }) {
   return (
     <motion.div layout={compact} transition={spring} className="inline-flex h-8 items-center self-start rounded-full bg-bg p-0.5">
       {options.map((option) => {
         const active = option.value === value
-        const labelled = active || !compact || !option.icon
+        const labelled = !iconOnly && (active || !compact || !option.icon)
         return (
           <motion.button
             key={option.value}
@@ -39,7 +42,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(option.value)}
             whileTap={disabled ? undefined : { scale: 0.96 }}
             className={`relative flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-full text-[13px] font-medium whitespace-nowrap transition-colors duration-150 disabled:cursor-default disabled:opacity-60 ${
-              labelled ? 'px-3' : 'w-7'
+              labelled ? 'px-3' : iconOnly ? 'w-12' : 'w-7'
             } ${active ? 'text-ink' : 'text-ink-2 hover:text-ink'}`}
           >
             {active ? (

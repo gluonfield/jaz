@@ -77,6 +77,24 @@ WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq DESC
 LIMIT 1;
 
+-- name: ListBotActivityEvents :many
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = sqlc.arg(thread_id)
+  AND type = 'bot_activity'
+  AND created_at_ms >= sqlc.arg(since_ms)
+ORDER BY seq;
+
 -- name: ListSessionEventCompactionPage :many
 SELECT
   thread_id,

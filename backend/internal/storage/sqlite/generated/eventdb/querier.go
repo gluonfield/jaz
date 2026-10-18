@@ -19,6 +19,7 @@ type Querier interface {
 	HasPendingSessionEventCompaction(ctx context.Context, runningStatus string) (bool, error)
 	LatestSessionEventOfType(ctx context.Context, arg LatestSessionEventOfTypeParams) (LatestSessionEventOfTypeRow, error)
 	LatestSessionEventSeq(ctx context.Context, threadID string) (int64, error)
+	ListBotActivityEvents(ctx context.Context, arg ListBotActivityEventsParams) ([]ListBotActivityEventsRow, error)
 	ListLatestACPTurn(ctx context.Context, threadID string) ([]ListLatestACPTurnRow, error)
 	ListOverviewEvents(ctx context.Context, threadID string) ([]ListOverviewEventsRow, error)
 	ListSessionEventCompactionPage(ctx context.Context, arg ListSessionEventCompactionPageParams) ([]ListSessionEventCompactionPageRow, error)

@@ -107,6 +107,12 @@ function createRuntime(): ClientRuntime {
 
 export const clientRuntime = createRuntime()
 
+// The macOS traffic lights only exist in the desktop app, which hides the
+// native titlebar and redraws its own; window-top headers clear them there.
+// The browser client (even on a Mac) keeps the OS title bar, so there is
+// nothing at the window's top-left to dodge.
+export const isMacDesktop = clientRuntime.kind === 'electron' && /Mac/.test(navigator.platform)
+
 export function openExternal(url: string): void {
   if (clientRuntime.openExternalURL) {
     clientRuntime.openExternalURL(url)
