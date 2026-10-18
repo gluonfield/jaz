@@ -1,6 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowDownLeft, BookOpen, CircleAlert, CircleCheck, LoaderCircle, type LucideIcon, PenLine, Repeat, Send } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
@@ -12,7 +11,6 @@ import { type ProviderSubagentView, subagentRunning } from '@/lib/providerSubage
 // a message shown in full.
 type Row = {
   key: string
-  Icon: LucideIcon
   title: string
   detail?: string
   at: string
@@ -39,7 +37,6 @@ export function BotActivity({
   const rows = (items.data ?? []).map(row)
   const helpers: Row[] = subagents.filter(subagentRunning).map((subagent) => ({
     key: subagent.key,
-    Icon: LoaderCircle,
     title: subagent.name || subagent.task || 'Helper',
     detail: 'Helper',
     at: subagent.started_at_ms ? new Date(subagent.started_at_ms).toISOString() : '',
@@ -88,7 +85,6 @@ function row(item: BotActivity, index: number): Row {
     case 'side_chat':
       return {
         ...base,
-        Icon: item.running ? LoaderCircle : item.status === 'error' ? CircleAlert : CircleCheck,
         title: item.title || 'Side chat',
         detail: item.status === 'error' ? 'Side chat · failed' : 'Side chat',
         danger: item.status === 'error',
@@ -97,7 +93,6 @@ function row(item: BotActivity, index: number): Row {
     case 'routine':
       return {
         ...base,
-        Icon: item.running ? LoaderCircle : Repeat,
         title: item.title,
         detail: item.status === 'error' ? item.text || 'Failed' : item.status === 'skipped' ? 'Skipped' : item.status === 'cancelled' ? 'Stopped' : 'Routine',
         danger: item.status === 'error',
@@ -107,7 +102,6 @@ function row(item: BotActivity, index: number): Row {
     case 'message_received':
       return {
         ...base,
-        Icon: item.kind === 'message_sent' ? Send : ArrowDownLeft,
         title: messageTitle(item),
         detail: item.text,
         open: item.text ? { message: item } : undefined,
@@ -116,7 +110,6 @@ function row(item: BotActivity, index: number): Row {
     case 'file_edited':
       return {
         ...base,
-        Icon: item.kind === 'file_edited' ? PenLine : BookOpen,
         title: item.kind === 'file_edited' ? `You edited ${item.title}` : item.title === 'MEMORY.md' ? 'Learned something new' : `Updated ${item.title}`,
         detail: item.kind === 'file_changed' && item.title === 'MEMORY.md' ? 'MEMORY.md' : undefined,
         open: { file: item.title as BotFileName },
@@ -151,19 +144,14 @@ function ActivityRow({ item, now, onOpen }: { item: Row; now: number; onOpen: (t
   const since = item.running && item.at ? now - Date.parse(item.at) : undefined
   const content = (
     <>
-      <span className={`grid size-9 shrink-0 place-items-center rounded-lg bg-surface-2 ${item.running ? 'text-running' : item.danger ? 'text-danger' : 'text-ink-2'}`}>
-        <item.Icon size={16} className={item.running ? 'animate-spin' : ''} aria-hidden />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
-        {item.detail ? <span className="line-clamp-2 text-[12px] text-ink-2">{item.detail}</span> : null}
-        <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
-          {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : clockTime(item.at)}
-        </span>
+      <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
+      {item.detail ? <span className={`line-clamp-2 text-[12px] ${item.danger ? 'text-danger' : 'text-ink-2'}`}>{item.detail}</span> : null}
+      <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
+        {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : clockTime(item.at)}
       </span>
     </>
   )
-  const className = '-mx-2 flex items-start gap-3 rounded-lg px-2 py-1.5 text-left transition-colors duration-150'
+  const className = '-mx-2 flex min-w-0 flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150'
   if (item.open && 'thread' in item.open) {
     return (
       <Link to="/sessions/$sessionId" params={{ sessionId: item.open.thread }} className={`${className} hover:bg-list-hover`}>
