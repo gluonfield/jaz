@@ -34,6 +34,14 @@ func (s *Store) AppendTurnReply(id, message string) error {
 	return err
 }
 
+// ResetTurnHops ends the bot-to-bot exchange a running turn is part of, as
+// the user writing into it does.
+func (s *Store) ResetTurnHops(id string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return threaddb.New(s.db).ResetTurnHops(context.Background(), id)
+}
+
 func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()

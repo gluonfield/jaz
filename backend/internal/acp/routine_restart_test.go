@@ -410,7 +410,7 @@ func TestRestartAfterARunClosedFinishesItsTurnWithoutRunningItAgain(t *testing.T
 	child := jaz.run(run.ID).ThreadID
 	// Jaz dies after the run closes and before the turn's own bookkeeping.
 	jaz.manager.TurnFinished = func(context.Context, acp.Job) {
-		_ = jaz.loops.Finish(run.ID, loops.RunStatusOK, "")
+		_ = jaz.loops.Finish(run.ID, loops.RunStatusOK, "", true)
 	}
 	jaz.release()
 	jaz.waitRun(run.ID, loops.RunStatusOK)

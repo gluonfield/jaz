@@ -114,6 +114,9 @@ type Run struct {
 	// Reason says why the run happens when its schedule alone does not: the
 	// events that fired it, or the slots it catches up on.
 	Reason string `json:"reason,omitempty"`
+	// Delivered records that the run sent or presented its outcome in its
+	// bot's chat, or reported it to its bot.
+	Delivered bool `json:"delivered"`
 }
 
 // SeenEvent records that a run took an observed message, so the message fires
@@ -186,6 +189,9 @@ type Repository interface {
 	ListLoops() ([]Loop, error)
 	ListRuns(loopID string, limit int) ([]Run, error)
 	LoadRun(id string) (Run, error)
+	// RunBefore is the run of the same loop created before runID, or a zero
+	// Run.
+	RunBefore(runID string) (Run, error)
 	ListDueLoopIDs(now time.Time) ([]string, error)
 	ListActiveRunIDs() ([]string, error)
 	// ActiveRuns lists a loop's pending and begun runs, oldest first.
@@ -203,7 +209,7 @@ type Repository interface {
 
 // RunController closes a run its executor could not start.
 type RunController interface {
-	Finish(runID, status, errText string) error
+	Finish(runID, status, errText string, delivered bool) error
 }
 
 type Execution struct {

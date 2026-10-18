@@ -106,6 +106,29 @@ func (q *Queries) FinishSessionTurn(ctx context.Context, arg FinishSessionTurnPa
 	return result.RowsAffected()
 }
 
+const markTurnShown = `-- name: MarkTurnShown :exec
+UPDATE threads
+SET turn = json_set(turn, '$.output.shown', json('true'))
+WHERE id = ?1 AND status = 'running'
+  AND json_type(NULLIF(turn, ''), '$.output') = 'object'
+`
+
+func (q *Queries) MarkTurnShown(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, markTurnShown, id)
+	return err
+}
+
+const resetTurnHops = `-- name: ResetTurnHops :exec
+UPDATE threads
+SET turn = json_remove(turn, '$.output.hops')
+WHERE id = ?1 AND status = 'running' AND turn <> ''
+`
+
+func (q *Queries) ResetTurnHops(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, resetTurnHops, id)
+	return err
+}
+
 const setTurnIntent = `-- name: SetTurnIntent :execrows
 UPDATE threads
 SET turn = json_set(turn,

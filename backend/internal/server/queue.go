@@ -323,7 +323,7 @@ func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, pr
 // failRunStart ends a routine run whose turn could not start, as a run that
 // failed, so its routine's next fire is not held behind it.
 func (s *Server) failRunStart(sessionID, run string, cause error) {
-	if err := s.Loops.Finish(run, loops.RunStatusError, cause.Error()); err != nil {
+	if err := s.Loops.Finish(run, loops.RunStatusError, cause.Error(), false); err != nil {
 		s.logger().Error("finish loop run", "session", sessionID, "run", run, "error", err)
 	}
 	unlock := s.lockSession(sessionID)

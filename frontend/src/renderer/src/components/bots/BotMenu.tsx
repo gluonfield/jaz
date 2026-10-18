@@ -52,12 +52,14 @@ export function BotMenu({ bot, point, onClose, onRename }: {
           Rename
         </span>
       </MenuRow>
-      <MenuRow onClick={run(remove)}>
-        <span className="flex items-center gap-2 text-danger">
-          <Trash2 size={13} />
-          Delete
-        </span>
-      </MenuRow>
+      {bot.main ? null : (
+        <MenuRow onClick={run(remove)}>
+          <span className="flex items-center gap-2 text-danger">
+            <Trash2 size={13} />
+            Delete
+          </span>
+        </MenuRow>
+      )}
     </ContextMenu>
   )
 }

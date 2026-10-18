@@ -40,14 +40,18 @@ type RuntimePromptBuilder struct {
 	PromptExtras []func(Loop, Run) string
 }
 
-func (b RuntimePromptBuilder) For(loop Loop, run Run, now time.Time) promptmodule.Modules {
+func (b RuntimePromptBuilder) For(loop Loop, run Run, now time.Time) (promptmodule.Modules, error) {
 	var extras []string
 	for _, section := range b.PromptExtras {
 		if extra := strings.TrimSpace(section(loop, run)); extra != "" {
 			extras = append(extras, extra)
 		}
 	}
-	return SystemPromptExtensions(loop, run, now, extras...)
+	previous, err := b.Repo.RunBefore(run.ID)
+	if err != nil {
+		return nil, err
+	}
+	return SystemPromptExtensions(loop, run, previous, now, extras...), nil
 }
 
 func (b RuntimePromptBuilder) ForRun(runID string, now time.Time) (promptmodule.Modules, error) {
@@ -59,7 +63,7 @@ func (b RuntimePromptBuilder) ForRun(runID string, now time.Time) (promptmodule.
 	if err != nil {
 		return nil, err
 	}
-	return b.For(loop, run, now), nil
+	return b.For(loop, run, now)
 }
 
 type Option func(*Service)
@@ -334,8 +338,8 @@ func (s *Service) fireLocked(loop Loop, events []string, taken []SeenEvent, now 
 		}
 		return Loop{}, run, false, s.Repo.SaveRunAndLoop(run, nil, taken...)
 	}
-	promptLoop, err := s.newRunLocked(loop, run, now, taken...)
-	return promptLoop, run, err == nil, err
+	err = s.newRunLocked(loop, run, now, taken...)
+	return loop, run, err == nil, err
 }
 
 // Begin starts a pending run's turn in threadID and returns the run's loop
@@ -377,11 +381,12 @@ func (s *Service) Closed(runID string) (bool, error) {
 	return err == nil && !active(run), err
 }
 
-// Finish closes a run that is still open, then starts the run waiting behind
-// it; a run already closed stays as it ended.
-func (s *Service) Finish(runID, status, errText string) error {
+// Finish closes a run that is still open, recording whether it delivered its
+// outcome, then starts the run waiting behind it; a run already closed stays as
+// it ended.
+func (s *Service) Finish(runID, status, errText string, delivered bool) error {
 	s.mu.Lock()
-	loop, next, err := s.finishLocked(runID, status, errText)
+	loop, next, err := s.finishLocked(runID, status, errText, delivered)
 	s.mu.Unlock()
 	if err == nil && next.ID != "" {
 		s.start(context.Background(), loop, next)
@@ -389,7 +394,7 @@ func (s *Service) Finish(runID, status, errText string) error {
 	return err
 }
 
-func (s *Service) finishLocked(runID, status, errText string) (Loop, Run, error) {
+func (s *Service) finishLocked(runID, status, errText string, delivered bool) (Loop, Run, error) {
 	now := s.now()
 	run, err := s.Repo.LoadRun(runID)
 	if err != nil || !active(run) {
@@ -398,6 +403,7 @@ func (s *Service) finishLocked(runID, status, errText string) (Loop, Run, error)
 	delete(s.ours, run.ID)
 	run.Status = normalizeRunStatus(status)
 	run.Error = errText
+	run.Delivered = delivered
 	if run.Status == RunStatusOK && s.RunCheck != nil {
 		loop, err := s.Repo.LoadLoop(run.LoopID)
 		if err != nil {
@@ -428,8 +434,7 @@ func (s *Service) nextRunLocked(loopID string, now time.Time) (Loop, Run, error)
 	if err != nil {
 		return Loop{}, Run{}, err
 	}
-	promptLoop, err := s.newRunLocked(loop, runs[0], now)
-	return promptLoop, runs[0], err
+	return loop, runs[0], s.newRunLocked(loop, runs[0], now)
 }
 
 // Resume settles the runs a previous process left open, once its threads have
@@ -475,7 +480,7 @@ func (s *Service) resumeLocked(held map[string]bool) ([]dispatch, error) {
 			pending = append(pending, run)
 			continue
 		}
-		loop, next, err := s.finishLocked(id, RunStatusError, "Jaz stopped before this run finished.")
+		loop, next, err := s.finishLocked(id, RunStatusError, "Jaz stopped before this run finished.", false)
 		if err != nil {
 			return nil, err
 		}
@@ -511,14 +516,19 @@ func active(run Run) bool {
 
 func (s *Service) start(ctx context.Context, loop Loop, run Run) {
 	if s.Executor == nil {
-		_ = s.Finish(run.ID, RunStatusError, "loop executor is not configured")
+		_ = s.Finish(run.ID, RunStatusError, "loop executor is not configured", false)
+		return
+	}
+	extensions, err := s.RuntimePromptBuilder().For(loop, run, s.now())
+	if err != nil {
+		_ = s.Finish(run.ID, RunStatusError, err.Error(), false)
 		return
 	}
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
 		Loop:                   loop,
 		Run:                    run,
 		Thread:                 s.thread(loop),
-		SystemPromptExtensions: s.systemPromptExtensions(loop, run, s.now()),
+		SystemPromptExtensions: extensions,
 		ArtifactSurface:        s.artifactSurface(loop, run),
 		Controller:             s,
 	})
@@ -541,12 +551,8 @@ func (s *Service) artifactSurface(loop Loop, run Run) string {
 	return strings.TrimSpace(s.ArtifactSurface(loop, run))
 }
 
-func (s *Service) systemPromptExtensions(loop Loop, run Run, now time.Time) promptmodule.Modules {
-	return s.RuntimePromptBuilder().For(loop, run, now)
-}
-
-func SystemPromptExtensions(loop Loop, run Run, now time.Time, extras ...string) promptmodule.Modules {
-	return promptmodule.New(RunSystemPrompt(loop, run, now, extras...))
+func SystemPromptExtensions(loop Loop, run, previous Run, now time.Time, extras ...string) promptmodule.Modules {
+	return promptmodule.New(RunSystemPrompt(loop, run, previous, now, extras...))
 }
 
 func (s *Service) now() time.Time {
@@ -608,8 +614,8 @@ func (s *Service) claimDueRunLocked(now time.Time) (Loop, Run, bool, error) {
 			run.ScheduledFor = missed.due
 		}
 		loop.NextRunAt = nextRun
-		promptLoop, err := s.newRunLocked(loop, run, now)
-		return promptLoop, run, err == nil, err
+		err = s.newRunLocked(loop, run, now)
+		return loop, run, err == nil, err
 	}
 	return Loop{}, Run{}, false, nil
 }
@@ -628,15 +634,11 @@ func (s *Service) startManualRunLocked(loopID string, now time.Time) (Loop, Run,
 		return Loop{}, Run{}, fmt.Errorf("loop %s already has an active run", loop.ID)
 	}
 	run := Run{ID: s.Repo.NewRunID(), LoopID: loop.ID, ScheduledFor: now, Status: RunStatusStarting, CreatedAt: now}
-	promptLoop, err := s.newRunLocked(loop, run, now)
-	return promptLoop, run, err
+	return loop, run, s.newRunLocked(loop, run, now)
 }
 
-// newRunLocked saves run as loop's latest, with the messages it takes, and
-// returns loop as the run's prompt describes it, with the run before it as the
-// previous one.
-func (s *Service) newRunLocked(loop Loop, run Run, now time.Time, taken ...SeenEvent) (Loop, error) {
-	promptLoop := loop
+// newRunLocked saves run as loop's latest, with the messages it takes.
+func (s *Service) newRunLocked(loop Loop, run Run, now time.Time, taken ...SeenEvent) error {
 	loop.LastRunAt = now
 	loop.LastRunID = run.ID
 	loop.LastRunThreadID = ""
@@ -644,10 +646,10 @@ func (s *Service) newRunLocked(loop Loop, run Run, now time.Time, taken ...SeenE
 	loop.LastError = ""
 	loop.UpdatedAt = now
 	if err := s.Repo.SaveRunAndLoop(run, &loop, taken...); err != nil {
-		return Loop{}, err
+		return err
 	}
 	s.ours[run.ID] = true
-	return promptLoop, nil
+	return nil
 }
 
 func (s *Service) assignMemoryPathLocked(loop *Loop) error {
@@ -712,21 +714,21 @@ func (s *Service) loopUpdateForRunLocked(run Run, now time.Time) (*Loop, error) 
 	return &loop, nil
 }
 
-func RunSystemPrompt(loop Loop, run Run, now time.Time, extras ...string) string {
-	previous := "none"
-	if loop.LastRunID != "" {
+func RunSystemPrompt(loop Loop, run, previous Run, now time.Time, extras ...string) string {
+	last := "none"
+	if previous.ID != "" {
 		var b strings.Builder
-		fmt.Fprintf(&b, "id=%s status=%s", loop.LastRunID, loop.LastRunStatus)
-		if !loop.LastRunAt.IsZero() {
-			fmt.Fprintf(&b, " at=%s", loop.LastRunAt.Format(time.RFC3339))
+		fmt.Fprintf(&b, "id=%s status=%s delivered=%t", previous.ID, previous.Status, previous.Delivered)
+		if at := firstTime(previous.FinishedAt, previous.StartedAt, previous.CreatedAt); !at.IsZero() {
+			fmt.Fprintf(&b, " at=%s", at.Format(time.RFC3339))
 		}
-		if loop.LastRunThreadID != "" {
-			fmt.Fprintf(&b, " thread_id=%s", loop.LastRunThreadID)
+		if previous.ThreadID != "" {
+			fmt.Fprintf(&b, " thread_id=%s", previous.ThreadID)
 		}
-		if loop.LastError != "" {
-			fmt.Fprintf(&b, " error=%q", loop.LastError)
+		if previous.Error != "" {
+			fmt.Fprintf(&b, " error=%q", previous.Error)
 		}
-		previous = b.String()
+		last = b.String()
 	}
 	return looprun.Render(looprun.Data{
 		LoopName:     loop.Name,
@@ -735,7 +737,7 @@ func RunSystemPrompt(loop Loop, run Run, now time.Time, extras ...string) string
 		ScheduledFor: run.ScheduledFor.Format(time.RFC3339),
 		Now:          now.UTC().Format(time.RFC3339),
 		MemoryPath:   loop.MemoryPath,
-		PreviousRun:  previous,
+		PreviousRun:  last,
 		Extras:       extras,
 	})
 }

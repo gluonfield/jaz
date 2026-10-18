@@ -385,6 +385,11 @@ func startServer(
 				manager.Close()
 				return err
 			}
+			// Without an agent to run on, as before setup, Jaz tries again at
+			// the next start.
+			if err := botService.EnsureMain(ctx); err != nil {
+				logger.WithPrefix("bots").Error("creating the main bot failed", "error", err)
+			}
 			loopCtx, cancelLoops := context.WithCancel(context.Background())
 			stopLoops = cancelLoops
 			slackSync := &integrationingest.SlackSyncer{

@@ -63,7 +63,7 @@ func TestSlotsMissedWhileAsleepFollowEachRoutinesWhenMissed(t *testing.T) {
 
 	// It wakes again shortly after 13:00, having missed 12:00: the 13:00 slot
 	// is still on time, so the skipping routine runs for it alone.
-	if err := service.Finish(catchUp.Run.ID, loops.RunStatusOK, ""); err != nil {
+	if err := service.Finish(catchUp.Run.ID, loops.RunStatusOK, "", false); err != nil {
 		t.Fatal(err)
 	}
 	now = base.Add(4*time.Hour + 35*time.Minute)
@@ -398,6 +398,49 @@ func TestDeleteLoopSoftDeletesAndKeepsRuns(t *testing.T) {
 	now = base.Add(2 * time.Minute)
 	if _, err := service.RunNow(context.Background(), loop.ID); err == nil {
 		t.Fatal("manual run on deleted loop should fail")
+	}
+}
+
+func TestARunsPromptNamesTheRunBeforeItAndWhetherItDelivered(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	now := time.Date(2026, 6, 8, 8, 30, 0, 0, time.UTC)
+	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 2)}
+	service := newLoopServiceForTest(store, executor)
+	service.Now = func() time.Time { return now }
+	loop, err := service.Create(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := service.RunNow(context.Background(), loop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-executor.started
+	if err := service.Finish(first.ID, loops.RunStatusOK, "", true); err != nil {
+		t.Fatal(err)
+	}
+	// Within the same millisecond, the run created first is still the one
+	// before.
+	second, err := service.RunNow(context.Background(), loop.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution := <-executor.started
+	want := "Previous: id=" + first.ID + " status=ok delivered=true"
+	if prompt := strings.Join(execution.SystemPromptExtensions, "\n"); !strings.Contains(prompt, want) {
+		t.Fatalf("new run's prompt lacks %q:\n%s", want, prompt)
+	}
+	// Started again after a restart, the run still names the one before it.
+	modules, err := service.RuntimePromptBuilder().ForRun(second.ID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prompt := strings.Join(modules, "\n"); !strings.Contains(prompt, want) {
+		t.Fatalf("resumed run's prompt lacks %q:\n%s", want, prompt)
 	}
 }
 

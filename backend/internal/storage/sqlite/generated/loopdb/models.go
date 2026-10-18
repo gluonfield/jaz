@@ -49,4 +49,5 @@ type LoopRun struct {
 	Error          sql.NullString `json:"error"`
 	CreatedAtMs    int64          `json:"created_at_ms"`
 	Reason         string         `json:"reason"`
+	Delivered      int64          `json:"delivered"`
 }

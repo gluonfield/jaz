@@ -24,14 +24,17 @@ type Querier interface {
 	// After an agent switch only the new agent's events count: its native session
 	// starts fresh at the switch, and a prompt it received always leaves events.
 	HasAgentTranscript(ctx context.Context, id string) (int64, error)
+	IsMainBot(ctx context.Context, threadID string) (bool, error)
 	ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error)
 	ListErrorThreadIDsWithoutError(ctx context.Context, status string) ([]string, error)
 	ListOverviewChildren(ctx context.Context, parentID sql.NullString) ([]ListOverviewChildrenRow, error)
 	ListSessionSubtree(ctx context.Context, id string) ([]string, error)
 	ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error)
 	LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error)
+	MarkTurnShown(ctx context.Context, id string) error
 	ReplaceRuntimeSessionID(ctx context.Context, arg ReplaceRuntimeSessionIDParams) (int64, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
+	ResetTurnHops(ctx context.Context, id string) error
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error

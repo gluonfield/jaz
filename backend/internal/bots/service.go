@@ -106,10 +106,44 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	if err := s.store.UpdateSessionTitle(session.ID, name); err != nil {
 		return Bot{}, err
 	}
-	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Shape: avatar.Shape, Color: avatar.Color}); err != nil {
+	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Shape: avatar.Shape, Color: avatar.Color, Main: input.Main}); err != nil {
 		return Bot{}, err
 	}
 	return s.Load(session.ID)
+}
+
+// EnsureMain gives the user a main bot unless one exists, pinned first: their
+// bot named Jaz, or else a new Jaz on the agent and model Settings choose for a
+// new chat.
+func (s *Service) EnsureMain(ctx context.Context) error {
+	records, err := s.store.ListBots()
+	if err != nil || slices.ContainsFunc(records, func(record storage.BotRecord) bool { return record.Main }) {
+		return err
+	}
+	main, err := s.newMain(ctx)
+	if err != nil {
+		return err
+	}
+	records = slices.DeleteFunc(records, func(record storage.BotRecord) bool { return record.Pinned == 0 || record.ThreadID == main })
+	slices.SortFunc(records, func(a, b storage.BotRecord) int { return a.Pinned - b.Pinned })
+	pins := []string{main}
+	for _, record := range records {
+		pins = append(pins, record.ThreadID)
+	}
+	return s.store.PinBots(pins)
+}
+
+// newMain makes the bot named Jaz, as one configured by that name, the main
+// bot, or creates it.
+func (s *Service) newMain(ctx context.Context) (string, error) {
+	if id, err := s.resolve(mainName); err == nil {
+		if record, _, err := s.load(id); err == nil && record.Kind == KindBot {
+			record.Main = true
+			return id, s.store.SaveBot(record)
+		}
+	}
+	bot, err := s.Create(ctx, CreateBot{Name: mainName, Main: true})
+	return bot.ID, err
 }
 
 func (s *Service) CreateGroup(name string, members []string) (Bot, error) {
@@ -209,10 +243,14 @@ func (s *Service) Pin(ids []string) error {
 }
 
 // Delete archives the bot's thread, deletes the routines it owns and takes
-// it out of its groups.
+// it out of its groups. The main bot stays.
 func (s *Service) Delete(id string) error {
-	if _, _, err := s.load(id); err != nil {
+	record, session, err := s.load(id)
+	if err != nil {
 		return err
+	}
+	if record.Main {
+		return fmt.Errorf("%s is your main bot and cannot be deleted", session.Title)
 	}
 	records, err := s.store.ListBots()
 	if err != nil {
@@ -358,6 +396,7 @@ func (s *Service) view(record storage.BotRecord, session storage.Session) Bot {
 		Prompt:    record.Prompt,
 		Avatar:    Avatar{Shape: record.Shape, Color: record.Color},
 		Pinned:    record.Pinned,
+		Main:      record.Main,
 		Unread:    session.Unread,
 		Status:    session.Status,
 		CreatedAt: session.CreatedAt,

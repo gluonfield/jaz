@@ -172,6 +172,12 @@ type TurnOutput struct {
 	Replies []string `json:"replies,omitempty"`
 	// Run is the routine run the turn does; the turn's end finishes it.
 	Run string `json:"run,omitempty"`
+	// Hops counts the messages bots sent each other, without the user
+	// writing, that led to this turn.
+	Hops int `json:"hops,omitempty"`
+	// Shown records that the turn sent a message or presented an app in its
+	// own chat.
+	Shown bool `json:"shown,omitempty"`
 }
 
 // LoopRun is the routine run a turn with this output does, if any.

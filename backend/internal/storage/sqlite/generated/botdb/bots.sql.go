@@ -10,7 +10,7 @@ import (
 )
 
 const getBot = `-- name: GetBot :one
-SELECT thread_id, kind, shape, color, members, pinned, prompt
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main
 FROM bots
 WHERE thread_id = ?1
 LIMIT 1
@@ -27,6 +27,7 @@ func (q *Queries) GetBot(ctx context.Context, threadID string) (Bot, error) {
 		&i.Members,
 		&i.Pinned,
 		&i.Prompt,
+		&i.Main,
 	)
 	return i, err
 }
@@ -75,7 +76,7 @@ func (q *Queries) GetMembershipByThread(ctx context.Context, threadID string) (B
 }
 
 const listBots = `-- name: ListBots :many
-SELECT thread_id, kind, shape, color, members, pinned, prompt
+SELECT thread_id, kind, shape, color, members, pinned, prompt, main
 FROM bots
 `
 
@@ -96,6 +97,7 @@ func (q *Queries) ListBots(ctx context.Context) ([]Bot, error) {
 			&i.Members,
 			&i.Pinned,
 			&i.Prompt,
+			&i.Main,
 		); err != nil {
 			return nil, err
 		}
@@ -192,10 +194,11 @@ func (q *Queries) UnpinBots(ctx context.Context) error {
 }
 
 const upsertBot = `-- name: UpsertBot :exec
-INSERT INTO bots (thread_id, kind, prompt, shape, color, members)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+INSERT INTO bots (thread_id, kind, prompt, shape, color, members, main)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
 ON CONFLICT(thread_id) DO UPDATE SET
   kind = excluded.kind,
+  main = excluded.main,
   prompt = excluded.prompt,
   shape = excluded.shape,
   color = excluded.color,
@@ -209,6 +212,7 @@ type UpsertBotParams struct {
 	Shape    string `json:"shape"`
 	Color    string `json:"color"`
 	Members  string `json:"members"`
+	Main     int64  `json:"main"`
 }
 
 func (q *Queries) UpsertBot(ctx context.Context, arg UpsertBotParams) error {
@@ -219,6 +223,7 @@ func (q *Queries) UpsertBot(ctx context.Context, arg UpsertBotParams) error {
 		arg.Shape,
 		arg.Color,
 		arg.Members,
+		arg.Main,
 	)
 	return err
 }

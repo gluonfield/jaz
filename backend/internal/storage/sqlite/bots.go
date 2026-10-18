@@ -27,6 +27,7 @@ func (s *Store) SaveBot(record storage.BotRecord) error {
 		Shape:    record.Shape,
 		Color:    record.Color,
 		Members:  string(members),
+		Main:     boolInt(record.Main),
 	})
 }
 
@@ -79,7 +80,7 @@ func botFromDB(row botdb.Bot) storage.BotRecord {
 	var members []string
 	_ = json.Unmarshal([]byte(row.Members), &members)
 	return storage.BotRecord{
-		ThreadID: row.ThreadID, Kind: row.Kind, Prompt: row.Prompt, Shape: row.Shape, Color: row.Color, Pinned: int(row.Pinned), Members: members,
+		ThreadID: row.ThreadID, Kind: row.Kind, Prompt: row.Prompt, Shape: row.Shape, Color: row.Color, Pinned: int(row.Pinned), Members: members, Main: row.Main != 0,
 	}
 }
 

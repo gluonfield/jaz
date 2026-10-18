@@ -707,6 +707,50 @@ func TestBotsAnsweringEachOtherStopAtTheFollowUpCap(t *testing.T) {
 	}
 }
 
+func TestAnOutsiderWritingForAnotherBotDoesNotRestoreAGroupsFollowUps(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	world.addBot("ops", "Ops")
+	service := newTestService(world)
+	group, research, marketing := newGroup(t, service)
+	for range 20 {
+		world.replies[research] = append(world.replies[research], "you?")
+		world.replies[marketing] = append(world.replies[marketing], "no, you?")
+	}
+	turns := func() int { return world.promptCount(research) + world.promptCount(marketing) }
+	if err := service.Post(group.ID, "who goes first?", nil); err != nil {
+		t.Fatal(err)
+	}
+	world.settle(t)
+	spent := turns()
+	// post has Ops post to the group from a turn with output, which ends.
+	post := func(output *storage.TurnOutput) {
+		world.mu.Lock()
+		world.sessions["ops"] = storage.Session{ID: "ops", Title: "Ops", Turn: &storage.Turn{Output: output}}
+		world.mu.Unlock()
+		err := service.Message("ops", group.ID, "status?")
+		world.mu.Lock()
+		world.sessions["ops"] = storage.Session{ID: "ops", Title: "Ops"}
+		world.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		world.settle(t)
+	}
+
+	// A turn another bot's message started.
+	post(&storage.TurnOutput{Hops: 1})
+	if turns() != spent {
+		t.Fatalf("turns = %d after a post bots led to, want %d", turns(), spent)
+	}
+	// A turn the user started.
+	post(nil)
+	if turns() == spent {
+		t.Fatal("a post the user led to reached nobody")
+	}
+}
+
 func TestASlowMemberDoesNotHoldUpTheOthers(t *testing.T) {
 	world := newFakeWorld()
 	world.addBot("a", "Research")

@@ -6,6 +6,7 @@ import (
 	stdjson "encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/goal"
@@ -194,6 +195,11 @@ func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Tim
 			historyChanged = historyChanged || deleted > 0
 		}
 		if err := insertSessionEvent(ctx, eventq, events[i], coalesceKey); err != nil {
+			return false, err
+		}
+	}
+	if slices.ContainsFunc(events, sessionevents.Event.Delivers) {
+		if err := threadq.MarkTurnShown(ctx, id); err != nil {
 			return false, err
 		}
 	}

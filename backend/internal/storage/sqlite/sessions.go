@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"fmt"
@@ -107,6 +108,11 @@ func (s *Store) SetArchived(id string, archived bool) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	ctx := context.Background()
+	if archived {
+		if main, err := threaddb.New(s.db).IsMainBot(ctx, id); err != nil || main {
+			return cmp.Or(err, storage.ErrMainBot)
+		}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

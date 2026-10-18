@@ -112,7 +112,11 @@ func TestARoutineRunOfItsOwnCarriesItsBotsSavedPrompt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		prompt := strings.Join(routines.RuntimePromptBuilder().For(loop, loops.Run{ID: "run"}, time.Now()), "\n")
+		modules, err := routines.RuntimePromptBuilder().For(loop, loops.Run{ID: "run"}, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		prompt := strings.Join(modules, "\n")
 		if strings.Contains(prompt, "Sign every report as Gimli.") != want {
 			t.Fatalf("routine of %q: system prompt = %q, want the bot's saved prompt %v", owner, prompt, want)
 		}

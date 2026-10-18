@@ -237,6 +237,9 @@ WITH RECURSIVE subtree(id) AS (
 )
 SELECT subtree.id FROM subtree;
 
+-- name: IsMainBot :one
+SELECT EXISTS (SELECT 1 FROM bots WHERE thread_id = sqlc.arg(thread_id) AND main = 1);
+
 -- name: SetArchived :exec
 UPDATE threads
 SET

@@ -121,7 +121,7 @@ func LoopRunStatus(state string) string {
 }
 
 func (r *LoopRunner) finishLoopRun(execution loops.Execution, status, errText string) {
-	if err := execution.Controller.Finish(execution.Run.ID, status, errText); err != nil {
+	if err := execution.Controller.Finish(execution.Run.ID, status, errText, false); err != nil {
 		r.logger().Error("finish loop run failed", "run", execution.Run.ID, "status", status, "error", err)
 	}
 }
