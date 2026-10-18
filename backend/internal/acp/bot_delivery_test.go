@@ -213,12 +213,7 @@ func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *test
 				}
 				return p.bots.Say(req.Session, "On it.")
 			case strings.HasPrefix(req.Message, "[result for the bot that asked]"):
-				if err := p.bots.Say(req.Session, "The parser is done.", owed); err != nil {
-					return err
-				}
-				if _, err := p.commit(helper.ID, bots.MCPCommitmentInput{ID: owed, Drop: "no longer needed"}); err == nil {
-					t.Error("dropped a commitment this turn's answer delivers")
-				}
+				return p.bots.Say(req.Session, "The parser is done.", owed)
 			}
 			return nil
 		}}

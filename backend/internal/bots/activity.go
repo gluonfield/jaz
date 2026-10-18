@@ -94,11 +94,9 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 			return ActivityView{}, err
 		}
 		owed := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note, OpenedAt: commitment.OpenedAt}
-		for _, id := range commitment.Threads {
-			owing[id] = true
-			if thread, err := s.store.LoadSession(id); err == nil {
-				owed.Threads = append(owed.Threads, OwedThread{ID: id, Title: cmp.Or(thread.Title, thread.Slug), State: threadState(thread)})
-			}
+		for _, thread := range commitment.Threads {
+			owing[thread.ID] = true
+			owed.Threads = append(owed.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})
 		}
 		view.Owed = append(view.Owed, owed)
 	}
@@ -112,8 +110,8 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		if commitment.Status == storage.CommitmentDropped {
 			item.Text = commitment.Note
 		}
-		for _, id := range commitment.Threads {
-			item.ThreadID, served[id] = id, true
+		for _, thread := range commitment.Threads {
+			item.ThreadID, served[thread.ID] = thread.ID, true
 		}
 		out = append(out, item)
 	}

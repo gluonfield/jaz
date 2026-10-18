@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -58,13 +57,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 		return 0, err
 	}
 	if drop != "" {
-		if slices.Contains(output.Done, commitment.ID) {
-			return 0, fmt.Errorf("#%d is delivered by this turn's answer", commitment.ID)
-		}
-		if err := s.store.DropCommitment(commitment.ID, drop, time.Now()); err != nil {
-			return 0, fmt.Errorf("#%d: %w", commitment.ID, explain(err))
-		}
-		return commitment.ID, nil
+		return commitment.ID, explain(s.store.DropCommitment(commitment.ID, drop, time.Now()))
 	}
 	if request != "" {
 		commitment.Request = request
@@ -131,21 +124,6 @@ func explain(err error) error {
 	return err
 }
 
-// threadState is how far a thread has got with its work.
-func threadState(thread storage.Session) string {
-	switch {
-	case thread.Archived:
-		return "gone"
-	case thread.Status == storage.StatusRunning || thread.Status == storage.StatusInterrupted || len(thread.QueuedMessages) > 0:
-		return "working"
-	case thread.Status == storage.StatusError:
-		return "failed"
-	case !thread.CompletedAt.IsZero():
-		return "finished"
-	}
-	return "idle"
-}
-
 // NoteStore is what the note a bot's turn opens with is read from.
 type NoteStore interface {
 	PromptStore
@@ -170,10 +148,8 @@ func commitmentNote(store NoteStore, bot string) string {
 			return fmt.Sprintf("Your open commitments could not be read: %v.\n\n", err)
 		}
 		fmt.Fprintf(&b, "#%d for %s: %s", commitment.ID, cmp.Or(name, "the user"), commitment.Request)
-		for _, id := range commitment.Threads {
-			if thread, err := store.LoadSession(id); err == nil {
-				fmt.Fprintf(&b, " · thread %s %s", thread.Slug, threadState(thread))
-			}
+		for _, thread := range commitment.Threads {
+			fmt.Fprintf(&b, " · thread %s %s", thread.Slug, thread.State)
 		}
 		if commitment.Note != "" {
 			fmt.Fprintf(&b, " · next: %s", commitment.Note)

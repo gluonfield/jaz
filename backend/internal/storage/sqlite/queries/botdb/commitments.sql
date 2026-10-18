@@ -9,11 +9,17 @@ SET request = sqlc.arg(request), note = sqlc.arg(note)
 WHERE id = sqlc.arg(id) AND bot_id = sqlc.arg(bot_id) AND status = 'open';
 
 -- name: CommitmentWorking :one
--- A thread works while it runs, waits to resume or has turns queued.
 SELECT EXISTS (
-  SELECT 1 FROM bot_commitment_threads l JOIN threads t ON t.id = l.thread_id
-  WHERE l.commitment_id = sqlc.arg(id) AND t.archived = 0
-    AND (t.status IN ('running', 'interrupted') OR json_array_length(COALESCE(NULLIF(t.queued_messages, ''), '[]')) > 0)
+  SELECT 1 FROM bot_commitment_thread_states WHERE commitment_id = sqlc.arg(id) AND state = 'working'
+);
+
+-- name: CommitmentStaged :one
+-- A running turn of its bot holds an answer that delivers it.
+SELECT EXISTS (
+  SELECT 1 FROM bot_commitments c
+  JOIN threads t ON t.id = c.bot_id
+  JOIN json_each(COALESCE(json_extract(NULLIF(t.turn, ''), '$.output.done'), '[]')) d
+  WHERE c.id = sqlc.arg(id) AND d.value = c.id
 );
 
 -- name: CloseCommitment :execrows
@@ -38,6 +44,6 @@ SELECT sqlc.arg(thread_id), id FROM bot_commitments
 WHERE id = sqlc.arg(commitment_id) AND bot_id = sqlc.arg(bot_id) AND status = 'open';
 
 -- name: ListCommitmentThreads :many
-SELECT commitment_id, thread_id FROM bot_commitment_threads
+SELECT commitment_id, thread_id, slug, title, state FROM bot_commitment_thread_states
 WHERE commitment_id IN (sqlc.slice(ids))
-ORDER BY rowid;
+ORDER BY thread_id;

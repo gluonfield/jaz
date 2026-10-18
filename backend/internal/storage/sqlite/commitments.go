@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -35,7 +36,8 @@ func (s *Store) UpdateCommitment(commitment storage.Commitment) error {
 	return err
 }
 
-// DropCommitment closes an open commitment without a delivery, saying why.
+// DropCommitment closes an open commitment without a delivery, saying why;
+// not one that the answer of its bot's running turn delivers.
 func (s *Store) DropCommitment(id int64, why string, at time.Time) error {
 	ctx := context.Background()
 	s.writeMu.Lock()
@@ -45,7 +47,15 @@ func (s *Store) DropCommitment(id int64, why string, at time.Time) error {
 		return err
 	}
 	defer tx.Rollback()
-	if err := closeCommitment(ctx, botdb.New(tx), id, storage.CommitmentDropped, why, at); err != nil {
+	q := botdb.New(tx)
+	staged, err := q.CommitmentStaged(ctx, id)
+	if err != nil {
+		return err
+	}
+	if staged {
+		return fmt.Errorf("#%d: %w", id, storage.ErrCommitmentStaged)
+	}
+	if err := closeCommitment(ctx, q, id, storage.CommitmentDropped, why, at); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -76,11 +86,19 @@ func closeAnswered(ctx context.Context, q *botdb.Queries, ids []int64, at time.T
 	return nil
 }
 
-// closable refuses a commitment one of whose threads still works.
+// closable refuses a commitment that is closed or one of whose threads still
+// works.
 func closable(ctx context.Context, q *botdb.Queries, id int64) error {
+	row, err := q.GetCommitment(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && row.Status != storage.CommitmentOpen {
+		return fmt.Errorf("#%d: %w", id, storage.ErrCommitmentNotOpen)
+	}
+	if err != nil {
+		return err
+	}
 	working, err := q.CommitmentWorking(ctx, id)
 	if err == nil && working {
-		err = storage.ErrCommitmentWorking
+		err = fmt.Errorf("#%d: %w", id, storage.ErrCommitmentWorking)
 	}
 	return err
 }
@@ -90,12 +108,9 @@ func closeCommitment(ctx context.Context, q *botdb.Queries, id int64, status, no
 	if err := closable(ctx, q, id); err != nil {
 		return err
 	}
-	closed, err := q.CloseCommitment(ctx, botdb.CloseCommitmentParams{
+	_, err := q.CloseCommitment(ctx, botdb.CloseCommitmentParams{
 		ID: id, Status: status, Note: nullDBString(note), ClosedAtMs: sql.NullInt64{Int64: timeToMs(at), Valid: true},
 	})
-	if err == nil && closed == 0 {
-		return storage.ErrCommitmentNotOpen
-	}
 	return err
 }
 
@@ -150,9 +165,9 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	if err != nil {
 		return nil, err
 	}
-	threads := map[int64][]string{}
+	threads := map[int64][]storage.CommitmentThread{}
 	for _, link := range links {
-		threads[link.CommitmentID] = append(threads[link.CommitmentID], link.ThreadID)
+		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State})
 	}
 	commitments := make([]storage.Commitment, 0, len(rows))
 	for _, row := range rows {

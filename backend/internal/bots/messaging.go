@@ -51,6 +51,8 @@ func (s *Service) Message(fromThread, ref, text string, done ...int64) error {
 		return fmt.Errorf("not sent: bots have written to each other %d times since the user last wrote, which is the limit; finish with what you have", maxHops)
 	}
 	from, sender := author(s.store, fromThread)
+	// Commitments are delivered where they were asked; the first decides
+	// where, and the rest must have been asked there too.
 	thread := to
 	if len(done) > 0 {
 		asked, _, err := s.owed(fromThread, done[0])
@@ -116,7 +118,7 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 			return explain(err)
 		}
 		// A routine's thread reports to its bot; any other reply answers a bot.
-		if session.SourceType != storage.SourceLoopRun {
+		if output.ReplyTo != owner(session) {
 			from, sender := author(s.store, threadID)
 			to, name := author(s.store, output.ReplyTo)
 			s.exchanged(from, sender, to, name, text)

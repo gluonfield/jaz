@@ -75,6 +75,9 @@ func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
 	if len(delivery.Closes) > 0 {
 		return fmt.Errorf("JSON storage does not keep commitments")
 	}
+	if delivery.Fallback != nil {
+		return fmt.Errorf("a queued turn has no fallback")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, err := s.loadSessionByID(delivery.SessionID)

@@ -37,15 +37,29 @@ func (q *Queries) CloseCommitment(ctx context.Context, arg CloseCommitmentParams
 	return result.RowsAffected()
 }
 
-const commitmentWorking = `-- name: CommitmentWorking :one
+const commitmentStaged = `-- name: CommitmentStaged :one
 SELECT EXISTS (
-  SELECT 1 FROM bot_commitment_threads l JOIN threads t ON t.id = l.thread_id
-  WHERE l.commitment_id = ?1 AND t.archived = 0
-    AND (t.status IN ('running', 'interrupted') OR json_array_length(COALESCE(NULLIF(t.queued_messages, ''), '[]')) > 0)
+  SELECT 1 FROM bot_commitments c
+  JOIN threads t ON t.id = c.bot_id
+  JOIN json_each(COALESCE(json_extract(NULLIF(t.turn, ''), '$.output.done'), '[]')) d
+  WHERE c.id = ?1 AND d.value = c.id
 )
 `
 
-// A thread works while it runs, waits to resume or has turns queued.
+// A running turn of its bot holds an answer that delivers it.
+func (q *Queries) CommitmentStaged(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, commitmentStaged, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const commitmentWorking = `-- name: CommitmentWorking :one
+SELECT EXISTS (
+  SELECT 1 FROM bot_commitment_thread_states WHERE commitment_id = ?1 AND state = 'working'
+)
+`
+
 func (q *Queries) CommitmentWorking(ctx context.Context, id int64) (bool, error) {
 	row := q.db.QueryRowContext(ctx, commitmentWorking, id)
 	var exists bool
@@ -164,17 +178,12 @@ func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommi
 }
 
 const listCommitmentThreads = `-- name: ListCommitmentThreads :many
-SELECT commitment_id, thread_id FROM bot_commitment_threads
+SELECT commitment_id, thread_id, slug, title, state FROM bot_commitment_thread_states
 WHERE commitment_id IN (/*SLICE:ids*/?)
-ORDER BY rowid
+ORDER BY thread_id
 `
 
-type ListCommitmentThreadsRow struct {
-	CommitmentID int64  `json:"commitment_id"`
-	ThreadID     string `json:"thread_id"`
-}
-
-func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error) {
+func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]BotCommitmentThreadState, error) {
 	query := listCommitmentThreads
 	var queryParams []interface{}
 	if len(ids) > 0 {
@@ -190,10 +199,16 @@ func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]Lis
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListCommitmentThreadsRow{}
+	items := []BotCommitmentThreadState{}
 	for rows.Next() {
-		var i ListCommitmentThreadsRow
-		if err := rows.Scan(&i.CommitmentID, &i.ThreadID); err != nil {
+		var i BotCommitmentThreadState
+		if err := rows.Scan(
+			&i.CommitmentID,
+			&i.ThreadID,
+			&i.Slug,
+			&i.Title,
+			&i.State,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

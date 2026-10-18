@@ -66,7 +66,7 @@ func TestABotsCommitmentLinksItsThreadAndClosesOnlyWhenTheResultReachesTheUserAc
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ThreadID)
-	if commitment := jaz.commitment(id); commitment.Requester != "" || len(commitment.Threads) != 1 || commitment.Threads[0] != thread.ThreadID {
+	if commitment := jaz.commitment(id); commitment.Requester != "" || len(commitment.Threads) != 1 || commitment.Threads[0].ID != thread.ThreadID {
 		t.Fatalf("commitment = %+v, want it owed to the user and serving the thread", commitment)
 	}
 	if err := jaz.bots.Say(bot.ID, "Here it is.", id); err == nil || !strings.Contains(err.Error(), "still working") {
@@ -179,13 +179,19 @@ func TestAnAnswerWithDoneGoesToTheThreadThatAsked(t *testing.T) {
 	}
 	child := jaz.waitRun(run.ID, loops.RunStatusRunning).ThreadID
 	opened := make(chan int64, 1)
+	replies := make(chan string, 1)
 	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, speak: func(req acp.InternalTurnRequest) error {
-		if req.Session != helper.ID || !strings.HasPrefix(req.Message, "[message from Asker]") {
-			return nil
+		switch {
+		case req.Session == helper.ID && strings.HasPrefix(req.Message, "[message from Asker]"):
+			id, err := jaz.commit(helper.ID, bots.MCPCommitmentInput{Request: "Price the part"})
+			opened <- id
+			return err
+		case req.Session == child && strings.HasPrefix(req.Message, "[message from Helper]"):
+			return jaz.bots.Say(child, "Thanks, noted.")
+		case req.Session == helper.ID:
+			replies <- req.Message
 		}
-		id, err := jaz.commit(helper.ID, bots.MCPCommitmentInput{Request: "Price the part"})
-		opened <- id
-		return err
+		return nil
 	}}
 	// Asker's routine asks from a thread of its own.
 	if err := jaz.bots.Message(child, "Helper", "What does the part cost?"); err != nil {
@@ -213,5 +219,14 @@ func TestAnAnswerWithDoneGoesToTheThreadThatAsked(t *testing.T) {
 	if !answer(child) || answer(asker.ID) {
 		t.Fatalf("the answer went to %v, want only the routine's thread %s", map[string]bool{"routine": answer(child), "Asker's chat": answer(asker.ID)}, child)
 	}
+	// The routine's thread answers Helper as a bot, not as a routine report.
 	jaz.release()
+	select {
+	case reply := <-replies:
+		if !strings.HasPrefix(reply, "[reply from") || !strings.Contains(reply, "Thanks, noted.") {
+			t.Fatalf("Helper got %q, want the routine thread's reply", reply)
+		}
+	case <-jaz.ctx.Done():
+		t.Fatal("the routine's thread never answered Helper")
+	}
 }

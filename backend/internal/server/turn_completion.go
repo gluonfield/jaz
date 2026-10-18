@@ -2,12 +2,10 @@ package server
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
-	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -59,24 +57,10 @@ func (s *Server) finishTurn(job acp.Job) error {
 				deliveries = append(deliveries, storage.TurnDelivery{SessionID: parent.ID, Message: message})
 			}
 		}
-		output := session.Turn.Output
-		if output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
-			answer := strings.Join(output.Replies, "\n\n")
-			reply := bots.ReplyPrompt
-			if session.SourceType == storage.SourceLoopRun {
-				reply = loops.Report
-			}
-			// The answer continues the exchange between bots that led to it.
-			message := storage.NewInternalQueuedMessage(reply(session.Title, answer))
-			message.Output = &storage.TurnOutput{Hops: output.Hops}
-			delivery := storage.TurnDelivery{SessionID: output.ReplyTo, Message: message, Closes: output.Done}
-			// When the bot it answers is gone, a bot's answer is the user's.
-			if session.SourceType == storage.SourceBot {
-				undelivered := storage.NewInternalQueuedMessage(bots.UndeliveredPrompt(answer))
-				delivery.Fallback = &undelivered
-			}
-			deliveries = append(deliveries, delivery)
+		if answer := bots.Answer(session); answer != nil {
+			deliveries = append(deliveries, *answer)
 		}
+		output := session.Turn.Output
 		// The run closes before its turn does; a restart in between finds the
 		// run closed and only finishes the turn's bookkeeping.
 		if run := loopRun(session); run != "" && err == nil {

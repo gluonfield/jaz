@@ -48,6 +48,10 @@ var ErrCommitmentNotOpen = errors.New("no such open commitment")
 // works.
 var ErrCommitmentWorking = errors.New("a thread serving it is still working")
 
+// ErrCommitmentStaged refuses dropping a commitment that the answer of its
+// bot's running turn delivers.
+var ErrCommitmentStaged = errors.New("this turn's answer delivers it")
+
 // Commitment is something a bot owes beyond the turn it was asked in. It
 // closes as done only with a delivery to its requester, or as dropped.
 type Commitment struct {
@@ -63,5 +67,14 @@ type Commitment struct {
 	OpenedAt time.Time
 	ClosedAt time.Time
 	// Threads are the threads the bot started for it, oldest first.
-	Threads []string
+	Threads []CommitmentThread
+}
+
+// CommitmentThread is a thread serving a commitment and how far it has got:
+// working, finished, failed, idle or gone.
+type CommitmentThread struct {
+	ID    string
+	Slug  string
+	Title string
+	State string
 }

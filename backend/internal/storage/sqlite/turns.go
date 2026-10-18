@@ -149,6 +149,9 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 // QueueTurn queues a delivery for its thread's next turn and closes the
 // commitments it delivers, together or not at all.
 func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
+	if delivery.Fallback != nil {
+		return fmt.Errorf("a queued turn has no fallback")
+	}
 	ctx := context.Background()
 	s.writeMu.Lock()
 	err := func() error {

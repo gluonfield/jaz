@@ -10,7 +10,8 @@ import (
 
 type Querier interface {
 	CloseCommitment(ctx context.Context, arg CloseCommitmentParams) (int64, error)
-	// A thread works while it runs, waits to resume or has turns queued.
+	// A running turn of its bot holds an answer that delivers it.
+	CommitmentStaged(ctx context.Context, id int64) (bool, error)
 	CommitmentWorking(ctx context.Context, id int64) (bool, error)
 	GetBot(ctx context.Context, threadID string) (Bot, error)
 	GetCommitment(ctx context.Context, id int64) (BotCommitment, error)
@@ -20,7 +21,7 @@ type Querier interface {
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
 	ListBots(ctx context.Context) ([]Bot, error)
 	ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error)
-	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)
+	ListCommitmentThreads(ctx context.Context, ids []int64) ([]BotCommitmentThreadState, error)
 	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error)
 	PinBot(ctx context.Context, arg PinBotParams) error
