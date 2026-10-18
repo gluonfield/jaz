@@ -419,6 +419,7 @@ func (s *Service) view(record storage.BotRecord, session storage.Session, held m
 		return bot
 	}
 	bot.Waiting = s.threads.AwaitsAnswer(session.ID)
+	bot.Thinking = s.threads.Thinking(session.ID)
 	bot.Away = held[session.ID]
 	bot.Model = session.Model
 	bot.ReasoningEffort = session.ReasoningEffort

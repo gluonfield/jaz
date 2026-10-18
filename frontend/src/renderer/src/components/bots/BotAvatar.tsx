@@ -3,7 +3,7 @@ import { type ReactNode, type SVGProps, useEffect, useId, useRef } from 'react'
 import type { BotAvatar as Avatar, BotShape } from '@/lib/api/types'
 import { BOT_COLORS, type BotMood } from '@/lib/bots'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
-import { eyePath, type FaceGeometry, liveFace, restingEyes } from './faceMotion'
+import { eyePath, type FaceGeometry, FOLLOW_SIZE, liveFace, restingEyes } from './faceMotion'
 
 // Drawn on a 100×100 grid; `eyeLine` is the vertical center of the eye pair
 // and `bottom` where the body meets the ground, which squashes about it.
@@ -53,11 +53,10 @@ export function BotSilhouette({ avatar, size }: { avatar: Avatar; size: number }
   )
 }
 
-// A face shows its bot's mood. A live one moves gently (breathes, blinks,
-// now and then looks around, and acts out the mood), unless motion is
-// reduced; any other face holds still. Faces large
-// enough to read it carry a soft light from the top left, which the moving
-// eyes turn under.
+// A face shows its bot's mood. A live one moves (breathes, blinks, turns its
+// head or follows the cursor, and acts out the mood), unless motion is
+// reduced; any other face holds still. Faces large enough to read it carry a
+// light from the top left and shade below it.
 export function BotAvatar({
   avatar,
   size,
@@ -77,19 +76,19 @@ export function BotAvatar({
   const face = useRef<ReturnType<typeof liveFace> | null>(null)
   const reduced = useReducedEffectsMotion()
   const moving = live && !reduced
-  const light = `face-light-${useId().replace(/[^\w-]/g, '')}`
+  const mask = `face-${useId().replace(/[^\w-]/g, '')}`
   useEffect(() => {
     if (!moving || !svg.current) {
       return
     }
-    face.current = liveFace(svg.current, shape, mood)
+    face.current = liveFace(svg.current, shape, mood, size >= FOLLOW_SIZE)
     return () => {
       face.current?.stop()
       face.current = null
     }
     // A new face starts from the mood it has; later moods only change it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moving, shape])
+  }, [moving, shape, size])
   useEffect(() => {
     face.current?.setMood(mood)
   }, [mood])
@@ -103,19 +102,18 @@ export function BotAvatar({
       height={size}
       className={`shrink-0 overflow-visible drop-shadow-[0_0_0.5px_rgb(0_0_0/0.35)] ${className}`}
     >
+      {live ? <circle data-face="ring" cx="50" cy="50" r="50" fill="none" stroke="currentColor" strokeWidth="2" opacity="0" className="text-ink-3" /> : null}
       <g data-face="body">
         <g fill={fill}>{shape.body(fill)}</g>
         {size >= 24 ? (
           <>
-            <radialGradient id={light} gradientUnits="userSpaceOnUse" cx="34" cy="26" r="82">
-              <stop offset="0" stopColor="#fff" stopOpacity="0.32" />
-              <stop offset="0.42" stopColor="#fff" stopOpacity="0" />
-              <stop offset="1" stopColor="#000" stopOpacity="0.16" />
-            </radialGradient>
-            <mask id={`${light}-shape`}>
+            <mask id={mask}>
               <g fill="#fff">{shape.body('#fff')}</g>
             </mask>
-            <rect width="100" height="100" fill={`url(#${light})`} mask={`url(#${light}-shape)`} />
+            <g mask={`url(#${mask})`}>
+              <ellipse data-face="shade" cx="72" cy="80" rx="48" ry="42" fill="#000" opacity="0.16" />
+              <ellipse data-face="highlight" cx="33" cy="27" rx="19" ry="12" fill="#fff" opacity="0.42" />
+            </g>
           </>
         ) : null}
         <g stroke="#1c1c1f" strokeWidth="7" strokeLinecap="round" fill="none">
@@ -125,6 +123,14 @@ export function BotAvatar({
           })}
         </g>
       </g>
+      {live ? (
+        <g fill="currentColor" className="text-ink-3">
+          <circle data-face="dot" r="4.5" opacity="0" />
+          <circle data-face="dot" r="3" opacity="0" />
+          <text data-face="z" fontSize="16" opacity="0">z</text>
+          <text data-face="z" fontSize="13" opacity="0">z</text>
+        </g>
+      ) : null}
     </svg>
   )
 }
