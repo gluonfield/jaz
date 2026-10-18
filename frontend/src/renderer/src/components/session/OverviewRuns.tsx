@@ -49,27 +49,6 @@ export function OverviewRuns({
   )
 }
 
-// The same rows with no section headings, flush with the panel's edge, for a
-// panel already titled by what it lists.
-export function RunList({
-  threads,
-  subagents,
-}: {
-  threads: SpawnedThreadView[]
-  subagents: ProviderSubagentView[]
-}) {
-  return (
-    <ul className="-mx-2 flex flex-col">
-      {threads.map((thread) => (
-        <ThreadRow key={thread.key} thread={thread} />
-      ))}
-      {subagents.map((subagent) => (
-        <SubagentRow key={subagent.key} subagent={subagent} />
-      ))}
-    </ul>
-  )
-}
-
 export function SectionHeader({ children }: { children: ReactNode }) {
   return <p className="text-[11px] font-medium tracking-wide text-ink-3 uppercase">{children}</p>
 }
