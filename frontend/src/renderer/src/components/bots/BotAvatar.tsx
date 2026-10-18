@@ -53,9 +53,9 @@ export function BotSilhouette({ avatar, size }: { avatar: Avatar; size: number }
   )
 }
 
-// A face shows its bot's mood. A live one moves (breathes, blinks, looks
-// around, follows the cursor when large enough to see it, and acts out the
-// mood), unless motion is reduced; any other face holds still. Faces large
+// A face shows its bot's mood. A live one moves gently (breathes, blinks,
+// now and then looks around, and acts out the mood), unless motion is
+// reduced; any other face holds still. Faces large
 // enough to read it carry a soft light from the top left, which the moving
 // eyes turn under.
 export function BotAvatar({
@@ -82,14 +82,14 @@ export function BotAvatar({
     if (!moving || !svg.current) {
       return
     }
-    face.current = liveFace(svg.current, shape, mood, size >= 40)
+    face.current = liveFace(svg.current, shape, mood)
     return () => {
       face.current?.stop()
       face.current = null
     }
     // A new face starts from the mood it has; later moods only change it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moving, shape, size])
+  }, [moving, shape])
   useEffect(() => {
     face.current?.setMood(mood)
   }, [mood])

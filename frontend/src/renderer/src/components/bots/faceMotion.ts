@@ -73,17 +73,11 @@ type LiveFace = {
   body: SVGGElement
   eyes: SVGPathElement[]
   geometry: FaceGeometry
-  follow: boolean
   seed: number
   mood: BotMood
   since: number
   clip: { name: Clip; start: number } | null
   visible: boolean
-  // Where the face is on screen, measured at most every BOX_AGE ms while the
-  // cursor moves near it.
-  box: { rect: DOMRect; at: number } | null
-  yaw: number
-  pitch: number
   drawn: EyeKind
 }
 
@@ -123,8 +117,13 @@ function blink(time: number, seed: number): number {
   return cycle % 3 === 2 ? Math.max(first, bump(local, 0.26, 0.44)) : first
 }
 
-// Looking around on its own: turn one way, hold, the other way, hold, back.
-const WANDER: [number, number][] = [[0, 0], [2.2, 0], [3.1, 0.75], [4.9, 0.75], [6.1, -0.7], [7.9, -0.7], [8.9, 0], [11, 0]]
+// Now and then the face turns a little one way, holds, the other way, holds
+// and comes back; most of the time it rests facing ahead.
+// A working face's eyes move between what it works on: a look one way, then
+// the other.
+const GLANCE: [number, number][] = [[0, 0], [1.2, 0], [1.4, 3], [2.4, 3], [2.6, -2], [3.4, -2], [3.6, 0], [4.4, 0]]
+
+const WANDER: [number, number][] = [[0, 0], [5, 0], [6.2, 0.5], [8.5, 0.5], [9.7, -0.45], [12, -0.45], [13.2, 0], [16, 0]]
 
 function moodPose(face: LiveFace, time: number): Pose {
   const local = time - face.since
@@ -133,29 +132,24 @@ function moodPose(face: LiveFace, time: number): Pose {
   pose.sy = 1 + 0.025 * breath
   pose.sx = 1 - 0.015 * breath
   pose.open = 1 - 0.9 * blink(time, face.seed)
-  pose.yaw = face.yaw
-  pose.lookY = face.pitch * 4
+  pose.yaw = track(WANDER, time + face.seed * 11)
+  pose.lookY = Math.sin(time * 0.4 + face.seed * 5) * 0.8
   if (face.mood === 'working') {
-    const at = local % 1.8
-    const crouch = bump(at, 0, 0.12) + bump(at, 0.58, 0.7)
-    const air = bump(at, 0.12, 0.58)
-    pose.y = -9 * air
-    pose.sy = 1 - 0.1 * crouch + 0.04 * air
-    pose.sx = 1 + 0.07 * crouch - 0.03 * air
+    pose.y = -2.5 * Math.abs(Math.sin((local * Math.PI) / 1.6))
+    pose.lookX = track(GLANCE, local)
+    pose.yaw *= 0.3
     pose.open *= 0.85
   } else if (face.mood === 'waiting') {
-    const at = local % 2.2
-    const lean = 0.04 * bump(at, 0, 0.5)
+    const lean = 0.03 * bump(local % 2.4, 0, 0.8)
     pose.sx = 1 + lean
     pose.sy = 1 + lean
-    pose.y = -2.5 * bump(at, 0, 0.2) - 2.5 * bump(at, 0.24, 0.44)
     pose.yaw = 0
     pose.lookX = -7
     pose.lookY = 0
     pose.open *= 1.12
   } else if (face.mood === 'away') {
-    pose.y = Math.sin(time * 0.9) * 2
-    pose.sy = 1 + 0.02 * Math.sin(time * 0.9)
+    pose.y = Math.sin(time * 0.9) * 1.2
+    pose.sy = 1 + 0.015 * Math.sin(time * 0.9)
     pose.open = 1
     pose.yaw *= 0.2
   }
@@ -170,12 +164,11 @@ function clipPose(face: LiveFace, clip: Clip, at: number, time: number): Pose {
     pose.lookY += 4 * bump(at, 0.1, 0.45)
     pose.open = 1 + 0.25 * bump(at, 0.35, 0.6)
   } else if (clip === 'cheer') {
-    const crouch = bump(at, 0, 0.12) + bump(at, 0.55, 0.68)
+    const squash = bump(at, 0, 0.3)
     pose.eyes = 'happy'
     pose.open = 1
-    pose.y = -12 * bump(at, 0.12, 0.55)
-    pose.sy = 1 - 0.1 * crouch
-    pose.sx = 1 + 0.07 * crouch
+    pose.sy = 1 - 0.05 * squash
+    pose.sx = 1 + 0.035 * squash
   } else {
     pose.eyes = 'worried'
     pose.x = Math.sin(at * 42) * 3.5 * (1 - at / CLIP_LENGTH.shake)
@@ -217,53 +210,23 @@ function rest(face: LiveFace) {
 }
 
 const faces = new Map<Element, LiveFace>()
-const pointer = { x: 0, y: 0, at: -Infinity }
 let frame = 0
 let observer: IntersectionObserver | null = null
-
-const BOX_AGE = 250
-// How far from a face the cursor still draws its eyes.
-const REACH = 320
-
-function onPointer(event: PointerEvent) {
-  pointer.x = event.clientX
-  pointer.y = event.clientY
-  pointer.at = performance.now()
-}
-
-function lookAt(face: LiveFace, now: number): { yaw: number; pitch: number } | null {
-  if (!face.box || now - face.box.at > BOX_AGE) {
-    face.box = { rect: face.svg.getBoundingClientRect(), at: now }
-  }
-  const { rect } = face.box
-  const dx = pointer.x - rect.left - rect.width / 2
-  const dy = pointer.y - rect.top - rect.height / 2
-  if (Math.hypot(dx, dy) > REACH) {
-    return null
-  }
-  return { yaw: Math.max(-1, Math.min(1, dx / 220)), pitch: Math.max(-1, Math.min(1, dy / 220)) }
-}
 
 function tick(now: number) {
   frame = 0
   const time = now / 1000
-  const recent = now - pointer.at < 2500
-  const shown = [...faces.values()].filter((face) => face.visible)
-  // Rects are read for every face before any face is written.
-  const targets = shown.map((face) => {
-    const looking = face.follow && recent ? lookAt(face, now) : null
-    return looking ?? { yaw: track(WANDER, time + face.seed * 11) * 0.8, pitch: Math.sin(time * 0.4 + face.seed * 5) * 0.3 }
-  })
-  shown.forEach((face, index) => {
-    face.yaw += (targets[index].yaw - face.yaw) * 0.1
-    face.pitch += (targets[index].pitch - face.pitch) * 0.1
+  for (const face of faces.values()) {
+    if (!face.visible) {
+      continue
+    }
     const clip = face.clip
     const at = clip ? time - clip.start : 0
     if (clip && at >= CLIP_LENGTH[clip.name]) {
       face.clip = null
     }
     apply(face, face.clip ? clipPose(face, face.clip.name, at, time) : moodPose(face, time))
-  })
+  }
   schedule()
 }
 
@@ -280,7 +243,6 @@ function watch(face: LiveFace) {
         const seen = faces.get(entry.target)
         if (seen) {
           seen.visible = entry.isIntersecting
-          seen.box = null
         }
       }
       schedule()
@@ -291,26 +253,21 @@ function watch(face: LiveFace) {
 
 // Brings a face to life until stopped; the SVG marks its moving parts with
 // data-face="body" and "eye".
-export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMood, follow: boolean) {
+export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMood) {
   const body = svg.querySelector<SVGGElement>('[data-face="body"]')!
   const face: LiveFace = {
     svg,
     body,
     eyes: [...svg.querySelectorAll<SVGPathElement>('[data-face="eye"]')],
     geometry,
-    follow,
     seed: Math.random(),
     mood,
     since: performance.now() / 1000,
     clip: null,
     visible: false,
-    box: null,
-    yaw: 0,
-    pitch: 0,
     drawn: restingEyes(mood),
   }
   if (!faces.size) {
-    window.addEventListener('pointermove', onPointer, { passive: true })
     document.addEventListener('visibilitychange', schedule)
   }
   faces.set(svg, face)
@@ -331,7 +288,6 @@ export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMo
       observer?.unobserve(svg)
       rest(face)
       if (!faces.size) {
-        window.removeEventListener('pointermove', onPointer)
         document.removeEventListener('visibilitychange', schedule)
         cancelAnimationFrame(frame)
         frame = 0
