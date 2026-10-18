@@ -14,6 +14,18 @@ export function accountLabel(account: IntegrationConnectionAccount): string {
   return accountAddress(account) || account.id
 }
 
+// An MCP connection records the server it reaches, not who signed in to it.
+export function accountDetail(plugin: IntegrationPlugin, account: IntegrationConnectionAccount): string {
+  return plugin.auth[0]?.kind === 'mcp_connection' ? '' : accountAddress(account)
+}
+
+export function accountsSummary(plugin: IntegrationPlugin): string {
+  return (plugin.connection?.accounts ?? [])
+    .map((account) => accountDetail(plugin, account))
+    .filter(Boolean)
+    .join(', ')
+}
+
 export function accountSyncLabel(account: IntegrationConnectionAccount): string {
   if (!hasTime(account.last_synced_at)) return ''
   const value = relativeTime(account.last_synced_at)
@@ -28,7 +40,7 @@ export function pluginActionLabel(plugin: IntegrationPlugin, connecting: boolean
   const remoteMCPAuth = plugin.auth[0]?.kind === 'remote_mcp'
   if (!pluginCanConnect(plugin)) return titleCase(plugin.implementation.status)
   if (remoteMCPAuth) return 'Add MCP server'
-  if (plugin.multi_account && plugin.connection?.status === 'connected') return 'Add account'
+  if (plugin.connection?.status === 'connected') return plugin.multi_account ? 'Add account' : 'Reconnect'
   return 'Connect'
 }
 

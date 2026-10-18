@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/Button'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PluginIcon } from '@/components/settings/ConnectionPluginVisuals'
 import { ConnectionQRModal } from '@/components/settings/ConnectionQRModal'
-import { accountLabel, pluginActionLabel, pluginCanConnect } from '@/components/settings/connectionFormatting'
+import { accountsSummary, pluginActionLabel, pluginCanConnect } from '@/components/settings/connectionFormatting'
 import { useConnectionSignIn } from '@/components/settings/useConnectionSignIn'
 
 // The card for a jaz://connect/<plugin> link. Status is read live, so a card
@@ -14,9 +14,7 @@ export function ConnectCard({ plugin: pluginID }: { plugin: string }) {
   const plugin = signIn.plugins.data?.find((item) => item.id === pluginID)
   if (!plugin) return <p>jaz://connect/{pluginID}</p>
   const connected = plugin.connection?.status === 'connected'
-  const subtitle = connected
-    ? plugin.connection?.accounts?.map(accountLabel).filter((label) => label !== plugin.name).join(', ')
-    : plugin.description
+  const subtitle = connected ? accountsSummary(plugin) : plugin.description
   return (
     <div className="my-2 flex max-w-md items-center gap-3 rounded-card bg-bg px-3 py-2.5 ring-1 ring-border/70">
       <PluginIcon plugin={plugin} />

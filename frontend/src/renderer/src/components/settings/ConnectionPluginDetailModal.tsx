@@ -1,14 +1,21 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowUp, Loader2, Plug, Plus, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
-import type { IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
+import { useToast } from '@/components/ui/toast'
+import { disconnectConnectionAccount } from '@/lib/api/connections'
+import { keys } from '@/lib/query/keys'
+import type { IntegrationConnectionAccount, IntegrationPlugin, IntegrationTool } from '@/lib/api/types'
 import {
+  accountDetail,
+  accountLabel,
+  accountSyncLabel,
   categoryLabel,
   pluginActionLabel,
   pluginCanConnect,
   titleCase,
-} from './connectionFormatting'
-import { PluginGlyph } from './ConnectionPluginVisuals'
+} from '@/components/settings/connectionFormatting'
+import { PluginGlyph } from '@/components/settings/ConnectionPluginVisuals'
 
 export function ConnectionPluginDetailModal({
   plugin,
@@ -27,6 +34,9 @@ export function ConnectionPluginDetailModal({
     <Modal open onClose={onClose} title={plugin.name} size="wide" chromeless>
       <Hero plugin={plugin} connecting={connecting} onConnect={() => onConnect(plugin)} />
       <div className="space-y-9 px-8 pb-9">
+        {plugin.connection?.accounts?.length ? (
+          <AccountsSection plugin={plugin} accounts={plugin.connection.accounts} />
+        ) : null}
         {plugin.examples?.length ? <ExamplesBand plugin={plugin} /> : null}
         {plugin.tools?.length ? <ToolsSection tools={plugin.tools} /> : null}
         <InformationSection plugin={plugin} />
@@ -89,6 +99,57 @@ function ConnectButton({
       <Icon size={14} className={connecting ? 'animate-spin' : undefined} />
       {pluginActionLabel(plugin, connecting)}
     </Button>
+  )
+}
+
+function AccountsSection({
+  plugin,
+  accounts,
+}: {
+  plugin: IntegrationPlugin
+  accounts: IntegrationConnectionAccount[]
+}) {
+  const queryClient = useQueryClient()
+  const toast = useToast()
+  const disconnect = useMutation({
+    mutationFn: disconnectConnectionAccount,
+    onSuccess: () => toast('Disconnected account'),
+    onError: (error: Error) => toast(`Couldn't disconnect account: ${error.message}`, 'danger'),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.connectionPlugins }),
+  })
+
+  return (
+    <section>
+      <SectionLabel count={accounts.length}>Accounts</SectionLabel>
+      <div className="divide-y divide-border/60">
+        {accounts.map((account) => {
+          const label = [accountDetail(plugin, account) || 'Connected', accountSyncLabel(account)]
+            .filter(Boolean)
+            .join(' · ')
+          const disconnecting = disconnect.isPending && disconnect.variables === account.id
+          return (
+            <div key={account.id} className="flex items-center gap-2.5 py-1.5 text-[13px] text-ink">
+              <span className="size-1.5 shrink-0 rounded-full bg-ok" aria-hidden />
+              <span className="min-w-0 flex-1 truncate" title={label}>
+                {label}
+              </span>
+              <Button
+                variant="danger"
+                size="sm"
+                disabled={disconnecting}
+                onClick={() => {
+                  if (window.confirm(`Disconnect ${accountLabel(account)}?`)) {
+                    disconnect.mutate(account.id)
+                  }
+                }}
+              >
+                {disconnecting ? 'Disconnecting…' : 'Disconnect'}
+              </Button>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 

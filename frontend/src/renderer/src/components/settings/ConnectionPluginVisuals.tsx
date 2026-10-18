@@ -2,6 +2,7 @@ import { CircleCheck, Users, type LucideIcon } from 'lucide-react'
 import gmail from '@/assets/integrations/gmail.svg'
 import google_calendar from '@/assets/integrations/google_calendar.svg'
 import google_drive from '@/assets/integrations/google_drive.png'
+import granola from '@/assets/integrations/granola.png'
 import ink from '@/assets/integrations/ink.png'
 import slack from '@/assets/integrations/slack.svg'
 import telegram from '@/assets/integrations/telegram.svg'
@@ -10,7 +11,16 @@ import type { IntegrationPlugin } from '@/lib/api/types'
 
 const pluginGlyphs: Record<string, LucideIcon> = { tasks: CircleCheck, crm: Users }
 
-const pluginAssetUrls: Record<string, string> = { gmail, google_calendar, google_drive, ink, slack, telegram, whatsapp }
+const pluginAssetUrls: Record<string, string> = {
+  gmail,
+  google_calendar,
+  google_drive,
+  granola,
+  ink,
+  slack,
+  telegram,
+  whatsapp,
+}
 
 export function PluginIcon({ plugin, compact = false }: { plugin: IntegrationPlugin; compact?: boolean }) {
   const sizeClass = compact ? 'size-8' : 'size-9'

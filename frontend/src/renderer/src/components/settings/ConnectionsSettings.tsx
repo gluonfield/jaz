@@ -1,67 +1,29 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { SearchField } from '@/components/ui/SearchField'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { useToast } from '@/components/ui/toast'
-import { disconnectConnectionAccount } from '@/lib/api/connections'
-import { keys } from '@/lib/query/keys'
-import type { IntegrationConnectionAccount, IntegrationPlugin } from '@/lib/api/types'
+import type { IntegrationPlugin } from '@/lib/api/types'
 import {
+  AvailablePluginRow,
+  ConnectedPluginTile,
   ConnectionSection,
-  ConnectedAccountRow,
-  PluginCatalogRow,
-} from './ConnectionRows'
-import { ConnectionPluginDetailModal } from './ConnectionPluginDetailModal'
-import { ConnectionQRModal } from './ConnectionQRModal'
-import { accountLabel, categoryLabel } from './connectionFormatting'
-import { useConnectionSignIn } from './useConnectionSignIn'
+} from '@/components/settings/ConnectionRows'
+import { ConnectionPluginDetailModal } from '@/components/settings/ConnectionPluginDetailModal'
+import { ConnectionQRModal } from '@/components/settings/ConnectionQRModal'
+import { accountLabel, categoryLabel } from '@/components/settings/connectionFormatting'
+import { useConnectionSignIn } from '@/components/settings/useConnectionSignIn'
 
 export function ConnectionsSettings() {
-  const queryClient = useQueryClient()
-  const toast = useToast()
   const [selectedPluginID, setSelectedPluginID] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const signIn = useConnectionSignIn({ onStartAccepted: () => setSelectedPluginID(null) })
   const plugins = signIn.plugins
-  const sortedPlugins = useMemo(
-    () => [...(plugins.data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
-    [plugins.data],
-  )
-  const selectedPlugin = useMemo(
-    () => sortedPlugins.find((plugin) => plugin.id === selectedPluginID) ?? null,
-    [sortedPlugins, selectedPluginID],
-  )
-  const disconnect = useMutation({
-    mutationFn: disconnectConnectionAccount,
-    onSuccess: () => toast('Disconnected account'),
-    onError: (error: Error) => toast(`Couldn't disconnect account: ${error.message}`, 'danger'),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: keys.connectionPlugins }),
-  })
+  const allPlugins = plugins.data ?? []
+  const selectedPlugin = allPlugins.find((plugin) => plugin.id === selectedPluginID) ?? null
   const query = search.trim().toLowerCase()
-  const connectedAccounts = useMemo(
-    () =>
-      sortedPlugins.flatMap((plugin) =>
-        (plugin.connection?.accounts ?? []).map((account) => ({ plugin, account })),
-      ),
-    [sortedPlugins],
-  )
-  const visibleAccounts = connectedAccounts.filter(({ plugin, account }) =>
-    matchesQuery(query, plugin, accountLabel(account)),
-  )
-  const catalogGroups = useMemo(() => {
-    const groups = new Map<string, IntegrationPlugin[]>()
-    for (const plugin of sortedPlugins) {
-      if (!matchesQuery(query, plugin)) continue
-      const category = categoryLabel(plugin.category)
-      groups.set(category, [...(groups.get(category) ?? []), plugin])
-    }
-    return [...groups.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([category, items]) => ({ category, items }))
-  }, [sortedPlugins, query])
-  const disconnectAccount = (account: IntegrationConnectionAccount) => {
-    if (window.confirm(`Disconnect ${accountLabel(account)}?`)) disconnect.mutate(account.id)
-  }
+  const visiblePlugins = allPlugins.filter((plugin) => matchesQuery(query, plugin))
+  const connected = visiblePlugins.filter((plugin) => plugin.connection?.status === 'connected')
+  const available = visiblePlugins.filter((plugin) => plugin.connection?.status !== 'connected')
+  const connectingID = signIn.isConnecting ? signIn.connectingPluginID : undefined
 
   return (
     <section className="py-4">
@@ -77,7 +39,7 @@ export function ConnectionsSettings() {
           <SkeletonRows count={5} />
         ) : plugins.isError ? (
           <p className="py-2 text-[13px] text-danger">{plugins.error.message}</p>
-        ) : sortedPlugins.length === 0 ? (
+        ) : allPlugins.length === 0 ? (
           <p className="rounded-card bg-surface px-3 py-3 text-[13px] text-ink-3">
             No first-party connections are available yet.
           </p>
@@ -90,44 +52,45 @@ export function ConnectionsSettings() {
               className="h-9"
             />
 
-            <div className="mt-4 space-y-5">
-              {visibleAccounts.length > 0 ? (
-                <ConnectionSection title="Connected">
-                  {visibleAccounts.map(({ plugin, account }) => (
-                    <ConnectedAccountRow
-                      key={account.id}
-                      plugin={plugin}
-                      account={account}
-                      disconnecting={disconnect.isPending && disconnect.variables === account.id}
-                      onOpen={() => setSelectedPluginID(plugin.id)}
-                      onDisconnect={() => disconnectAccount(account)}
-                    />
-                  ))}
+            <div className="mt-5 space-y-6">
+              {connected.length > 0 ? (
+                <ConnectionSection title="Connected" count={connected.length}>
+                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                    {connected.map((plugin) => (
+                      <ConnectedPluginTile
+                        key={plugin.id}
+                        plugin={plugin}
+                        onOpen={() => setSelectedPluginID(plugin.id)}
+                      />
+                    ))}
+                  </div>
                 </ConnectionSection>
               ) : null}
 
-              {catalogGroups.map(({ category, items }) => (
-                <ConnectionSection key={category} title={category}>
-                  {items.map((plugin) => (
-                    <PluginCatalogRow
-                      key={plugin.id}
-                      plugin={plugin}
-                      connecting={signIn.isConnecting && signIn.connectingPluginID === plugin.id}
-                      onOpen={() => setSelectedPluginID(plugin.id)}
-                      onConnect={() => signIn.start(plugin)}
-                    />
-                  ))}
+              {available.length > 0 ? (
+                <ConnectionSection title="Available" count={available.length}>
+                  <div className="-mx-3 grid grid-cols-1 gap-x-2 lg:grid-cols-2">
+                    {available.map((plugin) => (
+                      <AvailablePluginRow
+                        key={plugin.id}
+                        plugin={plugin}
+                        connecting={connectingID === plugin.id}
+                        onOpen={() => setSelectedPluginID(plugin.id)}
+                        onConnect={() => signIn.start(plugin)}
+                      />
+                    ))}
+                  </div>
                 </ConnectionSection>
-              ))}
+              ) : null}
 
-              {visibleAccounts.length === 0 && catalogGroups.length === 0 ? (
+              {visiblePlugins.length === 0 ? (
                 <p className="py-2 text-[13px] text-ink-3">No connections match “{search.trim()}”.</p>
               ) : null}
             </div>
 
             <ConnectionPluginDetailModal
               plugin={selectedPlugin}
-              connecting={signIn.isConnecting && signIn.connectingPluginID === selectedPlugin?.id}
+              connecting={connectingID === selectedPlugin?.id}
               onClose={() => setSelectedPluginID(null)}
               onConnect={signIn.start}
             />
@@ -139,12 +102,12 @@ export function ConnectionsSettings() {
   )
 }
 
-function matchesQuery(query: string, plugin: IntegrationPlugin, accountText = ''): boolean {
+function matchesQuery(query: string, plugin: IntegrationPlugin): boolean {
   if (!query) return true
-  return (
-    plugin.name.toLowerCase().includes(query) ||
-    (plugin.description ?? '').toLowerCase().includes(query) ||
-    categoryLabel(plugin.category).toLowerCase().includes(query) ||
-    accountText.toLowerCase().includes(query)
-  )
+  return [
+    plugin.name,
+    plugin.description ?? '',
+    categoryLabel(plugin.category),
+    ...(plugin.connection?.accounts ?? []).map(accountLabel),
+  ].some((text) => text.toLowerCase().includes(query))
 }
