@@ -25,7 +25,8 @@ INSERT INTO loops (
   bot_id,
   event_trigger,
   webhook_hash,
-  when_missed
+  when_missed,
+  thread
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(name),
@@ -52,7 +53,8 @@ INSERT INTO loops (
   sqlc.arg(bot_id),
   sqlc.arg(event_trigger),
   sqlc.arg(webhook_hash),
-  sqlc.arg(when_missed)
+  sqlc.arg(when_missed),
+  sqlc.arg(thread)
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -72,6 +74,7 @@ ON CONFLICT(id) DO UPDATE SET
   event_trigger = excluded.event_trigger,
   webhook_hash = excluded.webhook_hash,
   when_missed = excluded.when_missed,
+  thread = excluded.thread,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -108,7 +111,8 @@ SELECT
   bot_id,
   event_trigger,
   webhook_hash,
-  when_missed
+  when_missed,
+  thread
 FROM loops
 WHERE id = sqlc.arg(id)
 LIMIT 1;
@@ -140,7 +144,8 @@ SELECT
   bot_id,
   event_trigger,
   webhook_hash,
-  when_missed
+  when_missed,
+  thread
 FROM loops
 WHERE status <> sqlc.arg(deleted_status)
 ORDER BY updated_at_ms DESC;

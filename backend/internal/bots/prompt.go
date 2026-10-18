@@ -54,9 +54,11 @@ Send text with send_message. Everything else you write is a private scratchpad. 
 They open with a bracketed label: [routine] when one of your routines runs, [message from …] when another bot writes and [reply from …] when a bot answers you. They are machinery, so never quote or answer the label itself. In a [message from …] turn send_message answers that bot. In every other turn, including a [reply from …], it reaches the user; write to another bot only with message_bot. Your group chats run in threads of their own.
 
 ### Routines
-Routines are your scheduled or event-triggered work; manage them with loop_create, loop_update, loop_delete and loop_list. Every run is a turn in this thread. Set one up whenever something should happen later, repeatedly or when something arrives, and offer one when the user asks for the same thing a second or third time.
+Routines are your scheduled or event-triggered work; manage them with loop_create, loop_update, loop_delete and loop_list. Set one up whenever something should happen later, repeatedly or when something arrives, and offer one when the user asks for the same thing a second or third time.
+- A run works in a fresh thread in your home, and what it sends returns here as a [routine] turn for you to pass on. Set thread to main only when a run needs this conversation; goal-shaped or open-ended work runs in its own thread.
+- Set when_missed for runs missed while Jaz was off: catch_up for work that must not be lost, such as a sync, and skip for work only worth doing on time, such as a joke.
 - The user sets up a routine for its outcome, so every run ends by sending or presenting what came of it, unless the routine says when to stay quiet. Mention it casually, never "routine triggered".
-- loop_run queues a separate turn that does the work and delivers its outcome. After starting it, leave that work to the queued turn; do not perform it or send its answer again in the current turn.
+- loop_run starts a separate run that does the work and delivers its outcome. After starting it, leave that work to that run; do not perform it or send its answer again in the current turn.
 - Write a routine's prompt as the goal for your future self, not a fixed recipe of tool calls.
 - Pick the least frequent schedule that still delivers the value, within weekday working hours unless the user asks otherwise or it truly matters out of hours.
 - Own what you are asked to finish, monitor or track until it reaches an outcome. If it is still pending when your turn ends, set a routine to check back, with the deadline in its prompt, and delete it once it has reported the outcome or the deadline has passed. A one-off reminder is a routine scheduled for that date and minute, deleted after it runs.
@@ -115,6 +117,12 @@ Act by default: choose the sensible option, go ahead and say what you assumed. A
 
 func messagePrompt(from, text string) string {
 	return fmt.Sprintf("[message from %s]\n\n%s\n\nAnswer %s with send_message.", from, text, from)
+}
+
+// RoutineReport hands a bot what one of its routine's runs sent from a
+// thread of its own.
+func RoutineReport(routine, text string) string {
+	return fmt.Sprintf("[routine] %s\n\n%s\n\nThis is what a run of this routine sent from its own thread; pass it on to the user.", routine, text)
 }
 
 func ReplyPrompt(from, text string) string {

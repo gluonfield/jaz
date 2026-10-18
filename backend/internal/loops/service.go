@@ -124,6 +124,7 @@ func (s *Service) Create(input CreateLoop) (Loop, error) {
 		BotID:           input.BotID,
 		Trigger:         input.Trigger,
 		WhenMissed:      input.WhenMissed,
+		Thread:          input.Thread,
 	}
 	ensureWebhookSecret(&loop)
 	s.mu.Lock()
@@ -331,7 +332,7 @@ func (s *Service) Begin(runID, threadID string) (Loop, string, error) {
 	if err != nil {
 		return Loop{}, "", err
 	}
-	return loop, runPrompt(loop, run, now, s.botThread(loop) != ""), nil
+	return loop, runPrompt(loop, run, now, s.thread(loop)), nil
 }
 
 // Finish closes a run that is still open, then starts the run waiting behind
@@ -465,20 +466,21 @@ func (s *Service) start(ctx context.Context, loop Loop, run Run) {
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
 		Loop:                   loop,
 		Run:                    run,
-		Thread:                 s.botThread(loop),
+		Thread:                 s.thread(loop),
 		SystemPromptExtensions: s.systemPromptExtensions(loop, run, s.now()),
 		ArtifactSurface:        s.artifactSurface(loop, run),
 		Controller:             s,
 	})
 }
 
-// botThread is the bot thread a run of loop is a turn in, or "" when each
-// run gets a thread of its own.
-func (s *Service) botThread(loop Loop) string {
-	if s.artifactSurface(loop, Run{}) != "" {
+// thread is where a run of loop happens: ThreadMain or ThreadChild for a
+// bot's routine, or "" for a run on a board or with no bot, which has a thread
+// of its own.
+func (s *Service) thread(loop Loop) string {
+	if loop.BotID == "" || s.artifactSurface(loop, Run{}) != "" {
 		return ""
 	}
-	return loop.BotID
+	return loop.Thread
 }
 
 func (s *Service) artifactSurface(loop Loop, run Run) string {

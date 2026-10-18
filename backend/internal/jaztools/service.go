@@ -336,6 +336,10 @@ func (s *Service) surface(r *http.Request) toolSurface {
 		if session.RuntimeRef != nil && visualize.NormalizeSurface(session.RuntimeRef.ArtifactSurface) == visualize.SurfaceCanvas {
 			return canvasSurface
 		}
+		// A bot's routine run speaks through the bot, with the bot's tools.
+		if session.SourceType == storage.SourceLoopRun && session.ParentID != "" && !s.widgetSession(r) {
+			return botSurface
+		}
 	}
 	if s.widgetSession(r) {
 		return widgetSurface

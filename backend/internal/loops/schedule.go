@@ -41,6 +41,9 @@ func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, er
 	if input.WhenMissed, err = normalizeWhenMissed(input.WhenMissed); err != nil {
 		return input, time.Time{}, err
 	}
+	if input.Thread, err = normalizeThread(input.Thread); err != nil {
+		return input, time.Time{}, err
+	}
 	if input.Name == "" {
 		input.Name = titleFromPrompt(input.Prompt)
 	}
@@ -107,6 +110,13 @@ func NormalizeUpdate(current Loop, input UpdateLoop, now time.Time) (Loop, bool,
 			return next, false, err
 		}
 		next.WhenMissed = whenMissed
+	}
+	if input.Thread != nil {
+		thread, err := normalizeThread(*input.Thread)
+		if err != nil {
+			return next, false, err
+		}
+		next.Thread = thread
 	}
 	if next.Status != StatusActive && next.Status != StatusPaused {
 		return next, false, fmt.Errorf("unsupported loop status %q", next.Status)
@@ -263,6 +273,16 @@ func normalizeWhenMissed(value string) (string, error) {
 		return value, nil
 	}
 	return "", fmt.Errorf("unknown when_missed %q; valid values are skip and catch_up", value)
+}
+
+func normalizeThread(value string) (string, error) {
+	switch value = strings.ToLower(strings.TrimSpace(value)); value {
+	case "":
+		return ThreadChild, nil
+	case ThreadMain, ThreadChild:
+		return value, nil
+	}
+	return "", fmt.Errorf("unknown thread %q; valid values are child and main", value)
 }
 
 func normalizeRuntime(runtime string) string {

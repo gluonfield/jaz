@@ -31,7 +31,7 @@ func TestMessagesWhileARunWaitsFoldIntoIt(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.bot("Gimli")
-	routine := jaz.routine(loops.CreateLoop{Name: "Quotes", Prompt: "triage the quote", BotID: bot.ID, Trigger: quotes})
+	routine := jaz.routine(loops.CreateLoop{Name: "Quotes", Prompt: "triage the quote", BotID: bot.ID, Thread: loops.ThreadMain, Trigger: quotes})
 	jaz.busy(bot.ID)
 
 	jaz.loops.HandleIncoming(jaz.ctx, quote("m1", "First quote", time.Now()))
@@ -79,7 +79,7 @@ func TestATakenMessageStaysTakenAfterARestart(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.bot("Gimli")
-	routine := jaz.routine(loops.CreateLoop{Name: "Quotes", Prompt: "triage the quote", BotID: bot.ID, Trigger: quotes})
+	routine := jaz.routine(loops.CreateLoop{Name: "Quotes", Prompt: "triage the quote", BotID: bot.ID, Thread: loops.ThreadMain, Trigger: quotes})
 	at := time.Now()
 	jaz.loops.HandleIncoming(jaz.ctx, quote("m1", "First quote", at))
 	jaz.waitRun(jaz.runs(routine.ID)[0].ID, loops.RunStatusOK)
@@ -99,7 +99,7 @@ func TestACatchUpRoutineTakesMessagesMissedWhileJazWasDown(t *testing.T) {
 	jaz.loops.Now = func() time.Time { return down.Add(-time.Hour) }
 	routines := map[string]loops.Loop{}
 	for _, whenMissed := range []string{loops.MissedSkip, loops.MissedCatchUp} {
-		routines[whenMissed] = jaz.routine(loops.CreateLoop{Name: whenMissed, Prompt: "triage the quote", BotID: bot.ID, Trigger: quotes, WhenMissed: whenMissed})
+		routines[whenMissed] = jaz.routine(loops.CreateLoop{Name: whenMissed, Prompt: "triage the quote", BotID: bot.ID, Thread: loops.ThreadMain, Trigger: quotes, WhenMissed: whenMissed})
 	}
 	jaz.loops.Now = func() time.Time { return down }
 	jaz.loops.HandleIncoming(jaz.ctx, quote("m1", "First quote", down))
@@ -152,8 +152,8 @@ func TestRestartAcrossAMissedSlotCatchesUpOnceAndSkipsTheJoke(t *testing.T) {
 	slot := time.Date(2026, 6, 8, 9, 0, 0, 0, time.UTC)
 	jaz.loops.Now = func() time.Time { return slot.Add(-10 * time.Minute) }
 	daily := loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"}
-	sync := jaz.routine(loops.CreateLoop{Name: "Sync", Prompt: "sync the notes", BotID: bot.ID, WhenMissed: loops.MissedCatchUp, Schedule: daily})
-	joke := jaz.routine(loops.CreateLoop{Name: "Joke", Prompt: "tell a joke", BotID: bot.ID, Schedule: daily})
+	sync := jaz.routine(loops.CreateLoop{Name: "Sync", Prompt: "sync the notes", BotID: bot.ID, Thread: loops.ThreadMain, WhenMissed: loops.MissedCatchUp, Schedule: daily})
+	joke := jaz.routine(loops.CreateLoop{Name: "Joke", Prompt: "tell a joke", BotID: bot.ID, Thread: loops.ThreadMain, Schedule: daily})
 
 	// Jaz stops before 09:00 and starts again at 09:40.
 	jaz = jaz.restart(nil)

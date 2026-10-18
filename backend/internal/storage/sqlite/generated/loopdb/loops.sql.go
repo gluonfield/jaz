@@ -89,7 +89,8 @@ SELECT
   bot_id,
   event_trigger,
   webhook_hash,
-  when_missed
+  when_missed,
+  thread
 FROM loops
 WHERE id = ?1
 LIMIT 1
@@ -125,6 +126,7 @@ func (q *Queries) GetLoop(ctx context.Context, id string) (Loop, error) {
 		&i.EventTrigger,
 		&i.WebhookHash,
 		&i.WhenMissed,
+		&i.Thread,
 	)
 	return i, err
 }
@@ -342,7 +344,8 @@ SELECT
   bot_id,
   event_trigger,
   webhook_hash,
-  when_missed
+  when_missed,
+  thread
 FROM loops
 WHERE status <> ?1
 ORDER BY updated_at_ms DESC
@@ -384,6 +387,7 @@ func (q *Queries) ListLoops(ctx context.Context, deletedStatus string) ([]Loop, 
 			&i.EventTrigger,
 			&i.WebhookHash,
 			&i.WhenMissed,
+			&i.Thread,
 		); err != nil {
 			return nil, err
 		}
@@ -500,7 +504,8 @@ INSERT INTO loops (
   bot_id,
   event_trigger,
   webhook_hash,
-  when_missed
+  when_missed,
+  thread
 ) VALUES (
   ?1,
   ?2,
@@ -527,7 +532,8 @@ INSERT INTO loops (
   ?23,
   ?24,
   ?25,
-  ?26
+  ?26,
+  ?27
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -547,6 +553,7 @@ ON CONFLICT(id) DO UPDATE SET
   event_trigger = excluded.event_trigger,
   webhook_hash = excluded.webhook_hash,
   when_missed = excluded.when_missed,
+  thread = excluded.thread,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -584,6 +591,7 @@ type UpsertLoopParams struct {
 	EventTrigger    string         `json:"event_trigger"`
 	WebhookHash     string         `json:"webhook_hash"`
 	WhenMissed      string         `json:"when_missed"`
+	Thread          string         `json:"thread"`
 }
 
 func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
@@ -614,6 +622,7 @@ func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
 		arg.EventTrigger,
 		arg.WebhookHash,
 		arg.WhenMissed,
+		arg.Thread,
 	)
 	return err
 }

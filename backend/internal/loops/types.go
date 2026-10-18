@@ -31,6 +31,13 @@ const (
 	ScheduleEvent = "event"
 )
 
+// Where a bot's routine runs: as a turn in the bot's own thread, or in a child
+// thread of its own that reports back to the bot.
+const (
+	ThreadMain  = "main"
+	ThreadChild = "child"
+)
+
 // What a routine does about slots and events it missed while Jaz was not
 // running: skip them, or catch up with one run that covers them all.
 const (
@@ -88,6 +95,7 @@ type Loop struct {
 	BotID       string   `json:"bot_id"`
 	Trigger     *Trigger `json:"trigger,omitempty"`
 	WhenMissed  string   `json:"when_missed"`
+	Thread      string   `json:"thread"`
 	WebhookHash string   `json:"-"`
 	// WebhookSecret is returned once, when a webhook trigger is created.
 	WebhookSecret string `json:"webhook_secret,omitempty"`
@@ -131,6 +139,7 @@ type CreateLoop struct {
 	BotID           string
 	Trigger         *Trigger
 	WhenMissed      string
+	Thread          string
 }
 
 type UpdateLoop struct {
@@ -147,6 +156,7 @@ type UpdateLoop struct {
 	Trigger         *Trigger
 	BotID           *string
 	WhenMissed      *string
+	Thread          *string
 	Reschedule      bool
 	RescheduleAt    time.Time
 }
@@ -202,8 +212,9 @@ type RunController interface {
 type Execution struct {
 	Loop Loop
 	Run  Run
-	// Thread, when set, is the bot thread the run is a turn in; otherwise the
-	// run gets a thread of its own.
+	// Thread is ThreadMain for a turn in the loop's bot's thread, ThreadChild
+	// for a child thread that reports to that bot, and empty for a thread of
+	// the run's own.
 	Thread                 string
 	SystemPromptExtensions promptmodule.Modules
 	ArtifactSurface        string

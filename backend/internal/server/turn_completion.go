@@ -40,7 +40,11 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 			}
 		}
 		if output := session.Turn.Output; output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
-			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: storage.NewInternalQueuedMessage(bots.ReplyPrompt(session.Title, strings.Join(output.Replies, "\n\n")))})
+			reply := bots.ReplyPrompt
+			if session.SourceType == storage.SourceLoopRun {
+				reply = bots.RoutineReport
+			}
+			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: storage.NewInternalQueuedMessage(reply(session.Title, strings.Join(output.Replies, "\n\n")))})
 		}
 		// The run closes before its turn does: a restart in between resumes the
 		// turn, whose end then finds the run already closed.

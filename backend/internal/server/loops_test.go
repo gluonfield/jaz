@@ -254,6 +254,7 @@ func TestRoutineRunsAsAQueuedTurnInItsBotThread(t *testing.T) {
 		Name:     "Morning triage",
 		Prompt:   "check the inbox",
 		BotID:    bot.ID,
+		Thread:   loops.ThreadMain,
 		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "30 8 * * 1-5", Timezone: "UTC"},
 	})
 	if err != nil {

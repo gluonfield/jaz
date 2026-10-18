@@ -37,10 +37,10 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	}
 	loop := execution.Loop
 	run := execution.Run
-	if execution.Thread != "" {
+	if execution.Thread == loops.ThreadMain {
 		// The run waits in its bot thread's queue, after the user's messages;
 		// the queue begins it when its turn starts.
-		if err := r.server.QueueInternalTurn(context.Background(), execution.Thread, storage.QueuedMessage{Text: loop.Prompt, Output: &storage.TurnOutput{Run: run.ID}}); err != nil {
+		if err := r.server.QueueInternalTurn(context.Background(), loop.BotID, storage.QueuedMessage{Text: loop.Prompt, Output: &storage.TurnOutput{Run: run.ID}}); err != nil {
 			r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 		}
 		return
@@ -48,10 +48,11 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	startCtx, cancel := serverACPBootstrapContext()
 	defer cancel()
 	// An empty agent stays empty: the ACP manager resolves the canonical
-	// default at spawn time, the same default sessions get.
+	// default at spawn time, the same default sessions get. A bot's child
+	// starts in the bot's home unless the routine names a directory.
 	agent := strings.TrimSpace(loop.ACPAgent)
 	directory := strings.TrimSpace(loop.Directory)
-	if directory == "" {
+	if directory == "" && execution.Thread != loops.ThreadChild {
 		directory = "."
 	}
 	spawned, err := r.server.ACP.Spawn(startCtx, acp.SpawnRequest{
@@ -79,11 +80,19 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	}
 	sendCtx, cancel := serverACPBootstrapContext()
 	defer cancel()
-	if _, err := r.server.ACP.Send(sendCtx, acp.SendRequest{
-		Session:    spawned.SessionID,
-		Message:    prompt,
-		Completion: acp.CompletionAsync,
-	}); err != nil {
+	if execution.Thread == loops.ThreadChild {
+		// A bot's child speaks as the bot does: what it sends reaches the bot,
+		// and a run with nothing to say leaves the bot alone.
+		_, err = r.server.ACP.StartInternalTurn(sendCtx, acp.InternalTurnRequest{
+			Session:      spawned.SessionID,
+			Message:      prompt,
+			Output:       &storage.TurnOutput{ReplyTo: loop.BotID, Run: run.ID},
+			AllowSilence: true,
+		})
+	} else {
+		_, err = r.server.ACP.Send(sendCtx, acp.SendRequest{Session: spawned.SessionID, Message: prompt, Completion: acp.CompletionAsync})
+	}
+	if err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 	}
 }

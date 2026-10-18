@@ -223,6 +223,7 @@ func upsertLoop(ctx context.Context, q *loopdb.Queries, loop loops.Loop) error {
 		EventTrigger:    encodeTrigger(loop.Trigger),
 		WebhookHash:     loop.WebhookHash,
 		WhenMissed:      loop.WhenMissed,
+		Thread:          loop.Thread,
 	})
 }
 
@@ -267,6 +268,7 @@ func loopFromDB(row loopdb.Loop) loops.Loop {
 		Trigger:         decodeTrigger(row.EventTrigger),
 		WebhookHash:     row.WebhookHash,
 		WhenMissed:      row.WhenMissed,
+		Thread:          row.Thread,
 	}
 }
 

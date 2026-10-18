@@ -13,6 +13,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -33,6 +34,7 @@ type jazProcess struct {
 	manager *acp.Manager
 	server  *server.Server
 	loops   *loops.Service
+	bots    *bots.Service
 	locks   *sessionlock.Locks
 	events  *sessionevents.Bus
 }
@@ -49,7 +51,8 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 	service := loops.NewService(store, server.NewLoopRunner(handler), log.New(io.Discard))
 	handler.Loops = service
 	manager.TurnFinished = handler.HandleACPTurnFinished
-	return &jazProcess{t: t, ctx: ctx, store: store, root: root, manager: manager, server: handler, loops: service, locks: locks, events: events}
+	botService := bots.NewService(store, root, manager, handler, handler, service, events, log.New(io.Discard))
+	return &jazProcess{t: t, ctx: ctx, store: store, root: root, manager: manager, server: handler, loops: service, bots: botService, locks: locks, events: events}
 }
 
 // restart stops this process and starts the next one the way Jaz starts:
@@ -215,7 +218,7 @@ func TestRoutineDueWhileItsBotIsBusyWaitsPendingAndRunsNext(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.bot("Gimli")
-	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"}})
+	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain, Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"}})
 	jaz.busy(bot.ID)
 
 	slot := routine.NextRunAt
@@ -250,7 +253,7 @@ func TestUserMessageQueuedBehindABusyBotRunsBeforeAnEarlierRoutine(t *testing.T)
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.bot("Gimli")
-	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID})
+	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain})
 	jaz.busy(bot.ID)
 
 	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
@@ -277,7 +280,7 @@ func TestRestartKeepsARoutineRunWaitingInItsBotQueue(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.bot("Gimli")
-	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID})
+	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain})
 	jaz.busy(bot.ID)
 	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
 	if err != nil {
@@ -303,7 +306,7 @@ func TestRestartMidRoutineTurnResumesItAndClosesTheRunOnce(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.bot("Gimli")
-	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox until released", BotID: bot.ID})
+	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox until released", BotID: bot.ID, Thread: loops.ThreadMain})
 	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -323,7 +326,7 @@ func TestRestartBeforeTurnBookkeepingResumesTheRoutineTurn(t *testing.T) {
 	ctx := testContext(t)
 	jaz := startJaz(t, ctx, store, root, map[string]string{})
 	bot := jaz.bot("Gimli")
-	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID})
+	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain})
 	// Jaz is killed as the provider ends the turn, before its bookkeeping runs.
 	jaz.manager.TurnFinished = nil
 	run, err := jaz.loops.RunNow(ctx, routine.ID)

@@ -10,14 +10,13 @@ import (
 	"time"
 )
 
-// runPrompt is what a run sends: what fired it, then the routine's prompt. A
-// turn in the bot's own thread is also labelled with the routine and the local
-// time, which a run in a fresh thread gets from its system prompt, and told how
-// its outcome reaches the user, which a bot whose prompt predates that rule
-// would otherwise keep in private text.
-func runPrompt(loop Loop, run Run, now time.Time, inThread bool) string {
+// runPrompt is what a run sends: why it runs, then the routine's prompt, then
+// how a bot's routine delivers. A turn in the bot's own thread is also labelled
+// with the routine and the local time, which a run in a thread of its own gets
+// from its system prompt.
+func runPrompt(loop Loop, run Run, now time.Time, thread string) string {
 	var b strings.Builder
-	if inThread {
+	if thread == ThreadMain {
 		fmt.Fprintf(&b, "[routine] %s · %s\n", loop.Name, now.In(location(loop)).Format("Mon 2 Jan 2006 15:04 MST"))
 	}
 	if run.Reason != "" {
@@ -27,8 +26,11 @@ func runPrompt(loop Loop, run Run, now time.Time, inThread bool) string {
 		b.WriteString("\n")
 	}
 	b.WriteString(loop.Prompt)
-	if inThread {
+	switch thread {
+	case ThreadMain:
 		b.WriteString("\n\nDeliver this routine's outcome with send_message or an app presentation tool unless the routine says to stay quiet. When a tool confirms that Jaz presented its result, that view is already the answer; do not repeat it in a text message.")
+	case ThreadChild:
+		b.WriteString("\n\nSend what the user should hear from this run with send_message; it reaches the bot that owns this routine, which tells the user. Send nothing when nothing came of it.")
 	}
 	return b.String()
 }
