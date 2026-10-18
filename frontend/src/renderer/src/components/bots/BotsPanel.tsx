@@ -65,7 +65,7 @@ export function BotsPanel({ mobile }: { mobile: boolean }) {
             className="flex flex-1 shrink-0 flex-col gap-1.5"
           >
             {tiles.length ? (
-              <div data-pins className="grid auto-rows-fr grid-cols-[repeat(auto-fill,80px)] gap-px">
+              <div data-pins className="grid auto-rows-fr grid-cols-[repeat(auto-fill,minmax(76px,1fr))] gap-px">
                 <AnimatePresence initial={false} mode="popLayout">
                   {tiles.map(({ bot, hidden }) => (
                     <BotEntry key={bot.id} bot={bot} bots={list} tile dragged={drag?.id === bot.id} hidden={hidden} onDrag={startDrag} />
@@ -174,11 +174,11 @@ function BotEntry({ ref, bot, bots, tile = false, dragged, hidden, onDrag }: {
         }}
         className={`select-none rounded-lg text-ink transition-colors duration-150 [-webkit-touch-callout:none] hover:bg-list-hover ${
           tile
-            ? 'flex h-full min-w-0 flex-col items-center gap-1 px-1 pt-2 pb-1.5 text-[12px] max-sm:text-[14px]'
+            ? 'flex h-full min-w-0 flex-col items-center gap-1.5 px-1 pt-2.5 pb-2 text-[13px] max-sm:text-[14px]'
             : 'flex h-13 items-center gap-2.5 px-2.5 text-[13px] max-sm:h-16 max-sm:text-[15px]'
         }`}
       >
-        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 44 : 28} working={working} badge={tile ? state : null} />
+        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} working={working} badge={tile ? state : null} />
         {tile ? (
           name
         ) : (
