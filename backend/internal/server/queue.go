@@ -239,15 +239,18 @@ func (s *Server) drainQueueSoon(sessionID string) {
 }
 
 func (s *Server) StartInternalTurn(ctx context.Context, sessionID, message string) error {
-	return s.QueueInternalTurn(ctx, sessionID, storage.NewInternalQueuedMessage(message))
+	return s.QueueInternalTurn(ctx, storage.TurnDelivery{SessionID: sessionID, Message: storage.NewInternalQueuedMessage(message)})
 }
 
-func (s *Server) QueueInternalTurn(_ context.Context, sessionID string, prompt storage.QueuedMessage) error {
-	prompt, ok := storage.NormalizeQueuedMessage(prompt.AsInternal())
+// QueueInternalTurn queues a hidden turn, and closes the commitments it
+// delivers with it.
+func (s *Server) QueueInternalTurn(_ context.Context, delivery storage.TurnDelivery) error {
+	prompt, ok := storage.NormalizeQueuedMessage(delivery.Message.AsInternal())
 	if !ok {
 		return fmt.Errorf("message is required")
 	}
-	id, idle, err := s.enqueueInternalTurn(sessionID, prompt)
+	delivery.Message = prompt
+	id, idle, err := s.enqueueInternalTurn(delivery)
 	if err != nil {
 		return err
 	}
@@ -257,11 +260,11 @@ func (s *Server) QueueInternalTurn(_ context.Context, sessionID string, prompt s
 	return nil
 }
 
-func (s *Server) enqueueInternalTurn(sessionID string, prompt storage.QueuedMessage) (string, bool, error) {
-	unlock := s.lockSession(sessionID)
+func (s *Server) enqueueInternalTurn(delivery storage.TurnDelivery) (string, bool, error) {
+	unlock := s.lockSession(delivery.SessionID)
 	defer unlock()
 
-	session, err := s.Store.LoadSession(sessionID)
+	session, err := s.Store.LoadSession(delivery.SessionID)
 	if err != nil {
 		return "", false, err
 	}
@@ -271,12 +274,11 @@ func (s *Server) enqueueInternalTurn(sessionID string, prompt storage.QueuedMess
 	if !s.canStartQueuedPrompt(session) {
 		return "", false, fmt.Errorf("session runtime is not configured")
 	}
-	session.QueuedMessages = s.assignQueuedMessageIDs(append(session.QueuedMessages, prompt.AsInternal()))
-	idle := takesQueuedTurns(session.Status) && !s.sessionRuntimeRunning(session)
-	if err := s.Store.SaveSession(session); err != nil {
+	delivery.SessionID = session.ID
+	if err := s.Store.QueueTurn(delivery); err != nil {
 		return "", false, err
 	}
-	return session.ID, idle, nil
+	return session.ID, takesQueuedTurns(session.Status) && !s.sessionRuntimeRunning(session), nil
 }
 
 func (s *Server) drainQueuedPrompt(ctx context.Context, sessionID string) {

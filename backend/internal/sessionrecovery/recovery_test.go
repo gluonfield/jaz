@@ -231,3 +231,39 @@ func TestRecoveryShutdownLeavesInterruptedChatResumable(t *testing.T) {
 		t.Fatalf("stored = %+v, err = %v", stored, err)
 	}
 }
+
+// endlessRuntime cannot resume a chat, nor end its turn.
+type endlessRuntime struct{}
+
+func (endlessRuntime) ResumeInterruptedTurn(context.Context, string) error {
+	return errors.New("provider unavailable")
+}
+
+func (endlessRuntime) FailInterruptedTurn(context.Context, string, string) error {
+	return errors.New("store unavailable")
+}
+
+func TestAChatWhoseTurnCannotEndAfterItsLastTryIsLeftInError(t *testing.T) {
+	delays := retryDelays
+	retryDelays = []time.Duration{0, 0}
+	t.Cleanup(func() { retryDelays = delays })
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Slug: "stuck-recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(session.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Resume(t.Context(), store, endlessRuntime{}, sessionlock.New(), sessionevents.New(), log.New(io.Discard)); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.LoadSession(session.ID)
+	if err != nil || stored.Status != storage.StatusError || stored.Error != "Could not resume chat after restart: provider unavailable" {
+		t.Fatalf("stored = %+v, %v; want the chat left in error so no later startup tries it", stored, err)
+	}
+}

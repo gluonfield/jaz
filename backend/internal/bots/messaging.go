@@ -49,10 +49,7 @@ func (s *Service) Message(fromThread, ref, text string, done ...int64) error {
 	if hops > maxHops {
 		return fmt.Errorf("not sent: bots have written to each other %d times since the user last wrote, which is the limit; finish with what you have", maxHops)
 	}
-	from, sender := s.author(fromThread)
-	if len(done) > 0 && (target.Kind == KindGroup || from != fromThread) {
-		return errors.New("done is for messages from your own chat to a bot")
-	}
+	from, sender := author(s.store, fromThread)
 	if err := s.delivers(fromThread, to, done); err != nil {
 		return err
 	}
@@ -62,22 +59,12 @@ func (s *Service) Message(fromThread, ref, text string, done ...int64) error {
 	if to == from {
 		return errors.New("a bot cannot message itself")
 	}
-	if err := s.queue.QueueInternalTurn(context.Background(), to, storage.QueuedMessage{
+	if err := s.queue.QueueInternalTurn(context.Background(), storage.TurnDelivery{SessionID: to, Closes: done, Message: storage.QueuedMessage{
 		Text: messagePrompt(sender, text), Output: &storage.TurnOutput{ReplyTo: fromThread, Hops: hops},
-	}); err != nil {
+	}}); err != nil {
 		return err
 	}
 	s.exchanged(from, sender, to, session.Title, text)
-	return s.closeDone(done)
-}
-
-// closeDone closes the commitments a message delivered once it was queued.
-func (s *Service) closeDone(done []int64) error {
-	for _, id := range done {
-		if err := s.store.CloseCommitment(id, storage.CommitmentDone, "", time.Now()); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -102,23 +89,24 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 	if err != nil {
 		return err
 	}
-	if len(done) > 0 && session.SourceType != storage.SourceBot {
-		return errors.New("done is for messages from your own chat")
-	}
+	var output *storage.TurnOutput
+	to := ""
 	if session.Turn != nil && session.Turn.Output != nil && session.Turn.Output.ReplyTo != "" {
-		output := session.Turn.Output
-		to, _ := destination(s.store, output.ReplyTo)
-		if err := s.delivers(threadID, to, done); err != nil {
-			return err
-		}
+		output = session.Turn.Output
+		to = recipient(s.store, output.ReplyTo)
+	}
+	if err := s.delivers(threadID, to, done); err != nil {
+		return err
+	}
+	if output != nil {
 		if err := s.store.AppendTurnReply(threadID, text, done); err != nil {
 			return err
 		}
 		// A routine's thread reports to its bot; any other reply answers a bot.
 		if session.SourceType != storage.SourceLoopRun {
-			from, sender := s.author(threadID)
-			to, recipient := s.author(output.ReplyTo)
-			s.exchanged(from, sender, to, recipient, text)
+			from, sender := author(s.store, threadID)
+			to, name := author(s.store, output.ReplyTo)
+			s.exchanged(from, sender, to, name, text)
 		}
 		return nil
 	}
@@ -134,11 +122,12 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 	}
 	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: botSession.Title, Text: text}
 	if !inGroup {
-		if err := s.delivers(threadID, "", done); err != nil {
+		stored, err := s.store.DeliverMessage(sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}, done)
+		if err != nil {
 			return err
 		}
-		message.Done = done
-		return appendEvent(s.store, s.events, sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()})
+		s.events.Publish(stored)
+		return nil
 	}
 	group, _, err := s.load(membership.GroupID)
 	if err != nil {
@@ -210,10 +199,6 @@ func (s *Service) resolve(ref string) (string, error) {
 }
 
 // author is who a thread speaks as: the bot it belongs to, or else Jaz.
-func (s *Service) author(threadID string) (string, string) {
-	return author(s.store, threadID)
-}
-
 func author(store PromptStore, threadID string) (string, string) {
 	if bot := botOf(store, threadID); bot != "" {
 		if session, err := store.LoadSession(bot); err == nil {
@@ -223,20 +208,17 @@ func author(store PromptStore, threadID string) (string, string) {
 	return threadID, "Jaz"
 }
 
-// destination is who a message to thread reaches: the bot it belongs to, or
-// the thread itself; the user, as an empty id, when thread is empty or gone.
-func destination(store PromptStore, thread string) (string, string) {
-	if thread == "" {
-		return "", "the user"
+// recipient is the thread an answer to thread reaches: thread itself while it
+// is there, or else the user, as empty.
+func recipient(store PromptStore, thread string) string {
+	if session, err := store.LoadSession(thread); thread == "" || err != nil || session.Archived {
+		return ""
 	}
-	if session, err := store.LoadSession(thread); err != nil || session.Archived {
-		return "", "the user"
-	}
-	return author(store, thread)
+	return thread
 }
 
 // name is how a thread signs its messages.
 func (s *Service) name(threadID string) string {
-	_, name := s.author(threadID)
+	_, name := author(s.store, threadID)
 	return name
 }

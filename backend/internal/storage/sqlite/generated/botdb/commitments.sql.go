@@ -37,6 +37,22 @@ func (q *Queries) CloseCommitment(ctx context.Context, arg CloseCommitmentParams
 	return result.RowsAffected()
 }
 
+const commitmentWorking = `-- name: CommitmentWorking :one
+SELECT EXISTS (
+  SELECT 1 FROM bot_commitment_threads l JOIN threads t ON t.id = l.thread_id
+  WHERE l.commitment_id = ?1 AND t.archived = 0
+    AND (t.status IN ('running', 'interrupted') OR json_array_length(COALESCE(NULLIF(t.queued_messages, ''), '[]')) > 0)
+)
+`
+
+// A thread works while it runs, waits to resume or has turns queued.
+func (q *Queries) CommitmentWorking(ctx context.Context, id int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, commitmentWorking, id)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const getCommitment = `-- name: GetCommitment :one
 SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms FROM bot_commitments WHERE id = ?
 `
@@ -104,19 +120,19 @@ func (q *Queries) LinkCommitmentThread(ctx context.Context, arg LinkCommitmentTh
 	return result.RowsAffected()
 }
 
-const listBotCommitments = `-- name: ListBotCommitments :many
+const listClosedCommitments = `-- name: ListClosedCommitments :many
 SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms FROM bot_commitments
-WHERE bot_id = ?1 AND (status = 'open' OR closed_at_ms >= ?2)
+WHERE bot_id = ?1 AND status <> 'open' AND closed_at_ms >= ?2
 ORDER BY id
 `
 
-type ListBotCommitmentsParams struct {
-	BotID         string        `json:"bot_id"`
-	ClosedSinceMs sql.NullInt64 `json:"closed_since_ms"`
+type ListClosedCommitmentsParams struct {
+	BotID   string        `json:"bot_id"`
+	SinceMs sql.NullInt64 `json:"since_ms"`
 }
 
-func (q *Queries) ListBotCommitments(ctx context.Context, arg ListBotCommitmentsParams) ([]BotCommitment, error) {
-	rows, err := q.db.QueryContext(ctx, listBotCommitments, arg.BotID, arg.ClosedSinceMs)
+func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error) {
+	rows, err := q.db.QueryContext(ctx, listClosedCommitments, arg.BotID, arg.SinceMs)
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +194,42 @@ func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]Lis
 	for rows.Next() {
 		var i ListCommitmentThreadsRow
 		if err := rows.Scan(&i.CommitmentID, &i.ThreadID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenCommitments = `-- name: ListOpenCommitments :many
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms FROM bot_commitments WHERE bot_id = ?1 AND status = 'open' ORDER BY id
+`
+
+func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error) {
+	rows, err := q.db.QueryContext(ctx, listOpenCommitments, botID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BotCommitment{}
+	for rows.Next() {
+		var i BotCommitment
+		if err := rows.Scan(
+			&i.ID,
+			&i.BotID,
+			&i.Requester,
+			&i.Request,
+			&i.Note,
+			&i.Status,
+			&i.OpenedAtMs,
+			&i.ClosedAtMs,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

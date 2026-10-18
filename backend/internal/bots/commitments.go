@@ -7,16 +7,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-// CommitmentStore keeps what bots owe.
+// CommitmentStore keeps what bots owe. A commitment closes as done only in
+// the write that delivers it: DeliverMessage, a queued turn's or a finished
+// turn's delivery.
 type CommitmentStore interface {
 	OpenCommitment(storage.Commitment) (storage.Commitment, error)
 	UpdateCommitment(storage.Commitment) error
-	CloseCommitment(id int64, status, note string, at time.Time) error
+	DropCommitment(id int64, why string, at time.Time) error
 	LoadCommitment(id int64) (storage.Commitment, error)
-	ListCommitments(botID string, closedSince time.Time) ([]storage.Commitment, error)
+	ListOpenCommitments(botID string) ([]storage.Commitment, error)
+	ListClosedCommitments(botID string, since time.Time) ([]storage.Commitment, error)
+	DeliverMessage(event sessionevents.Event, closes []int64) (sessionevents.Event, error)
 }
 
 // Commit is a change a bot makes to its commitments: opening one when ID is
@@ -31,23 +36,23 @@ type Commit struct {
 // Commit applies change from a turn in a bot's own thread and returns the
 // commitment's id. A commitment opens owed to whoever the turn answers.
 func (s *Service) Commit(threadID string, change Commit) (int64, error) {
+	if !isBot(s.store, threadID) {
+		return 0, errors.New("commitments are kept in a bot's own chat")
+	}
 	session, err := s.store.LoadSession(threadID)
 	if err != nil {
 		return 0, err
 	}
-	if session.SourceType != storage.SourceBot || !s.isBot(threadID) {
-		return 0, errors.New("commitments are kept in a bot's own chat")
+	var output storage.TurnOutput
+	if session.Turn != nil && session.Turn.Output != nil {
+		output = *session.Turn.Output
 	}
 	request, next, drop := strings.TrimSpace(change.Request), strings.TrimSpace(change.Next), strings.TrimSpace(change.Drop)
 	if change.ID == 0 {
 		if request == "" {
 			return 0, errors.New("request is required to open a commitment")
 		}
-		requester := ""
-		if session.Turn != nil && session.Turn.Output != nil {
-			requester = session.Turn.Output.ReplyTo
-		}
-		commitment, err := s.store.OpenCommitment(storage.Commitment{BotID: threadID, Requester: requester, Request: request, Note: next})
+		commitment, err := s.store.OpenCommitment(storage.Commitment{BotID: threadID, Requester: output.ReplyTo, Request: request, Note: next})
 		return commitment.ID, err
 	}
 	commitment, err := s.open(threadID, change.ID)
@@ -55,10 +60,13 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 		return 0, err
 	}
 	if drop != "" {
-		if err := s.idle(commitment); err != nil {
-			return 0, err
+		if slices.Contains(output.Done, commitment.ID) {
+			return 0, fmt.Errorf("#%d is delivered by this turn's answer", commitment.ID)
 		}
-		return commitment.ID, s.store.CloseCommitment(commitment.ID, storage.CommitmentDropped, drop, time.Now())
+		if err := s.store.DropCommitment(commitment.ID, drop, time.Now()); err != nil {
+			return 0, fmt.Errorf("#%d: %w", commitment.ID, err)
+		}
+		return commitment.ID, nil
 	}
 	if request != "" {
 		commitment.Request = request
@@ -69,19 +77,17 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	return commitment.ID, s.store.UpdateCommitment(commitment)
 }
 
-// delivers checks that a message from a bot's own thread to destination,
-// the bot or thread it reaches or empty for the user, may close done.
-func (s *Service) delivers(threadID, destination string, done []int64) error {
+// delivers checks that a message from a bot's own thread reaching to, a
+// thread or empty for the user, may close the commitments in done: each
+// must be the bot's, open and owed to exactly that thread.
+func (s *Service) delivers(threadID, to string, done []int64) error {
 	for _, id := range done {
 		commitment, err := s.open(threadID, id)
 		if err != nil {
 			return err
 		}
-		if to, name := owedTo(s.store, commitment); to != destination {
-			return fmt.Errorf("#%d is owed to %s; deliver it there", id, name)
-		}
-		if err := s.idle(commitment); err != nil {
-			return err
+		if recipient(s.store, commitment.Requester) != to {
+			return fmt.Errorf("#%d is owed to %s; deliver it where they asked", id, owedName(s.store, commitment))
 		}
 	}
 	return nil
@@ -98,20 +104,14 @@ func (s *Service) open(botID string, id int64) (storage.Commitment, error) {
 	return commitment, nil
 }
 
-// idle refuses closing a commitment while one of its threads still works.
-func (s *Service) idle(commitment storage.Commitment) error {
-	for _, id := range commitment.Threads {
-		if thread, err := s.store.LoadSession(id); err == nil && threadState(thread) == "working" {
-			return fmt.Errorf("#%d: thread %s is still working; wait for its result or stop it with stop_thread", commitment.ID, thread.Slug)
-		}
+// owedName names who a commitment is owed to: the bot that asked, or the user
+// when it was the user or the bot is gone.
+func owedName(store PromptStore, commitment storage.Commitment) string {
+	if recipient(store, commitment.Requester) == "" {
+		return "the user"
 	}
-	return nil
-}
-
-// owedTo is who a commitment's result goes to: the bot or thread behind its
-// requester while it is there, else the user, as an empty id.
-func owedTo(store PromptStore, commitment storage.Commitment) (string, string) {
-	return destination(store, commitment.Requester)
+	_, name := author(store, commitment.Requester)
+	return name
 }
 
 // threadState is how far a thread has got with its work.
@@ -132,22 +132,23 @@ func threadState(thread storage.Session) string {
 // NoteStore is what the note a bot's turn opens with is read from.
 type NoteStore interface {
 	PromptStore
-	ListCommitments(botID string, closedSince time.Time) ([]storage.Commitment, error)
+	ListOpenCommitments(botID string) ([]storage.Commitment, error)
 }
 
 // commitmentNote lists a bot's open commitments for the turn its own thread
 // opens with; empty when it has none.
 func commitmentNote(store NoteStore, bot string) string {
-	commitments, err := store.ListCommitments(bot, time.Now())
-	open := slices.DeleteFunc(commitments, func(commitment storage.Commitment) bool { return commitment.Status != storage.CommitmentOpen })
-	if err != nil || len(open) == 0 {
+	open, err := store.ListOpenCommitments(bot)
+	if err != nil {
+		return fmt.Sprintf("Your open commitments could not be read: %v.\n\n", err)
+	}
+	if len(open) == 0 {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString("Your open commitments. Deliver each result with done set to its number; drop what is no longer wanted:\n")
 	for _, commitment := range open {
-		_, to := owedTo(store, commitment)
-		fmt.Fprintf(&b, "#%d for %s: %s", commitment.ID, to, commitment.Request)
+		fmt.Fprintf(&b, "#%d for %s: %s", commitment.ID, owedName(store, commitment), commitment.Request)
 		for _, id := range commitment.Threads {
 			if thread, err := store.LoadSession(id); err == nil {
 				fmt.Fprintf(&b, " · thread %s %s", thread.Slug, threadState(thread))

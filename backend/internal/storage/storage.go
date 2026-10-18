@@ -210,14 +210,16 @@ func (o *TurnOutput) LoopRun() string {
 	return o.Run
 }
 
+// TurnDelivery is a message queued for a thread's next turn. A delivery to a
+// thread that is archived or gone queues its Fallback in the thread whose
+// turn sends it, or else is dropped: nobody is left to tell.
 type TurnDelivery struct {
 	SessionID string
 	Message   QueuedMessage
 	// Closes are the commitments that close as done once the message is
 	// queued.
-	Closes []int64
-	// Otherwise is queued instead when SessionID is archived or gone.
-	Otherwise *TurnDelivery
+	Closes   []int64
+	Fallback *QueuedMessage
 }
 
 type FeedItem struct {

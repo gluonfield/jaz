@@ -76,7 +76,18 @@ func (s *Store) LoadLatestSessionEvent(id, eventType string) (sessionevents.Even
 func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return s.appendSessionEventBatch(id, events...)
+	return s.appendSessionEventBatch(id, nil, events...)
+}
+
+// DeliverMessage appends a bot's message to a thread and closes as done the
+// commitments it delivers, together or not at all; it returns the stored
+// event.
+func (s *Store) DeliverMessage(event sessionevents.Event, closes []int64) (sessionevents.Event, error) {
+	events := []sessionevents.Event{event}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	err := s.appendSessionEventBatch(event.SessionID, closes, events...)
+	return events[0], err
 }
 
 func (s *Store) UpdateSessionGoal(id string, previous, next *goal.State) (sessionevents.Event, error) {
@@ -91,11 +102,11 @@ func (s *Store) UpdateSessionGoal(id string, previous, next *goal.State) (sessio
 		return sessionevents.Event{}, err
 	}
 	events := []sessionevents.Event{event}
-	err = s.appendSessionEventBatch(session.ID, events...)
+	err = s.appendSessionEventBatch(session.ID, nil, events...)
 	return events[0], err
 }
 
-func (s *Store) appendSessionEventBatch(id string, events ...sessionevents.Event) error {
+func (s *Store) appendSessionEventBatch(id string, closes []int64, events ...sessionevents.Event) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -112,7 +123,7 @@ func (s *Store) appendSessionEventBatch(id string, events ...sessionevents.Event
 		}
 	}
 	expanded, last := sessionevents.SplitTextEvents(events, storage.MaxTextEventBytes)
-	compactionPending, appendErr := s.appendSessionEvents(context.Background(), id, now, goalProjection.Seen, goalRaw, expanded)
+	compactionPending, appendErr := s.appendSessionEvents(context.Background(), id, now, goalProjection.Seen, goalRaw, expanded, closes)
 	if appendErr != nil {
 		return appendErr
 	}
@@ -139,7 +150,7 @@ func (s *Store) appendSessionEventBatch(id string, events ...sessionevents.Event
 	return nil
 }
 
-func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Time, goalSeen bool, goalRaw string, events []sessionevents.Event) (bool, error) {
+func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Time, goalSeen bool, goalRaw string, events []sessionevents.Event, closes []int64) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -204,15 +215,8 @@ func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Tim
 			return false, err
 		}
 	}
-	for _, event := range events {
-		if event.RoomMessage == nil {
-			continue
-		}
-		for _, commitment := range event.RoomMessage.Done {
-			if err := closeCommitment(ctx, botdb.New(tx), commitment, storage.CommitmentDone, "", now); err != nil {
-				return false, err
-			}
-		}
+	if err := closeDelivered(ctx, botdb.New(tx), closes, now); err != nil {
+		return false, err
 	}
 	if goalSeen {
 		err = threadq.UpdateGoal(ctx, threaddb.UpdateGoalParams{Goal: goalRaw, UpdatedAtMs: timeToMs(now), ID: id})

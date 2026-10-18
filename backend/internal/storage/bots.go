@@ -41,17 +41,20 @@ const (
 	CommitmentDropped = "dropped"
 )
 
-// ErrCommitmentNotOpen refuses work on a commitment that is closed or belongs
-// to another bot.
+// ErrCommitmentNotOpen refuses a commitment that is closed or another bot's.
 var ErrCommitmentNotOpen = errors.New("no such open commitment")
+
+// ErrCommitmentWorking refuses closing a commitment while one of its threads
+// works.
+var ErrCommitmentWorking = errors.New("one of its threads is still working; wait for its result or stop it with stop_thread")
 
 // Commitment is something a bot owes beyond the turn it was asked in. It
 // closes as done only with a delivery to its requester, or as dropped.
 type Commitment struct {
 	ID    int64
 	BotID string
-	// Requester is the thread answers to it go to, another bot's; empty for
-	// the user.
+	// Requester is the thread its result goes to, where another bot asked;
+	// empty for the user.
 	Requester string
 	Request   string
 	// Note is the bot's next step while it is open, or why it was dropped.

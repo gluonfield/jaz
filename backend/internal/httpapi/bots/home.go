@@ -19,6 +19,7 @@ type saveFileRequest struct {
 
 type activityResponse struct {
 	Items []botcore.Activity `json:"items"`
+	Owed  []botcore.Owed     `json:"owed"`
 }
 
 func (h *Handler) Files(w http.ResponseWriter, r *http.Request) {
@@ -54,5 +55,10 @@ func (h *Handler) Activity(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, errorStatus(err), err)
 		return
 	}
-	httpapi.WriteJSON(w, http.StatusOK, activityResponse{Items: items})
+	owed, err := h.bots.Owed(r.PathValue("bot"))
+	if err != nil {
+		httpapi.WriteError(w, errorStatus(err), err)
+		return
+	}
+	httpapi.WriteJSON(w, http.StatusOK, activityResponse{Items: items, Owed: owed})
 }

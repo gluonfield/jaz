@@ -135,7 +135,7 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 			peers = append(peers, fmt.Sprintf("[@%s](bot:%s)", s.name(other), other))
 		}
 	}
-	if err := s.queue.QueueInternalTurn(context.Background(), membership.ThreadID, storage.NewInternalQueuedMessage(groupTurnPrompt(peers, messages))); err != nil {
+	if err := s.queue.QueueInternalTurn(context.Background(), storage.TurnDelivery{SessionID: membership.ThreadID, Message: storage.NewInternalQueuedMessage(groupTurnPrompt(peers, messages))}); err != nil {
 		return err
 	}
 	membership.Seen = seen

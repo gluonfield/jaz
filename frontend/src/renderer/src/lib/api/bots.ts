@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '@/lib/query/keys'
 import { del, get, patch, post, put } from './client'
-import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName } from './types'
+import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName, BotOwed } from './types'
 
 // Polling belongs to the list on screen; other readers take the shared cache.
 export const botsQuery = queryOptions({
@@ -41,8 +41,11 @@ export function sendGroupMessage(id: string, text: string, attachmentIds: string
 export const botActivityQuery = (botId: string) =>
   queryOptions({
     queryKey: keys.botActivity(botId),
-    queryFn: async () => (await get<{ items: BotActivity[] | null }>(`/v1/bots/${botId}/activity`)).items ?? [],
-    refetchInterval: (query) => (query.state.data?.some((item) => item.running) ? 3_000 : 15_000),
+    queryFn: async () => {
+      const activity = await get<{ items: BotActivity[] | null; owed: BotOwed[] | null }>(`/v1/bots/${botId}/activity`)
+      return { items: activity.items ?? [], owed: activity.owed ?? [] }
+    },
+    refetchInterval: (query) => (query.state.data?.items.some((item) => item.running) || query.state.data?.owed.some((owed) => owed.threads?.some((thread) => thread.state === 'working')) ? 3_000 : 15_000),
   })
 
 export const botFilesQuery = (botId: string) =>

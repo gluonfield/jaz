@@ -68,3 +68,24 @@ func (s *Store) FinishSessionTurn(id, status, errorMessage string, at time.Time,
 	}
 	return s.UpdateSessionStatus(id, status, errorMessage, at)
 }
+
+// QueueTurn queues a delivery for its thread's next turn; JSON storage keeps
+// no commitments for it to close.
+func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
+	if len(delivery.Closes) > 0 {
+		return fmt.Errorf("JSON storage does not keep commitments")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(delivery.SessionID)
+	if err != nil {
+		return err
+	}
+	if session.Archived {
+		return fmt.Errorf("%s: %w", delivery.SessionID, storage.ErrSessionNotFound)
+	}
+	message := delivery.Message
+	message.ID = s.NewSessionID()
+	session.QueuedMessages = append(session.QueuedMessages, message)
+	return s.saveSession(session)
+}

@@ -35,15 +35,42 @@ func (s *Store) UpdateCommitment(commitment storage.Commitment) error {
 	return err
 }
 
-// CloseCommitment closes an open commitment as status; an empty note keeps
-// the one it has.
-func (s *Store) CloseCommitment(id int64, status, note string, at time.Time) error {
+// DropCommitment closes an open commitment without a delivery, saying why.
+func (s *Store) DropCommitment(id int64, why string, at time.Time) error {
+	ctx := context.Background()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return closeCommitment(context.Background(), botdb.New(s.db), id, status, note, at)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := closeCommitment(ctx, botdb.New(tx), id, storage.CommitmentDropped, why, at); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
+// closeDelivered closes as done the commitments a delivery written in the
+// same transaction delivers.
+func closeDelivered(ctx context.Context, q *botdb.Queries, ids []int64, at time.Time) error {
+	for _, id := range ids {
+		if err := closeCommitment(ctx, q, id, storage.CommitmentDone, "", at); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// closeCommitment closes an open commitment none of whose threads works.
 func closeCommitment(ctx context.Context, q *botdb.Queries, id int64, status, note string, at time.Time) error {
+	working, err := q.CommitmentWorking(ctx, id)
+	if err != nil {
+		return err
+	}
+	if working {
+		return storage.ErrCommitmentWorking
+	}
 	closed, err := q.CloseCommitment(ctx, botdb.CloseCommitmentParams{
 		ID: id, Status: status, Note: nullDBString(note), ClosedAtMs: sql.NullInt64{Int64: timeToMs(at), Valid: true},
 	})
@@ -70,12 +97,22 @@ func (s *Store) LoadCommitment(id int64) (storage.Commitment, error) {
 	return commitments[0], nil
 }
 
-// ListCommitments returns a bot's open commitments and those it closed from
-// closedSince on, oldest first.
-func (s *Store) ListCommitments(botID string, closedSince time.Time) ([]storage.Commitment, error) {
+// ListOpenCommitments returns what a bot owes, oldest first.
+func (s *Store) ListOpenCommitments(botID string) ([]storage.Commitment, error) {
 	ctx := context.Background()
 	q := botdb.New(s.db)
-	rows, err := q.ListBotCommitments(ctx, botdb.ListBotCommitmentsParams{BotID: botID, ClosedSinceMs: sql.NullInt64{Int64: timeToMs(closedSince), Valid: true}})
+	rows, err := q.ListOpenCommitments(ctx, botID)
+	if err != nil {
+		return nil, err
+	}
+	return withThreads(ctx, q, rows)
+}
+
+// ListClosedCommitments returns a bot's commitments closed from since on.
+func (s *Store) ListClosedCommitments(botID string, since time.Time) ([]storage.Commitment, error) {
+	ctx := context.Background()
+	q := botdb.New(s.db)
+	rows, err := q.ListClosedCommitments(ctx, botdb.ListClosedCommitmentsParams{BotID: botID, SinceMs: sql.NullInt64{Int64: timeToMs(since), Valid: true}})
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
@@ -165,4 +166,38 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 	if _, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{ID: id, Next: "start again"}); err == nil {
 		t.Fatal("a dropped commitment took a new step")
 	}
+}
+
+func TestACommitmentClosesOnlyWithAnAnswerToTheThreadThatAsked(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	asker, helper := jaz.newBot("Asker"), jaz.newBot("Helper")
+	routine := jaz.routine(loops.CreateLoop{Name: "Scout", Prompt: "scout until released", BotID: asker.ID})
+	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := jaz.waitRun(run.ID, loops.RunStatusRunning).ThreadID
+	opened := make(chan int64, 1)
+	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, speak: func(req acp.InternalTurnRequest) error {
+		if req.Session != helper.ID || !strings.HasPrefix(req.Message, "[message from Asker]") {
+			return nil
+		}
+		id, err := jaz.commit(helper.ID, bots.MCPCommitmentInput{Request: "Price the part"})
+		opened <- id
+		return err
+	}}
+	// Asker's routine asks from a thread of its own.
+	if err := jaz.bots.Message(child, "Helper", "What does the part cost?"); err != nil {
+		t.Fatal(err)
+	}
+	id := <-opened
+	jaz.idle(helper.ID)
+	if err := jaz.bots.Message(helper.ID, "Asker", "It costs four pounds.", id); err == nil || !strings.Contains(err.Error(), "where they asked") {
+		t.Fatalf("an answer to Asker's own chat closed what its routine asked: %v", err)
+	}
+	if commitment := jaz.commitment(id); commitment.Requester != child || commitment.Status != storage.CommitmentOpen {
+		t.Fatalf("commitment = %+v, want it open and owed to the routine's thread", commitment)
+	}
+	jaz.release()
 }

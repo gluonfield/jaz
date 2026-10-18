@@ -114,22 +114,22 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 		return err
 	}
 	for _, delivery := range deliveries {
-		queued, err := s.queueDelivery(ctx, q, delivery)
+		queued, err := s.queueMessage(ctx, q, delivery.SessionID, delivery.Message)
 		if err != nil {
 			return err
 		}
-		if !queued && delivery.Otherwise != nil {
-			queued, err = s.queueDelivery(ctx, q, *delivery.Otherwise)
-			if err != nil {
+		if !queued && delivery.Fallback != nil {
+			if _, err := s.queueMessage(ctx, q, id, *delivery.Fallback); err != nil {
 				return err
 			}
-			delivery.Closes = nil
 		}
 		if !queued {
-			return fmt.Errorf("delivery target %s is unavailable", delivery.SessionID)
+			continue
 		}
-		for _, id := range delivery.Closes {
-			if err := closeCommitment(ctx, botdb.New(tx), id, storage.CommitmentDone, "", at); err != nil && !errors.Is(err, storage.ErrCommitmentNotOpen) {
+		// The answer is on its way however its commitments stand; one that a
+		// thread took up again stays open.
+		for _, commitment := range delivery.Closes {
+			if err := closeCommitment(ctx, botdb.New(tx), commitment, storage.CommitmentDone, "", at); err != nil && !errors.Is(err, storage.ErrCommitmentNotOpen) && !errors.Is(err, storage.ErrCommitmentWorking) {
 				return err
 			}
 		}
@@ -137,16 +137,47 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 	return tx.Commit()
 }
 
-// queueDelivery queues a delivery's message unless its thread is archived or
+// QueueTurn queues a delivery for its thread's next turn and closes the
+// commitments it delivers, together or not at all.
+func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
+	ctx := context.Background()
+	s.writeMu.Lock()
+	err := func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		queued, err := s.queueMessage(ctx, threaddb.New(tx), delivery.SessionID, delivery.Message)
+		if err != nil {
+			return err
+		}
+		if !queued {
+			return fmt.Errorf("%s: %w", delivery.SessionID, storage.ErrSessionNotFound)
+		}
+		if err := closeDelivered(ctx, botdb.New(tx), delivery.Closes, time.Now()); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}()
+	s.writeMu.Unlock()
+	if err == nil {
+		if current, loadErr := s.LoadSession(delivery.SessionID); loadErr == nil {
+			s.mirrorSession(current)
+		}
+	}
+	return err
+}
+
+// queueMessage queues message in thread unless the thread is archived or
 // gone.
-func (s *Store) queueDelivery(ctx context.Context, q *threaddb.Queries, delivery storage.TurnDelivery) (bool, error) {
-	message := delivery.Message
+func (s *Store) queueMessage(ctx context.Context, q *threaddb.Queries, thread string, message storage.QueuedMessage) (bool, error) {
 	message.ID = s.NewSessionID()
 	raw, err := storage.MarshalQueuedMessage(&message)
 	if err != nil {
 		return false, err
 	}
-	updated, err := q.AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: delivery.SessionID, Message: raw})
+	updated, err := q.AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: thread, Message: raw})
 	return updated > 0, err
 }
 

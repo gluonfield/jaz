@@ -320,7 +320,7 @@ func (s *Service) threadsOf(id string) ([]string, error) {
 // bot whose thread or subtask created it, or else a new bot of its own.
 func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, error) {
 	if in.BotID != "" {
-		if !s.isBot(in.BotID) {
+		if !isBot(s.store, in.BotID) {
 			return "", fmt.Errorf("%s is not a bot", in.BotID)
 		}
 		return in.BotID, nil
@@ -393,10 +393,6 @@ func (s *Service) load(id string) (storage.BotRecord, storage.Session, error) {
 		return storage.BotRecord{}, storage.Session{}, storage.ErrBotNotFound
 	}
 	return record, session, nil
-}
-
-func (s *Service) isBot(id string) bool {
-	return isBot(s.store, id)
 }
 
 func isBot(store PromptStore, id string) bool {
@@ -481,7 +477,7 @@ func (s *Service) preview(threadID string, group bool) string {
 func (s *Service) memberBots(ids []string) ([]string, error) {
 	members := make([]string, 0, len(ids))
 	for _, id := range ids {
-		if !s.isBot(id) {
+		if !isBot(s.store, id) {
 			return nil, fmt.Errorf("member %s is not a bot", id)
 		}
 		if !slices.Contains(members, id) {

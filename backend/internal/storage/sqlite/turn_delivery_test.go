@@ -8,7 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func TestTurnCompletionAndDeliveryAreAtomicAndSurviveReopen(t *testing.T) {
+func TestTurnCompletionAndDeliveriesCommitOnceAndSurviveReopen(t *testing.T) {
 	root := t.TempDir()
 	store, err := New(root)
 	if err != nil {
@@ -26,17 +26,11 @@ func TestTurnCompletionAndDeliveryAreAtomicAndSurviveReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	delivery := storage.TurnDelivery{SessionID: parent.ID, Message: storage.NewInternalQueuedMessage("result")}
-	missing := storage.TurnDelivery{SessionID: "missing", Message: storage.NewInternalQueuedMessage("other result")}
-	if err := store.FinishSessionTurn(child.ID, storage.StatusIdle, "", time.Now(), []storage.TurnDelivery{delivery, missing}); err == nil {
-		t.Fatal("completion committed despite unavailable delivery target")
-	}
-	storedChild, _ := store.LoadSession(child.ID)
-	storedParent, _ := store.LoadSession(parent.ID)
-	if storedChild.Status != storage.StatusRunning || storedChild.Turn == nil || len(storedParent.QueuedMessages) != 0 {
-		t.Fatalf("partial completion: child=%+v parent=%+v", storedChild, storedParent)
-	}
+	// An answer for a thread that is gone falls back to the finishing thread.
+	undelivered := storage.NewInternalQueuedMessage("undelivered answer")
+	gone := storage.TurnDelivery{SessionID: "missing", Message: storage.NewInternalQueuedMessage("answer"), Fallback: &undelivered}
 	for range 2 {
-		if err := store.FinishSessionTurn(child.ID, storage.StatusIdle, "", time.Now(), []storage.TurnDelivery{delivery}); err != nil {
+		if err := store.FinishSessionTurn(child.ID, storage.StatusIdle, "", time.Now(), []storage.TurnDelivery{delivery, gone}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -48,10 +42,13 @@ func TestTurnCompletionAndDeliveryAreAtomicAndSurviveReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	storedChild, _ = store.LoadSession(child.ID)
-	storedParent, _ = store.LoadSession(parent.ID)
-	if storedChild.Status != storage.StatusIdle || storedChild.Turn != nil || len(storedParent.QueuedMessages) != 1 || storedParent.QueuedMessages[0].Text != "result" {
-		t.Fatalf("reopened completion: child=%+v parent=%+v", storedChild, storedParent)
+	storedChild, _ := store.LoadSession(child.ID)
+	storedParent, _ := store.LoadSession(parent.ID)
+	if storedChild.Status != storage.StatusIdle || storedChild.Turn != nil || len(storedChild.QueuedMessages) != 1 || storedChild.QueuedMessages[0].Text != "undelivered answer" {
+		t.Fatalf("reopened child = %+v, want its turn finished once with the undelivered answer queued", storedChild)
+	}
+	if len(storedParent.QueuedMessages) != 1 || storedParent.QueuedMessages[0].Text != "result" {
+		t.Fatalf("reopened parent = %+v, want the result once", storedParent)
 	}
 	if err := store.ClaimQueuedTurn(storage.Session{ID: parent.ID}, storedParent.QueuedMessages[0]); err != nil {
 		t.Fatal(err)

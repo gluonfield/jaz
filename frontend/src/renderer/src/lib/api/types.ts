@@ -779,13 +779,22 @@ export interface BotActivity {
   status?: string
   thread_id?: string
   loop_id?: string
-  // For a commitment: the bot it is owed to (none for you) and the threads
-  // serving it.
+  // The bot a closed commitment was owed to; none for you.
   for?: string
-  threads?: BotActivityThread[]
 }
 
-export interface BotActivityThread {
+// A commitment a bot has not closed: what was asked, who it is owed to (none
+// for you), its next step and the threads serving it.
+export interface BotOwed {
+  id: number
+  request: string
+  for?: string
+  next?: string
+  opened_at: string
+  threads?: BotOwedThread[]
+}
+
+export interface BotOwedThread {
   id: string
   title: string
   state: 'working' | 'finished' | 'failed' | 'idle' | 'gone'

@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { BotDetails } from '@/components/bots/BotDetails'
 import { BotsPanel } from '@/components/bots/BotsPanel'
 import { getAppearance, setAppearance } from '@/lib/appearance'
-import type { Bot, BotActivity, BotFile, Loop, LoopRun } from '@/lib/api/types'
+import type { Bot, BotActivity, BotFile, BotOwed, Loop, LoopRun } from '@/lib/api/types'
 
 // A bot's side panel against a stubbed server: what it owes, is doing and
 // did, its routines and their actions, and its AGENTS.md and MEMORY.md edited
@@ -13,13 +13,16 @@ import type { Bot, BotActivity, BotFile, Loop, LoopRun } from '@/lib/api/types'
 export async function exerciseBotPanel(): Promise<void> {
   const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString()
   const bot: Bot = { id: 'panel', kind: 'bot', name: 'Jaz Self Improvement Bot', avatar: { shape: 'hex', color: 'amber' }, unread: false, status: 'idle', updated_at: minutes(0) }
+  const owed: BotOwed[] = [
+    { id: 4, request: 'Bot commitments and lost results', next: 'check its report, then send it', opened_at: minutes(14), threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
+    { id: 3, request: 'Which fixes matter this week', for: 'Priorities Bot', opened_at: minutes(95), threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
+    { id: 2, request: 'Pause prompt suggestions on hidden turns', next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
+    { id: 1, request: 'Capacity test with 20 threads', opened_at: minutes(60 * 4), threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
+  ]
   const activity: BotActivity[] = [
-    { kind: 'commitment', at: minutes(14), running: true, title: 'Bot commitments and lost results', status: 'open', text: 'check its report, then send it', threads: [{ id: 'side-a', title: 'Jaz bot routine queue fixes', state: 'working' }] },
-    { kind: 'commitment', at: minutes(95), title: 'Which fixes matter this week', status: 'open', for: 'Priorities Bot', threads: [{ id: 'side-b', title: 'Merged both reviews into one plan', state: 'finished' }] },
-    { kind: 'commitment', at: minutes(60 * 3), title: 'Pause prompt suggestions on hidden turns', status: 'open', text: 'wait for his OK, then start the fork change' },
-    { kind: 'commitment', at: minutes(20), title: 'Calmer bot faces', status: 'done', threads: [{ id: 'side-d', title: 'Calmer faces', state: 'finished' }] },
+    { kind: 'commitment', at: minutes(20), title: 'Calmer bot faces', status: 'done', thread_id: 'side-d' },
     { kind: 'commitment', at: minutes(60 * 24 + 40), title: 'Muse-style identity cards', status: 'dropped', text: 'He chose option A instead' },
-    { kind: 'side_chat', at: minutes(14), running: true, title: 'Jaz bot routine queue fixes', status: 'running', thread_id: 'side-a' },
+    { kind: 'side_chat', at: minutes(14), running: true, title: 'Notes cleanup', status: 'running', thread_id: 'side-c2' },
     { kind: 'side_chat', at: minutes(30), title: 'Merged both reviews into one plan', status: 'idle', thread_id: 'side-b' },
     { kind: 'file_changed', at: minutes(62), title: 'MEMORY.md' },
     { kind: 'routine', at: minutes(80), title: 'Grok Bot and Dots watch', status: 'ok', thread_id: 'panel', loop_id: 'l-watch' },
@@ -58,7 +61,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
     switch (`${method} ${url.pathname}`) {
       case 'GET /v1/bots/panel/activity':
-        return json({ items: activity })
+        return json({ items: activity, owed })
       case 'GET /v1/bots/panel/files':
         return json({ files: [agents, memory] })
       case 'PUT /v1/bots/panel/files/MEMORY.md':
@@ -169,17 +172,20 @@ export async function exerciseBotPanel(): Promise<void> {
     if (headings.indexOf('Owed') !== 0 || headings.indexOf('Now') !== 1) {
       throw new Error(`Bot panel: what the bot owes is not listed first: ${headings.join(', ')}`)
     }
-    for (const owed of ['For you · Working · Next: check its report, then send it', 'For Priorities Bot · Result in', 'For you · Next: wait for his OK, then start the fork change', 'Delivered to you', 'Dropped · He chose option A instead']) {
-      if (!text().includes(owed)) {
-        throw new Error(`Bot panel: Activity does not say "${owed}"`)
+    for (const line of ['For you · Working · Next: check its report, then send it', 'For Priorities Bot · Result in', 'For you · Next: wait for his OK, then start the fork change', 'For you · A thread failed', 'Delivered to you', 'Dropped · He chose option A instead']) {
+      if (!text().includes(line)) {
+        throw new Error(`Bot panel: Activity does not say "${line}"`)
       }
+    }
+    if (!find('Bot commitments and lost results')?.getAttribute('href')?.endsWith('/sessions/side-a')) {
+      throw new Error('Bot panel: a commitment with one thread does not open that thread')
     }
     await click('Pause prompt suggestions on hidden turns')
     await until('a commitment without a thread did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: wait for his OK') ?? false)
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
-    await click('Bot commitments and lost results')
-    await until('a commitment did not link its thread', () => document.querySelector<HTMLAnchorElement>('[role="dialog"] a')?.textContent === 'Jaz bot routine queue fixesWorking')
+    await click('Capacity test with 20 threads')
+    await until('a commitment with several threads did not list them', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Capacity harnessFinished|Capacity runFailed')
     await capture('bot-panel-commitment')
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))

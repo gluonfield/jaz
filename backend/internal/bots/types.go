@@ -91,7 +91,7 @@ type Threads interface {
 }
 
 type TurnQueue interface {
-	QueueInternalTurn(context.Context, string, storage.QueuedMessage) error
+	QueueInternalTurn(context.Context, storage.TurnDelivery) error
 }
 
 // Attachments finds the files uploaded to a thread by their ids.
