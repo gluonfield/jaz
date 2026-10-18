@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotFileName } from '@/lib/api/types'
+import { BOT_FILE_LABELS } from '@/lib/bots'
 import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/time'
 import { type ProviderSubagentView, subagentRunning } from '@/lib/providerSubagents'
 
@@ -107,13 +108,15 @@ function row(item: BotActivity, index: number): Row {
         open: item.text ? { message: item } : undefined,
       }
     case 'file_changed':
-    case 'file_edited':
+    case 'file_edited': {
+      const label = BOT_FILE_LABELS[item.title as BotFileName]
       return {
         ...base,
-        title: item.kind === 'file_edited' ? `You edited ${item.title}` : item.title === 'MEMORY.md' ? 'Learned something new' : `Updated ${item.title}`,
-        detail: item.kind === 'file_changed' && item.title === 'MEMORY.md' ? 'MEMORY.md' : undefined,
+        title: item.kind === 'file_edited' ? `You edited ${label}` : item.title === 'MEMORY.md' ? 'Learned something new' : `Updated ${label}`,
+        detail: item.kind === 'file_changed' && item.title === 'MEMORY.md' ? label : undefined,
         open: { file: item.title as BotFileName },
       }
+    }
   }
 }
 

@@ -8,12 +8,14 @@ import { Modal } from '@/components/ui/Modal'
 import { botFilesQuery, saveBotFile } from '@/lib/api/bots'
 import { ApiError } from '@/lib/api/client'
 import type { Bot, BotFile, BotFileName } from '@/lib/api/types'
+import { BOT_FILE_LABELS } from '@/lib/bots'
 import { keys } from '@/lib/query/keys'
 import { markdownKit } from './markdownKit'
 
 type SaveState = 'saved' | 'saving' | 'conflict' | 'failed'
 
-// A bot's AGENTS.md or MEMORY.md, edited as a document in a modal. Only the
+// A bot's Soul (AGENTS.md) or Memory (MEMORY.md), edited as a document in a
+// modal. Only the
 // person's edits are saved, each over the version read, so the bot's own
 // writes meanwhile are never overwritten unseen.
 export function BotFileEditor({ bot, name, onClose }: { bot: Bot; name: BotFileName; onClose: () => void }) {
@@ -22,6 +24,7 @@ export function BotFileEditor({ bot, name, onClose }: { bot: Bot; name: BotFileN
 }
 
 function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose: () => void }) {
+  const label = BOT_FILE_LABELS[file.name]
   const queryClient = useQueryClient()
   const version = useRef(file.version)
   const edited = useRef(false)
@@ -54,7 +57,7 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
     content: file.content,
     contentType: 'markdown',
     autofocus: 'end',
-    editorProps: { attributes: { class: 'editor-prose outline-none', 'aria-label': file.name } },
+    editorProps: { attributes: { class: 'editor-prose outline-none', 'aria-label': label } },
     // Development's StrictMode builds the editor twice, and only the one being
     // typed in is known to be on screen, so that is the one saved.
     onUpdate: ({ editor }) => {
@@ -83,7 +86,7 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
   // Closing saves first and stays open on an edit that could not be saved.
   const close = async () => {
     if (state !== 'conflict') await save()
-    if (edited.current && !window.confirm(`Discard your edits to ${file.name}?`)) return
+    if (edited.current && !window.confirm(`Discard your edits to ${label}?`)) return
     onClose()
   }
 
@@ -104,7 +107,7 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
     <Modal
       open
       onClose={() => void close()}
-      title={file.name}
+      title={label}
       size="wide"
       className="h-[min(720px,calc(100dvh-3rem))]"
       // The negative margin keeps the toolbar on the title's line.
@@ -124,7 +127,7 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
         state === 'conflict' ? (
           <>
             <span className="text-[13px] text-ink-2">
-              {bot.name} changed {file.name} while you were editing.
+              {bot.name} changed {label} while you were editing.
             </span>
             <span className="flex shrink-0 gap-2">
               <Button size="sm" variant="ghost" onClick={() => void takeTheirs()}>
