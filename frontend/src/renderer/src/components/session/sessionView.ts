@@ -327,11 +327,13 @@ export function deriveSessionView(
   // agent's first streamed event for this session ends that wait.
   const agentStarting = acpState === 'starting' && !liveEvents.some((event) => event.acp?.id === session.id)
   const activity: TurnActivity = agentStarting ? 'starting' : latestActivity?.type === 'acp_thought' ? 'thinking' : 'working'
-  const agentSession = coalesceSessionEvents([
-    ...(overview?.agent_events ?? []), ...persistedEvents, ...liveEvents,
-  ]).findLast((event) => event.session_id === session.id && (event.agent_session || event.type === 'agent_switch'))?.agent_session
+  // What the server said, without the snapshot events this page builds.
+  const serverEvents = coalesceSessionEvents([...(overview?.agent_events ?? []), ...persistedEvents, ...liveEvents])
+  const agentSession = serverEvents.findLast((event) => event.session_id === session.id && (event.agent_session || event.type === 'agent_switch'))?.agent_session
   return {
     agentSession,
+    // The latest own envelope states the predicted next prompt; a turn start clears it.
+    suggestedPrompt: serverEvents.findLast((event) => event.acp?.id === session.id)?.acp?.suggested_prompt,
     transcriptEvents: settledTranscriptEvents,
     sideChatEvents,
     displayEvents,

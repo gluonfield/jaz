@@ -70,6 +70,21 @@ test('a new user turn or an aggregate snapshot cannot inherit an old thinking si
   expect(deriveSessionView({ ...data(), acp_thought: 'Unknown order' }, []).activity).toBe('working')
 })
 
+test('the composer offers the latest predicted prompt until a turn starts', () => {
+  const suggested = event(3, 'acp', { acp: { id: 'thread', agent: 'claude', state: 'idle', suggested_prompt: 'run the test' } })
+  expect(deriveSessionView(data([suggested]), []).suggestedPrompt).toBe('run the test')
+  expect(deriveSessionView(data(), [suggested]).suggestedPrompt).toBe('run the test')
+  // The page's own snapshot of the idle job is newer but says nothing about it.
+  const snapshot = { ...data([suggested]), acp_state: 'idle', acp_assistant: 'Done.', acp_last_event_at: at(9) }
+  expect(deriveSessionView(snapshot, []).suggestedPrompt).toBe('run the test')
+  // A child thread's prediction belongs to the child's composer.
+  const child = event(4, 'acp', { acp: { id: 'child', parent_id: 'thread', state: 'idle', suggested_prompt: 'merge it' } })
+  expect(deriveSessionView(data([suggested, child]), []).suggestedPrompt).toBe('run the test')
+  // A refreshed turn start outranks the older streamed envelope still cached.
+  const running = event(5, 'acp', { acp: { id: 'thread', agent: 'claude', state: 'running' } })
+  expect(deriveSessionView(data([suggested, running]), [suggested]).suggestedPrompt).toBeUndefined()
+})
+
 test('a starting agent stays starting until it streams its own first event', () => {
   const starting = { ...data(), acp_state: 'starting' }
   expect(deriveSessionView(starting, []).activity).toBe('starting')

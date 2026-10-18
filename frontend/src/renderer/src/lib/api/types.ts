@@ -886,6 +886,7 @@ export interface ACPEvent {
   tool_calls?: ACPToolCall[]
   permissions?: ACPPermission[]
   goal_requested?: boolean
+  suggested_prompt?: string
   last_event_at?: string
   last_tool_at?: string
 }

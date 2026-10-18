@@ -261,6 +261,7 @@ func acpEventEnvelope(job eventView) *sessionevents.ACPEvent {
 		StopReason:      job.StopReason,
 		Error:           job.Error,
 		GoalRequested:   job.GoalRequested,
+		SuggestedPrompt: job.SuggestedPrompt,
 		Modes:           acpModeEvent(job.Modes),
 		LastEventAt:     job.LastEventAt,
 		LastToolAt:      job.LastToolAt,

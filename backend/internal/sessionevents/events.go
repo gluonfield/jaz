@@ -343,6 +343,7 @@ type ACPEvent struct {
 	ToolCalls       []ACPToolCall   `json:"tool_calls,omitempty"`
 	Permissions     []ACPPermission `json:"permissions,omitempty"`
 	GoalRequested   bool            `json:"goal_requested"`
+	SuggestedPrompt string          `json:"suggested_prompt,omitempty"`
 	LastEventAt     time.Time       `json:"last_event_at,omitzero"`
 	LastToolAt      time.Time       `json:"last_tool_at,omitzero"`
 }

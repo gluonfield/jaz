@@ -617,6 +617,7 @@ export function ThreadView({
                   <Composer
                     placeholder={canvas ? canvasContexts.placeholder : placeholder}
                     streaming={sessionRunning}
+                    suggestedPrompt={derived.suggestedPrompt}
                     commands={derived.agentSession?.commands ?? undefined}
                     optionsSlot={<NativeModelOptions options={derived.agentSession?.config_options} running={sessionRunning} pending={config.isPending} onChange={(id, value) => config.mutate({ id, value })} />}
                     chat={chat !== undefined}

@@ -84,6 +84,7 @@ type eventView struct {
 	Error           string
 	GoalRequested   bool
 	ParentVisible   bool
+	SuggestedPrompt string
 	LastEventAt     time.Time
 	LastToolAt      time.Time
 }
@@ -108,6 +109,7 @@ type jobState struct {
 	sendMu                 sync.Mutex
 	turnMu                 sync.Mutex
 	agentSession           sessionevents.AgentSession
+	suggestedPrompt        string
 	backgroundTasks        map[string]sessionevents.AgentTask
 	steerMethod            steerMethod
 	turn                   *activeTurn
@@ -265,6 +267,7 @@ func (j *jobState) eventView() eventView {
 	defer j.mu.RUnlock()
 	view := eventViewFromJob(j.Job)
 	view.GoalRequested = j.turn != nil && j.turn.goalRequested && (j.State == StateRunning || j.State == StateStarting)
+	view.SuggestedPrompt = j.suggestedPrompt
 	return view
 }
 
@@ -334,6 +337,7 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	}
 	j.ToolCalls = nil
 	j.Permissions = nil
+	j.suggestedPrompt = ""
 	j.Error = ""
 	j.StopReason = ""
 	j.ActiveOperation = activeOperation
