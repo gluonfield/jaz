@@ -3,6 +3,7 @@ package loops_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"path/filepath"
 	"slices"
@@ -112,25 +113,22 @@ func TestRoutinesWaitUntilTheRunsJazLeftOpenAreSettled(t *testing.T) {
 	exec := database(t, root)
 	service.Now = func() time.Time { return time.Now().Add(time.Hour) }
 
-	// Every try fails to read the runs: the scheduler gives up without
-	// starting or skipping a due slot.
+	// Every try fails to read the runs: the scheduler keeps trying, well past
+	// its last delay, without starting or skipping a due slot, until it stops.
 	loops.SetSettleDelays(t, time.Millisecond, time.Millisecond)
 	exec("ALTER TABLE loop_runs RENAME TO loop_runs_lost")
-	gaveUp := make(chan error, 1)
+	first, stop := context.WithCancel(ctx)
+	stopped := make(chan error, 1)
 	go func() {
-		gaveUp <- loops.StartScheduler(ctx, service, time.Millisecond, func(ctx context.Context) error { return service.Resume(ctx, nil) })
+		stopped <- loops.StartScheduler(first, service, time.Millisecond, func(ctx context.Context) error { return service.Resume(ctx, nil) })
 	}()
-	select {
-	case err := <-gaveUp:
-		if err == nil {
-			t.Fatal("the scheduler stopped without an error")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the scheduler ran on with the open runs unsettled")
+	waitBlocked(t, service, "scheduled runs wait while it tries again")
+	started.none(t, "before the open runs settled")
+	stop()
+	if err := <-stopped; !errors.Is(err, context.Canceled) {
+		t.Fatalf("the scheduler stopped with %v; want it to keep trying until stopped", err)
 	}
 	exec("ALTER TABLE loop_runs_lost RENAME TO loop_runs")
-	waitBlocked(t, service, "scheduled runs wait until Jaz restarts")
-	started.none(t, "before the open runs settled")
 	items, err := service.List()
 	if err != nil {
 		t.Fatal(err)

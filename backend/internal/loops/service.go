@@ -785,13 +785,14 @@ func RunSystemPrompt(loop Loop, run, previous Run, now time.Time, extras ...stri
 }
 
 // settleDelays are the waits before each further try at settling the runs a
-// previous process left open, as when the database is briefly unavailable.
+// previous process left open, as when the database is briefly unavailable;
+// past the last, every try waits as long as the last.
 var settleDelays = []time.Duration{2 * time.Second, 8 * time.Second, 30 * time.Second}
 
 // StartScheduler settles the runs a previous process left open with settle,
-// then starts due routines every tick. A failed try waits and tries again, up
-// to settleDelays; until one succeeds no scheduled run starts, and each
-// scheduled routine says why.
+// then starts due routines every tick. A failed try waits and tries again,
+// for as long as it takes; until one succeeds no scheduled run starts, and
+// each scheduled routine says why.
 func StartScheduler(ctx context.Context, service *Service, tick time.Duration, settle func(context.Context) error) error {
 	if service == nil {
 		<-ctx.Done()
@@ -829,16 +830,12 @@ func (s *Service) settle(ctx context.Context, settle func(context.Context) error
 			s.setUnsettled("")
 			return ctx.Err()
 		}
-		if attempt == len(settleDelays) {
-			s.setUnsettled(unsettledReason + "until Jaz restarts.")
-			return fmt.Errorf("routines did not start: %w", err)
-		}
 		s.setUnsettled(unsettledReason + "while it tries again.")
 		s.Log.Warn("checking the routine runs left open failed; trying again", "error", err)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(settleDelays[attempt]):
+		case <-time.After(settleDelays[min(attempt, len(settleDelays)-1)]):
 		}
 	}
 }
