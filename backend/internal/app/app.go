@@ -81,8 +81,8 @@ type SkillsConfig struct {
 }
 
 const (
-	defaultSkillsManifestURL    = "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.101/manifest.json"
-	defaultSkillsManifestSHA256 = "744c6b21b8574eb9a94ddc53cb3a037e6b3ba63ca098492d1c219b58fba1f65c"
+	defaultSkillsManifestURL    = "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.102/manifest.json"
+	defaultSkillsManifestSHA256 = "b91122518a26403e5f7d7cc85a4c66869c9031d146fa7a3c31ab6cbdb01a32c3"
 )
 
 type VoiceConfig struct {
