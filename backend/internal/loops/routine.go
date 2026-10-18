@@ -30,7 +30,7 @@ func runPrompt(loop Loop, run Run, now time.Time, thread string) string {
 	case ThreadMain:
 		b.WriteString("\n\nDeliver this routine's outcome with send_message or an app presentation tool unless the routine says to stay quiet. When a tool confirms that Jaz presented its result, that view is already the answer; do not repeat it in a text message.")
 	case ThreadChild:
-		b.WriteString("\n\nSend what the user should hear from this run with send_message; it reaches the bot that owns this routine, which tells the user. Send nothing when nothing came of it.")
+		b.WriteString("\n\nYou run this routine for the bot that owns it, in the bot's home, which is your working directory. Send what the user should hear from this run with send_message; it reaches the bot, which tells the user. Send nothing when nothing came of it.")
 	}
 	return b.String()
 }
