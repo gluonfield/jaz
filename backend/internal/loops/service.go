@@ -26,6 +26,8 @@ type Service struct {
 	// RunCheck can fail a run whose turn ended well but left its work undone,
 	// as a widget run that published nothing.
 	RunCheck func(Loop, Run) error
+	// Notice posts a bot's message in its own chat.
+	Notice func(botID, text string) error
 	// ModelCheck refuses a routine whose runs would not start on the model it
 	// names.
 	ModelCheck func(Loop) error
@@ -33,6 +35,8 @@ type Service struct {
 	// ours holds the runs this process created and has not finished, which a
 	// previous process cannot have left behind.
 	ours map[string]bool
+	// away holds bots' routines while the user is away; see GuardAway.
+	away bool
 }
 
 type RuntimePromptBuilder struct {
@@ -138,6 +142,7 @@ func (s *Service) Create(input CreateLoop) (Loop, error) {
 		Trigger:         input.Trigger,
 		WhenMissed:      input.WhenMissed,
 		Thread:          input.Thread,
+		KeepRunning:     input.KeepRunning,
 	}
 	if err := s.checkModel(Loop{}, loop); err != nil {
 		return Loop{}, err
@@ -313,9 +318,13 @@ func (s *Service) RunTriggered(ctx context.Context, loopID, event string) (Run, 
 // into a new run. The new run starts now unless a begun run of the loop is
 // still going, in which case it waits for that run to finish. taken records the
 // observed messages behind events, saved with the run that now holds them.
+// Events reach no run while the loop waits for the user to come back.
 func (s *Service) fireLocked(loop Loop, events []string, taken []SeenEvent, now time.Time) (Loop, Run, bool, error) {
 	if loop.Status == StatusDeleted {
 		return Loop{}, Run{}, false, fmt.Errorf("loop %s has been deleted", loop.ID)
+	}
+	if s.heldAway(loop) {
+		return Loop{}, Run{}, false, nil
 	}
 	runs, err := s.Repo.ActiveRuns(loop.ID)
 	if err != nil {
@@ -584,6 +593,12 @@ func (s *Service) claimDueRunLocked(now time.Time) (Loop, Run, bool, error) {
 		if err != nil {
 			return Loop{}, Run{}, false, err
 		}
+		if s.heldAway(loop) {
+			if err := s.skipRunLocked(loop, scheduledFor, nextRun, now, awayReason); err != nil {
+				return Loop{}, Run{}, false, err
+			}
+			continue
+		}
 		if runs, err := s.Repo.ActiveRuns(loop.ID); err != nil {
 			return Loop{}, Run{}, false, err
 		} else if len(runs) > 0 {
@@ -753,6 +768,9 @@ func StartScheduler(ctx context.Context, service *Service, tick time.Duration) e
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	for {
+		if err := service.GuardAway(); err != nil {
+			service.Log.Error("away guard failed", "error", err)
+		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

@@ -220,6 +220,7 @@ type MCPCreateInput struct {
 	Trigger         *Trigger `json:"trigger,omitempty" jsonschema:"fire on an event instead of the schedule: kind gmail, whatsapp, telegram, slack or webhook, with optional from, subject (email subject or Slack #channel) and contains filters"`
 	WhenMissed      string   `json:"when_missed,omitempty" jsonschema:"what to do with runs and events missed while Jaz was not running: skip (default) drops them; catch_up covers them all in one run when Jaz is back"`
 	Thread          string   `json:"thread,omitempty" jsonschema:"where a bot's routine runs: child (default), a fresh thread of its own whose reply reaches the bot when it has something for the user; main, a turn in the bot's own chat, for runs that need that conversation"`
+	KeepRunning     bool     `json:"keep_running,omitempty" jsonschema:"true for a routine that must run even while the user is away, such as a safety monitor; other routines pause after 3 days without a message from the user and resume with the next one"`
 }
 
 func (t *MCPTools) Create(_ context.Context, req *mcp.CallToolRequest, input MCPCreateInput) (*mcp.CallToolResult, Loop, error) {
@@ -238,6 +239,7 @@ func (t *MCPTools) Create(_ context.Context, req *mcp.CallToolRequest, input MCP
 		Trigger:         input.Trigger,
 		WhenMissed:      input.WhenMissed,
 		Thread:          input.Thread,
+		KeepRunning:     input.KeepRunning,
 	}, input.BoardIDs, mcpsession.SessionID(req))
 	return nil, loop, err
 }
@@ -257,6 +259,7 @@ type MCPUpdateInput struct {
 	Trigger         *Trigger  `json:"trigger,omitempty" jsonschema:"switch the routine to an event trigger; setting schedule switches it back"`
 	WhenMissed      *string   `json:"when_missed,omitempty" jsonschema:"skip or catch_up; see loop_create"`
 	Thread          *string   `json:"thread,omitempty" jsonschema:"child or main; see loop_create"`
+	KeepRunning     *bool     `json:"keep_running,omitempty" jsonschema:"see loop_create"`
 	// BoardIDs reassigns the loop's widget to exactly these boards. Omit to
 	// leave assignments untouched; pass an empty array to clear them.
 	BoardIDs *[]string `json:"board_ids,omitempty" jsonschema:"boards to place this loop's widget on; omit to leave unchanged, empty array to remove from all boards. Use loop_boards to list ids."`
@@ -281,6 +284,7 @@ func (t *MCPTools) Update(_ context.Context, req *mcp.CallToolRequest, input MCP
 		Trigger:         input.Trigger,
 		WhenMissed:      input.WhenMissed,
 		Thread:          input.Thread,
+		KeepRunning:     input.KeepRunning,
 	}, input.BoardIDs)
 	return nil, loop, err
 }

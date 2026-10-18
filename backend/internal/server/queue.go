@@ -300,6 +300,10 @@ func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, pr
 		async, err := s.startQueuedAction(ctx, session, *prompt)
 		if err != nil {
 			s.logger().Error("queued action failed", "session", session.ID, "action", prompt.Action, "error", err)
+			if queuedActionSpecs[prompt.Action].DropOnFailure {
+				s.failClaimedTurn(session.ID, *prompt, err)
+				return
+			}
 			s.restoreQueuedPrompt(session.ID, *prompt, 0, err.Error())
 			return
 		}
@@ -310,8 +314,8 @@ func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, pr
 	}
 	if err := s.startQueuedPrompt(ctx, session, *prompt); err != nil {
 		s.logger().Error("queued prompt start failed", "session", session.ID, "error", err)
-		if run := prompt.Output.LoopRun(); run != "" {
-			s.failRunStart(session.ID, run, err)
+		if prompt.Output.LoopRun() != "" {
+			s.failClaimedTurn(session.ID, *prompt, err)
 			return
 		}
 		s.restoreQueuedPrompt(session.ID, *prompt, 0, err.Error())
@@ -320,11 +324,14 @@ func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, pr
 	s.publishMessagesChanged(session.ID)
 }
 
-// failRunStart ends a routine run whose turn could not start, as a run that
-// failed, so its routine's next fire is not held behind it.
-func (s *Server) failRunStart(sessionID, run string, cause error) {
-	if err := s.Loops.Finish(run, loops.RunStatusError, cause.Error(), false); err != nil {
-		s.logger().Error("finish loop run", "session", sessionID, "run", run, "error", err)
+// failClaimedTurn ends a claimed turn that could not start as a failed one,
+// with the routine run it does, so the work queued behind it and its routine's
+// next fire are not held behind it.
+func (s *Server) failClaimedTurn(sessionID string, prompt storage.QueuedMessage, cause error) {
+	if run := prompt.Output.LoopRun(); run != "" {
+		if err := s.Loops.Finish(run, loops.RunStatusError, cause.Error(), false); err != nil {
+			s.logger().Error("finish loop run", "session", sessionID, "run", run, "error", err)
+		}
 	}
 	unlock := s.lockSession(sessionID)
 	err := s.Store.FinishSessionTurn(sessionID, storage.StatusError, cause.Error(), time.Now().UTC(), nil)

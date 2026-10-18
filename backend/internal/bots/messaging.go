@@ -96,6 +96,24 @@ func (s *Service) Say(threadID, text string) error {
 	return s.post(group, message, false)
 }
 
+// Notice posts a bot's message in its own chat outside any turn, as news the
+// user has not read.
+func (s *Service) Notice(botID, text string) error {
+	_, session, err := s.load(botID)
+	if err != nil {
+		return err
+	}
+	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: botID, Name: session.Title, Text: text}
+	if err := appendEvent(s.store, s.events, sessionevents.Event{SessionID: botID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
+		return err
+	}
+	if err := s.store.SetThreadUnread(botID, true); err != nil {
+		return err
+	}
+	s.events.Publish(sessionevents.Event{SessionID: botID, Type: sessionevents.TypeSession})
+	return nil
+}
+
 // announce notes in a thread what woke its bot; the note is best-effort.
 func (s *Service) announce(threadID string, activity sessionevents.BotActivityEvent) {
 	if threadID == "" {

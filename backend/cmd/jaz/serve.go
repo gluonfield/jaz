@@ -310,6 +310,7 @@ func startServer(
 		loops.WithModelCheck(loopRunner.CheckModel),
 	)
 	botService := bots.NewService(store, layout.Bots, manager, handler, handler, loopService, events, logger)
+	loopService.Notice = botService.Notice
 	mcpManager.AppVisible = botService.AppVisible
 	jazTools.SetLoops(loopService,
 		loops.WithBoards(widgetService.LoopBoards()),
@@ -369,6 +370,10 @@ func startServer(
 			}
 			if err := loopService.EnsureMemoryPaths(); err != nil {
 				return err
+			}
+			// Events and webhooks can arrive before the scheduler's first tick.
+			if err := loopService.GuardAway(); err != nil {
+				logger.WithPrefix("loops").Error("away guard failed", "error", err)
 			}
 			listener, err := net.Listen("tcp", srv.Addr)
 			if err != nil {

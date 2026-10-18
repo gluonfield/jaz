@@ -410,6 +410,8 @@ func (s *Service) view(record storage.BotRecord, session storage.Session) Bot {
 	}
 	bot.Model = session.Model
 	bot.ReasoningEffort = session.ReasoningEffort
+	bot.ContextTokens = session.Usage.ContextTokens
+	bot.ContextWindowTokens = session.Usage.ContextWindowTokens
 	if ref := session.RuntimeRef; ref != nil {
 		bot.Agent = ref.Agent
 	}

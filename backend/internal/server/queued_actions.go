@@ -17,6 +17,9 @@ type queuedActionSpec struct {
 	CanStart    func(*Server, storage.Session) bool
 	Run         func(*Server, context.Context, storage.Session) error
 	AfterFinish func(*Server, string)
+	// DropOnFailure drops an action that fails to start, leaving its error on
+	// the thread, so the work queued behind it still runs.
+	DropOnFailure bool
 }
 
 var queuedActionSpecs = map[storage.QueuedAction]queuedActionSpec{
@@ -34,7 +37,8 @@ var queuedActionSpecs = map[storage.QueuedAction]queuedActionSpec{
 		},
 	},
 	storage.QueuedActionCompact: {
-		Async: true,
+		Async:         true,
+		DropOnFailure: true,
 		CanStart: func(s *Server, session storage.Session) bool {
 			return s.ACP != nil && sessionview.SupportsCompact(session)
 		},

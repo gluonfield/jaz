@@ -26,7 +26,8 @@ INSERT INTO loops (
   event_trigger,
   webhook_hash,
   when_missed,
-  thread
+  thread,
+  keep_running
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(name),
@@ -54,7 +55,8 @@ INSERT INTO loops (
   sqlc.arg(event_trigger),
   sqlc.arg(webhook_hash),
   sqlc.arg(when_missed),
-  sqlc.arg(thread)
+  sqlc.arg(thread),
+  sqlc.arg(keep_running)
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -75,6 +77,7 @@ ON CONFLICT(id) DO UPDATE SET
   webhook_hash = excluded.webhook_hash,
   when_missed = excluded.when_missed,
   thread = excluded.thread,
+  keep_running = excluded.keep_running,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -112,7 +115,8 @@ SELECT
   event_trigger,
   webhook_hash,
   when_missed,
-  thread
+  thread,
+  keep_running
 FROM loops
 WHERE id = sqlc.arg(id)
 LIMIT 1;
@@ -145,7 +149,8 @@ SELECT
   event_trigger,
   webhook_hash,
   when_missed,
-  thread
+  thread,
+  keep_running
 FROM loops
 WHERE status <> sqlc.arg(deleted_status)
 ORDER BY updated_at_ms DESC;
@@ -289,3 +294,9 @@ VALUES (sqlc.arg(loop_id), sqlc.arg(event_id), sqlc.arg(run_id), sqlc.arg(at_ms)
 SELECT id
 FROM loop_runs
 WHERE status IN (sqlc.arg(starting_status), sqlc.arg(running_status));
+
+-- name: PruneLoopEvents :exec
+DELETE FROM loop_events
+WHERE loop_events.loop_id = sqlc.arg(loop_id)
+  AND loop_events.at_ms < sqlc.arg(before_ms)
+  AND loop_events.at_ms < (SELECT MAX(newest.at_ms) FROM loop_events AS newest WHERE newest.loop_id = sqlc.arg(loop_id));

@@ -67,7 +67,8 @@ SELECT
   event_trigger,
   webhook_hash,
   when_missed,
-  thread
+  thread,
+  keep_running
 FROM loops
 WHERE id = ?1
 LIMIT 1
@@ -104,6 +105,7 @@ func (q *Queries) GetLoop(ctx context.Context, id string) (Loop, error) {
 		&i.WebhookHash,
 		&i.WhenMissed,
 		&i.Thread,
+		&i.KeepRunning,
 	)
 	return i, err
 }
@@ -365,7 +367,8 @@ SELECT
   event_trigger,
   webhook_hash,
   when_missed,
-  thread
+  thread,
+  keep_running
 FROM loops
 WHERE status <> ?1
 ORDER BY updated_at_ms DESC
@@ -408,6 +411,7 @@ func (q *Queries) ListLoops(ctx context.Context, deletedStatus string) ([]Loop, 
 			&i.WebhookHash,
 			&i.WhenMissed,
 			&i.Thread,
+			&i.KeepRunning,
 		); err != nil {
 			return nil, err
 		}
@@ -499,6 +503,23 @@ func (q *Queries) LoopEventSeen(ctx context.Context, arg LoopEventSeenParams) (b
 	return exists, err
 }
 
+const pruneLoopEvents = `-- name: PruneLoopEvents :exec
+DELETE FROM loop_events
+WHERE loop_events.loop_id = ?1
+  AND loop_events.at_ms < ?2
+  AND loop_events.at_ms < (SELECT MAX(newest.at_ms) FROM loop_events AS newest WHERE newest.loop_id = ?1)
+`
+
+type PruneLoopEventsParams struct {
+	LoopID   string `json:"loop_id"`
+	BeforeMs int64  `json:"before_ms"`
+}
+
+func (q *Queries) PruneLoopEvents(ctx context.Context, arg PruneLoopEventsParams) error {
+	_, err := q.db.ExecContext(ctx, pruneLoopEvents, arg.LoopID, arg.BeforeMs)
+	return err
+}
+
 const upsertLoop = `-- name: UpsertLoop :exec
 INSERT INTO loops (
   id,
@@ -527,7 +548,8 @@ INSERT INTO loops (
   event_trigger,
   webhook_hash,
   when_missed,
-  thread
+  thread,
+  keep_running
 ) VALUES (
   ?1,
   ?2,
@@ -555,7 +577,8 @@ INSERT INTO loops (
   ?24,
   ?25,
   ?26,
-  ?27
+  ?27,
+  ?28
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -576,6 +599,7 @@ ON CONFLICT(id) DO UPDATE SET
   webhook_hash = excluded.webhook_hash,
   when_missed = excluded.when_missed,
   thread = excluded.thread,
+  keep_running = excluded.keep_running,
   next_run_at_ms = excluded.next_run_at_ms,
   last_run_at_ms = excluded.last_run_at_ms,
   last_run_id = excluded.last_run_id,
@@ -614,6 +638,7 @@ type UpsertLoopParams struct {
 	WebhookHash     string         `json:"webhook_hash"`
 	WhenMissed      string         `json:"when_missed"`
 	Thread          string         `json:"thread"`
+	KeepRunning     int64          `json:"keep_running"`
 }
 
 func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
@@ -645,6 +670,7 @@ func (q *Queries) UpsertLoop(ctx context.Context, arg UpsertLoopParams) error {
 		arg.WebhookHash,
 		arg.WhenMissed,
 		arg.Thread,
+		arg.KeepRunning,
 	)
 	return err
 }

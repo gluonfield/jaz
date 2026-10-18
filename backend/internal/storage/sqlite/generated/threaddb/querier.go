@@ -16,6 +16,7 @@ type Querier interface {
 	AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error)
 	ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) error
 	CompleteSession(ctx context.Context, arg CompleteSessionParams) error
+	// A compact brings the user nothing new to read.
 	FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error)
 	GetSession(ctx context.Context, ref string) (Thread, error)
 	GetThreadIDByID(ctx context.Context, id string) (string, error)

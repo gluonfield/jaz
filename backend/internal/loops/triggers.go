@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/integrationingest"
 )
@@ -51,6 +52,12 @@ func (s *Service) take(routine Loop, messages []integrationingest.Incoming) (Loo
 	}
 	if since.Before(routine.CreatedAt) {
 		since = routine.CreatedAt
+	}
+	// Only messages from since on are looked up again, and the newest one
+	// marks where a catch-up starts; a day's margin keeps a clock set back
+	// from firing a forgotten message again.
+	if err := s.Repo.PruneEvents(routine.ID, since.Add(-24*time.Hour)); err != nil {
+		return Loop{}, Run{}, false, err
 	}
 	var events []string
 	var taken []SeenEvent

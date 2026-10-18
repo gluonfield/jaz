@@ -46,6 +46,10 @@ type Bot struct {
 	Members         []string  `json:"members,omitempty"`
 	// Working lists the members taking a turn in a group.
 	Working []string `json:"working,omitempty"`
+	// The bot's context fill as its agent last reported it; the fill is
+	// unknown while either is zero.
+	ContextTokens       int64 `json:"context_tokens,omitempty"`
+	ContextWindowTokens int64 `json:"context_window_tokens,omitempty"`
 }
 
 type CreateBot struct {
@@ -100,6 +104,7 @@ type Store interface {
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	UpdateSessionTitle(id, title string) error
 	SetArchived(id string, archived bool) error
+	SetThreadUnread(id string, unread bool) error
 	LoadSessionEvents(id string) ([]sessionevents.Event, error)
 	AppendSessionEvents(id string, events ...sessionevents.Event) error
 	LoadLatestSessionEvent(id, eventType string) (sessionevents.Event, bool, error)

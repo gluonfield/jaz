@@ -118,6 +118,9 @@ func NormalizeUpdate(current Loop, input UpdateLoop, now time.Time) (Loop, bool,
 		}
 		next.Thread = thread
 	}
+	if input.KeepRunning != nil {
+		next.KeepRunning = *input.KeepRunning
+	}
 	if next.Status != StatusActive && next.Status != StatusPaused {
 		return next, false, fmt.Errorf("unsupported loop status %q", next.Status)
 	}
