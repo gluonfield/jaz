@@ -419,7 +419,7 @@ func startServer(
 				case <-loopCtx.Done():
 					return
 				}
-				if err := loops.StartScheduler(loopCtx, loopService, 30*time.Second); err != nil && loopCtx.Err() == nil {
+				if err := loops.StartScheduler(loopCtx, loopService, 30*time.Second, handler.ResumeLoopRuns); err != nil && loopCtx.Err() == nil {
 					logger.WithPrefix("loops").Error("scheduler stopped", "error", err)
 				}
 			}()
@@ -439,9 +439,9 @@ func startServer(
 		},
 	})
 	app.StartMCPManager(lc, mcpManager, manager, logger)
-	app.StartSessionRecovery(lc, store, handler, locks, events, logger, func(ctx context.Context) error {
+	app.StartSessionRecovery(lc, store, handler, locks, events, logger, func(context.Context) error {
 		defer close(recovered)
-		return errors.Join(handler.ResumeQueuedTurns(), handler.ResumeLoopRuns(ctx))
+		return handler.ResumeQueuedTurns()
 	})
 	return nil
 }

@@ -479,6 +479,9 @@ export interface Loop {
   last_run_thread_id?: string
   last_run_status?: LoopRunStatus
   last_error?: string
+  // Why the routine cannot start runs now, as when Jaz could not check the runs
+  // it left open when it last stopped.
+  blocked?: string
   created_at: string
   updated_at: string
 }
