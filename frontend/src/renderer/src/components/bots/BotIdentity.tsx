@@ -2,41 +2,34 @@ import { useQuery } from '@tanstack/react-query'
 import { botFilesQuery } from '@/lib/api/bots'
 import type { Bot, BotFile, BotFileName } from '@/lib/api/types'
 import { BOT_FILE_LABELS } from '@/lib/bots'
-import { hasTime } from '@/lib/format/time'
-import { useReducedEffectsMotion } from '@/lib/effectsMotion'
+import { hasTime, shortDate } from '@/lib/format/time'
 
-const CARDS: { name: BotFileName; about: string; tone: string }[] = [
-  { name: 'AGENTS.md', about: 'Who it is', tone: 'identity-card-soul' },
-  { name: 'MEMORY.md', about: 'What it knows', tone: 'identity-card-memory' },
+const CARDS: { name: BotFileName; about: string }[] = [
+  { name: 'AGENTS.md', about: 'Who it is' },
+  { name: 'MEMORY.md', about: 'What it knows' },
 ]
-
-// The day a file last changed, as a stamp in the person's own date order.
-const STAMP = new Intl.DateTimeFormat(undefined, { day: '2-digit', month: '2-digit', year: '2-digit' })
 
 export function BotIdentity({ bot, onOpen }: { bot: Bot; onOpen: (name: BotFileName) => void }) {
   const files = useQuery(botFilesQuery(bot.id)).data
-  const still = useReducedEffectsMotion()
   return (
-    <div className="grid grid-cols-2 gap-2.5">
-      {CARDS.map(({ name, about, tone }) => (
+    <div className="grid grid-cols-2 gap-2">
+      {CARDS.map(({ name, about }) => (
         <button
           key={name}
           type="button"
           onClick={() => onOpen(name)}
-          className={`identity-card ${tone} ${still ? 'identity-card-still' : ''} flex aspect-[1.12] cursor-pointer flex-col justify-between rounded-[22px] p-4 text-left text-white transition-transform duration-200 ease-out hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary`}
+          className="flex cursor-pointer flex-col items-start gap-0.5 rounded-xl border border-border bg-bg p-3 text-left transition-colors duration-150 hover:bg-list-hover"
         >
-          <span className="flex flex-col gap-1">
-            <span className="text-[17px] leading-none font-semibold tracking-tight uppercase">{BOT_FILE_LABELS[name]}</span>
-            <span className="font-mono text-[10px] tracking-[0.04em] text-white/75 uppercase">{about}</span>
-          </span>
-          <span className="font-mono text-[13px] text-white/85 tabular-nums">{stamp(files?.find((file) => file.name === name))}</span>
+          <span className="text-[13px] font-semibold text-ink">{BOT_FILE_LABELS[name]}</span>
+          <span className="text-[12px] text-ink-3">{about}</span>
+          <span className="text-[11px] text-ink-3 tabular-nums">{updated(files?.find((file) => file.name === name))}</span>
         </button>
       ))}
     </div>
   )
 }
 
-function stamp(file?: BotFile): string {
+function updated(file?: BotFile): string {
   if (!file) return ''
-  return hasTime(file.updated_at) ? STAMP.format(new Date(file.updated_at)).replaceAll('/', '.') : 'Not written yet'
+  return hasTime(file.updated_at) ? `Updated ${shortDate(file.updated_at)}` : 'Not written yet'
 }
