@@ -23,12 +23,14 @@ function subscribe(onChange: () => void) {
 export function TitlebarNavigation({
   hasPanel,
   panelOpen,
+  newChat,
   isMobile,
   onToggleSidebar,
   onNavigate,
 }: {
   hasPanel: boolean
   panelOpen: boolean
+  newChat: boolean
   isMobile: boolean
   onToggleSidebar: () => void
   onNavigate: (direction: BrowserNavigationDirection) => void
@@ -81,7 +83,7 @@ export function TitlebarNavigation({
           </button>
         </>
       )}
-      {hasPanel && !panelOpen && (
+      {newChat && (
         <Link to="/new" aria-label="New chat" title="New chat (⌘N)" className={CONTROL_CLASS}>
           <NewChatIcon className="size-4 max-sm:size-[18px]" aria-hidden />
         </Link>

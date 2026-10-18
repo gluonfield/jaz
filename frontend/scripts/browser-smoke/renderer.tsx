@@ -100,7 +100,7 @@ function Fixture() {
       stage = 'app page navigation across Jaz history'
       await exerciseAppNavigation()
       if (new URLSearchParams(location.search).get('suite') === 'app-navigation') {
-        window.smoke.result({ ok: true, checks: ['sandboxed app page history, cross-app Back/Forward, remembered pages, tool-target entry, repeated opens, query restoration, focused keyboard shortcuts and threads started only by the app in use'] })
+        window.smoke.result({ ok: true, checks: ['sandboxed app page history, cross-app Back/Forward, remembered pages, tool-target entry, repeated opens, query restoration, focused keyboard shortcuts, threads started only by the app in use, and a titlebar New chat with the sidebar hidden everywhere except Bots'] })
         return
       }
       stage = 'composer submission across chat navigation'
