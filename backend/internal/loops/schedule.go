@@ -38,6 +38,9 @@ func NormalizeCreate(input CreateLoop, now time.Time) (CreateLoop, time.Time, er
 	input.ModelProvider = strings.TrimSpace(input.ModelProvider)
 	input.Model = strings.TrimSpace(input.Model)
 	input.Directory = strings.TrimSpace(input.Directory)
+	if input.WhenMissed, err = normalizeWhenMissed(input.WhenMissed); err != nil {
+		return input, time.Time{}, err
+	}
 	if input.Name == "" {
 		input.Name = titleFromPrompt(input.Prompt)
 	}
@@ -97,6 +100,13 @@ func NormalizeUpdate(current Loop, input UpdateLoop, now time.Time) (Loop, bool,
 	}
 	if input.BotID != nil {
 		next.BotID = *input.BotID
+	}
+	if input.WhenMissed != nil {
+		whenMissed, err := normalizeWhenMissed(*input.WhenMissed)
+		if err != nil {
+			return next, false, err
+		}
+		next.WhenMissed = whenMissed
 	}
 	if next.Status != StatusActive && next.Status != StatusPaused {
 		return next, false, fmt.Errorf("unsupported loop status %q", next.Status)
@@ -243,6 +253,16 @@ func normalizeReasoningEffort(value string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown reasoning effort %q; valid values are none, minimal, low, medium, high, xhigh, max", value)
 	}
+}
+
+func normalizeWhenMissed(value string) (string, error) {
+	switch value = strings.ToLower(strings.TrimSpace(value)); value {
+	case "":
+		return MissedSkip, nil
+	case MissedSkip, MissedCatchUp:
+		return value, nil
+	}
+	return "", fmt.Errorf("unknown when_missed %q; valid values are skip and catch_up", value)
 }
 
 func normalizeRuntime(runtime string) string {

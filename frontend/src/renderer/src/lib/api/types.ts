@@ -461,6 +461,8 @@ export interface Loop {
   prompt: string
   schedule: LoopSchedule
   trigger?: LoopTrigger
+  // What the routine does about runs missed while Jaz was not running.
+  when_missed: 'skip' | 'catch_up'
   status: 'active' | 'paused' | 'deleted'
   runtime: 'acp'
   acp_agent?: string
@@ -491,6 +493,7 @@ export interface LoopRun {
   status: LoopRunStatus
   error?: string
   created_at: string
+  reason?: string
 }
 
 export interface Board {

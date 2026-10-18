@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { compactSchedule } from './schedule'
+import { compactSchedule, loopWhen } from './schedule'
 
 test('schedules read as plain words, and odd ones leave the next run to speak', () => {
   const cases = {
@@ -18,4 +18,12 @@ test('schedules read as plain words, and odd ones leave the next run to speak', 
     expect(compactSchedule(expr, false)).toBe(label)
   }
   expect(compactSchedule('0 */2 * * *', true)).toBe('Manual')
+})
+
+test('a routine that catches up on missed runs says so where it is listed', () => {
+  const daily = { schedule: { kind: 'cron', expr: '30 9 * * *', timezone: 'UTC' } }
+  expect(loopWhen({ ...daily, when_missed: 'catch_up' })).toBe('Daily · 9:30 AM · catches up if missed')
+  expect(loopWhen({ ...daily, when_missed: 'skip' })).toBe('Daily · 9:30 AM')
+  const mail = { trigger: { kind: 'gmail', from: 'ujjwal' }, schedule: { kind: 'event', expr: '', timezone: '' } }
+  expect(loopWhen({ ...mail, when_missed: 'catch_up' })).toBe('New Gmail from ujjwal · catches up if missed')
 })

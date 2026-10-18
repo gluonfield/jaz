@@ -3,6 +3,7 @@ package loops
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -26,7 +27,6 @@ type Service struct {
 	// as a widget run that published nothing.
 	RunCheck func(Loop, Run) error
 	mu       sync.Mutex
-	fired    map[string]struct{}
 	// ours holds the runs this process created and has not finished, which a
 	// previous process cannot have left behind.
 	ours map[string]bool
@@ -123,6 +123,7 @@ func (s *Service) Create(input CreateLoop) (Loop, error) {
 		UpdatedAt:       now,
 		BotID:           input.BotID,
 		Trigger:         input.Trigger,
+		WhenMissed:      input.WhenMissed,
 	}
 	ensureWebhookSecret(&loop)
 	s.mu.Lock()
@@ -213,31 +214,6 @@ func (s *Service) EnsureMemoryPaths() error {
 	return s.Repo.SaveLoops(updates)
 }
 
-func (s *Service) AdvanceMissed() error {
-	now := s.now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ids, err := s.Repo.ListDueLoopIDs(now)
-	if err != nil {
-		return err
-	}
-	updates := make([]Loop, 0, len(ids))
-	for _, id := range ids {
-		loop, err := s.Repo.LoadLoop(id)
-		if err != nil {
-			return err
-		}
-		nextRun, err := NextRun(loop.Schedule, now)
-		if err != nil {
-			return err
-		}
-		loop.NextRunAt = nextRun
-		loop.UpdatedAt = now
-		updates = append(updates, loop)
-	}
-	return s.Repo.SaveLoops(updates)
-}
-
 func (s *Service) StartDue(ctx context.Context) (bool, error) {
 	now := s.now()
 	s.mu.Lock()
@@ -270,21 +246,65 @@ func (s *Service) OnBoard(loop Loop) bool {
 }
 
 func (s *Service) RunNow(ctx context.Context, loopID string) (Run, error) {
-	return s.RunTriggered(ctx, loopID, "")
-}
-
-// RunTriggered starts a run outside the schedule; event describes what fired
-// it and is passed to the run.
-func (s *Service) RunTriggered(ctx context.Context, loopID, event string) (Run, error) {
 	now := s.now()
 	s.mu.Lock()
-	loop, run, err := s.startManualRunLocked(loopID, event, now)
+	loop, run, err := s.startManualRunLocked(loopID, now)
 	s.mu.Unlock()
 	if err != nil {
 		return Run{}, err
 	}
 	s.start(ctx, loop, run)
 	return run, nil
+}
+
+// RunTriggered hands an outside event, described by event, to a routine's
+// run.
+func (s *Service) RunTriggered(ctx context.Context, loopID, event string) (Run, error) {
+	now := s.now()
+	s.mu.Lock()
+	loop, err := s.Repo.LoadLoop(loopID)
+	var run Run
+	start := false
+	if err == nil {
+		loop, run, start, err = s.fireLocked(loop, []string{event}, now)
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return Run{}, err
+	}
+	if start {
+		s.start(ctx, loop, run)
+	}
+	return run, nil
+}
+
+// fireLocked hands events to loop: into its pending run when one waits, or
+// into a new run. The new run starts now unless a begun run of the loop is
+// still going, in which case it waits for that run to finish.
+func (s *Service) fireLocked(loop Loop, events []string, now time.Time) (Loop, Run, bool, error) {
+	if loop.Status == StatusDeleted {
+		return Loop{}, Run{}, false, fmt.Errorf("loop %s has been deleted", loop.ID)
+	}
+	runs, err := s.Repo.ActiveRuns(loop.ID)
+	if err != nil {
+		return Loop{}, Run{}, false, err
+	}
+	run := Run{ID: s.Repo.NewRunID(), LoopID: loop.ID, ScheduledFor: now, Status: RunStatusStarting, CreatedAt: now}
+	pending := slices.IndexFunc(runs, func(run Run) bool { return run.Status == RunStatusStarting })
+	if pending >= 0 {
+		run = runs[pending]
+	}
+	for _, event := range events {
+		run.Reason = foldReason(run.Reason, event)
+	}
+	if len(runs) > 0 {
+		if pending < 0 {
+			s.ours[run.ID] = true
+		}
+		return Loop{}, run, false, s.Repo.SaveRun(run)
+	}
+	promptLoop, err := s.newRunLocked(loop, run, now)
+	return promptLoop, run, err == nil, err
 }
 
 // Begin starts a pending run's turn in threadID, or in its bot's thread when
@@ -314,15 +334,23 @@ func (s *Service) Begin(runID, threadID string) (Loop, string, error) {
 	return loop, runPrompt(loop, run, now, s.botThread(loop) != ""), nil
 }
 
-// Finish closes a run that is still open; a run already closed stays as it
-// ended.
+// Finish closes a run that is still open, then starts the run waiting behind
+// it; a run already closed stays as it ended.
 func (s *Service) Finish(runID, status, errText string) error {
-	now := s.now()
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	loop, next, err := s.finishLocked(runID, status, errText)
+	s.mu.Unlock()
+	if err == nil && next.ID != "" {
+		s.start(context.Background(), loop, next)
+	}
+	return err
+}
+
+func (s *Service) finishLocked(runID, status, errText string) (Loop, Run, error) {
+	now := s.now()
 	run, err := s.Repo.LoadRun(runID)
 	if err != nil || !active(run) {
-		return err
+		return Loop{}, Run{}, err
 	}
 	delete(s.ours, run.ID)
 	run.Status = normalizeRunStatus(status)
@@ -330,7 +358,7 @@ func (s *Service) Finish(runID, status, errText string) error {
 	if run.Status == RunStatusOK && s.RunCheck != nil {
 		loop, err := s.Repo.LoadLoop(run.LoopID)
 		if err != nil {
-			return err
+			return Loop{}, Run{}, err
 		}
 		if err := s.RunCheck(loop, run); err != nil {
 			run.Status, run.Error = RunStatusError, err.Error()
@@ -340,45 +368,38 @@ func (s *Service) Finish(runID, status, errText string) error {
 	if run.StartedAt.IsZero() {
 		run.StartedAt = now
 	}
-	return s.saveRunAndLoopUpdateLocked(run, now)
+	if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
+		return Loop{}, Run{}, err
+	}
+	return s.nextRunLocked(run.LoopID, now)
+}
+
+// nextRunLocked takes up the run waiting for loop's begun run to finish, if
+// one waits and none is begun.
+func (s *Service) nextRunLocked(loopID string, now time.Time) (Loop, Run, error) {
+	runs, err := s.Repo.ActiveRuns(loopID)
+	if err != nil || len(runs) != 1 || runs[0].Status != RunStatusStarting {
+		return Loop{}, Run{}, err
+	}
+	loop, err := s.Repo.LoadLoop(loopID)
+	if err != nil {
+		return Loop{}, Run{}, err
+	}
+	promptLoop, err := s.newRunLocked(loop, runs[0], now)
+	return promptLoop, runs[0], err
 }
 
 // Resume settles the runs a previous process left open, once its threads have
 // resumed: held names the runs a thread still holds, queued or in a turn, and
-// those go on. A pending run no thread holds is started again; a begun one
-// is closed, since nothing will finish it.
+// those go on. A begun run no thread holds is closed, since nothing will
+// finish it; a pending one starts again unless it waits behind a begun run.
 func (s *Service) Resume(ctx context.Context, held map[string]bool) error {
-	now := s.now()
 	s.mu.Lock()
-	ids, err := s.Repo.ListActiveRunIDs()
+	restart, err := s.resumeLocked(held, s.now())
+	s.mu.Unlock()
 	if err != nil {
-		s.mu.Unlock()
 		return err
 	}
-	var restart []Run
-	for _, id := range ids {
-		if held[id] || s.ours[id] {
-			continue
-		}
-		run, err := s.Repo.LoadRun(id)
-		if err != nil {
-			s.mu.Unlock()
-			return err
-		}
-		if run.Status == RunStatusStarting {
-			s.ours[run.ID] = true
-			restart = append(restart, run)
-			continue
-		}
-		run.Status = RunStatusError
-		run.Error = "Jaz stopped before this run finished."
-		run.FinishedAt = now
-		if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
-			s.mu.Unlock()
-			return err
-		}
-	}
-	s.mu.Unlock()
 	for _, run := range restart {
 		loop, err := s.Repo.LoadLoop(run.LoopID)
 		if err != nil {
@@ -387,6 +408,49 @@ func (s *Service) Resume(ctx context.Context, held map[string]bool) error {
 		s.start(ctx, loop, run)
 	}
 	return nil
+}
+
+func (s *Service) resumeLocked(held map[string]bool, now time.Time) ([]Run, error) {
+	ids, err := s.Repo.ListActiveRunIDs()
+	if err != nil {
+		return nil, err
+	}
+	var pending []Run
+	for _, id := range ids {
+		if held[id] || s.ours[id] {
+			continue
+		}
+		run, err := s.Repo.LoadRun(id)
+		if err != nil {
+			return nil, err
+		}
+		if run.Status == RunStatusStarting {
+			pending = append(pending, run)
+			continue
+		}
+		run.Status = RunStatusError
+		run.Error = "Jaz stopped before this run finished."
+		run.FinishedAt = now
+		if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
+			return nil, err
+		}
+	}
+	var restart []Run
+	for _, run := range pending {
+		runs, err := s.Repo.ActiveRuns(run.LoopID)
+		if err != nil {
+			return nil, err
+		}
+		if !slices.ContainsFunc(runs, begun) {
+			s.ours[run.ID] = true
+			restart = append(restart, run)
+		}
+	}
+	return restart, nil
+}
+
+func begun(run Run) bool {
+	return run.Status == RunStatusRunning
 }
 
 func active(run Run) bool {
@@ -439,6 +503,10 @@ func (s *Service) now() time.Time {
 	return time.Now().UTC()
 }
 
+// claimDueRunLocked starts the next due loop's run. A slot older than
+// missedAfter was missed while Jaz was not running, asleep or stopped: a
+// loop that skips missed slots runs only for a slot still on time, and one
+// that catches up covers every missed slot in one run.
 func (s *Service) claimDueRunLocked(now time.Time) (Loop, Run, bool, error) {
 	ids, err := s.Repo.ListDueLoopIDs(now)
 	if err != nil {
@@ -457,39 +525,46 @@ func (s *Service) claimDueRunLocked(now time.Time) (Loop, Run, bool, error) {
 		if err != nil {
 			return Loop{}, Run{}, false, err
 		}
-		if active, err := s.Repo.HasActiveRun(loop.ID); err != nil {
+		if runs, err := s.Repo.ActiveRuns(loop.ID); err != nil {
 			return Loop{}, Run{}, false, err
-		} else if active {
+		} else if len(runs) > 0 {
 			if err := s.skipRunLocked(loop, scheduledFor, nextRun, now, "previous loop run is still active"); err != nil {
 				return Loop{}, Run{}, false, err
 			}
 			continue
 		}
-		promptLoop := loop
-		run := Run{
-			ID:           s.Repo.NewRunID(),
-			LoopID:       loop.ID,
-			ScheduledFor: scheduledFor,
-			Status:       RunStatusStarting,
-			CreatedAt:    now,
-		}
-		loop.NextRunAt = nextRun
-		loop.LastRunAt = now
-		loop.LastRunID = run.ID
-		loop.LastRunThreadID = ""
-		loop.LastRunStatus = run.Status
-		loop.LastError = ""
-		loop.UpdatedAt = now
-		if err := s.Repo.SaveLoopAndRun(loop, run); err != nil {
+		missed, err := missedSlots(loop.Schedule, scheduledFor, now)
+		if err != nil {
 			return Loop{}, Run{}, false, err
 		}
-		s.ours[run.ID] = true
-		return promptLoop, run, true, nil
+		run := Run{ID: s.Repo.NewRunID(), LoopID: loop.ID, ScheduledFor: scheduledFor, Status: RunStatusStarting, CreatedAt: now}
+		switch {
+		case missed.count == 0:
+		case loop.WhenMissed == MissedCatchUp:
+			last, ok, err := s.Repo.LastRunWithStatus(loop.ID, RunStatusOK)
+			if err != nil {
+				return Loop{}, Run{}, false, err
+			}
+			if !ok {
+				last = Run{}
+			}
+			run.Reason = catchUpReason(loop, missed, last.FinishedAt)
+		case missed.due.IsZero():
+			if err := s.skipRunLocked(loop, scheduledFor, nextRun, now, "Skipped: "+missedText(loop, missed)+"."); err != nil {
+				return Loop{}, Run{}, false, err
+			}
+			continue
+		default:
+			run.ScheduledFor = missed.due
+		}
+		loop.NextRunAt = nextRun
+		promptLoop, err := s.newRunLocked(loop, run, now)
+		return promptLoop, run, err == nil, err
 	}
 	return Loop{}, Run{}, false, nil
 }
 
-func (s *Service) startManualRunLocked(loopID, event string, now time.Time) (Loop, Run, error) {
+func (s *Service) startManualRunLocked(loopID string, now time.Time) (Loop, Run, error) {
 	loop, err := s.Repo.LoadLoop(loopID)
 	if err != nil {
 		return Loop{}, Run{}, err
@@ -497,20 +572,20 @@ func (s *Service) startManualRunLocked(loopID, event string, now time.Time) (Loo
 	if loop.Status == StatusDeleted {
 		return Loop{}, Run{}, fmt.Errorf("loop %s has been deleted", loop.ID)
 	}
-	if active, err := s.Repo.HasActiveRun(loop.ID); err != nil {
+	if runs, err := s.Repo.ActiveRuns(loop.ID); err != nil {
 		return Loop{}, Run{}, err
-	} else if active {
+	} else if len(runs) > 0 {
 		return Loop{}, Run{}, fmt.Errorf("loop %s already has an active run", loop.ID)
 	}
+	run := Run{ID: s.Repo.NewRunID(), LoopID: loop.ID, ScheduledFor: now, Status: RunStatusStarting, CreatedAt: now}
+	promptLoop, err := s.newRunLocked(loop, run, now)
+	return promptLoop, run, err
+}
+
+// newRunLocked saves run as loop's latest and returns loop as the run's
+// prompt describes it, with the run before it as the previous one.
+func (s *Service) newRunLocked(loop Loop, run Run, now time.Time) (Loop, error) {
 	promptLoop := loop
-	run := Run{
-		ID:           s.Repo.NewRunID(),
-		LoopID:       loop.ID,
-		ScheduledFor: now,
-		Status:       RunStatusStarting,
-		CreatedAt:    now,
-		Event:        event,
-	}
 	loop.LastRunAt = now
 	loop.LastRunID = run.ID
 	loop.LastRunThreadID = ""
@@ -518,10 +593,10 @@ func (s *Service) startManualRunLocked(loopID, event string, now time.Time) (Loo
 	loop.LastError = ""
 	loop.UpdatedAt = now
 	if err := s.Repo.SaveLoopAndRun(loop, run); err != nil {
-		return Loop{}, Run{}, err
+		return Loop{}, err
 	}
 	s.ours[run.ID] = true
-	return promptLoop, run, nil
+	return promptLoop, nil
 }
 
 func (s *Service) assignMemoryPathLocked(loop *Loop) error {
@@ -621,9 +696,6 @@ func StartScheduler(ctx context.Context, service *Service, tick time.Duration) e
 	}
 	if tick <= 0 {
 		tick = 30 * time.Second
-	}
-	if err := service.AdvanceMissed(); err != nil {
-		return err
 	}
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()

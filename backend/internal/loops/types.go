@@ -31,6 +31,13 @@ const (
 	ScheduleEvent = "event"
 )
 
+// What a routine does about slots and events it missed while Jaz was not
+// running: skip them, or catch up with one run that covers them all.
+const (
+	MissedSkip    = "skip"
+	MissedCatchUp = "catch_up"
+)
+
 const (
 	TriggerGmail    = "gmail"
 	TriggerWhatsApp = "whatsapp"
@@ -80,6 +87,7 @@ type Loop struct {
 	// BotID is the thread of the bot that owns this routine.
 	BotID       string   `json:"bot_id"`
 	Trigger     *Trigger `json:"trigger,omitempty"`
+	WhenMissed  string   `json:"when_missed"`
 	WebhookHash string   `json:"-"`
 	// WebhookSecret is returned once, when a webhook trigger is created.
 	WebhookSecret string `json:"webhook_secret,omitempty"`
@@ -95,9 +103,18 @@ type Run struct {
 	Status       string    `json:"status"`
 	Error        string    `json:"error,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
-	// Event says what fired the run, when something other than its schedule
-	// did.
-	Event string `json:"event,omitempty"`
+	// Reason says why the run happens when its schedule alone does not: the
+	// events that fired it, or the slots it catches up on.
+	Reason string `json:"reason,omitempty"`
+}
+
+// SeenEvent records that a run took an observed message, so the message fires
+// its routine once.
+type SeenEvent struct {
+	LoopID string
+	ID     string
+	RunID  string
+	At     time.Time
 }
 
 type CreateLoop struct {
@@ -113,6 +130,7 @@ type CreateLoop struct {
 	Directory       string
 	BotID           string
 	Trigger         *Trigger
+	WhenMissed      string
 }
 
 type UpdateLoop struct {
@@ -128,6 +146,7 @@ type UpdateLoop struct {
 	Directory       *string
 	Trigger         *Trigger
 	BotID           *string
+	WhenMissed      *string
 	Reschedule      bool
 	RescheduleAt    time.Time
 }
@@ -159,7 +178,12 @@ type Repository interface {
 	LoadRun(id string) (Run, error)
 	ListDueLoopIDs(now time.Time) ([]string, error)
 	ListActiveRunIDs() ([]string, error)
-	HasActiveRun(loopID string) (bool, error)
+	// ActiveRuns lists a loop's pending and begun runs, oldest first.
+	ActiveRuns(loopID string) ([]Run, error)
+	LastRunWithStatus(loopID, status string) (Run, bool, error)
+	EventSeen(loopID, eventID string) (bool, error)
+	LatestEventAt(loopID string) (time.Time, error)
+	SaveEvents(events []SeenEvent) error
 	SaveLoop(loop Loop) error
 	SaveRun(run Run) error
 	SaveLoops(loops []Loop) error

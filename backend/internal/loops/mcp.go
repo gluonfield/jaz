@@ -218,6 +218,7 @@ type MCPCreateInput struct {
 	BoardIDs        []string `json:"board_ids,omitempty" jsonschema:"board ids to place this loop's widget on; assignment is what enables the widget. Use loop_boards to list ids."`
 	Bot             string   `json:"bot,omitempty" jsonschema:"id of the bot that owns the routine; defaults to the calling bot. A routine on a board belongs to the board"`
 	Trigger         *Trigger `json:"trigger,omitempty" jsonschema:"fire on an event instead of the schedule: kind gmail, whatsapp, telegram, slack or webhook, with optional from, subject (email subject or Slack #channel) and contains filters"`
+	WhenMissed      string   `json:"when_missed,omitempty" jsonschema:"what to do with runs and events missed while Jaz was not running: skip (default) drops them; catch_up covers them all in one run when Jaz is back"`
 }
 
 func (t *MCPTools) Create(_ context.Context, req *mcp.CallToolRequest, input MCPCreateInput) (*mcp.CallToolResult, Loop, error) {
@@ -234,6 +235,7 @@ func (t *MCPTools) Create(_ context.Context, req *mcp.CallToolRequest, input MCP
 		Directory:       input.Directory,
 		BotID:           strings.TrimSpace(input.Bot),
 		Trigger:         input.Trigger,
+		WhenMissed:      input.WhenMissed,
 	}, input.BoardIDs, mcpsession.SessionID(req))
 	return nil, loop, err
 }
@@ -251,6 +253,7 @@ type MCPUpdateInput struct {
 	ReasoningEffort *string   `json:"reasoning_effort,omitempty" jsonschema:"none, minimal, low, medium, high, xhigh, max"`
 	Directory       *string   `json:"directory,omitempty"`
 	Trigger         *Trigger  `json:"trigger,omitempty" jsonschema:"switch the routine to an event trigger; setting schedule switches it back"`
+	WhenMissed      *string   `json:"when_missed,omitempty" jsonschema:"skip or catch_up; see loop_create"`
 	// BoardIDs reassigns the loop's widget to exactly these boards. Omit to
 	// leave assignments untouched; pass an empty array to clear them.
 	BoardIDs *[]string `json:"board_ids,omitempty" jsonschema:"boards to place this loop's widget on; omit to leave unchanged, empty array to remove from all boards. Use loop_boards to list ids."`
@@ -273,6 +276,7 @@ func (t *MCPTools) Update(_ context.Context, req *mcp.CallToolRequest, input MCP
 		ReasoningEffort: input.ReasoningEffort,
 		Directory:       input.Directory,
 		Trigger:         input.Trigger,
+		WhenMissed:      input.WhenMissed,
 	}, input.BoardIDs)
 	return nil, loop, err
 }

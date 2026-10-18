@@ -78,16 +78,56 @@ func (s *Store) ListActiveRunIDs() ([]string, error) {
 	})
 }
 
-func (s *Store) HasActiveRun(loopID string) (bool, error) {
-	_, err := loopdb.New(s.db).GetActiveRunIDForLoop(context.Background(), loopdb.GetActiveRunIDForLoopParams{
+func (s *Store) ActiveRuns(loopID string) ([]loops.Run, error) {
+	rows, err := loopdb.New(s.db).ListActiveRunsForLoop(context.Background(), loopdb.ListActiveRunsForLoopParams{
 		LoopID:         loopID,
 		StartingStatus: loops.RunStatusStarting,
 		RunningStatus:  loops.RunStatusRunning,
 	})
-	if err == sql.ErrNoRows {
-		return false, nil
+	if err != nil {
+		return nil, err
 	}
-	return err == nil, err
+	runs := make([]loops.Run, 0, len(rows))
+	for _, row := range rows {
+		runs = append(runs, runFromDB(row))
+	}
+	return runs, nil
+}
+
+func (s *Store) LastRunWithStatus(loopID, status string) (loops.Run, bool, error) {
+	row, err := loopdb.New(s.db).GetLastRunWithStatus(context.Background(), loopdb.GetLastRunWithStatusParams{LoopID: loopID, Status: status})
+	if err == sql.ErrNoRows {
+		return loops.Run{}, false, nil
+	}
+	if err != nil {
+		return loops.Run{}, false, err
+	}
+	return runFromDB(row), true, nil
+}
+
+func (s *Store) EventSeen(loopID, eventID string) (bool, error) {
+	seen, err := loopdb.New(s.db).LoopEventSeen(context.Background(), loopdb.LoopEventSeenParams{LoopID: loopID, EventID: eventID})
+	return seen, err
+}
+
+func (s *Store) LatestEventAt(loopID string) (time.Time, error) {
+	ms, err := loopdb.New(s.db).GetLatestLoopEventAt(context.Background(), loopID)
+	return msToTime(ms), err
+}
+
+func (s *Store) SaveEvents(events []loops.SeenEvent) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return s.withLoopTxLocked(func(q *loopdb.Queries) error {
+		for _, event := range events {
+			if err := q.InsertLoopEvent(context.Background(), loopdb.InsertLoopEventParams{
+				LoopID: event.LoopID, EventID: event.ID, RunID: event.RunID, AtMs: loopTimeToMs(event.At),
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (s *Store) SaveLoop(loop loops.Loop) error {
@@ -182,6 +222,7 @@ func upsertLoop(ctx context.Context, q *loopdb.Queries, loop loops.Loop) error {
 		BotID:           loop.BotID,
 		EventTrigger:    encodeTrigger(loop.Trigger),
 		WebhookHash:     loop.WebhookHash,
+		WhenMissed:      loop.WhenMissed,
 	})
 }
 
@@ -196,7 +237,7 @@ func upsertRun(ctx context.Context, q *loopdb.Queries, run loops.Run) error {
 		Status:         run.Status,
 		Error:          nullDBString(run.Error),
 		CreatedAtMs:    loopTimeToMs(run.CreatedAt),
-		Event:          run.Event,
+		Reason:         run.Reason,
 	})
 }
 
@@ -225,6 +266,7 @@ func loopFromDB(row loopdb.Loop) loops.Loop {
 		BotID:           row.BotID,
 		Trigger:         decodeTrigger(row.EventTrigger),
 		WebhookHash:     row.WebhookHash,
+		WhenMissed:      row.WhenMissed,
 	}
 }
 
@@ -258,7 +300,7 @@ func runFromDB(row loopdb.LoopRun) loops.Run {
 		Status:       row.Status,
 		Error:        row.Error.String,
 		CreatedAt:    msToTime(row.CreatedAtMs),
-		Event:        row.Event,
+		Reason:       row.Reason,
 	}
 }
 

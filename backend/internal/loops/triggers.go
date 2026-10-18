@@ -5,62 +5,82 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/wins/jaz/backend/internal/integrationingest"
 )
 
-// triggerWindow bounds how old an observed message may be and still fire a
-// trigger, so history backfills and resyncs stay quiet.
-const triggerWindow = 15 * time.Minute
-
-// HandleIncoming fires every active routine whose trigger matches messages
-// observed within the trigger window, once per batch with all its matches.
+// HandleIncoming hands each active routine the observed messages its trigger
+// matches, in one run per batch.
 func (s *Service) HandleIncoming(ctx context.Context, messages []integrationingest.Incoming) {
-	now := s.now()
-	var recent []integrationingest.Incoming
-	for _, message := range messages {
-		if now.Sub(message.At) <= triggerWindow {
-			recent = append(recent, message)
-		}
-	}
-	if len(recent) == 0 {
-		return
-	}
 	routines, err := s.Repo.ListLoops()
 	if err != nil {
 		s.Log.Warn("list routines for trigger failed", "error", err)
 		return
 	}
 	for _, routine := range routines {
-		var events []string
-		for _, message := range recent {
-			if routine.Status == StatusActive && routine.Trigger.matches(message) && !message.At.Before(routine.CreatedAt) && s.firstSighting(routine.ID, message.ID) {
-				events = append(events, describe(message))
-			}
-		}
-		if len(events) == 0 {
+		if routine.Status != StatusActive || !slices.ContainsFunc(messages, routine.Trigger.matches) {
 			continue
 		}
-		if _, err := s.RunTriggered(ctx, routine.ID, strings.Join(events, "\n\n")); err != nil {
-			s.Log.Warn("trigger did not start a run", "routine", routine.ID, "error", err)
+		loop, run, start, err := s.take(routine, messages)
+		if err != nil {
+			s.Log.Warn("trigger did not reach a run", "routine", routine.ID, "error", err)
+		} else if start {
+			s.start(ctx, loop, run)
 		}
 	}
 }
 
-// firstSighting reports whether this routine has not yet fired for message id.
-func (s *Service) firstSighting(routineID, id string) bool {
-	key := routineID + "\x00" + id
+// take gives routine the matching messages it has not taken yet. A message
+// older than missedAfter was missed while Jaz was not running: a routine that
+// catches up still takes it if it is newer than the last message it took,
+// while history from before then, or from before the routine, stays quiet. A
+// message counts as taken once a run holds it.
+func (s *Service) take(routine Loop, messages []integrationingest.Incoming) (Loop, Run, bool, error) {
+	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.fired == nil || len(s.fired) > 10000 {
-		s.fired = make(map[string]struct{})
+	since := now.Add(-missedAfter)
+	if routine.WhenMissed == MissedCatchUp {
+		latest, err := s.Repo.LatestEventAt(routine.ID)
+		if err != nil {
+			return Loop{}, Run{}, false, err
+		}
+		if latest.Before(since) {
+			since = latest
+		}
 	}
-	if _, seen := s.fired[key]; seen {
-		return false
+	if since.Before(routine.CreatedAt) {
+		since = routine.CreatedAt
 	}
-	s.fired[key] = struct{}{}
-	return true
+	var events []string
+	var taken []SeenEvent
+	ids := map[string]bool{}
+	for _, message := range messages {
+		if !routine.Trigger.matches(message) || message.At.Before(since) || ids[message.ID] {
+			continue
+		}
+		seen, err := s.Repo.EventSeen(routine.ID, message.ID)
+		if err != nil {
+			return Loop{}, Run{}, false, err
+		}
+		if seen {
+			continue
+		}
+		ids[message.ID] = true
+		events = append(events, describe(message))
+		taken = append(taken, SeenEvent{LoopID: routine.ID, ID: message.ID, At: message.At})
+	}
+	if len(taken) == 0 {
+		return Loop{}, Run{}, false, nil
+	}
+	loop, run, start, err := s.fireLocked(routine, events, now)
+	if err != nil {
+		return Loop{}, Run{}, false, err
+	}
+	for i := range taken {
+		taken[i].RunID = run.ID
+	}
+	return loop, run, start, s.Repo.SaveEvents(taken)
 }
 
 func (t *Trigger) matches(in integrationingest.Incoming) bool {

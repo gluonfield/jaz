@@ -13,47 +13,84 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func TestLoopAdvanceMissedSkipsCatchUp(t *testing.T) {
+func TestSlotsMissedWhileAsleepFollowEachRoutinesWhenMissed(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-
-	base := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	base := time.Date(2026, 6, 8, 8, 30, 0, 0, time.UTC)
 	now := base
-	service := newLoopServiceForTest(store, nil)
+	executor := &capturingLoopExecutor{started: make(chan loops.Execution, 4)}
+	service := newLoopServiceForTest(store, executor)
 	service.Now = func() time.Time { return now }
-	loop, err := service.Create(loops.CreateLoop{
-		Name:     "Every minute",
-		Prompt:   "check the thing",
-		Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "* * * * *", Timezone: "UTC"},
-	})
-	if err != nil {
-		t.Fatal(err)
+	created := map[string]loops.Loop{}
+	for _, whenMissed := range []string{"", loops.MissedCatchUp} {
+		loop, err := service.Create(loops.CreateLoop{
+			Name:       "hourly " + whenMissed,
+			Prompt:     "sync the notes",
+			Schedule:   loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 * * * *", Timezone: "UTC"},
+			WhenMissed: whenMissed,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		created[loop.WhenMissed] = loop
 	}
-	if got, want := loop.NextRunAt, base.Add(time.Minute); !got.Equal(want) {
-		t.Fatalf("next_run_at = %s, want %s", got, want)
+	last := loops.Run{ID: store.NewRunID(), LoopID: created[loops.MissedCatchUp].ID, Status: loops.RunStatusOK, CreatedAt: base, FinishedAt: base.Add(-25 * time.Minute)}
+	if err := store.SaveRun(last); err != nil {
+		t.Fatal(err)
 	}
 
-	now = base.Add(5 * time.Minute)
-	if err := service.AdvanceMissed(); err != nil {
+	// The laptop sleeps through the 09:00, 10:00 and 11:00 slots.
+	now = base.Add(3*time.Hour + 20*time.Minute)
+	if started, err := service.StartDueAll(context.Background()); err != nil || started != 1 {
+		t.Fatalf("started %d, %v; want only the catch-up", started, err)
+	}
+	catchUp := <-executor.started
+	if catchUp.Loop.ID != created[loops.MissedCatchUp].ID || catchUp.Run.Reason != "Catching up: Jaz was not running for 3 scheduled runs, Mon 8 Jun 09:00 UTC to Mon 8 Jun 11:00 UTC. The last successful run finished Mon 8 Jun 08:05 UTC; cover everything since then in this run." {
+		t.Fatalf("catch-up run = %+v", catchUp.Run)
+	}
+	skipped := runsOf(t, store, created[loops.MissedSkip].ID)
+	if len(skipped) != 1 || skipped[0].Status != loops.RunStatusSkipped || skipped[0].Error != "Skipped: Jaz was not running for 3 scheduled runs, Mon 8 Jun 09:00 UTC to Mon 8 Jun 11:00 UTC." {
+		t.Fatalf("skipped runs = %+v", skipped)
+	}
+	for _, loop := range created {
+		if stored, err := store.LoadLoop(loop.ID); err != nil || !stored.NextRunAt.Equal(base.Add(3*time.Hour+30*time.Minute)) {
+			t.Fatalf("%s next run = %s, %v", loop.Name, stored.NextRunAt, err)
+		}
+	}
+
+	// It wakes again shortly after 13:00, having missed 12:00: the 13:00 slot
+	// is still on time, so the skipping routine runs for it alone.
+	if err := service.Finish(catchUp.Run.ID, loops.RunStatusOK, ""); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := store.LoadLoop(loop.ID)
+	now = base.Add(4*time.Hour + 35*time.Minute)
+	if started, err := service.StartDueAll(context.Background()); err != nil || started != 2 {
+		t.Fatalf("started %d, %v; want both routines", started, err)
+	}
+	for range 2 {
+		run := (<-executor.started).Run
+		want := ""
+		if run.LoopID == created[loops.MissedCatchUp].ID {
+			want = "Catching up: Jaz was not running at Mon 8 Jun 12:00 UTC. The last successful run finished Mon 8 Jun 11:50 UTC; cover everything since then in this run."
+		} else if !run.ScheduledFor.Equal(base.Add(4*time.Hour + 30*time.Minute)) {
+			t.Fatalf("the skipping routine ran for %s, want the on-time 13:00 slot", run.ScheduledFor)
+		}
+		if run.Reason != want {
+			t.Fatalf("run reason = %q, want %q", run.Reason, want)
+		}
+	}
+}
+
+func runsOf(t *testing.T, s *Store, loopID string) []loops.Run {
+	t.Helper()
+	runs, err := s.ListRuns(loopID, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := loaded.NextRunAt, base.Add(6*time.Minute); !got.Equal(want) {
-		t.Fatalf("next_run_at after missed = %s, want %s", got, want)
-	}
-	runs, err := store.ListRuns(loop.ID, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(runs) != 0 {
-		t.Fatalf("missed schedules should not create runs: %#v", runs)
-	}
+	return runs
 }
 
 func TestClaimDueLoopRunAdvancesAndSkipsOverlap(t *testing.T) {
@@ -550,12 +587,12 @@ func TestMessagesInOneSyncFireTheirRoutineOnce(t *testing.T) {
 		{Provider: "gmail", ID: "m2", From: "dennis", Subject: "Second quote", At: at},
 	})
 	execution := <-runs
-	if execution.Loop.ID != routine.ID || !strings.Contains(execution.Run.Event, "First quote") || !strings.Contains(execution.Run.Event, "Second quote") {
-		t.Fatalf("triggered run event = %q", execution.Run.Event)
+	if execution.Loop.ID != routine.ID || !strings.Contains(execution.Run.Reason, "First quote") || !strings.Contains(execution.Run.Reason, "Second quote") {
+		t.Fatalf("triggered run reason = %q", execution.Run.Reason)
 	}
 	select {
 	case extra := <-runs:
-		t.Fatalf("one sync started a second run: %q", extra.Run.Event)
+		t.Fatalf("one sync started a second run: %q", extra.Run.Reason)
 	case <-time.After(50 * time.Millisecond):
 	}
 }

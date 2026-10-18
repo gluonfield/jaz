@@ -9,13 +9,17 @@ import (
 )
 
 type Querier interface {
-	GetActiveRunIDForLoop(ctx context.Context, arg GetActiveRunIDForLoopParams) (string, error)
+	GetLastRunWithStatus(ctx context.Context, arg GetLastRunWithStatusParams) (LoopRun, error)
+	GetLatestLoopEventAt(ctx context.Context, loopID string) (int64, error)
 	GetLoop(ctx context.Context, id string) (Loop, error)
 	GetRun(ctx context.Context, id string) (LoopRun, error)
+	InsertLoopEvent(ctx context.Context, arg InsertLoopEventParams) error
 	ListActiveRunIDs(ctx context.Context, arg ListActiveRunIDsParams) ([]string, error)
+	ListActiveRunsForLoop(ctx context.Context, arg ListActiveRunsForLoopParams) ([]LoopRun, error)
 	ListDueLoopIDs(ctx context.Context, arg ListDueLoopIDsParams) ([]string, error)
 	ListLoops(ctx context.Context, deletedStatus string) ([]Loop, error)
 	ListRunsByLoop(ctx context.Context, arg ListRunsByLoopParams) ([]LoopRun, error)
+	LoopEventSeen(ctx context.Context, arg LoopEventSeenParams) (bool, error)
 	UpsertLoop(ctx context.Context, arg UpsertLoopParams) error
 	UpsertRun(ctx context.Context, arg UpsertRunParams) error
 }

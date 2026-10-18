@@ -54,10 +54,15 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 
 // restart stops this process and starts the next one the way Jaz starts:
 // interrupted turns resume, idle queues drain, then open routine runs settle.
-func (p *jazProcess) restart() *jazProcess {
+// env adds to the next agent's environment.
+func (p *jazProcess) restart(env map[string]string) *jazProcess {
 	p.t.Helper()
 	p.manager.Close()
-	next := startJaz(p.t, p.ctx, p.store, p.root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	if env == nil {
+		env = map[string]string{}
+	}
+	env["JAZ_FAKE_ACP_RESUME"] = "1"
+	next := startJaz(p.t, p.ctx, p.store, p.root, env)
 	next.recover()
 	return next
 }
@@ -280,7 +285,7 @@ func TestRestartKeepsARoutineRunWaitingInItsBotQueue(t *testing.T) {
 	}
 	jaz.eventually("the run queued", func() bool { return len(jaz.queued(bot.ID)) == 1 })
 
-	jaz = jaz.restart()
+	jaz = jaz.restart(nil)
 	jaz.waitRun(run.ID, loops.RunStatusOK)
 	if got := jaz.promptsContaining("[routine] Inbox"); got != 1 {
 		t.Fatalf("the routine ran %d times, want once", got)
@@ -306,7 +311,7 @@ func TestRestartMidRoutineTurnResumesItAndClosesTheRunOnce(t *testing.T) {
 	jaz.waitRun(run.ID, loops.RunStatusRunning)
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
 
-	jaz = jaz.restart()
+	jaz = jaz.restart(nil)
 	finished := jaz.waitRun(run.ID, loops.RunStatusOK)
 	if finished.Error != "" || jaz.promptsContaining("Continue from where you left off") != 1 {
 		t.Fatalf("resumed run = %+v, prompts = %q", finished, jaz.prompts())
@@ -358,7 +363,7 @@ func TestRestartMidChildRunResumesTheChildAndClosesItsRun(t *testing.T) {
 	child := jaz.waitRun(run.ID, loops.RunStatusRunning).ThreadID
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, child)
 
-	jaz = jaz.restart()
+	jaz = jaz.restart(nil)
 	jaz.waitRun(run.ID, loops.RunStatusOK)
 	if session, err := store.LoadSession(child); err != nil || session.Status != storage.StatusIdle {
 		t.Fatalf("child after its resumed turn = %+v, %v", session, err)

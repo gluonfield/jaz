@@ -95,7 +95,9 @@ function LoopDetail({
   }
 
   const paused = loop.status === 'paused'
-  const summary = describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused))
+  const summary =
+    describeSchedule(draftFromLoop(loop.schedule?.expr ?? '', paused)) +
+    (loop.when_missed === 'catch_up' ? ' · catches up if missed' : '')
   const nextRun = !paused && hasTime(loop.next_run_at) ? shortDate(loop.next_run_at) : ''
 
   return (

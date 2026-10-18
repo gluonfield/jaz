@@ -1,6 +1,7 @@
 package acp_test
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -488,7 +489,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				fakeAskThenBlock(conn, msg)
 				continue
 			}
-			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), "until released") {
+			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
 				// The turn works until the test creates the release file, then
 				// ends as usual.
 				notify(conn, "session/update", map[string]any{
