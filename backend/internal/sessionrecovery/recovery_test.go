@@ -126,6 +126,9 @@ func TestResumeAParentAfterItsResumedWorkerDrawsItsAttention(t *testing.T) {
 }
 
 func TestResumeFailureIsNotRetriedOnNextStartup(t *testing.T) {
+	delays := retryDelays
+	retryDelays = []time.Duration{0, 0}
+	t.Cleanup(func() { retryDelays = delays })
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +152,38 @@ func TestResumeFailureIsNotRetriedOnNextStartup(t *testing.T) {
 		}
 	}
 	stored, err := store.LoadSession(session.ID)
-	if err != nil || attempts != 1 || stored.Status != storage.StatusError || stored.Error != "Could not resume chat after restart: provider unavailable" {
+	if err != nil || attempts != 3 || stored.Status != storage.StatusError || stored.Error != "Could not resume chat after restart: provider unavailable" {
+		t.Fatalf("attempts = %d, stored = %+v, err = %v", attempts, stored, err)
+	}
+}
+
+func TestAResumeThatRunsOutOfTimeIsNotTriedAgain(t *testing.T) {
+	timeout := resumeTimeout
+	resumeTimeout = 10 * time.Millisecond
+	t.Cleanup(func() { resumeTimeout = timeout })
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Slug: "slow-recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(session.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	attempts := 0
+	runtime := testRuntime(func(ctx context.Context, _ string) error {
+		attempts++
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	if err := Resume(t.Context(), store, runtime, sessionlock.New(), sessionevents.New(), log.New(io.Discard)); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.LoadSession(session.ID)
+	if err != nil || attempts != 1 || stored.Status != storage.StatusError {
 		t.Fatalf("attempts = %d, stored = %+v, err = %v", attempts, stored, err)
 	}
 }

@@ -86,6 +86,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		_, _ = fmt.Fprintln(os.Stderr, msg)
 		os.Exit(2)
 	}
+	// The first process dies on its way up, as one killed during startup.
+	if path := os.Getenv("JAZ_FAKE_ACP_EXIT_ONCE"); path != "" {
+		if _, err := os.Stat(path); err != nil {
+			_ = os.WriteFile(path, nil, 0o600)
+			_, _ = fmt.Fprintln(os.Stderr, "killed during startup")
+			os.Exit(2)
+		}
+	}
 	conn := stdio.New(os.Stdin, os.Stdout)
 	currentMode := os.Getenv("JAZ_FAKE_ACP_CURRENT_MODE")
 	if currentMode == "" {
