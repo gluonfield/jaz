@@ -170,6 +170,16 @@ type Turn struct {
 type TurnOutput struct {
 	ReplyTo string   `json:"reply_to,omitempty"`
 	Replies []string `json:"replies,omitempty"`
+	// Run is the routine run the turn does; the turn's end finishes it.
+	Run string `json:"run,omitempty"`
+}
+
+// LoopRun is the routine run a turn with this output does, if any.
+func (o *TurnOutput) LoopRun() string {
+	if o == nil {
+		return ""
+	}
+	return o.Run
 }
 
 type TurnDelivery struct {

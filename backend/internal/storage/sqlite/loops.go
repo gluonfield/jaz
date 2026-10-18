@@ -64,20 +64,6 @@ func (s *Store) LoadRun(id string) (loops.Run, error) {
 	return runFromDB(row), nil
 }
 
-func (s *Store) LoadRunByThread(threadID string) (loops.Run, bool, error) {
-	if threadID == "" {
-		return loops.Run{}, false, nil
-	}
-	row, err := loopdb.New(s.db).GetLatestRunByThread(context.Background(), nullDBString(threadID))
-	if err == sql.ErrNoRows {
-		return loops.Run{}, false, nil
-	}
-	if err != nil {
-		return loops.Run{}, false, err
-	}
-	return runFromDB(row), true, nil
-}
-
 func (s *Store) ListDueLoopIDs(now time.Time) ([]string, error) {
 	return loopdb.New(s.db).ListDueLoopIDs(context.Background(), loopdb.ListDueLoopIDsParams{
 		ActiveStatus: loops.StatusActive,
@@ -210,6 +196,7 @@ func upsertRun(ctx context.Context, q *loopdb.Queries, run loops.Run) error {
 		Status:         run.Status,
 		Error:          nullDBString(run.Error),
 		CreatedAtMs:    loopTimeToMs(run.CreatedAt),
+		Event:          run.Event,
 	})
 }
 
@@ -271,6 +258,7 @@ func runFromDB(row loopdb.LoopRun) loops.Run {
 		Status:       row.Status,
 		Error:        row.Error.String,
 		CreatedAt:    msToTime(row.CreatedAtMs),
+		Event:        row.Event,
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/goal"
+	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionview"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -600,6 +602,12 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			return err
 		}
 		if prompt.IsInternal() {
+			var loop loops.Loop
+			if run := prompt.Output.LoopRun(); run != "" {
+				if loop, prompt.Text, err = s.Loops.Begin(run, ""); err != nil {
+					return err
+				}
+			}
 			if _, err := s.ACP.StartInternalTurn(ctx, acp.InternalTurnRequest{
 				Session:      session.ID,
 				Message:      prompt.Text,
@@ -607,6 +615,9 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 				AllowSilence: true,
 			}); err != nil {
 				return acpSendError(session, err)
+			}
+			if loop.ID != "" {
+				s.announce(session.ID, sessionevents.BotActivityEvent{Kind: "routine", Label: loop.Name})
 			}
 			return nil
 		}
@@ -625,6 +636,17 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 	default:
 		return fmt.Errorf("unknown session runtime %q", session.Runtime)
 	}
+}
+
+// announce notes in a thread what woke its bot; the note is best-effort.
+func (s *Server) announce(threadID string, activity sessionevents.BotActivityEvent) {
+	event := sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeBotActivity, BotActivity: &activity, At: time.Now().UTC()}
+	events := []sessionevents.Event{event}
+	if err := s.Store.AppendSessionEvents(threadID, events...); err != nil {
+		s.logger().Warn("append bot activity failed", "thread", threadID, "error", err)
+		return
+	}
+	s.Events.Publish(events[0])
 }
 
 func (s *Server) restoreQueuedPrompt(sessionID string, prompt storage.QueuedMessage, index int, message string) {

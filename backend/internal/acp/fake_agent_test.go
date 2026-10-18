@@ -488,6 +488,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				fakeAskThenBlock(conn, msg)
 				continue
 			}
+			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), "until released") {
+				// The turn works until the test creates the release file, then
+				// ends as usual.
+				notify(conn, "session/update", map[string]any{
+					"sessionId": "fake-session",
+					"update":    map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tool-held", "title": "held work", "status": "in_progress"},
+				})
+				for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
+					time.Sleep(10 * time.Millisecond)
+				}
+			}
 			if strings.Contains(string(msg.Params), "block until cancelled") || os.Getenv("JAZ_FAKE_ACP_BLOCK_PROMPT") == "1" {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": "fake-session",

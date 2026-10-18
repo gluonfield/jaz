@@ -12,8 +12,10 @@ import (
 
 // runPrompt is what a run sends: what fired it, then the routine's prompt. A
 // turn in the bot's own thread is also labelled with the routine and the local
-// time, which a run in a fresh thread gets from its system prompt.
-func runPrompt(loop Loop, now time.Time, event string, inThread bool) string {
+// time, which a run in a fresh thread gets from its system prompt, and told how
+// its outcome reaches the user, which a bot whose prompt predates that rule
+// would otherwise keep in private text.
+func runPrompt(loop Loop, run Run, now time.Time, inThread bool) string {
 	var b strings.Builder
 	if inThread {
 		loc, _, err := scheduleLocation(loop.Schedule.Timezone)
@@ -22,13 +24,16 @@ func runPrompt(loop Loop, now time.Time, event string, inThread bool) string {
 		}
 		fmt.Fprintf(&b, "[routine] %s · %s\n", loop.Name, now.In(loc).Format("Mon 2 Jan 2006 15:04 MST"))
 	}
-	if event != "" {
-		fmt.Fprintf(&b, "Triggered by: %s\n", event)
+	if run.Event != "" {
+		fmt.Fprintf(&b, "Triggered by: %s\n", run.Event)
 	}
 	if b.Len() > 0 {
 		b.WriteString("\n")
 	}
 	b.WriteString(loop.Prompt)
+	if inThread {
+		b.WriteString("\n\nDeliver this routine's outcome with send_message or an app presentation tool unless the routine says to stay quiet. When a tool confirms that Jaz presented its result, that view is already the answer; do not repeat it in a text message.")
+	}
 	return b.String()
 }
 

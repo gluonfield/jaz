@@ -11,7 +11,7 @@ import (
 	"go.uber.org/fx"
 )
 
-func StartSessionRecovery(lc fx.Lifecycle, store storage.SessionStore, runtime sessionrecovery.Runtime, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger, resumeQueue func() error) {
+func StartSessionRecovery(lc fx.Lifecycle, store storage.SessionStore, runtime sessionrecovery.Runtime, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger, resumeQueue func(context.Context) error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	lc.Append(fx.Hook{
@@ -22,7 +22,7 @@ func StartSessionRecovery(lc fx.Lifecycle, store storage.SessionStore, runtime s
 					logger.Error("chat restart recovery failed", "error", err)
 				}
 				if ctx.Err() == nil {
-					if err := resumeQueue(); err != nil {
+					if err := resumeQueue(ctx); err != nil {
 						logger.Error("queued turn restart recovery failed", "error", err)
 					}
 				}

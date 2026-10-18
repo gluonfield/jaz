@@ -153,10 +153,6 @@ func (f *fakeACPManager) StartInternalTurn(_ context.Context, req acp.InternalTu
 	return f.job, f.internalErr
 }
 
-func (f *fakeACPManager) StartInternalTurnWhenIdle(ctx context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
-	return f.StartInternalTurn(ctx, req)
-}
-
 func (f *fakeACPManager) ContinueGoal(_ context.Context, session string) (acp.Job, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -42,6 +42,13 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 		if output := session.Turn.Output; output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
 			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: storage.NewInternalQueuedMessage(bots.ReplyPrompt(session.Title, strings.Join(output.Replies, "\n\n")))})
 		}
+		// The run closes before its turn does: a restart in between resumes the
+		// turn, whose end then finds the run already closed.
+		if run := loopRun(session); run != "" {
+			if finishErr := s.Loops.Finish(run, LoopRunStatus(job.State), job.Error); finishErr != nil {
+				s.logger().Error("finish loop run", "session", job.ID, "run", run, "error", finishErr)
+			}
+		}
 		if err == nil {
 			err = s.Store.FinishSessionTurn(job.ID, status, job.Error, time.Now().UTC(), deliveries)
 		}
@@ -66,6 +73,42 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 	if job.State == acp.StateIdle {
 		s.drainQueueSoon(job.ID)
 	}
+}
+
+// loopRun is the routine run a thread's current turn does: the one its turn
+// or claimed message names, or the run the thread was started for.
+func loopRun(session storage.Session) string {
+	if turn := session.Turn; turn != nil {
+		if turn.PendingMessage != nil {
+			return turn.PendingMessage.Output.LoopRun()
+		}
+		if run := turn.Output.LoopRun(); run != "" {
+			return run
+		}
+	}
+	if session.SourceType == storage.SourceLoopRun {
+		return session.SourceID
+	}
+	return ""
+}
+
+// ResumeLoopRuns settles the routine runs the last process left open, once
+// resumed turns and queues hold theirs again.
+func (s *Server) ResumeLoopRuns(ctx context.Context) error {
+	sessions, err := s.Store.ListSessions(storage.SessionFilter{Runtime: storage.RuntimeACP, IncludeChildren: true, IncludeSourced: true})
+	if err != nil {
+		return err
+	}
+	held := map[string]bool{}
+	for _, session := range sessions {
+		for _, message := range session.QueuedMessages {
+			held[message.Output.LoopRun()] = true
+		}
+		if session.Status == storage.StatusRunning {
+			held[loopRun(session)] = true
+		}
+	}
+	return s.Loops.Resume(ctx, held)
 }
 
 func (s *Server) ResumeQueuedTurns() error {

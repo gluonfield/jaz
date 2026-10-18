@@ -46,4 +46,5 @@ type LoopRun struct {
 	Status         string         `json:"status"`
 	Error          sql.NullString `json:"error"`
 	CreatedAtMs    int64          `json:"created_at_ms"`
+	Event          string         `json:"event"`
 }

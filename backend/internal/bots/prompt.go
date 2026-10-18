@@ -113,12 +113,6 @@ Act by default: choose the sensible option, go ahead and say what you assumed. A
 `
 }
 
-// routinePrompt tells a routine's turn how its outcome reaches the user, which
-// a bot whose prompt predates that rule would otherwise keep in private text.
-func routinePrompt(prompt string) string {
-	return prompt + "\n\nDeliver this routine's outcome with send_message or an app presentation tool unless the routine says to stay quiet. When a tool confirms that Jaz presented its result, that view is already the answer; do not repeat it in a text message."
-}
-
 func messagePrompt(from, text string) string {
 	return fmt.Sprintf("[message from %s]\n\n%s\n\nAnswer %s with send_message.", from, text, from)
 }

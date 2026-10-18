@@ -59,10 +59,10 @@ func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, id
 }
 
 // resumable reports whether chats with this source resume after a restart:
-// the user's own chats and the threads bots work in.
+// the user's own chats, the threads bots work in and routine runs.
 func resumable(sourceType string) bool {
 	switch sourceType {
-	case "", storage.SourceBot, storage.SourceBotWorker, storage.SourceBotMember:
+	case "", storage.SourceBot, storage.SourceBotWorker, storage.SourceBotMember, storage.SourceLoopRun:
 		return true
 	}
 	return false

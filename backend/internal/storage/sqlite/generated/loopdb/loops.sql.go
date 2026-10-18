@@ -31,40 +31,6 @@ func (q *Queries) GetActiveRunIDForLoop(ctx context.Context, arg GetActiveRunIDF
 	return id, err
 }
 
-const getLatestRunByThread = `-- name: GetLatestRunByThread :one
-SELECT
-  id,
-  loop_id,
-  thread_id,
-  scheduled_for_ms,
-  started_at_ms,
-  finished_at_ms,
-  status,
-  error,
-  created_at_ms
-FROM loop_runs
-WHERE thread_id = ?1
-ORDER BY created_at_ms DESC
-LIMIT 1
-`
-
-func (q *Queries) GetLatestRunByThread(ctx context.Context, threadID sql.NullString) (LoopRun, error) {
-	row := q.db.QueryRowContext(ctx, getLatestRunByThread, threadID)
-	var i LoopRun
-	err := row.Scan(
-		&i.ID,
-		&i.LoopID,
-		&i.ThreadID,
-		&i.ScheduledForMs,
-		&i.StartedAtMs,
-		&i.FinishedAtMs,
-		&i.Status,
-		&i.Error,
-		&i.CreatedAtMs,
-	)
-	return i, err
-}
-
 const getLoop = `-- name: GetLoop :one
 SELECT
   id,
@@ -140,7 +106,8 @@ SELECT
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  event
 FROM loop_runs
 WHERE id = ?1
 LIMIT 1
@@ -159,6 +126,7 @@ func (q *Queries) GetRun(ctx context.Context, id string) (LoopRun, error) {
 		&i.Status,
 		&i.Error,
 		&i.CreatedAtMs,
+		&i.Event,
 	)
 	return i, err
 }
@@ -325,7 +293,8 @@ SELECT
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  event
 FROM loop_runs
 WHERE loop_id = ?1
 ORDER BY created_at_ms DESC
@@ -356,6 +325,7 @@ func (q *Queries) ListRunsByLoop(ctx context.Context, arg ListRunsByLoopParams) 
 			&i.Status,
 			&i.Error,
 			&i.CreatedAtMs,
+			&i.Event,
 		); err != nil {
 			return nil, err
 		}
@@ -520,7 +490,8 @@ INSERT INTO loop_runs (
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  event
 ) VALUES (
   ?1,
   ?2,
@@ -530,7 +501,8 @@ INSERT INTO loop_runs (
   ?6,
   ?7,
   ?8,
-  ?9
+  ?9,
+  ?10
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -540,7 +512,8 @@ ON CONFLICT(id) DO UPDATE SET
   finished_at_ms = excluded.finished_at_ms,
   status = excluded.status,
   error = excluded.error,
-  created_at_ms = excluded.created_at_ms
+  created_at_ms = excluded.created_at_ms,
+  event = excluded.event
 `
 
 type UpsertRunParams struct {
@@ -553,6 +526,7 @@ type UpsertRunParams struct {
 	Status         string         `json:"status"`
 	Error          sql.NullString `json:"error"`
 	CreatedAtMs    int64          `json:"created_at_ms"`
+	Event          string         `json:"event"`
 }
 
 func (q *Queries) UpsertRun(ctx context.Context, arg UpsertRunParams) error {
@@ -566,6 +540,7 @@ func (q *Queries) UpsertRun(ctx context.Context, arg UpsertRunParams) error {
 		arg.Status,
 		arg.Error,
 		arg.CreatedAtMs,
+		arg.Event,
 	)
 	return err
 }

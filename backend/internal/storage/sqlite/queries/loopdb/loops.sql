@@ -158,7 +158,8 @@ INSERT INTO loop_runs (
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  event
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(loop_id),
@@ -168,7 +169,8 @@ INSERT INTO loop_runs (
   sqlc.arg(finished_at_ms),
   sqlc.arg(status),
   sqlc.narg(error),
-  sqlc.arg(created_at_ms)
+  sqlc.arg(created_at_ms),
+  sqlc.arg(event)
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -178,7 +180,8 @@ ON CONFLICT(id) DO UPDATE SET
   finished_at_ms = excluded.finished_at_ms,
   status = excluded.status,
   error = excluded.error,
-  created_at_ms = excluded.created_at_ms;
+  created_at_ms = excluded.created_at_ms,
+  event = excluded.event;
 
 -- name: GetRun :one
 SELECT
@@ -190,25 +193,10 @@ SELECT
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  event
 FROM loop_runs
 WHERE id = sqlc.arg(id)
-LIMIT 1;
-
--- name: GetLatestRunByThread :one
-SELECT
-  id,
-  loop_id,
-  thread_id,
-  scheduled_for_ms,
-  started_at_ms,
-  finished_at_ms,
-  status,
-  error,
-  created_at_ms
-FROM loop_runs
-WHERE thread_id = sqlc.arg(thread_id)
-ORDER BY created_at_ms DESC
 LIMIT 1;
 
 -- name: ListRunsByLoop :many
@@ -221,7 +209,8 @@ SELECT
   finished_at_ms,
   status,
   error,
-  created_at_ms
+  created_at_ms,
+  event
 FROM loop_runs
 WHERE loop_id = sqlc.arg(loop_id)
 ORDER BY created_at_ms DESC

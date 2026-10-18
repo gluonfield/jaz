@@ -6,12 +6,10 @@ package loopdb
 
 import (
 	"context"
-	"database/sql"
 )
 
 type Querier interface {
 	GetActiveRunIDForLoop(ctx context.Context, arg GetActiveRunIDForLoopParams) (string, error)
-	GetLatestRunByThread(ctx context.Context, threadID sql.NullString) (LoopRun, error)
 	GetLoop(ctx context.Context, id string) (Loop, error)
 	GetRun(ctx context.Context, id string) (LoopRun, error)
 	ListActiveRunIDs(ctx context.Context, arg ListActiveRunIDsParams) ([]string, error)

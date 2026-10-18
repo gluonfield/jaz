@@ -7,19 +7,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
-
-const turnTimeout = 12 * time.Hour
 
 // AppVisible reports whether Jaz shows the apps a thread presents: a bot's own
 // chat does, while a turn answering another bot and a bot's group threads keep
 // them private.
 func (s *Service) AppVisible(threadID string) bool {
 	session, err := s.store.LoadSession(threadID)
-	return err == nil && session.SourceType != storage.SourceBotMember && (session.Turn == nil || session.Turn.Output == nil)
+	return err == nil && session.SourceType != storage.SourceBotMember && (session.Turn == nil || session.Turn.Output == nil || session.Turn.Output.ReplyTo == "")
 }
 
 // Message sends text from a thread to a bot or a group, named by id, mention
@@ -89,30 +86,6 @@ func (s *Service) Say(threadID, text string) error {
 		return err
 	}
 	return s.post(group, message)
-}
-
-// RunRoutine runs a routine's prompt as a hidden turn in its bot's thread once
-// the thread is free, and returns that turn once it ends.
-func (s *Service) RunRoutine(ctx context.Context, botID, name, prompt string) (acp.Job, error) {
-	job, err := s.threads.StartInternalTurnWhenIdle(ctx, acp.InternalTurnRequest{Session: botID, Message: routinePrompt(prompt), AllowSilence: true})
-	if err != nil {
-		return acp.Job{}, err
-	}
-	s.announce(botID, sessionevents.BotActivityEvent{Kind: "routine", Label: name})
-	return s.finish(ctx, botID, job.ID)
-}
-
-// finish waits for a turn this service started to end, even when ctx is
-// cancelled first.
-func (s *Service) finish(ctx context.Context, threadID, jobID string) (acp.Job, error) {
-	done, err := s.threads.Wait(context.WithoutCancel(ctx), acp.WaitRequest{Session: jobID, Timeout: turnTimeout})
-	if err != nil {
-		return acp.Job{}, err
-	}
-	if done.State == acp.StateStarting || done.State == acp.StateRunning {
-		return acp.Job{}, fmt.Errorf("%s is still working", threadID)
-	}
-	return done, nil
 }
 
 // announce notes in a thread what woke its bot; the note is best-effort.

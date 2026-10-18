@@ -306,10 +306,10 @@ func startServer(
 		// Board assignment is the widget enablement: no boards, no section.
 		loops.WithPromptExtra(widgetService.LoopPromptExtra),
 		loops.WithArtifactSurface(widgetService.LoopArtifactSurface),
+		loops.WithRunCheck(widgetService.RequireRunPublished),
 	)
 	botService := bots.NewService(store, layout.Bots, manager, handler, handler, loopService, events, logger)
 	mcpManager.AppVisible = botService.AppVisible
-	loopRunner.Bots = botService
 	jazTools.SetLoops(loopService,
 		loops.WithBoards(widgetService.LoopBoards()),
 		loops.WithAgentNames(manager.Agents),
@@ -343,15 +343,15 @@ func startServer(
 			Warnings: warnings,
 		}, nil
 	}
-	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
-		finishLoopFromACP(loopService, widgetPublisher, logger, job)
-		handler.HandleACPTurnFinished(ctx, job)
-	}
+	manager.TurnFinished = handler.HandleACPTurnFinished
 	srv := &http.Server{
 		Addr:    serverConfig.Addr,
 		Handler: handler.Handler(),
 	}
 	var stopLoops context.CancelFunc
+	// Routines start once restart recovery has resumed the turns and queues
+	// that hold their runs, so a run goes on or catches up, never both.
+	recovered := make(chan struct{})
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			fmt.Printf("jaz server listening on %s\n", serverconfig.DisplayAddr(serverConfig.Addr))
@@ -400,6 +400,11 @@ func startServer(
 				if err := botService.AdoptLoops(loopCtx); err != nil {
 					logger.WithPrefix("bots").Error("adopting loops failed", "error", err)
 				}
+				select {
+				case <-recovered:
+				case <-loopCtx.Done():
+					return
+				}
 				if err := loops.StartScheduler(loopCtx, loopService, 30*time.Second); err != nil && loopCtx.Err() == nil {
 					logger.WithPrefix("loops").Error("scheduler stopped", "error", err)
 				}
@@ -420,39 +425,16 @@ func startServer(
 		},
 	})
 	app.StartMCPManager(lc, mcpManager, manager, logger)
-	app.StartSessionRecovery(lc, store, handler, locks, events, logger, handler.ResumeQueuedTurns)
+	app.StartSessionRecovery(lc, store, handler, locks, events, logger, func(ctx context.Context) error {
+		defer close(recovered)
+		return errors.Join(handler.ResumeQueuedTurns(), handler.ResumeLoopRuns(ctx))
+	})
 	return nil
 }
 
 func reloadableProvider(p provider.Provider) provider.ReloadableProvider {
 	control, _ := p.(provider.ReloadableProvider)
 	return control
-}
-
-func finishLoopFromACP(service *loops.Service, widgetPublisher *widgets.SessionPublisher, logger *log.Logger, job acp.Job) {
-	if service == nil || job.ID == "" {
-		return
-	}
-	status := server.LoopRunStatus(job.State)
-	errText := job.Error
-	if status == loops.RunStatusOK {
-		if err := requireWidgetRunPublished(widgetPublisher, job.ID); err != nil {
-			status = loops.RunStatusError
-			errText = err.Error()
-		}
-	}
-	if _, ok, err := service.FinishThread(job.ID, status, errText); err != nil {
-		logger.WithPrefix("loops").Error("finishing loop run from acp state failed", "session", job.ID, "error", err)
-	} else if ok {
-		logger.WithPrefix("loops").Info("loop run finished", "session", job.ID, "state", job.State)
-	}
-}
-
-func requireWidgetRunPublished(widgetPublisher *widgets.SessionPublisher, threadID string) error {
-	if widgetPublisher == nil {
-		return nil
-	}
-	return widgetPublisher.RequirePublishedForSession(threadID)
 }
 
 func stopHTTPServer(ctx context.Context, srv *http.Server) error {

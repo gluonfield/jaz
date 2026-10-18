@@ -22,10 +22,14 @@ type Service struct {
 	// metadata prompt of each run.
 	PromptExtra     func(Loop, Run) string
 	ArtifactSurface func(Loop, Run) string
-	// RunFinished fires after a run reaches a terminal status.
-	RunFinished func(Loop, Run)
-	mu          sync.Mutex
-	fired       map[string]struct{}
+	// RunCheck can fail a run whose turn ended well but left its work undone,
+	// as a widget run that published nothing.
+	RunCheck func(Loop, Run) error
+	mu       sync.Mutex
+	fired    map[string]struct{}
+	// ours holds the runs this process created and has not finished, which a
+	// previous process cannot have left behind.
+	ours map[string]bool
 }
 
 type RuntimePromptBuilder struct {
@@ -75,9 +79,9 @@ func WithArtifactSurface(surface func(Loop, Run) string) Option {
 	}
 }
 
-func WithRunFinished(hook func(Loop, Run)) Option {
+func WithRunCheck(check func(Loop, Run) error) Option {
 	return func(s *Service) {
-		s.RunFinished = hook
+		s.RunCheck = check
 	}
 }
 
@@ -85,7 +89,7 @@ func NewService(repo Repository, executor Executor, logger *log.Logger, opts ...
 	if logger == nil {
 		logger = log.Default()
 	}
-	service := &Service{Repo: repo, Executor: executor, Log: logger.WithPrefix("loops")}
+	service := &Service{Repo: repo, Executor: executor, Log: logger.WithPrefix("loops"), ours: map[string]bool{}}
 	for _, opt := range opts {
 		opt(service)
 	}
@@ -213,9 +217,6 @@ func (s *Service) AdvanceMissed() error {
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.resetStaleRunsLocked(now); err != nil {
-		return err
-	}
 	ids, err := s.Repo.ListDueLoopIDs(now)
 	if err != nil {
 		return err
@@ -245,7 +246,7 @@ func (s *Service) StartDue(ctx context.Context) (bool, error) {
 	if err != nil || !ok {
 		return ok, err
 	}
-	s.start(ctx, loop, run, now, "")
+	s.start(ctx, loop, run)
 	return true, nil
 }
 
@@ -265,7 +266,7 @@ func (s *Service) StartDueAll(ctx context.Context) (int, error) {
 
 // OnBoard reports whether loop publishes a widget to a board.
 func (s *Service) OnBoard(loop Loop) bool {
-	return s.ArtifactSurface != nil && s.ArtifactSurface(loop, Run{}) != ""
+	return s.artifactSurface(loop, Run{}) != ""
 }
 
 func (s *Service) RunNow(ctx context.Context, loopID string) (Run, error) {
@@ -277,112 +278,150 @@ func (s *Service) RunNow(ctx context.Context, loopID string) (Run, error) {
 func (s *Service) RunTriggered(ctx context.Context, loopID, event string) (Run, error) {
 	now := s.now()
 	s.mu.Lock()
-	loop, run, err := s.startManualRunLocked(loopID, now)
+	loop, run, err := s.startManualRunLocked(loopID, event, now)
 	s.mu.Unlock()
 	if err != nil {
 		return Run{}, err
 	}
-	s.start(ctx, loop, run, now, event)
+	s.start(ctx, loop, run)
 	return run, nil
 }
 
-func (s *Service) MarkRunning(runID, threadID string) error {
+// Begin starts a pending run's turn in threadID, or in its bot's thread when
+// threadID is empty, and returns the run's loop and what the turn sends. A run
+// already begun, as one whose turn is started again after a restart, keeps its
+// first start.
+func (s *Service) Begin(runID, threadID string) (Loop, string, error) {
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	run, err := s.Repo.LoadRun(runID)
 	if err != nil {
-		return err
+		return Loop{}, "", err
 	}
-	run.ThreadID = threadID
-	run.StartedAt = now
-	run.Status = RunStatusRunning
-	return s.saveRunAndLoopUpdateLocked(run, now)
-}
-
-func (s *Service) Finish(runID, status, errText string) error {
-	now := s.now()
-	s.mu.Lock()
-	run, err := s.Repo.LoadRun(runID)
-	if err != nil {
-		s.mu.Unlock()
-		return err
-	}
-	run.Status = normalizeRunStatus(status)
-	run.Error = errText
-	run.FinishedAt = now
-	if run.StartedAt.IsZero() {
+	if run.Status == RunStatusStarting {
+		run.ThreadID = threadID
 		run.StartedAt = now
-	}
-	err = s.saveRunAndLoopUpdateLocked(run, now)
-	s.mu.Unlock()
-	if err == nil {
-		s.notifyRunFinished(run)
-	}
-	return err
-}
-
-func (s *Service) FinishThread(threadID, status, errText string) (Run, bool, error) {
-	now := s.now()
-	s.mu.Lock()
-	run, ok, err := s.Repo.LoadRunByThread(threadID)
-	if err != nil || !ok {
-		s.mu.Unlock()
-		return Run{}, ok, err
-	}
-	if run.Status != RunStatusStarting && run.Status != RunStatusRunning {
-		s.mu.Unlock()
-		return run, true, nil
-	}
-	run.Status = normalizeRunStatus(status)
-	run.Error = errText
-	run.FinishedAt = now
-	if run.StartedAt.IsZero() {
-		run.StartedAt = now
-	}
-	if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
-		s.mu.Unlock()
-		return Run{}, false, err
-	}
-	s.mu.Unlock()
-	s.notifyRunFinished(run)
-	return run, true, nil
-}
-
-func (s *Service) notifyRunFinished(run Run) {
-	if s.RunFinished == nil {
-		return
+		run.Status = RunStatusRunning
+		if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
+			return Loop{}, "", err
+		}
 	}
 	loop, err := s.Repo.LoadLoop(run.LoopID)
 	if err != nil {
-		return
+		return Loop{}, "", err
 	}
-	go s.RunFinished(loop, run)
+	return loop, runPrompt(loop, run, now, s.botThread(loop) != ""), nil
 }
 
-func (s *Service) start(ctx context.Context, loop Loop, run Run, now time.Time, event string) {
+// Finish closes a run that is still open; a run already closed stays as it
+// ended.
+func (s *Service) Finish(runID, status, errText string) error {
+	now := s.now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run, err := s.Repo.LoadRun(runID)
+	if err != nil || !active(run) {
+		return err
+	}
+	delete(s.ours, run.ID)
+	run.Status = normalizeRunStatus(status)
+	run.Error = errText
+	if run.Status == RunStatusOK && s.RunCheck != nil {
+		loop, err := s.Repo.LoadLoop(run.LoopID)
+		if err != nil {
+			return err
+		}
+		if err := s.RunCheck(loop, run); err != nil {
+			run.Status, run.Error = RunStatusError, err.Error()
+		}
+	}
+	run.FinishedAt = now
+	if run.StartedAt.IsZero() {
+		run.StartedAt = now
+	}
+	return s.saveRunAndLoopUpdateLocked(run, now)
+}
+
+// Resume settles the runs a previous process left open, once its threads have
+// resumed: held names the runs a thread still holds, queued or in a turn, and
+// those go on. A pending run no thread holds is started again; a begun one
+// is closed, since nothing will finish it.
+func (s *Service) Resume(ctx context.Context, held map[string]bool) error {
+	now := s.now()
+	s.mu.Lock()
+	ids, err := s.Repo.ListActiveRunIDs()
+	if err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	var restart []Run
+	for _, id := range ids {
+		if held[id] || s.ours[id] {
+			continue
+		}
+		run, err := s.Repo.LoadRun(id)
+		if err != nil {
+			s.mu.Unlock()
+			return err
+		}
+		if run.Status == RunStatusStarting {
+			s.ours[run.ID] = true
+			restart = append(restart, run)
+			continue
+		}
+		run.Status = RunStatusError
+		run.Error = "Jaz stopped before this run finished."
+		run.FinishedAt = now
+		if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
+			s.mu.Unlock()
+			return err
+		}
+	}
+	s.mu.Unlock()
+	for _, run := range restart {
+		loop, err := s.Repo.LoadLoop(run.LoopID)
+		if err != nil {
+			return err
+		}
+		s.start(ctx, loop, run)
+	}
+	return nil
+}
+
+func active(run Run) bool {
+	return run.Status == RunStatusStarting || run.Status == RunStatusRunning
+}
+
+func (s *Service) start(ctx context.Context, loop Loop, run Run) {
 	if s.Executor == nil {
 		_ = s.Finish(run.ID, RunStatusError, "loop executor is not configured")
 		return
 	}
-	systemPromptExtensions := s.systemPromptExtensions(loop, run, now)
-	artifactSurface := ""
-	if s.ArtifactSurface != nil {
-		artifactSurface = strings.TrimSpace(s.ArtifactSurface(loop, run))
-	}
-	thread := ""
-	if loop.BotID != "" && artifactSurface == "" {
-		thread = loop.BotID
-	}
 	go s.Executor.StartLoopRun(context.WithoutCancel(ctx), Execution{
 		Loop:                   loop,
 		Run:                    run,
-		Prompt:                 runPrompt(loop, now, event, thread != ""),
-		Thread:                 thread,
-		SystemPromptExtensions: systemPromptExtensions,
-		ArtifactSurface:        artifactSurface,
+		Thread:                 s.botThread(loop),
+		SystemPromptExtensions: s.systemPromptExtensions(loop, run, s.now()),
+		ArtifactSurface:        s.artifactSurface(loop, run),
 		Controller:             s,
 	})
+}
+
+// botThread is the bot thread a run of loop is a turn in, or "" when each
+// run gets a thread of its own.
+func (s *Service) botThread(loop Loop) string {
+	if s.artifactSurface(loop, Run{}) != "" {
+		return ""
+	}
+	return loop.BotID
+}
+
+func (s *Service) artifactSurface(loop Loop, run Run) string {
+	if s.ArtifactSurface == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.ArtifactSurface(loop, run))
 }
 
 func (s *Service) systemPromptExtensions(loop Loop, run Run, now time.Time) promptmodule.Modules {
@@ -444,12 +483,13 @@ func (s *Service) claimDueRunLocked(now time.Time) (Loop, Run, bool, error) {
 		if err := s.Repo.SaveLoopAndRun(loop, run); err != nil {
 			return Loop{}, Run{}, false, err
 		}
+		s.ours[run.ID] = true
 		return promptLoop, run, true, nil
 	}
 	return Loop{}, Run{}, false, nil
 }
 
-func (s *Service) startManualRunLocked(loopID string, now time.Time) (Loop, Run, error) {
+func (s *Service) startManualRunLocked(loopID, event string, now time.Time) (Loop, Run, error) {
 	loop, err := s.Repo.LoadLoop(loopID)
 	if err != nil {
 		return Loop{}, Run{}, err
@@ -469,6 +509,7 @@ func (s *Service) startManualRunLocked(loopID string, now time.Time) (Loop, Run,
 		ScheduledFor: now,
 		Status:       RunStatusStarting,
 		CreatedAt:    now,
+		Event:        event,
 	}
 	loop.LastRunAt = now
 	loop.LastRunID = run.ID
@@ -479,6 +520,7 @@ func (s *Service) startManualRunLocked(loopID string, now time.Time) (Loop, Run,
 	if err := s.Repo.SaveLoopAndRun(loop, run); err != nil {
 		return Loop{}, Run{}, err
 	}
+	s.ours[run.ID] = true
 	return promptLoop, run, nil
 }
 
@@ -514,29 +556,6 @@ func (s *Service) skipRunLocked(loop Loop, scheduledFor, nextRun, now time.Time,
 	loop.LastError = reason
 	loop.UpdatedAt = now
 	return s.Repo.SaveLoopAndRun(loop, run)
-}
-
-func (s *Service) resetStaleRunsLocked(now time.Time) error {
-	ids, err := s.Repo.ListActiveRunIDs()
-	if err != nil {
-		return err
-	}
-	for _, id := range ids {
-		run, err := s.Repo.LoadRun(id)
-		if err != nil {
-			return err
-		}
-		run.Status = RunStatusError
-		run.Error = "Server restarted while this loop run was still active."
-		run.FinishedAt = now
-		if run.StartedAt.IsZero() {
-			run.StartedAt = now
-		}
-		if err := s.saveRunAndLoopUpdateLocked(run, now); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Service) saveRunAndLoopUpdateLocked(run Run, now time.Time) error {

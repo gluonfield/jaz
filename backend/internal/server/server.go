@@ -45,7 +45,6 @@ type ACPManager interface {
 	Send(context.Context, acp.SendRequest) (acp.Job, error)
 	ResumeInterruptedTurn(context.Context, string) error
 	StartInternalTurn(context.Context, acp.InternalTurnRequest) (acp.Job, error)
-	StartInternalTurnWhenIdle(context.Context, acp.InternalTurnRequest) (acp.Job, error)
 	ContinueGoal(context.Context, string) (acp.Job, error)
 	Compact(context.Context, acp.CompactRequest) (acp.Job, error)
 	Steer(context.Context, acp.SteerRequest) (acp.Job, error)

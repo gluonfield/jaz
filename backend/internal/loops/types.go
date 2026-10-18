@@ -95,6 +95,9 @@ type Run struct {
 	Status       string    `json:"status"`
 	Error        string    `json:"error,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
+	// Event says what fired the run, when something other than its schedule
+	// did.
+	Event string `json:"event,omitempty"`
 }
 
 type CreateLoop struct {
@@ -154,7 +157,6 @@ type Repository interface {
 	ListLoops() ([]Loop, error)
 	ListRuns(loopID string, limit int) ([]Run, error)
 	LoadRun(id string) (Run, error)
-	LoadRunByThread(threadID string) (Run, bool, error)
 	ListDueLoopIDs(now time.Time) ([]string, error)
 	ListActiveRunIDs() ([]string, error)
 	HasActiveRun(loopID string) (bool, error)
@@ -165,8 +167,11 @@ type Repository interface {
 	SaveRunAndLoop(run Run, loop *Loop) error
 }
 
+// RunController moves a run through its life: Begin when its turn starts in
+// threadID ("" for a turn in its bot's thread), returning what the turn sends,
+// and Finish when it ends.
 type RunController interface {
-	MarkRunning(runID, threadID string) error
+	Begin(runID, threadID string) (Loop, string, error)
 	Finish(runID, status, errText string) error
 }
 
@@ -176,7 +181,6 @@ type Execution struct {
 	// Thread, when set, is the bot thread the run is a turn in; otherwise the
 	// run gets a thread of its own.
 	Thread                 string
-	Prompt                 string
 	SystemPromptExtensions promptmodule.Modules
 	ArtifactSurface        string
 	Controller             RunController

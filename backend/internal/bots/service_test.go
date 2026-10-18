@@ -303,16 +303,6 @@ func (t fakeThreads) CreateSession(_ context.Context, req acp.SpawnRequest) (sto
 	return session, err
 }
 
-func (t fakeThreads) StartInternalTurnWhenIdle(_ context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
-	t.world.mu.Lock()
-	defer t.world.mu.Unlock()
-	t.world.prompts[req.Session] = append(t.world.prompts[req.Session], req.Message)
-	session := t.world.sessions[req.Session]
-	session.Turn = &storage.Turn{Output: req.Output}
-	t.world.sessions[req.Session] = session
-	return acp.Job{ID: req.Session}, nil
-}
-
 // SteerInternal hands a message to the thread's running turn, as the manager
 // does, failing when no turn runs or its agent cannot take it.
 func (t fakeThreads) SteerInternal(_ context.Context, session, message string) (acp.Job, error) {
@@ -744,25 +734,6 @@ func TestUpdateChangesNothingWhenAnyPartIsInvalid(t *testing.T) {
 	}
 	if title := world.sessions["gimli"].Title; title != "Gimli" {
 		t.Fatalf("a rejected update renamed the bot to %q", title)
-	}
-}
-
-func TestRoutineRunsAsAnnouncedTurnInItsBotsThread(t *testing.T) {
-	world := newFakeWorld()
-	world.addBot("gimli", "Gimli")
-	service := newTestService(world)
-
-	job, err := service.RunRoutine(t.Context(), "gimli", "Digest", "summarise the inbox")
-	if err != nil || job.State != acp.StateIdle {
-		t.Fatalf("routine turn = %+v, %v", job, err)
-	}
-	world.mu.Lock()
-	defer world.mu.Unlock()
-	if prompts := world.prompts["gimli"]; len(prompts) != 1 || !strings.HasPrefix(prompts[0], "summarise the inbox") {
-		t.Fatalf("routine prompts = %q", prompts)
-	}
-	if events := world.events["gimli"]; len(events) != 1 || events[0].BotActivity == nil || events[0].BotActivity.Kind != "routine" || events[0].BotActivity.Label != "Digest" {
-		t.Fatalf("bot chat events = %+v", events)
 	}
 }
 
