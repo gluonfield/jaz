@@ -158,10 +158,17 @@ export function botChat(
   const questions = new Map<string, Extract<ChatEntry, { kind: 'question' }>>()
   const answers = new Map<string, ACPPermission>()
   let turn: ChatTurn | undefined
+  // A sent message shows as typed, then saved under a number of its own, then
+  // reloaded with the server's time; its text and how often the person sent
+  // that text before stay the same throughout, so they name it.
+  const sent = new Map<string, number>()
   for (const { at, message, event } of items) {
     if (message) {
+      const text = messageText(message)
+      const repeat = sent.get(text) ?? 0
+      sent.set(text, repeat + 1)
       entries.push({
-        kind: 'user', key: `message:${message.seq}:${at}`, at, text: messageText(message),
+        kind: 'user', key: `message:${repeat}:${text}`, at, text,
         attachments: message.blocks?.filter((block) => block.type === 'attachment'),
         attachmentSessionId: self.id,
       })
