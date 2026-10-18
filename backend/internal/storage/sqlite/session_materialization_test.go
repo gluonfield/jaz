@@ -44,6 +44,15 @@ func TestRuntimeSessionMaterializationState(t *testing.T) {
 	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || hasTranscript {
 		t.Fatalf("voice-only agent transcript = %t, %v", hasTranscript, err)
 	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		SessionID: session.ID, Type: sessionevents.TypeBotActivity,
+		BotActivity: &sessionevents.BotActivityEvent{Kind: "message_received", Label: "Research"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || hasTranscript {
+		t.Fatalf("a thread whose bot was only written to has an agent transcript = %t, %v", hasTranscript, err)
+	}
 	if updated, err := store.ReplaceRuntimeSessionID(session.ID, "wrong", "new"); err != nil || updated {
 		t.Fatalf("mismatched replacement = %t, %v", updated, err)
 	}

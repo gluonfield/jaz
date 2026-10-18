@@ -63,6 +63,9 @@ func TestGoalClearSurvivesStaleSessionSaves(t *testing.T) {
 			}
 			loaded, err := store.LoadSession(session.ID)
 			turn.GoalRequested = false
+			if loaded.Turn != nil {
+				turn.StartedAt = loaded.Turn.StartedAt
+			}
 			if err != nil || loaded.Goal != nil || loaded.Turn == nil || *loaded.Turn != turn || loaded.Status != storage.StatusRunning || loaded.Title != stale.Title {
 				t.Fatalf("stale save restored goal state: %+v, %v", loaded, err)
 			}

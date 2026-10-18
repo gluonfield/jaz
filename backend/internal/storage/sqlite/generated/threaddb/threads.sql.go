@@ -95,7 +95,7 @@ func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn FROM threads
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
 `
@@ -146,6 +146,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.EventRevision,
 		&i.TranscriptRevision,
 		&i.Turn,
+		&i.CompletedTurnStartedAtMs,
 	)
 	return i, err
 }
@@ -199,7 +200,7 @@ WITH switched AS (
 )
 SELECT CAST(
   ((SELECT seq FROM switched) IS NULL AND EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = ?1))
-  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1 AND session_events.type NOT IN ('agent_session', 'voice_message', 'agent_switch') AND session_events.seq > COALESCE((SELECT seq FROM switched), 0))
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1 AND session_events.type NOT IN ('agent_session', 'voice_message', 'agent_switch', 'bot_activity') AND session_events.seq > COALESCE((SELECT seq FROM switched), 0))
 AS INTEGER)
 FROM threads
 WHERE threads.id = ?1
@@ -207,6 +208,7 @@ WHERE threads.id = ?1
 
 // After an agent switch only the new agent's events count: its native session
 // starts fresh at the switch, and a prompt it received always leaves events.
+// Bot activity is Jaz's note beside the agent's work, never the agent's own.
 func (q *Queries) HasAgentTranscript(ctx context.Context, id string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, hasAgentTranscript, id)
 	var column_1 int64
@@ -226,7 +228,7 @@ func (q *Queries) IsMainBot(ctx context.Context, threadID string) (bool, error) 
 }
 
 const listChildSessions = `-- name: ListChildSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms
 FROM threads
 WHERE parent_id = ?1
   AND archived = ?2
@@ -325,6 +327,7 @@ func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsPa
 			&i.EventRevision,
 			&i.TranscriptRevision,
 			&i.Turn,
+			&i.CompletedTurnStartedAtMs,
 		); err != nil {
 			return nil, err
 		}
@@ -467,7 +470,7 @@ func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, 
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms
 FROM threads
 WHERE archived = ?1
   AND (?2 OR parent_id IS NULL OR parent_id = '')
@@ -575,6 +578,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]T
 			&i.EventRevision,
 			&i.TranscriptRevision,
 			&i.Turn,
+			&i.CompletedTurnStartedAtMs,
 		); err != nil {
 			return nil, err
 		}

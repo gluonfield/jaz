@@ -39,7 +39,10 @@ SET status = sqlc.arg(status), turn = '', error = sqlc.narg(error),
     unread = CASE WHEN sqlc.arg(status) = 'idle' AND json_extract(turn, '$.active_operation') IS NOT 'compact' THEN 1 ELSE unread END,
     updated_at_ms = sqlc.arg(finished_at_ms),
     last_attention_at_ms = sqlc.arg(finished_at_ms),
-    last_completed_at_ms = CASE WHEN sqlc.arg(status) = 'idle' THEN sqlc.arg(finished_at_ms) ELSE last_completed_at_ms END
+    last_completed_at_ms = CASE WHEN sqlc.arg(status) = 'idle' THEN sqlc.arg(finished_at_ms) ELSE last_completed_at_ms END,
+    completed_turn_started_at_ms = CASE WHEN sqlc.arg(status) = 'idle'
+      THEN COALESCE(CAST(unixepoch(json_extract(turn, '$.started_at'), 'subsec') * 1000 AS INTEGER), completed_turn_started_at_ms)
+      ELSE completed_turn_started_at_ms END
 WHERE id = sqlc.arg(id) AND turn <> '';
 
 -- name: AppendQueuedTurn :execrows

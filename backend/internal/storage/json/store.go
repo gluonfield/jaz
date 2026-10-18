@@ -382,6 +382,10 @@ func (s *Store) CompleteSession(id string, completedAt time.Time) error {
 	session.Status = storage.StatusIdle
 	session.Error = ""
 	session.Unread = true
+	session.CompletedAt = completedAt
+	if session.Turn != nil {
+		session.CompletedTurnStartedAt = session.Turn.StartedAt
+	}
 	storage.MarkSessionAttention(&session, completedAt)
 	return s.saveSession(session)
 }

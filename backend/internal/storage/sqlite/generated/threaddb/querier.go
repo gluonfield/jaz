@@ -24,6 +24,7 @@ type Querier interface {
 	GetTranscriptRevision(ctx context.Context, id string) (int64, error)
 	// After an agent switch only the new agent's events count: its native session
 	// starts fresh at the switch, and a prompt it received always leaves events.
+	// Bot activity is Jaz's note beside the agent's work, never the agent's own.
 	HasAgentTranscript(ctx context.Context, id string) (int64, error)
 	IsMainBot(ctx context.Context, threadID string) (bool, error)
 	ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error)
