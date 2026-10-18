@@ -50,8 +50,15 @@ func TestClaudeSubagentRowsFromAdapterTraffic(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			launchPrompts := make(map[string]string)
 			for _, process := range tc.processes {
 				frames := readClaudeFrames(t, process)
+				for _, frame := range frames {
+					record := frame.Update.Meta.Jaz.ProviderSubagent
+					if _, ok := launchPrompts[record.ID]; !ok && record.Prompt != "" {
+						launchPrompts[record.ID] = record.Prompt
+					}
+				}
 				manager := NewManager(store, Config{}, nil)
 				manager.Events = sessionevents.New()
 				job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPAgent: AgentClaude, ACPSession: frames[0].SessionID}}
@@ -87,6 +94,9 @@ func TestClaudeSubagentRowsFromAdapterTraffic(t *testing.T) {
 			for _, event := range stored {
 				if subagent := event.ProviderSubagent; event.Type == sessionevents.TypeProviderSubagent && subagent != nil {
 					got = append(got, row{subagent.Name, subagent.Role, subagent.Status})
+					if subagent.Prompt != launchPrompts[subagent.ID] {
+						t.Fatalf("%s prompt = %q, want its launch prompt %q", subagent.Name, subagent.Prompt, launchPrompts[subagent.ID])
+					}
 				}
 			}
 			slices.SortFunc(got, func(a, b row) int { return strings.Compare(a.name, b.name) })
@@ -106,6 +116,12 @@ type claudeFrame struct {
 			ClaudeCode struct {
 				ParentToolUseID string `json:"parentToolUseId"`
 			} `json:"claudeCode"`
+			Jaz struct {
+				ProviderSubagent struct {
+					ID     string `json:"id"`
+					Prompt string `json:"prompt"`
+				} `json:"providerSubagent"`
+			} `json:"jaz"`
 		} `json:"_meta"`
 	} `json:"update"`
 	raw json.RawMessage
