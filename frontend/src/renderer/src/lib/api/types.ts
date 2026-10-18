@@ -807,6 +807,10 @@ export interface SideChatEvent {
   attachments?: Attachment[]
 }
 
+// Where a provider's subagent stands, as the backend reads every word Codex and
+// Claude use for it. Absent reports no change.
+export type ProviderSubagentStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+
 export interface ProviderSubagentEvent {
   provider?: string
   id: string
@@ -815,7 +819,7 @@ export interface ProviderSubagentEvent {
   name?: string
   task?: string
   role?: string
-  status?: string
+  status?: ProviderSubagentStatus
   summary?: string
   prompt?: string
   model?: string

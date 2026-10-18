@@ -11,17 +11,17 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useState, type ReactNode } from 'react'
 import { agentLabel } from '@/lib/agentLabel'
-import { looksLikeOpaqueToolID, type ProviderSubagentView } from '@/lib/providerSubagents'
+import type { ProviderSubagentStatus } from '@/lib/api/types'
+import { looksLikeOpaqueToolID, type ProviderSubagentView, subagentStatus } from '@/lib/providerSubagents'
 import type { SpawnedThreadView } from '@/lib/spawnedThreads'
 
 const AUTO_EXPAND_LIMIT = 12
 
-type SubagentStatus = 'working' | 'completed' | 'failed' | 'cancelled'
 type ThreadStatus = 'running' | 'idle' | 'failed' | 'cancelled'
 type RunStatus = { label: string; className: string; Icon: LucideIcon; spin?: boolean }
 
-const SUBAGENT_STATUS: Record<SubagentStatus, RunStatus> = {
-  working: { label: 'working', className: 'text-running', Icon: LoaderCircle, spin: true },
+const SUBAGENT_STATUS: Record<ProviderSubagentStatus, RunStatus> = {
+  running: { label: 'working', className: 'text-running', Icon: LoaderCircle, spin: true },
   completed: { label: 'completed', className: 'text-primary', Icon: CheckCircle2 },
   failed: { label: 'failed', className: 'text-danger', Icon: CircleAlert },
   cancelled: { label: 'cancelled', className: 'text-ink-3', Icon: Ban },
@@ -222,7 +222,7 @@ function SubagentsSection({ subagents }: { subagents: ProviderSubagentView[] }) 
 
 function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
   const [expanded, setExpanded] = useState(false)
-  const status = SUBAGENT_STATUS[subagentStatus(subagent.status)]
+  const status = SUBAGENT_STATUS[subagentStatus(subagent)]
   const title = subagentTitle(subagent)
   const detail = subagentDetail(subagent, title)
   const prompt = subagent.prompt?.trim() ?? ''
@@ -257,16 +257,6 @@ function SubagentRow({ subagent }: { subagent: ProviderSubagentView }) {
       ) : null}
     </li>
   )
-}
-
-function subagentStatus(status: string | undefined): SubagentStatus {
-  const normalized = status?.toLowerCase()
-  if (normalized === 'completed' || normalized === 'shutdown' || normalized === 'closed') return 'completed'
-  if (normalized === 'failed' || normalized === 'errored' || normalized === 'error' || normalized === 'not_found') {
-    return 'failed'
-  }
-  if (normalized === 'cancelled' || normalized === 'canceled' || normalized === 'interrupted' || normalized === 'stopped') return 'cancelled'
-  return 'working'
 }
 
 function subagentTitle(subagent: ProviderSubagentView): string {

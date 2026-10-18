@@ -321,7 +321,7 @@ func TestSessionEventsDurablyCompleteSparseProviderSubagentUpdates(t *testing.T)
 		t.Fatal(err)
 	}
 	key := sessionevents.ProviderSubagentProjectionKey(session.ID, sessionevents.ProviderSubagentEvent{Provider: "codex", ID: "worker"})
-	event := func(status string, complete bool) sessionevents.Event {
+	event := func(status sessionevents.ProviderSubagentStatus, complete bool) sessionevents.Event {
 		subagent := &sessionevents.ProviderSubagentEvent{Provider: "codex", ID: "worker", Status: status}
 		if complete {
 			subagent.Name = "Newton"

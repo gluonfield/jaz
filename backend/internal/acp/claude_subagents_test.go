@@ -93,7 +93,7 @@ func TestClaudeSubagentRowsFromAdapterTraffic(t *testing.T) {
 			var got []row
 			for _, event := range stored {
 				if subagent := event.ProviderSubagent; event.Type == sessionevents.TypeProviderSubagent && subagent != nil {
-					got = append(got, row{subagent.Name, subagent.Role, subagent.Status})
+					got = append(got, row{subagent.Name, subagent.Role, string(subagent.Status)})
 					if subagent.Prompt != launchPrompts[subagent.ID] {
 						t.Fatalf("%s prompt = %q, want its launch prompt %q", subagent.Name, subagent.Prompt, launchPrompts[subagent.ID])
 					}

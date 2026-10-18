@@ -35,19 +35,19 @@ type overviewThreadResponse struct {
 }
 
 type overviewSubagentResponse struct {
-	Key             string    `json:"key"`
-	Seq             int64     `json:"seq"`
-	Provider        string    `json:"provider,omitempty"`
-	ID              string    `json:"id"`
-	Name            string    `json:"name,omitempty"`
-	Task            string    `json:"task,omitempty"`
-	Role            string    `json:"role,omitempty"`
-	Status          string    `json:"status,omitempty"`
-	Summary         string    `json:"summary,omitempty"`
-	Prompt          string    `json:"prompt,omitempty"`
-	Model           string    `json:"model,omitempty"`
-	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	Key             string                               `json:"key"`
+	Seq             int64                                `json:"seq"`
+	Provider        string                               `json:"provider,omitempty"`
+	ID              string                               `json:"id"`
+	Name            string                               `json:"name,omitempty"`
+	Task            string                               `json:"task,omitempty"`
+	Role            string                               `json:"role,omitempty"`
+	Status          sessionevents.ProviderSubagentStatus `json:"status,omitempty"`
+	Summary         string                               `json:"summary,omitempty"`
+	Prompt          string                               `json:"prompt,omitempty"`
+	Model           string                               `json:"model,omitempty"`
+	ReasoningEffort string                               `json:"reasoning_effort,omitempty"`
+	UpdatedAt       time.Time                            `json:"updated_at"`
 }
 
 func NewOverviewHandler(service *sessionoverview.Service) *OverviewHandler {

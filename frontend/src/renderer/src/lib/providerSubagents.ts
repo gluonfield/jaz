@@ -1,6 +1,7 @@
 import type {
   ACPToolCall,
   ProviderSubagentEvent,
+  ProviderSubagentStatus,
   SessionEvent,
   SessionOverviewSubagent,
 } from '@/lib/api/types'
@@ -28,7 +29,7 @@ export function providerSubagentsFromSources(
     byKey.set(key, previous ? mergeProviderSubagentView(previous, current) : current)
   }
   return [...byKey.values()].sort((a, b) => {
-    const active = subagentActiveRank(a) - subagentActiveRank(b)
+    const active = Number(subagentRunning(b)) - Number(subagentRunning(a))
     if (active) return active
     return eventTime(b.updated_at) - eventTime(a.updated_at)
   })
@@ -128,13 +129,13 @@ function subagentUpdateIsNewer(previous: ProviderSubagentView, current: Provider
   return eventTime(current.updated_at) >= eventTime(previous.updated_at)
 }
 
-export function subagentRunning(subagent: ProviderSubagentView): boolean {
-  const status = subagent.status?.toLowerCase()
-  return !status || status === 'running' || status === 'starting' || status === 'pending_init'
+// A subagent with no reported status yet is at work.
+export function subagentStatus(subagent: ProviderSubagentView): ProviderSubagentStatus {
+  return subagent.status ?? 'running'
 }
 
-function subagentActiveRank(subagent: ProviderSubagentView): number {
-  return subagentRunning(subagent) ? 0 : 1
+export function subagentRunning(subagent: ProviderSubagentView): boolean {
+  return subagentStatus(subagent) === 'running'
 }
 
 function eventTime(value: string): number {

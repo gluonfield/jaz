@@ -238,7 +238,7 @@ func TestProviderSubagentInterruptLeavesVisibleChildRecords(t *testing.T) {
 	}
 	got := make(map[string]string)
 	for _, event := range view.SubagentEvents {
-		got[event.ProjectionKey] = event.ProviderSubagent.Status
+		got[event.ProjectionKey] = string(event.ProviderSubagent.Status)
 	}
 	want := map[string]string{
 		sessionevents.ProviderSubagentProjectionKey(parent.ID, parentWorker): "cancelled",

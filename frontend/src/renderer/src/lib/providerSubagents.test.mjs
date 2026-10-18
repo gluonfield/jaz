@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { providerSubagentsFromSources } from './providerSubagents'
+import { providerSubagentsFromSources, subagentRunning } from './providerSubagents'
 
 function subagent(owner, name) {
   return {
@@ -86,5 +86,24 @@ describe('provider subagent projections', () => {
 
     expect(subagents).toHaveLength(1)
     expect(subagents[0].name).toBe('Legacy')
+  })
+
+  test('lists the subagents still at work first and counts only those as running', () => {
+    const report = (id, status, at) => ({
+      session_id: 'parent',
+      type: 'provider_subagent',
+      provider_subagent: { provider: 'codex', id, status },
+      at,
+    })
+    const subagents = providerSubagentsFromSources(undefined, [
+      report('reader', 'running', '2026-07-19T10:00:00Z'),
+      report('newcomer', undefined, '2026-07-19T11:00:00Z'),
+      report('writer', 'completed', '2026-07-19T12:00:00Z'),
+      report('checker', 'failed', '2026-07-19T13:00:00Z'),
+      report('closer', 'cancelled', '2026-07-19T14:00:00Z'),
+    ])
+
+    expect(subagents.map((item) => item.id)).toEqual(['newcomer', 'reader', 'closer', 'checker', 'writer'])
+    expect(subagents.filter(subagentRunning).map((item) => item.id)).toEqual(['newcomer', 'reader'])
   })
 })
