@@ -314,9 +314,13 @@ func (s *Service) RunTriggered(ctx context.Context, loopID, event string) (Run, 
 // into a new run. The new run starts now unless a begun run of the loop is
 // still going, in which case it waits for that run to finish. taken records the
 // observed messages behind events, saved with the run that now holds them.
+// Events reach no run while the loop waits for the user to come back.
 func (s *Service) fireLocked(loop Loop, events []string, taken []SeenEvent, now time.Time) (Loop, Run, bool, error) {
 	if loop.Status == StatusDeleted {
 		return Loop{}, Run{}, false, fmt.Errorf("loop %s has been deleted", loop.ID)
+	}
+	if s.heldAway(loop) {
+		return Loop{}, Run{}, false, nil
 	}
 	runs, err := s.Repo.ActiveRuns(loop.ID)
 	if err != nil {

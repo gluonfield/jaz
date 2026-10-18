@@ -40,9 +40,6 @@ func (s *Service) take(routine Loop, messages []integrationingest.Incoming) (Loo
 	now := s.now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.heldAway(routine) {
-		return Loop{}, Run{}, false, nil
-	}
 	since := now.Add(-missedAfter)
 	if routine.WhenMissed == MissedCatchUp {
 		latest, err := s.Repo.LatestEventAt(routine.ID)

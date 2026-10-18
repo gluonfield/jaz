@@ -371,6 +371,10 @@ func startServer(
 			if err := loopService.EnsureMemoryPaths(); err != nil {
 				return err
 			}
+			// Events and webhooks can arrive before the scheduler's first tick.
+			if err := loopService.GuardAway(); err != nil {
+				logger.WithPrefix("loops").Error("away guard failed", "error", err)
+			}
 			listener, err := net.Listen("tcp", srv.Addr)
 			if err != nil {
 				return err

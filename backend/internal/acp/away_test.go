@@ -78,6 +78,8 @@ func TestThreeDaysAwayHoldBotRoutinesButKeepRunningOnesAcrossARestart(t *testing
 	bot := jaz.newBot("Gimli")
 	inbox := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Thread: loops.ThreadMain, Schedule: hourly})
 	monitor := jaz.routine(loops.CreateLoop{Name: "Monitor", Prompt: "watch the furnace", BotID: bot.ID, Thread: loops.ThreadMain, Schedule: hourly, KeepRunning: true})
+	quotes := jaz.routine(loops.CreateLoop{Name: "Quotes", Prompt: "triage the quote", BotID: bot.ID, Thread: loops.ThreadMain, Trigger: quotes})
+	hook := jaz.routine(loops.CreateLoop{Name: "Hook", Prompt: "handle the hook", BotID: bot.ID, Thread: loops.ThreadMain, Trigger: &loops.Trigger{Kind: loops.TriggerWebhook}})
 	jaz.write(bot.ID, "hello")
 	wrote := time.Now()
 
@@ -96,6 +98,13 @@ func TestThreeDaysAwayHoldBotRoutinesButKeepRunningOnesAcrossARestart(t *testing
 		t.Fatalf("inbox run = %+v, want it skipped while the user is away", run)
 	}
 	jaz.waitRun(jaz.runs(monitor.ID)[0].ID, loops.RunStatusOK)
+	jaz.loops.HandleIncoming(jaz.ctx, quote("m1", "A quote", slot))
+	if _, err := jaz.loops.RunTriggered(jaz.ctx, hook.ID, "webhook"); err != nil {
+		t.Fatal(err)
+	}
+	if runs := append(jaz.runs(quotes.ID), jaz.runs(hook.ID)...); len(runs) != 0 {
+		t.Fatalf("event runs = %+v, want none while the user is away", runs)
+	}
 
 	jaz = jaz.restart(nil)
 	jaz.guard(slot.Add(time.Hour + time.Second))
@@ -135,7 +144,11 @@ func TestOnlyTheUsersNextWordsLetRoutinesRunAgain(t *testing.T) {
 	if err := jaz.bots.Message(bot.ID, group.ID, "status from the bot"); err != nil {
 		t.Fatal(err)
 	}
-	jaz.guard(slot.Add(2 * time.Second))
+	jaz.guard(time.Now())
+	// A message seen only once its own three days have passed, as after Jaz
+	// was off that long, starts no welcome back.
+	jaz.write(bot.ID, "one more thing")
+	jaz.guard(slot.Add(time.Hour))
 	if notices := jaz.notices(bot.ID); len(notices) != 1 {
 		t.Fatalf("notices = %q, want the routines still waiting", notices)
 	}
@@ -143,7 +156,7 @@ func TestOnlyTheUsersNextWordsLetRoutinesRunAgain(t *testing.T) {
 	if err := jaz.bots.Post(group.ID, "back now", nil); err != nil {
 		t.Fatal(err)
 	}
-	jaz.guard(slot.Add(3 * time.Second))
+	jaz.guard(time.Now())
 	notices := jaz.notices(bot.ID)
 	if len(notices) != 2 || !strings.Contains(notices[1], "Inbox") || strings.Contains(notices[1], "Digest") {
 		t.Fatalf("notices = %q, want the waiting routine back and the paused one left out", notices)

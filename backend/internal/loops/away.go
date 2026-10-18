@@ -13,9 +13,10 @@ const awayReason = "Skipped: you had not written to Jaz for 3 days."
 
 // GuardAway holds the runs of every bot's routine that does not keep running
 // once the user has written nothing for awayAfter, and lets them run again
-// with the user's next message. Each bot tells the user once when its
-// routines hold and once when they go on; a routine's own status never
-// changes.
+// with the user's next message. A routine's own status never changes. Each
+// bot tells the user when its routines hold and when they go on; the notice
+// is best-effort and never repeated, since the stored marker, not the
+// notice, is what holds the routines.
 func (s *Service) GuardAway() error {
 	last, err := s.Repo.LastUserMessageAt()
 	if err != nil {
@@ -27,10 +28,7 @@ func (s *Service) GuardAway() error {
 	}
 	held := !since.IsZero()
 	s.mu.Lock()
-	s.away = !last.IsZero() && s.now().Sub(last) >= awayAfter
-	if held {
-		s.away = !last.After(since)
-	}
+	s.away = !last.IsZero() && s.now().Sub(last) >= awayAfter || held && !last.After(since)
 	away := s.away
 	s.mu.Unlock()
 	if away == held {
@@ -55,8 +53,12 @@ func (s *Service) heldAway(loop Loop) bool {
 // tellAway has each bot with routines that hold while the user is away say
 // they hold, or that they go on again.
 func (s *Service) tellAway(away bool) {
+	if s.Notice == nil {
+		return
+	}
 	items, err := s.Repo.ListLoops()
-	if err != nil || s.Notice == nil {
+	if err != nil {
+		s.Log.Warn("away notice failed", "error", err)
 		return
 	}
 	names := map[string][]string{}
