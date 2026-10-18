@@ -228,16 +228,34 @@ const SOURCES: Record<Exclude<LoopTrigger['kind'], 'webhook'>, string> = {
   slack: 'Slack',
 }
 
-// When a loop runs: on what triggers it, or on its schedule.
 // catchesUp marks a routine that makes up for runs missed while Jaz was off.
 export const catchesUp = ({ when_missed }: Pick<Loop, 'when_missed'>) =>
   when_missed === 'catch_up' ? ' · catches up if missed' : ''
 
+// When a loop runs, and whether it makes up for missed runs.
 export function loopWhen(loop: Loop, paused = false): string {
-  const { trigger, schedule } = loop
-  const missed = catchesUp(loop)
-  if (!trigger) return compactSchedule(schedule.expr, paused) + missed
+  const when = loopTiming(loop, paused)
+  return loop.trigger?.kind === 'webhook' ? when : when + catchesUp(loop)
+}
+
+// When a loop runs: on what triggers it, or on its schedule.
+export function loopTiming({ trigger, schedule }: Pick<Loop, 'trigger' | 'schedule'>, paused = false): string {
+  if (!trigger) return compactSchedule(schedule.expr, paused)
   if (trigger.kind === 'webhook') return 'Webhook'
   const where = trigger.kind === 'slack' && trigger.subject ? ` in ${trigger.subject}` : ''
-  return `New ${SOURCES[trigger.kind]}${trigger.from ? ` from ${trigger.from}` : ''}${where}${missed}`
+  return `New ${SOURCES[trigger.kind]}${trigger.from ? ` from ${trigger.from}` : ''}${where}`
+}
+
+export const CADENCES = ['Through the day', 'Daily', 'Weekdays', 'Weekly', 'When something arrives', 'Other'] as const
+export type Cadence = (typeof CADENCES)[number]
+
+// How often a loop runs, as its list groups it.
+export function loopCadence({ trigger, schedule }: Pick<Loop, 'trigger' | 'schedule'>): Cadence {
+  if (trigger) return 'When something arrives'
+  const [, hour, dom, mon, dow, extra] = schedule.expr.trim().split(/\s+/)
+  if (dow === undefined || extra !== undefined || dom !== '*' || mon !== '*') return 'Other'
+  if (!/^\d+(,\d+)*$/.test(hour)) return 'Through the day'
+  if (dow === '*') return 'Daily'
+  if (dow === '1-5') return 'Weekdays'
+  return /^[0-6]$/.test(dow) ? 'Weekly' : 'Other'
 }

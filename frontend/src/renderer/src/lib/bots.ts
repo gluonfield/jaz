@@ -113,10 +113,13 @@ export type BotWork = { doing?: string }
 // sent with send_message, presented apps, questions with their answers, and
 // activity rows. Lookups and work for other bots stay private.
 // A bot's turn opens when the person speaks to it or an activity, such as a
-// routine or another bot's message, starts work; messaging another bot does not.
+// routine or another bot's message, starts work; messaging another bot or a
+// change to its files does not.
 export function opensBotTurn(event: SessionEvent): boolean {
-  return event.room_message?.speaker === 'user' || (!!event.bot_activity && event.bot_activity.kind !== 'message_sent')
+  return event.room_message?.speaker === 'user' || (!!event.bot_activity && !QUIET_ACTIVITY.has(event.bot_activity.kind))
 }
+
+const QUIET_ACTIVITY = new Set<BotActivityEvent['kind']>(['message_sent', 'file_changed', 'file_edited'])
 
 export function botChat(
   messages: ChatMessage[],

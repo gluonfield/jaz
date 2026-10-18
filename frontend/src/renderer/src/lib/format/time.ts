@@ -43,10 +43,11 @@ export function fullTime(iso: string): string {
 }
 
 export function messageTime(iso: string, now = Date.now()): string {
-  const date = new Date(iso)
-  return date.toDateString() === new Date(now).toDateString()
-    ? date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-    : fullTime(iso)
+  return new Date(iso).toDateString() === new Date(now).toDateString() ? clockTime(iso) : fullTime(iso)
+}
+
+export function clockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 export function formatDuration(ms: number | undefined): string {

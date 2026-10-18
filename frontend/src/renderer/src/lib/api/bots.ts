@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '@/lib/query/keys'
 import { del, get, patch, post, put } from './client'
-import type { Bot, BotAvatar } from './types'
+import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName } from './types'
 
 // Polling belongs to the list on screen; other readers take the shared cache.
 export const botsQuery = queryOptions({
@@ -35,4 +35,23 @@ export function deleteBot(id: string): Promise<void> {
 
 export function sendGroupMessage(id: string, text: string, attachmentIds: string[]): Promise<void> {
   return post<void>(`/v1/bots/${id}/messages`, { text, attachment_ids: attachmentIds })
+}
+
+// What a bot is doing and did, newest first; polled closely while anything runs.
+export const botActivityQuery = (botId: string) =>
+  queryOptions({
+    queryKey: keys.botActivity(botId),
+    queryFn: async () => (await get<{ items: BotActivity[] | null }>(`/v1/bots/${botId}/activity`)).items ?? [],
+    refetchInterval: (query) => (query.state.data?.some((item) => item.running) ? 3_000 : 15_000),
+  })
+
+export const botFilesQuery = (botId: string) =>
+  queryOptions({
+    queryKey: keys.botFiles(botId),
+    queryFn: async () => (await get<{ files: BotFile[] }>(`/v1/bots/${botId}/files`)).files,
+  })
+
+// Saves over the version read; a file changed since answers 409.
+export function saveBotFile(botId: string, name: BotFileName, content: string, version: string): Promise<BotFile> {
+  return put<BotFile>(`/v1/bots/${botId}/files/${name}`, { content, version })
 }

@@ -328,6 +328,76 @@
   padding: 0;
   font-size: 0.8125rem;
 }
+/* A bot's AGENTS.md or MEMORY.md open as a document. */
+.editor-prose {
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+  & > * + * {
+    margin-top: 0.85em;
+  }
+  & h1,
+  & h2,
+  & h3 {
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+  & h1 {
+    font-size: 1.75em;
+    margin-top: 1.1em;
+  }
+  & h2 {
+    font-size: 1.35em;
+    margin-top: 1.2em;
+  }
+  & h3 {
+    font-size: 1.12em;
+    margin-top: 1.2em;
+  }
+  & > :first-child {
+    margin-top: 0;
+  }
+  & ul,
+  & ol {
+    padding-left: 1.5em;
+  }
+  & ul {
+    list-style: disc;
+  }
+  & ol {
+    list-style: decimal;
+  }
+  & li + li {
+    margin-top: 0.3em;
+  }
+  & a {
+    color: var(--color-primary);
+  }
+  & code {
+    background: var(--color-surface-2);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  & pre {
+    background: var(--color-surface-2);
+    border-radius: 8px;
+    padding: 0.75em 1em;
+    overflow-x: auto;
+  }
+  & pre code {
+    background: none;
+    padding: 0;
+  }
+  & blockquote {
+    border-left: 2px solid var(--color-border);
+    padding-left: 1em;
+    color: var(--color-ink-2);
+  }
+}
 .chat-prose-link {
   color: var(--color-primary);
   cursor: pointer;

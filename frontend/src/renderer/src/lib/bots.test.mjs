@@ -49,6 +49,12 @@ describe('bot chat log', () => {
     expect(entries.at(-1).at).toBe(at(8))
   })
 
+  test('a change to its files does not end the routine turn it happens in', () => {
+    const app = { server_id: 'crm', tool: 'show_crm', arguments: { path: '/o/deals' }, result: { content: [] } }
+    const events = [woke(2, 'routine', 'Digest'), woke(3, 'file_changed', 'MEMORY.md'), event(4, { type: 'mcp_app', mcp_app: app })]
+    expect(botChat([], events, self, opens).entries.map((entry) => entry.kind)).toEqual(['app'])
+  })
+
   test('group turns and routine runs stay out of the chat unless the bot speaks', () => {
     const { entries } = botChat(
       [user(1, 1, 'hi')],
