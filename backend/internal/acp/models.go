@@ -145,9 +145,12 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 	case AgentGrok:
 		// Grok rebuilds its system prompt without session rules when the model
 		// changes after session/new, so the model rides session/new instead.
+		// It cannot refuse a model sent there and silently falls back to its
+		// default for ids it does not offer, so Jaz refuses them.
 		return agentPolicy{
-			modelMetaKey:  "modelId",
-			effortOptions: grokReasoningEffortOptions,
+			modelMetaKey:      "modelId",
+			unadvertisedModel: unadvertisedModelRejected,
+			effortOptions:     grokReasoningEffortOptions,
 		}
 	case AgentOpenCode:
 		return agentPolicy{
@@ -303,15 +306,19 @@ type sessionConfigOptionsState struct {
 	effortPriority       int
 }
 
-// setConfiguredSessionModel applies the configured model and returns the
-// agent's raw response: it carries refreshed config options (e.g. the effort
-// levels valid for the newly selected model).
+// setConfiguredSessionModel checks the configured model against the models the
+// session advertised and applies it unless it already rode the launch or
+// session/new. It returns the agent's raw response: it carries refreshed
+// config options (e.g. the effort levels valid for the newly selected model).
 func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, state sessionModelState) (json.RawMessage, error) {
 	policy := agentPolicyForAgent(agentName)
 	configured := configuredSessionModel(rawModel)
 	model, err := policy.sessionModelToSend(agentName, configured, state)
 	if err != nil {
 		return nil, err
+	}
+	if policy.modelConfiguredAtLaunch || policy.modelMetaKey != "" {
+		return nil, nil
 	}
 	if model == "" {
 		if configured != "" {
@@ -390,18 +397,8 @@ func (m *Manager) configuredModeState(
 	policy := agentPolicyForAgent(agentName)
 	effort := policy.sessionConfigEffort(cfg.ReasoningEffort)
 	model := policy.sessionConfigModel(cfg)
-	modelToSet := model
-	if policy.modelConfiguredAtLaunch || policy.modelMetaKey != "" {
-		modelToSet = ""
-	}
-	// A model sent in session/new _meta cannot be refused by the agent, and
-	// Grok silently falls back to its default for ids it does not offer.
-	if policy.modelMetaKey != "" && model != "" && !session.modelState.empty() {
-		if _, ok := session.modelState.matchAdvertised(model); !ok {
-			return ModeState{}, unadvertisedModelError(agentName, model, session.modelState)
-		}
-	}
-	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, modelToSet, session.modelState)
+	m.rememberAdvertisedModels(agentName, cfg, session.modelState)
+	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, model, session.modelState)
 	if err != nil {
 		return ModeState{}, err
 	}

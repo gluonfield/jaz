@@ -97,7 +97,7 @@ func (m *Manager) agentModelOptions(agent string, cfg AgentConfig, query string)
 	if err != nil {
 		return nil, err
 	}
-	models := modelOptionsForCatalogModels(cfg, filterModels(catalogModels, query), "")
+	models := modelOptionsForCatalogModels(cfg, filterModels(m.startableModels(agent, cfg, catalogModels), query), "")
 	if !m.agentSupportsModelProvider(agent, cfg, provider.ProviderOpenRouter) || strings.TrimSpace(query) == "" {
 		return models, nil
 	}

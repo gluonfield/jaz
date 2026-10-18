@@ -895,11 +895,7 @@ func TestManagerFailsWhenConfiguredModelIsUnsupported(t *testing.T) {
 	if !strings.Contains(err.Error(), "session/set_model is not supported") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	session, loadErr := store.LoadSession("unsupported-model")
-	if loadErr != nil {
-		t.Fatal(loadErr)
-	}
-	if session.Status != storage.StatusError || !strings.Contains(session.Error, "session/set_model is not supported") {
+	if session := abandonedSession(t, store, "unsupported-model"); !strings.Contains(session.Error, "session/set_model is not supported") {
 		t.Fatalf("unsupported model failure was not stored: %#v", session)
 	}
 }
@@ -920,11 +916,7 @@ func TestManagerFailsWhenConfiguredReasoningEffortIsUnsupported(t *testing.T) {
 	if !strings.Contains(err.Error(), "session/set_config_option is not supported") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	session, loadErr := store.LoadSession("unsupported-effort")
-	if loadErr != nil {
-		t.Fatal(loadErr)
-	}
-	if session.Status != storage.StatusError || !strings.Contains(session.Error, "session/set_config_option is not supported") {
+	if session := abandonedSession(t, store, "unsupported-effort"); !strings.Contains(session.Error, "session/set_config_option is not supported") {
 		t.Fatalf("unsupported reasoning effort failure was not stored: %#v", session)
 	}
 }
@@ -1087,12 +1079,8 @@ func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
 	if !strings.Contains(err.Error(), "available model ids: default, sonnet") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	sessions, err := store.ListSessions(storage.SessionFilter{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(sessions) != 1 || sessions[0].Status != storage.StatusError || !strings.Contains(sessions[0].Error, "available model ids: default, sonnet") {
-		t.Fatalf("unsupported model session = %#v, want one session recording the rejection", sessions)
+	if session := abandonedSession(t, store, "bad-claude-model"); !strings.Contains(session.Error, "available model ids: default, sonnet") {
+		t.Fatalf("unsupported model session = %#v, want it to record the rejection", session)
 	}
 }
 
@@ -1471,11 +1459,7 @@ func TestManagerRejectsUnadvertisedReasoningEffort(t *testing.T) {
 	if !strings.Contains(err.Error(), `reasoning effort "xhigh"`) || !strings.Contains(err.Error(), "did not advertise that reasoning effort") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	session, loadErr := store.LoadSession("codex-unadvertised-effort")
-	if loadErr != nil {
-		t.Fatal(loadErr)
-	}
-	if session.Status != storage.StatusError || !strings.Contains(session.Error, "did not advertise that reasoning effort") {
+	if session := abandonedSession(t, store, "codex-unadvertised-effort"); !strings.Contains(session.Error, "did not advertise that reasoning effort") {
 		t.Fatalf("unadvertised effort failure was not stored: %#v", session)
 	}
 }
@@ -1621,6 +1605,32 @@ func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, ag
 			},
 		},
 	}, log.New(io.Discard))
+}
+
+// abandonedSession returns the session a failed spawn recorded its error on,
+// which must stay out of the sidebar.
+func abandonedSession(t *testing.T, store *jsonstore.Store, slug string) storage.Session {
+	t.Helper()
+	for _, archived := range []bool{false, true} {
+		sessions, err := store.ListSessions(storage.SessionFilter{IncludeChildren: true, IncludeSourced: true, Archived: archived})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, session := range sessions {
+			if session.Slug != slug {
+				continue
+			}
+			if !archived {
+				t.Fatalf("failed spawn left %q in the sidebar: %#v", slug, session)
+			}
+			if session.Status != storage.StatusError {
+				t.Fatalf("failed spawn %q status = %q", slug, session.Status)
+			}
+			return session
+		}
+	}
+	t.Fatalf("failed spawn %q recorded no session", slug)
+	return storage.Session{}
 }
 
 func sendAndWait(t *testing.T, ctx context.Context, manager *acp.Manager, sessionID, message string) {
@@ -2114,15 +2124,11 @@ func TestSpawnSessionDirectories(t *testing.T) {
 		t.Fatalf("default cwd = %q, want %q", spawned.Cwd, want)
 	}
 
-	// Escapes are rejected and the failure lands on the session row.
+	// Escapes are rejected and the failure lands on the archived session row.
 	if _, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "escape-task", Directory: "../outside"}); err == nil {
 		t.Fatal("expected escape to be rejected")
 	}
-	failed, err := store.LoadSession("escape-task")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if failed.Status != storage.StatusError || failed.Error == "" {
+	if failed := abandonedSession(t, store, "escape-task"); failed.Error == "" {
 		t.Fatalf("spawn failure not recorded on session: %#v", failed)
 	}
 
