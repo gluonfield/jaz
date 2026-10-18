@@ -119,7 +119,8 @@ SELECT
   status,
   error,
   created_at_ms,
-  reason
+  reason,
+  delivered
 FROM loop_runs
 WHERE id = ?1
 LIMIT 1
@@ -139,6 +140,50 @@ func (q *Queries) GetRun(ctx context.Context, id string) (LoopRun, error) {
 		&i.Error,
 		&i.CreatedAtMs,
 		&i.Reason,
+		&i.Delivered,
+	)
+	return i, err
+}
+
+const getRunBefore = `-- name: GetRunBefore :one
+SELECT
+  id,
+  loop_id,
+  thread_id,
+  scheduled_for_ms,
+  started_at_ms,
+  finished_at_ms,
+  status,
+  error,
+  created_at_ms,
+  reason,
+  delivered
+FROM loop_runs
+WHERE loop_id = ?1 AND created_at_ms < ?2
+ORDER BY created_at_ms DESC
+LIMIT 1
+`
+
+type GetRunBeforeParams struct {
+	LoopID      string `json:"loop_id"`
+	CreatedAtMs int64  `json:"created_at_ms"`
+}
+
+func (q *Queries) GetRunBefore(ctx context.Context, arg GetRunBeforeParams) (LoopRun, error) {
+	row := q.db.QueryRowContext(ctx, getRunBefore, arg.LoopID, arg.CreatedAtMs)
+	var i LoopRun
+	err := row.Scan(
+		&i.ID,
+		&i.LoopID,
+		&i.ThreadID,
+		&i.ScheduledForMs,
+		&i.StartedAtMs,
+		&i.FinishedAtMs,
+		&i.Status,
+		&i.Error,
+		&i.CreatedAtMs,
+		&i.Reason,
+		&i.Delivered,
 	)
 	return i, err
 }
@@ -210,7 +255,8 @@ SELECT
   status,
   error,
   created_at_ms,
-  reason
+  reason,
+  delivered
 FROM loop_runs
 WHERE loop_id = ?1
   AND status IN (?2, ?3)
@@ -243,6 +289,7 @@ func (q *Queries) ListActiveRunsForLoop(ctx context.Context, arg ListActiveRunsF
 			&i.Error,
 			&i.CreatedAtMs,
 			&i.Reason,
+			&i.Delivered,
 		); err != nil {
 			return nil, err
 		}
@@ -390,7 +437,8 @@ SELECT
   status,
   error,
   created_at_ms,
-  reason
+  reason,
+  delivered
 FROM loop_runs
 WHERE loop_id = ?1
 ORDER BY created_at_ms DESC
@@ -422,6 +470,7 @@ func (q *Queries) ListRunsByLoop(ctx context.Context, arg ListRunsByLoopParams) 
 			&i.Error,
 			&i.CreatedAtMs,
 			&i.Reason,
+			&i.Delivered,
 		); err != nil {
 			return nil, err
 		}
@@ -615,7 +664,8 @@ INSERT INTO loop_runs (
   status,
   error,
   created_at_ms,
-  reason
+  reason,
+  delivered
 ) VALUES (
   ?1,
   ?2,
@@ -626,7 +676,8 @@ INSERT INTO loop_runs (
   ?7,
   ?8,
   ?9,
-  ?10
+  ?10,
+  ?11
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -637,7 +688,8 @@ ON CONFLICT(id) DO UPDATE SET
   status = excluded.status,
   error = excluded.error,
   created_at_ms = excluded.created_at_ms,
-  reason = excluded.reason
+  reason = excluded.reason,
+  delivered = excluded.delivered
 `
 
 type UpsertRunParams struct {
@@ -651,6 +703,7 @@ type UpsertRunParams struct {
 	Error          sql.NullString `json:"error"`
 	CreatedAtMs    int64          `json:"created_at_ms"`
 	Reason         string         `json:"reason"`
+	Delivered      int64          `json:"delivered"`
 }
 
 func (q *Queries) UpsertRun(ctx context.Context, arg UpsertRunParams) error {
@@ -665,6 +718,7 @@ func (q *Queries) UpsertRun(ctx context.Context, arg UpsertRunParams) error {
 		arg.Error,
 		arg.CreatedAtMs,
 		arg.Reason,
+		arg.Delivered,
 	)
 	return err
 }

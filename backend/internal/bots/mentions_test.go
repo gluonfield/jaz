@@ -50,7 +50,7 @@ func TestGroupMentionsLinkToTheirBot(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := service.post(record, sessionevents.RoomMessageEvent{Speaker: "bot", BotID: "a", Name: "Researcher", Text: tc.text}); err != nil {
+			if err := service.post(record, sessionevents.RoomMessageEvent{Speaker: "bot", BotID: "a", Name: "Researcher", Text: tc.text}, false); err != nil {
 				t.Fatal(err)
 			}
 			world.settle(t)

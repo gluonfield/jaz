@@ -11,19 +11,15 @@ func TestRunSystemPromptUsesFreshRunMetadataOnly(t *testing.T) {
 	memoryPath := filepath.Join(t.TempDir(), "memory.md")
 	runAt := time.Date(2026, 6, 8, 9, 30, 0, 0, time.UTC)
 	loop := Loop{
-		ID:              "loop-1",
-		Name:            "Morning check",
-		Prompt:          "Check overnight alerts.",
-		MemoryPath:      memoryPath,
-		LastRunID:       "run-prev",
-		LastRunThreadID: "thread-prev",
-		LastRunStatus:   RunStatusOK,
-		LastRunAt:       runAt.Add(-24 * time.Hour),
+		ID:         "loop-1",
+		Name:       "Morning check",
+		Prompt:     "Check overnight alerts.",
+		MemoryPath: memoryPath,
 	}
 	prompt := RunSystemPrompt(loop, Run{
 		ID:           "run-now",
 		ScheduledFor: runAt,
-	}, runAt)
+	}, Run{ID: "run-prev", ThreadID: "thread-prev", Status: RunStatusOK, FinishedAt: runAt.Add(-24 * time.Hour)}, runAt)
 
 	for _, want := range []string{
 		"Loop: Morning check (loop-1)",
@@ -55,7 +51,7 @@ func TestRunSystemPromptPutsExtrasAfterRules(t *testing.T) {
 		Name:       "Morning check",
 		Prompt:     "Check overnight alerts.",
 		MemoryPath: "/tmp/jaz/automations/morning-check/memory.md",
-	}, Run{ID: "run-now", ScheduledFor: runAt}, runAt,
+	}, Run{ID: "run-now", ScheduledFor: runAt}, Run{}, runAt,
 		"## Widget\n\n- publish the widget",
 	)
 

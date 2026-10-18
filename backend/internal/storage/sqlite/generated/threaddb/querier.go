@@ -30,8 +30,10 @@ type Querier interface {
 	ListSessionSubtree(ctx context.Context, id string) ([]string, error)
 	ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error)
 	LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error)
+	MarkTurnShown(ctx context.Context, id string) error
 	ReplaceRuntimeSessionID(ctx context.Context, arg ReplaceRuntimeSessionIDParams) (int64, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
+	ResetTurnHops(ctx context.Context, id string) error
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error

@@ -169,7 +169,8 @@ INSERT INTO loop_runs (
   status,
   error,
   created_at_ms,
-  reason
+  reason,
+  delivered
 ) VALUES (
   sqlc.arg(id),
   sqlc.arg(loop_id),
@@ -180,7 +181,8 @@ INSERT INTO loop_runs (
   sqlc.arg(status),
   sqlc.narg(error),
   sqlc.arg(created_at_ms),
-  sqlc.arg(reason)
+  sqlc.arg(reason),
+  sqlc.arg(delivered)
 )
 ON CONFLICT(id) DO UPDATE SET
   loop_id = excluded.loop_id,
@@ -191,7 +193,8 @@ ON CONFLICT(id) DO UPDATE SET
   status = excluded.status,
   error = excluded.error,
   created_at_ms = excluded.created_at_ms,
-  reason = excluded.reason;
+  reason = excluded.reason,
+  delivered = excluded.delivered;
 
 -- name: GetRun :one
 SELECT
@@ -204,7 +207,8 @@ SELECT
   status,
   error,
   created_at_ms,
-  reason
+  reason,
+  delivered
 FROM loop_runs
 WHERE id = sqlc.arg(id)
 LIMIT 1;
@@ -220,11 +224,30 @@ SELECT
   status,
   error,
   created_at_ms,
-  reason
+  reason,
+  delivered
 FROM loop_runs
 WHERE loop_id = sqlc.arg(loop_id)
 ORDER BY created_at_ms DESC
 LIMIT sqlc.arg(limit);
+
+-- name: GetRunBefore :one
+SELECT
+  id,
+  loop_id,
+  thread_id,
+  scheduled_for_ms,
+  started_at_ms,
+  finished_at_ms,
+  status,
+  error,
+  created_at_ms,
+  reason,
+  delivered
+FROM loop_runs
+WHERE loop_id = sqlc.arg(loop_id) AND created_at_ms < sqlc.arg(created_at_ms)
+ORDER BY created_at_ms DESC
+LIMIT 1;
 
 -- name: ListActiveRunsForLoop :many
 SELECT
@@ -237,7 +260,8 @@ SELECT
   status,
   error,
   created_at_ms,
-  reason
+  reason,
+  delivered
 FROM loop_runs
 WHERE loop_id = sqlc.arg(loop_id)
   AND status IN (sqlc.arg(starting_status), sqlc.arg(running_status))

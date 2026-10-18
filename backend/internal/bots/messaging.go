@@ -22,7 +22,8 @@ func (s *Service) AppVisible(threadID string) bool {
 // Message sends text from a thread to a bot or a group, named by id, mention
 // target or name. A bot answers in a turn of its own and the answer returns to
 // the sender as a new turn; a group gets the text as a post and its members
-// take their turns.
+// take their turns. Bots writing to each other without the user stop after
+// maxHops messages.
 func (s *Service) Message(fromThread, ref, text string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -36,15 +37,22 @@ func (s *Service) Message(fromThread, ref, text string) error {
 	if err != nil {
 		return err
 	}
+	hops := 1
+	if caller, err := s.store.LoadSession(fromThread); err == nil && caller.Turn != nil && caller.Turn.Output != nil {
+		hops += caller.Turn.Output.Hops
+	}
+	if hops > maxHops {
+		return fmt.Errorf("not sent: bots have written to each other %d times since the user last wrote, which is the limit; finish with what you have", maxHops)
+	}
 	from, sender := s.author(fromThread)
 	if target.Kind == KindGroup {
-		return s.post(target, sessionevents.RoomMessageEvent{Speaker: "bot", BotID: from, Name: sender, Text: text})
+		return s.post(target, sessionevents.RoomMessageEvent{Speaker: "bot", BotID: from, Name: sender, Text: text}, hops > 1)
 	}
 	if to == from {
 		return errors.New("a bot cannot message itself")
 	}
 	if err := s.queue.QueueInternalTurn(context.Background(), to, storage.QueuedMessage{
-		Text: messagePrompt(sender, text), Output: &storage.TurnOutput{ReplyTo: fromThread},
+		Text: messagePrompt(sender, text), Output: &storage.TurnOutput{ReplyTo: fromThread, Hops: hops},
 	}); err != nil {
 		return err
 	}
@@ -85,7 +93,7 @@ func (s *Service) Say(threadID, text string) error {
 	if err != nil {
 		return err
 	}
-	return s.post(group, message)
+	return s.post(group, message, false)
 }
 
 // announce notes in a thread what woke its bot; the note is best-effort.
@@ -132,14 +140,12 @@ func (s *Service) resolve(ref string) (string, error) {
 	return "", fmt.Errorf("no bot or group named %q", ref)
 }
 
-// author is who a thread speaks as: a bot's own thread and its group threads
-// as the bot, any other thread as Jaz.
+// author is who a thread speaks as: the bot it belongs to, or else Jaz.
 func (s *Service) author(threadID string) (string, string) {
-	if membership, err := s.store.LoadMembershipByThread(threadID); err == nil {
-		threadID = membership.BotID
-	}
-	if _, session, err := s.load(threadID); err == nil {
-		return threadID, session.Title
+	if bot := s.BotOf(threadID); bot != "" {
+		if _, session, err := s.load(bot); err == nil {
+			return bot, session.Title
+		}
 	}
 	return threadID, "Jaz"
 }

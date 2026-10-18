@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/loops"
@@ -61,6 +63,15 @@ func (s *Store) LoadRun(id string) (loops.Run, error) {
 		return loops.Run{}, err
 	}
 	return runFromDB(row), nil
+}
+
+// RunBefore is the run of run's loop created before it, if any.
+func (s *Store) RunBefore(run loops.Run) (loops.Run, error) {
+	row, err := loopdb.New(s.db).GetRunBefore(context.Background(), loopdb.GetRunBeforeParams{LoopID: run.LoopID, CreatedAtMs: loopTimeToMs(run.CreatedAt)})
+	if errors.Is(err, sql.ErrNoRows) {
+		return loops.Run{}, nil
+	}
+	return runFromDB(row), err
 }
 
 func (s *Store) ListDueLoopIDs(now time.Time) ([]string, error) {
@@ -214,6 +225,7 @@ func upsertRun(ctx context.Context, q *loopdb.Queries, run loops.Run) error {
 		Error:          nullDBString(run.Error),
 		CreatedAtMs:    loopTimeToMs(run.CreatedAt),
 		Reason:         run.Reason,
+		Delivered:      boolInt(run.Delivered),
 	})
 }
 
@@ -278,6 +290,7 @@ func runFromDB(row loopdb.LoopRun) loops.Run {
 		Error:        row.Error.String,
 		CreatedAt:    msToTime(row.CreatedAtMs),
 		Reason:       row.Reason,
+		Delivered:    row.Delivered != 0,
 	}
 }
 

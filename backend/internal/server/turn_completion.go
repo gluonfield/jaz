@@ -40,17 +40,21 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 				deliveries = append(deliveries, storage.TurnDelivery{SessionID: parent.ID, Message: storage.NewInternalQueuedMessage(acp.CompletionPrompt(job))})
 			}
 		}
-		if output := session.Turn.Output; output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
+		output := session.Turn.Output
+		if output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
 			reply := bots.ReplyPrompt
 			if output.Run != "" {
 				reply = loops.Report
 			}
-			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: storage.NewInternalQueuedMessage(reply(session.Title, strings.Join(output.Replies, "\n\n")))})
+			// The answer continues the exchange between bots that led to it.
+			message := storage.NewInternalQueuedMessage(reply(session.Title, strings.Join(output.Replies, "\n\n")))
+			message.Output = &storage.TurnOutput{Hops: output.Hops}
+			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: message})
 		}
 		// The run closes before its turn does; a restart in between finds the
 		// run closed and only finishes the turn's bookkeeping.
 		if run := loopRun(session); run != "" && err == nil {
-			err = s.Loops.Finish(run, LoopRunStatus(job.State), job.Error)
+			err = s.Loops.Finish(run, LoopRunStatus(job.State), job.Error, output != nil && (output.Shown || len(output.Replies) > 0))
 		}
 		if err == nil {
 			err = s.Store.FinishSessionTurn(job.ID, status, job.Error, time.Now().UTC(), deliveries)

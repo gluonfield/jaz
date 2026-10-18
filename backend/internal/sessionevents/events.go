@@ -264,6 +264,12 @@ func (e *Event) NormalizePayload() {
 	}
 }
 
+// Delivers reports whether e shows the user something its thread's turn
+// produced: a bot's chat message or an app view Jaz presented.
+func (e Event) Delivers() bool {
+	return e.RoomMessage != nil && e.RoomMessage.Speaker == "bot" || e.MCPApp != nil && e.MCPApp.Presented
+}
+
 func (e Event) StorageContent() string {
 	switch e.Type {
 	case TypeVoiceMessage:

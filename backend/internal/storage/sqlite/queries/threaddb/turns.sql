@@ -21,6 +21,17 @@ SET turn = json_set(turn, '$.output.replies', json_insert(COALESCE(json_extract(
 WHERE id = sqlc.arg(id) AND status = 'running'
   AND json_extract(NULLIF(turn, ''), '$.output.reply_to') IS NOT NULL;
 
+-- name: MarkTurnShown :exec
+UPDATE threads
+SET turn = json_set(turn, '$.output.shown', json('true'))
+WHERE id = sqlc.arg(id) AND status = 'running'
+  AND json_type(NULLIF(turn, ''), '$.output') = 'object';
+
+-- name: ResetTurnHops :exec
+UPDATE threads
+SET turn = json_remove(turn, '$.output.hops')
+WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
+
 -- name: FinishSessionTurn :execrows
 UPDATE threads
 SET status = sqlc.arg(status), turn = '', error = sqlc.narg(error),

@@ -298,6 +298,10 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments); err != nil {
 			return nil, errors.Join(fmt.Errorf("append user message: %w", err), m.store.SetTurnIntent(job.ID, previous.GoalRequested, previous.ParentVisible, previous.NotifyParent))
 		}
+		// The user writing ends the bot-to-bot exchange the turn was part of.
+		if err := m.store.ResetTurnHops(job.ID); err != nil {
+			m.log.Warn("reset turn hops", "session", job.ID, "error", err)
+		}
 	}
 	job.turn.goalRequested = turn.GoalRequested
 	if req.ParentVisible {

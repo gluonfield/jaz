@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -94,5 +95,52 @@ func TestTurnIntentUpdateKeepsRepliesWrittenAfterSnapshot(t *testing.T) {
 	after, err := store.LoadSession(session.ID)
 	if err != nil || !after.Turn.GoalRequested || len(after.Turn.Output.Replies) != 1 {
 		t.Fatalf("intent update lost reply: %+v, %v", after.Turn, err)
+	}
+}
+
+func TestWhatATurnShowsInItsChatMarksItsOutputShown(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Slug: "bot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shown := func(events ...sessionevents.Event) bool {
+		t.Helper()
+		if err := store.StartSessionTurn(session.ID, storage.Turn{Output: &storage.TurnOutput{Run: "run-1"}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.AppendSessionEvents(session.ID, events...); err != nil {
+			t.Fatal(err)
+		}
+		stored, err := store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stored.Turn.Output.Shown
+	}
+	app := func(presented bool) sessionevents.Event {
+		return sessionevents.Event{Type: sessionevents.TypeMCPApp, MCPApp: &sessionevents.MCPAppEvent{ServerID: "tasks", Tool: "show_issues", Presented: presented, Result: []byte(`{}`)}}
+	}
+	message := func(speaker string) sessionevents.Event {
+		return sessionevents.Event{Type: sessionevents.TypeRoomMessage, RoomMessage: &sessionevents.RoomMessageEvent{Speaker: speaker, Name: speaker, Text: "hi"}}
+	}
+	if shown(app(false), message("user")) {
+		t.Fatal("an app result Jaz did not present, or the user's message, marked the turn shown")
+	}
+	if !shown(app(true)) || !shown(message("bot")) {
+		t.Fatal("a presented app or the bot's message left the turn unshown")
+	}
+	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendSessionEvents(session.ID, message("bot")); err != nil {
+		t.Fatal(err)
+	}
+	if stored, err := store.LoadSession(session.ID); err != nil || stored.Turn.Output != nil {
+		t.Fatalf("a turn without output = %+v, %v", stored.Turn, err)
 	}
 }

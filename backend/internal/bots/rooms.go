@@ -20,6 +20,9 @@ const (
 	// maxFollowUps bounds how many members' posts reach the others between two
 	// posts from the user, so bots answering each other cannot run on.
 	maxFollowUps = 12
+	// maxHops bounds how many messages bots send each other directly before
+	// the user writes again.
+	maxHops = 6
 	// steerTimeout bounds how long handing messages to a running turn waits.
 	steerTimeout = time.Minute
 )
@@ -42,21 +45,22 @@ func (s *Service) Post(groupID, text string, attachmentIDs []string) error {
 	if text == "" && len(attachments) == 0 {
 		return errors.New("message is required")
 	}
-	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text, Attachments: attachments})
+	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text, Attachments: attachments}, false)
 }
 
 // post records a message in a group and hands it to the other members it
 // mentions or, when it mentions none, to every other member, which decides for
 // itself whether to answer. The rest see it with the next post that reaches
-// them.
-func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessageEvent) error {
+// them. A post bots writing to each other led to spends a follow-up like a
+// member's.
+func (s *Service) post(group storage.BotRecord, message sessionevents.RoomMessageEvent, chained bool) error {
 	text, mentioned := s.linkMentions(message.Text, group.Members)
 	message.Text = text
 	mentioned = slices.DeleteFunc(mentioned, func(member string) bool { return member == message.BotID })
 	if err := appendEvent(s.store, s.events, sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}); err != nil {
 		return err
 	}
-	if !s.admit(group.ThreadID, slices.Contains(group.Members, message.BotID)) {
+	if !s.admit(group.ThreadID, chained || slices.Contains(group.Members, message.BotID)) {
 		return nil
 	}
 	for _, member := range group.Members {

@@ -81,7 +81,9 @@ func TestAQuietChildRunLeavesItsBotAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	jaz.waitRun(run.ID, loops.RunStatusOK)
+	if jaz.waitRun(run.ID, loops.RunStatusOK).Delivered {
+		t.Fatal("a quiet run delivered")
+	}
 	talking := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox until released", BotID: bot.ID})
 	run, err = jaz.loops.RunNow(jaz.ctx, talking.ID)
 	if err != nil {
@@ -89,7 +91,9 @@ func TestAQuietChildRunLeavesItsBotAlone(t *testing.T) {
 	}
 	jaz.say(run.ID, "Two new emails.")
 	jaz.release()
-	jaz.waitRun(run.ID, loops.RunStatusOK)
+	if !jaz.waitRun(run.ID, loops.RunStatusOK).Delivered {
+		t.Fatal("a run that reported to its bot did not deliver")
+	}
 	jaz.eventually("the talking run's report", func() bool { return len(jaz.reports()) == 1 })
 	if prompts := jaz.prompts(); len(prompts) != 3 || !strings.Contains(prompts[2], "[routine] Inbox") {
 		t.Fatalf("prompts = %q, want two runs and one report to the bot", prompts)

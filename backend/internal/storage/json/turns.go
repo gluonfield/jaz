@@ -47,6 +47,17 @@ func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyPar
 	return s.saveSession(session)
 }
 
+func (s *Store) ResetTurnHops(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil || session.Status != storage.StatusRunning || session.Turn == nil || session.Turn.Output == nil {
+		return err
+	}
+	session.Turn.Output.Hops = 0
+	return s.saveSession(session)
+}
+
 func (s *Store) FinishSessionTurn(id, status, errorMessage string, at time.Time, deliveries []storage.TurnDelivery) error {
 	if len(deliveries) > 0 {
 		return fmt.Errorf("JSON storage does not support atomic turn delivery")
