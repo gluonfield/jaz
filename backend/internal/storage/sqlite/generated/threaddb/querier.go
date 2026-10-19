@@ -32,6 +32,9 @@ type Querier interface {
 	ListOverviewChildren(ctx context.Context, parentID sql.NullString) ([]ListOverviewChildrenRow, error)
 	ListSessionSubtree(ctx context.Context, id string) ([]string, error)
 	ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error)
+	// A thread's own children are the threads it started: unsourced ones, or a
+	// bot's work started by a thread other than the bot. A bot's own subtasks,
+	// routine runs and memory searches are not.
 	LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error)
 	MarkTurnShown(ctx context.Context, id string) error
 	ReplaceRuntimeSessionID(ctx context.Context, arg ReplaceRuntimeSessionIDParams) (int64, error)

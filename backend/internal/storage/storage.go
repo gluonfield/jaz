@@ -163,6 +163,18 @@ type Session struct {
 	Unread       bool   `json:"unread,omitempty"`
 }
 
+// Owner is the thread a thread works for: the bot whose subtask, group seat
+// or routine run it is, or else itself.
+func (s Session) Owner() string {
+	switch s.SourceType {
+	case SourceBotWorker, SourceBotMember:
+		return s.SourceID
+	case SourceLoopRun:
+		return s.ParentID
+	}
+	return s.ID
+}
+
 type Turn struct {
 	StartedAt       time.Time      `json:"started_at,omitzero"`
 	PlanRequested   bool           `json:"plan_requested,omitempty"`

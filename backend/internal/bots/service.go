@@ -345,24 +345,12 @@ func (s *Service) BotOf(threadID string) string {
 
 func botOf(store PromptStore, threadID string) string {
 	if session, err := store.LoadSession(threadID); err == nil {
-		threadID = owner(session)
+		threadID = session.Owner()
 	}
 	if isBot(store, threadID) {
 		return threadID
 	}
 	return ""
-}
-
-// owner is the thread a thread works for: the bot whose subtask, group seat
-// or routine run it is, or else itself.
-func owner(session storage.Session) string {
-	switch session.SourceType {
-	case storage.SourceBotWorker, storage.SourceBotMember:
-		return session.SourceID
-	case storage.SourceLoopRun:
-		return session.ParentID
-	}
-	return session.ID
 }
 
 // AdoptLoops gives every loop that has no owner and is not on a board a bot

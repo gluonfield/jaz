@@ -28,6 +28,9 @@ func (m *Manager) Start(ctx context.Context, req SpawnRequest, first storage.Que
 	if err := m.store.ClaimQueuedTurn(session, first); err != nil {
 		return Job{}, m.abandonSession(session, err)
 	}
+	if m.ThreadStarted != nil {
+		m.ThreadStarted(session, first.Text)
+	}
 	job := jobFromSession(session, session.RuntimeRef.Agent, "", session.RuntimeRef.Cwd, StateStarting)
 	go m.startClaimed(created, first)
 	return job, nil

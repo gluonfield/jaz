@@ -113,7 +113,7 @@ func TestSessionOverviewUsesRequiredIndexes(t *testing.T) {
 			query: `EXPLAIN QUERY PLAN
 SELECT id, slug, title, status, acp_agent, model, reasoning_effort, archived, updated_at_ms
 FROM threads
-WHERE parent_id = ? AND runtime = 'acp' AND COALESCE(source_type, '') = ''
+WHERE parent_id = ? AND runtime = 'acp' AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
 ORDER BY last_attention_at_ms DESC, id`,
 			arg: "parent", index: "idx_threads_overview_children",
 		},

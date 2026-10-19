@@ -119,7 +119,7 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 			return explain(err)
 		}
 		// A routine's thread reports to its bot; any other reply answers a bot.
-		if output.ReplyTo != owner(session) {
+		if output.ReplyTo != session.Owner() {
 			from, sender := author(s.store, threadID)
 			to, name := author(s.store, output.ReplyTo)
 			s.exchanged(from, sender, to, name, text)
@@ -163,7 +163,7 @@ func Answer(session storage.Session) *storage.TurnDelivery {
 	}
 	answer := strings.Join(output.Replies, "\n\n")
 	text := replyPrompt(session.Title, answer)
-	if output.ReplyTo == owner(session) {
+	if output.ReplyTo == session.Owner() {
 		text = loops.Report(session.Title, answer)
 	}
 	// The answer continues the exchange between bots that led to it.
