@@ -180,6 +180,12 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 	}
 }
 
+// KeepsStartPrompt reports whether agent keeps the prompt its thread started
+// with in provider history, whatever prompt a restored session is given.
+func KeepsStartPrompt(agent string) bool {
+	return agentPolicyForAgent(agent).promptPersistsOnRestore
+}
+
 func (p agentPolicy) usesModelConfigOption() bool {
 	return p.modelConfigID != ""
 }

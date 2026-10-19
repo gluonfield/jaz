@@ -157,7 +157,10 @@ type Session struct {
 	// CompletedTurnStartedAt when it started.
 	CompletedAt            time.Time `json:"completed_at,omitzero"`
 	CompletedTurnStartedAt time.Time `json:"completed_turn_started_at,omitzero"`
-	Unread                 bool      `json:"unread,omitempty"`
+	// PromptDigest identifies the version of the thread's own prompt its
+	// agent was shown, as of its last successful turn; empty when unknown.
+	PromptDigest string `json:"prompt_digest,omitempty"`
+	Unread       bool   `json:"unread,omitempty"`
 }
 
 type Turn struct {
@@ -174,6 +177,9 @@ type Turn struct {
 	// the exchange with another bot the parent was answering when it started
 	// this turn.
 	ParentOutput *TurnOutput `json:"parent_output,omitempty"`
+	// PromptDigest identifies the version of the thread's own prompt its
+	// agent holds once this turn has started.
+	PromptDigest string `json:"prompt_digest,omitempty"`
 }
 
 type TurnOutput struct {
