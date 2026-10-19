@@ -209,6 +209,9 @@ func TestAThreadWhoseAgentCannotStartTellsItsBot(t *testing.T) {
 	if jaz.promptsContaining("Audit the books") != 0 {
 		t.Fatal("the thread ran its task on a model its agent does not offer")
 	}
+	// Left as it is, the failed thread's commitment wakes the bot once and
+	// then stalls for the user.
+	jaz.settles(bot.ID, 1, 1)
 }
 
 func TestAMessageSentWhileAThreadStartsLeavesItsFirstPromptToRunFirst(t *testing.T) {

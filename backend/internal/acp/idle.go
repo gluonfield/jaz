@@ -109,13 +109,8 @@ func (j *jobState) release() {
 func (j *jobState) retire() bool {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if j.retired || j.turn != nil || j.finishing != nil || j.leases > 0 {
+	if j.retired || j.turn != nil || j.finishing != nil || j.leases > 0 || j.backgroundTaskLive() {
 		return false
-	}
-	for _, task := range j.backgroundTasks {
-		if taskLive(task) {
-			return false
-		}
 	}
 	j.retired = true
 	return true

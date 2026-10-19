@@ -380,10 +380,6 @@ func startServer(
 			if err := loopService.GuardAway(); err != nil {
 				logger.WithPrefix("loops").Error("away guard failed", "error", err)
 			}
-			// Before anything can start an agent again.
-			if err := store.ClearBackgroundWork(); err != nil {
-				return err
-			}
 			listener, err := net.Listen("tcp", srv.Addr)
 			if err != nil {
 				return err

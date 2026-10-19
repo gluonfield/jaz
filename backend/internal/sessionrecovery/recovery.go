@@ -28,6 +28,11 @@ var retryDelays = []time.Duration{2 * time.Second, 8 * time.Second}
 var resumeTimeout = 2 * time.Minute
 
 func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, locks *sessionlock.Locks, events *sessionevents.Bus, logger *log.Logger) error {
+	// No agent of the last process outlives it, so none of their background
+	// tasks still runs.
+	if err := store.ClearBackgroundWork(); err != nil {
+		return err
+	}
 	sessions, err := store.ListSessions(storage.SessionFilter{Runtime: storage.RuntimeACP, IncludeChildren: true, IncludeSourced: true})
 	if err != nil {
 		return err

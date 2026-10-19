@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
-	"slices"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
@@ -110,18 +108,29 @@ func taskLive(task sessionevents.AgentTask) bool {
 	return (task.State == "running" || task.State == "paused") && !task.ConnectionLost
 }
 
+// backgroundTaskLive reports whether the job's agent holds a live background
+// task; the caller holds job.mu.
+func (j *jobState) backgroundTaskLive() bool {
+	for _, task := range j.backgroundTasks {
+		if taskLive(task) {
+			return true
+		}
+	}
+	return false
+}
+
 // saveBackgroundWork saves whether the job's agent holds a live background
 // task, which keeps the thread working on what its bot owes, when that differs
-// from what job.backgroundWork says was saved last.
+// from what job.backgroundWork says was saved last. It writes under job.mu, so
+// two changes cannot land out of order.
 func (m *Manager) saveBackgroundWork(job *jobState) {
 	job.mu.Lock()
-	live := slices.ContainsFunc(slices.Collect(maps.Values(job.backgroundTasks)), taskLive)
-	changed := live != job.backgroundWork
-	job.backgroundWork = live
-	job.mu.Unlock()
-	if !changed {
+	defer job.mu.Unlock()
+	live := job.backgroundTaskLive()
+	if live == job.backgroundWork {
 		return
 	}
+	job.backgroundWork = live
 	if err := m.store.SetBackgroundWork(job.ID, live); err != nil {
 		m.log.Error("save background work", "session", job.ID, "error", err)
 	}

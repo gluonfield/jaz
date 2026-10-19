@@ -44,9 +44,6 @@ type jazProcess struct {
 
 func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root string, env map[string]string) *jazProcess {
 	t.Helper()
-	if err := store.ClearBackgroundWork(); err != nil {
-		t.Fatal(err)
-	}
 	env["JAZ_FAKE_ACP_RELEASE_FILE"] = filepath.Join(root, "release")
 	env["JAZ_FAKE_ACP_REQUEST_LOG"] = filepath.Join(root, "requests.jsonl")
 	env["JAZ_FAKE_ACP_TURN_LOG"] = filepath.Join(root, "turns.log")
