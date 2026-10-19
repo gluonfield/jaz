@@ -1,6 +1,25 @@
 package acp
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
+
+func (m *Manager) beginLaunch(ctx context.Context) (context.Context, func(), error) {
+	release, err := m.admit()
+	if err != nil {
+		return nil, nil, err
+	}
+	m.launches.Add(1)
+	release()
+	ctx, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(m.launchCtx, cancel)
+	return ctx, func() {
+		stop()
+		cancel()
+		m.launches.Done()
+	}, nil
+}
 
 // ErrClosed refuses new work while Jaz shuts down.
 var ErrClosed = errors.New("jaz is restarting; try again once it is back")

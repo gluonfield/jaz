@@ -2206,7 +2206,7 @@ func TestSpawnSessionDirectories(t *testing.T) {
 	}
 }
 
-func TestSpawnWorktree(t *testing.T) {
+func TestCreateSessionWorktree(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not available")
 	}
@@ -2241,31 +2241,22 @@ func TestSpawnWorktree(t *testing.T) {
 		}
 	}
 	manager := acp.NewManager(store, acp.Config{
-		Root:         t.TempDir(),
-		Workspace:    workspace,
-		SystemPrompt: cwdPrompt{},
+		Root:      t.TempDir(),
+		Workspace: workspace,
 		Agents: map[string]acp.AgentConfig{
-			"fake": {
-				Command: os.Args[0],
-				Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":                "1",
-					"JAZ_FAKE_ACP_EXPECT_CWD_IN_PROMPT": "1",
-				},
-			},
+			"fake": {},
 		},
 	}, log.New(io.Discard))
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
+	t.Cleanup(manager.Close)
+	ctx := t.Context()
 
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-task", Directory: "ink-backend", Worktree: true})
+	spawned, err := manager.CreateSession(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-task", Directory: "ink-backend", Worktree: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
 	want := filepath.Join(workspace, ".worktrees", spawned.Slug)
-	if spawned.Cwd != want {
-		t.Fatalf("cwd = %q, want %q", spawned.Cwd, want)
+	if spawned.RuntimeRef.Cwd != want {
+		t.Fatalf("cwd = %q, want %q", spawned.RuntimeRef.Cwd, want)
 	}
 	branch, err := exec.Command("git", "-C", want, "rev-parse", "--abbrev-ref", "HEAD").Output()
 	if err != nil {
@@ -2274,7 +2265,7 @@ func TestSpawnWorktree(t *testing.T) {
 	if got := strings.TrimSpace(string(branch)); got != "jaz/"+spawned.Slug {
 		t.Fatalf("worktree branch = %q", got)
 	}
-	session, err := store.LoadSession(spawned.SessionID)
+	session, err := store.LoadSession(spawned.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2286,16 +2277,15 @@ func TestSpawnWorktree(t *testing.T) {
 		t.Fatalf("worktree runtime ref = %#v, want cwd %q project %q", session.RuntimeRef, want, wantRepo)
 	}
 
-	branchSpawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-feature", Directory: "ink-backend", Worktree: true, Branch: "feature"})
+	branchSpawned, err := manager.CreateSession(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-feature", Directory: "ink-backend", Worktree: true, Branch: "feature"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), branchSpawned.SessionID) }()
-	branchBase, err := exec.Command("git", "-C", branchSpawned.Cwd, "merge-base", "HEAD", "feature").Output()
+	branchBase, err := exec.Command("git", "-C", branchSpawned.RuntimeRef.Cwd, "merge-base", "HEAD", "feature").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	featureHead, err := exec.Command("git", "-C", branchSpawned.Cwd, "rev-parse", "feature").Output()
+	featureHead, err := exec.Command("git", "-C", branchSpawned.RuntimeRef.Cwd, "rev-parse", "feature").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2304,7 +2294,7 @@ func TestSpawnWorktree(t *testing.T) {
 	}
 
 	// Worktree without a repository directory is an explicit error.
-	if _, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-bad", Directory: "not-a-repo", Worktree: true}); err == nil {
+	if _, err := manager.CreateSession(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-bad", Directory: "not-a-repo", Worktree: true}); err == nil {
 		t.Fatal("expected worktree on plain directory to fail")
 	}
 
@@ -2319,13 +2309,12 @@ func TestSpawnWorktree(t *testing.T) {
 			t.Fatalf("git workspace %v: %v: %s", args, err, out)
 		}
 	}
-	rootSpawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-root", Directory: ".", Worktree: true})
+	rootSpawned, err := manager.CreateSession(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "wt-root", Directory: ".", Worktree: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), rootSpawned.SessionID) }()
 	rootWant := filepath.Join(workspace, ".worktrees", rootSpawned.Slug)
-	session, err = store.LoadSession(rootSpawned.SessionID)
+	session, err = store.LoadSession(rootSpawned.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

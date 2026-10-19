@@ -42,12 +42,17 @@ func (m *Manager) Start(ctx context.Context, req SpawnRequest, first storage.Que
 // running one does, so whoever waits for it hears; one shutdown stops stays
 // claimed for the next start.
 func (m *Manager) startClaimed(created createdSession, first storage.QueuedMessage) {
+	ctx, finish, err := m.beginLaunch(context.Background())
+	if err != nil {
+		return
+	}
+	defer finish()
 	session := created.Session
 	unlock := m.resumeLocks.Lock(session.ID)
-	job, err := m.startSession(context.Background(), created, StateStarting)
+	job, err := m.startSession(ctx, created, StateStarting)
 	unlock()
 	if err == nil {
-		_, err = m.send(context.Background(), SendRequest{
+		_, err = m.send(ctx, SendRequest{
 			Session: session.ID, Message: first.Text, PlanRequested: first.PlanRequested, Completion: CompletionAsync,
 			ParentVisible: first.SentByAgent(), FromUser: !first.SentAt.IsZero(), ParentOutput: first.ParentOutput,
 		}, sendOptions{transcript: sendTranscriptUserMessage, claimed: true})

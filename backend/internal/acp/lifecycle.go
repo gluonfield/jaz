@@ -52,6 +52,8 @@ func (m *Manager) Close() {
 	m.admission.Lock()
 	m.closed = true
 	m.admission.Unlock()
+	m.stopLaunches()
+	m.launches.Wait()
 	m.mu.Lock()
 	processes := make([]*agentProcess, 0, len(m.processes))
 	for _, process := range m.processes {

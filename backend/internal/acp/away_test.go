@@ -144,7 +144,7 @@ func TestThreeDaysAwayHoldBotRoutinesButKeepRunningOnesAcrossARestart(t *testing
 
 func TestOnlyTheUsersNextWordsLetRoutinesRunAgain(t *testing.T) {
 	store, root := newTestStore(t)
-	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{"JAZ_FAKE_ACP_UNIQUE_SESSION": "1"})
 	bot := jaz.newBot("Gimli")
 	group, err := jaz.bots.CreateGroup("Crew", []string{bot.ID, jaz.newBot("Legolas").ID})
 	if err != nil {

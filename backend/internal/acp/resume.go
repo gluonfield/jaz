@@ -37,7 +37,17 @@ func (m *Manager) restart(ctx context.Context, stale *jobState) (*jobState, erro
 	return m.resumeLocked(ctx, stale.ID)
 }
 
-func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, error) {
+func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, err error) {
+	ctx, finish, err := m.beginLaunch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil && m.isClosed() {
+			err = ErrClosed
+		}
+		finish()
+	}()
 	if job, err := m.job(ref); err == nil {
 		return job, nil
 	}
