@@ -133,6 +133,7 @@ type jobState struct {
 	// a job whose process is being stopped as idle, which takes no more.
 	leases  int
 	retired bool
+	work    agentWork
 }
 
 type activeTurn struct {
@@ -160,6 +161,13 @@ type activeTurn struct {
 	retries         int
 	retrying        bool
 	providerRetried map[string]bool
+	// unsent counts the turn's prompt calls not yet sent, and prompts holds
+	// the ids of those sent whose responses the connection has not yet read.
+	unsent  int
+	prompts map[string]struct{}
+	// agentRun marks a turn that the agent began on its own while that run
+	// goes on: it ends with the agent's report, not a prompt response.
+	agentRun bool
 }
 
 type ModeState struct {
@@ -343,6 +351,10 @@ func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVis
 func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Turn) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	return j.beginTurnLocked(completion, stored).done
+}
+
+func (j *jobState) beginTurnLocked(completion CompletionMode, stored storage.Turn) *activeTurn {
 	now := time.Now().UTC()
 	if stored.StartedAt.IsZero() {
 		stored.StartedAt = now
@@ -377,6 +389,8 @@ func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Tur
 		allowSilence:    stored.AllowSilence,
 		goalRequested:   stored.GoalRequested,
 		retries:         stored.Retries,
+		unsent:          1,
+		prompts:         map[string]struct{}{},
 	}
 	j.ParentVisible = stored.ParentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)
@@ -384,7 +398,15 @@ func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Tur
 	j.UpdatedAt = now
 	j.LastEventAt = now
 	j.LastToolAt = time.Time{}
-	return j.turn.done
+	return j.turn
+}
+
+// endingLocked reports whether the job's turn is ending: every call it made
+// has been answered, and the turn has yet to finish. Work the agent reports
+// before then is the turn's: the Claude adapter holds a turn's answer until
+// the background subagents it started have reported.
+func (j *jobState) endingLocked() bool {
+	return j.finishing != nil || j.turn != nil && !j.turn.agentRun && j.turn.unsent == 0 && len(j.turn.prompts) == 0
 }
 
 func (j *jobState) discardTurnResult() {
@@ -593,6 +615,7 @@ func (t *activeTurn) waitToRetry(delay time.Duration) context.Context {
 	t.retries++
 	t.retrying = true
 	t.promptCalls = 1
+	t.unsent++
 	t.firstPromptSent, t.firstPromptSentClosed = make(chan struct{}), false
 	wait, cancel := context.WithTimeout(context.Background(), delay)
 	t.cancel = cancel

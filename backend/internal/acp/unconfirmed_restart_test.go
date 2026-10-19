@@ -26,7 +26,7 @@ import (
 func TestRestartInterruptsUnconfirmedPromptsAndContinuesConfirmedOnes(t *testing.T) {
 	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude} {
 		for _, kind := range []string{"worker", "user", "result"} {
-			for _, stage := range []string{"sending", "written", "legacy", "acted", "metadata", "confirming", "confirmed-chunk", "confirmed-thought", "confirmed-tool", "confirmed-plan"} {
+			for _, stage := range []string{"sending", "written", "legacy", "acted", "metadata", "confirming", "confirmed-chunk", "confirmed-thought", "confirmed-tool", "confirmed-plan", "confirmed-end-turn", "confirmed-cancelled", "confirmed-error", "confirmed-failure"} {
 				t.Run(agent+"/"+kind+"/"+stage, func(t *testing.T) {
 					root, id := crashedPrompt(t, agent, kind, stage)
 					store, err := sqlitestore.New(root)
@@ -39,6 +39,7 @@ func TestRestartInterruptsUnconfirmedPromptsAndContinuesConfirmedOnes(t *testing
 						t.Fatal(err)
 					}
 					confirmed := strings.HasPrefix(stage, "confirmed-")
+					continued := confirmed || stage == "legacy"
 					wantState := storage.PromptSending
 					if confirmed {
 						wantState = storage.PromptConfirmed
@@ -64,10 +65,10 @@ func TestRestartInterruptsUnconfirmedPromptsAndContinuesConfirmedOnes(t *testing
 							t.Fatal(err)
 						}
 					}
-					if confirmed {
+					if continued {
 						job, err := manager.Wait(ctx, acp.WaitRequest{Session: string(id)})
 						if err != nil || job.State != acp.StateIdle {
-							t.Fatalf("confirmed turn did not continue: %+v, %v", job, err)
+							t.Fatalf("eligible turn did not continue: %+v, %v", job, err)
 						}
 					}
 					thread, err := store.LoadSession(string(id))
@@ -75,7 +76,7 @@ func TestRestartInterruptsUnconfirmedPromptsAndContinuesConfirmedOnes(t *testing
 						t.Fatal(err)
 					}
 					wantStatus, wantError := storage.StatusError, storage.ErrPromptUnconfirmed.Error()
-					if confirmed {
+					if continued {
 						wantStatus, wantError = storage.StatusIdle, ""
 					}
 					if thread.Status != wantStatus || thread.Error != wantError || thread.Turn != nil {
@@ -122,18 +123,18 @@ func TestRestartInterruptsUnconfirmedPromptsAndContinuesConfirmedOnes(t *testing
 							continue
 						}
 						calls++
-						if !confirmed || len(request.Params.Prompt) != 1 || request.Params.Prompt[0].Text != "Continue from where you left off." {
+						if !continued || len(request.Params.Prompt) != 1 || request.Params.Prompt[0].Text != "Continue from where you left off." {
 							t.Fatalf("unconfirmed task was sent again, or confirmation changed: %s", line)
 						}
 					}
 					wantCalls := 0
-					if confirmed {
+					if continued {
 						wantCalls = 1
 					}
 					if calls != wantCalls {
 						t.Fatalf("recovery sent %d task prompts, want %d", calls, wantCalls)
 					}
-					if kind == "worker" && !confirmed && (strings.Count(string(requests), storage.ErrPromptUnconfirmed.Error()) != 1 || !strings.Contains(string(requests), "state interrupted")) {
+					if kind == "worker" && !continued && (strings.Count(string(requests), storage.ErrPromptUnconfirmed.Error()) != 1 || !strings.Contains(string(requests), "state interrupted")) {
 						t.Fatalf("parent missed interrupted result or received it twice: %s", requests)
 					}
 					messages, err := store.LoadMessageRecords(thread.ID)

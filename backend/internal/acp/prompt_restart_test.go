@@ -94,7 +94,13 @@ func TestPromptRestartProcess(t *testing.T) {
 		} else if stage == "metadata" {
 			env["JAZ_FAKE_ACP_FIRST_UPDATE"] = "metadata"
 		} else if strings.HasPrefix(stage, "confirmed-") {
-			env["JAZ_FAKE_ACP_FIRST_UPDATE"] = strings.TrimPrefix(stage, "confirmed-")
+			first := strings.TrimPrefix(stage, "confirmed-")
+			switch first {
+			case "end-turn", "cancelled", "error", "failure":
+				env["JAZ_FAKE_ACP_PROMPT_RESPONSE"] = first
+			default:
+				env["JAZ_FAKE_ACP_FIRST_UPDATE"] = first
+			}
 		}
 	}
 	env["JAZ_FAKE_ACP_UNIQUE_SESSION"] = "cwd"

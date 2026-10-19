@@ -17,8 +17,8 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 		return err
 	}
 	unsent := session.Turn != nil && session.Turn.Prompt != nil && session.Turn.Prompt.State == ""
-	if !unsent && (session.Turn == nil || session.Turn.ActiveOperation != ActiveOperationCompact &&
-		(session.Turn.Prompt == nil || session.Turn.Prompt.State != storage.PromptConfirmed)) {
+	if session.Turn != nil && session.Turn.ActiveOperation != ActiveOperationCompact &&
+		session.Turn.Prompt != nil && session.Turn.Prompt.State == storage.PromptSending {
 		return storage.ErrPromptUnconfirmed
 	}
 	if session.RuntimeRef == nil || (session.RuntimeRef.SessionID == "" && !unsent && !m.configuredLocal(session.RuntimeRef.Agent)) {
@@ -39,6 +39,7 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 		}
 		opts.allowSilence = session.Turn.AllowSilence
 		opts.output = session.Turn.Output
+		opts.owes = session.Turn.Owes
 		req.ParentOutput = session.Turn.ParentOutput
 		opts.retries = session.Turn.Retries
 		if unsent {

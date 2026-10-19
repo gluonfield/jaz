@@ -169,24 +169,28 @@ func (s *Service) TurnEnding(job acp.Job) {
 	}
 }
 
-// Answer is the delivery of the answer a finished turn gave the bot it
-// answers, if any: a routine run's report when a thread answers the bot it
-// works for, or else a reply, which a bot's own chat takes back for its user
-// when the bot it answers is gone.
-func Answer(session storage.Session) *storage.TurnDelivery {
+// Answer is the delivery of the answer a finished turn gave the bot it owes,
+// if any: a routine run's report when a thread answers the bot it works for,
+// or else a reply, which a bot's own chat takes back for its user when the bot
+// it answers is gone. The turn's own output holds the replies, and the
+// commitments they deliver to the bot it answers.
+func Answer(session storage.Session, to storage.Recipient) *storage.TurnDelivery {
 	output := session.Turn.Output
-	if output == nil || output.ReplyTo == "" || len(output.Replies) == 0 {
+	if output == nil || len(output.Replies) == 0 {
 		return nil
 	}
 	answer := strings.Join(output.Replies, "\n\n")
 	text := replyPrompt(session.Title, answer)
-	if output.ReplyTo == session.Owner() {
+	if to.ReplyTo == session.Owner() {
 		text = loops.Report(session.Title, answer)
 	}
 	// The answer continues the exchange between bots that led to it.
 	message := storage.NewInternalQueuedMessage(text)
-	message.Output = &storage.TurnOutput{Hops: output.Hops}
-	delivery := &storage.TurnDelivery{SessionID: output.ReplyTo, Message: message, Closes: output.Done}
+	message.Output = &storage.TurnOutput{Hops: to.Hops}
+	delivery := &storage.TurnDelivery{SessionID: to.ReplyTo, Message: message}
+	if to.ReplyTo == output.ReplyTo {
+		delivery.Closes = output.Done
+	}
 	if session.SourceType == storage.SourceBot {
 		undelivered := storage.NewInternalQueuedMessage("[undelivered] The bot you answered is gone, so your answer never reached it:\n\n" + answer + "\n\nPass on to the user, with send_message, what of it matters to them.")
 		delivery.Fallback = &undelivered

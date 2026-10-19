@@ -54,12 +54,12 @@ func (q *Queries) AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams
 	return result.RowsAffected()
 }
 
-const claimQueuedTurn = `-- name: ClaimQueuedTurn :exec
+const claimQueuedTurn = `-- name: ClaimQueuedTurn :execrows
 UPDATE threads
 SET status = 'running', error = NULL, turn = ?1,
     queued_messages = ?2, title = ?3,
     updated_at_ms = ?4, last_attention_at_ms = ?4
-WHERE id = ?5
+WHERE id = ?5 AND status <> 'running'
 `
 
 type ClaimQueuedTurnParams struct {
@@ -70,15 +70,42 @@ type ClaimQueuedTurnParams struct {
 	ID             string         `json:"id"`
 }
 
-func (q *Queries) ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) error {
-	_, err := q.db.ExecContext(ctx, claimQueuedTurn,
+func (q *Queries) ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, claimQueuedTurn,
 		arg.Turn,
 		arg.QueuedMessages,
 		arg.Title,
 		arg.StartedAtMs,
 		arg.ID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const claimTurn = `-- name: ClaimTurn :execrows
+UPDATE threads
+SET status = 'running',
+    error = NULL,
+    turn = ?1,
+    updated_at_ms = ?2,
+    last_attention_at_ms = ?2
+WHERE id = ?3 AND status <> 'running'
+`
+
+type ClaimTurnParams struct {
+	Turn        string `json:"turn"`
+	StartedAtMs int64  `json:"started_at_ms"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) ClaimTurn(ctx context.Context, arg ClaimTurnParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, claimTurn, arg.Turn, arg.StartedAtMs, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const finishSessionTurn = `-- name: FinishSessionTurn :execrows
@@ -118,6 +145,17 @@ func (q *Queries) FinishSessionTurn(ctx context.Context, arg FinishSessionTurnPa
 	return result.RowsAffected()
 }
 
+const getRunningTurn = `-- name: GetRunningTurn :one
+SELECT turn FROM threads WHERE id = ?1 AND status = 'running' AND turn <> ''
+`
+
+func (q *Queries) GetRunningTurn(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getRunningTurn, id)
+	var turn string
+	err := row.Scan(&turn)
+	return turn, err
+}
+
 const markTurnShown = `-- name: MarkTurnShown :exec
 UPDATE threads
 SET turn = json_set(turn, '$.output.shown', json('true'))
@@ -138,6 +176,20 @@ WHERE id = ?1 AND status = 'running' AND turn <> ''
 
 func (q *Queries) ResetTurnHops(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, resetTurnHops, id)
+	return err
+}
+
+const setRunningTurn = `-- name: SetRunningTurn :exec
+UPDATE threads SET turn = ?1 WHERE id = ?2 AND status = 'running' AND turn <> ''
+`
+
+type SetRunningTurnParams struct {
+	Turn string `json:"turn"`
+	ID   string `json:"id"`
+}
+
+func (q *Queries) SetRunningTurn(ctx context.Context, arg SetRunningTurnParams) error {
+	_, err := q.db.ExecContext(ctx, setRunningTurn, arg.Turn, arg.ID)
 	return err
 }
 

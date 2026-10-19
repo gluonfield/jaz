@@ -2,7 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -44,6 +46,54 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...stora
 		}
 	}
 	return err
+}
+
+// ClaimTurn starts turn on the thread unless another turn holds it, and
+// reports whether it started it.
+func (s *Store) ClaimTurn(id string, turn storage.Turn) (bool, error) {
+	turn.StartedAt = time.Now().UTC()
+	s.writeMu.Lock()
+	started, err := threaddb.New(s.db).ClaimTurn(context.Background(), threaddb.ClaimTurnParams{
+		ID: id, Turn: sessionTurnJSON(&turn), StartedAtMs: timeToMs(turn.StartedAt),
+	})
+	s.writeMu.Unlock()
+	if err != nil || started == 0 {
+		return false, err
+	}
+	if current, loadErr := s.LoadSession(id); loadErr == nil {
+		s.mirrorSession(current)
+	}
+	return true, nil
+}
+
+// OweTurn has the thread's running turn, if any, also owe whom owed owes
+// (see storage.Turn.Owing).
+func (s *Store) OweTurn(id string, owed storage.Turn) error {
+	ctx := context.Background()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := threaddb.New(tx)
+	raw, err := q.GetRunningTurn(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	running, err := parseSessionTurn(raw)
+	if err != nil {
+		return err
+	}
+	turn := running.Owing(owed)
+	if err := q.SetRunningTurn(ctx, threaddb.SetRunningTurnParams{ID: id, Turn: sessionTurnJSON(&turn)}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SetTurnPromptState(id, agentSessionID string, startedAt time.Time, state storage.PromptState) error {
@@ -127,10 +177,14 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 	now := time.Now().UTC()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return threaddb.New(s.db).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
+	claimed, err := threaddb.New(s.db).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
 		ID: session.ID, QueuedMessages: queue, Title: nullDBString(session.Title),
 		Turn: sessionTurnJSON(prompt.Turn(now)), StartedAtMs: timeToMs(now),
 	})
+	if err == nil && claimed == 0 {
+		return storage.ErrThreadRunning
+	}
+	return err
 }
 
 func (s *Store) FinishSessionTurn(id, status, errorMessage string, at time.Time, deliveries []storage.TurnDelivery) error {
