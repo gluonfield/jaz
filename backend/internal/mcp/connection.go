@@ -132,12 +132,13 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 		}
 	}
 	data, err := json.Marshal(struct {
-		URL     string
-		Headers []mcpconfig.Header
-		OAuth   mcpconfig.OAuthConfig
-		Token   integrationoauth.Token
-		TokenID string
-	}{server.URL, headers, server.OAuth, token, server.TokenID()})
+		Transport string
+		URL       string
+		Headers   []mcpconfig.Header
+		OAuth     mcpconfig.OAuthConfig
+		Token     integrationoauth.Token
+		TokenID   string
+	}{server.Transport, server.URL, headers, server.OAuth, token, server.TokenID()})
 	return sha256.Sum256(data), err
 }
 
@@ -168,7 +169,6 @@ func (c *serverConnection) loadCatalog(ctx context.Context, server mcpconfig.Ser
 			serverName: server.Name,
 			remoteName: tool.Name,
 			connection: c,
-			local:      c.localSession != nil,
 			spec:       spec,
 		})
 	}

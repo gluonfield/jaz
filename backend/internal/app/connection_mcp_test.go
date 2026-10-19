@@ -31,6 +31,11 @@ func (f fakeConnectionTokenStore) LoadToken(_ context.Context, id string) (integ
 	return token, ok, nil
 }
 
+func (f fakeConnectionTokenStore) SaveToken(_ context.Context, id string, token integrationoauth.Token) error {
+	f.tokens[id] = token
+	return nil
+}
+
 func connectionReader(store fakeConnectionTokenStore) connectionMCPServerReader {
 	return connectionMCPServerReader{store: store, catalog: connections.NewCatalog()}
 }

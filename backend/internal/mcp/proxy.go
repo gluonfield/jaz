@@ -72,7 +72,7 @@ func (m *Manager) updateProxyLocked() {
 	changed := false
 	for _, session := range m.sessions {
 		for _, tool := range session.tools {
-			if tool.local {
+			if tool.builtin {
 				continue
 			}
 			name := tools.DefinitionName(tool.definition)

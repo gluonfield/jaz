@@ -54,6 +54,7 @@ type Plugin struct {
 	Tools           []PluginTool      `json:"tools,omitempty"`
 	Skills          []PluginSkill     `json:"skills,omitempty"`
 	RemoteMCP       *RemoteMCP        `json:"remote_mcp,omitempty"`
+	LocalMCP        bool              `json:"local_mcp,omitempty"`
 	ConnectionNotes []string          `json:"connection_notes,omitempty"`
 	Implementation  Implementation    `json:"implementation"`
 	Connection      *PluginConnection `json:"connection,omitempty"`
@@ -111,6 +112,9 @@ func (p Plugin) Available() bool {
 }
 
 func (p Plugin) UsesConnectionMCP() bool {
+	if p.LocalMCP {
+		return true
+	}
 	if p.RemoteMCP == nil {
 		return false
 	}
