@@ -117,13 +117,13 @@ function standing(owed: BotOwed, threads: BotOwedThread[]): string {
 
 // threadsState says how far the threads serving a commitment have got.
 function threadsState(threads: BotOwedThread[]): string {
-  if (threads.some((thread) => thread.state === 'working')) return 'Working'
+  if (threads.some((thread) => thread.state === 'working' || thread.state === 'background')) return 'Working'
   if (threads.some((thread) => thread.state === 'failed')) return 'A thread failed'
   if (threads.some((thread) => thread.state === 'finished')) return 'Result in'
   return ''
 }
 
-const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
+const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', background: 'Working in the background', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
 
 // OwedModal shows a commitment with no single thread to open: its next step
 // and the threads serving it.
@@ -138,7 +138,7 @@ function OwedModal({ owed, onClose }: { owed: BotOwed; onClose: () => void }) {
               <li key={thread.id}>
                 <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} onClick={onClose} className="-mx-2 flex items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-list-hover">
                   <span className="truncate font-medium">{thread.title}</span>
-                  <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
+                  <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
                 </Link>
               </li>
             ))}

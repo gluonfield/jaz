@@ -60,7 +60,7 @@ type Owed struct {
 }
 
 // OwedThread is a thread serving a commitment and how far it has got:
-// working, finished, failed, idle or gone.
+// working, background, finished, failed, idle or gone.
 type OwedThread struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`

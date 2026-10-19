@@ -71,6 +71,15 @@ func (q *Queries) AdvanceTranscriptRevision(ctx context.Context, id string) erro
 	return err
 }
 
+const clearBackgroundWork = `-- name: ClearBackgroundWork :exec
+UPDATE threads SET background_work = 0 WHERE background_work <> 0
+`
+
+func (q *Queries) ClearBackgroundWork(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearBackgroundWork)
+	return err
+}
+
 const completeSession = `-- name: CompleteSession :exec
 UPDATE threads
 SET
@@ -95,7 +104,7 @@ func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended FROM threads
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
 `
@@ -149,6 +158,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.CompletedTurnStartedAtMs,
 		&i.PromptDigest,
 		&i.TurnsEnded,
+		&i.BackgroundWork,
 	)
 	return i, err
 }
@@ -230,7 +240,7 @@ func (q *Queries) IsMainBot(ctx context.Context, threadID string) (bool, error) 
 }
 
 const listChildSessions = `-- name: ListChildSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work
 FROM threads
 WHERE parent_id = ?1
   AND archived = ?2
@@ -332,6 +342,7 @@ func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsPa
 			&i.CompletedTurnStartedAtMs,
 			&i.PromptDigest,
 			&i.TurnsEnded,
+			&i.BackgroundWork,
 		); err != nil {
 			return nil, err
 		}
@@ -474,7 +485,7 @@ func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, 
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest, turns_ended, background_work
 FROM threads
 WHERE archived = ?1
   AND (?2 OR parent_id IS NULL OR parent_id = '')
@@ -585,6 +596,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]T
 			&i.CompletedTurnStartedAtMs,
 			&i.PromptDigest,
 			&i.TurnsEnded,
+			&i.BackgroundWork,
 		); err != nil {
 			return nil, err
 		}
@@ -778,6 +790,20 @@ func (q *Queries) SetArchived(ctx context.Context, arg SetArchivedParams) error 
 		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
 	}
 	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
+const setBackgroundWork = `-- name: SetBackgroundWork :exec
+UPDATE threads SET background_work = ?1 WHERE id = ?2
+`
+
+type SetBackgroundWorkParams struct {
+	Live int64  `json:"live"`
+	ID   string `json:"id"`
+}
+
+func (q *Queries) SetBackgroundWork(ctx context.Context, arg SetBackgroundWorkParams) error {
+	_, err := q.db.ExecContext(ctx, setBackgroundWork, arg.Live, arg.ID)
 	return err
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
@@ -76,6 +78,7 @@ func (m *Manager) applyBackgroundTask(job *jobState, raw json.RawMessage) bool {
 	job.backgroundTasks[task.ID] = task
 	job.mu.Unlock()
 	m.publishBackgroundTask(job, task)
+	m.saveBackgroundWork(job)
 	return true
 }
 
@@ -100,10 +103,28 @@ func (m *Manager) disconnectBackgroundTasks(job *jobState) {
 	for _, task := range changed {
 		m.publishBackgroundTask(job, task)
 	}
+	m.saveBackgroundWork(job)
 }
 
 func taskLive(task sessionevents.AgentTask) bool {
 	return (task.State == "running" || task.State == "paused") && !task.ConnectionLost
+}
+
+// saveBackgroundWork saves whether the job's agent holds a live background
+// task, which keeps the thread working on what its bot owes, when that differs
+// from what job.backgroundWork says was saved last.
+func (m *Manager) saveBackgroundWork(job *jobState) {
+	job.mu.Lock()
+	live := slices.ContainsFunc(slices.Collect(maps.Values(job.backgroundTasks)), taskLive)
+	changed := live != job.backgroundWork
+	job.backgroundWork = live
+	job.mu.Unlock()
+	if !changed {
+		return
+	}
+	if err := m.store.SetBackgroundWork(job.ID, live); err != nil {
+		m.log.Error("save background work", "session", job.ID, "error", err)
+	}
 }
 
 func (m *Manager) StopBackgroundTask(ctx context.Context, session, taskID string) error {

@@ -77,6 +77,9 @@ type Commitment struct {
 	// Waiting is what an open one waits on, if anything: WaitingRequester or
 	// WaitingOutside.
 	Waiting string
+	// Moving is set while one of its threads works on it, in a turn or in
+	// the background.
+	Moving bool
 	// Stalled is set once the user has been told nothing moves on it, until
 	// something does.
 	Stalled  bool
@@ -88,7 +91,8 @@ type Commitment struct {
 }
 
 // CommitmentThread is a thread serving a commitment and how far it has got:
-// working, finished, failed, idle or gone.
+// working, background (its turn ended while its agent runs a background
+// task), finished, failed, idle or gone.
 type CommitmentThread struct {
 	ID    string
 	Slug  string

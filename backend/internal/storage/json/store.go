@@ -393,6 +393,12 @@ func (s *Store) CompleteSession(id string, completedAt time.Time) error {
 	return s.saveSession(session)
 }
 
+// SetBackgroundWork keeps nothing: only commitments, which JSON storage does
+// not keep, read it.
+func (s *Store) SetBackgroundWork(string, bool) error {
+	return nil
+}
+
 func (s *Store) SetThreadUnread(id string, unread bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -181,7 +180,7 @@ func standing(commitment storage.Commitment, requester string) string {
 		return " · waiting on " + requester
 	case commitment.Waiting == storage.WaitingOutside:
 		return " · waiting on an outside job"
-	case slices.ContainsFunc(commitment.Threads, func(thread storage.CommitmentThread) bool { return thread.State == "working" }):
+	case commitment.Moving:
 		return ""
 	case commitment.Stalled:
 		return " · stalled: nothing moved after Jaz reminded you, and the user was told"

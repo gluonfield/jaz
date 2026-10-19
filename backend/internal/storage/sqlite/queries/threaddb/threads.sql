@@ -327,6 +327,12 @@ SET
   last_attention_at_ms = sqlc.arg(last_attention_at_ms)
 WHERE id = sqlc.arg(id);
 
+-- name: SetBackgroundWork :exec
+UPDATE threads SET background_work = sqlc.arg(live) WHERE id = sqlc.arg(id);
+
+-- name: ClearBackgroundWork :exec
+UPDATE threads SET background_work = 0 WHERE background_work <> 0;
+
 -- name: SetThreadUnread :exec
 UPDATE threads
 SET unread = sqlc.arg(unread)

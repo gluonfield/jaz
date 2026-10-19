@@ -219,6 +219,13 @@ func TestAStalledCommitmentWakesItsBotOnceThenStallsForTheUserAcrossARestart(t *
 	runs(thread.ID)
 	wakes(false, "its thread runs")
 	ends(thread.ID)
+	if err := store.SetBackgroundWork(thread.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	wakes(false, "its thread works in the background")
+	if err := store.ClearBackgroundWork(); err != nil {
+		t.Fatal(err)
+	}
 	runs(bot.ID)
 	wakes(false, "its bot is taking a turn")
 	ends(bot.ID)

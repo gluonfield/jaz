@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -198,9 +197,13 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	if err != nil {
 		return nil, err
 	}
-	stalled, err := q.ListStalledCommitments(ctx, ids)
+	motions, err := q.ListCommitmentMotion(ctx, ids)
 	if err != nil {
 		return nil, err
+	}
+	motion := map[int64]botdb.ListCommitmentMotionRow{}
+	for _, row := range motions {
+		motion[row.ID] = row
 	}
 	threads := map[int64][]storage.CommitmentThread{}
 	for _, link := range links {
@@ -210,7 +213,7 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	for _, row := range rows {
 		commitments = append(commitments, storage.Commitment{
 			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, Waiting: row.Waiting,
-			Stalled: slices.Contains(stalled, row.ID), Status: row.Status,
+			Moving: motion[row.ID].Moving != 0, Stalled: motion[row.ID].Stalled != 0, Status: row.Status,
 			OpenedAt: msToTime(row.OpenedAtMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
 		})
 	}

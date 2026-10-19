@@ -59,6 +59,7 @@ type Store interface {
 	UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error)
 	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)
 	TouchSessionAttention(string) error
+	SetBackgroundWork(id string, live bool) error
 	storage.SessionTranscriptReader
 	storage.MessageAppender
 	storage.SessionEventStore

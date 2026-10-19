@@ -800,7 +800,7 @@ export interface BotOwed {
 export interface BotOwedThread {
   id: string
   title: string
-  state: 'working' | 'finished' | 'failed' | 'idle' | 'gone'
+  state: 'working' | 'background' | 'finished' | 'failed' | 'idle' | 'gone'
 }
 
 export type BotFileName = 'AGENTS.md' | 'MEMORY.md'

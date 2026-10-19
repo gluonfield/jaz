@@ -118,3 +118,43 @@ func TestACommitmentThatStalledWhileJazWasDownWakesItsBotAtStartup(t *testing.T)
 	jaz = jaz.restart(nil)
 	jaz.settles(bot.ID, 1, 1)
 }
+
+func TestABotIsNotWokenWhileItsThreadWorksInTheBackground(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.newBot("Gimli")
+	jaz.busy(bot.ID)
+	id, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{Request: "Run the login suites"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The thread's turn ends while the suites it started still run.
+	_, thread, err := acp.NewMCPTools(jaz.manager).Create(jaz.ctx, callAs(bot.ID), acp.MCPCreateInput{Slug: "suites", Prompt: "Run the login suites: task suites=running", Commitment: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jaz.release()
+	jaz.idle(thread.ThreadID)
+	jaz.settles(bot.ID, 0, 0)
+	if commitment := jaz.commitment(id); !commitment.Moving || commitment.Threads[0].State != "background" {
+		t.Fatalf("commitment = %+v, want its thread working in the background", commitment)
+	}
+
+	// The suites finish in a turn of the thread's.
+	jaz.write(thread.ThreadID, "The suites finished: task suites=completed")
+	jaz.settles(bot.ID, 1, 1)
+
+	// Background work does not outlive its agent, so the stall it hid is new.
+	jaz.write(thread.ThreadID, "Run them once more: task again=running")
+	jaz.settles(bot.ID, 1, 1)
+	jaz.manager.Close()
+	if commitment := jaz.commitment(id); commitment.Moving {
+		t.Fatalf("commitment = %+v, want a stopped agent's background work gone", commitment)
+	}
+	// A server that dies with its agents leaves the mark for the next one.
+	if err := store.SetBackgroundWork(thread.ThreadID, true); err != nil {
+		t.Fatal(err)
+	}
+	jaz = jaz.restart(nil)
+	jaz.settles(bot.ID, 2, 2)
+}

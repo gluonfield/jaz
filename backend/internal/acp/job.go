@@ -111,6 +111,7 @@ type jobState struct {
 	agentSession           sessionevents.AgentSession
 	suggestedPrompt        string
 	backgroundTasks        map[string]sessionevents.AgentTask
+	backgroundWork         bool
 	steerMethod            steerMethod
 	turn                   *activeTurn
 	finishing              chan struct{}

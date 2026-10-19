@@ -20,6 +20,7 @@ export async function exerciseBotPanel(): Promise<void> {
     { id: 5, request: 'Overnight stress run', waiting: 'outside', opened_at: minutes(70) },
     { id: 2, request: 'Pause prompt suggestions on hidden turns', waiting: 'requester', next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
     { id: 1, request: 'Capacity test with 20 threads', opened_at: minutes(60 * 4), threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
+    { id: 7, request: 'Run the login suites', opened_at: minutes(25), threads: [{ id: 'side-i', title: 'Login suites', state: 'background' }, { id: 'side-j', title: 'Login fix', state: 'finished' }] },
   ]
   const activity: BotActivity[] = [
     { kind: 'commitment', at: minutes(20), title: 'Calmer bot faces', status: 'done', thread_id: 'side-d' },
@@ -193,6 +194,10 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Capacity test with 20 threads')
     await until('a commitment with several threads did not list them', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Capacity harnessFinished|Capacity runFailed')
     await capture('bot-panel-commitment')
+    await click('Close')
+    await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
+    await click('Run the login suites')
+    await until('a thread working in the background did not show as working', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Login suitesWorking in the background|Login fixFinished' && (document.querySelector('[role="dialog"]')?.textContent?.includes('For you · Working') ?? false))
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     if (!text().includes('Reviewer')) {

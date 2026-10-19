@@ -60,12 +60,15 @@ WHERE c.id = sqlc.arg(commitment_id) AND c.bot_id = sqlc.arg(bot_id) AND c.statu
 -- A thread started for a commitment is what it waits on now.
 UPDATE bot_commitments SET waiting = '' WHERE id = ?;
 
--- name: ListStalledCommitments :many
--- Commitments the user was told stalled, while nothing moves on them, waits on
--- anything or has got further since.
-SELECT c.id FROM bot_commitments c
+-- name: ListCommitmentMotion :many
+-- Whether a thread moves each open commitment on, and whether the user was
+-- told it stalled while nothing moves on it, waits on anything or has got
+-- further since.
+SELECT c.id, CAST(p.moving AS INTEGER) AS moving,
+  CAST(c.waiting = '' AND NOT p.moving AND c.watch = 'stalled:' || p.progress AS INTEGER) AS stalled
+FROM bot_commitments c
 JOIN bot_commitment_progress p ON p.commitment_id = c.id
-WHERE c.id IN (sqlc.slice(ids)) AND c.waiting = '' AND NOT p.moving AND c.watch = 'stalled:' || p.progress;
+WHERE c.id IN (sqlc.slice(ids));
 
 -- name: WakeStalled :many
 -- Records that the bot is woken about each of its commitments that nothing

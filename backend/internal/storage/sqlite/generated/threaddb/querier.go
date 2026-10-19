@@ -15,6 +15,7 @@ type Querier interface {
 	AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnParams) (int64, error)
 	AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error)
 	ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) error
+	ClearBackgroundWork(ctx context.Context) error
 	CompleteSession(ctx context.Context, arg CompleteSessionParams) error
 	// A compact brings the user nothing new to read.
 	FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error)
@@ -38,6 +39,7 @@ type Querier interface {
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
 	ResetTurnHops(ctx context.Context, id string) error
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
+	SetBackgroundWork(ctx context.Context, arg SetBackgroundWorkParams) error
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error

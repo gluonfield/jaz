@@ -568,6 +568,22 @@ func (s *Store) TouchSessionAttention(id string) error {
 }
 
 // Scoped to the thread, not cascaded to children like SetArchived/SetPinned.
+// SetBackgroundWork records whether a thread's agent holds a live background
+// task.
+func (s *Store) SetBackgroundWork(id string, live bool) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return threaddb.New(s.db).SetBackgroundWork(context.Background(), threaddb.SetBackgroundWorkParams{Live: boolInt(live), ID: id})
+}
+
+// ClearBackgroundWork forgets the background tasks of agents a previous server
+// launched, none of which outlives it.
+func (s *Store) ClearBackgroundWork() error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return threaddb.New(s.db).ClearBackgroundWork(context.Background())
+}
+
 func (s *Store) SetThreadUnread(id string, unread bool) error {
 	s.writeMu.Lock()
 	err := threaddb.New(s.db).SetThreadUnread(context.Background(), threaddb.SetThreadUnreadParams{

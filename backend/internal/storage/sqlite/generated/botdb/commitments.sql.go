@@ -214,6 +214,56 @@ func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommi
 	return items, nil
 }
 
+const listCommitmentMotion = `-- name: ListCommitmentMotion :many
+SELECT c.id, CAST(p.moving AS INTEGER) AS moving,
+  CAST(c.waiting = '' AND NOT p.moving AND c.watch = 'stalled:' || p.progress AS INTEGER) AS stalled
+FROM bot_commitments c
+JOIN bot_commitment_progress p ON p.commitment_id = c.id
+WHERE c.id IN (/*SLICE:ids*/?)
+`
+
+type ListCommitmentMotionRow struct {
+	ID      int64 `json:"id"`
+	Moving  int64 `json:"moving"`
+	Stalled int64 `json:"stalled"`
+}
+
+// Whether a thread moves each open commitment on, and whether the user was
+// told it stalled while nothing moves on it, waits on anything or has got
+// further since.
+func (q *Queries) ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error) {
+	query := listCommitmentMotion
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCommitmentMotionRow{}
+	for rows.Next() {
+		var i ListCommitmentMotionRow
+		if err := rows.Scan(&i.ID, &i.Moving, &i.Stalled); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCommitmentThreads = `-- name: ListCommitmentThreads :many
 SELECT commitment_id, thread_id, slug, title, state FROM bot_commitment_thread_states
 WHERE commitment_id IN (/*SLICE:ids*/?)
@@ -295,47 +345,6 @@ func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotC
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listStalledCommitments = `-- name: ListStalledCommitments :many
-SELECT c.id FROM bot_commitments c
-JOIN bot_commitment_progress p ON p.commitment_id = c.id
-WHERE c.id IN (/*SLICE:ids*/?) AND c.waiting = '' AND NOT p.moving AND c.watch = 'stalled:' || p.progress
-`
-
-// Commitments the user was told stalled, while nothing moves on them, waits on
-// anything or has got further since.
-func (q *Queries) ListStalledCommitments(ctx context.Context, ids []int64) ([]int64, error) {
-	query := listStalledCommitments
-	var queryParams []interface{}
-	if len(ids) > 0 {
-		for _, v := range ids {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
-	}
-	rows, err := q.db.QueryContext(ctx, query, queryParams...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

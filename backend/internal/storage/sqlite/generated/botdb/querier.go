@@ -27,12 +27,13 @@ type Querier interface {
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
 	ListBots(ctx context.Context) ([]Bot, error)
 	ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error)
+	// Whether a thread moves each open commitment on, and whether the user was
+	// told it stalled while nothing moves on it, waits on anything or has got
+	// further since.
+	ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error)
 	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)
 	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error)
-	// Commitments the user was told stalled, while nothing moves on them, waits on
-	// anything or has got further since.
-	ListStalledCommitments(ctx context.Context, ids []int64) ([]int64, error)
 	// Records that the user is told about each commitment that did not move after
 	// its bot was woken about it.
 	MarkStalled(ctx context.Context, botID string) ([]MarkStalledRow, error)
