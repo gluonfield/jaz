@@ -10,7 +10,7 @@ import { ApiError } from '@/lib/api/client'
 import type { Bot, BotFile, BotFileName } from '@/lib/api/types'
 import { BOT_FILE_LABELS } from '@/lib/bots'
 import { keys } from '@/lib/query/keys'
-import { markdownKit } from './markdownKit'
+import { markdownKit, savedMarkdown } from './markdownKit'
 
 type SaveState = 'saved' | 'saving' | 'conflict' | 'failed'
 
@@ -26,6 +26,7 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
   const label = BOT_FILE_LABELS[file.name]
   const queryClient = useQueryClient()
   const version = useRef(file.version)
+  const source = useRef(file.content)
   const edited = useRef(false)
   const saving = useRef<Promise<void>>(Promise.resolve())
   const timer = useRef(0)
@@ -39,8 +40,9 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
       edited.current = false
       setState('saving')
       try {
-        const saved = await saveBotFile(bot.id, file.name, view.current.getMarkdown(), version.current)
+        const saved = await saveBotFile(bot.id, file.name, savedMarkdown(view.current, source.current), version.current)
         version.current = saved.version
+        source.current = saved.content
         queryClient.setQueryData(keys.botFiles(bot.id), (files: BotFile[] | undefined) => files?.map((item) => (item.name === saved.name ? saved : item)))
         void queryClient.invalidateQueries({ queryKey: keys.botActivity(bot.id) })
         setState(edited.current ? 'saving' : 'saved')
@@ -74,6 +76,7 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
   const takeTheirs = async () => {
     const current = await latest()
     version.current = current.version
+    source.current = current.content
     edited.current = false
     editor?.commands.setContent(current.content, { contentType: 'markdown', emitUpdate: false })
     setState('saved')
