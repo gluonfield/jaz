@@ -385,22 +385,22 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
 // options.
-func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+func (m *Manager) sessionMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy, sourceType string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
 	meta, err := m.sessionPromptMeta(ctx, agent, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 	if err != nil {
 		return nil, err
 	}
-	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg), nil
+	return agentPolicyForAgent(agent).mergeSessionMeta(meta, cfg, sourceType), nil
 }
 
 // An adapter that persists the system prompt in provider history must not
 // receive it again when restoring a session. Restore still carries non-prompt options.
-func (m *Manager) sessionRestoreMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
+func (m *Manager) sessionRestoreMeta(ctx context.Context, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy, sourceType string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
 	policy := agentPolicyForAgent(agent)
 	if policy.promptPersistsOnRestore {
-		return policy.mergeSessionMeta(nil, cfg), nil
+		return policy.mergeSessionMeta(nil, cfg, sourceType), nil
 	}
-	return m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+	return m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, mcpServerPolicy, sourceType, systemPromptExtensions)
 }
 
 func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]any, error) {
@@ -450,8 +450,8 @@ func withSignInHint(err error) error {
 	return err
 }
 
-func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {
-	meta, err := m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy, sourceType string, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {
+	meta, err := m.sessionMeta(ctx, agent, cfg, cwd, artifactSurface, mcpServerPolicy, sourceType, systemPromptExtensions)
 	if err != nil {
 		return acpSessionInfo{}, err
 	}
@@ -557,7 +557,7 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 		return nil, err
 	}
 	mcpRevision := m.mcpRevision()
-	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
+	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, session.SourceType, req.SystemPromptExtensions)
 	if err != nil {
 		ac.close()
 		return nil, err

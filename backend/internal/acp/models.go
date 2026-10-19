@@ -77,6 +77,7 @@ type agentPolicy struct {
 	effortOptions           []ReasoningEffortOption
 	ultracodeSetting        bool
 	systemPromptAppendMeta  bool
+	promptSuggestions       bool
 }
 
 var baseReasoningEffortOptions = []ReasoningEffortOption{
@@ -125,6 +126,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			resolvesContextTag:   true,
 			effortOptions:        claudeReasoningEffortOptions,
 			ultracodeSetting:     true,
+			promptSuggestions:    true,
 		}
 	case AgentCodex:
 		return agentPolicy{
@@ -254,12 +256,20 @@ func (p agentPolicy) sessionConfigEffort(value string) string {
 	return effort
 }
 
-func (p agentPolicy) mergeSessionMeta(meta map[string]any, cfg AgentConfig) map[string]any {
+// mergeSessionMeta adds the agent options a session of sourceType starts with.
+// Sessions nobody writes to disable Claude's optional prompt prediction request.
+func (p agentPolicy) mergeSessionMeta(meta map[string]any, cfg AgentConfig, sourceType string) map[string]any {
 	if model := configuredSessionModel(cfg.ProviderQualifiedModel()); p.modelMetaKey != "" && model != "" {
 		if meta == nil {
 			meta = map[string]any{}
 		}
 		meta[p.modelMetaKey] = model
+	}
+	if p.promptSuggestions && !watchedSourceType(sourceType) {
+		if meta == nil {
+			meta = map[string]any{}
+		}
+		nestedMap(nestedMap(meta, "claudeCode"), "options")["promptSuggestions"] = false
 	}
 	normalized, err := p.normalizeReasoningEffort(cfg.ReasoningEffort)
 	if err != nil || !p.ultracodeSetting || normalized != claudeReasoningEffortUltracode {

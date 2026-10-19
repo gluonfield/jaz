@@ -213,7 +213,7 @@ func TestCodexSystemPromptIsNotDuplicatedInSessionMeta(t *testing.T) {
 
 func TestSessionMetaSendsGrokModelWithRules(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("jaz platform prompt")}}
-	got, err := manager.sessionMeta(context.Background(), AgentGrok, AgentConfig{Model: "grok-4.6"}, "", "", "", nil)
+	got, err := manager.sessionMeta(context.Background(), AgentGrok, AgentConfig{Model: "grok-4.6"}, "", "", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

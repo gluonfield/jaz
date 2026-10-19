@@ -193,7 +193,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		if restoreMethod == "" {
 			return "", ModeState{}, false, fmt.Errorf("agent %q cannot restore stored session %s", agentName, storedID)
 		}
-		meta, err := m.sessionRestoreMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
+		meta, err := m.sessionRestoreMeta(ctx, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, session.SourceType, systemPromptExtensions)
 		if err != nil {
 			return "", ModeState{}, false, err
 		}
@@ -229,7 +229,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 		}
 		m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
 	}
-	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, systemPromptExtensions)
+	acpSession, err := m.newACPSession(ctx, ac, agentName, cfg, cwd, session.RuntimeRef.ArtifactSurface, mcpServerPolicy, session.SourceType, systemPromptExtensions)
 	if err != nil {
 		return "", ModeState{}, false, err
 	}
