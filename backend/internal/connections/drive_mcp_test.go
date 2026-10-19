@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,7 +23,7 @@ import (
 )
 
 func TestDriveMCPUploadsContentSourcesAndConvertsNativeFiles(t *testing.T) {
-	data := bytes.Repeat([]byte{0, 255, 23, 42}, 800000)
+	data := bytes.Repeat([]byte{0, 255, 23, 42}, 1600000)
 	file := filepath.Join(t.TempDir(), "report.pdf")
 	if err := os.WriteFile(file, data, 0600); err != nil {
 		t.Fatal(err)
@@ -37,45 +35,52 @@ func TestDriveMCPUploadsContentSourcesAndConvertsNativeFiles(t *testing.T) {
 		case "/drive/v3/about":
 			_, _ = io.WriteString(w, `{"importFormats":{"text/plain":["application/vnd.google-apps.document"]}}`)
 		case "/upload/drive/v3/files":
-			_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			reader := multipart.NewReader(r.Body, params["boundary"])
-			part, err := reader.NextPart()
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			var metadata struct {
-				Name     string   `json:"name"`
-				MIMEType string   `json:"mimeType"`
-				Parents  []string `json:"parents"`
-			}
-			if err := json.NewDecoder(part).Decode(&metadata); err != nil {
-				t.Error(err)
-			}
-			part, err = reader.NextPart()
-			if err != nil {
-				t.Error(err)
-				return
-			}
-			content, err := io.ReadAll(part)
-			if err != nil {
-				t.Error(err)
-			}
-			if metadata.Name == "empty" {
-				if len(content) != 0 || metadata.MIMEType != "application/vnd.google-apps.document" {
-					t.Errorf("empty native conversion: %d bytes, %q", len(content), metadata.MIMEType)
+			if r.Method == http.MethodPost {
+				var metadata struct {
+					Name     string   `json:"name"`
+					MIMEType string   `json:"mimeType"`
+					Parents  []string `json:"parents"`
 				}
-			} else if !bytes.Equal(content, data) || metadata.MIMEType != "application/pdf" {
-				t.Errorf("binary upload mismatch: %d bytes, %q", len(content), metadata.MIMEType)
+				if err := json.NewDecoder(r.Body).Decode(&metadata); err != nil {
+					t.Error(err)
+					http.Error(w, "invalid upload metadata", http.StatusBadRequest)
+					return
+				}
+				wantType := "application/pdf"
+				if metadata.Name == "empty" {
+					wantType = "application/vnd.google-apps.document"
+				}
+				if r.URL.Query().Get("uploadType") != "resumable" || metadata.MIMEType != wantType || len(metadata.Parents) != 1 || metadata.Parents[0] != "shared-folder" || r.URL.Query().Get("supportsAllDrives") != "true" {
+					t.Errorf("upload initialization = %+v, %v", metadata, r.URL)
+				}
+				wantSource, wantSize := "application/pdf", fmt.Sprint(len(data))
+				if metadata.Name == "empty" {
+					wantSource, wantSize = "text/plain", "0"
+				}
+				if r.Header.Get("X-Upload-Content-Type") != wantSource || r.Header.Get("X-Upload-Content-Length") != wantSize {
+					t.Errorf("upload session lost its source type or size: %v", r.Header)
+				}
+				w.Header().Set("Location", "https://www.googleapis.com/upload/drive/v3/files?upload_id="+url.QueryEscape(metadata.Name))
+				return
 			}
-			if len(metadata.Parents) != 1 || metadata.Parents[0] != "shared-folder" || r.URL.Query().Get("supportsAllDrives") != "true" {
-				t.Errorf("shared-drive upload = %+v, %v", metadata, r.URL)
+			content, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Error(err)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]string{"id": "uploaded", "name": metadata.Name, "mimeType": metadata.MIMEType})
+			name := r.URL.Query().Get("upload_id")
+			mimeType := "application/pdf"
+			if name == "empty" {
+				mimeType = "application/vnd.google-apps.document"
+				if len(content) != 0 || r.Header.Get("Content-Type") != "text/plain" {
+					t.Errorf("empty native conversion: %d bytes, %q", len(content), r.Header.Get("Content-Type"))
+				}
+			} else if !bytes.Equal(content, data) || r.Header.Get("Content-Type") != "application/pdf" {
+				t.Errorf("binary upload mismatch: %d bytes, %q", len(content), r.Header.Get("Content-Type"))
+			}
+			if r.Method != http.MethodPut || r.ContentLength != int64(len(content)) {
+				t.Errorf("upload body = %s, length %d, actual %d", r.Method, r.ContentLength, len(content))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"id": "uploaded", "name": name, "mimeType": mimeType})
 		case "/drive/v3/files":
 			var metadata map[string]any
 			if err := json.NewDecoder(r.Body).Decode(&metadata); err != nil {
@@ -157,6 +162,25 @@ func TestDriveMCPDownloadReturnsOriginalBinaryAndExportType(t *testing.T) {
 	saved, err = os.ReadFile(destination)
 	if err != nil || !bytes.Equal(saved, data) {
 		t.Fatal("existing destination was modified")
+	}
+}
+
+func TestDriveMCPFailedDownloadRemovesPartialFile(t *testing.T) {
+	session := driveTestSession(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("alt") == "media" {
+			w.Header().Set("Content-Length", "100")
+			_, _ = io.WriteString(w, "partial")
+			return
+		}
+		_, _ = io.WriteString(w, `{"id":"pdf","mimeType":"application/pdf"}`)
+	})
+	destination := filepath.Join(t.TempDir(), "incomplete.pdf")
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "download_file_content", Arguments: map[string]any{"fileId": "pdf", "filePath": destination}})
+	if err != nil || !result.IsError {
+		t.Fatalf("interrupted download must fail: %+v, %v", result, err)
+	}
+	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+		t.Fatalf("partial download remains at the destination: %v", err)
 	}
 }
 

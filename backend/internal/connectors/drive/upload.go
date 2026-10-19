@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"net/url"
+	"strconv"
 )
 
 type fileMetadata struct {
@@ -19,7 +18,7 @@ type fileMetadata struct {
 	Parents  []string `json:"parents,omitempty"`
 }
 
-func (c APIClient) Create(ctx context.Context, input CreateInput, content io.Reader) (File, error) {
+func (c APIClient) Create(ctx context.Context, input CreateInput, content io.ReadSeeker) (File, error) {
 	if input.Title == "" {
 		return File{}, fmt.Errorf("title is required")
 	}
@@ -65,26 +64,44 @@ func (c APIClient) Create(ctx context.Context, input CreateInput, content io.Rea
 			}
 		}
 	}
-	var envelope bytes.Buffer
-	writer := multipart.NewWriter(&envelope)
-	part, err := writer.CreatePart(textproto.MIMEHeader{"Content-Type": {"application/json; charset=UTF-8"}})
+	size, err := content.Seek(0, io.SeekEnd)
 	if err != nil {
 		return File{}, err
 	}
-	if err := json.NewEncoder(part).Encode(metadata); err != nil {
+	if _, err := content.Seek(0, io.SeekStart); err != nil {
 		return File{}, err
 	}
-	if _, err := writer.CreatePart(textproto.MIMEHeader{"Content-Type": {contentType}}); err != nil {
+	data, err := json.Marshal(metadata)
+	if err != nil {
 		return File{}, err
 	}
-	split := envelope.Len()
-	if err := writer.Close(); err != nil {
-		return File{}, err
-	}
-	body := io.MultiReader(bytes.NewReader(envelope.Bytes()[:split]), content, bytes.NewReader(envelope.Bytes()[split:]))
 	q := fileQuery()
-	q.Set("uploadType", "multipart")
-	resp, err := c.request(ctx, http.MethodPost, "/upload/drive/v3/files", q, body, "multipart/related; boundary="+writer.Boundary())
+	q.Set("uploadType", "resumable")
+	req, err := c.newRequest(ctx, http.MethodPost, "/upload/drive/v3/files", q, bytes.NewReader(data), "application/json")
+	if err != nil {
+		return File{}, err
+	}
+	req.Header.Set("X-Upload-Content-Type", contentType)
+	req.Header.Set("X-Upload-Content-Length", strconv.FormatInt(size, 10))
+	resp, err := c.do(req)
+	if err != nil {
+		return File{}, err
+	}
+	location, err := resp.Location()
+	resp.Body.Close()
+	if err != nil || location.User != nil || location.Scheme != req.URL.Scheme || location.Host != req.URL.Host {
+		return File{}, fmt.Errorf("Google Drive returned an invalid upload location")
+	}
+	req, err = http.NewRequestWithContext(ctx, http.MethodPut, location.String(), content)
+	if err != nil {
+		return File{}, err
+	}
+	req.ContentLength = size
+	if size == 0 {
+		req.Body = http.NoBody
+	}
+	req.Header.Set("Content-Type", contentType)
+	resp, err = c.do(req)
 	if err != nil {
 		return File{}, err
 	}
