@@ -401,6 +401,10 @@ func (fakeThreads) AwaitsAnswer(string) bool {
 	return false
 }
 
+func (fakeThreads) Thinking(string) bool {
+	return false
+}
+
 func newTestService(world *fakeWorld) *Service {
 	world.service = NewService(world, "/bots", fakeThreads{world: world}, fakeThreads{world: world}, world, world, world, log.New(nil))
 	return world.service

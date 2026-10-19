@@ -49,6 +49,9 @@ type Bot struct {
 	// Waiting is set while the bot's thread holds a question or plan decision
 	// for the user.
 	Waiting bool `json:"waiting,omitempty"`
+	// Thinking is set while the bot's turn is under way and has called no tool
+	// yet.
+	Thinking bool `json:"thinking,omitempty"`
 	// Away is set while the bot's routines wait for the user to come back.
 	Away bool `json:"away,omitempty"`
 	// The bot's context fill as its agent last reported it; the fill is
@@ -88,6 +91,7 @@ type Threads interface {
 	SwitchAgent(ctx context.Context, sessionID, agent string) error
 	SetModel(ctx context.Context, sessionID, model, effort string) error
 	AwaitsAnswer(sessionID string) bool
+	Thinking(sessionID string) bool
 }
 
 type TurnQueue interface {

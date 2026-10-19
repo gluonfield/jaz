@@ -24,14 +24,14 @@ export const BOT_COLORS: Record<BotColor, string> = {
 // What a bot's face acts out. Waiting on the person wins over working, and a
 // working or failed bot shows that even while its routines wait for the
 // person to come back.
-export type BotMood = 'idle' | 'working' | 'waiting' | 'failed' | 'away'
+export type BotMood = 'idle' | 'thinking' | 'working' | 'waiting' | 'failed' | 'away'
 
-export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'working' | 'away'>): BotMood {
+export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'working' | 'away'>): BotMood {
   if (bot.waiting) {
     return 'waiting'
   }
   if (bot.status === 'running' || bot.working?.length) {
-    return 'working'
+    return bot.thinking ? 'thinking' : 'working'
   }
   if (bot.status === 'error') {
     return 'failed'

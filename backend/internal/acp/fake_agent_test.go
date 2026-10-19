@@ -495,6 +495,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"update":    map[string]any{"sessionUpdate": "usage_update", "used": used, "size": size},
 				})
 			}
+			// The agent reasons, calling no tool, while a hold file exists.
+			fakeHold(os.Getenv("JAZ_FAKE_ACP_THINK_HOLD"))
 			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
 				// The turn works until the test creates the release file, then
 				// ends as usual.

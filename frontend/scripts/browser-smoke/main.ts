@@ -270,6 +270,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     const screenshot = await window.webContents.capturePage()
     await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, name + '.png'), screenshot.toPNG())
   })
+  ipcMain.handle('smoke:reduced-motion', (_event, reduce: boolean) => window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduce ? 'reduce' : 'no-preference' }] }))
   ipcMain.handle('smoke:resize', (_event, width: number, height: number) => {
     window.setContentSize(width, height)
   })
