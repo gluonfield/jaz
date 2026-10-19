@@ -282,7 +282,7 @@ func (c *agentConn) withProcessStderr(err error) error {
 	return withProcessStderr(err, c.stderr)
 }
 
-func (c *agentConn) trackPromptSends(job *jobState, onFirst func()) {
+func (m *Manager) trackPromptSends(c *agentConn, job *jobState, onFirst func()) {
 	if c.promptTracker != nil {
 		var once sync.Once
 		c.promptTracker.setOnPromptSent(func() {
@@ -290,6 +290,7 @@ func (c *agentConn) trackPromptSends(job *jobState, onFirst func()) {
 				once.Do(onFirst)
 			}
 			job.markFirstPromptSent()
+			m.publishSessionChanged(job.ID)
 		})
 	}
 }
@@ -601,7 +602,7 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 		return nil, err
 	}
 	ac.state.attach(m, job, cfg)
-	ac.trackPromptSends(job, persistSessionID)
+	m.trackPromptSends(ac, job, persistSessionID)
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
 	return job, nil
 }

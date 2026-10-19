@@ -34,7 +34,7 @@ func TestBotFilesSaveOnlyOverTheVersionRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewHandler(service)
+	handler := NewHandler(service, sessionevents.New())
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/bots/{bot}/files", handler.Files)
 	mux.HandleFunc("PUT /v1/bots/{bot}/files/{name}", handler.SaveFile)

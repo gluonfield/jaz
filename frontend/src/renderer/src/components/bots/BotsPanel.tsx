@@ -7,7 +7,7 @@ import { stateDot } from '@/components/sidebar/SessionRow'
 import { PANEL_ICON_BUTTON_CLASS, SidebarHeader, SidebarScroll } from '@/components/sidebar/SidebarScroll'
 import { MarkdownText } from '@/components/session/MessageMarkdown'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import { botsQuery } from '@/lib/api/bots'
+import { botsQuery, type BotListEntry } from '@/lib/api/bots'
 import type { Bot } from '@/lib/api/types'
 import { botAvatars, type BotMood, botMood, dragSections, pinOrder, placePin } from '@/lib/bots'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
@@ -24,10 +24,7 @@ type PinDrag = { id: string; pins: string[] }
 const SPRING = { type: 'spring', duration: 0.3, bounce: 0 } as const
 
 export function BotsPanel({ mobile }: { mobile: boolean }) {
-  const bots = useQuery({
-    ...botsQuery,
-    refetchInterval: (query) => (query.state.data?.some((bot) => bot.status === 'running') ? 3_000 : 15_000),
-  })
+  const bots = useQuery(botsQuery)
   const list = useMemo(() => bots.data ?? [], [bots.data])
   const pins = useMemo(() => pinOrder(list), [list])
   const pin = usePins()
@@ -124,7 +121,7 @@ function botDot(bot: Bot, mood: BotMood, still: boolean): { title: string; class
 // Tiles and rows slide to new places, and scale in and out as they come and go.
 function BotEntry({ ref, bot, bots, tile = false, dragged, hidden, onDrag }: {
   ref?: Ref<HTMLDivElement>
-  bot: Bot
+  bot: BotListEntry
   bots: Bot[]
   tile?: boolean
   dragged: boolean
@@ -193,7 +190,7 @@ function BotEntry({ ref, bot, bots, tile = false, dragged, hidden, onDrag }: {
             : 'flex h-13 items-center gap-2.5 px-2.5 text-[13px] max-sm:h-16 max-sm:text-[15px]'
         }`}
       >
-        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} mood={mood} live badge={tile ? state : null} main={bot.main} />
+        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} mood={mood} completion={bot.celebrate} live badge={tile ? state : null} main={bot.main} />
         {tile ? (
           name
         ) : (

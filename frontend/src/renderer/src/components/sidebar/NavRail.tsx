@@ -70,7 +70,6 @@ export function NavRail({ tab, onOpenChat, onOpenSettings }: { tab: RailTab; onO
   const sections = useRailSections()
   const botsUnread = useQuery({
     ...botsQuery,
-    refetchInterval: 15_000,
     select: (bots) => bots.some((bot) => bot.unread),
   }).data
 

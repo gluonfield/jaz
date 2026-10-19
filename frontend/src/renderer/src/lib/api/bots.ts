@@ -3,10 +3,11 @@ import { keys } from '@/lib/query/keys'
 import { del, get, patch, post, put } from './client'
 import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName, BotOwed, BotStartedThread } from './types'
 
-// Polling belongs to the list on screen; other readers take the shared cache.
-export const botsQuery = queryOptions({
+export type BotListEntry = Bot & { celebrate?: string }
+
+export const botsQuery = queryOptions<BotListEntry[]>({
   queryKey: keys.bots,
-  queryFn: async () => (await get<{ bots: Bot[] | null }>('/v1/bots')).bots ?? [],
+  queryFn: async ({ signal }) => (await get<{ bots: Bot[] | null }>('/v1/bots', { signal })).bots ?? [],
   staleTime: 10_000,
 })
 

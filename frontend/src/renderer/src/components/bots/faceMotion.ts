@@ -72,9 +72,6 @@ function clipFor(from: BotMood, to: BotMood): Clip | null {
   if (busy(to) && !busy(from)) {
     return 'nod'
   }
-  if (busy(from) && to === 'idle') {
-    return 'cheer'
-  }
   return null
 }
 
@@ -412,6 +409,11 @@ export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMo
       face.clip = clip ? { name: clip, start: now } : null
       face.mood = next
       face.since = now + (clip ? CLIP_LENGTH[clip] : 0)
+    },
+    celebrate() {
+      const now = performance.now() / 1000
+      face.clip = { name: 'cheer', start: now }
+      face.since = now + CLIP_LENGTH.cheer
     },
     stop() {
       faces.delete(svg)

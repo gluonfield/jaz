@@ -9,7 +9,7 @@ import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
-import { botsQuery, sendGroupMessage } from '@/lib/api/bots'
+import { sendGroupMessage } from '@/lib/api/bots'
 import { markThreadSeen } from '@/lib/api/feed'
 import { sessionEventsQuery, uploadSessionAttachment } from '@/lib/api/sessions'
 import type { Bot } from '@/lib/api/types'
@@ -46,9 +46,6 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
     () => botChat([], coalesceSessionEvents([...(history.data?.events ?? []), ...live.data]), group, []).entries,
     [history.data?.events, live.data, group],
   )
-  // Who is taking a turn comes with the group in the bot list, polled briskly
-  // while the room is open so "is working" rows keep up with the round.
-  useQuery({ ...botsQuery, refetchInterval: 2_000 })
   const members = useMemo(() => bots.filter((bot) => group.members?.includes(bot.id)), [bots, group.members])
   const working = members.filter((bot) => group.working?.includes(bot.id))
   const reducedMotion = useReducedMotion()

@@ -7,15 +7,17 @@ import (
 
 	botcore "github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/httpapi"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type Handler struct {
-	bots *botcore.Service
+	bots   *botcore.Service
+	events *sessionevents.Bus
 }
 
-func NewHandler(bots *botcore.Service) *Handler {
-	return &Handler{bots: bots}
+func NewHandler(bots *botcore.Service, events *sessionevents.Bus) *Handler {
+	return &Handler{bots: bots, events: events}
 }
 
 type listResponse struct {
