@@ -48,6 +48,20 @@ func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyPar
 	return s.saveSession(session)
 }
 
+func (s *Store) SetTurnRetries(id string, retries int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	if session.Turn == nil || session.Status != storage.StatusRunning {
+		return fmt.Errorf("%s has no active turn", id)
+	}
+	session.Turn.Retries = retries
+	return s.saveSession(session)
+}
+
 func (s *Store) ResetTurnHops(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

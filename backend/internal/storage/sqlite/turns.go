@@ -79,6 +79,16 @@ func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyPar
 	return err
 }
 
+func (s *Store) SetTurnRetries(id string, retries int) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	updated, err := threaddb.New(s.db).SetTurnRetries(context.Background(), threaddb.SetTurnRetriesParams{ID: id, Retries: int64(retries)})
+	if err == nil && updated == 0 {
+		return fmt.Errorf("%s has no active turn", id)
+	}
+	return err
+}
+
 func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMessage) error {
 	queue, err := storage.MarshalQueuedMessages(session.QueuedMessages)
 	if err != nil {

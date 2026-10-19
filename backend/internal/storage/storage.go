@@ -192,6 +192,9 @@ type Turn struct {
 	// PromptDigest identifies the version of the thread's own prompt its
 	// agent holds once this turn has started.
 	PromptDigest string `json:"prompt_digest,omitempty"`
+	// Retries counts the continuations Jaz has sent after provider failures
+	// ended this turn's earlier prompts.
+	Retries int `json:"retries,omitempty"`
 }
 
 type TurnOutput struct {

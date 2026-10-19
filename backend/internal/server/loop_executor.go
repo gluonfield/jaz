@@ -120,6 +120,17 @@ func LoopRunStatus(state string) string {
 	return loops.RunStatusOK
 }
 
+// loopRunState is the state of the turn a closed run recorded.
+func loopRunState(status string) string {
+	switch status {
+	case loops.RunStatusError:
+		return acp.StateFailed
+	case loops.RunStatusCancelled:
+		return acp.StateCancelled
+	}
+	return acp.StateIdle
+}
+
 func (r *LoopRunner) finishLoopRun(execution loops.Execution, status, errText string) {
 	if err := execution.Controller.Finish(execution.Run.ID, status, errText, false); err != nil {
 		r.logger().Error("finish loop run failed", "run", execution.Run.ID, "status", status, "error", err)

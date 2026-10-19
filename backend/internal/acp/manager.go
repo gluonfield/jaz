@@ -53,6 +53,7 @@ type Store interface {
 	StartSessionTurn(string, storage.Turn) error
 	SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error
 	ResetTurnHops(id string) error
+	SetTurnRetries(id string, retries int) error
 	UpdateSessionModel(id, model, effort string) error
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	ClaimQueuedTurn(storage.Session, storage.QueuedMessage) error
@@ -351,7 +352,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 			Meta: map[string]any{
 				"terminal-auth":         true,
 				"terminal_output_delta": true,
-				"jetbrains":             map[string]any{"air": map[string]any{"version": 1, "capabilities": []string{"asyncTasks", "recommendedValue"}}},
+				"jetbrains":             map[string]any{"air": map[string]any{"version": 1, "capabilities": []string{"asyncTasks", "recommendedValue", "sessionFailure"}}},
 				"jaz.dev/widget":        map[string]any{"version": 1},
 			},
 			FS: &acpschema.FileSystemCapabilities{

@@ -113,6 +113,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	var pendingPrompt *jsonrpc.Message
 	grokInterjections := 0
 	cancelArrived := false
+	typedFailures := false
+	prompts := 0
 	for {
 		msg, err := conn.Receive(context.Background())
 		if err != nil {
@@ -152,6 +154,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		}
 		switch msg.Method {
 		case "initialize":
+			typedFailures = fakeTypedFailures(msg.Params)
 			if os.Getenv("JAZ_FAKE_ACP_EXPECT_TERMINAL_AUTH") == "1" {
 				var req struct {
 					ClientCapabilities struct {
@@ -438,9 +441,20 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"content":       map[string]any{"type": "text", "text": "hello from native steer"},
 				},
 			})
-			sendResult(conn, pendingPrompt, map[string]any{"stopReason": "end_turn"})
+			promptResult := map[string]any{"stopReason": "end_turn"}
+			steerResult := map[string]any{"outcome": "injected", "stopReason": "end_turn"}
+			failure := fakeSteerFailure(msg.Params, typedFailures)
+			if failure != nil {
+				promptResult["_meta"], steerResult["_meta"] = failure, failure
+			}
+			sendResult(conn, pendingPrompt, promptResult)
 			pendingPrompt = nil
-			sendResult(conn, msg, map[string]any{"outcome": "injected", "stopReason": "end_turn"})
+			if failure != nil {
+				// codex-acp answers the steer after the prompt, once it has
+				// awaited the turn; let the client take the prompt's first.
+				time.Sleep(100 * time.Millisecond)
+			}
+			sendResult(conn, msg, steerResult)
 		case "session/prompt":
 			if os.Getenv("JAZ_FAKE_ACP_MUSE_WRITE_CONFIG") == "1" {
 				for _, name := range []string{"auth.json", "trust.json", ".auth.json.lock", ".trust.json.lock", ".settings.json.lock"} {
@@ -556,6 +570,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
 				continue
 			}
+			prompts++
+			if fakeProviderFailure(conn, msg, typedFailures, prompts) {
+				continue
+			}
+			fakeProviderNoticeUpdate(conn, msg, typedFailures)
 			if strings.Contains(string(msg.Params), "ask after the turn") {
 				fakeAskAfterTurn(conn, msg)
 				continue

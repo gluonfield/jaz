@@ -147,6 +147,13 @@ type activeTurn struct {
 	grokInterjections     map[string]*grokInterjection
 	grokStopReason        string
 	cancel                context.CancelFunc
+	// retries counts the continuations sent after provider failures; while
+	// retrying, the turn waits to send the next one. providerRetried holds
+	// the failure categories the provider retried since the turn last made
+	// progress.
+	retries         int
+	retrying        bool
+	providerRetried map[string]bool
 }
 
 type ModeState struct {
@@ -323,10 +330,10 @@ func (j *jobState) setState(state, stopReason, errMsg string) {
 }
 
 func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVisible bool) chan struct{} {
-	return j.startTurnWithOperation(completion, planRequested, parentVisible, "", false)
+	return j.startStoredTurn(completion, storage.Turn{PlanRequested: planRequested, ParentVisible: parentVisible})
 }
 
-func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequested, parentVisible bool, activeOperation string, allowSilence bool) chan struct{} {
+func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Turn) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	now := time.Now().UTC()
@@ -345,20 +352,22 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.suggestedPrompt = ""
 	j.Error = ""
 	j.StopReason = ""
-	j.ActiveOperation = activeOperation
+	j.ActiveOperation = stored.ActiveOperation
 	j.savedAssistantLen = 0
 	j.usage.startTurn()
 	j.turnResultDiscarded = false
 	j.turn = &activeTurn{
 		done:            make(chan struct{}),
 		completion:      completion,
-		planRequested:   planRequested,
+		planRequested:   stored.PlanRequested,
 		startedAt:       now,
 		firstPromptSent: make(chan struct{}),
 		promptCalls:     1,
-		allowSilence:    allowSilence,
+		allowSilence:    stored.AllowSilence,
+		goalRequested:   stored.GoalRequested,
+		retries:         stored.Retries,
 	}
-	j.ParentVisible = parentVisible
+	j.ParentVisible = stored.ParentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)
 	j.pendingToolUpdateByID = make(map[string]sessionevents.ACPToolCall)
 	j.UpdatedAt = now
@@ -545,6 +554,28 @@ func (j *jobState) markFirstPromptSent() {
 	if j.turn != nil {
 		j.turn.closeFirstPromptSent()
 	}
+}
+
+// waitToRetry holds the turn for one more prompt call after delay: the call
+// counts as outstanding so senders see the turn running, steering waits for
+// it to reach the agent, and Stop or shutdown end the wait through the
+// turn's cancel.
+func (t *activeTurn) waitToRetry(delay time.Duration) context.Context {
+	t.retries++
+	t.retrying = true
+	t.promptCalls = 1
+	t.firstPromptSent, t.firstPromptSentClosed = make(chan struct{}), false
+	wait, cancel := context.WithTimeout(context.Background(), delay)
+	t.cancel = cancel
+	return wait
+}
+
+// endRetryWait ends the turn's retry wait and reports whether the turn was
+// stopped meanwhile. Steering stays closed until the continuation is sent.
+func (t *activeTurn) endRetryWait() bool {
+	t.cancel = nil
+	t.retrying = false
+	return t.cancelRequested
 }
 
 func (t *activeTurn) closeFirstPromptSent() {
