@@ -43,6 +43,7 @@ declare global {
       key(key: string, modifiers?: string[]): Promise<void>
       wheel(x: number, y: number, deltaY: number, control?: boolean): Promise<void>
       capture(name?: string): Promise<void>
+      reducedMotion(reduce: boolean): Promise<void>
       resize(width: number, height: number): Promise<void>
       dropFolder(x: number, y: number): Promise<string>
       result(result: unknown): void
