@@ -24,6 +24,11 @@ type UtilityPromptRequest struct {
 }
 
 func (m *Manager) RunUtilityPrompt(ctx context.Context, req UtilityPromptRequest) (string, error) {
+	ctx, finish, err := m.beginLaunch(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer finish()
 	if strings.TrimSpace(req.Message) == "" {
 		return "", fmt.Errorf("message is required")
 	}

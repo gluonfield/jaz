@@ -116,8 +116,11 @@ type Manager struct {
 	// admission orders new work against Close: what is admitted under its
 	// read lock is in place before Close stops work, and nothing is once
 	// closed.
-	admission sync.RWMutex
-	closed    bool
+	admission    sync.RWMutex
+	closed       bool
+	launches     sync.WaitGroup
+	launchCtx    context.Context
+	stopLaunches context.CancelFunc
 
 	advertisedModels sync.Map
 }
@@ -234,7 +237,10 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 	if logger == nil {
 		logger = log.Default()
 	}
+	launchCtx, stopLaunches := context.WithCancel(context.Background())
 	return &Manager{
+		launchCtx:         launchCtx,
+		stopLaunches:      stopLaunches,
 		cfg:               cfg,
 		agents:            agents,
 		store:             store,
@@ -304,7 +310,7 @@ func (m *Manager) connect(ctx context.Context, name string, cfg AgentConfig, cwd
 	return m.connectWithHandler(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions, jsonrpc.HandlerFunc(m.handleJSONRPC))
 }
 
-func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (*agentConn, error) {
+func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, handler jsonrpc.Handler) (_ *agentConn, err error) {
 	modelMetadata, err := m.resolveCodexCustomProviderModelMetadata(name, cfg)
 	if err != nil {
 		return nil, err
@@ -332,6 +338,12 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	promptTracker := newPromptTrackingConn(conn)
 	state := newConnectionState()
 	peer := jsonrpc.NewPeer(promptTracker, state.handler(m, handler))
+	ac := &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, closed: runCtx.Done(), stderr: stderr, promptTracker: promptTracker}
+	defer func() {
+		if err != nil {
+			ac.close()
+		}
+	}()
 	go func() {
 		defer cancel()
 		err := peer.Serve(runCtx)
@@ -362,29 +374,22 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		},
 	})
 	if err != nil {
-		_ = peer.Close()
-		cancel()
 		return nil, fmt.Errorf("initialize acp agent: %w", withProcessStderr(err, stderr))
 	}
 	state.initialized(initRaw)
 	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
-			_ = peer.Close()
-			cancel()
 			return nil, fmt.Errorf("authenticate acp agent: %w", withProcessStderr(err, stderr))
 		}
 	} else if len(missingAuth) > 0 {
-		_ = peer.Close()
-		cancel()
 		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
 	}
 	if err := state.awaitAdvertisedModel(ctx, runCtx.Done(), name, cfg); err != nil {
-		_ = peer.Close()
-		cancel()
 		return nil, err
 	}
-	return &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, closed: runCtx.Done(), initRaw: initRaw, stderr: stderr, promptTracker: promptTracker}, nil
+	ac.initRaw = initRaw
+	return ac, nil
 }
 
 // sessionMeta builds the session _meta payload for prompt and agent-specific
@@ -522,6 +527,11 @@ func (m *Manager) abandonSession(session storage.Session, err error) error {
 }
 
 func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
+	ctx, finish, err := m.beginLaunch(ctx)
+	if err != nil {
+		return SpawnResult{}, err
+	}
+	defer finish()
 	created, err := m.createSession(ctx, req, nil)
 	if err != nil {
 		return SpawnResult{}, err

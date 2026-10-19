@@ -127,13 +127,14 @@ func TestCreateThreadReturnsBeforeItsAgentIsUpAndOneSlowStartHoldsUpNoOther(t *t
 func TestShutdownRefusesNewThreadsAndARestartStartsAClaimedOneOnce(t *testing.T) {
 	jaz := startingJaz(t, map[string]string{})
 	bot := jaz.newBot("Gimli")
+	sendAndWait(t, jaz.ctx, jaz.manager, bot.ID, "Dispatch work")
 	owed := owe(t, jaz.store, bot.ID)
 	dir, release := held(t)
 	_, thread, err := acp.NewMCPTools(jaz.manager).Create(jaz.ctx, callAs(bot.ID), acp.MCPCreateInput{Slug: "brochure", Prompt: "Draft the brochure until released", Directory: dir, Commitment: owed})
 	if err != nil {
 		t.Fatal(err)
 	}
-	jaz.eventually("the thread's agent starting", func() bool { return jaz.starts() == 1 })
+	jaz.eventually("the thread's agent starting", func() bool { return jaz.starts() == 2 })
 
 	// Jaz shuts down while the agent is on its way up.
 	jaz.manager.Close()
@@ -144,11 +145,6 @@ func TestShutdownRefusesNewThreadsAndARestartStartsAClaimedOneOnce(t *testing.T)
 		t.Fatalf("threads = %d, want only the one created before shutdown", len(threads))
 	}
 	release()
-	jaz.eventually("the held agent coming up", func() bool {
-		raw, _ := os.ReadFile(filepath.Join(jaz.root, "requests.jsonl"))
-		return strings.Contains(string(raw), `"method":"session/new"`)
-	})
-	time.Sleep(200 * time.Millisecond)
 	if jaz.promptsContaining("Draft the brochure") != 0 {
 		t.Fatal("an agent that came up after shutdown began was given the thread's prompt")
 	}
@@ -164,9 +160,10 @@ func TestShutdownRefusesNewThreadsAndARestartStartsAClaimedOneOnce(t *testing.T)
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ThreadID)
 	jaz = jaz.reopen()
 	jaz.release()
-	jaz.eventually("the result reaching the bot", func() bool { return jaz.told(bot.ID, "ACP session brochure") == 1 })
+	jaz.eventually("the result reaching the bot's agent", func() bool { return jaz.promptsContaining("ACP session brochure") == 1 })
 	jaz.idle(thread.ThreadID)
-	if jaz.promptsContaining("Draft the brochure") != 1 || jaz.told(bot.ID, "ACP session brochure") != 1 {
+	jaz.idle(bot.ID)
+	if jaz.promptsContaining("Draft the brochure") != 1 || jaz.promptsContaining("ACP session brochure") != 1 {
 		t.Fatalf("prompts = %q; want the task and its result sent once each", jaz.prompts())
 	}
 	messages, err := jaz.store.LoadMessageRecords(thread.ThreadID)
