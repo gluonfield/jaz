@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -150,6 +151,22 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 		return err
 	}
 	return s.post(group, message, false)
+}
+
+// TurnEnding delivers a silent person-started turn's final reply in the bot's
+// own chat. It closes no commitment.
+func (s *Service) TurnEnding(job acp.Job) {
+	reply := strings.TrimSpace(job.Reply)
+	session, err := s.store.LoadSession(job.ID)
+	if reply == "" || err != nil || session.SourceType != storage.SourceBot || session.Turn == nil {
+		return
+	}
+	if output := session.Turn.Output; output == nil || !output.User || output.Shown {
+		return
+	}
+	if err := s.Say(job.ID, reply); err != nil {
+		s.log.Warn("showing a bot's final reply failed", "bot", job.ID, "error", err)
+	}
 }
 
 // Answer is the delivery of the answer a finished turn gave the bot it

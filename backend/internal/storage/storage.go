@@ -205,6 +205,9 @@ type TurnOutput struct {
 	// Hops counts the messages bots sent each other, without the user
 	// writing, that led to this turn.
 	Hops int `json:"hops,omitempty"`
+	// User records that the turn began with a message shown as the user's
+	// that no agent sent.
+	User bool `json:"user,omitempty"`
 	// Shown records that the turn sent a message or presented an app in its
 	// own chat.
 	Shown bool `json:"shown,omitempty"`

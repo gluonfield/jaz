@@ -101,6 +101,44 @@ func fakeAskAfterTurn(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 	_ = conn.Send(context.Background(), req)
 }
 
+// fakeFinalReply answers as Codex and Claude do: a line on what it does
+// next, a tool call, a note, then its final reply in chunks of one message,
+// and any provider notice the prompt names as the turn ends.
+func fakeFinalReply(conn jsonrpc.MessageConn, prompt *jsonrpc.Message, nextMessageID func(string) string, typed bool) {
+	write := func(id, text, phase string) {
+		update := map[string]any{
+			"sessionUpdate": "agent_message_chunk", "messageId": id,
+			"content": map[string]any{"type": "text", "text": text},
+		}
+		if phase != "" {
+			update["_meta"] = map[string]any{"jetbrains": map[string]any{"air": map[string]any{"version": 1, "phase": phase}}}
+		}
+		notify(conn, "session/update", map[string]any{
+			"sessionId": fakeSessionID,
+			"update":    update,
+		})
+	}
+	phase, commentary := "final_answer", "commentary"
+	if strings.Contains(string(prompt.Params), "unclassified reply") {
+		phase, commentary = "", ""
+	}
+	write(nextMessageID("progress"), "Let me check the log.", commentary)
+	notify(conn, "session/update", map[string]any{
+		"sessionId": fakeSessionID,
+		"update":    map[string]any{"sessionUpdate": "tool_call", "toolCallId": nextMessageID("tool"), "title": "git log", "status": "completed"},
+	})
+	write(nextMessageID("note"), "Found it.", commentary)
+	if strings.Contains(string(prompt.Params), "commentary only") {
+		sendResult(conn, prompt, map[string]any{"stopReason": "end_turn"})
+		return
+	}
+	final := nextMessageID("final")
+	write(final, "The last commit ", phase)
+	write(final, "added due dates.", phase)
+	fakeProviderNoticeUpdate(conn, prompt, typed)
+	sendResult(conn, prompt, map[string]any{"stopReason": "end_turn"})
+}
+
 // openFakeSession, with JAZ_FAKE_ACP_SESSION_PER_CWD set, names the session
 // after its directory, so threads in their own directories keep their own
 // sessions across processes. With JAZ_FAKE_ACP_RESTORE_TOGETHER=dir:n, a

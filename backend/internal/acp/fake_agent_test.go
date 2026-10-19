@@ -574,6 +574,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if fakeProviderFailure(conn, msg, typedFailures, prompts) {
 				continue
 			}
+			if strings.Contains(string(msg.Params), "answer in the final reply") || os.Getenv("JAZ_FAKE_ACP_FINAL_REPLY") == "1" {
+				fakeFinalReply(conn, msg, nextMessageID, typedFailures)
+				continue
+			}
 			fakeProviderNoticeUpdate(conn, msg, typedFailures)
 			if strings.Contains(string(msg.Params), "ask after the turn") {
 				fakeAskAfterTurn(conn, msg)
