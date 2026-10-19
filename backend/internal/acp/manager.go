@@ -422,10 +422,12 @@ func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, labe
 }
 
 // An agent answers ACP auth_required when its stored sign-in no longer works.
+const signInHint = "sign in again in Settings → Agents"
+
 func withSignInHint(err error) error {
 	var rpcErr *jsonrpc.Error
 	if errors.As(err, &rpcErr) && rpcErr.Code == int(acpschema.ErrorCode32000) {
-		return fmt.Errorf("sign in again in Settings → Agents: %w", err)
+		return fmt.Errorf("%s: %w", signInHint, err)
 	}
 	return err
 }

@@ -879,18 +879,45 @@ func TestManagerDoesNotFallbackWhenAgentSettingsAreCorrupt(t *testing.T) {
 	}
 }
 
-func TestSpawnNamesWhereToSignInWhenTheAgentNeedsAuthentication(t *testing.T) {
+func TestExpiredAgentSignInNamesWhereToSignIn(t *testing.T) {
+	const hint = "sign in again in Settings → Agents: "
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{"JAZ_FAKE_ACP_SESSION_AUTH_REQUIRED": "1"})
-
+	root := t.TempDir()
+	expired := filepath.Join(t.TempDir(), "expired")
+	env := map[string]string{"JAZ_FAKE_ACP_SIGN_IN_EXPIRED_FILE": expired}
+	manager := newFakeAgentManager(t, store, root, env)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "needs-sign-in"})
-	if err == nil || !strings.HasPrefix(err.Error(), "sign in again in Settings → Agents: ") {
-		t.Fatalf("spawn error = %v", err)
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "signed-in"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sendAndWait(t, ctx, manager, spawned.SessionID, "say hello")
+	if err := os.WriteFile(expired, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "turn after expiry", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil || job.State != acp.StateFailed || !strings.HasPrefix(job.Error, hint) {
+		t.Fatalf("turn after expiry: state=%s error=%q err=%v", job.State, job.Error, err)
+	}
+	manager.Close()
+
+	restarted := newFakeAgentManager(t, store, root, env)
+	defer restarted.Close()
+	if _, err := restarted.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "resume after expiry", Completion: acp.CompletionInline}); err == nil || !strings.Contains(err.Error(), hint+"resume ACP session") {
+		t.Fatalf("resume after expiry: %v", err)
+	}
+
+	_, err = restarted.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "needs-sign-in"})
+	if err == nil || !strings.HasPrefix(err.Error(), hint) {
+		t.Fatalf("spawn after expiry: %v", err)
 	}
 	if session := abandonedSession(t, store, "needs-sign-in"); session.Error != err.Error() {
 		t.Fatalf("stored error = %q", session.Error)
