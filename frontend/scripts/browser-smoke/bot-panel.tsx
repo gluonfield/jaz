@@ -156,6 +156,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const click = async (label: string) => {
     let target: HTMLElement | undefined
     await until(`no control "${label}"`, () => Boolean(target = find(label)))
+    target!.scrollIntoView({ block: 'nearest' })
     await new Promise(requestAnimationFrame)
     const bounds = target!.getBoundingClientRect()
     const x = Math.round(bounds.x + bounds.width / 2)

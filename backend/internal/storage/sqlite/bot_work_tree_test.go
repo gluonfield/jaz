@@ -43,15 +43,19 @@ func TestUpgradeGivesTheThreadsASubtaskStartedToItsBot(t *testing.T) {
 	report := create(storage.CreateSession{Slug: "report", ParentID: run, SourceType: storage.SourceBotWorker, SourceID: bot})
 	chat := create(storage.CreateSession{Slug: "chat"})
 	child := create(storage.CreateSession{Slug: "child", ParentID: chat})
+	// sources reads the rows themselves, which later migrations may widen
+	// beyond what the downgraded schema has.
+	slugs := map[string]string{}
 	sources := func() (map[string]string, map[string]string) {
 		t.Helper()
 		threads := map[string]string{}
 		for _, id := range []string{bot, worker, review, second, search, seat, errand, run, report, chat, child} {
-			session, err := store.LoadSession(id)
-			if err != nil {
+			var slug, sourceType, sourceID string
+			if err := store.db.QueryRow(`SELECT slug, COALESCE(source_type, ''), COALESCE(source_id, '') FROM threads WHERE id = ?`, id).Scan(&slug, &sourceType, &sourceID); err != nil {
 				t.Fatal(err)
 			}
-			threads[session.Slug] = session.SourceType + "/" + session.SourceID
+			slugs[id] = slug
+			threads[slug] = sourceType + "/" + sourceID
 		}
 		events, err := store.UsageEvents(time.Now().Add(-time.Hour), time.Now().Add(time.Hour))
 		if err != nil {
@@ -59,11 +63,7 @@ func TestUpgradeGivesTheThreadsASubtaskStartedToItsBot(t *testing.T) {
 		}
 		usage := map[string]string{}
 		for _, event := range events {
-			session, err := store.LoadSession(event.SessionID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			usage[session.Slug] = event.SourceType
+			usage[slugs[event.SessionID]] = event.SourceType
 		}
 		return threads, usage
 	}
