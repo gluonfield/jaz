@@ -21,7 +21,9 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 		job, err = m.Steer(ctx, req)
 		if errors.Is(err, errPromptPending) {
 			// The message joins the turn once its next prompt reaches the
-			// agent, or starts a new one if the turn ends first.
+			// agent, or starts a new one if the turn ends first, even if the
+			// caller, such as a voice call, has gone by then.
+			ctx = context.WithoutCancel(ctx)
 			if err := m.waitPromptSent(ctx, req.Session); err != nil {
 				return Job{}, err
 			}

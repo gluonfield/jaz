@@ -369,7 +369,8 @@ func TestAContinuationClearsTheRetryNotice(t *testing.T) {
 }
 
 // Live input, as voice sends, to a turn waiting to retry waits for the turn
-// instead of failing; when the turn ends it starts the next one.
+// instead of failing, even after its caller has gone; when the turn ends it
+// starts the next one.
 func TestLiveInputToATurnWaitingToRetryWaitsForIt(t *testing.T) {
 	jaz := startFailingJaz(t, time.Hour)
 	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
@@ -381,9 +382,10 @@ func TestLiveInputToATurnWaitingToRetryWaitsForIt(t *testing.T) {
 	}
 	jaz.eventually("the turn waiting to retry", func() bool { return strings.Contains(jaz.status(thread.ID).Error, "Retrying in") })
 	input := make(chan error, 1)
+	call, hangUp := context.WithCancel(jaz.ctx)
 	before := cpuTime(t)
 	go func() {
-		_, err := jaz.manager.Input(jaz.ctx, acp.SteerRequest{Session: thread.ID, Message: "also book the hotel"})
+		_, err := jaz.manager.Input(call, acp.SteerRequest{Session: thread.ID, Message: "also book the hotel"})
 		input <- err
 	}()
 	select {
@@ -394,6 +396,7 @@ func TestLiveInputToATurnWaitingToRetryWaitsForIt(t *testing.T) {
 	if busy := cpuTime(t) - before; busy > 150*time.Millisecond {
 		t.Fatalf("waiting live input used %s of CPU in 300ms, want it to block", busy)
 	}
+	hangUp()
 
 	if _, err := jaz.manager.Cancel(jaz.ctx, thread.ID); err != nil {
 		t.Fatal(err)
