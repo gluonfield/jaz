@@ -24,7 +24,7 @@ func TestAgentConnectionRetainsInitialControlsAndAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
-	state := &connectionState{}
+	state := newConnectionState()
 	handler := state.handler(manager, jsonrpc.HandlerFunc(manager.handleJSONRPC))
 	notify := func(method, params string) {
 		t.Helper()

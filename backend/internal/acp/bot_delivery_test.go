@@ -213,6 +213,7 @@ func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *test
 				}
 				return p.bots.Say(req.Session, "On it.")
 			case strings.HasPrefix(req.Message, "[result for the bot that asked]"):
+				defer p.release()
 				return p.bots.Say(req.Session, "The parser is done.", owed)
 			}
 			return nil
@@ -225,7 +226,9 @@ func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *test
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, <-worker)
 
 	jaz.manager.Close()
-	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{
+		"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_HOLD_TEXT": "[result for the bot that asked]",
+	})
 	jaz.server.ACP = act(jaz)
 	jaz.recover()
 	var result acp.InternalTurnRequest

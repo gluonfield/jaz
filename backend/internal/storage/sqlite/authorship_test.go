@@ -27,7 +27,7 @@ func TestAuthorshipUpgradePreservesHistoryAndDefaultsToUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := migrator.DownTo(t.Context(), 73); err != nil {
+	if _, err := migrator.DownTo(t.Context(), 74); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.db.Exec(`INSERT INTO messages (thread_id, seq, role, content, blocks, created_at_ms, from_agent) VALUES (?, 1, 'user', 'human', '[]', 1000, 0), (?, 2, 'user', 'agent', '[]', 2000, 1)`, session.ID, session.ID); err != nil {

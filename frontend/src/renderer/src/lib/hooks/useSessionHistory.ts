@@ -38,7 +38,7 @@ export function useSessionHistory(sessionId: string, onLoadError: (message: stri
       (error instanceof ApiError && error.status === 409) || failureCount < 1,
     queryFn: async ({ signal }) => {
       const latest = await getSessionMessagesPage(sessionId, {}, signal)
-      const complete = await fetchCompleteHistoryBatch(sessionId, latest, signal)
+      const complete = latest.session.source_type === 'bot' ? latest : await fetchCompleteHistoryBatch(sessionId, latest, signal)
       return mergeLatestHistory(
         queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId)),
         complete,

@@ -59,6 +59,7 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 	handler.Loops = service
 	botService := bots.NewService(store, root, manager, handler, handler, service, events, log.New(io.Discard))
 	finishing := &atomic.Int64{}
+	manager.TurnEnding = botService.TurnEnding
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
 		finishing.Add(1)
 		defer finishing.Add(-1)
@@ -385,9 +386,7 @@ func TestRestartMidChildRunResumesTheChildAndClosesItsRun(t *testing.T) {
 
 	jaz = jaz.restart(nil)
 	jaz.waitRun(run.ID, loops.RunStatusOK)
-	if session, err := store.LoadSession(child); err != nil || session.Status != storage.StatusIdle {
-		t.Fatalf("child after its resumed turn = %+v, %v", session, err)
-	}
+	jaz.idle(child)
 }
 
 func TestARoutineQueuedBehindAFailingTurnStillRuns(t *testing.T) {

@@ -212,10 +212,14 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 			return Job{}, err
 		}
 	}
+	output := opts.output
+	if opts.transcript == sendTranscriptUserMessage && req.FromUser {
+		output = &storage.TurnOutput{User: true}
+	}
 	turn := storage.Turn{
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
-		AllowSilence: opts.allowSilence, Output: opts.output, ParentOutput: parentOutput,
+		AllowSilence: opts.allowSilence, Output: output, ParentOutput: parentOutput,
 		PromptDigest: promptDigest, Retries: opts.retries,
 	}
 	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
