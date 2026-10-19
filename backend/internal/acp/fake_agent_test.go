@@ -218,7 +218,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				SessionID  string            `json:"sessionId"`
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
-			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != fakeSessionID {
+			err := json.Unmarshal(msg.Params, &req)
+			if !openFakeSession(req.Cwd, true) {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError("restored alone", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if err != nil || req.SessionID != fakeSessionID {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("unknown session", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -274,6 +280,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			openFakeSession(req.Cwd, false)
 			if err := validateFakeMCPServers(req.MCPServers); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)

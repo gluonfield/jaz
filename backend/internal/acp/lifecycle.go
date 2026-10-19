@@ -176,6 +176,7 @@ func (m *Manager) addJob(job *jobState, process *agentProcess) {
 	defer m.mu.Unlock()
 	m.jobsByID[job.ID] = job
 	m.jobsBySlug[job.Slug] = job
+	m.used[job.ID] = struct{}{}
 	if job.ACPSession != "" {
 		m.jobsByACP[job.ACPSession] = job
 	}

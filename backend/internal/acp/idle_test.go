@@ -29,14 +29,14 @@ func TestIdleProcessStopsAndItsThreadResumesTheNativeSession(t *testing.T) {
 	}
 	manager := newFakeAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), env, "fake-large", "high")
 	ctx, id := startIdleThread(t, manager, "fake")
-	stopIdleProcesses(t, manager, 500*time.Millisecond)
+	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 500 * time.Millisecond})
 	time.Sleep(250 * time.Millisecond)
 	if !processRunning(startedPIDs(t, startLog)[0]) {
 		t.Fatal("process stopped before it had been idle for the timeout")
 	}
 	waitProcessGone(ctx, t, startedPIDs(t, startLog)[0])
-	if slices.Contains(manager.LiveSessionRefs(), id) {
-		t.Fatal("stopped thread is still live")
+	if !manager.SessionUsed(id) {
+		t.Fatal("a stopped thread no longer counts as in use, so its worktree could be pruned")
 	}
 
 	if err := turn(ctx, manager, id, "after the stop"); err != nil {
@@ -47,6 +47,47 @@ func TestIdleProcessStopsAndItsThreadResumesTheNativeSession(t *testing.T) {
 	}
 	if created, resumed := requestsSent(t, requestLog, "session/new"), requestsSent(t, requestLog, "session/resume"); created != 1 || resumed != 1 {
 		t.Fatalf("session/new = %d, session/resume = %d; want the native session resumed, not replaced", created, resumed)
+	}
+}
+
+// A Claude bot renders its changing prompt on every launch, so it keeps its
+// process for the bot timeout; other bots keep native caching and stop with
+// ordinary threads.
+func TestIdleClaudeBotKeepsItsProcessForTheBotTimeout(t *testing.T) {
+	for _, tc := range []struct {
+		agent string
+		kept  bool
+	}{{acp.AgentClaude, true}, {acp.AgentCodex, false}} {
+		t.Run(tc.agent, func(t *testing.T) {
+			startLog := filepath.Join(t.TempDir(), "starts")
+			env := map[string]string{"JAZ_FAKE_ACP_START_LOG": startLog, "JAZ_FAKE_ACP_UNIQUE_SESSION": "1"}
+			manager := newFakeNamedAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), tc.agent, env, "", "")
+			ctx, _ := startIdleThread(t, manager, tc.agent)
+			bot, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: tc.agent, Slug: "idle-bot", MCPServerPolicy: acp.MCPServerPolicyBot})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := turn(ctx, manager, bot.SessionID, "first"); err != nil {
+				t.Fatal(err)
+			}
+			pids := startedPIDs(t, startLog)
+			timeouts := acp.IdleTimeouts{Thread: 20 * time.Millisecond, Bot: 3 * time.Second}
+			started := time.Now()
+			stopIdleProcesses(t, manager, timeouts)
+			waitProcessGone(ctx, t, pids[0])
+			if !tc.kept {
+				waitProcessGone(ctx, t, pids[1])
+				if time.Since(started) >= timeouts.Bot {
+					t.Fatal("kept a bot that keeps native caching for the bot timeout")
+				}
+				return
+			}
+			time.Sleep(300 * time.Millisecond)
+			if !processRunning(pids[1]) {
+				t.Fatal("stopped a Claude bot's process at the thread timeout")
+			}
+			waitProcessGone(ctx, t, pids[1])
+		})
 	}
 }
 
@@ -141,7 +182,7 @@ func TestIdleStopWaitsForWorkInTheProcess(t *testing.T) {
 				pause(ctx, t)
 			}
 
-			stopIdleProcesses(t, manager, 20*time.Millisecond)
+			stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 20 * time.Millisecond})
 			time.Sleep(300 * time.Millisecond)
 			if !processRunning(pid) {
 				t.Fatalf("process stopped while its %s ran", tc.name)
@@ -168,7 +209,7 @@ func TestTurnsRacingIdleStopsAllComplete(t *testing.T) {
 	env := map[string]string{"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_START_LOG": startLog}
 	manager := newFakeAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), env, "", "")
 	ctx, id := startIdleThread(t, manager, "fake")
-	stopIdleProcesses(t, manager, time.Millisecond)
+	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: time.Millisecond})
 	// Varied pauses land follow-ups before, during and after stops.
 	for i := range 30 {
 		time.Sleep(time.Duration(i%5) * 3 * time.Millisecond)
@@ -191,8 +232,8 @@ func TestResumeWaitsForTheStoppedProcessToExit(t *testing.T) {
 	manager := newFakeAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), env, "", "")
 	ctx, id := startIdleThread(t, manager, "fake")
 	stopping := startedPIDs(t, startLog)[0]
-	stopIdleProcesses(t, manager, 20*time.Millisecond)
-	for slices.Contains(manager.LiveSessionRefs(), id) {
+	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 20 * time.Millisecond})
+	for slices.ContainsFunc(manager.List(), func(job acp.Job) bool { return job.ID == id }) {
 		pause(ctx, t)
 	}
 	if !processRunning(stopping) {
@@ -200,6 +241,45 @@ func TestResumeWaitsForTheStoppedProcessToExit(t *testing.T) {
 	}
 	if err := turn(ctx, manager, id, "while the old process exits"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestStoppedThreadsResumeInParallel(t *testing.T) {
+	logs := t.TempDir()
+	startLog := filepath.Join(logs, "starts")
+	// Each restore waits until four are under way, failing if it waits alone.
+	env := map[string]string{
+		"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_START_LOG": startLog, "JAZ_FAKE_ACP_SESSION_PER_CWD": "1",
+		"JAZ_FAKE_ACP_RESTORE_TOGETHER": filepath.Join(logs, "restoring") + ":4",
+	}
+	manager := newFakeAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), env, "", "")
+	ctx, first := startIdleThread(t, manager, "fake")
+	ids := []string{first}
+	for i := range 3 {
+		spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "idle-parallel-" + strconv.Itoa(i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := turn(ctx, manager, spawned.SessionID, "first"); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, spawned.SessionID)
+	}
+	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 20 * time.Millisecond})
+	for _, pid := range startedPIDs(t, startLog) {
+		waitProcessGone(ctx, t, pid)
+	}
+
+	errs := make(chan error, len(ids))
+	for _, id := range ids {
+		go func() {
+			errs <- turn(ctx, manager, id, "after the stop")
+		}()
+	}
+	for range ids {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -220,12 +300,12 @@ func startIdleThread(t *testing.T, manager *acp.Manager, agent string) (context.
 }
 
 // stopIdleProcesses runs the idle stopper for the rest of the test.
-func stopIdleProcesses(t *testing.T, manager *acp.Manager, idleFor time.Duration) {
+func stopIdleProcesses(t *testing.T, manager *acp.Manager, timeouts acp.IdleTimeouts) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		manager.StopIdleProcesses(ctx, idleFor)
+		manager.StopIdleProcesses(ctx, timeouts)
 		close(done)
 	}()
 	t.Cleanup(func() {

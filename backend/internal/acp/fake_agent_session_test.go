@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -96,4 +99,30 @@ func fakeAskAfterTurn(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 		},
 	})
 	_ = conn.Send(context.Background(), req)
+}
+
+// openFakeSession, with JAZ_FAKE_ACP_SESSION_PER_CWD set, names the session
+// after its directory, so threads in their own directories keep their own
+// sessions across processes. With JAZ_FAKE_ACP_RESTORE_TOGETHER=dir:n, a
+// restore waits until n restores are under way and fails after five seconds
+// alone.
+func openFakeSession(cwd string, restoring bool) bool {
+	if os.Getenv("JAZ_FAKE_ACP_SESSION_PER_CWD") == "1" {
+		fakeSessionID = "fake-session-" + filepath.Base(cwd)
+	}
+	dir, count, together := strings.Cut(os.Getenv("JAZ_FAKE_ACP_RESTORE_TOGETHER"), ":")
+	if !restoring || !together {
+		return true
+	}
+	want, _ := strconv.Atoi(count)
+	marker := filepath.Join(dir, strconv.Itoa(os.Getpid()))
+	_ = os.MkdirAll(dir, 0o700)
+	_ = os.WriteFile(marker, nil, 0o600)
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if entries, _ := os.ReadDir(dir); len(entries) >= want {
+			return true
+		}
+	}
+	_ = os.Remove(marker)
+	return false
 }

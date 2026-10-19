@@ -404,7 +404,7 @@ func startServer(
 			stopLoops = cancelLoops
 			go func() {
 				defer close(idleStopped)
-				manager.StopIdleProcesses(loopCtx, acp.IdleProcessTimeout)
+				manager.StopIdleProcesses(loopCtx, acp.DefaultIdleTimeouts)
 			}()
 			slackSync := &integrationingest.SlackSyncer{
 				Store:      store,

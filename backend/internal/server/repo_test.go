@@ -202,11 +202,11 @@ func TestBeginACPTurnRestoresMissingManagedWorktree(t *testing.T) {
 	}
 }
 
-func TestPruneSkipsLiveACPManagedWorktree(t *testing.T) {
+func TestPruneSkipsManagedWorktreeOfThreadInUse(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
-	workspace, _, worktree, store, session := managedWorktreeSession(t, "live-acp-thread", storage.RuntimeACP)
+	workspace, _, worktree, store, session := managedWorktreeSession(t, "used-acp-thread", storage.RuntimeACP)
 	if err := store.SetArchived(session.ID, true); err != nil {
 		t.Fatal(err)
 	}
@@ -221,13 +221,13 @@ func TestPruneSkipsLiveACPManagedWorktree(t *testing.T) {
 	}
 	server.PruneManagedWorktrees(t.Context())
 	if _, err := os.Stat(worktree); err != nil {
-		t.Fatalf("live ACP worktree was pruned: %v", err)
+		t.Fatalf("worktree of a thread in use was pruned: %v", err)
 	}
 
 	server.ACP = &fakeACPManager{}
 	server.PruneManagedWorktrees(t.Context())
 	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
-		t.Fatalf("inactive ACP worktree still exists after prune: %v", err)
+		t.Fatalf("worktree of a thread not used since start still exists after prune: %v", err)
 	}
 }
 

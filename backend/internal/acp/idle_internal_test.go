@@ -94,7 +94,7 @@ func TestIdleStopLeavesURLAgentsConnected(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	stopped := make(chan struct{})
 	go func() {
-		manager.StopIdleProcesses(ctx, time.Millisecond)
+		manager.StopIdleProcesses(ctx, IdleTimeouts{Thread: time.Millisecond})
 		close(stopped)
 	}()
 	defer func() {
