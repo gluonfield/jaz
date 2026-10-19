@@ -326,7 +326,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		return nil, err
 	}
 	promptTracker := newPromptTrackingConn(conn)
-	state := &connectionState{}
+	state := newConnectionState()
 	peer := jsonrpc.NewPeer(promptTracker, state.handler(m, handler))
 	go func() {
 		defer cancel()
@@ -374,6 +374,11 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		_ = peer.Close()
 		cancel()
 		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
+	}
+	if err := state.awaitAdvertisedModel(ctx, runCtx.Done(), name, cfg); err != nil {
+		_ = peer.Close()
+		cancel()
+		return nil, err
 	}
 	return &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, closed: runCtx.Done(), initRaw: initRaw, stderr: stderr, promptTracker: promptTracker}, nil
 }
