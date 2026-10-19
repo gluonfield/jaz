@@ -13,6 +13,7 @@ import (
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/worktrees"
 )
 
 func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
@@ -46,6 +47,9 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 	}
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil || session.RuntimeRef.Agent == "" {
 		return nil, fmt.Errorf("session %s is not acp-backed", ref)
+	}
+	if err := worktrees.Ensure(ctx, m.store, m.cfg.Workspace, session); err != nil {
+		return nil, err
 	}
 	ctx = mcpsession.With(ctx, session.ID)
 	mcpServerPolicy := effectiveMCPServerPolicy(session)

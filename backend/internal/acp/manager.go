@@ -49,6 +49,7 @@ type Store interface {
 	storage.SessionGoalStore
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
+	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	SaveSession(storage.Session) error
 	StartSessionTurn(string, storage.Turn) error
 	SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error
