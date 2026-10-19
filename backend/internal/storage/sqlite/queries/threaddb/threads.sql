@@ -44,6 +44,9 @@ ORDER BY last_attention_at_ms DESC, id
 LIMIT CASE WHEN sqlc.arg(filter_limit) > 0 THEN sqlc.arg(filter_limit) ELSE -1 END;
 
 -- name: LoadTranscriptSessions :many
+-- A thread's own children are the threads it started: unsourced ones, or a
+-- bot's work started by a thread other than the bot. A bot's own subtasks,
+-- routine runs and memory searches are not.
 SELECT
   id,
   slug,
@@ -63,14 +66,14 @@ SELECT
     COALESCE(parent_id, '') = sqlc.arg(parent_id)
     AND archived = 0
     AND runtime = 'acp'
-    AND COALESCE(source_type, '') = ''
+    AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
   ) AS INTEGER) AS direct_child
 FROM threads
 WHERE (
     parent_id = sqlc.arg(parent_id)
     AND archived = 0
     AND runtime = 'acp'
-    AND COALESCE(source_type, '') = ''
+    AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
   )
   OR id IN (sqlc.slice('ids'))
 ORDER BY last_attention_at_ms DESC, id;
@@ -89,7 +92,7 @@ SELECT
 FROM threads
 WHERE parent_id = sqlc.arg(parent_id)
   AND runtime = 'acp'
-  AND COALESCE(source_type, '') = ''
+  AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
 ORDER BY last_attention_at_ms DESC, id;
 
 -- name: GetSession :one

@@ -349,6 +349,7 @@ func startServer(
 		handler.HandleACPTurnFinished(ctx, job)
 		botService.TurnEnded(job.ID)
 	}
+	manager.ThreadStarted = handler.TitleThread
 	srv := &http.Server{
 		Addr:    serverConfig.Addr,
 		Handler: handler.Handler(),

@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import { keys } from '@/lib/query/keys'
 import { del, get, patch, post, put } from './client'
-import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName, BotOwed } from './types'
+import type { Bot, BotActivity, BotAvatar, BotFile, BotFileName, BotOwed, BotStartedThread } from './types'
 
 // Polling belongs to the list on screen; other readers take the shared cache.
 export const botsQuery = queryOptions({
@@ -42,10 +42,14 @@ export const botActivityQuery = (botId: string) =>
   queryOptions({
     queryKey: keys.botActivity(botId),
     queryFn: async () => {
-      const activity = await get<{ items: BotActivity[] | null; owed: BotOwed[] | null }>(`/v1/bots/${botId}/activity`)
-      return { items: activity.items ?? [], owed: activity.owed ?? [] }
+      const activity = await get<{ items: BotActivity[] | null; owed: BotOwed[] | null; started: Record<string, BotStartedThread[]> | null }>(`/v1/bots/${botId}/activity`)
+      return { items: activity.items ?? [], owed: activity.owed ?? [], started: activity.started ?? {} }
     },
-    refetchInterval: (query) => (query.state.data?.items.some((item) => item.running) || query.state.data?.owed.some((owed) => owed.threads?.some((thread) => thread.state === 'working')) ? 3_000 : 15_000),
+    refetchInterval: (query) => {
+      const data = query.state.data
+      const running = [...(data?.items ?? []), ...Object.values(data?.started ?? {}).flat()].some((item) => item.running)
+      return running || data?.owed.some((owed) => owed.threads?.some((thread) => thread.state === 'working')) ? 3_000 : 15_000
+    },
   })
 
 export const botFilesQuery = (botId: string) =>

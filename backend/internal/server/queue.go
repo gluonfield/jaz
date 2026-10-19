@@ -421,7 +421,7 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 		return storage.Session{}, nil, false, err
 	}
 	if !prompt.IsInternal() && !prompt.IsAction() {
-		s.maybeGenerateSessionTitle(session, prompt.Text)
+		s.TitleThread(session, prompt.Text)
 	}
 	return session, &prompt, true, nil
 }
@@ -520,7 +520,7 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 		return steeredQueuedPrompt{}, err
 	}
 	if !running {
-		s.maybeGenerateSessionTitle(session, prompt.Text)
+		s.TitleThread(session, prompt.Text)
 	}
 	return steeredQueuedPrompt{
 		session:     session,

@@ -767,7 +767,7 @@ export interface BotActivityEvent {
 }
 
 // One thing a bot is doing or did: a side chat, a routine run, a message to or
-// from another bot, or a change to its AGENTS.md or MEMORY.md. `at` is when a
+// from another bot, or a change to its MEMORY.md. `at` is when a
 // running item started, or else when it happened or ended; `title` names the
 // side chat, routine, other bot or file.
 export interface BotActivity {
@@ -782,6 +782,9 @@ export interface BotActivity {
   // The bot a closed commitment was owed to; none for you.
   for?: string
 }
+
+// A side chat that another of the bot's side chats started, listed under it.
+export type BotStartedThread = BotActivity & { thread_id: string }
 
 // A commitment a bot has not closed: what was asked, who it is owed to (none
 // for you), its next step, what it waits on besides its threads, whether you

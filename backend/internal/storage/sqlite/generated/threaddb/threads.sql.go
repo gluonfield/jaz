@@ -401,7 +401,7 @@ SELECT
 FROM threads
 WHERE parent_id = ?1
   AND runtime = 'acp'
-  AND COALESCE(source_type, '') = ''
+  AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
 ORDER BY last_attention_at_ms DESC, id
 `
 
@@ -631,14 +631,14 @@ SELECT
     COALESCE(parent_id, '') = ?1
     AND archived = 0
     AND runtime = 'acp'
-    AND COALESCE(source_type, '') = ''
+    AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
   ) AS INTEGER) AS direct_child
 FROM threads
 WHERE (
     parent_id = ?1
     AND archived = 0
     AND runtime = 'acp'
-    AND COALESCE(source_type, '') = ''
+    AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
   )
   OR id IN (/*SLICE:ids*/?)
 ORDER BY last_attention_at_ms DESC, id
@@ -667,6 +667,9 @@ type LoadTranscriptSessionsRow struct {
 	DirectChild     int64          `json:"direct_child"`
 }
 
+// A thread's own children are the threads it started: unsourced ones, or a
+// bot's work started by a thread other than the bot. A bot's own subtasks,
+// routine runs and memory searches are not.
 func (q *Queries) LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error) {
 	query := loadTranscriptSessions
 	var queryParams []interface{}

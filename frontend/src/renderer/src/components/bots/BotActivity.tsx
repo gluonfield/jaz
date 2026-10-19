@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
+import { CornerDownRight } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
-import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread } from '@/lib/api/types'
+import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread, BotStartedThread } from '@/lib/api/types'
 import { BOT_FILE_LABELS } from '@/lib/bots'
 import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/time'
 import { type ProviderSubagentView, subagentRunning } from '@/lib/providerSubagents'
@@ -39,6 +40,7 @@ export function BotActivity({
   if (activity.isPending) return null
   const rows = (activity.data?.items ?? []).map(row)
   const owed = (activity.data?.owed ?? []).map(owedRow)
+  const started = activity.data?.started ?? {}
   const helpers: Row[] = subagents.filter(subagentRunning).map((subagent) => ({
     key: subagent.key,
     title: subagent.name || subagent.task || 'Helper',
@@ -63,25 +65,25 @@ export function BotActivity({
       {owed.length ? (
         <Group title="Owed">
           {owed.map((item) => (
-            <ActivityRow key={item.key} item={item} now={now} onOpen={open} />
+            <ActivityRow key={item.key} item={item} started={started} now={now} onOpen={open} />
           ))}
         </Group>
       ) : null}
       {running.length ? (
         <Group title="Now">
           {running.map((item) => (
-            <ActivityRow key={item.key} item={item} now={now} onOpen={open} />
+            <ActivityRow key={item.key} item={item} started={started} now={now} onOpen={open} />
           ))}
         </Group>
       ) : null}
       {days.map(([day, list]) => (
         <Group key={day} title={day}>
           {list.map((item) => (
-            <ActivityRow key={item.key} item={item} now={now} onOpen={open} />
+            <ActivityRow key={item.key} item={item} started={started} now={now} onOpen={open} />
           ))}
         </Group>
       ))}
-      {owedShown ? <OwedModal owed={owedShown} onClose={() => setOwedShown(null)} /> : null}
+      {owedShown ? <OwedModal owed={owedShown} started={started} now={now} onClose={() => setOwedShown(null)} /> : null}
       {message ? (
         <Modal open onClose={() => setMessage(null)} title={messageTitle(message)} description={messageTime(message.at)} size="sm">
           <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{message.text}</p>
@@ -127,7 +129,7 @@ const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Workin
 
 // OwedModal shows a commitment with no single thread to open: its next step
 // and the threads serving it.
-function OwedModal({ owed, onClose }: { owed: BotOwed; onClose: () => void }) {
+function OwedModal({ owed, started, now, onClose }: { owed: BotOwed; started: Started; now: number; onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, standing(owed, owed.threads ?? []), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
@@ -140,6 +142,7 @@ function OwedModal({ owed, onClose }: { owed: BotOwed; onClose: () => void }) {
                   <span className="truncate font-medium">{thread.title}</span>
                   <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
                 </Link>
+                <StartedThreads started={started} by={thread.id} now={now} onOpen={onClose} />
               </li>
             ))}
           </ul>
@@ -189,8 +192,8 @@ function row(item: BotActivity, index: number): Row {
       const label = BOT_FILE_LABELS[item.title as BotFileName]
       return {
         ...base,
-        title: item.kind === 'file_edited' ? `You edited ${label}` : item.title === 'MEMORY.md' ? 'Learned something new' : `Updated ${label}`,
-        detail: item.kind === 'file_changed' && item.title === 'MEMORY.md' ? label : undefined,
+        title: item.kind === 'file_edited' ? `You edited ${label}` : 'Learned something new',
+        detail: item.kind === 'file_changed' ? label : undefined,
         open: { file: item.title as BotFileName },
       }
     }
@@ -220,7 +223,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-function ActivityRow({ item, now, onOpen }: { item: Row; now: number; onOpen: (target: Row['open']) => void }) {
+function ActivityRow({ item, started, now, onOpen }: { item: Row; started: Started; now: number; onOpen: (target: Row['open']) => void }) {
   const since = item.running && item.at ? now - Date.parse(item.at) : undefined
   const content = (
     <>
@@ -234,9 +237,12 @@ function ActivityRow({ item, now, onOpen }: { item: Row; now: number; onOpen: (t
   const className = '-mx-2 flex min-w-0 flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150'
   if (item.open && 'thread' in item.open) {
     return (
-      <Link to="/sessions/$sessionId" params={{ sessionId: item.open.thread }} className={`${className} hover:bg-list-hover`}>
-        {content}
-      </Link>
+      <>
+        <Link to="/sessions/$sessionId" params={{ sessionId: item.open.thread }} className={`${className} hover:bg-list-hover`}>
+          {content}
+        </Link>
+        <StartedThreads started={started} by={item.open.thread} now={now} />
+      </>
     )
   }
   return item.open ? (
@@ -245,6 +251,37 @@ function ActivityRow({ item, now, onOpen }: { item: Row; now: number; onOpen: (t
     </button>
   ) : (
     <div className={className}>{content}</div>
+  )
+}
+
+// Started holds the threads each of a bot's threads started, by its id.
+type Started = Record<string, BotStartedThread[]>
+
+// StartedThreads lists the threads a thread started under it, and theirs
+// under them, each opening its thread.
+function StartedThreads({ started, by, now, onOpen, nested }: { started: Started; by: string; now: number; onOpen?: () => void; nested?: boolean }) {
+  const threads = started[by]
+  if (!threads?.length) return null
+  return (
+    <ul className={`flex flex-col ${nested ? 'ml-[18px]' : ''}`}>
+      {threads.map((thread) => (
+        <li key={thread.thread_id}>
+          <Link
+            to="/sessions/$sessionId"
+            params={{ sessionId: thread.thread_id }}
+            onClick={onOpen}
+            className="-mx-2 flex h-7 min-w-0 items-center gap-1.5 rounded-lg px-2 text-[13px] transition-colors duration-150 hover:bg-list-hover"
+          >
+            <CornerDownRight size={12} className="shrink-0 text-ink-3" />
+            <span className="min-w-0 flex-1 truncate text-ink-2">{thread.title || 'Thread'}</span>
+            <span className={`shrink-0 text-[12px] tabular-nums ${thread.running ? 'text-running' : thread.status === 'error' ? 'text-danger' : 'text-ink-3'}`}>
+              {thread.running ? `Running for ${formatDuration(now - Date.parse(thread.at))}` : thread.status === 'error' ? 'Failed' : clockTime(thread.at)}
+            </span>
+          </Link>
+          <StartedThreads started={started} by={thread.thread_id} now={now} onOpen={onOpen} nested />
+        </li>
+      ))}
+    </ul>
   )
 }
 

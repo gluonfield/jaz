@@ -46,7 +46,9 @@ func hasConversationMessages(messages []provider.Message) bool {
 	return false
 }
 
-func (s *Server) maybeGenerateSessionTitle(session storage.Session, message string) {
+// TitleThread gives a thread still titled after the first message it was sent
+// a title written from that message, in the background.
+func (s *Server) TitleThread(session storage.Session, message string) {
 	existing, err := s.Store.LoadMessages(session.ID)
 	if err != nil {
 		s.logger().Debug("loading messages before title generation failed", "session", session.ID, "error", err)
