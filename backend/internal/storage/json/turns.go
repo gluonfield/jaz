@@ -27,7 +27,9 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...stora
 			return err
 		}
 	}
-	turn.StartedAt = time.Now().UTC()
+	if turn.StartedAt.IsZero() {
+		turn.StartedAt = time.Now().UTC()
+	}
 	session.Status = storage.StatusRunning
 	session.Error = ""
 	session.Turn = &turn
@@ -35,24 +37,57 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...stora
 	return s.saveSession(session)
 }
 
-func (s *Store) MarkTurnPromptSent(id, agentSessionID string) error {
+func (s *Store) ClaimTurn(id string, turn storage.Turn) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, err := s.loadSessionByID(id)
-	if err != nil || session.Turn == nil {
+	if err != nil || session.Status == storage.StatusRunning {
+		return false, err
+	}
+	turn.StartedAt = time.Now().UTC()
+	session.Status = storage.StatusRunning
+	session.Error = ""
+	session.Turn = &turn
+	storage.MarkSessionAttention(&session, turn.StartedAt)
+	return true, s.saveSession(session)
+}
+
+func (s *Store) OweTurn(id string, owed storage.Turn) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil || session.Turn == nil || session.Status != storage.StatusRunning {
 		return err
 	}
-	if session.RuntimeRef == nil || session.RuntimeRef.SessionID != "" && session.RuntimeRef.SessionID != agentSessionID {
-		return fmt.Errorf("%s: agent session changed before prompt delivery was recorded", id)
+	turn := session.Turn.Owing(owed)
+	session.Turn = &turn
+	return s.saveSession(session)
+}
+
+func (s *Store) SetTurnPromptState(id, agentSessionID string, startedAt time.Time, state storage.PromptState) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	if session.Status != storage.StatusRunning || session.Turn == nil || session.Turn.Prompt == nil ||
+		session.RuntimeRef == nil || session.RuntimeRef.SessionID != "" && session.RuntimeRef.SessionID != agentSessionID || !session.Turn.StartedAt.Equal(startedAt) {
+		return fmt.Errorf("%s: turn or agent session changed before prompt state was recorded", id)
 	}
 	session.RuntimeRef.SessionID = agentSessionID
-	session.Turn.Prompt = nil
+	if session.Turn.Prompt.State != storage.PromptConfirmed {
+		session.Turn.Prompt.State = state
+	}
 	return s.saveSession(session)
 }
 
 func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if current, err := s.loadSessionByID(session.ID); err == nil && current.Status == storage.StatusRunning {
+		return storage.ErrThreadRunning
+	}
 	session.Status = storage.StatusRunning
 	session.Error = ""
 	session.Turn = prompt.Turn(time.Now().UTC())

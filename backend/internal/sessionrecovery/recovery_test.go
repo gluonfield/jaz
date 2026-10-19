@@ -22,7 +22,7 @@ func (f testRuntime) ResumeInterruptedTurn(ctx context.Context, id string) error
 	return f(ctx, id)
 }
 
-func (f testRuntime) FailInterruptedTurn(context.Context, string, string) error {
+func (f testRuntime) FailInterruptedTurn(context.Context, string, error) error {
 	return errors.New("no resume was expected to fail")
 }
 
@@ -33,8 +33,8 @@ type failingRuntime struct {
 	store storage.SessionStore
 }
 
-func (r failingRuntime) FailInterruptedTurn(_ context.Context, id, message string) error {
-	return r.store.UpdateSessionStatus(id, storage.StatusError, message, time.Time{})
+func (r failingRuntime) FailInterruptedTurn(_ context.Context, id string, cause error) error {
+	return r.store.UpdateSessionStatus(id, storage.StatusError, cause.Error(), time.Time{})
 }
 
 func TestResumeInterruptedBotsAndWorkersAlongsideChats(t *testing.T) {
@@ -240,7 +240,7 @@ func (r endlessRuntime) ResumeInterruptedTurn(context.Context, string) error {
 	return errors.New("provider unavailable")
 }
 
-func (endlessRuntime) FailInterruptedTurn(context.Context, string, string) error {
+func (endlessRuntime) FailInterruptedTurn(context.Context, string, error) error {
 	return errors.New("store unavailable")
 }
 

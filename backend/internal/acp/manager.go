@@ -22,12 +22,14 @@ import (
 )
 
 const (
-	StateStarting   = "starting"
-	StateRunning    = "running"
-	StateIdle       = "idle"
-	StateFailed     = "failed"
-	StateCancelled  = "cancelled"
-	StateNotRunning = "not_running"
+	StateStarting = "starting"
+	StateRunning  = "running"
+	StateIdle     = "idle"
+	StateFailed   = "failed"
+	// StateInterrupted ends a turn whose delivery is unknown; storage interruption is resumable.
+	StateInterrupted = "interrupted"
+	StateCancelled   = "cancelled"
+	StateNotRunning  = "not_running"
 )
 
 const (
@@ -52,10 +54,12 @@ type Store interface {
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	SaveSession(storage.Session) error
 	StartSessionTurn(string, storage.Turn, ...storage.Message) error
+	ClaimTurn(string, storage.Turn) (bool, error)
+	OweTurn(string, storage.Turn) error
 	SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error
 	ResetTurnHops(id string) error
 	SetTurnRetries(id string, retries int) error
-	MarkTurnPromptSent(id, agentSessionID string) error
+	SetTurnPromptState(id, agentSessionID string, startedAt time.Time, state storage.PromptState) error
 	UpdateSessionModel(id, model, effort string) error
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	ClaimQueuedTurn(storage.Session, storage.QueuedMessage) error
@@ -291,12 +295,13 @@ func (c *agentConn) withProcessStderr(err error) error {
 
 func (m *Manager) trackPromptSends(c *agentConn, job *jobState) {
 	if c.promptTracker != nil {
-		c.promptTracker.setOnPromptSent(func() {
-			if err := m.store.MarkTurnPromptSent(job.ID, job.ACPSession); err != nil {
-				m.log.Error("record prompt delivery", "session", job.ID, "error", err)
-			}
+		c.promptTracker.trackPrompts(func(id string) error {
+			return m.promptSending(job, id)
+		}, func() {
 			job.markFirstPromptSent()
 			m.publishSessionChanged(job.ID)
+		}, func(id string) {
+			m.promptAnswered(job, id)
 		})
 	}
 }

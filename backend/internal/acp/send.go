@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/goal"
@@ -37,6 +38,10 @@ func (e *turnInProgressError) Error() string {
 func (j *jobState) sendConflict(claimed bool) *turnInProgressError {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
+	return j.sendConflictLocked(claimed)
+}
+
+func (j *jobState) sendConflictLocked(claimed bool) *turnInProgressError {
 	if j.turn != nil {
 		return &turnInProgressError{done: j.turn.done, finishing: j.turn.promptCalls == 0 || (j.State != StateRunning && j.State != StateStarting)}
 	}
@@ -63,6 +68,7 @@ type sendOptions struct {
 	requireActiveGoal     bool
 	allowSilence          bool
 	output                *storage.TurnOutput
+	owes                  []storage.Recipient
 	retries               int
 	// claimed starts the turn a new thread was created with.
 	claimed bool
@@ -217,10 +223,11 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		output = &storage.TurnOutput{User: true}
 	}
 	turn := storage.Turn{
+		StartedAt:     time.Now().UTC(),
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: output, ParentOutput: parentOutput,
-		PromptDigest: promptDigest, Retries: opts.retries, Prompt: pending,
+		PromptDigest: promptDigest, Retries: opts.retries, Prompt: pending, Owes: opts.owes,
 	}
 	var messages []storage.Message
 	if opts.transcript == sendTranscriptUserMessage {
@@ -228,11 +235,11 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		message.FromUser = req.FromUser
 		messages = append(messages, message)
 	}
-	if err := m.store.StartSessionTurn(job.ID, turn, messages...); err != nil {
-		return Job{}, fmt.Errorf("start session turn: %w", err)
+	done, err := m.claimTurn(job, turn, req.Completion, opts.claimed, messages)
+	if err != nil {
+		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
-	done := job.startStoredTurn(req.Completion, turn)
 	m.touchAttention(parentSessionIDs(job.eventView())...)
 	if err := m.publishACP(job.eventView()); err != nil {
 		go m.failPromptCall(done, job, fmt.Errorf("persist initial session events: %w", err))
@@ -242,6 +249,21 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		go m.runPrompt(context.Background(), job, prompt)
 	}
 	return job.Snapshot(), nil
+}
+
+// claimTurn starts a send's turn, with the user's messages, unless another
+// turn holds the thread. It stores the turn under the job's lock, so the agent
+// cannot begin a run of its own in between (see startAgentRun).
+func (m *Manager) claimTurn(job *jobState, turn storage.Turn, completion CompletionMode, claimed bool, messages []storage.Message) (chan struct{}, error) {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	if conflict := job.sendConflictLocked(claimed); conflict != nil {
+		return nil, conflict
+	}
+	if err := m.store.StartSessionTurn(job.ID, turn, messages...); err != nil {
+		return nil, fmt.Errorf("start session turn: %w", err)
+	}
+	return job.beginTurnLocked(completion, turn).done, nil
 }
 
 // SteerInternal hands a hidden message to the thread's running turn, as
@@ -363,6 +385,9 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 		job.ParentVisible = true
 	}
 	job.turn.promptCalls++
+	if job.steerMethod == steerPromptQueueing {
+		job.turn.unsent++
+	}
 	return job.turn.done, nil
 }
 

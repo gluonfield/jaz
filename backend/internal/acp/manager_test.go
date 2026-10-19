@@ -1653,7 +1653,7 @@ func newFakeCodexManager(t *testing.T, store acp.Store, root string, extraEnv ma
 }
 
 func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, agent string, extraEnv map[string]string, model, effort string, configure ...func(*acp.Config)) *acp.Manager {
-	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_LOAD": "1"}
+	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_LOAD": "1", "JAZ_FAKE_ACP_SESSIONS": filepath.Join(root, "fake-provider-sessions")}
 	for key, value := range extraEnv {
 		env[key] = value
 	}

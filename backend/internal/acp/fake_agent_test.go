@@ -245,6 +245,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
 			err := json.Unmarshal(msg.Params, &req)
+			if err == nil && restoreFakeSession(req.SessionID) {
+				fakeSessionID = req.SessionID
+			}
 			if !openFakeSession(req.Cwd, true) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError("restored alone", nil))
 				_ = conn.Send(context.Background(), resp)
@@ -308,6 +311,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			openFakeSession(req.Cwd, false)
+			rememberFakeSession(t)
 			if err := validateFakeMCPServers(req.MCPServers); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
@@ -449,6 +453,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			grokInterjections++
 			pendingPrompt = fakeGrokInterject(t, conn, msg, pendingPrompt, grokInterjections)
 		case "_session/steering":
+			fakeHold(os.Getenv("JAZ_FAKE_ACP_NATIVE_STEER_HOLD"))
 			var req struct {
 				WaitForCompletion bool `json:"waitForCompletion"`
 			}
@@ -480,6 +485,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			sendResult(conn, msg, steerResult)
 		case "session/prompt":
+			if answerDuringFakeRun(conn, msg) || startFakeBackgroundWork(conn, msg) || startFakeBackgroundAgent(conn, msg) {
+				continue
+			}
+			fakeTurnRuns(conn)
 			if os.Getenv("JAZ_FAKE_ACP_MUSE_WRITE_CONFIG") == "1" {
 				for _, name := range []string{"auth.json", "trust.json", ".auth.json.lock", ".trust.json.lock", ".settings.json.lock"} {
 					if err := os.WriteFile(filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "muse", name), []byte("native state"), 0o600); err != nil {
@@ -508,18 +517,26 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"update":    map[string]any{"sessionUpdate": "usage_update", "used": used, "size": size},
 				})
 			}
+			if fakePromptBoundary(t, conn, msg) {
+				continue
+			}
 			// The agent reasons, calling no tool, while a hold file exists.
 			fakeHold(os.Getenv("JAZ_FAKE_ACP_THINK_HOLD"))
-			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
-				// The turn works until the test creates the release file, then
+			path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE")
+			if step := fakeStepHold.FindStringSubmatch(string(msg.Params)); step != nil && path != "" {
+				path += "-" + step[1]
+			} else if !strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
+				path = ""
+			}
+			if path != "" {
+				// The turn works until the test creates the release file, or
+				// with "work until step <name>" <release file>-<name>, then
 				// ends as usual.
 				notify(conn, "session/update", map[string]any{
 					"sessionId": fakeSessionID,
 					"update":    map[string]any{"sessionUpdate": "tool_call", "toolCallId": "tool-held", "title": "held work", "status": "in_progress"},
 				})
-				for _, err := os.Stat(path); err != nil; _, err = os.Stat(path) {
-					time.Sleep(10 * time.Millisecond)
-				}
+				waitForFakeFile(path)
 			}
 			var promptReq struct {
 				Meta map[string]any `json:"_meta"`
@@ -662,6 +679,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"status":        "completed",
 				},
 			})
+			fakeTurnEnds(conn)
 			sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
 		default:
 			resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.MethodNotFound(msg.Method))

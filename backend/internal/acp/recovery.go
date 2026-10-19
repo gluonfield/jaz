@@ -3,6 +3,8 @@ package acp
 import (
 	"context"
 	"fmt"
+
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 // interruptedTurnContinuation goes on with a turn whose prompt the agent
@@ -14,7 +16,11 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 	if err != nil {
 		return err
 	}
-	unsent := session.Turn != nil && session.Turn.Prompt != nil
+	unsent := session.Turn != nil && session.Turn.Prompt != nil && session.Turn.Prompt.State == ""
+	if session.Turn != nil && session.Turn.ActiveOperation != ActiveOperationCompact &&
+		session.Turn.Prompt != nil && session.Turn.Prompt.State == storage.PromptSending {
+		return storage.ErrPromptUnconfirmed
+	}
 	if session.RuntimeRef == nil || (session.RuntimeRef.SessionID == "" && !unsent && !m.configuredLocal(session.RuntimeRef.Agent)) {
 		return fmt.Errorf("cannot resume interrupted turn: provider session id is missing")
 	}
@@ -33,6 +39,7 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 		}
 		opts.allowSilence = session.Turn.AllowSilence
 		opts.output = session.Turn.Output
+		opts.owes = session.Turn.Owes
 		req.ParentOutput = session.Turn.ParentOutput
 		opts.retries = session.Turn.Retries
 		if unsent {

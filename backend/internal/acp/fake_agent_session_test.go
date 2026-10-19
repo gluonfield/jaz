@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
@@ -163,4 +164,26 @@ func openFakeSession(cwd string, restoring bool) bool {
 	}
 	_ = os.Remove(marker)
 	return false
+}
+
+func rememberFakeSession(t *testing.T) {
+	root := os.Getenv("JAZ_FAKE_ACP_SESSIONS")
+	if root == "" || os.Getenv("JAZ_FAKE_ACP_UNIQUE_SESSION") == "" {
+		return
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, fakeSessionID), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func restoreFakeSession(id string) bool {
+	root := os.Getenv("JAZ_FAKE_ACP_SESSIONS")
+	if root == "" || os.Getenv("JAZ_FAKE_ACP_UNIQUE_SESSION") == "" || !strings.HasPrefix(id, "fake-session-") || filepath.Base(id) != id {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(root, id))
+	return err == nil
 }

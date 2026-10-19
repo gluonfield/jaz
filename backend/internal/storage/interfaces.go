@@ -24,6 +24,9 @@ type SessionStore interface {
 	// tasks.
 	ClearBackgroundWork() error
 	ClaimQueuedTurn(Session, QueuedMessage) error
+	// ClaimTurn starts turn on the thread unless another turn holds it, and
+	// reports whether it started it.
+	ClaimTurn(id string, turn Turn) (bool, error)
 	SetThreadUnread(id string, unread bool) error
 	TouchSessionAttention(id string) error
 	SetArchived(id string, archived bool) error

@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -139,5 +140,42 @@ func TestWhatATurnShowsInItsChatMarksItsOutputShown(t *testing.T) {
 	}
 	if stored, err := store.LoadSession(session.ID); err != nil || stored.Turn.Output != nil {
 		t.Fatalf("a turn without output = %+v, %v", stored.Turn, err)
+	}
+}
+
+func TestATurnTheAgentBeganHoldsTheThreadAndOwesWhatFinishesDuringIt(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Slug: "agent-run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queued := storage.NewInternalQueuedMessage("a message from the bot")
+	if started, err := store.ClaimTurn(session.ID, storage.Turn{AllowSilence: true, Output: &storage.TurnOutput{ReplyTo: "bot"}}); err != nil || !started {
+		t.Fatalf("start = %v, %v; want the free thread claimed", started, err)
+	}
+	if started, err := store.ClaimTurn(session.ID, storage.Turn{}); err != nil || started {
+		t.Fatalf("second start = %v, %v; want the held thread refused", started, err)
+	}
+	// A queue claim that read the thread before the run began loses to it.
+	if err := store.ClaimQueuedTurn(storage.Session{ID: session.ID, QueuedMessages: []storage.QueuedMessage{queued}}, queued); !errors.Is(err, storage.ErrThreadRunning) {
+		t.Fatalf("claim = %v, want ErrThreadRunning", err)
+	}
+	if err := store.AppendTurnReply(session.ID, "The suite passed.", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.OweTurn(session.ID, storage.Turn{ParentVisible: true, NotifyParent: true, ParentOutput: &storage.TurnOutput{ReplyTo: "asker"}}); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := stored.Turn
+	if !turn.AllowSilence || !turn.NotifyParent || turn.ParentOutput.ReplyTo != "asker" || turn.Output.ReplyTo != "bot" || len(turn.Output.Replies) != 1 || len(stored.QueuedMessages) != 0 {
+		t.Fatalf("stored = %+v, turn %+v; want the run's turn, owing the asker too, with its reply", stored, turn)
 	}
 }

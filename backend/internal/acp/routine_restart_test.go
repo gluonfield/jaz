@@ -409,9 +409,7 @@ func TestARoutineQueuedBehindAFailingTurnStillRuns(t *testing.T) {
 
 	jaz.release()
 	jaz.waitRun(run.ID, loops.RunStatusOK)
-	if session, err := store.LoadSession(bot.ID); err != nil || session.Status != storage.StatusIdle {
-		t.Fatalf("bot = %+v, %v; want the routine's turn to have run after the failed one", session, err)
-	}
+	jaz.idle(bot.ID)
 }
 
 func TestRestartAfterARunClosedFinishesItsTurnWithoutRunningItAgain(t *testing.T) {

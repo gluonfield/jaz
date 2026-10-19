@@ -75,6 +75,7 @@ func (m *Manager) applyBackgroundTask(job *jobState, raw json.RawMessage) bool {
 	}
 	job.backgroundTasks[task.ID] = task
 	job.mu.Unlock()
+	m.noteBackgroundWork(job, task)
 	m.publishBackgroundTask(job, task)
 	m.saveBackgroundWork(job)
 	return true

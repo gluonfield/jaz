@@ -54,12 +54,12 @@ func (q *Queries) AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams
 	return result.RowsAffected()
 }
 
-const claimQueuedTurn = `-- name: ClaimQueuedTurn :exec
+const claimQueuedTurn = `-- name: ClaimQueuedTurn :execrows
 UPDATE threads
 SET status = 'running', error = NULL, turn = ?1,
     queued_messages = ?2, title = ?3,
     updated_at_ms = ?4, last_attention_at_ms = ?4
-WHERE id = ?5
+WHERE id = ?5 AND status <> 'running'
 `
 
 type ClaimQueuedTurnParams struct {
@@ -70,15 +70,42 @@ type ClaimQueuedTurnParams struct {
 	ID             string         `json:"id"`
 }
 
-func (q *Queries) ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) error {
-	_, err := q.db.ExecContext(ctx, claimQueuedTurn,
+func (q *Queries) ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, claimQueuedTurn,
 		arg.Turn,
 		arg.QueuedMessages,
 		arg.Title,
 		arg.StartedAtMs,
 		arg.ID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const claimTurn = `-- name: ClaimTurn :execrows
+UPDATE threads
+SET status = 'running',
+    error = NULL,
+    turn = ?1,
+    updated_at_ms = ?2,
+    last_attention_at_ms = ?2
+WHERE id = ?3 AND status <> 'running'
+`
+
+type ClaimTurnParams struct {
+	Turn        string `json:"turn"`
+	StartedAtMs int64  `json:"started_at_ms"`
+	ID          string `json:"id"`
+}
+
+func (q *Queries) ClaimTurn(ctx context.Context, arg ClaimTurnParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, claimTurn, arg.Turn, arg.StartedAtMs, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const finishSessionTurn = `-- name: FinishSessionTurn :execrows
@@ -118,24 +145,15 @@ func (q *Queries) FinishSessionTurn(ctx context.Context, arg FinishSessionTurnPa
 	return result.RowsAffected()
 }
 
-const markTurnPromptSent = `-- name: MarkTurnPromptSent :execrows
-UPDATE threads
-SET turn = json_remove(turn, '$.prompt'), acp_session_id = ?1
-WHERE id = ?2 AND turn <> ''
-  AND (acp_session_id IS NULL OR acp_session_id = '' OR acp_session_id = ?1)
+const getRunningTurn = `-- name: GetRunningTurn :one
+SELECT turn FROM threads WHERE id = ?1 AND status = 'running' AND turn <> ''
 `
 
-type MarkTurnPromptSentParams struct {
-	AgentSessionID sql.NullString `json:"agent_session_id"`
-	ID             string         `json:"id"`
-}
-
-func (q *Queries) MarkTurnPromptSent(ctx context.Context, arg MarkTurnPromptSentParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, markTurnPromptSent, arg.AgentSessionID, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+func (q *Queries) GetRunningTurn(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getRunningTurn, id)
+	var turn string
+	err := row.Scan(&turn)
+	return turn, err
 }
 
 const markTurnShown = `-- name: MarkTurnShown :exec
@@ -161,6 +179,20 @@ func (q *Queries) ResetTurnHops(ctx context.Context, id string) error {
 	return err
 }
 
+const setRunningTurn = `-- name: SetRunningTurn :exec
+UPDATE threads SET turn = ?1 WHERE id = ?2 AND status = 'running' AND turn <> ''
+`
+
+type SetRunningTurnParams struct {
+	Turn string `json:"turn"`
+	ID   string `json:"id"`
+}
+
+func (q *Queries) SetRunningTurn(ctx context.Context, arg SetRunningTurnParams) error {
+	_, err := q.db.ExecContext(ctx, setRunningTurn, arg.Turn, arg.ID)
+	return err
+}
+
 const setTurnIntent = `-- name: SetTurnIntent :execrows
 UPDATE threads
 SET turn = json_set(turn,
@@ -183,6 +215,37 @@ func (q *Queries) SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (i
 		arg.ParentVisible,
 		arg.NotifyParent,
 		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setTurnPromptState = `-- name: SetTurnPromptState :execrows
+UPDATE threads
+SET turn = CASE WHEN json_extract(turn, '$.prompt.state') = 'confirmed' THEN turn
+      ELSE json_set(turn, '$.prompt.state', CAST(?1 AS TEXT)) END,
+    acp_session_id = ?2
+WHERE id = ?3 AND status = 'running' AND turn <> ''
+  AND json_type(turn, '$.prompt') = 'object'
+  AND json_extract(turn, '$.started_at') = ?4
+  AND (acp_session_id IS NULL OR acp_session_id = '' OR acp_session_id = ?2)
+`
+
+type SetTurnPromptStateParams struct {
+	State          string         `json:"state"`
+	AgentSessionID sql.NullString `json:"agent_session_id"`
+	ID             string         `json:"id"`
+	StartedAt      string         `json:"started_at"`
+}
+
+func (q *Queries) SetTurnPromptState(ctx context.Context, arg SetTurnPromptStateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setTurnPromptState,
+		arg.State,
+		arg.AgentSessionID,
+		arg.ID,
+		arg.StartedAt,
 	)
 	if err != nil {
 		return 0, err
