@@ -95,7 +95,7 @@ func (q *Queries) CompleteSession(ctx context.Context, arg CompleteSessionParams
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms FROM threads
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest FROM threads
 WHERE id = ?1 OR slug = ?1
 LIMIT 1
 `
@@ -147,6 +147,7 @@ func (q *Queries) GetSession(ctx context.Context, ref string) (Thread, error) {
 		&i.TranscriptRevision,
 		&i.Turn,
 		&i.CompletedTurnStartedAtMs,
+		&i.PromptDigest,
 	)
 	return i, err
 }
@@ -228,7 +229,7 @@ func (q *Queries) IsMainBot(ctx context.Context, threadID string) (bool, error) 
 }
 
 const listChildSessions = `-- name: ListChildSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest
 FROM threads
 WHERE parent_id = ?1
   AND archived = ?2
@@ -328,6 +329,7 @@ func (q *Queries) ListChildSessions(ctx context.Context, arg ListChildSessionsPa
 			&i.TranscriptRevision,
 			&i.Turn,
 			&i.CompletedTurnStartedAtMs,
+			&i.PromptDigest,
 		); err != nil {
 			return nil, err
 		}
@@ -470,7 +472,7 @@ func (q *Queries) ListSessionSubtree(ctx context.Context, id string) ([]string, 
 }
 
 const listSessions = `-- name: ListSessions :many
-SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms
+SELECT id, slug, title, parent_id, status, error, runtime, acp_agent, acp_session_id, cwd, model_provider, model, reasoning_effort, input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens, total_tokens, queued_messages, source_type, source_id, archived, created_at_ms, updated_at_ms, context_tokens, context_window_tokens, cached_write_tokens, project_path, last_attention_at_ms, pinned, artifact_surface, mcp_server_policy, pending_steer_message, unread, goal, manual_title, last_completed_at_ms, title_locked, event_compaction_version, event_revision, transcript_revision, turn, completed_turn_started_at_ms, prompt_digest
 FROM threads
 WHERE archived = ?1
   AND (?2 OR parent_id IS NULL OR parent_id = '')
@@ -579,6 +581,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]T
 			&i.TranscriptRevision,
 			&i.Turn,
 			&i.CompletedTurnStartedAtMs,
+			&i.PromptDigest,
 		); err != nil {
 			return nil, err
 		}

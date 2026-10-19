@@ -431,7 +431,7 @@ func TestAThreadThatCannotResumeAfterARestartTellsItsBot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if note := bots.TurnNote(store)(session); !strings.Contains(note, "thread audit failed") {
+	if note, _ := bots.TurnNote(store)(session); !strings.Contains(note, "thread audit failed") {
 		t.Fatalf("the bot's next turn opens with %q, want its thread shown failed", note)
 	}
 }

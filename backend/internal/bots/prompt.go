@@ -11,9 +11,20 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-// Prompt is the identity module a bot's thread starts with: the bot's own, or
-// in the thread it takes a group's turns in, its place in that group.
+// Prompt is the identity module a bot's thread starts with, and the bot's
+// MEMORY.md from its home, where all of its threads work.
 func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, error) {
+	identity, err := threadIdentity(store, session)
+	if err != nil || identity == nil {
+		return nil, err
+	}
+	return identity.Append(homeModule(session, memoryFile)), nil
+}
+
+// threadIdentity is who a bot is in its thread, with the bot's saved prompt:
+// the bot's own identity, or in the thread it takes a group's turns in, its
+// place in that group.
+func threadIdentity(store PromptStore, session storage.Session) (promptmodule.Modules, error) {
 	if session.SourceType == storage.SourceBotMember {
 		membership, err := store.LoadMembershipByThread(session.ID)
 		if err != nil {
@@ -31,13 +42,13 @@ func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, e
 		if err != nil {
 			return nil, err
 		}
-		return promptmodule.New(memberPrompt(bot.Title, group.Title), record.Prompt, homeModule(bot, memoryFile)), nil
+		return promptmodule.New(memberPrompt(bot.Title, group.Title), record.Prompt), nil
 	}
 	record, err := store.LoadBot(session.ID)
 	if err != nil || record.Kind != KindBot {
 		return nil, err
 	}
-	return promptmodule.New(identityPrompt(session.Title, record.Main), record.Prompt, homeModule(session, memoryFile)), nil
+	return promptmodule.New(identityPrompt(session.Title, record.Main), record.Prompt), nil
 }
 
 func identityPrompt(name string, main bool) string {

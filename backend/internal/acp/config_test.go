@@ -161,7 +161,7 @@ func TestSystemPromptMetaPerAgent(t *testing.T) {
 		{"unknown-agent", map[string]any{"systemPrompt": "jaz prompt"}},
 	}
 	for _, tc := range cases {
-		if got := systemPromptMeta(tc.agent, "jaz prompt"); !reflect.DeepEqual(got, tc.want) {
+		if got := systemPromptMeta(tc.agent, "jaz prompt", false); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("systemPromptMeta(%q) = %#v, want %#v", tc.agent, got, tc.want)
 		}
 	}

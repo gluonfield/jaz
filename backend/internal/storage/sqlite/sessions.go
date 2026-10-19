@@ -520,6 +520,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		LastAttentionAt:        msToTime(row.LastAttentionAtMs),
 		CompletedAt:            msToTime(row.LastCompletedAtMs),
 		CompletedTurnStartedAt: msToTime(row.CompletedTurnStartedAtMs),
+		PromptDigest:           row.PromptDigest,
 		Unread:                 row.Unread != 0,
 	}
 	if session.LastAttentionAt.IsZero() {

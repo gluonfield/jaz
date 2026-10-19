@@ -74,7 +74,8 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 		return SpawnRequest{}, AgentConfig{}, "", err
 	}
 	if strings.EqualFold(strings.TrimSpace(req.ReasoningEffort), "none") && agentPolicyForAgent(req.ACPAgent).effortEncodedInModel(cfg.Model) {
-		cfg.Model = strings.TrimSpace(cfg.Model[:strings.LastIndex(cfg.Model, "/")])
+		base, _, _ := cutReasoningEffort(cfg.Model)
+		cfg.Model = strings.TrimSpace(base)
 	}
 	cfg.Model = m.resolveAgentModelAlias(req.ACPAgent, cfg)
 	cfg.ModelRequested = modelOverridden && !req.StoredModel

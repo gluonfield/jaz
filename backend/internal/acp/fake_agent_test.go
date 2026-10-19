@@ -60,24 +60,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	// Startup waits while a hold file sits in the agent's directory, as a
 	// slow login refresh holds an agent up.
 	fakeHold(os.Getenv("JAZ_FAKE_ACP_START_HOLD"))
+	launch, codex := readFakeCodexLaunch(t)
 	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" {
-		var config struct {
-			Features map[string]bool `json:"features"`
-		}
-		raw := []byte(os.Getenv("CODEX_CONFIG"))
-		if strings.HasPrefix(string(raw), "@") {
-			var err error
-			raw, err = os.ReadFile(strings.TrimPrefix(string(raw), "@"))
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := json.Unmarshal(raw, &config); err != nil {
-			t.Fatalf("parse Codex config: %v", err)
-		}
-		disabled, ok := config.Features["goals"]
+		disabled, ok := launch.Features["goals"]
 		if !ok || disabled {
-			t.Fatalf("Codex config = %#v, want features.goals=false", config)
+			t.Fatalf("Codex config = %#v, want features.goals=false", launch)
 		}
 	}
 	if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_METADATA"); want != "" {
@@ -109,8 +96,12 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	if currentMode == "" {
 		currentMode = "auto"
 	}
-	currentModel := ""
-	currentEffort := ""
+	// Codex starts a thread on the model its launch names, else on its default.
+	currentModel, currentEffort := launch.Model, launch.Effort
+	if codex && currentModel == "" {
+		currentModel = fakeDefaultModel()
+	}
+	startedModel, lastTurnModel := "", ""
 	currentCollaborationMode := "default"
 	messageSeq := 0
 	nextMessageID := func(kind string) string {
@@ -256,7 +247,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			result := map[string]any{
 				"modes": fakeModes(),
 			}
-			addFakeModels(result)
+			addFakeModels(result, currentModel, codex)
+			startedModel, lastTurnModel = currentModel, ""
 			addFakePlanConfig(result)
 			sendResult(conn, msg, result)
 		case "session/new":
@@ -301,7 +293,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if modes := fakeModes(); modes != nil {
 				result["modes"] = modes
 			}
-			addFakeModels(result)
+			addFakeModels(result, currentModel, codex)
+			startedModel, lastTurnModel = currentModel, ""
+			// codex-acp describes the efforts of the model the thread started on.
+			if effort := fakeModelEffortOption(); codex && effort != nil {
+				options, _ := result["configOptions"].([]map[string]any)
+				result["configOptions"] = append(options, effort)
+			}
 			addFakePlanConfig(result)
 			sendResult(conn, msg, result)
 		case "session/close":
@@ -384,20 +382,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 						{"id": "mode", "type": "select", "options": []map[string]any{{"value": "auto"}}},
 						{"id": "model", "type": "select", "options": []map[string]any{{"value": req.Value}}},
 					}
-				} else if effortConfigID := strings.TrimSpace(os.Getenv("JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_ID")); effortConfigID != "" {
-					effortOptions := []map[string]any{}
-					rawEffortOptions := strings.TrimSpace(os.Getenv("JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_OPTIONS"))
-					if rawEffortOptions == "" {
-						rawEffortOptions = os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT")
-					}
-					for _, value := range strings.Split(rawEffortOptions, ",") {
-						if value = strings.TrimSpace(value); value != "" {
-							effortOptions = append(effortOptions, map[string]any{"value": value})
-						}
-					}
+				} else if effort := fakeModelEffortOption(); effort != nil {
 					result["configOptions"] = []map[string]any{
 						{"id": "model", "category": "model", "type": "select", "options": []map[string]any{{"value": req.Value}}},
-						{"id": effortConfigID, "category": "thought_level", "type": "select", "options": effortOptions},
+						effort,
 					}
 				}
 				sendResult(conn, msg, result)
@@ -513,6 +501,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			// A turn on another model than the thread started on, or than the
+			// previous turn ran, is one Codex announces to the model as a switch.
+			logFakeTurn(t, currentModel, currentEffort, currentModel != cmp.Or(lastTurnModel, startedModel))
+			lastTurnModel = currentModel
 			if path := os.Getenv("JAZ_FAKE_ACP_MATERIALIZED_SESSION"); path != "" {
 				if err := os.WriteFile(path, []byte(fakeSessionID), 0o600); err != nil {
 					resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError(err.Error(), nil))
@@ -827,7 +819,9 @@ func notify(conn jsonrpc.MessageConn, method string, params any) {
 	}
 }
 
-func addFakeModels(result map[string]any) {
+// addFakeModels advertises the agent's models as codex-acp does, with Codex's
+// default as the model option's recommended value.
+func addFakeModels(result map[string]any, currentModel string, codex bool) {
 	raw := os.Getenv("JAZ_FAKE_ACP_MODELS")
 	if strings.TrimSpace(raw) == "" {
 		return
@@ -851,14 +845,17 @@ func addFakeModels(result map[string]any) {
 		modelOptions = append(modelOptions, map[string]any{"value": model, "name": model})
 	}
 	result["models"] = map[string]any{"availableModels": available}
-	result["configOptions"] = []map[string]any{
-		{
-			"id":      "model",
-			"name":    "Model",
-			"type":    "select",
-			"options": modelOptions,
-		},
+	option := map[string]any{
+		"id":           "model",
+		"name":         "Model",
+		"type":         "select",
+		"currentValue": currentModel,
+		"options":      modelOptions,
 	}
+	if codex {
+		option["_meta"] = map[string]any{"jetbrains": map[string]any{"air": map[string]any{"recommendedValue": fakeDefaultModel()}}}
+	}
+	result["configOptions"] = []map[string]any{option}
 }
 
 func addFakePlanConfig(result map[string]any) {
