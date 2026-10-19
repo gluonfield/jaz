@@ -9,6 +9,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/httpapi/agentsessions"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -27,7 +28,7 @@ func (p *jazProcess) newBot(name string) bots.Bot {
 // write sends the user's message to thread and waits for its turn to end.
 func (p *jazProcess) write(thread, text string) {
 	p.t.Helper()
-	if _, err := p.manager.Send(p.ctx, acp.SendRequest{Session: thread, Message: text, Completion: acp.CompletionAsync}); err != nil {
+	if _, err := p.manager.Send(p.ctx, acp.SendRequest{Session: thread, Message: text, Completion: acp.CompletionAsync, FromUser: true}); err != nil {
 		p.t.Fatal(err)
 	}
 	p.idle(thread)
@@ -300,5 +301,54 @@ func TestTheBotsListShowsAwayOnlyBotsWhoseRoutinesWait(t *testing.T) {
 	}
 	if names := away(); len(names) != 0 {
 		t.Fatalf("away bots = %q after the user came back, want none", names)
+	}
+}
+
+func TestHumanInputBoundariesResumeAwayRoutines(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		path string
+		body string
+		busy bool
+	}{
+		{"queued", "/queue", `{"op":"append","message":{"text":"back now"}}`, false},
+		{"stream", "/messages:stream", `{"message":"back now"}`, false},
+		{"stream steer", "/messages:stream", `{"message":"back now"}`, true},
+		{"voice input", "/agent/input", `{"message":"back now"}`, false},
+		{"voice steer", "/agent/input", `{"message":"back now"}`, true},
+		{"interactive text", "/interactive-response", `{"text":"back now"}`, false},
+		{"interactive steer", "/interactive-response", `{"text":"back now"}`, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, root := newTestStore(t)
+			jaz := startJaz(t, testContext(t), store, root, map[string]string{"JAZ_FAKE_ACP_NATIVE_STEERING": "1"})
+			mux := http.NewServeMux()
+			mux.HandleFunc("POST /v1/sessions/{session}/agent/input", agentsessions.NewHandler(jaz.manager).Input)
+			mux.Handle("/", jaz.server.Handler())
+			bot := jaz.awayFrom("Gimli")
+			if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "an unmarked background writer"}); err != nil {
+				t.Fatal(err)
+			}
+			jaz.idle(bot.ID)
+			if jaz.back(bot.ID) {
+				t.Fatal("an unmarked user-role write resumed routines")
+			}
+			if tc.busy {
+				if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "block until cancelled"}); err != nil {
+					t.Fatal(err)
+				}
+				waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
+			}
+			request := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+bot.ID+tc.path, strings.NewReader(tc.body))
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				t.Fatalf("input status = %d: %s", response.Code, response.Body.String())
+			}
+			jaz.idle(bot.ID)
+			if !jaz.back(bot.ID) {
+				t.Fatal("human input did not resume routines after its queue drained")
+			}
+		})
 	}
 }

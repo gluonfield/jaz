@@ -166,7 +166,7 @@ func (s *Store) replaceMessagesLocked(id string, records []storage.Message) erro
 		// are stamped.
 		if i < len(existing) && existing[i].Role == record.Role {
 			record.CreatedAt = existing[i].CreatedAt
-			record.FromAgent = existing[i].FromAgent
+			record.FromUser = existing[i].FromUser && record.Content == existing[i].Content
 			record = storage.MergeDurableBlocks(record, existing[i])
 		} else if record.CreatedAt.IsZero() {
 			record.CreatedAt = now.Add(time.Duration(i+1) * time.Millisecond)
@@ -197,7 +197,7 @@ func insertMessage(q *messagedb.Queries, record storage.Message) error {
 		Reasoning:   nullDBString(record.Reasoning),
 		Blocks:      blocks,
 		CreatedAtMs: timeToMs(record.CreatedAt),
-		FromAgent:   boolInt(record.FromAgent),
+		FromUser:    boolInt(record.FromUser),
 	})
 }
 
@@ -214,6 +214,6 @@ func messageFromDB(row messagedb.Message) (storage.Message, error) {
 		Reasoning: row.Reasoning.String,
 		Blocks:    blocks,
 		CreatedAt: msToTime(row.CreatedAtMs),
-		FromAgent: row.FromAgent != 0,
+		FromUser:  row.FromUser != 0,
 	}, nil
 }

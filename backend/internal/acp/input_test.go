@@ -65,7 +65,7 @@ func TestManagerInputStartsFreshAgentAfterVoiceConversation(t *testing.T) {
 				t.Fatalf("agent messages = %+v, %v", messages, err)
 			}
 			message := messages[0]
-			if message.Content != "Check how much space my laptop has" || len(message.Blocks) != 2 {
+			if !message.FromUser || message.Content != "Check how much space my laptop has" || len(message.Blocks) != 2 {
 				t.Fatalf("stored user message = %+v", message)
 			}
 			want := storage.Block{Type: storage.BlockTypeVoiceContext, ID: "call", RequestID: "request", Text: "User: Check disk space"}

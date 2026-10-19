@@ -161,8 +161,8 @@ type SendRequest struct {
 	PlanRequested bool
 	GoalRequested bool
 	ParentVisible bool
-	// FromAgent marks Message as an agent's, not the user's.
-	FromAgent bool
+	// FromUser is set only at a human input boundary.
+	FromUser bool
 	// From is the thread whose agent sent Message, when known.
 	From string
 	// ParentOutput is what the parent turn that sent Message was answering;
@@ -180,6 +180,7 @@ const (
 )
 
 type SteerRequest struct {
+	FromUser      bool
 	Session       string
 	Message       string
 	Contexts      []storage.MessageContext

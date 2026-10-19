@@ -127,7 +127,7 @@ type MCPSendInput struct {
 func (t *MCPTools) Send(ctx context.Context, req *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {
 	job, err := t.Service.Send(ctx, SendRequest{
 		Session: input.ThreadID, Message: input.Prompt, PlanRequested: input.Plan,
-		Completion: CompletionAsync, ParentVisible: true, FromAgent: true, From: mcpsession.SessionID(req),
+		Completion: CompletionAsync, ParentVisible: true, From: mcpsession.SessionID(req),
 	})
 	return nil, snapshotThread(job), err
 }

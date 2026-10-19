@@ -61,13 +61,11 @@ func UserMessageRecord(message string, contexts []MessageContext, attachments []
 	}
 }
 
-func AppendUserMessage(store MessageAppender, sessionID, message string, contexts []MessageContext, attachments []Attachment, fromAgent bool) error {
-	if len(attachments) > 0 || len(contexts) > 0 || fromAgent {
-		if appender, ok := store.(MessageRecordAppender); ok {
-			record := UserMessageRecord(message, contexts, attachments)
-			record.FromAgent = fromAgent
-			return appender.AppendMessageRecords(sessionID, record)
-		}
+func AppendUserMessage(store MessageAppender, sessionID, message string, contexts []MessageContext, attachments []Attachment, fromUser bool) error {
+	if appender, ok := store.(MessageRecordAppender); ok {
+		record := UserMessageRecord(message, contexts, attachments)
+		record.FromUser = fromUser
+		return appender.AppendMessageRecords(sessionID, record)
 	}
 	return store.AppendMessages(sessionID, provider.UserMessage(message))
 }
