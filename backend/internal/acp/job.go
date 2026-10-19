@@ -146,7 +146,7 @@ type activeTurn struct {
 	// retrying, the turn waits to send the next one.
 	retries         int
 	retrying        bool
-	providerRetried map[string]string
+	providerRetried map[providerRetry]bool
 }
 
 type ModeState struct {
@@ -323,10 +323,10 @@ func (j *jobState) setState(state, stopReason, errMsg string) {
 }
 
 func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVisible bool) chan struct{} {
-	return j.startTurnWithOperation(completion, planRequested, parentVisible, "", false, 0)
+	return j.startStoredTurn(completion, storage.Turn{PlanRequested: planRequested, ParentVisible: parentVisible})
 }
 
-func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequested, parentVisible bool, activeOperation string, allowSilence bool, retries int) chan struct{} {
+func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Turn) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	now := time.Now().UTC()
@@ -345,21 +345,21 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 	j.suggestedPrompt = ""
 	j.Error = ""
 	j.StopReason = ""
-	j.ActiveOperation = activeOperation
+	j.ActiveOperation = stored.ActiveOperation
 	j.savedAssistantLen = 0
 	j.usage.startTurn()
 	j.turnResultDiscarded = false
 	j.turn = &activeTurn{
 		done:            make(chan struct{}),
 		completion:      completion,
-		planRequested:   planRequested,
+		planRequested:   stored.PlanRequested,
 		startedAt:       now,
 		firstPromptSent: make(chan struct{}),
 		promptCalls:     1,
-		allowSilence:    allowSilence,
-		retries:         retries,
+		allowSilence:    stored.AllowSilence,
+		retries:         stored.Retries,
 	}
-	j.ParentVisible = parentVisible
+	j.ParentVisible = stored.ParentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)
 	j.pendingToolUpdateByID = make(map[string]sessionevents.ACPToolCall)
 	j.UpdatedAt = now

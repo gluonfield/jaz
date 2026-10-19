@@ -62,6 +62,8 @@ func TestARoutineTurnTheProviderFailsContinuesUntilItAnswers(t *testing.T) {
 	}
 
 	jaz.waitRun(run.ID, loops.RunStatusOK)
+	// The run closes before its turn does.
+	jaz.eventually("the bot's turn ending", func() bool { return jaz.session(bot.ID).Turn == nil })
 	prompts := jaz.prompts()
 	if len(prompts) != 3 || jaz.promptsContaining("provider fails") != 1 || jaz.promptsContaining(continuation) != 2 {
 		t.Fatalf("prompts = %q, want the routine once and two continuations", prompts)
@@ -117,6 +119,7 @@ func TestARoutineTurnTheProviderKeepsFailingClosesItsRunAsAnError(t *testing.T) 
 	if !strings.HasPrefix(failed.Error, "Selected model is at capacity.") || jaz.promptsContaining(continuation) != 3 {
 		t.Fatalf("run = %+v, prompts = %q; want three continuations, then the provider's reason", failed, jaz.prompts())
 	}
+	jaz.eventually("the bot's turn ending", func() bool { return jaz.session(bot.ID).Turn == nil })
 	if session := jaz.session(bot.ID); session.Status != storage.StatusError || !strings.HasPrefix(session.Error, "Selected model is at capacity.") {
 		t.Fatalf("bot after the failed turn = %s %q", session.Status, session.Error)
 	}
@@ -125,7 +128,7 @@ func TestARoutineTurnTheProviderKeepsFailingClosesItsRunAsAnError(t *testing.T) 
 // Failures the provider says a retry cannot fix, or that it already retried
 // itself, reach the bot that started the work as failed at once.
 func TestAWorkerTurnEndedByAFailureNotToRetryReportsFailedToItsBot(t *testing.T) {
-	for _, kind := range []string{"rejected", "retried"} {
+	for _, kind := range []string{"rejected", "retried", "throttled"} {
 		t.Run(kind, func(t *testing.T) {
 			jaz := startFailingJaz(t, time.Millisecond, time.Millisecond, time.Millisecond)
 			bot := jaz.bot("Gimli")
@@ -150,8 +153,8 @@ func TestAWorkerTurnEndedByAFailureNotToRetryReportsFailedToItsBot(t *testing.T)
 	}
 }
 
-// Stopping a turn that waits to retry ends it at once, sends nothing more, and
-// a message the user writes meanwhile waits for the turn to end.
+// Stopping a turn that waits to retry ends it at once and sends nothing more;
+// steering it meanwhile is refused, so the server queues the message.
 func TestStoppingATurnWaitingToRetryEndsItWithoutAContinuation(t *testing.T) {
 	jaz := startFailingJaz(t, time.Hour)
 	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
@@ -287,4 +290,74 @@ func TestAProviderNoticeShowsInTheTurnsAnswer(t *testing.T) {
 	if !strings.HasPrefix(answer, "Warning: Model metadata not found.\n\nhello from fake agent") {
 		t.Fatalf("answer = %q, want the notice before it", answer)
 	}
+}
+
+// unrecordedRetries is storage that cannot record a turn's retries.
+type unrecordedRetries struct {
+	*sqlitestore.Store
+}
+
+func (unrecordedRetries) SetTurnRetries(string, int) error {
+	return errors.New("disk full")
+}
+
+// A retry Jaz cannot record would let a restart retry the turn again, so the
+// turn fails instead of waiting to retry.
+func TestATurnWhoseRetryCannotBeRecordedFails(t *testing.T) {
+	acp.SetProviderRetryDelays(t, time.Millisecond)
+	store, root := newTestStore(t)
+	env := failingProvider(root)
+	env["JAZ_FAKE_ACP_REQUEST_LOG"] = filepath.Join(root, "requests.jsonl")
+	manager := newFakeNamedAgentManagerWithOptions(t, unrecordedRetries{store}, root, acp.AgentCodex, env, "", "")
+	t.Cleanup(manager.Close)
+	ctx := testContext(t)
+	thread, err := manager.CreateSession(ctx, acp.SpawnRequest{Slug: "chat", Directory: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: thread.ID, Message: "plan the trip provider fails 1 overloaded", Completion: acp.CompletionAsync}); err != nil {
+		t.Fatal(err)
+	}
+
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: thread.ID, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	jaz := &jazProcess{t: t, root: root}
+	if job.State != acp.StateFailed || !strings.HasPrefix(job.Error, "Selected model is at capacity.") || jaz.promptsContaining(continuation) != 0 {
+		t.Fatalf("turn = %s %q, prompts = %q; want it failed without a continuation", job.State, job.Error, jaz.prompts())
+	}
+}
+
+// Once the continuation goes out, the thread no longer shows the failure it
+// retries.
+func TestAContinuationClearsTheRetryNotice(t *testing.T) {
+	acp.SetProviderRetryDelays(t, time.Millisecond)
+	store, root := newTestStore(t)
+	env := failingProvider(root)
+	env["JAZ_FAKE_ACP_HOLD_TEXT"] = continuation
+	jaz := startJaz(t, testContext(t), store, root, env)
+	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: thread.ID, Message: "plan the trip provider fails 1 overloaded", Completion: acp.CompletionAsync}); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ID)
+
+	events, err := store.LoadSessionEvents(thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	for _, event := range events {
+		if event.Type == "acp" && event.ACP != nil {
+			status = event.ACP.Error
+		}
+	}
+	if status != "" {
+		t.Fatalf("the thread's status while the continuation works = %q, want no failure", status)
+	}
+	jaz.release()
 }

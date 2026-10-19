@@ -199,12 +199,13 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 			return Job{}, err
 		}
 	}
-	if err := m.store.StartSessionTurn(job.ID, storage.Turn{
+	turn := storage.Turn{
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: opts.output, ParentOutput: parentOutput,
 		PromptDigest: promptDigest, Retries: opts.retries,
-	}); err != nil {
+	}
+	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}
 	if opts.transcript == sendTranscriptUserMessage {
@@ -217,7 +218,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		}
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
-	done := job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation, opts.allowSilence, opts.retries)
+	done := job.startStoredTurn(req.Completion, turn)
 	m.touchAttention(parentSessionIDs(job.eventView())...)
 	markGoalRequested(job, req.GoalRequested)
 	if err := m.publishACP(job.eventView()); err != nil {
@@ -248,7 +249,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	}
 	job.mu.RLock()
 	method := job.steerMethod
-	running := job.turn != nil && (job.State == StateRunning || job.State == StateStarting)
+	running := job.turn != nil && !job.turn.retrying && (job.State == StateRunning || job.State == StateStarting)
 	asking := len(job.Permissions) > 0
 	job.mu.RUnlock()
 	if !running {
@@ -369,9 +370,7 @@ func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done ch
 		m.failPromptCall(done, job, fmt.Errorf("invalid native ACP steering response"))
 		return
 	}
-	if delay, retry := m.completePromptCall(done, job, response.StopReason, response.Meta.terminal()); retry {
-		m.retryPrompt(ctx, job, done, delay)
-	}
+	m.completePromptCall(done, job, response.StopReason, response.Meta.terminal())
 }
 
 func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, method steerMethod, prompt acpschema.PromptRequest) {

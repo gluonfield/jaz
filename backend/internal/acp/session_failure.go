@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/wins/jaz/backend/internal/codexcompat"
+	acpschema "github.com/gluonfield/acp-transport/acp"
 )
 
 // sessionFailure is a provider failure an agent reports through the AIR
@@ -30,6 +30,18 @@ type sessionFailureMeta struct {
 	} `json:"jetbrains"`
 }
 
+// providerRetry is a failure, by incident and category, that the provider
+// retried itself. Agents keep one record per incident, so a transport retry
+// and the capacity failure after it share an id; the category tells them
+// apart.
+type providerRetry struct {
+	id, category string
+}
+
+// providerRetryDelays are the waits before each continuation Jaz sends after
+// a provider failure the provider did not retry itself.
+var providerRetryDelays = []time.Duration{15 * time.Second, time.Minute, 4 * time.Minute}
+
 func sessionFailureRecord(raw json.RawMessage) *sessionFailure {
 	var update struct {
 		Meta sessionFailureMeta `json:"_meta"`
@@ -39,10 +51,6 @@ func sessionFailureRecord(raw json.RawMessage) *sessionFailure {
 	}
 	return update.Meta.Jetbrains.Air.SessionFailure
 }
-
-// providerRetryDelays are the waits before each continuation Jaz sends after
-// a provider failure the provider did not retry itself.
-var providerRetryDelays = []time.Duration{15 * time.Second, time.Minute, 4 * time.Minute}
 
 // terminal is the failure that ended a turn; AIR reads an absent severity as
 // an error.
@@ -54,25 +62,6 @@ func (m sessionFailureMeta) terminal() *sessionFailure {
 	return failure
 }
 
-// notice is a record that only informs, such as a configuration warning or a
-// model fallback; the provider's own retries are warnings of a failure kind.
-func (f sessionFailure) notice() bool {
-	return f.Severity == "warning" && f.Category == "unknown"
-}
-
-// noticeText is how agents write a notice into the transcript for clients
-// without the extension.
-func (f sessionFailure) noticeText() string {
-	text := "Warning: " + f.Title
-	if f.Details != "" {
-		text += "\n\n" + f.Details
-	}
-	if codexcompat.IsHiddenWarning(text) {
-		return ""
-	}
-	return text + "\n\n"
-}
-
 func (f sessionFailure) message() string {
 	if f.Details == "" {
 		return f.Title
@@ -80,26 +69,39 @@ func (f sessionFailure) message() string {
 	return f.Title + "\n\n" + f.Details
 }
 
-// markProviderRetried notes a failure the provider is retrying itself, so a
-// turn the same failure ends is not retried again. Agents keep one record per
-// incident, so a transport retry and the capacity failure after it share an
-// id; the category tells them apart.
-func (t *activeTurn) markProviderRetried(failure sessionFailure) {
-	if t.providerRetried == nil {
-		t.providerRetried = map[string]string{}
+// noticeAsMessage is a notice record, such as a configuration warning or a
+// model fallback, as the message chunk agents write for clients without the
+// extension; the provider's own retries are warnings of a failure category.
+func noticeAsMessage(update acpschema.DecodedSessionUpdate, raw json.RawMessage) acpschema.DecodedSessionUpdate {
+	failure := sessionFailureRecord(raw)
+	if _, info := update.(acpschema.SessionInfoSessionUpdate); !info || failure == nil || failure.Severity != "warning" || failure.Category != "unknown" {
+		return update
 	}
-	t.providerRetried[failure.ID] = failure.Category
+	block, err := marshalContentBlock(acpschema.TextContentBlock{
+		Kind:        acpschema.ContentBlockText,
+		TextContent: acpschema.TextContent{Text: "Warning: " + failure.message() + "\n\n"},
+	})
+	if err != nil {
+		return update
+	}
+	return acpschema.AgentMessageChunkUpdate{ContentChunk: acpschema.ContentChunk{Content: block}}
 }
 
 // retryDelay is how long to wait before continuing a turn this failure ended,
 // when the agent offers a retry, the provider did not already retry it, and
 // the turn has tries left.
 func (t *activeTurn) retryDelay(failure sessionFailure) (time.Duration, bool) {
-	category, retried := t.providerRetried[failure.ID]
-	if !slices.Contains(failure.Actions, "retry") || retried && category == failure.Category || t.retries >= len(providerRetryDelays) {
+	if !slices.Contains(failure.Actions, "retry") || t.providerRetried[providerRetry{failure.ID, failure.Category}] || t.retries >= len(providerRetryDelays) {
 		return 0, false
 	}
 	return providerRetryDelays[t.retries], true
+}
+
+func (t *activeTurn) markProviderRetried(failure sessionFailure) {
+	if t.providerRetried == nil {
+		t.providerRetried = map[providerRetry]bool{}
+	}
+	t.providerRetried[providerRetry{failure.ID, failure.Category}] = true
 }
 
 func retryNotice(failure sessionFailure, delay time.Duration, attempt int) string {

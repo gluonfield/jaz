@@ -42,7 +42,7 @@ func TestEndTurnRequiresVisibleResult(t *testing.T) {
 			}
 			manager := NewManager(store, Config{}, log.New(io.Discard))
 			job := newIdleJob(session, AgentKimi, "acp-session", "", ModeState{})
-			done := job.startTurnWithOperation(CompletionInline, false, false, test.operation, test.allowSilence, 0)
+			done := job.startStoredTurn(CompletionInline, storage.Turn{ActiveOperation: test.operation, AllowSilence: test.allowSilence})
 			if test.prepare != nil {
 				test.prepare(job)
 			}

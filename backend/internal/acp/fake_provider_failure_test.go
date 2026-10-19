@@ -14,7 +14,7 @@ import (
 // fakeProviderFailures makes a prompt start a run of provider failures: this
 // prompt and the next n-1 the session gets end with kind's failure. The count
 // lives in JAZ_FAKE_ACP_FAILURE_FILE so it outlasts a restart.
-var fakeProviderFailures = regexp.MustCompile(`provider fails (\d+) (overloaded|rejected|retried|reconnected)`)
+var fakeProviderFailures = regexp.MustCompile(`provider fails (\d+) (overloaded|rejected|retried|reconnected|throttled)`)
 
 // fakeProviderNotice makes a prompt report a notice before it answers.
 var fakeProviderNotice = regexp.MustCompile(`provider notice ([A-Za-z .]+)`)
@@ -22,13 +22,16 @@ var fakeProviderNotice = regexp.MustCompile(`provider notice ([A-Za-z .]+)`)
 // fakeFailureKinds are the records codex-acp and claude-agent-acp send for a
 // failure the provider does not retry (overloaded), one the request itself
 // causes (rejected), one the provider already retried in the turn (retried),
-// and a capacity failure after the provider retried its connection
-// (reconnected), which codex-acp reports under the same incident id.
+// a capacity failure after the provider retried its connection
+// (reconnected), and a rate limit the provider retried among other retries
+// (throttled). codex-acp reports a turn's retries and its failure under one
+// incident id.
 var fakeFailureKinds = map[string]map[string]any{
 	"overloaded":  {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}},
 	"rejected":    {"category": "request", "title": "The requested model is not supported.", "actions": []string{}},
-	"retried":     {"category": "connection", "title": "stream disconnected before completion", "actions": []string{"retry", "new_session"}, "retrying": "connection"},
-	"reconnected": {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": "connection"},
+	"retried":     {"category": "connection", "title": "stream disconnected before completion", "actions": []string{"retry", "new_session"}, "retrying": []string{"connection"}},
+	"reconnected": {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": []string{"connection"}},
+	"throttled":   {"category": "limit", "title": "Rate limit reached.", "actions": []string{"retry"}, "retrying": []string{"limit", "connection"}},
 }
 
 // fakeTypedFailures reports whether initialize negotiated AIR sessionFailure,
@@ -104,14 +107,15 @@ func fakeProviderFailure(conn jsonrpc.MessageConn, msg *jsonrpc.Message, typed b
 		return true
 	}
 	id := fmt.Sprintf("turn-%d:error", turn)
-	if retrying, ok := kind["retrying"]; ok {
+	retrying, _ := kind["retrying"].([]string)
+	for revision, category := range retrying {
 		notify(conn, "session/update", map[string]any{"sessionId": fakeSessionID, "update": map[string]any{
 			"sessionUpdate": "session_info_update",
-			"_meta":         fakeFailureMeta(map[string]any{"id": id, "revision": 1, "category": retrying, "severity": "warning", "title": "Reconnecting... 1/5", "actions": []string{}}),
+			"_meta":         fakeFailureMeta(map[string]any{"id": id, "revision": revision + 1, "category": category, "severity": "warning", "title": "Reconnecting...", "actions": []string{}}),
 		}})
 	}
 	sendResult(conn, msg, map[string]any{"stopReason": "end_turn", "_meta": fakeFailureMeta(map[string]any{
-		"id": id, "revision": 2, "category": kind["category"], "severity": "error", "title": title, "actions": kind["actions"],
+		"id": id, "revision": len(retrying) + 1, "category": kind["category"], "severity": "error", "title": title, "actions": kind["actions"],
 	})})
 	return true
 }

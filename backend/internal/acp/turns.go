@@ -60,15 +60,13 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 		return
 	}
 	m.recordRawUsage(job, raw)
-	if delay, retry := m.completePromptCall(done, job, resp.StopReason, resp.Meta.terminal()); retry {
-		m.retryPrompt(ctx, job, done, delay)
-	}
+	m.completePromptCall(done, job, resp.StopReason, resp.Meta.terminal())
 }
 
 // retryPrompt continues a turn a provider failure ended once delay passes,
 // unless the turn is stopped first. The continuation asks the agent to go on
 // rather than resending the prompt, whose work may already be done.
-func (m *Manager) retryPrompt(ctx context.Context, job *jobState, done chan struct{}, delay time.Duration) {
+func (m *Manager) retryPrompt(job *jobState, done chan struct{}, delay time.Duration) {
 	wait, cancel := context.WithTimeout(context.Background(), delay)
 	defer cancel()
 	if job.setTurnCancel(done, cancel) {
@@ -89,18 +87,19 @@ func (m *Manager) retryPrompt(ctx context.Context, job *jobState, done chan stru
 		m.completePromptCall(done, job, StopReasonCancelled, nil)
 		return
 	}
+	m.publishACPStatus(job.eventView())
 	req, err := m.promptRequest(job, interruptedTurnContinuation, nil)
 	if err != nil {
 		m.failPromptCall(done, job, err)
 		return
 	}
-	m.runPromptCall(ctx, job, done, req)
+	m.runPromptCall(context.Background(), job, done, req)
 }
 
 // completePromptCall records how a prompt call ended. A failure the agent
-// offers to retry keeps the turn running for another prompt call and reports
-// how long to wait before it.
-func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string, failure *sessionFailure) (time.Duration, bool) {
+// offers to retry keeps the turn running for another prompt call, sent once
+// its wait passes.
+func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string, failure *sessionFailure) {
 	cancelReason, cancelRequested := job.cancelReason()
 	state := StateIdle
 	errMessage := ""
@@ -114,7 +113,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	turn := job.turn
 	if turn == nil || turn.done != done || turn.promptCalls == 0 {
 		job.mu.Unlock()
-		return 0, false
+		return
 	}
 	turn.promptCalls--
 	remaining := turn.promptCalls
@@ -127,26 +126,27 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 			close(handoff)
 		}
 		m.log.Info("acp prompt handed off", "session", job.ID, "remaining_prompt_calls", remaining)
-		return 0, false
+		return
 	}
 	turn.promptCalls = 0
 	switch {
 	case state != StateIdle:
 	case failure != nil:
-		if delay, ok := turn.retryDelay(*failure); ok && job.ActiveOperation == "" {
+		// The retry is recorded before it waits, so a restart resumes the turn
+		// with the retries it used; one that cannot be recorded is not made.
+		if delay, ok := turn.retryDelay(*failure); ok && job.ActiveOperation == "" && m.recordRetry(job, turn.retries+1) {
 			turn.retries++
 			turn.retrying = true
 			turn.promptCalls = 1
-			retries := turn.retries
-			job.Error = retryNotice(*failure, delay, retries)
+			// Steering waits until the continuation reaches the agent.
+			turn.firstPromptSent, turn.firstPromptSentClosed = make(chan struct{}), false
+			job.Error = retryNotice(*failure, delay, turn.retries)
 			job.UpdatedAt = time.Now().UTC()
 			job.mu.Unlock()
-			m.log.Warn("acp turn failed; retrying", "session", job.ID, "failure", failure.Title, "retry", retries, "delay", delay)
-			if err := m.store.SetTurnRetries(job.ID, retries); err != nil {
-				m.log.Error("record turn retry", "session", job.ID, "error", err)
-			}
+			m.log.Warn("acp turn failed; retrying", "session", job.ID, "failure", failure.Title, "delay", delay)
 			m.publishACPStatus(job.eventView())
-			return delay, true
+			go m.retryPrompt(job, done, delay)
+			return
 		}
 		state = StateFailed
 		errMessage = failure.message()
@@ -163,7 +163,14 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	m.publishACPStatus(job.eventView())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
-	return 0, false
+}
+
+func (m *Manager) recordRetry(job *jobState, retries int) bool {
+	err := m.store.SetTurnRetries(job.ID, retries)
+	if err != nil {
+		m.log.Error("record turn retry", "session", job.ID, "error", err)
+	}
+	return err == nil
 }
 
 func hasVisibleTurnResult(job *jobState) bool {

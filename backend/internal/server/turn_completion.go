@@ -173,14 +173,14 @@ func (s *Server) ResumeInterruptedTurn(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if run := loopRun(session); run != "" {
-		closed, ok, err := s.Loops.Closed(run)
+	if runID := loopRun(session); runID != "" {
+		run, closed, err := s.Loops.Closed(runID)
 		if err != nil {
 			return err
 		}
-		if ok {
+		if closed {
 			// Recovery holds this thread's lock, which the bookkeeping takes.
-			go s.HandleACPTurnFinished(context.WithoutCancel(ctx), acp.Job{ID: id, State: loopRunState(closed.Status), Error: closed.Error})
+			go s.HandleACPTurnFinished(context.WithoutCancel(ctx), acp.Job{ID: id, State: loopRunState(run.Status), Error: run.Error})
 			return nil
 		}
 	}

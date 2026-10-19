@@ -83,6 +83,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if err != nil {
 		return
 	}
+	update = noticeAsMessage(update, raw)
 	if codexHiddenWarning(job.ACPAgent, update) {
 		return
 	}
@@ -182,15 +183,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			job.suggestedPrompt = prompt
 			publishACP = true
 		}
-		failure := sessionFailureRecord(raw)
-		switch {
-		case failure == nil:
-		case failure.notice():
-			if messageChunk = failure.noticeText(); messageChunk != "" {
-				job.appendAssistantLocked(messageChunk)
-				job.savedAssistantLen = len(job.Assistant)
-			}
-		case failure.Severity == "warning" && job.turn != nil:
+		if failure := sessionFailureRecord(raw); failure != nil && failure.Severity == "warning" && job.turn != nil {
 			job.turn.markProviderRetried(*failure)
 		}
 	}
