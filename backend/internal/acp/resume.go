@@ -100,7 +100,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		if err != nil {
 			return nil, fmt.Errorf("inspect ACP session transcript: %w", err)
 		}
-		if hasTranscript {
+		if hasTranscript && (session.Turn == nil || session.Turn.Prompt == nil) {
 			return nil, fmt.Errorf("cannot safely resume ACP session %s: provider session id is missing for a thread with transcript history", session.ID)
 		}
 	}
@@ -155,11 +155,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		}
 	}
 	job.steerMethod = supportedSteerMethod(ac.initRaw)
-	var persistSessionID func()
-	if materializesOnPrompt {
-		persistSessionID = m.persistSessionOnPrompt(session.ID, agentName, acpSessionID)
-	}
-	m.trackPromptSends(ac, job, persistSessionID)
+	m.trackPromptSends(ac, job)
 	process := newAgentProcess(ac)
 	process.mcpPolicy = mcpServerPolicy
 	process.mcpRevision = mcpRevision

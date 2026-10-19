@@ -118,6 +118,26 @@ func (q *Queries) FinishSessionTurn(ctx context.Context, arg FinishSessionTurnPa
 	return result.RowsAffected()
 }
 
+const markTurnPromptSent = `-- name: MarkTurnPromptSent :execrows
+UPDATE threads
+SET turn = json_remove(turn, '$.prompt'), acp_session_id = ?1
+WHERE id = ?2 AND turn <> ''
+  AND (acp_session_id IS NULL OR acp_session_id = '' OR acp_session_id = ?1)
+`
+
+type MarkTurnPromptSentParams struct {
+	AgentSessionID sql.NullString `json:"agent_session_id"`
+	ID             string         `json:"id"`
+}
+
+func (q *Queries) MarkTurnPromptSent(ctx context.Context, arg MarkTurnPromptSentParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markTurnPromptSent, arg.AgentSessionID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const markTurnShown = `-- name: MarkTurnShown :exec
 UPDATE threads
 SET turn = json_set(turn, '$.output.shown', json('true'))

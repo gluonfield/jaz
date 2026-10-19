@@ -7,6 +7,12 @@ SET status = 'running',
     last_attention_at_ms = sqlc.arg(started_at_ms)
 WHERE id = sqlc.arg(id);
 
+-- name: MarkTurnPromptSent :execrows
+UPDATE threads
+SET turn = json_remove(turn, '$.prompt'), acp_session_id = sqlc.narg(agent_session_id)
+WHERE id = sqlc.arg(id) AND turn <> ''
+  AND (acp_session_id IS NULL OR acp_session_id = '' OR acp_session_id = sqlc.narg(agent_session_id));
+
 -- name: SetTurnIntent :execrows
 UPDATE threads
 SET turn = json_set(turn,

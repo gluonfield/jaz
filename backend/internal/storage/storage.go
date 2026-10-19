@@ -185,6 +185,9 @@ type Turn struct {
 	AllowSilence    bool           `json:"allow_silence,omitempty"`
 	Output          *TurnOutput    `json:"output,omitempty"`
 	PendingMessage  *QueuedMessage `json:"pending_message,omitempty"`
+	// Prompt is the prepared input awaiting transport delivery, separate from
+	// the user-facing transcript and the queue claim that preceded it.
+	Prompt *TurnPrompt `json:"prompt,omitempty"`
 	// ParentOutput is the output of the parent turn this one's result opens:
 	// the exchange with another bot the parent was answering when it started
 	// this turn.
@@ -195,6 +198,11 @@ type Turn struct {
 	// Retries counts the continuations Jaz has sent after provider failures
 	// ended this turn's earlier prompts.
 	Retries int `json:"retries,omitempty"`
+}
+
+type TurnPrompt struct {
+	Message     string       `json:"message"`
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 type TurnOutput struct {

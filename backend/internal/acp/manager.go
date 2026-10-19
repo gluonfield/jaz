@@ -51,10 +51,11 @@ type Store interface {
 	LoadSession(string) (storage.Session, error)
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	SaveSession(storage.Session) error
-	StartSessionTurn(string, storage.Turn) error
+	StartSessionTurn(string, storage.Turn, ...storage.Message) error
 	SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error
 	ResetTurnHops(id string) error
 	SetTurnRetries(id string, retries int) error
+	MarkTurnPromptSent(id, agentSessionID string) error
 	UpdateSessionModel(id, model, effort string) error
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
 	ClaimQueuedTurn(storage.Session, storage.QueuedMessage) error
@@ -282,27 +283,15 @@ func (c *agentConn) withProcessStderr(err error) error {
 	return withProcessStderr(err, c.stderr)
 }
 
-func (m *Manager) trackPromptSends(c *agentConn, job *jobState, onFirst func()) {
+func (m *Manager) trackPromptSends(c *agentConn, job *jobState) {
 	if c.promptTracker != nil {
-		var once sync.Once
 		c.promptTracker.setOnPromptSent(func() {
-			if onFirst != nil {
-				once.Do(onFirst)
+			if err := m.store.MarkTurnPromptSent(job.ID, job.ACPSession); err != nil {
+				m.log.Error("record prompt delivery", "session", job.ID, "error", err)
 			}
 			job.markFirstPromptSent()
 			m.publishSessionChanged(job.ID)
 		})
-	}
-}
-
-func (m *Manager) persistSessionOnPrompt(sessionID, agentName, acpSessionID string) func() {
-	return func() {
-		updated, err := m.store.ReplaceRuntimeSessionID(sessionID, "", acpSessionID)
-		if err != nil {
-			m.log.Error("persist materialized agent session", "agent", agentName, "session", sessionID, "error", err)
-		} else if !updated {
-			m.log.Error("materialized agent session changed before persistence", "agent", agentName, "session", sessionID)
-		}
 	}
 }
 
@@ -593,16 +582,12 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 	job := newIdleJob(session, req.ACPAgent, acpSessionID, absCwd, modes)
 	job.State = state
 	job.steerMethod = supportedSteerMethod(ac.initRaw)
-	var persistSessionID func()
-	if materializesOnPrompt {
-		persistSessionID = m.persistSessionOnPrompt(session.ID, req.ACPAgent, acpSessionID)
-	}
 	if err := m.register(job, process); err != nil {
 		ac.close()
 		return nil, err
 	}
 	ac.state.attach(m, job, cfg)
-	m.trackPromptSends(ac, job, persistSessionID)
+	m.trackPromptSends(ac, job)
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
 	return job, nil
 }

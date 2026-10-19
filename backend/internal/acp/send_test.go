@@ -27,9 +27,13 @@ func (s rejectingMessageStore) AppendMessages(string, ...provider.Message) error
 	return errors.New("message persistence failed")
 }
 
+func (s rejectingMessageStore) StartSessionTurn(string, storage.Turn, ...storage.Message) error {
+	return errors.New("message persistence failed")
+}
+
 type rejectingStatusStore struct{ Store }
 
-func (s rejectingStatusStore) StartSessionTurn(string, storage.Turn) error {
+func (s rejectingStatusStore) StartSessionTurn(string, storage.Turn, ...storage.Message) error {
 	return errors.New("status persistence failed")
 }
 
@@ -68,7 +72,7 @@ func TestSendDoesNotStartAgentWhenUserMessageCannotPersist(t *testing.T) {
 	})
 
 	_, err := manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"})
-	if err == nil || !strings.Contains(err.Error(), "append user message: message persistence failed") {
+	if err == nil || !strings.Contains(err.Error(), "start session turn: message persistence failed") {
 		t.Fatalf("send error = %v", err)
 	}
 	select {
@@ -116,7 +120,7 @@ func TestSendDoesNotPersistMessageWhenTurnCannotBeReserved(t *testing.T) {
 	})
 
 	_, err := manager.Send(t.Context(), SendRequest{Session: session.ID, Message: "keep me"})
-	if err == nil || !strings.Contains(err.Error(), "mark session running: status persistence failed") {
+	if err == nil || !strings.Contains(err.Error(), "start session turn: status persistence failed") {
 		t.Fatalf("send error = %v", err)
 	}
 	select {

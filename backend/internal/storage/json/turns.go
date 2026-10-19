@@ -4,21 +4,49 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-func (s *Store) StartSessionTurn(id string, turn storage.Turn) error {
+func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...storage.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, err := s.loadSessionByID(id)
 	if err != nil {
 		return err
 	}
+	if len(messages) > 0 {
+		existing, err := s.loadMessages(id)
+		if err != nil {
+			return err
+		}
+		for _, message := range messages {
+			existing = append(existing, provider.UserMessage(message.Content))
+		}
+		if err := s.saveMessages(id, existing); err != nil {
+			return err
+		}
+	}
 	turn.StartedAt = time.Now().UTC()
 	session.Status = storage.StatusRunning
 	session.Error = ""
 	session.Turn = &turn
 	storage.MarkSessionAttention(&session, turn.StartedAt)
+	return s.saveSession(session)
+}
+
+func (s *Store) MarkTurnPromptSent(id, agentSessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil || session.Turn == nil {
+		return err
+	}
+	if session.RuntimeRef == nil || session.RuntimeRef.SessionID != "" && session.RuntimeRef.SessionID != agentSessionID {
+		return fmt.Errorf("%s: agent session changed before prompt delivery was recorded", id)
+	}
+	session.RuntimeRef.SessionID = agentSessionID
+	session.Turn.Prompt = nil
 	return s.saveSession(session)
 }
 

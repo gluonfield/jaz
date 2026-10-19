@@ -13,7 +13,7 @@ import (
 
 type goalStore interface {
 	storage.Store
-	StartSessionTurn(string, storage.Turn) error
+	StartSessionTurn(string, storage.Turn, ...storage.Message) error
 }
 
 func TestGoalClearSurvivesStaleSessionSaves(t *testing.T) {

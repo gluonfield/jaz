@@ -11,17 +11,45 @@ import (
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
 
-func (s *Store) StartSessionTurn(id string, turn storage.Turn) error {
+func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...storage.Message) error {
 	turn.StartedAt = time.Now().UTC()
 	s.writeMu.Lock()
-	err := threaddb.New(s.db).StartSessionTurn(context.Background(), threaddb.StartSessionTurnParams{
-		ID: id, Turn: sessionTurnJSON(&turn), StartedAtMs: timeToMs(turn.StartedAt),
-	})
+	err := func() error {
+		tx, err := s.db.BeginTx(context.Background(), nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if err := threaddb.New(tx).StartSessionTurn(context.Background(), threaddb.StartSessionTurnParams{
+			ID: id, Turn: sessionTurnJSON(&turn), StartedAtMs: timeToMs(turn.StartedAt),
+		}); err != nil {
+			return err
+		}
+		if err := appendMessageRecords(tx, id, messages, turn.StartedAt); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}()
 	s.writeMu.Unlock()
 	if err == nil {
+		if s.exportMirror != nil {
+			if records, err := providerMessagesFromRecords(messages); err == nil {
+				_ = s.exportMirror.AppendMessages(id, records...)
+			}
+		}
 		if current, loadErr := s.LoadSession(id); loadErr == nil {
 			s.mirrorSession(current)
 		}
+	}
+	return err
+}
+
+func (s *Store) MarkTurnPromptSent(id, agentSessionID string) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	updated, err := threaddb.New(s.db).MarkTurnPromptSent(context.Background(), threaddb.MarkTurnPromptSentParams{ID: id, AgentSessionID: nullDBString(agentSessionID)})
+	if err == nil && updated == 0 {
+		return fmt.Errorf("%s: turn or agent session changed before prompt delivery was recorded", id)
 	}
 	return err
 }
