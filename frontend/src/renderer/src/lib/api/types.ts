@@ -755,6 +755,8 @@ export interface Bot {
   // Set while the bot's thread holds a question or plan decision for the
   // person.
   waiting?: boolean
+  // Set while the bot's turn is under way and has called no tool yet.
+  thinking?: boolean
   // Set while the bot's routines wait for the person to come back.
   away?: boolean
 }

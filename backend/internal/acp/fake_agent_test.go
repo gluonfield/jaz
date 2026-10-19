@@ -204,6 +204,17 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if os.Getenv("JAZ_FAKE_ACP_GROK_INTERJECT") == "1" {
 				response["_meta"] = map[string]any{"grokShell": true, "agentVersion": "1.0.25"}
 			}
+			// Grok renewing an expired login answers from a built-in model list
+			// and announces its real list once that loads.
+			if late := os.Getenv("JAZ_FAKE_ACP_LATE_MODELS"); late != "" {
+				response["_meta"] = map[string]any{"modelState": map[string]any{"availableModels": fakeModelList(os.Getenv("JAZ_FAKE_ACP_MODELS"))}}
+				after, _ := time.ParseDuration(cmp.Or(os.Getenv("JAZ_FAKE_ACP_LATE_MODELS_AFTER"), "300ms"))
+				go func() {
+					time.Sleep(after)
+					_ = os.Setenv("JAZ_FAKE_ACP_MODELS", late)
+					notify(conn, "_x.ai/models/update", map[string]any{"availableModels": fakeModelList(late)})
+				}()
+			}
 			sendResult(conn, msg, response)
 		case "session/load", "session/resume":
 			supported := os.Getenv("JAZ_FAKE_ACP_LOAD") != "0"
@@ -484,6 +495,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"update":    map[string]any{"sessionUpdate": "usage_update", "used": used, "size": size},
 				})
 			}
+			// The agent reasons, calling no tool, while a hold file exists.
+			fakeHold(os.Getenv("JAZ_FAKE_ACP_THINK_HOLD"))
 			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
 				// The turn works until the test creates the release file, then
 				// ends as usual.
@@ -862,6 +875,16 @@ func notify(conn jsonrpc.MessageConn, method string, params any) {
 	}
 }
 
+func fakeModelList(raw string) []map[string]any {
+	var available []map[string]any
+	for _, model := range strings.Split(raw, ",") {
+		if model = strings.TrimSpace(model); model != "" {
+			available = append(available, map[string]any{"modelId": model, "name": model})
+		}
+	}
+	return available
+}
+
 // addFakeModels advertises the agent's models as codex-acp does, with Codex's
 // default as the model option's recommended value.
 func addFakeModels(result map[string]any, currentModel string, codex bool) {
@@ -869,14 +892,10 @@ func addFakeModels(result map[string]any, currentModel string, codex bool) {
 	if strings.TrimSpace(raw) == "" {
 		return
 	}
-	var available []map[string]any
+	available := fakeModelList(raw)
 	baseModels := make(map[string]struct{})
-	for _, model := range strings.Split(raw, ",") {
-		model = strings.TrimSpace(model)
-		if model == "" {
-			continue
-		}
-		available = append(available, map[string]any{"modelId": model, "name": model})
+	for _, entry := range available {
+		model := entry["modelId"].(string)
 		if i := strings.LastIndex(model, "/"); i > 0 {
 			baseModels[model[:i]] = struct{}{}
 		} else {
