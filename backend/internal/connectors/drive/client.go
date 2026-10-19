@@ -27,7 +27,7 @@ func (e APIError) Error() string {
 	return fmt.Sprintf("Google Drive API (%d): %s", e.StatusCode, e.Message)
 }
 
-func (c APIClient) request(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string) (*http.Response, error) {
+func (c APIClient) newRequest(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string) (*http.Request, error) {
 	base := c.BaseURL
 	if base == "" {
 		base = APIBaseURL
@@ -39,6 +39,10 @@ func (c APIClient) request(ctx context.Context, method, path string, query url.V
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
+	return req, nil
+}
+
+func (c APIClient) do(req *http.Request) (*http.Response, error) {
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, err
@@ -68,7 +72,11 @@ func (c APIClient) json(ctx context.Context, method, path string, query url.Valu
 		}
 		body = bytes.NewReader(data)
 	}
-	resp, err := c.request(ctx, method, path, query, body, "application/json")
+	req, err := c.newRequest(ctx, method, path, query, body, "application/json")
+	if err != nil {
+		return err
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}

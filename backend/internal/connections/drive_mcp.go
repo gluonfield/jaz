@@ -25,8 +25,8 @@ func NewDriveMCPServer(store integrationoauth.Store, connectionID string) *mcp.S
 	addDriveTool(server, store, connectionID, "get_file_permissions", "List a Drive file's sharing permissions, including shared-drive access.", true, drive.APIClient.Permissions)
 	addDriveTool(server, store, connectionID, "copy_file", "Copy a Drive file. Optional title defaults to Copy of the original name. Optional parentId defaults to the original folder if writable, otherwise My Drive.", false, drive.APIClient.Copy)
 	addDriveTool(server, store, connectionID, "create_file", "Create a file or folder, or upload content to Drive. Prefer filePath for an existing file in the server/agent workspace. Otherwise use textContent or base64Content. contentMimeType is required for uploads; use application/vnd.google-apps.folder for folders. Supported uploads convert to Google formats unless disableConversionToGoogleType is true.", false, createDriveFile)
-	addDriveTool(server, store, connectionID, "read_file_content", "Read text from an exact Drive file ID discovered by search_files/list_recent_files or supplied by the user. Google Docs, Sheets, Slides and UTF-8 text are supported. Optionally include comments on Google documents. Binary formats return textFormattingNotSupported; use download_file_content to retrieve them.", true, drive.APIClient.Read)
-	addDriveTool(server, store, connectionID, "download_file_content", "Download a Drive file as base64, or stream it to a new server/agent-workspace file with filePath. Google documents export to text by default; exportMimeType selects another format. revisionId selects a historical version.", true,
+	addDriveTool(server, store, connectionID, "read_file_content", "Read text from an exact Drive file ID discovered by search_files/list_recent_files or supplied by the user. Supports Google Docs, Slides and UTF-8 text. Sheets return the first worksheet only; use download_file_content with exportMimeType application/vnd.openxmlformats-officedocument.spreadsheetml.sheet for all worksheets. Optionally include comments on Google documents. Binary formats return textFormattingNotSupported; use download_file_content to retrieve them.", true, drive.APIClient.Read)
+	addDriveTool(server, store, connectionID, "download_file_content", "Download a Drive file as base64, or stream it to a new server/agent-workspace file with filePath. Google Docs and Slides export to text by default; Sheets export to XLSX preserving all worksheets. exportMimeType selects another format; Sheets CSV/TSV exports contain only the first worksheet. revisionId selects a historical version.", true,
 		func(client drive.APIClient, ctx context.Context, in drive.DownloadInput) (map[string]string, error) {
 			body, mimeType, err := client.Download(ctx, in)
 			if err != nil {
@@ -88,7 +88,7 @@ func createDriveFile(client drive.APIClient, ctx context.Context, input drive.Cr
 	if sources > 1 {
 		return drive.File{}, fmt.Errorf("provide only one of filePath, textContent, base64Content or content")
 	}
-	var body io.Reader
+	var body io.ReadSeeker
 	switch {
 	case input.FilePath != "":
 		if !filepath.IsAbs(input.FilePath) {

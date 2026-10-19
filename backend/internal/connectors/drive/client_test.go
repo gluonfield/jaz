@@ -192,6 +192,8 @@ func TestRecentFilesAndNativeSpreadsheetDownloads(t *testing.T) {
 		case "/drive/v3/files/sheet/export":
 			if r.URL.Query().Get("mimeType") == "text/csv" {
 				_, _ = io.WriteString(w, "item,cost\nbolt,1\n")
+			} else if r.URL.Query().Get("mimeType") == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" {
+				_, _ = w.Write([]byte{'P', 'K', 3, 4})
 			} else if r.URL.Query().Get("mimeType") == "application/pdf" {
 				_, _ = io.WriteString(w, "%PDF")
 			} else {
@@ -208,16 +210,23 @@ func TestRecentFilesAndNativeSpreadsheetDownloads(t *testing.T) {
 	if err != nil || len(list.Files) != 1 {
 		t.Fatalf("recent = %+v, %v", list, err)
 	}
-	for _, format := range []string{"", "application/pdf"} {
+	read, err := client.Read(context.Background(), ReadInput{FileID: "sheet"})
+	if err != nil || !strings.HasPrefix(read.FileContent, "First worksheet only") || !strings.Contains(read.FileContent, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") || !strings.HasSuffix(read.FileContent, "item,cost\nbolt,1\n") {
+		t.Fatalf("spreadsheet text must disclose the missing worksheets: %+v, %v", read, err)
+	}
+	for _, format := range []string{"", "text/csv", "application/pdf"} {
 		body, mimeType, err := client.Download(context.Background(), DownloadInput{FileID: "sheet", ExportMIMEType: format})
 		if err != nil {
 			t.Fatal(err)
 		}
 		data, err := io.ReadAll(body)
 		body.Close()
-		want := "item,cost\nbolt,1\n"
-		wantType := "text/csv"
-		if format != "" {
+		want := string([]byte{'P', 'K', 3, 4})
+		wantType := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		if format == "text/csv" {
+			want = "item,cost\nbolt,1\n"
+			wantType = format
+		} else if format == "application/pdf" {
 			want = "%PDF"
 			wantType = format
 		}
@@ -252,6 +261,26 @@ func TestNativeRevisionUsesItsOwnExportLink(t *testing.T) {
 	content, err := io.ReadAll(body)
 	if err != nil || string(content) != "historical content" || mimeType != "text/plain" || requests != 3 {
 		t.Fatalf("revision download = %q, %q, %d requests, %v", content, mimeType, requests, err)
+	}
+}
+
+func TestUploadRejectsMissingAndForeignSessionLocations(t *testing.T) {
+	for _, location := range []string{"", "https://another.example/upload", "https://user:password@www.googleapis.com/upload"} {
+		t.Run(location, func(t *testing.T) {
+			puts := 0
+			client := APIClient{HTTP: &http.Client{Transport: driveTransportFunc(func(r *http.Request) (*http.Response, error) {
+				if r.Method == http.MethodPut {
+					puts++
+				}
+				header := make(http.Header)
+				header.Set("Location", location)
+				return &http.Response{StatusCode: http.StatusOK, Request: r, Header: header, Body: io.NopCloser(strings.NewReader(`{"id":"unexpected"}`))}, nil
+			})}}
+			_, err := client.Create(context.Background(), CreateInput{Title: "file", ContentMIMEType: "text/plain", DisableConversionToGoogleType: true}, strings.NewReader("content"))
+			if err == nil || !strings.Contains(err.Error(), "invalid upload location") || puts != 0 {
+				t.Fatalf("invalid session location accepted: %q, %d uploads, %v", location, puts, err)
+			}
+		})
 	}
 }
 

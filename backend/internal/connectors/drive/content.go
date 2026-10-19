@@ -32,7 +32,7 @@ func (c APIClient) download(ctx context.Context, input DownloadInput, file apiFi
 		if exportType == "" {
 			exportType = "text/plain"
 			if mimeType == "application/vnd.google-apps.spreadsheet" {
-				exportType = "text/csv"
+				exportType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 			}
 		}
 		if input.RevisionID != "" {
@@ -50,13 +50,9 @@ func (c APIClient) download(ctx context.Context, input DownloadInput, file apiFi
 			if err != nil {
 				return nil, "", err
 			}
-			resp, err := c.HTTP.Do(req)
+			resp, err := c.do(req)
 			if err != nil {
 				return nil, "", err
-			}
-			if resp.StatusCode != http.StatusOK {
-				resp.Body.Close()
-				return nil, "", APIError{StatusCode: resp.StatusCode, Message: resp.Status}
 			}
 			return resp.Body, exportType, nil
 		}
@@ -68,7 +64,11 @@ func (c APIClient) download(ctx context.Context, input DownloadInput, file apiFi
 	} else {
 		q.Set("supportsAllDrives", "true")
 	}
-	resp, err := c.request(ctx, http.MethodGet, path, q, nil, "")
+	req, err := c.newRequest(ctx, http.MethodGet, path, q, nil, "")
+	if err != nil {
+		return nil, "", err
+	}
+	resp, err := c.do(req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -83,7 +83,11 @@ func (c APIClient) Read(ctx context.Context, input ReadInput) (FileContent, erro
 	out := FileContent{Title: file.Name, ViewURL: file.WebViewLink}
 	native := file.MIMEType == "application/vnd.google-apps.document" || file.MIMEType == "application/vnd.google-apps.spreadsheet" || file.MIMEType == "application/vnd.google-apps.presentation"
 	if native || strings.HasPrefix(file.MIMEType, "text/") || file.MIMEType == "application/json" || file.MIMEType == "application/xml" {
-		body, _, err := c.download(ctx, DownloadInput{FileID: input.FileID}, file)
+		download := DownloadInput{FileID: input.FileID}
+		if file.MIMEType == "application/vnd.google-apps.spreadsheet" {
+			download.ExportMIMEType = "text/csv"
+		}
+		body, _, err := c.download(ctx, download, file)
 		if err != nil {
 			return FileContent{}, err
 		}
@@ -99,6 +103,9 @@ func (c APIClient) Read(ctx context.Context, input ReadInput) (FileContent, erro
 			out.TextFormattingNotSupported = true
 		} else {
 			out.FileContent = string(data)
+			if file.MIMEType == "application/vnd.google-apps.spreadsheet" {
+				out.FileContent = "First worksheet only (CSV export). For all worksheets, use download_file_content with exportMimeType application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.\n\n" + out.FileContent
+			}
 		}
 	} else {
 		out.TextFormattingNotSupported = true
