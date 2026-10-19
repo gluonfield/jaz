@@ -49,7 +49,7 @@ func (m *Manager) startClaimed(created createdSession, first storage.QueuedMessa
 	if err == nil {
 		_, err = m.send(context.Background(), SendRequest{
 			Session: session.ID, Message: first.Text, PlanRequested: first.PlanRequested, Completion: CompletionAsync,
-			ParentVisible: first.SentByAgent(), FromAgent: first.SentByAgent(), ParentOutput: first.ParentOutput,
+			ParentVisible: first.SentByAgent(), FromUser: !first.SentAt.IsZero(), ParentOutput: first.ParentOutput,
 		}, sendOptions{transcript: sendTranscriptUserMessage, claimed: true})
 	}
 	if err == nil || m.isClosed() {

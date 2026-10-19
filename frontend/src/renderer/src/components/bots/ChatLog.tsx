@@ -15,8 +15,8 @@ import { BotAvatar } from './BotAvatar'
 
 const GONE: Avatar = { shape: 'circle', color: 'gray' }
 const QUIET_GAP_MS = 30 * 60_000
-const INITIAL_VISIBLE_ENTRIES = 60
-const VISIBLE_ENTRY_BATCH = 60
+const INITIAL_VISIBLE_ENTRIES = 14
+const VISIBLE_ENTRY_BATCH = 24
 
 // How a message that arrives while the chat is open comes in.
 export const ARRIVE = 'animate-[message-arrive_0.35s_cubic-bezier(0.2,0,0,1)_both]'

@@ -144,11 +144,19 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 		if messageChunk != "" {
 			job.savedAssistantLen = len(job.Assistant)
 		}
+		if warning == nil {
+			if phase := messagePhase(event.Meta); phase != "" && phase != "final_answer" {
+				job.endReplyLocked()
+			} else {
+				job.replyLocked(messageID, messageChunk)
+			}
+		}
 	case acpschema.AgentThoughtChunkUpdate:
 		thoughtChunk = contentText(event.Content)
 		thoughtMessageID = derefString(event.MessageID)
 		job.appendThoughtLocked(thoughtChunk)
 	case acpschema.ToolCallSessionUpdate:
+		job.endReplyLocked()
 		recordTool(toolUpdateSnapshot(acpschema.ToolCallUpdate(event.ToolCall)), true)
 	case acpschema.ToolCallUpdateSessionUpdate:
 		recordTool(toolUpdateSnapshot(event.ToolCallUpdate), false)
@@ -218,6 +226,13 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if publishACP {
 		m.publishACP(job.eventView())
 	}
+}
+
+func messagePhase(meta map[string]any) string {
+	jetbrains, _ := meta["jetbrains"].(map[string]any)
+	air, _ := jetbrains["air"].(map[string]any)
+	phase, _ := air["phase"].(string)
+	return phase
 }
 
 func contentText(raw acpschema.ContentBlock) string {

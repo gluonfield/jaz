@@ -48,7 +48,7 @@ INSERT INTO messages (
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 ) VALUES (
   ?1,
   ?2,
@@ -69,7 +69,7 @@ type InsertMessageParams struct {
 	Reasoning   sql.NullString `json:"reasoning"`
 	Blocks      string         `json:"blocks"`
 	CreatedAtMs int64          `json:"created_at_ms"`
-	FromAgent   int64          `json:"from_agent"`
+	FromUser    int64          `json:"from_user"`
 }
 
 func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) error {
@@ -81,7 +81,7 @@ func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) er
 		arg.Reasoning,
 		arg.Blocks,
 		arg.CreatedAtMs,
-		arg.FromAgent,
+		arg.FromUser,
 	)
 	return err
 }
@@ -132,7 +132,8 @@ SELECT
 FROM messages
 WHERE thread_id = ?1
   AND seq >= ?2
-  AND (?3 = 0 OR seq < ?3)
+  AND seq < CASE WHEN ?3 = 0 THEN 9223372036854775807 ELSE ?3 END
+  AND (NOT ?4 OR role = 'user')
 ORDER BY seq DESC
 `
 
@@ -140,6 +141,7 @@ type ListMessageRangeSizesParams struct {
 	ThreadID  string      `json:"thread_id"`
 	StartSeq  int64       `json:"start_seq"`
 	BeforeSeq interface{} `json:"before_seq"`
+	ChatOnly  interface{} `json:"chat_only"`
 }
 
 type ListMessageRangeSizesRow struct {
@@ -150,7 +152,12 @@ type ListMessageRangeSizesRow struct {
 }
 
 func (q *Queries) ListMessageRangeSizes(ctx context.Context, arg ListMessageRangeSizesParams) ([]ListMessageRangeSizesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listMessageRangeSizes, arg.ThreadID, arg.StartSeq, arg.BeforeSeq)
+	rows, err := q.db.QueryContext(ctx, listMessageRangeSizes,
+		arg.ThreadID,
+		arg.StartSeq,
+		arg.BeforeSeq,
+		arg.ChatOnly,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +193,7 @@ SELECT
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 FROM messages
 WHERE thread_id = ?1
 ORDER BY seq
@@ -209,7 +216,7 @@ func (q *Queries) ListMessagesByThread(ctx context.Context, threadID string) ([]
 			&i.Reasoning,
 			&i.Blocks,
 			&i.CreatedAtMs,
-			&i.FromAgent,
+			&i.FromUser,
 		); err != nil {
 			return nil, err
 		}
@@ -233,11 +240,12 @@ SELECT
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 FROM messages
 WHERE thread_id = ?1
   AND seq >= ?2
-  AND (?3 = 0 OR seq < ?3)
+  AND seq < CASE WHEN ?3 = 0 THEN 9223372036854775807 ELSE ?3 END
+  AND (NOT ?4 OR role = 'user')
 ORDER BY seq
 `
 
@@ -245,10 +253,16 @@ type ListMessagesByThreadRangeParams struct {
 	ThreadID  string      `json:"thread_id"`
 	StartSeq  int64       `json:"start_seq"`
 	BeforeSeq interface{} `json:"before_seq"`
+	ChatOnly  interface{} `json:"chat_only"`
 }
 
 func (q *Queries) ListMessagesByThreadRange(ctx context.Context, arg ListMessagesByThreadRangeParams) ([]Message, error) {
-	rows, err := q.db.QueryContext(ctx, listMessagesByThreadRange, arg.ThreadID, arg.StartSeq, arg.BeforeSeq)
+	rows, err := q.db.QueryContext(ctx, listMessagesByThreadRange,
+		arg.ThreadID,
+		arg.StartSeq,
+		arg.BeforeSeq,
+		arg.ChatOnly,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -264,7 +278,7 @@ func (q *Queries) ListMessagesByThreadRange(ctx context.Context, arg ListMessage
 			&i.Reasoning,
 			&i.Blocks,
 			&i.CreatedAtMs,
-			&i.FromAgent,
+			&i.FromUser,
 		); err != nil {
 			return nil, err
 		}
@@ -284,7 +298,7 @@ SELECT seq, created_at_ms
 FROM messages
 WHERE thread_id = ?1
   AND role = 'user'
-  AND (?2 = 0 OR seq < ?2)
+  AND seq < CASE WHEN ?2 = 0 THEN 9223372036854775807 ELSE ?2 END
 ORDER BY seq DESC
 LIMIT ?3
 `

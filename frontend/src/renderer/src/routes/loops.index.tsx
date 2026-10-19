@@ -85,6 +85,7 @@ function LoopRow({ loop }: { loop: Loop }) {
           ) : null}
         </div>
         <p className="mt-0.5 truncate text-[12.5px] text-ink-3">{loop.prompt}</p>
+        {loop.blocked ? <p className="mt-1 text-[12px] text-ink-2">{loop.blocked}</p> : null}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
         <span className="text-[12px] text-ink-2">

@@ -67,7 +67,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 			err = acp.ErrSteeringUnsupported
 			if !turn.PlanRequested || session.Turn != nil && session.Turn.PlanRequested {
 				_, err = s.ACP.Steer(clientCtx, acp.SteerRequest{
-					Session: session.ID, Message: turn.Message, Contexts: turn.Contexts,
+					Session: session.ID, Message: turn.Message, Contexts: turn.Contexts, FromUser: true,
 					Attachments: turn.Attachments, GoalRequested: turn.GoalRequested,
 				})
 			}
@@ -98,6 +98,7 @@ func (s *Server) streamACPSession(w http.ResponseWriter, flusher http.Flusher, c
 			Contexts:      turn.Contexts,
 			Attachments:   turn.Attachments,
 			Completion:    acp.CompletionInline,
+			FromUser:      true,
 			PlanRequested: turn.PlanRequested,
 			GoalRequested: turn.GoalRequested,
 		})

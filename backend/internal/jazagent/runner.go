@@ -42,6 +42,7 @@ type Request struct {
 	Attachments            []storage.Attachment
 	VoiceMode              bool
 	AppendUser             bool
+	FromUser               bool
 	ArtifactSurface        string
 	SystemPromptExtensions promptmodule.Modules
 }
@@ -225,7 +226,7 @@ func BuildRequest(ctx context.Context, store Store, prompts PromptSource, req Re
 	userPrompt := MessageWithAttachmentLinks(req.Message, req.Attachments)
 	messages = append(messages, provider.UserMessage(userPrompt))
 	if req.AppendUser {
-		if err := storage.AppendUserMessage(store, req.Session.ID, req.Message, nil, req.Attachments, false); err != nil {
+		if err := storage.AppendUserMessage(store, req.Session.ID, req.Message, nil, req.Attachments, req.FromUser); err != nil {
 			return TurnRequest{}, err
 		}
 	}

@@ -75,6 +75,8 @@ type Manager struct {
 	log          *log.Logger
 	Done         func(context.Context, Job)
 	TurnFinished func(context.Context, Job)
+	// TurnEnding delivers final output before publishing a successful turn's end.
+	TurnEnding func(Job)
 	// ThreadStarted hears of each thread an agent starts, with its first
 	// prompt.
 	ThreadStarted func(storage.Session, string)
@@ -162,8 +164,8 @@ type SendRequest struct {
 	PlanRequested bool
 	GoalRequested bool
 	ParentVisible bool
-	// FromAgent marks Message as an agent's, not the user's.
-	FromAgent bool
+	// FromUser is set only at a human input boundary.
+	FromUser bool
 	// From is the thread whose agent sent Message, when known.
 	From string
 	// ParentOutput is what the parent turn that sent Message was answering;
@@ -181,6 +183,7 @@ const (
 )
 
 type SteerRequest struct {
+	FromUser      bool
 	Session       string
 	Message       string
 	Contexts      []storage.MessageContext
@@ -311,7 +314,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	if err != nil {
 		return nil, err
 	}
-	env, err := m.processEnvPreparedForSurfacePolicy(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+	env, err := m.processEnvPrepared(name, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +322,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		env[codexModelMetadataEnv] = modelMetadata
 	}
 	launchPrompt := ""
-	if agentPolicyForAgent(name).systemPromptAtLaunch {
+	if agentPolicyForAgent(name).systemPromptAtLaunch || CanonicalAgentName(name) == AgentOpenCode {
 		launchPrompt, err = m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 		if err != nil {
 			return nil, err
@@ -332,7 +335,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		return nil, err
 	}
 	promptTracker := newPromptTrackingConn(conn)
-	state := &connectionState{}
+	state := newConnectionState()
 	peer := jsonrpc.NewPeer(promptTracker, state.handler(m, handler))
 	go func() {
 		defer cancel()
@@ -368,7 +371,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		cancel()
 		return nil, fmt.Errorf("initialize acp agent: %w", withProcessStderr(err, stderr))
 	}
-	state.capabilities(initRaw)
+	state.initialized(initRaw)
 	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
@@ -380,6 +383,11 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		_ = peer.Close()
 		cancel()
 		return nil, fmt.Errorf("authenticate acp agent %q: missing %s", name, strings.Join(missingAuth, " or "))
+	}
+	if err := state.awaitAdvertisedModel(ctx, runCtx.Done(), name, cfg); err != nil {
+		_ = peer.Close()
+		cancel()
+		return nil, err
 	}
 	return &agentConn{state: state, conn: promptTracker, peer: peer, cancel: cancel, closed: runCtx.Done(), initRaw: initRaw, stderr: stderr, promptTracker: promptTracker}, nil
 }

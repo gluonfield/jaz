@@ -68,7 +68,7 @@ func (h *Handler) Input(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("message is required"))
 		return
 	}
-	_, err := h.runtime.Input(r.Context(), acp.SteerRequest{Session: r.PathValue("session"), Message: input.Message, Contexts: input.Contexts})
+	_, err := h.runtime.Input(r.Context(), acp.SteerRequest{Session: r.PathValue("session"), Message: input.Message, Contexts: input.Contexts, FromUser: true})
 	if err != nil {
 		status := http.StatusConflict
 		if errors.Is(err, acp.ErrSteeringUnsupported) {

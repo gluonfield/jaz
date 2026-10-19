@@ -18,8 +18,12 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 	if err != nil {
 		return m.cancelStored(ref)
 	}
+	// The goal ends before the turn can, so the thread's next turn does not
+	// go on with it.
+	if m.clearGoalOnCancel(job) {
+		m.publishGoalClear(job)
+	}
 	running, done := job.requestCancel()
-	clearGoal := m.clearGoalOnCancel(job)
 	m.log.Info("acp cancel requested", "session", job.ID, "agent", job.ACPAgent, "running", running)
 	// A local agent's turn, or a turn waiting to retry a failed prompt, stops
 	// through its own cancel; no prompt of it is with the agent.
@@ -35,9 +39,6 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 		}
 	}
 	if !running || done == nil {
-		if clearGoal {
-			m.publishGoalClear(job)
-		}
 		return job.Snapshot(), nil
 	}
 	select {
@@ -54,9 +55,6 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 			m.publishACPStatus(job.eventView())
 		}
 	case <-ctx.Done():
-	}
-	if clearGoal {
-		m.publishGoalClear(job)
 	}
 	return job.Snapshot(), nil
 }

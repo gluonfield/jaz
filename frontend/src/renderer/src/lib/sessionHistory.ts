@@ -58,7 +58,7 @@ export async function loadCompleteHistoryBatch(
     }
     pages.push(page)
     cursor = page
-    if (page.messages.some((message) => message.role === 'user') || page.events.some(opensBotTurn)) {
+    if (page.session.source_type === 'bot' || page.messages.some((message) => message.role === 'user') || page.events.some(opensBotTurn)) {
       break
     }
   }

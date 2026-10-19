@@ -586,6 +586,7 @@ func (s *Server) steerRunningQueuedPrompt(ctx context.Context, session storage.S
 		Contexts:      prompt.Contexts,
 		Attachments:   attachments,
 		GoalRequested: prompt.GoalRequested,
+		FromUser:      !prompt.SentAt.IsZero(),
 	})
 	if err == nil {
 		return nil
@@ -676,7 +677,7 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			PlanRequested: prompt.PlanRequested,
 			GoalRequested: prompt.GoalRequested,
 			ParentVisible: prompt.SentByAgent(),
-			FromAgent:     prompt.SentByAgent(),
+			FromUser:      !prompt.SentAt.IsZero(),
 			ParentOutput:  prompt.ParentOutput,
 		}); err != nil {
 			return acpSendError(session, err)

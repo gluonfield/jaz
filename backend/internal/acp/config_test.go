@@ -674,102 +674,6 @@ func TestProcessEnvBindsOnlySelectedModelProviderKeyToOpenCode(t *testing.T) {
 	}
 }
 
-func TestProcessEnvWritesOpenCodeInstructions(t *testing.T) {
-	root := t.TempDir()
-	env, err := NewManager(nil, Config{
-		Root:         root,
-		SystemPrompt: testPrompt("jaz instructions"),
-	}, nil).processEnvPrepared("opencode", AgentConfig{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "jaz instructions\n" {
-		t.Fatalf("instructions = %q", data)
-	}
-	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
-		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
-	}
-}
-
-func TestProcessEnvWritesOpenCodeInstructionsWithSessionExtension(t *testing.T) {
-	root := t.TempDir()
-	manager := NewManager(nil, Config{
-		Root:         root,
-		SystemPrompt: testPrompt("jaz instructions"),
-	}, nil)
-	env, err := manager.processEnvPreparedForSurface(context.Background(), "opencode", AgentConfig{}, "", "", []string{"run context"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "jaz instructions\n\nrun context\n" {
-		t.Fatalf("instructions = %q", data)
-	}
-	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
-		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
-	}
-}
-
-func TestProcessEnvWritesOpenCodeRestrictedWorkerInstructionsWithoutBasePrompt(t *testing.T) {
-	root := t.TempDir()
-	manager := NewManager(nil, Config{
-		Root:         root,
-		SystemPrompt: testPrompt("jaz platform prompt"),
-	}, nil)
-	env, err := manager.processEnvPreparedForSurfacePolicy(context.Background(), "opencode", AgentConfig{}, "", "", MCPServerPolicyMemorySearchWorker, []string{"memory worker prompt"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "memory worker prompt\n" {
-		t.Fatalf("instructions = %q", data)
-	}
-	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
-		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
-	}
-}
-
-func TestProcessEnvWritesOpenCodeInstructionsWithResolvedCwd(t *testing.T) {
-	root := t.TempDir()
-	sessionCwd := filepath.Join(root, "workspaces", "default", ".worktrees", "loop-run")
-	agentCwd := filepath.Join(root, "wrong")
-	env, err := NewManager(nil, Config{
-		Root:         root,
-		SystemPrompt: cwdPrompt{},
-	}, nil).processEnvPreparedForSurface(context.Background(), "opencode", AgentConfig{Cwd: agentCwd}, sessionCwd, "widget", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(root, "acp", "opencode", "jaz-instructions.md")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "cwd="+sessionCwd+"\n" {
-		t.Fatalf("instructions = %q", data)
-	}
-	if !strings.Contains(env["OPENCODE_CONFIG_CONTENT"], path) {
-		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q", env["OPENCODE_CONFIG_CONTENT"])
-	}
-}
-
 func TestProcessEnvPinsOpenCodeKeyWithoutOverridingDefaultProvider(t *testing.T) {
 	root := t.TempDir()
 	manager := NewManager(nil, Config{
@@ -784,7 +688,7 @@ func TestProcessEnvPinsOpenCodeKeyWithoutOverridingDefaultProvider(t *testing.T)
 		SystemPrompt: testPrompt("jaz instructions"),
 	}, nil)
 	for _, model := range []string{"openrouter/openai/gpt-5.4-mini", ""} {
-		env, err := manager.processEnvPrepared("opencode", AgentConfig{Model: model})
+		env, err := manager.openCodeTestEnv(t, AgentConfig{Model: model})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -803,7 +707,7 @@ func TestProcessEnvPinsOpenCodeKeyWithoutOverridingDefaultProvider(t *testing.T)
 
 func TestProcessEnvAddsOpenCodeOpenRouterReasoningVariant(t *testing.T) {
 	root := t.TempDir()
-	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+	env, err := NewManager(nil, Config{Root: root}, nil).openCodeTestEnv(t, AgentConfig{
 		ProviderMode:    AgentProviderModeAgentDefaults,
 		ModelProvider:   "openrouter",
 		Model:           "z-ai/glm-5.2",
@@ -840,7 +744,7 @@ func TestProcessEnvAddsOpenCodeOpenRouterReasoningVariant(t *testing.T) {
 
 func TestProcessEnvSetsOpenCodeSmallModelForOpenRouter(t *testing.T) {
 	root := t.TempDir()
-	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+	env, err := NewManager(nil, Config{Root: root}, nil).openCodeTestEnv(t, AgentConfig{
 		ProviderMode:  AgentProviderModeAgentDefaults,
 		ModelProvider: "openrouter",
 		Model:         "tencent/hy3:free",
@@ -865,7 +769,7 @@ func TestProcessEnvSetsOpenCodeSmallModelForOpenRouter(t *testing.T) {
 
 func TestProcessEnvDoesNotAddOpenCodeReasoningVariantForInvalidEffort(t *testing.T) {
 	root := t.TempDir()
-	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+	env, err := NewManager(nil, Config{Root: root}, nil).openCodeTestEnv(t, AgentConfig{
 		ProviderMode:    AgentProviderModeAgentDefaults,
 		ModelProvider:   "openrouter",
 		Model:           "z-ai/glm-5.2",
@@ -891,7 +795,7 @@ func TestProcessEnvDoesNotAddOpenCodeReasoningVariantForInvalidEffort(t *testing
 
 func TestProcessEnvWritesOpenCodeProviderConfig(t *testing.T) {
 	root := t.TempDir()
-	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+	env, err := NewManager(nil, Config{Root: root}, nil).openCodeTestEnv(t, AgentConfig{
 		Model: "ollama/llama3.2",
 	})
 	if err != nil {
@@ -920,7 +824,7 @@ func TestProcessEnvWritesOpenCodeProviderConfig(t *testing.T) {
 
 func TestProcessEnvUsesSplitOpenCodeProviderModel(t *testing.T) {
 	root := t.TempDir()
-	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("opencode", AgentConfig{
+	env, err := NewManager(nil, Config{Root: root}, nil).openCodeTestEnv(t, AgentConfig{
 		ProviderMode:  AgentProviderModeAgentDefaults,
 		ModelProvider: "ollama",
 		Model:         "llama3.2",
@@ -961,7 +865,7 @@ func TestProcessEnvWritesQwenRegionalCustomProviderConfig(t *testing.T) {
 				APIKeyEnv: "UNUSED_PROVIDER_KEY",
 			},
 		},
-	}, nil).processEnvPrepared("opencode", AgentConfig{Model: "qwen-cloud/qwen3.8-max-preview"})
+	}, nil).openCodeTestEnv(t, AgentConfig{Model: "qwen-cloud/qwen3.8-max-preview"})
 	if err != nil {
 		t.Fatal(err)
 	}

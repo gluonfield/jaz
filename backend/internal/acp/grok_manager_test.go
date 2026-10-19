@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,7 +63,7 @@ func TestManagerLeavesGrokModesUnmanagedWhenAgentReportsNoModes(t *testing.T) {
 
 func TestManagerStartsGrokModelWithRulesAndSetsAdvertisedEffort(t *testing.T) {
 	requestLog := filepath.Join(t.TempDir(), "requests.jsonl")
-	manager, store := newGrokOptionsManager(t, "grok-4.6", requestLog)
+	manager, store := newGrokOptionsManager(t, "grok-4.6", map[string]string{"JAZ_FAKE_ACP_REQUEST_LOG": requestLog})
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "grok", Slug: "grok-model", SystemPromptExtensions: promptmodule.New("grok rules marker")})
@@ -114,7 +115,7 @@ func TestManagerStartsGrokModelWithRulesAndSetsAdvertisedEffort(t *testing.T) {
 }
 
 func TestManagerRejectsGrokModelItDoesNotAdvertise(t *testing.T) {
-	manager, _ := newGrokOptionsManager(t, "grok-9", filepath.Join(t.TempDir(), "requests.jsonl"))
+	manager, _ := newGrokOptionsManager(t, "grok-9", nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	_, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "grok", Slug: "grok-model"})
@@ -123,12 +124,68 @@ func TestManagerRejectsGrokModelItDoesNotAdvertise(t *testing.T) {
 	}
 }
 
-func newGrokOptionsManager(t *testing.T, model, requestLog string) (*acp.Manager, *jsonstore.Store) {
+func TestManagerJudgesGrokModelAgainstListAnnouncedAfterLoginRenewal(t *testing.T) {
+	for model, wantErr := range map[string]string{"grok-4.7": "", "grok-9": "not advertised"} {
+		t.Run(model, func(t *testing.T) {
+			manager, _ := newGrokOptionsManager(t, model, map[string]string{
+				"JAZ_FAKE_ACP_MODELS":      "grok-4.5,grok-4.6",
+				"JAZ_FAKE_ACP_LATE_MODELS": "grok-4.7,grok-4.6,grok-4.5",
+			})
+			defer manager.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			started := time.Now()
+			_, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentGrok, Slug: "grok-late-models"})
+			if waited := time.Since(started); waited > 3*time.Second {
+				t.Fatalf("start waited %s instead of ending at the announcement", waited)
+			}
+			if (err == nil) != (wantErr == "") || (err != nil && !strings.Contains(err.Error(), wantErr)) {
+				t.Fatalf("spawn error = %v, want %q", err, wantErr)
+			}
+		})
+	}
+}
+
+func TestManagerRefusesGrokModelBeforeSessionWhenNoListIsAnnounced(t *testing.T) {
+	requestLog := filepath.Join(t.TempDir(), "requests.jsonl")
+	manager, _ := newGrokOptionsManager(t, "grok-4.7", map[string]string{
+		"JAZ_FAKE_ACP_MODELS":            "grok-4.5,grok-4.6",
+		"JAZ_FAKE_ACP_LATE_MODELS":       "grok-4.7,grok-4.6,grok-4.5",
+		"JAZ_FAKE_ACP_LATE_MODELS_AFTER": "1m",
+		"JAZ_FAKE_ACP_REQUEST_LOG":       requestLog,
+	})
+	defer manager.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentGrok, Slug: "grok-no-models"})
+	if err == nil || !strings.Contains(err.Error(), "did not announce its model list") {
+		t.Fatalf("spawn error = %v", err)
+	}
+	raw, err := os.ReadFile(requestLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"method":"session/new"`) {
+		t.Fatal("session/new ran against the provisional model list")
+	}
+}
+
+func newGrokOptionsManager(t *testing.T, model string, extraEnv map[string]string) (*acp.Manager, *jsonstore.Store) {
 	t.Helper()
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	env := map[string]string{
+		"JAZ_FAKE_ACP_AGENT":         "1",
+		"JAZ_FAKE_ACP_SET_CONFIG":    "1",
+		"JAZ_FAKE_ACP_EXPECT_EFFORT": "xhigh",
+		"JAZ_FAKE_ACP_SESSION_OPTIONS": `[
+			{"id":"model","category":"model","type":"select","currentValue":"grok-4.7","options":[{"value":"grok-4.7","name":"Grok 4.7"},{"value":"grok-4.6","name":"Grok 4.6"}]},
+			{"id":"reasoning_effort","category":"thought_level","type":"select","currentValue":"high","options":[{"value":"xhigh","name":"Extra High"},{"value":"high","name":"High"}]}
+		]`,
+	}
+	maps.Copy(env, extraEnv)
 	return acp.NewManager(store, acp.Config{
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
@@ -138,16 +195,7 @@ func newGrokOptionsManager(t *testing.T, model, requestLog string) (*acp.Manager
 				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
 				Model:           model,
 				ReasoningEffort: "xhigh",
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":         "1",
-					"JAZ_FAKE_ACP_SET_CONFIG":    "1",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT": "xhigh",
-					"JAZ_FAKE_ACP_REQUEST_LOG":   requestLog,
-					"JAZ_FAKE_ACP_SESSION_OPTIONS": `[
-						{"id":"model","category":"model","type":"select","currentValue":"grok-4.7","options":[{"value":"grok-4.7","name":"Grok 4.7"},{"value":"grok-4.6","name":"Grok 4.6"}]},
-						{"id":"reasoning_effort","category":"thought_level","type":"select","currentValue":"high","options":[{"value":"xhigh","name":"Extra High"},{"value":"high","name":"High"}]}
-					]`,
-				},
+				Env:             env,
 			},
 		},
 	}, log.New(io.Discard)), store

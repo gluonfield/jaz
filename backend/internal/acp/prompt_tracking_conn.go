@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,6 +40,13 @@ func (c *promptTrackingConn) Send(ctx context.Context, msg *jsonrpc.Message) err
 	err := c.MessageConn.Send(ctx, msg)
 	c.sendMu.Unlock()
 	if err == nil && msg.IsRequest() && msg.Method == acpschema.AgentMethodSessionPrompt {
+		var prompt acpschema.PromptRequest
+		if err := json.Unmarshal(msg.Params, &prompt); err != nil {
+			return nil
+		}
+		if _, side := sideChatScopeFromMeta(prompt.Meta, ""); side {
+			return nil
+		}
 		c.cbMu.RLock()
 		onSent := c.onSent
 		c.cbMu.RUnlock()

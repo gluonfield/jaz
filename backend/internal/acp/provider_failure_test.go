@@ -136,7 +136,7 @@ func TestAWorkerTurnEndedByAFailureNotToRetryReportsFailedToItsBot(t *testing.T)
 	for _, kind := range []string{"rejected", "retried", "throttled", "noticed"} {
 		t.Run(kind, func(t *testing.T) {
 			jaz := startFailingJaz(t, time.Millisecond, time.Millisecond, time.Millisecond)
-			bot := jaz.bot("Gimli")
+			bot := jaz.newBot("Gimli")
 			jaz.write(bot.ID, "hello")
 			worker, err := jaz.manager.Spawn(jaz.ctx, acp.SpawnRequest{ParentID: bot.ID, Slug: "worker", Commitment: owe(t, jaz.store, bot.ID)})
 			if err != nil {
@@ -154,12 +154,17 @@ func TestAWorkerTurnEndedByAFailureNotToRetryReportsFailedToItsBot(t *testing.T)
 				t.Fatalf("worker = %s %q", session.Status, session.Error)
 			}
 			jaz.eventually("the bot hearing of the failure", func() bool { return jaz.promptsContaining("completed with state failed") == 1 })
+			jaz.eventually("the bot finishing its follow-up turns", func() bool {
+				session := jaz.session(bot.ID)
+				return session.Status == storage.StatusIdle && len(session.QueuedMessages) == 0 && jaz.finishing.Load() == 0
+			})
 		})
 	}
 }
 
-// Stopping a turn that waits to retry ends it at once and sends nothing more;
-// steering it meanwhile is refused at once, so the server queues the message.
+// Stopping a turn that waits to retry ends it at once without a continuation;
+// steering it meanwhile is refused at once, so the server queues the message,
+// which runs once the stop ends the turn.
 func TestStoppingATurnWaitingToRetryEndsItWithoutAContinuation(t *testing.T) {
 	jaz := startFailingJaz(t, time.Hour)
 	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
@@ -176,20 +181,19 @@ func TestStoppingATurnWaitingToRetryEndsItWithoutAContinuation(t *testing.T) {
 	if _, err := jaz.manager.Steer(jaz.ctx, acp.SteerRequest{Session: thread.ID, Message: "also book the hotel"}); !errors.Is(err, acp.ErrSteeringUnsupported) {
 		t.Fatalf("steering a turn waiting to retry = %v, want it queued instead", err)
 	}
+	jaz.queueUser(thread.ID, `{"text":"also book the hotel"}`)
 
 	started := time.Now()
-	job, err := jaz.manager.Cancel(jaz.ctx, thread.ID)
+	_, err = jaz.manager.Cancel(jaz.ctx, thread.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.State != acp.StateCancelled || time.Since(started) > 2*time.Second {
-		t.Fatalf("stop = %s after %s, want cancelled at once", job.State, time.Since(started))
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("stop took %s, want it to end the retry wait at once", elapsed)
 	}
-	if prompts := jaz.prompts(); len(prompts) != 1 {
-		t.Fatalf("prompts = %q, want only the failed one", prompts)
-	}
-	if session := jaz.session(thread.ID); session.Status != storage.StatusIdle {
-		t.Fatalf("stopped thread = %s %q", session.Status, session.Error)
+	jaz.idle(thread.ID)
+	if prompts := jaz.prompts(); len(prompts) != 2 || !strings.Contains(prompts[1], "also book the hotel") {
+		t.Fatalf("prompts = %q, want the failed one, then the queued message", prompts)
 	}
 }
 

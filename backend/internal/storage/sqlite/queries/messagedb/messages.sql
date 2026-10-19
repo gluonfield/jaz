@@ -7,7 +7,7 @@ SELECT
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq;
@@ -17,7 +17,7 @@ SELECT seq, created_at_ms
 FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
   AND role = 'user'
-  AND (sqlc.arg(before_seq) = 0 OR seq < sqlc.arg(before_seq))
+  AND seq < CASE WHEN sqlc.arg(before_seq) = 0 THEN 9223372036854775807 ELSE sqlc.arg(before_seq) END
 ORDER BY seq DESC
 LIMIT sqlc.arg(limit_count);
 
@@ -58,11 +58,12 @@ SELECT
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
   AND seq >= sqlc.arg(start_seq)
-  AND (sqlc.arg(before_seq) = 0 OR seq < sqlc.arg(before_seq))
+  AND seq < CASE WHEN sqlc.arg(before_seq) = 0 THEN 9223372036854775807 ELSE sqlc.arg(before_seq) END
+  AND (NOT sqlc.arg(chat_only) OR role = 'user')
 ORDER BY seq;
 
 -- name: ListMessageRangeSizes :many
@@ -76,7 +77,8 @@ SELECT
 FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
   AND seq >= sqlc.arg(start_seq)
-  AND (sqlc.arg(before_seq) = 0 OR seq < sqlc.arg(before_seq))
+  AND seq < CASE WHEN sqlc.arg(before_seq) = 0 THEN 9223372036854775807 ELSE sqlc.arg(before_seq) END
+  AND (NOT sqlc.arg(chat_only) OR role = 'user')
 ORDER BY seq DESC;
 
 -- name: DeleteMessagesByThread :exec
@@ -92,7 +94,7 @@ INSERT INTO messages (
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 ) VALUES (
   sqlc.arg(thread_id),
   sqlc.arg(seq),
@@ -101,5 +103,5 @@ INSERT INTO messages (
   sqlc.narg(reasoning),
   sqlc.arg(blocks),
   sqlc.arg(created_at_ms),
-  sqlc.arg(from_agent)
+  sqlc.arg(from_user)
 );
