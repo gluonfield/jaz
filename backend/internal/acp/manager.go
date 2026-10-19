@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -54,6 +55,7 @@ type Store interface {
 	ResetTurnHops(id string) error
 	UpdateSessionModel(id, model, effort string) error
 	UpdateSessionStatus(id, status, errorMessage string, attentionAt time.Time) error
+	ClaimQueuedTurn(storage.Session, storage.QueuedMessage) error
 	UpdateSessionTitleFromRuntime(id, title string) (storage.Session, bool, error)
 	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)
 	TouchSessionAttention(string) error
@@ -93,8 +95,15 @@ type Manager struct {
 	projectionMu      sync.Mutex
 	projections       map[string]*eventProjection
 
-	// serializes resumes so concurrent sends can't start two agent processes
-	resumeMu sync.Mutex
+	// serialize a thread's resumes so concurrent sends can't start two agent
+	// processes for it
+	resumeLocks *sessionlock.Locks
+
+	// admission orders new work against Close: what is admitted under its
+	// read lock is in place before Close stops work, and nothing is once
+	// closed.
+	admission sync.RWMutex
+	closed    bool
 
 	advertisedModels sync.Map
 }
@@ -150,6 +159,9 @@ type SendRequest struct {
 	FromAgent bool
 	// From is the thread whose agent sent Message, when known.
 	From string
+	// ParentOutput is what the parent turn that sent Message was answering;
+	// the result goes on to answer it.
+	ParentOutput *storage.TurnOutput
 }
 
 type CompactRequest struct {
@@ -221,6 +233,7 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		pendingDiscard:    make(map[string]*jobState),
 		pendingPermission: make(map[string]*pendingPermission),
 		projections:       make(map[string]*eventProjection),
+		resumeLocks:       sessionlock.New(),
 	}
 }
 
@@ -488,57 +501,10 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if err != nil {
 		return SpawnResult{}, err
 	}
-	req = created.Request
-	cfg := created.Config
-	session := created.Session
-	absCwd := session.RuntimeRef.Cwd
-	ctx = mcpsession.With(ctx, session.ID)
-	if cfg.Local {
-		return m.spawnLocalSession(session, req.ACPAgent, absCwd, req.SystemPromptExtensions)
-	}
-	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
+	job, session, err := m.startSession(ctx, created, StateIdle)
 	if err != nil {
-		return SpawnResult{}, m.abandonSession(session, err)
+		return SpawnResult{}, m.abandonSession(created.Session, err)
 	}
-	if err := validateProcessLifecycle(req.ACPAgent, cfg, ac.initRaw); err != nil {
-		ac.close()
-		return SpawnResult{}, m.abandonSession(session, err)
-	}
-	mcpRevision := m.mcpRevision()
-	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
-	if err != nil {
-		ac.close()
-		return SpawnResult{}, m.abandonSession(session, err)
-	}
-	modes, err := m.configuredModeState(ctx, ac, req.ACPAgent, acpSession, cfg)
-	if err != nil {
-		ac.close()
-		return SpawnResult{}, m.abandonSession(session, err)
-	}
-	acpSessionID := string(acpSession.response.SessionID)
-	materializesOnPrompt := sessionMaterializesOnPrompt(req.ACPAgent, cfg)
-	if !materializesOnPrompt {
-		session.RuntimeRef.SessionID = acpSessionID
-		if err := m.store.SaveSession(session); err != nil {
-			ac.close()
-			return SpawnResult{}, m.abandonSession(session, err)
-		}
-	}
-	process := newAgentProcess(ac)
-	process.mcpPolicy = session.RuntimeRef.MCPServerPolicy
-	process.mcpRevision = mcpRevision
-	process.mcpRefresh = supportedMCPRefresh(ac.initRaw, session.RuntimeRef.MCPServerPolicy)
-	job := newIdleJob(session, req.ACPAgent, acpSessionID, absCwd, modes)
-	job.steerMethod = supportedSteerMethod(ac.initRaw)
-	var persistSessionID func()
-	if materializesOnPrompt {
-		persistSessionID = m.persistSessionOnPrompt(session.ID, req.ACPAgent, acpSessionID)
-	}
-	m.addJob(job, process)
-	ac.state.attach(m, job, cfg)
-	ac.trackPromptSends(job, persistSessionID)
-	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
-
 	return SpawnResult{
 		Status:    "created",
 		SessionID: job.ID,
@@ -548,6 +514,66 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		State:     StateIdle,
 		Session:   session,
 	}, nil
+}
+
+// startSession starts the agent of a session createSession stored, as the
+// request that created it asked, and registers its job in state.
+func (m *Manager) startSession(ctx context.Context, created createdSession, state string) (*jobState, storage.Session, error) {
+	req := created.Request
+	cfg := created.Config
+	session := created.Session
+	absCwd := session.RuntimeRef.Cwd
+	ctx = mcpsession.With(ctx, session.ID)
+	if cfg.Local {
+		return m.spawnLocalSession(session, req.ACPAgent, absCwd, req.SystemPromptExtensions, state)
+	}
+	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
+	if err != nil {
+		return nil, session, err
+	}
+	if err := validateProcessLifecycle(req.ACPAgent, cfg, ac.initRaw); err != nil {
+		ac.close()
+		return nil, session, err
+	}
+	mcpRevision := m.mcpRevision()
+	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
+	if err != nil {
+		ac.close()
+		return nil, session, err
+	}
+	modes, err := m.configuredModeState(ctx, ac, req.ACPAgent, acpSession, cfg)
+	if err != nil {
+		ac.close()
+		return nil, session, err
+	}
+	acpSessionID := string(acpSession.response.SessionID)
+	materializesOnPrompt := sessionMaterializesOnPrompt(req.ACPAgent, cfg)
+	if !materializesOnPrompt {
+		session.RuntimeRef.SessionID = acpSessionID
+		if _, err := m.store.ReplaceRuntimeSessionID(session.ID, "", acpSessionID); err != nil {
+			ac.close()
+			return nil, session, err
+		}
+	}
+	process := newAgentProcess(ac)
+	process.mcpPolicy = session.RuntimeRef.MCPServerPolicy
+	process.mcpRevision = mcpRevision
+	process.mcpRefresh = supportedMCPRefresh(ac.initRaw, session.RuntimeRef.MCPServerPolicy)
+	job := newIdleJob(session, req.ACPAgent, acpSessionID, absCwd, modes)
+	job.State = state
+	job.steerMethod = supportedSteerMethod(ac.initRaw)
+	var persistSessionID func()
+	if materializesOnPrompt {
+		persistSessionID = m.persistSessionOnPrompt(session.ID, req.ACPAgent, acpSessionID)
+	}
+	if err := m.register(job, process); err != nil {
+		ac.close()
+		return nil, session, err
+	}
+	ac.state.attach(m, job, cfg)
+	ac.trackPromptSends(job, persistSessionID)
+	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
+	return job, session, nil
 }
 
 func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpSessionInfo) (ModeState, error) {

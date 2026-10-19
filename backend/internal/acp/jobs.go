@@ -19,7 +19,9 @@ func (m *Manager) Status(ref string) (Job, error) {
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return Job{}, fmt.Errorf("session %s is not acp-backed", ref)
 	}
-	return jobFromSession(session, session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd, inactiveJobState(session)), nil
+	job := jobFromSession(session, session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd, inactiveJobState(session))
+	job.Error = session.Error
+	return job, nil
 }
 
 func (m *Manager) StreamStatus(ref string) (StreamView, error) {
@@ -74,9 +76,14 @@ func (m *Manager) HydrationJobs(ids []string) map[string]HydrationView {
 	return views
 }
 
+// inactiveJobState is the state of a thread without a live job: one whose
+// claimed turn is waiting for its agent to start is starting.
 func inactiveJobState(session storage.Session) string {
-	if session.Status == storage.StatusError {
+	switch session.Status {
+	case storage.StatusError:
 		return StateFailed
+	case storage.StatusRunning:
+		return StateStarting
 	}
 	return StateNotRunning
 }

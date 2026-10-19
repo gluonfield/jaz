@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
@@ -58,8 +59,8 @@ func TestSavedCodexModelsStartOnCodexDefaultAfterAPlanWithdrawsThem(t *testing.T
 	if err != nil {
 		t.Fatalf("a thread the bot starts on its saved model: %v", err)
 	}
-	if job, err := jaz.manager.Wait(jaz.ctx, acp.WaitRequest{Session: subtask.ThreadID}); err != nil || job.State != acp.StateIdle || job.Assistant == "" {
-		t.Fatalf("subtask = %#v, %v", job, err)
+	if done, err := jaz.manager.WaitThreads(jaz.ctx, []string{subtask.ThreadID}, 10*time.Second); err != nil || len(done.Threads) != 1 || done.Threads[0].State != acp.StateIdle || done.Threads[0].Assistant == "" {
+		t.Fatalf("subtask = %#v, %v", done, err)
 	}
 	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
 	if err != nil {

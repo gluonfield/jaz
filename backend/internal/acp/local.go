@@ -129,24 +129,19 @@ func localModeState() ModeState {
 	}
 }
 
-func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd string, systemPromptExtensions promptmodule.Modules) (SpawnResult, error) {
+func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd string, systemPromptExtensions promptmodule.Modules, state string) (*jobState, storage.Session, error) {
 	session.RuntimeRef.SessionID = session.ID
-	if err := m.store.SaveSession(session); err != nil {
-		return SpawnResult{}, m.abandonSession(session, err)
+	if _, err := m.store.ReplaceRuntimeSessionID(session.ID, "", session.ID); err != nil {
+		return nil, session, err
 	}
 	job := m.newLocalJob(session, agentName, cwd)
+	job.State = state
 	job.systemPromptExtensions = systemPromptExtensions.Strings()
-	m.addJob(job, nil)
+	if err := m.register(job, nil); err != nil {
+		return nil, session, err
+	}
 	m.log.Info("spawned local agent session", "agent", job.ACPAgent, "session", job.ID)
-	return SpawnResult{
-		Status:    "created",
-		SessionID: job.ID,
-		Slug:      job.Slug,
-		ACPAgent:  job.ACPAgent,
-		Cwd:       job.Cwd,
-		State:     StateIdle,
-		Session:   session,
-	}, nil
+	return job, session, nil
 }
 
 func (m *Manager) resumeLocalSession(session storage.Session, agentName string, cfg AgentConfig) (*jobState, error) {

@@ -8,27 +8,24 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
 type createService struct {
 	acp.MCPService
 	spawned acp.SpawnRequest
-	sent    acp.SendRequest
+	first   storage.QueuedMessage
 }
 
 func (s *createService) Agents() []string {
 	return []string{acp.AgentCodex}
 }
 
-func (s *createService) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
+func (s *createService) Start(_ context.Context, req acp.SpawnRequest, first storage.QueuedMessage) (acp.Job, error) {
 	s.spawned = req
-	return acp.SpawnResult{SessionID: "child"}, nil
-}
-
-func (s *createService) Send(_ context.Context, req acp.SendRequest) (acp.Job, error) {
-	s.sent = req
-	return acp.Job{ID: "child", State: acp.StateRunning}, nil
+	s.first = first
+	return acp.Job{ID: "child", State: acp.StateStarting}, nil
 }
 
 func TestCreateThreadSharesMCPSchemaAndPreservesNativeCaller(t *testing.T) {
@@ -52,7 +49,7 @@ func TestCreateThreadSharesMCPSchemaAndPreservesNativeCaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	if service.spawned.ParentID != "parent" || service.spawned.ACPAgent != "codex" ||
-		service.sent.Session != "child" || service.sent.Message != "Inspect the checkout" {
-		t.Fatalf("lost caller or prompt: %#v %#v", service.spawned, service.sent)
+		service.first.From != "parent" || service.first.Text != "Inspect the checkout" {
+		t.Fatalf("lost caller or prompt: %#v %#v", service.spawned, service.first)
 	}
 }

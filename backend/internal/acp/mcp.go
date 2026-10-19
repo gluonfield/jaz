@@ -9,11 +9,12 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type MCPService interface {
 	AskUser(context.Context, string, AskUserInput) (AskUserOutput, error)
-	Spawn(context.Context, SpawnRequest) (SpawnResult, error)
+	Start(context.Context, SpawnRequest, storage.QueuedMessage) (Job, error)
 	Send(context.Context, SendRequest) (Job, error)
 	WaitThreads(context.Context, []string, time.Duration) (ThreadResults, error)
 	Cancel(context.Context, string) (Job, error)
@@ -97,8 +98,9 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 	if strings.TrimSpace(input.Prompt) == "" {
 		return nil, ThreadSnapshot{}, fmt.Errorf("prompt is required")
 	}
-	result, err := t.Service.Spawn(ctx, SpawnRequest{
-		ParentID:        mcpsession.SessionID(req),
+	parent := mcpsession.SessionID(req)
+	job, err := t.Service.Start(ctx, SpawnRequest{
+		ParentID:        parent,
 		ACPAgent:        input.Agent,
 		Slug:            input.Slug,
 		Title:           input.Title,
@@ -109,16 +111,9 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 		Model:           input.Model,
 		ReasoningEffort: input.Thinking,
 		Commitment:      input.Commitment,
-	})
+	}, storage.QueuedMessage{Text: input.Prompt, PlanRequested: input.Plan, From: parent})
 	if err != nil {
 		return nil, ThreadSnapshot{}, err
-	}
-	job, err := t.Service.Send(ctx, SendRequest{
-		Session: result.SessionID, Message: input.Prompt, PlanRequested: input.Plan,
-		Completion: CompletionAsync, ParentVisible: true, FromAgent: true, From: mcpsession.SessionID(req),
-	})
-	if err != nil {
-		return nil, ThreadSnapshot{}, fmt.Errorf("thread %s was created but its prompt could not start: %w", result.SessionID, err)
 	}
 	return nil, snapshotThread(job), nil
 }

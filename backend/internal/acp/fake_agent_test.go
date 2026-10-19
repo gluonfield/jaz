@@ -57,6 +57,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		_, _ = fmt.Fprintln(file, os.Getpid())
 		_ = file.Close()
 	}
+	// Startup waits while a hold file sits in the agent's directory, as a
+	// slow login refresh holds an agent up.
+	fakeHold(os.Getenv("JAZ_FAKE_ACP_START_HOLD"))
 	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" {
 		var config struct {
 			Features map[string]bool `json:"features"`
@@ -311,6 +314,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected supported mode", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
+			}
+			// Plan mode waits while a hold file sits in the agent's directory.
+			if req.ModeID == "plan" {
+				fakeHold(os.Getenv("JAZ_FAKE_ACP_PLAN_HOLD"))
 			}
 			currentMode = req.ModeID
 			sendResult(conn, msg, map[string]any{})
@@ -959,4 +966,20 @@ func validateFakeProxyAndJaztools(rawServers []json.RawMessage) error {
 		return fmt.Errorf("jaztools must expose only a resolved session header, got %#v", jaz.Headers)
 	}
 	return nil
+}
+
+// fakeHold waits while the file hold exists, and exits once Jaz is gone.
+func fakeHold(hold string) {
+	if hold == "" {
+		return
+	}
+	for {
+		if _, err := os.Stat(hold); err != nil {
+			return
+		}
+		if os.Getppid() == 1 {
+			os.Exit(0)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

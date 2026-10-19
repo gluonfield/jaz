@@ -16,14 +16,19 @@ import (
 )
 
 func (m *Manager) resume(ctx context.Context, ref string) (*jobState, error) {
-	m.resumeMu.Lock()
-	defer m.resumeMu.Unlock()
-	return m.resumeLocked(ctx, ref)
+	if job, err := m.job(ref); err == nil {
+		return job, nil
+	}
+	session, err := m.store.LoadSession(ref)
+	if err != nil {
+		return nil, fmt.Errorf("active acp session not found: %s", ref)
+	}
+	defer m.resumeLocks.Lock(session.ID)()
+	return m.resumeLocked(ctx, session.ID)
 }
 
 func (m *Manager) restart(ctx context.Context, stale *jobState) (*jobState, error) {
-	m.resumeMu.Lock()
-	defer m.resumeMu.Unlock()
+	defer m.resumeLocks.Lock(stale.ID)()
 	if current := m.jobByID(stale.ID); current != nil && current != stale {
 		return current, nil
 	}
@@ -156,7 +161,10 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 	process.mcpRevision = mcpRevision
 	process.mcpRefresh = supportedMCPRefresh(ac.initRaw, mcpServerPolicy)
 	m.disconnectAgentWork(job)
-	m.addJob(job, process)
+	if err := m.register(job, process); err != nil {
+		ac.close()
+		return nil, err
+	}
 	ac.state.attach(m, job, cfg)
 	m.restoreSessionControls(ctx, job, overview)
 	m.log.Info("resumed agent session", "agent", job.ACPAgent, "session", job.ID,

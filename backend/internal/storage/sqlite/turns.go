@@ -89,7 +89,7 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 	defer s.writeMu.Unlock()
 	return threaddb.New(s.db).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
 		ID: session.ID, QueuedMessages: queue, Title: nullDBString(session.Title),
-		Turn: sessionTurnJSON(&storage.Turn{StartedAt: now, PendingMessage: &prompt}), StartedAtMs: timeToMs(now),
+		Turn: sessionTurnJSON(prompt.Turn(now)), StartedAtMs: timeToMs(now),
 	})
 }
 

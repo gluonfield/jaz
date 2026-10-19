@@ -18,8 +18,7 @@ import (
 // conversation while the Jaz transcript stays. An agent_switch event records
 // the move, so resuming knows a fresh native session is intended.
 func (m *Manager) SwitchAgent(_ context.Context, sessionID, agent string) error {
-	m.resumeMu.Lock()
-	defer m.resumeMu.Unlock()
+	defer m.resumeLocks.Lock(sessionID)()
 	if job, err := m.job(sessionID); err == nil && job.turnDone() != nil {
 		return errors.New("wait for the active turn before switching agent")
 	}
@@ -68,20 +67,19 @@ func (m *Manager) SwitchAgent(_ context.Context, sessionID, agent string) error 
 // choice is applied when its native session starts, as a new thread's is.
 // After that it goes through the agent's own model and effort options first.
 func (m *Manager) SetModel(ctx context.Context, sessionID, model, effort string) error {
-	m.resumeMu.Lock()
+	unlock := m.resumeLocks.Lock(sessionID)
 	session, cfg, effort, live, err := m.modelChoice(sessionID, model, effort)
 	if err == nil && !live {
 		err = m.saveModel(session, cfg, effort)
 	}
-	m.resumeMu.Unlock()
+	unlock()
 	if err != nil || !live {
 		return err
 	}
 	if err := m.setLiveModel(ctx, sessionID, cfg, effort); err != nil {
 		return err
 	}
-	m.resumeMu.Lock()
-	defer m.resumeMu.Unlock()
+	defer m.resumeLocks.Lock(sessionID)()
 	if session, err = m.store.LoadSession(sessionID); err != nil {
 		return err
 	}

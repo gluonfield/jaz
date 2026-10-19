@@ -28,7 +28,10 @@ func (e *turnInProgressError) Error() string {
 	return "session is already running"
 }
 
-func (j *jobState) sendConflict() *turnInProgressError {
+// sendConflict refuses a turn while another runs or ends, and while a new
+// thread's agent waits for the turn it was created with unless this send
+// starts it.
+func (j *jobState) sendConflict(claimed bool) *turnInProgressError {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	if j.turn != nil {
@@ -36,6 +39,9 @@ func (j *jobState) sendConflict() *turnInProgressError {
 	}
 	if j.finishing != nil {
 		return &turnInProgressError{done: j.finishing, finishing: true}
+	}
+	if j.State == StateStarting && !claimed {
+		return &turnInProgressError{}
 	}
 	return nil
 }
@@ -54,7 +60,8 @@ type sendOptions struct {
 	requireActiveGoal     bool
 	allowSilence          bool
 	output                *storage.TurnOutput
-	parentOutput          *storage.TurnOutput
+	// claimed starts the turn a new thread was created with.
+	claimed bool
 }
 
 type InternalTurnRequest struct {
@@ -134,7 +141,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
 	}
 	job.sendMu.Lock()
-	if err := job.sendConflict(); err != nil {
+	if err := job.sendConflict(opts.claimed); err != nil {
 		job.sendMu.Unlock()
 		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
@@ -150,7 +157,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	}
 	job.sendMu.Lock()
 	defer job.sendMu.Unlock()
-	if err := job.sendConflict(); err != nil {
+	if err := job.sendConflict(opts.claimed); err != nil {
 		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
 	if opts.requireActiveGoal {
@@ -168,6 +175,11 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
+	m.admission.RLock()
+	defer m.admission.RUnlock()
+	if m.closed {
+		return Job{}, ErrClosed
+	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
 	if m.cfg.TurnNote != nil && opts.activeOperation != ActiveOperationCompact {
 		session, err := m.store.LoadSession(job.ID)
@@ -178,14 +190,10 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	}
 	notifyParent := req.ParentVisible && req.Completion.propagates() && !req.PlanRequested
 	// Work a parent starts while answering a bot reports back to that bot.
-	parentOutput := opts.parentOutput
+	parentOutput := req.ParentOutput
 	if notifyParent && req.From != "" && req.From == job.ParentID {
-		parent, err := m.store.LoadSession(req.From)
-		if err != nil {
+		if parentOutput, err = m.answering(req.From); err != nil {
 			return Job{}, err
-		}
-		if parent.Turn != nil {
-			parentOutput = parent.Turn.Output.Continuation()
 		}
 	}
 	var prompt acpschema.PromptRequest

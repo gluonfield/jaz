@@ -124,6 +124,7 @@ func applyQueueMutation(queue []storage.QueuedMessage, req queueRequest) ([]stor
 			return queue, queueInputError{"unknown queued action"}
 		}
 		message.ID = ""
+		message.From, message.ParentOutput = "", nil
 		message = message.AsPublic()
 		msgs := storage.NormalizeQueuedMessages([]storage.QueuedMessage{message})
 		if len(msgs) == 0 {
@@ -316,6 +317,10 @@ func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, pr
 		return
 	}
 	if err := s.startQueuedPrompt(ctx, session, *prompt); err != nil {
+		// Shutdown leaves the turn claimed, for the next start to resume.
+		if errors.Is(err, acp.ErrClosed) {
+			return
+		}
 		s.logger().Error("queued prompt start failed", "session", session.ID, "error", err)
 		if prompt.Output.LoopRun() != "" {
 			s.failClaimedTurn(session.ID, *prompt, err)
@@ -670,6 +675,9 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			Completion:    acp.CompletionAsync,
 			PlanRequested: prompt.PlanRequested,
 			GoalRequested: prompt.GoalRequested,
+			ParentVisible: prompt.SentByAgent(),
+			FromAgent:     prompt.SentByAgent(),
+			ParentOutput:  prompt.ParentOutput,
 		}); err != nil {
 			return acpSendError(session, err)
 		}
