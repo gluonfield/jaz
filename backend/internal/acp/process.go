@@ -510,10 +510,10 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (a
 				return method.ID, nil
 			}
 		}
-		for _, method := range init.AuthMethods {
-			if (method.ID == "chatgpt" || method.ID == "chat-gpt") && codexAuthAvailable(env) {
-				return method.ID, nil
-			}
+		// codex-acp reads a stored login when a session opens. Its chat-gpt method is the
+		// interactive browser sign-in, and it forces a token refresh before deciding.
+		if codexAuthAvailable(env) {
+			return "", nil
 		}
 	}
 	var missing []string
