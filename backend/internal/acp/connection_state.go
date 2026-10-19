@@ -48,7 +48,8 @@ func (s *connectionState) configResponse(sessionID acpschema.SessionID, raw json
 	s.pending = append(s.pending, sessionNotification{SessionID: string(sessionID), Update: raw})
 }
 
-func (s *connectionState) capabilities(raw json.RawMessage) {
+// initialized records what the agent's initialize result says about it.
+func (s *connectionState) initialized(raw json.RawMessage) {
 	var response struct {
 		Capabilities struct {
 			Meta struct {
@@ -82,6 +83,7 @@ func (s *connectionState) awaitAdvertisedModel(ctx context.Context, closed <-cha
 	case <-s.modelsAnnounced:
 		return nil
 	case <-closed:
+		// session/new then reports the exit along with the agent's stderr.
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

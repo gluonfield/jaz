@@ -362,7 +362,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		cancel()
 		return nil, fmt.Errorf("initialize acp agent: %w", withProcessStderr(err, stderr))
 	}
-	state.capabilities(initRaw)
+	state.initialized(initRaw)
 	methodID, missingAuth := autoAuthMethod(name, initRaw, env)
 	if methodID != "" {
 		if _, err := peer.Call(ctx, acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID}); err != nil {
