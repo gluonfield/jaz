@@ -404,4 +404,29 @@ func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 	if child.SourceType != "" || child.RuntimeRef.Cwd == plain.RuntimeRef.Cwd {
 		t.Fatalf("a chat's child became a subtask: %+v", child)
 	}
+	// What the bot's subtask, group seat or routine run starts is the bot's
+	// work too, run like any child thread and serving no commitment.
+	seat, err := manager.CreateSession(ctx, SpawnRequest{Slug: "scout in team", SourceType: storage.SourceBotMember, SourceID: bot.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := manager.CreateSession(ctx, SpawnRequest{Slug: "morning run", ParentID: bot.ID, SourceType: storage.SourceLoopRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, parent := range []storage.Session{subtask, seat, run} {
+		if _, err := manager.CreateSession(ctx, SpawnRequest{ParentID: parent.ID, Slug: parent.Slug + " review", Commitment: owed.ID}); err == nil || !strings.Contains(err.Error(), "leave commitment out") {
+			t.Fatalf("a thread %s started served a commitment: %v", parent.Slug, err)
+		}
+		review, err := manager.CreateSession(ctx, SpawnRequest{ParentID: parent.ID, Slug: parent.Slug + " review"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if review.SourceType != storage.SourceBotWorker || review.SourceID != bot.ID || review.ParentID != parent.ID {
+			t.Fatalf("a thread %s started = %s/%s under %s, want the bot's work under it", parent.Slug, review.SourceType, review.SourceID, review.ParentID)
+		}
+		if review.RuntimeRef.Agent != "alpha" || review.RuntimeRef.Cwd == bot.RuntimeRef.Cwd {
+			t.Fatalf("a thread %s started runs on %s in %s, want a child thread's defaults", parent.Slug, review.RuntimeRef.Agent, review.RuntimeRef.Cwd)
+		}
+	}
 }

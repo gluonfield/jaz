@@ -346,10 +346,48 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if _, err := service.SaveFile(research.ID, agentsFile, "Cite every source.\n", files[0].Version); err != nil {
 		t.Fatal(err)
 	}
+	// What a side chat started is listed under it, oldest first, and what
+	// that started under that, archived or not; what a thread Activity does
+	// not list started is listed on its own.
+	startedBy := func(parent, title string, done time.Time) string {
+		t.Helper()
+		session, err := manager.CreateSession(t.Context(), acp.SpawnRequest{Slug: title, Title: title, ParentID: parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.FinishSessionTurn(session.ID, storage.StatusIdle, "", done, nil); err != nil {
+			t.Fatal(err)
+		}
+		return session.ID
+	}
+	diff := startedBy(finished, "Diff review", time.Now().Add(-time.Hour).UTC())
+	design := startedBy(finished, "Design review", time.Now().Add(-2*time.Hour).UTC())
+	second := startedBy(diff, "Second opinion", time.Now().Add(-30*time.Minute).UTC())
+	if err := store.SetArchived(design, true); err != nil {
+		t.Fatal(err)
+	}
+	seat, err := manager.CreateSession(t.Context(), acp.SpawnRequest{Slug: "research in team", SourceType: storage.SourceBotMember, SourceID: research.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedBy(seat.ID, "Errand for the team", time.Now().Add(-3*time.Hour).UTC())
 
 	view, err := service.Activity(research.ID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	listed := func(parent string) []string {
+		var ids []string
+		for _, item := range view.Started[parent] {
+			ids = append(ids, item.ThreadID)
+		}
+		return ids
+	}
+	if len(view.Started) != 2 || !slices.Equal(listed(finished), []string{design, diff}) || !slices.Equal(listed(diff), []string{second}) {
+		t.Fatalf("started = %+v, want the reviews under their side chat and the second opinion under its review", view.Started)
 	}
 	items := view.Items
 	var got []string
@@ -376,6 +414,7 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		"message_sent:Operations:Which fixes matter this week?:",
 		"routine:Morning brief::ok",
 		"routine:Morning brief:Gmail sign-in expired:error",
+		"side_chat:Errand for the team::idle",
 		"side_chat:Legacy notes::running:running",
 		"side_chat:Rerun::running:running",
 	}

@@ -783,6 +783,9 @@ export interface BotActivity {
   for?: string
 }
 
+// A side chat that another of the bot's side chats started, listed under it.
+export type BotStartedThread = BotActivity & { thread_id: string }
+
 // A commitment a bot has not closed: what was asked, who it is owed to (none
 // for you), its next step and the threads serving it.
 export interface BotOwed {

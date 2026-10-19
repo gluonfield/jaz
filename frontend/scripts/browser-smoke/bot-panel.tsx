@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { BotDetails } from '@/components/bots/BotDetails'
 import { BotsPanel } from '@/components/bots/BotsPanel'
 import { getAppearance, setAppearance } from '@/lib/appearance'
-import type { Bot, BotActivity, BotFile, BotOwed, Loop, LoopRun } from '@/lib/api/types'
+import type { Bot, BotActivity, BotFile, BotOwed, BotStartedThread, Loop, LoopRun } from '@/lib/api/types'
 
 // A bot's side panel against a stubbed server: what it owes, is doing and
 // did, its routines and their actions, and its AGENTS.md and MEMORY.md edited
@@ -29,6 +29,19 @@ export async function exerciseBotPanel(): Promise<void> {
     { kind: 'message_sent', at: minutes(60 * 24 + 5), title: 'Priorities Bot', text: 'Which fixes matter this week?' },
     { kind: 'side_chat', at: minutes(60 * 24 + 90), title: 'Jaz bot scheduling design', status: 'idle', thread_id: 'side-c' },
   ]
+  // What the bot's threads started in turn, by the thread that started them.
+  const started: Record<string, BotStartedThread[]> = {
+    'side-a': [
+      { kind: 'side_chat', at: minutes(12), title: 'Commitments design review', status: 'idle', thread_id: 'review-a1' },
+      { kind: 'side_chat', at: minutes(4), running: true, title: 'Commitments diff review', status: 'running', thread_id: 'review-a2' },
+    ],
+    'side-b': [
+      { kind: 'side_chat', at: minutes(50), title: 'Async spawn design review', status: 'idle', thread_id: 'review-b1' },
+      { kind: 'side_chat', at: minutes(40), title: 'Async spawn diff review', status: 'error', thread_id: 'review-b2' },
+    ],
+    'review-b2': [{ kind: 'side_chat', at: minutes(38), title: 'Retry rule second opinion', status: 'idle', thread_id: 'review-b3' }],
+    'side-f': [{ kind: 'side_chat', at: minutes(60 * 4), title: 'Harness design review', status: 'idle', thread_id: 'review-f1' }],
+  }
   const schedule = (expr: string) => ({ kind: 'cron', expr, timezone: 'UTC' })
   const routine = (id: string, name: string, expr: string, extra: Partial<Loop> = {}): Loop => ({
     id, bot_id: bot.id, name, prompt: `${name}: check what changed and tell me only what matters.`, schedule: schedule(expr),
@@ -61,7 +74,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
     switch (`${method} ${url.pathname}`) {
       case 'GET /v1/bots/panel/activity':
-        return json({ items: activity, owed })
+        return json({ items: activity, owed, started })
       case 'GET /v1/bots/panel/files':
         return json({ files: [agents, memory] })
       case 'PUT /v1/bots/panel/files/MEMORY.md':
@@ -180,12 +193,37 @@ export async function exerciseBotPanel(): Promise<void> {
     if (!find('Bot commitments and lost results')?.getAttribute('href')?.endsWith('/sessions/side-a')) {
       throw new Error('Bot panel: a commitment with one thread does not open that thread')
     }
+    // What a side chat started sits under it, and what that started under
+    // that, each opening its own thread.
+    find('Merged both reviews into one plan')?.scrollIntoView({ block: 'center' })
+    await capture('bot-panel-started')
+    const link = (thread: string) => document.querySelector<HTMLElement>(`a[href$="/sessions/${thread}"]`)
+    const follows = (row: string, nested: string) => link(row)?.nextElementSibling?.contains(link(nested)) ?? false
+    if (!follows('side-b', 'review-b1') || !follows('side-b', 'review-b2') || !follows('side-a', 'review-a2')) {
+      throw new Error('Bot panel: the threads a side chat or commitment started are not listed under it')
+    }
+    const indent = (thread: string) => link(thread)!.querySelector('svg')!.getBoundingClientRect().left
+    if (!(indent('review-b3') > indent('review-b2') + 10) || link('review-b1')!.compareDocumentPosition(link('review-b2')!) !== Node.DOCUMENT_POSITION_FOLLOWING) {
+      throw new Error('Bot panel: started threads are not nested by who started them, oldest first')
+    }
+    for (const [thread, state] of [['review-a2', 'Running for 4m'], ['review-b2', 'Failed']]) {
+      if (!link(thread)!.textContent!.endsWith(state)) {
+        throw new Error(`Bot panel: ${thread} reads "${link(thread)!.textContent}", want it to end "${state}"`)
+      }
+    }
+    if (document.querySelectorAll('a[href$="/sessions/review-a1"]').length !== 1) {
+      throw new Error('Bot panel: a started thread is listed apart from the thread that started it')
+    }
+    await click('Async spawn design review')
+    await until('a started thread did not open', () => router.state.location.pathname === '/sessions/review-b1')
+    await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
+    await until('the panel did not come back', () => Boolean(link('review-b1')))
     await click('Pause prompt suggestions on hidden turns')
     await until('a commitment without a thread did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: wait for his OK') ?? false)
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Capacity test with 20 threads')
-    await until('a commitment with several threads did not list them', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Capacity harnessFinished|Capacity runFailed')
+    await until('a commitment with several threads did not list them with what they started', () => /^Capacity harnessFinished\|Harness design review.+\|Capacity runFailed$/.test([...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|')))
     await capture('bot-panel-commitment')
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))

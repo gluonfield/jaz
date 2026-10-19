@@ -73,6 +73,9 @@ type Manager struct {
 	log          *log.Logger
 	Done         func(context.Context, Job)
 	TurnFinished func(context.Context, Job)
+	// ThreadStarted hears of each thread an agent starts, with its first
+	// prompt.
+	ThreadStarted func(storage.Session, string)
 
 	Events *sessionevents.Bus
 	// PublishWidget backs the _jaz.dev/widget/publish extension method; the
