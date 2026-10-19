@@ -9,4 +9,6 @@
 - [x] Full backend suite: 102 packages; vet passes. Frontend: 337 tests, typecheck, lint, bundle build and dictation pass.
 - [x] iOS build and full suite: 193 tests, three existing skips, zero failures. Window monitor: 1,476 samples, no Simulator windows or focus changes. Original project files, diff and status unchanged.
 - [x] Thermo-nuclear review: no blockers. One production constant changes; no new branches, migration, runtime or protocol changes.
-- [ ] After approval: integrate local main, rerun checks, then merge both branches with --no-ff. Never push; leave unrelated iOS edits untouched.
+- [x] Merge approved; both branches already contained local main and their checks were rerun before local --no-ff integration. Never push; leave unrelated iOS edits untouched.
+
+Merge-check results: frontend remains green. Backend reruns failed in unchanged ACP tests (steering-test directory cleanup, then worktree creation timeout); the steering test passed three focused repeats and the Prime creation/adoption/preservation tests pass. iOS builds pass; full reruns failed in unchanged scroll tests and a URLSession test teardown. The pre-approval full suites passed. iOS project-file hashes, diff and status remain unchanged; both headless monitors recorded zero Simulator windows and focus changes.
