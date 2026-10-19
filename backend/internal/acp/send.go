@@ -17,6 +17,10 @@ var ErrSteeringUnsupported = errors.New("acp steering unsupported")
 
 var errTurnEnded = fmt.Errorf("%w: agent turn ended before steering", ErrSteeringUnsupported)
 
+// errTurnRetrying refuses a steer while the turn waits to retry a provider
+// failure, so the message waits for the turn instead of a new one starting.
+var errTurnRetrying = fmt.Errorf("%w: the turn is waiting to retry a provider failure", ErrSteeringUnsupported)
+
 var errQuestionPending = errors.New("the turn is waiting for an answer")
 
 type turnInProgressError struct {
@@ -220,7 +224,6 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	done := job.startStoredTurn(req.Completion, turn)
 	m.touchAttention(parentSessionIDs(job.eventView())...)
-	markGoalRequested(job, req.GoalRequested)
 	if err := m.publishACP(job.eventView()); err != nil {
 		go m.failPromptCall(done, job, fmt.Errorf("persist initial session events: %w", err))
 	} else if local != nil {
@@ -249,11 +252,15 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	}
 	job.mu.RLock()
 	method := job.steerMethod
-	running := job.turn != nil && !job.turn.retrying && (job.State == StateRunning || job.State == StateStarting)
+	running := job.turn != nil && (job.State == StateRunning || job.State == StateStarting)
+	retrying := running && job.turn.retrying
 	asking := len(job.Permissions) > 0
 	job.mu.RUnlock()
 	if !running {
 		return Job{}, errTurnEnded
+	}
+	if retrying {
+		return Job{}, errTurnRetrying
 	}
 	if asking && req.transcript == sendTranscriptHidden {
 		return Job{}, errQuestionPending
@@ -299,8 +306,13 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext) (chan struct{}, error) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
-	if job.turn == nil || job.turn.promptCalls == 0 || job.turn.retrying || (job.State != StateRunning && job.State != StateStarting) {
+	if job.turn == nil || job.turn.promptCalls == 0 || (job.State != StateRunning && job.State != StateStarting) {
 		return nil, errTurnEnded
+	}
+	// The gate is closed once the turn's latest prompt reached the agent; a
+	// retry reopens it until its continuation does.
+	if job.turn.retrying || !job.turn.firstPromptSentClosed {
+		return nil, errTurnRetrying
 	}
 	if job.steerMethod == steerUnsupported {
 		return nil, ErrSteeringUnsupported

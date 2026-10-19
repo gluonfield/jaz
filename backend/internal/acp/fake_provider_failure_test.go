@@ -14,24 +14,26 @@ import (
 // fakeProviderFailures makes a prompt start a run of provider failures: this
 // prompt and the next n-1 the session gets end with kind's failure. The count
 // lives in JAZ_FAKE_ACP_FAILURE_FILE so it outlasts a restart.
-var fakeProviderFailures = regexp.MustCompile(`provider fails (\d+) (overloaded|rejected|retried|reconnected|throttled)`)
+var fakeProviderFailures = regexp.MustCompile(`provider fails (\d+) (overloaded|rejected|retried|reconnected|throttled|recovered)`)
 
 // fakeProviderNotice makes a prompt report a notice before it answers.
 var fakeProviderNotice = regexp.MustCompile(`provider notice ([A-Za-z .]+)`)
 
 // fakeFailureKinds are the records codex-acp and claude-agent-acp send for a
 // failure the provider does not retry (overloaded), one the request itself
-// causes (rejected), one the provider already retried in the turn (retried),
-// a capacity failure after the provider retried its connection
-// (reconnected), and a rate limit the provider retried among other retries
-// (throttled). codex-acp reports a turn's retries and its failure under one
-// incident id.
+// causes (rejected), one the provider already retried (retried), a capacity
+// failure after the provider retried its connection (reconnected), a rate
+// limit the provider retried among other retries (throttled), and an overload
+// after the turn recovered from an earlier one (recovered). Retry warnings
+// carry their own ids, as claude-agent-acp's do; codex-acp reuses the
+// failure's.
 var fakeFailureKinds = map[string]map[string]any{
 	"overloaded":  {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}},
 	"rejected":    {"category": "request", "title": "The requested model is not supported.", "actions": []string{}},
-	"retried":     {"category": "connection", "title": "stream disconnected before completion", "actions": []string{"retry", "new_session"}, "retrying": []string{"connection"}},
+	"retried":     {"category": "service", "title": "API Error: Repeated 529 Overloaded errors.", "actions": []string{"retry"}, "retrying": []string{"service", "service"}},
 	"reconnected": {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": []string{"connection"}},
 	"throttled":   {"category": "limit", "title": "Rate limit reached.", "actions": []string{"retry"}, "retrying": []string{"limit", "connection"}},
+	"recovered":   {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": []string{"service"}, "progress": true},
 }
 
 // fakeTypedFailures reports whether initialize negotiated AIR sessionFailure,
@@ -108,14 +110,19 @@ func fakeProviderFailure(conn jsonrpc.MessageConn, msg *jsonrpc.Message, typed b
 	}
 	id := fmt.Sprintf("turn-%d:error", turn)
 	retrying, _ := kind["retrying"].([]string)
-	for revision, category := range retrying {
+	for n, category := range retrying {
 		notify(conn, "session/update", map[string]any{"sessionId": fakeSessionID, "update": map[string]any{
 			"sessionUpdate": "session_info_update",
-			"_meta":         fakeFailureMeta(map[string]any{"id": id, "revision": revision + 1, "category": category, "severity": "warning", "title": "Reconnecting...", "actions": []string{}}),
+			"_meta":         fakeFailureMeta(map[string]any{"id": fmt.Sprintf("%s:retry:%d", fakeSessionID, n), "revision": 1, "category": category, "severity": "warning", "title": "Retrying...", "actions": []string{}}),
+		}})
+	}
+	if kind["progress"] == true {
+		notify(conn, "session/update", map[string]any{"sessionId": fakeSessionID, "update": map[string]any{
+			"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "Looking into it. "},
 		}})
 	}
 	sendResult(conn, msg, map[string]any{"stopReason": "end_turn", "_meta": fakeFailureMeta(map[string]any{
-		"id": id, "revision": len(retrying) + 1, "category": kind["category"], "severity": "error", "title": title, "actions": kind["actions"],
+		"id": id, "revision": 1, "category": kind["category"], "severity": "error", "title": title, "actions": kind["actions"],
 	})})
 	return true
 }

@@ -86,21 +86,26 @@ func TestARoutineTurnTheProviderFailsContinuesUntilItAnswers(t *testing.T) {
 	}
 }
 
-// A capacity failure that follows the provider retrying its connection in the
-// same turn is one the provider did not retry, so Jaz does.
-func TestACapacityFailureAfterTheProviderReconnectedIsRetried(t *testing.T) {
-	jaz := startFailingJaz(t, time.Millisecond)
-	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: thread.ID, Message: "plan the trip provider fails 1 reconnected", Completion: acp.CompletionAsync}); err != nil {
-		t.Fatal(err)
-	}
+// A capacity failure after the provider retried only its connection, or after
+// the turn recovered from an earlier retried overload, is one the provider
+// did not retry, so Jaz does.
+func TestAFailureTheProviderDidNotRetryIsRetried(t *testing.T) {
+	for _, kind := range []string{"reconnected", "recovered"} {
+		t.Run(kind, func(t *testing.T) {
+			jaz := startFailingJaz(t, time.Millisecond)
+			thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: thread.ID, Message: "plan the trip provider fails 1 " + kind, Completion: acp.CompletionAsync}); err != nil {
+				t.Fatal(err)
+			}
 
-	jaz.eventually("the turn ending", func() bool { return jaz.session(thread.ID).Turn == nil })
-	if session := jaz.session(thread.ID); session.Status != storage.StatusIdle || jaz.promptsContaining(continuation) != 1 {
-		t.Fatalf("thread = %s %q, prompts = %q; want one continuation and an answer", session.Status, session.Error, jaz.prompts())
+			jaz.eventually("the turn ending", func() bool { return jaz.session(thread.ID).Turn == nil })
+			if session := jaz.session(thread.ID); session.Status != storage.StatusIdle || jaz.promptsContaining(continuation) != 1 {
+				t.Fatalf("thread = %s %q, prompts = %q; want one continuation and an answer", session.Status, session.Error, jaz.prompts())
+			}
+		})
 	}
 }
 
@@ -154,7 +159,8 @@ func TestAWorkerTurnEndedByAFailureNotToRetryReportsFailedToItsBot(t *testing.T)
 }
 
 // Stopping a turn that waits to retry ends it at once and sends nothing more;
-// steering it meanwhile is refused, so the server queues the message.
+// steering it or giving it live input meanwhile is refused at once, so the
+// server queues the message.
 func TestStoppingATurnWaitingToRetryEndsItWithoutAContinuation(t *testing.T) {
 	jaz := startFailingJaz(t, time.Hour)
 	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
@@ -170,6 +176,11 @@ func TestStoppingATurnWaitingToRetryEndsItWithoutAContinuation(t *testing.T) {
 	}
 	if _, err := jaz.manager.Steer(jaz.ctx, acp.SteerRequest{Session: thread.ID, Message: "also book the hotel"}); !errors.Is(err, acp.ErrSteeringUnsupported) {
 		t.Fatalf("steering a turn waiting to retry = %v, want it queued instead", err)
+	}
+	input, cancelInput := context.WithTimeout(jaz.ctx, time.Second)
+	defer cancelInput()
+	if _, err := jaz.manager.Input(input, acp.SteerRequest{Session: thread.ID, Message: "also book the hotel"}); !errors.Is(err, acp.ErrSteeringUnsupported) {
+		t.Fatalf("live input to a turn waiting to retry = %v, want it refused at once", err)
 	}
 
 	started := time.Now()
@@ -267,8 +278,9 @@ func TestRestartAfterARunClosedAsAnErrorFinishesItsTurnAsFailed(t *testing.T) {
 	})
 }
 
-// A notice the provider sends while it works stays visible in the answer, as
-// it was before Jaz asked for failure records.
+// A notice the provider sends while it works shows in the answer, as the
+// "Warning:" line agents write for clients that do not ask for failure
+// records.
 func TestAProviderNoticeShowsInTheTurnsAnswer(t *testing.T) {
 	jaz := startFailingJaz(t, time.Millisecond)
 	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})

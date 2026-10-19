@@ -143,10 +143,12 @@ type activeTurn struct {
 	grokStopReason        string
 	cancel                context.CancelFunc
 	// retries counts the continuations sent after provider failures; while
-	// retrying, the turn waits to send the next one.
+	// retrying, the turn waits to send the next one. providerRetried holds
+	// the failure categories the provider retried since the turn last made
+	// progress.
 	retries         int
 	retrying        bool
-	providerRetried map[providerRetry]bool
+	providerRetried map[string]bool
 }
 
 type ModeState struct {
@@ -357,6 +359,7 @@ func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Tur
 		firstPromptSent: make(chan struct{}),
 		promptCalls:     1,
 		allowSilence:    stored.AllowSilence,
+		goalRequested:   stored.GoalRequested,
 		retries:         stored.Retries,
 	}
 	j.ParentVisible = stored.ParentVisible
@@ -546,6 +549,28 @@ func (j *jobState) markFirstPromptSent() {
 	if j.turn != nil {
 		j.turn.closeFirstPromptSent()
 	}
+}
+
+// waitToRetry holds the turn for one more prompt call after delay: the call
+// counts as outstanding so senders see the turn running, steering waits for
+// it to reach the agent, and Stop or shutdown end the wait through the
+// turn's cancel.
+func (t *activeTurn) waitToRetry(delay time.Duration) context.Context {
+	t.retries++
+	t.retrying = true
+	t.promptCalls = 1
+	t.firstPromptSent, t.firstPromptSentClosed = make(chan struct{}), false
+	wait, cancel := context.WithTimeout(context.Background(), delay)
+	t.cancel = cancel
+	return wait
+}
+
+// endRetryWait ends the turn's retry wait and reports whether the turn was
+// stopped meanwhile. Steering stays closed until the continuation is sent.
+func (t *activeTurn) endRetryWait() bool {
+	t.cancel = nil
+	t.retrying = false
+	return t.cancelRequested
 }
 
 func (t *activeTurn) closeFirstPromptSent() {

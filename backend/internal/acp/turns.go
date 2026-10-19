@@ -2,6 +2,7 @@ package acp
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -63,24 +64,18 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 	m.completePromptCall(done, job, resp.StopReason, resp.Meta.terminal())
 }
 
-// retryPrompt continues a turn a provider failure ended once delay passes,
+// retryPrompt continues a turn a provider failure ended once its wait ends,
 // unless the turn is stopped first. The continuation asks the agent to go on
 // rather than resending the prompt, whose work may already be done.
-func (m *Manager) retryPrompt(job *jobState, done chan struct{}, delay time.Duration) {
-	wait, cancel := context.WithTimeout(context.Background(), delay)
-	defer cancel()
-	if job.setTurnCancel(done, cancel) {
-		<-wait.Done()
-	}
+func (m *Manager) retryPrompt(job *jobState, done chan struct{}, wait context.Context) {
+	<-wait.Done()
 	job.mu.Lock()
 	turn := job.turn
 	if turn == nil || turn.done != done {
 		job.mu.Unlock()
 		return
 	}
-	turn.cancel = nil
-	turn.retrying = false
-	stopped := turn.cancelRequested
+	stopped := turn.endRetryWait()
 	job.Error = ""
 	job.mu.Unlock()
 	if stopped {
@@ -100,20 +95,22 @@ func (m *Manager) retryPrompt(job *jobState, done chan struct{}, delay time.Dura
 // offers to retry keeps the turn running for another prompt call, sent once
 // its wait passes.
 func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string, failure *sessionFailure) {
-	cancelReason, cancelRequested := job.cancelReason()
-	state := StateIdle
-	errMessage := ""
-	if cancelRequested {
-		state = StateCancelled
-		stopReason = cancelReason
-	} else if stopReason == StopReasonCancelled {
-		state = StateCancelled
-	}
 	job.mu.Lock()
 	turn := job.turn
 	if turn == nil || turn.done != done || turn.promptCalls == 0 {
 		job.mu.Unlock()
 		return
+	}
+	// A stop is read under the lock that starts a retry wait, so it either
+	// keeps the turn from waiting or finds the wait to end.
+	cancelRequested := turn.cancelRequested
+	state := StateIdle
+	errMessage := ""
+	if cancelRequested {
+		state = StateCancelled
+		stopReason = cmp.Or(turn.cancelReason, StopReasonCancelled)
+	} else if stopReason == StopReasonCancelled {
+		state = StateCancelled
 	}
 	turn.promptCalls--
 	remaining := turn.promptCalls
@@ -135,17 +132,13 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		// The retry is recorded before it waits, so a restart resumes the turn
 		// with the retries it used; one that cannot be recorded is not made.
 		if delay, ok := turn.retryDelay(*failure); ok && job.ActiveOperation == "" && m.recordRetry(job, turn.retries+1) {
-			turn.retries++
-			turn.retrying = true
-			turn.promptCalls = 1
-			// Steering waits until the continuation reaches the agent.
-			turn.firstPromptSent, turn.firstPromptSentClosed = make(chan struct{}), false
+			wait := turn.waitToRetry(delay)
 			job.Error = retryNotice(*failure, delay, turn.retries)
 			job.UpdatedAt = time.Now().UTC()
 			job.mu.Unlock()
 			m.log.Warn("acp turn failed; retrying", "session", job.ID, "failure", failure.Title, "delay", delay)
 			m.publishACPStatus(job.eventView())
-			go m.retryPrompt(job, done, delay)
+			go m.retryPrompt(job, done, wait)
 			return
 		}
 		state = StateFailed

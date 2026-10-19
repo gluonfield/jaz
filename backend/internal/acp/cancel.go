@@ -21,11 +21,11 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 	running, done := job.requestCancel()
 	clearGoal := m.clearGoalOnCancel(job)
 	m.log.Info("acp cancel requested", "session", job.ID, "agent", job.ACPAgent, "running", running)
-	// A local agent's turn, or a turn waiting to retry a failed prompt.
+	// A local agent's turn, or a turn waiting to retry a failed prompt, stops
+	// through its own cancel; no prompt of it is with the agent.
 	if cancel := job.turnCancel(); cancel != nil {
 		cancel()
-	}
-	if peer := m.peer(job.ID); peer != nil {
+	} else if peer := m.peer(job.ID); peer != nil {
 		// An agent drops a cancel that arrives before the prompt it stops.
 		_ = job.waitFirstPromptSent(ctx)
 		if err := peer.Notify(ctx, acpschema.AgentMethodSessionCancel, acpschema.CancelNotification{

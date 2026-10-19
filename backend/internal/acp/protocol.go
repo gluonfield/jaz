@@ -83,7 +83,7 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if err != nil {
 		return
 	}
-	update = noticeAsMessage(update, raw)
+	update = sessionFailureUpdate(job, update, raw)
 	if codexHiddenWarning(job.ACPAgent, update) {
 		return
 	}
@@ -183,9 +183,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			job.suggestedPrompt = prompt
 			publishACP = true
 		}
-		if failure := sessionFailureRecord(raw); failure != nil && failure.Severity == "warning" && job.turn != nil {
-			job.turn.markProviderRetried(*failure)
-		}
+	}
+	// Output means the provider's retries so far succeeded.
+	if job.turn != nil && (messageChunk != "" || thoughtChunk != "" || toolEvent != nil) {
+		job.turn.providerRetried = nil
 	}
 	job.UpdatedAt = now
 	job.LastEventAt = now
