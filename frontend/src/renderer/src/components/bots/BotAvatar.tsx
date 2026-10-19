@@ -3,7 +3,7 @@ import { type ReactNode, type SVGProps, useEffect, useId, useRef } from 'react'
 import type { BotAvatar as Avatar, BotShape } from '@/lib/api/types'
 import { BOT_COLORS, type BotMood } from '@/lib/bots'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
-import { eyePath, type FaceGeometry, FOLLOW_SIZE, liveFace, restingEyes } from './faceMotion'
+import { eyePath, type FaceGeometry, liveFace, restingEyes } from './faceMotion'
 
 // Drawn on a 100×100 grid; `eyeLine` is the vertical center of the eye pair
 // and `bottom` where the body meets the ground, which squashes about it.
@@ -81,7 +81,7 @@ export function BotAvatar({
     if (!moving || !svg.current) {
       return
     }
-    face.current = liveFace(svg.current, shape, mood, size >= FOLLOW_SIZE)
+    face.current = liveFace(svg.current, shape, mood, size)
     return () => {
       face.current?.stop()
       face.current = null

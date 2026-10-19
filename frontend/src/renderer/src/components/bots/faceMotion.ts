@@ -1,8 +1,7 @@
 import type { BotMood } from '@/lib/bots'
 
-// One animation clock for every live bot face on screen, playing the moves
-// from the face gallery Augustinas chose. Each frame works out a pose per
-// face and writes it straight into its SVG, so motion never renders React.
+// One animation clock for every live bot face on screen. Each frame works
+// out a pose per face and writes it straight into its SVG, without rendering React.
 // Faces off screen, in a hidden window or under reduced motion hold still.
 
 export type EyeKind = 'open' | 'happy' | 'worried' | 'sleepy'
@@ -15,7 +14,7 @@ const EYE_X = [47, 67] as const
 
 // Faces this large follow the cursor; smaller ones glance around instead of
 // turning their heads.
-export const FOLLOW_SIZE = 40
+const FOLLOW_SIZE = 40
 
 export function eyePath(kind: EyeKind, cx: number, cy: number): string {
   if (kind === 'happy') {
@@ -39,6 +38,8 @@ export function restingEyes(mood: BotMood): EyeKind {
 
 // A pose in face units. `yaw` turns the head (-1 to 1), sliding and narrowing
 // the eyes across a sphere; the light moves against it.
+type Mark = [x: number, y: number, opacity: number]
+
 type Pose = {
   x: number
   y: number
@@ -51,13 +52,13 @@ type Pose = {
   yaw: number
   light: [number, number]
   eyes: EyeKind
-  ring: { r: number; opacity: number } | null
-  dots: [number, number][] | null
-  zs: [number, number, number][] | null
+  ring: { r: number; opacity: number }
+  dots: Mark[]
+  zs: Mark[]
 }
 
 function still(eyes: EyeKind): Pose {
-  return { x: 0, y: 0, tilt: 0, sx: 1, sy: 1, lookX: 0, lookY: 0, open: 1, yaw: 0, light: [0, 0], eyes, ring: null, dots: null, zs: null }
+  return { x: 0, y: 0, tilt: 0, sx: 1, sy: 1, lookX: 0, lookY: 0, open: 1, yaw: 0, light: [0, 0], eyes, ring: { r: 50, opacity: 0 }, dots: [], zs: [] }
 }
 
 type Clip = 'nod' | 'cheer'
@@ -83,7 +84,7 @@ type LiveFace = {
   eyes: SVGPathElement[]
   highlight: SVGElement | null
   shade: SVGElement | null
-  ring: SVGCircleElement | null
+  ring: SVGCircleElement
   dots: SVGCircleElement[]
   zs: SVGTextElement[]
   geometry: FaceGeometry
@@ -190,10 +191,7 @@ function moodPose(face: LiveFace, time: number, following: boolean): Pose {
     pose.lookY = -5
     pose.tilt = Math.sin(local * 1.3) * 5
     const angle = local * 2.4
-    pose.dots = [
-      [50 + 62 * Math.cos(angle), 52 + 18 * Math.sin(angle)],
-      [50 + 62 * Math.cos(angle + 2.6), 52 + 18 * Math.sin(angle + 2.6)],
-    ]
+    pose.dots = [0, 2.6].map((phase) => [50 + 62 * Math.cos(angle + phase), 52 + 18 * Math.sin(angle + phase), 1])
   } else if (face.mood === 'waiting') {
     const at = local % 1.9
     const lean = 0.05 * bump(at, 0, 0.5)
@@ -236,12 +234,19 @@ function clipPose(face: LiveFace, clip: Clip, at: number, time: number): Pose {
     nod.open = at > 1.2 ? 1 - 0.9 * blink(time, face.seed) : 1 + 0.3 * bump(at, 0.45, 1)
     return nod
   }
-  const hop = at % 2
   const cheer = still('happy')
-  cheer.sy = 1 - 0.09 * bump(hop, 0, 0.14) - 0.09 * bump(hop, 0.56, 0.7)
-  cheer.sx = 1 + 0.06 * bump(hop, 0, 0.14) + 0.06 * bump(hop, 0.56, 0.7)
-  cheer.y = -13 * bump(hop, 0.14, 0.56)
+  cheer.sy = 1 - 0.09 * bump(at, 0, 0.14) - 0.09 * bump(at, 0.56, 0.7)
+  cheer.sx = 1 + 0.06 * bump(at, 0, 0.14) + 0.06 * bump(at, 0.56, 0.7)
+  cheer.y = -13 * bump(at, 0.14, 0.56)
   return cheer
+}
+
+function place(marks: SVGElement[], positions: Mark[]) {
+  marks.forEach((mark, index) => {
+    const [x, y, opacity] = positions[index] ?? [0, 0, 0]
+    mark.setAttribute('transform', `translate(${x} ${y})`)
+    mark.setAttribute('opacity', String(opacity))
+  })
 }
 
 function apply(face: LiveFace, pose: Pose) {
@@ -267,26 +272,10 @@ function apply(face: LiveFace, pose: Pose) {
   })
   face.highlight?.setAttribute('transform', `translate(${pose.light[0]} ${pose.light[1]})`)
   face.shade?.setAttribute('transform', `translate(${-pose.light[0] * 0.7} ${-pose.light[1] * 0.7})`)
-  if (face.ring) {
-    face.ring.setAttribute('r', String(pose.ring?.r ?? 50))
-    face.ring.setAttribute('opacity', String(pose.ring?.opacity ?? 0))
-  }
-  face.dots.forEach((dot, index) => {
-    const at = pose.dots?.[index]
-    dot.setAttribute('opacity', at ? '1' : '0')
-    if (at) {
-      dot.setAttribute('cx', String(at[0]))
-      dot.setAttribute('cy', String(at[1]))
-    }
-  })
-  face.zs.forEach((z, index) => {
-    const at = pose.zs?.[index]
-    z.setAttribute('opacity', String(at ? at[2] : 0))
-    if (at) {
-      z.setAttribute('x', String(at[0]))
-      z.setAttribute('y', String(at[1]))
-    }
-  })
+  face.ring.setAttribute('r', String(pose.ring.r))
+  face.ring.setAttribute('opacity', String(pose.ring.opacity))
+  place(face.dots, pose.dots)
+  place(face.zs, pose.zs)
 }
 
 // Hands the face back as React last rendered it: React keeps each eye's
@@ -299,7 +288,7 @@ function rest(face: LiveFace) {
     eye.setAttribute('d', eye.dataset.rest ?? '')
   })
   for (const extra of [face.ring, ...face.dots, ...face.zs]) {
-    extra?.setAttribute('opacity', '0')
+    extra.setAttribute('opacity', '0')
   }
 }
 
@@ -322,8 +311,7 @@ function onLeave(event: PointerEvent) {
   }
 }
 
-// Eases where a following face looks: toward the cursor while it moves, back
-// to ahead once it stops.
+// Eases the cursor direction and resets it while the idle head turn plays.
 function aim(face: LiveFace, now: number, following: boolean) {
   let target: [number, number] = [0, 0]
   if (following) {
@@ -384,7 +372,7 @@ function watch(face: LiveFace) {
 
 // Brings a face to life until stopped; the SVG marks its moving parts with
 // data-face: body, eye, highlight, shade, ring, dot and z.
-export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMood, follow: boolean) {
+export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMood, size: number) {
   const part = <T extends Element>(name: string) => svg.querySelector<T>(`[data-face="${name}"]`)
   const parts = <T extends Element>(name: string) => [...svg.querySelectorAll<T>(`[data-face="${name}"]`)]
   const face: LiveFace = {
@@ -393,11 +381,11 @@ export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMo
     eyes: parts<SVGPathElement>('eye'),
     highlight: part<SVGElement>('highlight'),
     shade: part<SVGElement>('shade'),
-    ring: part<SVGCircleElement>('ring'),
+    ring: part<SVGCircleElement>('ring')!,
     dots: parts<SVGCircleElement>('dot'),
     zs: parts<SVGTextElement>('z'),
     geometry,
-    follow,
+    follow: size >= FOLLOW_SIZE,
     seed: Math.random(),
     mood,
     since: performance.now() / 1000,
@@ -423,7 +411,7 @@ export function liveFace(svg: SVGSVGElement, geometry: FaceGeometry, mood: BotMo
       const clip = clipFor(face.mood, next)
       face.clip = clip ? { name: clip, start: now } : null
       face.mood = next
-      face.since = now
+      face.since = now + (clip ? CLIP_LENGTH[clip] : 0)
     },
     stop() {
       faces.delete(svg)

@@ -81,22 +81,43 @@ export async function exerciseBotFaces(): Promise<void> {
     await window.smoke.capture('bot-faces')
 
     show({ ...moods, a: 'working' })
+    let last = { at: performance.now(), y: offset('a').y }
+    const started = last.at
+    while (performance.now() - started < 1800) {
+      await new Promise(requestAnimationFrame)
+      const next = { at: performance.now(), y: offset('a').y }
+      if (Math.abs(next.y - last.y) / Math.max(16, next.at - last.at) > 0.12) {
+        throw new Error('Bot faces: the nod jumped into the working hop')
+      }
+      last = next
+    }
     await until('a working face never hopped', () => offset('a').y < -5)
 
     // A thinking face has dots circling it.
     show({ ...moods, a: 'working', b: 'thinking' })
     const dot = () => element.querySelector('[data-test-face="b"] [data-face="dot"]')
     await until('a thinking face has no dots', () => dot()?.getAttribute('opacity') === '1')
-    const circling = dot()!.getAttribute('cx')
+    const circling = dot()!.getAttribute('transform')
     await wait(200)
-    if (dot()!.getAttribute('cx') === circling) {
+    if (dot()!.getAttribute('transform') === circling) {
       throw new Error('Bot faces: the thinking dots stand still')
     }
 
     show({ ...moods, a: 'idle', b: 'failed' })
     await until('finishing work did not cheer', () => eyes('a').includes('q6 -10'), 800)
     await until('a failed face did not shake', () => eyes('b').includes('L') && Math.abs(offset('b').x) > 0.5, 800)
-    await until('the cheer did not end', () => eyes('a').includes('l4 14'), 4000)
+    await until('the completion hop never left the ground', () => offset('a').y < -5, 800)
+    await until('the completion hop never landed', () => offset('a').y === 0, 800)
+    const cheering = performance.now()
+    while (eyes('a').includes('q6 -10')) {
+      if (offset('a').y < -1) {
+        throw new Error('Bot faces: the completion clip started a second hop')
+      }
+      if (performance.now() - cheering > 4000) {
+        throw new Error('Bot faces: the cheer did not end')
+      }
+      await new Promise(requestAnimationFrame)
+    }
     const end = performance.now() + 1500
     while (performance.now() < end) {
       if (eyes('a').includes('q6 -10') || !eyes('b').includes('L')) {
@@ -108,6 +129,15 @@ export async function exerciseBotFaces(): Promise<void> {
     // A new shape moves the eyes to that shape's eye line.
     show(moods, { a: 'cloud' })
     await until('a face that changed shape kept the old eyes', () => eyes('a') === 'M45 47l4 14')
+
+    await window.smoke.reducedMotion(true)
+    await until('reduced motion did not still the faces', () => FACES.every((id) => moved(id) === null))
+    await wait(200)
+    if (FACES.some((id) => moved(id) !== null)) {
+      throw new Error('Bot faces: a face moved with reduced motion')
+    }
+    await window.smoke.reducedMotion(false)
+    await until('motion did not resume', () => moved('a') !== null)
 
     // Effects going off as a mood changes leaves the new mood's eyes.
     setAppearance({ effects: false })
@@ -121,6 +151,7 @@ export async function exerciseBotFaces(): Promise<void> {
       throw new Error('Bot faces: a face moved with effects off')
     }
   } finally {
+    await window.smoke.reducedMotion(false)
     setAppearance({ effects })
     root.unmount()
     element.remove()

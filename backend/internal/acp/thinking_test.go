@@ -22,17 +22,11 @@ func TestABotThinksOnlyWhileItsAgentReasons(t *testing.T) {
 	jaz := startJaz(t, testContext(t), store, root, env)
 	bot := jaz.newBot("Gimli")
 	thinking := func() bool {
-		listed, err := jaz.bots.List()
+		loaded, err := jaz.bots.Load(bot.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, other := range listed {
-			if other.ID == bot.ID {
-				return other.Thinking
-			}
-		}
-		t.Fatal("the bot is not listed")
-		return false
+		return loaded.Thinking
 	}
 
 	if err := os.WriteFile(hold, nil, 0o600); err != nil {
@@ -56,8 +50,11 @@ func TestABotThinksOnlyWhileItsAgentReasons(t *testing.T) {
 		t.Fatal(err)
 	}
 	jaz.eventually("the turn waiting to retry", func() bool { return strings.Contains(jaz.status(bot.ID).Error, "Retrying in") })
+	if err := jaz.manager.SendSideChat(jaz.ctx, acp.SideChatRequest{Session: bot.ID, ID: "side-1", Message: "check"}); err != nil {
+		t.Fatal(err)
+	}
 	if thinking() {
-		t.Fatal("a bot waiting to retry a provider failure is thinking")
+		t.Fatal("a bot waiting to retry a provider failure is thinking after a side chat")
 	}
 	if _, err := jaz.manager.Cancel(jaz.ctx, bot.ID); err != nil {
 		t.Fatal(err)
