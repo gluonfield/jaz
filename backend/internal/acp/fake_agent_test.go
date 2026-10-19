@@ -257,6 +257,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			addFakePlanConfig(result)
 			sendResult(conn, msg, result)
 		case "session/new":
+			if os.Getenv("JAZ_FAKE_ACP_SESSION_AUTH_REQUIRED") == "1" {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, &jsonrpc.Error{Code: -32000, Message: "Authentication required"})
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
 			var req struct {
 				Meta       map[string]any    `json:"_meta"`
 				Cwd        string            `json:"cwd"`

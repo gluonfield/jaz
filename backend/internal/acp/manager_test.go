@@ -879,6 +879,24 @@ func TestManagerDoesNotFallbackWhenAgentSettingsAreCorrupt(t *testing.T) {
 	}
 }
 
+func TestSpawnNamesWhereToSignInWhenTheAgentNeedsAuthentication(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{"JAZ_FAKE_ACP_SESSION_AUTH_REQUIRED": "1"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "needs-sign-in"})
+	if err == nil || !strings.HasPrefix(err.Error(), "sign in again in Settings → Agents: ") {
+		t.Fatalf("spawn error = %v", err)
+	}
+	if session := abandonedSession(t, store, "needs-sign-in"); session.Error != err.Error() {
+		t.Fatalf("stored error = %q", session.Error)
+	}
+}
+
 func TestManagerFailsWhenConfiguredModelIsUnsupported(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {

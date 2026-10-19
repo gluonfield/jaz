@@ -217,7 +217,7 @@ func (m *Manager) restoreACPSession(ctx context.Context, ac *agentConn, agentNam
 			return "", ModeState{}, false, inspectErr
 		}
 		if !replaceable {
-			return "", ModeState{}, false, fmt.Errorf("resume ACP session %s: %w", storedID, err)
+			return "", ModeState{}, false, withSignInHint(fmt.Errorf("resume ACP session %s: %w", storedID, err))
 		}
 		m.log.Warn("replacing unmaterialized agent session", "agent", agentName, "session", session.ID, "acp_session", storedID)
 	}
