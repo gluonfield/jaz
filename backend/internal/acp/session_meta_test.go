@@ -7,7 +7,7 @@ import (
 
 func TestSessionRestoreMetaDoesNotReappendCodexSystemPrompt(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
-	got, err := manager.sessionRestoreMeta(context.Background(), AgentCodex, AgentConfig{}, "", "", "", []string{"run context"})
+	got, err := manager.sessionRestoreMeta(context.Background(), AgentCodex, AgentConfig{}, "", "", "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -18,7 +18,7 @@ func TestSessionRestoreMetaDoesNotReappendCodexSystemPrompt(t *testing.T) {
 
 func TestSessionRestoreMetaReattachesOtherAgentSystemPrompt(t *testing.T) {
 	manager := &Manager{cfg: Config{SystemPrompt: testPrompt("base prompt")}}
-	got, err := manager.sessionRestoreMeta(context.Background(), AgentKimi, AgentConfig{}, "", "", "", []string{"run context"})
+	got, err := manager.sessionRestoreMeta(context.Background(), AgentKimi, AgentConfig{}, "", "", "", "", []string{"run context"})
 	if err != nil {
 		t.Fatal(err)
 	}
