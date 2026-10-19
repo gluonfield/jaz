@@ -38,7 +38,7 @@ func (t *MCPTools) AddBotTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "commitment",
 		Title:       "Keep a commitment",
-		Description: "Keep the list of what you owe beyond this turn: work you hand to threads, check-backs and answers waiting on the user. Open one with request before you start a thread for it; it is owed to whoever this turn answers. Set next as it moves on. It closes as done when you deliver its result with send_message or message_bot and its number in done; drop it, saying why, when it is no longer wanted or was delivered without done.",
+		Description: "Keep the list of what you owe beyond this turn: work you hand to threads and answers you owe once something arrives. Open one with request before you start a thread for it; it is owed to whoever this turn answers. Set next as it moves on, and waiting while it waits on something other than its threads. It closes as done when you deliver its result with send_message or message_bot and its number in done; drop it, saying why, when it is no longer wanted or was delivered without done.",
 	}, t.Commit)
 }
 
@@ -104,6 +104,7 @@ type MCPCommitmentInput struct {
 	ID      int64  `json:"id,omitempty" jsonschema:"The commitment's number; omit to open one."`
 	Request string `json:"request,omitempty" jsonschema:"What was asked, in a few words."`
 	Next    string `json:"next,omitempty" jsonschema:"Your next step on it."`
+	Waiting string `json:"waiting,omitempty" jsonschema:"What it waits on besides its threads: requester, an answer only whoever asked can give, which you have asked for; outside, a job outside Jaz that cannot tell you when it ends; none once it moves again. Omit to leave it as it is. Starting a thread for it sets none."`
 	Drop    string `json:"drop,omitempty" jsonschema:"Why it closes without delivering: cancelled, superseded or delivered earlier."`
 }
 

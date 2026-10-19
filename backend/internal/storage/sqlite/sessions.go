@@ -55,7 +55,7 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 }
 
 // insertNewSessionLocked saves a new thread together with its link to the
-// open commitment of its bot it serves, if any.
+// open commitment of its bot it serves, if any, which then waits on it.
 func (s *Store) insertNewSessionLocked(session storage.Session, commitment int64) error {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -73,6 +73,9 @@ func (s *Store) insertNewSessionLocked(session storage.Session, commitment int64
 		}
 		if linked == 0 {
 			return fmt.Errorf("#%d: %w", commitment, storage.ErrCommitmentNotOpen)
+		}
+		if err := botdb.New(tx).StopWaiting(ctx, commitment); err != nil {
+			return err
 		}
 	}
 	return tx.Commit()

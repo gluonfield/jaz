@@ -83,7 +83,7 @@ func (q *Queries) ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams
 
 const finishSessionTurn = `-- name: FinishSessionTurn :execrows
 UPDATE threads
-SET status = ?1, turn = '', error = ?2,
+SET status = ?1, turn = '', error = ?2, turns_ended = turns_ended + 1,
     unread = CASE WHEN ?1 = 'idle' AND json_extract(turn, '$.active_operation') IS NOT 'compact' THEN 1 ELSE unread END,
     updated_at_ms = ?3,
     last_attention_at_ms = ?3,

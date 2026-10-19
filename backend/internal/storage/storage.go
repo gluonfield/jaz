@@ -224,7 +224,11 @@ type TurnDelivery struct {
 	Message   QueuedMessage
 	// Closes are the commitments that close as done once the message is
 	// queued.
-	Closes   []int64
+	Closes []int64
+	// Wake queues the message to the bot SessionID only while some of its
+	// commitments stall without it having been woken about them, and records
+	// on those that it was.
+	Wake     bool
 	Fallback *QueuedMessage
 }
 

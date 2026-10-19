@@ -347,7 +347,7 @@ func startServer(
 	}
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
 		handler.HandleACPTurnFinished(ctx, job)
-		botService.NoteHomeChanges(job.ID)
+		botService.TurnEnded(job.ID)
 	}
 	srv := &http.Server{
 		Addr:    serverConfig.Addr,
@@ -448,7 +448,7 @@ func startServer(
 	app.StartMCPManager(lc, mcpManager, manager, logger)
 	app.StartSessionRecovery(lc, store, handler, locks, events, logger, func(context.Context) error {
 		defer close(recovered)
-		return handler.ResumeQueuedTurns()
+		return errors.Join(handler.ResumeQueuedTurns(), botService.WatchAll())
 	})
 	return nil
 }

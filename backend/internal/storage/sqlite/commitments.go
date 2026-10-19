@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -17,18 +18,19 @@ func (s *Store) OpenCommitment(commitment storage.Commitment) (storage.Commitmen
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	id, err := botdb.New(s.db).InsertCommitment(context.Background(), botdb.InsertCommitmentParams{
-		BotID: commitment.BotID, Requester: commitment.Requester, Request: commitment.Request, Note: commitment.Note, OpenedAtMs: timeToMs(commitment.OpenedAt),
+		BotID: commitment.BotID, Requester: commitment.Requester, Request: commitment.Request, Note: commitment.Note, Waiting: commitment.Waiting, OpenedAtMs: timeToMs(commitment.OpenedAt),
 	})
 	commitment.ID = id
 	return commitment, err
 }
 
-// UpdateCommitment saves an open commitment's request and note.
+// UpdateCommitment saves an open commitment's request, note and what it
+// waits on.
 func (s *Store) UpdateCommitment(commitment storage.Commitment) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	updated, err := botdb.New(s.db).UpdateCommitment(context.Background(), botdb.UpdateCommitmentParams{
-		ID: commitment.ID, BotID: commitment.BotID, Request: commitment.Request, Note: commitment.Note,
+		ID: commitment.ID, BotID: commitment.BotID, Request: commitment.Request, Note: commitment.Note, Waiting: commitment.Waiting,
 	})
 	if err == nil && updated == 0 {
 		return fmt.Errorf("#%d: %w", commitment.ID, storage.ErrCommitmentNotOpen)
@@ -59,6 +61,34 @@ func (s *Store) DropCommitment(id int64, why string, at time.Time) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// MarkStalled marks and returns the commitments of a bot with nothing left
+// to do that nothing moved on since it was woken about them: the user is told
+// they stalled. A wait the bot declared first ends any earlier stall, so the
+// next one wakes it again.
+func (s *Store) MarkStalled(botID string) ([]storage.Commitment, error) {
+	ctx := context.Background()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	q := botdb.New(tx)
+	if err := q.ForgetWatch(ctx, botID); err != nil {
+		return nil, err
+	}
+	rows, err := q.MarkStalled(ctx, botID)
+	if err != nil {
+		return nil, err
+	}
+	stalled := make([]storage.Commitment, 0, len(rows))
+	for _, row := range rows {
+		stalled = append(stalled, storage.Commitment{ID: row.ID, BotID: botID, Requester: row.Requester, Request: row.Request, Status: storage.CommitmentOpen, Stalled: true})
+	}
+	return stalled, tx.Commit()
 }
 
 // closeDelivered closes as done the commitments a delivery written in the
@@ -168,6 +198,10 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	if err != nil {
 		return nil, err
 	}
+	stalled, err := q.ListStalledCommitments(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
 	threads := map[int64][]storage.CommitmentThread{}
 	for _, link := range links {
 		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State})
@@ -175,7 +209,8 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	commitments := make([]storage.Commitment, 0, len(rows))
 	for _, row := range rows {
 		commitments = append(commitments, storage.Commitment{
-			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, Status: row.Status,
+			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, Waiting: row.Waiting,
+			Stalled: slices.Contains(stalled, row.ID), Status: row.Status,
 			OpenedAt: msToTime(row.OpenedAtMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
 		})
 	}

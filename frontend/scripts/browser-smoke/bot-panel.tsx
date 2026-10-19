@@ -16,7 +16,9 @@ export async function exerciseBotPanel(): Promise<void> {
   const owed: BotOwed[] = [
     { id: 4, request: 'Bot commitments and lost results', next: 'check its report, then send it', opened_at: minutes(14), threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
     { id: 3, request: 'Which fixes matter this week', for: 'Priorities Bot', opened_at: minutes(95), threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
-    { id: 2, request: 'Pause prompt suggestions on hidden turns', next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
+    { id: 6, request: 'Compare the supplier quotes', stalled: true, next: 'send the comparison', opened_at: minutes(40), threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
+    { id: 5, request: 'Overnight stress run', waiting: 'outside', opened_at: minutes(70) },
+    { id: 2, request: 'Pause prompt suggestions on hidden turns', waiting: 'requester', next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
     { id: 1, request: 'Capacity test with 20 threads', opened_at: minutes(60 * 4), threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
   ]
   const activity: BotActivity[] = [
@@ -172,10 +174,14 @@ export async function exerciseBotPanel(): Promise<void> {
     if (headings.indexOf('Owed') !== 0 || headings.indexOf('Now') !== 1) {
       throw new Error(`Bot panel: what the bot owes is not listed first: ${headings.join(', ')}`)
     }
-    for (const line of ['For you · Working · Next: check its report, then send it', 'For Priorities Bot · Result in', 'For you · Next: wait for his OK, then start the fork change', 'For you · A thread failed', 'Delivered to you', 'Dropped · He chose option A instead']) {
+    for (const line of ['For you · Working · Next: check its report, then send it', 'For Priorities Bot · Result in', 'For you · Stalled · Next: send the comparison', 'For you · Waiting on an outside job Jaz is not told about', 'For you · Waiting on you · Next: wait for his OK, then start the fork change', 'For you · A thread failed', 'Delivered to you', 'Dropped · He chose option A instead']) {
       if (!text().includes(line)) {
         throw new Error(`Bot panel: Activity does not say "${line}"`)
       }
+    }
+    const detailOf = (title: string) => find(title)?.querySelectorAll('span')[1]
+    if (!detailOf('Compare the supplier quotes')?.classList.contains('text-danger') || detailOf('Overnight stress run')?.classList.contains('text-danger')) {
+      throw new Error('Bot panel: a stalled commitment is not marked as a problem, or a waiting one is')
     }
     if (!find('Bot commitments and lost results')?.getAttribute('href')?.endsWith('/sessions/side-a')) {
       throw new Error('Bot panel: a commitment with one thread does not open that thread')

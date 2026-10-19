@@ -91,19 +91,28 @@ export function BotActivity({
   )
 }
 
-// owedRow is a commitment still open: who it is for, how its threads stand
-// and the next step. It opens its one live thread, or else its details.
+// owedRow is a commitment still open: who it is for, how it stands and the
+// next step. It opens its one live thread, or else its details.
 function owedRow(owed: BotOwed): Row {
   const live = owed.threads?.filter((thread) => thread.state !== 'gone') ?? []
   return {
     key: `owed:${owed.id}`,
     title: owed.request,
-    detail: [`For ${owed.for ?? 'you'}`, threadsState(live), owed.next && `Next: ${owed.next}`].filter(Boolean).join(' · '),
+    detail: [`For ${owed.for ?? 'you'}`, standing(owed, live), owed.next && `Next: ${owed.next}`].filter(Boolean).join(' · '),
     at: owed.opened_at,
     since: true,
-    danger: live.some((thread) => thread.state === 'failed'),
+    danger: owed.stalled || live.some((thread) => thread.state === 'failed'),
     open: live.length === 1 ? { thread: live[0].id } : { owed },
   }
+}
+
+// standing says that a commitment stalled, what it waits on, or how far its
+// threads have got.
+function standing(owed: BotOwed, threads: BotOwedThread[]): string {
+  if (owed.stalled) return 'Stalled'
+  if (owed.waiting === 'requester') return `Waiting on ${owed.for ?? 'you'}`
+  if (owed.waiting === 'outside') return 'Waiting on an outside job Jaz is not told about'
+  return threadsState(threads)
 }
 
 // threadsState says how far the threads serving a commitment have got.
@@ -120,7 +129,7 @@ const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Workin
 // and the threads serving it.
 function OwedModal({ owed, onClose }: { owed: BotOwed; onClose: () => void }) {
   return (
-    <Modal open onClose={onClose} title={owed.request} description={`For ${owed.for ?? 'you'} · since ${messageTime(owed.opened_at)}`} size="sm">
+    <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, standing(owed, owed.threads ?? []), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
         {owed.next ? <p className="whitespace-pre-wrap">Next: {owed.next}</p> : null}
         {owed.threads?.length ? (

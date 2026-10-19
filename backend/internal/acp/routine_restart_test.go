@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,6 +38,8 @@ type jazProcess struct {
 	bots    *bots.Service
 	locks   *sessionlock.Locks
 	events  *sessionevents.Bus
+	// finishing counts the turn ends whose bookkeeping is still running.
+	finishing *atomic.Int64
 }
 
 func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root string, env map[string]string) *jazProcess {
@@ -54,10 +57,16 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 	runner := server.NewLoopRunner(handler)
 	service := loops.NewService(store, runner, log.New(io.Discard), loops.WithPromptExtras(bots.RoutineInstructions(store)), loops.WithModelCheck(runner.CheckModel))
 	handler.Loops = service
-	manager.TurnFinished = handler.HandleACPTurnFinished
 	botService := bots.NewService(store, root, manager, handler, handler, service, events, log.New(io.Discard))
+	finishing := &atomic.Int64{}
+	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
+		finishing.Add(1)
+		defer finishing.Add(-1)
+		handler.HandleACPTurnFinished(ctx, job)
+		botService.TurnEnded(job.ID)
+	}
 	service.Notice = botService.Notice
-	return &jazProcess{t: t, ctx: ctx, store: store, root: root, manager: manager, server: handler, loops: service, bots: botService, locks: locks, events: events}
+	return &jazProcess{t: t, ctx: ctx, store: store, root: root, manager: manager, server: handler, loops: service, bots: botService, locks: locks, events: events, finishing: finishing}
 }
 
 // restart stops this process and starts the next one the way Jaz starts:
@@ -81,6 +90,9 @@ func (p *jazProcess) recover() {
 		p.t.Fatal(err)
 	}
 	if err := p.server.ResumeQueuedTurns(); err != nil {
+		p.t.Fatal(err)
+	}
+	if err := p.bots.WatchAll(); err != nil {
 		p.t.Fatal(err)
 	}
 	if err := p.server.ResumeLoopRuns(p.ctx); err != nil {

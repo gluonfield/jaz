@@ -52,6 +52,17 @@ var ErrCommitmentWorking = errors.New("a thread serving it is still working")
 // bot's running turn delivers.
 var ErrCommitmentStaged = errors.New("this turn's answer delivers it")
 
+// What an open commitment can wait on besides its threads: an answer only its
+// requester can give, or a job outside Jaz that cannot report back.
+const (
+	WaitingRequester = "requester"
+	WaitingOutside   = "outside"
+)
+
+// ErrNothingStalled refuses a wake when none of the bot's commitments still
+// stalls without its bot having been woken about it.
+var ErrNothingStalled = errors.New("nothing stalls")
+
 // Commitment is something a bot owes beyond the turn it was asked in. It
 // closes as done only with a delivery to its requester, or as dropped.
 type Commitment struct {
@@ -62,7 +73,13 @@ type Commitment struct {
 	Requester string
 	Request   string
 	// Note is the bot's next step while it is open, or why it was dropped.
-	Note     string
+	Note string
+	// Waiting is what an open one waits on, if anything: WaitingRequester or
+	// WaitingOutside.
+	Waiting string
+	// Stalled is set once the user has been told nothing moves on it, until
+	// something does.
+	Stalled  bool
 	Status   string
 	OpenedAt time.Time
 	ClosedAt time.Time

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,16 +23,22 @@ type CommitmentStore interface {
 	ListOpenCommitments(botID string) ([]storage.Commitment, error)
 	ListClosedCommitments(botID string, since time.Time) ([]storage.Commitment, error)
 	DeliverMessage(event sessionevents.Event, closes []int64) (sessionevents.Event, error)
+	MarkStalled(botID string) ([]storage.Commitment, error)
 }
 
 // Commit is a change a bot makes to its commitments: opening one when ID is
-// zero, else a new request or next step, or dropping it.
+// zero, else a new request, next step or what it waits on, or dropping it.
+// Waiting is requester, outside or none; empty leaves it as it is.
 type Commit struct {
 	ID      int64
 	Request string
 	Next    string
+	Waiting string
 	Drop    string
 }
+
+// waits maps what a bot says a commitment waits on to what is stored.
+var waits = map[string]string{"requester": storage.WaitingRequester, "outside": storage.WaitingOutside, "none": ""}
 
 // Commit applies change from a turn in a bot's own thread and returns the
 // commitment's id. A commitment opens owed to whoever the turn answers.
@@ -44,12 +51,16 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	if session.Turn != nil && session.Turn.Output != nil {
 		output = *session.Turn.Output
 	}
-	request, next, drop := strings.TrimSpace(change.Request), strings.TrimSpace(change.Next), strings.TrimSpace(change.Drop)
+	request, next, drop, wait := strings.TrimSpace(change.Request), strings.TrimSpace(change.Next), strings.TrimSpace(change.Drop), strings.TrimSpace(change.Waiting)
+	waiting, ok := waits[wait]
+	if !ok && wait != "" {
+		return 0, fmt.Errorf("waiting is requester, outside or none, not %q", wait)
+	}
 	if change.ID == 0 {
 		if request == "" {
 			return 0, errors.New("request is required to open a commitment")
 		}
-		commitment, err := s.store.OpenCommitment(storage.Commitment{BotID: threadID, Requester: output.ReplyTo, Request: request, Note: next})
+		commitment, err := s.store.OpenCommitment(storage.Commitment{BotID: threadID, Requester: output.ReplyTo, Request: request, Note: next, Waiting: waiting})
 		return commitment.ID, err
 	}
 	commitment, err := s.open(threadID, change.ID)
@@ -64,6 +75,9 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	}
 	if next != "" {
 		commitment.Note = next
+	}
+	if ok {
+		commitment.Waiting = waiting
 	}
 	return commitment.ID, s.store.UpdateCommitment(commitment)
 }
@@ -154,7 +168,23 @@ func commitmentNote(store NoteStore, bot string) string {
 		if commitment.Note != "" {
 			fmt.Fprintf(&b, " · next: %s", commitment.Note)
 		}
+		b.WriteString(standing(commitment, cmp.Or(name, "the user")))
 		b.WriteString("\n")
 	}
 	return b.String() + "\n"
+}
+
+// standing says what a commitment waits on, or that nothing moves on it.
+func standing(commitment storage.Commitment, requester string) string {
+	switch {
+	case commitment.Waiting == storage.WaitingRequester:
+		return " · waiting on " + requester
+	case commitment.Waiting == storage.WaitingOutside:
+		return " · waiting on an outside job"
+	case slices.ContainsFunc(commitment.Threads, func(thread storage.CommitmentThread) bool { return thread.State == "working" }):
+		return ""
+	case commitment.Stalled:
+		return " · stalled: nothing moved after Jaz reminded you, and the user was told"
+	}
+	return " · nothing moves on it"
 }

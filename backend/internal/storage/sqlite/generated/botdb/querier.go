@@ -16,6 +16,9 @@ type Querier interface {
 	// The results a commitment's threads queued for its bot before it closed as
 	// done: they had all finished, so the delivery answered them.
 	DropDeliveredResults(ctx context.Context, id int64) error
+	// A wait the bot declared ends what Jaz did about an earlier stall, so the
+	// next one is new.
+	ForgetWatch(ctx context.Context, botID string) error
 	GetBot(ctx context.Context, threadID string) (Bot, error)
 	GetCommitment(ctx context.Context, id int64) (BotCommitment, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (BotMembership, error)
@@ -27,11 +30,22 @@ type Querier interface {
 	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)
 	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error)
+	// Commitments the user was told stalled, while nothing moves on them, waits on
+	// anything or has got further since.
+	ListStalledCommitments(ctx context.Context, ids []int64) ([]int64, error)
+	// Records that the user is told about each commitment that did not move after
+	// its bot was woken about it.
+	MarkStalled(ctx context.Context, botID string) ([]MarkStalledRow, error)
 	PinBot(ctx context.Context, arg PinBotParams) error
 	SaveMembership(ctx context.Context, arg SaveMembershipParams) error
+	// A thread started for a commitment is what it waits on now.
+	StopWaiting(ctx context.Context, id int64) error
 	UnpinBots(ctx context.Context) error
 	UpdateCommitment(ctx context.Context, arg UpdateCommitmentParams) (int64, error)
 	UpsertBot(ctx context.Context, arg UpsertBotParams) error
+	// Records that the bot is woken about each of its commitments that nothing
+	// moves and nothing waits on, unless it was woken at this progress already.
+	WakeStalled(ctx context.Context, botID string) ([]int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

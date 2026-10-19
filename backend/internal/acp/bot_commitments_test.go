@@ -48,6 +48,18 @@ func (p *jazProcess) lastPrompt() string {
 	return prompts[len(prompts)-1]
 }
 
+// promptWith is the last prompt an agent was sent that contains text, if any.
+func (p *jazProcess) promptWith(text string) string {
+	p.t.Helper()
+	prompts := p.prompts()
+	for i := len(prompts) - 1; i >= 0; i-- {
+		if strings.Contains(prompts[i], text) {
+			return prompts[i]
+		}
+	}
+	return ""
+}
+
 func TestABotsCommitmentLinksItsThreadAndClosesOnlyWhenTheResultReachesTheUserAcrossARestart(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
@@ -76,10 +88,10 @@ func TestABotsCommitmentLinksItsThreadAndClosesOnlyWhenTheResultReachesTheUserAc
 	jaz = jaz.restart(nil)
 	jaz.release()
 	jaz.eventually("the thread's result reaching the bot", func() bool {
-		return strings.Contains(jaz.lastPrompt(), "ACP session quotes")
+		return jaz.promptWith("ACP session quotes") != ""
 	})
-	if note := fmt.Sprintf("#%d for the user: Compare the two quotes · thread quotes finished · next: send the comparison", id); !strings.Contains(jaz.lastPrompt(), note) {
-		t.Fatalf("the result turn opened with %q, want the note %q", jaz.lastPrompt(), note)
+	if note := fmt.Sprintf("#%d for the user: Compare the two quotes · thread quotes finished · next: send the comparison", id); !strings.Contains(jaz.promptWith("ACP session quotes"), note) {
+		t.Fatalf("the result turn opened with %q, want the note %q", jaz.promptWith("ACP session quotes"), note)
 	}
 	if commitment := jaz.commitment(id); commitment.Status != storage.CommitmentOpen {
 		t.Fatalf("closed before delivery: %+v", commitment)
@@ -188,7 +200,7 @@ func TestAnAnswerWithDoneGoesToTheThreadThatAsked(t *testing.T) {
 			return err
 		case req.Session == child && strings.HasPrefix(req.Message, "[message from Helper]"):
 			return jaz.bots.Say(child, "Thanks, noted.")
-		case req.Session == helper.ID:
+		case req.Session == helper.ID && !strings.HasPrefix(req.Message, "[owed]"):
 			replies <- req.Message
 		}
 		return nil

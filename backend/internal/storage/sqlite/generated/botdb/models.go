@@ -28,6 +28,8 @@ type BotCommitment struct {
 	Status     string        `json:"status"`
 	OpenedAtMs int64         `json:"opened_at_ms"`
 	ClosedAtMs sql.NullInt64 `json:"closed_at_ms"`
+	Waiting    string        `json:"waiting"`
+	Watch      string        `json:"watch"`
 }
 
 type BotMembership struct {

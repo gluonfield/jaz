@@ -127,6 +127,9 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 		return err
 	}
 	for _, delivery := range deliveries {
+		if delivery.Wake {
+			return fmt.Errorf("a finished turn's delivery cannot wake a bot")
+		}
 		queued, err := s.queueMessage(ctx, q, delivery.SessionID, delivery.Message)
 		if err != nil {
 			return err
@@ -147,7 +150,8 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 }
 
 // QueueTurn queues a delivery for its thread's next turn and closes the
-// commitments it delivers, together or not at all.
+// commitments it delivers, or records the stalls it wakes its bot about,
+// together or not at all.
 func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
 	if delivery.Fallback != nil {
 		return fmt.Errorf("a queued turn has no fallback")
@@ -160,6 +164,15 @@ func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
 			return err
 		}
 		defer tx.Rollback()
+		if delivery.Wake {
+			woken, err := botdb.New(tx).WakeStalled(ctx, delivery.SessionID)
+			if err != nil {
+				return err
+			}
+			if len(woken) == 0 {
+				return storage.ErrNothingStalled
+			}
+		}
 		queued, err := s.queueMessage(ctx, threaddb.New(tx), delivery.SessionID, delivery.Message)
 		if err != nil {
 			return err

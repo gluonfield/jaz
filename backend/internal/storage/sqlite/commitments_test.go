@@ -150,3 +150,142 @@ func TestDeliveringACommitmentDropsTheResultsItsThreadsQueuedForTheBot(t *testin
 		t.Fatalf("bot queue = %q, want %q: only the delivered commitment's result goes", texts, want)
 	}
 }
+
+func TestAStalledCommitmentWakesItsBotOnceThenStallsForTheUserAcrossARestart(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare the quotes", Waiting: storage.WaitingRequester})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wakes := func(want bool, why string) {
+		t.Helper()
+		err := store.QueueTurn(storage.TurnDelivery{SessionID: bot.ID, Message: storage.NewInternalQueuedMessage("[owed]"), Wake: true})
+		if want && err != nil || !want && !errors.Is(err, storage.ErrNothingStalled) {
+			t.Fatalf("%s: wake = %v, want woken %v", why, err, want)
+		}
+	}
+	stalls := func(want int, why string) {
+		t.Helper()
+		if stalled, err := store.MarkStalled(bot.ID); err != nil || len(stalled) != want {
+			t.Fatalf("%s: stalled = %+v, %v; want %d", why, stalled, err, want)
+		}
+	}
+	// takeTurn runs the bot's queued turn to an end that does nothing.
+	takeTurn := func() {
+		t.Helper()
+		session, err := store.LoadSession(bot.ID)
+		if err != nil || len(session.QueuedMessages) == 0 {
+			t.Fatalf("bot %+v, %v; want a queued turn", session, err)
+		}
+		prompt := session.QueuedMessages[0]
+		session.QueuedMessages = session.QueuedMessages[1:]
+		if err := store.ClaimQueuedTurn(session, prompt); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.FinishSessionTurn(bot.ID, storage.StatusIdle, "", time.Now(), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runs := func(thread string) {
+		t.Helper()
+		if err := store.StartSessionTurn(thread, storage.Turn{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ends := func(thread string) {
+		t.Helper()
+		if err := store.FinishSessionTurn(thread, storage.StatusIdle, "", time.Now(), nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	wakes(false, "waiting on its requester")
+	thread, err := store.CreateSession(storage.CreateSession{Slug: "quotes", SourceType: storage.SourceBotWorker, SourceID: bot.ID, Commitment: commitment.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := store.LoadCommitment(commitment.ID); err != nil || loaded.Waiting != "" {
+		t.Fatalf("commitment = %+v, %v; want the thread started for it to end its wait", loaded, err)
+	}
+	runs(thread.ID)
+	wakes(false, "its thread runs")
+	ends(thread.ID)
+	runs(bot.ID)
+	wakes(false, "its bot is taking a turn")
+	ends(bot.ID)
+	wakes(true, "its thread finished and its bot ended its turn")
+	stalls(0, "its bot has not yet taken the turn that wakes it")
+	takeTurn()
+	wakes(false, "its bot was woken at this progress")
+	stalls(1, "nothing moved after its bot was woken")
+	stalls(0, "the user was told already")
+	waits := func(waiting string) {
+		t.Helper()
+		loaded, err := store.LoadCommitment(commitment.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		loaded.Waiting = waiting
+		if err := store.UpdateCommitment(loaded); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if loaded, err := store.LoadCommitment(commitment.ID); err != nil || !loaded.Stalled {
+		t.Fatalf("commitment = %+v, %v; want it stalled", loaded, err)
+	}
+	waits(storage.WaitingOutside)
+	if loaded, err := store.LoadCommitment(commitment.ID); err != nil || loaded.Stalled {
+		t.Fatalf("commitment = %+v, %v; want a declared wait to show instead of the stall", loaded, err)
+	}
+	waits("")
+
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if store, err = New(root); err != nil {
+		t.Fatal(err)
+	}
+	wakes(false, "after a restart, its bot was woken at this progress")
+	stalls(0, "after a restart, the user was told already")
+
+	stalled := func(want bool, why string) {
+		t.Helper()
+		if loaded, err := store.LoadCommitment(commitment.ID); err != nil || loaded.Stalled != want {
+			t.Fatalf("%s: commitment = %+v, %v; want stalled %v", why, loaded, err, want)
+		}
+	}
+	runs(thread.ID)
+	stalled(false, "its thread runs again")
+	ends(thread.ID)
+	stalled(false, "its thread's new turn ended")
+	wakes(true, "its thread ran again")
+	takeTurn()
+	waits(storage.WaitingRequester)
+	stalls(0, "waiting on its requester")
+	waits("")
+	wakes(true, "the wait it declared ended the stall it was woken about")
+
+	takeTurn()
+	runs(thread.ID)
+	if err := store.UpdateSessionStatus(thread.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	wakes(false, "recovery resumes or fails its interrupted thread")
+	for _, why := range []string{"its thread failed", "its thread failed again"} {
+		if err := store.FinishSessionTurn(thread.ID, storage.StatusError, "boom", time.Now(), nil); err != nil {
+			t.Fatal(err)
+		}
+		wakes(true, why)
+		takeTurn()
+		runs(thread.ID)
+	}
+}

@@ -784,12 +784,15 @@ export interface BotActivity {
 }
 
 // A commitment a bot has not closed: what was asked, who it is owed to (none
-// for you), its next step and the threads serving it.
+// for you), its next step, what it waits on besides its threads, whether you
+// were told it stalled, and the threads serving it.
 export interface BotOwed {
   id: number
   request: string
   for?: string
   next?: string
+  waiting?: 'requester' | 'outside'
+  stalled?: boolean
   opened_at: string
   threads?: BotOwedThread[]
 }

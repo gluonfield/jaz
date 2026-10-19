@@ -53,4 +53,5 @@ type Thread struct {
 	Turn                     string         `json:"turn"`
 	CompletedTurnStartedAtMs int64          `json:"completed_turn_started_at_ms"`
 	PromptDigest             string         `json:"prompt_digest"`
+	TurnsEnded               int64          `json:"turns_ended"`
 }

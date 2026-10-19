@@ -278,7 +278,7 @@ func TestThreadResultReachesTheUserWhenNoBotWaitsForIt(t *testing.T) {
 			_, thread, err := tools.Create(jaz.ctx, callAs(helper.ID), acp.MCPCreateInput{Prompt: "Draft the report until released", Commitment: owe(t, store, helper.ID)})
 			worker <- thread.ThreadID
 			return err
-		case req.Session == helper.ID:
+		case req.Session == helper.ID && !strings.HasPrefix(req.Message, "[owed]"):
 			completions <- req
 		case req.Session == other.ID:
 			// A bot that is not the thread's parent follows it up while it

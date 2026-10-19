@@ -72,7 +72,7 @@ func (s *Store) FinishSessionTurn(id, status, errorMessage string, at time.Time,
 // QueueTurn queues a delivery for its thread's next turn; JSON storage keeps
 // no commitments for it to close.
 func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
-	if len(delivery.Closes) > 0 {
+	if len(delivery.Closes) > 0 || delivery.Wake {
 		return fmt.Errorf("JSON storage does not keep commitments")
 	}
 	if delivery.Fallback != nil {

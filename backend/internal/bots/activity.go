@@ -49,8 +49,12 @@ type Owed struct {
 	ID      int64  `json:"id"`
 	Request string `json:"request"`
 	// For names the bot it is owed to; empty for the user.
-	For      string       `json:"for,omitempty"`
-	Next     string       `json:"next,omitempty"`
+	For  string `json:"for,omitempty"`
+	Next string `json:"next,omitempty"`
+	// Waiting is requester or outside while it waits on that.
+	Waiting string `json:"waiting,omitempty"`
+	// Stalled is set once the user was told nothing moves on it.
+	Stalled  bool         `json:"stalled,omitempty"`
 	OpenedAt time.Time    `json:"opened_at"`
 	Threads  []OwedThread `json:"threads,omitempty"`
 }
@@ -93,7 +97,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		if err != nil {
 			return ActivityView{}, err
 		}
-		owed := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note, OpenedAt: commitment.OpenedAt}
+		owed := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note, Waiting: commitment.Waiting, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
 		for _, thread := range commitment.Threads {
 			owing[thread.ID] = true
 			owed.Threads = append(owed.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})
