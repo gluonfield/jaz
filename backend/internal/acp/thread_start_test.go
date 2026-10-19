@@ -270,3 +270,40 @@ func TestShutdownWhileAThreadPreparesItsFirstTurnLeavesTheTurnForTheRestart(t *t
 		t.Fatalf("prompts = %q; want the first turn run once after the restart", jaz.prompts())
 	}
 }
+
+// diesAtClaim is a store whose Jaz dies as it claims a queued turn.
+type diesAtClaim struct{ *sqlitestore.Store }
+
+func (s diesAtClaim) ClaimQueuedTurn(storage.Session, storage.QueuedMessage) error {
+	_ = s.Store.Close()
+	return errors.New("jaz died")
+}
+
+func TestJazDyingAsItClaimsANewThreadsPromptLeavesThePromptForTheRestart(t *testing.T) {
+	store, root := newTestStore(t)
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "gimli", SourceType: storage.SourceBot, RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Agent: acp.AgentCodex, Cwd: root}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owed := owe(t, store, bot.ID)
+	dying := newFakeNamedAgentManagerWithOptions(t, diesAtClaim{store}, root, acp.AgentCodex, map[string]string{}, "", "")
+	if _, _, err := acp.NewMCPTools(dying).Create(testContext(t), callAs(bot.ID), acp.MCPCreateInput{Slug: "stock", Prompt: "Count the stock", Directory: t.TempDir(), Commitment: owed}); err == nil {
+		t.Fatal("create_thread succeeded although Jaz died")
+	}
+	dying.Close()
+
+	reopened, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	jaz := startJaz(t, testContext(t), reopened, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	jaz.recover()
+	jaz.eventually("the result reaching the bot", func() bool { return jaz.told(bot.ID, "ACP session stock") == 1 })
+	if jaz.promptsContaining(`"text":"Count the stock"`) != 1 {
+		t.Fatalf("prompts = %q; want the thread's first prompt run once", jaz.prompts())
+	}
+	if threads := jaz.commitment(owed).Threads; len(threads) != 1 {
+		t.Fatalf("commitment threads = %+v, want the one thread", threads)
+	}
+}

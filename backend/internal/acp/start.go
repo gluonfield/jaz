@@ -10,9 +10,10 @@ import (
 // ErrClosed refuses new work while Jaz shuts down.
 var ErrClosed = errors.New("jaz is restarting; try again once it is back")
 
-// Start stores a new thread with first claimed as its turn and returns
-// before the thread's agent starts. A restart before the agent has it resumes
-// the claimed turn; while Jaz shuts down Start stores nothing.
+// Start stores a new thread with first queued, claims it as the thread's turn
+// and returns before the thread's agent starts. A restart before the agent
+// has it starts it from the queue or the claim; while Jaz shuts down Start
+// stores nothing.
 func (m *Manager) Start(ctx context.Context, req SpawnRequest, first storage.QueuedMessage) (Job, error) {
 	m.admission.RLock()
 	defer m.admission.RUnlock()
@@ -23,11 +24,12 @@ func (m *Manager) Start(ctx context.Context, req SpawnRequest, first storage.Que
 	if first.ParentOutput, err = m.answering(first.From); err != nil {
 		return Job{}, err
 	}
-	created, err := m.createSession(ctx, req)
+	created, err := m.createSession(ctx, req, []storage.QueuedMessage{first})
 	if err != nil {
 		return Job{}, err
 	}
 	session := created.Session
+	session.QueuedMessages = nil
 	if err := m.store.ClaimQueuedTurn(session, first); err != nil {
 		return Job{}, m.abandonSession(session, err)
 	}

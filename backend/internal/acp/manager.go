@@ -453,14 +453,16 @@ type createdSession struct {
 }
 
 func (m *Manager) CreateSession(ctx context.Context, req SpawnRequest) (storage.Session, error) {
-	created, err := m.createSession(ctx, req)
+	created, err := m.createSession(ctx, req, nil)
 	if err != nil {
 		return storage.Session{}, err
 	}
 	return created.Session, nil
 }
 
-func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdSession, error) {
+// createSession stores a new thread, and queue with it once its directory is
+// ready.
+func (m *Manager) createSession(ctx context.Context, req SpawnRequest, queue []storage.QueuedMessage) (createdSession, error) {
 	req, err := m.botThread(req)
 	if err != nil {
 		return createdSession{}, err
@@ -482,6 +484,7 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest) (createdS
 	}
 	session.RuntimeRef.Cwd = absCwd
 	session.RuntimeRef.ProjectPath = projectPath
+	session.QueuedMessages = queue
 	if err := m.store.SaveSession(session); err != nil {
 		return createdSession{}, m.abandonSession(session, err)
 	}
@@ -499,7 +502,7 @@ func (m *Manager) abandonSession(session storage.Session, err error) error {
 }
 
 func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, error) {
-	created, err := m.createSession(ctx, req)
+	created, err := m.createSession(ctx, req, nil)
 	if err != nil {
 		return SpawnResult{}, err
 	}
