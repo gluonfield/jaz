@@ -190,6 +190,9 @@ type Turn struct {
 	AllowSilence    bool           `json:"allow_silence,omitempty"`
 	Output          *TurnOutput    `json:"output,omitempty"`
 	PendingMessage  *QueuedMessage `json:"pending_message,omitempty"`
+	// Prompt is the prepared input awaiting transport delivery, separate from
+	// the user-facing transcript and the queue claim that preceded it.
+	Prompt *TurnPrompt `json:"prompt,omitempty"`
 	// ParentOutput is the output of the parent turn this one's result opens:
 	// the exchange with another bot the parent was answering when it started
 	// this turn.
@@ -253,6 +256,11 @@ func (t Turn) Owing(owed Turn) Turn {
 
 func (r Recipient) same(other Recipient) bool {
 	return r.Parent == other.Parent && r.ReplyTo == other.ReplyTo
+}
+
+type TurnPrompt struct {
+	Message     string       `json:"message"`
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 type TurnOutput struct {

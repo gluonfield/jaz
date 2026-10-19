@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/media"
@@ -103,8 +104,20 @@ func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message,
 		return err
 	}
 	defer tx.Rollback()
+	if err := appendMessageRecords(tx, id, records, now); err != nil {
+		return err
+	}
+	if err := threaddb.New(tx).TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func appendMessageRecords(tx *sql.Tx, id string, records []storage.Message, now time.Time) error {
+	if len(records) == 0 {
+		return nil
+	}
 	messageq := messagedb.New(tx)
-	threadq := threaddb.New(tx)
 	nextSeq, err := messageq.NextMessageSeq(context.Background(), id)
 	if err != nil {
 		return err
@@ -121,10 +134,7 @@ func (s *Store) appendMessageRecordsLocked(id string, records []storage.Message,
 			return err
 		}
 	}
-	if err := threadq.TouchThread(context.Background(), threaddb.TouchThreadParams{UpdatedAtMs: timeToMs(now), ID: id}); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 func (s *Store) loadMessageRecords(id string) ([]storage.Message, error) {

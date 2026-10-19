@@ -217,6 +217,11 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 	job.mu.RLock()
 	systemPromptExtensions := job.systemPromptExtensions.Strings()
 	job.mu.RUnlock()
+	if err := m.store.MarkTurnPromptSent(job.ID, job.ACPSession); err != nil {
+		m.failTurn(job, err)
+		m.finishTurn(done, job)
+		return
+	}
 	for event := range runner.Run(runCtx, LocalAgentRequest{
 		Session:                session,
 		Message:                goalPromptMessage(message, goalRequested),

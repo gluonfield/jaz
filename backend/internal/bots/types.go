@@ -14,7 +14,7 @@ const (
 	KindBot   = "bot"
 	KindGroup = "group"
 	// mainName is what the user's main bot is called when Jaz creates it.
-	mainName = "Jaz"
+	mainName = "Prime"
 )
 
 var (

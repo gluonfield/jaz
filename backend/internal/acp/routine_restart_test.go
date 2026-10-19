@@ -48,7 +48,10 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 	env["JAZ_FAKE_ACP_REQUEST_LOG"] = filepath.Join(root, "requests.jsonl")
 	env["JAZ_FAKE_ACP_TURN_LOG"] = filepath.Join(root, "turns.log")
 	// Turns open with the note Jaz gives bots, as in production.
-	manager := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, env, "", "", func(cfg *acp.Config) { cfg.TurnNote = bots.TurnNote(store) })
+	manager := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, env, "", "", func(cfg *acp.Config) {
+		cfg.TurnNote = bots.TurnNote(store)
+		cfg.SteerNote = bots.SteerNote(store)
+	})
 	t.Cleanup(manager.Close)
 	locks := sessionlock.New()
 	events := sessionevents.New()

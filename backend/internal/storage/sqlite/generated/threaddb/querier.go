@@ -39,6 +39,7 @@ type Querier interface {
 	// bot's work started by a thread other than the bot. A bot's own subtasks,
 	// routine runs and memory searches are not.
 	LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error)
+	MarkTurnPromptSent(ctx context.Context, arg MarkTurnPromptSentParams) (int64, error)
 	MarkTurnShown(ctx context.Context, id string) error
 	ReplaceRuntimeSessionID(ctx context.Context, arg ReplaceRuntimeSessionIDParams) (int64, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error

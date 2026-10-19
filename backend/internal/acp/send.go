@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/goal"
@@ -192,6 +191,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	}
 	defer release()
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	pending := &storage.TurnPrompt{Message: promptMessage, Attachments: req.Attachments}
 	var promptDigest string
 	if m.cfg.TurnNote != nil && opts.activeOperation != ActiveOperationCompact {
 		session, err := m.store.LoadSession(job.ID)
@@ -225,17 +225,15 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: output, ParentOutput: parentOutput,
-		PromptDigest: promptDigest, Retries: opts.retries, Owes: opts.owes,
+		PromptDigest: promptDigest, Retries: opts.retries, Prompt: pending, Owes: opts.owes,
 	}
-	done, err := m.claimTurn(job, turn, req.Completion, opts.claimed, func() error {
-		if opts.transcript != sendTranscriptUserMessage {
-			return nil
-		}
-		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, req.FromUser); err != nil {
-			return fmt.Errorf("append user message: %w", err)
-		}
-		return nil
-	})
+	var messages []storage.Message
+	if opts.transcript == sendTranscriptUserMessage {
+		message := storage.UserMessageRecord(req.Message, contexts, req.Attachments)
+		message.FromUser = req.FromUser
+		messages = append(messages, message)
+	}
+	done, err := m.claimTurn(job, turn, req.Completion, opts.claimed, messages)
 	if err != nil {
 		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
@@ -251,24 +249,17 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	return job.Snapshot(), nil
 }
 
-// claimTurn starts a send's turn unless another holds the thread. The turn
-// and the user's message, which message writes, are stored under the job's
-// lock, so the agent cannot begin a run of its own between them (see
-// startAgentRun).
-func (m *Manager) claimTurn(job *jobState, turn storage.Turn, completion CompletionMode, claimed bool, message func() error) (chan struct{}, error) {
+// claimTurn starts a send's turn, with the user's messages, unless another
+// turn holds the thread. It stores the turn under the job's lock, so the agent
+// cannot begin a run of its own in between (see startAgentRun).
+func (m *Manager) claimTurn(job *jobState, turn storage.Turn, completion CompletionMode, claimed bool, messages []storage.Message) (chan struct{}, error) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
 	if conflict := job.sendConflictLocked(claimed); conflict != nil {
 		return nil, conflict
 	}
-	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
-		return nil, fmt.Errorf("mark session running: %w", err)
-	}
-	if err := message(); err != nil {
-		if restore := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); restore != nil {
-			err = errors.Join(err, fmt.Errorf("restore session idle: %w", restore))
-		}
-		return nil, err
+	if err := m.store.StartSessionTurn(job.ID, turn, messages...); err != nil {
+		return nil, fmt.Errorf("start session turn: %w", err)
 	}
 	return job.beginTurnLocked(completion, turn).done, nil
 }
@@ -322,6 +313,13 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, fmt.Errorf("acp peer is not active")
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	if req.FromUser && m.cfg.SteerNote != nil {
+		session, err := m.store.LoadSession(job.ID)
+		if err != nil {
+			return Job{}, err
+		}
+		promptMessage = m.cfg.SteerNote(session) + promptMessage
+	}
 	promptReq, err := m.promptRequest(job, goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments)
 	if err != nil {
 		return Job{}, err

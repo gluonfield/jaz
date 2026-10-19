@@ -123,7 +123,7 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 }
 
 // EnsureMain gives the user a main bot unless one exists, pinned first: their
-// bot named Jaz, or else a new Jaz on the agent and model Settings choose for a
+// bot named Prime, or else a new Prime on the agent and model Settings choose for a
 // new chat.
 func (s *Service) EnsureMain(ctx context.Context) error {
 	records, err := s.store.ListBots()
@@ -143,7 +143,7 @@ func (s *Service) EnsureMain(ctx context.Context) error {
 	return s.store.PinBots(pins)
 }
 
-// newMain makes the bot named Jaz, as one configured by that name, the main
+// newMain makes the bot named Prime, as one configured by that name, the main
 // bot, or creates it.
 func (s *Service) newMain(ctx context.Context) (string, error) {
 	if id, err := s.resolve(mainName); err == nil {

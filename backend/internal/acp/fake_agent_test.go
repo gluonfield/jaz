@@ -296,6 +296,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			addFakePlanConfig(result)
 			sendResult(conn, msg, result)
 		case "session/new":
+			fakeHold(os.Getenv("JAZ_FAKE_ACP_NEW_HOLD"))
 			var req struct {
 				Meta       map[string]any    `json:"_meta"`
 				Cwd        string            `json:"cwd"`

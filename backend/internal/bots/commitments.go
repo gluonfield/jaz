@@ -143,6 +143,15 @@ type NoteStore interface {
 	ListOpenCommitments(botID string) ([]storage.Commitment, error)
 }
 
+func SteerNote(store NoteStore) func(storage.Session) string {
+	return func(thread storage.Session) string {
+		if thread.SourceType != storage.SourceBot {
+			return ""
+		}
+		return commitmentNote(store, thread.ID)
+	}
+}
+
 // commitmentNote lists a bot's open commitments for the turn its own thread
 // opens with; empty when it has none.
 func commitmentNote(store NoteStore, bot string) string {
