@@ -8,6 +8,8 @@ import { utils, write } from 'xlsx'
 
 await mkdir(resolve('../runs'), { recursive: true })
 const output = await mkdtemp(resolve('../runs/browser-smoke-'))
+await mkdir(join(output, 'renderer'))
+await copyFile(resolve('scripts/browser-smoke/clipboard-guard.swift'), join(output, 'clipboard-guard.swift'))
 const workbook = utils.book_new()
 utils.book_append_sheet(workbook, utils.aoa_to_sheet([['Part', 'Cost'], ['Motor', 12.5]]), 'BOM')
 utils.book_append_sheet(workbook, utils.aoa_to_sheet([['Volume'], [500]]), 'Scenarios')

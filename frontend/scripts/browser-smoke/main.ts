@@ -14,6 +14,8 @@ import { PREVIEW_PARTITION } from '@shared/preview'
 import { assertUntrustedProfileCaller, prepareProfileFixture } from './profiles'
 import { accessibilityFixture, accessibilityFrame } from './accessibility'
 import { exerciseBrowserPopups } from './popups'
+import { configureAppPermissions } from '@main/permissions'
+import { clipboardFixture, exerciseClipboard } from './clipboard'
 
 app.setName('Jaz')
 // The suite runs on the developer's own desktop: no Dock icon, no focus and no
@@ -73,6 +75,11 @@ let proxyWaiter: ServerResponse | undefined
 let firstNavigation: IncomingHttpHeaders | undefined
 let passwordOrigin = ''
 const server = createServer(async (request, response) => {
+  if (request.url?.startsWith('/clipboard')) {
+    response.setHeader('Content-Type', 'text/html')
+    response.end(clipboardFixture(new URL(request.url, `http://${request.headers.host}`)))
+    return
+  }
   if (request.url === '/health') {
     response.setHeader('Content-Type', 'application/json')
     response.end('{"ok":true}')
@@ -172,6 +179,7 @@ server.listen(0, '127.0.0.1', async () => {
   configurePreviewSession()
   installBrowserDownloads()
   process.env.ELECTRON_RENDERER_URL = `http://127.0.0.1:${address.port}`
+  configureAppPermissions(session.defaultSession)
   const cert = await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'cert.pem'))
   const fingerprint = new X509Certificate(cert).fingerprint256
   session.fromPartition(PREVIEW_PARTITION).setCertificateVerifyProc(({ hostname, certificate }, callback) => {
@@ -216,6 +224,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
       preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'preload.js'),
     },
   })
+  await exerciseClipboard(process.env.ELECTRON_RENDERER_URL)
   attachPreviewWebviews(window.webContents, join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'))
   ipcMain.handle('smoke:password-store', async () => {
     const file = join(app.getPath('userData'), 'browser-passwords.enc')
