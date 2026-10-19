@@ -358,6 +358,7 @@ func startServer(
 	var stopLoops context.CancelFunc
 	// The idle stopper finishes any stop it began before the manager closes.
 	idleStopped := make(chan struct{})
+	worktreesStopped := make(chan struct{})
 	// Routines start once restart recovery has resumed the turns and queues
 	// that hold their runs, so a run goes on or catches up, never both.
 	recovered := make(chan struct{})
@@ -432,9 +433,12 @@ func startServer(
 				}
 			}()
 			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-				defer cancel()
-				handler.PruneManagedWorktrees(ctx)
+				defer close(worktreesStopped)
+				select {
+				case <-recovered:
+					app.RunWorktreeMaintenance(loopCtx, store, handler.Workspace, handler.PruneManagedWorktrees, logger.WithPrefix("worktrees"))
+				case <-loopCtx.Done():
+				}
 			}()
 			return nil
 		},
@@ -442,6 +446,7 @@ func startServer(
 			if stopLoops != nil {
 				stopLoops()
 				<-idleStopped
+				<-worktreesStopped
 			}
 			manager.Close()
 			return stopHTTPServer(ctx, srv)

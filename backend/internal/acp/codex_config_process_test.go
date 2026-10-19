@@ -78,7 +78,7 @@ func TestCodexConfigFileProcessLifecycle(t *testing.T) {
 		})
 		var path string
 		for path == "" {
-			if data, err := os.ReadFile(receipt); err == nil {
+			if data, err := os.ReadFile(receipt); err == nil && len(data) > 0 {
 				path = string(data)
 				break
 			}

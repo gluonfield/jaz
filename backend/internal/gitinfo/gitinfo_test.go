@@ -238,6 +238,20 @@ func TestRemoveAndRestoreManagedWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(worktree, "abandoned.txt"), []byte("recover me\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(worktree, "add", "abandoned.txt")
+	run(worktree, "commit", "-qm", "abandoned experiment")
+	abandoned, err := git(ctx, worktree, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(worktree, "reset", "--hard", "HEAD^")
+	if err := RemoveManagedWorktree(ctx, worktree, "jaz/restore-thread", "snapshot"); err == nil || !strings.Contains(err.Error(), "reflog commits") {
+		t.Fatalf("pruning would lose an unreferenced reflog commit: %v", err)
+	}
+	run(dir, "update-ref", "refs/jaz/recovered/experiment", abandoned)
 	if err := os.WriteFile(filepath.Join(worktree, "file.txt"), []byte("two\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

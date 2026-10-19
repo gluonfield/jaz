@@ -41,6 +41,18 @@ func (m *Manager) SessionUsed(id string) bool {
 	return used
 }
 
+// WithStoppedSessions holds off resumes while worktrees of stopped sessions
+// are removed. A live process retains its directory even between turns.
+func (m *Manager) WithStoppedSessions(ids []string, remove func() error) error {
+	defer m.resumeLocks.Lock(ids...)()
+	for _, id := range ids {
+		if m.jobByID(id) != nil || m.AwaitsAnswer(id) {
+			return nil
+		}
+	}
+	return remove()
+}
+
 func (m *Manager) List() []Job {
 	m.mu.RLock()
 	jobs := make([]*jobState, 0, len(m.jobsByID))
