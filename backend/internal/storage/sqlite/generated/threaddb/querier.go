@@ -37,7 +37,6 @@ type Querier interface {
 	// bot's work started by a thread other than the bot. A bot's own subtasks,
 	// routine runs and memory searches are not.
 	LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error)
-	MarkTurnPromptSent(ctx context.Context, arg MarkTurnPromptSentParams) (int64, error)
 	MarkTurnShown(ctx context.Context, id string) error
 	ReplaceRuntimeSessionID(ctx context.Context, arg ReplaceRuntimeSessionIDParams) (int64, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
@@ -48,6 +47,7 @@ type Querier interface {
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error
 	SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (int64, error)
+	SetTurnPromptState(ctx context.Context, arg SetTurnPromptStateParams) (int64, error)
 	SetTurnRetries(ctx context.Context, arg SetTurnRetriesParams) (int64, error)
 	StartSessionTurn(ctx context.Context, arg StartSessionTurnParams) error
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error

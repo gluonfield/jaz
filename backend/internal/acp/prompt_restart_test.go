@@ -79,21 +79,54 @@ func TestPromptRestartProcess(t *testing.T) {
 			env["JAZ_FAKE_ACP_NEW_HOLD"] = hold
 		}
 	}
+	if stage == "written" || stage == "legacy" || stage == "acted" || stage == "metadata" || stage == "confirming" || strings.HasPrefix(stage, "confirmed-") {
+		hold := filepath.Join(root, "hold")
+		if err := os.WriteFile(hold, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		env["JAZ_FAKE_ACP_THINK_HOLD"] = hold
+		env["JAZ_FAKE_ACP_BOUNDARY_READY"] = filepath.Join(root, "ready")
+		if stage == "acted" {
+			env["JAZ_FAKE_ACP_EFFECT"] = filepath.Join(root, "effects")
+		}
+		if stage == "confirming" {
+			env["JAZ_FAKE_ACP_FIRST_UPDATE"] = "tool"
+		} else if stage == "metadata" {
+			env["JAZ_FAKE_ACP_FIRST_UPDATE"] = "metadata"
+		} else if strings.HasPrefix(stage, "confirmed-") {
+			env["JAZ_FAKE_ACP_FIRST_UPDATE"] = strings.TrimPrefix(stage, "confirmed-")
+		}
+	}
+	env["JAZ_FAKE_ACP_UNIQUE_SESSION"] = "cwd"
 	manager := newFakeNamedAgentManagerWithOptions(t, boundary, root, agent, env, "", "")
 	kind := os.Getenv("JAZ_PROMPT_RESTART_KIND")
 	var id string
 	if kind == "worker" {
-		parent, err := store.CreateSession(storage.CreateSession{Slug: "parent", SourceType: storage.SourceBot})
+		parentDir := filepath.Join(root, "parent")
+		if err := os.MkdirAll(parentDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		parentManager := newFakeNamedAgentManagerWithOptions(t, store, root, agent, map[string]string{"JAZ_FAKE_ACP_UNIQUE_SESSION": "cwd"}, "", "")
+		parent, err := parentManager.CreateSession(t.Context(), acp.SpawnRequest{ACPAgent: agent, Slug: "parent", SourceType: storage.SourceBot, Directory: parentDir})
 		if err != nil {
 			t.Fatal(err)
 		}
+		sendAndWait(t, t.Context(), parentManager, parent.ID, "hello")
+		if err := store.FinishSessionTurn(parent.ID, storage.StatusIdle, "", time.Now(), nil); err != nil {
+			t.Fatal(err)
+		}
+		parentManager.Close()
 		job, err := manager.Start(t.Context(), acp.SpawnRequest{ACPAgent: agent, Slug: "worker", ParentID: parent.ID, SourceType: storage.SourceBotWorker, SourceID: parent.ID, Directory: root, Commitment: owe(t, store, parent.ID)}, storage.QueuedMessage{Text: "Original task to deliver", From: parent.ID})
 		if err != nil {
 			t.Fatal(err)
 		}
 		id = job.ID
 	} else {
-		session, err := manager.CreateSession(t.Context(), acp.SpawnRequest{ACPAgent: agent, Slug: "restart", Directory: root})
+		source := ""
+		if kind == "result" {
+			source = storage.SourceBot
+		}
+		session, err := manager.CreateSession(t.Context(), acp.SpawnRequest{ACPAgent: agent, Slug: "restart", Directory: root, SourceType: source})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,6 +160,26 @@ func TestPromptRestartProcess(t *testing.T) {
 		}
 		t.Fatal("agent never reached the held startup boundary")
 	}
+	if stage == "written" || stage == "legacy" || stage == "acted" || stage == "metadata" {
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, err := os.Stat(filepath.Join(root, "ready")); err == nil {
+				if stage == "legacy" {
+					thread, err := store.LoadSession(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					thread.Turn.Prompt = nil
+					if err := store.StartSessionTurn(id, *thread.Turn); err != nil {
+						t.Fatal(err)
+					}
+				}
+				os.Exit(42)
+			}
+			time.Sleep(time.Millisecond)
+		}
+		t.Fatal("agent never reached prompt boundary")
+	}
 	waitForBlockingTool(t, testContext(t), manager, id)
 	manager.Close()
 	os.Exit(42)
@@ -137,40 +190,14 @@ func TestRestartDeliversAnUnsentPromptAndContinuesADeliveredOne(t *testing.T) {
 		for _, kind := range []string{"worker", "user", "result"} {
 			for _, stage := range []string{"claim", "start", "new", "turn", "delivered"} {
 				t.Run(agent+"/"+kind+"/"+stage, func(t *testing.T) {
-					root := t.TempDir()
-					executable, err := os.Executable()
-					if err != nil {
-						t.Fatal(err)
-					}
-					cmd := exec.CommandContext(t.Context(), executable, "-test.run=^TestPromptRestartProcess$")
-					cmd.Env = append(os.Environ(), "TMPDIR="+root, "JAZ_PROMPT_RESTART_ROOT="+root, "JAZ_PROMPT_RESTART_AGENT="+agent, "JAZ_PROMPT_RESTART_KIND="+kind, "JAZ_PROMPT_RESTART_STAGE="+stage)
-					output, err := cmd.CombinedOutput()
-					// A crashed host can leave a fake waiting in startup. Reap only
-					// the PIDs this helper recorded, before removing its files.
-					pids, _ := os.ReadFile(filepath.Join(root, "pids"))
-					for _, value := range strings.Fields(string(pids)) {
-						pid, err := strconv.Atoi(value)
-						if err != nil || pid <= 0 {
-							t.Fatalf("invalid helper pid %q", value)
-						}
-						process, _ := os.FindProcess(pid)
-						_ = process.Kill()
-					}
-					var exited *exec.ExitError
-					if !errors.As(err, &exited) || exited.ExitCode() != 42 {
-						t.Fatalf("boundary process = %v: %s", err, output)
-					}
-					id, err := os.ReadFile(filepath.Join(root, "thread"))
-					if err != nil {
-						t.Fatal(err)
-					}
+					root, id := crashedPrompt(t, agent, kind, stage)
 					store, err := sqlitestore.New(root)
 					if err != nil {
 						t.Fatal(err)
 					}
 					t.Cleanup(func() { _ = store.Close() })
 					manager := newFakeNamedAgentManagerWithOptions(t, store, root, agent, map[string]string{
-						"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_REQUEST_LOG": filepath.Join(root, "resumed.jsonl"),
+						"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_UNIQUE_SESSION": "cwd", "JAZ_FAKE_ACP_REQUEST_LOG": filepath.Join(root, "resumed.jsonl"),
 					}, "", "")
 					t.Cleanup(manager.Close)
 					locks, events := sessionlock.New(), sessionevents.New()
@@ -201,8 +228,8 @@ func TestRestartDeliversAnUnsentPromptAndContinuesADeliveredOne(t *testing.T) {
 						t.Fatalf("recovered job = %+v, %v; stored = %+v", job, err, stored)
 					}
 					thread := <-completed
-					if thread.Turn == nil || thread.Turn.Prompt != nil {
-						t.Fatalf("sent prompt remained pending: %+v", thread.Turn)
+					if thread.Turn == nil || thread.Turn.Prompt == nil || thread.Turn.Prompt.State != storage.PromptConfirmed {
+						t.Fatalf("prompt was not confirmed: %+v", thread.Turn)
 					}
 					switch kind {
 					case "worker":
@@ -268,4 +295,54 @@ func TestRestartDeliversAnUnsentPromptAndContinuesADeliveredOne(t *testing.T) {
 			}
 		}
 	}
+}
+
+func crashedPrompt(t *testing.T, agent, kind, stage string) (string, []byte) {
+	t.Helper()
+	root := t.TempDir()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), executable, "-test.run=^TestPromptRestartProcess$")
+	cmd.Env = append(os.Environ(), "TMPDIR="+root, "JAZ_PROMPT_RESTART_ROOT="+root, "JAZ_PROMPT_RESTART_AGENT="+agent, "JAZ_PROMPT_RESTART_KIND="+kind, "JAZ_PROMPT_RESTART_STAGE="+stage)
+	output, err := cmd.CombinedOutput()
+	// A crashed host can leave a fake waiting in startup. Reap only
+	// the PIDs this helper recorded, before removing its files.
+	pids, _ := os.ReadFile(filepath.Join(root, "pids"))
+	for _, value := range strings.Fields(string(pids)) {
+		pid, err := strconv.Atoi(value)
+		if err != nil || pid <= 0 {
+			t.Fatalf("invalid helper pid %q", value)
+		}
+		process, _ := os.FindProcess(pid)
+		_ = process.Kill()
+	}
+	var exited *exec.ExitError
+	if !errors.As(err, &exited) || exited.ExitCode() != 42 {
+		t.Fatalf("boundary process = %v: %s", err, output)
+	}
+	id, err := os.ReadFile(filepath.Join(root, "thread"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root, id
+}
+
+func (s restartBoundaryStore) SetTurnPromptState(id, agentSessionID string, startedAt time.Time, state storage.PromptState) error {
+	stop := func() error {
+		if err := os.WriteFile(filepath.Join(s.root, "thread"), []byte(id), 0o600); err != nil {
+			return err
+		}
+		os.Exit(42)
+		return nil
+	}
+	if s.stage == "confirming" && state == storage.PromptConfirmed {
+		return stop()
+	}
+	err := s.Store.SetTurnPromptState(id, agentSessionID, startedAt, state)
+	if err == nil && (s.stage == "sending" && state == storage.PromptSending || strings.HasPrefix(s.stage, "confirmed-") && state == storage.PromptConfirmed) {
+		return stop()
+	}
+	return err
 }

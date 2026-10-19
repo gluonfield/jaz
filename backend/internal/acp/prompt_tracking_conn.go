@@ -14,9 +14,10 @@ import (
 type promptTrackingConn struct {
 	jsonrpc.MessageConn
 
-	sendMu sync.Mutex
-	cbMu   sync.RWMutex
-	onSent func()
+	sendMu    sync.Mutex
+	cbMu      sync.RWMutex
+	onSending func() error
+	onSent    func()
 	// lastTraffic is when a message last crossed the connection either way,
 	// in Unix nanoseconds.
 	lastTraffic atomic.Int64
@@ -28,31 +29,36 @@ func newPromptTrackingConn(conn jsonrpc.MessageConn) *promptTrackingConn {
 	return c
 }
 
-func (c *promptTrackingConn) setOnPromptSent(fn func()) {
+func (c *promptTrackingConn) setOnPromptSend(before func() error, after func()) {
 	c.cbMu.Lock()
 	defer c.cbMu.Unlock()
-	c.onSent = fn
+	c.onSending, c.onSent = before, after
 }
 
 func (c *promptTrackingConn) Send(ctx context.Context, msg *jsonrpc.Message) error {
 	c.lastTraffic.Store(time.Now().UnixNano())
+	var before func() error
+	var after func()
+	if msg.IsRequest() && msg.Method == acpschema.AgentMethodSessionPrompt {
+		var prompt acpschema.PromptRequest
+		if json.Unmarshal(msg.Params, &prompt) == nil {
+			if _, side := sideChatScopeFromMeta(prompt.Meta, ""); !side {
+				c.cbMu.RLock()
+				before, after = c.onSending, c.onSent
+				c.cbMu.RUnlock()
+			}
+		}
+	}
+	if before != nil {
+		if err := before(); err != nil {
+			return err
+		}
+	}
 	c.sendMu.Lock()
 	err := c.MessageConn.Send(ctx, msg)
 	c.sendMu.Unlock()
-	if err == nil && msg.IsRequest() && msg.Method == acpschema.AgentMethodSessionPrompt {
-		var prompt acpschema.PromptRequest
-		if err := json.Unmarshal(msg.Params, &prompt); err != nil {
-			return nil
-		}
-		if _, side := sideChatScopeFromMeta(prompt.Meta, ""); side {
-			return nil
-		}
-		c.cbMu.RLock()
-		onSent := c.onSent
-		c.cbMu.RUnlock()
-		if onSent != nil {
-			onSent()
-		}
+	if err == nil && after != nil {
+		after()
 	}
 	return err
 }

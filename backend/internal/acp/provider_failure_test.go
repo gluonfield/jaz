@@ -219,22 +219,44 @@ func TestATurnANativeSteerJoinedEndsAsTheProviderFailureReports(t *testing.T) {
 	}
 }
 
-// A restart while a turn waits to retry resumes it once, and the retries it
+// A restart while a confirmed turn waits to retry resumes it once, and the retries it
 // already used still count.
 func TestRestartWhileATurnWaitsToRetryResumesItWithItsRetriesUsed(t *testing.T) {
 	jaz := startFailingJaz(t, time.Millisecond, time.Hour, time.Millisecond)
+	bot := jaz.bot("Events")
+	routine := jaz.routine(loops.CreateLoop{Name: "Table", Prompt: "send today's table provider fails 9 recovered", BotID: bot.ID, Thread: loops.ThreadMain})
+	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jaz.eventually("the second wait", func() bool { return strings.HasSuffix(jaz.status(bot.ID).Error, "(2 of 3).") })
+	if turn := jaz.session(bot.ID).Turn; turn == nil || turn.Prompt == nil || turn.Prompt.State != storage.PromptConfirmed {
+		t.Fatalf("retry fixture never confirmed its input: %+v", turn)
+	}
+
+	jaz = jaz.restart(failingProvider(jaz.root))
+	failed := jaz.waitRun(run.ID, loops.RunStatusError)
+	if !strings.HasPrefix(failed.Error, "Selected model is at capacity.") || jaz.promptsContaining(continuation) != 3 {
+		t.Fatalf("run = %+v, prompts = %q; want the resume to use the last retry", failed, jaz.prompts())
+	}
+}
+
+func TestRestartEndsAnUnconfirmedRetryWaitAsInterrupted(t *testing.T) {
+	jaz := startFailingJaz(t, time.Hour)
 	bot := jaz.bot("Events")
 	routine := jaz.routine(loops.CreateLoop{Name: "Table", Prompt: "send today's table provider fails 9 overloaded", BotID: bot.ID, Thread: loops.ThreadMain})
 	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	jaz.eventually("the second wait", func() bool { return strings.HasSuffix(jaz.status(bot.ID).Error, "(2 of 3).") })
-
+	jaz.eventually("the unconfirmed retry wait", func() bool { return strings.Contains(jaz.status(bot.ID).Error, "Retrying in") })
 	jaz = jaz.restart(failingProvider(jaz.root))
 	failed := jaz.waitRun(run.ID, loops.RunStatusError)
-	if !strings.HasPrefix(failed.Error, "Selected model is at capacity.") || jaz.promptsContaining(continuation) != 3 {
-		t.Fatalf("run = %+v, prompts = %q; want the resume to use the last retry", failed, jaz.prompts())
+	if failed.Error != storage.ErrPromptUnconfirmed.Error() || jaz.promptsContaining(continuation) != 0 {
+		t.Fatalf("unconfirmed retry was resumed: %+v, prompts=%q", failed, jaz.prompts())
+	}
+	if thread := jaz.session(bot.ID); thread.Status != storage.StatusError || thread.Turn != nil || thread.Error != storage.ErrPromptUnconfirmed.Error() {
+		t.Fatalf("unconfirmed retry did not finish: %+v", thread)
 	}
 }
 

@@ -112,7 +112,7 @@ func (r *LoopRunner) contextFull(botID string) bool {
 // LoopRunStatus is the status a finished turn gives the loop run it served.
 func LoopRunStatus(state string) string {
 	switch state {
-	case acp.StateFailed:
+	case acp.StateFailed, acp.StateInterrupted:
 		return loops.RunStatusError
 	case acp.StateCancelled:
 		return loops.RunStatusCancelled

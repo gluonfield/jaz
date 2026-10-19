@@ -136,6 +136,8 @@ type jobState struct {
 }
 
 type activeTurn struct {
+	promptSending         bool
+	promptObserved        bool
 	done                  chan struct{}
 	completion            CompletionMode
 	planRequested         bool
@@ -342,6 +344,9 @@ func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Tur
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	now := time.Now().UTC()
+	if stored.StartedAt.IsZero() {
+		stored.StartedAt = now
+	}
 	j.State = StateRunning
 	j.Assistant = ""
 	j.Thought = ""
@@ -366,7 +371,7 @@ func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Tur
 		done:            make(chan struct{}),
 		completion:      completion,
 		planRequested:   stored.PlanRequested,
-		startedAt:       now,
+		startedAt:       stored.StartedAt,
 		firstPromptSent: make(chan struct{}),
 		promptCalls:     1,
 		allowSilence:    stored.AllowSilence,

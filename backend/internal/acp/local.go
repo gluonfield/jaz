@@ -217,7 +217,10 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 	job.mu.RLock()
 	systemPromptExtensions := job.systemPromptExtensions.Strings()
 	job.mu.RUnlock()
-	if err := m.store.MarkTurnPromptSent(job.ID, job.ACPSession); err != nil {
+	job.mu.Lock()
+	err = m.setPromptStateLocked(job, storage.PromptSending)
+	job.mu.Unlock()
+	if err != nil {
 		m.failTurn(job, err)
 		m.finishTurn(done, job)
 		return
@@ -230,6 +233,14 @@ func (m *Manager) runLocalPrompt(ctx context.Context, job *jobState, runner Loca
 		ArtifactSurface:        artifactSurface,
 		SystemPromptExtensions: systemPromptExtensions,
 	}) {
+		job.mu.Lock()
+		switch event.Type {
+		case agent.StreamDelta, agent.StreamReasoning, agent.StreamToolCall, agent.StreamToolResult:
+			if err := m.setPromptStateLocked(job, storage.PromptConfirmed); err != nil {
+				m.log.Error("record prompt confirmation", "session", job.ID, "error", err)
+			}
+		}
+		job.mu.Unlock()
 		switch event.Type {
 		case agent.StreamDelta:
 			m.applyLocalMessage(job, event.Delta)

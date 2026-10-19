@@ -245,6 +245,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
 			err := json.Unmarshal(msg.Params, &req)
+			if err == nil && restoreFakeSession(req.SessionID) {
+				fakeSessionID = req.SessionID
+			}
 			if !openFakeSession(req.Cwd, true) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError("restored alone", nil))
 				_ = conn.Send(context.Background(), resp)
@@ -308,6 +311,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			openFakeSession(req.Cwd, false)
+			rememberFakeSession(t)
 			if err := validateFakeMCPServers(req.MCPServers); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
@@ -508,6 +512,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"update":    map[string]any{"sessionUpdate": "usage_update", "used": used, "size": size},
 				})
 			}
+			fakePromptBoundary(t, conn)
 			// The agent reasons, calling no tool, while a hold file exists.
 			fakeHold(os.Getenv("JAZ_FAKE_ACP_THINK_HOLD"))
 			if path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE"); path != "" && strings.Contains(string(msg.Params), cmp.Or(os.Getenv("JAZ_FAKE_ACP_HOLD_TEXT"), "until released")) {
