@@ -86,11 +86,11 @@ func TestARoutineTurnTheProviderFailsContinuesUntilItAnswers(t *testing.T) {
 	}
 }
 
-// A capacity failure after the provider retried only its connection, or after
-// the turn recovered from an earlier retried overload, is one the provider
-// did not retry, so Jaz does.
+// A capacity failure after the provider retried only its connection, after
+// the turn recovered from an earlier retried overload, or while only a side
+// chat was retrying, is one the provider did not retry, so Jaz does.
 func TestAFailureTheProviderDidNotRetryIsRetried(t *testing.T) {
-	for _, kind := range []string{"reconnected", "recovered"} {
+	for _, kind := range []string{"reconnected", "recovered", "sidechat"} {
 		t.Run(kind, func(t *testing.T) {
 			jaz := startFailingJaz(t, time.Millisecond)
 			thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})

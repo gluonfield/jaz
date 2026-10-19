@@ -57,16 +57,21 @@ func (f sessionFailure) message() string {
 // warning, a deprecation or a model fallback, which becomes the "Warning:"
 // message agents write for clients without the extension.
 func sessionFailureUpdate(job *jobState, update acpschema.DecodedSessionUpdate, raw json.RawMessage) acpschema.DecodedSessionUpdate {
-	if _, ok := update.(acpschema.SessionInfoSessionUpdate); !ok {
+	info, ok := update.(acpschema.SessionInfoSessionUpdate)
+	if !ok {
 		return update
 	}
-	var info struct {
+	// A side chat's records are its own, not the turn's.
+	if _, side := sideChatScopeFromMeta(info.Meta, job.ID); side {
+		return update
+	}
+	var record struct {
 		Meta sessionFailureMeta `json:"_meta"`
 	}
-	if json.Unmarshal(raw, &info) != nil {
+	if json.Unmarshal(raw, &record) != nil {
 		return update
 	}
-	failure := info.Meta.Jetbrains.Air.SessionFailure
+	failure := record.Meta.Jetbrains.Air.SessionFailure
 	if failure == nil || failure.Severity != "warning" {
 		return update
 	}

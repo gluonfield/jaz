@@ -14,7 +14,7 @@ import (
 // fakeProviderFailures makes a prompt start a run of provider failures: this
 // prompt and the next n-1 the session gets end with kind's failure. The count
 // lives in JAZ_FAKE_ACP_FAILURE_FILE so it outlasts a restart.
-var fakeProviderFailures = regexp.MustCompile(`provider fails (\d+) (overloaded|rejected|retried|reconnected|throttled|recovered)`)
+var fakeProviderFailures = regexp.MustCompile(`provider fails (\d+) (overloaded|rejected|retried|reconnected|throttled|recovered|sidechat)`)
 
 // fakeProviderNotice makes a prompt report a notice before it answers.
 var fakeProviderNotice = regexp.MustCompile(`provider notice ([A-Za-z .]+)`)
@@ -23,10 +23,12 @@ var fakeProviderNotice = regexp.MustCompile(`provider notice ([A-Za-z .]+)`)
 // failure the provider does not retry (overloaded), one the request itself
 // causes (rejected), one the provider already retried (retried), a capacity
 // failure after the provider retried its connection (reconnected), a rate
-// limit the provider retried among other retries (throttled), and an overload
-// after the turn recovered from an earlier one (recovered). Retry warnings
-// carry their own ids, as claude-agent-acp's do; codex-acp reuses the
-// failure's.
+// limit the provider retried among other retries (throttled), an overload
+// after the turn recovered from an earlier one (recovered), and an overload
+// while a side chat on the session was retrying (sidechat), whose record
+// codex-acp sends on the parent session with the side chat's scope. Retry
+// warnings carry their own ids, as claude-agent-acp's do; codex-acp reuses
+// the failure's.
 var fakeFailureKinds = map[string]map[string]any{
 	"overloaded":  {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}},
 	"rejected":    {"category": "request", "title": "The requested model is not supported.", "actions": []string{}},
@@ -34,6 +36,7 @@ var fakeFailureKinds = map[string]map[string]any{
 	"reconnected": {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": []string{"connection"}},
 	"throttled":   {"category": "limit", "title": "Rate limit reached.", "actions": []string{"retry"}, "retrying": []string{"limit", "connection"}},
 	"recovered":   {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": []string{"service"}, "progress": true},
+	"sidechat":    {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": []string{"service"}, "sideChat": true},
 }
 
 // fakeTypedFailures reports whether initialize negotiated AIR sessionFailure,
@@ -111,9 +114,12 @@ func fakeProviderFailure(conn jsonrpc.MessageConn, msg *jsonrpc.Message, typed b
 	id := fmt.Sprintf("turn-%d:error", turn)
 	retrying, _ := kind["retrying"].([]string)
 	for n, category := range retrying {
+		meta := fakeFailureMeta(map[string]any{"id": fmt.Sprintf("%s:retry:%d", fakeSessionID, n), "revision": 1, "category": category, "severity": "warning", "title": "Retrying...", "actions": []string{}})
+		if kind["sideChat"] == true {
+			meta["codex"] = map[string]any{"sideChat": map[string]any{"id": "side-1", "command": "side"}}
+		}
 		notify(conn, "session/update", map[string]any{"sessionId": fakeSessionID, "update": map[string]any{
-			"sessionUpdate": "session_info_update",
-			"_meta":         fakeFailureMeta(map[string]any{"id": fmt.Sprintf("%s:retry:%d", fakeSessionID, n), "revision": 1, "category": category, "severity": "warning", "title": "Retrying...", "actions": []string{}}),
+			"sessionUpdate": "session_info_update", "_meta": meta,
 		}})
 	}
 	if kind["progress"] == true {
