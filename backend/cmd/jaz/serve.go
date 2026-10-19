@@ -345,6 +345,7 @@ func startServer(
 			Warnings: warnings,
 		}, nil
 	}
+	manager.TurnEnding = botService.TurnEnding
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
 		handler.HandleACPTurnFinished(ctx, job)
 		botService.TurnEnded(job.ID)

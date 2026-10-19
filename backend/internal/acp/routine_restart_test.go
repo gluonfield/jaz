@@ -59,6 +59,7 @@ func startJaz(t *testing.T, ctx context.Context, store *sqlitestore.Store, root 
 	handler.Loops = service
 	botService := bots.NewService(store, root, manager, handler, handler, service, events, log.New(io.Discard))
 	finishing := &atomic.Int64{}
+	manager.TurnEnding = botService.TurnEnding
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
 		finishing.Add(1)
 		defer finishing.Add(-1)
