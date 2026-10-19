@@ -27,7 +27,7 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 	defer s.mu.Unlock()
 	session.Status = storage.StatusRunning
 	session.Error = ""
-	session.Turn = &storage.Turn{StartedAt: time.Now().UTC(), PendingMessage: &prompt}
+	session.Turn = prompt.Turn(time.Now().UTC())
 	storage.MarkSessionAttention(&session, session.Turn.StartedAt)
 	return s.saveSession(session)
 }

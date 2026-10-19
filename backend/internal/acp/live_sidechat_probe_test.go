@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -51,10 +50,8 @@ func TestLiveCodexACPSideChatProbe(t *testing.T) {
 			FS:   &acpschema.FileSystemCapabilities{ReadTextFile: true, WriteTextFile: true},
 		},
 	})
-	if methodID, missing := autoAuthMethod(AgentCodex, init.Result, env); methodID != "" {
+	if methodID, _ := autoAuthMethod(AgentCodex, init.Result, env); methodID != "" {
 		_ = probeCall(t, ctx, conn, "2", acpschema.AgentMethodAuthenticate, acpschema.AuthenticateRequest{MethodID: methodID})
-	} else if len(missing) > 0 {
-		t.Skipf("missing Codex auth: %s", strings.Join(missing, ", "))
 	}
 
 	session := probeNewSession(t, ctx, conn, "3", cwd)

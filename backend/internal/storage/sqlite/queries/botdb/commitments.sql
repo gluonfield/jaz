@@ -27,6 +27,19 @@ UPDATE bot_commitments
 SET status = sqlc.arg(status), note = COALESCE(sqlc.narg(note), note), closed_at_ms = sqlc.arg(closed_at_ms)
 WHERE id = sqlc.arg(id) AND status = 'open';
 
+-- name: DropDeliveredResults :exec
+-- The results a commitment's threads queued for its bot before it closed as
+-- done: they had all finished, so the delivery answered them.
+UPDATE threads
+SET queued_messages = (
+  SELECT json_group_array(json(kept.value)) FROM (
+    SELECT m.value FROM json_each(threads.queued_messages) m
+    WHERE json_extract(m.value, '$.kind') IS NOT 'internal'
+       OR COALESCE(json_extract(m.value, '$.from'), '') NOT IN (
+         SELECT thread_id FROM bot_commitment_threads WHERE commitment_id = sqlc.arg(id))
+    ORDER BY m.key) kept)
+WHERE id = (SELECT bot_id FROM bot_commitments WHERE id = sqlc.arg(id)) AND queued_messages <> '';
+
 -- name: ListOpenCommitments :many
 SELECT * FROM bot_commitments WHERE bot_id = sqlc.arg(bot_id) AND status = 'open' ORDER BY id;
 

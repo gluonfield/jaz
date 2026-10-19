@@ -151,6 +151,7 @@ func (m *Manager) SetSessionConfig(ctx context.Context, session, id, value strin
 	if err != nil {
 		return err
 	}
+	defer job.release()
 	return m.setSessionConfig(ctx, job, id, value)
 }
 

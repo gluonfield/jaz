@@ -177,7 +177,7 @@ func TestSteerCannotJoinFailingTurn(t *testing.T) {
 	if _, err := manager.reserveSteer(job, SteerRequest{Message: "Late correction"}, nil); !errors.Is(err, errTurnEnded) {
 		t.Errorf("steering joined a failing turn: %v", err)
 	}
-	if conflict := job.sendConflict(); conflict == nil || !conflict.finishing {
+	if conflict := job.sendConflict(false); conflict == nil || !conflict.finishing {
 		t.Errorf("new input would steer instead of waiting for failure to finish: %+v", conflict)
 	}
 	messages, err := store.LoadMessageRecords(session.ID)

@@ -124,6 +124,10 @@ type jobState struct {
 	systemPromptExtensions promptmodule.Modules
 	assistantText          strings.Builder
 	thoughtText            strings.Builder
+	// leases counts callers holding the process outside a turn; retired marks
+	// a job whose process is being stopped as idle, which takes no more.
+	leases  int
+	retired bool
 }
 
 type activeTurn struct {

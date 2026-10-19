@@ -3,7 +3,6 @@ package acp
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,30 +11,32 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type fakeMCPService struct {
 	spawned SpawnRequest
+	first   storage.QueuedMessage
 	sent    SendRequest
 	job     Job
 	agents  []string
 	refs    []string
 	timeout time.Duration
-	sendErr error
 }
 
 func (s *fakeMCPService) AskUser(context.Context, string, AskUserInput) (AskUserOutput, error) {
 	return AskUserOutput{}, nil
 }
 
-func (s *fakeMCPService) Spawn(_ context.Context, req SpawnRequest) (SpawnResult, error) {
+func (s *fakeMCPService) Start(_ context.Context, req SpawnRequest, first storage.QueuedMessage) (Job, error) {
 	s.spawned = req
-	return SpawnResult{SessionID: "child", ACPAgent: req.ACPAgent}, nil
+	s.first = first
+	return s.job, nil
 }
 
 func (s *fakeMCPService) Send(_ context.Context, req SendRequest) (Job, error) {
 	s.sent = req
-	return s.job, s.sendErr
+	return s.job, nil
 }
 
 func (s *fakeMCPService) WaitThreads(_ context.Context, refs []string, timeout time.Duration) (ThreadResults, error) {
@@ -60,29 +61,25 @@ func (s *fakeMCPService) AgentOptions(AgentOptionsRequest) (AgentOptionsOutput, 
 }
 
 func TestCreateThreadStartsPromptAndPreservesParentAndSettings(t *testing.T) {
-	service := &fakeMCPService{job: Job{ID: "child", ACPAgent: AgentCodex, State: StateRunning}}
+	service := &fakeMCPService{job: Job{ID: "child", ACPAgent: AgentCodex, State: StateStarting}}
 	tool := NewMCPTools(service)
 	header := http.Header{}
 	header.Set(mcpsession.HeaderName, "parent")
 	req := &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: header}}
-	_, result, err := tool.Create(context.Background(), req, MCPCreateInput{
+	_, _, err := tool.Create(context.Background(), req, MCPCreateInput{
 		Prompt: "Review the changes", Agent: AgentCodex, Model: "requested-model",
 		ModelProvider: "openai", Thinking: "high", Directory: "project", Plan: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.ThreadID != "child" || result.State != StateRunning {
-		t.Fatalf("result = %#v", result)
-	}
 	if service.spawned.ParentID != "parent" || service.spawned.ACPAgent != AgentCodex ||
 		service.spawned.Model != "requested-model" || service.spawned.ModelProvider != "openai" ||
 		service.spawned.ReasoningEffort != "high" || service.spawned.Directory != "project" {
 		t.Fatalf("spawn = %#v", service.spawned)
 	}
-	if service.sent.Session != "child" || service.sent.Message != "Review the changes" ||
-		service.sent.Completion != CompletionAsync || !service.sent.ParentVisible || !service.sent.PlanRequested {
-		t.Fatalf("send = %#v", service.sent)
+	if service.first.Text != "Review the changes" || service.first.From != "parent" || !service.first.PlanRequested {
+		t.Fatalf("first prompt = %#v", service.first)
 	}
 }
 
@@ -91,14 +88,6 @@ func TestCreateThreadRejectsEmptyPromptBeforeCreating(t *testing.T) {
 	_, _, err := NewMCPTools(service).Create(context.Background(), nil, MCPCreateInput{Prompt: "  ", Title: "should not exist"})
 	if err == nil || service.spawned.Title != "" {
 		t.Fatalf("err = %v, spawn = %#v", err, service.spawned)
-	}
-}
-
-func TestCreateThreadReportsCreatedIDWhenDispatchFails(t *testing.T) {
-	service := &fakeMCPService{sendErr: fmt.Errorf("agent unavailable")}
-	_, _, err := NewMCPTools(service).Create(context.Background(), nil, MCPCreateInput{Prompt: "work"})
-	if err == nil || !strings.Contains(err.Error(), "child") || !strings.Contains(err.Error(), "agent unavailable") {
-		t.Fatalf("error lost created thread: %v", err)
 	}
 }
 

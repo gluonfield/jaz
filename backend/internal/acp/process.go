@@ -512,21 +512,11 @@ func autoAuthMethod(agent string, raw json.RawMessage, env map[string]string) (a
 				return method.ID, nil
 			}
 		}
-		for _, method := range init.AuthMethods {
-			if (method.ID == "chatgpt" || method.ID == "chat-gpt") && codexAuthAvailable(env) {
-				return method.ID, nil
-			}
-		}
+		// codex-acp reads a stored login when a session opens and answers auth_required without one.
+		// Its chat-gpt method forces a token refresh, then runs the interactive browser sign-in.
+		return "", nil
 	}
 	var missing []string
-	if agent == AgentCodex {
-		for _, method := range init.AuthMethods {
-			if method.ID == "chatgpt" || method.ID == "chat-gpt" {
-				missing = appendMissing(missing, codexAuthHint(env))
-				break
-			}
-		}
-	}
 	if agent == AgentGrok {
 		for _, method := range init.AuthMethods {
 			if method.ID == "cached_token" || method.ID == "xai.api_key" || method.ID == "grok.com" {
@@ -573,25 +563,6 @@ func configuredEnvAuthMethod(methods []agentAuthMethod, env map[string]string) a
 		}
 	}
 	return ""
-}
-
-func codexAuthAvailable(env map[string]string) bool {
-	home := env["CODEX_HOME"]
-	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			return false
-		}
-		home = filepath.Join(userHome, ".codex")
-	}
-	return codexAuthFileAvailable(home) || codexKeyringConfigured(home)
-}
-
-func codexAuthHint(env map[string]string) string {
-	if env["CODEX_HOME"] != "" {
-		return "Codex OAuth login at " + filepath.Join(env["CODEX_HOME"], "auth.json")
-	}
-	return "Codex OAuth login at ~/.codex/auth.json"
 }
 
 func grokAuthAvailable(env map[string]string) bool {

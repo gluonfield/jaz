@@ -333,9 +333,19 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if err := service.Say(operations.ID, "The queue fixes."); err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(homeOf(t, store, research.ID), memoryFile), "Ship queue fixes first.\n")
+	home := homeOf(t, store, research.ID)
+	write(t, filepath.Join(home, memoryFile), "Ship queue fixes first.\n")
+	// Changes to AGENTS.md, the bot's and the user's, are left out.
+	write(t, filepath.Join(home, agentsFile), "Cite sources.\n")
 	service.NoteHomeChanges(running)
 	service.NoteHomeChanges(finished)
+	files, err := service.Files(research.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveFile(research.ID, agentsFile, "Cite every source.\n", files[0].Version); err != nil {
+		t.Fatal(err)
+	}
 
 	view, err := service.Activity(research.ID)
 	if err != nil {

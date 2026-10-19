@@ -359,15 +359,20 @@ func (m *Manager) failTurn(job *jobState, err error) {
 
 func acpTurnErrorMessage(err error) string {
 	var rpcErr *jsonrpc.Error
-	if errors.As(err, &rpcErr) {
-		if message := jsonRPCErrorDataMessage(rpcErr.Data); message != "" {
-			return message
-		}
-		if message := strings.TrimSpace(rpcErr.Message); message != "" && message != "Internal error" {
-			return message
-		}
+	if !errors.As(err, &rpcErr) {
+		return err.Error()
 	}
-	return err.Error()
+	message := jsonRPCErrorDataMessage(rpcErr.Data)
+	if trimmed := strings.TrimSpace(rpcErr.Message); message == "" && trimmed != "Internal error" {
+		message = trimmed
+	}
+	if message == "" {
+		return err.Error()
+	}
+	if rpcErr.Code == int(acpschema.ErrorCode32000) {
+		return signInHint + ": " + message
+	}
+	return message
 }
 
 func jsonRPCErrorDataMessage(raw json.RawMessage) string {

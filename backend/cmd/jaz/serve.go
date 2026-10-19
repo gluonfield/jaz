@@ -354,6 +354,8 @@ func startServer(
 		Handler: handler.Handler(),
 	}
 	var stopLoops context.CancelFunc
+	// The idle stopper finishes any stop it began before the manager closes.
+	idleStopped := make(chan struct{})
 	// Routines start once restart recovery has resumed the turns and queues
 	// that hold their runs, so a run goes on or catches up, never both.
 	recovered := make(chan struct{})
@@ -400,6 +402,10 @@ func startServer(
 			}
 			loopCtx, cancelLoops := context.WithCancel(context.Background())
 			stopLoops = cancelLoops
+			go func() {
+				defer close(idleStopped)
+				manager.StopIdleProcesses(loopCtx, acp.DefaultIdleTimeouts)
+			}()
 			slackSync := &integrationingest.SlackSyncer{
 				Store:      store,
 				Writer:     ingestWriter,
@@ -433,6 +439,7 @@ func startServer(
 		OnStop: func(ctx context.Context) error {
 			if stopLoops != nil {
 				stopLoops()
+				<-idleStopped
 			}
 			manager.Close()
 			return stopHTTPServer(ctx, srv)

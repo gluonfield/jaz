@@ -1220,35 +1220,19 @@ func TestProbeReadinessRequiresGrokAuth(t *testing.T) {
 }
 
 func TestAutoAuthMethodSelectsConfiguredEnvVarForGenericAgent(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	method, missing := autoAuthMethod("fake", codexInitializeAuthMethods(), map[string]string{"OPENAI_API_KEY": "key"})
+	raw := []byte(`{"authMethods": [{"type": "env_var", "id": "openai-api-key", "vars": [{"name": "OPENAI_API_KEY"}]}]}`)
+	method, missing := autoAuthMethod("fake", raw, map[string]string{"OPENAI_API_KEY": "key"})
 
 	if method != "openai-api-key" || len(missing) != 0 {
 		t.Fatalf("method=%q missing=%v", method, missing)
 	}
 }
 
-func TestAutoAuthMethodUsesAPIKeyForCodexWhenOAuthMissing(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), map[string]string{"OPENAI_API_KEY": "key"})
+func TestAutoAuthMethodReportsMissingEnvVars(t *testing.T) {
+	raw := []byte(`{"authMethods": [{"type": "env_var", "id": "openrouter", "vars": [{"name": "OPENROUTER_API_KEY"}]}]}`)
+	method, missing := autoAuthMethod(AgentOpenCode, raw, nil)
 
-	if method != "openai-api-key" || len(missing) != 0 {
-		t.Fatalf("method=%q missing=%v", method, missing)
-	}
-}
-
-func TestAutoAuthMethodPrefersCodexAPIKeyOverStaleOAuth(t *testing.T) {
-	codexHome := t.TempDir()
-	if err := os.WriteFile(filepath.Join(codexHome, "auth.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), map[string]string{
-		"CODEX_HOME":     codexHome,
-		"OPENAI_API_KEY": "key",
-	})
-
-	if method != "openai-api-key" || len(missing) != 0 {
+	if method != "" || strings.Join(missing, ",") != "JAZ_ACP_OPENCODE_API_KEY" {
 		t.Fatalf("method=%q missing=%v", method, missing)
 	}
 }
@@ -1313,26 +1297,19 @@ func TestAutoAuthMethodReportsMissingGrokAuth(t *testing.T) {
 	}
 }
 
-func TestAutoAuthMethodReportsMissingEnvVars(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), nil)
-
-	if method != "" || strings.Join(missing, ",") != "Codex OAuth login at ~/.codex/auth.json,JAZ_ACP_CODEX_API_KEY" {
-		t.Fatalf("method=%q missing=%v", method, missing)
+func TestAutoAuthMethodLeavesCodexLoginToTheAdapter(t *testing.T) {
+	signedIn := t.TempDir()
+	writeCodexOAuth(t, signedIn)
+	raw := []byte(`{"authMethods": [{"id": "api-key"}, {"id": "chat-gpt"}]}`)
+	for _, codexHome := range []string{signedIn, t.TempDir()} {
+		method, missing := autoAuthMethod(AgentCodex, raw, map[string]string{"CODEX_HOME": codexHome})
+		if method != "" || len(missing) != 0 {
+			t.Fatalf("method=%q missing=%v", method, missing)
+		}
 	}
 }
 
-func codexInitializeAuthMethods() []byte {
-	return []byte(`{
-		"authMethods": [
-			{"id": "chatgpt", "name": "Login with ChatGPT"},
-			{"type": "env_var", "id": "openai-api-key", "vars": [{"name": "OPENAI_API_KEY"}]}
-		]
-	}`)
-}
-
 func TestAutoAuthMethodSupportsOfficialCodexAuthIDs(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
 	raw := []byte(`{
 		"authMethods": [
 			{"id": "api-key", "name": "OpenAI API key"},

@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -85,5 +86,67 @@ func TestACommitmentListsItsThreadsInTheOrderTheyWereStarted(t *testing.T) {
 	loaded, err := store.LoadCommitment(commitment.ID)
 	if err != nil || len(loaded.Threads) != 2 || loaded.Threads[0].ID != "20261019T000000-ffffffff" {
 		t.Fatalf("threads = %+v, %v; want the first started first", loaded.Threads, err)
+	}
+}
+
+func TestDeliveringACommitmentDropsTheResultsItsThreadsQueuedForTheBot(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := func(request string) (int64, string) {
+		t.Helper()
+		commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Requester: bot.ID, Request: request})
+		if err != nil {
+			t.Fatal(err)
+		}
+		worker, err := store.CreateSession(storage.CreateSession{Slug: request, ParentID: bot.ID, SourceType: storage.SourceBotWorker, SourceID: bot.ID, Commitment: commitment.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return commitment.ID, worker.ID
+	}
+	delivered, quotes := thread("quotes")
+	dropped, stock := thread("stock")
+	result := func(from, text string) storage.QueuedMessage {
+		message := storage.NewInternalQueuedMessage(text)
+		message.From = from
+		return message
+	}
+	for _, message := range []storage.QueuedMessage{
+		storage.NewQueuedMessage("How are the quotes going?", nil),
+		result(quotes, "quotes finished"),
+		{Text: "check the inbox", Kind: storage.QueuedMessageKindInternal, Output: &storage.TurnOutput{Run: "run-1"}},
+		result(stock, "stock finished"),
+	} {
+		if err := store.QueueTurn(storage.TurnDelivery{SessionID: bot.ID, Message: message}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	answer := storage.TurnDelivery{SessionID: bot.ID, Message: storage.NewInternalQueuedMessage("The quotes are in."), Closes: []int64{delivered}}
+	if err := store.QueueTurn(answer); err != nil {
+		t.Fatal(err)
+	}
+	// A drop delivers nothing, so its thread's result still wakes the bot.
+	if err := store.DropCommitment(dropped, "no longer needed", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.LoadSession(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var texts []string
+	for _, message := range session.QueuedMessages {
+		texts = append(texts, message.Text)
+	}
+	want := []string{"How are the quotes going?", "check the inbox", "stock finished", "The quotes are in."}
+	if !slices.Equal(texts, want) {
+		t.Fatalf("bot queue = %q, want %q: only the delivered commitment's result goes", texts, want)
 	}
 }

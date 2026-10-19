@@ -13,6 +13,9 @@ type Querier interface {
 	// A running turn of its bot holds an answer that delivers it.
 	CommitmentStaged(ctx context.Context, id int64) (bool, error)
 	CommitmentWorking(ctx context.Context, id int64) (bool, error)
+	// The results a commitment's threads queued for its bot before it closed as
+	// done: they had all finished, so the delivery answered them.
+	DropDeliveredResults(ctx context.Context, id int64) error
 	GetBot(ctx context.Context, threadID string) (Bot, error)
 	GetCommitment(ctx context.Context, id int64) (BotCommitment, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (BotMembership, error)

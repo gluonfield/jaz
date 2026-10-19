@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -57,6 +58,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		_, _ = fmt.Fprintln(file, os.Getpid())
 		_ = file.Close()
 	}
+	// Startup waits while a hold file sits in the agent's directory, as a
+	// slow login refresh holds an agent up.
+	fakeHold(os.Getenv("JAZ_FAKE_ACP_START_HOLD"))
 	launch, codex := readFakeCodexLaunch(t)
 	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" {
 		disabled, ok := launch.Features["goals"]
@@ -105,6 +109,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		messageSeq++
 		return fmt.Sprintf("fake:%s:%d", kind, messageSeq)
 	}
+	claim := newFakeSessionClaim()
 	var pendingPrompt *jsonrpc.Message
 	grokInterjections := 0
 	cancelArrived := false
@@ -123,7 +128,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			os.Exit(0)
+			claim.exit()
 		}
 		logFakeACPRequest(t, msg)
 		if !msg.IsRequest() {
@@ -135,6 +140,16 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					cancelArrived = true
 				}
 			}
+			continue
+		}
+		// While this file exists the stored sign-in is expired: every session open and turn
+		// answers ACP auth_required, as codex-acp does.
+		if _, err := os.Stat(os.Getenv("JAZ_FAKE_ACP_SIGN_IN_EXPIRED_FILE")); err == nil && slices.Contains([]string{"session/new", "session/load", "session/resume", "session/prompt"}, msg.Method) {
+			resp, _ := jsonrpc.NewErrorResponse(*msg.ID, &jsonrpc.Error{Code: -32000, Message: "Authentication required"})
+			_ = conn.Send(context.Background(), resp)
+			continue
+		}
+		if !claim.take(conn, msg) {
 			continue
 		}
 		switch msg.Method {
@@ -206,7 +221,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				SessionID  string            `json:"sessionId"`
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
-			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != fakeSessionID {
+			err := json.Unmarshal(msg.Params, &req)
+			if !openFakeSession(req.Cwd, true) {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError("restored alone", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if err != nil || req.SessionID != fakeSessionID {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("unknown session", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -262,6 +283,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			openFakeSession(req.Cwd, false)
 			if err := validateFakeMCPServers(req.MCPServers); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
@@ -312,6 +334,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected supported mode", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
+			}
+			// Plan mode waits while a hold file sits in the agent's directory.
+			if req.ModeID == "plan" {
+				fakeHold(os.Getenv("JAZ_FAKE_ACP_PLAN_HOLD"))
 			}
 			currentMode = req.ModeID
 			sendResult(conn, msg, map[string]any{})
@@ -530,6 +556,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					},
 				})
 			}
+			reportFakeTasks(conn, msg.Params)
 			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": fakeSessionID,
@@ -548,6 +575,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			fakeProviderNoticeUpdate(conn, msg, typedFailures)
+			if strings.Contains(string(msg.Params), "ask after the turn") {
+				fakeAskAfterTurn(conn, msg)
+				continue
+			}
 			if strings.Contains(string(msg.Params), "ask then block") {
 				fakeAskThenBlock(conn, msg)
 				continue
@@ -975,4 +1006,20 @@ func validateFakeProxyAndJaztools(rawServers []json.RawMessage) error {
 		return fmt.Errorf("jaztools must expose only a resolved session header, got %#v", jaz.Headers)
 	}
 	return nil
+}
+
+// fakeHold waits while the file hold exists, and exits once Jaz is gone.
+func fakeHold(hold string) {
+	if hold == "" {
+		return
+	}
+	for {
+		if _, err := os.Stat(hold); err != nil {
+			return
+		}
+		if os.Getppid() == 1 {
+			os.Exit(0)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

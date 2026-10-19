@@ -32,7 +32,7 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 		}
 		opts.allowSilence = session.Turn.AllowSilence
 		opts.output = session.Turn.Output
-		opts.parentOutput = session.Turn.ParentOutput
+		req.ParentOutput = session.Turn.ParentOutput
 		opts.retries = session.Turn.Retries
 	}
 	_, err = m.send(ctx, req, opts)
