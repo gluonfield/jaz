@@ -109,6 +109,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		messageSeq++
 		return fmt.Sprintf("fake:%s:%d", kind, messageSeq)
 	}
+	claim := newFakeSessionClaim()
 	var pendingPrompt *jsonrpc.Message
 	grokInterjections := 0
 	cancelArrived := false
@@ -125,7 +126,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			os.Exit(0)
+			claim.exit()
 		}
 		logFakeACPRequest(t, msg)
 		if !msg.IsRequest() {
@@ -144,6 +145,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		if _, err := os.Stat(os.Getenv("JAZ_FAKE_ACP_SIGN_IN_EXPIRED_FILE")); err == nil && slices.Contains([]string{"session/new", "session/load", "session/resume", "session/prompt"}, msg.Method) {
 			resp, _ := jsonrpc.NewErrorResponse(*msg.ID, &jsonrpc.Error{Code: -32000, Message: "Authentication required"})
 			_ = conn.Send(context.Background(), resp)
+			continue
+		}
+		if !claim.take(conn, msg) {
 			continue
 		}
 		switch msg.Method {
@@ -531,6 +535,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					},
 				})
 			}
+			reportFakeTasks(conn, msg.Params)
 			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": fakeSessionID,
@@ -542,6 +547,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					},
 				})
 				sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
+				continue
+			}
+			if strings.Contains(string(msg.Params), "ask after the turn") {
+				fakeAskAfterTurn(conn, msg)
 				continue
 			}
 			if strings.Contains(string(msg.Params), "ask then block") {

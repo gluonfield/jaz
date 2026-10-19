@@ -120,6 +120,7 @@ func (m *Manager) setLiveModel(ctx context.Context, sessionID string, cfg AgentC
 	if job, err = m.acquireSessionProcess(ctx, job); err != nil {
 		return err
 	}
+	defer job.release()
 	policy := agentPolicyForAgent(job.ACPAgent)
 	if err := m.setConfigCategory(ctx, job, "model", policy.sessionConfigModel(cfg)); err != nil || policy.effortEncodedInModel(cfg.Model) {
 		return err

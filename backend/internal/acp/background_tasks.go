@@ -90,7 +90,7 @@ func (m *Manager) disconnectBackgroundTasks(job *jobState) {
 	job.mu.Lock()
 	var changed []sessionevents.AgentTask
 	for id, task := range job.backgroundTasks {
-		if (task.State == "running" || task.State == "paused") && !task.ConnectionLost {
+		if taskLive(task) {
 			task.ConnectionLost = true
 			job.backgroundTasks[id] = task
 			changed = append(changed, task)
@@ -100,6 +100,10 @@ func (m *Manager) disconnectBackgroundTasks(job *jobState) {
 	for _, task := range changed {
 		m.publishBackgroundTask(job, task)
 	}
+}
+
+func taskLive(task sessionevents.AgentTask) bool {
+	return (task.State == "running" || task.State == "paused") && !task.ConnectionLost
 }
 
 func (m *Manager) StopBackgroundTask(ctx context.Context, session, taskID string) error {
