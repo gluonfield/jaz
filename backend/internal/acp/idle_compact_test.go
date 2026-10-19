@@ -38,8 +38,8 @@ func TestAFullBotCompactsOnceWhenATurnLeavesItIdle(t *testing.T) {
 	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "draft the reply context 800/1000", Completion: acp.CompletionAsync}); err != nil {
 		t.Fatal(err)
 	}
-	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
 	// The user reads the reply while the thread compacts.
+	jaz.eventually("the compact working", func() bool { return jaz.compacts() == 1 })
 	res := httptest.NewRecorder()
 	jaz.server.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/sessions/"+bot.ID+"/seen", nil))
 	if res.Code != http.StatusOK {

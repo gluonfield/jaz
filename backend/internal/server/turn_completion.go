@@ -88,7 +88,8 @@ func (s *Server) finishTurn(job acp.Job) error {
 		s.publishSessionChanged(delivery.SessionID)
 		s.drainQueueSoon(delivery.SessionID)
 	}
-	if job.State == acp.StateIdle || job.State == acp.StateFailed {
+	// A stop that makes way for a steered prompt leaves the next turn to it.
+	if status != storage.StatusInterrupted && (job.State != acp.StateCancelled || session.PendingSteer == nil) {
 		s.drainQueueSoon(job.ID)
 	}
 	return nil
