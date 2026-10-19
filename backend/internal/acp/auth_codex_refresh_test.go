@@ -40,8 +40,8 @@ func TestCodexRefreshUsesAccountRPCOnly(t *testing.T) {
 			t.Fatal(err)
 		}
 		data, err = os.ReadFile(filepath.Join(dir, "account-read"))
-		if err != nil || string(data) != "refreshed" {
-			t.Fatalf("native account refresh was not completed: %q, %v", data, err)
+		if err != nil || string(data) != "read" {
+			t.Fatalf("native account read was not completed: %q, %v", data, err)
 		}
 		if err := os.Remove(filepath.Join(dir, "account-read")); err != nil {
 			t.Fatal(err)
@@ -84,10 +84,10 @@ func TestMain(m *testing.M) {
 			var params struct {
 				Refresh bool `json:"refreshToken"`
 			}
-			if json.Unmarshal(request.Params, &params) != nil || !params.Refresh {
+			if json.Unmarshal(request.Params, &params) != nil || params.Refresh {
 				os.Exit(4)
 			}
-			if os.WriteFile(filepath.Join(dir, "account-read"), []byte("refreshed"), 0600) != nil {
+			if os.WriteFile(filepath.Join(dir, "account-read"), []byte("read"), 0600) != nil {
 				os.Exit(5)
 			}
 		}
