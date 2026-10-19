@@ -33,6 +33,7 @@ type TranscriptPageRequest struct {
 	BeforeEventSeq   int64
 	HistoryRevision  int64
 	Turns            int
+	ChatOnly         bool
 }
 
 type TranscriptPageReader interface {
