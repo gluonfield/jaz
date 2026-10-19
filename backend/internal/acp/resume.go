@@ -159,7 +159,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 	if materializesOnPrompt {
 		persistSessionID = m.persistSessionOnPrompt(session.ID, agentName, acpSessionID)
 	}
-	ac.trackPromptSends(job, persistSessionID)
+	m.trackPromptSends(ac, job, persistSessionID)
 	process := newAgentProcess(ac)
 	process.mcpPolicy = mcpServerPolicy
 	process.mcpRevision = mcpRevision

@@ -18,13 +18,14 @@ export async function exerciseBotFaces(): Promise<void> {
   element.style.cssText = 'position:fixed;inset:0;z-index:50;background:var(--color-bg)'
   document.body.append(element)
   const root = createRoot(element)
+  let completion: string | undefined
   const show = (moods: Record<FaceID, BotMood>, shapes: Partial<Record<FaceID, Avatar['shape']>> = {}) => {
     root.render(
       <StrictMode>
         <div style={{ display: 'flex', gap: 32, padding: 48 }}>
           {FACES.map((id) => (
             <span key={id} data-test-face={id}>
-              <BotAvatar avatar={{ ...AVATAR, shape: shapes[id] ?? AVATAR.shape }} size={64} mood={moods[id]} live />
+              <BotAvatar avatar={{ ...AVATAR, shape: shapes[id] ?? AVATAR.shape }} size={64} mood={moods[id]} completion={id === 'a' ? completion : undefined} live />
             </span>
           ))}
           <span data-test-face="still">
@@ -103,6 +104,7 @@ export async function exerciseBotFaces(): Promise<void> {
       throw new Error('Bot faces: the thinking dots stand still')
     }
 
+    completion = 'finished-run'
     show({ ...moods, a: 'idle', b: 'failed' })
     await until('finishing work did not cheer', () => eyes('a').includes('q6 -10'), 800)
     await until('a failed face did not shake', () => eyes('b').includes('L') && Math.abs(offset('b').x) > 0.5, 800)

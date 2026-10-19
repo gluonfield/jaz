@@ -28,6 +28,9 @@ import (
 )
 
 func TestDesktopElectron(t *testing.T) {
+	if os.Getenv("JAZ_BROWSER_SMOKE_SUITE") == "bots-live" {
+		return
+	}
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

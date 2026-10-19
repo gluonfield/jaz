@@ -745,6 +745,7 @@ export interface Bot {
   preview?: string
   // Absent from servers that predate it.
   created_at?: string
+  completed_at?: string
   updated_at: string
   agent?: string
   model?: string

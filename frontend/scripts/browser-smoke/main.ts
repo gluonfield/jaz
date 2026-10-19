@@ -203,7 +203,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     throw new Error('Missing HTTPS fixture address')
   }
   passwordOrigin = `https://localhost:${secureAddress.port}`
-  await prepareProfileFixture(process.env.JAZ_BROWSER_SMOKE_DIR!, passwordOrigin)
+  await prepareProfileFixture(app.getPath('userData'), passwordOrigin)
   const window = new BrowserWindow({
     width: 1050,
     height: 850,

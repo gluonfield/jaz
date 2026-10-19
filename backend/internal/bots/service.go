@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/acp"
@@ -117,6 +118,7 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Shape: avatar.Shape, Color: avatar.Color, Main: input.Main}); err != nil {
 		return Bot{}, err
 	}
+	s.events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})
 	return s.Load(session.ID)
 }
 
@@ -176,6 +178,7 @@ func (s *Service) CreateGroup(name string, members []string) (Bot, error) {
 	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindGroup, Shape: avatar.Shape, Color: avatar.Color, Members: members}); err != nil {
 		return Bot{}, err
 	}
+	s.events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})
 	return s.Load(session.ID)
 }
 
@@ -242,12 +245,23 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateBot) (Bot, 
 			return Bot{}, err
 		}
 	}
+	s.events.Publish(sessionevents.Event{SessionID: id, Type: sessionevents.TypeSession})
 	return s.Load(id)
 }
 
 // Pin pins exactly ids, in that order, and unpins every other bot and group.
 func (s *Service) Pin(ids []string) error {
-	return s.store.PinBots(ids)
+	records, err := s.store.ListBots()
+	if err != nil {
+		return err
+	}
+	if err := s.store.PinBots(ids); err != nil {
+		return err
+	}
+	for _, record := range records {
+		s.events.Publish(sessionevents.Event{SessionID: record.ThreadID, Type: sessionevents.TypeSession})
+	}
+	return nil
 }
 
 // Delete archives the bot's thread, deletes the routines it owns and takes
@@ -272,6 +286,7 @@ func (s *Service) Delete(id string) error {
 		if err := s.store.SaveBot(group); err != nil {
 			return err
 		}
+		s.events.Publish(sessionevents.Event{SessionID: group.ThreadID, Type: sessionevents.TypeSession})
 	}
 	routines, err := s.routines.List()
 	if err != nil {
@@ -297,7 +312,11 @@ func (s *Service) Delete(id string) error {
 			return err
 		}
 	}
-	return s.store.SetArchived(id, true)
+	if err := s.store.SetArchived(id, true); err != nil {
+		return err
+	}
+	s.events.Publish(sessionevents.Event{SessionID: id, Type: sessionevents.TypeSession})
+	return nil
 }
 
 // threadsOf is a bot's own thread followed by the threads it takes its group
@@ -403,22 +422,23 @@ func isBot(store PromptStore, id string) bool {
 // for the user.
 func (s *Service) view(record storage.BotRecord, session storage.Session, held map[string]bool) Bot {
 	bot := Bot{
-		ID:        session.ID,
-		Kind:      record.Kind,
-		Name:      session.Title,
-		Prompt:    record.Prompt,
-		Avatar:    Avatar{Shape: record.Shape, Color: record.Color},
-		Pinned:    record.Pinned,
-		Main:      record.Main,
-		Unread:    session.Unread,
-		Status:    session.Status,
-		CreatedAt: session.CreatedAt,
-		UpdatedAt: session.UpdatedAt,
-		Members:   record.Members,
-		Preview:   s.preview(session.ID, record.Kind == KindGroup),
+		ID:          session.ID,
+		Kind:        record.Kind,
+		Name:        session.Title,
+		Prompt:      record.Prompt,
+		Avatar:      Avatar{Shape: record.Shape, Color: record.Color},
+		Pinned:      record.Pinned,
+		Main:        record.Main,
+		Unread:      session.Unread,
+		Status:      session.Status,
+		CreatedAt:   session.CreatedAt,
+		CompletedAt: session.CompletedAt,
+		UpdatedAt:   session.UpdatedAt,
+		Members:     record.Members,
+		Preview:     s.preview(session.ID, record.Kind == KindGroup),
 	}
 	if record.Kind == KindGroup {
-		bot.Working = s.working(record)
+		bot.Working, bot.CompletedAt = s.groupState(record)
 		return bot
 	}
 	bot.Waiting = s.threads.AwaitsAnswer(session.ID)
@@ -434,19 +454,23 @@ func (s *Service) view(record storage.BotRecord, session storage.Session, held m
 	return bot
 }
 
-// working lists the group's members taking a turn in it.
-func (s *Service) working(group storage.BotRecord) []string {
-	var working []string
+// groupState follows the turns its members take in this group.
+func (s *Service) groupState(group storage.BotRecord) (working []string, completed time.Time) {
 	for _, member := range group.Members {
 		membership, err := s.store.LoadMembership(group.ThreadID, member)
 		if err != nil {
 			continue
 		}
-		if thread, err := s.store.LoadSession(membership.ThreadID); err == nil && thread.Turn != nil {
-			working = append(working, member)
+		if thread, err := s.store.LoadSession(membership.ThreadID); err == nil {
+			if thread.Turn != nil {
+				working = append(working, member)
+			}
+			if thread.CompletedAt.After(completed) {
+				completed = thread.CompletedAt
+			}
 		}
 	}
-	return working
+	return working, completed
 }
 
 // preview is the newest chat message in a bot's or group's thread; a group's

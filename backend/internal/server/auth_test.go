@@ -50,14 +50,16 @@ func TestAuthMiddlewareAcceptsBearerKey(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareAcceptsQueryKeyForSessionEvents(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/events?key=secret", nil)
-	res := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})).ServeHTTP(res, req)
-	if res.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+func TestAuthMiddlewareAcceptsQueryKeyForEventStreams(t *testing.T) {
+	for _, path := range []string{"/v1/sessions/session-id/events", "/v1/bots/events"} {
+		req := httptest.NewRequest(http.MethodGet, path+"?key=secret", nil)
+		res := httptest.NewRecorder()
+		(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		})).ServeHTTP(res, req)
+		if res.Code != http.StatusNoContent {
+			t.Fatalf("%s: status = %d, body = %s", path, res.Code, res.Body.String())
+		}
 	}
 }
 

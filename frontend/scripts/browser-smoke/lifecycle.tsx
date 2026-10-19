@@ -151,9 +151,9 @@ nodeRepl.write(retained)`)
         return false
       }
       try {
-        return await evaluate(webview('extra-tab'), 'document.readyState === "complete"') === true
+        return await evaluate(webview('extra-tab'), 'location.search === "?extra" && document.readyState === "complete"') === true
       } catch (error) {
-        if (!isPreviewWebviewPending(error)) {
+        if (!isPreviewWebviewPending(error) && !String(error).includes('Cannot find default execution context')) {
           throw error
         }
         return false

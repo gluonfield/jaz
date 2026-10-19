@@ -82,7 +82,7 @@ export function pinOrder(bots: Bot[]): string[] {
 // bot shows where it would land, and the dragged bot is also left hidden where
 // it started once its preview moves to the other section, because the element
 // a drag starts from must stay mounted for it to end.
-export function dragSections(bots: Bot[], pins: string[], drag?: { id: string; pins: string[] }) {
+export function dragSections<T extends Bot>(bots: T[], pins: string[], drag?: { id: string; pins: string[] }) {
   const shown = drag?.pins ?? pins
   const tiles = shown.flatMap((id) => bots.find((bot) => bot.id === id) ?? []).map((bot) => ({ bot, hidden: false }))
   const rows = bots

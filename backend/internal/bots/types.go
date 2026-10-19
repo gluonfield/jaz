@@ -38,6 +38,7 @@ type Bot struct {
 	Unread          bool      `json:"unread"`
 	Status          string    `json:"status"`
 	Preview         string    `json:"preview,omitempty"`
+	CompletedAt     time.Time `json:"completed_at,omitzero"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	Agent           string    `json:"agent,omitempty"`
