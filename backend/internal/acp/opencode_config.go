@@ -1,14 +1,13 @@
 package acp
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/wins/jaz/backend/internal/promptmodule"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 )
 
@@ -44,16 +43,34 @@ type openCodeReasoningConfig struct {
 	Effort string `json:"effort,omitempty"`
 }
 
-func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]string, agent AgentConfig, keyEnv, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) error {
+func (m *Manager) configureOpenCode(env map[string]string, agent AgentConfig, prompt string) (cleanup func(), err error) {
+	cleanup = func() {}
 	if strings.TrimSpace(env["OPENCODE_CONFIG_CONTENT"]) != "" {
-		return nil
+		return cleanup, nil
 	}
+	defer func() {
+		if err != nil {
+			cleanup()
+		}
+	}()
 	content := openCodeConfigContent{Permission: "allow"}
-	if instruction, err := m.prepareOpenCodeInstructionFile(ctx, env, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions); err != nil {
-		return err
-	} else if instruction != "" {
-		content.Instructions = []string{instruction}
+	if prompt != "" {
+		file, err := os.CreateTemp(env["OPENCODE_CONFIG_DIR"], "jaz-instructions-*.md")
+		if err != nil {
+			return cleanup, fmt.Errorf("create opencode instructions: %w", err)
+		}
+		cleanup = func() {
+			_ = os.Remove(file.Name())
+		}
+		_, writeErr := file.WriteString(prompt + "\n")
+		if err := errors.Join(writeErr, file.Close()); err != nil {
+			return cleanup, fmt.Errorf("write opencode instructions: %w", err)
+		}
+		content.Instructions = []string{file.Name()}
 	}
+	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
+	auth := resolveAgentAuthWithProviders(AgentOpenCode, agent, root, env, m.providers())
+	keyEnv, _, _ := auth.APIKeyBinding()
 	model := agent.ProviderQualifiedModel()
 	if providerConfig, ok := m.openCodeProviderConfig(model); ok {
 		providerID := modelprovider.OpenCodeProviderIDFromModel(model)
@@ -79,25 +96,10 @@ func (m *Manager) prepareOpenCodeConfig(ctx context.Context, env map[string]stri
 	addOpenCodeReasoningVariant(&content, model, agent.ReasoningEffort)
 	data, err := json.Marshal(content)
 	if err != nil {
-		return err
+		return cleanup, err
 	}
 	env["OPENCODE_CONFIG_CONTENT"] = string(data)
-	return nil
-}
-
-func (m *Manager) prepareOpenCodeInstructionFile(ctx context.Context, env map[string]string, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (string, error) {
-	prompt, err := m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
-	if err != nil {
-		return "", fmt.Errorf("build opencode instructions: %w", err)
-	}
-	if prompt == "" {
-		return "", nil
-	}
-	path := filepath.Join(env["OPENCODE_CONFIG_DIR"], "jaz-instructions.md")
-	if err := os.WriteFile(path, []byte(prompt+"\n"), 0o600); err != nil {
-		return "", fmt.Errorf("write opencode instructions %s: %w", path, err)
-	}
-	return path, nil
+	return cleanup, nil
 }
 
 func (m *Manager) openCodeProviderConfig(model string) (openCodeProviderConfig, bool) {

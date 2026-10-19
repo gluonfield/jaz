@@ -19,7 +19,6 @@ import (
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
 	"github.com/wins/jaz/backend/internal/processenv"
-	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/skills"
 )
 
@@ -135,6 +134,8 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		}
 	case AgentMuse:
 		cleanup, err = configureMusePrompt(env, systemPrompt)
+	case AgentOpenCode:
+		cleanup, err = m.configureOpenCode(env, cfg, systemPrompt)
 	}
 	if err != nil {
 		return nil, nil, err
@@ -262,33 +263,21 @@ func pathHasDir(pathList, dir string) bool {
 }
 
 func (m *Manager) processEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(context.Background(), name, agent, "", "", "", nil, true)
+	env, _ := m.buildProcessEnv(name, agent, true)
 	return env
 }
 
 func (m *Manager) processEnvPrepared(name string, agent AgentConfig) (map[string]string, error) {
-	return m.processEnvPreparedForSurface(context.Background(), name, agent, "", "", nil)
-}
-
-func (m *Manager) processEnvPreparedForSurface(ctx context.Context, name string, agent AgentConfig, cwd, artifactSurface string, systemPromptExtensions promptmodule.Modules) (map[string]string, error) {
-	return m.processEnvPreparedForSurfacePolicy(ctx, name, agent, cwd, artifactSurface, "", systemPromptExtensions)
-}
-
-func (m *Manager) processEnvPreparedForSurfacePolicy(ctx context.Context, name string, agent AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (map[string]string, error) {
-	return m.buildProcessEnv(ctx, name, agent, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions, true)
+	return m.buildProcessEnv(name, agent, true)
 }
 
 func (m *Manager) probeEnv(name string, agent AgentConfig) map[string]string {
-	env, _ := m.buildProcessEnv(context.Background(), name, agent, "", "", "", nil, false)
+	env, _ := m.buildProcessEnv(name, agent, false)
 	return env
 }
 
-func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules, prepare bool) (map[string]string, error) {
+func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) (map[string]string, error) {
 	name = CanonicalAgentName(name)
-	cwd = strings.TrimSpace(cwd)
-	if cwd == "" {
-		cwd = strings.TrimSpace(agent.Cwd)
-	}
 	env := processenv.Base()
 	var prepareErr error
 	for key, value := range m.cfg.Env {
@@ -421,10 +410,6 @@ func (m *Manager) buildProcessEnv(ctx context.Context, name string, agent AgentC
 		if prepare {
 			if err := os.MkdirAll(env["OPENCODE_CONFIG_DIR"], 0o700); err != nil {
 				prepareErr = firstError(prepareErr, fmt.Errorf("prepare opencode profile %s: %w", env["OPENCODE_CONFIG_DIR"], err))
-			}
-			keyEnv, _, _ := auth.APIKeyBinding()
-			if err := m.prepareOpenCodeConfig(ctx, env, agent, keyEnv, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions); err != nil {
-				prepareErr = firstError(prepareErr, err)
 			}
 		}
 	}

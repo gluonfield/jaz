@@ -39,7 +39,7 @@ func TestLiveACPProbe(t *testing.T) {
 	}
 	cfg := probeAgentConfig(t, agent)
 	manager := NewManager(nil, Config{Root: root, Workspace: cwd}, log.New(io.Discard))
-	env, err := manager.processEnvPreparedForSurface(ctx, agent, cfg, cwd, "", nil)
+	env, err := manager.processEnvPrepared(agent, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +47,13 @@ func TestLiveACPProbe(t *testing.T) {
 		env["HOME"] = home
 	}
 	applyProbeEnvOverrides(env)
+	if CanonicalAgentName(agent) == AgentOpenCode {
+		cleanup, err := manager.configureOpenCode(env, cfg, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer cleanup()
+	}
 	conn, cleanup := probeOpenConn(t, ctx, agent, cfg, env, cwd)
 	defer cleanup()
 
