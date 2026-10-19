@@ -15,6 +15,11 @@ SET turn = json_set(turn,
     '$.notify_parent', json(CASE WHEN CAST(sqlc.arg(notify_parent) AS INTEGER) THEN 'true' ELSE 'false' END))
 WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
+-- name: SetTurnRetries :execrows
+UPDATE threads
+SET turn = json_set(turn, '$.retries', CAST(sqlc.arg(retries) AS INTEGER))
+WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
+
 -- name: AppendTurnReply :execrows
 UPDATE threads
 SET turn = json_set(turn,

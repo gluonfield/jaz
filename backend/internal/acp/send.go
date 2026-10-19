@@ -55,6 +55,7 @@ type sendOptions struct {
 	allowSilence          bool
 	output                *storage.TurnOutput
 	parentOutput          *storage.TurnOutput
+	retries               int
 }
 
 type InternalTurnRequest struct {
@@ -202,7 +203,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: opts.output, ParentOutput: parentOutput,
-		PromptDigest: promptDigest,
+		PromptDigest: promptDigest, Retries: opts.retries,
 	}); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}
@@ -216,7 +217,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		}
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
-	done := job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation, opts.allowSilence)
+	done := job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation, opts.allowSilence, opts.retries)
 	m.touchAttention(parentSessionIDs(job.eventView())...)
 	markGoalRequested(job, req.GoalRequested)
 	if err := m.publishACP(job.eventView()); err != nil {
@@ -297,7 +298,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext) (chan struct{}, error) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
-	if job.turn == nil || job.turn.promptCalls == 0 || (job.State != StateRunning && job.State != StateStarting) {
+	if job.turn == nil || job.turn.promptCalls == 0 || job.turn.retrying || (job.State != StateRunning && job.State != StateStarting) {
 		return nil, errTurnEnded
 	}
 	if job.steerMethod == steerUnsupported {
@@ -356,8 +357,9 @@ func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done ch
 		return
 	}
 	var response struct {
-		Outcome    string `json:"outcome"`
-		StopReason string `json:"stopReason"`
+		Outcome    string             `json:"outcome"`
+		StopReason string             `json:"stopReason"`
+		Meta       sessionFailureMeta `json:"_meta"`
 	}
 	if err := json.Unmarshal(raw, &response); err != nil {
 		m.failPromptCall(done, job, err)
@@ -367,7 +369,9 @@ func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done ch
 		m.failPromptCall(done, job, fmt.Errorf("invalid native ACP steering response"))
 		return
 	}
-	m.completePromptCall(done, job, response.StopReason)
+	if delay, retry := m.completePromptCall(done, job, response.StopReason, response.Meta.terminal()); retry {
+		m.retryPrompt(ctx, job, done, delay)
+	}
 }
 
 func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, method steerMethod, prompt acpschema.PromptRequest) {

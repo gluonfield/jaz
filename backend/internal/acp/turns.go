@@ -52,17 +52,55 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 		return
 	}
 	var resp struct {
-		StopReason string `json:"stopReason"`
+		StopReason string             `json:"stopReason"`
+		Meta       sessionFailureMeta `json:"_meta"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		m.failPromptCall(done, job, err)
 		return
 	}
 	m.recordRawUsage(job, raw)
-	m.completePromptCall(done, job, resp.StopReason)
+	if delay, retry := m.completePromptCall(done, job, resp.StopReason, resp.Meta.terminal()); retry {
+		m.retryPrompt(ctx, job, done, delay)
+	}
 }
 
-func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string) {
+// retryPrompt continues a turn a provider failure ended once delay passes,
+// unless the turn is stopped first. The continuation asks the agent to go on
+// rather than resending the prompt, whose work may already be done.
+func (m *Manager) retryPrompt(ctx context.Context, job *jobState, done chan struct{}, delay time.Duration) {
+	wait, cancel := context.WithTimeout(context.Background(), delay)
+	defer cancel()
+	if job.setTurnCancel(done, cancel) {
+		<-wait.Done()
+	}
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done {
+		job.mu.Unlock()
+		return
+	}
+	turn.cancel = nil
+	turn.retrying = false
+	stopped := turn.cancelRequested
+	job.Error = ""
+	job.mu.Unlock()
+	if stopped {
+		m.completePromptCall(done, job, StopReasonCancelled, nil)
+		return
+	}
+	req, err := m.promptRequest(job, interruptedTurnContinuation, nil)
+	if err != nil {
+		m.failPromptCall(done, job, err)
+		return
+	}
+	m.runPromptCall(ctx, job, done, req)
+}
+
+// completePromptCall records how a prompt call ended. A failure the agent
+// offers to retry keeps the turn running for another prompt call and reports
+// how long to wait before it.
+func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string, failure *sessionFailure) (time.Duration, bool) {
 	cancelReason, cancelRequested := job.cancelReason()
 	state := StateIdle
 	errMessage := ""
@@ -76,7 +114,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	turn := job.turn
 	if turn == nil || turn.done != done || turn.promptCalls == 0 {
 		job.mu.Unlock()
-		return
+		return 0, false
 	}
 	turn.promptCalls--
 	remaining := turn.promptCalls
@@ -89,10 +127,30 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 			close(handoff)
 		}
 		m.log.Info("acp prompt handed off", "session", job.ID, "remaining_prompt_calls", remaining)
-		return
+		return 0, false
 	}
 	turn.promptCalls = 0
-	if state == StateIdle && stopReason == StopReasonEndTurn && job.ActiveOperation != ActiveOperationCompact && !turn.allowSilence && !hasVisibleTurnResult(job) {
+	switch {
+	case state != StateIdle:
+	case failure != nil:
+		if delay, ok := turn.retryDelay(*failure); ok && job.ActiveOperation == "" {
+			turn.retries++
+			turn.retrying = true
+			turn.promptCalls = 1
+			retries := turn.retries
+			job.Error = retryNotice(*failure, delay, retries)
+			job.UpdatedAt = time.Now().UTC()
+			job.mu.Unlock()
+			m.log.Warn("acp turn failed; retrying", "session", job.ID, "failure", failure.Title, "retry", retries, "delay", delay)
+			if err := m.store.SetTurnRetries(job.ID, retries); err != nil {
+				m.log.Error("record turn retry", "session", job.ID, "error", err)
+			}
+			m.publishACPStatus(job.eventView())
+			return delay, true
+		}
+		state = StateFailed
+		errMessage = failure.message()
+	case stopReason == StopReasonEndTurn && job.ActiveOperation != ActiveOperationCompact && !turn.allowSilence && !hasVisibleTurnResult(job):
 		state = StateFailed
 		errMessage = "Agent ended the turn without producing a message, plan, or tool activity."
 	}
@@ -105,6 +163,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	m.publishACPStatus(job.eventView())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
+	return 0, false
 }
 
 func hasVisibleTurnResult(job *jobState) bool {
@@ -121,7 +180,7 @@ func (m *Manager) failPromptCall(done chan struct{}, job *jobState, err error) {
 	if shouldCompleteClosedGrokPrompt(job, turn, err) {
 		stopReason := turn.grokStopReason
 		job.mu.Unlock()
-		m.completePromptCall(done, job, stopReason)
+		m.completePromptCall(done, job, stopReason, nil)
 		return
 	}
 	turn.promptCalls = 0

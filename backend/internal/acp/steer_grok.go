@@ -82,7 +82,7 @@ func (m *Manager) runGrokInterject(ctx context.Context, job *jobState, done chan
 		m.failPromptCall(done, job, ctx.Err())
 		return
 	}
-	m.completePromptCall(done, job, reason)
+	m.completePromptCall(done, job, reason, nil)
 }
 
 func (m *Manager) grokInterjectionEvent(req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {

@@ -142,6 +142,11 @@ type activeTurn struct {
 	grokInterjections     map[string]*grokInterjection
 	grokStopReason        string
 	cancel                context.CancelFunc
+	// retries counts the continuations sent after provider failures; while
+	// retrying, the turn waits to send the next one.
+	retries         int
+	retrying        bool
+	providerRetried map[string]string
 }
 
 type ModeState struct {
@@ -318,10 +323,10 @@ func (j *jobState) setState(state, stopReason, errMsg string) {
 }
 
 func (j *jobState) startTurn(completion CompletionMode, planRequested, parentVisible bool) chan struct{} {
-	return j.startTurnWithOperation(completion, planRequested, parentVisible, "", false)
+	return j.startTurnWithOperation(completion, planRequested, parentVisible, "", false, 0)
 }
 
-func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequested, parentVisible bool, activeOperation string, allowSilence bool) chan struct{} {
+func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequested, parentVisible bool, activeOperation string, allowSilence bool, retries int) chan struct{} {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	now := time.Now().UTC()
@@ -352,6 +357,7 @@ func (j *jobState) startTurnWithOperation(completion CompletionMode, planRequest
 		firstPromptSent: make(chan struct{}),
 		promptCalls:     1,
 		allowSilence:    allowSilence,
+		retries:         retries,
 	}
 	j.ParentVisible = parentVisible
 	j.toolByID = make(map[string]sessionevents.ACPToolCall)

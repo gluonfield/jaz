@@ -406,9 +406,9 @@ func (s *Service) Begin(runID, threadID string) (Loop, string, error) {
 }
 
 // Closed reports whether a run has ended.
-func (s *Service) Closed(runID string) (bool, error) {
+func (s *Service) Closed(runID string) (Run, bool, error) {
 	run, err := s.Repo.LoadRun(runID)
-	return err == nil && !active(run), err
+	return run, err == nil && !active(run), err
 }
 
 // Finish closes a run that is still open, recording whether it delivered its

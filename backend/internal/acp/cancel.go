@@ -27,7 +27,9 @@ func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
 		}); err != nil {
 			m.log.Warn("acp cancel notify failed", "session", job.ID, "error", err)
 		}
-	} else if cancel := job.turnCancel(); cancel != nil {
+	}
+	// A local agent's turn, or a turn waiting to retry a failed prompt.
+	if cancel := job.turnCancel(); cancel != nil {
 		cancel()
 	}
 	if !running || done == nil {

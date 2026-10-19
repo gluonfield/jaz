@@ -170,6 +170,25 @@ func (q *Queries) SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (i
 	return result.RowsAffected()
 }
 
+const setTurnRetries = `-- name: SetTurnRetries :execrows
+UPDATE threads
+SET turn = json_set(turn, '$.retries', CAST(?1 AS INTEGER))
+WHERE id = ?2 AND status = 'running' AND turn <> ''
+`
+
+type SetTurnRetriesParams struct {
+	Retries int64  `json:"retries"`
+	ID      string `json:"id"`
+}
+
+func (q *Queries) SetTurnRetries(ctx context.Context, arg SetTurnRetriesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setTurnRetries, arg.Retries, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const startSessionTurn = `-- name: StartSessionTurn :exec
 UPDATE threads
 SET status = 'running',
