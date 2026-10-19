@@ -22,10 +22,14 @@ SELECT turn FROM threads WHERE id = sqlc.arg(id) AND status = 'running' AND turn
 -- name: SetRunningTurn :exec
 UPDATE threads SET turn = sqlc.arg(turn) WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
--- name: MarkTurnPromptSent :execrows
+-- name: SetTurnPromptState :execrows
 UPDATE threads
-SET turn = json_remove(turn, '$.prompt'), acp_session_id = sqlc.narg(agent_session_id)
-WHERE id = sqlc.arg(id) AND turn <> ''
+SET turn = CASE WHEN json_extract(turn, '$.prompt.state') = 'confirmed' THEN turn
+      ELSE json_set(turn, '$.prompt.state', CAST(sqlc.arg(state) AS TEXT)) END,
+    acp_session_id = sqlc.narg(agent_session_id)
+WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> ''
+  AND json_type(turn, '$.prompt') = 'object'
+  AND json_extract(turn, '$.started_at') = sqlc.arg(started_at)
   AND (acp_session_id IS NULL OR acp_session_id = '' OR acp_session_id = sqlc.narg(agent_session_id));
 
 -- name: SetTurnIntent :execrows

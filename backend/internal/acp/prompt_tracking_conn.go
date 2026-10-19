@@ -16,7 +16,7 @@ type promptTrackingConn struct {
 
 	sendMu     sync.Mutex
 	cbMu       sync.RWMutex
-	onSending  func(id string)
+	onSending  func(id string) error
 	onSent     func()
 	onAnswered func(id string)
 	// lastTraffic is when a message last crossed the connection either way,
@@ -33,7 +33,7 @@ func newPromptTrackingConn(conn jsonrpc.MessageConn) *promptTrackingConn {
 // trackPrompts calls onSending with the id of each turn's session/prompt
 // request before it goes out and onSent once it went out, and onAnswered with
 // the id of each response as the connection reads it, before it reads on.
-func (c *promptTrackingConn) trackPrompts(onSending func(id string), onSent func(), onAnswered func(id string)) {
+func (c *promptTrackingConn) trackPrompts(onSending func(id string) error, onSent func(), onAnswered func(id string)) {
 	c.cbMu.Lock()
 	defer c.cbMu.Unlock()
 	c.onSending, c.onSent, c.onAnswered = onSending, onSent, onAnswered
@@ -46,7 +46,9 @@ func (c *promptTrackingConn) Send(ctx context.Context, msg *jsonrpc.Message) err
 	onSending, onSent := c.onSending, c.onSent
 	c.cbMu.RUnlock()
 	if id != "" && onSending != nil {
-		onSending(id)
+		if err := onSending(id); err != nil {
+			return err
+		}
 	}
 	c.sendMu.Lock()
 	err := c.MessageConn.Send(ctx, msg)

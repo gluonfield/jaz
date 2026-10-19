@@ -103,7 +103,7 @@ func (m *Manager) startAgentRun(job *jobState, report json.RawMessage) {
 		completion = CompletionAsync
 	}
 	turn := job.beginTurnLocked(completion, owed)
-	turn.agentRun, turn.unsent = true, 0
+	turn.agentRun, turn.promptObserved, turn.unsent = true, true, 0
 	turn.closeFirstPromptSent()
 	job.mu.Unlock()
 	m.log.Info("acp agent turn started", "session", job.ID, "agent", job.ACPAgent, "notify_parent", owed.NotifyParent)

@@ -24,7 +24,7 @@ func (p *jazProcess) promptIndex(text string) int {
 // though Jaz restarts while the message's turn works.
 func TestWorkQueuedBehindAStoppedTurnRunsOnceAcrossARestart(t *testing.T) {
 	store, root := newTestStore(t)
-	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{"JAZ_FAKE_ACP_UNIQUE_SESSION": "1"})
 	bot := jaz.newBot("Gimli")
 	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "plan the trip, block until cancelled", Completion: acp.CompletionAsync}); err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestWorkQueuedBehindAStoppedTurnRunsOnceAcrossARestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := acp.NewMCPTools(jaz.manager).Create(jaz.ctx, callAs(bot.ID), acp.MCPCreateInput{Slug: "hotel", Prompt: "Book the hotel", Commitment: id}); err != nil {
+	if _, _, err := acp.NewMCPTools(jaz.manager).Create(jaz.ctx, callAs(bot.ID), acp.MCPCreateInput{Slug: "hotel", Prompt: "Book the hotel", Directory: t.TempDir(), Commitment: id}); err != nil {
 		t.Fatal(err)
 	}
 	jaz.eventually("the thread's result queued for the bot", func() bool { return len(jaz.queued(bot.ID)) == 1 })
@@ -42,7 +42,8 @@ func TestWorkQueuedBehindAStoppedTurnRunsOnceAcrossARestart(t *testing.T) {
 
 	jaz.cancel(bot.ID)
 	jaz.eventually("the user's message working", func() bool { return jaz.promptsContaining("and the flights") == 1 })
-	jaz = jaz.restart(nil)
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
+	jaz = jaz.restart(map[string]string{"JAZ_FAKE_ACP_UNIQUE_SESSION": "1"})
 	// The bot reports nothing to the user, so the watchdog wakes it once.
 	jaz.settles(bot.ID, 1, 1)
 	messages, resumed, results := jaz.promptsContaining("and the flights"), jaz.promptsContaining(continuation), jaz.promptsContaining("completed with state")

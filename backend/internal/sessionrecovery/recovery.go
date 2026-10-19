@@ -2,6 +2,7 @@ package sessionrecovery
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,7 +16,7 @@ type Runtime interface {
 	ResumeInterruptedTurn(context.Context, string) error
 	// FailInterruptedTurn ends a chat's interrupted turn that cannot resume
 	// as a turn that failed while it ran ends.
-	FailInterruptedTurn(ctx context.Context, id, message string) error
+	FailInterruptedTurn(ctx context.Context, id string, cause error) error
 }
 
 // retryDelays are the waits before each further try at the chats whose resume
@@ -68,7 +69,7 @@ func Resume(ctx context.Context, store storage.SessionStore, runtime Runtime, lo
 				if ctx.Err() != nil {
 					break
 				}
-				if err := runtime.FailInterruptedTurn(ctx, id, fmt.Sprintf("Could not resume chat after restart: %v", err)); err != nil {
+				if err := runtime.FailInterruptedTurn(ctx, id, fmt.Errorf("Could not resume chat after restart: %w", err)); err != nil {
 					logger.Error("end a chat that cannot resume", "session", id, "error", err)
 				}
 			}
@@ -92,7 +93,7 @@ func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, id
 	startCtx, cancel := context.WithTimeout(ctx, resumeTimeout)
 	defer cancel()
 	err = runtime.ResumeInterruptedTurn(startCtx, session.ID)
-	return err != nil && !last && startCtx.Err() == nil, err
+	return err != nil && !errors.Is(err, storage.ErrPromptUnconfirmed) && !last && startCtx.Err() == nil, err
 }
 
 // resumable reports whether chats with this source resume after a restart:

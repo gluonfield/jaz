@@ -27,7 +27,7 @@ func (s missingTranscriptStore) AppendSessionEvents(string, ...sessionevents.Eve
 
 func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude} {
-		for _, kind := range []string{"chat", "plan", "goal", "steered_goal", "compact"} {
+		for _, kind := range []string{"chat", "plan", "goal", "steered_goal", "native_steer", "compact"} {
 			t.Run(agent+"/"+kind, func(t *testing.T) {
 				store, err := sqlitestore.New(t.TempDir())
 				if err != nil {
@@ -39,12 +39,22 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 				if agent == acp.AgentCodex {
 					planConfig = "1"
 				}
-				first := newFakeNamedAgentManagerWithOptions(t, missingTranscriptStore{Store: store}, root, agent, map[string]string{
+				env := map[string]string{
 					"JAZ_FAKE_ACP_BLOCK_PROMPT":    "1",
 					"JAZ_FAKE_ACP_PROMPT_QUEUEING": "1",
 					"JAZ_FAKE_ACP_PLAN_CONFIG":     planConfig,
 					"JAZ_FAKE_ACP_SET_CONFIG":      "1",
-				}, "", "")
+				}
+				if kind == "native_steer" {
+					env["JAZ_FAKE_ACP_PROMPT_QUEUEING"] = "0"
+					env["JAZ_FAKE_ACP_NATIVE_STEERING"] = "1"
+					env["JAZ_FAKE_ACP_NATIVE_STEER_HOLD"] = filepath.Join(root, "steer-hold")
+					env["JAZ_FAKE_ACP_REQUEST_LOG"] = filepath.Join(root, "native-requests.jsonl")
+					if err := os.WriteFile(env["JAZ_FAKE_ACP_NATIVE_STEER_HOLD"], nil, 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				first := newFakeNamedAgentManagerWithOptions(t, missingTranscriptStore{Store: store}, root, agent, env, "", "")
 				t.Cleanup(first.Close)
 				ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 				defer cancel()
@@ -77,9 +87,22 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 					case <-time.After(10 * time.Millisecond):
 					}
 				}
-				if kind == "steered_goal" {
-					if _, err := first.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "work to resume", GoalRequested: true}); err != nil {
+				if kind == "steered_goal" || kind == "native_steer" {
+					if _, err := first.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "work to resume", GoalRequested: kind == "steered_goal"}); err != nil {
 						t.Fatal(err)
+					}
+				}
+				if kind == "native_steer" {
+					for {
+						requests, _ := os.ReadFile(env["JAZ_FAKE_ACP_REQUEST_LOG"])
+						if strings.Contains(string(requests), `"method":"_session/steering"`) {
+							break
+						}
+						select {
+						case <-ctx.Done():
+							t.Fatal("native steer never reached the agent")
+						case <-time.After(time.Millisecond):
+						}
 					}
 				}
 				first.Close()
@@ -153,7 +176,7 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 				wantUsers := 1
 				if kind == "compact" {
 					wantUsers = 0
-				} else if kind == "steered_goal" {
+				} else if kind == "steered_goal" || kind == "native_steer" {
 					wantUsers = 2
 				}
 				if userCount != wantUsers {
@@ -195,5 +218,32 @@ func TestRecoveryDoesNotReplaceMissingProviderSession(t *testing.T) {
 				t.Fatalf("recovery created or prompted a replacement: %s", requests)
 			}
 		})
+	}
+}
+
+func TestRestartContinuesATurnReservedBeforeACPPreparedItsPrompt(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "reserved", Directory: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sendAndWait(t, jaz.ctx, jaz.manager, thread.ID, "hello")
+	jaz.idle(thread.ID)
+	jaz.manager.Close()
+	claimed, err := store.ClaimTurn(thread.ID, storage.Turn{})
+	if err != nil || !claimed {
+		t.Fatalf("could not reserve HTTP turn: %t, %v", claimed, err)
+	}
+	if err := store.UpdateSessionStatus(thread.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	jaz = jaz.restart(nil)
+	jaz.idle(thread.ID)
+	if got := jaz.promptsContaining(continuation); got != 1 {
+		t.Fatalf("reserved turn continued %d times, want once", got)
+	}
+	if thread := jaz.session(thread.ID); thread.Turn != nil || thread.Error != "" {
+		t.Fatalf("reserved turn did not recover: %+v", thread)
 	}
 }

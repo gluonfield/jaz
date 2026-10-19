@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -172,12 +173,15 @@ func (s *Server) ResumeQueuedTurns() error {
 
 // FailInterruptedTurn ends an interrupted turn that cannot resume as failed,
 // so the thread or bot waiting on it hears, as when a running turn fails.
-func (s *Server) FailInterruptedTurn(_ context.Context, id, message string) error {
+func (s *Server) FailInterruptedTurn(_ context.Context, id string, cause error) error {
 	session, err := s.Store.LoadSession(id)
 	if err != nil {
 		return err
 	}
-	job := acp.Job{ID: id, Slug: session.Slug, State: acp.StateFailed, Error: message}
+	job := acp.Job{ID: id, Slug: session.Slug, State: acp.StateFailed, Error: cause.Error()}
+	if errors.Is(cause, storage.ErrPromptUnconfirmed) {
+		job.State, job.Error = acp.StateInterrupted, storage.ErrPromptUnconfirmed.Error()
+	}
 	if session.RuntimeRef != nil {
 		job.ACPAgent = session.RuntimeRef.Agent
 	}

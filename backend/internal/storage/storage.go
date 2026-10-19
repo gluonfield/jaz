@@ -12,6 +12,8 @@ import (
 
 var ErrSessionNotFound = errors.New("session not found")
 
+var ErrPromptUnconfirmed = errors.New("Jaz restarted before the agent confirmed it had this task")
+
 // ErrThreadRunning reports a turn claim lost to a turn that already holds the
 // thread, such as one its agent began on its own.
 var ErrThreadRunning = errors.New("a turn holds the thread")
@@ -63,7 +65,7 @@ func SessionStatusForACPState(state, stopReason string) string {
 		return StatusRunning
 	case "idle", "cancelled":
 		return StatusIdle
-	case "failed":
+	case "failed", "interrupted":
 		return StatusError
 	default:
 		return ""
@@ -190,7 +192,7 @@ type Turn struct {
 	AllowSilence    bool           `json:"allow_silence,omitempty"`
 	Output          *TurnOutput    `json:"output,omitempty"`
 	PendingMessage  *QueuedMessage `json:"pending_message,omitempty"`
-	// Prompt is the prepared input awaiting transport delivery, separate from
+	// Prompt records prepared input and its delivery state, separate from
 	// the user-facing transcript and the queue claim that preceded it.
 	Prompt *TurnPrompt `json:"prompt,omitempty"`
 	// ParentOutput is the output of the parent turn this one's result opens:
@@ -258,7 +260,16 @@ func (r Recipient) same(other Recipient) bool {
 	return r.Parent == other.Parent && r.ReplyTo == other.ReplyTo
 }
 
+// An empty prompt state means its input has never been handed to a transport.
+type PromptState string
+
+const (
+	PromptSending   PromptState = "sending"
+	PromptConfirmed PromptState = "confirmed"
+)
+
 type TurnPrompt struct {
+	State       PromptState  `json:"state,omitempty"`
 	Message     string       `json:"message"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 }

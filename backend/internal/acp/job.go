@@ -137,6 +137,8 @@ type jobState struct {
 }
 
 type activeTurn struct {
+	promptSending         bool
+	promptObserved        bool
 	done                  chan struct{}
 	completion            CompletionMode
 	planRequested         bool
@@ -354,6 +356,9 @@ func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Tur
 
 func (j *jobState) beginTurnLocked(completion CompletionMode, stored storage.Turn) *activeTurn {
 	now := time.Now().UTC()
+	if stored.StartedAt.IsZero() {
+		stored.StartedAt = now
+	}
 	j.State = StateRunning
 	j.Assistant = ""
 	j.Thought = ""
@@ -378,7 +383,7 @@ func (j *jobState) beginTurnLocked(completion CompletionMode, stored storage.Tur
 		done:            make(chan struct{}),
 		completion:      completion,
 		planRequested:   stored.PlanRequested,
-		startedAt:       now,
+		startedAt:       stored.StartedAt,
 		firstPromptSent: make(chan struct{}),
 		promptCalls:     1,
 		allowSilence:    stored.AllowSilence,
@@ -394,26 +399,6 @@ func (j *jobState) beginTurnLocked(completion CompletionMode, stored storage.Tur
 	j.LastEventAt = now
 	j.LastToolAt = time.Time{}
 	return j.turn
-}
-
-// promptSending records that the running turn sends its prompt call id.
-func (j *jobState) promptSending(id string) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.turn != nil {
-		j.turn.unsent--
-		j.turn.prompts[id] = struct{}{}
-	}
-}
-
-// promptAnswered records the response to prompt call id as the connection
-// reads it, before the turn learns of it.
-func (j *jobState) promptAnswered(id string) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.turn != nil {
-		delete(j.turn.prompts, id)
-	}
 }
 
 // endingLocked reports whether the job's turn is ending: every call it made

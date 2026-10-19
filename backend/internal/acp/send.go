@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/goal"
@@ -222,6 +223,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		output = &storage.TurnOutput{User: true}
 	}
 	turn := storage.Turn{
+		StartedAt:     time.Now().UTC(),
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: output, ParentOutput: parentOutput,

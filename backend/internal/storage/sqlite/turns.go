@@ -14,7 +14,9 @@ import (
 )
 
 func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...storage.Message) error {
-	turn.StartedAt = time.Now().UTC()
+	if turn.StartedAt.IsZero() {
+		turn.StartedAt = time.Now().UTC()
+	}
 	s.writeMu.Lock()
 	err := func() error {
 		tx, err := s.db.BeginTx(context.Background(), nil)
@@ -94,12 +96,12 @@ func (s *Store) OweTurn(id string, owed storage.Turn) error {
 	return tx.Commit()
 }
 
-func (s *Store) MarkTurnPromptSent(id, agentSessionID string) error {
+func (s *Store) SetTurnPromptState(id, agentSessionID string, startedAt time.Time, state storage.PromptState) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	updated, err := threaddb.New(s.db).MarkTurnPromptSent(context.Background(), threaddb.MarkTurnPromptSentParams{ID: id, AgentSessionID: nullDBString(agentSessionID)})
+	updated, err := threaddb.New(s.db).SetTurnPromptState(context.Background(), threaddb.SetTurnPromptStateParams{ID: id, AgentSessionID: nullDBString(agentSessionID), StartedAt: startedAt.UTC().Format(time.RFC3339Nano), State: string(state)})
 	if err == nil && updated == 0 {
-		return fmt.Errorf("%s: turn or agent session changed before prompt delivery was recorded", id)
+		return fmt.Errorf("%s: turn or agent session changed before prompt state was recorded", id)
 	}
 	return err
 }

@@ -100,7 +100,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (*jobState, erro
 		if err != nil {
 			return nil, fmt.Errorf("inspect ACP session transcript: %w", err)
 		}
-		if hasTranscript && (session.Turn == nil || session.Turn.Prompt == nil) {
+		if hasTranscript && (session.Turn == nil || session.Turn.Prompt == nil || session.Turn.Prompt.State != "") {
 			return nil, fmt.Errorf("cannot safely resume ACP session %s: provider session id is missing for a thread with transcript history", session.ID)
 		}
 	}

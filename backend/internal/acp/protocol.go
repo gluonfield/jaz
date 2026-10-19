@@ -11,6 +11,7 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 func (m *Manager) handleJSONRPC(ctx context.Context, req jsonrpc.Request) (json.RawMessage, *jsonrpc.Error) {
@@ -140,6 +141,14 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		return
 	}
 	job.mu.Lock()
+	switch update.(type) {
+	case acpschema.AgentMessageChunkUpdate, acpschema.AgentThoughtChunkUpdate, acpschema.ToolCallSessionUpdate, acpschema.ToolCallUpdateSessionUpdate, acpschema.PlanSessionUpdate:
+		if warning == nil {
+			if err := m.setPromptStateLocked(job, storage.PromptConfirmed); err != nil {
+				m.log.Error("record prompt confirmation", "session", job.ID, "error", err)
+			}
+		}
+	}
 	switch event := update.(type) {
 	case acpschema.AgentMessageChunkUpdate:
 		messageChunk = contentText(event.Content)

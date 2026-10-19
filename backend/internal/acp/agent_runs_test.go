@@ -474,6 +474,9 @@ func TestARestartDuringTheAgentsOwnRunResumesItForTheParentThatAsked(t *testing.
 	jaz.step("suite")
 	jaz.step("suite-run")
 	jaz.running(thread)
+	if turn := jaz.session(thread).Turn; turn == nil || turn.Prompt != nil {
+		t.Fatalf("agent-started run should have no client prompt: %+v", turn)
+	}
 
 	jaz = jaz.restart(nil)
 	jaz.twoResults(parent, thread)

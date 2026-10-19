@@ -245,6 +245,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
 			err := json.Unmarshal(msg.Params, &req)
+			if err == nil && restoreFakeSession(req.SessionID) {
+				fakeSessionID = req.SessionID
+			}
 			if !openFakeSession(req.Cwd, true) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError("restored alone", nil))
 				_ = conn.Send(context.Background(), resp)
@@ -308,6 +311,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			openFakeSession(req.Cwd, false)
+			rememberFakeSession(t)
 			if err := validateFakeMCPServers(req.MCPServers); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
@@ -449,6 +453,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			grokInterjections++
 			pendingPrompt = fakeGrokInterject(t, conn, msg, pendingPrompt, grokInterjections)
 		case "_session/steering":
+			fakeHold(os.Getenv("JAZ_FAKE_ACP_NATIVE_STEER_HOLD"))
 			var req struct {
 				WaitForCompletion bool `json:"waitForCompletion"`
 			}
@@ -511,6 +516,9 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"sessionId": fakeSessionID,
 					"update":    map[string]any{"sessionUpdate": "usage_update", "used": used, "size": size},
 				})
+			}
+			if fakePromptBoundary(t, conn, msg) {
+				continue
 			}
 			// The agent reasons, calling no tool, while a hold file exists.
 			fakeHold(os.Getenv("JAZ_FAKE_ACP_THINK_HOLD"))
