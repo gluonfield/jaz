@@ -2,6 +2,7 @@ package bots
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -19,7 +20,7 @@ import (
 // acceptingQueue stands in for the durable turn queue, which takes every turn.
 type acceptingQueue struct{}
 
-func (acceptingQueue) QueueInternalTurn(context.Context, string, storage.QueuedMessage) error {
+func (acceptingQueue) QueueInternalTurn(context.Context, storage.TurnDelivery) error {
 	return nil
 }
 
@@ -122,8 +123,15 @@ func TestABotIsToldToRereadItsFilesUntilATurnSucceedsAfterTheyChange(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	worker, err := manager.CreateSession(t.Context(), acp.SpawnRequest{Slug: "side chat", ParentID: bot.ID})
+	owed, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "side chat"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := manager.CreateSession(t.Context(), acp.SpawnRequest{Slug: "side chat", ParentID: bot.ID, Commitment: owed.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DropCommitment(owed.ID, "only the files matter here", time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	home := homeOf(t, store, bot.ID)
@@ -133,7 +141,8 @@ func TestABotIsToldToRereadItsFilesUntilATurnSucceedsAfterTheyChange(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		return TurnNote(thread)
+		note, _ := TurnNote(store)(thread)
+		return note
 	}
 	turn := func(id, status string) {
 		t.Helper()
@@ -249,17 +258,29 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	commitments := map[string]int64{}
 	sideChat := func(owner, title string) string {
 		t.Helper()
-		session, err := manager.CreateSession(t.Context(), acp.SpawnRequest{Slug: title, Title: title, ParentID: owner})
+		owed, err := store.OpenCommitment(storage.Commitment{BotID: owner, Request: title})
 		if err != nil {
 			t.Fatal(err)
 		}
+		session, err := manager.CreateSession(t.Context(), acp.SpawnRequest{Slug: title, Title: title, ParentID: owner, Commitment: owed.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		commitments[title] = owed.ID
 		return session.ID
 	}
-	finished, running, archived := sideChat(research.ID, "Plan review"), sideChat(research.ID, "Queue fixes"), sideChat(research.ID, "Old idea")
+	finished, working, archived, rerun := sideChat(research.ID, "Plan review"), sideChat(research.ID, "Queue fixes"), sideChat(research.ID, "Old idea"), sideChat(research.ID, "Rerun")
 	sideChat(operations.ID, "Their chat")
-	for _, id := range []string{finished, archived} {
+	// A side chat from before commitments serves none.
+	legacy, err := store.CreateSession(storage.CreateSession{Slug: "legacy", Title: "Legacy notes", ParentID: research.ID, SourceType: storage.SourceBotWorker, SourceID: research.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	running := legacy.ID
+	for _, id := range []string{finished, archived, rerun} {
 		if err := store.StartSessionTurn(id, storage.Turn{}); err != nil {
 			t.Fatal(err)
 		}
@@ -270,8 +291,18 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if err := store.SetArchived(archived, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.StartSessionTurn(running, storage.Turn{}); err != nil {
+	// The bot dropped the request its archived side chat served.
+	if _, err := service.Commit(research.ID, Commit{ID: commitments["Old idea"], Drop: "Abandoned"}); err != nil {
 		t.Fatal(err)
+	}
+	// A thread taken up again after its commitment closed runs on its own.
+	if _, err := service.Commit(research.ID, Commit{ID: commitments["Rerun"], Drop: "Superseded"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{working, running, rerun} {
+		if err := store.StartSessionTurn(id, storage.Turn{}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	started, err := store.LoadSession(running)
 	if err != nil || started.Turn == nil || started.Turn.StartedAt.IsZero() {
@@ -292,24 +323,73 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	if err := store.SaveRun(loops.Run{ID: store.NewRunID(), LoopID: routine.ID, ThreadID: research.ID, ScheduledFor: old, StartedAt: old, FinishedAt: old, Status: loops.RunStatusOK, CreatedAt: old}); err != nil {
 		t.Fatal(err)
 	}
-	// A bot writes from a side chat and answers in a turn another bot gave it.
-	if err := service.Message(running, "Operations", "Which fixes matter this week?"); err != nil {
+	// A bot writes to another and answers in a turn another bot gave it.
+	if err := service.Message(research.ID, "Operations", "Which fixes matter this week?"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.StartSessionTurn(operations.ID, storage.Turn{Output: &storage.TurnOutput{ReplyTo: running}}); err != nil {
+	if err := store.StartSessionTurn(operations.ID, storage.Turn{Output: &storage.TurnOutput{ReplyTo: research.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Say(operations.ID, "The queue fixes."); err != nil {
 		t.Fatal(err)
 	}
-	write(t, filepath.Join(homeOf(t, store, research.ID), memoryFile), "Ship queue fixes first.\n")
+	home := homeOf(t, store, research.ID)
+	write(t, filepath.Join(home, memoryFile), "Ship queue fixes first.\n")
+	// Changes to AGENTS.md, the bot's and the user's, are left out.
+	write(t, filepath.Join(home, agentsFile), "Cite sources.\n")
 	service.NoteHomeChanges(running)
 	service.NoteHomeChanges(finished)
-
-	items, err := service.Activity(research.ID)
+	files, err := service.Files(research.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := service.SaveFile(research.ID, agentsFile, "Cite every source.\n", files[0].Version); err != nil {
+		t.Fatal(err)
+	}
+	// What a side chat started is listed under it, oldest first, and what
+	// that started under that, archived or not; what a thread Activity does
+	// not list started is listed on its own.
+	startedBy := func(parent, title string, done time.Time) string {
+		t.Helper()
+		session, err := manager.CreateSession(t.Context(), acp.SpawnRequest{Slug: title, Title: title, ParentID: parent})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.FinishSessionTurn(session.ID, storage.StatusIdle, "", done, nil); err != nil {
+			t.Fatal(err)
+		}
+		return session.ID
+	}
+	diff := startedBy(finished, "Diff review", time.Now().Add(-time.Hour).UTC())
+	design := startedBy(finished, "Design review", time.Now().Add(-2*time.Hour).UTC())
+	second := startedBy(diff, "Second opinion", time.Now().Add(-30*time.Minute).UTC())
+	if err := store.SetArchived(design, true); err != nil {
+		t.Fatal(err)
+	}
+	seat, err := manager.CreateSession(t.Context(), acp.SpawnRequest{Slug: "research in team", SourceType: storage.SourceBotMember, SourceID: research.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	startedBy(seat.ID, "Errand for the team", time.Now().Add(-3*time.Hour).UTC())
+
+	view, err := service.Activity(research.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := func(parent string) []string {
+		var ids []string
+		for _, item := range view.Started[parent] {
+			ids = append(ids, item.ThreadID)
+		}
+		return ids
+	}
+	if len(view.Started) != 2 || !slices.Equal(listed(finished), []string{design, diff}) || !slices.Equal(listed(diff), []string{second}) {
+		t.Fatalf("started = %+v, want the reviews under their side chat and the second opinion under its review", view.Started)
+	}
+	items := view.Items
 	var got []string
 	for i, item := range items {
 		if i > 0 && (item.Running && !items[i-1].Running || item.Running == items[i-1].Running && item.At.After(items[i-1].At)) {
@@ -325,18 +405,33 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		got = append(got, line)
 	}
 	slices.Sort(got)
+	// Side chats that serve commitments show through them.
 	want := []string{
+		"commitment:Old idea:Abandoned:dropped",
+		"commitment:Rerun:Superseded:dropped",
 		"file_changed:MEMORY.md::",
 		"message_received:Operations:The queue fixes.:",
 		"message_sent:Operations:Which fixes matter this week?:",
 		"routine:Morning brief::ok",
 		"routine:Morning brief:Gmail sign-in expired:error",
-		"side_chat:Old idea::idle",
-		"side_chat:Plan review::idle",
-		"side_chat:Queue fixes::running:running",
+		"side_chat:Errand for the team::idle",
+		"side_chat:Legacy notes::running:running",
+		"side_chat:Rerun::running:running",
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("activity =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	var lines []string
+	for _, item := range view.Owed {
+		for _, thread := range item.Threads {
+			lines = append(lines, fmt.Sprintf("#%d %s: %s %s %s", item.ID, item.Request, thread.ID, thread.Title, thread.State))
+		}
+	}
+	if want := []string{
+		fmt.Sprintf("#%d Plan review: %s Plan review finished", commitments["Plan review"], finished),
+		fmt.Sprintf("#%d Queue fixes: %s Queue fixes working", commitments["Queue fixes"], working),
+	}; !slices.Equal(lines, want) {
+		t.Fatalf("owed =\n%s\nwant\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
 	}
 	// What runs stays listed however much happened since it started.
 	for range activityShown {
@@ -348,14 +443,14 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		}
 	}
 	busy, err := service.Activity(research.ID)
-	if err != nil || len(busy) != activityShown+1 || busy[0].ThreadID != running {
-		t.Fatalf("after %d newer items the running side chat is gone: %d items, first %+v, %v", activityShown, len(busy), busy[0], err)
+	if err != nil || len(busy.Items) != activityShown+2 || !busy.Items[0].Running || !busy.Items[1].Running {
+		t.Fatalf("after %d newer items the running side chats are gone: %d items, first %+v, %v", activityShown, len(busy.Items), busy.Items[:2], err)
 	}
 	theirs, err := service.Activity(operations.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(theirs, func(item Activity) bool {
+	if !slices.ContainsFunc(theirs.Items, func(item Activity) bool {
 		return item.Kind == "message_received" && item.Text == "Which fixes matter this week?"
 	}) {
 		t.Fatalf("the bot written to has no record of the message: %+v", theirs)

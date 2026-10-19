@@ -124,6 +124,7 @@ func applyQueueMutation(queue []storage.QueuedMessage, req queueRequest) ([]stor
 			return queue, queueInputError{"unknown queued action"}
 		}
 		message.ID = ""
+		message.From, message.ParentOutput = "", nil
 		message = message.AsPublic()
 		msgs := storage.NormalizeQueuedMessages([]storage.QueuedMessage{message})
 		if len(msgs) == 0 {
@@ -239,15 +240,18 @@ func (s *Server) drainQueueSoon(sessionID string) {
 }
 
 func (s *Server) StartInternalTurn(ctx context.Context, sessionID, message string) error {
-	return s.QueueInternalTurn(ctx, sessionID, storage.NewInternalQueuedMessage(message))
+	return s.QueueInternalTurn(ctx, storage.TurnDelivery{SessionID: sessionID, Message: storage.NewInternalQueuedMessage(message)})
 }
 
-func (s *Server) QueueInternalTurn(_ context.Context, sessionID string, prompt storage.QueuedMessage) error {
-	prompt, ok := storage.NormalizeQueuedMessage(prompt.AsInternal())
+// QueueInternalTurn queues a hidden turn, and closes the commitments it
+// delivers with it.
+func (s *Server) QueueInternalTurn(_ context.Context, delivery storage.TurnDelivery) error {
+	prompt, ok := storage.NormalizeQueuedMessage(delivery.Message.AsInternal())
 	if !ok {
 		return fmt.Errorf("message is required")
 	}
-	id, idle, err := s.enqueueInternalTurn(sessionID, prompt)
+	delivery.Message = prompt
+	id, idle, err := s.enqueueInternalTurn(delivery)
 	if err != nil {
 		return err
 	}
@@ -257,11 +261,11 @@ func (s *Server) QueueInternalTurn(_ context.Context, sessionID string, prompt s
 	return nil
 }
 
-func (s *Server) enqueueInternalTurn(sessionID string, prompt storage.QueuedMessage) (string, bool, error) {
-	unlock := s.lockSession(sessionID)
+func (s *Server) enqueueInternalTurn(delivery storage.TurnDelivery) (string, bool, error) {
+	unlock := s.lockSession(delivery.SessionID)
 	defer unlock()
 
-	session, err := s.Store.LoadSession(sessionID)
+	session, err := s.Store.LoadSession(delivery.SessionID)
 	if err != nil {
 		return "", false, err
 	}
@@ -271,12 +275,11 @@ func (s *Server) enqueueInternalTurn(sessionID string, prompt storage.QueuedMess
 	if !s.canStartQueuedPrompt(session) {
 		return "", false, fmt.Errorf("session runtime is not configured")
 	}
-	session.QueuedMessages = s.assignQueuedMessageIDs(append(session.QueuedMessages, prompt.AsInternal()))
-	idle := takesQueuedTurns(session.Status) && !s.sessionRuntimeRunning(session)
-	if err := s.Store.SaveSession(session); err != nil {
+	delivery.SessionID = session.ID
+	if err := s.Store.QueueTurn(delivery); err != nil {
 		return "", false, err
 	}
-	return session.ID, idle, nil
+	return session.ID, takesQueuedTurns(session.Status) && !s.sessionRuntimeRunning(session), nil
 }
 
 func (s *Server) drainQueuedPrompt(ctx context.Context, sessionID string) {
@@ -314,6 +317,10 @@ func (s *Server) runClaimedTurn(ctx context.Context, session storage.Session, pr
 		return
 	}
 	if err := s.startQueuedPrompt(ctx, session, *prompt); err != nil {
+		// Shutdown leaves the turn claimed, for the next start to resume.
+		if errors.Is(err, acp.ErrClosed) {
+			return
+		}
 		s.logger().Error("queued prompt start failed", "session", session.ID, "error", err)
 		if prompt.Output.LoopRun() != "" {
 			s.failClaimedTurn(session.ID, *prompt, err)
@@ -414,7 +421,7 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 		return storage.Session{}, nil, false, err
 	}
 	if !prompt.IsInternal() && !prompt.IsAction() {
-		s.maybeGenerateSessionTitle(session, prompt.Text)
+		s.TitleThread(session, prompt.Text)
 	}
 	return session, &prompt, true, nil
 }
@@ -513,7 +520,7 @@ func (s *Server) claimSteeredQueuedPrompt(sessionID string, req queueRequest) (s
 		return steeredQueuedPrompt{}, err
 	}
 	if !running {
-		s.maybeGenerateSessionTitle(session, prompt.Text)
+		s.TitleThread(session, prompt.Text)
 	}
 	return steeredQueuedPrompt{
 		session:     session,
@@ -668,6 +675,9 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			Completion:    acp.CompletionAsync,
 			PlanRequested: prompt.PlanRequested,
 			GoalRequested: prompt.GoalRequested,
+			ParentVisible: prompt.SentByAgent(),
+			FromAgent:     prompt.SentByAgent(),
+			ParentOutput:  prompt.ParentOutput,
 		}); err != nil {
 			return acpSendError(session, err)
 		}

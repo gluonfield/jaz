@@ -144,3 +144,62 @@ func TestARoutineMovesToAChildWhenItsBotsThreadIsFull(t *testing.T) {
 		}
 	}
 }
+
+func TestAThreadARoutineChildStartsReportsToTheBotAfterTheRunAndARestart(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.newBot("Gimli")
+	routine := jaz.routine(loops.CreateLoop{Name: "Audit", Prompt: "start the audit until released", BotID: bot.ID})
+	worker := make(chan string, 1)
+	said := make(chan error, 1)
+	// The run hands the audit to a thread; the thread's result reaches the
+	// run's thread after the run, which passes it on.
+	act := func(p *jazProcess) earlyReplyManager {
+		return earlyReplyManager{Manager: p.manager, speak: func(req acp.InternalTurnRequest) error {
+			session, err := p.store.LoadSession(req.Session)
+			if err != nil || session.SourceType != storage.SourceLoopRun {
+				return err
+			}
+			if strings.Contains(req.Message, "start the audit") {
+				_, thread, err := acp.NewMCPTools(p.manager).Create(p.ctx, callAs(req.Session), acp.MCPCreateInput{Prompt: "Audit the books until released"})
+				worker <- thread.ThreadID
+				return err
+			}
+			said <- p.bots.Say(req.Session, "The books balance.")
+			return nil
+		}}
+	}
+	jaz.server.ACP = act(jaz)
+	run, err := jaz.loops.RunNow(jaz.ctx, routine.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, <-worker)
+
+	jaz.manager.Close()
+	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	jaz.server.ACP = act(jaz)
+	jaz.recover()
+	jaz.waitRun(run.ID, loops.RunStatusOK)
+	select {
+	case err := <-said:
+		if err != nil {
+			t.Fatalf("the run's thread could not pass the result on: %v", err)
+		}
+	case <-jaz.ctx.Done():
+		t.Fatal("the thread's result never reached the run's thread")
+	}
+	jaz.eventually("the result reaching the bot", func() bool { return len(jaz.reports()) == 1 })
+	if report := jaz.reports()[0]; !strings.Contains(report, "[routine] Audit") || !strings.Contains(report, "The books balance.") {
+		t.Fatalf("report = %q, want the routine's report with the thread's result", report)
+	}
+	events, err := store.LoadSessionEvents(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.BotActivity != nil && strings.HasPrefix(event.BotActivity.Kind, "message_") {
+			t.Fatalf("the routine's report was recorded as a message between bots: %+v", event.BotActivity)
+		}
+	}
+}

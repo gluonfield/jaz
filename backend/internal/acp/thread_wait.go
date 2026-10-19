@@ -16,6 +16,12 @@ func (m *Manager) WaitThreads(ctx context.Context, refs []string, timeout time.D
 	if len(refs) < 1 || len(refs) > 8 {
 		return ThreadResults{}, fmt.Errorf("targets must contain 1 to 8 threads")
 	}
+	// A turn that ends while this waits keeps its result for it.
+	for _, ref := range refs {
+		if thread, err := m.Status(ref); err == nil {
+			defer m.retainTurnResult(thread.ID)()
+		}
+	}
 	if timeout > 0 {
 		waitCtx, cancel := context.WithTimeout(ctx, timeout)
 		ready := make(chan struct{}, len(refs))
@@ -58,14 +64,14 @@ func (m *Manager) WaitThreads(ctx context.Context, refs []string, timeout time.D
 }
 
 func (m *Manager) waitForThread(ctx context.Context, ref string) {
-	job, err := m.job(ref)
+	thread, err := m.Status(ref)
 	if err != nil {
 		return
 	}
-	events := m.Events.Subscribe(ctx, job.ID)
+	events := m.Events.Subscribe(ctx, thread.ID)
 	for {
-		snapshot := job.hydrationView()
-		if (snapshot.State != StateStarting && snapshot.State != StateRunning) || len(snapshot.Permissions) > 0 {
+		state, asking := m.waitState(thread.ID)
+		if (state != StateStarting && state != StateRunning) || asking {
 			return
 		}
 		select {
@@ -76,8 +82,24 @@ func (m *Manager) waitForThread(ctx context.Context, ref string) {
 				if ctx.Err() != nil {
 					return
 				}
-				events = m.Events.Subscribe(ctx, job.ID)
+				events = m.Events.Subscribe(ctx, thread.ID)
 			}
 		}
 	}
+}
+
+// waitState is what a waiter watches: the live turn's state and whether it
+// asks the user something, or else the stored thread's, which is starting
+// until its turn has run and been recorded.
+func (m *Manager) waitState(id string) (string, bool) {
+	if job, err := m.job(id); err == nil {
+		if view := job.hydrationView(); view.State != StateIdle {
+			return view.State, len(view.Permissions) > 0
+		}
+	}
+	session, err := m.store.LoadSession(id)
+	if err != nil {
+		return "", false
+	}
+	return inactiveJobState(session), false
 }

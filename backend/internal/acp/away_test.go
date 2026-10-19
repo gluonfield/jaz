@@ -139,7 +139,7 @@ func TestOnlyTheUsersNextWordsLetRoutinesRunAgain(t *testing.T) {
 
 	// A hidden turn in the bot's chat and the bot's own group post are not the
 	// user.
-	if err := jaz.server.QueueInternalTurn(jaz.ctx, bot.ID, storage.NewInternalQueuedMessage("check in quietly")); err != nil {
+	if err := jaz.server.QueueInternalTurn(jaz.ctx, storage.TurnDelivery{SessionID: bot.ID, Message: storage.NewInternalQueuedMessage("check in quietly")}); err != nil {
 		t.Fatal(err)
 	}
 	jaz.idle(bot.ID)
@@ -251,7 +251,7 @@ func TestAMessageQueuedBehindABusyTurnIsTheUserComingBack(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.awayFrom("Gimli")
-	if err := jaz.server.QueueInternalTurn(jaz.ctx, bot.ID, storage.NewInternalQueuedMessage("tidy the notes until released")); err != nil {
+	if err := jaz.server.QueueInternalTurn(jaz.ctx, storage.TurnDelivery{SessionID: bot.ID, Message: storage.NewInternalQueuedMessage("tidy the notes until released")}); err != nil {
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)

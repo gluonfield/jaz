@@ -26,13 +26,6 @@ func goalPromptMessage(message string, requested bool) string {
 	return jazGoalPrompt + "\n\n" + message
 }
 
-func markGoalRequested(job *jobState, requested bool) {
-	if !requested {
-		return
-	}
-	job.setTurnGoalRequested()
-}
-
 func currentTurnGoalRequested(job *jobState, done chan struct{}) bool {
 	job.mu.RLock()
 	defer job.mu.RUnlock()
@@ -46,12 +39,4 @@ func activeGoalTurnStartedAt(job *jobState) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return job.turn.startedAt, true
-}
-
-func (j *jobState) setTurnGoalRequested() {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.turn != nil {
-		j.turn.goalRequested = true
-	}
 }

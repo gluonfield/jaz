@@ -74,7 +74,7 @@ func (r *LoopRunner) startACPLoopRun(execution loops.Execution) {
 	}
 	// The run waits in its thread's queue, after the user's messages; the
 	// queue begins it when its turn starts.
-	if err := r.server.QueueInternalTurn(context.Background(), thread, storage.QueuedMessage{Text: loop.Prompt, Output: output}); err != nil {
+	if err := r.server.QueueInternalTurn(context.Background(), storage.TurnDelivery{SessionID: thread, Message: storage.QueuedMessage{Text: loop.Prompt, Output: output}}); err != nil {
 		r.finishLoopRun(execution, loops.RunStatusError, err.Error())
 	}
 }
@@ -118,6 +118,17 @@ func LoopRunStatus(state string) string {
 		return loops.RunStatusCancelled
 	}
 	return loops.RunStatusOK
+}
+
+// loopRunState is the state of the turn a closed run recorded.
+func loopRunState(status string) string {
+	switch status {
+	case loops.RunStatusError:
+		return acp.StateFailed
+	case loops.RunStatusCancelled:
+		return acp.StateCancelled
+	}
+	return acp.StateIdle
 }
 
 func (r *LoopRunner) finishLoopRun(execution loops.Execution, status, errText string) {

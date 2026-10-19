@@ -9,11 +9,12 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type MCPService interface {
 	AskUser(context.Context, string, AskUserInput) (AskUserOutput, error)
-	Spawn(context.Context, SpawnRequest) (SpawnResult, error)
+	Start(context.Context, SpawnRequest, storage.QueuedMessage) (Job, error)
 	Send(context.Context, SendRequest) (Job, error)
 	WaitThreads(context.Context, []string, time.Duration) (ThreadResults, error)
 	Cancel(context.Context, string) (Job, error)
@@ -37,7 +38,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, t.CreateDefinition(), t.Create)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolSendMessageToThread,
-		Description: "Send a follow-up prompt to an idle Jaz thread. The prompt becomes a visible user message. Use threadId from create_thread, list_threads, or search_threads. Returns after dispatch; use wait_threads to follow progress.",
+		Description: "Send a follow-up prompt to an idle Jaz thread. The prompt becomes a visible user message. Use threadId from create_thread, list_threads, or search_threads. Returns after dispatch.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolWaitThreads,
@@ -65,6 +66,7 @@ type MCPCreateInput struct {
 	Model         string `json:"model,omitempty" jsonschema:"Model override. Omit unless the user requests a specific model."`
 	Thinking      string `json:"thinking,omitempty" jsonschema:"Reasoning effort supported by the selected model. Omit to use its configured default."`
 	Plan          bool   `json:"plan,omitempty" jsonschema:"Request the agent's plan mode for this prompt."`
+	Commitment    int64  `json:"commitment,omitempty" jsonschema:"For a Jaz bot's own chat: the number of the open commitment this thread serves."`
 }
 
 func (t *MCPTools) AskUser(ctx context.Context, req *mcp.CallToolRequest, input AskUserInput) (*mcp.CallToolResult, AskUserOutput, error) {
@@ -83,7 +85,7 @@ func (t *MCPTools) CreateDefinition() *mcp.Tool {
 	}
 	return &mcp.Tool{
 		Name:        ToolCreateThread,
-		Description: "Create a separate, saved Jaz conversation and start its initial prompt. A thread has an ID, message history, working directory, and agent settings, and appears in the user's sidebar. Use only when the user or your instructions ask for a separate thread or agent session; otherwise use native child-agent tools for subtasks. Returns after dispatch; follow progress with wait_threads. Omit model unless the user requests one. Use list_agent_options for available agents and models.",
+		Description: "Create a separate, saved Jaz conversation and start its initial prompt. A thread has an ID, message history, working directory, and agent settings, and appears in the user's sidebar. Use only when the user or your instructions ask for a separate thread or agent session. Returns after dispatch. Omit model unless the user requests one. Use list_agent_options for available agents and models.",
 		InputSchema: schema,
 	}
 }
@@ -96,8 +98,9 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 	if strings.TrimSpace(input.Prompt) == "" {
 		return nil, ThreadSnapshot{}, fmt.Errorf("prompt is required")
 	}
-	result, err := t.Service.Spawn(ctx, SpawnRequest{
-		ParentID:        mcpsession.SessionID(req),
+	parent := mcpsession.SessionID(req)
+	job, err := t.Service.Start(ctx, SpawnRequest{
+		ParentID:        parent,
 		ACPAgent:        input.Agent,
 		Slug:            input.Slug,
 		Title:           input.Title,
@@ -107,16 +110,10 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 		ModelProvider:   input.ModelProvider,
 		Model:           input.Model,
 		ReasoningEffort: input.Thinking,
-	})
+		Commitment:      input.Commitment,
+	}, storage.QueuedMessage{Text: input.Prompt, PlanRequested: input.Plan, From: parent})
 	if err != nil {
 		return nil, ThreadSnapshot{}, err
-	}
-	job, err := t.Service.Send(ctx, SendRequest{
-		Session: result.SessionID, Message: input.Prompt, PlanRequested: input.Plan,
-		Completion: CompletionAsync, ParentVisible: true, FromAgent: true,
-	})
-	if err != nil {
-		return nil, ThreadSnapshot{}, fmt.Errorf("thread %s was created but its prompt could not start: %w", result.SessionID, err)
 	}
 	return nil, snapshotThread(job), nil
 }
@@ -127,10 +124,10 @@ type MCPSendInput struct {
 	Plan     bool   `json:"plan,omitempty" jsonschema:"Request the agent's plan mode for this prompt."`
 }
 
-func (t *MCPTools) Send(ctx context.Context, _ *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {
+func (t *MCPTools) Send(ctx context.Context, req *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {
 	job, err := t.Service.Send(ctx, SendRequest{
 		Session: input.ThreadID, Message: input.Prompt, PlanRequested: input.Plan,
-		Completion: CompletionAsync, ParentVisible: true, FromAgent: true,
+		Completion: CompletionAsync, ParentVisible: true, FromAgent: true, From: mcpsession.SessionID(req),
 	})
 	return nil, snapshotThread(job), err
 }

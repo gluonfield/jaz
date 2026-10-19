@@ -1,6 +1,7 @@
 package acp_test
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -879,6 +881,51 @@ func TestManagerDoesNotFallbackWhenAgentSettingsAreCorrupt(t *testing.T) {
 	}
 }
 
+func TestExpiredAgentSignInNamesWhereToSignIn(t *testing.T) {
+	const hint = "sign in again in Settings → Agents: "
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	expired := filepath.Join(t.TempDir(), "expired")
+	env := map[string]string{"JAZ_FAKE_ACP_SIGN_IN_EXPIRED_FILE": expired}
+	manager := newFakeAgentManager(t, store, root, env)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "signed-in"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sendAndWait(t, ctx, manager, spawned.SessionID, "say hello")
+	if err := os.WriteFile(expired, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := manager.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "turn after expiry", Completion: acp.CompletionInline}); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
+	if err != nil || job.State != acp.StateFailed || !strings.HasPrefix(job.Error, hint) {
+		t.Fatalf("turn after expiry: state=%s error=%q err=%v", job.State, job.Error, err)
+	}
+	manager.Close()
+
+	restarted := newFakeAgentManager(t, store, root, env)
+	defer restarted.Close()
+	if _, err := restarted.Send(ctx, acp.SendRequest{Session: spawned.SessionID, Message: "resume after expiry", Completion: acp.CompletionInline}); err == nil || !strings.Contains(err.Error(), hint+"resume ACP session") {
+		t.Fatalf("resume after expiry: %v", err)
+	}
+
+	_, err = restarted.Spawn(ctx, acp.SpawnRequest{ACPAgent: "fake", Slug: "needs-sign-in"})
+	if err == nil || !strings.HasPrefix(err.Error(), hint) {
+		t.Fatalf("spawn after expiry: %v", err)
+	}
+	if session := abandonedSession(t, store, "needs-sign-in"); session.Error != err.Error() {
+		t.Fatalf("stored error = %q", session.Error)
+	}
+}
+
 func TestManagerFailsWhenConfiguredModelIsUnsupported(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -1127,48 +1174,55 @@ func TestManagerSpawnAcceptsConfiguredClaudeModelLabel(t *testing.T) {
 	}
 }
 
-func TestManagerUsesCodexModelAndEffortConfigOptions(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := acp.NewManager(store, acp.Config{
-		Root:         t.TempDir(),
-		Workspace:    t.TempDir(),
-		ModelCatalog: warmedManagerModelCatalog(t),
-		Agents: map[string]acp.AgentConfig{
-			"codex": {
-				Command:         os.Args[0],
-				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				ProviderMode:    acp.AgentProviderModeAgentDefaults,
-				ModelProvider:   provider.ProviderOpenAI,
-				Model:           "gpt-5.5",
-				ReasoningEffort: "xhigh",
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":                    "1",
-					"JAZ_FAKE_ACP_MODELS":                   "gpt-5.5",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":      "gpt-5.5",
-					"JAZ_FAKE_ACP_EXPECT_NO_CODEX_METADATA": "1",
-					"JAZ_FAKE_ACP_SET_CONFIG":               "1",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":            "xhigh",
+// A Codex thread starts on its model and effort, as `codex -m` starts one, so
+// Codex never tells the model it was switched in from another.
+func TestManagerStartsCodexThreadsOnTheirModel(t *testing.T) {
+	for _, pick := range []struct{ model, effort string }{
+		{model: "gpt-6-luna", effort: "xhigh"},
+		{model: "gpt-6-luna/high"},
+	} {
+		t.Run(pick.model, func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			turnLog := filepath.Join(t.TempDir(), "turns")
+			manager := acp.NewManager(store, acp.Config{
+				Root:      t.TempDir(),
+				Workspace: t.TempDir(),
+				Agents: map[string]acp.AgentConfig{
+					"codex": {
+						Command:         os.Args[0],
+						Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+						ProviderMode:    acp.AgentProviderModeAgentDefaults,
+						ModelProvider:   provider.ProviderOpenAI,
+						Model:           pick.model,
+						ReasoningEffort: pick.effort,
+						Env: map[string]string{
+							"JAZ_FAKE_ACP_AGENT":                    "1",
+							"JAZ_FAKE_ACP_MODELS":                   "gpt-6-sol/medium,gpt-6-luna/high,gpt-6-luna/xhigh",
+							"JAZ_FAKE_ACP_EXPECT_NO_CODEX_METADATA": "1",
+							"JAZ_FAKE_ACP_SET_CONFIG":               "1",
+							"JAZ_FAKE_ACP_TURN_LOG":                 turnLog,
+						},
+					},
 				},
-			},
-		},
-	}, log.New(io.Discard))
+			}, log.New(io.Discard))
+			t.Cleanup(manager.Close)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-model-effort"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if session.Model != "gpt-5.5" || session.ReasoningEffort != "xhigh" {
-		t.Fatalf("unexpected stored model metadata %#v", session)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-luna"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sendAndWait(t, ctx, manager, spawned.SessionID, "hello")
+			sendAndWait(t, ctx, manager, spawned.SessionID, "hello again")
+			want := fakeTurn{Model: "gpt-6-luna", Effort: cmp.Or(pick.effort, "high")}
+			if turns := readFakeTurns(t, turnLog); !slices.Equal(turns, []fakeTurn{want, want}) {
+				t.Fatalf("turns = %v, want two on %v", turns, want)
+			}
+		})
 	}
 }
 
@@ -1192,7 +1246,6 @@ func TestManagerUsesCodexProviderNativeModel(t *testing.T) {
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":                 "1",
 					"JAZ_FAKE_ACP_EXPECT_CODEX_METADATA": "openai/gpt-5.5",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":   "openai/gpt-5.5",
 					"JAZ_FAKE_ACP_SET_CONFIG":            "1",
 					"JAZ_FAKE_ACP_EXPECT_EFFORT":         "xhigh",
 				},
@@ -1217,18 +1270,17 @@ func TestManagerUsesCodexProviderNativeModel(t *testing.T) {
 }
 
 // Codex lists its own models whichever provider it runs on, and an OpenRouter
-// model rides its launch instead, so a request naming one starts.
-func TestManagerStartsRequestedOpenRouterModelCodexDoesNotList(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := acp.NewManager(store, acp.Config{
-		Root:         t.TempDir(),
-		Workspace:    t.TempDir(),
-		ModelCatalog: warmedManagerModelCatalog(t),
-		Agents: map[string]acp.AgentConfig{
-			"codex": {
+// model rides its launch instead, so a thread on one runs it whether a request
+// names it or it was saved.
+func TestManagerRunsOpenRouterModelCodexDoesNotList(t *testing.T) {
+	for _, pick := range []string{"requested", "saved"} {
+		t.Run(pick, func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			turnLog := filepath.Join(t.TempDir(), "turns")
+			codex := acp.AgentConfig{
 				Command:       os.Args[0],
 				Args:          []string{"-test.run=TestFakeACPAgentProcess", "--"},
 				ProviderMode:  acp.AgentProviderModeAgentDefaults,
@@ -1238,20 +1290,32 @@ func TestManagerStartsRequestedOpenRouterModelCodexDoesNotList(t *testing.T) {
 					"JAZ_FAKE_ACP_EXPECT_CODEX_METADATA": "openai/gpt-5.5",
 					"JAZ_FAKE_ACP_MODELS":                "gpt-6-sol,gpt-6-luna",
 					"JAZ_FAKE_ACP_SET_CONFIG":            "1",
+					"JAZ_FAKE_ACP_TURN_LOG":              turnLog,
 				},
-			},
-		},
-	}, log.New(io.Discard))
+			}
+			spawn := acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-openrouter", Model: "openai/gpt-5.5"}
+			if pick == "saved" {
+				codex.Model, spawn.Model = spawn.Model, ""
+			}
+			manager := acp.NewManager(store, acp.Config{
+				Root:         t.TempDir(),
+				Workspace:    t.TempDir(),
+				ModelCatalog: warmedManagerModelCatalog(t),
+				Agents:       map[string]acp.AgentConfig{"codex": codex},
+			}, log.New(io.Discard))
+			t.Cleanup(manager.Close)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "codex-openrouter-request", Model: "openai/gpt-5.5"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	if session, err := store.LoadSession(spawned.SessionID); err != nil || session.Model != "openai/gpt-5.5" {
-		t.Fatalf("session = %#v, %v", session, err)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			spawned, err := manager.Spawn(ctx, spawn)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sendAndWait(t, ctx, manager, spawned.SessionID, "hello")
+			if turns := readFakeTurns(t, turnLog); len(turns) != 1 || turns[0].Model != "openai/gpt-5.5" || turns[0].Switched {
+				t.Fatalf("turns = %v, want one started on openai/gpt-5.5", turns)
+			}
+		})
 	}
 }
 
@@ -1311,7 +1375,6 @@ func TestManagerUsesAdvertisedThoughtLevelConfigOption(t *testing.T) {
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":                       "1",
 					"JAZ_FAKE_ACP_MODELS":                      "fake-large",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":         "fake-large",
 					"JAZ_FAKE_ACP_SET_CONFIG":                  "1",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_ID":      "thinking_budget",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_OPTIONS": "high",
@@ -1336,6 +1399,7 @@ func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	turnLog := filepath.Join(t.TempDir(), "turns")
 	manager := acp.NewManager(store, acp.Config{
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
@@ -1346,15 +1410,15 @@ func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 				Model:           "fake-large",
 				ReasoningEffort: "medium",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_MODELS":              "fake-large,fake-mini",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "fake-mini",
-					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "medium",
+					"JAZ_FAKE_ACP_AGENT":      "1",
+					"JAZ_FAKE_ACP_MODELS":     "fake-large,fake-mini",
+					"JAZ_FAKE_ACP_SET_CONFIG": "1",
+					"JAZ_FAKE_ACP_TURN_LOG":   turnLog,
 				},
 			},
 		},
 	}, log.New(io.Discard))
+	t.Cleanup(manager.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -1366,7 +1430,6 @@ func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
 	session, err := store.LoadSession(spawned.SessionID)
 	if err != nil {
 		t.Fatal(err)
@@ -1374,18 +1437,22 @@ func TestManagerSpawnModelOverrideWinsOverConfiguredModel(t *testing.T) {
 	if session.Model != "fake-mini" || session.ReasoningEffort != "medium" {
 		t.Fatalf("unexpected stored model metadata %#v", session)
 	}
+	sendAndWait(t, ctx, manager, spawned.SessionID, "hello")
+	if turns := readFakeTurns(t, turnLog); !slices.Equal(turns, []fakeTurn{{Model: "fake-mini", Effort: "medium"}}) {
+		t.Fatalf("turns = %v, want one started on fake-mini", turns)
+	}
 }
 
 // Codex advertises the models the signed-in account may use, and that set
-// shrinks when a plan lapses. The session must still start on the agent's own
-// default rather than pushing a model the provider will reject: the fake agent
-// fails any model option other than the advertised one, so a started session
-// proves Jaz sent none.
+// shrinks when a plan lapses. A session whose saved model the plan withdrew
+// runs Codex's default rather than a model the provider will reject, even when
+// its launch carried the model before Jaz had seen the plan's list.
 func TestManagerKeepsAgentDefaultForUnadvertisedCodexModel(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	turnLog := filepath.Join(t.TempDir(), "turns")
 	manager := acp.NewManager(store, acp.Config{
 		Root:      t.TempDir(),
 		Workspace: t.TempDir(),
@@ -1400,10 +1467,12 @@ func TestManagerKeepsAgentDefaultForUnadvertisedCodexModel(t *testing.T) {
 					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "fake-large",
 					"JAZ_FAKE_ACP_SET_CONFIG":                "1",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT": "1",
+					"JAZ_FAKE_ACP_TURN_LOG":                  turnLog,
 				},
 			},
 		},
 	}, log.New(io.Discard))
+	t.Cleanup(manager.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -1411,13 +1480,9 @@ func TestManagerKeepsAgentDefaultForUnadvertisedCodexModel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("an unavailable model must not fail the session: %v", err)
 	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if session.Status == storage.StatusError || session.Error != "" {
-		t.Fatalf("unexpected session error: %#v", session)
+	sendAndWait(t, ctx, manager, spawned.SessionID, "hello")
+	if turns := readFakeTurns(t, turnLog); len(turns) != 1 || turns[0].Model != "fake-large" {
+		t.Fatalf("turns = %v, want one on Codex's default fake-large", turns)
 	}
 }
 
@@ -1436,12 +1501,10 @@ func TestManagerSkipsConfiguredCodexEffortWhenModelOmitsEffortConfig(t *testing.
 				Model:           "fake-large",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":                     "1",
-					"JAZ_FAKE_ACP_MODELS":                    "fake-large",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":       "fake-large",
-					"JAZ_FAKE_ACP_SET_CONFIG":                "1",
-					"JAZ_FAKE_ACP_MODEL_CONFIG_OMITS_EFFORT": "1",
-					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":          "unexpected_effort_config",
+					"JAZ_FAKE_ACP_AGENT":            "1",
+					"JAZ_FAKE_ACP_MODELS":           "fake-large",
+					"JAZ_FAKE_ACP_SET_CONFIG":       "1",
+					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID": "unexpected_effort_config",
 				},
 			},
 		},
@@ -1480,7 +1543,6 @@ func TestManagerRejectsUnadvertisedReasoningEffort(t *testing.T) {
 				Env: map[string]string{
 					"JAZ_FAKE_ACP_AGENT":                       "1",
 					"JAZ_FAKE_ACP_MODELS":                      "fake-large",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG":         "fake-large",
 					"JAZ_FAKE_ACP_SET_CONFIG":                  "1",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_ID":      "thinking_budget",
 					"JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_OPTIONS": "high",
@@ -1500,42 +1562,6 @@ func TestManagerRejectsUnadvertisedReasoningEffort(t *testing.T) {
 	}
 	if session := abandonedSession(t, store, "codex-unadvertised-effort"); !strings.Contains(session.Error, "did not advertise that reasoning effort") {
 		t.Fatalf("unadvertised effort failure was not stored: %#v", session)
-	}
-}
-
-func TestManagerRejectsUnavailableCodexReasoningEffort(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
-		Agents: map[string]acp.AgentConfig{
-			"codex": {
-				Command:         os.Args[0],
-				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:           "fake-large",
-				ReasoningEffort: "xhigh",
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_MODELS":              "fake-large",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "fake-large",
-					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "medium",
-				},
-			},
-		},
-	}, log.New(io.Discard))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	_, err = manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "codex", Slug: "missing-codex-effort"})
-	if err == nil {
-		t.Fatal("expected spawn to fail")
-	}
-	if !strings.Contains(err.Error(), `reasoning effort "xhigh"`) || !strings.Contains(err.Error(), "expected configured reasoning effort") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -1626,12 +1652,12 @@ func newFakeCodexManager(t *testing.T, store acp.Store, root string, extraEnv ma
 	return newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, extraEnv, "", "")
 }
 
-func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, agent string, extraEnv map[string]string, model, effort string) *acp.Manager {
+func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, agent string, extraEnv map[string]string, model, effort string, configure ...func(*acp.Config)) *acp.Manager {
 	env := map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_LOAD": "1"}
 	for key, value := range extraEnv {
 		env[key] = value
 	}
-	return acp.NewManager(store, acp.Config{
+	cfg := acp.Config{
 		Root:      root,
 		Workspace: t.TempDir(),
 		Agents: map[string]acp.AgentConfig{
@@ -1643,7 +1669,11 @@ func newFakeNamedAgentManagerWithOptions(t *testing.T, store acp.Store, root, ag
 				Env:             env,
 			},
 		},
-	}, log.New(io.Discard))
+	}
+	for _, change := range configure {
+		change(&cfg)
+	}
+	return acp.NewManager(store, cfg, log.New(io.Discard))
 }
 
 // abandonedSession returns the session a failed spawn recorded its error on,

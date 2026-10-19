@@ -81,8 +81,8 @@ type SkillsConfig struct {
 }
 
 const (
-	defaultSkillsManifestURL    = "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.102/manifest.json"
-	defaultSkillsManifestSHA256 = "b91122518a26403e5f7d7cc85a4c66869c9031d146fa7a3c31ab6cbdb01a32c3"
+	defaultSkillsManifestURL    = "https://github.com/gluonfield/jaz-skills/releases/download/jaz-v0.0.103/manifest.json"
+	defaultSkillsManifestSHA256 = "f32bc770bb1beb4c113651703973179e083cbfcac5c946d85468393d07843a74"
 )
 
 type VoiceConfig struct {
@@ -344,7 +344,7 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 	if widgetService != nil {
 		promptBuilder.PromptExtras = append(promptBuilder.PromptExtras, widgetService.LoopPromptExtra)
 	}
-	cfg.ACP.TurnNote = bots.TurnNote
+	cfg.ACP.TurnNote = bots.TurnNote(store)
 	cfg.ACP.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
 		switch session.SourceType {
 		case storage.SourceLoopRun:
@@ -690,7 +690,7 @@ func completeACP(ctx context.Context, a *agent.Agent, store *sqlitestore.Store, 
 		return
 	}
 	// Append-only: a full-list save would clobber rows persisted after our load.
-	completion := provider.DeveloperMessage(acp.CompletionPrompt(job))
+	completion := provider.DeveloperMessage(acp.CompletionPrompt(job, "the user"))
 	if err := store.AppendMessages(job.ParentID, completion); err != nil {
 		logger.Error("appending completion note failed", "parent", job.ParentID, "error", err)
 		setStoredSessionError(store, job.ParentID, err.Error())

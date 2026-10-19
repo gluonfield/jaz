@@ -28,9 +28,9 @@ func (s fakeACPService) AskUser(context.Context, string, acp.AskUserInput) (acp.
 	return acp.AskUserOutput{}, nil
 }
 
-func (s fakeACPService) Spawn(_ context.Context, req acp.SpawnRequest) (acp.SpawnResult, error) {
+func (s fakeACPService) Start(_ context.Context, req acp.SpawnRequest, _ storage.QueuedMessage) (acp.Job, error) {
 	s.spawned <- req
-	return acp.SpawnResult{Status: "ok", SessionID: "child", Slug: req.Slug, ACPAgent: req.ACPAgent, State: acp.StateIdle}, nil
+	return acp.Job{ID: "child", Slug: req.Slug, ACPAgent: req.ACPAgent, State: acp.StateStarting}, nil
 }
 
 func (s fakeACPService) Send(context.Context, acp.SendRequest) (acp.Job, error) {

@@ -320,7 +320,7 @@ func (s *Service) threadsOf(id string) ([]string, error) {
 // bot whose thread or subtask created it, or else a new bot of its own.
 func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, error) {
 	if in.BotID != "" {
-		if !s.isBot(in.BotID) {
+		if !isBot(s.store, in.BotID) {
 			return "", fmt.Errorf("%s is not a bot", in.BotID)
 		}
 		return in.BotID, nil
@@ -340,15 +340,14 @@ func (s *Service) RoutineOwner(threadID string, in loops.CreateLoop) (string, er
 // subtasks, its seat in a group or a thread one of its routines runs in. Empty
 // for any other thread.
 func (s *Service) BotOf(threadID string) string {
-	if session, err := s.store.LoadSession(threadID); err == nil {
-		switch session.SourceType {
-		case storage.SourceBotWorker, storage.SourceBotMember:
-			threadID = session.SourceID
-		case storage.SourceLoopRun:
-			threadID = session.ParentID
-		}
+	return botOf(s.store, threadID)
+}
+
+func botOf(store PromptStore, threadID string) string {
+	if session, err := store.LoadSession(threadID); err == nil {
+		threadID = session.Owner()
 	}
-	if s.isBot(threadID) {
+	if isBot(store, threadID) {
 		return threadID
 	}
 	return ""
@@ -391,9 +390,13 @@ func (s *Service) load(id string) (storage.BotRecord, storage.Session, error) {
 	return record, session, nil
 }
 
-func (s *Service) isBot(id string) bool {
-	record, _, err := s.load(id)
-	return err == nil && record.Kind == KindBot
+func isBot(store PromptStore, id string) bool {
+	record, err := store.LoadBot(id)
+	if err != nil || record.Kind != KindBot {
+		return false
+	}
+	session, err := store.LoadSession(id)
+	return err == nil && !session.Archived
 }
 
 // view is a bot as the API shows it; held names the bots whose routines wait
@@ -470,7 +473,7 @@ func (s *Service) preview(threadID string, group bool) string {
 func (s *Service) memberBots(ids []string) ([]string, error) {
 	members := make([]string, 0, len(ids))
 	for _, id := range ids {
-		if !s.isBot(id) {
+		if !isBot(s.store, id) {
 			return nil, fmt.Errorf("member %s is not a bot", id)
 		}
 		if !slices.Contains(members, id) {

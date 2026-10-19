@@ -54,7 +54,7 @@ type ACPManager interface {
 	Status(string) (acp.Job, error)
 	StreamStatus(string) (acp.StreamView, error)
 	RetainStream(string) func()
-	LiveSessionRefs() []string
+	SessionUsed(string) bool
 	RunUtilityPrompt(context.Context, acp.UtilityPromptRequest) (string, error)
 	Agents() []string
 	AnswerInteractive(context.Context, acp.InteractiveAnswer) error

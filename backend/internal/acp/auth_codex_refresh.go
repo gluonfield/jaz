@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-// Codex owns token refresh and credential persistence. No thread or turn is created.
+// Codex owns token refresh and credential persistence: account/read refreshes an access token that is due.
+// Forcing a refresh would rotate the login every Codex process on this home shares, so a 401 on a token
+// that is not due ends in a new sign-in. No thread or turn is created.
 func (m *Manager) RefreshCodexOAuth(ctx context.Context, cfg AgentConfig, home string) error {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -82,5 +84,5 @@ func (m *Manager) RefreshCodexOAuth(ctx context.Context, cfg AgentConfig, home s
 	if err := encoder.Encode(map[string]any{"method": "initialized", "params": map[string]any{}}); err != nil {
 		return err
 	}
-	return call(2, "account/read", map[string]bool{"refreshToken": true})
+	return call(2, "account/read", map[string]bool{"refreshToken": false})
 }

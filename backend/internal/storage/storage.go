@@ -157,7 +157,22 @@ type Session struct {
 	// CompletedTurnStartedAt when it started.
 	CompletedAt            time.Time `json:"completed_at,omitzero"`
 	CompletedTurnStartedAt time.Time `json:"completed_turn_started_at,omitzero"`
-	Unread                 bool      `json:"unread,omitempty"`
+	// PromptDigest identifies the version of the thread's own prompt its
+	// agent was shown, as of its last successful turn; empty when unknown.
+	PromptDigest string `json:"prompt_digest,omitempty"`
+	Unread       bool   `json:"unread,omitempty"`
+}
+
+// Owner is the thread a thread works for: the bot whose subtask, group seat
+// or routine run it is, or else itself.
+func (s Session) Owner() string {
+	switch s.SourceType {
+	case SourceBotWorker, SourceBotMember:
+		return s.SourceID
+	case SourceLoopRun:
+		return s.ParentID
+	}
+	return s.ID
 }
 
 type Turn struct {
@@ -170,6 +185,16 @@ type Turn struct {
 	AllowSilence    bool           `json:"allow_silence,omitempty"`
 	Output          *TurnOutput    `json:"output,omitempty"`
 	PendingMessage  *QueuedMessage `json:"pending_message,omitempty"`
+	// ParentOutput is the output of the parent turn this one's result opens:
+	// the exchange with another bot the parent was answering when it started
+	// this turn.
+	ParentOutput *TurnOutput `json:"parent_output,omitempty"`
+	// PromptDigest identifies the version of the thread's own prompt its
+	// agent holds once this turn has started.
+	PromptDigest string `json:"prompt_digest,omitempty"`
+	// Retries counts the continuations Jaz has sent after provider failures
+	// ended this turn's earlier prompts.
+	Retries int `json:"retries,omitempty"`
 }
 
 type TurnOutput struct {
@@ -183,6 +208,19 @@ type TurnOutput struct {
 	// Shown records that the turn sent a message or presented an app in its
 	// own chat.
 	Shown bool `json:"shown,omitempty"`
+	// Done are the commitments the replies deliver; they close as the replies
+	// reach ReplyTo.
+	Done []int64 `json:"done,omitempty"`
+}
+
+// Continuation is the output of a later turn that goes on answering the bot
+// this turn answers; nil when it answers none. A routine run closes with its
+// turn, so a later turn answers its bot without it.
+func (o *TurnOutput) Continuation() *TurnOutput {
+	if o == nil || o.ReplyTo == "" {
+		return nil
+	}
+	return &TurnOutput{ReplyTo: o.ReplyTo, Hops: o.Hops}
 }
 
 // LoopRun is the routine run a turn with this output does, if any.
@@ -193,9 +231,20 @@ func (o *TurnOutput) LoopRun() string {
 	return o.Run
 }
 
+// TurnDelivery is a message queued for a thread's next turn. A finished
+// turn's delivery to a thread that is archived or gone queues its Fallback in
+// the finished thread, or else is dropped: nobody is left to tell.
 type TurnDelivery struct {
 	SessionID string
 	Message   QueuedMessage
+	// Closes are the commitments that close as done once the message is
+	// queued.
+	Closes []int64
+	// Wake queues the message to the bot SessionID only while some of its
+	// commitments stall without it having been woken about them, and records
+	// on those that it was.
+	Wake     bool
+	Fallback *QueuedMessage
 }
 
 type FeedItem struct {
@@ -271,6 +320,9 @@ type CreateSession struct {
 	ReasoningEffort string
 	SourceType      string
 	SourceID        string
+	// Commitment is the open commitment of the bot SourceID that the thread
+	// serves.
+	Commitment int64
 }
 
 type SessionFilter struct {

@@ -19,6 +19,7 @@ type Data struct {
 	State     string
 	Error     string
 	Assistant string
+	Recipient string
 }
 
 func Render(data Data) (string, error) {

@@ -18,6 +18,11 @@ type SessionStore interface {
 	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)
 	CompleteSession(id string, completedAt time.Time) error
 	FinishSessionTurn(id, status, errorMessage string, at time.Time, deliveries []TurnDelivery) error
+	// QueueTurn queues a delivery and closes the commitments it delivers.
+	QueueTurn(TurnDelivery) error
+	// ClearBackgroundWork forgets which threads' agents held live background
+	// tasks.
+	ClearBackgroundWork() error
 	ClaimQueuedTurn(Session, QueuedMessage) error
 	SetThreadUnread(id string, unread bool) error
 	TouchSessionAttention(id string) error

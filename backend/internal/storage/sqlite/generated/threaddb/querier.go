@@ -15,6 +15,7 @@ type Querier interface {
 	AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnParams) (int64, error)
 	AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error)
 	ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) error
+	ClearBackgroundWork(ctx context.Context) error
 	CompleteSession(ctx context.Context, arg CompleteSessionParams) error
 	// A compact brings the user nothing new to read.
 	FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error)
@@ -32,16 +33,21 @@ type Querier interface {
 	ListOverviewChildren(ctx context.Context, parentID sql.NullString) ([]ListOverviewChildrenRow, error)
 	ListSessionSubtree(ctx context.Context, id string) ([]string, error)
 	ListSessions(ctx context.Context, arg ListSessionsParams) ([]Thread, error)
+	// A thread's own children are the threads it started: unsourced ones, or a
+	// bot's work started by a thread other than the bot. A bot's own subtasks,
+	// routine runs and memory searches are not.
 	LoadTranscriptSessions(ctx context.Context, arg LoadTranscriptSessionsParams) ([]LoadTranscriptSessionsRow, error)
 	MarkTurnShown(ctx context.Context, id string) error
 	ReplaceRuntimeSessionID(ctx context.Context, arg ReplaceRuntimeSessionIDParams) (int64, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
 	ResetTurnHops(ctx context.Context, id string) error
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
+	SetBackgroundWork(ctx context.Context, arg SetBackgroundWorkParams) error
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error
 	SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (int64, error)
+	SetTurnRetries(ctx context.Context, arg SetTurnRetriesParams) (int64, error)
 	StartSessionTurn(ctx context.Context, arg StartSessionTurnParams) error
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error
 	TouchThread(ctx context.Context, arg TouchThreadParams) error

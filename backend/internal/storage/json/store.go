@@ -72,6 +72,9 @@ func (s *Store) NewSessionID() string {
 }
 
 func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, error) {
+	if input.Commitment != 0 {
+		return storage.Session{}, fmt.Errorf("JSON storage does not keep commitments")
+	}
 	now := time.Now().UTC()
 	runtime := input.Runtime
 	if runtime == "" {
@@ -388,6 +391,16 @@ func (s *Store) CompleteSession(id string, completedAt time.Time) error {
 	}
 	storage.MarkSessionAttention(&session, completedAt)
 	return s.saveSession(session)
+}
+
+// SetBackgroundWork and ClearBackgroundWork keep nothing: only commitments,
+// which JSON storage does not keep, read background work.
+func (s *Store) SetBackgroundWork(string, bool) error {
+	return nil
+}
+
+func (s *Store) ClearBackgroundWork() error {
+	return nil
 }
 
 func (s *Store) SetThreadUnread(id string, unread bool) error {

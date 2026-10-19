@@ -15,9 +15,18 @@ SET turn = json_set(turn,
     '$.notify_parent', json(CASE WHEN CAST(sqlc.arg(notify_parent) AS INTEGER) THEN 'true' ELSE 'false' END))
 WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
+-- name: SetTurnRetries :execrows
+UPDATE threads
+SET turn = json_set(turn, '$.retries', CAST(sqlc.arg(retries) AS INTEGER))
+WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
+
 -- name: AppendTurnReply :execrows
 UPDATE threads
-SET turn = json_set(turn, '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', sqlc.arg(message)))
+SET turn = json_set(turn,
+    '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', sqlc.arg(message)),
+    '$.output.done', json((SELECT json_group_array(value) FROM (
+        SELECT value FROM json_each(COALESCE(json_extract(turn, '$.output.done'), '[]'))
+        UNION ALL SELECT value FROM json_each(sqlc.arg(done))))))
 WHERE id = sqlc.arg(id) AND status = 'running'
   AND json_extract(NULLIF(turn, ''), '$.output.reply_to') IS NOT NULL;
 
@@ -35,14 +44,17 @@ WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 -- name: FinishSessionTurn :execrows
 -- A compact brings the user nothing new to read.
 UPDATE threads
-SET status = sqlc.arg(status), turn = '', error = sqlc.narg(error),
+SET status = sqlc.arg(status), turn = '', error = sqlc.narg(error), turns_ended = turns_ended + 1,
     unread = CASE WHEN sqlc.arg(status) = 'idle' AND json_extract(turn, '$.active_operation') IS NOT 'compact' THEN 1 ELSE unread END,
     updated_at_ms = sqlc.arg(finished_at_ms),
     last_attention_at_ms = sqlc.arg(finished_at_ms),
     last_completed_at_ms = CASE WHEN sqlc.arg(status) = 'idle' THEN sqlc.arg(finished_at_ms) ELSE last_completed_at_ms END,
     completed_turn_started_at_ms = CASE WHEN sqlc.arg(status) = 'idle'
       THEN COALESCE(CAST(unixepoch(json_extract(turn, '$.started_at'), 'subsec') * 1000 AS INTEGER), completed_turn_started_at_ms)
-      ELSE completed_turn_started_at_ms END
+      ELSE completed_turn_started_at_ms END,
+    prompt_digest = CASE WHEN sqlc.arg(status) <> 'idle' THEN prompt_digest
+      WHEN json_extract(turn, '$.active_operation') IS 'compact' THEN ''
+      ELSE COALESCE(json_extract(turn, '$.prompt_digest'), prompt_digest) END
 WHERE id = sqlc.arg(id) AND turn <> '';
 
 -- name: AppendQueuedTurn :execrows

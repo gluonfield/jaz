@@ -17,6 +17,10 @@ var ErrSteeringUnsupported = errors.New("acp steering unsupported")
 
 var errTurnEnded = fmt.Errorf("%w: agent turn ended before steering", ErrSteeringUnsupported)
 
+// errPromptPending refuses a steer while the turn's next prompt has not
+// reached the agent, as while it waits to retry a provider failure.
+var errPromptPending = fmt.Errorf("%w: the turn's next prompt has not reached the agent", ErrSteeringUnsupported)
+
 var errQuestionPending = errors.New("the turn is waiting for an answer")
 
 type turnInProgressError struct {
@@ -28,7 +32,10 @@ func (e *turnInProgressError) Error() string {
 	return "session is already running"
 }
 
-func (j *jobState) sendConflict() *turnInProgressError {
+// sendConflict refuses a turn while another runs or ends, and while a new
+// thread's agent waits for the turn it was created with unless this send
+// starts it.
+func (j *jobState) sendConflict(claimed bool) *turnInProgressError {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	if j.turn != nil {
@@ -36,6 +43,9 @@ func (j *jobState) sendConflict() *turnInProgressError {
 	}
 	if j.finishing != nil {
 		return &turnInProgressError{done: j.finishing, finishing: true}
+	}
+	if j.State == StateStarting && !claimed {
+		return &turnInProgressError{}
 	}
 	return nil
 }
@@ -54,6 +64,9 @@ type sendOptions struct {
 	requireActiveGoal     bool
 	allowSilence          bool
 	output                *storage.TurnOutput
+	retries               int
+	// claimed starts the turn a new thread was created with.
+	claimed bool
 }
 
 type InternalTurnRequest struct {
@@ -133,7 +146,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		return Job{}, fmt.Errorf("local acp agent %q is not registered", job.ACPAgent)
 	}
 	job.sendMu.Lock()
-	if err := job.sendConflict(); err != nil {
+	if err := job.sendConflict(opts.claimed); err != nil {
 		job.sendMu.Unlock()
 		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
@@ -143,13 +156,14 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		if err != nil {
 			return Job{}, err
 		}
+		defer job.release()
 	}
 	if opts.requireCompactSupport && !m.supportsSessionCommand(job, "compact") {
 		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
 	}
 	job.sendMu.Lock()
 	defer job.sendMu.Unlock()
-	if err := job.sendConflict(); err != nil {
+	if err := job.sendConflict(opts.claimed); err != nil {
 		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
 	if opts.requireActiveGoal {
@@ -167,13 +181,29 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
+	release, err := m.admit()
+	if err != nil {
+		return Job{}, err
+	}
+	defer release()
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	var promptDigest string
 	if m.cfg.TurnNote != nil && opts.activeOperation != ActiveOperationCompact {
 		session, err := m.store.LoadSession(job.ID)
 		if err != nil {
 			return Job{}, err
 		}
-		promptMessage = m.cfg.TurnNote(session) + promptMessage
+		var note string
+		note, promptDigest = m.cfg.TurnNote(session)
+		promptMessage = note + promptMessage
+	}
+	notifyParent := req.ParentVisible && req.Completion.propagates() && !req.PlanRequested
+	// Work a parent starts while answering a bot reports back to that bot.
+	parentOutput := req.ParentOutput
+	if notifyParent && req.From != "" && req.From == job.ParentID {
+		if parentOutput, err = m.answering(req.From); err != nil {
+			return Job{}, err
+		}
 	}
 	var prompt acpschema.PromptRequest
 	if local == nil {
@@ -182,11 +212,13 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 			return Job{}, err
 		}
 	}
-	if err := m.store.StartSessionTurn(job.ID, storage.Turn{
+	turn := storage.Turn{
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
-		ParentVisible: req.ParentVisible, NotifyParent: req.ParentVisible && req.Completion.propagates() && !req.PlanRequested,
-		AllowSilence: opts.allowSilence, Output: opts.output,
-	}); err != nil {
+		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
+		AllowSilence: opts.allowSilence, Output: opts.output, ParentOutput: parentOutput,
+		PromptDigest: promptDigest, Retries: opts.retries,
+	}
+	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}
 	if opts.transcript == sendTranscriptUserMessage {
@@ -199,9 +231,8 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		}
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
-	done := job.startTurnWithOperation(req.Completion, req.PlanRequested, req.ParentVisible, opts.activeOperation, opts.allowSilence)
+	done := job.startStoredTurn(req.Completion, turn)
 	m.touchAttention(parentSessionIDs(job.eventView())...)
-	markGoalRequested(job, req.GoalRequested)
 	if err := m.publishACP(job.eventView()); err != nil {
 		go m.failPromptCall(done, job, fmt.Errorf("persist initial session events: %w", err))
 	} else if local != nil {
@@ -231,10 +262,14 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	job.mu.RLock()
 	method := job.steerMethod
 	running := job.turn != nil && (job.State == StateRunning || job.State == StateStarting)
+	retrying := running && job.turn.retrying
 	asking := len(job.Permissions) > 0
 	job.mu.RUnlock()
 	if !running {
 		return Job{}, errTurnEnded
+	}
+	if retrying {
+		return Job{}, errPromptPending
 	}
 	if asking && req.transcript == sendTranscriptHidden {
 		return Job{}, errQuestionPending
@@ -282,6 +317,11 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	defer job.mu.Unlock()
 	if job.turn == nil || job.turn.promptCalls == 0 || (job.State != StateRunning && job.State != StateStarting) {
 		return nil, errTurnEnded
+	}
+	// The gate is closed once the turn's latest prompt reached the agent; a
+	// retry reopens it until its continuation does.
+	if job.turn.retrying || !job.turn.firstPromptSentClosed {
+		return nil, errPromptPending
 	}
 	if job.steerMethod == steerUnsupported {
 		return nil, ErrSteeringUnsupported
@@ -339,8 +379,9 @@ func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done ch
 		return
 	}
 	var response struct {
-		Outcome    string `json:"outcome"`
-		StopReason string `json:"stopReason"`
+		Outcome    string             `json:"outcome"`
+		StopReason string             `json:"stopReason"`
+		Meta       sessionFailureMeta `json:"_meta"`
 	}
 	if err := json.Unmarshal(raw, &response); err != nil {
 		m.failPromptCall(done, job, err)
@@ -350,7 +391,7 @@ func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done ch
 		m.failPromptCall(done, job, fmt.Errorf("invalid native ACP steering response"))
 		return
 	}
-	m.completePromptCall(done, job, response.StopReason)
+	m.completePromptCall(done, job, response.StopReason, response.Meta.terminal())
 }
 
 func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, method steerMethod, prompt acpschema.PromptRequest) {
@@ -374,4 +415,17 @@ func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, d
 	case steerGrokInterject:
 		m.runGrokInterject(ctx, job, done, prompt)
 	}
+}
+
+// answering is what sender's running turn answers, when it answers another
+// bot; the result of work it starts goes on to answer it.
+func (m *Manager) answering(sender string) (*storage.TurnOutput, error) {
+	if sender == "" {
+		return nil, nil
+	}
+	session, err := m.store.LoadSession(sender)
+	if err != nil || session.Turn == nil {
+		return nil, err
+	}
+	return session.Turn.Output.Continuation(), nil
 }

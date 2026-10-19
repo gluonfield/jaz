@@ -5,14 +5,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
@@ -40,7 +43,7 @@ func TestRestartResumesBotAndWorkerAndReturnsResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, ctx, first, bot.SessionID)
-	worker, err := first.Spawn(ctx, acp.SpawnRequest{ParentID: bot.SessionID, Slug: "restart-worker"})
+	worker, err := first.Spawn(ctx, acp.SpawnRequest{ParentID: bot.SessionID, Slug: "restart-worker", Commitment: owe(t, store, bot.SessionID)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,13 +90,13 @@ func TestRestartResumesBotAndWorkerAndReturnsResult(t *testing.T) {
 
 type earlyReplyManager struct {
 	*acp.Manager
-	speak func(string) error
+	speak func(acp.InternalTurnRequest) error
 }
 
 func (m earlyReplyManager) StartInternalTurn(ctx context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
 	job, err := m.Manager.StartInternalTurn(ctx, req)
 	if err == nil {
-		err = m.speak(req.Session)
+		err = m.speak(req)
 	}
 	return job, err
 }
@@ -129,8 +132,8 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	routines := loops.NewService(store, nil, logger)
 	service := bots.NewService(store, root, first, handler, handler, routines, bus, logger)
 	spoke := make(chan error, 1)
-	handler.ACP = earlyReplyManager{Manager: first, speak: func(id string) error {
-		err := service.Say(id, "The complete reply.")
+	handler.ACP = earlyReplyManager{Manager: first, speak: func(req acp.InternalTurnRequest) error {
+		err := service.Say(req.Session, "The complete reply.")
 		spoke <- err
 		return err
 	}}
@@ -181,6 +184,147 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	}
 }
 
+func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	asker, helper := jaz.newBot("Asker"), jaz.newBot("Helper")
+	turns := make(chan acp.InternalTurnRequest, 8)
+	worker := make(chan string, 1)
+	var owed int64
+	// The helper hands the asker's request to a thread, then reports what
+	// the thread found.
+	act := func(p *jazProcess) earlyReplyManager {
+		return earlyReplyManager{Manager: p.manager, speak: func(req acp.InternalTurnRequest) error {
+			turns <- req
+			switch {
+			case strings.HasPrefix(req.Message, "[message from Asker]"):
+				id, err := p.commit(helper.ID, bots.MCPCommitmentInput{Request: "Build a parser"})
+				if err != nil {
+					return err
+				}
+				owed = id
+				_, thread, err := acp.NewMCPTools(p.manager).Create(p.ctx, callAs(helper.ID), acp.MCPCreateInput{Prompt: "Write the parser until released", Commitment: id})
+				if err != nil {
+					return err
+				}
+				worker <- thread.ThreadID
+				if err := p.bots.Say(req.Session, "Done already.", owed); err == nil || !strings.Contains(err.Error(), "still working") {
+					t.Errorf("an answer took done for a commitment whose thread still works: %v", err)
+				}
+				return p.bots.Say(req.Session, "On it.")
+			case strings.HasPrefix(req.Message, "[result for the bot that asked]"):
+				return p.bots.Say(req.Session, "The parser is done.", owed)
+			}
+			return nil
+		}}
+	}
+	jaz.server.ACP = act(jaz)
+	if err := jaz.bots.Message(asker.ID, helper.ID, "Build a parser until released"); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, <-worker)
+
+	jaz.manager.Close()
+	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	jaz.server.ACP = act(jaz)
+	jaz.recover()
+	var result acp.InternalTurnRequest
+	var answers []acp.InternalTurnRequest
+	for len(answers) < 2 {
+		select {
+		case req := <-turns:
+			if strings.HasPrefix(req.Message, "[result for the bot that asked]") {
+				result = req
+			}
+			if req.Session == asker.ID {
+				answers = append(answers, req)
+			}
+		case <-jaz.ctx.Done():
+			t.Fatalf("the asker got %+v, want the helper's acknowledgement and the thread's result", answers)
+		}
+	}
+	if result.Session != helper.ID || result.Output == nil || result.Output.ReplyTo != asker.ID || result.Output.Hops != 1 {
+		t.Fatalf("result turn = %+v, want the helper answering the asker", result)
+	}
+	for i, want := range []string{"On it.", "The parser is done."} {
+		if answer := answers[i]; !strings.HasPrefix(answer.Message, "[reply from Helper]") || !strings.Contains(answer.Message, want) || answer.Output.Hops != 1 {
+			t.Fatalf("answer %d = %+v, want the helper's reply %q one hop from the user", i, answer, want)
+		}
+	}
+	events, err := store.LoadSessionEvents(helper.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.RoomMessage != nil {
+			t.Fatalf("the answer for the asker reached the helper's user: %+v", event.RoomMessage)
+		}
+	}
+	if commitment := jaz.commitment(owed); commitment.Requester != asker.ID || commitment.Status != storage.CommitmentDone {
+		t.Fatalf("commitment = %+v, want the one owed to the asker done once its answer reached it", commitment)
+	}
+}
+
+func TestThreadResultReachesTheUserWhenNoBotWaitsForIt(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	asker, helper, other := jaz.newBot("Asker"), jaz.newBot("Helper"), jaz.newBot("Other")
+	tools := acp.NewMCPTools(jaz.manager)
+	completions := make(chan acp.InternalTurnRequest, 4)
+	worker := make(chan string, 1)
+	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, speak: func(req acp.InternalTurnRequest) error {
+		switch {
+		case req.Session == helper.ID && strings.HasPrefix(req.Message, "[message from Asker]"):
+			_, thread, err := tools.Create(jaz.ctx, callAs(helper.ID), acp.MCPCreateInput{Prompt: "Draft the report until released", Commitment: owe(t, store, helper.ID)})
+			worker <- thread.ThreadID
+			return err
+		case req.Session == helper.ID && !strings.HasPrefix(req.Message, "[owed]"):
+			completions <- req
+		case req.Session == other.ID:
+			// A bot that is not the thread's parent follows it up while it
+			// answers a bot itself.
+			_, _, err := tools.Send(jaz.ctx, callAs(other.ID), acp.MCPSendInput{ThreadID: <-worker, Prompt: "Add a summary"})
+			return err
+		}
+		return nil
+	}}
+	if err := jaz.bots.Message(asker.ID, helper.ID, "Draft a report until released"); err != nil {
+		t.Fatal(err)
+	}
+	thread := <-worker
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread)
+	// The asker is deleted before the thread it asked for finishes.
+	if err := jaz.bots.Delete(asker.ID); err != nil {
+		t.Fatal(err)
+	}
+	jaz.release()
+	await := func() acp.InternalTurnRequest {
+		select {
+		case req := <-completions:
+			return req
+		case <-jaz.ctx.Done():
+			t.Fatal("the thread's result never reached the helper")
+		}
+		return acp.InternalTurnRequest{}
+	}
+	results := []acp.InternalTurnRequest{await()}
+	worker <- thread
+	if err := jaz.bots.Message(helper.ID, other.ID, "Follow up on the report, block until cancelled"); err != nil {
+		t.Fatal(err)
+	}
+	results = append(results, await())
+	for i, result := range results {
+		if result.Output != nil || !strings.HasPrefix(result.Message, "ACP session") {
+			t.Fatalf("result %d = %+v, want a plain report for the helper's user", i, result)
+		}
+	}
+}
+
+// callAs is a tool call made from thread.
+func callAs(thread string) *mcp.CallToolRequest {
+	return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(thread)}}
+}
+
 func waitForBlockingTool(t *testing.T, ctx context.Context, manager *acp.Manager, id string) {
 	t.Helper()
 	for {
@@ -196,5 +340,98 @@ func waitForBlockingTool(t *testing.T, ctx context.Context, manager *acp.Manager
 			t.Fatal("provider did not start its blocking tool")
 		case <-time.After(10 * time.Millisecond):
 		}
+	}
+}
+
+func TestAResultForABotDeletedDuringTheAnswerReachesTheUserAfterARestart(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	asker, helper := jaz.newBot("Asker"), jaz.newBot("Helper")
+	worker := make(chan string, 1)
+	var owed int64
+	act := func(p *jazProcess) earlyReplyManager {
+		return earlyReplyManager{Manager: p.manager, speak: func(req acp.InternalTurnRequest) error {
+			if req.Session != helper.ID {
+				return nil
+			}
+			switch {
+			case strings.HasPrefix(req.Message, "[message from Asker]"):
+				id, err := p.commit(helper.ID, bots.MCPCommitmentInput{Request: "Build a parser"})
+				if err != nil {
+					return err
+				}
+				owed = id
+				_, thread, err := acp.NewMCPTools(p.manager).Create(p.ctx, callAs(helper.ID), acp.MCPCreateInput{Prompt: "Write the parser until released", Commitment: id})
+				worker <- thread.ThreadID
+				return err
+			case strings.HasPrefix(req.Message, "[result for the bot that asked]"):
+				// The asker goes after its result was routed to it and before
+				// the answer reaches it.
+				if err := p.bots.Delete(asker.ID); err != nil {
+					return err
+				}
+				return p.bots.Say(req.Session, "The parser is done.", owed)
+			case strings.HasPrefix(req.Message, "[undelivered]") && strings.Contains(req.Message, "The parser is done."):
+				if commitment := p.commitment(owed); commitment.Status != storage.CommitmentOpen {
+					t.Errorf("an answer that never arrived closed its commitment: %+v", commitment)
+				}
+				return p.bots.Say(req.Session, "Asker left; the parser is done.", owed)
+			}
+			return nil
+		}}
+	}
+	jaz.server.ACP = act(jaz)
+	if err := jaz.bots.Message(asker.ID, helper.ID, "Build a parser until released"); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, <-worker)
+
+	jaz.manager.Close()
+	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	jaz.server.ACP = act(jaz)
+	jaz.recover()
+	jaz.eventually("the result reaching the helper's user", func() bool {
+		return slices.Contains(jaz.notices(helper.ID), "Asker left; the parser is done.")
+	})
+	jaz.idle(helper.ID)
+	if session, err := store.LoadSession(helper.ID); err != nil || session.Error != "" {
+		t.Fatalf("helper = %+v, %v; want its answer's turn to end cleanly", session, err)
+	}
+	if commitment := jaz.commitment(owed); commitment.Status != storage.CommitmentDone {
+		t.Fatalf("commitment = %+v, want done once the user has the answer", commitment)
+	}
+}
+
+func TestAThreadThatCannotResumeAfterARestartTellsItsBot(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.newBot("Gimli")
+	_, thread, err := acp.NewMCPTools(jaz.manager).Create(jaz.ctx, callAs(bot.ID), acp.MCPCreateInput{Slug: "audit", Prompt: "Audit the books until released", Commitment: owe(t, store, bot.ID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ThreadID)
+
+	// No agent starts after the restart, so the thread's resume runs out of
+	// tries.
+	jaz = jaz.restart(map[string]string{"JAZ_FAKE_ACP_EXIT_BEFORE_INIT": "agent unavailable"})
+	jaz.eventually("the failure reaching the bot", func() bool {
+		for _, message := range jaz.queued(bot.ID) {
+			if strings.Contains(message.Text, "ACP session audit") && strings.Contains(message.Text, "failed") {
+				return true
+			}
+		}
+		return false
+	})
+	worker, err := store.LoadSession(thread.ThreadID)
+	if err != nil || worker.Status != storage.StatusError || !strings.Contains(worker.Error, "Could not resume chat after restart") {
+		t.Fatalf("thread = %+v, %v; want it failed with why", worker, err)
+	}
+	session, err := store.LoadSession(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if note, _ := bots.TurnNote(store)(session); !strings.Contains(note, "thread audit failed") {
+		t.Fatalf("the bot's next turn opens with %q, want its thread shown failed", note)
 	}
 }

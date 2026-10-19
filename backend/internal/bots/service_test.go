@@ -19,6 +19,8 @@ import (
 )
 
 type fakeWorld struct {
+	// CommitmentStore is left unset: these tests keep no commitments.
+	CommitmentStore
 	mu        sync.Mutex
 	records   map[string]storage.BotRecord
 	sessions  map[string]storage.Session
@@ -204,6 +206,17 @@ func (w *fakeWorld) AppendSessionEvents(id string, events ...sessionevents.Event
 	return nil
 }
 
+// DeliverMessage appends a bot's message; this world keeps no commitments to
+// close.
+func (w *fakeWorld) DeliverMessage(event sessionevents.Event, closes []int64) (sessionevents.Event, error) {
+	if len(closes) > 0 {
+		return sessionevents.Event{}, storage.ErrCommitmentNotOpen
+	}
+	events := []sessionevents.Event{event}
+	err := w.AppendSessionEvents(event.SessionID, events...)
+	return events[0], err
+}
+
 func (w *fakeWorld) LoadLatestSessionEvent(id, eventType string) (sessionevents.Event, bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -273,7 +286,8 @@ type fakeThreads struct {
 
 // QueueInternalTurn queues a hidden turn on a thread and, like the server,
 // runs the thread's queued turns one at a time while it is free.
-func (t fakeThreads) QueueInternalTurn(_ context.Context, id string, message storage.QueuedMessage) error {
+func (t fakeThreads) QueueInternalTurn(_ context.Context, delivery storage.TurnDelivery) error {
+	id, message := delivery.SessionID, delivery.Message
 	t.world.mu.Lock()
 	if t.world.unqueueable[id] {
 		delete(t.world.unqueueable, id)
@@ -308,7 +322,7 @@ func (t fakeThreads) drain(id string) {
 	}
 }
 
-func (w *fakeWorld) AppendTurnReply(id, message string) error {
+func (w *fakeWorld) AppendTurnReply(id, message string, _ []int64) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	session := w.sessions[id]

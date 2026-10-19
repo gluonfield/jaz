@@ -22,6 +22,21 @@ func (f testRuntime) ResumeInterruptedTurn(ctx context.Context, id string) error
 	return f(ctx, id)
 }
 
+func (f testRuntime) FailInterruptedTurn(context.Context, string, string) error {
+	return errors.New("no resume was expected to fail")
+}
+
+// failingRuntime ends a turn that cannot resume in error, as the server's
+// failed-turn bookkeeping does.
+type failingRuntime struct {
+	testRuntime
+	store storage.SessionStore
+}
+
+func (r failingRuntime) FailInterruptedTurn(_ context.Context, id, message string) error {
+	return r.store.UpdateSessionStatus(id, storage.StatusError, message, time.Time{})
+}
+
 func TestResumeInterruptedBotsAndWorkersAlongsideChats(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
@@ -142,10 +157,10 @@ func TestResumeFailureIsNotRetriedOnNextStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	attempts := 0
-	runtime := testRuntime(func(context.Context, string) error {
+	runtime := failingRuntime{store: store, testRuntime: func(context.Context, string) error {
 		attempts++
 		return errors.New("provider unavailable")
-	})
+	}}
 	for range 2 {
 		if err := Resume(t.Context(), store, runtime, sessionlock.New(), sessionevents.New(), log.New(io.Discard)); err != nil {
 			t.Fatal(err)
@@ -174,11 +189,11 @@ func TestAResumeThatRunsOutOfTimeIsNotTriedAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	attempts := 0
-	runtime := testRuntime(func(ctx context.Context, _ string) error {
+	runtime := failingRuntime{store: store, testRuntime: func(ctx context.Context, _ string) error {
 		attempts++
 		<-ctx.Done()
 		return ctx.Err()
-	})
+	}}
 	if err := Resume(t.Context(), store, runtime, sessionlock.New(), sessionevents.New(), log.New(io.Discard)); err != nil {
 		t.Fatal(err)
 	}
@@ -214,5 +229,45 @@ func TestRecoveryShutdownLeavesInterruptedChatResumable(t *testing.T) {
 	stored, err := store.LoadSession(session.ID)
 	if err != nil || stored.Status != storage.StatusInterrupted || stored.Error != "" {
 		t.Fatalf("stored = %+v, err = %v", stored, err)
+	}
+}
+
+// endlessRuntime cannot resume a chat, nor end its turn.
+type endlessRuntime struct{ tries *int }
+
+func (r endlessRuntime) ResumeInterruptedTurn(context.Context, string) error {
+	*r.tries++
+	return errors.New("provider unavailable")
+}
+
+func (endlessRuntime) FailInterruptedTurn(context.Context, string, string) error {
+	return errors.New("store unavailable")
+}
+
+func TestAChatWhoseFailureCannotBeRecordedIsTriedAgainAtTheNextStartup(t *testing.T) {
+	delays := retryDelays
+	retryDelays = []time.Duration{0, 0}
+	t.Cleanup(func() { retryDelays = delays })
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Slug: "stuck-recovery"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionStatus(session.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	tries := 0
+	for range 2 {
+		if err := Resume(t.Context(), store, endlessRuntime{tries: &tries}, sessionlock.New(), sessionevents.New(), log.New(io.Discard)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err := store.LoadSession(session.ID)
+	if err != nil || stored.Status != storage.StatusInterrupted || tries != 6 {
+		t.Fatalf("stored = %+v, tries = %d, %v; want the chat tried again at the next startup", stored, tries, err)
 	}
 }

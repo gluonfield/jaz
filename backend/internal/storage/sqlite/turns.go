@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
 
@@ -25,14 +26,37 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn) error {
 	return err
 }
 
-func (s *Store) AppendTurnReply(id, message string) error {
+// AppendTurnReply adds a reply to the running turn's answer, with the
+// commitments it delivers.
+func (s *Store) AppendTurnReply(id, message string, done []int64) error {
+	if done == nil {
+		done = []int64{}
+	}
+	ids, err := json.Marshal(done)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	updated, err := threaddb.New(s.db).AppendTurnReply(context.Background(), threaddb.AppendTurnReplyParams{ID: id, Message: message})
-	if err == nil && updated == 0 {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, commitment := range done {
+		if err := closable(ctx, botdb.New(tx), commitment); err != nil {
+			return err
+		}
+	}
+	updated, err := threaddb.New(tx).AppendTurnReply(ctx, threaddb.AppendTurnReplyParams{ID: id, Message: message, Done: string(ids)})
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
 		return fmt.Errorf("%s has no active reply turn", id)
 	}
-	return err
+	return tx.Commit()
 }
 
 // ResetTurnHops ends the bot-to-bot exchange a running turn is part of, as
@@ -55,6 +79,16 @@ func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyPar
 	return err
 }
 
+func (s *Store) SetTurnRetries(id string, retries int) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	updated, err := threaddb.New(s.db).SetTurnRetries(context.Background(), threaddb.SetTurnRetriesParams{ID: id, Retries: int64(retries)})
+	if err == nil && updated == 0 {
+		return fmt.Errorf("%s has no active turn", id)
+	}
+	return err
+}
+
 func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMessage) error {
 	queue, err := storage.MarshalQueuedMessages(session.QueuedMessages)
 	if err != nil {
@@ -65,7 +99,7 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 	defer s.writeMu.Unlock()
 	return threaddb.New(s.db).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
 		ID: session.ID, QueuedMessages: queue, Title: nullDBString(session.Title),
-		Turn: sessionTurnJSON(&storage.Turn{StartedAt: now, PendingMessage: &prompt}), StartedAtMs: timeToMs(now),
+		Turn: sessionTurnJSON(prompt.Turn(now)), StartedAtMs: timeToMs(now),
 	})
 }
 
@@ -103,21 +137,83 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 		return err
 	}
 	for _, delivery := range deliveries {
-		message := delivery.Message
-		message.ID = s.NewSessionID()
-		raw, err := storage.MarshalQueuedMessage(&message)
+		if delivery.Wake {
+			return fmt.Errorf("a finished turn's delivery cannot wake a bot")
+		}
+		queued, err := s.queueMessage(ctx, q, delivery.SessionID, delivery.Message)
 		if err != nil {
 			return err
 		}
-		updated, err := q.AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: delivery.SessionID, Message: raw})
-		if err != nil {
-			return err
+		if !queued && delivery.Fallback != nil {
+			if _, err := s.queueMessage(ctx, q, id, *delivery.Fallback); err != nil {
+				return err
+			}
 		}
-		if updated == 0 {
-			return fmt.Errorf("delivery target %s is unavailable", delivery.SessionID)
+		if !queued {
+			continue
+		}
+		if err := closeAnswered(ctx, botdb.New(tx), delivery.Closes, at); err != nil {
+			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// QueueTurn queues a delivery for its thread's next turn and closes the
+// commitments it delivers, or records the stalls it wakes its bot about,
+// together or not at all.
+func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
+	if delivery.Fallback != nil {
+		return fmt.Errorf("a queued turn has no fallback")
+	}
+	ctx := context.Background()
+	s.writeMu.Lock()
+	err := func() error {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+		if delivery.Wake {
+			woken, err := botdb.New(tx).WakeStalled(ctx, delivery.SessionID)
+			if err != nil {
+				return err
+			}
+			if len(woken) == 0 {
+				return storage.ErrNothingStalled
+			}
+		}
+		queued, err := s.queueMessage(ctx, threaddb.New(tx), delivery.SessionID, delivery.Message)
+		if err != nil {
+			return err
+		}
+		if !queued {
+			return fmt.Errorf("%s: %w", delivery.SessionID, storage.ErrSessionNotFound)
+		}
+		if err := closeDelivered(ctx, botdb.New(tx), delivery.Closes, time.Now()); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}()
+	s.writeMu.Unlock()
+	if err == nil {
+		if current, loadErr := s.LoadSession(delivery.SessionID); loadErr == nil {
+			s.mirrorSession(current)
+		}
+	}
+	return err
+}
+
+// queueMessage queues message in thread unless the thread is archived or
+// gone.
+func (s *Store) queueMessage(ctx context.Context, q *threaddb.Queries, thread string, message storage.QueuedMessage) (bool, error) {
+	message.ID = s.NewSessionID()
+	raw, err := storage.MarshalQueuedMessage(&message)
+	if err != nil {
+		return false, err
+	}
+	updated, err := q.AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: thread, Message: raw})
+	return updated > 0, err
 }
 
 func sessionTurnJSON(turn *storage.Turn) string {

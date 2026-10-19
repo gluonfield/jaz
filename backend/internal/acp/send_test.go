@@ -149,6 +149,8 @@ func TestReserveSteerDoesNotQueuePromptWhenUserMessageCannotPersist(t *testing.T
 	job := newIdleJob(session, "fake", "runtime-session", "", ModeState{})
 	job.steerMethod = steerPromptQueueing
 	job.startTurn(CompletionInline, false, false)
+	// Steering waits for the turn's prompt to reach the agent.
+	job.markFirstPromptSent()
 
 	_, err = manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "keep me", GoalRequested: true}, nil)
 	if err == nil || !strings.Contains(err.Error(), "append user message: message persistence failed") {
@@ -167,5 +169,39 @@ func TestReserveSteerDoesNotQueuePromptWhenUserMessageCannotPersist(t *testing.T
 	}
 	if len(messages) != 0 {
 		t.Fatalf("messages = %#v", messages)
+	}
+}
+
+// A steer that reaches reserveSteer after a retry wait ended but before its
+// continuation reached the agent is refused; once the continuation is sent,
+// steering joins the turn again.
+func TestReserveSteerRefusesUntilTheRetryContinuationIsSent(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "retrying-steer", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	job := newIdleJob(session, "fake", "runtime-session", "", ModeState{})
+	job.steerMethod = steerNative
+	job.startTurn(CompletionInline, false, false)
+	job.markFirstPromptSent()
+	job.mu.Lock()
+	job.turn.waitToRetry(time.Hour)
+	job.turn.endRetryWait()
+	job.mu.Unlock()
+
+	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil); !errors.Is(err, errPromptPending) {
+		t.Fatalf("steer before the continuation was sent = %v, want it refused", err)
+	}
+	job.markFirstPromptSent()
+	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil); err != nil {
+		t.Fatalf("steer after the continuation was sent = %v", err)
 	}
 }

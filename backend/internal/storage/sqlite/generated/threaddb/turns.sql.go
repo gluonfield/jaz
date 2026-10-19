@@ -31,18 +31,23 @@ func (q *Queries) AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnPara
 
 const appendTurnReply = `-- name: AppendTurnReply :execrows
 UPDATE threads
-SET turn = json_set(turn, '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', ?1))
-WHERE id = ?2 AND status = 'running'
+SET turn = json_set(turn,
+    '$.output.replies', json_insert(COALESCE(json_extract(turn, '$.output.replies'), '[]'), '$[#]', ?1),
+    '$.output.done', json((SELECT json_group_array(value) FROM (
+        SELECT value FROM json_each(COALESCE(json_extract(turn, '$.output.done'), '[]'))
+        UNION ALL SELECT value FROM json_each(?2)))))
+WHERE id = ?3 AND status = 'running'
   AND json_extract(NULLIF(turn, ''), '$.output.reply_to') IS NOT NULL
 `
 
 type AppendTurnReplyParams struct {
 	Message interface{} `json:"message"`
+	Done    interface{} `json:"done"`
 	ID      string      `json:"id"`
 }
 
 func (q *Queries) AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, appendTurnReply, arg.Message, arg.ID)
+	result, err := q.db.ExecContext(ctx, appendTurnReply, arg.Message, arg.Done, arg.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -78,14 +83,17 @@ func (q *Queries) ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams
 
 const finishSessionTurn = `-- name: FinishSessionTurn :execrows
 UPDATE threads
-SET status = ?1, turn = '', error = ?2,
+SET status = ?1, turn = '', error = ?2, turns_ended = turns_ended + 1,
     unread = CASE WHEN ?1 = 'idle' AND json_extract(turn, '$.active_operation') IS NOT 'compact' THEN 1 ELSE unread END,
     updated_at_ms = ?3,
     last_attention_at_ms = ?3,
     last_completed_at_ms = CASE WHEN ?1 = 'idle' THEN ?3 ELSE last_completed_at_ms END,
     completed_turn_started_at_ms = CASE WHEN ?1 = 'idle'
       THEN COALESCE(CAST(unixepoch(json_extract(turn, '$.started_at'), 'subsec') * 1000 AS INTEGER), completed_turn_started_at_ms)
-      ELSE completed_turn_started_at_ms END
+      ELSE completed_turn_started_at_ms END,
+    prompt_digest = CASE WHEN ?1 <> 'idle' THEN prompt_digest
+      WHEN json_extract(turn, '$.active_operation') IS 'compact' THEN ''
+      ELSE COALESCE(json_extract(turn, '$.prompt_digest'), prompt_digest) END
 WHERE id = ?4 AND turn <> ''
 `
 
@@ -156,6 +164,25 @@ func (q *Queries) SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (i
 		arg.NotifyParent,
 		arg.ID,
 	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setTurnRetries = `-- name: SetTurnRetries :execrows
+UPDATE threads
+SET turn = json_set(turn, '$.retries', CAST(?1 AS INTEGER))
+WHERE id = ?2 AND status = 'running' AND turn <> ''
+`
+
+type SetTurnRetriesParams struct {
+	Retries int64  `json:"retries"`
+	ID      string `json:"id"`
+}
+
+func (q *Queries) SetTurnRetries(ctx context.Context, arg SetTurnRetriesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setTurnRetries, arg.Retries, arg.ID)
 	if err != nil {
 		return 0, err
 	}

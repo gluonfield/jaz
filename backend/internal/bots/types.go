@@ -95,7 +95,7 @@ type Threads interface {
 }
 
 type TurnQueue interface {
-	QueueInternalTurn(context.Context, string, storage.QueuedMessage) error
+	QueueInternalTurn(context.Context, storage.TurnDelivery) error
 }
 
 // Attachments finds the files uploaded to a thread by their ids.
@@ -106,11 +106,12 @@ type Attachments interface {
 // Store keeps bot records and the threads they live in.
 type Store interface {
 	PromptStore
+	CommitmentStore
 	SaveBot(storage.BotRecord) error
 	ListBots() ([]storage.BotRecord, error)
 	PinBots(ids []string) error
 	CreateSession(storage.CreateSession) (storage.Session, error)
-	AppendTurnReply(id, message string) error
+	AppendTurnReply(id, message string, done []int64) error
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	UpdateSessionTitle(id, title string) error
 	SetArchived(id string, archived bool) error

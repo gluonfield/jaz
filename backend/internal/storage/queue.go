@@ -18,8 +18,29 @@ type QueuedMessage struct {
 	PlanRequested bool              `json:"plan_requested,omitempty"`
 	GoalRequested bool              `json:"goal_requested,omitempty"`
 	Output        *TurnOutput       `json:"output,omitempty"`
+	// From is the thread whose agent sent the message, or whose result an
+	// internal message reports.
+	From string `json:"from,omitempty"`
+	// ParentOutput is what the sender's turn was answering when it sent the
+	// message; the result of the turn the message begins goes on to answer it.
+	ParentOutput *TurnOutput `json:"parent_output,omitempty"`
 	// SentAt is when the user queued the message; Jaz's own have none.
 	SentAt time.Time `json:"sent_at,omitzero"`
+}
+
+// SentByAgent reports a prompt an agent sent, which reports its result back
+// to the thread's parent.
+func (message QueuedMessage) SentByAgent() bool {
+	return message.From != "" && !message.IsInternal()
+}
+
+// Turn is the turn the message begins once claimed, before its agent has it.
+func (message QueuedMessage) Turn(at time.Time) *Turn {
+	sent := message.SentByAgent()
+	return &Turn{
+		StartedAt: at, PendingMessage: &message, ParentOutput: message.ParentOutput,
+		ParentVisible: sent, NotifyParent: sent && !message.PlanRequested,
+	}
 }
 
 type QueuedMessageKind string

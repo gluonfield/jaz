@@ -99,13 +99,7 @@ func translateConfigOptions(raw json.RawMessage) []sessionevents.AgentConfigOpti
 			Description string                           `json:"description"`
 			Options     []sessionevents.AgentConfigValue `json:"options"`
 		} `json:"options"`
-		Meta struct {
-			Jetbrains struct {
-				Air struct {
-					RecommendedValue string `json:"recommendedValue"`
-				} `json:"air"`
-			} `json:"jetbrains"`
-		} `json:"_meta"`
+		Meta configOptionMeta `json:"_meta"`
 	}
 	if json.Unmarshal(raw, &options) != nil {
 		return nil
@@ -157,6 +151,7 @@ func (m *Manager) SetSessionConfig(ctx context.Context, session, id, value strin
 	if err != nil {
 		return err
 	}
+	defer job.release()
 	return m.setSessionConfig(ctx, job, id, value)
 }
 

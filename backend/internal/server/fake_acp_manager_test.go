@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -227,13 +228,8 @@ func (f *fakeACPManager) allJobs() []acp.Job {
 	return []acp.Job{f.job}
 }
 
-func (f *fakeACPManager) LiveSessionRefs() []string {
-	jobs := f.allJobs()
-	refs := make([]string, 0, len(jobs)*2)
-	for _, job := range jobs {
-		refs = append(refs, job.ID, job.Slug)
-	}
-	return refs
+func (f *fakeACPManager) SessionUsed(id string) bool {
+	return slices.ContainsFunc(f.allJobs(), func(job acp.Job) bool { return job.ID == id })
 }
 
 func (f *fakeACPManager) HydrationJobs(ids []string) map[string]acp.HydrationView {

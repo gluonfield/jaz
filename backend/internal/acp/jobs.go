@@ -19,7 +19,9 @@ func (m *Manager) Status(ref string) (Job, error) {
 	if session.Runtime != storage.RuntimeACP || session.RuntimeRef == nil {
 		return Job{}, fmt.Errorf("session %s is not acp-backed", ref)
 	}
-	return jobFromSession(session, session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd, inactiveJobState(session)), nil
+	job := jobFromSession(session, session.RuntimeRef.Agent, session.RuntimeRef.SessionID, session.RuntimeRef.Cwd, inactiveJobState(session))
+	job.Error = session.Error
+	return job, nil
 }
 
 func (m *Manager) StreamStatus(ref string) (StreamView, error) {
@@ -30,17 +32,13 @@ func (m *Manager) StreamStatus(ref string) (StreamView, error) {
 	return StreamViewFromJob(job), err
 }
 
-func (m *Manager) LiveSessionRefs() []string {
+// SessionUsed reports whether the session has had a job since the manager
+// started, so a thread whose idle process stopped is still in use.
+func (m *Manager) SessionUsed(id string) bool {
 	m.mu.RLock()
-	refs := make([]string, 0, len(m.jobsByID)+len(m.jobsBySlug))
-	for id := range m.jobsByID {
-		refs = append(refs, id)
-	}
-	for slug := range m.jobsBySlug {
-		refs = append(refs, slug)
-	}
-	m.mu.RUnlock()
-	return refs
+	defer m.mu.RUnlock()
+	_, used := m.used[id]
+	return used
 }
 
 func (m *Manager) List() []Job {
@@ -74,9 +72,14 @@ func (m *Manager) HydrationJobs(ids []string) map[string]HydrationView {
 	return views
 }
 
+// inactiveJobState is the state of a thread without a live job: a running one
+// is starting, as when its claimed turn waits for its agent.
 func inactiveJobState(session storage.Session) string {
-	if session.Status == storage.StatusError {
+	switch session.Status {
+	case storage.StatusError:
 		return StateFailed
+	case storage.StatusRunning:
+		return StateStarting
 	}
 	return StateNotRunning
 }

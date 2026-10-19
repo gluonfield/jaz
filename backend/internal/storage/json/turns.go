@@ -27,7 +27,7 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 	defer s.mu.Unlock()
 	session.Status = storage.StatusRunning
 	session.Error = ""
-	session.Turn = &storage.Turn{StartedAt: time.Now().UTC(), PendingMessage: &prompt}
+	session.Turn = prompt.Turn(time.Now().UTC())
 	storage.MarkSessionAttention(&session, session.Turn.StartedAt)
 	return s.saveSession(session)
 }
@@ -45,6 +45,20 @@ func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyPar
 	session.Turn.GoalRequested = goalRequested
 	session.Turn.ParentVisible = parentVisible
 	session.Turn.NotifyParent = notifyParent
+	return s.saveSession(session)
+}
+
+func (s *Store) SetTurnRetries(id string, retries int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	if session.Turn == nil || session.Status != storage.StatusRunning {
+		return fmt.Errorf("%s has no active turn", id)
+	}
+	session.Turn.Retries = retries
 	return s.saveSession(session)
 }
 
@@ -67,4 +81,28 @@ func (s *Store) FinishSessionTurn(id, status, errorMessage string, at time.Time,
 		return s.CompleteSession(id, at)
 	}
 	return s.UpdateSessionStatus(id, status, errorMessage, at)
+}
+
+// QueueTurn queues a delivery for its thread's next turn; JSON storage keeps
+// no commitments for it to close.
+func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
+	if len(delivery.Closes) > 0 || delivery.Wake {
+		return fmt.Errorf("JSON storage does not keep commitments")
+	}
+	if delivery.Fallback != nil {
+		return fmt.Errorf("a queued turn has no fallback")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(delivery.SessionID)
+	if err != nil {
+		return err
+	}
+	if session.Archived {
+		return fmt.Errorf("%s: %w", delivery.SessionID, storage.ErrSessionNotFound)
+	}
+	message := delivery.Message
+	message.ID = s.NewSessionID()
+	session.QueuedMessages = append(session.QueuedMessages, message)
+	return s.saveSession(session)
 }

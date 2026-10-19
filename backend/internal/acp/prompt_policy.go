@@ -29,6 +29,15 @@ func mcpServerPolicyForSourceType(sourceType string) string {
 	return restrictedWorkerPolicies[sourceType]
 }
 
+// rendersPromptOnLaunch reports whether the agent renders the prompt it is
+// given on every launch rather than the one recorded at the conversation's
+// start: a Claude bot's, since a bot keeps one conversation for good. Its
+// relaunch therefore rewrites its prompt cache; other threads keep native
+// caching.
+func rendersPromptOnLaunch(agent, mcpServerPolicy string) bool {
+	return CanonicalAgentName(agent) == AgentClaude && mcpServerPolicy == MCPServerPolicyBot
+}
+
 // fullMCPPolicy reports whether a policy gives a session every MCP server.
 func fullMCPPolicy(policy string) bool {
 	return policy == MCPServerPolicyAll || policy == MCPServerPolicyWidget || policy == MCPServerPolicyBot

@@ -347,13 +347,16 @@ func startServer(
 	}
 	manager.TurnFinished = func(ctx context.Context, job acp.Job) {
 		handler.HandleACPTurnFinished(ctx, job)
-		botService.NoteHomeChanges(job.ID)
+		botService.TurnEnded(job.ID)
 	}
+	manager.ThreadStarted = handler.TitleThread
 	srv := &http.Server{
 		Addr:    serverConfig.Addr,
 		Handler: handler.Handler(),
 	}
 	var stopLoops context.CancelFunc
+	// The idle stopper finishes any stop it began before the manager closes.
+	idleStopped := make(chan struct{})
 	// Routines start once restart recovery has resumed the turns and queues
 	// that hold their runs, so a run goes on or catches up, never both.
 	recovered := make(chan struct{})
@@ -400,6 +403,10 @@ func startServer(
 			}
 			loopCtx, cancelLoops := context.WithCancel(context.Background())
 			stopLoops = cancelLoops
+			go func() {
+				defer close(idleStopped)
+				manager.StopIdleProcesses(loopCtx, acp.DefaultIdleTimeouts)
+			}()
 			slackSync := &integrationingest.SlackSyncer{
 				Store:      store,
 				Writer:     ingestWriter,
@@ -433,6 +440,7 @@ func startServer(
 		OnStop: func(ctx context.Context) error {
 			if stopLoops != nil {
 				stopLoops()
+				<-idleStopped
 			}
 			manager.Close()
 			return stopHTTPServer(ctx, srv)
@@ -441,7 +449,7 @@ func startServer(
 	app.StartMCPManager(lc, mcpManager, manager, logger)
 	app.StartSessionRecovery(lc, store, handler, locks, events, logger, func(context.Context) error {
 		defer close(recovered)
-		return handler.ResumeQueuedTurns()
+		return errors.Join(handler.ResumeQueuedTurns(), botService.WatchAll())
 	})
 	return nil
 }

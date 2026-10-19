@@ -10,7 +10,7 @@ import (
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
-	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
 func TestSpawnConfigDefaultsWidgetSurfaceToWidgetMCPPolicy(t *testing.T) {
@@ -308,10 +308,11 @@ func TestSpawnConfigRejectsModelSpecificUnsupportedReasoning(t *testing.T) {
 }
 
 func TestABotsWorkersAndGroupThreadsRunLikeTheBot(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	fake := AgentConfig{Command: "fake"}
 	manager := NewManager(store, Config{
 		Root:         t.TempDir(),
@@ -327,9 +328,13 @@ func TestABotsWorkersAndGroupThreadsRunLikeTheBot(t *testing.T) {
 	if bot.ModelProvider != AgentClaude {
 		t.Fatalf("bot stored provider %q, want the agent's own name so the case is covered", bot.ModelProvider)
 	}
+	owed, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "research"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	var member storage.Session
 	for _, req := range []SpawnRequest{
-		{ParentID: bot.ID, Slug: "research"},
+		{ParentID: bot.ID, Slug: "research", Commitment: owed.ID},
 		{Slug: "ceo in team", SourceType: storage.SourceBotMember, SourceID: bot.ID},
 	} {
 		thread, err := manager.CreateSession(ctx, req)
@@ -347,10 +352,11 @@ func TestABotsWorkersAndGroupThreadsRunLikeTheBot(t *testing.T) {
 }
 
 func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
 	fake := AgentConfig{Command: "fake"}
 	manager := NewManager(store, Config{
 		Root:      t.TempDir(),
@@ -370,7 +376,11 @@ func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 		t.Fatalf("default agent = %q, want alpha so inheritance is observable", plain.RuntimeRef.Agent)
 	}
 
-	subtask, err := manager.CreateSession(ctx, SpawnRequest{ParentID: bot.ID, Slug: "research"})
+	owed, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "research"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	subtask, err := manager.CreateSession(ctx, SpawnRequest{ParentID: bot.ID, Slug: "research", Commitment: owed.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +390,7 @@ func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 	if subtask.RuntimeRef.Agent != "fake" || subtask.Model != bot.Model || subtask.ReasoningEffort != bot.ReasoningEffort {
 		t.Fatalf("subtask runs %s/%s/%s, want the bot's fake/%s/%s", subtask.RuntimeRef.Agent, subtask.Model, subtask.ReasoningEffort, bot.Model, bot.ReasoningEffort)
 	}
-	other, err := manager.CreateSession(ctx, SpawnRequest{ParentID: bot.ID, Slug: "elsewhere", ACPAgent: "alpha"})
+	other, err := manager.CreateSession(ctx, SpawnRequest{ParentID: bot.ID, Slug: "elsewhere", ACPAgent: "alpha", Commitment: owed.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,5 +403,30 @@ func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 	}
 	if child.SourceType != "" || child.RuntimeRef.Cwd == plain.RuntimeRef.Cwd {
 		t.Fatalf("a chat's child became a subtask: %+v", child)
+	}
+	// What the bot's subtask, group seat or routine run starts is the bot's
+	// work too, run like any child thread and serving no commitment.
+	seat, err := manager.CreateSession(ctx, SpawnRequest{Slug: "scout in team", SourceType: storage.SourceBotMember, SourceID: bot.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := manager.CreateSession(ctx, SpawnRequest{Slug: "morning run", ParentID: bot.ID, SourceType: storage.SourceLoopRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, parent := range []storage.Session{subtask, seat, run} {
+		if _, err := manager.CreateSession(ctx, SpawnRequest{ParentID: parent.ID, Slug: parent.Slug + " review", Commitment: owed.ID}); err == nil || !strings.Contains(err.Error(), "leave commitment out") {
+			t.Fatalf("a thread %s started served a commitment: %v", parent.Slug, err)
+		}
+		review, err := manager.CreateSession(ctx, SpawnRequest{ParentID: parent.ID, Slug: parent.Slug + " review"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if review.SourceType != storage.SourceBotWorker || review.SourceID != bot.ID || review.ParentID != parent.ID {
+			t.Fatalf("a thread %s started = %s/%s under %s, want the bot's work under it", parent.Slug, review.SourceType, review.SourceID, review.ParentID)
+		}
+		if review.RuntimeRef.Agent != "alpha" || review.RuntimeRef.Cwd == bot.RuntimeRef.Cwd {
+			t.Fatalf("a thread %s started runs on %s in %s, want a child thread's defaults", parent.Slug, review.RuntimeRef.Agent, review.RuntimeRef.Cwd)
+		}
 	}
 }

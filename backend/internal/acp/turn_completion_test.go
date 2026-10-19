@@ -42,14 +42,14 @@ func TestEndTurnRequiresVisibleResult(t *testing.T) {
 			}
 			manager := NewManager(store, Config{}, log.New(io.Discard))
 			job := newIdleJob(session, AgentKimi, "acp-session", "", ModeState{})
-			done := job.startTurnWithOperation(CompletionInline, false, false, test.operation, test.allowSilence)
+			done := job.startStoredTurn(CompletionInline, storage.Turn{ActiveOperation: test.operation, AllowSilence: test.allowSilence})
 			if test.prepare != nil {
 				test.prepare(job)
 			}
 			finished := make(chan Job, 1)
 			manager.TurnFinished = func(_ context.Context, result Job) { finished <- result }
 
-			manager.completePromptCall(done, job, StopReasonEndTurn)
+			manager.completePromptCall(done, job, StopReasonEndTurn, nil)
 			result := <-finished
 			if result.State != test.wantState {
 				t.Fatalf("state = %q, want %q; error=%q", result.State, test.wantState, result.Error)
@@ -102,7 +102,7 @@ func TestPromptCompletionHasOneOwner(t *testing.T) {
 				if fail {
 					manager.failPromptCall(done, job, errors.New("connection lost"))
 				} else {
-					manager.completePromptCall(done, job, StopReasonEndTurn)
+					manager.completePromptCall(done, job, StopReasonEndTurn, nil)
 				}
 			}
 			firstDone := make(chan struct{})
@@ -177,7 +177,7 @@ func TestSteerCannotJoinFailingTurn(t *testing.T) {
 	if _, err := manager.reserveSteer(job, SteerRequest{Message: "Late correction"}, nil); !errors.Is(err, errTurnEnded) {
 		t.Errorf("steering joined a failing turn: %v", err)
 	}
-	if conflict := job.sendConflict(); conflict == nil || !conflict.finishing {
+	if conflict := job.sendConflict(false); conflict == nil || !conflict.finishing {
 		t.Errorf("new input would steer instead of waiting for failure to finish: %+v", conflict)
 	}
 	messages, err := store.LoadMessageRecords(session.ID)

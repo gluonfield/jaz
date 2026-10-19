@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -57,24 +58,14 @@ func TestFakeACPAgentProcess(t *testing.T) {
 		_, _ = fmt.Fprintln(file, os.Getpid())
 		_ = file.Close()
 	}
+	// Startup waits while a hold file sits in the agent's directory, as a
+	// slow login refresh holds an agent up.
+	fakeHold(os.Getenv("JAZ_FAKE_ACP_START_HOLD"))
+	launch, codex := readFakeCodexLaunch(t)
 	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" {
-		var config struct {
-			Features map[string]bool `json:"features"`
-		}
-		raw := []byte(os.Getenv("CODEX_CONFIG"))
-		if strings.HasPrefix(string(raw), "@") {
-			var err error
-			raw, err = os.ReadFile(strings.TrimPrefix(string(raw), "@"))
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := json.Unmarshal(raw, &config); err != nil {
-			t.Fatalf("parse Codex config: %v", err)
-		}
-		disabled, ok := config.Features["goals"]
+		disabled, ok := launch.Features["goals"]
 		if !ok || disabled {
-			t.Fatalf("Codex config = %#v, want features.goals=false", config)
+			t.Fatalf("Codex config = %#v, want features.goals=false", launch)
 		}
 	}
 	if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_METADATA"); want != "" {
@@ -106,17 +97,24 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	if currentMode == "" {
 		currentMode = "auto"
 	}
-	currentModel := ""
-	currentEffort := ""
+	// Codex starts a thread on the model its launch names, else on its default.
+	currentModel, currentEffort := launch.Model, launch.Effort
+	if codex && currentModel == "" {
+		currentModel = fakeDefaultModel()
+	}
+	startedModel, lastTurnModel := "", ""
 	currentCollaborationMode := "default"
 	messageSeq := 0
 	nextMessageID := func(kind string) string {
 		messageSeq++
 		return fmt.Sprintf("fake:%s:%d", kind, messageSeq)
 	}
+	claim := newFakeSessionClaim()
 	var pendingPrompt *jsonrpc.Message
 	grokInterjections := 0
 	cancelArrived := false
+	typedFailures := false
+	prompts := 0
 	for {
 		msg, err := conn.Receive(context.Background())
 		if err != nil {
@@ -130,7 +128,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			os.Exit(0)
+			claim.exit()
 		}
 		logFakeACPRequest(t, msg)
 		if !msg.IsRequest() {
@@ -144,8 +142,19 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			continue
 		}
+		// While this file exists the stored sign-in is expired: every session open and turn
+		// answers ACP auth_required, as codex-acp does.
+		if _, err := os.Stat(os.Getenv("JAZ_FAKE_ACP_SIGN_IN_EXPIRED_FILE")); err == nil && slices.Contains([]string{"session/new", "session/load", "session/resume", "session/prompt"}, msg.Method) {
+			resp, _ := jsonrpc.NewErrorResponse(*msg.ID, &jsonrpc.Error{Code: -32000, Message: "Authentication required"})
+			_ = conn.Send(context.Background(), resp)
+			continue
+		}
+		if !claim.take(conn, msg) {
+			continue
+		}
 		switch msg.Method {
 		case "initialize":
+			typedFailures = fakeTypedFailures(msg.Params)
 			if os.Getenv("JAZ_FAKE_ACP_EXPECT_TERMINAL_AUTH") == "1" {
 				var req struct {
 					ClientCapabilities struct {
@@ -212,7 +221,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				SessionID  string            `json:"sessionId"`
 				MCPServers []json.RawMessage `json:"mcpServers"`
 			}
-			if err := json.Unmarshal(msg.Params, &req); err != nil || req.SessionID != fakeSessionID {
+			err := json.Unmarshal(msg.Params, &req)
+			if !openFakeSession(req.Cwd, true) {
+				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError("restored alone", nil))
+				_ = conn.Send(context.Background(), resp)
+				continue
+			}
+			if err != nil || req.SessionID != fakeSessionID {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("unknown session", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -253,7 +268,8 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			result := map[string]any{
 				"modes": fakeModes(),
 			}
-			addFakeModels(result)
+			addFakeModels(result, currentModel, codex)
+			startedModel, lastTurnModel = currentModel, ""
 			addFakePlanConfig(result)
 			sendResult(conn, msg, result)
 		case "session/new":
@@ -267,6 +283,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			openFakeSession(req.Cwd, false)
 			if err := validateFakeMCPServers(req.MCPServers); err != nil {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams(err.Error(), nil))
 				_ = conn.Send(context.Background(), resp)
@@ -298,7 +315,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if modes := fakeModes(); modes != nil {
 				result["modes"] = modes
 			}
-			addFakeModels(result)
+			addFakeModels(result, currentModel, codex)
+			startedModel, lastTurnModel = currentModel, ""
+			// codex-acp describes the efforts of the model the thread started on.
+			if effort := fakeModelEffortOption(); codex && effort != nil {
+				options, _ := result["configOptions"].([]map[string]any)
+				result["configOptions"] = append(options, effort)
+			}
 			addFakePlanConfig(result)
 			sendResult(conn, msg, result)
 		case "session/close":
@@ -311,6 +334,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected supported mode", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
+			}
+			// Plan mode waits while a hold file sits in the agent's directory.
+			if req.ModeID == "plan" {
+				fakeHold(os.Getenv("JAZ_FAKE_ACP_PLAN_HOLD"))
 			}
 			currentMode = req.ModeID
 			sendResult(conn, msg, map[string]any{})
@@ -377,20 +404,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 						{"id": "mode", "type": "select", "options": []map[string]any{{"value": "auto"}}},
 						{"id": "model", "type": "select", "options": []map[string]any{{"value": req.Value}}},
 					}
-				} else if effortConfigID := strings.TrimSpace(os.Getenv("JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_ID")); effortConfigID != "" {
-					effortOptions := []map[string]any{}
-					rawEffortOptions := strings.TrimSpace(os.Getenv("JAZ_FAKE_ACP_MODEL_CONFIG_EFFORT_OPTIONS"))
-					if rawEffortOptions == "" {
-						rawEffortOptions = os.Getenv("JAZ_FAKE_ACP_EXPECT_EFFORT")
-					}
-					for _, value := range strings.Split(rawEffortOptions, ",") {
-						if value = strings.TrimSpace(value); value != "" {
-							effortOptions = append(effortOptions, map[string]any{"value": value})
-						}
-					}
+				} else if effort := fakeModelEffortOption(); effort != nil {
 					result["configOptions"] = []map[string]any{
 						{"id": "model", "category": "model", "type": "select", "options": []map[string]any{{"value": req.Value}}},
-						{"id": effortConfigID, "category": "thought_level", "type": "select", "options": effortOptions},
+						effort,
 					}
 				}
 				sendResult(conn, msg, result)
@@ -424,9 +441,20 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					"content":       map[string]any{"type": "text", "text": "hello from native steer"},
 				},
 			})
-			sendResult(conn, pendingPrompt, map[string]any{"stopReason": "end_turn"})
+			promptResult := map[string]any{"stopReason": "end_turn"}
+			steerResult := map[string]any{"outcome": "injected", "stopReason": "end_turn"}
+			failure := fakeSteerFailure(msg.Params, typedFailures)
+			if failure != nil {
+				promptResult["_meta"], steerResult["_meta"] = failure, failure
+			}
+			sendResult(conn, pendingPrompt, promptResult)
 			pendingPrompt = nil
-			sendResult(conn, msg, map[string]any{"outcome": "injected", "stopReason": "end_turn"})
+			if failure != nil {
+				// codex-acp answers the steer after the prompt, once it has
+				// awaited the turn; let the client take the prompt's first.
+				time.Sleep(100 * time.Millisecond)
+			}
+			sendResult(conn, msg, steerResult)
 		case "session/prompt":
 			if os.Getenv("JAZ_FAKE_ACP_MUSE_WRITE_CONFIG") == "1" {
 				for _, name := range []string{"auth.json", "trust.json", ".auth.json.lock", ".trust.json.lock", ".settings.json.lock"} {
@@ -506,6 +534,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				_ = conn.Send(context.Background(), resp)
 				continue
 			}
+			// A turn on another model than the thread started on, or than the
+			// previous turn ran, is one Codex announces to the model as a switch.
+			logFakeTurn(t, currentModel, currentEffort, currentModel != cmp.Or(lastTurnModel, startedModel))
+			lastTurnModel = currentModel
 			if path := os.Getenv("JAZ_FAKE_ACP_MATERIALIZED_SESSION"); path != "" {
 				if err := os.WriteFile(path, []byte(fakeSessionID), 0o600); err != nil {
 					resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError(err.Error(), nil))
@@ -524,6 +556,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					},
 				})
 			}
+			reportFakeTasks(conn, msg.Params)
 			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": fakeSessionID,
@@ -535,6 +568,15 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					},
 				})
 				sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
+				continue
+			}
+			prompts++
+			if fakeProviderFailure(conn, msg, typedFailures, prompts) {
+				continue
+			}
+			fakeProviderNoticeUpdate(conn, msg, typedFailures)
+			if strings.Contains(string(msg.Params), "ask after the turn") {
+				fakeAskAfterTurn(conn, msg)
 				continue
 			}
 			if strings.Contains(string(msg.Params), "ask then block") {
@@ -820,7 +862,9 @@ func notify(conn jsonrpc.MessageConn, method string, params any) {
 	}
 }
 
-func addFakeModels(result map[string]any) {
+// addFakeModels advertises the agent's models as codex-acp does, with Codex's
+// default as the model option's recommended value.
+func addFakeModels(result map[string]any, currentModel string, codex bool) {
 	raw := os.Getenv("JAZ_FAKE_ACP_MODELS")
 	if strings.TrimSpace(raw) == "" {
 		return
@@ -844,14 +888,17 @@ func addFakeModels(result map[string]any) {
 		modelOptions = append(modelOptions, map[string]any{"value": model, "name": model})
 	}
 	result["models"] = map[string]any{"availableModels": available}
-	result["configOptions"] = []map[string]any{
-		{
-			"id":      "model",
-			"name":    "Model",
-			"type":    "select",
-			"options": modelOptions,
-		},
+	option := map[string]any{
+		"id":           "model",
+		"name":         "Model",
+		"type":         "select",
+		"currentValue": currentModel,
+		"options":      modelOptions,
 	}
+	if codex {
+		option["_meta"] = map[string]any{"jetbrains": map[string]any{"air": map[string]any{"recommendedValue": fakeDefaultModel()}}}
+	}
+	result["configOptions"] = []map[string]any{option}
 }
 
 func addFakePlanConfig(result map[string]any) {
@@ -959,4 +1006,20 @@ func validateFakeProxyAndJaztools(rawServers []json.RawMessage) error {
 		return fmt.Errorf("jaztools must expose only a resolved session header, got %#v", jaz.Headers)
 	}
 	return nil
+}
+
+// fakeHold waits while the file hold exists, and exits once Jaz is gone.
+func fakeHold(hold string) {
+	if hold == "" {
+		return
+	}
+	for {
+		if _, err := os.Stat(hold); err != nil {
+			return
+		}
+		if os.Getppid() == 1 {
+			os.Exit(0)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

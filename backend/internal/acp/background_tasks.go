@@ -76,6 +76,7 @@ func (m *Manager) applyBackgroundTask(job *jobState, raw json.RawMessage) bool {
 	job.backgroundTasks[task.ID] = task
 	job.mu.Unlock()
 	m.publishBackgroundTask(job, task)
+	m.saveBackgroundWork(job)
 	return true
 }
 
@@ -90,7 +91,7 @@ func (m *Manager) disconnectBackgroundTasks(job *jobState) {
 	job.mu.Lock()
 	var changed []sessionevents.AgentTask
 	for id, task := range job.backgroundTasks {
-		if (task.State == "running" || task.State == "paused") && !task.ConnectionLost {
+		if taskLive(task) {
 			task.ConnectionLost = true
 			job.backgroundTasks[id] = task
 			changed = append(changed, task)
@@ -99,6 +100,39 @@ func (m *Manager) disconnectBackgroundTasks(job *jobState) {
 	job.mu.Unlock()
 	for _, task := range changed {
 		m.publishBackgroundTask(job, task)
+	}
+	m.saveBackgroundWork(job)
+}
+
+func taskLive(task sessionevents.AgentTask) bool {
+	return (task.State == "running" || task.State == "paused") && !task.ConnectionLost
+}
+
+// backgroundTaskLive reports whether the job's agent holds a live background
+// task; the caller holds job.mu.
+func (j *jobState) backgroundTaskLive() bool {
+	for _, task := range j.backgroundTasks {
+		if taskLive(task) {
+			return true
+		}
+	}
+	return false
+}
+
+// saveBackgroundWork saves whether the job's agent holds a live background
+// task, which keeps the thread working on what its bot owes, when that differs
+// from what job.backgroundWork says was saved last. It writes under job.mu, so
+// two changes cannot land out of order.
+func (m *Manager) saveBackgroundWork(job *jobState) {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	live := job.backgroundTaskLive()
+	if live == job.backgroundWork {
+		return
+	}
+	job.backgroundWork = live
+	if err := m.store.SetBackgroundWork(job.ID, live); err != nil {
+		m.log.Error("save background work", "session", job.ID, "error", err)
 	}
 }
 

@@ -2,24 +2,32 @@ package server
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
-	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
 func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
+	if err := s.finishTurn(job); err != nil {
+		s.logger().Error("finish turn and deliver result", "session", job.ID, "error", err)
+		_ = s.Store.UpdateSessionStatus(job.ID, storage.StatusInterrupted, err.Error(), time.Time{})
+		s.publishSessionChanged(job.ID)
+	}
+}
+
+// finishTurn does the bookkeeping of a turn that ended: it delivers the
+// turn's result to whoever waits for it, closes its routine run and records
+// how it ended.
+func (s *Server) finishTurn(job acp.Job) error {
 	status := storage.SessionStatusForACPState(job.State, job.StopReason)
 	if job.ID == "" || status == "" {
-		return
+		return nil
 	}
 	session, err := s.Store.LoadSession(job.ID)
 	if err != nil {
-		s.logger().Error("load completed turn", "session", job.ID, "error", err)
-		return
+		return err
 	}
 	ids := []string{job.ID}
 	if session.ParentID != "" {
@@ -36,21 +44,24 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 			parent, loadErr := s.Store.LoadSession(session.ParentID)
 			if loadErr != nil {
 				err = loadErr
-			} else if !parent.Archived && parent.RuntimeRef != nil && parent.RuntimeRef.Agent != acp.AgentJaz {
-				deliveries = append(deliveries, storage.TurnDelivery{SessionID: parent.ID, Message: storage.NewInternalQueuedMessage(acp.CompletionPrompt(job))})
+			} else if parent.RuntimeRef != nil && parent.RuntimeRef.Agent != acp.AgentJaz {
+				message := storage.NewInternalQueuedMessage(acp.CompletionPrompt(job, "the user"))
+				message.From = job.ID
+				// Work started for another bot reports to that bot while it is
+				// still there.
+				if output := session.Turn.ParentOutput; output != nil {
+					if asker, err := s.Store.LoadSession(output.ReplyTo); err == nil && !asker.Archived {
+						message.Text = bots.ResultPrompt(job)
+						message.Output = output
+					}
+				}
+				deliveries = append(deliveries, storage.TurnDelivery{SessionID: parent.ID, Message: message})
 			}
+		}
+		if answer := bots.Answer(session); answer != nil {
+			deliveries = append(deliveries, *answer)
 		}
 		output := session.Turn.Output
-		if output != nil && output.ReplyTo != "" && len(output.Replies) > 0 {
-			reply := bots.ReplyPrompt
-			if output.Run != "" {
-				reply = loops.Report
-			}
-			// The answer continues the exchange between bots that led to it.
-			message := storage.NewInternalQueuedMessage(reply(session.Title, strings.Join(output.Replies, "\n\n")))
-			message.Output = &storage.TurnOutput{Hops: output.Hops}
-			deliveries = append(deliveries, storage.TurnDelivery{SessionID: output.ReplyTo, Message: message})
-		}
 		// The run closes before its turn does; a restart in between finds the
 		// run closed and only finishes the turn's bookkeeping.
 		if run := loopRun(session); run != "" && err == nil {
@@ -69,10 +80,7 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 	}
 	unlock()
 	if err != nil {
-		s.logger().Error("finish turn and deliver result", "session", job.ID, "error", err)
-		_ = s.Store.UpdateSessionStatus(job.ID, storage.StatusInterrupted, err.Error(), time.Time{})
-		s.publishSessionChanged(job.ID)
-		return
+		return err
 	}
 	s.publishMessagesChanged(job.ID)
 	s.publishSessionChanged(job.ID)
@@ -83,6 +91,7 @@ func (s *Server) HandleACPTurnFinished(_ context.Context, job acp.Job) {
 	if job.State == acp.StateIdle || job.State == acp.StateFailed {
 		s.drainQueueSoon(job.ID)
 	}
+	return nil
 }
 
 // compactAt is how full, in percent, a bot's context may grow before its
@@ -146,19 +155,33 @@ func (s *Server) ResumeQueuedTurns() error {
 	return nil
 }
 
+// FailInterruptedTurn ends an interrupted turn that cannot resume as failed,
+// so the thread or bot waiting on it hears, as when a running turn fails.
+func (s *Server) FailInterruptedTurn(_ context.Context, id, message string) error {
+	session, err := s.Store.LoadSession(id)
+	if err != nil {
+		return err
+	}
+	job := acp.Job{ID: id, Slug: session.Slug, State: acp.StateFailed, Error: message}
+	if session.RuntimeRef != nil {
+		job.ACPAgent = session.RuntimeRef.Agent
+	}
+	return s.finishTurn(job)
+}
+
 func (s *Server) ResumeInterruptedTurn(ctx context.Context, id string) error {
 	session, err := s.Store.LoadSession(id)
 	if err != nil {
 		return err
 	}
-	if run := loopRun(session); run != "" {
-		closed, err := s.Loops.Closed(run)
+	if runID := loopRun(session); runID != "" {
+		run, closed, err := s.Loops.Closed(runID)
 		if err != nil {
 			return err
 		}
 		if closed {
 			// Recovery holds this thread's lock, which the bookkeeping takes.
-			go s.HandleACPTurnFinished(context.WithoutCancel(ctx), acp.Job{ID: id, State: acp.StateIdle})
+			go s.HandleACPTurnFinished(context.WithoutCancel(ctx), acp.Job{ID: id, State: loopRunState(run.Status), Error: run.Error})
 			return nil
 		}
 	}

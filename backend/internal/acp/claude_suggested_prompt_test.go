@@ -65,7 +65,7 @@ func TestClaudeSuggestedPromptFromAdapterTraffic(t *testing.T) {
 				}
 				record("started")
 			case line.End > 0:
-				manager.completePromptCall(done, job, line.StopReason)
+				manager.completePromptCall(done, job, line.StopReason, nil)
 			default:
 				manager.jobsByACP[line.SessionID] = job
 				if _, rpcErr := manager.handleJSONRPC(context.Background(), jsonrpc.Request{

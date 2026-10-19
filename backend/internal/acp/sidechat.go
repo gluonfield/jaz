@@ -54,6 +54,7 @@ func (m *Manager) SendSideChat(ctx context.Context, req SideChatRequest) error {
 	if err != nil {
 		return err
 	}
+	defer job.release()
 	peer := m.peer(job.ID)
 	if peer == nil {
 		return fmt.Errorf("acp peer is not active")

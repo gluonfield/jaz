@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -82,11 +83,25 @@ func TestManagerKeepsManagedProcessBetweenTurns(t *testing.T) {
 
 func processStarts(t *testing.T, path string) int {
 	t.Helper()
+	return len(startedPIDs(t, path))
+}
+
+// startedPIDs lists the processes a fake agent's start log recorded.
+func startedPIDs(t *testing.T, path string) []int {
+	t.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return len(strings.Fields(string(data)))
+	var pids []int
+	for _, field := range strings.Fields(string(data)) {
+		pid, err := strconv.Atoi(field)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pids = append(pids, pid)
+	}
+	return pids
 }
 
 func TestManagerRejectsManagedAgentWithoutSessionRestore(t *testing.T) {

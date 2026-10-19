@@ -52,31 +52,64 @@ func (m *Manager) runPromptCall(ctx context.Context, job *jobState, done chan st
 		return
 	}
 	var resp struct {
-		StopReason string `json:"stopReason"`
+		StopReason string             `json:"stopReason"`
+		Meta       sessionFailureMeta `json:"_meta"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		m.failPromptCall(done, job, err)
 		return
 	}
 	m.recordRawUsage(job, raw)
-	m.completePromptCall(done, job, resp.StopReason)
+	m.completePromptCall(done, job, resp.StopReason, resp.Meta.terminal())
 }
 
-func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string) {
-	cancelReason, cancelRequested := job.cancelReason()
-	state := StateIdle
-	errMessage := ""
-	if cancelRequested {
-		state = StateCancelled
-		stopReason = cancelReason
-	} else if stopReason == StopReasonCancelled {
-		state = StateCancelled
+// retryPrompt continues a turn a provider failure ended once its wait ends,
+// unless the turn is stopped first. The continuation asks the agent to go on
+// rather than resending the prompt, whose work may already be done.
+func (m *Manager) retryPrompt(job *jobState, done chan struct{}, wait context.Context) {
+	<-wait.Done()
+	job.mu.Lock()
+	turn := job.turn
+	if turn == nil || turn.done != done {
+		job.mu.Unlock()
+		return
 	}
+	stopped := turn.endRetryWait()
+	job.Error = ""
+	job.mu.Unlock()
+	if stopped {
+		m.completePromptCall(done, job, StopReasonCancelled, nil)
+		return
+	}
+	m.publishACPStatus(job.eventView())
+	req, err := m.promptRequest(job, interruptedTurnContinuation, nil)
+	if err != nil {
+		m.failPromptCall(done, job, err)
+		return
+	}
+	m.runPromptCall(context.Background(), job, done, req)
+}
+
+// completePromptCall records how a prompt call ended. A failure the agent
+// offers to retry keeps the turn running for another prompt call, sent once
+// its wait passes.
+func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReason string, failure *sessionFailure) {
 	job.mu.Lock()
 	turn := job.turn
 	if turn == nil || turn.done != done || turn.promptCalls == 0 {
 		job.mu.Unlock()
 		return
+	}
+	// A stop is read under the lock that starts a retry wait, so it either
+	// keeps the turn from waiting or finds the wait to end.
+	cancelRequested := turn.cancelRequested
+	state := StateIdle
+	errMessage := ""
+	if cancelRequested {
+		state = StateCancelled
+		stopReason = turn.cancelReason
+	} else if stopReason == StopReasonCancelled {
+		state = StateCancelled
 	}
 	turn.promptCalls--
 	remaining := turn.promptCalls
@@ -92,7 +125,24 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		return
 	}
 	turn.promptCalls = 0
-	if state == StateIdle && stopReason == StopReasonEndTurn && job.ActiveOperation != ActiveOperationCompact && !turn.allowSilence && !hasVisibleTurnResult(job) {
+	switch {
+	case state != StateIdle:
+	case failure != nil:
+		// The retry is recorded before it waits, so a restart resumes the turn
+		// with the retries it used; one that cannot be recorded is not made.
+		if delay, ok := turn.retryDelay(*failure); ok && job.ActiveOperation == "" && m.recordRetry(job, turn.retries+1) {
+			wait := turn.waitToRetry(delay)
+			job.Error = retryNotice(*failure, delay, turn.retries)
+			job.UpdatedAt = time.Now().UTC()
+			job.mu.Unlock()
+			m.log.Warn("acp turn failed; retrying", "session", job.ID, "failure", failure.Title, "delay", delay)
+			m.publishACPStatus(job.eventView())
+			go m.retryPrompt(job, done, wait)
+			return
+		}
+		state = StateFailed
+		errMessage = failure.message()
+	case stopReason == StopReasonEndTurn && job.ActiveOperation != ActiveOperationCompact && !turn.allowSilence && !hasVisibleTurnResult(job):
 		state = StateFailed
 		errMessage = "Agent ended the turn without producing a message, plan, or tool activity."
 	}
@@ -105,6 +155,14 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	m.publishACPStatus(job.eventView())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)
+}
+
+func (m *Manager) recordRetry(job *jobState, retries int) bool {
+	err := m.store.SetTurnRetries(job.ID, retries)
+	if err != nil {
+		m.log.Error("record turn retry", "session", job.ID, "error", err)
+	}
+	return err == nil
 }
 
 func hasVisibleTurnResult(job *jobState) bool {
@@ -121,7 +179,7 @@ func (m *Manager) failPromptCall(done chan struct{}, job *jobState, err error) {
 	if shouldCompleteClosedGrokPrompt(job, turn, err) {
 		stopReason := turn.grokStopReason
 		job.mu.Unlock()
-		m.completePromptCall(done, job, stopReason)
+		m.completePromptCall(done, job, stopReason, nil)
 		return
 	}
 	turn.promptCalls = 0
@@ -301,15 +359,20 @@ func (m *Manager) failTurn(job *jobState, err error) {
 
 func acpTurnErrorMessage(err error) string {
 	var rpcErr *jsonrpc.Error
-	if errors.As(err, &rpcErr) {
-		if message := jsonRPCErrorDataMessage(rpcErr.Data); message != "" {
-			return message
-		}
-		if message := strings.TrimSpace(rpcErr.Message); message != "" && message != "Internal error" {
-			return message
-		}
+	if !errors.As(err, &rpcErr) {
+		return err.Error()
 	}
-	return err.Error()
+	message := jsonRPCErrorDataMessage(rpcErr.Data)
+	if trimmed := strings.TrimSpace(rpcErr.Message); message == "" && trimmed != "Internal error" {
+		message = trimmed
+	}
+	if message == "" {
+		return err.Error()
+	}
+	if rpcErr.Code == int(acpschema.ErrorCode32000) {
+		return signInHint + ": " + message
+	}
+	return message
 }
 
 func jsonRPCErrorDataMessage(raw json.RawMessage) string {

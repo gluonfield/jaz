@@ -132,6 +132,7 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			effortConfigID:          sessionConfigReasoningEffort,
 			effortInModelSuffix:     true,
 			providerInLaunch:        true,
+			modelConfiguredAtLaunch: true,
 			systemPromptAtLaunch:    true,
 			promptPersistsOnRestore: true,
 			materializesOnPrompt:    true,
@@ -179,6 +180,12 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 	}
 }
 
+// KeepsStartPrompt reports whether agent keeps the prompt its thread started
+// with in provider history, whatever prompt a restored session is given.
+func KeepsStartPrompt(agent string) bool {
+	return agentPolicyForAgent(agent).promptPersistsOnRestore
+}
+
 func (p agentPolicy) usesModelConfigOption() bool {
 	return p.modelConfigID != ""
 }
@@ -192,7 +199,8 @@ func (p agentPolicy) usesReasoningEffortConfigOption() bool {
 }
 
 func (p agentPolicy) effortEncodedInModel(model string) bool {
-	return p.effortInModelSuffix && modelHasReasoningEffort(model)
+	_, _, suffixed := cutReasoningEffort(model)
+	return p.effortInModelSuffix && suffixed
 }
 
 func (p agentPolicy) sessionConfigModel(cfg AgentConfig) string {
@@ -301,34 +309,45 @@ type sessionConfigOptionsState struct {
 	configOptionsPresent bool
 	planConfigID         string
 	modelOptions         []string
+	currentModel         string
+	defaultModel         string
 	effortConfigPresent  bool
 	effortConfigID       string
 	effortOptions        []string
 	effortPriority       int
 }
 
-// setConfiguredSessionModel checks the configured model against the models the
-// session advertised and applies it unless it already rode the launch or
-// session/new. It returns the agent's raw response: it carries refreshed
-// config options (e.g. the effort levels valid for the newly selected model).
-func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, sessionID acpschema.SessionID, rawModel string, requested bool, state sessionModelState) (json.RawMessage, error) {
+// setConfiguredSessionModel checks the configured model against the agent's
+// advertised models and applies it unless it already rode the launch or
+// session/new; a model the agent does not offer gives way to the agent's
+// default. It returns the agent's raw response: it carries refreshed config
+// options (e.g. the effort levels valid for the newly selected model).
+func (m *Manager) setConfiguredSessionModel(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpSessionInfo, rawModel string, requested bool, state sessionModelState) (json.RawMessage, error) {
 	policy := agentPolicyForAgent(agentName)
 	configured := configuredSessionModel(rawModel)
 	model, err := policy.sessionModelToSend(agentName, configured, state, requested)
 	if err != nil {
 		return nil, err
 	}
-	if policy.modelConfiguredAtLaunch || policy.modelMetaKey != "" {
+	options := session.configOptions
+	switch {
+	case model == "" && configured != "":
+		m.log.Warn("acp agent does not offer the configured model",
+			"agent", agentName, "model", configured, "current", options.currentModel,
+			"default", options.defaultModel, "available", strings.Join(state.advertisedModels(), ", "))
+		// A launch before Jaz had seen the agent's list may have carried the
+		// model, so the session moves to the agent's default, as a switch.
+		if options.currentModel == options.defaultModel {
+			return nil, nil
+		}
+		model = options.defaultModel
+	case policy.modelConfiguredAtLaunch || policy.modelMetaKey != "":
 		return nil, nil
 	}
 	if model == "" {
-		if configured != "" {
-			m.log.Warn("acp agent does not offer the configured model; keeping the agent's default",
-				"agent", agentName, "model", configured,
-				"available", strings.Join(state.advertisedModels(), ", "))
-		}
 		return nil, nil
 	}
+	sessionID := session.response.SessionID
 	if policy.usesModelConfigOption() {
 		raw, err := setSessionConfigOption(ctx, peer, sessionID, policy.modelConfigID, model)
 		if err == nil {
@@ -400,16 +419,20 @@ func (m *Manager) configuredModeState(
 	model := policy.sessionConfigModel(cfg)
 	m.rememberAdvertisedModels(agentName, cfg, session.modelState)
 	// Codex lists its own models whichever provider it runs on, while another
-	// provider's model rides the launch, so only its own list can refuse one.
-	requested := cfg.ModelRequested && agentOwnsModelMetadata(agentName, cfg.ModelProvider)
-	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session.response.SessionID, model, requested, session.modelState)
+	// provider's model rides the launch, so only its own list can judge one.
+	advertised := session.modelState
+	if policy.providerInLaunch && !agentOwnsModelMetadata(agentName, cfg.ModelProvider) {
+		advertised = sessionModelState{}
+	}
+	modelRaw, err := m.setConfiguredSessionModel(ctx, peer, agentName, session, model, cfg.ModelRequested, advertised)
 	if err != nil {
 		return ModeState{}, err
 	}
 	ac.state.configResponse(session.response.SessionID, modelRaw)
 	if !policy.effortEncodedInModel(model) {
 		options := session.configOptions
-		activeModelOptions := false
+		// session/new describes the model that rode the launch.
+		activeModelOptions := policy.modelConfiguredAtLaunch && options.configOptionsPresent
 		if refreshed := parseSessionConfigOptions(modelRaw); refreshed.configOptionsPresent {
 			options = refreshed
 			activeModelOptions = true
@@ -469,6 +492,17 @@ func parseEffortOptions(raw json.RawMessage) []string {
 	return parseSessionConfigOptions(raw).effortOptions
 }
 
+// configOptionMeta carries the value an agent recommends for one of its
+// options, such as Codex's default model, through the JetBrains AIR extension
+// Jaz advertises at initialize.
+type configOptionMeta struct {
+	Jetbrains struct {
+		Air struct {
+			RecommendedValue string `json:"recommendedValue"`
+		} `json:"air"`
+	} `json:"jetbrains"`
+}
+
 func parseSessionConfigOptions(raw json.RawMessage) sessionConfigOptionsState {
 	var envelope map[string]json.RawMessage
 	if len(raw) == 0 || json.Unmarshal(raw, &envelope) != nil {
@@ -480,9 +514,11 @@ func parseSessionConfigOptions(raw json.RawMessage) sessionConfigOptionsState {
 	}
 	state := sessionConfigOptionsState{configOptionsPresent: true}
 	var options []struct {
-		ID       string          `json:"id"`
-		Category string          `json:"category"`
-		Options  json.RawMessage `json:"options"`
+		ID           string           `json:"id"`
+		Category     string           `json:"category"`
+		CurrentValue string           `json:"currentValue"`
+		Options      json.RawMessage  `json:"options"`
+		Meta         configOptionMeta `json:"_meta"`
 	}
 	if json.Unmarshal(rawOptions, &options) != nil {
 		return state
@@ -497,6 +533,8 @@ func parseSessionConfigOptions(raw json.RawMessage) sessionConfigOptionsState {
 			}
 		case category == string(acpschema.SessionConfigOptionCategoryModel) || option.ID == sessionConfigModel:
 			state.modelOptions = parseConfigOptionValues(option.Options)
+			state.currentModel = option.CurrentValue
+			state.defaultModel = option.Meta.Jetbrains.Air.RecommendedValue
 		case category == string(acpschema.SessionConfigOptionCategoryThoughtLevel) || option.ID == claudeSessionConfigEffort || option.ID == sessionConfigReasoningEffort:
 			priority := 1
 			if category == string(acpschema.SessionConfigOptionCategoryThoughtLevel) {
@@ -638,8 +676,8 @@ func (s *sessionModelState) addExact(model string) {
 		s.exact = make(map[string]struct{})
 	}
 	s.exact[model] = struct{}{}
-	if modelHasReasoningEffort(model) {
-		s.addBase(model[:strings.LastIndex(model, "/")])
+	if base, _, ok := cutReasoningEffort(model); ok {
+		s.addBase(base)
 	}
 }
 
@@ -777,15 +815,17 @@ func contextTagBase(model string) string {
 	return model
 }
 
-func modelHasReasoningEffort(model string) bool {
+// cutReasoningEffort splits the reasoning effort off a model id that carries
+// one, such as gpt-6-luna/high.
+func cutReasoningEffort(model string) (base, effort string, ok bool) {
 	i := strings.LastIndex(model, "/")
 	if i < 0 {
-		return false
+		return model, "", false
 	}
 	switch strings.ToLower(strings.TrimSpace(model[i+1:])) {
 	case "minimal", "low", "medium", "high", "xhigh", "max":
-		return true
+		return model[:i], model[i+1:], true
 	default:
-		return false
+		return model, "", false
 	}
 }

@@ -74,7 +74,8 @@ func (m *Manager) spawnConfig(req SpawnRequest) (SpawnRequest, AgentConfig, stri
 		return SpawnRequest{}, AgentConfig{}, "", err
 	}
 	if strings.EqualFold(strings.TrimSpace(req.ReasoningEffort), "none") && agentPolicyForAgent(req.ACPAgent).effortEncodedInModel(cfg.Model) {
-		cfg.Model = strings.TrimSpace(cfg.Model[:strings.LastIndex(cfg.Model, "/")])
+		base, _, _ := cutReasoningEffort(cfg.Model)
+		cfg.Model = strings.TrimSpace(base)
 	}
 	cfg.Model = m.resolveAgentModelAlias(req.ACPAgent, cfg)
 	cfg.ModelRequested = modelOverridden && !req.StoredModel
@@ -106,7 +107,8 @@ func (m *Manager) validateAgentModelProvider(agent string, cfg AgentConfig) erro
 // starts becomes its subtask, the thread it takes a group's turns in names it
 // as source, and a routine run's thread has it as parent. Each starts in the
 // bot's home and, as Codex and Grok sub-agents do, runs on the bot's agent and
-// model unless asked otherwise.
+// model unless asked otherwise. A thread that one of those threads starts is
+// the bot's work too, though it runs and reports as any child thread does.
 func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 	botID := req.SourceID
 	switch {
@@ -123,10 +125,21 @@ func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 	if err != nil {
 		return req, err
 	}
+	// The parent works for a bot rather than being one.
+	if owner := bot.Owner(); req.SourceType == "" && owner != "" && owner != bot.ID {
+		if req.Commitment != 0 {
+			return req, errors.New("only a bot's own chat starts threads for its commitments; leave commitment out")
+		}
+		req.SourceType, req.SourceID = storage.SourceBotWorker, owner
+		return req, nil
+	}
 	if bot.SourceType != storage.SourceBot || bot.RuntimeRef == nil {
 		return req, nil
 	}
 	if req.SourceType == "" {
+		if req.Commitment == 0 {
+			return req, errors.New("a thread you start serves one of your commitments: open one with the commitment tool, then pass its number as commitment")
+		}
 		req.SourceType, req.SourceID = storage.SourceBotWorker, bot.ID
 	}
 	if req.Directory == "" && req.Home == "" && !req.Worktree {
@@ -186,6 +199,7 @@ func (m *Manager) createStoredSession(req SpawnRequest, cfg AgentConfig, effort 
 		ReasoningEffort: effort,
 		SourceType:      req.SourceType,
 		SourceID:        req.SourceID,
+		Commitment:      req.Commitment,
 		RuntimeRef: &storage.RuntimeRef{
 			Type:            storage.RuntimeACP,
 			Agent:           req.ACPAgent,

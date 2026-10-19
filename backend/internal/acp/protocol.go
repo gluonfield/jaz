@@ -83,6 +83,10 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	if err != nil {
 		return
 	}
+	warning := sessionWarning(job.ID, update, raw)
+	if warning != nil && warning.notice() {
+		update = noticeMessage(*warning)
+	}
 	if codexHiddenWarning(job.ACPAgent, update) {
 		return
 	}
@@ -182,6 +186,9 @@ func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 			job.suggestedPrompt = prompt
 			publishACP = true
 		}
+	}
+	if job.turn != nil {
+		job.turn.trackProviderRetries(warning, warning == nil && (messageChunk != "" || thoughtChunk != "" || toolEvent != nil))
 	}
 	job.UpdatedAt = now
 	job.LastEventAt = now

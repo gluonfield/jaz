@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
 
@@ -44,13 +45,40 @@ func (s *Store) CreateSession(input storage.CreateSession) (storage.Session, err
 		return storage.Session{}, err
 	}
 	session.Slug = slug
-	if err := s.saveSessionLocked(session, false); err != nil {
-		s.writeMu.Unlock()
+	err = s.insertNewSessionLocked(session, input.Commitment)
+	s.writeMu.Unlock()
+	if err != nil {
 		return storage.Session{}, err
 	}
-	s.writeMu.Unlock()
 	s.mirrorSession(session)
 	return session, nil
+}
+
+// insertNewSessionLocked saves a new thread together with its link to the
+// open commitment of its bot it serves, if any, which then waits on it.
+func (s *Store) insertNewSessionLocked(session storage.Session, commitment int64) error {
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := insertSession(tx, session); err != nil {
+		return err
+	}
+	if commitment != 0 {
+		linked, err := botdb.New(tx).LinkCommitmentThread(ctx, botdb.LinkCommitmentThreadParams{ThreadID: session.ID, CommitmentID: commitment, BotID: session.SourceID})
+		if err != nil {
+			return err
+		}
+		if linked == 0 {
+			return fmt.Errorf("#%d: %w", commitment, storage.ErrCommitmentNotOpen)
+		}
+		if err := botdb.New(tx).StopWaiting(ctx, commitment); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) EnsureSession(id string) error {
@@ -495,6 +523,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		LastAttentionAt:        msToTime(row.LastAttentionAtMs),
 		CompletedAt:            msToTime(row.LastCompletedAtMs),
 		CompletedTurnStartedAt: msToTime(row.CompletedTurnStartedAtMs),
+		PromptDigest:           row.PromptDigest,
 		Unread:                 row.Unread != 0,
 	}
 	if session.LastAttentionAt.IsZero() {
@@ -536,6 +565,22 @@ func (s *Store) TouchSessionAttention(id string) error {
 		s.mirrorSession(current)
 	}
 	return nil
+}
+
+// SetBackgroundWork records whether a thread's agent holds a live background
+// task.
+func (s *Store) SetBackgroundWork(id string, live bool) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return threaddb.New(s.db).SetBackgroundWork(context.Background(), threaddb.SetBackgroundWorkParams{Live: boolInt(live), ID: id})
+}
+
+// ClearBackgroundWork forgets the background tasks of agents a previous server
+// launched, none of which outlives it.
+func (s *Store) ClearBackgroundWork() error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	return threaddb.New(s.db).ClearBackgroundWork(context.Background())
 }
 
 // Scoped to the thread, not cascaded to children like SetArchived/SetPinned.

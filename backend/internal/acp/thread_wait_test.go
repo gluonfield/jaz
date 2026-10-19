@@ -12,8 +12,15 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
+// unsaved stores no threads, as for jobs a test makes up.
+type unsaved struct{ Store }
+
+func (unsaved) LoadSession(id string) (storage.Session, error) {
+	return storage.Session{}, storage.ErrSessionNotFound
+}
+
 func waitingThreads() (*Manager, *jobState, *jobState) {
-	manager := NewManager(nil, Config{}, nil)
+	manager := NewManager(unsaved{}, Config{}, nil)
 	manager.Events = sessionevents.New()
 	first := &jobState{Job: Job{ID: "first", State: StateRunning}}
 	second := &jobState{Job: Job{ID: "second", State: StateRunning}}
