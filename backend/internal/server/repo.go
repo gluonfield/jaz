@@ -270,7 +270,6 @@ func (s *Server) PruneManagedWorktrees(ctx context.Context) {
 		s.logger().WithPrefix("worktrees").Warn("list sessions failed", "error", err)
 		return
 	}
-	liveACP := s.liveACPSessions()
 	type candidate struct {
 		session  storage.Session
 		worktree managedWorktree
@@ -296,7 +295,7 @@ func (s *Server) PruneManagedWorktrees(ctx context.Context) {
 			}
 			continue
 		}
-		if session.Pinned || sessionHasLiveACP(session, liveACP) || s.sessionRuntimeRunning(session) {
+		if session.Pinned || (s.ACP != nil && s.ACP.SessionUsed(session.ID)) || s.sessionRuntimeRunning(session) {
 			continue
 		}
 		if session.Archived {
@@ -318,34 +317,6 @@ func (s *Server) PruneManagedWorktrees(ctx context.Context) {
 		}
 		s.removeSessionWorktree(ctx, item.session, item.worktree)
 	}
-}
-
-func (s *Server) liveACPSessions() map[string]struct{} {
-	if s.ACP == nil {
-		return nil
-	}
-	refs := s.ACP.LiveSessionRefs()
-	if len(refs) == 0 {
-		return nil
-	}
-	live := make(map[string]struct{}, len(refs))
-	for _, ref := range refs {
-		if ref != "" {
-			live[ref] = struct{}{}
-		}
-	}
-	return live
-}
-
-func sessionHasLiveACP(session storage.Session, live map[string]struct{}) bool {
-	if session.Runtime != storage.RuntimeACP || len(live) == 0 {
-		return false
-	}
-	if _, ok := live[session.ID]; ok {
-		return true
-	}
-	_, ok := live[session.Slug]
-	return ok
 }
 
 func (s *Server) worktreeSessions() ([]storage.Session, error) {

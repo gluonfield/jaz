@@ -13,7 +13,7 @@ type agentProcess struct {
 	mcpPolicy   string
 	mcpRefresh  string
 	mcpRevision uint64
-	conn        jsonrpc.MessageConn
+	conn        *promptTrackingConn
 	peer        *jsonrpc.Peer
 	cancel      context.CancelFunc
 	closed      <-chan struct{}
@@ -24,7 +24,7 @@ type agentProcess struct {
 
 func newAgentProcess(ac *agentConn) *agentProcess {
 	return &agentProcess{
-		conn:      ac.conn,
+		conn:      ac.promptTracker,
 		peer:      ac.peer,
 		cancel:    ac.cancel,
 		closed:    ac.closed,
@@ -107,6 +107,8 @@ func (m *Manager) Close() {
 	}
 }
 
+// acquireSessionProcess returns the session's job with a live process, held
+// from being stopped as idle until the job's release.
 func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jobState, error) {
 	for {
 		m.mu.RLock()
@@ -122,7 +124,9 @@ func (m *Manager) acquireSessionProcess(ctx context.Context, job *jobState) (*jo
 			continue
 		}
 		if current == job && process != nil && serveErr == nil && !job.claudeAuthFailed() {
-			return job, nil
+			if job.lease() {
+				return job, nil
+			}
 		}
 		if serveErr != nil && job.turnDone() != nil {
 			return nil, serveErr
@@ -172,6 +176,7 @@ func (m *Manager) addJob(job *jobState, process *agentProcess) {
 	defer m.mu.Unlock()
 	m.jobsByID[job.ID] = job
 	m.jobsBySlug[job.Slug] = job
+	m.used[job.ID] = struct{}{}
 	if job.ACPSession != "" {
 		m.jobsByACP[job.ACPSession] = job
 	}

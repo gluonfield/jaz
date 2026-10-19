@@ -64,22 +64,33 @@ func (j *jobState) toolCallSubagent(id acpschema.ToolCallID, meta map[string]any
 // interruptProviderSubagents closes the subagents the session's agent process
 // left open, since no process remains to report their end.
 func (m *Manager) interruptProviderSubagents(job *jobState) {
-	events, err := m.store.LoadSessionOverviewEvents(job.ID)
+	open, err := m.openProviderSubagents(job.ID)
 	if err != nil {
 		m.log.Error("load provider subagents", "session", job.ID, "error", err)
 		return
 	}
-	var interrupted []sessionevents.ProviderSubagentEvent
-	for _, event := range events {
-		subagent := event.ProviderSubagent
-		if subagent == nil || event.ProjectionKey != sessionevents.ProviderSubagentProjectionKey(job.ID, *subagent) {
-			continue
-		}
-		if !subagent.Status.Ended() {
-			interrupted = append(interrupted, sessionevents.ProviderSubagentEvent{Provider: subagent.Provider, ID: subagent.ID, Status: sessionevents.SubagentCancelled})
-		}
+	interrupted := make([]sessionevents.ProviderSubagentEvent, 0, len(open))
+	for _, subagent := range open {
+		interrupted = append(interrupted, sessionevents.ProviderSubagentEvent{Provider: subagent.Provider, ID: subagent.ID, Status: sessionevents.SubagentCancelled})
 	}
 	m.publishProviderSubagents(job.eventView(), interrupted)
+}
+
+// openProviderSubagents lists the session's own subagents that have not
+// reported an end.
+func (m *Manager) openProviderSubagents(id string) ([]sessionevents.ProviderSubagentEvent, error) {
+	events, err := m.store.LoadSessionOverviewEvents(id)
+	if err != nil {
+		return nil, err
+	}
+	var open []sessionevents.ProviderSubagentEvent
+	for _, event := range events {
+		subagent := event.ProviderSubagent
+		if subagent != nil && event.ProjectionKey == sessionevents.ProviderSubagentProjectionKey(id, *subagent) && !subagent.Status.Ended() {
+			open = append(open, *subagent)
+		}
+	}
+	return open, nil
 }
 
 func providerSubagentsFromMeta(agent string, meta map[string]any, hint providerSubagentHint) []sessionevents.ProviderSubagentEvent {

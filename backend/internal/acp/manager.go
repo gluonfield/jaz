@@ -87,6 +87,7 @@ type Manager struct {
 	localAgents       map[string]LocalAgentRunner
 	turnReaders       map[string]int
 	pendingDiscard    map[string]*jobState
+	used              map[string]struct{}
 
 	pendingPermission map[string]*pendingPermission
 	permissionMu      sync.Mutex
@@ -231,6 +232,7 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		localAgents:       make(map[string]LocalAgentRunner),
 		turnReaders:       make(map[string]int),
 		pendingDiscard:    make(map[string]*jobState),
+		used:              make(map[string]struct{}),
 		pendingPermission: make(map[string]*pendingPermission),
 		projections:       make(map[string]*eventProjection),
 		resumeLocks:       sessionlock.New(),
@@ -407,9 +409,7 @@ func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSur
 	if prompt == "" {
 		return nil, nil
 	}
-	// Bots keep one conversation for good, so only they opt out of Claude
-	// Code's prompt snapshot; other threads keep native caching.
-	return systemPromptMeta(agent, prompt, mcpServerPolicy == MCPServerPolicyBot), nil
+	return systemPromptMeta(agent, prompt, rendersPromptOnLaunch(agent, mcpServerPolicy)), nil
 }
 
 type newSessionRequest struct {

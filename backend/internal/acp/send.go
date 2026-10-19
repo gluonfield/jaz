@@ -151,6 +151,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		if err != nil {
 			return Job{}, err
 		}
+		defer job.release()
 	}
 	if opts.requireCompactSupport && !m.supportsSessionCommand(job, "compact") {
 		return Job{}, fmt.Errorf("compact is not available for acp agent %q", job.ACPAgent)
