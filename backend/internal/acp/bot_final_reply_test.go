@@ -39,7 +39,7 @@ func TestABotShowsTheUserTheFinalReplyOfTheirTurnThatShowedThemNothing(t *testin
 	jaz.write(bot.ID, "plan the week")
 	jaz.write(bot.ID, "answer in the final reply, commentary only")
 	// A turn that sent the user a message shows only that.
-	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "answer in the final reply until released", Completion: acp.CompletionAsync}); err != nil {
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "answer in the final reply until released", Completion: acp.CompletionAsync, FromUser: true}); err != nil {
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
@@ -56,7 +56,7 @@ func TestABotShowsTheUserTheFinalReplyOfTheirTurnThatShowedThemNothing(t *testin
 		t.Fatal(err)
 	}
 	jaz.idle(bot.ID)
-	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "answer in the final reply", Completion: acp.CompletionAsync, ParentVisible: true, FromAgent: true}); err != nil {
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "answer in the final reply", Completion: acp.CompletionAsync, ParentVisible: true}); err != nil {
 		t.Fatal(err)
 	}
 	jaz.idle(bot.ID)
@@ -73,7 +73,7 @@ func TestABotsFinalReplyReachesTheUserWhenTheirTurnResumesAfterARestart(t *testi
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
-	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "what changed? until released", Completion: acp.CompletionAsync}); err != nil {
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "what changed? until released", Completion: acp.CompletionAsync, FromUser: true}); err != nil {
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
@@ -103,7 +103,7 @@ func TestABotsFallbackRecordsDeliveryWithoutClosingCommitmentsAndRespectsPresent
 	if !<-shown || jaz.commitment(commitment.ID).Status != storage.CommitmentOpen {
 		t.Fatal("fallback must mark the turn shown and leave the commitment open")
 	}
-	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "answer in the final reply until released", Completion: acp.CompletionAsync}); err != nil {
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "answer in the final reply until released", Completion: acp.CompletionAsync, FromUser: true}); err != nil {
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)

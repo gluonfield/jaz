@@ -163,8 +163,8 @@ type SendRequest struct {
 	PlanRequested bool
 	GoalRequested bool
 	ParentVisible bool
-	// FromAgent marks Message as an agent's, not the user's.
-	FromAgent bool
+	// FromUser is set only at a human input boundary.
+	FromUser bool
 	// From is the thread whose agent sent Message, when known.
 	From string
 	// ParentOutput is what the parent turn that sent Message was answering;
@@ -182,6 +182,7 @@ const (
 )
 
 type SteerRequest struct {
+	FromUser      bool
 	Session       string
 	Message       string
 	Contexts      []storage.MessageContext
@@ -312,7 +313,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 	if err != nil {
 		return nil, err
 	}
-	env, err := m.processEnvPreparedForSurfacePolicy(ctx, name, cfg, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
+	env, err := m.processEnvPrepared(name, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +321,7 @@ func (m *Manager) connectWithHandler(ctx context.Context, name string, cfg Agent
 		env[codexModelMetadataEnv] = modelMetadata
 	}
 	launchPrompt := ""
-	if agentPolicyForAgent(name).systemPromptAtLaunch {
+	if agentPolicyForAgent(name).systemPromptAtLaunch || CanonicalAgentName(name) == AgentOpenCode {
 		launchPrompt, err = m.systemPrompt(ctx, cwd, artifactSurface, mcpServerPolicy, systemPromptExtensions)
 		if err != nil {
 			return nil, err

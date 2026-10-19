@@ -24,6 +24,7 @@ import { exerciseFolderDrop } from './folder-drop'
 import { exerciseChatHistory } from './chat-history'
 import { exerciseBotWelcome } from './bot-welcome'
 import { exerciseBotPanel } from './bot-panel'
+import { exerciseLoops } from './loops'
 import { exerciseBotFaces } from './bot-faces'
 import { exerciseConnectCard } from './connect-card'
 import { exerciseAccentText } from './accent-text'
@@ -119,6 +120,8 @@ function Fixture() {
       await exerciseBotWelcome()
       stage = 'a bot side panel: activity, routines and identity files'
       await exerciseBotPanel()
+      stage = 'routine waiting reasons in the list and details'
+      await exerciseLoops()
       stage = 'live bot faces: idle motion, moods, one-off moves and effects off'
       await exerciseBotFaces()
       stage = 'connect card sign-in from chat'

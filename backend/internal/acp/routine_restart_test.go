@@ -386,9 +386,7 @@ func TestRestartMidChildRunResumesTheChildAndClosesItsRun(t *testing.T) {
 
 	jaz = jaz.restart(nil)
 	jaz.waitRun(run.ID, loops.RunStatusOK)
-	if session, err := store.LoadSession(child); err != nil || session.Status != storage.StatusIdle {
-		t.Fatalf("child after its resumed turn = %+v, %v", session, err)
-	}
+	jaz.idle(child)
 }
 
 func TestARoutineQueuedBehindAFailingTurnStillRuns(t *testing.T) {

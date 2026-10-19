@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -20,7 +21,7 @@ func TestAppendUserMessageWithSelectionContextPersists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := storage.AppendUserMessage(store, session.ID, "what is this", storage.SelectionContexts([]string{"selected text"}), nil, false); err != nil {
+	if err := storage.AppendUserMessage(store, session.ID, "what is this", storage.SelectionContexts([]string{"selected text"}), nil, true); err != nil {
 		t.Fatalf("append user message with selection context: %v", err)
 	}
 
@@ -57,7 +58,7 @@ func TestSavedTranscriptKeepsWhichMessagesAnAgentWrote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := storage.AppendUserMessage(store, session.ID, "follow up on the notes", nil, nil, true); err != nil {
+	if err := storage.AppendUserMessage(store, session.ID, "follow up on the notes", nil, nil, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -68,7 +69,59 @@ func TestSavedTranscriptKeepsWhichMessagesAnAgentWrote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 3 || !records[0].FromAgent || records[2].FromAgent {
-		t.Fatalf("records = %+v, want only the first written by an agent", records)
+	if len(records) != 3 || records[0].FromUser || records[2].FromUser {
+		t.Fatalf("records = %+v, want no inferred human authorship", records)
 	}
+}
+
+func TestOnlyExplicitHumanMessagesCountAsUserActivity(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{Slug: "authorship"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLast := func(want time.Time) {
+		t.Helper()
+		last, err := store.LastUserMessageAt()
+		if err != nil || !last.Equal(want) {
+			t.Fatalf("last user activity = %v, %v, want %v", last, err, want)
+		}
+	}
+	if err := store.AppendMessageRecords(session.ID, storage.Message{Role: "user", Content: "unmarked"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessages(session.ID, provider.UserMessage("provider message")); err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.AppendUserMessage(store, session.ID, "agent", nil, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	assertLast(time.Time{})
+	if err := storage.AppendUserMessage(store, session.ID, "human", nil, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.LoadMessageRecords(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrote := records[len(records)-1].CreatedAt
+	assertLast(wrote)
+	messages, err := store.LoadMessages(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages = append(messages, provider.UserMessage("snapshot addition"))
+	if err := store.SaveMessages(session.ID, messages); err != nil {
+		t.Fatal(err)
+	}
+	assertLast(wrote)
+	messages[len(messages)-2] = provider.UserMessage("replacement without authorship")
+	if err := store.SaveMessages(session.ID, messages); err != nil {
+		t.Fatal(err)
+	}
+	assertLast(time.Time{})
 }

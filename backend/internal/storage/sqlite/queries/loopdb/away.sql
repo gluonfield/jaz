@@ -10,7 +10,7 @@ SELECT CAST(MAX(
     FROM messages AS m
     JOIN threads AS t ON t.id = m.thread_id
     WHERE m.role = 'user'
-      AND m.from_agent = 0
+      AND m.from_user = 1
       AND COALESCE(t.parent_id, '') = ''
       AND COALESCE(t.source_type, '') IN ('', 'bot')
   ), 0),

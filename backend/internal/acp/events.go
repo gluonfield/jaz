@@ -65,6 +65,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 		_, err := m.Send(ctx, SendRequest{
 			Session:       req.Session,
 			Message:       text,
+			FromUser:      true,
 			Completion:    CompletionAsync,
 			PlanRequested: req.PlanRequested,
 			ParentVisible: req.ParentVisible,
@@ -174,6 +175,7 @@ func (m *Manager) steerText(ctx context.Context, job *jobState, text string, req
 	_, err := m.Steer(ctx, SteerRequest{
 		Session:       job.ID,
 		Message:       text,
+		FromUser:      true,
 		ParentVisible: req.ParentVisible,
 	})
 	if err == nil || !errors.Is(err, ErrSteeringUnsupported) {
@@ -188,6 +190,7 @@ func (m *Manager) steerText(ctx context.Context, job *jobState, text string, req
 	_, err = m.Send(ctx, SendRequest{
 		Session:       job.ID,
 		Message:       text,
+		FromUser:      true,
 		Completion:    CompletionAsync,
 		PlanRequested: req.PlanRequested,
 		ParentVisible: req.ParentVisible,
@@ -207,6 +210,7 @@ func (m *Manager) sendTextAfterTurn(sessionID, text string, parentVisible, planR
 	_, _ = m.Send(context.Background(), SendRequest{
 		Session:       sessionID,
 		Message:       text,
+		FromUser:      true,
 		Completion:    CompletionAsync,
 		PlanRequested: planRequested,
 		ParentVisible: parentVisible,

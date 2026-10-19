@@ -175,11 +175,13 @@ func (s *Service) List() ([]Loop, error) {
 // blocked tells each active scheduled loop why its runs wait, if they do.
 func (s *Service) blocked(items []Loop) []Loop {
 	s.mu.Lock()
-	reason := s.unsettled
-	s.mu.Unlock()
+	defer s.mu.Unlock()
 	for i := range items {
 		if items[i].Status == StatusActive && items[i].Schedule.Kind == ScheduleCron {
-			items[i].Blocked = reason
+			items[i].Blocked = s.unsettled
+			if items[i].Blocked == "" && s.heldAway(items[i]) {
+				items[i].Blocked = "Waiting until you write to Jaz again. You have been away for 3 days."
+			}
 		}
 	}
 	return items

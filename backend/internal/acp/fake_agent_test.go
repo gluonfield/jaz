@@ -37,8 +37,20 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	if os.Getenv("JAZ_FAKE_ACP_AGENT") != "1" {
 		return
 	}
-	if os.Getenv("JAZ_FAKE_ACP_UNIQUE_SESSION") == "1" {
+	switch os.Getenv("JAZ_FAKE_ACP_UNIQUE_SESSION") {
+	case "1":
 		fakeSessionID = fmt.Sprintf("fake-session-%d", os.Getpid())
+	case "cwd":
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fakeSessionID = "fake-session-" + filepath.Base(cwd)
+	}
+	if path := os.Getenv("JAZ_FAKE_ACP_OPENCODE_CONFIG_CAPTURE"); path != "" {
+		if err := os.WriteFile(path, []byte(os.Getenv("OPENCODE_CONFIG_CONTENT")), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if path := os.Getenv("JAZ_FAKE_ACP_MUSE_CONFIG_CAPTURE"); path != "" {
 		if err := os.WriteFile(path, []byte(os.Getenv("XDG_CONFIG_HOME")), 0o600); err != nil {

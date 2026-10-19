@@ -7,7 +7,7 @@ SELECT
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq;
@@ -58,7 +58,7 @@ SELECT
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
   AND seq >= sqlc.arg(start_seq)
@@ -94,7 +94,7 @@ INSERT INTO messages (
   reasoning,
   blocks,
   created_at_ms,
-  from_agent
+  from_user
 ) VALUES (
   sqlc.arg(thread_id),
   sqlc.arg(seq),
@@ -103,5 +103,5 @@ INSERT INTO messages (
   sqlc.narg(reasoning),
   sqlc.arg(blocks),
   sqlc.arg(created_at_ms),
-  sqlc.arg(from_agent)
+  sqlc.arg(from_user)
 );

@@ -175,7 +175,7 @@ func TestShutdownRefusesNewThreadsAndARestartStartsAClaimedOneOnce(t *testing.T)
 	}
 	asked := 0
 	for _, message := range messages {
-		if strings.Contains(message.Content, "Draft the brochure") && message.FromAgent {
+		if strings.Contains(message.Content, "Draft the brochure") && !message.FromUser {
 			asked++
 		}
 	}
