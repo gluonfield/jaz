@@ -18,9 +18,9 @@ import (
 )
 
 // The session/update frames in testdata/claude-subagents are what the Claude
-// adapter v0.93.0-jaz.1 sent to a client declaring Jaz's capabilities: live
+// adapter v0.93.0-jaz.2 sent to a client declaring Jaz's capabilities: live
 // Claude Code 2.1.300 runs, and, for a failure, which a live run cannot produce
-// on demand, the adapter's own SDK-shaped stream.
+// on demand, the adapter's own SDK-shaped stream (0.93.0-jaz.1).
 // Each file is one adapter process; a case with two files restarts Jaz and the
 // adapter in between and resumes the same ACP session.
 func TestClaudeSubagentRowsFromAdapterTraffic(t *testing.T) {
