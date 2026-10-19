@@ -175,11 +175,11 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	if err := m.prepareModeForTurn(ctx, job, req.PlanRequested); err != nil {
 		return Job{}, err
 	}
-	m.admission.RLock()
-	defer m.admission.RUnlock()
-	if m.closed {
-		return Job{}, ErrClosed
+	release, err := m.admit()
+	if err != nil {
+		return Job{}, err
 	}
+	defer release()
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
 	var promptDigest string
 	if m.cfg.TurnNote != nil && opts.activeOperation != ActiveOperationCompact {
@@ -399,4 +399,17 @@ func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, d
 	case steerGrokInterject:
 		m.runGrokInterject(ctx, job, done, prompt)
 	}
+}
+
+// answering is what sender's running turn answers, when it answers another
+// bot; the result of work it starts goes on to answer it.
+func (m *Manager) answering(sender string) (*storage.TurnOutput, error) {
+	if sender == "" {
+		return nil, nil
+	}
+	session, err := m.store.LoadSession(sender)
+	if err != nil || session.Turn == nil {
+		return nil, err
+	}
+	return session.Turn.Output.Continuation(), nil
 }

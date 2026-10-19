@@ -506,7 +506,7 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 	if err != nil {
 		return SpawnResult{}, err
 	}
-	job, session, err := m.startSession(ctx, created, StateIdle)
+	job, err := m.startSession(ctx, created, StateIdle)
 	if err != nil {
 		return SpawnResult{}, m.abandonSession(created.Session, err)
 	}
@@ -517,13 +517,13 @@ func (m *Manager) Spawn(ctx context.Context, req SpawnRequest) (SpawnResult, err
 		ACPAgent:  job.ACPAgent,
 		Cwd:       job.Cwd,
 		State:     StateIdle,
-		Session:   session,
+		Session:   created.Session,
 	}, nil
 }
 
 // startSession starts the agent of a session createSession stored, as the
 // request that created it asked, and registers its job in state.
-func (m *Manager) startSession(ctx context.Context, created createdSession, state string) (*jobState, storage.Session, error) {
+func (m *Manager) startSession(ctx context.Context, created createdSession, state string) (*jobState, error) {
 	req := created.Request
 	cfg := created.Config
 	session := created.Session
@@ -534,30 +534,30 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 	}
 	ac, err := m.connect(ctx, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
 	if err != nil {
-		return nil, session, err
+		return nil, err
 	}
 	if err := validateProcessLifecycle(req.ACPAgent, cfg, ac.initRaw); err != nil {
 		ac.close()
-		return nil, session, err
+		return nil, err
 	}
 	mcpRevision := m.mcpRevision()
 	acpSession, err := m.newACPSession(ctx, ac, req.ACPAgent, cfg, absCwd, session.RuntimeRef.ArtifactSurface, session.RuntimeRef.MCPServerPolicy, req.SystemPromptExtensions)
 	if err != nil {
 		ac.close()
-		return nil, session, err
+		return nil, err
 	}
 	modes, err := m.configuredModeState(ctx, ac, req.ACPAgent, acpSession, cfg)
 	if err != nil {
 		ac.close()
-		return nil, session, err
+		return nil, err
 	}
 	acpSessionID := string(acpSession.response.SessionID)
 	materializesOnPrompt := sessionMaterializesOnPrompt(req.ACPAgent, cfg)
 	if !materializesOnPrompt {
 		session.RuntimeRef.SessionID = acpSessionID
-		if _, err := m.store.ReplaceRuntimeSessionID(session.ID, "", acpSessionID); err != nil {
+		if updated, err := m.store.ReplaceRuntimeSessionID(session.ID, "", acpSessionID); !updated {
 			ac.close()
-			return nil, session, err
+			return nil, errors.Join(err, fmt.Errorf("record provider session %s of %s", acpSessionID, session.ID))
 		}
 	}
 	process := newAgentProcess(ac)
@@ -573,12 +573,12 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 	}
 	if err := m.register(job, process); err != nil {
 		ac.close()
-		return nil, session, err
+		return nil, err
 	}
 	ac.state.attach(m, job, cfg)
 	ac.trackPromptSends(job, persistSessionID)
 	m.log.Info("spawned agent session", "agent", job.ACPAgent, "session", job.ID, "acp_session", job.ACPSession)
-	return job, session, nil
+	return job, nil
 }
 
 func (m *Manager) initializeModeState(ctx context.Context, peer *jsonrpc.Peer, agentName string, session acpSessionInfo) (ModeState, error) {

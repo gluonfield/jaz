@@ -76,8 +76,8 @@ func (m *Manager) HydrationJobs(ids []string) map[string]HydrationView {
 	return views
 }
 
-// inactiveJobState is the state of a thread without a live job: one whose
-// claimed turn is waiting for its agent to start is starting.
+// inactiveJobState is the state of a thread without a live job: a running one
+// is starting, as when its claimed turn waits for its agent.
 func inactiveJobState(session storage.Session) string {
 	switch session.Status {
 	case storage.StatusError:

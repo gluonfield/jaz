@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -129,19 +130,19 @@ func localModeState() ModeState {
 	}
 }
 
-func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd string, systemPromptExtensions promptmodule.Modules, state string) (*jobState, storage.Session, error) {
+func (m *Manager) spawnLocalSession(session storage.Session, agentName, cwd string, systemPromptExtensions promptmodule.Modules, state string) (*jobState, error) {
 	session.RuntimeRef.SessionID = session.ID
-	if _, err := m.store.ReplaceRuntimeSessionID(session.ID, "", session.ID); err != nil {
-		return nil, session, err
+	if updated, err := m.store.ReplaceRuntimeSessionID(session.ID, "", session.ID); !updated {
+		return nil, errors.Join(err, fmt.Errorf("record local session %s", session.ID))
 	}
 	job := m.newLocalJob(session, agentName, cwd)
 	job.State = state
 	job.systemPromptExtensions = systemPromptExtensions.Strings()
 	if err := m.register(job, nil); err != nil {
-		return nil, session, err
+		return nil, err
 	}
 	m.log.Info("spawned local agent session", "agent", job.ACPAgent, "session", job.ID)
-	return job, session, nil
+	return job, nil
 }
 
 func (m *Manager) resumeLocalSession(session storage.Session, agentName string, cfg AgentConfig) (*jobState, error) {
@@ -175,7 +176,9 @@ func (m *Manager) resumeLocalSession(session storage.Session, agentName string, 
 		}
 	}
 	job := m.newLocalJob(session, agentName, cwd)
-	m.addJob(job, nil)
+	if err := m.register(job, nil); err != nil {
+		return nil, err
+	}
 	m.log.Info("resumed local agent session", "agent", job.ACPAgent, "session", job.ID)
 	return job, nil
 }
