@@ -33,33 +33,47 @@ func (s *Server) finishTurn(job acp.Job) error {
 	if session.ParentID != "" {
 		ids = append(ids, session.ParentID)
 	}
-	if session.Turn != nil && session.Turn.Output != nil && session.Turn.Output.ReplyTo != "" {
-		ids = append(ids, session.Turn.Output.ReplyTo)
+	if session.Turn != nil {
+		for _, recipient := range session.Turn.Recipients() {
+			if !recipient.Parent {
+				ids = append(ids, recipient.ReplyTo)
+			}
+		}
 	}
 	unlock := s.lockSession(ids...)
 	session, err = s.Store.LoadSession(job.ID)
 	var deliveries []storage.TurnDelivery
 	if err == nil && session.Turn != nil && status != storage.StatusInterrupted {
+		var parent *storage.Session
 		if session.Turn.NotifyParent && session.ParentID != "" {
-			parent, loadErr := s.Store.LoadSession(session.ParentID)
+			loaded, loadErr := s.Store.LoadSession(session.ParentID)
 			if loadErr != nil {
 				err = loadErr
-			} else if parent.RuntimeRef != nil && parent.RuntimeRef.Agent != acp.AgentJaz {
-				message := storage.NewInternalQueuedMessage(acp.CompletionPrompt(job, "the user"))
-				message.From = job.ID
-				// Work started for another bot reports to that bot while it is
-				// still there.
-				if output := session.Turn.ParentOutput; output != nil {
-					if asker, err := s.Store.LoadSession(output.ReplyTo); err == nil && !asker.Archived {
-						message.Text = bots.ResultPrompt(job)
-						message.Output = output
-					}
-				}
-				deliveries = append(deliveries, storage.TurnDelivery{SessionID: parent.ID, Message: message})
+			} else if loaded.RuntimeRef != nil && loaded.RuntimeRef.Agent != acp.AgentJaz {
+				parent = &loaded
 			}
 		}
-		if answer := bots.Answer(session); answer != nil {
-			deliveries = append(deliveries, *answer)
+		for _, recipient := range session.Turn.Recipients() {
+			if !recipient.Parent {
+				if answer := bots.Answer(session, recipient); answer != nil {
+					deliveries = append(deliveries, *answer)
+				}
+				continue
+			}
+			if parent == nil {
+				continue
+			}
+			message := storage.NewInternalQueuedMessage(acp.CompletionPrompt(job, "the user"))
+			message.From = job.ID
+			// Work started for another bot reports to that bot while it is
+			// still there.
+			if recipient.ReplyTo != "" {
+				if asker, err := s.Store.LoadSession(recipient.ReplyTo); err == nil && !asker.Archived {
+					message.Text = bots.ResultPrompt(job)
+					message.Output = &storage.TurnOutput{ReplyTo: recipient.ReplyTo, Hops: recipient.Hops}
+				}
+			}
+			deliveries = append(deliveries, storage.TurnDelivery{SessionID: parent.ID, Message: message})
 		}
 		output := session.Turn.Output
 		// The run closes before its turn does; a restart in between finds the

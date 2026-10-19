@@ -237,6 +237,7 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 		go m.Done(context.Background(), snapshot)
 	}
 	m.discardTurnResultWhenReleased(job)
+	m.replayDeferred(job)
 }
 
 func (m *Manager) attachmentResourceResolver(job *jobState) (attachmentResourceResolver, error) {

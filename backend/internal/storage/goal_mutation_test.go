@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -66,7 +67,7 @@ func TestGoalClearSurvivesStaleSessionSaves(t *testing.T) {
 			if loaded.Turn != nil {
 				turn.StartedAt = loaded.Turn.StartedAt
 			}
-			if err != nil || loaded.Goal != nil || loaded.Turn == nil || *loaded.Turn != turn || loaded.Status != storage.StatusRunning || loaded.Title != stale.Title {
+			if err != nil || loaded.Goal != nil || loaded.Turn == nil || !reflect.DeepEqual(*loaded.Turn, turn) || loaded.Status != storage.StatusRunning || loaded.Title != stale.Title {
 				t.Fatalf("stale save restored goal state: %+v, %v", loaded, err)
 			}
 			if _, err := store.UpdateSessionGoal(session.ID, state, state); !errors.Is(err, storage.ErrGoalChanged) {

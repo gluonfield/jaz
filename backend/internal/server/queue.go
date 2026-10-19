@@ -417,7 +417,11 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	if session.Title == "" && !prompt.IsInternal() && !prompt.IsAction() {
 		session.Title = titleFromMessage(prompt.Text)
 	}
-	if err := s.Store.ClaimQueuedTurn(session, prompt); err != nil {
+	// A run the agent began on its own may hold the thread since it was read;
+	// the prompt then waits in the queue until that run's turn ends.
+	if err := s.Store.ClaimQueuedTurn(session, prompt); errors.Is(err, storage.ErrThreadRunning) {
+		return session, nil, false, nil
+	} else if err != nil {
 		return storage.Session{}, nil, false, err
 	}
 	if !prompt.IsInternal() && !prompt.IsAction() {

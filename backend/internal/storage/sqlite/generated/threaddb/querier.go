@@ -14,11 +14,13 @@ type Querier interface {
 	AdvanceTranscriptRevision(ctx context.Context, id string) error
 	AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnParams) (int64, error)
 	AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error)
-	ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) error
+	ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) (int64, error)
+	ClaimTurn(ctx context.Context, arg ClaimTurnParams) (int64, error)
 	ClearBackgroundWork(ctx context.Context) error
 	CompleteSession(ctx context.Context, arg CompleteSessionParams) error
 	// A compact brings the user nothing new to read.
 	FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error)
+	GetRunningTurn(ctx context.Context, id string) (string, error)
 	GetSession(ctx context.Context, ref string) (Thread, error)
 	GetThreadIDByID(ctx context.Context, id string) (string, error)
 	GetThreadIDBySlug(ctx context.Context, slug string) (string, error)
@@ -45,6 +47,7 @@ type Querier interface {
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
 	SetBackgroundWork(ctx context.Context, arg SetBackgroundWorkParams) error
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
+	SetRunningTurn(ctx context.Context, arg SetRunningTurnParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error
 	SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (int64, error)

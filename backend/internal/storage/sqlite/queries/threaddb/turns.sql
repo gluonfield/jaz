@@ -7,6 +7,21 @@ SET status = 'running',
     last_attention_at_ms = sqlc.arg(started_at_ms)
 WHERE id = sqlc.arg(id);
 
+-- name: ClaimTurn :execrows
+UPDATE threads
+SET status = 'running',
+    error = NULL,
+    turn = sqlc.arg(turn),
+    updated_at_ms = sqlc.arg(started_at_ms),
+    last_attention_at_ms = sqlc.arg(started_at_ms)
+WHERE id = sqlc.arg(id) AND status <> 'running';
+
+-- name: GetRunningTurn :one
+SELECT turn FROM threads WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
+
+-- name: SetRunningTurn :exec
+UPDATE threads SET turn = sqlc.arg(turn) WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
+
 -- name: MarkTurnPromptSent :execrows
 UPDATE threads
 SET turn = json_remove(turn, '$.prompt'), acp_session_id = sqlc.narg(agent_session_id)
@@ -68,9 +83,9 @@ UPDATE threads
 SET queued_messages = json_insert(COALESCE(NULLIF(queued_messages, ''), '[]'), '$[#]', json(sqlc.arg(message)))
 WHERE id = sqlc.arg(id) AND archived = 0;
 
--- name: ClaimQueuedTurn :exec
+-- name: ClaimQueuedTurn :execrows
 UPDATE threads
 SET status = 'running', error = NULL, turn = sqlc.arg(turn),
     queued_messages = sqlc.arg(queued_messages), title = sqlc.narg(title),
     updated_at_ms = sqlc.arg(started_at_ms), last_attention_at_ms = sqlc.arg(started_at_ms)
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id) AND status <> 'running';

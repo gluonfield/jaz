@@ -52,6 +52,8 @@ type Store interface {
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	SaveSession(storage.Session) error
 	StartSessionTurn(string, storage.Turn, ...storage.Message) error
+	ClaimTurn(string, storage.Turn) (bool, error)
+	OweTurn(string, storage.Turn) error
 	SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error
 	ResetTurnHops(id string) error
 	SetTurnRetries(id string, retries int) error
@@ -285,13 +287,13 @@ func (c *agentConn) withProcessStderr(err error) error {
 
 func (m *Manager) trackPromptSends(c *agentConn, job *jobState) {
 	if c.promptTracker != nil {
-		c.promptTracker.setOnPromptSent(func() {
+		c.promptTracker.trackPrompts(job.promptSending, func() {
 			if err := m.store.MarkTurnPromptSent(job.ID, job.ACPSession); err != nil {
 				m.log.Error("record prompt delivery", "session", job.ID, "error", err)
 			}
 			job.markFirstPromptSent()
 			m.publishSessionChanged(job.ID)
-		})
+		}, job.promptAnswered)
 	}
 }
 

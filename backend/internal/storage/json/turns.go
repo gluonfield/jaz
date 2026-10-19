@@ -35,6 +35,33 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...stora
 	return s.saveSession(session)
 }
 
+func (s *Store) ClaimTurn(id string, turn storage.Turn) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil || session.Status == storage.StatusRunning {
+		return false, err
+	}
+	turn.StartedAt = time.Now().UTC()
+	session.Status = storage.StatusRunning
+	session.Error = ""
+	session.Turn = &turn
+	storage.MarkSessionAttention(&session, turn.StartedAt)
+	return true, s.saveSession(session)
+}
+
+func (s *Store) OweTurn(id string, owed storage.Turn) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil || session.Turn == nil || session.Status != storage.StatusRunning {
+		return err
+	}
+	turn := session.Turn.Owing(owed)
+	session.Turn = &turn
+	return s.saveSession(session)
+}
+
 func (s *Store) MarkTurnPromptSent(id, agentSessionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -53,6 +80,9 @@ func (s *Store) MarkTurnPromptSent(id, agentSessionID string) error {
 func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if current, err := s.loadSessionByID(session.ID); err == nil && current.Status == storage.StatusRunning {
+		return storage.ErrThreadRunning
+	}
 	session.Status = storage.StatusRunning
 	session.Error = ""
 	session.Turn = prompt.Turn(time.Now().UTC())

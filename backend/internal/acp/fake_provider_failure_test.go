@@ -129,9 +129,11 @@ func fakeProviderFailure(conn jsonrpc.MessageConn, msg *jsonrpc.Message, typed b
 			"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "Looking into it. "},
 		}})
 	}
-	sendResult(conn, msg, map[string]any{"stopReason": "end_turn", "_meta": fakeFailureMeta(map[string]any{
+	failure := fakeFailureMeta(map[string]any{
 		"id": id, "revision": 1, "category": kind["category"], "severity": "error", "title": title, "actions": kind["actions"],
-	})})
+	})
+	fakeTurnFails(conn, failure)
+	sendResult(conn, msg, map[string]any{"stopReason": "end_turn", "_meta": failure})
 	return true
 }
 
