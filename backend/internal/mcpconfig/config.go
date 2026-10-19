@@ -11,9 +11,14 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const TransportStreamableHTTP = "streamable_http"
+const (
+	TransportStreamableHTTP = "streamable_http"
+	TransportInProcess      = "in_process"
+)
 
 var (
 	headerNamePattern = regexp.MustCompile(`^[A-Za-z0-9!#$%&'*+\-/=?^_` + "`" + `{|}~.]+$`)
@@ -43,9 +48,10 @@ type Server struct {
 	Headers           []Header    `json:"headers,omitempty"`
 	OAuth             OAuthConfig `json:"oauth,omitempty"`
 	// Connection-backed servers reuse the account's refreshable OAuth grant.
-	TokenConnectionID string    `json:"-"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	TokenConnectionID string         `json:"-"`
+	LocalServer       *mcpsdk.Server `json:"-"`
+	CreatedAt         time.Time      `json:"created_at"`
+	UpdatedAt         time.Time      `json:"updated_at"`
 }
 
 // UsesBearer reports whether the server authenticates with a bearer token,

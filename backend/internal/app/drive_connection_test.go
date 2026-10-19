@@ -35,17 +35,6 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 
 	var refreshes atomic.Int32
 	var searches atomic.Int32
-	remote := mcpsdk.NewServer(&mcpsdk.Implementation{Name: "Drive"}, nil)
-	remote.AddTool(&mcpsdk.Tool{Name: "search_files", InputSchema: map[string]any{"type": "object"}}, func(_ context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
-		if string(req.Params.Arguments) != `{"query":"parentId = 'shared-folder'"}` {
-			t.Errorf("search arguments = %s", req.Params.Arguments)
-		}
-		searches.Add(1)
-		return &mcpsdk.CallToolResult{Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: "Shared-folder document"}}}, nil
-	})
-	mcpHandler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server {
-		return remote
-	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/token":
@@ -72,12 +61,17 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 				t.Error("Drive account request was not authenticated or projected")
 			}
 			_, _ = io.WriteString(w, `{"user":{"emailAddress":"work@example.com","displayName":"Work"}}`)
-		case "/mcp/v1":
+		case "/drive/v3/files":
 			if r.Header.Get("Authorization") != "Bearer drive-access" {
 				http.Error(w, "authentication required", http.StatusUnauthorized)
 				return
 			}
-			mcpHandler.ServeHTTP(w, r)
+			q := r.URL.Query()
+			if q.Get("q") != "trashed = false and ('shared-folder' in parents)" || q.Get("supportsAllDrives") != "true" || q.Get("includeItemsFromAllDrives") != "true" {
+				t.Errorf("Drive search query = %v", q)
+			}
+			searches.Add(1)
+			_, _ = io.WriteString(w, `{"files":[{"id":"shared-file","name":"Shared-folder document","mimeType":"application/vnd.google-apps.document"}]}`)
 		default:
 			t.Errorf("unexpected upstream path: %s", r.URL.Path)
 			http.NotFound(w, r)
@@ -140,17 +134,32 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 		}
 	}
 	definitions := registry.Definitions()
-	if len(definitions) != 1 {
+	if len(definitions) != 8 {
 		t.Fatalf("tools = %+v", definitions)
 	}
-	tool, ok := registry.Get(tools.DefinitionName(definitions[0]))
-	if !ok {
-		t.Fatal("Drive search tool was not registered")
+	proxy := httptest.NewServer(manager.Handler())
+	defer proxy.Close()
+	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "agent", Version: "1"}, nil)
+	session, err := client.Connect(ctx, &mcpsdk.StreamableClientTransport{Endpoint: proxy.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer session.Close()
+	listed, err := session.ListTools(ctx, nil)
+	if err != nil || len(listed.Tools) != 8 {
+		t.Fatalf("agent tool discovery = %+v, error = %v", listed, err)
+	}
+	name := "mcp_" + accounts[0].AccountRef() + "_search_files"
 	before := refreshes.Load()
-	result, err := tool.Execute(ctx, map[string]any{"query": "parentId = 'shared-folder'"})
-	if err != nil || !strings.Contains(result.Content, "Shared-folder document") || searches.Load() != 1 || refreshes.Load() <= before {
+	result, err := session.CallTool(ctx, &mcpsdk.CallToolParams{Name: name, Arguments: map[string]any{"query": "parentId = 'shared-folder'"}})
+	encoded, _ := json.Marshal(result)
+	if err != nil || result.IsError || !strings.Contains(string(encoded), "Shared-folder document") || searches.Load() != 1 || refreshes.Load() <= before {
 		t.Fatalf("search after expiry: %+v, error = %v, refreshes = %d", result, err, refreshes.Load())
+	}
+	manager.Refresh(ctx)
+	result, err = session.CallTool(ctx, &mcpsdk.CallToolParams{Name: name, Arguments: map[string]any{"query": "parentId = 'shared-folder'"}})
+	if err != nil || result.IsError || searches.Load() != 2 {
+		t.Fatalf("search after catalog refresh = %+v, %v", result, err)
 	}
 	if _, ok, err := store.LoadToken(ctx, mcpconfig.OAuthConnectionID(accounts[0].ID)); err != nil || ok {
 		t.Fatalf("grant was duplicated under MCP: exists = %v, error = %v", ok, err)
@@ -162,6 +171,10 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 	manager.Refresh(ctx)
 	if len(registry.Definitions()) != 0 {
 		t.Fatal("Drive tools remain available after disconnect")
+	}
+	listed, err = session.ListTools(ctx, nil)
+	if err != nil || len(listed.Tools) != 0 {
+		t.Fatalf("agent tools after disconnect = %+v, %v", listed, err)
 	}
 	if _, ok, err := store.LoadToken(ctx, accounts[0].ID); err != nil || ok {
 		t.Fatalf("account grant remains: exists = %v, error = %v", ok, err)

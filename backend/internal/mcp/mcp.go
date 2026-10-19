@@ -134,7 +134,7 @@ type remoteTool struct {
 	spec       mcpsdk.Tool
 	definition tools.Definition
 	connection *serverConnection
-	local      bool
+	builtin    bool
 }
 
 type refreshResult struct {
@@ -295,6 +295,7 @@ func (m *Manager) refreshServerList(ctx context.Context, servers []mcpconfig.Ser
 		kept := result.session.tools[:0]
 		for i := range result.session.tools {
 			rt := result.session.tools[i]
+			rt.builtin = builtin
 			var name string
 			if builtin {
 				name = m.builtinToolName(result.server, rt.remoteName, usedNames)
@@ -497,6 +498,9 @@ func oauthGateStatus(ctx context.Context, server mcpconfig.Server, handler *oaut
 }
 
 func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler auth.OAuthHandler) (*serverSession, error) {
+	if server.LocalServer != nil {
+		return m.connectLocal(ctx, server, server.LocalServer)
+	}
 	if local := m.localServer(server.ID); local != nil {
 		return m.connectLocal(ctx, server, local)
 	}

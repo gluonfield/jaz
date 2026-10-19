@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/log"
 	"github.com/wins/jaz/backend/internal/connections"
+	driveconnector "github.com/wins/jaz/backend/internal/connectors/drive"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
@@ -44,8 +45,8 @@ func NewMCPManager(store *sqlitestore.Store, catalog *connections.Catalog, regis
 
 type connectionTokenStore interface {
 	mcpconfig.ServerReader
+	integrationoauth.Store
 	ListConnections(context.Context, string) ([]integrations.Connection, error)
-	LoadToken(context.Context, string) (integrationoauth.Token, bool, error)
 }
 
 type connectionMCPServerReader struct {
@@ -61,10 +62,14 @@ func (r connectionMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) 
 	ctx := context.Background()
 	for _, plugin := range r.catalog.ListPlugins() {
 		remote := plugin.RemoteMCP
-		if remote == nil || !plugin.UsesConnectionMCP() {
+		if !plugin.UsesConnectionMCP() {
 			continue
 		}
-		backed, err := r.connectionBackedServers(ctx, plugin, remote.URL)
+		var endpoint string
+		if remote != nil {
+			endpoint = remote.URL
+		}
+		backed, err := r.connectionBackedServers(ctx, plugin, endpoint)
 		if err != nil {
 			return nil, err
 		}
@@ -101,14 +106,19 @@ func (r connectionMCPServerReader) connectionBackedServers(ctx context.Context, 
 		if !ok || token.AccessToken == "" {
 			continue
 		}
-		out = append(out, mcpconfig.Server{
+		server := mcpconfig.Server{
 			ID:                account.ID,
 			Name:              remoteServerName(account),
 			Transport:         mcpconfig.TransportStreamableHTTP,
 			URL:               url,
 			Enabled:           true,
 			TokenConnectionID: account.ID,
-		})
+		}
+		if plugin.Provider.ID == driveconnector.ProviderID {
+			server.Transport = mcpconfig.TransportInProcess
+			server.LocalServer = connections.NewDriveMCPServer(r.store, account.ID)
+		}
+		out = append(out, server)
 	}
 	return out, nil
 }
