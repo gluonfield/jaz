@@ -421,7 +421,7 @@ type newSessionRequest struct {
 func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, label string, req newSessionRequest) (acpSessionInfo, error) {
 	sessionRaw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, req)
 	if err != nil {
-		return acpSessionInfo{}, fmt.Errorf("create acp %s session: %w", label, ac.withProcessStderr(err))
+		return acpSessionInfo{}, withSignInHint(fmt.Errorf("create acp %s session: %w", label, ac.withProcessStderr(err)))
 	}
 	var acpSession acpschema.NewSessionResponse
 	if err := json.Unmarshal(sessionRaw, &acpSession); err != nil {
@@ -432,6 +432,17 @@ func (m *Manager) newACPProtocolSession(ctx context.Context, ac *agentConn, labe
 	}
 	ac.state.initial = sessionRaw
 	return newACPSessionInfo(sessionRaw, acpSession), nil
+}
+
+// An agent answers ACP auth_required when its stored sign-in no longer works.
+const signInHint = "sign in again in Settings → Agents"
+
+func withSignInHint(err error) error {
+	var rpcErr *jsonrpc.Error
+	if errors.As(err, &rpcErr) && rpcErr.Code == int(acpschema.ErrorCode32000) {
+		return fmt.Errorf("%s: %w", signInHint, err)
+	}
+	return err
 }
 
 func (m *Manager) newACPSession(ctx context.Context, ac *agentConn, agent string, cfg AgentConfig, cwd, artifactSurface, mcpServerPolicy string, systemPromptExtensions promptmodule.Modules) (acpSessionInfo, error) {

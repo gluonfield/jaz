@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -136,6 +137,13 @@ func TestFakeACPAgentProcess(t *testing.T) {
 					cancelArrived = true
 				}
 			}
+			continue
+		}
+		// While this file exists the stored sign-in is expired: every session open and turn
+		// answers ACP auth_required, as codex-acp does.
+		if _, err := os.Stat(os.Getenv("JAZ_FAKE_ACP_SIGN_IN_EXPIRED_FILE")); err == nil && slices.Contains([]string{"session/new", "session/load", "session/resume", "session/prompt"}, msg.Method) {
+			resp, _ := jsonrpc.NewErrorResponse(*msg.ID, &jsonrpc.Error{Code: -32000, Message: "Authentication required"})
+			_ = conn.Send(context.Background(), resp)
 			continue
 		}
 		switch msg.Method {

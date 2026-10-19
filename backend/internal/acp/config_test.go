@@ -1313,6 +1313,17 @@ func TestAutoAuthMethodReportsMissingGrokAuth(t *testing.T) {
 	}
 }
 
+func TestAutoAuthMethodLeavesStoredCodexLoginToTheAdapter(t *testing.T) {
+	codexHome := t.TempDir()
+	writeCodexOAuth(t, codexHome)
+	for _, raw := range [][]byte{codexInitializeAuthMethods(), []byte(`{"authMethods": [{"id": "api-key"}, {"id": "chat-gpt"}, {"id": "chat-gpt-device-code"}]}`)} {
+		method, missing := autoAuthMethod(AgentCodex, raw, map[string]string{"CODEX_HOME": codexHome})
+		if method != "" || len(missing) != 0 {
+			t.Fatalf("method=%q missing=%v", method, missing)
+		}
+	}
+}
+
 func TestAutoAuthMethodReportsMissingEnvVars(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	method, missing := autoAuthMethod("codex", codexInitializeAuthMethods(), nil)
