@@ -169,12 +169,15 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		return Job{}, err
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	var promptDigest string
 	if m.cfg.TurnNote != nil && opts.activeOperation != ActiveOperationCompact {
 		session, err := m.store.LoadSession(job.ID)
 		if err != nil {
 			return Job{}, err
 		}
-		promptMessage = m.cfg.TurnNote(session) + promptMessage
+		var note string
+		note, promptDigest = m.cfg.TurnNote(session)
+		promptMessage = note + promptMessage
 	}
 	notifyParent := req.ParentVisible && req.Completion.propagates() && !req.PlanRequested
 	// Work a parent starts while answering a bot reports back to that bot.
@@ -199,6 +202,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: opts.output, ParentOutput: parentOutput,
+		PromptDigest: promptDigest,
 	}); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}

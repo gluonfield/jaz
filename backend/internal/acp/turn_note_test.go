@@ -34,7 +34,7 @@ func TestATurnNoteReachesTheAgentAloneAndNeverACompact(t *testing.T) {
 				Env:     map[string]string{"JAZ_FAKE_ACP_AGENT": "1", "JAZ_FAKE_ACP_LOAD": "1", "JAZ_FAKE_ACP_REQUEST_LOG": requestLog},
 			},
 		},
-		TurnNote: func(session storage.Session) string { return "Note for " + session.ID + ".\n\n" },
+		TurnNote: func(session storage.Session) (string, string) { return "Note for " + session.ID + ".\n\n", "" },
 	}, log.New(io.Discard))
 	t.Cleanup(manager.Close)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -51,21 +51,7 @@ func TestATurnNoteReachesTheAgentAloneAndNeverACompact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var prompts []string
-	for _, request := range readFakeACPRequests(t, requestLog) {
-		if request.Method != "session/prompt" {
-			continue
-		}
-		var params struct {
-			Prompt []struct {
-				Text string `json:"text"`
-			} `json:"prompt"`
-		}
-		if err := json.Unmarshal(request.Params, &params); err != nil {
-			t.Fatal(err)
-		}
-		prompts = append(prompts, params.Prompt[0].Text)
-	}
+	prompts := agentPrompts(t, requestLog)
 	want := []string{"Note for " + spawned.SessionID + ".\n\nhello", acp.CompactCommand}
 	if len(prompts) != len(want) || prompts[0] != want[0] || prompts[1] != want[1] {
 		t.Fatalf("prompts the agent got = %q, want %q", prompts, want)

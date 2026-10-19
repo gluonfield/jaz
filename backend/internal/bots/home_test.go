@@ -141,7 +141,8 @@ func TestABotIsToldToRereadItsFilesUntilATurnSucceedsAfterTheyChange(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		return TurnNote(store)(thread)
+		note, _ := TurnNote(store)(thread)
+		return note
 	}
 	turn := func(id, status string) {
 		t.Helper()

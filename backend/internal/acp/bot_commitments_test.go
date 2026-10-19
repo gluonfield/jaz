@@ -95,7 +95,7 @@ func TestABotsCommitmentLinksItsThreadAndClosesOnlyWhenTheResultReachesTheUserAc
 	if err != nil {
 		t.Fatal(err)
 	}
-	if note := bots.TurnNote(store)(session); strings.Contains(note, fmt.Sprintf("#%d ", id)) {
+	if note, _ := bots.TurnNote(store)(session); strings.Contains(note, fmt.Sprintf("#%d ", id)) {
 		t.Fatalf("a closed commitment stayed in the bot's note: %q", note)
 	}
 }

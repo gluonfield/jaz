@@ -46,7 +46,10 @@ SET status = sqlc.arg(status), turn = '', error = sqlc.narg(error),
     last_completed_at_ms = CASE WHEN sqlc.arg(status) = 'idle' THEN sqlc.arg(finished_at_ms) ELSE last_completed_at_ms END,
     completed_turn_started_at_ms = CASE WHEN sqlc.arg(status) = 'idle'
       THEN COALESCE(CAST(unixepoch(json_extract(turn, '$.started_at'), 'subsec') * 1000 AS INTEGER), completed_turn_started_at_ms)
-      ELSE completed_turn_started_at_ms END
+      ELSE completed_turn_started_at_ms END,
+    prompt_digest = CASE WHEN sqlc.arg(status) <> 'idle' THEN prompt_digest
+      WHEN json_extract(turn, '$.active_operation') IS 'compact' THEN ''
+      ELSE COALESCE(json_extract(turn, '$.prompt_digest'), prompt_digest) END
 WHERE id = sqlc.arg(id) AND turn <> '';
 
 -- name: AppendQueuedTurn :execrows
