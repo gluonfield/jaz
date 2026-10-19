@@ -106,8 +106,9 @@ func (m *Manager) jobByACP(acpSessionID string) *jobState {
 	return m.jobsByACP[acpSessionID]
 }
 
-// Thinking reports whether sessionID's turn is under way and has not called a
-// tool yet: the agent is reasoning or writing.
+// Thinking reports whether sessionID's agent holds its turn's latest prompt
+// and has called no tool yet: it is reasoning or writing. A turn whose agent
+// is still starting, or that waits to retry a provider failure, is not.
 func (m *Manager) Thinking(sessionID string) bool {
 	job := m.jobByID(sessionID)
 	if job == nil {
@@ -115,7 +116,7 @@ func (m *Manager) Thinking(sessionID string) bool {
 	}
 	job.mu.RLock()
 	defer job.mu.RUnlock()
-	return (job.State == StateRunning || job.State == StateStarting) && len(job.ToolCalls) == 0
+	return job.State == StateRunning && job.turn != nil && job.turn.firstPromptSentClosed && len(job.ToolCalls) == 0
 }
 
 func (m *Manager) jobByID(id string) *jobState {
