@@ -14,7 +14,7 @@ import (
 // fakeProviderFailures makes a prompt start a run of provider failures: this
 // prompt and the next n-1 the session gets end with kind's failure. The count
 // lives in JAZ_FAKE_ACP_FAILURE_FILE so it outlasts a restart.
-var fakeProviderFailures = regexp.MustCompile(`provider fails (\d+) (overloaded|rejected|retried|reconnected|throttled|recovered|sidechat)`)
+var fakeProviderFailures = regexp.MustCompile(`provider fails (\d+) (overloaded|rejected|retried|reconnected|throttled|recovered|sidechat|noticed)`)
 
 // fakeProviderNotice makes a prompt report a notice before it answers.
 var fakeProviderNotice = regexp.MustCompile(`provider notice ([A-Za-z .]+)`)
@@ -26,7 +26,8 @@ var fakeProviderNotice = regexp.MustCompile(`provider notice ([A-Za-z .]+)`)
 // limit the provider retried among other retries (throttled), an overload
 // after the turn recovered from an earlier one (recovered), and an overload
 // while a side chat on the session was retrying (sidechat), whose record
-// codex-acp sends on the parent session with the side chat's scope. Retry
+// codex-acp sends on the parent session with the side chat's scope, and an
+// overload the provider retried with a notice among its retries (noticed). Retry
 // warnings carry their own ids, as claude-agent-acp's do; codex-acp reuses
 // the failure's.
 var fakeFailureKinds = map[string]map[string]any{
@@ -37,6 +38,7 @@ var fakeFailureKinds = map[string]map[string]any{
 	"throttled":   {"category": "limit", "title": "Rate limit reached.", "actions": []string{"retry"}, "retrying": []string{"limit", "connection"}},
 	"recovered":   {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": []string{"service"}, "progress": true},
 	"sidechat":    {"category": "service", "title": "Selected model is at capacity. Please try a different model.", "actions": []string{"retry"}, "retrying": []string{"service"}, "sideChat": true},
+	"noticed":     {"category": "service", "title": "API Error: Repeated 529 Overloaded errors.", "actions": []string{"retry"}, "retrying": []string{"service", "unknown"}},
 }
 
 // fakeTypedFailures reports whether initialize negotiated AIR sessionFailure,

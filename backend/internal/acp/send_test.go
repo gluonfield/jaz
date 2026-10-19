@@ -173,9 +173,9 @@ func TestReserveSteerDoesNotQueuePromptWhenUserMessageCannotPersist(t *testing.T
 }
 
 // A steer that reaches reserveSteer after a retry wait ended but before its
-// continuation reached the agent waits for the turn; once the continuation is
-// sent, steering joins it again.
-func TestReserveSteerWaitsForTheRetryContinuation(t *testing.T) {
+// continuation reached the agent is refused; once the continuation is sent,
+// steering joins the turn again.
+func TestReserveSteerRefusesUntilTheRetryContinuationIsSent(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -197,8 +197,8 @@ func TestReserveSteerWaitsForTheRetryContinuation(t *testing.T) {
 	job.turn.endRetryWait()
 	job.mu.Unlock()
 
-	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil); !errors.Is(err, errTurnRetrying) {
-		t.Fatalf("steer before the continuation was sent = %v, want it to wait for the turn", err)
+	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil); !errors.Is(err, errPromptPending) {
+		t.Fatalf("steer before the continuation was sent = %v, want it refused", err)
 	}
 	job.markFirstPromptSent()
 	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil); err != nil {

@@ -51,42 +51,42 @@ func (f sessionFailure) message() string {
 	return f.Title + "\n\n" + f.Details
 }
 
-// sessionFailureUpdate applies a failure record a session_info_update
-// carries. A warning of a failure category is the provider retrying that
-// failure itself; a warning without one is a notice, such as a configuration
-// warning, a deprecation or a model fallback, which becomes the "Warning:"
-// message agents write for clients without the extension.
-func sessionFailureUpdate(job *jobState, update acpschema.DecodedSessionUpdate, raw json.RawMessage) acpschema.DecodedSessionUpdate {
+// sessionWarning is the warning record a session_info_update of the turn
+// carries: the provider retrying a failure of its category itself, or a
+// notice. A side chat's records are its own, not the turn's.
+func sessionWarning(jobID string, update acpschema.DecodedSessionUpdate, raw json.RawMessage) *sessionFailure {
 	info, ok := update.(acpschema.SessionInfoSessionUpdate)
 	if !ok {
-		return update
+		return nil
 	}
-	// A side chat's records are its own, not the turn's.
-	if _, side := sideChatScopeFromMeta(info.Meta, job.ID); side {
-		return update
+	if _, side := sideChatScopeFromMeta(info.Meta, jobID); side {
+		return nil
 	}
 	var record struct {
 		Meta sessionFailureMeta `json:"_meta"`
 	}
 	if json.Unmarshal(raw, &record) != nil {
-		return update
+		return nil
 	}
-	failure := record.Meta.Jetbrains.Air.SessionFailure
-	if failure == nil || failure.Severity != "warning" {
-		return update
+	if failure := record.Meta.Jetbrains.Air.SessionFailure; failure != nil && failure.Severity == "warning" {
+		return failure
 	}
-	if failure.Category != "unknown" {
-		job.mu.Lock()
-		if job.turn != nil {
-			job.turn.markProviderRetried(failure.Category)
-		}
-		job.mu.Unlock()
-		return update
-	}
+	return nil
+}
+
+// notice is a warning without a failure category, such as a configuration
+// warning, a deprecation or a model fallback.
+func (f sessionFailure) notice() bool {
+	return f.Category == "unknown"
+}
+
+// noticeMessage is a notice as the "Warning:" message agents write for
+// clients without the extension.
+func noticeMessage(notice sessionFailure) acpschema.DecodedSessionUpdate {
 	// A struct of strings always marshals.
 	block, _ := marshalContentBlock(acpschema.TextContentBlock{
 		Kind:        acpschema.ContentBlockText,
-		TextContent: acpschema.TextContent{Text: "Warning: " + failure.message() + "\n\n"},
+		TextContent: acpschema.TextContent{Text: "Warning: " + notice.message() + "\n\n"},
 	})
 	return acpschema.AgentMessageChunkUpdate{ContentChunk: acpschema.ContentChunk{Content: block}}
 }
@@ -103,11 +103,19 @@ func (t *activeTurn) retryDelay(failure sessionFailure) (time.Duration, bool) {
 	return providerRetryDelays[t.retries], true
 }
 
-func (t *activeTurn) markProviderRetried(category string) {
-	if t.providerRetried == nil {
-		t.providerRetried = map[string]bool{}
+// trackProviderRetries records a failure the provider reports retrying, and
+// forgets them once the turn produces output, which ends the provider's
+// retries.
+func (t *activeTurn) trackProviderRetries(warning *sessionFailure, output bool) {
+	switch {
+	case warning != nil && !warning.notice():
+		if t.providerRetried == nil {
+			t.providerRetried = map[string]bool{}
+		}
+		t.providerRetried[warning.Category] = true
+	case output:
+		t.providerRetried = nil
 	}
-	t.providerRetried[category] = true
 }
 
 func retryNotice(failure sessionFailure, delay time.Duration, attempt int) string {

@@ -2,7 +2,6 @@ package acp
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -108,7 +107,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	errMessage := ""
 	if cancelRequested {
 		state = StateCancelled
-		stopReason = cmp.Or(turn.cancelReason, StopReasonCancelled)
+		stopReason = turn.cancelReason
 	} else if stopReason == StopReasonCancelled {
 		state = StateCancelled
 	}

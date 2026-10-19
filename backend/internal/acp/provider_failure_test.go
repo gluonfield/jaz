@@ -133,7 +133,7 @@ func TestARoutineTurnTheProviderKeepsFailingClosesItsRunAsAnError(t *testing.T) 
 // Failures the provider says a retry cannot fix, or that it already retried
 // itself, reach the bot that started the work as failed at once.
 func TestAWorkerTurnEndedByAFailureNotToRetryReportsFailedToItsBot(t *testing.T) {
-	for _, kind := range []string{"rejected", "retried", "throttled"} {
+	for _, kind := range []string{"rejected", "retried", "throttled", "noticed"} {
 		t.Run(kind, func(t *testing.T) {
 			jaz := startFailingJaz(t, time.Millisecond, time.Millisecond, time.Millisecond)
 			bot := jaz.bot("Gimli")
@@ -159,8 +159,7 @@ func TestAWorkerTurnEndedByAFailureNotToRetryReportsFailedToItsBot(t *testing.T)
 }
 
 // Stopping a turn that waits to retry ends it at once and sends nothing more;
-// steering it or giving it live input meanwhile is refused at once, so the
-// server queues the message.
+// steering it meanwhile is refused at once, so the server queues the message.
 func TestStoppingATurnWaitingToRetryEndsItWithoutAContinuation(t *testing.T) {
 	jaz := startFailingJaz(t, time.Hour)
 	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
@@ -176,11 +175,6 @@ func TestStoppingATurnWaitingToRetryEndsItWithoutAContinuation(t *testing.T) {
 	}
 	if _, err := jaz.manager.Steer(jaz.ctx, acp.SteerRequest{Session: thread.ID, Message: "also book the hotel"}); !errors.Is(err, acp.ErrSteeringUnsupported) {
 		t.Fatalf("steering a turn waiting to retry = %v, want it queued instead", err)
-	}
-	input, cancelInput := context.WithTimeout(jaz.ctx, time.Second)
-	defer cancelInput()
-	if _, err := jaz.manager.Input(input, acp.SteerRequest{Session: thread.ID, Message: "also book the hotel"}); !errors.Is(err, acp.ErrSteeringUnsupported) {
-		t.Fatalf("live input to a turn waiting to retry = %v, want it refused at once", err)
 	}
 
 	started := time.Now()
@@ -372,4 +366,40 @@ func TestAContinuationClearsTheRetryNotice(t *testing.T) {
 		t.Fatalf("the thread's status while the continuation works = %q, want no failure", status)
 	}
 	jaz.release()
+}
+
+// Live input, as voice sends, to a turn waiting to retry waits for the turn
+// instead of failing; when the turn ends it starts the next one.
+func TestLiveInputToATurnWaitingToRetryWaitsForIt(t *testing.T) {
+	jaz := startFailingJaz(t, time.Hour)
+	thread, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: jaz.root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: thread.ID, Message: "plan the trip provider fails 1 overloaded", Completion: acp.CompletionAsync}); err != nil {
+		t.Fatal(err)
+	}
+	jaz.eventually("the turn waiting to retry", func() bool { return strings.Contains(jaz.status(thread.ID).Error, "Retrying in") })
+	input := make(chan error, 1)
+	before := cpuTime(t)
+	go func() {
+		_, err := jaz.manager.Input(jaz.ctx, acp.SteerRequest{Session: thread.ID, Message: "also book the hotel"})
+		input <- err
+	}()
+	select {
+	case err := <-input:
+		t.Fatalf("live input returned %v while the turn waited, want it to wait", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if busy := cpuTime(t) - before; busy > 150*time.Millisecond {
+		t.Fatalf("waiting live input used %s of CPU in 300ms, want it to block", busy)
+	}
+
+	if _, err := jaz.manager.Cancel(jaz.ctx, thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-input; err != nil {
+		t.Fatalf("live input after the turn ended = %v", err)
+	}
+	jaz.eventually("the input's turn", func() bool { return jaz.promptsContaining("also book the hotel") == 1 })
 }

@@ -17,9 +17,9 @@ var ErrSteeringUnsupported = errors.New("acp steering unsupported")
 
 var errTurnEnded = fmt.Errorf("%w: agent turn ended before steering", ErrSteeringUnsupported)
 
-// errTurnRetrying refuses a steer while the turn waits to retry a provider
-// failure, so the message waits for the turn instead of a new one starting.
-var errTurnRetrying = fmt.Errorf("%w: the turn is waiting to retry a provider failure", ErrSteeringUnsupported)
+// errPromptPending refuses a steer while the turn's next prompt has not
+// reached the agent, as while it waits to retry a provider failure.
+var errPromptPending = fmt.Errorf("%w: the turn's next prompt has not reached the agent", ErrSteeringUnsupported)
 
 var errQuestionPending = errors.New("the turn is waiting for an answer")
 
@@ -260,7 +260,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, errTurnEnded
 	}
 	if retrying {
-		return Job{}, errTurnRetrying
+		return Job{}, errPromptPending
 	}
 	if asking && req.transcript == sendTranscriptHidden {
 		return Job{}, errQuestionPending
@@ -312,7 +312,7 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	// The gate is closed once the turn's latest prompt reached the agent; a
 	// retry reopens it until its continuation does.
 	if job.turn.retrying || !job.turn.firstPromptSentClosed {
-		return nil, errTurnRetrying
+		return nil, errPromptPending
 	}
 	if job.steerMethod == steerUnsupported {
 		return nil, ErrSteeringUnsupported
