@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/loops"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -18,12 +19,21 @@ const (
 	activityShown = 200
 )
 
-// listedActivity are the bot activity events Activity lists; routine events
-// are covered by the runs they announce.
-var listedActivity = []string{"message_sent", "message_received", "file_changed", "file_edited"}
+// listedActivity says whether Activity lists a bot activity event: a message between
+// bots or a change to MEMORY.md. Routine events are covered by the runs they
+// announce.
+func listedActivity(activity *sessionevents.BotActivityEvent) bool {
+	switch activity.Kind {
+	case "message_sent", "message_received":
+		return true
+	case "file_changed", "file_edited":
+		return activity.Label == memoryFile
+	}
+	return false
+}
 
 // Activity is one thing a bot is doing or did: a side chat, a routine run,
-// a message to or from another bot, a change to its identity files, or a
+// a message to or from another bot, a change to its MEMORY.md, or a
 // commitment it closed.
 type Activity struct {
 	// Kind is side_chat, routine, commitment, or the kind of the bot activity
@@ -180,7 +190,7 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 		return ActivityView{}, err
 	}
 	for _, event := range events {
-		if activity := event.BotActivity; activity != nil && slices.Contains(listedActivity, activity.Kind) {
+		if activity := event.BotActivity; activity != nil && listedActivity(activity) {
 			out = append(out, Activity{Kind: activity.Kind, At: event.At, Title: activity.Label, Text: activity.Text})
 		}
 	}
