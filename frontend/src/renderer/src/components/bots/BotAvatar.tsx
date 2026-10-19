@@ -62,12 +62,14 @@ export function BotAvatar({
   size,
   mood = 'idle',
   live = false,
+  completion,
   className = '',
 }: {
   avatar: Avatar
   size: number
   mood?: BotMood
   live?: boolean
+  completion?: string
   className?: string
 }) {
   const fill = BOT_COLORS[avatar.color]
@@ -92,6 +94,13 @@ export function BotAvatar({
   useEffect(() => {
     face.current?.setMood(mood)
   }, [mood])
+  const completed = useRef(completion)
+  useEffect(() => {
+    if (completion && completion !== completed.current) {
+      face.current?.celebrate()
+    }
+    completed.current = completion
+  }, [completion])
   const eyes = restingEyes(mood)
   return (
     <svg
@@ -137,11 +146,12 @@ export function BotAvatar({
 
 // One face for a bot; a group overlaps its first two members. `badge` may
 // mark it, and the main bot wears a star at the bottom right.
-export function BotIcon({ avatars, size, mood, live = false, badge, main = false }: {
+export function BotIcon({ avatars, size, mood, completion, live = false, badge, main = false }: {
   avatars: Avatar[]
   size: number
   mood?: BotMood
   live?: boolean
+  completion?: string
   badge?: { title: string; className: string } | null
   main?: boolean
 }) {
@@ -149,11 +159,11 @@ export function BotIcon({ avatars, size, mood, live = false, badge, main = false
   return (
     <span className="relative shrink-0" style={{ width: size, height: size }}>
       {avatars.length < 2 ? (
-        <BotAvatar avatar={avatars[0]} size={size} mood={mood} live={live} />
+        <BotAvatar avatar={avatars[0]} size={size} mood={mood} completion={completion} live={live} />
       ) : (
         <>
-          <BotAvatar avatar={avatars[0]} size={member} mood={mood} live={live} className="absolute left-0 top-0" />
-          <BotAvatar avatar={avatars[1]} size={member} mood={mood} live={live} className="absolute right-0 bottom-0" />
+          <BotAvatar avatar={avatars[0]} size={member} mood={mood} completion={completion} live={live} className="absolute left-0 top-0" />
+          <BotAvatar avatar={avatars[1]} size={member} mood={mood} completion={completion} live={live} className="absolute right-0 bottom-0" />
         </>
       )}
       {badge ? (

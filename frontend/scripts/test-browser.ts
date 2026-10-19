@@ -79,15 +79,15 @@ document.querySelector('button').addEventListener('click', (event) => {
 </script></body></html>`)
 const electron = process.env.JAZ_ELECTRON_BINARY || createRequire(import.meta.url)('electron') as string
 console.log(`Browser smoke artifacts: ${output}`)
-const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './internal/browsercontrol', '-run=TestDesktopElectron', '-count=1', '-v'], {
+const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './internal/browsercontrol', './internal/acp', '-p=1', '-run=TestDesktopElectron|TestBotListElectron', '-count=1', '-v'], {
   cwd: resolve('../backend'),
   env: {
     ...process.env,
     JAZ_BROWSER_SMOKE_DIR: output,
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
-    JAZ_BROWSER_SMOKE_TIMEOUT_MS: codex ? '180000' : '75000',
-    JAZ_BROWSER_SMOKE_SUITE: ['model-picker', 'session-config', 'side-panel', 'linkedin', 'composer', 'app-navigation', 'canvas'].find(suite => process.argv.includes(`--${suite}`)) || '',
+    JAZ_BROWSER_SMOKE_TIMEOUT_MS: '180000',
+    JAZ_BROWSER_SMOKE_SUITE: ['welcome', 'bots-live', 'model-picker', 'session-config', 'side-panel', 'linkedin', 'composer', 'app-navigation', 'canvas'].find(suite => process.argv.includes(`--${suite}`)) || '',
   },
   stdout: 'inherit',
   stderr: 'inherit',

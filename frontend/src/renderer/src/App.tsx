@@ -7,12 +7,14 @@ import { SidePanelStateProvider } from '@/components/session/SidePanelState'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useBackendChange, useConnection } from '@/lib/connection'
 import { devPreview } from '@/lib/devPreview'
+import { useBotEvents } from '@/lib/hooks/useBotEvents'
 
 // The app renders while connected — and stays mounted through transient
 // losses ('reconnecting', banner over live UI) so drafts and streams survive
 // a blip. Only a sustained outage hands the window to the launch screen.
 export function App({ router }: { router: AnyRouter }) {
   const { status } = useConnection()
+  useBotEvents()
   // Reset to home whenever the backend changes — done here, above the router and
   // the onboarding gate, so it also covers landing after a fresh backend's
   // onboarding finishes (the router mounts onto this location). The persisted

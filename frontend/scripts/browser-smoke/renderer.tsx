@@ -25,6 +25,7 @@ import { exerciseChatHistory } from './chat-history'
 import { exerciseBotWelcome } from './bot-welcome'
 import { exerciseBotPanel } from './bot-panel'
 import { exerciseLoops } from './loops'
+import { exerciseBotsLive } from './bots-live'
 import { exerciseBotFaces } from './bot-faces'
 import { exerciseConnectCard } from './connect-card'
 import { exerciseAccentText } from './accent-text'
@@ -70,79 +71,95 @@ function Fixture() {
   useEffect(() => {
     const pending = new Map<number, string>()
     let stage = 'opening, profile import and cursor checks'
+    const started = performance.now()
+    const progress = (next: string) => {
+      console.warn(JSON.stringify({ stage: next, elapsed: Math.round(performance.now() - started) }))
+      stage = next
+    }
     const timeout = setTimeout(() => window.smoke.result({ ok: false, error: 'Browser smoke timed out', stage, pending: [...pending.values()] }), Number(new URLSearchParams(location.search).get('timeout') || 30000))
     const run = async () => {
       const evaluate = async (expression: string) => {
         const result = await browser.call({ method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }) as { result: { value: unknown } }
         return result.result.value
       }
+      if (new URLSearchParams(location.search).get('suite') === 'welcome') {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        await exerciseBotWelcome()
+        window.smoke.result({ ok: true, checks: ['bot welcome and starter actions'] })
+        return
+      }
+      if (new URLSearchParams(location.search).get('suite') === 'bots-live') {
+        await exerciseBotsLive()
+        window.smoke.result({ ok: true, checks: ['live bot state, worker questions, short runs, completion cheers, reconnect and idle requests'] })
+        return
+      }
       if (new URLSearchParams(location.search).get('suite') === 'linkedin') {
-        stage = 'blocked LinkedIn homepage recovery'
+        progress('blocked LinkedIn homepage recovery')
         await exerciseLinkedInNavigation(browser, evaluate)
         window.smoke.result({ ok: true, checks: ['blocked LinkedIn homepages reach sign-in; successful pages, other paths/sites and background requests retain their responses'] })
         return
       }
       if (new URLSearchParams(location.search).get('suite') === 'session-config') {
-        stage = 'session settings and canvas side panel'
+        progress('session settings and canvas side panel')
         await exerciseSessionConfig()
         window.smoke.result({ ok: true, checks: ['existing composer setting changes across menu closure; Canvas panel controls, real browser navigation, retained board and close/reopen'] })
         return
       }
       if (new URLSearchParams(location.search).get('suite') === 'side-panel') {
-        stage = 'side panel tabs and retained resources'
+        progress('side panel tabs and retained resources')
         await exerciseSidePanelTabs()
         window.smoke.result({ ok: true, checks: ['side panel and Overview shortcut visibility; compact tabs, browser retention, terminal, side chat, mobile layout, per-chat restoration and browsers surviving a backend reconnect'] })
         return
       }
-      stage = 'canvas resizing, scrolling and viewer controls'
+      progress('canvas resizing, scrolling and viewer controls')
       await exerciseCanvas()
       if (new URLSearchParams(location.search).get('suite') === 'canvas') {
         window.smoke.result({ ok: true, checks: ['canvas pinch and pan over content; notes, documents and sandboxed cards fit without scrollbars; corners and edges resize at multiple zoom levels; filenames, Focus and Escape remain accessible'] })
         return
       }
-      stage = 'app page navigation across Jaz history'
+      progress('app page navigation across Jaz history')
       await exerciseAppNavigation()
       if (new URLSearchParams(location.search).get('suite') === 'app-navigation') {
         window.smoke.result({ ok: true, checks: ['sandboxed app page history, cross-app Back/Forward, remembered pages, tool-target entry, repeated opens, query restoration, focused keyboard shortcuts, threads started only by the app in use, and a titlebar New chat with the sidebar hidden everywhere except Bots'] })
         return
       }
-      stage = 'composer submission across chat navigation'
+      progress('composer submission across chat navigation')
       await exerciseComposerSend()
-      stage = 'bot chat composer rows as the draft wraps'
+      progress('bot chat composer rows as the draft wraps')
       await exerciseComposerWrap()
-      stage = 'predicted prompt in an empty idle composer'
+      progress('predicted prompt in an empty idle composer')
       await exerciseComposerSuggestion()
-      stage = 'folder drops into the composer'
+      progress('folder drops into the composer')
       await exerciseFolderDrop()
-      stage = 'bot chat history window'
+      progress('bot chat history window')
       await exerciseChatHistory()
-      stage = 'a bot chat opening with its hello'
+      progress('a bot chat opening with its hello')
       await exerciseBotWelcome()
-      stage = 'a bot side panel: activity, routines and identity files'
+      progress('a bot side panel: activity, routines and identity files')
       await exerciseBotPanel()
-      stage = 'routine waiting reasons in the list and details'
+      progress('routine waiting reasons in the list and details')
       await exerciseLoops()
-      stage = 'live bot faces: idle motion, moods, one-off moves and effects off'
+      progress('live bot faces: idle motion, moods, one-off moves and effects off')
       await exerciseBotFaces()
-      stage = 'connect card sign-in from chat'
+      progress('connect card sign-in from chat')
       await exerciseConnectCard()
       if (new URLSearchParams(location.search).get('suite') === 'composer') {
         window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; an empty idle thread or bot chat composer offers the predicted prompt, Tab writes it and a draft or running turn hides it; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; a bot chat opens with a hello that a new bot types first, starters send and leave once the person speaks; a bot panel lists what runs now and what the bot did by day, runs, pauses and deletes routines from their modal, and saves AGENTS.md and MEMORY.md only when edited and never over a newer write by the bot; live bot faces move, act out each change of mood once and hold still with effects off or off screen; connect cards start OAuth from chat and show the new account'] })
         return
       }
-      stage = 'Tab-only focus rings'
+      progress('Tab-only focus rings')
       await exerciseKeyboardFocus()
-      stage = 'model picker efforts, animation, focus and persistence'
+      progress('model picker efforts, animation, focus and persistence')
       await exerciseModelPicker()
-      stage = 'existing composer setting changes across menu closure'
+      progress('existing composer setting changes across menu closure')
       await exerciseSessionConfig()
-      stage = 'readable text on custom accents'
+      progress('readable text on custom accents')
       await exerciseAccentText()
       if (new URLSearchParams(location.search).get('suite') === 'model-picker') {
         window.smoke.result({ ok: true, checks: ['Tab-only focus rings; Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence; existing composer pending settings survive menu closure and await refreshed state; custom accents keep readable button text'] })
         return
       }
-      stage = 'cancellation while opening the browser panel'
+      progress('cancellation while opening the browser panel')
       let finishOpening!: () => void
       const opening = new Promise<void>((resolve) => {
         finishOpening = resolve
@@ -166,32 +183,32 @@ function Fixture() {
       } finally {
         waitingBrowser.dispose()
       }
-      stage = 'Mermaid rendering, streaming, themes and source fallback'
+      progress('Mermaid rendering, streaming, themes and source fallback')
       await exerciseMermaid()
-      stage = 'browser layout, navigation collapse and resize grip'
+      progress('browser layout, navigation collapse and resize grip')
       await exerciseBrowserLayout()
-      stage = 'side panel tabs and retained resources'
+      progress('side panel tabs and retained resources')
       await exerciseSidePanelTabs()
-      stage = 'background browser lifecycle'
+      progress('background browser lifecycle')
       await exerciseBrowserLifecycle(await window.smoke.backend(), (next) => {
-        stage = next
+        progress(next)
       })
-      stage = 'annotation after renderer updates and composer delivery'
+      progress('annotation after renderer updates and composer delivery')
       await exerciseAnnotations()
-      stage = 'opening, profile import and cursor checks'
+      progress('opening, profile import and cursor checks')
       await browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/target` } })
-      stage = 'browser identity'
+      progress('browser identity')
       await exerciseBrowserIdentity(evaluate)
-      stage = 'blocked LinkedIn homepage recovery'
+      progress('blocked LinkedIn homepage recovery')
       await exerciseLinkedInNavigation(browser, evaluate)
       await browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/target` } })
-      stage = 'local preview URLs and external links'
+      progress('local preview URLs and external links')
       await exercisePreviewLinks(browser, evaluate)
-      stage = 'profile import'
+      progress('profile import')
       await exerciseProfileImport(browser)
-      stage = 'password saving, filling and origin isolation'
+      progress('password saving, filling and origin isolation')
       await exercisePasswords(browser)
-      stage = 'cursor ordering and cancellation'
+      progress('cursor ordering and cancellation')
       const point = await evaluate(`(() => {
         const r = document.querySelector('button').getBoundingClientRect()
         return {x:r.x+r.width/2,y:r.y+r.height/2}
@@ -208,7 +225,7 @@ function Fixture() {
       if (!clicked) {
         throw new Error('Expected one trusted click with hover')
       }
-      stage = 'agent typing stays in the page while the composer keeps focus'
+      progress('agent typing stays in the page while the composer keeps focus')
       const draft = document.createElement('textarea')
       draft.value = 'my draft'
       document.body.append(draft)
@@ -245,7 +262,7 @@ await rawCdp.send('Input.dispatchMouseEvent', {type:'mouseMoved',x:20,y:20,butto
       if (!await evaluate('document.querySelector("button").matches(":hover")') || cursorPoint() !== initialCursor) {
         throw new Error('Persistent CDP binding did not hover the page independently')
       }
-      stage = 'raw CDP cancellation'
+      progress('raw CDP cancellation')
       const pendingRaw = browser.call({ method: 'Jaz.run', params: { code: `await rawCdp.send('Runtime.evaluate', {
 expression:'new Promise(resolve => { window.finishRaw = resolve })',
 awaitPromise:true
@@ -265,7 +282,7 @@ awaitPromise:true
       if (!rawCancelled) {
         throw new Error('A pending raw CDP script did not cancel')
       }
-      stage = 'preview navigation cancellation'
+      progress('preview navigation cancellation')
       const originalURL = await evaluate('location.href')
       const preparingNavigation = browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/cancelled-navigation` } })
       await fetch('/wait-for-proxy')
@@ -280,7 +297,7 @@ awaitPromise:true
       if (!navigationCancelled || await evaluate('location.href') !== originalURL) {
         throw new Error('Cancelled navigation continued after its preview proxy resolved')
       }
-      stage = 'cursor cancellation and ownership'
+      progress('cursor cancellation and ownership')
       const cancelled = browser.call({ method: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: 20, y: 20 } })
       browser.cancel()
       let rejected = false
@@ -312,7 +329,7 @@ awaitPromise:true
         throw new Error('Browser command accepted an unowned debugger session')
       }
       const backend = await window.smoke.backend()
-      stage = 'MCP and accessibility'
+      progress('MCP and accessibility')
       const socket = new WebSocket(`${backend.replace('http:', 'ws:')}/v1/sessions/browser-fixture/browser`)
       socket.onmessage = async (event) => {
         const request = JSON.parse(event.data)
@@ -346,7 +363,7 @@ await tab.scroll('down', 0, targetRef)` } })
       if (!accessibility.ok) {
         throw new Error(await accessibility.text())
       }
-      stage = 'native Codex MCP compatibility'
+      progress('native Codex MCP compatibility')
       const codex = await fetch(`${backend}/exercise-codex?url=${encodeURIComponent(`${location.origin}/target?codex=1`)}`)
       if (!codex.ok) {
         throw new Error(await codex.text())

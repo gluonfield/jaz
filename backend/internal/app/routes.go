@@ -226,6 +226,7 @@ func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler,
 
 func BotRoutes(handler *botsapi.Handler) server.Routes {
 	return server.Routes{
+		{Pattern: "GET /v1/bots/events", Handler: httpHandlerFunc(handler.Events)},
 		{Pattern: "GET /v1/bots", Handler: httpHandlerFunc(handler.List)},
 		{Pattern: "POST /v1/bots", Handler: httpHandlerFunc(handler.Create)},
 		{Pattern: "POST /v1/bots/groups", Handler: httpHandlerFunc(handler.CreateGroup)},

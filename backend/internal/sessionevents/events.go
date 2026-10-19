@@ -3,6 +3,7 @@ package sessionevents
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -573,22 +574,24 @@ type ACPPermissionLocation struct {
 
 type Bus struct {
 	mu   sync.Mutex
-	subs map[string]map[chan Event]struct{}
+	subs map[string]map[chan Event][]string
 }
 
 const subscriberBuffer = 64
 
 func New() *Bus {
-	return &Bus{subs: map[string]map[chan Event]struct{}{}}
+	return &Bus{subs: map[string]map[chan Event][]string{}}
 }
 
-func (b *Bus) Subscribe(ctx context.Context, sessionID string) <-chan Event {
+// An empty sessionID watches all threads. Types, when supplied, filter before
+// buffering so high-volume transcript traffic cannot displace state changes.
+func (b *Bus) Subscribe(ctx context.Context, sessionID string, types ...string) <-chan Event {
 	ch := make(chan Event, subscriberBuffer)
 	b.mu.Lock()
 	if b.subs[sessionID] == nil {
-		b.subs[sessionID] = map[chan Event]struct{}{}
+		b.subs[sessionID] = map[chan Event][]string{}
 	}
-	b.subs[sessionID][ch] = struct{}{}
+	b.subs[sessionID][ch] = types
 	b.mu.Unlock()
 	go func() {
 		<-ctx.Done()
@@ -612,17 +615,22 @@ func (b *Bus) Publish(event Event) {
 		event.At = time.Now().UTC()
 	}
 	b.mu.Lock()
-	subs := b.subs[event.SessionID]
-	for ch := range subs {
-		select {
-		case ch <- event:
-		default:
-			delete(subs, ch)
-			close(ch)
+	for _, id := range []string{event.SessionID, ""} {
+		subs := b.subs[id]
+		for ch, types := range subs {
+			if len(types) > 0 && !slices.Contains(types, event.Type) {
+				continue
+			}
+			select {
+			case ch <- event:
+			default:
+				delete(subs, ch)
+				close(ch)
+			}
 		}
-	}
-	if len(subs) == 0 {
-		delete(b.subs, event.SessionID)
+		if len(subs) == 0 {
+			delete(b.subs, id)
+		}
 	}
 	b.mu.Unlock()
 }
