@@ -114,7 +114,7 @@ function botDot(bot: Bot, mood: BotMood, still: boolean): { title: string; class
   if (mood === 'waiting') {
     return { title: 'Waiting for your answer', className: 'bg-accent' }
   }
-  if (mood === 'working' && !still) {
+  if ((mood === 'working' || mood === 'thinking') && !still) {
     return null
   }
   return stateDot(bot)

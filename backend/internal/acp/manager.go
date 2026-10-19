@@ -74,6 +74,8 @@ type Manager struct {
 	log          *log.Logger
 	Done         func(context.Context, Job)
 	TurnFinished func(context.Context, Job)
+	// TurnEnding delivers final output before publishing a successful turn's end.
+	TurnEnding func(Job)
 	// ThreadStarted hears of each thread an agent starts, with its first
 	// prompt.
 	ThreadStarted func(storage.Session, string)

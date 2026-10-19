@@ -38,6 +38,8 @@ type Job struct {
 	UpdatedAt       time.Time                     `json:"updated_at"`
 	LastEventAt     time.Time                     `json:"last_event_at,omitzero"`
 	LastToolAt      time.Time                     `json:"last_tool_at,omitzero"`
+	// Reply is the last message without a later tool call or an interim phase.
+	Reply string `json:"-"`
 }
 
 type HydrationView struct {
@@ -125,6 +127,8 @@ type jobState struct {
 	systemPromptExtensions promptmodule.Modules
 	assistantText          strings.Builder
 	thoughtText            strings.Builder
+	replyText              strings.Builder
+	replyID                string
 	// leases counts callers holding the process outside a turn; retired marks
 	// a job whose process is being stopped as idle, which takes no more.
 	leases  int
@@ -209,6 +213,7 @@ func (j *jobState) Snapshot() Job {
 	defer j.mu.RUnlock()
 	snapshot := j.hydrationViewLocked().Job()
 	snapshot.Assistant = j.Assistant
+	snapshot.Reply = j.Reply
 	snapshot.Thought = j.Thought
 	snapshot.ToolCalls = CloneToolCalls(j.ToolCalls)
 	return snapshot
@@ -342,6 +347,7 @@ func (j *jobState) startStoredTurn(completion CompletionMode, stored storage.Tur
 	j.Thought = ""
 	j.assistantText.Reset()
 	j.thoughtText.Reset()
+	j.endReplyLocked()
 	if len(j.Plan) > 0 {
 		j.Plan = sessionevents.PlanCleared
 	} else {
@@ -390,6 +396,7 @@ func (j *jobState) discardTurnResult() {
 	j.ActiveOperation = ""
 	j.assistantText.Reset()
 	j.thoughtText.Reset()
+	j.endReplyLocked()
 	j.toolByID = nil
 	j.pendingToolUpdateByID = nil
 	j.turnResultDiscarded = true
@@ -407,6 +414,23 @@ func (j *jobState) appendAssistantLocked(chunk string) {
 	}
 	j.assistantText.WriteString(chunk)
 	j.Assistant = j.assistantText.String()
+}
+
+// replyLocked adds a chunk of message id to the turn's final reply, which
+// another message replaces.
+func (j *jobState) replyLocked(id, chunk string) {
+	if id != j.replyID {
+		j.endReplyLocked()
+		j.replyID = id
+	}
+	j.replyText.WriteString(chunk)
+	j.Reply = j.replyText.String()
+}
+
+// endReplyLocked clears the final reply as the agent acts after writing it.
+func (j *jobState) endReplyLocked() {
+	j.replyText.Reset()
+	j.Reply = ""
 }
 
 func (j *jobState) appendThoughtLocked(chunk string) {
