@@ -276,6 +276,8 @@ func TestAStalledCommitmentWakesItsBotOnceThenStallsForTheUserAcrossARestart(t *
 
 	takeTurn()
 	runs(thread.ID)
+	ends(thread.ID)
+	runs(thread.ID)
 	if err := store.UpdateSessionStatus(thread.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
 		t.Fatal(err)
 	}
