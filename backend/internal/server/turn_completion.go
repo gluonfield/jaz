@@ -46,6 +46,7 @@ func (s *Server) finishTurn(job acp.Job) error {
 				err = loadErr
 			} else if parent.RuntimeRef != nil && parent.RuntimeRef.Agent != acp.AgentJaz {
 				message := storage.NewInternalQueuedMessage(acp.CompletionPrompt(job, "the user"))
+				message.From = job.ID
 				// Work started for another bot reports to that bot while it is
 				// still there.
 				if output := session.Turn.ParentOutput; output != nil {

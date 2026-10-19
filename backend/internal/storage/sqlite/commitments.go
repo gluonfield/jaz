@@ -103,15 +103,18 @@ func closable(ctx context.Context, q *botdb.Queries, id int64) error {
 	return err
 }
 
-// closeCommitment closes an open commitment none of whose threads works.
+// closeCommitment closes an open commitment none of whose threads works. One
+// closed as done delivered the results its threads queued for its bot.
 func closeCommitment(ctx context.Context, q *botdb.Queries, id int64, status, note string, at time.Time) error {
 	if err := closable(ctx, q, id); err != nil {
 		return err
 	}
-	_, err := q.CloseCommitment(ctx, botdb.CloseCommitmentParams{
+	if _, err := q.CloseCommitment(ctx, botdb.CloseCommitmentParams{
 		ID: id, Status: status, Note: nullDBString(note), ClosedAtMs: sql.NullInt64{Int64: timeToMs(at), Valid: true},
-	})
-	return err
+	}); err != nil || status != storage.CommitmentDone {
+		return err
+	}
+	return q.DropDeliveredResults(ctx, id)
 }
 
 func (s *Store) LoadCommitment(id int64) (storage.Commitment, error) {

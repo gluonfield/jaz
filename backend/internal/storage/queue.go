@@ -18,7 +18,8 @@ type QueuedMessage struct {
 	PlanRequested bool              `json:"plan_requested,omitempty"`
 	GoalRequested bool              `json:"goal_requested,omitempty"`
 	Output        *TurnOutput       `json:"output,omitempty"`
-	// From is the thread whose agent sent the message.
+	// From is the thread whose agent sent the message, or whose result an
+	// internal message reports.
 	From string `json:"from,omitempty"`
 	// ParentOutput is what the sender's turn was answering when it sent the
 	// message; the result of the turn the message begins goes on to answer it.

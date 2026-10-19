@@ -67,6 +67,25 @@ func (q *Queries) CommitmentWorking(ctx context.Context, id int64) (bool, error)
 	return exists, err
 }
 
+const dropDeliveredResults = `-- name: DropDeliveredResults :exec
+UPDATE threads
+SET queued_messages = (
+  SELECT json_group_array(json(kept.value)) FROM (
+    SELECT m.value FROM json_each(threads.queued_messages) m
+    WHERE json_extract(m.value, '$.kind') IS NOT 'internal'
+       OR COALESCE(json_extract(m.value, '$.from'), '') NOT IN (
+         SELECT thread_id FROM bot_commitment_threads WHERE commitment_id = ?1)
+    ORDER BY m.key) kept)
+WHERE id = (SELECT bot_id FROM bot_commitments WHERE id = ?1) AND queued_messages <> ''
+`
+
+// The results a commitment's threads queued for its bot before it closed as
+// done: they had all finished, so the delivery answered them.
+func (q *Queries) DropDeliveredResults(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, dropDeliveredResults, id)
+	return err
+}
+
 const getCommitment = `-- name: GetCommitment :one
 SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms FROM bot_commitments WHERE id = ?
 `
