@@ -39,6 +39,7 @@ func (s *Service) Load(ctx context.Context, ref string, request storage.Transcri
 	if err != nil {
 		return View{}, err
 	}
+	request.ChatOnly = session.SourceType == storage.SourceBot
 	page, err := s.store.LoadTranscriptPage(ctx, session.ID, request)
 	if err != nil {
 		return View{}, err

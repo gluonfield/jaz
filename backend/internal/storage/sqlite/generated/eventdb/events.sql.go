@@ -567,16 +567,35 @@ SELECT
   permission,
   created_at_ms
 FROM session_events
-WHERE thread_id = ?1
-  AND (?2 = 0 OR seq < ?2)
+WHERE session_events.thread_id = ?2
+  AND session_events.seq < ?3
+  AND NOT ?4
+UNION ALL
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE session_events.thread_id = ?2
+  AND session_events.seq < ?3
+  AND ?4
+  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
-LIMIT ?3
+LIMIT ?1
 `
 
 type ListSessionEventPageParams struct {
-	ThreadID   string      `json:"thread_id"`
-	BeforeSeq  interface{} `json:"before_seq"`
 	LimitCount int64       `json:"limit_count"`
+	ThreadID   string      `json:"thread_id"`
+	BeforeSeq  int64       `json:"before_seq"`
+	ChatOnly   interface{} `json:"chat_only"`
 }
 
 type ListSessionEventPageRow struct {
@@ -593,7 +612,12 @@ type ListSessionEventPageRow struct {
 }
 
 func (q *Queries) ListSessionEventPage(ctx context.Context, arg ListSessionEventPageParams) ([]ListSessionEventPageRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionEventPage, arg.ThreadID, arg.BeforeSeq, arg.LimitCount)
+	rows, err := q.db.QueryContext(ctx, listSessionEventPage,
+		arg.LimitCount,
+		arg.ThreadID,
+		arg.BeforeSeq,
+		arg.ChatOnly,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -634,16 +658,30 @@ SELECT
     + COALESCE(LENGTH(CAST(plan AS BLOB)), 0)
     + COALESCE(LENGTH(CAST(permission AS BLOB)), 0) AS bytes
 FROM session_events
-WHERE thread_id = ?1
-  AND (?2 = 0 OR seq < ?2)
+WHERE session_events.thread_id = ?2
+  AND session_events.seq < ?3
+  AND NOT ?4
+UNION ALL
+SELECT
+  seq,
+  LENGTH(CAST(content AS BLOB))
+    + COALESCE(LENGTH(CAST(acp AS BLOB)), 0)
+    + COALESCE(LENGTH(CAST(plan AS BLOB)), 0)
+    + COALESCE(LENGTH(CAST(permission AS BLOB)), 0) AS bytes
+FROM session_events
+WHERE session_events.thread_id = ?2
+  AND session_events.seq < ?3
+  AND ?4
+  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
-LIMIT ?3
+LIMIT ?1
 `
 
 type ListSessionEventPageSizesParams struct {
-	ThreadID   string      `json:"thread_id"`
-	BeforeSeq  interface{} `json:"before_seq"`
 	LimitCount int64       `json:"limit_count"`
+	ThreadID   string      `json:"thread_id"`
+	BeforeSeq  int64       `json:"before_seq"`
+	ChatOnly   interface{} `json:"chat_only"`
 }
 
 type ListSessionEventPageSizesRow struct {
@@ -652,7 +690,12 @@ type ListSessionEventPageSizesRow struct {
 }
 
 func (q *Queries) ListSessionEventPageSizes(ctx context.Context, arg ListSessionEventPageSizesParams) ([]ListSessionEventPageSizesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionEventPageSizes, arg.ThreadID, arg.BeforeSeq, arg.LimitCount)
+	rows, err := q.db.QueryContext(ctx, listSessionEventPageSizes,
+		arg.LimitCount,
+		arg.ThreadID,
+		arg.BeforeSeq,
+		arg.ChatOnly,
+	)
 	if err != nil {
 		return nil, err
 	}

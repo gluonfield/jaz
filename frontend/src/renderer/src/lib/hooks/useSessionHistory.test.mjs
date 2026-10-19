@@ -130,3 +130,25 @@ describe('session history ownership', () => {
     )
   })
 })
+
+test('loads one bot page and keeps a newer arrival while prepending it', async () => {
+  const current = {
+    session: { id: 'bot', source_type: 'bot' }, history_revision: 7,
+    messages: [], events: [text(100, 'latest')], has_earlier: true, before_event_seq: 100,
+  }
+  const earlier = { ...current, events: [text(80, 'earlier')], before_event_seq: 80 }
+  let calls = 0
+  const batch = await loadCompleteHistoryBatch(current, async () => {
+    calls += 1
+    if (calls > 1) {
+      throw new Error('Fetched past one bot page')
+    }
+    return earlier
+  })
+  const arrived = { ...current, events: [...current.events, { ...text(101, 'new'), projection_key: 'new' }], latest_event_seq: 101 }
+  const merged = mergeEarlierHistory(arrived, batch)
+  expect(calls).toBe(1)
+  expect(merged.events.at(-1).content).toBe('new')
+  expect(merged.latest_event_seq).toBe(101)
+  expect(merged.before_event_seq).toBe(80)
+})

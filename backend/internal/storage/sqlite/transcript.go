@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -59,7 +60,7 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 	var eventRows []eventdb.ListSessionEventPageRow
 	eventsMore := false
 	if request.HistoryRevision == 0 || request.BeforeEventSeq > 0 {
-		eventRows, eventsMore, err = loadTranscriptEventRows(ctx, events, id, request.BeforeEventSeq)
+		eventRows, eventsMore, err = loadTranscriptEventRows(ctx, events, id, request)
 		if err != nil {
 			return storage.TranscriptPage{}, err
 		}
@@ -79,7 +80,7 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 		}
 		baseStart := messageStart
 		messageRows, loadErr := messages.ListMessageRangeSizes(ctx, messagedb.ListMessageRangeSizesParams{
-			ThreadID: id, StartSeq: messageStart, BeforeSeq: request.BeforeMessageSeq,
+			ThreadID: id, StartSeq: messageStart, BeforeSeq: request.BeforeMessageSeq, ChatOnly: request.ChatOnly,
 		})
 		if loadErr != nil {
 			return storage.TranscriptPage{}, loadErr
@@ -102,7 +103,7 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 		messageStart, truncated, err = boundedTranscriptMessageStart(messageRows, alignedStart)
 		messageHasEarlier = messageHasEarlier || truncated || messageStart > baseStart
 		if err == nil {
-			err = loadTranscriptMessages(ctx, messages, id, messageStart, request.BeforeMessageSeq, &page)
+			err = loadTranscriptMessages(ctx, messages, id, messageStart, request, &page)
 		}
 		if err != nil {
 			return storage.TranscriptPage{}, fmt.Errorf("load transcript cursor: %w", err)
@@ -152,17 +153,25 @@ func loadTranscriptEventRows(
 	ctx context.Context,
 	events *eventdb.Queries,
 	id string,
-	beforeSeq int64,
+	request storage.TranscriptPageRequest,
 ) ([]eventdb.ListSessionEventPageRow, bool, error) {
+	beforeSeq := request.BeforeEventSeq
+	if beforeSeq == 0 {
+		beforeSeq = math.MaxInt64
+	}
+	limit := transcriptEventPageRows
+	if request.ChatOnly {
+		limit = request.Turns
+	}
 	sizes, err := events.ListSessionEventPageSizes(ctx, eventdb.ListSessionEventPageSizesParams{
-		ThreadID: id, BeforeSeq: beforeSeq, LimitCount: transcriptEventPageRows + 1,
+		ThreadID: id, BeforeSeq: beforeSeq, LimitCount: int64(limit + 1), ChatOnly: request.ChatOnly,
 	})
 	if err != nil {
 		return nil, false, err
 	}
 	selected := 0
 	selectedBytes := int64(0)
-	for selected < len(sizes) && selected < transcriptEventPageRows {
+	for selected < len(sizes) && selected < limit {
 		if sizes[selected].Bytes > transcriptEventPageBytes {
 			return nil, false, fmt.Errorf("session event %d is %d bytes; limit is %d", sizes[selected].Seq, sizes[selected].Bytes, transcriptEventPageBytes)
 		}
@@ -173,7 +182,7 @@ func loadTranscriptEventRows(
 		selected++
 	}
 	rows, err := events.ListSessionEventPage(ctx, eventdb.ListSessionEventPageParams{
-		ThreadID: id, BeforeSeq: beforeSeq, LimitCount: int64(selected),
+		ThreadID: id, BeforeSeq: beforeSeq, LimitCount: int64(selected), ChatOnly: request.ChatOnly,
 	})
 	return rows, len(sizes) > selected, err
 }
@@ -236,9 +245,9 @@ func boundedTranscriptMessageStart(rows []messagedb.ListMessageRangeSizesRow, st
 	return startSeq, false, nil
 }
 
-func loadTranscriptMessages(ctx context.Context, messages *messagedb.Queries, id string, startSeq, beforeSeq int64, page *storage.TranscriptPage) error {
+func loadTranscriptMessages(ctx context.Context, messages *messagedb.Queries, id string, startSeq int64, request storage.TranscriptPageRequest, page *storage.TranscriptPage) error {
 	rows, err := messages.ListMessagesByThreadRange(ctx, messagedb.ListMessagesByThreadRangeParams{
-		ThreadID: id, StartSeq: startSeq, BeforeSeq: beforeSeq,
+		ThreadID: id, StartSeq: startSeq, BeforeSeq: request.BeforeMessageSeq, ChatOnly: request.ChatOnly,
 	})
 	if err != nil {
 		return err
