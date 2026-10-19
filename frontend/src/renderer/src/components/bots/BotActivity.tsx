@@ -180,8 +180,8 @@ function row(item: BotActivity, index: number): Row {
       const label = BOT_FILE_LABELS[item.title as BotFileName]
       return {
         ...base,
-        title: item.kind === 'file_edited' ? `You edited ${label}` : item.title === 'MEMORY.md' ? 'Learned something new' : `Updated ${label}`,
-        detail: item.kind === 'file_changed' && item.title === 'MEMORY.md' ? label : undefined,
+        title: item.kind === 'file_edited' ? `You edited ${label}` : 'Learned something new',
+        detail: item.kind === 'file_changed' ? label : undefined,
         open: { file: item.title as BotFileName },
       }
     }
