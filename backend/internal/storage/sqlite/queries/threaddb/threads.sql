@@ -312,8 +312,7 @@ SET
   unread = 1,
   updated_at_ms = sqlc.arg(completed_at_ms),
   last_attention_at_ms = sqlc.arg(completed_at_ms),
-  last_completed_at_ms = sqlc.arg(completed_at_ms),
-  turns_ended = turns_ended + 1
+  last_completed_at_ms = sqlc.arg(completed_at_ms)
 WHERE id = sqlc.arg(id);
 
 -- name: TouchThread :exec

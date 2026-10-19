@@ -80,8 +80,7 @@ SET
   unread = 1,
   updated_at_ms = ?1,
   last_attention_at_ms = ?1,
-  last_completed_at_ms = ?1,
-  turns_ended = turns_ended + 1
+  last_completed_at_ms = ?1
 WHERE id = ?2
 `
 

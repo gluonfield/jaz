@@ -6,7 +6,7 @@
 ALTER TABLE bot_commitments ADD COLUMN waiting TEXT NOT NULL DEFAULT '';
 ALTER TABLE bot_commitments ADD COLUMN watch TEXT NOT NULL DEFAULT '';
 
--- How many turns a thread has ended, however each ended.
+-- How many of its recorded turns a thread has ended, however each ended.
 ALTER TABLE threads ADD COLUMN turns_ended INTEGER NOT NULL DEFAULT 0;
 
 -- How far an open commitment's threads have got, as how many it has and how
