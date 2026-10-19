@@ -16,5 +16,5 @@ type Message struct {
 	Reasoning   sql.NullString `json:"reasoning"`
 	Blocks      string         `json:"blocks"`
 	CreatedAtMs int64          `json:"created_at_ms"`
-	FromAgent   int64          `json:"from_agent"`
+	FromUser    int64          `json:"from_user"`
 }

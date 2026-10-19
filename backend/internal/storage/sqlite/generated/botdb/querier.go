@@ -6,9 +6,11 @@ package botdb
 
 import (
 	"context"
+	"database/sql"
 )
 
 type Querier interface {
+	ArchiveFinishedBotWork(ctx context.Context, arg ArchiveFinishedBotWorkParams) error
 	CloseCommitment(ctx context.Context, arg CloseCommitmentParams) (int64, error)
 	// A running turn of its bot holds an answer that delivers it.
 	CommitmentStaged(ctx context.Context, id int64) (bool, error)
@@ -32,6 +34,7 @@ type Querier interface {
 	// further since.
 	ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error)
 	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)
+	ListFinishedBotWork(ctx context.Context, beforeMs sql.NullInt64) ([]string, error)
 	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error)
 	// Records that the user is told about each commitment that did not move after

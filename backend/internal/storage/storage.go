@@ -205,6 +205,9 @@ type TurnOutput struct {
 	// Hops counts the messages bots sent each other, without the user
 	// writing, that led to this turn.
 	Hops int `json:"hops,omitempty"`
+	// User records that the turn began with a message shown as the user's
+	// that no agent sent.
+	User bool `json:"user,omitempty"`
 	// Shown records that the turn sent a message or presented an app in its
 	// own chat.
 	Shown bool `json:"shown,omitempty"`
@@ -304,9 +307,9 @@ type Message struct {
 	Reasoning string    `json:"reasoning,omitempty"`
 	Blocks    []Block   `json:"blocks"`
 	CreatedAt time.Time `json:"created_at"`
-	// FromAgent marks a user-role message an agent wrote, as when it sends
-	// another thread a message, rather than the user.
-	FromAgent bool `json:"from_agent,omitempty"`
+	// FromUser explicitly records human authorship; unmarked messages never
+	// count as user activity.
+	FromUser bool `json:"from_user,omitempty"`
 }
 
 type CreateSession struct {

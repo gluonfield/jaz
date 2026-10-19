@@ -15,6 +15,9 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/server"
+	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/sessionlock"
 )
 
 func TestIdleProcessStopsAndItsThreadResumesTheNativeSession(t *testing.T) {
@@ -27,7 +30,7 @@ func TestIdleProcessStopsAndItsThreadResumesTheNativeSession(t *testing.T) {
 		"JAZ_FAKE_ACP_SET_MODEL": "1", "JAZ_FAKE_ACP_EXPECT_MODEL": "fake-large",
 		"JAZ_FAKE_ACP_SET_CONFIG": "1", "JAZ_FAKE_ACP_EXPECT_EFFORT": "high",
 	}
-	manager := newFakeAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), env, "fake-large", "high")
+	manager := idleManager(t, "fake", env, "fake-large", "high")
 	ctx, id := startIdleThread(t, manager, "fake")
 	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 500 * time.Millisecond})
 	time.Sleep(250 * time.Millisecond)
@@ -61,7 +64,7 @@ func TestIdleClaudeBotKeepsItsProcessForTheBotTimeout(t *testing.T) {
 		t.Run(tc.agent, func(t *testing.T) {
 			startLog := filepath.Join(t.TempDir(), "starts")
 			env := map[string]string{"JAZ_FAKE_ACP_START_LOG": startLog, "JAZ_FAKE_ACP_UNIQUE_SESSION": "1"}
-			manager := newFakeNamedAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), tc.agent, env, "", "")
+			manager := idleManager(t, tc.agent, env, "", "")
 			ctx, _ := startIdleThread(t, manager, tc.agent)
 			bot, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: tc.agent, Slug: "idle-bot", MCPServerPolicy: acp.MCPServerPolicyBot})
 			if err != nil {
@@ -173,7 +176,7 @@ func TestIdleStopWaitsForWorkInTheProcess(t *testing.T) {
 				"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_START_LOG": startLog, "JAZ_FAKE_ACP_REQUEST_LOG": requestLog,
 				"JAZ_FAKE_ACP_RELEASE_FILE": release,
 			}
-			manager := newFakeNamedAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), tc.agent, env, "", "")
+			manager := idleManager(t, tc.agent, env, "", "")
 			ctx, id := startIdleThread(t, manager, tc.agent)
 			pid := startedPIDs(t, startLog)[0]
 			prompts := requestsSent(t, requestLog, "session/prompt")
@@ -207,7 +210,7 @@ func TestIdleStopWaitsForWorkInTheProcess(t *testing.T) {
 func TestTurnsRacingIdleStopsAllComplete(t *testing.T) {
 	startLog := filepath.Join(t.TempDir(), "starts")
 	env := map[string]string{"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_START_LOG": startLog}
-	manager := newFakeAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), env, "", "")
+	manager := idleManager(t, "fake", env, "", "")
 	ctx, id := startIdleThread(t, manager, "fake")
 	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: time.Millisecond})
 	// Varied pauses land follow-ups before, during and after stops.
@@ -229,7 +232,7 @@ func TestResumeWaitsForTheStoppedProcessToExit(t *testing.T) {
 		"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_START_LOG": startLog,
 		"JAZ_FAKE_ACP_SESSION_CLAIM": filepath.Join(logs, "claim"),
 	}
-	manager := newFakeAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), env, "", "")
+	manager := idleManager(t, "fake", env, "", "")
 	ctx, id := startIdleThread(t, manager, "fake")
 	stopping := startedPIDs(t, startLog)[0]
 	stopIdleProcesses(t, manager, acp.IdleTimeouts{Thread: 20 * time.Millisecond})
@@ -252,7 +255,7 @@ func TestStoppedThreadsResumeInParallel(t *testing.T) {
 		"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_START_LOG": startLog, "JAZ_FAKE_ACP_SESSION_PER_CWD": "1",
 		"JAZ_FAKE_ACP_RESTORE_TOGETHER": filepath.Join(logs, "restoring") + ":4",
 	}
-	manager := newFakeAgentManagerWithOptions(t, newProviderSubagentStore(t), t.TempDir(), env, "", "")
+	manager := idleManager(t, "fake", env, "", "")
 	ctx, first := startIdleThread(t, manager, "fake")
 	ids := []string{first}
 	for i := range 3 {
@@ -281,6 +284,17 @@ func TestStoppedThreadsResumeInParallel(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// idleManager starts a manager whose turns end with Jaz's turn bookkeeping,
+// so a thread whose process stopped reads from storage as its turn left it.
+func idleManager(t *testing.T, agent string, env map[string]string, model, effort string) *acp.Manager {
+	t.Helper()
+	store := newProviderSubagentStore(t)
+	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), agent, env, model, effort)
+	manager.Events = sessionevents.New()
+	manager.TurnFinished = (&server.Server{Store: store, ACP: manager, Locks: sessionlock.New(), Events: manager.Events}).HandleACPTurnFinished
+	return manager
 }
 
 // startIdleThread spawns a thread on agent and finishes its first turn.
@@ -322,26 +336,21 @@ func turn(ctx context.Context, manager *acp.Manager, id, message string) error {
 	return settled(ctx, manager, id, message)
 }
 
-// settled waits for the thread's turn to end, reading the thread from storage
-// once its process has been stopped.
+// settled waits for the thread's turn to end as wait_threads does: until Jaz
+// has recorded the end, which is what the thread reads once its process stops.
 func settled(ctx context.Context, manager *acp.Manager, id, message string) error {
-	for {
-		job, err := manager.Status(id)
-		if err != nil {
-			return err
-		}
-		switch job.State {
-		case acp.StateRunning, acp.StateStarting:
-		case acp.StateIdle, acp.StateNotRunning:
-			return nil
-		default:
-			return fmt.Errorf("%q ended %s: %s", message, job.State, job.Error)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Millisecond):
-		}
+	result, err := manager.WaitThreads(ctx, []string{id}, time.Minute)
+	if err != nil {
+		return err
+	}
+	if len(result.Threads) == 0 {
+		return fmt.Errorf("%q: %s", message, result.Errors[id])
+	}
+	switch job := result.Threads[0]; job.State {
+	case acp.StateIdle, acp.StateNotRunning:
+		return nil
+	default:
+		return fmt.Errorf("%q ended %s: %s", message, job.State, job.Error)
 	}
 }
 

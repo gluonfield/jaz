@@ -41,6 +41,18 @@ func (m *Manager) SessionUsed(id string) bool {
 	return used
 }
 
+// WithStoppedSessions holds off resumes while worktrees of stopped sessions
+// are removed. A live process retains its directory even between turns.
+func (m *Manager) WithStoppedSessions(ids []string, remove func() error) error {
+	defer m.resumeLocks.Lock(ids...)()
+	for _, id := range ids {
+		if m.jobByID(id) != nil || m.AwaitsAnswer(id) {
+			return nil
+		}
+	}
+	return remove()
+}
+
 func (m *Manager) List() []Job {
 	m.mu.RLock()
 	jobs := make([]*jobState, 0, len(m.jobsByID))
@@ -104,6 +116,19 @@ func (m *Manager) jobByACP(acpSessionID string) *jobState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.jobsByACP[acpSessionID]
+}
+
+// Thinking reports whether sessionID's agent holds its turn's latest prompt
+// and has called no tool yet: it is reasoning or writing. A turn whose agent
+// is still starting, or that waits to retry a provider failure, is not.
+func (m *Manager) Thinking(sessionID string) bool {
+	job := m.jobByID(sessionID)
+	if job == nil {
+		return false
+	}
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	return job.State == StateRunning && job.turn != nil && job.turn.firstPromptSentClosed && len(job.ToolCalls) == 0
 }
 
 func (m *Manager) jobByID(id string) *jobState {

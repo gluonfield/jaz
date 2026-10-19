@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"sort"
 	"time"
 )
 
@@ -37,31 +38,48 @@ func (m *Manager) StopIdleProcesses(ctx context.Context, timeouts IdleTimeouts) 
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			quiet := func(job *jobState, process *agentProcess) bool {
-				return process.conn.quietSince(now.Add(-timeouts.of(job, process)))
-			}
-			for job, process := range m.quietJobs(quiet) {
-				// The connection must still be quiet once the slower checks pass:
-				// anything the agent reports meanwhile crosses it.
-				if !m.subagentsRunning(job) && !m.AwaitsAnswer(job.ID) && quiet(job, process) && job.retire() {
-					m.stopRetired(job)
-				}
-			}
+			m.stopIdle(now, timeouts, memoryPressure())
 		}
 	}
 }
 
-func (m *Manager) quietJobs(quiet func(*jobState, *agentProcess) bool) map[*jobState]*agentProcess {
+func (m *Manager) stopIdle(now time.Time, timeouts IdleTimeouts, pressure bool) {
+	quiet := func(job *jobState, process *agentProcess) bool {
+		timeout := timeouts.of(job, process)
+		if pressure {
+			timeout = min(timeout, time.Minute)
+		}
+		return process.conn.quietSince(now.Add(-timeout))
+	}
+	for _, candidate := range m.quietJobs(quiet) {
+		job, process := candidate.job, candidate.process
+		// Recheck after the slower checks: incoming traffic can change eligibility.
+		if !m.subagentsRunning(job) && !m.AwaitsAnswer(job.ID) && quiet(job, process) && job.retire() {
+			m.stopRetired(job)
+			// Reclaim one early process per sweep, allowing the OS to recover.
+			pressure = false
+		}
+	}
+}
+
+type idleProcess struct {
+	job     *jobState
+	process *agentProcess
+	traffic int64
+}
+
+func (m *Manager) quietJobs(quiet func(*jobState, *agentProcess) bool) []idleProcess {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	jobs := make(map[*jobState]*agentProcess)
+	var jobs []idleProcess
 	for id, process := range m.processes {
 		// Only a process Jaz launched has stderr, and only one Jaz launched
 		// must restore its sessions; a URL agent has no local process to stop.
 		if job := m.jobsByID[id]; process.stderr != nil && quiet(job, process) {
-			jobs[job] = process
+			jobs = append(jobs, idleProcess{job, process, process.conn.lastTraffic.Load()})
 		}
 	}
+	sort.Slice(jobs, func(i, j int) bool { return jobs[i].traffic < jobs[j].traffic })
 	return jobs
 }
 

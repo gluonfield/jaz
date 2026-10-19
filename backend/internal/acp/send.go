@@ -212,17 +212,21 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 			return Job{}, err
 		}
 	}
+	output := opts.output
+	if opts.transcript == sendTranscriptUserMessage && req.FromUser {
+		output = &storage.TurnOutput{User: true}
+	}
 	turn := storage.Turn{
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
-		AllowSilence: opts.allowSilence, Output: opts.output, ParentOutput: parentOutput,
+		AllowSilence: opts.allowSilence, Output: output, ParentOutput: parentOutput,
 		PromptDigest: promptDigest, Retries: opts.retries,
 	}
 	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
 		return Job{}, fmt.Errorf("mark session running: %w", err)
 	}
 	if opts.transcript == sendTranscriptUserMessage {
-		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, req.FromAgent); err != nil {
+		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, req.FromUser); err != nil {
 			appendErr := fmt.Errorf("append user message: %w", err)
 			if rollbackErr := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); rollbackErr != nil {
 				return Job{}, errors.Join(appendErr, fmt.Errorf("restore session idle: %w", rollbackErr))
@@ -342,7 +346,7 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 		return nil, fmt.Errorf("reserve steering: %w", err)
 	}
 	if req.transcript == sendTranscriptUserMessage {
-		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, false); err != nil {
+		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, req.FromUser); err != nil {
 			return nil, errors.Join(fmt.Errorf("append user message: %w", err), m.store.SetTurnIntent(job.ID, previous.GoalRequested, previous.ParentVisible, previous.NotifyParent))
 		}
 		// The user writing ends the bot-to-bot exchange the turn was part of.

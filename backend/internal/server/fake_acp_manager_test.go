@@ -232,6 +232,15 @@ func (f *fakeACPManager) SessionUsed(id string) bool {
 	return slices.ContainsFunc(f.allJobs(), func(job acp.Job) bool { return job.ID == id })
 }
 
+func (f *fakeACPManager) WithStoppedSessions(ids []string, remove func() error) error {
+	for _, id := range ids {
+		if f.SessionUsed(id) {
+			return nil
+		}
+	}
+	return remove()
+}
+
 func (f *fakeACPManager) HydrationJobs(ids []string) map[string]acp.HydrationView {
 	wanted := make(map[string]struct{}, len(ids))
 	for _, id := range ids {

@@ -12,7 +12,7 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 		}
 		job, err := m.Send(ctx, SendRequest{
 			Session: req.Session, Message: req.Message, Contexts: req.Contexts, Attachments: req.Attachments,
-			Completion: CompletionAsync, GoalRequested: req.GoalRequested, ParentVisible: req.ParentVisible,
+			Completion: CompletionAsync, GoalRequested: req.GoalRequested, ParentVisible: req.ParentVisible, FromUser: req.FromUser,
 		})
 		var active *turnInProgressError
 		if !errors.As(err, &active) {

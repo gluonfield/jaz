@@ -588,21 +588,28 @@ func configOptionValuesForError(options []string) string {
 	return strings.Join(values, ", ")
 }
 
+type advertisedModelList struct {
+	AvailableModels []struct {
+		ModelID string `json:"modelId"`
+	} `json:"availableModels"`
+}
+
+func (l advertisedModelList) state() sessionModelState {
+	state := sessionModelState{}
+	for _, model := range l.AvailableModels {
+		state.addExact(model.ModelID)
+	}
+	return state
+}
+
 func parseSessionModelState(raw json.RawMessage) sessionModelState {
 	var resp struct {
-		Models struct {
-			AvailableModels []struct {
-				ModelID string `json:"modelId"`
-			} `json:"availableModels"`
-		} `json:"models"`
+		Models advertisedModelList `json:"models"`
 	}
 	if len(raw) == 0 || json.Unmarshal(raw, &resp) != nil {
 		return sessionModelState{}
 	}
-	state := sessionModelState{}
-	for _, model := range resp.Models.AvailableModels {
-		state.addExact(model.ModelID)
-	}
+	state := resp.Models.state()
 	// The model config option repeats the session's current model even when the
 	// agent does not offer it, so it only describes what is available when the
 	// agent advertised nothing else.

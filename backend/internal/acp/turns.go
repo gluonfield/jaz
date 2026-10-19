@@ -152,6 +152,9 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 	job.UpdatedAt = time.Now().UTC()
 	job.mu.Unlock()
 	m.log.Info("acp turn finished", "session", job.ID, "state", state, "stop_reason", stopReason)
+	if state == StateIdle && m.TurnEnding != nil {
+		m.TurnEnding(job.Snapshot())
+	}
 	m.publishACPStatus(job.eventView())
 	m.appendAssistantMessage(job)
 	m.finishTurn(done, job)

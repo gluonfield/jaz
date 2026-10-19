@@ -56,7 +56,10 @@ export async function exerciseBotPanel(): Promise<void> {
     { id: 'r1', loop_id: 'l-heartbeat', scheduled_for: minutes(60), started_at: minutes(60), finished_at: minutes(60), status: 'error', error: 'Gmail sign-in expired', created_at: minutes(60) },
   ]
   const agents: BotFile = { name: 'AGENTS.md', content: '# Jaz Self Improvement Bot\n\nImprove Jaz. Never merge what you have not audited.', version: 'a1', updated_at: '2026-10-09T10:00:00Z' }
-  let memory: BotFile = { name: 'MEMORY.md', content: '# Memory\n\n- Nothing merges before an audit\n- Augustinas reviews every release', version: 'm1', updated_at: minutes(62) }
+  // Written as a bot writes it, so a save that rewrites lines nobody edited
+  // (escapes, the final newline) shows.
+  const original = '# Memory\n\n- Nothing merges before an audit [Source: review_notes]\n- Augustinas reviews every release\n'
+  let memory: BotFile = { name: 'MEMORY.md', content: original, version: 'm1', updated_at: minutes(62) }
   const requests: { method: string; path: string; body?: { content?: string; version?: string; status?: string } }[] = []
   const originalFetch = window.fetch
   window.fetch = async (input, init) => {
@@ -312,7 +315,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Close')
     await until('closing did not save the edit', () => !editor() && memory.version === 'm1+')
     const save = requests.find((request) => request.method === 'PUT')!
-    if (save.body?.version !== 'm1' || !save.body.content?.includes('Owls')) {
+    if (save.body?.version !== 'm1' || save.body.content !== original.replace('every release', 'every releaseOwls')) {
       throw new Error('Bot panel: the edit saved as ' + JSON.stringify(save.body))
     }
 

@@ -289,6 +289,20 @@ func RemoveManagedWorktree(ctx context.Context, dir, branch, message string) err
 	if current != branch {
 		return fmt.Errorf("worktree branch %q does not match %q", current, branch)
 	}
+	reflog, err := git(ctx, dir, "reflog", "show", "--format=%H", "HEAD")
+	if err != nil {
+		return err
+	}
+	if revisions := strings.Fields(reflog); len(revisions) > 0 {
+		args := append([]string{"rev-list"}, revisions...)
+		unreferenced, err := git(ctx, dir, append(args, "--not", "--all")...)
+		if err != nil {
+			return err
+		}
+		if unreferenced != "" {
+			return fmt.Errorf("worktree has reflog commits without a durable ref; preserve them before pruning")
+		}
+	}
 	if err := snapshotAll(ctx, dir, message); err != nil {
 		return err
 	}

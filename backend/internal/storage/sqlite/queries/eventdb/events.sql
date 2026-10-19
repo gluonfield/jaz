@@ -127,8 +127,26 @@ SELECT
   permission,
   created_at_ms
 FROM session_events
-WHERE thread_id = sqlc.arg(thread_id)
-  AND (sqlc.arg(before_seq) = 0 OR seq < sqlc.arg(before_seq))
+WHERE session_events.thread_id = sqlc.arg(thread_id)
+  AND session_events.seq < sqlc.arg(before_seq)
+  AND NOT sqlc.arg(chat_only)
+UNION ALL
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE session_events.thread_id = sqlc.arg(thread_id)
+  AND session_events.seq < sqlc.arg(before_seq)
+  AND sqlc.arg(chat_only)
+  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
 LIMIT sqlc.arg(limit_count);
 
@@ -140,8 +158,21 @@ SELECT
     + COALESCE(LENGTH(CAST(plan AS BLOB)), 0)
     + COALESCE(LENGTH(CAST(permission AS BLOB)), 0) AS bytes
 FROM session_events
-WHERE thread_id = sqlc.arg(thread_id)
-  AND (sqlc.arg(before_seq) = 0 OR seq < sqlc.arg(before_seq))
+WHERE session_events.thread_id = sqlc.arg(thread_id)
+  AND session_events.seq < sqlc.arg(before_seq)
+  AND NOT sqlc.arg(chat_only)
+UNION ALL
+SELECT
+  seq,
+  LENGTH(CAST(content AS BLOB))
+    + COALESCE(LENGTH(CAST(acp AS BLOB)), 0)
+    + COALESCE(LENGTH(CAST(plan AS BLOB)), 0)
+    + COALESCE(LENGTH(CAST(permission AS BLOB)), 0) AS bytes
+FROM session_events
+WHERE session_events.thread_id = sqlc.arg(thread_id)
+  AND session_events.seq < sqlc.arg(before_seq)
+  AND sqlc.arg(chat_only)
+  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
 LIMIT sqlc.arg(limit_count);
 

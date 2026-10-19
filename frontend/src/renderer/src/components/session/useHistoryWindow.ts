@@ -14,7 +14,7 @@ function useHistoryScroll({
 }) {
   const historyRef = useRef<HTMLDivElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
-  const anchor = useRef<{ element: Element; top: number } | null>(null)
+  const anchor = useRef<{ element: Element; offset: number } | null>(null)
   const loadMore = useRef(onLoadMore)
 
   useLayoutEffect(() => {
@@ -26,16 +26,17 @@ function useHistoryScroll({
     const history = historyRef.current
     const first = history?.firstElementChild
     if (!history || !first) return
-    const contentTop = (element: Element) => element.getBoundingClientRect().top - history.getBoundingClientRect().top
+    const contentBottom = (element: Element) => element.getBoundingClientRect().bottom - history.getBoundingClientRect().top
     const previous = anchor.current
+    // Anchor the row's bottom: prepending can remove its opening date label.
     // Native anchoring also preserves the reading position through later image
     // reflow, but Chromium skips it at scroll offset 0, where a reader would be
     // left on the oldest revealed item with the sentinel still in view.
     const nativeAnchoring = CSS.supports('overflow-anchor', 'auto') && Boolean(viewport?.scrollTop)
     if (viewport && !nativeAnchoring && previous && previous.element !== first && previous.element.isConnected) {
-      viewport.scrollTop += contentTop(previous.element) - previous.top
+      viewport.scrollTop += contentBottom(previous.element) - previous.offset
     }
-    anchor.current = { element: first, top: contentTop(first) }
+    anchor.current = { element: first, offset: contentBottom(first) }
   }, [firstKey, scrollRef])
 
   useEffect(() => {
@@ -71,22 +72,22 @@ export function useHistoryWindow({
   paging?: HistoryPaging
   showAll?: boolean
 }) {
-  const [visible, setVisible] = useState(initial)
+  const [range, setRange] = useState({ count, visible: initial })
+  if (range.count !== count) {
+    setRange({
+      count,
+      visible: Math.min(count, Math.max(initial, range.visible + (range.count ? count - range.count : 0))),
+    })
+  }
 
-  useEffect(() => {
-    setVisible((current) => Math.min(count, Math.max(current, initial)))
-  }, [count, initial])
-
-  const start = showAll ? 0 : Math.max(0, count - visible)
+  const start = showAll ? 0 : Math.max(0, count - range.visible)
   const reveal = () => {
     if (start > 0) {
-      setVisible((current) => Math.min(count, current + batch))
+      setRange((current) => ({ count, visible: Math.min(count, current.visible + batch) }))
       return
     }
     if (!paging || paging.loading) return
-    void paging.loadEarlier().then((loaded) => {
-      if (loaded) setVisible(Number.MAX_SAFE_INTEGER)
-    })
+    void paging.loadEarlier()
   }
   const scroll = useHistoryScroll({
     scrollRef,
