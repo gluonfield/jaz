@@ -52,6 +52,8 @@ type Store interface {
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	SaveSession(storage.Session) error
 	StartSessionTurn(string, storage.Turn) error
+	ClaimTurn(string, storage.Turn) (bool, error)
+	OweTurn(string, storage.Turn) error
 	SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error
 	ResetTurnHops(id string) error
 	SetTurnRetries(id string, retries int) error
@@ -285,13 +287,13 @@ func (c *agentConn) withProcessStderr(err error) error {
 func (m *Manager) trackPromptSends(c *agentConn, job *jobState, onFirst func()) {
 	if c.promptTracker != nil {
 		var once sync.Once
-		c.promptTracker.setOnPromptSent(func() {
+		c.promptTracker.trackPrompts(job.promptSending, func() {
 			if onFirst != nil {
 				once.Do(onFirst)
 			}
 			job.markFirstPromptSent()
 			m.publishSessionChanged(job.ID)
-		})
+		}, job.promptAnswered)
 	}
 }
 

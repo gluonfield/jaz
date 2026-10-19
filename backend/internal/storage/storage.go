@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -10,6 +11,10 @@ import (
 )
 
 var ErrSessionNotFound = errors.New("session not found")
+
+// ErrThreadRunning reports a turn claim lost to a turn that already holds the
+// thread, such as one its agent began on its own.
+var ErrThreadRunning = errors.New("a turn holds the thread")
 
 const (
 	RuntimeACP = "acp"
@@ -195,6 +200,59 @@ type Turn struct {
 	// Retries counts the continuations Jaz has sent after provider failures
 	// ended this turn's earlier prompts.
 	Retries int `json:"retries,omitempty"`
+	// Owes are whom the turn's result goes to besides its own parent and bot,
+	// for background work it reports on.
+	Owes []Recipient `json:"owes,omitempty"`
+}
+
+// Recipient is whom a turn's result goes to: the thread's parent, in the
+// exchange with the bot ReplyTo when it names one, or else the bot ReplyTo.
+type Recipient struct {
+	Parent  bool   `json:"parent,omitempty"`
+	ReplyTo string `json:"reply_to,omitempty"`
+	Hops    int    `json:"hops,omitempty"`
+}
+
+// Recipients is whom the turn's result goes to: its own parent and bot, then
+// those it owes.
+func (t Turn) Recipients() []Recipient {
+	var own []Recipient
+	if t.NotifyParent {
+		own = append(own, Recipient{Parent: true, ReplyTo: t.ParentOutput.to(), Hops: t.ParentOutput.hops()})
+	}
+	if bot := t.Output.to(); bot != "" {
+		own = append(own, Recipient{ReplyTo: bot, Hops: t.Output.Hops})
+	}
+	return append(own, t.Owes...)
+}
+
+// Owed is what the turn owes whoever waits for its result. The turn in which
+// the agent reports on work this one left running owes the same; a routine
+// run closes with its turn, so that turn reports to its bot without it.
+func (t Turn) Owed() Turn {
+	return Turn{ParentVisible: t.ParentVisible, NotifyParent: t.NotifyParent, ParentOutput: t.ParentOutput, Output: t.Output.Continuation(), Owes: slices.Clone(t.Owes)}
+}
+
+// Owing is t also owing whom owed owes. Its own parent and bot take those of
+// owed when t has none; any other recipient goes to Owes.
+func (t Turn) Owing(owed Turn) Turn {
+	t.ParentVisible = t.ParentVisible || owed.ParentVisible
+	if !t.NotifyParent && owed.NotifyParent {
+		t.NotifyParent, t.ParentOutput = true, owed.ParentOutput
+	}
+	if t.Output == nil {
+		t.Output = owed.Output
+	}
+	for _, recipient := range owed.Recipients() {
+		if !slices.ContainsFunc(t.Recipients(), recipient.same) {
+			t.Owes = append(t.Owes, recipient)
+		}
+	}
+	return t
+}
+
+func (r Recipient) same(other Recipient) bool {
+	return r.Parent == other.Parent && r.ReplyTo == other.ReplyTo
 }
 
 type TurnOutput struct {
@@ -217,13 +275,28 @@ type TurnOutput struct {
 }
 
 // Continuation is the output of a later turn that goes on answering the bot
-// this turn answers; nil when it answers none. A routine run closes with its
-// turn, so a later turn answers its bot without it.
+// or the person this turn answers; nil when it answers neither. A routine run
+// closes with its turn, so a later turn answers its bot without it.
 func (o *TurnOutput) Continuation() *TurnOutput {
-	if o == nil || o.ReplyTo == "" {
+	if o == nil || o.ReplyTo == "" && !o.User {
 		return nil
 	}
-	return &TurnOutput{ReplyTo: o.ReplyTo, Hops: o.Hops}
+	return &TurnOutput{ReplyTo: o.ReplyTo, Hops: o.Hops, User: o.User}
+}
+
+// to is the bot this output answers.
+func (o *TurnOutput) to() string {
+	if o == nil {
+		return ""
+	}
+	return o.ReplyTo
+}
+
+func (o *TurnOutput) hops() int {
+	if o == nil {
+		return 0
+	}
+	return o.Hops
 }
 
 // LoopRun is the routine run a turn with this output does, if any.

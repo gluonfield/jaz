@@ -62,10 +62,14 @@ func (m *Manager) requestPermission(ctx context.Context, raw json.RawMessage) (j
 
 func (m *Manager) applyUpdate(acpSessionID string, raw json.RawMessage) {
 	job := m.jobByACP(acpSessionID)
-	if job == nil {
+	if job == nil || m.deferUpdate(job, raw) {
 		return
 	}
-	if m.applySessionControls(job, raw) || m.applyBackgroundTask(job, raw) {
+	m.applyJobUpdate(job, raw)
+}
+
+func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
+	if m.applySessionControls(job, raw) || m.applyBackgroundTask(job, raw) || m.applyWorkState(job, raw) {
 		return
 	}
 	m.recordRawUsage(job, raw)

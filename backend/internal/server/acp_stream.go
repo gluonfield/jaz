@@ -163,6 +163,15 @@ func (s *Server) beginACPTurn(ctx context.Context, session storage.Session, mess
 	if err := s.ensureManagedWorktree(ctx, session); err != nil {
 		return session, err
 	}
+	// The agent may have begun a run of its own since the check; the claim
+	// leaves that run the thread, and the caller steers the message into it.
+	claimed, err := s.Store.ClaimTurn(session.ID, storage.Turn{})
+	if err != nil {
+		return session, err
+	}
+	if !claimed {
+		return session, errACPTurnRunning
+	}
 	markSessionRunning(&session)
 	if session.Title == "" {
 		session.Title = titleFromMessage(message)

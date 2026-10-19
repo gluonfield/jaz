@@ -38,6 +38,10 @@ func (e *turnInProgressError) Error() string {
 func (j *jobState) sendConflict(claimed bool) *turnInProgressError {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
+	return j.sendConflictLocked(claimed)
+}
+
+func (j *jobState) sendConflictLocked(claimed bool) *turnInProgressError {
 	if j.turn != nil {
 		return &turnInProgressError{done: j.turn.done, finishing: j.turn.promptCalls == 0 || (j.State != StateRunning && j.State != StateStarting)}
 	}
@@ -64,6 +68,7 @@ type sendOptions struct {
 	requireActiveGoal     bool
 	allowSilence          bool
 	output                *storage.TurnOutput
+	owes                  []storage.Recipient
 	retries               int
 	// claimed starts the turn a new thread was created with.
 	claimed bool
@@ -220,22 +225,21 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: output, ParentOutput: parentOutput,
-		PromptDigest: promptDigest, Retries: opts.retries,
+		PromptDigest: promptDigest, Retries: opts.retries, Owes: opts.owes,
 	}
-	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
-		return Job{}, fmt.Errorf("mark session running: %w", err)
-	}
-	if opts.transcript == sendTranscriptUserMessage {
-		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, req.FromUser); err != nil {
-			appendErr := fmt.Errorf("append user message: %w", err)
-			if rollbackErr := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); rollbackErr != nil {
-				return Job{}, errors.Join(appendErr, fmt.Errorf("restore session idle: %w", rollbackErr))
-			}
-			return Job{}, appendErr
+	done, err := m.claimTurn(job, turn, req.Completion, opts.claimed, func() error {
+		if opts.transcript != sendTranscriptUserMessage {
+			return nil
 		}
+		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, req.FromUser); err != nil {
+			return fmt.Errorf("append user message: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Job{}, fmt.Errorf("%s: %w", job.Slug, err)
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
-	done := job.startStoredTurn(req.Completion, turn)
 	m.touchAttention(parentSessionIDs(job.eventView())...)
 	if err := m.publishACP(job.eventView()); err != nil {
 		go m.failPromptCall(done, job, fmt.Errorf("persist initial session events: %w", err))
@@ -245,6 +249,28 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		go m.runPrompt(context.Background(), job, prompt)
 	}
 	return job.Snapshot(), nil
+}
+
+// claimTurn starts a send's turn unless another holds the thread. The turn
+// and the user's message, which message writes, are stored under the job's
+// lock, so the agent cannot begin a run of its own between them (see
+// startAgentRun).
+func (m *Manager) claimTurn(job *jobState, turn storage.Turn, completion CompletionMode, claimed bool, message func() error) (chan struct{}, error) {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	if conflict := job.sendConflictLocked(claimed); conflict != nil {
+		return nil, conflict
+	}
+	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
+		return nil, fmt.Errorf("mark session running: %w", err)
+	}
+	if err := message(); err != nil {
+		if restore := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); restore != nil {
+			err = errors.Join(err, fmt.Errorf("restore session idle: %w", restore))
+		}
+		return nil, err
+	}
+	return job.beginTurnLocked(completion, turn).done, nil
 }
 
 // SteerInternal hands a hidden message to the thread's running turn, as
@@ -359,6 +385,9 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 		job.ParentVisible = true
 	}
 	job.turn.promptCalls++
+	if job.steerMethod == steerPromptQueueing {
+		job.turn.unsent++
+	}
 	return job.turn.done, nil
 }
 
