@@ -17,11 +17,9 @@ func (m *Manager) admit() (func(), error) {
 }
 
 func (m *Manager) isClosed() bool {
-	release, err := m.admit()
-	if err == nil {
-		release()
-	}
-	return err != nil
+	m.admission.RLock()
+	defer m.admission.RUnlock()
+	return m.closed
 }
 
 // register makes a started agent's job live unless Jaz shuts down, so Close

@@ -23,8 +23,8 @@ func (m *Manager) Start(ctx context.Context, req SpawnRequest, first storage.Que
 	if err != nil {
 		return Job{}, err
 	}
+	created.Session.QueuedMessages = nil
 	session := created.Session
-	session.QueuedMessages = nil
 	if err := m.store.ClaimQueuedTurn(session, first); err != nil {
 		return Job{}, m.abandonSession(session, err)
 	}

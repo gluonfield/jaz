@@ -460,8 +460,8 @@ func (m *Manager) CreateSession(ctx context.Context, req SpawnRequest) (storage.
 	return created.Session, nil
 }
 
-// createSession stores a new thread, and queue with it once its directory is
-// ready.
+// createSession stores a new thread and, in the write that records its
+// directory, the messages it starts with queued.
 func (m *Manager) createSession(ctx context.Context, req SpawnRequest, queue []storage.QueuedMessage) (createdSession, error) {
 	req, err := m.botThread(req)
 	if err != nil {
