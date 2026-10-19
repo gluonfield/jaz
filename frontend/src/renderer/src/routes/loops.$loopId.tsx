@@ -120,6 +120,7 @@ function LoopDetail({
             {summary}
             {nextRun ? <span className="text-ink-3"> · next {nextRun}</span> : null}
           </p>
+          {loop.blocked ? <p className="mt-2 text-[13px] text-ink-2">{loop.blocked}</p> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <IconButton

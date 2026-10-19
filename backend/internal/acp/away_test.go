@@ -122,6 +122,24 @@ func TestThreeDaysAwayHoldBotRoutinesButKeepRunningOnesAcrossARestart(t *testing
 	if routine, err := jaz.loops.Load(inbox.ID); err != nil || routine.Status != loops.StatusActive {
 		t.Fatalf("inbox = %+v, %v; want its own status untouched", routine, err)
 	}
+	items, err := jaz.loops.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		detail, err := jaz.loops.Load(item.ID)
+		if err != nil || detail.Blocked != item.Blocked {
+			t.Fatalf("list/detail waiting reason differs: %+v, %+v, %v", item, detail, err)
+		}
+		if (item.Blocked != "") != (item.ID == inbox.ID) {
+			t.Fatalf("routine %s blocked = %q, want only the away-paused schedule", item.Name, item.Blocked)
+		}
+	}
+	jaz.write(bot.ID, "back now")
+	jaz.guard(time.Now())
+	if routine, err := jaz.loops.Load(inbox.ID); err != nil || routine.Blocked != "" {
+		t.Fatalf("inbox after return = %+v, %v", routine, err)
+	}
 }
 
 func TestOnlyTheUsersNextWordsLetRoutinesRunAgain(t *testing.T) {
