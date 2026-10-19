@@ -74,7 +74,10 @@ func promptWithModules(base string, modules promptmodule.Modules) string {
 // defines its own extension key; every form below appends to the agent's own
 // system prompt rather than replacing it:
 //   - claude-agent-acp reads _meta.systemPrompt; {"append": ...} extends the
-//     Claude Code preset, while a bare string would replace it.
+//     Claude Code preset, while a bare string would replace it. Claude Code
+//     records the prompt at a conversation's first request and keeps sending
+//     that record when the session is resumed; fresh sets the Agent SDK's
+//     "snapshot": false so each launch renders the prompt it is given instead.
 //   - grok reads _meta.rules and ignores _meta.systemPrompt.
 //   - codex receives developer instructions in its launch config and does not
 //     use this session metadata path.
@@ -82,10 +85,14 @@ func promptWithModules(base string, modules promptmodule.Modules) string {
 //     prompt without persisting it in conversation history.
 //
 // Unknown agents get the codex-style bare string.
-func systemPromptMeta(agent, prompt string) map[string]any {
+func systemPromptMeta(agent, prompt string, fresh bool) map[string]any {
 	switch CanonicalAgentName(agent) {
 	case AgentClaude:
-		return map[string]any{"systemPrompt": map[string]any{"append": prompt}}
+		claude := map[string]any{"append": prompt}
+		if fresh {
+			claude["snapshot"] = false
+		}
+		return map[string]any{"systemPrompt": claude}
 	case AgentGrok:
 		return map[string]any{"rules": prompt}
 	default:

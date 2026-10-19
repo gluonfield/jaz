@@ -394,7 +394,9 @@ func (m *Manager) sessionPromptMeta(ctx context.Context, agent, cwd, artifactSur
 	if prompt == "" {
 		return nil, nil
 	}
-	return systemPromptMeta(agent, prompt), nil
+	// Bots keep one conversation for good, so only they opt out of Claude
+	// Code's prompt snapshot; other threads keep native caching.
+	return systemPromptMeta(agent, prompt, mcpServerPolicy == MCPServerPolicyBot), nil
 }
 
 type newSessionRequest struct {
