@@ -121,6 +121,8 @@ type Config struct {
 	// version of the thread's own prompt the agent holds once the turn starts,
 	// which a turn that succeeds records as the thread's PromptDigest.
 	TurnNote func(storage.Session) (note, promptDigest string)
+	// SteerNote refreshes context when a user writes during a running turn.
+	SteerNote func(storage.Session) string
 }
 
 type AgentConfig struct {

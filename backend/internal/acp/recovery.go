@@ -14,7 +14,8 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 	if err != nil {
 		return err
 	}
-	if session.RuntimeRef == nil || (session.RuntimeRef.SessionID == "" && !m.configuredLocal(session.RuntimeRef.Agent)) {
+	unsent := session.Turn != nil && session.Turn.Prompt != nil
+	if session.RuntimeRef == nil || (session.RuntimeRef.SessionID == "" && !unsent && !m.configuredLocal(session.RuntimeRef.Agent)) {
 		return fmt.Errorf("cannot resume interrupted turn: provider session id is missing")
 	}
 	req := SendRequest{Session: sessionID, Message: interruptedTurnContinuation, Completion: CompletionAsync}
@@ -34,6 +35,10 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 		opts.output = session.Turn.Output
 		req.ParentOutput = session.Turn.ParentOutput
 		opts.retries = session.Turn.Retries
+		if unsent {
+			req.Message = session.Turn.Prompt.Message
+			req.Attachments = session.Turn.Prompt.Attachments
+		}
 	}
 	_, err = m.send(ctx, req, opts)
 	return err

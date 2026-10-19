@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/wins/jaz/backend/internal/goal"
@@ -187,6 +186,7 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	}
 	defer release()
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	pending := &storage.TurnPrompt{Message: promptMessage, Attachments: req.Attachments}
 	var promptDigest string
 	if m.cfg.TurnNote != nil && opts.activeOperation != ActiveOperationCompact {
 		session, err := m.store.LoadSession(job.ID)
@@ -220,19 +220,16 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: output, ParentOutput: parentOutput,
-		PromptDigest: promptDigest, Retries: opts.retries,
+		PromptDigest: promptDigest, Retries: opts.retries, Prompt: pending,
 	}
-	if err := m.store.StartSessionTurn(job.ID, turn); err != nil {
-		return Job{}, fmt.Errorf("mark session running: %w", err)
-	}
+	var messages []storage.Message
 	if opts.transcript == sendTranscriptUserMessage {
-		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, req.FromUser); err != nil {
-			appendErr := fmt.Errorf("append user message: %w", err)
-			if rollbackErr := m.store.UpdateSessionStatus(job.ID, storage.StatusIdle, "", time.Now().UTC()); rollbackErr != nil {
-				return Job{}, errors.Join(appendErr, fmt.Errorf("restore session idle: %w", rollbackErr))
-			}
-			return Job{}, appendErr
-		}
+		message := storage.UserMessageRecord(req.Message, contexts, req.Attachments)
+		message.FromUser = req.FromUser
+		messages = append(messages, message)
+	}
+	if err := m.store.StartSessionTurn(job.ID, turn, messages...); err != nil {
+		return Job{}, fmt.Errorf("start session turn: %w", err)
 	}
 	m.log.Info("acp turn started", "session", job.ID, "agent", job.ACPAgent, "plan", req.PlanRequested, "goal", req.GoalRequested, "operation", opts.activeOperation)
 	done := job.startStoredTurn(req.Completion, turn)
@@ -296,6 +293,13 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, fmt.Errorf("acp peer is not active")
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	if req.FromUser && m.cfg.SteerNote != nil {
+		session, err := m.store.LoadSession(job.ID)
+		if err != nil {
+			return Job{}, err
+		}
+		promptMessage = m.cfg.SteerNote(session) + promptMessage
+	}
 	promptReq, err := m.promptRequest(job, goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments)
 	if err != nil {
 		return Job{}, err
