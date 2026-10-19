@@ -130,7 +130,9 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	cleanup := func() {}
 	switch CanonicalAgentName(name) {
 	case AgentCodex:
-		cleanup, err = configureCodexEnv(env, cfg, m.providers(), systemPrompt)
+		if cfg.Model, err = m.startingModel(name, cfg); err == nil {
+			cleanup, err = configureCodexEnv(env, cfg, m.providers(), systemPrompt)
+		}
 	case AgentMuse:
 		cleanup, err = configureMusePrompt(env, systemPrompt)
 	}

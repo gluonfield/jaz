@@ -3,6 +3,7 @@ package acp_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,20 +23,20 @@ func toolCallFrom(threadID string) *mcp.CallToolRequest {
 	return &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(threadID)}}
 }
 
-// modelSets counts the times Codex was asked to switch a session to model.
-func (p *jazProcess) modelSets(model string) int {
+// turns lists the turns Codex ran since the last call, oldest first.
+func (p *jazProcess) turns() []fakeTurn {
 	p.t.Helper()
-	raw, err := os.ReadFile(filepath.Join(p.root, "requests.jsonl"))
-	if err != nil && !os.IsNotExist(err) {
+	path := filepath.Join(p.root, "turns.log")
+	turns := readFakeTurns(p.t, path)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		p.t.Fatal(err)
 	}
-	count := 0
-	for _, line := range strings.Split(string(raw), "\n") {
-		if strings.Contains(line, `"method":"session/set_config_option"`) && strings.Contains(line, `"value":"`+model+`"`) {
-			count++
-		}
-	}
-	return count
+	return turns
+}
+
+// ranOnly reports whether every turn ran on model.
+func ranOnly(turns []fakeTurn, model string) bool {
+	return len(turns) > 0 && !slices.ContainsFunc(turns, func(turn fakeTurn) bool { return turn.Model != model })
 }
 
 func TestSavedCodexModelsStartOnCodexDefaultAfterAPlanWithdrawsThem(t *testing.T) {
@@ -48,8 +49,8 @@ func TestSavedCodexModelsStartOnCodexDefaultAfterAPlanWithdrawsThem(t *testing.T
 	sendAndWait(t, jaz.ctx, jaz.manager, bot.ID, "hello")
 	routine := jaz.routine(loops.CreateLoop{Name: "Inbox", Prompt: "check the inbox", BotID: bot.ID, Model: "gpt-6-astra"})
 	ownerless := jaz.routine(loops.CreateLoop{Name: "Digest", Prompt: "write the digest", Model: "gpt-6-astra"})
-	if jaz.modelSets("gpt-6-astra") != 1 {
-		t.Fatal("the bot did not run gpt-6-astra while the plan offered it")
+	if turns := jaz.turns(); !ranOnly(turns, "gpt-6-astra") {
+		t.Fatalf("turns while the plan offered gpt-6-astra = %v", turns)
 	}
 
 	jaz = jaz.restart(codexPlan("gpt-6-sol,gpt-6-luna"))
@@ -79,8 +80,10 @@ func TestSavedCodexModelsStartOnCodexDefaultAfterAPlanWithdrawsThem(t *testing.T
 	if owner, err := store.LoadSession(adopted.BotID); err != nil || owner.Model != "gpt-6-astra" {
 		t.Fatalf("adopting bot = %#v, %v; want it on the routine's saved model", owner, err)
 	}
-	if jaz.modelSets("gpt-6-astra") != 1 {
-		t.Fatal("a session asked Codex for gpt-6-astra after the plan withdrew it")
+	// Only the bot's first turn started before Jaz saw the plan's models.
+	turns := jaz.turns()
+	if len(turns) < 3 || !ranOnly(turns, "gpt-6-sol") || slices.ContainsFunc(turns[1:], func(turn fakeTurn) bool { return turn.Switched }) {
+		t.Fatalf("turns after the plan withdrew gpt-6-astra = %v; want all on Codex's default gpt-6-sol, started there", turns)
 	}
 }
 

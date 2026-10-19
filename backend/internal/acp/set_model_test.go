@@ -19,12 +19,14 @@ func TestSetModelAppliesBeforeAndAfterTheAgentStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	requestLog := filepath.Join(t.TempDir(), "requests")
+	turnLog := filepath.Join(t.TempDir(), "turns")
 	env := map[string]string{
 		"JAZ_FAKE_ACP_SESSION_OPTIONS": `[` +
 			`{"id":"model","name":"Model","category":"model","type":"select","currentValue":"fake-default","options":[{"value":"fake-default","name":"Default"},{"value":"fake-small","name":"Small"},{"value":"fake-large","name":"Large"}]},` +
 			`{"id":"reasoning_effort","name":"Effort","category":"thought_level","type":"select","currentValue":"low","options":[{"value":"low","name":"Low"},{"value":"medium","name":"Medium"},{"value":"high","name":"High"}]}]`,
 		"JAZ_FAKE_ACP_SET_CONFIG":  "1",
 		"JAZ_FAKE_ACP_REQUEST_LOG": requestLog,
+		"JAZ_FAKE_ACP_TURN_LOG":    turnLog,
 	}
 	manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentCodex, env, "", "")
 	t.Cleanup(manager.Close)
@@ -69,8 +71,8 @@ func TestSetModelAppliesBeforeAndAfterTheAgentStarts(t *testing.T) {
 	if job, err := manager.Wait(t.Context(), acp.WaitRequest{Session: session.ID, Timeout: 10 * time.Second}); err != nil || job.State != acp.StateIdle {
 		t.Fatalf("first turn = %#v, %v", job, err)
 	}
-	if writes := configWrites(); !slices.Contains(writes, "model=fake-large") || !slices.Contains(writes, "reasoning_effort=high") {
-		t.Fatalf("first turn config writes = %v", writes)
+	if turns := readFakeTurns(t, turnLog); !slices.Equal(turns, []fakeTurn{{Model: "fake-large", Effort: "high"}}) {
+		t.Fatalf("first turn = %v, want one started on fake-large/high", turns)
 	}
 
 	if err := os.WriteFile(requestLog, nil, 0o600); err != nil {
