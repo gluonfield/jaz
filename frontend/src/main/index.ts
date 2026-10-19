@@ -20,7 +20,7 @@ import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
-import { canGrantAppPermission } from './permissions'
+import { configureAppPermissions } from './permissions'
 import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
 import { installComputerControl } from '@main/computerControl'
@@ -380,16 +380,7 @@ app.whenReady().then(() => {
     else previewURLTargets.delete(event.sender.id)
   })
 
-  // Voice mode records from the mic; font settings enumerate installed fonts.
-  // Grant both only to Jaz's own top-level renderer, not embedded frames.
-  session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
-    callback(canGrantAppPermission(contents, permission, details))
-  })
-  // queryLocalFonts() also consults the synchronous permission check; grant the
-  // same set so it doesn't fall back to a denied default.
-  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
-    canGrantAppPermission(contents, permission, details),
-  )
+  configureAppPermissions(session.defaultSession)
   if (process.platform === 'darwin') {
     app.dock?.setIcon(appIcon)
     app.setAboutPanelOptions({

@@ -1,4 +1,4 @@
-import type { IpcMainInvokeEvent, WebContents } from 'electron'
+import type { IpcMainInvokeEvent, Session, WebContents } from 'electron'
 
 interface PermissionDetails {
   isMainFrame: boolean
@@ -22,10 +22,22 @@ export function canGrantAppPermission(
   permission: string,
   details: PermissionDetails,
 ): boolean {
-  if (permission !== 'media' && permission !== 'local-fonts') return false
   if (!contents || contents.isDestroyed() || contents.getType() !== 'window') return false
+  if (permission === 'clipboard-sanitized-write') {
+    return isTrustedRendererURL(contents.getURL())
+  }
+  if (permission !== 'media' && permission !== 'local-fonts') return false
   if (!details.isMainFrame) return false
   return isTrustedRendererURL(details.requestingUrl || contents.getURL())
+}
+
+export function configureAppPermissions(target: Session): void {
+  target.setPermissionRequestHandler((contents, permission, callback, details) => {
+    callback(canGrantAppPermission(contents, permission, details))
+  })
+  target.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    canGrantAppPermission(contents, permission, details),
+  )
 }
 
 // IPC that drives the machine (computer use, system permission prompts) only
