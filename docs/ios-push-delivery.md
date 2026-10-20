@@ -31,3 +31,9 @@ HTTP/2 tests verify ES256 signing, APNs headers, empty success responses, token 
 Thermo-nuclear self-review consolidated message eligibility at one boundary, narrowed activity request DTOs, kept pending-question state with the agent manager and kept signing, registration, delivery, worker lifecycle and HTTP handling separate. No provider prompt, tool, auth or execution policy changes.
 
 Actual APNs delivery requires the operator's Apple signing key and a provisioned iOS build. It has not been exercised against Apple's live service.
+
+## Follow-Up Review
+
+The explicitly requested 2026-10-20 thermo-nuclear review fixed stale delivery results deleting a newly rotated Live Activity token. Delivery completion now updates or removes only the registration snapshot actually sent. A SQLite regression rotates the token while delivery is in flight and exercises both successful completion and invalidation; removing the token comparison makes it fail for the expected reason.
+
+The push service is a required route dependency even when Apple credentials are absent; configuration status remains available and missing application wiring fails at construction. Full backend tests, vet, transport race checks and 50 repetitions of rotation and late-registration checks pass. Previous revocation and explicit-message controls also pass. The iOS review record is docs/ios-system-integrations.md in the iOS repository.

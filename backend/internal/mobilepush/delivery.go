@@ -223,20 +223,25 @@ func (s *Service) deliver(ctx context.Context, session storage.Session, state co
 				aps["dismissal-date"] = time.Now().Add(time.Minute).Unix()
 			}
 			err := s.sender.Send(ctx, activity.Token, activity.Environment, "liveactivity", digest(activity.ID), map[string]any{"aps": aps})
-			if err == nil && ended || errors.Is(err, ErrInvalidToken) {
-				failures = append(failures, s.Unregister(setting.Key, activity.ID))
-			} else if err != nil {
+			if err != nil && !errors.Is(err, ErrInvalidToken) {
 				failures = append(failures, err)
-			} else {
-				failures = append(failures, s.update(setting.Key, func(device *deviceRegistration) {
-					for index := range device.Activities {
-						if device.Activities[index].ID == activity.ID && device.Activities[index].Token == activity.Token {
-							device.Activities[index].LastTimestamp = timestamp
-							device.Activities[index].LastState = state
-						}
-					}
-				}))
+				continue
 			}
+			remove := ended || errors.Is(err, ErrInvalidToken)
+			failures = append(failures, s.update(setting.Key, func(device *deviceRegistration) {
+				next := device.Activities[:0]
+				for _, current := range device.Activities {
+					if current.ID == activity.ID && current.Token == activity.Token {
+						if remove {
+							continue
+						}
+						current.LastTimestamp = timestamp
+						current.LastState = state
+					}
+					next = append(next, current)
+				}
+				device.Activities = next
+			}))
 		}
 	}
 	return errors.Join(failures...)

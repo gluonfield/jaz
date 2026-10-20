@@ -64,7 +64,7 @@ type routeDeps struct {
 	Canvas           *canvasapi.Handler
 	AgentSession     *agentsessionsapi.Handler
 	Voice            *voiceapi.Handler
-	Push             *mobilepush.Service `optional:"true"`
+	Push             *mobilepush.Service
 }
 
 func NewRoutes(deps routeDeps) server.Routes {
@@ -85,16 +85,14 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "POST /v1/sessions/{session}/voice/transcript", Handler: http.HandlerFunc(deps.Voice.Transcript)},
 	}
 	routes = append(routes, usageRoutes(deps.Usage)...)
-	if deps.Push != nil {
-		push := mobilepushapi.Handler{Service: deps.Push}
-		routes = append(routes,
-			server.Route{Pattern: "GET /v1/mobile/push", Handler: http.HandlerFunc(push.Status)},
-			server.Route{Pattern: "PUT /v1/mobile/push", Handler: http.HandlerFunc(push.Register)},
-			server.Route{Pattern: "DELETE /v1/mobile/push", Handler: http.HandlerFunc(push.Unregister)},
-			server.Route{Pattern: "PUT /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.RegisterActivity)},
-			server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
-		)
-	}
+	push := mobilepushapi.Handler{Service: deps.Push}
+	routes = append(routes,
+		server.Route{Pattern: "GET /v1/mobile/push", Handler: http.HandlerFunc(push.Status)},
+		server.Route{Pattern: "PUT /v1/mobile/push", Handler: http.HandlerFunc(push.Register)},
+		server.Route{Pattern: "DELETE /v1/mobile/push", Handler: http.HandlerFunc(push.Unregister)},
+		server.Route{Pattern: "PUT /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.RegisterActivity)},
+		server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
+	)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.MCP, deps.Config)

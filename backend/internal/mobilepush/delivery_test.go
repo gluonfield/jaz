@@ -19,8 +19,9 @@ type capturedPush struct {
 }
 
 type capturingSender struct {
-	pushes []capturedPush
-	err    error
+	pushes     []capturedPush
+	err        error
+	duringSend func()
 }
 
 func (s *capturingSender) Enabled() bool {
@@ -37,6 +38,9 @@ func (s *capturingSender) Send(_ context.Context, token, _, kind, _ string, payl
 		return err
 	}
 	s.pushes = append(s.pushes, capturedPush{token: token, kind: kind, payload: parsed})
+	if s.duringSend != nil {
+		s.duringSend()
+	}
 	return s.err
 }
 
@@ -219,6 +223,51 @@ func TestFailedDeliveryCanRetry(t *testing.T) {
 	}
 	if len(sender.pushes) != 2 {
 		t.Fatal("failed delivery was incorrectly deduplicated")
+	}
+}
+
+func TestActivityTokenRotationSurvivesAnOlderDeliveryResult(t *testing.T) {
+	for _, invalid := range []bool{false, true} {
+		t.Run(map[bool]string{false: "completed", true: "invalid token"}[invalid], func(t *testing.T) {
+			service, store, sender, session := pushFixture(t, "")
+			old := strings.Repeat("cd", 32)
+			next := strings.Repeat("ef", 32)
+			activity := Activity{Registration: Registration{Token: old, Environment: "development"}, ID: "activity", SessionID: session.ID}
+			if err := service.RegisterActivity("phone", activity); err != nil {
+				t.Fatal(err)
+			}
+			if invalid {
+				sender.err = ErrInvalidToken
+			}
+			sender.duringSend = func() {
+				activity.Token = next
+				if err := service.RegisterActivity("phone", activity); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := service.process(context.Background(), sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession}); err != nil {
+				t.Fatal(err)
+			}
+			setting, err := store.LoadSetting(namespace, "phone")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var saved deviceRegistration
+			if err := json.Unmarshal(setting.Value, &saved); err != nil {
+				t.Fatal(err)
+			}
+			if len(saved.Activities) != 1 || saved.Activities[0].Token != next {
+				t.Fatalf("an older delivery removed the rotated token: %#v", saved.Activities)
+			}
+			sender.duringSend = nil
+			sender.err = nil
+			if err := service.refresh(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if len(sender.pushes) != 2 || sender.pushes[1].token != next {
+				t.Fatalf("rotated token was not used for completion: %#v", sender.pushes)
+			}
+		})
 	}
 }
 
