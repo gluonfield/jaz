@@ -18,7 +18,8 @@ adapter, verify the adapter and vendor runtime, and smoke the native
 executables before archiving. The focused packaging patch is pushed to the
 Claude adapter's main branch as `0245630`; its existing agent source and
 runtime pins are preserved. The release-based review branch is also pushed.
-No new release was published.
+Corrected archives are published as Claude adapter `0.93.0-jaz.3`, built from
+`0.93.0-jaz.2` plus the reviewed packaging fixes. Jaz pins the new release.
 
 Verification: published and installed failing binaries have identical hashes;
 the repair preserves the compiled `__BUN` payload. The original signature
