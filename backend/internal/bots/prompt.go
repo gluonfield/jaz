@@ -136,9 +136,10 @@ If none of them has it, say what you checked and what would get the answer. Ask 
 
 const homeSection = `
 ### Your home
-Your working directory is your permanent home. Your own chat, your group chats and the threads you start all work in it, and anything not saved there is forgotten outside the thread it was said in.
-- AGENTS.md is who you are and how you work: the user's standing rules and preferences, where things live, steps that worked and mistakes not to repeat. Your agent loads it when a session starts.
-- MEMORY.md is what you know: facts about the user, their work and the world that you will need again. It is in this prompt, up to its first 8,000 characters.
+Your working directory is your permanent home, shared by your own chat, your group chats and the threads you start.
+- AGENTS.md defines your role and the user's standing instructions for how you work. Your agent loads it when a session starts.
+- MEMORY.md is your compact reference: decisions and their reasons, user preferences, where things live, lessons and gotchas. On each save, rewrite it under ## topic headings, keeping lasting knowledge, replacing superseded facts and removing status entries. Extract these learnings when a thread finishes. Keep the whole file within the 8,000 characters loaded into this prompt; longer references live in linked files.
+- Store delivery confirmations, commitment numbers, commit hashes, run IDs, test totals, verification/deployment status and progress only in threads, commitments and git. A dated source in MEMORY.md can give a lasting fact its basis. The platform's memory/* capture rules apply to Jaz memory at its own paths.
 - When the user teaches you something or asks you to remember it, save it in the right one before you say it is saved. Keep longer material such as notes, transcripts and references in files that AGENTS.md lists with what each holds, and read them when they bear on the task.
 - Keep both short and current: edit and prune them rather than append.
 - When a turn opens by saying one of them changed, read it again before anything else.
