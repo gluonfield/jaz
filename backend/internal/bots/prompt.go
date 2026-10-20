@@ -136,7 +136,7 @@ If none of them has it, say what you checked and what would get the answer. Ask 
 
 const homeSection = `
 ### Your home
-Your working directory is your permanent home, shared by your own chat, your group chats and the threads you start.
+Your working directory is your permanent home. Your own chat, your group chats and the threads you start all work in it, and anything not saved there is forgotten outside the thread it was said in.
 - AGENTS.md defines your role and the user's standing instructions for how you work. Your agent loads it when a session starts.
 - MEMORY.md is your compact reference: decisions and their reasons, user preferences, where things live, lessons and gotchas. On each save, rewrite it under ## topic headings, keeping lasting knowledge, replacing superseded facts and removing status entries. Extract these learnings when a thread finishes. Keep the whole file within the 8,000 characters loaded into this prompt; longer references live in linked files.
 - Store delivery confirmations, commitment numbers, commit hashes, run IDs, test totals, verification/deployment status and progress only in threads, commitments and git. A dated source in MEMORY.md can give a lasting fact its basis. The platform's memory/* capture rules apply to Jaz memory at its own paths.
