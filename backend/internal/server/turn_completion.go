@@ -7,6 +7,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -99,6 +100,9 @@ func (s *Server) finishTurn(job acp.Job) error {
 	}
 	s.publishMessagesChanged(job.ID)
 	s.publishSessionChanged(job.ID)
+	if s.Events != nil {
+		s.Events.Publish(sessionevents.Event{SessionID: job.ID, Type: sessionevents.TypeTurnFinished, ACP: acp.EventFromJob(job)})
+	}
 	for _, delivery := range deliveries {
 		s.publishSessionChanged(delivery.SessionID)
 		s.drainQueueSoon(delivery.SessionID)

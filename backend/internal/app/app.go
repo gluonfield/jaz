@@ -23,6 +23,7 @@ import (
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/mobilepush"
 	"github.com/wins/jaz/backend/internal/modelcatalog"
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
@@ -62,6 +63,7 @@ type Config struct {
 	Memory         MemoryConfig
 	Connections    ConnectionsConfig
 	Devices        DevicesConfig
+	Push           mobilepush.Config
 	Bots           []bots.Config
 	// MCPServers declares MCP servers as a JSON array of server inputs
 	// (JAZ_MCP_SERVERS), which each start applies.

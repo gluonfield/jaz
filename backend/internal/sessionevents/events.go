@@ -18,6 +18,7 @@ const (
 	TypeAgentTask        = "agent_task"
 	TypeArtifact         = "artifact"
 	TypeSession          = "session"
+	TypeTurnFinished     = "turn_finished"
 	TypeLoopCreated      = "loop_created"
 	TypeBotActivity      = "bot_activity"
 	TypeAgentSwitch      = "agent_switch"

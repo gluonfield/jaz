@@ -137,6 +137,7 @@ func serveOptions(args []string) []fx.Option {
 		),
 		app.HTTPModule(),
 		fx.Invoke(
+			app.StartMobilePush,
 			app.CloseMemory,
 			app.StartStorageMaintenance,
 			app.ConfigureMemoryDreamRunner,

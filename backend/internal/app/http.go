@@ -23,6 +23,7 @@ func HTTPModule() fx.Option {
 		usagecore.NewService,
 		feedcore.NewService,
 		NewVoiceCredentials,
+		NewMobilePush,
 		fx.Annotate(live.NewService, fx.From(new(*sqlitestore.Store))),
 		fx.Annotate(live.NewTranscript, fx.From(new(*sqlitestore.Store))),
 		voiceapi.NewHandler,
