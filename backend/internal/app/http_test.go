@@ -344,6 +344,25 @@ func TestHTTPModuleWiresWithNewStore(t *testing.T) {
 			t.Fatalf("nil handler in routes = %#v", routes)
 		}
 	}
+	router := &server.Server{Store: store, Routes: routes, PublicRoutes: publicRoutes, AuthKey: "fixture-key"}
+	listener := httptest.NewServer(router.Handler())
+	defer listener.Close()
+	request, err := http.NewRequest(http.MethodGet, listener.URL+"/v1/mobile/push", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer fixture-key")
+	response, err := listener.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var push struct {
+		Configured bool `json:"configured"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&push); err != nil || response.StatusCode != http.StatusOK || push.Configured {
+		t.Fatalf("push route did not start with the real router: status=%d configured=%v error=%v", response.StatusCode, push.Configured, err)
+	}
 }
 
 func testPreviewHandler(t *testing.T) *previewapi.Handler {

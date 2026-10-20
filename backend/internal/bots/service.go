@@ -438,7 +438,7 @@ func (s *Service) view(record storage.BotRecord, session storage.Session, held m
 		Preview:     s.preview(session.ID, record.Kind == KindGroup),
 	}
 	if record.Kind == KindGroup {
-		bot.Working, bot.CompletedAt = s.groupState(record)
+		bot.Working, bot.CompletedAt = GroupState(s.store, record)
 		return bot
 	}
 	bot.Waiting = s.threads.AwaitsAnswer(session.ID)
@@ -454,14 +454,19 @@ func (s *Service) view(record storage.BotRecord, session storage.Session, held m
 	return bot
 }
 
-// groupState follows the turns its members take in this group.
-func (s *Service) groupState(group storage.BotRecord) (working []string, completed time.Time) {
+type GroupStateStore interface {
+	LoadMembership(string, string) (storage.BotMembership, error)
+	LoadSession(string) (storage.Session, error)
+}
+
+// GroupState follows the turns its members take in this group.
+func GroupState(store GroupStateStore, group storage.BotRecord) (working []string, completed time.Time) {
 	for _, member := range group.Members {
-		membership, err := s.store.LoadMembership(group.ThreadID, member)
+		membership, err := store.LoadMembership(group.ThreadID, member)
 		if err != nil {
 			continue
 		}
-		if thread, err := s.store.LoadSession(membership.ThreadID); err == nil {
+		if thread, err := store.LoadSession(membership.ThreadID); err == nil {
 			if thread.Turn != nil {
 				working = append(working, member)
 			}
