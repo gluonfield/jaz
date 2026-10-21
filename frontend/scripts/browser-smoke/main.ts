@@ -95,6 +95,12 @@ const server = createServer(async (request, response) => {
     response.end(JSON.stringify({ path: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'report.html') }))
     return
   }
+  if (request.method === 'POST' && request.url === '/image-fixture') {
+    await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'cache-chart.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12"><rect width="24" height="12" fill="blue"/></svg>')
+    response.writeHead(204)
+    response.end()
+    return
+  }
   if (request.url === '/v1/preview/files' || request.url?.startsWith('/v1/sessions/tabs/file?')) {
     const body: Buffer[] = []
     for await (const chunk of request) {

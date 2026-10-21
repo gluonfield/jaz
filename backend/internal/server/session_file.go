@@ -157,6 +157,7 @@ func serveSessionFileContent(w http.ResponseWriter, r *http.Request, abs string,
 		w.Header().Set("Content-Disposition", disposition)
 	}
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("ETag", fileETag(info))
 	http.ServeContent(w, r, filepath.Base(abs), info.ModTime(), file)
 }

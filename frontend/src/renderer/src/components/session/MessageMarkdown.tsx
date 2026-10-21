@@ -4,6 +4,7 @@ import {
   createContext,
   memo,
   useContext,
+  useId,
   useMemo,
   type ComponentProps,
   type ComponentType,
@@ -278,6 +279,12 @@ const REMARK_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }]
 const CHAT_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkConnectCards]
 const USER_REMARK_PLUGINS = [...CHAT_REMARK_PLUGINS, remarkLineBreaks]
 
+const MarkdownFileImage: NonNullable<Components['img']> = ({ src, ...props }) => {
+  const files = useContext(MarkdownFileContext)
+  const imageId = useId()
+  return <MarkdownImage {...props} src={markdownImageSource(src ?? '', imageId, files?.sessionId, files?.documentPath)} />
+}
+
 function BaseMarkdown({
   text,
   className,
@@ -291,12 +298,11 @@ function BaseMarkdown({
   mentions?: ReadonlyMap<string, string>
   remarkPlugins?: NonNullable<Options['remarkPlugins']>
 }) {
-  const files = useContext(MarkdownFileContext)
   const plugins = useMemo(() => mentions?.size
     ? [...remarkPlugins, [remarkMentions, mentions]] satisfies Options['remarkPlugins']
     : remarkPlugins, [mentions, remarkPlugins])
   const prepared = useMemo(() => normalizeMath(text), [text])
-  const components = useMemo<Components>(() => ({ a: Link, img: MarkdownImage, pre: CodeBlock, table: MarkdownTable, 'connect-card': ConnectCard }), [Link])
+  const components = useMemo<Components>(() => ({ a: Link, img: MarkdownFileImage, pre: CodeBlock, table: MarkdownTable, 'connect-card': ConnectCard }), [Link])
   return (
     <div className={className}>
       <Markdown
@@ -304,7 +310,7 @@ function BaseMarkdown({
         rehypePlugins={[rehypeKatex]}
         components={components}
         urlTransform={(url, key, node) => key === 'src' && node.tagName === 'img'
-          ? markdownImageSource(url, files?.sessionId, files?.documentPath)
+          ? url
           : parseFileReference(url) || botIdFromTarget(url) ? url : defaultUrlTransform(url)}
       >
         {prepared}
