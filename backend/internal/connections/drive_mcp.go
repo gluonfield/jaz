@@ -26,7 +26,7 @@ func NewDriveMCPServer(store integrationoauth.Store, connectionID string) *mcp.S
 	addDriveTool(server, store, connectionID, "copy_file", "Copy a Drive file. Optional title defaults to Copy of the original name. Optional parentId defaults to the original folder if writable, otherwise My Drive.", false, drive.APIClient.Copy)
 	addDriveTool(server, store, connectionID, "create_file", "Create a file or folder, or upload content to Drive. Prefer filePath for an existing file in the server/agent workspace. Otherwise use textContent or base64Content. contentMimeType is required for uploads; use application/vnd.google-apps.folder for folders. Supported uploads convert to Google formats unless disableConversionToGoogleType is true.", false, createDriveFile)
 	addDriveTool(server, store, connectionID, "read_file_content", "Read text from an exact Drive file ID discovered by search_files/list_recent_files or supplied by the user. Supports Google Docs, Slides and UTF-8 text. Sheets return the first worksheet only; use download_file_content with exportMimeType application/vnd.openxmlformats-officedocument.spreadsheetml.sheet for all worksheets. Optionally include comments on Google documents. Binary formats return textFormattingNotSupported; use download_file_content to retrieve them.", true, drive.APIClient.Read)
-	addDriveTool(server, store, connectionID, "download_file_content", "Download a Drive file as base64, or stream it to a new server/agent-workspace file with filePath. Google Docs and Slides export to text by default; Sheets export to XLSX preserving all worksheets. exportMimeType selects another format; Sheets CSV/TSV exports contain only the first worksheet. revisionId selects a historical version.", true,
+	addDriveTool(server, store, connectionID, "download_file_content", "Download a Drive file as base64, or stream it to a new server/agent-workspace file with filePath. Google Docs and Slides export to text by default; Sheets export to XLSX preserving all worksheets. exportMimeType selects another format; Sheets CSV/TSV exports contain only the first worksheet. revisionId selects a historical version.", false,
 		func(client drive.APIClient, ctx context.Context, in drive.DownloadInput) (map[string]string, error) {
 			body, mimeType, err := client.Download(ctx, in)
 			if err != nil {
@@ -64,7 +64,7 @@ func NewDriveMCPServer(store integrationoauth.Store, connectionID string) *mcp.S
 func addDriveTool[In, Out any](server *mcp.Server, store integrationoauth.Store, connectionID, name, description string, readOnly bool, call func(drive.APIClient, context.Context, In) (Out, error)) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: name, Description: description,
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: readOnly, DestructiveHint: new(false), IdempotentHint: readOnly, OpenWorldHint: new(!readOnly)},
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: readOnly, DestructiveHint: new(false)},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 		var zero Out
 		client, err := (integrationoauth.Refresher{Store: store}).Client(ctx, connectionID)
