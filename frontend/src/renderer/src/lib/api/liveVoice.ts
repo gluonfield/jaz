@@ -28,12 +28,12 @@ export function updateVoiceSettings(settings: Pick<VoiceSettings, 'provider' | '
   return put('/v1/settings/voice', { agent: 'openai', ...settings })
 }
 
-export function connectVoice(sdp: string, context: string, signal: AbortSignal): Promise<{
+export function connectVoice(sessionId: string, sdp: string, context: string, signal: AbortSignal): Promise<{
   sdp: string
   provider: VoiceProvider
   model: string
 }> {
-  return post('/v1/voice/connect', { sdp, context }, signal)
+  return post('/v1/voice/connect', { session_id: sessionId, sdp, context }, signal)
 }
 
 export function sendVoiceTask(sessionId: string, message: string, contexts: MessageContextInput[], signal: AbortSignal): Promise<void> {

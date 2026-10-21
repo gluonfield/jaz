@@ -53,6 +53,52 @@ const fixture = () => {
 }
 
 describe('voice consumes the existing agent event stream', () => {
+  test('a bot rename updates voice identity during work without restarting or repeating it', async () => {
+    const f = fixture()
+    const snapshot = structuredClone(disk)
+    snapshot.events = []
+    snapshot.latest_event_seq = 0
+    snapshot.session.source_type = 'bot'
+    snapshot.session.title = 'Prime'
+    f.setRead(async () => structuredClone(snapshot))
+    await f.stream.context()
+    f.stream.start()
+    f.stream.follow(f.task())
+    await f.stream.refresh()
+    const before = f.sent.length
+    snapshot.session.title = 'CAS soft'
+    f.emit({ session_id: snapshot.session.id, type: 'session' })
+    await f.stream.refresh()
+    expect(f.sent.slice(before)).toEqual([{
+      text: 'Current chat identity: the user renamed you to "CAS soft". This is now your own name.',
+      speak: false,
+      id: undefined,
+    }])
+    expect(f.closed()).toBe(false)
+    expect(f.states.at(-1).activity).toBe('working')
+    await f.stream.refresh()
+    expect(f.sent.length).toBe(before + 1)
+    snapshot.session.title = 'Prime again'
+    await f.stream.refresh()
+    expect(f.sent.at(-1).text).toContain('"Prime again"')
+    f.stream.stop()
+  })
+
+  test('renaming an ordinary thread does not rename the voice assistant', async () => {
+    const f = fixture()
+    const snapshot = structuredClone(disk)
+    snapshot.session.source_type = ''
+    snapshot.session.title = 'Old topic'
+    f.setRead(async () => structuredClone(snapshot))
+    await f.stream.context()
+    f.stream.start()
+    snapshot.session.title = 'New topic'
+    f.emit({ session_id: snapshot.session.id, type: 'session' })
+    await f.stream.refresh()
+    expect(f.sent.some(({ text }) => text.startsWith('Current chat identity:'))).toBe(false)
+    f.stream.stop()
+  })
+
   test('tool changes preserve activity without feeding repeated working messages to voice', async () => {
     const f = fixture()
     await f.stream.context()

@@ -54,13 +54,13 @@ export class VoiceConnection {
     }
   }
 
-  async start(loadContext: () => Promise<string>) {
+  async start(sessionId: string, loadContext: () => Promise<string>) {
     this.timer = setTimeout(() => this.fail('Connecting voice timed out. Please try again.'), 45_000)
     const [chatContext] = await Promise.all([loadContext(), this.prepareMicrophone()])
     if (this.closed || this.ending) return
     const sdp = this.peer.localDescription?.sdp
     if (!sdp) throw new Error('Could not prepare the microphone connection.')
-    const result = await connectVoice(sdp, chatContext, this.abort.signal)
+    const result = await connectVoice(sessionId, sdp, chatContext, this.abort.signal)
     if (this.closed || this.ending) return
     this.provider = result.provider
     await this.peer.setRemoteDescription({ type: 'answer', sdp: result.sdp })
