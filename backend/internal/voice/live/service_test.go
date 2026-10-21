@@ -62,7 +62,8 @@ func TestConnectUsesEachProviderContract(t *testing.T) {
 					Model        string `json:"model"`
 					Instructions string `json:"instructions"`
 					Delegation   struct {
-						Type string `json:"type"`
+						Type      string `json:"type"`
+						AckFiller *bool  `json:"ack_filler"`
 					} `json:"delegation"`
 				}
 				if err := json.Unmarshal(body["session"], &session); err != nil {
@@ -81,6 +82,9 @@ func TestConnectUsesEachProviderContract(t *testing.T) {
 				if connection == ProviderOAuth {
 					if r.URL.Host != "chatgpt.com" || r.URL.Path != "/backend-api/codex/realtime/calls" || r.URL.Query().Get("architecture") != "avas" || session.Model != "gpt-live-1-codex" || body["sdp"] == nil || body["transport"] != nil {
 						t.Fatal("subscription session contract changed")
+					}
+					if session.Delegation.AckFiller == nil || *session.Delegation.AckFiller {
+						t.Fatal("subscription voice must disable automatic delegation filler")
 					}
 					if r.Header.Get("ChatGPT-Account-Id") != "account" || r.Header.Get("OpenAI-Alpha") != "quicksilver=v2" {
 						t.Fatal("subscription headers missing")

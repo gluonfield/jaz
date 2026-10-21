@@ -82,5 +82,9 @@ func (m *Manager) AskUser(ctx context.Context, sessionID string, input AskUserIn
 	answer := m.awaitPermissionAnswer(ctx, job, sessionevents.ACPPermission{
 		ID: newPermissionID(), Title: "Questions", Questions: questions, Status: "pending",
 	}, prepare)
-	return AskUserOutput{Answers: answer.Answers, Cancelled: answer.Answers == nil}, nil
+	out := AskUserOutput{Answers: answer.Answers, Cancelled: answer.Answers == nil}
+	if out.Cancelled {
+		out.Answers = map[string]InteractiveAnswerValue{}
+	}
+	return out, nil
 }

@@ -51,7 +51,7 @@ func TestAskUserMCPRoundTripInOrdinaryMode(t *testing.T) {
 			name = "native steering"
 		}
 		t.Run(name, func(t *testing.T) {
-			for _, mode := range []string{"complete", "partial", "empty", "blank"} {
+			for _, mode := range []string{"complete", "partial", "empty", "blank", "cancelled"} {
 				t.Run(mode, func(t *testing.T) {
 					testAskUserMCPRoundTrip(t, steered, mode)
 				})
@@ -158,6 +158,20 @@ func testAskUserMCPRoundTrip(t *testing.T, steered bool, mode string) {
 		"workloads":     {Answers: []string{"SQL", "Spark", "Custom scripts"}},
 	}
 	switch mode {
+	case "cancelled":
+		manager.cancelPendingPermissions(session.ID)
+		select {
+		case call := <-done:
+			out := structuredContent[AskUserOutput](t, call)
+			if !out.Cancelled || len(out.Answers) != 0 {
+				t.Fatalf("cancelled tool = %#v", out)
+			}
+		case err := <-errs:
+			t.Fatal(err)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		return
 	case "partial":
 		answers = map[string]InteractiveAnswerValue{
 			"z_strategy": {Answers: []string{" "}},
@@ -230,7 +244,7 @@ func TestAskUserCancellationClearsQuestion(t *testing.T) {
 			}
 			select {
 			case out := <-done:
-				if !out.Cancelled || out.Answers != nil {
+				if !out.Cancelled || len(out.Answers) != 0 {
 					t.Fatalf("cancellation = %#v", out)
 				}
 			case <-time.After(time.Second):

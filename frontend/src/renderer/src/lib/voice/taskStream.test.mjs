@@ -53,6 +53,59 @@ const fixture = () => {
 }
 
 describe('voice consumes the existing agent event stream', () => {
+  test('45 seconds of unchanged work stays quiet and a result forwards before 30 more seconds of work', async () => {
+    const originalSet = globalThis.setTimeout
+    const originalClear = globalThis.clearTimeout
+    const timers = new Map()
+    let time = 0
+    let timerID = 0
+    globalThis.setTimeout = (callback, ms) => {
+      timers.set(++timerID, { callback, at: time + ms })
+      return timerID
+    }
+    globalThis.clearTimeout = (id) => timers.delete(id)
+    const advance = (ms) => {
+      const end = time + ms
+      for (;;) {
+        const next = [...timers.entries()].sort((a, b) => a[1].at - b[1].at)[0]
+        if (!next || next[1].at > end) {
+          break
+        }
+        time = next[1].at
+        timers.delete(next[0])
+        next[1].callback()
+      }
+      time = end
+    }
+    const f = fixture()
+    f.setRead(async () => ({ ...structuredClone(disk), session: { ...disk.session, source_type: 'bot' }, events: [], latest_event_seq: 0 }))
+    try {
+      await f.stream.context()
+      f.stream.start()
+      f.stream.follow(f.task())
+      await f.stream.refresh()
+      const before = [...f.sent]
+      advance(45000)
+      expect(f.sent).toEqual(before)
+      f.emit({ seq: 100, session_id: disk.session.id, type: 'room_message', at: disk.events.at(-1).at,
+        room_message: { speaker: 'bot', bot_id: disk.session.id, text: 'Memory search and a clarification; no research thread yet.' } })
+      expect(f.sent.filter((item) => item.speak).map((item) => item.text)).toEqual(['Memory search and a clarification; no research thread yet.'])
+      expect(time).toBe(45000)
+      expect(f.states.at(-1).activity).toBe('working')
+      const forwarded = [...f.sent]
+      advance(30000)
+      expect(f.sent).toEqual(forwarded)
+      expect(f.states.at(-1).activity).toBe('working')
+      f.emit({ ...disk.events.at(-1), seq: 101 })
+      expect(f.sent.filter((item) => item.speak)).toHaveLength(1)
+      expect(f.states.at(-1).activity).toBe(null)
+    } finally {
+      f.stream.stop()
+      globalThis.setTimeout = originalSet
+      globalThis.clearTimeout = originalClear
+    }
+  })
+
   test('a bot rename updates voice identity during work without restarting or repeating it', async () => {
     const f = fixture()
     const snapshot = structuredClone(disk)
@@ -114,7 +167,9 @@ describe('voice consumes the existing agent event stream', () => {
       })
     }
     await f.stream.refresh()
-    expect(f.sent).toEqual(initial)
+    expect(f.sent.filter((item) => !item.text.startsWith('Recorded agent tool calls:'))).toEqual(initial)
+    expect(f.sent.at(-1).text).toContain('Check 5: completed')
+    expect(f.sent.every((item) => !item.speak)).toBe(true)
     expect(f.states.at(-1)).toEqual({ activity: 'working', error: '' })
     f.stream.stop()
   })
@@ -366,7 +421,7 @@ describe('voice consumes the existing agent event stream', () => {
     f.stream.stop()
   })
 
-  test('a bot is heard the moment it sends its answer, not through its narration', async () => {
+  test('a bot reply is forwarded immediately while narration stays private', async () => {
     const f = fixture()
     const bot = { ...structuredClone(disk), session: { ...disk.session, source_type: 'bot' }, events: [], latest_event_seq: 0 }
     f.setRead(async () => structuredClone(bot))

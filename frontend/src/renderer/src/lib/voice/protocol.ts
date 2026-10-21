@@ -4,7 +4,7 @@ export type VoiceEvent =
   | { type: 'ready' | 'closed' }
   | { type: 'transcript'; role: 'user' | 'assistant'; text: string; at?: number; turnBased?: boolean }
   | { type: 'transcript_done'; role: 'user' | 'assistant'; text: string }
-  | { type: 'delegation'; id: string; text?: string; at?: number }
+  | { type: 'delegation'; id: string; userTurnId?: string; text?: string; at?: number }
   | { type: 'error'; message: string }
 
 type WireEvent = {
@@ -12,11 +12,22 @@ type WireEvent = {
   delta?: string
   start_ms?: number
   offset_ms?: number
-  item?: { id?: string; target?: string; text?: string; content?: { type: string; text?: string }[] }
+  item?: { user_bidi_turn_id?: string; id?: string; target?: string; text?: string; content?: { type: string; text?: string }[] }
   turn?: { role?: string; transcript?: string }
   delegation?: { id: string; target: string }
   error?: { message?: string }
   message?: string
+}
+
+export function voiceQuestionAnswer(text?: string): { request_id: string; question_id: string; answer: string } | undefined {
+  try {
+    const value = JSON.parse(text ?? '')
+    if (value?.type === 'answer_question' && typeof value.request_id === 'string' && typeof value.question_id === 'string' && typeof value.answer === 'string' && value.request_id && value.question_id && value.answer.trim()) {
+      return { request_id: value.request_id, question_id: value.question_id, answer: value.answer.trim() }
+    }
+  } catch {
+    return
+  }
 }
 
 export function decodeVoiceEvent(data: string): VoiceEvent | undefined {
@@ -40,6 +51,7 @@ export function decodeVoiceEvent(data: string): VoiceEvent | undefined {
       return {
         type: 'delegation',
         id: event.item.id,
+        ...(event.item.user_bidi_turn_id ? { userTurnId: event.item.user_bidi_turn_id } : {}),
         text: event.item.content?.filter((part) => part.type === 'input_text').map((part) => part.text ?? '').join('\n'),
       }
     case 'session.delegation.created':
@@ -51,11 +63,12 @@ export function decodeVoiceEvent(data: string): VoiceEvent | undefined {
   }
 }
 
-export function voiceContextEvents(provider: VoiceProvider, text: string, speak: boolean, delegationId?: string): object[] {
+export function voiceContextEvents(provider: VoiceProvider, text: string, speak: boolean, delegationId?: string) {
   return utf8Chunks(text, 480).map((chunk) => provider === 'openai' ? {
     type: delegationId ? 'delegation.context.append' : 'session.context.append',
     ...(delegationId ? { delegation_item_id: delegationId } : {}),
-    ...(speak ? { channel: 'speakable' } : {}),
+    event_id: crypto.randomUUID(),
+    channel: speak ? 'speakable' : 'commentary',
     content: [{ type: 'input_text', text: chunk }],
   } : {
     type: speak ? 'session.commentary.append' : 'session.thinking.append',

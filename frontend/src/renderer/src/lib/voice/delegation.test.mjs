@@ -123,7 +123,7 @@ test('a bot is heard through the messages it sends, and its narration stays priv
   const events = [event(12, 'I’ll check your CRM now.', 'narration', 'idle'), sent(13, 'One deal: Park Place, at Lead.')]
   const request = task()
   expect(voiceTaskUpdate(request, bot(events))).toEqual({ state: 'completed', text: 'One deal: Park Place, at Lead.' })
-  expect(voiceReplyChunks(request, bot(events))).toEqual(['One deal: Park Place, at Lead.'])
+  expect(voiceReplyChunks(request, bot(events)).map((chunk) => chunk.text)).toEqual(['One deal: Park Place, at Lead.'])
   expect(voiceChatContext(bot(events))).toContain('assistant: One deal: Park Place, at Lead.')
   expect(voiceChatContext(bot(events))).not.toContain('I’ll check')
   const silent = snapshot([user(11, 'Check my CRM'), answer(12, 'I’ll check your CRM now.')], { events: events.slice(0, 1), session: { status: 'idle', source_type: 'bot' } })
@@ -131,5 +131,5 @@ test('a bot is heard through the messages it sends, and its narration stays priv
   const worker = snapshot([user(11, 'Check my CRM')], { events: events.slice(0, 1), session: { status: 'idle', source_type: 'bot_worker' } })
   const job = task()
   voiceTaskUpdate(job, worker)
-  expect(voiceReplyChunks(job, worker)).toEqual(['I’ll check your CRM now.'])
+  expect(voiceReplyChunks(job, worker).map((chunk) => chunk.text)).toEqual(['I’ll check your CRM now.'])
 })

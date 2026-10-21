@@ -1,7 +1,7 @@
 import type { SessionEvent, SessionMessages } from '@/lib/api/types'
 import { coalesceSessionEvents, mergeSessionEvent } from '@/lib/sessionEvents'
 import { taskFinished, voiceAgentRunning, voiceReplyChunks, voiceTaskActivity, voiceTaskUpdate, type VoiceTask } from '@/lib/voice/delegation'
-import { voiceChatContext } from '@/lib/voice/transcript'
+import { voiceChatContext, voiceToolContext } from '@/lib/voice/transcript'
 import type { VoiceWorkActivity } from '@shared/voice'
 
 type Source = {
@@ -12,11 +12,13 @@ type Source = {
 export class VoiceTaskStream {
   private snapshot?: SessionMessages
   private tasks: VoiceTask[] = []
+  private completedTask?: VoiceTask
   private stopEvents = () => {}
   private reading?: Promise<void>
   private dirty = false
   private stopped = false
   private lastContext = ''
+  private lastTools = ''
   private status?: { activity: VoiceWorkActivity; error: string }
   private retry?: ReturnType<typeof setTimeout>
   private outputTimer?: ReturnType<typeof setTimeout>
@@ -24,7 +26,7 @@ export class VoiceTaskStream {
   constructor(
     private source: Source,
     private callId: string,
-    private append: (text: string, speak: boolean, id?: string) => void,
+    private append: (text: string, speak: boolean, id?: string, sourceSeq?: number) => void,
     private onState: (activity: VoiceWorkActivity, error: string) => void,
   ) {}
 
@@ -32,6 +34,7 @@ export class VoiceTaskStream {
     this.snapshot = await this.source.read()
     this.snapshot.events = coalesceSessionEvents(this.snapshot.events)
     this.lastContext = voiceChatContext(this.snapshot)
+    this.lastTools = voiceToolContext(this.snapshot)
     return this.lastContext
   }
 
@@ -70,9 +73,14 @@ export class VoiceTaskStream {
   }
 
   follow(task: VoiceTask) {
+    this.completedTask = undefined
     this.tasks.push(task)
     this.publish()
     void this.refresh()
+  }
+
+  hasQuestion(requestId: string, questionId: string) {
+    return this.snapshot?.acp_permissions?.some((permission) => permission.id === requestId && permission.status === 'pending' && permission.questions?.some((question) => question.id === questionId)) ?? false
   }
 
   refresh(): Promise<void> {
@@ -128,23 +136,36 @@ export class VoiceTaskStream {
 
   private deliver(tasks: VoiceTask[]) {
     const snapshot = this.snapshot!
+    const tools = voiceToolContext(snapshot)
+    if (tools !== this.lastTools) {
+      this.append(tools, false)
+      this.lastTools = tools
+    }
     for (const task of [...tasks]) {
       const update = voiceTaskUpdate(task, snapshot)
       const finished = taskFinished(update)
       const chunks = !finished || update.state === 'completed' ? voiceReplyChunks(task, snapshot) : []
       for (const chunk of chunks) {
-        this.append(chunk, true, task.id)
+        this.append(chunk.text, true, task.id, chunk.seq)
       }
       const progress = `${update.state}:${update.text}`
       if (progress !== task.progress) {
         task.progress = progress
         const hasOutput = Boolean(task.output?.size)
-        const speak = update.state === 'approval' || update.state === 'failed' || update.state === 'cancelled' || (update.state === 'completed' && !hasOutput)
+        const speak = update.state === 'approval' || update.state === 'failed' || update.state === 'cancelled' || (update.state === 'waiting' && !hasOutput) || (update.state === 'completed' && !hasOutput)
         const text = update.state === 'completed' && hasOutput ? 'Agent work completed.' : `Agent task ${update.state}: ${update.text.slice(0, 12000)}`
         this.append(text, speak, task.id)
       }
       if (finished) {
+        if (update.state === 'completed') {
+          this.completedTask = task
+        }
         this.tasks.splice(this.tasks.indexOf(task), 1)
+      }
+    }
+    if (!this.tasks.length && snapshot.session.source_type === 'bot' && this.completedTask) {
+      for (const chunk of voiceReplyChunks(this.completedTask, snapshot)) {
+        this.append(chunk.text, true, this.completedTask.id, chunk.seq)
       }
     }
     this.publish()

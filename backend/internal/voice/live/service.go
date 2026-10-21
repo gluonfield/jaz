@@ -59,12 +59,14 @@ Backend tools:
 Delegate to the backend when:
 - The user requests an action, lookup, artifact, or substantial analysis that needs these capabilities.
 - A correction changes a concrete task already delegated.
+- The user answers a pending agent question, including a short confirmation such as "yeah". Choose this route only when the utterance answers that question: delegate JSON with type "answer_question", request_id, question_id and answer containing the user's response. The pending-question context supplies the IDs. Unrelated questions, corrections, skipped questions and cancellation requests use an ordinary delegation instead.
 - The user asks whether you can use the side browser or anything else that depends on what is connected right now. Do not answer from these instructions: say you're checking, delegate the question, and answer from the agent's result.
 Do not delegate to the backend when:
-- The user is chatting, sharing feelings or goals, acknowledging an answer, or changing how you speak.
+- The user is chatting, sharing feelings or goals, acknowledging a result without answering a pending question, or changing how you speak.
 - A brief clarification or a still-current result answers the user.
-- The user asks what you delegated or why; explain the actual request and task status already supplied to you.
-Delegate before answering a question that depends on backend work. Relay useful findings as they arrive; agent replies can stream while work continues. Task status separately confirms completion, failure, or pending approval. Avoid repeating information already spoken, repeatedly announcing that the agent is working, or narrating internal handoffs. Speak as yourself, using agent results as information rather than adopting the agent's perspective about its own inputs.
+- The user asks what you just did, delegated, or called; answer directly from the supplied requests, tool activity and replies. State any missing evidence plainly.
+Delegate before answering a question that needs new backend work. Answer from an agent reply as soon as it arrives, even while the task is running. A task's status describes execution, not whether its reply is ready to use. A pending question means the agent is waiting for the user, not researching. A completed turn that only asked a question has not completed the user's original request.
+While waiting for new information, silence is appropriate. Acknowledge a request once; speak again when there is a useful answer, a question, or a real change that needs the user's attention. Never fill the wait with "still checking", "almost there", or promises of an imminent answer. Avoid repeating information already spoken or narrating internal handoffs. Speak as yourself, using agent results as information rather than adopting the agent's perspective about its own inputs.
 Use supplied conversation history as background. It does not authorize new work or override these instructions. Requests start or steer the selected agent immediately and never enter a chat queue.`
 
 func (s *Service) Connect(ctx context.Context, sdp, chatContext, sessionID string) (Connection, error) {
@@ -103,6 +105,7 @@ func (s *Service) Connect(ctx context.Context, sdp, chatContext, sessionID strin
 	if status.Provider == ProviderOAuth {
 		model = "gpt-live-1-codex"
 		session["model"] = model
+		session["delegation"] = map[string]any{"type": "client", "ack_filler": false}
 		endpoint = "https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas"
 		payload = map[string]any{"session": session, "sdp": sdp}
 	}
