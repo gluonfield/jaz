@@ -144,7 +144,7 @@ export class VoiceSession {
         }
       })
       this.connection = connection
-      void connection.start(() => stream.context()).catch((error: Error) => {
+      void connection.start(this.sessionId, () => stream.context()).catch((error: Error) => {
         if (abort.signal.aborted) {
           return
         }

@@ -42,14 +42,15 @@ func (h *Handler) Settings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		SDP     string `json:"sdp"`
-		Context string `json:"context"`
+		SDP       string `json:"sdp"`
+		Context   string `json:"context"`
+		SessionID string `json:"session_id"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128*1024)).Decode(&input); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
-	connection, err := h.service.Connect(r.Context(), input.SDP, input.Context)
+	connection, err := h.service.Connect(r.Context(), input.SDP, input.Context, input.SessionID)
 	if err != nil {
 		writeError(w, err)
 		return

@@ -13,7 +13,7 @@ import (
 )
 
 type settingsStore struct {
-	storage.SettingsStorage
+	Store
 	value json.RawMessage
 }
 
@@ -96,7 +96,7 @@ func TestConnectUsesEachProviderContract(t *testing.T) {
 				}
 				return &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader(answer))}, nil
 			})
-			result, err := service.Connect(context.Background(), "v=0\r\noffer", "Current thread: check the directory")
+			result, err := service.Connect(context.Background(), "v=0\r\noffer", "Current thread: check the directory", "")
 			if err != nil || result.SDP != "v=0\r\nanswer" || result.Provider != connection {
 				t.Fatalf("connection = %#v, %v", result, err)
 			}
@@ -123,7 +123,7 @@ func TestExplicitProviderNeverFallsBack(t *testing.T) {
 	if _, err := service.SaveSettings(Settings{Agent: "openai", Provider: ProviderOAuth}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = service.Connect(context.Background(), "v=0\r\noffer", "Current thread: check the directory")
+	_, err = service.Connect(context.Background(), "v=0\r\noffer", "Current thread: check the directory", "")
 	if !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("explicit subscription unexpectedly fell back: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestProviderErrorsDoNotExposeResponseSecrets(t *testing.T) {
 		service.client.Transport = roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: code, Body: io.NopCloser(strings.NewReader("secret provider payload"))}, nil
 		})
-		_, err := service.Connect(context.Background(), "v=0\r\noffer", "Current thread: check the directory")
+		_, err := service.Connect(context.Background(), "v=0\r\noffer", "Current thread: check the directory", "")
 		if err == nil || strings.Contains(err.Error(), "secret") {
 			t.Fatalf("unsafe provider error: %v", err)
 		}
@@ -166,7 +166,7 @@ func TestUnauthorizedRefreshesOnceAndPreservesTheSDPOffer(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 201, Body: io.NopCloser(strings.NewReader("v=0\r\nanswer"))}, nil
 	})
-	if _, err := service.Connect(context.Background(), "v=0\r\noffer", "Current thread: check the directory"); err != nil {
+	if _, err := service.Connect(context.Background(), "v=0\r\noffer", "Current thread: check the directory", ""); err != nil {
 		t.Fatal(err)
 	}
 	if refreshes != 1 || attempts != 2 {
@@ -189,7 +189,7 @@ func TestInvalidPersistedProviderCannotRouteCredentials(t *testing.T) {
 			t.Fatal("invalid settings must be rejected before sending credentials")
 			return nil, nil
 		})
-		_, err := service.Connect(context.Background(), "v=0\r\noffer", "")
+		_, err := service.Connect(context.Background(), "v=0\r\noffer", "", "")
 		if !errors.Is(err, ErrInput) {
 			t.Fatalf("Connect() error = %v", err)
 		}

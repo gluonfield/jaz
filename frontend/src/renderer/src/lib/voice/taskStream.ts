@@ -96,6 +96,9 @@ export class VoiceTaskStream {
         if (this.stopped) {
           return
         }
+        if (this.snapshot?.session.source_type === 'bot' && snapshot.session.title !== this.snapshot.session.title) {
+          this.append(`Current chat identity: the user renamed you to ${JSON.stringify(snapshot.session.title)}. This is now your own name.`, false)
+        }
         snapshot.events = coalesceSessionEvents(snapshot.events)
         for (const event of [...this.snapshot?.events ?? []].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))) {
           if ((event.seq ?? 0) > snapshot.latest_event_seq) {
