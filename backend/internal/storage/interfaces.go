@@ -55,6 +55,10 @@ type MessageRecordAppender interface {
 	AppendMessageRecords(id string, messages ...Message) error
 }
 
+type MessageRecordReader interface {
+	LoadMessageRecords(id string) ([]Message, error)
+}
+
 type SessionEventReader interface {
 	LoadSessionEvents(id string) ([]sessionevents.Event, error)
 	LoadSessionEventsAfter(id string, afterSeq int64) ([]sessionevents.Event, error)

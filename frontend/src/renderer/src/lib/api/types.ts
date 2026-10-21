@@ -937,6 +937,7 @@ export interface AgentTask {
 }
 
 export interface ACPEvent {
+  origin?: string
   id: string
   slug: string
   title?: string
@@ -1016,6 +1017,9 @@ export interface ACPQuestion {
 }
 
 export interface ACPPermission {
+  after_message_seq?: number
+  origin?: string
+  turn_started_at?: string
   id: string
   session_id?: string
   title?: string

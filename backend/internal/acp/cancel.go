@@ -14,10 +14,25 @@ import (
 // Cancel asks the agent to stop the current turn and tears down an agent that
 // ignores the protocol cancellation deadline.
 func (m *Manager) Cancel(ctx context.Context, ref string) (Job, error) {
+	return m.cancel(ctx, ref, "unknown")
+}
+
+// Stop records the user's decision to abandon this task, including after
+// its question's tool waiter has already been removed.
+func (m *Manager) Stop(ctx context.Context, ref string) (Job, error) {
+	return m.cancel(ctx, ref, "user_stop")
+}
+
+func (m *Manager) cancel(ctx context.Context, ref, origin string) (Job, error) {
 	job, err := m.job(ref)
 	if err != nil {
-		return m.cancelStored(ref)
+		return m.cancelStored(ref, origin)
 	}
+	event := EventFromJob(job.Snapshot())
+	event.Origin = origin
+	m.publishOrderedACPEvents(job.eventView(), sessionevents.Event{
+		SessionID: job.ID, Type: "acp", ACP: event,
+	})
 	// The goal ends before the turn can, so the thread's next turn does not
 	// go on with it.
 	if m.clearGoalOnCancel(job) {
@@ -70,7 +85,7 @@ func (m *Manager) clearGoalOnCancel(job *jobState) bool {
 	return err == nil && goal.Active(session.Goal)
 }
 
-func (m *Manager) cancelStored(ref string) (Job, error) {
+func (m *Manager) cancelStored(ref, origin string) (Job, error) {
 	session, err := m.store.LoadSession(ref)
 	if err != nil {
 		return Job{}, fmt.Errorf("session not found: %s", ref)
@@ -96,10 +111,12 @@ func (m *Manager) cancelStored(ref string) (Job, error) {
 		State: StateCancelled, StopReason: StopReasonCancelled,
 		CreatedAt: session.CreatedAt, UpdatedAt: now, LastEventAt: now,
 	}
+	event := EventFromJob(cancelled)
+	event.Origin = origin
 	events := []sessionevents.Event{{
 		SessionID: session.ID,
 		Type:      "acp",
-		ACP:       EventFromJob(cancelled),
+		ACP:       event,
 	}}
 	if goal.Active(session.Goal) {
 		events = append(events, sessionevents.Event{

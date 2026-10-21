@@ -41,7 +41,7 @@ export default tseslint.config(
   },
   {
     // Tests run in Bun, which has both Node's and the browser's globals.
-    files: ['**/*.test.mjs'],
+    files: ['**/*.test.mjs', '**/testdata/*.mjs'],
     languageOptions: {
       globals: {
         ...globals.node,

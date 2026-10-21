@@ -264,6 +264,10 @@ func (f *fakeACPManager) AnswerInteractive(ctx context.Context, answer acp.Inter
 	return f.answerErr
 }
 
+func (f *fakeACPManager) Stop(ctx context.Context, id string) (acp.Job, error) {
+	return f.Cancel(ctx, id)
+}
+
 func (f *fakeACPManager) Cancel(ctx context.Context, _ string) (acp.Job, error) {
 	f.mu.Lock()
 	f.cancelled = true

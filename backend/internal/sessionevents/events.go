@@ -373,6 +373,7 @@ func (e Event) NeedsStorageSlimming() bool {
 }
 
 type ACPEvent struct {
+	Origin          string          `json:"origin,omitempty"`
 	ID              string          `json:"id"`
 	Slug            string          `json:"slug"`
 	Title           string          `json:"title,omitempty"`
@@ -534,6 +535,9 @@ func (r ACPToolRuntime) IsZero() bool {
 }
 
 type ACPPermission struct {
+	Origin           string                  `json:"origin,omitempty"`
+	AfterMessageSeq  *int64                  `json:"after_message_seq,omitempty"`
+	TurnStartedAt    time.Time               `json:"turn_started_at,omitzero"`
 	ID               string                  `json:"id"`
 	SessionID        string                  `json:"session_id,omitempty"`
 	Title            string                  `json:"title,omitempty"`

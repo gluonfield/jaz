@@ -262,6 +262,9 @@ scan:
 }
 
 func projectionCoalesceKey(event Event) string {
+	if event.ACP != nil && event.ACP.Origin != "" {
+		return ""
+	}
 	if event.Type == "plan_update" && event.Plan != nil {
 		return "plan_update:" + event.SessionID
 	}
@@ -317,6 +320,9 @@ func ProviderSubagentProjectionKey(ownerID string, subagent ProviderSubagentEven
 }
 
 func StorageCoalesceKey(event Event) string {
+	if event.ACP != nil && event.ACP.Origin != "" {
+		return ""
+	}
 	if NeedsProviderSubagentSnapshot(event) {
 		return event.ProjectionKey
 	}

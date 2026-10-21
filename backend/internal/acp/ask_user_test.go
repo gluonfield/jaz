@@ -85,7 +85,7 @@ func testAskUserMCPRoundTrip(t *testing.T, steered bool, mode string) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	defer manager.cancelPendingPermissions(session.ID)
+	defer manager.cancelPendingPermissions(session.ID, "unknown")
 	tools, err := client.ListTools(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +159,7 @@ func testAskUserMCPRoundTrip(t *testing.T, steered bool, mode string) {
 	}
 	switch mode {
 	case "cancelled":
-		manager.cancelPendingPermissions(session.ID)
+		manager.cancelPendingPermissions(session.ID, "unknown")
 		select {
 		case call := <-done:
 			out := structuredContent[AskUserOutput](t, call)
@@ -240,7 +240,7 @@ func TestAskUserCancellationClearsQuestion(t *testing.T) {
 			if mode == "context" {
 				cancel()
 			} else {
-				manager.cancelPendingPermissions(session.ID)
+				manager.cancelPendingPermissions(session.ID, "unknown")
 			}
 			select {
 			case out := <-done:
@@ -399,7 +399,7 @@ func TestAskUserPublishesRequestBeforeCancellation(t *testing.T) {
 	}
 	cancelled := make(chan struct{})
 	go func() {
-		manager.cancelPendingPermissions(session.ID)
+		manager.cancelPendingPermissions(session.ID, "unknown")
 		close(cancelled)
 	}()
 	select {

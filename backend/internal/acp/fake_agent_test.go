@@ -457,7 +457,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			var req struct {
 				WaitForCompletion bool `json:"waitForCompletion"`
 			}
-			if json.Unmarshal(msg.Params, &req) != nil || !req.WaitForCompletion || pendingPrompt == nil {
+			if json.Unmarshal(msg.Params, &req) != nil || !req.WaitForCompletion {
 				resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InvalidParams("expected completion-aware native steer", nil))
 				_ = conn.Send(context.Background(), resp)
 				continue
@@ -472,11 +472,16 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			})
 			promptResult := map[string]any{"stopReason": "end_turn"}
 			steerResult := map[string]any{"outcome": "injected", "stopReason": "end_turn"}
+			if pendingPrompt == nil {
+				steerResult["outcome"] = "startedNewTurn"
+			}
 			failure := fakeSteerFailure(msg.Params, typedFailures)
 			if failure != nil {
 				promptResult["_meta"], steerResult["_meta"] = failure, failure
 			}
-			sendResult(conn, pendingPrompt, promptResult)
+			if pendingPrompt != nil {
+				sendResult(conn, pendingPrompt, promptResult)
+			}
 			pendingPrompt = nil
 			if failure != nil {
 				// codex-acp answers the steer after the prompt, once it has

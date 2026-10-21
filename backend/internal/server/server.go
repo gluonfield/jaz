@@ -60,6 +60,7 @@ type ACPManager interface {
 	Agents() []string
 	AnswerInteractive(context.Context, acp.InteractiveAnswer) error
 	Cancel(context.Context, string) (acp.Job, error)
+	Stop(context.Context, string) (acp.Job, error)
 }
 
 type MCPRuntime interface {
@@ -406,7 +407,7 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		if session.Runtime == storage.RuntimeACP && s.ACP != nil {
 			ctx, cancel := serverActionContext()
 			defer cancel()
-			if _, err := s.ACP.Cancel(ctx, session.ID); err != nil {
+			if _, err := s.ACP.Stop(ctx, session.ID); err != nil {
 				logger.Error("acp cancel failed", "error", err)
 				writeError(w, http.StatusInternalServerError, err)
 				return
