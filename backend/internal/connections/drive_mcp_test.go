@@ -283,9 +283,12 @@ func TestDriveMCPRetainsToolInputsAndReadOnlyAnnotations(t *testing.T) {
 				t.Fatalf("%s lost input %s", tool.Name, name)
 			}
 		}
-		readOnly := tool.Name != "copy_file" && tool.Name != "create_file"
+		readOnly := tool.Name != "copy_file" && tool.Name != "create_file" && tool.Name != "download_file_content"
 		if tool.Annotations == nil || tool.Annotations.ReadOnlyHint != readOnly {
 			t.Fatalf("%s read-only annotation = %+v", tool.Name, tool.Annotations)
+		}
+		if tool.Annotations.OpenWorldHint != nil && !*tool.Annotations.OpenWorldHint {
+			t.Fatalf("%s incorrectly claims a closed interaction domain", tool.Name)
 		}
 	}
 }

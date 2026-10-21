@@ -23,3 +23,5 @@ Strict follow-up review:
 Live follow-up verification: all eight tools, a 6,600,040-byte hash-checked round trip, and default XLSX download preserving a two-worksheet workbook pass. Source MIME type and length are recorded when starting uploads, including native conversion. Eight temporary files across review probes were deleted and separately confirmed absent; no named verification files remain. Final 103-package backend suite, vet, build, targeted race checks and six compiled behavioral controls pass. No remaining structural blocker; no new dependency, service or credential store.
 
 Provider contracts: [upload methods](https://developers.google.com/workspace/drive/api/guides/manage-uploads) and [export formats](https://developers.google.com/workspace/drive/api/guides/ref-export-formats). CSV/TSV spreadsheet exports cover only the first worksheet.
+
+- [completed] Follow-up annotation review: downloads may create local files, so they are additive writes. Read-only status no longer determines idempotency or interaction-domain hints; those use MCP defaults. Full 105-package backend suite, vet and both compiled regression controls pass.
