@@ -47,6 +47,10 @@ func (s *Transcript) Append(sessionID string, messages []sessionevents.VoiceMess
 			ProjectionOp:  sessionevents.ProjectionReplace,
 		})
 	}
+	return s.append(sessionID, events)
+}
+
+func (s *Transcript) append(sessionID string, events []sessionevents.Event) error {
 	if err := s.store.AppendSessionEvents(sessionID, events...); err != nil {
 		return err
 	}

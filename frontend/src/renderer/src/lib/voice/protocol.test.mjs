@@ -22,6 +22,6 @@ test('preserves Unicode and each provider’s result contract', () => {
 })
 
 test('progress uses quiet context; completion uses speech', () => {
-  expect(voiceContextEvents('openai', 'Working', false, 'id')[0].channel).toBeUndefined()
+  expect(voiceContextEvents('openai', 'Working', false, 'id')[0].channel).toBe('commentary')
   expect(voiceContextEvents('openai-api-key', 'Working', false, 'id')[0].type).toBe('session.thinking.append')
 })

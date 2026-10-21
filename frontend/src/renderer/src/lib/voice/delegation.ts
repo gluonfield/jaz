@@ -11,7 +11,7 @@ export interface VoiceTask {
   outputSeq?: number
 }
 
-export type TaskUpdate = { state: 'running' | 'approval' | 'completed' | 'failed' | 'cancelled' | 'superseded'; text: string }
+export type TaskUpdate = { state: 'running' | 'waiting' | 'approval' | 'completed' | 'failed' | 'cancelled' | 'superseded'; text: string }
 
 export function voiceAgentRunning(snapshot: SessionMessages): boolean {
   return snapshot.session.status === 'running' || ['running', 'starting'].includes(snapshot.acp_state ?? '')
@@ -32,10 +32,10 @@ export function voiceTaskActivity(task: VoiceTask, snapshot: SessionMessages): V
   return latest?.type === 'acp_thought' ? 'thinking' : 'working'
 }
 
-export function voiceReplyChunks(task: VoiceTask, snapshot: SessionMessages): string[] {
+export function voiceReplyChunks(task: VoiceTask, snapshot: SessionMessages): { text: string; seq?: number }[] {
   const replies = task.user ? voiceReplies(snapshot, voiceTaskWindow(task.user, snapshot).events) : []
   const output = task.output ??= new Map()
-  const chunks: string[] = []
+  const chunks: { text: string; seq?: number }[] = []
   for (const { event: reply, text } of replies) {
     const key = reply.projection_key || reply.acp?.text_run_id || String(reply.seq)
     const sent = output.get(key) ?? ''
@@ -47,7 +47,7 @@ export function voiceReplyChunks(task: VoiceTask, snapshot: SessionMessages): st
     }
     const delta = text.startsWith(sent) ? text.slice(sent.length) : `Updated agent reply: ${text}`
     if (delta.trim()) {
-      chunks.push(delta)
+      chunks.push({ text: delta, seq: reply.seq })
       output.set(key, text)
       task.outputSeq = Math.max(task.outputSeq ?? 0, reply.seq ?? 0)
     }
@@ -70,6 +70,7 @@ export function voiceTaskUpdate(task: VoiceTask, snapshot: SessionMessages): Tas
   const terminal = events.findLast((event) => event.acp && ['idle', 'failed', 'cancelled'].includes(event.acp.state ?? ''))?.acp
   if (nextUser && !terminal) return { state: 'superseded', text: 'The agent is handling a newer instruction in the thread.' }
   const permission = snapshot.acp_permissions?.find((permission) => permission.status === 'pending')
+  if (permission?.questions?.length && !nextUser) return { state: 'waiting', text: `Waiting for the user's answer: ${permission.questions.map((question) => question.question).join('\n')}\nPending question: ${JSON.stringify({ request_id: permission.id, questions: permission.questions })}` }
   if (permission && !nextUser) return { state: 'approval', text: `The agent needs your approval in the chat: ${permission.title || 'review the pending request'}.` }
   if (!voiceAgentRunning(snapshot) || terminal) {
     if (terminal?.state === 'cancelled' || (!nextUser && (snapshot.acp_state === 'cancelled' || snapshot.session.status === 'interrupted'))) return { state: 'cancelled', text: 'The agent task was cancelled.' }

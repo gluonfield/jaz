@@ -1,6 +1,13 @@
 import { connectVoice, type VoiceProvider } from '@/lib/api/liveVoice'
 import { decodeVoiceEvent, voiceContextEvents, type VoiceEvent } from '@/lib/voice/protocol'
 import { requestMicrophone } from '@/lib/voice/microphone'
+import type { VoiceTrace } from '@/lib/voice/diagnostics'
+
+type ContextAppend = {
+  event: ReturnType<typeof voiceContextEvents>[number]
+  sourceSeq?: number
+  timer?: ReturnType<typeof setTimeout>
+}
 
 export class VoiceConnection {
   private peer = new RTCPeerConnection()
@@ -10,6 +17,8 @@ export class VoiceConnection {
   private audio = new Audio()
   private context = new AudioContext()
   private provider?: VoiceProvider
+  // OAuth acknowledgments identify the delegation, so each delegation has one append in flight.
+  private appends = new Map<string, ContextAppend[]>()
   private ready = false
   private ending = false
   private closed = false
@@ -17,14 +26,37 @@ export class VoiceConnection {
   readonly analyser = this.context.createAnalyser()
   readonly outputAnalyser = this.context.createAnalyser()
 
-  constructor(private onEvent: (event: VoiceEvent) => void) {
+  constructor(private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace) {
     this.audio.autoplay = true
+    for (const type of ['playing', 'waiting', 'pause', 'ended']) {
+      this.audio.addEventListener(type, () => this.trace(`playback_${type}`, { detail: this.audio.muted ? 'muted media element' : 'media element' }))
+    }
     this.analyser.fftSize = 256
     this.outputAnalyser.fftSize = 256
     this.channel.onmessage = ({ data }: MessageEvent<string>) => {
+      if (this.closed) return
       try {
+        const raw = JSON.parse(data)
+        if (['delegation.context.appended', 'session.context.appended', 'session.thinking.appended', 'session.commentary.appended'].includes(raw.type)) {
+          const key = this.provider === 'openai' ? raw.delegation_item_id ?? '' : raw.client_event_id
+          const queue = this.appends.get(key)
+          const sent = queue?.shift()
+          clearTimeout(sent?.timer)
+          this.trace('append_ack', { event_id: sent?.event.event_id, source_seq: sent?.sourceSeq, request_id: raw.delegation_item_id ?? raw.delegation_id, provider_start_ms: raw.start_ms, provider_end_ms: raw.end_ms, detail: sent ? raw.type : `Unmatched ${raw.type}` })
+          if (queue?.length) {
+            this.sendContext(key)
+          } else {
+            this.appends.delete(key)
+          }
+        }
+        if (raw.type === 'turn.created' || raw.type === 'turn.done') {
+          this.trace(raw.type, { user_turn_id: raw.turn?.id, provider_start_ms: raw.turn?.start_ms, provider_end_ms: raw.turn?.end_ms, detail: raw.turn?.role })
+        }
         const event = decodeVoiceEvent(data)
         if (!event || this.closed) return
+        if (event.type === 'error') {
+          this.trace('provider_error', { detail: event.message.slice(0, 512) })
+        }
         if (event.type === 'ready') {
           this.ready = true
           clearTimeout(this.timer)
@@ -85,10 +117,38 @@ export class VoiceConnection {
     if (this.closed || this.ending) return
   }
 
-  append(text: string, speak = false, delegationId?: string) {
-    if (!this.ready || this.ending || this.closed || !this.provider) return
+  append(text: string, speak = false, delegationId?: string, sourceSeq?: number) {
+    if (this.ending || this.closed) return
+    if (!this.ready || !this.provider || this.channel.readyState !== 'open') {
+      this.trace('context_failed', { request_id: delegationId, source_seq: sourceSeq })
+      this.fail('Voice could not receive the agent result. It remains available in the chat.')
+      return
+    }
+    if (sourceSeq !== undefined) {
+      this.trace('result_available', { request_id: delegationId, source_seq: sourceSeq })
+    }
     for (const event of voiceContextEvents(this.provider, text, speak, delegationId)) {
+      if (this.closed) return
+      const key = this.provider === 'openai' ? delegationId ?? '' : event.event_id
+      const queue = this.appends.get(key) ?? []
+      queue.push({ event, sourceSeq })
+      this.appends.set(key, queue)
+      if (queue.length === 1) {
+        this.sendContext(key)
+      }
+    }
+  }
+
+  private sendContext(key: string) {
+    const next = this.appends.get(key)?.[0]
+    if (!next) return
+    const { event, sourceSeq } = next
+    try {
       this.channel.send(JSON.stringify(event))
+      this.trace('context_sent', { event_id: event.event_id, request_id: 'delegation_item_id' in event ? event.delegation_item_id : event.delegation_id ?? undefined, source_seq: sourceSeq, detail: event.type })
+      next.timer = setTimeout(() => this.fail('Voice did not acknowledge the agent update. It remains available in the chat.'), 15000)
+    } catch {
+      this.fail('Voice could not receive the agent result. It remains available in the chat.')
     }
   }
 
@@ -122,6 +182,10 @@ export class VoiceConnection {
     if (this.closed) return
     this.closed = true
     clearTimeout(this.timer)
+    for (const queue of this.appends.values()) {
+      clearTimeout(queue[0]?.timer)
+    }
+    this.appends.clear()
     this.abort.abort()
     this.microphone?.getTracks().forEach((track) => track.stop())
     this.audio.pause()
@@ -133,6 +197,7 @@ export class VoiceConnection {
 
   private fail(message: string) {
     if (this.closed) return
+    this.trace('connection_failed', { detail: message })
     this.dispose()
     this.onEvent({ type: 'error', message })
   }

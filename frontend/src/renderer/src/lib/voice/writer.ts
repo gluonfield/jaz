@@ -1,15 +1,15 @@
 import type { VoiceMessage } from '@/lib/api/types'
 
-export class VoiceTranscriptWriter {
-  private pending = new Map<string, VoiceMessage>()
+export class VoiceTranscriptWriter<T extends { id: string; call_id: string } = VoiceMessage> {
+  private pending = new Map<string, T>()
   private saving?: Promise<void>
   private timer?: ReturnType<typeof setTimeout>
   private retryDelay = 1000
   error = ''
 
-  constructor(private save: (messages: VoiceMessage[]) => Promise<void>, private changed: () => void) {}
+  constructor(private save: (messages: T[]) => Promise<void>, private changed: () => void) {}
 
-  append(message: VoiceMessage, final = false) {
+  append(message: T, final = false) {
     this.pending.set(`${message.call_id}:${message.id}`, message)
     clearTimeout(this.timer)
     if (final) {
@@ -36,7 +36,7 @@ export class VoiceTranscriptWriter {
   private async drain() {
     try {
       while (this.pending.size) {
-        const batch: [string, VoiceMessage][] = []
+        const batch: [string, T][] = []
         let bytes = 2
         for (const entry of this.pending.entries()) {
           const size = new TextEncoder().encode(JSON.stringify(entry[1])).length + 1

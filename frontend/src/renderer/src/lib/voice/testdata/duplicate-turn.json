@@ -1,0 +1,36 @@
+[
+  {
+    "type": "delegation.created",
+    "item": {
+      "id": "item_EbXKu9vOfaQ4U4MTMacXn",
+      "type": "delegation",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "It is super weird that this is taking so long. Did you not literally call the tool"
+        }
+      ],
+      "handoff_id": "handoff_3",
+      "target": "client",
+      "user_bidi_turn_id": "turn_EbXKpfRWVzhJqa194GZTQ"
+    },
+    "offset_ms": 43600
+  },
+  {
+    "type": "delegation.created",
+    "item": {
+      "id": "item_EbXLRMncTPGowchnBsQyJ",
+      "type": "delegation",
+      "content": [
+        {
+          "type": "input_text",
+          "text": "It is super weird that this is taking so long. Did you not literally call the tool"
+        }
+      ],
+      "handoff_id": "handoff_4",
+      "target": "client",
+      "user_bidi_turn_id": "turn_EbXKpfRWVzhJqa194GZTQ"
+    },
+    "offset_ms": 77200
+  }
+]

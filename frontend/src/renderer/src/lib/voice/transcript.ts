@@ -18,6 +18,11 @@ export function voiceReplies(snapshot: SessionMessages, events: SessionEvent[]):
   })
 }
 
+export function voiceToolContext(snapshot: SessionMessages): string {
+  const tools = new Map([...(snapshot.acp_tool_calls ?? []), ...voiceThreadEvents(snapshot).flatMap((event) => event.acp?.tool_calls ?? [])].map((tool) => [tool.id, tool]))
+  return `Recorded agent tool calls:\n${[...tools.values()].slice(-8).map((tool) => `${(tool.title || tool.kind || 'tool').slice(0, 300)}: ${tool.status}`).join('\n') || 'No tool calls recorded in the supplied history.'}`
+}
+
 export function voiceChatContext(snapshot: SessionMessages, activeCallId?: string): string {
   const session = snapshot.session
   const events = voiceThreadEvents(snapshot)
@@ -43,6 +48,7 @@ export function voiceChatContext(snapshot: SessionMessages, activeCallId?: strin
     `Selected agent model: ${session.model || 'unknown'}`,
     `Workspace: ${session.runtime_ref?.cwd || 'unknown'}`,
     `Agent status: ${session.status}`,
+    voiceToolContext(snapshot),
     'Recent conversation:',
     ...recent,
   ].join('\n').slice(0, 16000)

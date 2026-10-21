@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 import type { VoiceMessage } from '@/lib/api/types'
 import type { MessageContextInput } from '@/lib/messageContext'
+import type { VoiceDiagnostic } from '@/lib/voice/diagnostics'
 import { get, post, put } from '@/lib/api/client'
 import { keys } from '@/lib/query/keys'
 
@@ -42,4 +43,8 @@ export function sendVoiceTask(sessionId: string, message: string, contexts: Mess
 
 export function saveVoiceTranscript(sessionId: string, messages: VoiceMessage[]): Promise<void> {
   return post(`/v1/sessions/${sessionId}/voice/transcript`, messages)
+}
+
+export function saveVoiceDiagnostics(sessionId: string, records: VoiceDiagnostic[]): Promise<void> {
+  return post(`/v1/sessions/${sessionId}/voice/diagnostics`, records)
 }

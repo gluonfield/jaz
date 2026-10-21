@@ -71,6 +71,19 @@ func (h *Handler) Transcript(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) Diagnostics(w http.ResponseWriter, r *http.Request) {
+	var records []live.Diagnostic
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10)).Decode(&records); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.transcript.Record(r.PathValue("session"), records); err != nil {
+		writeError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func writeError(w http.ResponseWriter, err error) {
 	status := http.StatusBadGateway
 	if errors.Is(err, storage.ErrSessionNotFound) {

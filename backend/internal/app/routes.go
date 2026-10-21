@@ -83,6 +83,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "PUT /v1/settings/voice", Handler: http.HandlerFunc(deps.Voice.Settings)},
 		{Pattern: "POST /v1/voice/connect", Handler: http.HandlerFunc(deps.Voice.Connect)},
 		{Pattern: "POST /v1/sessions/{session}/voice/transcript", Handler: http.HandlerFunc(deps.Voice.Transcript)},
+		{Pattern: "POST /v1/sessions/{session}/voice/diagnostics", Handler: http.HandlerFunc(deps.Voice.Diagnostics)},
 	}
 	routes = append(routes, usageRoutes(deps.Usage)...)
 	push := mobilepushapi.Handler{Service: deps.Push}
