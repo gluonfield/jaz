@@ -76,6 +76,30 @@ func TestVoiceAdmissionThroughSessionAndHTTP(t *testing.T) {
 				if !strings.Contains(records[1].Blocks[0].Text, question.Questions[0].Question) {
 					t.Fatalf("persisted input lost its question: %+v", records[1])
 				}
+				requests, err := os.ReadFile(filepath.Join(root, "requests.jsonl"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				dispatched := 0
+				for _, line := range strings.Split(strings.TrimSpace(string(requests)), "\n") {
+					var request struct {
+						Method string
+						Params struct{ Prompt []struct{ Text string } }
+					}
+					if err := json.Unmarshal([]byte(line), &request); err != nil {
+						t.Fatal(err)
+					}
+					if request.Method == "session/prompt" || request.Method == "_session/steering" {
+						for _, part := range request.Params.Prompt {
+							if strings.Contains(part.Text, "<user_request>\n"+reply+"\n</user_request>") {
+								dispatched++
+							}
+						}
+					}
+				}
+				if dispatched != 1 {
+					t.Fatalf("expected one backing ACP dispatch for the raw reply, got %d", dispatched)
+				}
 				// A new manager has no renderer or in-memory admission set.
 				jaz.manager.Close()
 				next := startJaz(t, jaz.ctx, store, root, map[string]string{})

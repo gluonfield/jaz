@@ -86,6 +86,7 @@ export class VoiceSession {
             }
           }
         }
+        admission.accepted(task.id)
         trace('admitted', { request_id: task.id, user_turn_id: task.id })
         if (abort.signal.aborted) {
           return

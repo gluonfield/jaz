@@ -59,6 +59,13 @@ export class VoiceAdmission {
     this.admit(turn)
   }
 
+  accepted(id: string) {
+    const question = this.turns.get(id)?.question
+    if (question) {
+      this.consumed.add(question.id)
+    }
+  }
+
   private admit(turn: Turn) {
     if (turn.submitted || (!turn.question && !turn.delegation) || (turn.question && turn.final === undefined && (!turn.delegation || turn.delegation.turnBased))) {
       return
@@ -68,9 +75,6 @@ export class VoiceAdmission {
       return
     }
     turn.submitted = true
-    if (turn.question) {
-      this.consumed.add(turn.question.id)
-    }
     this.submit(turn.task, request.text, [turn.question?.text, request.context || `User: ${request.text}`].filter(Boolean).join('\n'))
   }
 }

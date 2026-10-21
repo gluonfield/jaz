@@ -31,7 +31,7 @@ afterEach(async () => {
   originals.clear()
 })
 
-async function fixture({ autoAck = true, history, lostResponse = false } = {}) {
+async function fixture({ autoAck = true, history, lostResponse = false, rejectedInput = false } = {}) {
   const requests = []
   const wire = []
   const states = []
@@ -105,6 +105,10 @@ async function fixture({ autoAck = true, history, lostResponse = false } = {}) {
     } else if (path.endsWith('/connect')) {
       value = { provider: 'openai', sdp: 'v=0\r\nanswer' }
     } else if (path.endsWith('/agent/input')) {
+      if (rejectedInput) {
+        rejectedInput = false
+        return Response.json({ error: 'agent cannot accept this input' }, { status: 409 })
+      }
       const context = body.contexts[0]
       snapshot.messages.push({ seq: snapshot.messages.length + 1, role: 'user', content: body.message, created_at: new Date().toISOString(), blocks: [{ type: 'voice_context', id: context.id, request_id: context.request_id }] })
       if (lostResponse) {
@@ -295,6 +299,21 @@ test('ambiguous HTTP retry preserves the admission identity and original context
   f.delegate('Yeah', 'real-route', 'retry-turn')
   await delay(10)
   expect(inputs(f)).toHaveLength(2)
+})
+
+test('an unadmitted reply leaves the question available for a newer user turn', async () => {
+  const f = await fixture({ rejectedInput: true })
+  teardown(f, ask(f))
+  f.speak('Yeah', 'rejected-turn')
+  await delay(10)
+  expect(inputs(f)).toHaveLength(1)
+  expect(f.snapshot.messages).toHaveLength(0)
+  f.speak('Yeah', 'newer-turn')
+  await delay(10)
+  expect(inputs(f)).toHaveLength(2)
+  expect(f.snapshot.messages).toHaveLength(1)
+  expect(inputs(f)[1].body.contexts[0].request_id).toBe('newer-turn')
+  expect(inputs(f)[1].body.contexts[0].text).toContain('Do you mean Hadrian?')
 })
 
 test('public deltas and a metadata-only delegation admit immediately while a question is pending', async () => {
