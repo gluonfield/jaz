@@ -46,7 +46,7 @@ declare global {
       pointer(type: string, x: number, y: number, button?: 'left' | 'right'): Promise<void>
       key(key: string, modifiers?: string[]): Promise<void>
       wheel(x: number, y: number, deltaY: number, control?: boolean): Promise<void>
-      capture(name?: string): Promise<string>
+      capture(name?: string): Promise<void>
       reducedMotion(reduce: boolean): Promise<void>
       resize(width: number, height: number): Promise<void>
       dropFolder(x: number, y: number): Promise<string>
@@ -85,13 +85,11 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
-      if (!suite || suite === 'appearance') {
+      if (suite === 'appearance') {
         progress('browser page backgrounds in light and dark themes')
-        await exerciseBrowserAppearance()
-        if (suite === 'appearance') {
-          window.smoke.result({ ok: true, checks: ['transparent pages stay readable in light and dark; explicit dark page backgrounds remain intact in webviews and iframes'] })
-          return
-        }
+        await exerciseBrowserAppearance(browser, evaluate)
+        window.smoke.result({ ok: true, checks: ['browser canvases follow the page colour scheme in light and dark Jaz themes; explicit page backgrounds remain intact'] })
+        return
       }
       if (!suite || suite === 'images') {
         progress('inline images after a file overwrite')
@@ -387,6 +385,8 @@ await tab.scroll('down', 0, targetRef)` } })
       if (!codex.ok) {
         throw new Error(await codex.text())
       }
+      progress('browser page backgrounds in light and dark themes')
+      await exerciseBrowserAppearance(browser, evaluate)
       await window.smoke.capture()
       socket.close()
       browser.dispose()

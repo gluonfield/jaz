@@ -10,6 +10,7 @@ export const PREVIEW_WEB_PREFERENCES: WebPreferences = {
   webSecurity: true,
   allowRunningInsecureContent: false,
   webviewTag: false,
+  transparent: false,
 }
 
 export function attachPreviewWebviews(host: WebContents, preload: string): void {

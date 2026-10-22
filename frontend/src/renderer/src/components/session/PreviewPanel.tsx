@@ -382,7 +382,7 @@ export function PreviewPanel({
           <webview
             ref={bindWebview}
             partition={PREVIEW_PARTITION}
-            className="h-full w-full bg-white"
+            className="h-full w-full bg-bg"
           />
         ) : resolvedSourceUrl ? (
           <iframe
@@ -394,7 +394,7 @@ export function PreviewPanel({
             onLoad={() => {
               setLoading(false)
             }}
-            className="h-full w-full border-0 bg-white"
+            className="h-full w-full border-0 bg-bg"
           />
         ) : (
           <div className="flex h-full items-center justify-center px-8 text-center text-[13px] text-ink-3">
