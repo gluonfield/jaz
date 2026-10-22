@@ -12,10 +12,10 @@ func TestRenderFullAndMinimal(t *testing.T) {
 	}
 	full = strings.ReplaceAll(full, "\r\n", "\n")
 	for _, want := range []string{
-		"ACP session codex-plan (codex) completed with state idle.",
+		"ACP session codex-plan (codex) completed a turn with state idle.",
 		"Error: boom",
 		"Assistant result:\ndid the thing",
-		"Continue from this result and report/update the user with relevant details",
+		"Report/update the user with relevant delivered work",
 	} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("missing %q in:\n%s", want, full)

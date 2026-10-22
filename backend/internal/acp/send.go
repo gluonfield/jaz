@@ -285,11 +285,15 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	job.mu.RLock()
 	method := job.steerMethod
 	running := job.turn != nil && (job.State == StateRunning || job.State == StateStarting)
+	planRequested := job.turn != nil && job.turn.planRequested
 	retrying := running && job.turn.retrying
 	asking := len(job.Permissions) > 0
 	job.mu.RUnlock()
 	if !running {
 		return Job{}, errTurnEnded
+	}
+	if req.PlanRequested && !planRequested {
+		return Job{}, fmt.Errorf("cannot switch a running turn to plan mode")
 	}
 	if retrying {
 		return Job{}, errPromptPending

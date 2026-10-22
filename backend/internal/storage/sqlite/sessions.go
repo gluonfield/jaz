@@ -496,6 +496,7 @@ func sessionFromDB(row threaddb.Thread) (storage.Session, error) {
 		ParentID:        row.ParentID.String,
 		Status:          row.Status,
 		Turn:            turn,
+		TurnsEnded:      row.TurnsEnded,
 		Error:           row.Error.String,
 		Runtime:         row.Runtime,
 		ModelProvider:   row.ModelProvider.String,

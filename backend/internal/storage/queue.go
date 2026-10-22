@@ -18,6 +18,7 @@ type QueuedMessage struct {
 	PlanRequested bool              `json:"plan_requested,omitempty"`
 	GoalRequested bool              `json:"goal_requested,omitempty"`
 	Output        *TurnOutput       `json:"output,omitempty"`
+	Result        *TurnResult       `json:"result,omitempty"`
 	// From is the thread whose agent sent the message, or whose result an
 	// internal message reports.
 	From string `json:"from,omitempty"`
@@ -26,6 +27,11 @@ type QueuedMessage struct {
 	ParentOutput *TurnOutput `json:"parent_output,omitempty"`
 	// SentAt is when the user queued the message; Jaz's own have none.
 	SentAt time.Time `json:"sent_at,omitzero"`
+}
+
+type TurnResult struct {
+	Number int64  `json:"number"`
+	Status string `json:"status"`
 }
 
 // SentByAgent reports a prompt an agent sent, which reports its result back
@@ -123,6 +129,7 @@ func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.Text = strings.TrimSpace(message.Text)
 	if message.Action != "" {
 		message.Output = nil
+		message.Result = nil
 		message.Kind = QueuedMessageKindPublic
 		message.Contexts = nil
 		message.Quotes = nil
@@ -134,6 +141,7 @@ func NormalizeQueuedMessage(message QueuedMessage) (QueuedMessage, bool) {
 	message.Kind = normalizeQueuedMessageKind(message.Kind)
 	if !message.IsInternal() {
 		message.Output = nil
+		message.Result = nil
 	}
 	message.Contexts = NormalizeMessageContexts(append(SelectionContexts(message.Quotes), message.Contexts...))
 	message.Quotes = nil
@@ -179,6 +187,7 @@ func (message QueuedMessage) AsInternal() QueuedMessage {
 
 func (message QueuedMessage) AsPublic() QueuedMessage {
 	message.Kind = QueuedMessageKindPublic
+	message.Result = nil
 	return message
 }
 

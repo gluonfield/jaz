@@ -15,7 +15,7 @@ import (
 type MCPService interface {
 	AskUser(context.Context, string, AskUserInput) (AskUserOutput, error)
 	Start(context.Context, SpawnRequest, storage.QueuedMessage) (Job, error)
-	Send(context.Context, SendRequest) (Job, error)
+	Input(context.Context, SteerRequest) (Job, error)
 	WaitThreads(context.Context, []string, time.Duration) (ThreadResults, error)
 	Cancel(context.Context, string) (Job, error)
 	Agents() []string
@@ -38,7 +38,7 @@ func (t *MCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, t.CreateDefinition(), t.Create)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolSendMessageToThread,
-		Description: "Send a follow-up prompt to an idle Jaz thread. The prompt becomes a visible user message. Use threadId from create_thread, list_threads, or search_threads. Returns after dispatch.",
+		Description: "Send a follow-up to a Jaz thread: start an idle thread or steer its running turn through the agent's native capability. A running turn keeps its mode and result routing. Unsupported steering returns an error without stopping the thread. The prompt becomes a visible user message. Use threadId from create_thread, list_threads, or search_threads. Returns after dispatch.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        ToolWaitThreads,
@@ -125,7 +125,7 @@ type MCPSendInput struct {
 }
 
 func (t *MCPTools) Send(ctx context.Context, req *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {
-	job, err := t.Service.Send(ctx, SendRequest{
+	job, err := t.Service.Input(ctx, SteerRequest{
 		Session: input.ThreadID, Message: input.Prompt, PlanRequested: input.Plan,
 		Completion: CompletionAsync, ParentVisible: true, From: mcpsession.SessionID(req),
 	})

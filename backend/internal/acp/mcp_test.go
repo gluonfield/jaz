@@ -34,7 +34,7 @@ func (s *fakeMCPService) Start(_ context.Context, req SpawnRequest, first storag
 	return s.job, nil
 }
 
-func (s *fakeMCPService) Send(_ context.Context, req SendRequest) (Job, error) {
+func (s *fakeMCPService) Input(_ context.Context, req SteerRequest) (Job, error) {
 	s.sent = req
 	return s.job, nil
 }

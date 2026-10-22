@@ -1,4 +1,4 @@
-ACP session {{.Slug}} ({{.Agent}}) completed with state {{.State}}.
+ACP session {{.Slug}} ({{.Agent}}) completed a turn with state {{.State}}.
 {{- if .Error}}
 Error: {{.Error}}
 {{- end}}
@@ -7,4 +7,4 @@ Assistant result:
 {{.Assistant}}
 {{- end}}
 
-Continue from this result and report/update {{.Recipient}} with relevant details: what was delivered, where it lives (files, paths, URLs), and how it was verified. Be concrete and base it only on the result above; do not say work is still in progress.
+Reconcile this completed turn's result with newer user instructions and the thread's current state. Report/update {{.Recipient}} with relevant delivered work, files, URLs and verification. A later turn may already be running; an earlier failure does not establish that it is still blocked.
