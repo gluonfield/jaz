@@ -128,6 +128,9 @@ func TestSessionFileRead(t *testing.T) {
 					if got := res.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 						t.Fatalf("X-Content-Type-Options = %q", got)
 					}
+					if got := res.Header().Get("Cache-Control"); got != "no-store" {
+						t.Fatalf("mutable file Cache-Control = %q, want no-store", got)
+					}
 				}
 			}
 		})

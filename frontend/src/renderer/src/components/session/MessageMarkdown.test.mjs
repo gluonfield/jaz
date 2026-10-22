@@ -197,12 +197,12 @@ test('Markdown file images resolve from the document directory', async () => {
 test('remote and embedded images stay independent of backend credentials', async () => {
   const { markdownImageSource } = await import('@/lib/markdownImages')
   for (const source of ['https://images.example/chart.png?version=2', 'data:image/png;base64,aGVsbG8=']) {
-    expect(markdownImageSource(source, 'session-1')).toBe(source)
+    expect(markdownImageSource(source, 'image-1', 'session-1')).toBe(source)
   }
   for (const source of ['', '#', 'javascript:alert(1)', 'data:text/html;base64,aGVsbG8=', 'ftp://example.com/chart.png', '%6Aavascript:alert(1)']) {
-    expect(markdownImageSource(source, 'session-1')).toBe('')
+    expect(markdownImageSource(source, 'image-1', 'session-1')).toBe('')
   }
-  expect(markdownImageSource('/tmp/chart.png')).toBe('')
+  expect(markdownImageSource('/tmp/chart.png', 'image-1')).toBe('')
 })
 
 test('protocol-relative images remain web URLs in the packaged desktop app', async () => {

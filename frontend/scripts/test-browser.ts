@@ -19,6 +19,7 @@ for (const bookType of ['xlsx', 'xls'] as const) {
 await writeFile(join(output, 'bom.csv'), 'Part,Code,Note\r\n"Motor, large",00123,"line one\nline two"')
 await writeFile(join(output, 'report.html'), `<!doctype html><title>Local report</title><link rel="icon" href="report-icon.svg"><link rel="stylesheet" href="report.css"><script src="report.js" defer></script><h1>Actuator report</h1><a target="_blank" href="bom.csv">BOM CSV</a><a target="_blank" href="workbook.xlsx">Excel workbook</a><a target="_blank" href="workbook.xls">Legacy Excel</a><a target="_blank" href="./calculator:one.html?volume=500#costs">Calculator</a><a target="_blank" href="https://example.com/">External source</a><output></output>`)
 await writeFile(join(output, 'report-icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="#087e8b"/><path d="M7 25 16 6l9 19h-5l-4-9-4 9Z" fill="white"/></svg>')
+await writeFile(join(output, 'cache-chart.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><rect width="12" height="12" fill="red"/></svg>')
 await writeFile(join(output, 'report.css'), 'body{font:16px system-ui;padding:24px}a{display:block;margin:20px 0}h1{color:rgb(12, 90, 50)}')
 await writeFile(join(output, 'report.js'), 'document.querySelector("output").textContent = "Relative script loaded"')
 await writeFile(join(output, 'calculator:one.html'), '<!doctype html><title>Calculator</title><h1>Cost calculator</h1>')
@@ -89,7 +90,7 @@ const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './in
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
     JAZ_BROWSER_SMOKE_TIMEOUT_MS: '180000',
-    JAZ_BROWSER_SMOKE_SUITE: ['welcome', 'bots-live', 'model-picker', 'session-config', 'side-panel', 'linkedin', 'composer', 'app-navigation', 'canvas'].find(suite => process.argv.includes(`--${suite}`)) || '',
+    JAZ_BROWSER_SMOKE_SUITE: ['welcome', 'bots-live', 'model-picker', 'session-config', 'side-panel', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images'].find(suite => process.argv.includes(`--${suite}`)) || '',
   },
   stdout: 'inherit',
   stderr: 'inherit',

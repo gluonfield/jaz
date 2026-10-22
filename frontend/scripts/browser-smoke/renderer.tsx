@@ -31,6 +31,7 @@ import { exerciseConnectCard } from './connect-card'
 import { exerciseAccentText } from './accent-text'
 import { exerciseAppNavigation } from './app-navigation'
 import { exerciseCanvas } from './canvas'
+import { exerciseImages } from './images'
 
 declare global {
   interface Window {
@@ -81,6 +82,15 @@ function Fixture() {
       const evaluate = async (expression: string) => {
         const result = await browser.call({ method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }) as { result: { value: unknown } }
         return result.result.value
+      }
+      const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'images') {
+        progress('inline images after a file overwrite')
+        await exerciseImages()
+        if (suite === 'images') {
+          window.smoke.result({ ok: true, checks: ['new inline images load overwritten files without reloading; text streaming keeps image URLs stable; expanded images show the same contents'] })
+          return
+        }
       }
       if (new URLSearchParams(location.search).get('suite') === 'welcome') {
         await new Promise((resolve) => setTimeout(resolve, 0))
