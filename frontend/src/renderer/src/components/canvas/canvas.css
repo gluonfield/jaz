@@ -38,6 +38,10 @@
   transition-property: --canvas-inset;
 }
 
+.canvas-chat-resizing > .canvas {
+  transition: none;
+}
+
 .canvas-chat {
   transition-property: opacity, translate, scale, visibility;
   transform-origin: bottom;

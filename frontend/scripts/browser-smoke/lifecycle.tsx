@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useState, type CSSProperties } from 'reac
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { BrowserPanelSlot, BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
-import { SidePanelResizeHandle } from '@/components/session/SidePanelResizeHandle'
+import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import { setApiBaseUrl } from '@/lib/api/client'
 import { useBrowserSessions, useSessionPreview, type BrowserSessions } from '@/lib/browserSessions'
 import { isPreviewWebviewPending, type PreviewWebviewElement } from '@/components/session/previewWebview'
@@ -46,7 +46,7 @@ export async function exerciseBrowserLifecycle(backend: string, onStage: (stage:
       browserSessions = sessions
     }, [])
     return <div style={{ position: 'absolute', top: 40, right: 0, width, bottom: 0, '--side-panel-width': `${width}px` } as CSSProperties}>
-      <SidePanelResizeHandle width={width} minWidth={640} maxWidth={800} disabled={!visible} onResize={setWidth} onResizeStart={() => {}} onResizeEnd={() => {}} />
+      <HorizontalResizeHandle label="Resize side panel" width={width} minWidth={640} maxWidth={800} disabled={!visible} onResize={setWidth} onResizeStart={() => {}} onResizeEnd={() => {}} />
       {visible ? <BrowserPanelSlot sessionId={browserId} visible onClose={close} onAddBrowserAnnotation={annotate} /> : <div>Another panel</div>}
     </div>
   }

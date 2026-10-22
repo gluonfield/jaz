@@ -2,7 +2,9 @@ import { useEffect, useRef, type KeyboardEvent, type PointerEvent as ReactPointe
 
 const KEYBOARD_STEP = 24
 
-export function SidePanelResizeHandle({
+export function HorizontalResizeHandle({
+  label,
+  side = 'left',
   width,
   minWidth,
   maxWidth,
@@ -11,6 +13,8 @@ export function SidePanelResizeHandle({
   onResize,
   onResizeEnd,
 }: {
+  label: string
+  side?: 'left' | 'right'
   width: number
   minWidth: number
   maxWidth: number
@@ -40,7 +44,8 @@ export function SidePanelResizeHandle({
 
     const move = (moveEvent: PointerEvent) => {
       moveEvent.preventDefault()
-      onResize(clampWidth(startWidth + startX - moveEvent.clientX, minWidth, maxWidth))
+      const delta = moveEvent.clientX - startX
+      onResize(clampWidth(startWidth + (side === 'right' ? delta : -delta), minWidth, maxWidth))
     }
     const stop = () => {
       if (stopped) {
@@ -81,14 +86,14 @@ export function SidePanelResizeHandle({
       return
     }
     event.preventDefault()
-    const direction = event.key === 'ArrowLeft' ? 1 : -1
+    const direction = (event.key === 'ArrowRight' ? 1 : -1) * (side === 'right' ? 1 : -1)
     onResize(clampWidth(width + direction * KEYBOARD_STEP, minWidth, maxWidth))
   }
 
   return (
     <div
       role="separator"
-      aria-label="Resize side panel"
+      aria-label={label}
       aria-orientation="vertical"
       aria-valuemin={minWidth}
       aria-valuemax={maxWidth}
@@ -97,9 +102,9 @@ export function SidePanelResizeHandle({
       title="Drag left or right to resize · Arrow keys adjust width"
       onPointerDown={startResize}
       onKeyDown={resizeByKeyboard}
-      className="group absolute inset-y-0 left-0 z-shell hidden w-2 cursor-col-resize touch-none items-center justify-center outline-none! sm:flex"
+      className={`group absolute inset-y-0 ${side === 'right' ? 'right-0' : 'left-0'} z-shell hidden w-2 cursor-col-resize touch-none items-center justify-center outline-none! sm:flex`}
     >
-      <span className="absolute inset-y-0 left-0 w-px bg-transparent transition-colors duration-150 group-hover:bg-primary/50 group-focus-visible:bg-primary" />
+      <span className={`absolute inset-y-0 ${side === 'right' ? 'right-0' : 'left-0'} w-px bg-transparent transition-colors duration-150 group-hover:bg-primary/50 group-focus-visible:bg-primary`} />
     </div>
   )
 }
