@@ -17,7 +17,7 @@ export function useCanvasChat(canvas: boolean, waiting: boolean, isMobile: boole
     const saved = Number(localStorage.getItem(CHAT_WIDTH_KEY))
     return Number.isFinite(saved) && saved > 0 ? saved : 360
   })
-  const [containerWidth, setContainerWidth] = useState(0)
+  const [containerWidth, setContainerWidth] = useState<number>()
   const [resizing, setResizing] = useState(false)
   const containerRef = useCallback((element: HTMLDivElement | null) => {
     if (!element) {
@@ -27,9 +27,9 @@ export function useCanvasChat(canvas: boolean, waiting: boolean, isMobile: boole
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
-  const minWidth = Math.min(280, containerWidth || 280)
-  const maxWidth = Math.max(minWidth, Math.min(720, (containerWidth || 960) - 240))
-  const width = isMobile ? Math.min(360, containerWidth || 360) : Math.min(maxWidth, Math.max(minWidth, preferredWidth))
+  const minWidth = Math.min(280, containerWidth ?? 280)
+  const maxWidth = Math.max(minWidth, Math.min(720, (containerWidth ?? 960) - 240))
+  const width = isMobile ? Math.min(360, containerWidth ?? 360) : Math.min(maxWidth, Math.max(minWidth, preferredWidth))
   const resize = useCallback((next: number) => {
     setPreferredWidth(next)
     localStorage.setItem(CHAT_WIDTH_KEY, String(next))

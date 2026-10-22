@@ -14,7 +14,7 @@ import { VoiceProvider } from '@/lib/voice/VoiceProvider'
 export async function exerciseSessionConfig(): Promise<void> {
   const originalSize = { width: window.innerWidth, height: window.innerHeight }
   const savedChatWidth = localStorage.getItem('jaz.canvasChatWidth')
-  localStorage.removeItem('jaz.canvasChatWidth')
+  localStorage.setItem('jaz.canvasChatWidth', '420')
   const session: Session = {
     id: 'config-smoke', slug: 'config-smoke', title: 'Composer settings', runtime: 'acp', status: 'running',
     created_at: '', updated_at: '', last_attention_at: '', runtime_ref: { type: 'acp', agent: 'codex' },
@@ -146,7 +146,7 @@ export async function exerciseSessionConfig(): Promise<void> {
         throw new Error('Chat resize did not release pointer state')
       }
     }
-    await until(() => chatWidth() === 360)
+    await until(() => chatWidth() === 420)
     await dragChat(500)
     await until(() => chatWidth() === 500)
     if (document.activeElement !== resizeHandle()) {
@@ -161,6 +161,11 @@ export async function exerciseSessionConfig(): Promise<void> {
     await dragChat(window.innerWidth - 20)
     await until(() => chatWidth() === Number(resizeHandle().getAttribute('aria-valuemax')))
     await dragChat(500)
+    element.style.width = '0px'
+    await until(() => element.querySelector('.canvas')!.getBoundingClientRect().width === 0)
+    await until(() => chatWidth() === 0)
+    element.style.removeProperty('width')
+    await until(() => chatWidth() === 500)
     const composer = element.querySelector('textarea')!.getBoundingClientRect()
     const chatBounds = element.querySelector('.canvas-chat')!.getBoundingClientRect()
     if (composer.left < chatBounds.left || composer.right > chatBounds.right) {
