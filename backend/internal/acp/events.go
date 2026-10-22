@@ -141,6 +141,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 		<-pending.published
 		cancelled := pending.request
 		cancelled.Status = "cancelled"
+		cancelled.Origin = "user_input"
 		m.removeJobPermission(job, req.RequestID)
 		m.publishPermission(job, cancelled, "permission_response")
 		pending.answer <- permissionAnswer{}

@@ -215,7 +215,11 @@ func (m *Manager) finishTurn(done chan struct{}, job *jobState) {
 	planRequested := turn.planRequested
 	parentVisible := job.ParentVisible
 	job.mu.Unlock()
-	m.cancelPendingPermissions(job.ID)
+	origin := "unknown"
+	if current := job.Snapshot(); current.State == StateIdle && current.StopReason == StopReasonEndTurn {
+		origin = "turn_cleanup"
+	}
+	m.cancelPendingPermissions(job.ID, origin)
 	m.resolveDanglingToolCalls(job)
 	snapshot := job.Snapshot()
 	event := eventViewFromJob(snapshot)

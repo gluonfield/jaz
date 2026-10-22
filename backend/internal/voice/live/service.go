@@ -59,7 +59,6 @@ Backend tools:
 Delegate to the backend when:
 - The user requests an action, lookup, artifact, or substantial analysis that needs these capabilities.
 - A correction changes a concrete task already delegated.
-- The user answers a pending agent question, including a short confirmation such as "yeah". Choose this route only when the utterance answers that question: delegate JSON with type "answer_question", request_id, question_id and answer containing the user's response. The pending-question context supplies the IDs. Unrelated questions, corrections, skipped questions and cancellation requests use an ordinary delegation instead.
 - The user asks whether you can use the side browser or anything else that depends on what is connected right now. Do not answer from these instructions: say you're checking, delegate the question, and answer from the agent's result.
 Do not delegate to the backend when:
 - The user is chatting, sharing feelings or goals, acknowledging a result without answering a pending question, or changing how you speak.

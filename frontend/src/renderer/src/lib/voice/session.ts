@@ -1,11 +1,9 @@
-import { answerSessionInteractiveResponse, getSessionMessagesPage } from '@/lib/api/sessions'
-import { ApiError } from '@/lib/api/response'
+import { getSessionMessagesPage } from '@/lib/api/sessions'
 import { saveVoiceDiagnostics, saveVoiceTranscript, sendVoiceTask } from '@/lib/api/liveVoice'
 import { VoiceConnection } from '@/lib/voice/connection'
 import { openSessionEvents } from '@/lib/api/sse'
-import type { VoiceTask } from '@/lib/voice/delegation'
+import { VoiceAdmission } from '@/lib/voice/admission'
 import { VoiceTaskStream } from '@/lib/voice/taskStream'
-import { voiceQuestionAnswer, type VoiceEvent } from '@/lib/voice/protocol'
 import { VoiceRecorder } from '@/lib/voice/recorder'
 import { VoiceTranscriptWriter } from '@/lib/voice/writer'
 import type { VoiceStatus } from '@shared/voice'
@@ -54,12 +52,8 @@ export class VoiceSession {
     const started = performance.now()
     const trace: VoiceTrace = (stage, detail) => this.diagnostics.append({ id: crypto.randomUUID(), call_id: recorder.callId, stage, at: new Date().toISOString(), elapsed_ms: performance.now() - started, ...detail })
     const transcripts = new Set<string>()
-    const seen = new Set<string>()
-    const pending = new Map<string, Extract<VoiceEvent, { type: 'delegation' }>>()
     let submit = Promise.resolve()
-    let undeliveredContext = ''
     let followError = ''
-    const answered = new Set<string>()
     const stream = new VoiceTaskStream({
       read: () => getSessionMessagesPage(this.sessionId, { turns: 32 }, abort.signal),
       subscribe: (after, onEvent, onConnection) => openSessionEvents(this.sessionId, after, onEvent, onConnection),
@@ -75,73 +69,40 @@ export class VoiceSession {
     }
     this.update({ ...initialVoiceState, phase: 'connecting' })
 
-    const delegate = (event: Extract<VoiceEvent, { type: 'delegation' }>) => {
-      const turnId = event.userTurnId ?? event.id
-      if (seen.has(turnId)) {
-        return
-      }
-      const user = recorder.lines.findLast((line) => line.role === 'user')
-      const answer = voiceQuestionAnswer(event.text)
-      const answerKey = answer && user && `${answer.request_id}:${answer.question_id}:${user.id}`
-      if (answerKey && answered.has(answerKey)) {
-        seen.add(turnId)
-        return
-      }
-      const request = recorder.request(answer ? { ...event, text: answer.answer } : event)
-      if (!request) {
-        pending.set(turnId, event)
-        return
-      }
-      pending.delete(turnId)
-      seen.add(turnId)
-      if (answerKey) {
-        answered.add(answerKey)
-      }
+    const admission = new VoiceAdmission(recorder, () => stream.question(), (task, text, context) => {
       submit = submit.then(async () => {
         if (abort.signal.aborted) {
           return
         }
-        undeliveredContext = [undeliveredContext, request.context || `User: ${request.text}`].filter(Boolean).join('\n')
-        trace('admission_start', { request_id: event.id, user_turn_id: event.userTurnId, detail: answer ? 'question answer' : 'agent input' })
-        if (answer && stream.hasQuestion(answer.request_id, answer.question_id)) {
+        trace('admission_start', { request_id: task.id, user_turn_id: task.id, detail: 'agent input' })
+        const contexts = [{ type: 'voice' as const, id: task.callId, request_id: task.id, text: context }]
+        for (let attempt = 0; ; attempt++) {
           try {
-            await answerSessionInteractiveResponse(this.sessionId, { request_id: answer.request_id, answers: { [answer.question_id]: { answers: [answer.answer] } } })
-            undeliveredContext = ''
-            trace('question_answered', { request_id: event.id, detail: answer.request_id })
-            connection.append(`User answered the agent's question: ${JSON.stringify(answer.answer)}. The agent can now continue.`, false)
-            await stream.refresh()
-            return
+            await sendVoiceTask(this.sessionId, text, contexts, abort.signal)
+            break
           } catch (error) {
-            if (!(error instanceof ApiError) || error.status !== 400) {
+            if (attempt || abort.signal.aborted || (error instanceof Error && 'status' in error && Number(error.status) < 500)) {
               throw error
             }
-            await stream.refresh()
-            if (stream.hasQuestion(answer.request_id, answer.question_id)) {
-              throw error
-            }
-            trace('question_stale', { request_id: event.id, detail: answer.request_id })
           }
         }
-        const contexts = [{ type: 'voice' as const, id: recorder.callId, request_id: event.id, text: undeliveredContext }]
-        const task: VoiceTask = { id: event.id, callId: recorder.callId }
-        await sendVoiceTask(this.sessionId, request.text, contexts, abort.signal)
-        trace('admitted', { request_id: event.id, user_turn_id: event.userTurnId })
-        undeliveredContext = ''
+        admission.accepted(task.id)
+        trace('admitted', { request_id: task.id, user_turn_id: task.id })
         if (abort.signal.aborted) {
           return
         }
         this.update({ error: '' })
-        connection.append(`Agent request accepted: ${JSON.stringify({ request: request.text, status: 'running' })}`, false, event.id)
+        connection.append(`Agent request accepted: ${JSON.stringify({ request: text, status: 'admitted' })}`, false, task.delegationId)
         stream.follow(task)
         this.refresh()
       }).catch((error: Error) => {
         if (abort.signal.aborted) {
           return
         }
-        connection.append(`The agent request failed: ${error.message}`, true, event.id)
+        connection.append(`Could not confirm agent input: ${error.message}`, true, task.delegationId)
         this.update({ error: error.message })
       })
-    }
+    })
 
     let connection: VoiceConnection
     try {
@@ -167,6 +128,7 @@ export class VoiceSession {
             if (event.type === 'transcript_done') {
               trace('transcript_final', { event_id: message.id, detail: message.role })
             }
+            admission.transcript(event, message.id)
             this.writer.append(message, event.type === 'transcript_done')
             this.update({ transcript: recorder.lines })
           }
@@ -180,14 +142,13 @@ export class VoiceSession {
             stream.start()
             break
           }
-          case 'transcript':
-          case 'transcript_done':
-            for (const delegation of pending.values()) {
-              delegate(delegation)
+          case 'turn_started':
+            if (event.role === 'user') {
+              admission.begin(event.userTurnId)
             }
             break
           case 'delegation':
-            delegate(event)
+            admission.delegate(event)
             break
         }
       }, trace)

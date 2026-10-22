@@ -12,12 +12,15 @@ const originals = new Map()
 let session
 
 function replace(name, value) {
-  originals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
+  if (!originals.has(name)) {
+    originals.set(name, Object.getOwnPropertyDescriptor(globalThis, name))
+  }
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value })
 }
 
-afterEach(() => {
+afterEach(async () => {
   session?.dispose()
+  await delay(5)
   for (const [name, descriptor] of originals) {
     if (descriptor) {
       Object.defineProperty(globalThis, name, descriptor)
@@ -28,13 +31,15 @@ afterEach(() => {
   originals.clear()
 })
 
-async function fixture({ staleAnswer = false, autoAck = true } = {}) {
+async function fixture({ autoAck = true, history, lostResponse = false, rejectedInput = false } = {}) {
   const requests = []
   const wire = []
   const states = []
-  const snapshot = { session: { id: 'thread', title: 'Prime', status: 'running', source_type: 'bot' }, messages: [], events: [], acp_state: 'running', acp_permissions: [], latest_event_seq: 0 }
+  const snapshot = history ?? { session: { id: 'thread', title: 'Prime', status: 'running', source_type: 'bot' }, messages: [], events: [], acp_state: 'running', acp_permissions: [], latest_event_seq: 0 }
   const subscriptions = []
-  let seq = 0
+  let seq = snapshot.latest_event_seq
+  let userTurnId
+  let turn = 0
   const track = { enabled: true, stop() {} }
   const media = { getTracks: () => [track], getAudioTracks: () => [track] }
   const channel = {
@@ -100,19 +105,16 @@ async function fixture({ staleAnswer = false, autoAck = true } = {}) {
     } else if (path.endsWith('/connect')) {
       value = { provider: 'openai', sdp: 'v=0\r\nanswer' }
     } else if (path.endsWith('/agent/input')) {
+      if (rejectedInput) {
+        rejectedInput = false
+        return Response.json({ error: 'agent cannot accept this input' }, { status: 409 })
+      }
       const context = body.contexts[0]
       snapshot.messages.push({ seq: snapshot.messages.length + 1, role: 'user', content: body.message, created_at: new Date().toISOString(), blocks: [{ type: 'voice_context', id: context.id, request_id: context.request_id }] })
-    } else if (path.endsWith('/interactive-response')) {
-      const pending = snapshot.acp_permissions.find((permission) => permission.id === body.request_id)
-      expect(pending.status).toBe('pending')
-      expect(body.answers).toEqual({ manufacturer: { answers: ['Yeah'] } })
-      if (staleAnswer) {
-        pending.status = 'cancelled'
-        snapshot.acp_state = 'idle'
-        snapshot.session.status = 'idle'
-        return Response.json({ error: 'pending permission request not found' }, { status: 400 })
+      if (lostResponse) {
+        lostResponse = false
+        throw new TypeError('HTTP response lost after admission')
       }
-      pending.status = 'selected'
     } else if (path.endsWith('/voice/transcript') || path.endsWith('/voice/diagnostics')) {
       return new Response(null, { status: 204 })
     } else {
@@ -128,9 +130,11 @@ async function fixture({ staleAnswer = false, autoAck = true } = {}) {
   await delay(10)
   expect(states.at(-1).phase).toBe('listening')
   const emit = (event) => channel.onmessage({ data: JSON.stringify(event) })
-  const speak = (text) => {
-    emit({ type: 'input_transcript.added', item: { text } })
-    emit({ type: 'turn.done', turn: { role: 'user', transcript: text } })
+  const speak = (text, id = `turn-${++turn}`) => {
+    userTurnId = id
+    emit({ type: 'turn.created', turn: { id, role: 'user' } })
+    emit({ type: 'input_transcript.added', item: { text, user_bidi_turn_id: id } })
+    emit({ type: 'turn.done', turn: { id, role: 'user', transcript: text } })
   }
   const agent = (event) => {
     const record = { session_id: 'thread', at: new Date().toISOString(), seq: ++seq, ...event }
@@ -140,104 +144,206 @@ async function fixture({ staleAnswer = false, autoAck = true } = {}) {
   }
   const texts = () => wire.map((event) => event.content?.[0]?.text ?? '').join('')
   const speakable = () => wire.filter((event) => event.channel === 'speakable').map((event) => event.content[0].text).join('')
-  const delegate = (text, id = crypto.randomUUID()) => emit({ type: 'delegation.created', item: { id, target: 'client', content: [{ type: 'input_text', text }] } })
+  const delegate = (text, id = crypto.randomUUID(), turnId = userTurnId) => emit({ type: 'delegation.created', item: { id, user_bidi_turn_id: turnId, target: 'client', content: [{ type: 'input_text', text }] } })
   return { requests, wire, states, snapshot, channel, emit, speak, agent, texts, speakable, delegate }
 }
 
-const answerChoice = JSON.stringify({ type: 'answer_question', request_id: 'question', question_id: 'manufacturer', answer: 'Yeah' })
+const inputs = (f) => f.requests.filter((request) => request.path.endsWith('/agent/input'))
 
-test('recorded clarification and interruption script uses the real voice session and task stream silently', async () => {
-  const f = await fixture()
-  f.speak('Who manufactures parts like Adrian?')
-  const delegation = { type: 'delegation.created', item: { id: 'research', target: 'client', content: [{ type: 'input_text', text: 'Who manufactures parts like Adrian?' }] } }
-  f.emit(delegation)
-  f.emit(delegation)
-  await delay(10)
-  expect(f.requests.filter((request) => request.path.endsWith('/agent/input'))).toHaveLength(1)
-  const accepted = f.wire.find((event) => event.content?.[0]?.text.startsWith('Agent request accepted:'))
-  expect(accepted.channel).toBe('commentary')
-  expect(accepted.event_id).toBeTruthy()
-  f.agent({ type: 'acp_tool', acp: { id: 'thread', state: 'running', tool_calls: [{ id: 'lookup', title: 'memory_search', status: 'completed', raw_output: { private: 'never say this' } }] } })
-  expect(f.texts()).toContain('memory_search: completed')
-  expect(f.texts()).not.toContain('never say this')
-  f.agent({ type: 'room_message', room_message: { speaker: 'bot', bot_id: 'thread', text: 'Do you mean Hadrian, and other companies like it that manufacture parts?' } })
-  expect(f.speakable()).toContain('Do you mean Hadrian')
-  const permission = { id: 'question', status: 'pending', title: 'Questions', questions: [{ id: 'manufacturer', question: 'Do you mean Hadrian?' }] }
+function ask(f, id = 'question', text = 'Do you mean Hadrian?') {
+  const permission = { id, session_id: 'thread', after_message_seq: f.snapshot.messages.at(-1)?.seq ?? 0, turn_started_at: '2026-10-21T10:00:00Z', status: 'pending', questions: [{ id: 'manufacturer', question: text }] }
   f.snapshot.acp_permissions = [permission]
   f.agent({ type: 'permission_request', permission })
-  await delay(10)
-  expect(f.texts()).toContain("Waiting for the user's answer: Do you mean Hadrian?")
-  f.speak('Yeah')
-  expect(f.requests.filter((request) => request.path.endsWith('/interactive-response'))).toHaveLength(0)
-  f.delegate(answerChoice, 'answer')
-  await delay(10)
-  expect(f.requests.filter((request) => request.path.endsWith('/interactive-response'))).toHaveLength(1)
-  expect(permission.status).toBe('selected')
-  f.delegate(answerChoice, 'late-duplicate')
-  await delay(10)
-  expect(f.requests.filter((request) => request.path.endsWith('/agent/input'))).toHaveLength(1)
-  f.emit({ type: 'output_transcript.added', item: { text: "I'll pull that together" } })
-  f.speak('Wait, did you spawn an agent?')
-  expect(f.states.at(-1).activity).toBe('working')
-  f.agent({ type: 'room_message', room_message: { speaker: 'bot', bot_id: 'thread', text: 'I only searched memory and asked a clarification. I had not started a research thread.' } })
-  expect(f.speakable()).toContain('I only searched memory')
-  expect(f.snapshot.acp_state).toBe('running')
-  f.speak("You should know what you did. Didn't you literally call the tool?")
-  const before = f.speakable()
-  await delay(250)
-  f.agent({ type: 'acp', acp: { id: 'thread', state: 'running' } })
-  expect(f.speakable()).toBe(before)
-  f.agent({ type: 'acp', acp: { id: 'thread', state: 'idle' } })
-  const after = f.speakable()
-  expect(after.match(/I only searched memory/g)).toHaveLength(1)
-  expect(f.states.at(-1).activity).toBe(null)
-})
+  return permission
+}
 
-test.each(['Before that, did you spawn an agent?', 'Stop working on this'])('pending clarification preserves ordinary admission: %s', async (text) => {
-    const f = await fixture()
-    f.snapshot.acp_permissions = [{ id: 'question', status: 'pending', questions: [{ id: 'manufacturer', question: 'Do you mean Hadrian?' }] }]
-    f.agent({ type: 'permission_request', permission: f.snapshot.acp_permissions[0] })
-    await delay(10)
-    f.speak(text)
-    f.delegate(text)
-    await delay(10)
-    expect(f.requests.filter((request) => request.path.endsWith('/interactive-response'))).toHaveLength(0)
-    expect(f.requests.filter((request) => request.path.endsWith('/agent/input')).map((request) => request.body.message)).toEqual([text])
-})
+function teardown(f, permission, origin = 'turn_cleanup') {
+  f.snapshot.acp_permissions = []
+  f.snapshot.session.status = 'idle'
+  f.snapshot.acp_state = 'idle'
+  f.agent({ type: 'acp', acp: { id: 'thread', state: 'idle', stop_reason: 'end_turn' } })
+  f.agent({ type: 'permission_response', permission: { ...permission, status: 'cancelled', origin } })
+}
 
-test('a question cancelled between snapshot and POST falls back once with the original context', async () => {
-  const f = await fixture({ staleAnswer: true })
-  f.snapshot.acp_permissions = [{ id: 'question', status: 'pending', questions: [{ id: 'manufacturer', question: 'Do you mean Hadrian?' }] }]
-  f.agent({ type: 'permission_request', permission: f.snapshot.acp_permissions[0] })
-  await delay(10)
-  f.speak('Yeah')
-  f.delegate(answerChoice, 'late-answer')
-  f.delegate(answerChoice, 'late-answer')
-  await delay(20)
-  const inputs = f.requests.filter((request) => request.path.endsWith('/agent/input'))
-  expect(f.requests.filter((request) => request.path.endsWith('/interactive-response'))).toHaveLength(1)
-  expect(inputs).toHaveLength(1)
-  expect(inputs[0].body.message).toBe('Yeah')
-  expect(inputs[0].body.contexts[0].text).toBe('User: Yeah')
-})
-
-test('ordinary acknowledgements and ambiguous multiple questions never become automatic answers', async () => {
+test('teardown precedes speech: raw reply is admitted without a waiter or provider delegation', async () => {
   const f = await fixture()
-  f.speak('Yeah')
-  f.snapshot.acp_permissions = [{ id: 'many', status: 'pending', questions: [{ id: 'one', question: 'Which company?' }, { id: 'two', question: 'Which country?' }] }]
-  f.agent({ type: 'permission_request', permission: f.snapshot.acp_permissions[0] })
+  teardown(f, ask(f))
+  f.agent({ type: 'room_message', room_message: { speaker: 'bot', bot_id: 'thread', text: 'I have the earlier task ready to continue.' } })
+  f.speak('Yeah', 'late-reply')
+  await delay(20)
+  expect(inputs(f)).toHaveLength(1)
+  expect(inputs(f)[0].body.message).toBe('Yeah')
+  const context = inputs(f)[0].body.contexts[0]
+  expect(context.request_id).toBe('late-reply')
+  expect(context.text).toContain('Do you mean Hadrian?')
+  expect(context.text).toContain('turn_cleanup')
+  expect(context.text).toContain('2026-10-21T10:00:00Z')
+  expect(context.text).toContain('User: Yeah')
+  expect(context.text).toContain('I have the earlier task ready to continue.')
+  expect(f.requests.some((request) => request.path.endsWith('/interactive-response'))).toBe(false)
+  f.agent({ type: 'room_message', room_message: { speaker: 'bot', bot_id: 'thread', text: 'I searched memory and asked for clarification.' } })
+  expect(f.wire.filter((event) => event.channel === 'speakable').every((event) => event.type === 'session.context.append' && !event.delegation_item_id)).toBe(true)
+  f.delegate('Yeah', 'actual-delegation', 'late-reply')
   await delay(10)
-  f.speak('Yeah')
-  await delay(10)
-  expect(f.requests.some((request) => request.path.endsWith('/interactive-response') || request.path.endsWith('/agent/input'))).toBe(false)
-  expect(f.texts()).not.toContain('Agent work completed')
+  expect(inputs(f)).toHaveLength(1)
+  f.agent({ type: 'room_message', room_message: { speaker: 'bot', bot_id: 'thread', text: 'Here is the later result.' } })
+  expect(f.wire.some((event) => event.channel === 'speakable' && event.delegation_item_id === 'actual-delegation')).toBe(true)
 })
 
+test('a finalized native transcript without a start event retains its turn identity', async () => {
+  const f = await fixture()
+  teardown(f, ask(f))
+  f.emit({ type: 'turn.done', turn: { id: 'final-only', role: 'user', transcript: 'Yeah' } })
+  f.delegate('Yeah', 'real-item-1', 'final-only')
+  f.delegate('Yeah', 'real-item-2', 'final-only')
+  await delay(10)
+  expect(inputs(f)).toHaveLength(1)
+  expect(inputs(f)[0].body.contexts[0].request_id).toBe('final-only')
+})
+
+test.each(['Yeah', 'What is the time in London?', 'stop', 'Skip that question', 'I meant another company'])('pending and retained questions admit ordinary raw words: %s', async (text) => {
+  for (const retained of [false, true]) {
+    const f = await fixture()
+    const permission = ask(f)
+    if (retained) {
+      teardown(f, permission)
+    }
+    f.speak(text)
+    await delay(10)
+    expect(inputs(f)).toHaveLength(1)
+    expect(inputs(f)[0].body.message).toBe(text)
+    expect(inputs(f)[0].body.contexts[0].text).toContain('Do you mean Hadrian?')
+    expect(f.requests.some((request) => request.path.endsWith('/interactive-response'))).toBe(false)
+    session.dispose()
+  }
+})
+
+test('remount reconstructs cleanup or unknown origin; explicit Stop retires the question', async () => {
+  for (const origin of ['turn_cleanup', 'unknown', 'user_stop']) {
+    const f = await fixture()
+    teardown(f, ask(f), origin === 'user_stop' ? 'unknown' : origin)
+    if (origin === 'user_stop') {
+      f.agent({ type: 'acp', acp: { id: 'thread', state: 'running', origin: 'user_stop' } })
+      f.agent({ type: 'acp', acp: { id: 'thread', state: 'idle' } })
+    }
+    session.dispose()
+    const next = await fixture({ history: structuredClone(f.snapshot) })
+    next.speak('Yeah')
+    await delay(10)
+    expect(inputs(next)).toHaveLength(origin === 'user_stop' ? 0 : 1)
+    if (origin !== 'user_stop') {
+      expect(inputs(next)[0].body.contexts[0].text).toContain(origin)
+    }
+    session.dispose()
+  }
+})
+
+test('capture freezes the original question before a newer question arrives', async () => {
+  const f = await fixture()
+  ask(f)
+  f.emit({ type: 'turn.created', turn: { id: 'old-reply', role: 'user' } })
+  ask(f, 'new-question', 'Delete the project?')
+  f.emit({ type: 'turn.done', turn: { id: 'old-reply', role: 'user', transcript: 'Yeah' } })
+  await delay(10)
+  expect(inputs(f)[0].body.contexts[0].text).toContain('Do you mean Hadrian?')
+  expect(inputs(f)[0].body.contexts[0].text).not.toContain('Delete the project?')
+})
+
+test('explicit answer, skip or a newer ordinary input consumes automatic eligibility', async () => {
+  for (const resolution of ['answer', 'skip', 'new-input']) {
+    const f = await fixture()
+    const permission = ask(f)
+    if (resolution === 'new-input') {
+      f.snapshot.messages.push({ seq: 1, role: 'user', content: 'another task', created_at: f.snapshot.events.at(-1).at })
+      f.agent({ type: 'session' })
+      await delay(10)
+    } else {
+      f.snapshot.acp_permissions = []
+      f.agent({ type: 'permission_response', permission: { ...permission, status: 'selected', selected_option_id: 'answered', answers: resolution === 'skip' ? {} : { manufacturer: ['Yes'] } } })
+    }
+    f.speak('Yeah')
+    await delay(10)
+    expect(inputs(f)).toHaveLength(0)
+    session.dispose()
+  }
+})
+
+test.each([true, false])('one admission in either arrival order; delegation first: %s', async (first) => {
+  const f = await fixture()
+  teardown(f, ask(f))
+  if (first) {
+    f.delegate('A provider interpretation', 'item-1', 'same-turn')
+  }
+  f.speak('Yeah', 'same-turn')
+  if (!first) {
+    f.delegate('A provider interpretation', 'item-1', 'same-turn')
+  }
+  f.delegate('Yeah', 'item-2', 'same-turn')
+  await delay(10)
+  expect(inputs(f)).toHaveLength(1)
+  expect(inputs(f)[0].body.contexts[0].request_id).toBe('same-turn')
+  expect(inputs(f)[0].body.message).toBe('Yeah')
+  f.speak('What changed?', 'new-turn')
+  f.delegate('What changed?', 'item-3', 'new-turn')
+  await delay(10)
+  expect(inputs(f)).toHaveLength(2)
+})
+
+test('ambiguous HTTP retry preserves the admission identity and original context', async () => {
+  const f = await fixture({ lostResponse: true })
+  teardown(f, ask(f))
+  f.speak('Yeah', 'retry-turn')
+  await delay(20)
+  expect(inputs(f)).toHaveLength(2)
+  expect(inputs(f)[1].body).toEqual(inputs(f)[0].body)
+  f.delegate('Yeah', 'real-route', 'retry-turn')
+  await delay(10)
+  expect(inputs(f)).toHaveLength(2)
+})
+
+test('an unadmitted reply leaves the question available for a newer user turn', async () => {
+  const f = await fixture({ rejectedInput: true })
+  teardown(f, ask(f))
+  f.speak('Yeah', 'rejected-turn')
+  await delay(10)
+  expect(inputs(f)).toHaveLength(1)
+  expect(f.snapshot.messages).toHaveLength(0)
+  f.speak('Yeah', 'newer-turn')
+  await delay(10)
+  expect(inputs(f)).toHaveLength(2)
+  expect(f.snapshot.messages).toHaveLength(1)
+  expect(inputs(f)[1].body.contexts[0].request_id).toBe('newer-turn')
+  expect(inputs(f)[1].body.contexts[0].text).toContain('Do you mean Hadrian?')
+})
+
+for (const assistantTranscript of [false, true]) {
+  test(`public deltas and a metadata-only delegation admit immediately while a question is pending (${assistantTranscript ? 'with' : 'without'} intervening assistant transcript)`, async () => {
+    const f = await fixture()
+    ask(f)
+    f.emit({ type: 'session.input_transcript.delta', delta: 'Yeah', start_ms: 100 })
+    f.emit({ type: 'session.delegation.created', offset_ms: 200, delegation: { id: 'public-first', target: 'client' } })
+    await delay(10)
+    expect(inputs(f)).toHaveLength(1)
+    expect(inputs(f)[0].body.message).toBe('Yeah')
+    expect(inputs(f)[0].body.contexts[0].request_id).toBe('public-first')
+    expect(inputs(f)[0].body.contexts[0].text).toContain('Do you mean Hadrian?')
+    if (assistantTranscript) {
+      f.emit({ type: 'session.output_transcript.delta', delta: 'Understood', start_ms: 210 })
+    }
+    f.emit({ type: 'session.input_transcript.delta', delta: 'What is the time?', start_ms: 300 })
+    f.emit({ type: 'session.delegation.created', offset_ms: 400, delegation: { id: 'public-second', target: 'client' } })
+    f.emit({ type: 'session.delegation.created', offset_ms: 400, delegation: { id: 'public-second', target: 'client' } })
+    await delay(10)
+    expect(inputs(f)).toHaveLength(2)
+    expect(inputs(f)[1].body.message).toBe('What is the time?')
+    expect(inputs(f)[1].body.contexts[0].request_id).toBe('public-second')
+  })
+}
 
 test('captured second delegation for one user turn is ignored after idle and late bot output is still forwarded', async () => {
   const f = await fixture()
   const text = duplicateTurns[0].item.content[0].text
-  f.speak(text)
+  f.speak(text, duplicateTurns[0].item.user_bidi_turn_id)
   f.emit(duplicateTurns[0])
   await delay(10)
   const answer = 'I only searched memory and asked a clarification. I had not started a research thread.'
@@ -258,7 +364,7 @@ test('captured second delegation for one user turn is ignored after idle and lat
   await delay(10)
   expect(f.speakable().match(/I only searched memory/g)).toHaveLength(2)
   // The same words in a genuinely new turn must still be admitted.
-  f.speak(text)
+  f.speak(text, 'different-user-turn')
   f.emit({ ...duplicateTurns[1], item: { ...duplicateTurns[1].item, user_bidi_turn_id: 'different-user-turn' } })
   await delay(10)
   expect(f.requests.filter((request) => request.path.endsWith('/agent/input'))).toHaveLength(2)

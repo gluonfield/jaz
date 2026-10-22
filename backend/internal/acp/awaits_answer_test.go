@@ -85,6 +85,6 @@ func TestAwaitsAnswerFollowsHeldQuestions(t *testing.T) {
 
 	ask("quiet-helper", "perm-quiet")
 	until("a helper's unsurfaced question", map[string]bool{"quiet-helper": true})
-	manager.cancelPendingPermissions(ids["quiet-helper"])
+	manager.cancelPendingPermissions(ids["quiet-helper"], "unknown")
 	until("a dropped question", map[string]bool{})
 }

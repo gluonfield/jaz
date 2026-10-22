@@ -112,6 +112,7 @@ type Manager struct {
 	// serialize a thread's resumes so concurrent sends can't start two agent
 	// processes for it
 	resumeLocks *sessionlock.Locks
+	inputLocks  *sessionlock.Locks
 
 	// admission orders new work against Close: what is admitted under its
 	// read lock is in place before Close stops work, and nothing is once
@@ -256,6 +257,7 @@ func NewManager(store Store, cfg Config, logger *log.Logger) *Manager {
 		pendingPermission: make(map[string]*pendingPermission),
 		projections:       make(map[string]*eventProjection),
 		resumeLocks:       sessionlock.New(),
+		inputLocks:        sessionlock.New(),
 	}
 }
 

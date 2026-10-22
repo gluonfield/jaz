@@ -2,9 +2,10 @@ import type { VoiceProvider } from '@/lib/api/liveVoice'
 
 export type VoiceEvent =
   | { type: 'ready' | 'closed' }
-  | { type: 'transcript'; role: 'user' | 'assistant'; text: string; at?: number; turnBased?: boolean }
-  | { type: 'transcript_done'; role: 'user' | 'assistant'; text: string }
-  | { type: 'delegation'; id: string; userTurnId?: string; text?: string; at?: number }
+  | { type: 'turn_started'; role: 'user' | 'assistant'; userTurnId: string }
+  | { type: 'transcript'; role: 'user' | 'assistant'; text: string; userTurnId?: string; at?: number; turnBased?: boolean }
+  | { type: 'transcript_done'; role: 'user' | 'assistant'; text: string; userTurnId?: string }
+  | { type: 'delegation'; id: string; userTurnId?: string; text?: string; at?: number; turnBased?: boolean }
   | { type: 'error'; message: string }
 
 type WireEvent = {
@@ -13,21 +14,10 @@ type WireEvent = {
   start_ms?: number
   offset_ms?: number
   item?: { user_bidi_turn_id?: string; id?: string; target?: string; text?: string; content?: { type: string; text?: string }[] }
-  turn?: { role?: string; transcript?: string }
+  turn?: { id?: string; role?: string; transcript?: string }
   delegation?: { id: string; target: string }
   error?: { message?: string }
   message?: string
-}
-
-export function voiceQuestionAnswer(text?: string): { request_id: string; question_id: string; answer: string } | undefined {
-  try {
-    const value = JSON.parse(text ?? '')
-    if (value?.type === 'answer_question' && typeof value.request_id === 'string' && typeof value.question_id === 'string' && typeof value.answer === 'string' && value.request_id && value.question_id && value.answer.trim()) {
-      return { request_id: value.request_id, question_id: value.question_id, answer: value.answer.trim() }
-    }
-  } catch {
-    return
-  }
 }
 
 export function decodeVoiceEvent(data: string): VoiceEvent | undefined {
@@ -39,9 +29,12 @@ export function decodeVoiceEvent(data: string): VoiceEvent | undefined {
       return { type: 'closed' }
     case 'input_transcript.added':
     case 'output_transcript.added':
-      return { type: 'transcript', role: event.type === 'input_transcript.added' ? 'user' : 'assistant', text: event.item?.text ?? '', turnBased: true }
+      return { type: 'transcript', role: event.type === 'input_transcript.added' ? 'user' : 'assistant', text: event.item?.text ?? '', turnBased: true, ...(event.item?.user_bidi_turn_id ? { userTurnId: event.item.user_bidi_turn_id } : {}) }
+    case 'turn.created':
+      if (event.turn?.id && (event.turn.role === 'user' || event.turn.role === 'assistant')) return { type: 'turn_started', role: event.turn.role, userTurnId: event.turn.id }
+      return
     case 'turn.done':
-      if (event.turn?.role === 'user' || event.turn?.role === 'assistant') return { type: 'transcript_done', role: event.turn.role, text: event.turn.transcript ?? '' }
+      if (event.turn?.role === 'user' || event.turn?.role === 'assistant') return { type: 'transcript_done', role: event.turn.role, text: event.turn.transcript ?? '', ...(event.turn.id ? { userTurnId: event.turn.id } : {}) }
       return
     case 'session.input_transcript.delta':
     case 'session.output_transcript.delta':
@@ -51,6 +44,7 @@ export function decodeVoiceEvent(data: string): VoiceEvent | undefined {
       return {
         type: 'delegation',
         id: event.item.id,
+        turnBased: true,
         ...(event.item.user_bidi_turn_id ? { userTurnId: event.item.user_bidi_turn_id } : {}),
         text: event.item.content?.filter((part) => part.type === 'input_text').map((part) => part.text ?? '').join('\n'),
       }

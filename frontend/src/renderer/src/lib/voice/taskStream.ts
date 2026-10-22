@@ -1,6 +1,7 @@
 import type { SessionEvent, SessionMessages } from '@/lib/api/types'
 import { coalesceSessionEvents, mergeSessionEvent } from '@/lib/sessionEvents'
 import { taskFinished, voiceAgentRunning, voiceReplyChunks, voiceTaskActivity, voiceTaskUpdate, type VoiceTask } from '@/lib/voice/delegation'
+import { voiceQuestion } from '@/lib/voice/question'
 import { voiceChatContext, voiceToolContext } from '@/lib/voice/transcript'
 import type { VoiceWorkActivity } from '@shared/voice'
 
@@ -46,11 +47,11 @@ export class VoiceTaskStream {
       if (this.stopped || !this.snapshot || event.session_id !== this.snapshot.session.id || (event.acp?.id && event.acp.id !== event.session_id)) {
         return
       }
-      if (event.type === 'session' || event.type === 'assistant' || event.permission) {
+      if (event.type === 'session' || event.type === 'assistant') {
         void this.refresh()
         return
       }
-      if (!event.type.startsWith('acp') && !event.room_message) {
+      if (!event.type.startsWith('acp') && !event.room_message && !event.permission) {
         return
       }
       this.apply(this.snapshot, event)
@@ -79,8 +80,8 @@ export class VoiceTaskStream {
     void this.refresh()
   }
 
-  hasQuestion(requestId: string, questionId: string) {
-    return this.snapshot?.acp_permissions?.some((permission) => permission.id === requestId && permission.status === 'pending' && permission.questions?.some((question) => question.id === questionId)) ?? false
+  question() {
+    return this.snapshot && voiceQuestion(this.snapshot)
   }
 
   refresh(): Promise<void> {
@@ -132,6 +133,13 @@ export class VoiceTaskStream {
     snapshot.latest_event_seq = Math.max(snapshot.latest_event_seq, event.seq ?? 0)
     snapshot.acp_state = event.acp?.state ?? snapshot.acp_state
     snapshot.acp_permissions = event.acp?.permissions ?? snapshot.acp_permissions
+    const permission = event.permission
+    if (permission) {
+      snapshot.acp_permissions = (snapshot.acp_permissions ?? []).filter((existing) => existing.id !== permission.id)
+      if (permission.status === 'pending') {
+        snapshot.acp_permissions.push(permission)
+      }
+    }
   }
 
   private deliver(tasks: VoiceTask[]) {
@@ -146,7 +154,7 @@ export class VoiceTaskStream {
       const finished = taskFinished(update)
       const chunks = !finished || update.state === 'completed' ? voiceReplyChunks(task, snapshot) : []
       for (const chunk of chunks) {
-        this.append(chunk.text, true, task.id, chunk.seq)
+        this.append(chunk.text, true, task.delegationId, chunk.seq)
       }
       const progress = `${update.state}:${update.text}`
       if (progress !== task.progress) {
@@ -154,7 +162,7 @@ export class VoiceTaskStream {
         const hasOutput = Boolean(task.output?.size)
         const speak = update.state === 'approval' || update.state === 'failed' || update.state === 'cancelled' || (update.state === 'waiting' && !hasOutput) || (update.state === 'completed' && !hasOutput)
         const text = update.state === 'completed' && hasOutput ? 'Agent work completed.' : `Agent task ${update.state}: ${update.text.slice(0, 12000)}`
-        this.append(text, speak, task.id)
+        this.append(text, speak, task.delegationId)
       }
       if (finished) {
         if (update.state === 'completed') {
@@ -165,7 +173,7 @@ export class VoiceTaskStream {
     }
     if (!this.tasks.length && snapshot.session.source_type === 'bot' && this.completedTask) {
       for (const chunk of voiceReplyChunks(this.completedTask, snapshot)) {
-        this.append(chunk.text, true, this.completedTask.id, chunk.seq)
+        this.append(chunk.text, true, this.completedTask.delegationId, chunk.seq)
       }
     }
     this.publish()

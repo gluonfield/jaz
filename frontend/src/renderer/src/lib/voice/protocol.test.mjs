@@ -3,7 +3,7 @@ import { TextEncoder } from 'node:util'
 import { decodeVoiceEvent, voiceContextEvents } from './protocol'
 
 test('decodes subscription delegation content and public Live metadata separately', () => {
-  expect(decodeVoiceEvent(JSON.stringify({ type: 'delegation.created', item: { id: 'opaque', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'Check the files' }] } }))).toEqual({ type: 'delegation', id: 'opaque', text: 'Check the files' })
+  expect(decodeVoiceEvent(JSON.stringify({ type: 'delegation.created', item: { id: 'opaque', type: 'delegation', target: 'client', content: [{ type: 'input_text', text: 'Check the files' }] } }))).toEqual({ type: 'delegation', id: 'opaque', turnBased: true, text: 'Check the files' })
   expect(decodeVoiceEvent(JSON.stringify({ type: 'session.delegation.created', offset_ms: 1000, delegation: { id: 'opaque', type: 'delegation', target: 'client' } }))).toEqual({ type: 'delegation', id: 'opaque', at: 1000 })
   expect(decodeVoiceEvent(JSON.stringify({ type: 'session.delegation.created', delegation: { id: 'opaque', target: 'responses' } }))).toBeUndefined()
 })

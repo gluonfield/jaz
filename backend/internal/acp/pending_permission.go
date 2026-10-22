@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type permissionAnswer struct {
@@ -23,6 +24,24 @@ type pendingPermission struct {
 type answerPreparer func(map[string]InteractiveAnswerValue) (map[string]InteractiveAnswerValue, error)
 
 func (m *Manager) awaitPermissionAnswer(ctx context.Context, job *jobState, permission sessionevents.ACPPermission, prepare answerPreparer) permissionAnswer {
+	job.mu.RLock()
+	permission.SessionID = job.ID
+	if job.turn != nil {
+		permission.TurnStartedAt = job.turn.startedAt
+	}
+	job.mu.RUnlock()
+	if reader, ok := m.store.(storage.MessageRecordReader); ok {
+		records, err := reader.LoadMessageRecords(job.ID)
+		if err == nil {
+			var seq int64
+			if len(records) > 0 {
+				seq = records[len(records)-1].Seq
+			}
+			permission.AfterMessageSeq = &seq
+		} else {
+			m.log.Warn("read question conversation boundary", "session", job.ID, "error", err)
+		}
+	}
 	pending := &pendingPermission{
 		sessionID: job.ID, request: permission, prepareAnswers: prepare,
 		answer: make(chan permissionAnswer, 1), published: make(chan struct{}),
@@ -51,6 +70,7 @@ func (m *Manager) awaitPermissionAnswer(ctx context.Context, job *jobState, perm
 		m.permissionMu.Unlock()
 		m.removeJobPermission(job, permission.ID)
 		permission.Status = "cancelled"
+		permission.Origin = "unknown"
 		m.publishPermission(job, permission, "permission_response")
 		return permissionAnswer{}
 	}
@@ -75,11 +95,11 @@ func (m *Manager) AwaitsAnswer(sessionID string) bool {
 	return false
 }
 
-func (m *Manager) cancelPendingPermissions(sessionID string) {
+func (m *Manager) cancelPendingPermissions(sessionID, origin string) {
 	m.permissionMu.Lock()
 	pending := m.takePendingPermissionsLocked(sessionID)
 	m.permissionMu.Unlock()
-	m.cancelPendingPermissionList(pending)
+	m.cancelPendingPermissionList(pending, origin)
 }
 
 func (m *Manager) cancelPendingPermissionsForSteer(job *jobState, done chan struct{}) <-chan struct{} {
@@ -92,7 +112,7 @@ func (m *Manager) cancelPendingPermissionsForSteer(job *jobState, done chan stru
 		handoff = job.currentPromptHandoff(done)
 	}
 	m.permissionMu.Unlock()
-	m.cancelPendingPermissionList(pending)
+	m.cancelPendingPermissionList(pending, "user_input")
 	return handoff
 }
 
@@ -107,11 +127,12 @@ func (m *Manager) takePendingPermissionsLocked(sessionID string) []*pendingPermi
 	return pending
 }
 
-func (m *Manager) cancelPendingPermissionList(pending []*pendingPermission) {
+func (m *Manager) cancelPendingPermissionList(pending []*pendingPermission, origin string) {
 	for _, candidate := range pending {
 		<-candidate.published
 		cancelled := candidate.request
 		cancelled.Status = "cancelled"
+		cancelled.Origin = origin
 		if job := m.jobByID(candidate.sessionID); job != nil {
 			m.removeJobPermission(job, candidate.request.ID)
 			m.publishPermission(job, cancelled, "permission_response")

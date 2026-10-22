@@ -5,6 +5,7 @@ import type { VoiceWorkActivity } from '@shared/voice'
 export interface VoiceTask {
   id: string
   callId: string
+  delegationId?: string
   user?: ChatMessage
   progress?: string
   output?: Map<string, string>
