@@ -386,6 +386,10 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 		return session, nil, false, nil
 	}
 	prompts := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
+	prompts, err = s.filterSupersededResults(prompts)
+	if err != nil {
+		return session, nil, false, err
+	}
 	if len(prompts) == 0 {
 		// Empty queue still yields work when a goal is live; otherwise drop any
 		// stale (non-canonical) entries and report nothing to run. A goal goes
@@ -651,15 +655,19 @@ func (s *Server) startQueuedPrompt(ctx context.Context, session storage.Session,
 			return err
 		}
 		if prompt.IsInternal() {
+			message, err := s.internalPrompt(prompt)
+			if err != nil {
+				return err
+			}
 			var loop loops.Loop
 			if run := prompt.Output.LoopRun(); run != "" {
-				if loop, prompt.Text, err = s.Loops.Begin(run, session.ID); err != nil {
+				if loop, message, err = s.Loops.Begin(run, session.ID); err != nil {
 					return err
 				}
 			}
 			if _, err := s.ACP.StartInternalTurn(ctx, acp.InternalTurnRequest{
 				Session:      session.ID,
-				Message:      prompt.Text,
+				Message:      message,
 				Output:       prompt.Output,
 				AllowSilence: true,
 			}); err != nil {

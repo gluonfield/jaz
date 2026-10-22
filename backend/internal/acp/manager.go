@@ -180,6 +180,7 @@ type SendRequest struct {
 	// ParentOutput is what the parent turn that sent Message was answering;
 	// the result goes on to answer it.
 	ParentOutput *storage.TurnOutput
+	transcript   sendTranscriptMode
 }
 
 type CompactRequest struct {
@@ -191,16 +192,7 @@ const (
 	CompactCommand         = "/compact"
 )
 
-type SteerRequest struct {
-	FromUser      bool
-	Session       string
-	Message       string
-	Contexts      []storage.MessageContext
-	Attachments   []storage.Attachment
-	GoalRequested bool
-	ParentVisible bool
-	transcript    sendTranscriptMode
-}
+type SteerRequest = SendRequest
 
 type InteractiveAnswer struct {
 	Session       string

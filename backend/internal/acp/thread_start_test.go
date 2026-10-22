@@ -228,8 +228,8 @@ func TestAMessageSentWhileAThreadStartsLeavesItsFirstPromptToRunFirst(t *testing
 	}()
 	time.Sleep(100 * time.Millisecond)
 	release()
-	if err := <-sent; err == nil || !strings.Contains(err.Error(), "already running") {
-		t.Fatalf("message sent while the agent started: %v; want it refused as busy", err)
+	if err := <-sent; !errors.Is(err, acp.ErrSteeringUnsupported) {
+		t.Fatalf("message sent while the agent started: %v; want unsupported steering refused", err)
 	}
 	done, err := jaz.manager.WaitThreads(jaz.ctx, []string{thread.ThreadID}, 10*time.Second)
 	if err != nil || len(done.Threads) != 1 || done.Threads[0].State != acp.StateIdle || done.Threads[0].Assistant == "" {

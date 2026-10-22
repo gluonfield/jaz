@@ -9,6 +9,7 @@ import (
 )
 
 func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
+	req.Completion = CompletionAsync
 	for _, voice := range storage.NormalizeMessageContexts(req.Contexts) {
 		if voice.Type != storage.ContextTypeVoice || voice.ID == "" || voice.RequestID == "" {
 			continue
@@ -42,10 +43,7 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 		if err := ctx.Err(); err != nil {
 			return Job{}, err
 		}
-		job, err := m.Send(ctx, SendRequest{
-			Session: req.Session, Message: req.Message, Contexts: req.Contexts, Attachments: req.Attachments,
-			Completion: CompletionAsync, GoalRequested: req.GoalRequested, ParentVisible: req.ParentVisible, FromUser: req.FromUser,
-		})
+		job, err := m.Send(ctx, req)
 		var active *turnInProgressError
 		if !errors.As(err, &active) {
 			return job, err

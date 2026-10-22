@@ -153,7 +153,7 @@ func TestAWorkerTurnEndedByAFailureNotToRetryReportsFailedToItsBot(t *testing.T)
 			if session := jaz.session(worker.SessionID); session.Status != storage.StatusError || session.Error == "" {
 				t.Fatalf("worker = %s %q", session.Status, session.Error)
 			}
-			jaz.eventually("the bot hearing of the failure", func() bool { return jaz.promptsContaining("completed with state failed") == 1 })
+			jaz.eventually("the bot hearing of the failure", func() bool { return jaz.promptsContaining("completed a turn with state failed") == 1 })
 			jaz.eventually("the bot finishing its follow-up turns", func() bool {
 				session := jaz.session(bot.ID)
 				return session.Status == storage.StatusIdle && len(session.QueuedMessages) == 0 && jaz.finishing.Load() == 0

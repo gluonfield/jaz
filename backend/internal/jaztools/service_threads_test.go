@@ -33,7 +33,7 @@ func (s fakeACPService) Start(_ context.Context, req acp.SpawnRequest, _ storage
 	return acp.Job{ID: "child", Slug: req.Slug, ACPAgent: req.ACPAgent, State: acp.StateStarting}, nil
 }
 
-func (s fakeACPService) Send(context.Context, acp.SendRequest) (acp.Job, error) {
+func (s fakeACPService) Input(context.Context, acp.SteerRequest) (acp.Job, error) {
 	return acp.Job{}, nil
 }
 
