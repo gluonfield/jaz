@@ -134,7 +134,7 @@ func (s *Server) filterSupersededResults(prompts []storage.QueuedMessage) ([]sto
 }
 
 func (s *Server) internalPrompt(prompt storage.QueuedMessage) (string, error) {
-	if prompt.From == "" || prompt.Result != nil {
+	if prompt.From == "" {
 		return prompt.Text, nil
 	}
 	source, err := s.Store.LoadSession(prompt.From)
