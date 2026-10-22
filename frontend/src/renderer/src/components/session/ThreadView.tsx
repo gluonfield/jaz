@@ -37,6 +37,7 @@ import { liveOptimisticUserMessage } from '@/components/session/liveTranscript'
 import { useLiveSessionSend } from '@/components/session/useLiveSessionSend'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Button } from '@/components/ui/Button'
+import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import { FileDropScope } from '@/components/ui/FileDrop'
 import { useToast } from '@/components/ui/toast'
 import { markThreadSeen } from '@/lib/api/feed'
@@ -374,7 +375,7 @@ export function ThreadView({
     () => (data ? deriveSessionView(data, events.data, overviewData) : undefined),
     [data, events.data, overviewData],
   )
-  const canvasChat = useCanvasChat(canvas, Boolean(derived?.hasBlockingPendingPermission))
+  const canvasChat = useCanvasChat(canvas, Boolean(derived?.hasBlockingPendingPermission), isMobile)
   if (detail.isPending) {
     return <PendingSessionHistory sessionId={sessionId} initialPrompt={initialPrompt} />
   }
@@ -475,12 +476,23 @@ export function ThreadView({
           {isMobile && sidePanel.open ? (
             <div className="fixed inset-0 z-scrim" aria-hidden onClick={sidePanel.close} />
           ) : null}
-          {sidePanel.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
+          {sidePanel.resizing || canvasChat.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
           {/* A canvas thread's chat lies over the board's left edge, as Figma's
               panels do. Hiding it sinks the transcript into the composer, which
               stays; the board never moves. */}
-          <div className={`h-full min-w-0 ${canvas ? `absolute inset-y-0 left-0 z-10 w-[360px] ${canvasChat.shown ? '' : 'pointer-events-none'}` : 'relative flex-1'}`}>
+          <div style={canvas ? { width: canvasChat.width } : undefined} className={`h-full min-w-0 ${canvas ? `absolute inset-y-0 left-0 z-10 ${canvasChat.shown ? '' : 'pointer-events-none'}` : 'relative flex-1'}`}>
+            {canvas && canvasChat.shown && !isMobile ? <HorizontalResizeHandle
+              label="Resize canvas chat"
+              side="right"
+              width={canvasChat.width}
+              minWidth={canvasChat.minWidth}
+              maxWidth={canvasChat.maxWidth}
+              disabled={false}
+              onResizeStart={() => canvasChat.setResizing(true)}
+              onResize={canvasChat.resize}
+              onResizeEnd={() => canvasChat.setResizing(false)}
+            /> : null}
             <div
               ref={attachScroll}
               inert={!canvasChat.shown}
@@ -654,8 +666,8 @@ export function ThreadView({
           </div>
           <div ref={canvas ? sidePanel.containerRef : undefined} className={canvas ? 'flex h-full min-w-0 flex-1' : 'contents'}>
             {canvas ? (
-              <div className="relative h-full min-w-0 flex-1">
-                <ThreadCanvas sessionId={session.id} inset={canvasChat.shown ? 360 : 0} working={sessionRunning} selection={canvasContexts.selection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
+              <div ref={canvasChat.containerRef} className={`relative h-full min-w-0 flex-1${canvasChat.resizing ? ' canvas-chat-resizing' : ''}`}>
+                <ThreadCanvas sessionId={session.id} inset={canvasChat.shown ? canvasChat.width : 0} working={sessionRunning} selection={canvasContexts.selection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
               </div>
             ) : null}
 

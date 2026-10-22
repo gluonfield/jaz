@@ -1,7 +1,7 @@
 import { spring } from 'motion'
 import { motion, useReducedMotion } from 'motion/react'
 import type { CSSProperties, ReactNode } from 'react'
-import { SidePanelResizeHandle } from '@/components/session/SidePanelResizeHandle'
+import { HorizontalResizeHandle } from '@/components/ui/HorizontalResizeHandle'
 import type { useSidePanelState } from '@/components/session/SidePanelState'
 
 export const panelSpring = { stiffness: 400, damping: 36 }
@@ -26,7 +26,8 @@ export function SidePanelDrawer({ panel, isMobile, children }: {
     animate={{ x: isMobile && !panel.open ? '100%' : 0 }}
     transition={panel.resizing || reducedMotion ? { duration: 0 } : { type: 'spring', ...panelSpring }}
   >
-    {panel.resizable ? <SidePanelResizeHandle
+    {panel.resizable ? <HorizontalResizeHandle
+      label="Resize side panel"
       width={panel.width}
       minWidth={panel.minWidth}
       maxWidth={panel.maxWidth}

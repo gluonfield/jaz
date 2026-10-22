@@ -13,6 +13,8 @@ import { VoiceProvider } from '@/lib/voice/VoiceProvider'
 
 export async function exerciseSessionConfig(): Promise<void> {
   const originalSize = { width: window.innerWidth, height: window.innerHeight }
+  const savedChatWidth = localStorage.getItem('jaz.canvasChatWidth')
+  localStorage.setItem('jaz.canvasChatWidth', '420')
   const session: Session = {
     id: 'config-smoke', slug: 'config-smoke', title: 'Composer settings', runtime: 'acp', status: 'running',
     created_at: '', updated_at: '', last_attention_at: '', runtime_ref: { type: 'acp', agent: 'codex' },
@@ -125,19 +127,67 @@ export async function exerciseSessionConfig(): Promise<void> {
       messages: [], events: [], latest_event_seq: 0,
     })
     await until(() => Boolean(element.querySelector('.canvas')))
+    const resizeHandle = () => element.querySelector<HTMLElement>('[aria-label="Resize canvas chat"]')!
+    const chatWidth = () => element.querySelector('.canvas-chat')!.parentElement!.getBoundingClientRect().width
+    const dragChat = async (targetWidth: number) => {
+      const grip = resizeHandle().getBoundingClientRect()
+      const x = Math.round(grip.x + grip.width / 2)
+      const y = Math.round(grip.y + grip.height / 3)
+      const next = Math.round(x + targetWidth - chatWidth())
+      await window.smoke.pointer('mouseMove', x, y)
+      await window.smoke.pointer('mouseDown', x, y)
+      await window.smoke.pointer('mouseMove', next, y)
+      const canvas = element.querySelector<HTMLElement>('.canvas')!
+      if (Math.abs(Number.parseFloat(getComputedStyle(canvas).getPropertyValue('--canvas-inset')) - chatWidth()) > 1) {
+        throw new Error('Canvas controls lag behind the chat during a drag')
+      }
+      await window.smoke.pointer('mouseUp', next, y)
+      if (document.body.style.cursor === 'col-resize' || document.body.style.userSelect === 'none') {
+        throw new Error('Chat resize did not release pointer state')
+      }
+    }
+    await until(() => chatWidth() === 420)
+    await dragChat(500)
+    await until(() => chatWidth() === 500)
+    if (document.activeElement !== resizeHandle()) {
+      throw new Error('Dragging the chat divider lost keyboard focus')
+    }
+    await window.smoke.key('Right')
+    await until(() => chatWidth() === 524)
+    await window.smoke.key('Left')
+    await until(() => chatWidth() === 500)
+    await dragChat(10)
+    await until(() => chatWidth() === Number(resizeHandle().getAttribute('aria-valuemin')))
+    await dragChat(window.innerWidth - 20)
+    await until(() => chatWidth() === Number(resizeHandle().getAttribute('aria-valuemax')))
+    await dragChat(500)
+    element.style.width = '0px'
+    await until(() => element.querySelector('.canvas')!.getBoundingClientRect().width === 0)
+    await until(() => chatWidth() === 0)
+    element.style.removeProperty('width')
+    await until(() => chatWidth() === 500)
+    const composer = element.querySelector('textarea')!.getBoundingClientRect()
+    const chatBounds = element.querySelector('.canvas-chat')!.getBoundingClientRect()
+    if (composer.left < chatBounds.left || composer.right > chatBounds.right) {
+      throw new Error('The composer did not follow the resized chat')
+    }
+    await window.smoke.capture('canvas-chat-resized')
     const chatToggle = () => element.querySelector<HTMLButtonElement>('button[aria-label$=" chat"]')!
     const transcript = element.querySelector('.scrollbar-quiet.overflow-y-auto')!
     const chatArea = transcript.getBoundingClientRect()
     const boardLeft = element.querySelector('.canvas')!.getBoundingClientRect().left
     const onBoard = () => Boolean(document.elementFromPoint(chatArea.x + chatArea.width / 2, chatArea.y + chatArea.height / 3)?.closest('.canvas'))
     chatToggle().click()
-    await until(() => chatToggle().getAttribute('aria-label') === 'Show chat' && !transcript.checkVisibility({ visibilityProperty: true }), 'Hiding the chat left the transcript visible')
+    await until(() => chatToggle().getAttribute('aria-label') === 'Show chat' && !transcript.checkVisibility({ visibilityProperty: true }) && !resizeHandle())
     const draft = element.querySelector('textarea')!.getBoundingClientRect()
     if (!onBoard() || element.querySelector('.canvas')!.getBoundingClientRect().left !== boardLeft || !document.elementFromPoint(draft.x + draft.width / 2, draft.y + draft.height / 2)?.closest('textarea')) {
       throw new Error('Hiding the chat did not leave only the composer over an unmoved board')
     }
     chatToggle().click()
     await until(() => chatToggle().getAttribute('aria-label') === 'Hide chat' && transcript.checkVisibility({ visibilityProperty: true }) && !onBoard())
+    if (chatWidth() !== 500) {
+      throw new Error('Hiding and showing the chat lost its resized width')
+    }
     const panelButton = element.querySelector<HTMLButtonElement>('button[aria-label="Side Panel"]')
     if (!panelButton || !element.querySelector('button[aria-label="Overview"]')) {
       throw new Error('Canvas mode hides the side panel controls')
@@ -183,6 +233,9 @@ export async function exerciseSessionConfig(): Promise<void> {
     await window.smoke.capture('canvas-side-panel')
     await window.smoke.resize(390, 844)
     await until(() => window.innerWidth === 390 && Math.abs(drawer.getBoundingClientRect().width - 390) < 1 && Math.abs(drawer.getBoundingClientRect().left) < 1)
+    if (resizeHandle() || chatWidth() > 390) {
+      throw new Error('Desktop chat resizing leaked into the phone layout')
+    }
     const controlBounds = panelButton.getBoundingClientRect()
     const x = Math.round(controlBounds.x + controlBounds.width / 2)
     const y = Math.round(controlBounds.y + controlBounds.height / 2)
@@ -200,6 +253,11 @@ export async function exerciseSessionConfig(): Promise<void> {
     client.clear()
     element.remove()
     window.fetch = originalFetch
+    if (savedChatWidth === null) {
+      localStorage.removeItem('jaz.canvasChatWidth')
+    } else {
+      localStorage.setItem('jaz.canvasChatWidth', savedChatWidth)
+    }
     await window.smoke.resize(originalSize.width, originalSize.height)
   }
 }
