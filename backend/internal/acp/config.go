@@ -309,6 +309,7 @@ func BuiltinAgents() AgentCatalog {
 			ManagedAdapter:  "claude",
 			Model:           "opus[1m]",
 			ReasoningEffort: DefaultAgentReasoningEffort(AgentClaude),
+			Env:             map[string]string{"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "400000"},
 		},
 		AgentKimi: {
 			ManagedAdapter:     "kimi",
