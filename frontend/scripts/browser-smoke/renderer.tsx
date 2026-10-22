@@ -32,6 +32,7 @@ import { exerciseAccentText } from './accent-text'
 import { exerciseAppNavigation } from './app-navigation'
 import { exerciseCanvas } from './canvas'
 import { exerciseImages } from './images'
+import { exerciseBrowserAppearance } from './appearance'
 
 declare global {
   interface Window {
@@ -45,7 +46,7 @@ declare global {
       pointer(type: string, x: number, y: number, button?: 'left' | 'right'): Promise<void>
       key(key: string, modifiers?: string[]): Promise<void>
       wheel(x: number, y: number, deltaY: number, control?: boolean): Promise<void>
-      capture(name?: string): Promise<void>
+      capture(name?: string): Promise<string>
       reducedMotion(reduce: boolean): Promise<void>
       resize(width: number, height: number): Promise<void>
       dropFolder(x: number, y: number): Promise<string>
@@ -84,6 +85,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'appearance') {
+        progress('browser page backgrounds in light and dark themes')
+        await exerciseBrowserAppearance()
+        if (suite === 'appearance') {
+          window.smoke.result({ ok: true, checks: ['transparent pages stay readable in light and dark; explicit dark page backgrounds remain intact in webviews and iframes'] })
+          return
+        }
+      }
       if (!suite || suite === 'images') {
         progress('inline images after a file overwrite')
         await exerciseImages()

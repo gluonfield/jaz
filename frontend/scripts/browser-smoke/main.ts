@@ -85,6 +85,11 @@ const server = createServer(async (request, response) => {
     response.end('{"ok":true}')
     return
   }
+  if (request.url === '/appearance') {
+    response.setHeader('Content-Type', 'text/html')
+    response.end('<!doctype html><style>body{color:#1d1d1f;font:24px system-ui}html.dark{background:#121212;color-scheme:dark}html.dark body{color:#eee}</style><h1>Readable page</h1>')
+    return
+  }
   if (request.url === '/navigation-frame') {
     response.setHeader('Content-Type', 'text/html')
     response.end('<script>addEventListener("message", () => { location.hash = "check" })</script>')
@@ -284,6 +289,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     }
     const screenshot = await window.webContents.capturePage()
     await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, name + '.png'), screenshot.toPNG())
+    return screenshot.toDataURL()
   })
   ipcMain.handle('smoke:reduced-motion', (_event, reduce: boolean) => window.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: reduce ? 'reduce' : 'no-preference' }] }))
   ipcMain.handle('smoke:resize', (_event, width: number, height: number) => {
