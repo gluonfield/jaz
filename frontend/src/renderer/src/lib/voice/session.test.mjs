@@ -316,25 +316,29 @@ test('an unadmitted reply leaves the question available for a newer user turn', 
   expect(inputs(f)[1].body.contexts[0].text).toContain('Do you mean Hadrian?')
 })
 
-test('public deltas and a metadata-only delegation admit immediately while a question is pending', async () => {
-  const f = await fixture()
-  ask(f)
-  f.emit({ type: 'session.input_transcript.delta', delta: 'Yeah', start_ms: 100 })
-  f.emit({ type: 'session.delegation.created', offset_ms: 200, delegation: { id: 'public-first', target: 'client' } })
-  await delay(10)
-  expect(inputs(f)).toHaveLength(1)
-  expect(inputs(f)[0].body.message).toBe('Yeah')
-  expect(inputs(f)[0].body.contexts[0].request_id).toBe('public-first')
-  expect(inputs(f)[0].body.contexts[0].text).toContain('Do you mean Hadrian?')
-  f.emit({ type: 'session.output_transcript.delta', delta: 'Understood', start_ms: 210 })
-  f.emit({ type: 'session.input_transcript.delta', delta: 'What is the time?', start_ms: 300 })
-  f.emit({ type: 'session.delegation.created', offset_ms: 400, delegation: { id: 'public-second', target: 'client' } })
-  f.emit({ type: 'session.delegation.created', offset_ms: 400, delegation: { id: 'public-second', target: 'client' } })
-  await delay(10)
-  expect(inputs(f)).toHaveLength(2)
-  expect(inputs(f)[1].body.message).toBe('What is the time?')
-  expect(inputs(f)[1].body.contexts[0].request_id).toBe('public-second')
-})
+for (const assistantTranscript of [false, true]) {
+  test(`public deltas and a metadata-only delegation admit immediately while a question is pending (${assistantTranscript ? 'with' : 'without'} intervening assistant transcript)`, async () => {
+    const f = await fixture()
+    ask(f)
+    f.emit({ type: 'session.input_transcript.delta', delta: 'Yeah', start_ms: 100 })
+    f.emit({ type: 'session.delegation.created', offset_ms: 200, delegation: { id: 'public-first', target: 'client' } })
+    await delay(10)
+    expect(inputs(f)).toHaveLength(1)
+    expect(inputs(f)[0].body.message).toBe('Yeah')
+    expect(inputs(f)[0].body.contexts[0].request_id).toBe('public-first')
+    expect(inputs(f)[0].body.contexts[0].text).toContain('Do you mean Hadrian?')
+    if (assistantTranscript) {
+      f.emit({ type: 'session.output_transcript.delta', delta: 'Understood', start_ms: 210 })
+    }
+    f.emit({ type: 'session.input_transcript.delta', delta: 'What is the time?', start_ms: 300 })
+    f.emit({ type: 'session.delegation.created', offset_ms: 400, delegation: { id: 'public-second', target: 'client' } })
+    f.emit({ type: 'session.delegation.created', offset_ms: 400, delegation: { id: 'public-second', target: 'client' } })
+    await delay(10)
+    expect(inputs(f)).toHaveLength(2)
+    expect(inputs(f)[1].body.message).toBe('What is the time?')
+    expect(inputs(f)[1].body.contexts[0].request_id).toBe('public-second')
+  })
+}
 
 test('captured second delegation for one user turn is ignored after idle and late bot output is still forwarded', async () => {
   const f = await fixture()
