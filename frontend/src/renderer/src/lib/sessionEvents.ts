@@ -11,10 +11,12 @@ export function isParentChildACPEvent(event: SessionEvent): boolean {
   )
 }
 
-export type SessionEventPlacement = 'transcript' | 'overview' | 'side_chat'
+export type SessionEventPlacement = 'transcript' | 'overview' | 'side_chat' | 'internal'
 
 export function sessionEventPlacement(event: SessionEvent): SessionEventPlacement {
   switch (event.type) {
+    case 'voice_diagnostic':
+      return 'internal'
     case 'acp':
       return isParentChildACPEvent(event) && !taskSurfaceFromEvent(event) ? 'overview' : 'transcript'
     case 'agent_session':

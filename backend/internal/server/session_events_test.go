@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,7 +16,72 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
+	"github.com/wins/jaz/backend/internal/voice/live"
 )
+
+func TestStreamSessionEventsKeepsVoiceDiagnosticsPrivate(t *testing.T) {
+	for _, replay := range []bool{true, false} {
+		t.Run(fmt.Sprint("replay=", replay), func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := store.CreateSession(storage.CreateSession{Slug: "voice"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			bus := sessionevents.New()
+			voice := live.NewTranscript(store, bus)
+			publish := func() {
+				t.Helper()
+				if err := voice.Record(session.ID, []live.Diagnostic{{ID: "receipt", CallID: "call", Stage: "append_ack", At: time.Now().UTC()}}); err != nil {
+					t.Fatal(err)
+				}
+				if err := voice.Append(session.ID, []sessionevents.VoiceMessage{{ID: "speech", CallID: "call", Role: "assistant", Text: "Here are the slides."}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if replay {
+				publish()
+			}
+			srv := &Server{Store: store, Events: bus}
+			httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				srv.streamSessionEvents(w, r, session.ID)
+			}))
+			t.Cleanup(httpServer.Close)
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, httpServer.URL, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer res.Body.Close()
+			if !replay {
+				publish()
+			}
+			scanner := bufio.NewScanner(res.Body)
+			for scanner.Scan() {
+				data, ok := strings.CutPrefix(scanner.Text(), "data: ")
+				if !ok {
+					continue
+				}
+				var event sessionevents.Event
+				if err := json.Unmarshal([]byte(data), &event); err != nil {
+					t.Fatal(err)
+				}
+				if event.Voice == nil || event.Voice.Text != "Here are the slides." {
+					t.Fatalf("unexpected voice stream event: %s", data)
+				}
+				return
+			}
+			t.Fatalf("speech missing from stream: %v", scanner.Err())
+		})
+	}
+}
 
 type countingEventStore struct {
 	storage.Store

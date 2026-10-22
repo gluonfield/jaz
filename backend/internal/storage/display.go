@@ -16,7 +16,7 @@ func DisplayEvents(events []sessionevents.Event) []sessionevents.Event {
 }
 
 func DisplayEvent(event sessionevents.Event) (sessionevents.Event, bool) {
-	if codexcompat.IsHiddenWarningEvent(event) {
+	if event.Type == "voice_diagnostic" || codexcompat.IsHiddenWarningEvent(event) {
 		return sessionevents.Event{}, false
 	}
 	projection, ok, err := GoalProjectionFromEvent(event)

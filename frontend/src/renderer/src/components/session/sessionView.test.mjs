@@ -32,6 +32,23 @@ const data = (events = [], userAt = 1) => ({
   events,
 })
 
+test('voice diagnostics stay out of chat across cached history and live updates', () => {
+  const diagnostic = event(2, 'voice_diagnostic', {
+    acp: undefined,
+    content: JSON.stringify({ id: 'receipt', call_id: 'call', stage: 'append_ack', elapsed_ms: 321 }),
+  })
+  const spoken = event(3, 'voice_message', {
+    acp: undefined,
+    voice: { id: 'speech', call_id: 'call', role: 'assistant', text: 'Here are the slides.', at: at(3) },
+  })
+  const answer = event(4, 'acp_message', { content: '{"slides":3}' })
+  for (const count of [0, 1, 3]) {
+    const events = [diagnostic, spoken, answer]
+    const view = deriveSessionView(data(events.slice(0, count)), events.slice(count))
+    expect(view.displayEvents).toEqual([spoken, answer])
+  }
+})
+
 test('thinking follows the latest own ACP activity across persisted and streamed updates', () => {
   const events = [
     event(2, 'acp_thought', { acp: { id: 'thread', thought: 'Inspect the code' } }),
