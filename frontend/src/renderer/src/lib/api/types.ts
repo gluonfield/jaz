@@ -800,6 +800,7 @@ export interface BotOwed {
   waiting?: 'requester' | 'outside'
   stalled?: boolean
   opened_at: string
+  // Threads in linking order, oldest first.
   threads?: BotOwedThread[]
 }
 

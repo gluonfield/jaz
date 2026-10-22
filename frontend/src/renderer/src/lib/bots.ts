@@ -1,4 +1,4 @@
-import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
+import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotOwed, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { messageText } from '@/lib/messageText'
 import { isPresentedApp } from '@/lib/mcpApps'
 import { hasPermissionSurface } from '@/lib/sessionPermissions'
@@ -37,6 +37,27 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
     return 'failed'
   }
   return bot.away ? 'away' : 'idle'
+}
+
+export function owedState(owed: BotOwed): { danger: boolean; standing: string } {
+  const threads = owed.threads ?? []
+  const latest = threads.findLast((thread) => thread.state !== 'gone' && thread.state !== 'idle')
+  const failed = latest?.state === 'failed'
+  let standing = ''
+  if (owed.stalled) {
+    standing = 'Stalled'
+  } else if (owed.waiting === 'requester') {
+    standing = `Waiting on ${owed.for ?? 'you'}`
+  } else if (owed.waiting === 'outside') {
+    standing = 'Waiting on an outside job Jaz is not told about'
+  } else if (failed) {
+    standing = 'A thread failed'
+  } else if (threads.some((thread) => thread.state === 'working' || thread.state === 'background')) {
+    standing = 'Working'
+  } else if (latest?.state === 'finished') {
+    standing = 'Result in'
+  }
+  return { danger: !!owed.stalled || failed, standing }
 }
 
 // What a bot's identity files are called on screen.
