@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread, BotStartedThread } from '@/lib/api/types'
-import { BOT_FILE_LABELS } from '@/lib/bots'
+import { BOT_FILE_LABELS, owedState } from '@/lib/bots'
 import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/time'
 import { type ProviderSubagentView, subagentRunning } from '@/lib/providerSubagents'
 
@@ -97,32 +97,16 @@ export function BotActivity({
 // next step. It opens its one live thread, or else its details.
 function owedRow(owed: BotOwed): Row {
   const live = owed.threads?.filter((thread) => thread.state !== 'gone') ?? []
+  const state = owedState(owed)
   return {
     key: `owed:${owed.id}`,
     title: owed.request,
-    detail: [`For ${owed.for ?? 'you'}`, standing(owed, live), owed.next && `Next: ${owed.next}`].filter(Boolean).join(' · '),
+    detail: [`For ${owed.for ?? 'you'}`, state.standing, owed.next && `Next: ${owed.next}`].filter(Boolean).join(' · '),
     at: owed.opened_at,
     since: true,
-    danger: owed.stalled || live.some((thread) => thread.state === 'failed'),
+    danger: state.danger,
     open: live.length === 1 ? { thread: live[0].id } : { owed },
   }
-}
-
-// standing says that a commitment stalled, what it waits on, or how far its
-// threads have got.
-function standing(owed: BotOwed, threads: BotOwedThread[]): string {
-  if (owed.stalled) return 'Stalled'
-  if (owed.waiting === 'requester') return `Waiting on ${owed.for ?? 'you'}`
-  if (owed.waiting === 'outside') return 'Waiting on an outside job Jaz is not told about'
-  return threadsState(threads)
-}
-
-// threadsState says how far the threads serving a commitment have got.
-function threadsState(threads: BotOwedThread[]): string {
-  if (threads.some((thread) => thread.state === 'working' || thread.state === 'background')) return 'Working'
-  if (threads.some((thread) => thread.state === 'failed')) return 'A thread failed'
-  if (threads.some((thread) => thread.state === 'finished')) return 'Result in'
-  return ''
 }
 
 const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', background: 'Working in the background', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
@@ -131,7 +115,7 @@ const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Workin
 // and the threads serving it.
 function OwedModal({ owed, started, now, onClose }: { owed: BotOwed; started: Started; now: number; onClose: () => void }) {
   return (
-    <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, standing(owed, owed.threads ?? []), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
+    <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, owedState(owed).standing, `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
         {owed.next ? <p className="whitespace-pre-wrap">Next: {owed.next}</p> : null}
         {owed.threads?.length ? (
