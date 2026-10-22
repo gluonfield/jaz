@@ -22,13 +22,13 @@ func TestThreadFollowUpUsesNativeSteeringWithoutStoppingWorker(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			waitForBlockingTool(t, jaz.ctx, jaz.manager, worker.ThreadID)
 			if method == "JAZ_FAKE_ACP_NATIVE_STEERING" {
 				_, _, err := tools.Send(jaz.ctx, callAs(bot.ID), acp.MCPSendInput{ThreadID: worker.ThreadID, Prompt: "Switch to a plan", Plan: true})
 				if err == nil || !strings.Contains(err.Error(), "cannot switch a running turn") {
 					t.Fatalf("running mode switch = %v", err)
 				}
 			}
-			waitForBlockingTool(t, jaz.ctx, jaz.manager, worker.ThreadID)
 			before, err := store.LoadSession(worker.ThreadID)
 			if err != nil {
 				t.Fatal(err)

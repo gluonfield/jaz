@@ -104,45 +104,59 @@ func TestQueuedWorkerResultsReconcileLaterTurns(t *testing.T) {
 	}
 }
 
-func TestLegacyWorkerResultIsHistoricalAndKeepsCurrentState(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	parent, err := store.CreateSession(storage.CreateSession{Slug: "parent"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	child, err := store.CreateSession(storage.CreateSession{Slug: "worker", ParentID: parent.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.StartSessionTurn(child.ID, storage.Turn{}); err != nil {
-		t.Fatal(err)
-	}
-	legacy := storage.NewInternalQueuedMessage("Authentication required. Base it only on this result; do not say work is still in progress.")
-	legacy.From = child.ID
-	if err := store.QueueTurn(storage.TurnDelivery{SessionID: parent.ID, Message: legacy}); err != nil {
-		t.Fatal(err)
-	}
-	manager := &fakeACPManager{}
-	srv := &Server{Store: store, ACP: manager, Locks: sessionlock.New()}
-	session, prompt, ok, err := srv.claimNextTurn(parent.ID)
-	if err != nil || !ok {
-		t.Fatalf("claim legacy result: %v, %v", ok, err)
-	}
-	if err := srv.startQueuedPrompt(context.Background(), session, *prompt); err != nil {
-		t.Fatal(err)
-	}
-	manager.mu.Lock()
-	message := manager.internal.Message
-	manager.mu.Unlock()
-	if !strings.Contains(message, "current status is running") || !strings.Contains(message, "<completed_turn_result>\n"+legacy.Text+"\n</completed_turn_result>") {
-		t.Fatalf("legacy result lost its evidence boundary or current state: %s", message)
-	}
-	saved, err := store.LoadSession(parent.ID)
-	if err != nil || saved.Turn.PendingMessage.Text != legacy.Text {
-		t.Fatalf("provider annotation changed saved result: %+v, %v", saved.Turn, err)
+func TestClaimedWorkerResultUsesCurrentStateOnResume(t *testing.T) {
+	for _, typed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy", true: "typed"}[typed], func(t *testing.T) {
+			store, err := sqlitestore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			parent, err := store.CreateSession(storage.CreateSession{Slug: "parent"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			child, err := store.CreateSession(storage.CreateSession{Slug: "worker", ParentID: parent.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.StartSessionTurn(child.ID, storage.Turn{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.FinishSessionTurn(child.ID, storage.StatusError, "Authentication required", time.Now(), nil); err != nil {
+				t.Fatal(err)
+			}
+			result := storage.NewInternalQueuedMessage("Authentication required. Base it only on this result; do not say work is still in progress.")
+			result.From = child.ID
+			if typed {
+				result.Text = acp.CompletionPrompt(acp.Job{Slug: child.Slug, State: acp.StateFailed, Error: "Authentication required"}, "the user")
+				result.Result = &storage.TurnResult{Number: 1, Status: storage.StatusError}
+			}
+			if err := store.QueueTurn(storage.TurnDelivery{SessionID: parent.ID, Message: result}); err != nil {
+				t.Fatal(err)
+			}
+			manager := &fakeACPManager{}
+			srv := &Server{Store: store, ACP: manager, Locks: sessionlock.New()}
+			_, claimed, ok, err := srv.claimNextTurn(parent.ID)
+			if err != nil || !ok || claimed == nil {
+				t.Fatalf("claim result: %v, %v", ok, err)
+			}
+			if err := store.StartSessionTurn(child.ID, storage.Turn{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := srv.ResumeInterruptedTurn(context.Background(), parent.ID); err != nil {
+				t.Fatal(err)
+			}
+			manager.mu.Lock()
+			message := manager.internal.Message
+			manager.mu.Unlock()
+			if !strings.Contains(message, "current status is running") || !strings.Contains(message, "<completed_turn_result>\n"+claimed.Text+"\n</completed_turn_result>") {
+				t.Fatalf("result lost its evidence boundary or current state: %s", message)
+			}
+			saved, err := store.LoadSession(parent.ID)
+			if err != nil || saved.Turn.PendingMessage.Text != claimed.Text {
+				t.Fatalf("provider annotation changed saved result: %+v, %v", saved.Turn, err)
+			}
+		})
 	}
 }

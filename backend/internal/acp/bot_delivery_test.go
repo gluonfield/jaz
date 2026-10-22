@@ -212,7 +212,7 @@ func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *test
 					t.Errorf("an answer took done for a commitment whose thread still works: %v", err)
 				}
 				return p.bots.Say(req.Session, "On it.")
-			case strings.HasPrefix(req.Message, "[result for the bot that asked]"):
+			case strings.Contains(req.Message, "[result for the bot that asked]"):
 				defer p.release()
 				return p.bots.Say(req.Session, "The parser is done.", owed)
 			}
@@ -236,7 +236,7 @@ func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *test
 	for len(answers) < 2 {
 		select {
 		case req := <-turns:
-			if strings.HasPrefix(req.Message, "[result for the bot that asked]") {
+			if strings.Contains(req.Message, "[result for the bot that asked]") {
 				result = req
 			}
 			if req.Session == asker.ID {
@@ -317,7 +317,7 @@ func TestThreadResultReachesTheUserWhenNoBotWaitsForIt(t *testing.T) {
 	}
 	results = append(results, await())
 	for i, result := range results {
-		if result.Output != nil || !strings.HasPrefix(result.Message, "ACP session") {
+		if result.Output != nil || !strings.Contains(result.Message, "ACP session") {
 			t.Fatalf("result %d = %+v, want a plain report for the helper's user", i, result)
 		}
 	}
@@ -367,7 +367,7 @@ func TestAResultForABotDeletedDuringTheAnswerReachesTheUserAfterARestart(t *test
 				_, thread, err := acp.NewMCPTools(p.manager).Create(p.ctx, callAs(helper.ID), acp.MCPCreateInput{Prompt: "Write the parser until released", Commitment: id})
 				worker <- thread.ThreadID
 				return err
-			case strings.HasPrefix(req.Message, "[result for the bot that asked]"):
+			case strings.Contains(req.Message, "[result for the bot that asked]"):
 				// The asker goes after its result was routed to it and before
 				// the answer reaches it.
 				if err := p.bots.Delete(asker.ID); err != nil {

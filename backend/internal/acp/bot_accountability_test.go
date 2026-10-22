@@ -70,7 +70,13 @@ func TestBotsWritingToEachOtherStopAtTheHopLimitUntilTheUserWrites(t *testing.T)
 		t.Fatal("the bots wrote to each other a seventh time without the user")
 	}
 
-	if _, err := jaz.manager.Input(jaz.ctx, acp.SteerRequest{Session: ann, Message: "ask Ben once more and block until cancelled"}); err != nil {
+	if _, _, err := acp.NewMCPTools(jaz.manager).Send(jaz.ctx, callAs(ben), acp.MCPSendInput{ThreadID: ann, Prompt: "Use the correction and block until cancelled"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := jaz.bots.Message(ann, "Ben", "block until cancelled"); err == nil {
+		t.Fatal("a bot follow-up reset the exchange limit")
+	}
+	if _, err := jaz.manager.Input(jaz.ctx, acp.SteerRequest{Session: ann, Message: "ask Ben once more and block until cancelled", FromUser: true}); err != nil {
 		t.Fatal(err)
 	}
 	if err := jaz.bots.Message(ann, "Ben", "block until cancelled"); err != nil {
