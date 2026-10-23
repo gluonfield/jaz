@@ -165,8 +165,8 @@ type Session struct {
 	CompletedAt            time.Time `json:"completed_at,omitzero"`
 	CompletedTurnStartedAt time.Time `json:"completed_turn_started_at,omitzero"`
 	// PromptDigest records what the thread's agent was shown of its own
-	// prompt and notes, as of its last successful turn, in the form its turn
-	// note writes; empty when unknown.
+	// prompt and notes, as of its last successful turn whose prompt the agent
+	// took, in the form its turn note writes; empty when unknown.
 	PromptDigest string `json:"prompt_digest,omitempty"`
 	Unread       bool   `json:"unread,omitempty"`
 }

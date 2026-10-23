@@ -18,7 +18,8 @@ type Querier interface {
 	ClaimTurn(ctx context.Context, arg ClaimTurnParams) (int64, error)
 	ClearBackgroundWork(ctx context.Context) error
 	CompleteSession(ctx context.Context, arg CompleteSessionParams) error
-	// A compact brings the user nothing new to read.
+	// A compact brings the user nothing new to read. What a turn's agent was shown
+	// is kept only once the agent took the turn's prompt.
 	FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error)
 	GetRunningTurn(ctx context.Context, id string) (string, error)
 	GetSession(ctx context.Context, ref string) (Thread, error)

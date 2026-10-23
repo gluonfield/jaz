@@ -119,7 +119,8 @@ type Config struct {
 	// TurnNote is text a thread's next turn opens with for its agent alone,
 	// such as a note that a file the agent loaded has changed, and a digest of
 	// what the agent holds of the thread's own prompt and notes once the turn
-	// starts, which a turn that succeeds records as the thread's PromptDigest.
+	// starts, which a turn that succeeds once its agent took the prompt
+	// records as the thread's PromptDigest.
 	TurnNote func(storage.Session) (note, promptDigest string)
 	// SteerNote refreshes context when a user writes during a running turn.
 	SteerNote func(storage.Session) string

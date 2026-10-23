@@ -9,12 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
-	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
-	"github.com/wins/jaz/backend/internal/storage"
 )
 
 // A bot's identity lives in two files in its home: AGENTS.md, who it is and
@@ -177,47 +174,4 @@ func replaceFile(path, content string) error {
 		return err
 	}
 	return os.Rename(temp.Name(), path)
-}
-
-// identityNote shows an agent that keeps the prompt its thread started with
-// the bot's identity again when it changed since the version it was last
-// shown, seen; version is the current one. A thread whose agent has not
-// started its conversation yet starts with the current identity.
-func identityNote(store PromptStore, thread storage.Session, seen string) (note, version string) {
-	if !acp.KeepsStartPrompt(thread.RuntimeRef.Agent) {
-		return "", ""
-	}
-	identity, err := Prompt(store, thread)
-	if err != nil || identity == nil {
-		return "", ""
-	}
-	text := identity.Text()
-	version = digest([]byte(text))
-	if thread.RuntimeRef.SessionID == "" || seen == version {
-		return "", version
-	}
-	return "These are your current bot instructions. They replace any earlier version in this conversation:\n\n<bot_instructions>\n" + text + "\n</bot_instructions>\n\n", version
-}
-
-func changedFilesNote(thread storage.Session) string {
-	if thread.RuntimeRef.Cwd == "" {
-		return ""
-	}
-	since := thread.CompletedTurnStartedAt
-	if since.IsZero() {
-		since = thread.CreatedAt
-	}
-	var changed []string
-	for _, name := range homeFiles {
-		if info, err := os.Stat(filepath.Join(thread.RuntimeRef.Cwd, name)); err == nil && info.ModTime().After(since) {
-			changed = append(changed, name)
-		}
-	}
-	switch len(changed) {
-	case 0:
-		return ""
-	case 1:
-		return fmt.Sprintf("Your %s changed since your last turn; read it again before you answer.\n\n", changed[0])
-	}
-	return fmt.Sprintf("Your %s changed since your last turn; read them again before you answer.\n\n", strings.Join(changed, " and "))
 }

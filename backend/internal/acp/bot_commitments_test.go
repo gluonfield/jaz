@@ -246,6 +246,8 @@ func TestABotsTurnsShowItsTasksAgainOnlyAsTheyChange(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
+	// The agent's session starts before the tasks open.
+	jaz.write(bot.ID, "hello")
 	open := func(request, next string) int64 {
 		t.Helper()
 		id, err := jaz.commit(bot.ID, bots.Commit{Request: request, Next: next, Waiting: "requester"})

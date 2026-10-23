@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -81,5 +82,21 @@ func TestABotIsShownTheTasksThatChangedSinceItsAgentLastSawThem(t *testing.T) {
 	thread.PromptDigest = lastShown(thread.PromptDigest).Identity
 	if note := turn(); strings.Contains(note, "<bot_instructions>") || !everything(note) {
 		t.Fatalf("after the upgrade the turn opened with %q, want every open task and no identity", note)
+	}
+	// Lines shown before a session has an id are shown again once it has one.
+	thread.RuntimeRef.SessionID = ""
+	turn()
+	thread.RuntimeRef.SessionID = "third"
+	if note := turn(); !everything(note) {
+		t.Fatalf("once the session had an id the turn opened with %q, want every open task", note)
+	}
+	if err := store.DropCommitment(brochure.ID, "not needed", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if note := turn(); note != fmt.Sprintf("No longer open: #%d.\n\n", brochure.ID) {
+		t.Fatalf("after a task closed the turn opened with %q, want only its number", note)
+	}
+	if note := turn(); note != "" {
+		t.Fatalf("a turn after the closed task was shown opened with %q, want nothing", note)
 	}
 }

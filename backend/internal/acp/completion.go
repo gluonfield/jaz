@@ -9,7 +9,8 @@ import (
 
 // CompletionPrompt hands a finished session's result to its parent, to report
 // to recipient: what the turn wrote less the notes its provider marks as
-// interim, or all of it when nothing else is left or a restart lost the marks.
+// interim, or all of it when it wrote nothing else, as a turn stopped midway
+// can.
 func CompletionPrompt(job Job, recipient string) string {
 	prompt, err := acpcompletion.Render(acpcompletion.Data{
 		Slug: job.Slug, Agent: job.ACPAgent, State: job.State, Error: job.Error, Assistant: cmp.Or(job.Result, job.Assistant), Recipient: recipient,

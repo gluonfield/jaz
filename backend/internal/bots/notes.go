@@ -4,8 +4,13 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -36,20 +41,19 @@ func lastShown(digest string) shown {
 }
 
 // held is the digest of each task line the agent still holds: none once its
-// session changed or its context shrank, as a compaction does. Lines shown
-// before the session had an id were shown in the turn that started it.
+// session changed or its context shrank, as a compaction does.
 func (s shown) held(thread storage.Session) map[int64]string {
-	if s.Session != "" && s.Session != thread.RuntimeRef.SessionID || thread.Usage.ContextTokens < s.Context {
+	if s.Session != thread.RuntimeRef.SessionID || thread.Usage.ContextTokens < s.Context {
 		return nil
 	}
 	return s.Tasks
 }
 
-// TurnNote opens a turn in a bot's own thread with its open tasks, and there
-// or in one of its group threads with what changed since its agent was last
-// shown it: the bot's identity, and the identity files that changed since its
-// last successful turn started. Agents load those files as a session starts,
-// not every turn.
+// TurnNote opens a turn in a bot's own thread with its tasks, and there or in
+// one of its group threads with what changed since its agent was last shown
+// it: the bot's identity, and the identity files that changed since its last
+// successful turn started. Agents load those files as a session starts, not
+// every turn.
 func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string) {
 	return func(thread storage.Session) (string, string) {
 		if thread.SourceType != storage.SourceBot && thread.SourceType != storage.SourceBotMember || thread.RuntimeRef == nil {
@@ -85,21 +89,66 @@ func SteerNote(store NoteStore) func(storage.Session) string {
 	}
 }
 
-// taskNote lists a bot's open tasks whose line its agent does not hold, by the
-// digests in held, with the numbers of the rest; lines are the digests of the
-// current lines.
+// identityNote shows an agent that keeps the prompt its thread started with
+// the bot's identity again when it changed since the version it was last
+// shown, seen; version is the one the agent holds after the note. A thread
+// whose agent has not started its conversation yet starts with the current
+// identity.
+func identityNote(store PromptStore, thread storage.Session, seen string) (note, version string) {
+	if !acp.KeepsStartPrompt(thread.RuntimeRef.Agent) {
+		return "", ""
+	}
+	identity, err := Prompt(store, thread)
+	if err != nil || identity == nil {
+		return "", seen
+	}
+	text := identity.Text()
+	version = digest([]byte(text))
+	if thread.RuntimeRef.SessionID == "" || seen == version {
+		return "", version
+	}
+	return "These are your current bot instructions. They replace any earlier version in this conversation:\n\n<bot_instructions>\n" + text + "\n</bot_instructions>\n\n", version
+}
+
+func changedFilesNote(thread storage.Session) string {
+	if thread.RuntimeRef.Cwd == "" {
+		return ""
+	}
+	since := thread.CompletedTurnStartedAt
+	if since.IsZero() {
+		since = thread.CreatedAt
+	}
+	var changed []string
+	for _, name := range homeFiles {
+		if info, err := os.Stat(filepath.Join(thread.RuntimeRef.Cwd, name)); err == nil && info.ModTime().After(since) {
+			changed = append(changed, name)
+		}
+	}
+	switch len(changed) {
+	case 0:
+		return ""
+	case 1:
+		return fmt.Sprintf("Your %s changed since your last turn; read it again before you answer.\n\n", changed[0])
+	}
+	return fmt.Sprintf("Your %s changed since your last turn; read them again before you answer.\n\n", strings.Join(changed, " and "))
+}
+
+// taskNote shows a bot the open tasks whose line its agent does not hold, by
+// the digests in held, with the numbers of the rest, and the held ones that
+// closed; lines are the digests of the open tasks' lines the agent holds
+// after the note.
 func taskNote(store NoteStore, bot string, held map[int64]string) (note string, lines map[int64]string) {
 	open, err := store.ListOpenCommitments(bot)
 	if err != nil {
-		return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err), nil
+		return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err), held
 	}
 	lines = make(map[int64]string, len(open))
 	var changed strings.Builder
-	var unchanged []string
+	var unchanged, closed []string
 	for _, commitment := range open {
 		line, err := taskLine(store, commitment)
 		if err != nil {
-			return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err), nil
+			return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err), held
 		}
 		lines[commitment.ID] = digest([]byte(line))
 		if held[commitment.ID] == lines[commitment.ID] {
@@ -108,14 +157,25 @@ func taskNote(store NoteStore, bot string, held map[int64]string) (note string, 
 		}
 		changed.WriteString(line + "\n")
 	}
-	if changed.Len() == 0 {
+	for _, id := range slices.Sorted(maps.Keys(held)) {
+		if _, ok := lines[id]; !ok {
+			closed = append(closed, fmt.Sprintf("#%d", id))
+		}
+	}
+	var b strings.Builder
+	if changed.Len() > 0 {
+		b.WriteString("Your open tasks that are new or changed since you last saw them. Deliver completed results with bot_task_complete using their ids; cancel what is no longer wanted with bot_task_cancel:\n" + changed.String())
+		if len(unchanged) > 0 {
+			b.WriteString("Unchanged: " + strings.Join(unchanged, ", ") + ".\n")
+		}
+	}
+	if len(closed) > 0 {
+		b.WriteString("No longer open: " + strings.Join(closed, ", ") + ".\n")
+	}
+	if b.Len() == 0 {
 		return "", lines
 	}
-	note = "Your open tasks that are new or changed since you last saw them. Deliver completed results with bot_task_complete using their ids; cancel what is no longer wanted with bot_task_cancel:\n" + changed.String()
-	if len(unchanged) > 0 {
-		note += "Unchanged: " + strings.Join(unchanged, ", ") + ".\n"
-	}
-	return note + "\n", lines
+	return b.String() + "\n", lines
 }
 
 func taskLine(store PromptStore, commitment storage.Commitment) (string, error) {

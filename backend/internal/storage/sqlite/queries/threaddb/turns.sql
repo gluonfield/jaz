@@ -67,7 +67,8 @@ SET turn = json_remove(turn, '$.output.hops')
 WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
 -- name: FinishSessionTurn :execrows
--- A compact brings the user nothing new to read.
+-- A compact brings the user nothing new to read. What a turn's agent was shown
+-- is kept only once the agent took the turn's prompt.
 UPDATE threads
 SET status = sqlc.arg(status), turn = '', error = sqlc.narg(error), turns_ended = turns_ended + 1,
     unread = CASE WHEN sqlc.arg(status) = 'idle' AND json_extract(turn, '$.active_operation') IS NOT 'compact' THEN 1 ELSE unread END,
@@ -79,6 +80,7 @@ SET status = sqlc.arg(status), turn = '', error = sqlc.narg(error), turns_ended 
       ELSE completed_turn_started_at_ms END,
     prompt_digest = CASE WHEN sqlc.arg(status) <> 'idle' THEN prompt_digest
       WHEN json_extract(turn, '$.active_operation') IS 'compact' THEN ''
+      WHEN json_extract(turn, '$.prompt.state') IS NOT 'confirmed' THEN prompt_digest
       ELSE COALESCE(json_extract(turn, '$.prompt_digest'), prompt_digest) END
 WHERE id = sqlc.arg(id) AND turn <> '';
 

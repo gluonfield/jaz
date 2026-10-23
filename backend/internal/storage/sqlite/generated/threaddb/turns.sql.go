@@ -120,6 +120,7 @@ SET status = ?1, turn = '', error = ?2, turns_ended = turns_ended + 1,
       ELSE completed_turn_started_at_ms END,
     prompt_digest = CASE WHEN ?1 <> 'idle' THEN prompt_digest
       WHEN json_extract(turn, '$.active_operation') IS 'compact' THEN ''
+      WHEN json_extract(turn, '$.prompt.state') IS NOT 'confirmed' THEN prompt_digest
       ELSE COALESCE(json_extract(turn, '$.prompt_digest'), prompt_digest) END
 WHERE id = ?4 AND turn <> ''
 `
@@ -131,7 +132,8 @@ type FinishSessionTurnParams struct {
 	ID           string         `json:"id"`
 }
 
-// A compact brings the user nothing new to read.
+// A compact brings the user nothing new to read. What a turn's agent was shown
+// is kept only once the agent took the turn's prompt.
 func (q *Queries) FinishSessionTurn(ctx context.Context, arg FinishSessionTurnParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, finishSessionTurn,
 		arg.Status,
