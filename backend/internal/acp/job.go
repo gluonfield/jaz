@@ -40,6 +40,9 @@ type Job struct {
 	LastToolAt      time.Time                     `json:"last_tool_at,omitzero"`
 	// Reply is the last message without a later tool call or an interim phase.
 	Reply string `json:"-"`
+	// Result is what the turn wrote less the messages its provider marks as
+	// interim.
+	Result string `json:"-"`
 }
 
 type HydrationView struct {
@@ -129,6 +132,7 @@ type jobState struct {
 	thoughtText            strings.Builder
 	replyText              strings.Builder
 	replyID                string
+	resultText             strings.Builder
 	// leases counts callers holding the process outside a turn; retired marks
 	// a job whose process is being stopped as idle, which takes no more.
 	leases  int
@@ -224,6 +228,7 @@ func (j *jobState) Snapshot() Job {
 	snapshot := j.hydrationViewLocked().Job()
 	snapshot.Assistant = j.Assistant
 	snapshot.Reply = j.Reply
+	snapshot.Result = j.Result
 	snapshot.Thought = j.Thought
 	snapshot.ToolCalls = CloneToolCalls(j.ToolCalls)
 	return snapshot
@@ -364,6 +369,8 @@ func (j *jobState) beginTurnLocked(completion CompletionMode, stored storage.Tur
 	j.Thought = ""
 	j.assistantText.Reset()
 	j.thoughtText.Reset()
+	j.resultText.Reset()
+	j.Result = ""
 	j.endReplyLocked()
 	if len(j.Plan) > 0 {
 		j.Plan = sessionevents.PlanCleared
@@ -423,6 +430,8 @@ func (j *jobState) discardTurnResult() {
 	j.ActiveOperation = ""
 	j.assistantText.Reset()
 	j.thoughtText.Reset()
+	j.resultText.Reset()
+	j.Result = ""
 	j.endReplyLocked()
 	j.toolByID = nil
 	j.pendingToolUpdateByID = nil

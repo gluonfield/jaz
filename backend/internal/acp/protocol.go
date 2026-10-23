@@ -157,8 +157,14 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		if messageChunk != "" {
 			job.savedAssistantLen = len(job.Assistant)
 		}
+		phase := messagePhase(event.Meta)
+		interim := phase != "" && phase != "final_answer"
+		if !interim {
+			job.resultText.WriteString(messageChunk)
+			job.Result = job.resultText.String()
+		}
 		if warning == nil {
-			if phase := messagePhase(event.Meta); phase != "" && phase != "final_answer" {
+			if interim {
 				job.endReplyLocked()
 			} else {
 				job.replyLocked(messageID, messageChunk)

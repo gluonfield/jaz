@@ -179,30 +179,11 @@ func replaceFile(path, content string) error {
 	return os.Rename(temp.Name(), path)
 }
 
-// TurnNote opens a turn in a bot's own thread with its open commitments,
-// and there or in one of its group threads with what changed since its agent
-// was last shown it: the bot's identity, and the identity files that changed
-// since its last successful turn started. Agents load those files as a
-// session starts, not every turn.
-func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string) {
-	return func(thread storage.Session) (note, promptDigest string) {
-		if thread.SourceType != storage.SourceBot && thread.SourceType != storage.SourceBotMember || thread.RuntimeRef == nil {
-			return "", ""
-		}
-		note, promptDigest = identityNote(store, thread)
-		note += changedFilesNote(thread)
-		if thread.SourceType == storage.SourceBot {
-			note += commitmentNote(store, thread.ID)
-		}
-		return note, promptDigest
-	}
-}
-
 // identityNote shows an agent that keeps the prompt its thread started with
-// the bot's identity again when it changed since the agent was last shown it;
-// promptDigest is the identity's version. A thread whose agent has not started
-// its conversation yet starts with the current identity.
-func identityNote(store PromptStore, thread storage.Session) (note, promptDigest string) {
+// the bot's identity again when it changed since the version it was last
+// shown, seen; version is the current one. A thread whose agent has not
+// started its conversation yet starts with the current identity.
+func identityNote(store PromptStore, thread storage.Session, seen string) (note, version string) {
 	if !acp.KeepsStartPrompt(thread.RuntimeRef.Agent) {
 		return "", ""
 	}
@@ -211,11 +192,11 @@ func identityNote(store PromptStore, thread storage.Session) (note, promptDigest
 		return "", ""
 	}
 	text := identity.Text()
-	promptDigest = digest([]byte(text))
-	if thread.RuntimeRef.SessionID == "" || thread.PromptDigest == promptDigest {
-		return "", promptDigest
+	version = digest([]byte(text))
+	if thread.RuntimeRef.SessionID == "" || seen == version {
+		return "", version
 	}
-	return "These are your current bot instructions. They replace any earlier version in this conversation:\n\n<bot_instructions>\n" + text + "\n</bot_instructions>\n\n", promptDigest
+	return "These are your current bot instructions. They replace any earlier version in this conversation:\n\n<bot_instructions>\n" + text + "\n</bot_instructions>\n\n", version
 }
 
 func changedFilesNote(thread storage.Session) string {

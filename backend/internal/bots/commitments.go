@@ -137,51 +137,6 @@ func explain(err error) error {
 	return err
 }
 
-// NoteStore is what the note a bot's turn opens with is read from.
-type NoteStore interface {
-	PromptStore
-	ListOpenCommitments(botID string) ([]storage.Commitment, error)
-}
-
-func SteerNote(store NoteStore) func(storage.Session) string {
-	return func(thread storage.Session) string {
-		if thread.SourceType != storage.SourceBot {
-			return ""
-		}
-		return commitmentNote(store, thread.ID)
-	}
-}
-
-// commitmentNote lists a bot's open commitments for the turn its own thread
-// opens with; empty when it has none.
-func commitmentNote(store NoteStore, bot string) string {
-	open, err := store.ListOpenCommitments(bot)
-	if err != nil {
-		return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err)
-	}
-	if len(open) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("Your open tasks. Deliver completed results with bot_task_complete using their ids; cancel what is no longer wanted with bot_task_cancel:\n")
-	for _, commitment := range open {
-		_, name, err := owedTo(store, commitment)
-		if err != nil {
-			return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err)
-		}
-		fmt.Fprintf(&b, "#%d for %s: %s", commitment.ID, cmp.Or(name, "the user"), commitment.Request)
-		for _, thread := range commitment.Threads {
-			fmt.Fprintf(&b, " · thread %s %s", thread.Slug, thread.State)
-		}
-		if commitment.Note != "" {
-			fmt.Fprintf(&b, " · next: %s", commitment.Note)
-		}
-		b.WriteString(standing(commitment, cmp.Or(name, "the user")))
-		b.WriteString("\n")
-	}
-	return b.String() + "\n"
-}
-
 // standing says what a commitment waits on, or that nothing moves on it.
 func standing(commitment storage.Commitment, requester string) string {
 	switch {

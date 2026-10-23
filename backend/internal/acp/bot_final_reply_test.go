@@ -2,6 +2,7 @@ package acp_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -114,5 +115,22 @@ func TestABotsFallbackRecordsDeliveryWithoutClosingCommitmentsAndRespectsPresent
 	jaz.idle(bot.ID)
 	if !<-shown || !slices.Equal(jaz.notices(bot.ID), []string{finalReply}) {
 		t.Fatal("a presented app must suppress the fallback")
+	}
+}
+
+func TestABotHearsItsThreadsResultWithoutTheNotesItsProviderMarksInterim(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.newBot("Gimli")
+	jaz.busy(bot.ID)
+	if _, _, err := acp.NewMCPTools(jaz.manager).Create(jaz.ctx, callAs(bot.ID), acp.MCPCreateInput{Slug: "changes", Prompt: "what changed? answer in the final reply", Commitment: owe(t, store, bot.ID)}); err != nil {
+		t.Fatal(err)
+	}
+	jaz.release()
+	jaz.eventually("the thread's result reaching the bot", func() bool {
+		return jaz.promptWith("ACP session changes") != ""
+	})
+	if result := jaz.promptWith("ACP session changes"); !strings.Contains(result, finalReply) || strings.Contains(result, "Let me check the log.") || strings.Contains(result, "Found it.") {
+		t.Fatalf("the bot was handed %q, want the thread's result without its interim notes", result)
 	}
 }

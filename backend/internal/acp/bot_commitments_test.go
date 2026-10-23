@@ -241,3 +241,33 @@ func TestAnAnswerWithDoneGoesToTheThreadThatAsked(t *testing.T) {
 		t.Fatal("the routine's thread never answered Helper")
 	}
 }
+
+func TestABotsTurnsShowItsTasksAgainOnlyAsTheyChange(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	bot := jaz.newBot("Gimli")
+	open := func(request, next string) int64 {
+		t.Helper()
+		id, err := jaz.commit(bot.ID, bots.Commit{Request: request, Next: next, Waiting: "requester"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	quotes, brochure := open("Compare the two quotes", "send the comparison"), open("Draft the brochure", "ask for the logo")
+	jaz.write(bot.ID, "what is open?")
+	if prompt := jaz.lastPrompt(); !strings.Contains(prompt, "Compare the two quotes") || !strings.Contains(prompt, "Draft the brochure") {
+		t.Fatalf("the first turn opened with %q, want every open task", prompt)
+	}
+	jaz.write(bot.ID, "anything new?")
+	if prompt := jaz.lastPrompt(); strings.Contains(prompt, "Your open tasks") {
+		t.Fatalf("a turn after nothing changed opened with %q, want no tasks", prompt)
+	}
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: brochure, Next: "send the draft"}); err != nil {
+		t.Fatal(err)
+	}
+	jaz.write(bot.ID, "and now?")
+	if prompt := jaz.lastPrompt(); !strings.Contains(prompt, "Draft the brochure · next: send the draft") || strings.Contains(prompt, "Compare the two quotes") || !strings.Contains(prompt, fmt.Sprintf("Unchanged: #%d.", quotes)) {
+		t.Fatalf("after one task moved the turn opened with %q, want only it and the other's number", prompt)
+	}
+}
