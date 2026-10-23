@@ -17,9 +17,6 @@
   --color-surface-2: oklch(0.935 0.006 264);
   /* The thread panel steps between the window chrome and the page. */
   --color-panel: color-mix(in oklab, var(--color-surface) 45%, var(--color-bg));
-  /* The window behind the floating cards: a step below the page so they
-   * read as raised. */
-  --color-chrome: oklch(0.935 0.008 264);
   --color-list-hover: color-mix(in oklab, var(--color-ink) 5%, transparent);
   /* Selection has to outrank the pointer: at hover's weight the row you are
    * pointing at and the thread you are actually in look identical. */
@@ -75,6 +72,15 @@
 
 :root {
   color-scheme: light;
+
+  /* The window behind the cards takes a two-tone wash of the accent
+   * (Settings → Appearance), the way Arc colours its window. Only the
+   * accent's hue is kept: it is evened out to one lightness and a minimum
+   * chroma, so muted or dark accents still read, and the second tone turns
+   * the hue a little for depth. */
+  --wash: oklch(from var(--color-primary) 0.62 max(c, 0.13) h);
+  --wash-2: oklch(from var(--color-primary) 0.62 max(c, 0.13) calc(h - 25));
+  --wash-strength: 22%;
 
   --thread-max: 760px;
   --prose-max: 80ch;
@@ -156,8 +162,7 @@
   --color-bg: oklch(0.195 0.005 264);
   --color-surface: oklch(0.235 0.006 264);
   --color-surface-2: oklch(0.28 0.008 264);
-  /* Darker than the page, so the content card still comes forward. */
-  --color-chrome: oklch(0.135 0.008 264);
+  --wash-strength: 24%;
   --color-list-hover: color-mix(in oklab, var(--color-ink) 8%, transparent);
   --color-list-active: color-mix(in oklab, var(--color-ink) 16%, transparent);
 
@@ -718,17 +723,23 @@ body {
 }
 
 /* macOS vibrancy: index.html adds .vibrant when running in the mac app. The
- * page goes transparent so the titlebar strip and thread list show the native
- * material through a strong chrome tint, keeping the opaque cards distinct. */
+ * page goes transparent so the rail and thread list show the native
+ * material through a weak surface tint under the accent wash; the cards stay
+ * opaque. */
 @media (width >= 40rem) {
   .app-chrome {
-    background: var(--color-chrome);
+    --chrome-ground: var(--color-surface);
+    background: linear-gradient(
+      155deg,
+      color-mix(in oklab, var(--wash) var(--wash-strength), var(--chrome-ground)),
+      color-mix(in oklab, var(--wash-2) var(--wash-strength), var(--chrome-ground))
+    );
   }
   html.vibrant .app-chrome {
-    background: color-mix(in oklab, var(--color-chrome) 75%, transparent);
+    --chrome-ground: color-mix(in oklab, var(--color-surface) 30%, transparent);
   }
   html.vibrant.dark .app-chrome {
-    background: color-mix(in oklab, var(--color-chrome) 85%, transparent);
+    --chrome-ground: color-mix(in oklab, var(--color-surface) 36%, transparent);
   }
 }
 html.vibrant body {
