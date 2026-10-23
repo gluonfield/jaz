@@ -17,6 +17,7 @@ import { DictationControls } from '@/components/session/DictationControls'
 import { ComposerAttachmentInput, ComposerAttachmentList, ComposerAttachmentMenuRow } from './ComposerAttachments'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from './MentionInput'
 import { QueuedPromptList } from './QueuedPromptList'
+import { SendButton } from './SendButton'
 import { ComposerFrame } from './ComposerFrame'
 import { ContextChip } from './ContextChip'
 import { GoalChip, GoalUnsupportedRow } from './GoalControls'
@@ -563,18 +564,6 @@ export function ComposerCard({
                 <Mic size={16} />
               </IconButton>
             ) : null}
-            {streaming && onQueuePrompt && hasDraftContent && !voiceActive ? (
-              <button
-                type="button"
-                title="Queue message (Tab)"
-                aria-label="Queue message"
-                disabled={submitDisabled}
-                onClick={() => void submit(mention.value(), onQueuePrompt)}
-                className="h-10 rounded-full px-2 text-[13px] text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-50"
-              >
-                Queue
-              </button>
-            ) : null}
             {showStopButton ? (
               <IconButton
                 variant="primary"
@@ -587,17 +576,14 @@ export function ComposerCard({
                 <Square size={12} fill="currentColor" strokeWidth={0} />
               </IconButton>
             ) : !voiceActive || hasDraftContent ? (
-              <IconButton
-                variant="primary"
-                size="md"
-                className="relative after:absolute after:-inset-1"
-                aria-label={actionLabel}
-                title={actionLabel}
+              <SendButton
+                label={actionLabel}
                 disabled={showVoiceButton ? disabled || Boolean(dictation.phase) : submitDisabled}
-                onClick={showVoiceButton ? onVoice : () => void submit()}
+                onSend={() => (showVoiceButton ? onVoice?.() : void submit())}
+                onQueue={streaming && onQueuePrompt && hasDraftContent && !voiceActive ? () => void submit(mention.value(), onQueuePrompt) : undefined}
               >
                 {showVoiceButton ? <AudioLines size={16} /> : <ArrowUp size={16} />}
-              </IconButton>
+              </SendButton>
             ) : null}
           </div>
           {/* Opaque, so it hides the controls and, in chat, the draft while the

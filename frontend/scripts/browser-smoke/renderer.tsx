@@ -20,6 +20,7 @@ import { exerciseSessionConfig } from './session-config'
 import { exerciseComposerSend } from './composer-send'
 import { exerciseComposerWrap } from './composer-wrap'
 import { exerciseComposerSuggestion } from './composer-suggestion'
+import { exerciseComposerSendMenu } from './composer-send-menu'
 import { exerciseFolderDrop } from './folder-drop'
 import { exerciseChatHistory } from './chat-history'
 import { exerciseBotWelcome } from './bot-welcome'
@@ -146,6 +147,8 @@ function Fixture() {
       await exerciseComposerWrap()
       progress('predicted prompt in an empty idle composer')
       await exerciseComposerSuggestion()
+      progress('send menu offers Send and Queue while a turn runs')
+      await exerciseComposerSendMenu()
       progress('folder drops into the composer')
       await exerciseFolderDrop()
       progress('bot chat history window')
@@ -161,7 +164,7 @@ function Fixture() {
       progress('connect card sign-in from chat')
       await exerciseConnectCard()
       if (new URLSearchParams(location.search).get('suite') === 'composer') {
-        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; an empty idle thread or bot chat composer offers the predicted prompt, Tab writes it and a draft or running turn hides it; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; a bot chat opens with a hello that a new bot types first, starters send and leave once the person speaks; a bot panel lists what runs now and what the bot did by day, runs, pauses and deletes routines from their modal, and saves AGENTS.md and MEMORY.md only when edited and never over a newer write by the bot; live bot faces move, act out each change of mood once and hold still with effects off or off screen; connect cards start OAuth from chat and show the new account'] })
+        window.smoke.result({ ok: true, checks: ['accepted sends stay cleared across navigation; rejected and unsent drafts survive; new drafts remain intact; a wrapping bot chat draft spans the composer above its buttons; an empty idle thread or bot chat composer offers the predicted prompt, Tab writes it and a draft or running turn hides it; while a turn runs, hovering send offers Send and Queue, the menu stays open on the way to it, press-and-hold opens it on touch and each row reaches its handler; Stop cancels immediately; dropped folders mention their local path and are refused on remote backends; bot chats render a recent window and page earlier history on scroll; a bot chat opens with a hello that a new bot types first, starters send and leave once the person speaks; a bot panel lists what runs now and what the bot did by day, runs, pauses and deletes routines from their modal, and saves AGENTS.md and MEMORY.md only when edited and never over a newer write by the bot; live bot faces move, act out each change of mood once and hold still with effects off or off screen; connect cards start OAuth from chat and show the new account'] })
         return
       }
       progress('Tab-only focus rings')

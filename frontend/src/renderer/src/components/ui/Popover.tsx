@@ -183,11 +183,13 @@ export function ContextMenu({
 export function MenuRow({
   selected,
   disabled,
+  trailing,
   onClick,
   children,
 }: {
   selected?: boolean
   disabled?: boolean
+  trailing?: ReactNode
   onClick: () => void
   children: ReactNode
 }) {
@@ -201,6 +203,7 @@ export function MenuRow({
       }`}
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
+      {trailing}
       {selected ? <Check size={13} className="shrink-0 text-primary" /> : null}
     </button>
   )
