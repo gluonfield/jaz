@@ -30,6 +30,7 @@ declare global {
       windowKind: WindowKind
       pathForFile: (file: File) => string
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void
+      setWindowButtonsVisible: (visible: boolean) => void
       startLocalBackend: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
       getDeviceIdentity: () => Promise<{ device_id: string; public_key: string }>
       getDeviceMetadata: () => Promise<{

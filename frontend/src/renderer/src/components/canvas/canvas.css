@@ -45,8 +45,23 @@
 .canvas-chat {
   transition-property: opacity, translate, scale, visibility;
   transform-origin: bottom;
-  border-right: 1px solid var(--color-border);
+}
+
+/* The shown chat is a card floating over the board; collapsed, only its
+   composer stays. */
+.canvas-chat-card {
+  border-radius: 14px;
+  transition: background-color 380ms cubic-bezier(0.2, 0, 0, 1), box-shadow 380ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.canvas-chat-card.shown {
+  overflow: hidden;
   background: var(--color-bg);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-ink) 10%, transparent), 0 12px 32px -8px rgb(0 0 0 / 0.28);
+}
+
+:root:where(.dark) .canvas-chat-card.shown {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-ink) 12%, transparent), 0 16px 40px rgb(0 0 0 / 0.5);
 }
 
 .canvas-chat.collapsed {
@@ -58,7 +73,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .canvas,
-  .canvas-chat {
+  .canvas-chat,
+  .canvas-chat-card {
     transition: none;
   }
 }

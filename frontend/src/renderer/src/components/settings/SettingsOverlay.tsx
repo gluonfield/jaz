@@ -99,7 +99,7 @@ export function SettingsOverlay({
     <AnimatePresence>
       {open ? (
         <motion.div
-          className="absolute inset-0 z-modal flex bg-bg max-sm:fixed"
+          className="absolute inset-x-0 top-[var(--titlebar-height,0px)] bottom-0 z-modal flex bg-bg max-sm:fixed"
           initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.99 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.99 }}

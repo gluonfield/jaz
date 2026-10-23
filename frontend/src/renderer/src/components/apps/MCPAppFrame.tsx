@@ -28,7 +28,7 @@ export function MCPApps() {
       const key = entrypointKey(entry)
       const active = !settings && pathname === `/apps/${key}`
       return (
-        <div key={key} className={`absolute inset-0 bg-bg ${active ? '' : 'invisible'}`}>
+        <div key={key} className={`absolute inset-x-0 top-[var(--titlebar-height,0px)] bottom-0 bg-bg ${active ? '' : 'invisible'}`}>
           <MCPAppFrame
             app={entry}
             active={active}

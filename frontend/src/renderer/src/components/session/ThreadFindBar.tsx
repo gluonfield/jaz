@@ -16,7 +16,7 @@ export function ThreadFindBar({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -6, scale: 0.98 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-          className="absolute top-3 right-4 z-dropdown flex h-10 max-w-[calc(100%-2rem)] items-center gap-1 rounded-full bg-surface px-2 shadow-[0_8px_30px_rgba(0,0,0,0.16)]"
+          className="absolute top-[calc(var(--titlebar-height,0px)+0.75rem)] right-4 z-dropdown flex h-10 max-w-[calc(100%-2rem)] items-center gap-1 rounded-full bg-surface px-2 shadow-[0_8px_30px_rgba(0,0,0,0.16)]"
         >
           <Search size={15} className="ml-1 shrink-0 text-ink-3" aria-hidden />
           <input

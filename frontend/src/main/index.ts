@@ -355,6 +355,15 @@ app.whenReady().then(() => {
     }
   })
 
+  // The traffic lights live above the thread list; the renderer hides them
+  // while the list is collapsed rather than moving them around.
+  ipcMain.on('jaz:set-window-buttons-visible', (event, visible) => {
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (process.platform === 'darwin' && window && typeof visible === 'boolean') {
+      window.setWindowButtonVisibility(visible)
+    }
+  })
+
   ipcMain.handle('jaz:start-local-backend', () => startLocalBackend())
   ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
   ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())
