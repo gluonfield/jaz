@@ -51,7 +51,7 @@ export function BotActivity({
   const running = [...rows.filter((item) => item.running), ...helpers]
   const days = groupByDay(rows.filter((item) => !item.running), now)
   if (!owed.length && !running.length && !days.length) {
-    return <p className="text-[13px] text-ink-3">What {bot.name} owes, its side chats, routine runs and messages show up here.</p>
+    return <p className="text-[13px] text-ink-3">{bot.name}'s tasks, side chats, routine runs and messages show up here.</p>
   }
   const open = (target: Row['open']) => {
     if (!target) return
@@ -63,7 +63,7 @@ export function BotActivity({
   return (
     <div className="flex flex-col gap-5">
       {owed.length ? (
-        <Group title="Owed">
+        <Group title="Tasks">
           {owed.map((item) => (
             <ActivityRow key={item.key} item={item} started={started} now={now} onOpen={open} />
           ))}

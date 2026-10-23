@@ -67,7 +67,7 @@ func TestUserSteeringSeesWorkersThatFinishedDuringTheBotsTurn(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, message := range messages {
-				if message.Role == "user" && strings.Contains(message.Content, "open commitments") {
+				if message.Role == "user" && strings.Contains(message.Content, "open tasks") {
 					t.Fatalf("the agent's progress note leaked into the user's message: %s", message.Content)
 				}
 			}

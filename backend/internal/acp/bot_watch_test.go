@@ -45,7 +45,7 @@ func TestABotWhoseThreadEndedShortIsWokenOnceThenTheUserIsToldAcrossARestart(t *
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
 	jaz.busy(bot.ID)
-	id, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{Request: "Compare the two quotes", Next: "send the comparison"})
+	id, err := jaz.commit(bot.ID, bots.Commit{Request: "Compare the two quotes", Next: "send the comparison"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestABotWhoseThreadEndedShortIsWokenOnceThenTheUserIsToldAcrossARestart(t *
 	jaz.settles(bot.ID, 2, 2)
 
 	// A wait the bot declares holds until it ends the wait.
-	if _, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{ID: id, Waiting: "requester"}); err != nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Waiting: "requester"}); err != nil {
 		t.Fatal(err)
 	}
 	jaz.write(bot.ID, "Which quote do you need from me?")
@@ -92,7 +92,7 @@ func TestABotWhoseThreadEndedShortIsWokenOnceThenTheUserIsToldAcrossARestart(t *
 	if view, err := jaz.bots.Activity(bot.ID); err != nil || view.Owed[0].Waiting != storage.WaitingRequester || view.Owed[0].Stalled {
 		t.Fatalf("owed = %+v, %v; want it waiting on the user", view.Owed, err)
 	}
-	if _, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{ID: id, Waiting: "none"}); err != nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Waiting: "none"}); err != nil {
 		t.Fatal(err)
 	}
 	jaz.write(bot.ID, "The second one.")
@@ -109,7 +109,7 @@ func TestACommitmentThatStalledWhileJazWasDownWakesItsBotAtStartup(t *testing.T)
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
-	if _, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{Request: "Book the courier"}); err != nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{Request: "Book the courier"}); err != nil {
 		t.Fatal(err)
 	}
 	jaz.settles(bot.ID, 0, 0)
@@ -124,7 +124,7 @@ func TestABotIsNotWokenWhileItsThreadWorksInTheBackground(t *testing.T) {
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
 	jaz.busy(bot.ID)
-	id, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{Request: "Run the login suites"})
+	id, err := jaz.commit(bot.ID, bots.Commit{Request: "Run the login suites"})
 	if err != nil {
 		t.Fatal(err)
 	}

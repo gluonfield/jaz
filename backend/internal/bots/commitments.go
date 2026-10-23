@@ -44,7 +44,7 @@ var waits = map[string]string{"requester": storage.WaitingRequester, "outside": 
 func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	record, session, err := s.load(threadID)
 	if err != nil || record.Kind != KindBot {
-		return 0, errors.New("commitments are kept in a bot's own chat")
+		return 0, errors.New("tasks are kept in a bot's own chat")
 	}
 	var output storage.TurnOutput
 	if session.Turn != nil && session.Turn.Output != nil {
@@ -57,7 +57,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	}
 	if change.ID == 0 {
 		if request == "" {
-			return 0, errors.New("request is required to open a commitment")
+			return 0, errors.New("request is required to create a task")
 		}
 		commitment, err := s.store.OpenCommitment(storage.Commitment{BotID: threadID, Requester: output.ReplyTo, Request: request, Note: next, Waiting: waiting})
 		return commitment.ID, err
@@ -157,17 +157,17 @@ func SteerNote(store NoteStore) func(storage.Session) string {
 func commitmentNote(store NoteStore, bot string) string {
 	open, err := store.ListOpenCommitments(bot)
 	if err != nil {
-		return fmt.Sprintf("Your open commitments could not be read: %v.\n\n", err)
+		return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err)
 	}
 	if len(open) == 0 {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("Your open commitments. Deliver each result with done set to its number; drop what is no longer wanted:\n")
+	b.WriteString("Your open tasks. Deliver completed results with bot_task_complete using their ids; cancel what is no longer wanted with bot_task_cancel:\n")
 	for _, commitment := range open {
 		_, name, err := owedTo(store, commitment)
 		if err != nil {
-			return fmt.Sprintf("Your open commitments could not be read: %v.\n\n", err)
+			return fmt.Sprintf("Your open tasks could not be read: %v.\n\n", err)
 		}
 		fmt.Fprintf(&b, "#%d for %s: %s", commitment.ID, cmp.Or(name, "the user"), commitment.Request)
 		for _, thread := range commitment.Threads {

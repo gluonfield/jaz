@@ -198,7 +198,7 @@ func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *test
 			turns <- req
 			switch {
 			case strings.HasPrefix(req.Message, "[message from Asker]"):
-				id, err := p.commit(helper.ID, bots.MCPCommitmentInput{Request: "Build a parser"})
+				id, err := p.commit(helper.ID, bots.Commit{Request: "Build a parser"})
 				if err != nil {
 					return err
 				}
@@ -359,7 +359,7 @@ func TestAResultForABotDeletedDuringTheAnswerReachesTheUserAfterARestart(t *test
 			}
 			switch {
 			case strings.HasPrefix(req.Message, "[message from Asker]"):
-				id, err := p.commit(helper.ID, bots.MCPCommitmentInput{Request: "Build a parser"})
+				id, err := p.commit(helper.ID, bots.Commit{Request: "Build a parser"})
 				if err != nil {
 					return err
 				}

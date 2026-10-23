@@ -24,9 +24,8 @@ func owe(t *testing.T, store *sqlitestore.Store, bot string) int64 {
 
 // commit opens or changes one of bot's commitments the way its agent's
 // commitment tool does.
-func (p *jazProcess) commit(bot string, input bots.MCPCommitmentInput) (int64, error) {
-	_, out, err := bots.NewMCPTools(p.bots).Commit(p.ctx, callAs(bot), input)
-	return out.ID, err
+func (p *jazProcess) commit(bot string, input bots.Commit) (int64, error) {
+	return p.bots.Commit(bot, input)
 }
 
 func (p *jazProcess) commitment(id int64) storage.Commitment {
@@ -66,10 +65,10 @@ func TestABotsCommitmentLinksItsThreadAndClosesOnlyWhenTheResultReachesTheUserAc
 	bot := jaz.newBot("Gimli")
 	jaz.busy(bot.ID)
 	tools := acp.NewMCPTools(jaz.manager)
-	if _, _, err := tools.Create(jaz.ctx, callAs(bot.ID), acp.MCPCreateInput{Prompt: "Compare the two quotes until released"}); err == nil || !strings.Contains(err.Error(), "commitment") {
+	if _, _, err := tools.Create(jaz.ctx, callAs(bot.ID), acp.MCPCreateInput{Prompt: "Compare the two quotes until released"}); err == nil || !strings.Contains(err.Error(), "task") {
 		t.Fatalf("a thread started without a commitment: %v", err)
 	}
-	id, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{Request: "Compare the two quotes", Next: "send the comparison"})
+	id, err := jaz.commit(bot.ID, bots.Commit{Request: "Compare the two quotes", Next: "send the comparison"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +122,7 @@ func TestACommitmentToABotClosesWithTheAnswerThatReachesIt(t *testing.T) {
 		}
 		if strings.HasPrefix(req.Message, "[message from Asker]") {
 			// Answered later, without a thread: a check-back.
-			id, err := jaz.commit(helper.ID, bots.MCPCommitmentInput{Request: "Tell Asker the price", Next: "ask the user"})
+			id, err := jaz.commit(helper.ID, bots.Commit{Request: "Tell Asker the price", Next: "ask the user"})
 			opened <- id
 			return err
 		}
@@ -152,7 +151,7 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
-	id, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{Request: "Draft the brochure"})
+	id, err := jaz.commit(bot.ID, bots.Commit{Request: "Draft the brochure"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +160,7 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ThreadID)
-	if _, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{ID: id, Drop: "the user cancelled it"}); err == nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Drop: "the user cancelled it"}); err == nil {
 		t.Fatal("dropped while its thread works")
 	}
 	jaz.cancel(thread.ThreadID)
@@ -169,13 +168,13 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 		session, err := store.LoadSession(thread.ThreadID)
 		return err == nil && session.Status != storage.StatusRunning
 	})
-	if _, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{ID: id, Drop: "the user cancelled it"}); err != nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Drop: "the user cancelled it"}); err != nil {
 		t.Fatal(err)
 	}
 	if commitment := jaz.commitment(id); commitment.Status != storage.CommitmentDropped || commitment.Note != "the user cancelled it" {
 		t.Fatalf("commitment = %+v, want dropped with its reason", commitment)
 	}
-	if _, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{ID: id, Next: "start again"}); err == nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Next: "start again"}); err == nil {
 		t.Fatal("a dropped commitment took a new step")
 	}
 }
@@ -195,7 +194,7 @@ func TestAnAnswerWithDoneGoesToTheThreadThatAsked(t *testing.T) {
 	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, speak: func(req acp.InternalTurnRequest) error {
 		switch {
 		case req.Session == helper.ID && strings.HasPrefix(req.Message, "[message from Asker]"):
-			id, err := jaz.commit(helper.ID, bots.MCPCommitmentInput{Request: "Price the part"})
+			id, err := jaz.commit(helper.ID, bots.Commit{Request: "Price the part"})
 			opened <- id
 			return err
 		case req.Session == child && strings.HasPrefix(req.Message, "[message from Helper]"):

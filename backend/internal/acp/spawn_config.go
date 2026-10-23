@@ -128,7 +128,7 @@ func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 	// The parent works for a bot rather than being one.
 	if owner := bot.Owner(); req.SourceType == "" && owner != "" && owner != bot.ID {
 		if req.Commitment != 0 {
-			return req, errors.New("only a bot's own chat starts threads for its commitments; leave commitment out")
+			return req, errors.New("only a bot's own chat starts threads for its tasks; leave task out")
 		}
 		req.SourceType, req.SourceID = storage.SourceBotWorker, owner
 		return req, nil
@@ -138,7 +138,7 @@ func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 	}
 	if req.SourceType == "" {
 		if req.Commitment == 0 {
-			return req, errors.New("a thread you start serves one of your commitments: open one with the commitment tool, then pass its number as commitment")
+			return req, errors.New("a thread you start serves one of your tasks: create one with bot_task_create, then pass its id as task")
 		}
 		req.SourceType, req.SourceID = storage.SourceBotWorker, bot.ID
 	}

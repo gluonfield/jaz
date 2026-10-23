@@ -2,6 +2,8 @@ package bots
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
@@ -36,10 +38,25 @@ func (t *MCPTools) AddBotTo(server *mcp.Server) {
 		Description: "Send a text message as yourself. In a group chat turn it posts to the group, when answering a bot it goes to that bot, and otherwise it reaches the user in your chat. App presentation tools can also deliver a visible answer; do not repeat a result the host has already presented.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "commitment",
-		Title:       "Keep a commitment",
-		Description: "Keep the list of what you owe beyond this turn: work you hand to threads and answers you owe once something arrives. Open one with request before you start a thread for it; it is owed to whoever this turn answers. Set next as it moves on, and waiting while it waits on something other than its threads. It closes as done when you deliver its result with send_message or message_bot and its number in done; drop it, saying why, when it is no longer wanted or was delivered without done.",
-	}, t.Commit)
+		Name:        "bot_task_create",
+		Title:       "Create a task",
+		Description: "Record unfinished work the bot must complete beyond this turn. Create a task before delegating work or promising a later result. Returns its id; pass it to create_thread as task. The task is owed to whoever this turn answers.",
+	}, t.CreateTask)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "bot_task_update",
+		Title:       "Update a task",
+		Description: "Update an open task's request, next step or waiting state. Use for progress and follow-up; the task stays open until its result is delivered or it is cancelled.",
+	}, t.UpdateTask)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "bot_task_complete",
+		Title:       "Complete tasks",
+		Description: "Deliver completed task results and close the tasks as the message reaches whoever this turn answers. A progress update or question leaves tasks open: use send_message. To deliver to another bot from a different turn, use message_bot with done.",
+	}, t.CompleteTasks)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "bot_task_cancel",
+		Title:       "Cancel a task",
+		Description: "Cancel an open task with a reason when it is no longer wanted, superseded or already delivered. Stop its working threads first. Completion with a new result uses bot_task_complete.",
+	}, t.CancelTask)
 }
 
 type MCPListInput struct{}
@@ -70,7 +87,7 @@ func (t *MCPTools) List(context.Context, *mcp.CallToolRequest, MCPListInput) (*m
 type MCPMessageInput struct {
 	Bot     string  `json:"bot" jsonschema:"bot or group id, a bot:<id> mention target, or the exact name"`
 	Message string  `json:"message"`
-	Done    []int64 `json:"done,omitempty" jsonschema:"Your commitments to this bot that the message delivers; it goes to the thread of the bot that asked and they close as it arrives."`
+	Done    []int64 `json:"done,omitempty" jsonschema:"Your task ids whose results this message delivers to this bot; it goes to the thread that asked and the tasks close as it arrives."`
 }
 
 type MCPMessageOutput struct {
@@ -86,7 +103,7 @@ func (t *MCPTools) Message(_ context.Context, req *mcp.CallToolRequest, input MC
 
 type MCPSendInput struct {
 	Message string  `json:"message"`
-	Done    []int64 `json:"done,omitempty" jsonschema:"Your commitments whose result this message delivers; they close as it reaches whoever they are owed to."`
+	Done    []int64 `json:"done,omitempty" jsonschema:"Your task ids whose results this message delivers; they close as it reaches whoever they are owed to. bot_task_complete also delivers and closes tasks."`
 }
 
 type MCPSendOutput struct {
@@ -100,19 +117,59 @@ func (t *MCPTools) Send(_ context.Context, req *mcp.CallToolRequest, input MCPSe
 	return nil, MCPSendOutput{Sent: true}, nil
 }
 
-type MCPCommitmentInput struct {
-	ID      int64  `json:"id,omitempty" jsonschema:"The commitment's number; omit to open one."`
+type MCPTaskCreateInput struct {
+	Request string `json:"request" jsonschema:"What the bot must finish, in a few words."`
+	Next    string `json:"next,omitempty" jsonschema:"The next step on this task."`
+}
+
+type MCPTaskUpdateInput struct {
+	ID      int64  `json:"id" jsonschema:"The open task's id."`
 	Request string `json:"request,omitempty" jsonschema:"What was asked, in a few words."`
 	Next    string `json:"next,omitempty" jsonschema:"Your next step on it."`
 	Waiting string `json:"waiting,omitempty" jsonschema:"What it waits on besides its threads: requester, an answer only whoever asked can give, which you have asked for; outside, a job outside Jaz that cannot tell you when it ends; none once it moves again. Omit to leave it as it is. Starting a thread for it sets none."`
-	Drop    string `json:"drop,omitempty" jsonschema:"Why it closes without delivering: cancelled, superseded or delivered earlier."`
 }
 
-type MCPCommitmentOutput struct {
+type MCPTaskOutput struct {
 	ID int64 `json:"id"`
 }
 
-func (t *MCPTools) Commit(_ context.Context, req *mcp.CallToolRequest, input MCPCommitmentInput) (*mcp.CallToolResult, MCPCommitmentOutput, error) {
-	id, err := t.service.Commit(mcpsession.SessionID(req), Commit(input))
-	return nil, MCPCommitmentOutput{ID: id}, err
+func (t *MCPTools) CreateTask(_ context.Context, req *mcp.CallToolRequest, input MCPTaskCreateInput) (*mcp.CallToolResult, MCPTaskOutput, error) {
+	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{Request: input.Request, Next: input.Next})
+	return nil, MCPTaskOutput{ID: id}, err
+}
+
+func (t *MCPTools) UpdateTask(_ context.Context, req *mcp.CallToolRequest, input MCPTaskUpdateInput) (*mcp.CallToolResult, MCPTaskOutput, error) {
+	if input.ID <= 0 {
+		return nil, MCPTaskOutput{}, errors.New("task id must be positive")
+	}
+	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{ID: input.ID, Request: input.Request, Next: input.Next, Waiting: input.Waiting})
+	return nil, MCPTaskOutput{ID: id}, err
+}
+
+type MCPTaskCompleteInput struct {
+	IDs     []int64 `json:"ids" jsonschema:"The task ids whose completed results this message delivers."`
+	Message string  `json:"message" jsonschema:"The completed results for whoever this turn answers."`
+}
+
+func (t *MCPTools) CompleteTasks(_ context.Context, req *mcp.CallToolRequest, input MCPTaskCompleteInput) (*mcp.CallToolResult, MCPSendOutput, error) {
+	if len(input.IDs) == 0 {
+		return nil, MCPSendOutput{}, errors.New("task ids are required")
+	}
+	if err := t.service.Say(mcpsession.SessionID(req), input.Message, input.IDs...); err != nil {
+		return nil, MCPSendOutput{}, err
+	}
+	return nil, MCPSendOutput{Sent: true}, nil
+}
+
+type MCPTaskCancelInput struct {
+	ID     int64  `json:"id" jsonschema:"The open task's id."`
+	Reason string `json:"reason" jsonschema:"Why the task is cancelled, superseded or already delivered."`
+}
+
+func (t *MCPTools) CancelTask(_ context.Context, req *mcp.CallToolRequest, input MCPTaskCancelInput) (*mcp.CallToolResult, MCPTaskOutput, error) {
+	if input.ID <= 0 || strings.TrimSpace(input.Reason) == "" {
+		return nil, MCPTaskOutput{}, errors.New("a positive task id and cancellation reason are required")
+	}
+	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{ID: input.ID, Drop: input.Reason})
+	return nil, MCPTaskOutput{ID: id}, err
 }

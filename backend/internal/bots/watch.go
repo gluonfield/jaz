@@ -10,7 +10,7 @@ import (
 )
 
 // wakePrompt wakes a bot once about what it owes that stopped moving.
-const wakePrompt = "[owed] Your turn ended while nothing moves on some of what you owe: no thread works on it and it waits on nobody. The list above marks it. Carry each on now, deliver it with done, set waiting if it waits on its requester or an outside job, or drop it. Jaz reminds you once; if one still does not move, the user is told it stalled."
+const wakePrompt = "[owed] Your turn ended while nothing moves on some of your tasks: no thread works on it and it waits on nobody. The list above marks it. Carry each on now, deliver its result with bot_task_complete, use bot_task_update to set waiting if it waits on its requester or an outside job, or cancel it with bot_task_cancel. Jaz reminds you once; if one still does not move, the user is told it stalled."
 
 // TurnEnded follows a thread's turn once Jaz has recorded how it ended: it
 // notes changes to its bot's identity files and, after a turn of a bot's own

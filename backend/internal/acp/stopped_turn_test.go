@@ -30,7 +30,7 @@ func TestWorkQueuedBehindAStoppedTurnRunsOnceAcrossARestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
-	id, err := jaz.commit(bot.ID, bots.MCPCommitmentInput{Request: "Book the hotel", Next: "tell the user"})
+	id, err := jaz.commit(bot.ID, bots.Commit{Request: "Book the hotel", Next: "tell the user"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -189,7 +189,7 @@ export async function exerciseBotPanel(): Promise<void> {
     dark(false)
     await until('Activity never listed Now and today', () => text().includes('Now') && text().includes('Running for 14m') && text().includes('Today') && text().includes('Learned something new'))
     const headings = [...document.querySelectorAll('h3')].map((heading) => heading.textContent)
-    if (headings.indexOf('Owed') !== 0 || headings.indexOf('Now') !== 1) {
+    if (headings.indexOf('Tasks') !== 0 || headings.indexOf('Now') !== 1) {
       throw new Error(`Bot panel: what the bot owes is not listed first: ${headings.join(', ')}`)
     }
     for (const line of ['For you · Working · Next: check its report, then send it', 'For Priorities Bot · Result in', 'For you · Stalled · Next: send the comparison', 'For you · Waiting on an outside job Jaz is not told about', 'For you · Waiting on you · Next: wait for his OK, then start the fork change', 'For you · A thread failed', 'Delivered to you', 'Dropped · He chose option A instead']) {

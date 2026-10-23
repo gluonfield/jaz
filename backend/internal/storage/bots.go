@@ -42,7 +42,7 @@ const (
 )
 
 // ErrCommitmentNotOpen refuses a commitment that is closed or another bot's.
-var ErrCommitmentNotOpen = errors.New("no such open commitment")
+var ErrCommitmentNotOpen = errors.New("no such open task")
 
 // ErrCommitmentWorking refuses closing a commitment while one of its threads
 // works.

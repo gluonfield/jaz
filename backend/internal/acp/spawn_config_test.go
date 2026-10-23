@@ -415,7 +415,7 @@ func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, parent := range []storage.Session{subtask, seat, run} {
-		if _, err := manager.CreateSession(ctx, SpawnRequest{ParentID: parent.ID, Slug: parent.Slug + " review", Commitment: owed.ID}); err == nil || !strings.Contains(err.Error(), "leave commitment out") {
+		if _, err := manager.CreateSession(ctx, SpawnRequest{ParentID: parent.ID, Slug: parent.Slug + " review", Commitment: owed.ID}); err == nil || !strings.Contains(err.Error(), "leave task out") {
 			t.Fatalf("a thread %s started served a commitment: %v", parent.Slug, err)
 		}
 		review, err := manager.CreateSession(ctx, SpawnRequest{ParentID: parent.ID, Slug: parent.Slug + " review"})
