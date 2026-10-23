@@ -801,6 +801,7 @@ export interface BotOwed {
   question_seq?: number
   depends_on?: number[]
   blocked?: boolean
+  moving?: boolean
   stalled?: boolean
   opened_at: string
   // Threads in linking order, oldest first.

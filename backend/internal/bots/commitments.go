@@ -71,16 +71,13 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	if status != storage.CommitmentPending && status != storage.CommitmentInProgress && status != storage.CommitmentWaitingForUser {
 		return 0, fmt.Errorf("invalid task status %q", status)
 	}
-	if request != "" {
-		commitment.Request = request
-	}
-	if next != "" {
-		commitment.Note = next
-	}
+	commitment.Request = request
+	commitment.Note = next
+	commitment.DependsOn = nil
 	if change.DependsOn != nil {
-		commitment.DependsOn = *change.DependsOn
+		commitment.DependsOn = append([]int64{}, *change.DependsOn...)
 	}
-	commitment.Status = status
+	commitment.Status = change.Status
 	if status == storage.CommitmentWaitingForUser && message != "" {
 		event, err := s.store.AskCommitment(commitment, sessionevents.Event{
 			SessionID: threadID, Type: sessionevents.TypeRoomMessage, At: time.Now().UTC(),
@@ -93,10 +90,6 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	}
 	if message != "" {
 		return 0, errors.New("message is used with waiting_for_user, completed or cancelled")
-	}
-	if status != storage.CommitmentWaitingForUser {
-		commitment.QuestionSeq = 0
-		commitment.QuestionUserSeq = 0
 	}
 	return commitment.ID, s.store.UpdateCommitment(commitment)
 }
@@ -165,7 +158,7 @@ func standing(commitment storage.Commitment) string {
 	case commitment.Blocked:
 		return fmt.Sprintf(" · prerequisites: %v", commitment.DependsOn)
 	case commitment.Moving:
-		return ""
+		return " · work is running"
 	case commitment.Stalled:
 		return " · stalled: no thread is working; resume this task"
 	}

@@ -8,9 +8,77 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	_ "modernc.org/sqlite"
 )
+
+func TestBotTaskQuestionMigrationReleasesOnlyAnsweredQuestions(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	tasks := map[string]storage.Commitment{}
+	for _, slug := range []string{"answered", "unanswered"} {
+		bot, err := store.CreateSession(storage.CreateSession{Slug: slug, SourceType: storage.SourceBot})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range 3 {
+			if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Compare suppliers", FromUser: true, CreatedAt: time.UnixMilli(100)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare suppliers"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.AskCommitment(task, sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage, At: time.UnixMilli(1000),
+			RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Which supplier?"}}); err != nil {
+			t.Fatal(err)
+		}
+		tasks[slug] = task
+	}
+	migrations, err := fs.Sub(sqliteMigrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, store.db, migrations, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(t.Context(), 76); err != nil {
+		t.Fatal(err)
+	}
+	answered := tasks["answered"]
+	if _, err := store.db.Exec("DELETE FROM messages WHERE thread_id = ?", answered.BotID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.db.Exec("INSERT INTO messages (thread_id, seq, role, content, blocks, created_at_ms, from_user) VALUES (?, 1, 'user', 'Supplier A', '[]', 2000, 1)", answered.BotID); err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.LoadCommitment(answered.ID)
+	if err != nil || before.Status != storage.CommitmentWaitingForUser {
+		t.Fatalf("legacy stuck wait was not reproduced: %+v, %v", before, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for slug, status := range map[string]string{"answered": storage.CommitmentPending, "unanswered": storage.CommitmentWaitingForUser} {
+		task, err := store.LoadCommitment(tasks[slug].ID)
+		if err != nil || task.Status != status {
+			t.Fatalf("migrated %s question = %+v, %v; want %s", slug, task, err, status)
+		}
+	}
+}
 
 func TestBotTaskMigrationPreservesWorkAndReconcilesUnverifiedLegacyWaits(t *testing.T) {
 	root := t.TempDir()

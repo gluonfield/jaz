@@ -54,7 +54,7 @@ export function owedState(owed: BotOwed): { danger: boolean; standing: string } 
     standing = 'Not started'
   } else if (failed) {
     standing = 'A thread failed'
-  } else if (threads.some((thread) => thread.state === 'working' || thread.state === 'background')) {
+  } else if (owed.moving || threads.some((thread) => thread.state === 'working' || thread.state === 'background')) {
     standing = 'Working'
   } else if (latest?.state === 'finished') {
     standing = 'Result in'

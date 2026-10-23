@@ -23,6 +23,7 @@ func (s *Store) OpenCommitment(commitment storage.Commitment) (storage.Commitmen
 	return commitment, err
 }
 
+// Empty text/status and nil dependencies preserve their current values.
 func (s *Store) UpdateCommitment(commitment storage.Commitment) error {
 	ctx := context.Background()
 	s.writeMu.Lock()
@@ -39,15 +40,15 @@ func (s *Store) UpdateCommitment(commitment storage.Commitment) error {
 }
 
 func updateCommitment(ctx context.Context, q *botdb.Queries, commitment storage.Commitment) error {
-	if !commitment.IsOpen() {
+	if commitment.Status != "" && !commitment.IsOpen() {
 		return fmt.Errorf("invalid open task status %q", commitment.Status)
 	}
-	if (commitment.Status == storage.CommitmentWaitingForUser) != (commitment.QuestionSeq > 0) {
+	if commitment.Status == storage.CommitmentWaitingForUser && commitment.QuestionSeq <= 0 {
 		return errors.New("waiting_for_user requires a delivered question")
 	}
 	updated, err := q.UpdateCommitment(ctx, botdb.UpdateCommitmentParams{
-		ID: commitment.ID, BotID: commitment.BotID, Request: commitment.Request, Note: commitment.Note,
-		Status: commitment.Status, QuestionSeq: commitment.QuestionSeq, QuestionUserSeq: commitment.QuestionUserSeq,
+		ID: commitment.ID, BotID: commitment.BotID, Request: nullDBString(commitment.Request), Note: nullDBString(commitment.Note),
+		Status: nullDBString(commitment.Status), QuestionSeq: commitment.QuestionSeq,
 	})
 	if err != nil {
 		return err
@@ -55,23 +56,25 @@ func updateCommitment(ctx context.Context, q *botdb.Queries, commitment storage.
 	if updated == 0 {
 		return fmt.Errorf("#%d: %w", commitment.ID, storage.ErrCommitmentNotOpen)
 	}
-	if err := q.DeleteCommitmentDependencies(ctx, commitment.ID); err != nil {
-		return err
-	}
-	for _, prerequisite := range commitment.DependsOn {
-		cycle, err := q.CommitmentDependencyCycle(ctx, botdb.CommitmentDependencyCycleParams{CommitmentID: commitment.ID, PrerequisiteID: prerequisite})
-		if err != nil {
+	if commitment.DependsOn != nil {
+		if err := q.DeleteCommitmentDependencies(ctx, commitment.ID); err != nil {
 			return err
 		}
-		if cycle {
-			return errors.New("task dependencies must have no cycles")
-		}
-		linked, err := q.LinkCommitmentDependency(ctx, botdb.LinkCommitmentDependencyParams{CommitmentID: commitment.ID, PrerequisiteID: prerequisite})
-		if err != nil {
-			return err
-		}
-		if linked == 0 {
-			return fmt.Errorf("invalid prerequisite #%d: tasks must belong to the same bot and dependencies must have no cycles", prerequisite)
+		for _, prerequisite := range commitment.DependsOn {
+			cycle, err := q.CommitmentDependencyCycle(ctx, botdb.CommitmentDependencyCycleParams{CommitmentID: commitment.ID, PrerequisiteID: prerequisite})
+			if err != nil {
+				return err
+			}
+			if cycle {
+				return errors.New("task dependencies must have no cycles")
+			}
+			linked, err := q.LinkCommitmentDependency(ctx, botdb.LinkCommitmentDependencyParams{CommitmentID: commitment.ID, PrerequisiteID: prerequisite})
+			if err != nil {
+				return err
+			}
+			if linked == 0 {
+				return fmt.Errorf("invalid prerequisite #%d: tasks must belong to the same bot and dependencies must have no cycles", prerequisite)
+			}
 		}
 	}
 	motions, err := q.ListCommitmentMotion(ctx, []int64{commitment.ID})
@@ -79,8 +82,8 @@ func updateCommitment(ctx context.Context, q *botdb.Queries, commitment storage.
 		return err
 	}
 	for _, motion := range motions {
-		if motion.Moving != 0 && motion.Blocked != 0 {
-			return errors.New("stop the task's active workers before adding unfinished prerequisites")
+		if motion.Moving != 0 && (motion.Blocked != 0 || commitment.Status == storage.CommitmentPending) {
+			return errors.New("an active task cannot be pending or have unfinished prerequisites")
 		}
 	}
 	return nil
@@ -246,7 +249,7 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	commitments := make([]storage.Commitment, 0, len(rows))
 	for _, row := range rows {
 		commitments = append(commitments, storage.Commitment{
-			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, QuestionUserSeq: row.QuestionUserSeq, DependsOn: dependencies[row.ID],
+			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, DependsOn: dependencies[row.ID],
 			Moving: motion[row.ID].Moving != 0, Blocked: motion[row.ID].Blocked != 0, Stalled: motion[row.ID].Stalled != 0, Status: row.Status,
 			OpenedAt: msToTime(row.OpenedAtMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
 		})

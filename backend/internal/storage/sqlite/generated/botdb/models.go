@@ -20,19 +20,18 @@ type Bot struct {
 }
 
 type BotCommitment struct {
-	ID              int64         `json:"id"`
-	BotID           string        `json:"bot_id"`
-	Requester       string        `json:"requester"`
-	Request         string        `json:"request"`
-	Note            string        `json:"note"`
-	Status          string        `json:"status"`
-	OpenedAtMs      int64         `json:"opened_at_ms"`
-	ClosedAtMs      sql.NullInt64 `json:"closed_at_ms"`
-	QuestionSeq     int64         `json:"question_seq"`
-	QuestionUserSeq int64         `json:"question_user_seq"`
-	WakeProgress    string        `json:"wake_progress"`
-	WakeAttempts    int64         `json:"wake_attempts"`
-	WakeAtMs        int64         `json:"wake_at_ms"`
+	ID           int64         `json:"id"`
+	BotID        string        `json:"bot_id"`
+	Requester    string        `json:"requester"`
+	Request      string        `json:"request"`
+	Note         string        `json:"note"`
+	Status       string        `json:"status"`
+	OpenedAtMs   int64         `json:"opened_at_ms"`
+	ClosedAtMs   sql.NullInt64 `json:"closed_at_ms"`
+	QuestionSeq  int64         `json:"question_seq"`
+	WakeProgress string        `json:"wake_progress"`
+	WakeAttempts int64         `json:"wake_attempts"`
+	WakeAtMs     int64         `json:"wake_at_ms"`
 }
 
 type BotCommitmentDependency struct {

@@ -42,6 +42,7 @@ describe('owed commitment state', () => {
 
   test.each([
     [{ stalled: true }, true, 'Stalled'],
+    [{ moving: true }, false, 'Working'],
     [{ status: 'pending' }, false, 'Not started'],
     [{ status: 'waiting_for_user', for: 'Operations' }, false, 'Waiting on you'],
   ])('commitment standing %j takes precedence after recovery', (fields, danger, standing) => {

@@ -67,10 +67,9 @@ type Commitment struct {
 	Requester string
 	Request   string
 	// Note is the bot's next step while it is open, or why it was dropped.
-	Note            string
-	QuestionSeq     int64
-	QuestionUserSeq int64
-	DependsOn       []int64
+	Note        string
+	QuestionSeq int64
+	DependsOn   []int64
 	// Moving is set while one of its threads works on it, in a turn or in
 	// the background.
 	Moving  bool

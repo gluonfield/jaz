@@ -5,15 +5,18 @@ RETURNING id;
 
 -- name: UpdateCommitment :execrows
 UPDATE bot_commitments
-SET request = sqlc.arg(request), note = sqlc.arg(note), status = sqlc.arg(status),
-  question_seq = sqlc.arg(question_seq),
-  question_user_seq = sqlc.arg(question_user_seq)
+SET request = coalesce(sqlc.narg(request), request), note = coalesce(sqlc.narg(note), note), status = coalesce(sqlc.narg(status), status),
+  question_seq = CASE WHEN sqlc.narg(status) IS NULL OR sqlc.narg(status) = 'waiting_for_user' THEN question_seq ELSE 0 END
 WHERE id = sqlc.arg(id) AND bot_id = sqlc.arg(bot_id) AND status IN ('pending', 'in_progress', 'waiting_for_user')
-  AND (sqlc.arg(question_seq) = 0 OR (
-    EXISTS (SELECT 1 FROM session_events e WHERE e.thread_id = bot_id AND e.seq = sqlc.arg(question_seq)
-      AND e.type = 'room_message' AND json_extract(e.content, '$.speaker') = 'bot' AND json_extract(e.content, '$.text') <> '')
-    AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = bot_id AND m.from_user <> 0 AND m.seq > sqlc.arg(question_user_seq))
-  ));
+  AND (sqlc.narg(status) IS NOT 'waiting_for_user' OR (status = 'waiting_for_user' AND question_seq = sqlc.arg(question_seq)));
+
+-- name: AskCommitment :exec
+UPDATE bot_commitments SET status = 'waiting_for_user', question_seq = sqlc.arg(question_seq)
+WHERE id = sqlc.arg(id) AND bot_id = sqlc.arg(bot_id) AND status IN ('pending', 'in_progress', 'waiting_for_user');
+
+-- name: AnswerTaskQuestions :exec
+UPDATE bot_commitments SET status = 'pending', question_seq = 0, wake_at_ms = 0, wake_attempts = 0, wake_progress = ''
+WHERE bot_id = sqlc.arg(bot_id) AND status = 'waiting_for_user';
 
 -- name: CommitmentWorking :one
 SELECT EXISTS (
@@ -115,6 +118,7 @@ SELECT commitment_id, prerequisite_id FROM bot_commitment_dependencies
 WHERE commitment_id IN (sqlc.slice(ids)) ORDER BY prerequisite_id;
 
 -- name: ListCommitmentThreads :many
-SELECT commitment_id, thread_id, slug, title, state FROM bot_commitment_thread_states
-WHERE commitment_id IN (sqlc.slice(ids))
-ORDER BY linked;
+SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state FROM bot_commitment_thread_states s
+JOIN bot_commitment_threads l ON l.id = s.linked AND l.thread_id = s.thread_id
+WHERE s.commitment_id IN (sqlc.slice(ids))
+ORDER BY s.linked;

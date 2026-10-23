@@ -254,6 +254,13 @@ func TestWaitingTaskRequiresADeliveredQuestionAndARealUserReplyReleasesIt(t *tes
 	if err != nil || task.Status != storage.CommitmentWaitingForUser || task.QuestionSeq != event.Seq || event.Seq == 0 {
 		t.Fatalf("question wait = %+v, %v", task, err)
 	}
+	if err := store.UpdateCommitment(storage.Commitment{ID: task.ID, BotID: bot.ID, Note: "Use the user's choice"}); err != nil {
+		t.Fatal(err)
+	}
+	task, err = store.LoadCommitment(task.ID)
+	if err != nil || task.Status != storage.CommitmentWaitingForUser || task.QuestionSeq != event.Seq || task.Note != "Use the user's choice" {
+		t.Fatalf("progress update cleared the unanswered question: %+v, %v", task, err)
+	}
 	eligible, err := store.ListWatchBots()
 	if err != nil || len(eligible) != 0 {
 		t.Fatalf("a genuine user wait woke the bot: %v, %v", eligible, err)
@@ -355,5 +362,130 @@ func TestTaskDependenciesBlockExecutionAndRejectCyclesOrOtherBots(t *testing.T) 
 	loaded, err = store.LoadCommitment(dependent.ID)
 	if err != nil || !loaded.Moving || loaded.Blocked || !slices.Equal(loaded.DependsOn, []int64{prerequisite.ID}) {
 		t.Fatalf("late dependency rejection was not atomic: %+v, %v", loaded, err)
+	}
+	loaded.Status = storage.CommitmentPending
+	if err := store.UpdateCommitment(loaded); err == nil {
+		t.Fatal("an active task was reset to pending")
+	}
+}
+
+func TestTaskQuestionSurvivesHistoryReplacementAndReleasesOnTheNextUserMessage(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(bot.ID,
+		storage.Message{Role: "user", Content: "Compare suppliers", FromUser: true},
+		storage.Message{Role: "assistant", Content: "Checking the records"},
+		storage.Message{Role: "user", Content: "Use the current list", FromUser: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare suppliers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updates := make(chan error, 2)
+	go func() {
+		_, err := store.AskCommitment(storage.Commitment{ID: task.ID, BotID: bot.ID}, sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage,
+			RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Which supplier should I use?"}})
+		updates <- err
+	}()
+	go func() {
+		updates <- store.UpdateCommitment(storage.Commitment{ID: task.ID, BotID: bot.ID, Note: "Use the user's answer"})
+	}()
+	for range 2 {
+		if err := <-updates; err != nil {
+			t.Fatalf("parallel task updates: %v", err)
+		}
+	}
+	task, err = store.LoadCommitment(task.ID)
+	if err != nil || task.Note != "Use the user's answer" || task.Status != storage.CommitmentWaitingForUser || task.Request != "Compare suppliers" {
+		t.Fatalf("parallel task update lost a field or question: %+v, %v", task, err)
+	}
+	if err := store.SaveMessages(bot.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadCommitment(task.ID)
+	if err != nil || loaded.Status != storage.CommitmentWaitingForUser {
+		t.Fatalf("history replacement released an unanswered question: %+v, %v", loaded, err)
+	}
+	if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Supplier A", FromUser: true}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadCommitment(task.ID)
+	if err != nil || loaded.Status != storage.CommitmentPending {
+		t.Fatalf("renumbered user message did not release the question: %+v, %v", loaded, err)
+	}
+	if err := store.UpdateCommitment(task); err == nil {
+		t.Fatal("a stale question update reinstated the wait after history replacement")
+	}
+}
+
+func TestTaskRecoveryAndCompletionAccountForWorkersStartedByItsWorker(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Review the suppliers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := store.CreateSession(storage.CreateSession{Slug: "worker", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: bot.ID, Commitment: task.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.CreateSession(storage.CreateSession{Slug: "review", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: worker.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(child.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadCommitment(task.ID)
+	if err != nil || !loaded.Moving {
+		t.Fatalf("task ignored its active descendant worker: %+v, %v", loaded, err)
+	}
+	if len(loaded.Threads) != 1 || loaded.Threads[0].ID != worker.ID {
+		t.Fatalf("derived worker activity changed the direct task links: %+v", loaded.Threads)
+	}
+	watch, err := store.ListWatchBots()
+	if err != nil || len(watch) != 0 {
+		t.Fatalf("active descendant triggered recovery: %v, %v", watch, err)
+	}
+	if err := store.DropCommitment(task.ID, "Cancelled", time.Now()); !errors.Is(err, storage.ErrCommitmentWorking) {
+		t.Fatalf("task closed while its descendant worked: %v", err)
+	}
+	if _, err := store.DeliverMessage(sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage,
+		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "This must not be delivered"}}, []int64{task.ID}); !errors.Is(err, storage.ErrCommitmentWorking) {
+		t.Fatalf("task completed while its descendant worked: %v", err)
+	}
+	events, err := store.LoadSessionEvents(bot.ID)
+	if err != nil || len(events) != 0 {
+		t.Fatalf("refused completion leaked its result: %+v, %v", events, err)
+	}
+	if err := store.FinishSessionTurn(child.ID, storage.StatusIdle, "", time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	watch, err = store.ListWatchBots()
+	if err != nil || !slices.Equal(watch, []string{bot.ID}) {
+		t.Fatalf("finished descendant did not release recovery: %v, %v", watch, err)
+	}
+	if err := store.DropCommitment(task.ID, "Cancelled", time.Now()); err != nil {
+		t.Fatal(err)
 	}
 }

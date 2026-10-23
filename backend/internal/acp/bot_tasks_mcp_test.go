@@ -65,6 +65,15 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	id := create("Compare the two quotes")
 	dependent := create("Prepare the purchase summary")
 	call("bot_task_update", map[string]any{"id": dependent, "depends_on": []int64{id}}, false)
+	call("bot_task_update", map[string]any{"id": dependent, "next": "Wait for the comparison"}, false)
+	if task := jaz.commitment(dependent); task.Status != storage.CommitmentPending || !slices.Equal(task.DependsOn, []int64{id}) || task.Request != "Prepare the purchase summary" {
+		t.Fatalf("omitted task fields changed: %+v", task)
+	}
+	call("bot_task_update", map[string]any{"id": dependent, "depends_on": []int64{}}, false)
+	if task := jaz.commitment(dependent); task.Blocked || len(task.DependsOn) != 0 {
+		t.Fatalf("explicit empty dependencies did not clear them: %+v", task)
+	}
+	call("bot_task_update", map[string]any{"id": dependent, "depends_on": []int64{id}}, false)
 	call("create_thread", map[string]any{"prompt": "Start the dependent work", "task": dependent}, true)
 	call("bot_task_update", map[string]any{"id": dependent, "status": "waiting_for_user", "message": "This question must not be delivered.", "depends_on": []int64{dependent}}, true)
 	if task := jaz.commitment(dependent); task.Status != storage.CommitmentPending || !task.Blocked || task.QuestionSeq != 0 {

@@ -14,7 +14,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/eventdb"
-	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/messagedb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
 
@@ -92,7 +91,7 @@ func (s *Store) DeliverMessage(event sessionevents.Event, closes []int64) (sessi
 }
 
 func (s *Store) AskCommitment(commitment storage.Commitment, event sessionevents.Event) (sessionevents.Event, error) {
-	if event.SessionID != commitment.BotID || event.RoomMessage == nil || event.RoomMessage.Speaker != "bot" || event.RoomMessage.Text == "" {
+	if event.SessionID != commitment.BotID || event.Type != sessionevents.TypeRoomMessage || event.RoomMessage == nil || event.RoomMessage.Speaker != "bot" || event.RoomMessage.Text == "" {
 		return sessionevents.Event{}, errors.New("a task question must be delivered in its bot's chat")
 	}
 	events := []sessionevents.Event{event}
@@ -233,12 +232,11 @@ func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Tim
 	if question != nil {
 		question.Status = storage.CommitmentWaitingForUser
 		question.QuestionSeq = events[len(events)-1].Seq
-		nextUserSeq, err := messagedb.New(tx).NextMessageSeq(ctx, id)
-		if err != nil {
+		q := botdb.New(tx)
+		if err := q.AskCommitment(ctx, botdb.AskCommitmentParams{ID: question.ID, BotID: question.BotID, QuestionSeq: question.QuestionSeq}); err != nil {
 			return false, err
 		}
-		question.QuestionUserSeq = nextUserSeq - 1
-		if err := updateCommitment(ctx, botdb.New(tx), *question); err != nil {
+		if err := updateCommitment(ctx, q, *question); err != nil {
 			return false, err
 		}
 	}

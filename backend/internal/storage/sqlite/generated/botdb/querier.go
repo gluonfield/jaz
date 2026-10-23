@@ -10,7 +10,9 @@ import (
 )
 
 type Querier interface {
+	AnswerTaskQuestions(ctx context.Context, botID string) error
 	ArchiveFinishedBotWork(ctx context.Context, arg ArchiveFinishedBotWorkParams) error
+	AskCommitment(ctx context.Context, arg AskCommitmentParams) error
 	CloseCommitment(ctx context.Context, arg CloseCommitmentParams) (int64, error)
 	CommitmentDependencyCycle(ctx context.Context, arg CommitmentDependencyCycleParams) (bool, error)
 	// A running turn of its bot holds an answer that delivers it.
