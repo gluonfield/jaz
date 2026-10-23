@@ -12,44 +12,37 @@ import (
 type Querier interface {
 	ArchiveFinishedBotWork(ctx context.Context, arg ArchiveFinishedBotWorkParams) error
 	CloseCommitment(ctx context.Context, arg CloseCommitmentParams) (int64, error)
+	CommitmentDependencyCycle(ctx context.Context, arg CommitmentDependencyCycleParams) (bool, error)
 	// A running turn of its bot holds an answer that delivers it.
 	CommitmentStaged(ctx context.Context, id int64) (bool, error)
 	CommitmentWorking(ctx context.Context, id int64) (bool, error)
+	DeleteCommitmentDependencies(ctx context.Context, commitmentID int64) error
 	// The results a commitment's threads queued for its bot before it closed as
 	// done: they had all finished, so the delivery answered them.
 	DropDeliveredResults(ctx context.Context, id int64) error
-	// A wait the bot declared ends what Jaz did about an earlier stall, so the
-	// next one is new.
-	ForgetWatch(ctx context.Context, botID string) error
 	GetBot(ctx context.Context, threadID string) (Bot, error)
 	GetCommitment(ctx context.Context, id int64) (BotCommitment, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (BotMembership, error)
 	GetMembershipByThread(ctx context.Context, threadID string) (BotMembership, error)
 	InsertCommitment(ctx context.Context, arg InsertCommitmentParams) (int64, error)
+	LinkCommitmentDependency(ctx context.Context, arg LinkCommitmentDependencyParams) (int64, error)
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
 	ListBots(ctx context.Context) ([]Bot, error)
 	ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error)
-	// Whether a thread moves each open commitment on, and whether the user was
-	// told it stalled while nothing moves on it, waits on anything or has got
-	// further since.
+	ListCommitmentDependencies(ctx context.Context, ids []int64) ([]BotCommitmentDependency, error)
 	ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error)
 	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)
 	ListFinishedBotWork(ctx context.Context, beforeMs sql.NullInt64) ([]string, error)
 	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error)
-	// Records that the user is told about each commitment that did not move after
-	// its bot was woken about it.
-	MarkStalled(ctx context.Context, botID string) ([]MarkStalledRow, error)
+	ListWatchBots(ctx context.Context, nowMs int64) ([]string, error)
 	PinBot(ctx context.Context, arg PinBotParams) error
 	SaveMembership(ctx context.Context, arg SaveMembershipParams) error
-	// A thread started for a commitment is what it waits on now.
-	StopWaiting(ctx context.Context, id int64) error
+	StartCommitment(ctx context.Context, id int64) error
 	UnpinBots(ctx context.Context) error
 	UpdateCommitment(ctx context.Context, arg UpdateCommitmentParams) (int64, error)
 	UpsertBot(ctx context.Context, arg UpsertBotParams) error
-	// Records that the bot is woken about each of its commitments that nothing
-	// moves and nothing waits on, unless it was woken at this progress already.
-	WakeStalled(ctx context.Context, botID string) ([]int64, error)
+	WakeStalled(ctx context.Context, arg WakeStalledParams) ([]int64, error)
 }
 
 var _ Querier = (*Queries)(nil)

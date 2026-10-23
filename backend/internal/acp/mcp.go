@@ -18,7 +18,6 @@ type MCPService interface {
 	Input(context.Context, SteerRequest) (Job, error)
 	WaitThreads(context.Context, []string, time.Duration) (ThreadResults, error)
 	Cancel(context.Context, string) (Job, error)
-	Agents() []string
 	AgentOptions(AgentOptionsRequest) (AgentOptionsOutput, error)
 }
 
@@ -79,19 +78,11 @@ func (t *MCPTools) CreateDefinition() *mcp.Tool {
 	if err != nil {
 		panic(err)
 	}
-	schema.Properties["agent"].Enum = make([]any, 0)
-	for _, agent := range t.availableAgents() {
-		schema.Properties["agent"].Enum = append(schema.Properties["agent"].Enum, agent)
-	}
 	return &mcp.Tool{
 		Name:        ToolCreateThread,
 		Description: "Create a separate, saved Jaz conversation and start its initial prompt. A thread has an ID, message history, working directory, and agent settings, and appears in the user's sidebar. Use only when the user or your instructions ask for a separate thread or agent session. Returns after dispatch. Omit model unless the user requests one. Use list_agent_options for available agents and models.",
 		InputSchema: schema,
 	}
-}
-
-func (t *MCPTools) availableAgents() []string {
-	return SelectableAgentNames(t.Service.Agents())
 }
 
 func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input MCPCreateInput) (*mcp.CallToolResult, ThreadSnapshot, error) {

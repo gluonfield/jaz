@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -49,15 +48,16 @@ func (s *fakeMCPService) Cancel(context.Context, string) (Job, error) {
 	return s.job, nil
 }
 
-func (s *fakeMCPService) Agents() []string {
-	if s.agents != nil {
-		return s.agents
-	}
-	return []string{AgentCodex, AgentJaz}
-}
-
 func (s *fakeMCPService) AgentOptions(AgentOptionsRequest) (AgentOptionsOutput, error) {
-	return AgentOptionsOutput{Agents: []AgentSpawnOptions{{Name: AgentCodex}}}, nil
+	names := s.agents
+	if names == nil {
+		names = []string{AgentCodex}
+	}
+	out := AgentOptionsOutput{}
+	for _, name := range names {
+		out.Agents = append(out.Agents, AgentSpawnOptions{Name: name})
+	}
+	return out, nil
 }
 
 func TestCreateThreadStartsPromptAndPreservesParentAndSettings(t *testing.T) {
@@ -91,18 +91,29 @@ func TestCreateThreadRejectsEmptyPromptBeforeCreating(t *testing.T) {
 	}
 }
 
-func TestCreateThreadSchemaPreservesProviderOwnedEfforts(t *testing.T) {
-	service := &fakeMCPService{agents: []string{AgentCodex, AgentClaude, AgentJaz}}
-	schema := NewMCPTools(service).CreateDefinition().InputSchema.(*jsonschema.Schema)
-	enum := schema.Properties["agent"].Enum
-	if len(enum) != 2 || enum[0] != AgentCodex || enum[1] != AgentClaude {
-		t.Fatalf("agent enum = %#v", enum)
+func TestCreateThreadUsesTheCurrentAgentCatalogueAfterMCPRegistration(t *testing.T) {
+	service := &fakeMCPService{agents: []string{AgentCodex}, job: Job{ID: "child", ACPAgent: AgentClaude, State: StateStarting}}
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	NewMCPTools(service).AddTo(server)
+	client, closeClient := connectMCPClient(t, server)
+	defer closeClient()
+	service.agents = []string{AgentCodex, AgentClaude}
+	call, err := client.CallTool(t.Context(), &mcp.CallToolParams{Name: ToolListAgentOptions, Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if schema.Properties["thinking"].Enum != nil {
-		t.Fatal("thinking must be validated against provider model metadata")
+	options := structuredContent[AgentOptionsOutput](t, call)
+	if len(options.Agents) != 2 || options.Agents[1].Name != AgentClaude {
+		t.Fatalf("new agent was not discoverable: %+v", options)
 	}
-	if got := NewMCPTools(&fakeMCPService{agents: []string{}}).availableAgents(); len(got) != 0 {
-		t.Fatalf("invented agents: %#v", got)
+	call, err = client.CallTool(t.Context(), &mcp.CallToolParams{Name: ToolCreateThread, Arguments: map[string]any{
+		"prompt": "Review the changes", "agent": AgentClaude, "thinking": "provider-owned-effort",
+	}})
+	if err != nil || call.IsError {
+		t.Fatalf("newly advertised agent was rejected by the old schema: %+v, %v", call, err)
+	}
+	if service.spawned.ACPAgent != AgentClaude || service.spawned.ReasoningEffort != "provider-owned-effort" {
+		t.Fatalf("provider settings were changed: %+v", service.spawned)
 	}
 }
 

@@ -118,6 +118,7 @@ function OwedModal({ owed, started, now, onClose }: { owed: BotOwed; started: St
     <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, owedState(owed).standing, `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
         {owed.next ? <p className="whitespace-pre-wrap">Next: {owed.next}</p> : null}
+        {owed.blocked && owed.depends_on?.length ? <p>Prerequisites: {owed.depends_on.map((id) => `#${id}`).join(', ')}</p> : null}
         {owed.threads?.length ? (
           <ul className="flex flex-col">
             {owed.threads.map((thread) => (
@@ -160,7 +161,7 @@ function row(item: BotActivity, index: number): Row {
       return {
         ...base,
         title: item.title,
-        detail: item.status === 'done' ? `Delivered to ${item.for ?? 'you'}` : `Dropped · ${item.text}`,
+        detail: item.status === 'completed' ? `Delivered to ${item.for ?? 'you'}` : `Cancelled · ${item.text}`,
         open: item.thread_id ? { thread: item.thread_id } : undefined,
       }
     case 'message_sent':

@@ -59,14 +59,15 @@ type Owed struct {
 	ID      int64  `json:"id"`
 	Request string `json:"request"`
 	// For names the bot it is owed to; empty for the user.
-	For  string `json:"for,omitempty"`
-	Next string `json:"next,omitempty"`
-	// Waiting is requester or outside while it waits on that.
-	Waiting string `json:"waiting,omitempty"`
-	// Stalled is set once the user was told nothing moves on it.
-	Stalled  bool         `json:"stalled,omitempty"`
-	OpenedAt time.Time    `json:"opened_at"`
-	Threads  []OwedThread `json:"threads,omitempty"`
+	For         string       `json:"for,omitempty"`
+	Next        string       `json:"next,omitempty"`
+	Status      string       `json:"status"`
+	QuestionSeq int64        `json:"question_seq,omitempty"`
+	DependsOn   []int64      `json:"depends_on,omitempty"`
+	Blocked     bool         `json:"blocked,omitempty"`
+	Stalled     bool         `json:"stalled,omitempty"`
+	OpenedAt    time.Time    `json:"opened_at"`
+	Threads     []OwedThread `json:"threads,omitempty"`
 }
 
 // OwedThread is a thread serving a commitment and how far it has got:
@@ -106,14 +107,12 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	view := ActivityView{Owed: make([]Owed, 0, len(open)), Started: map[string][]Activity{}}
 	owing, served := map[string]bool{}, map[string]bool{}
 	for _, commitment := range open {
-		_, name, err := owedTo(s.store, commitment)
+		owed, err := s.taskView(commitment)
 		if err != nil {
 			return ActivityView{}, err
 		}
-		owed := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note, Waiting: commitment.Waiting, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
 		for _, thread := range commitment.Threads {
 			owing[thread.ID] = true
-			owed.Threads = append(owed.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})
 		}
 		view.Owed = append(view.Owed, owed)
 	}
@@ -203,4 +202,38 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	done := slices.DeleteFunc(out, func(item Activity) bool { return item.Running })
 	view.Items = append(running, done[:min(len(done), activityShown)]...)
 	return view, nil
+}
+
+func (s *Service) Tasks(botID string) ([]Owed, error) {
+	record, _, err := s.load(botID)
+	if err != nil || record.Kind != KindBot {
+		return nil, storage.ErrBotNotFound
+	}
+	open, err := s.store.ListOpenCommitments(botID)
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]Owed, 0, len(open))
+	for _, commitment := range open {
+		task, err := s.taskView(commitment)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+	return tasks, nil
+}
+
+func (s *Service) taskView(commitment storage.Commitment) (Owed, error) {
+	_, name, err := owedTo(s.store, commitment)
+	if err != nil {
+		return Owed{}, err
+	}
+	task := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note,
+		Status: commitment.Status, QuestionSeq: commitment.QuestionSeq, DependsOn: commitment.DependsOn,
+		Blocked: commitment.Blocked, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
+	for _, thread := range commitment.Threads {
+		task.Threads = append(task.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})
+	}
+	return task, nil
 }

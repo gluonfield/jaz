@@ -18,7 +18,7 @@ func TestABotIsShownTheTasksThatChangedSinceItsAgentLastSawThem(t *testing.T) {
 	}
 	open := func(request, next string) storage.Commitment {
 		t.Helper()
-		commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: request, Note: next, Waiting: storage.WaitingRequester})
+		commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: request, Note: next})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -38,7 +38,7 @@ func TestABotIsShownTheTasksThatChangedSinceItsAgentLastSawThem(t *testing.T) {
 		thread.PromptDigest = recorded
 		return note
 	}
-	quotesLine := fmt.Sprintf("#%d for the user: Compare the quotes · next: send the comparison · waiting on the user", quotes.ID)
+	quotesLine := fmt.Sprintf("#%d [pending] for the user: Compare the quotes · next: send the comparison · nothing moves on it", quotes.ID)
 	everything := func(note string) bool {
 		return strings.Contains(note, quotesLine) && strings.Contains(note, "Draft the brochure") && !strings.Contains(note, "Unchanged")
 	}

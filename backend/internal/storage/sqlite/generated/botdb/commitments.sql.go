@@ -14,7 +14,7 @@ import (
 const closeCommitment = `-- name: CloseCommitment :execrows
 UPDATE bot_commitments
 SET status = ?1, note = COALESCE(?2, note), closed_at_ms = ?3
-WHERE id = ?4 AND status = 'open'
+WHERE id = ?4 AND status IN ('pending', 'in_progress', 'waiting_for_user')
 `
 
 type CloseCommitmentParams struct {
@@ -35,6 +35,27 @@ func (q *Queries) CloseCommitment(ctx context.Context, arg CloseCommitmentParams
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const commitmentDependencyCycle = `-- name: CommitmentDependencyCycle :one
+WITH RECURSIVE ancestors(id) AS (
+  SELECT id FROM bot_commitments WHERE id = ?2
+  UNION
+  SELECT d.prerequisite_id FROM bot_commitment_dependencies d JOIN ancestors a ON a.id = d.commitment_id
+)
+SELECT EXISTS (SELECT 1 FROM ancestors WHERE id = ?1)
+`
+
+type CommitmentDependencyCycleParams struct {
+	CommitmentID   int64 `json:"commitment_id"`
+	PrerequisiteID int64 `json:"prerequisite_id"`
+}
+
+func (q *Queries) CommitmentDependencyCycle(ctx context.Context, arg CommitmentDependencyCycleParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, commitmentDependencyCycle, arg.CommitmentID, arg.PrerequisiteID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const commitmentStaged = `-- name: CommitmentStaged :one
@@ -67,6 +88,15 @@ func (q *Queries) CommitmentWorking(ctx context.Context, id int64) (bool, error)
 	return exists, err
 }
 
+const deleteCommitmentDependencies = `-- name: DeleteCommitmentDependencies :exec
+DELETE FROM bot_commitment_dependencies WHERE commitment_id = ?
+`
+
+func (q *Queries) DeleteCommitmentDependencies(ctx context.Context, commitmentID int64) error {
+	_, err := q.db.ExecContext(ctx, deleteCommitmentDependencies, commitmentID)
+	return err
+}
+
 const dropDeliveredResults = `-- name: DropDeliveredResults :exec
 UPDATE threads
 SET queued_messages = (
@@ -86,20 +116,8 @@ func (q *Queries) DropDeliveredResults(ctx context.Context, id int64) error {
 	return err
 }
 
-const forgetWatch = `-- name: ForgetWatch :exec
-UPDATE bot_commitments SET watch = ''
-WHERE id IN (SELECT w.id FROM bot_commitment_watch w WHERE w.bot_id = ?1 AND w.waiting <> '' AND w.watch <> '')
-`
-
-// A wait the bot declared ends what Jaz did about an earlier stall, so the
-// next one is new.
-func (q *Queries) ForgetWatch(ctx context.Context, botID string) error {
-	_, err := q.db.ExecContext(ctx, forgetWatch, botID)
-	return err
-}
-
 const getCommitment = `-- name: GetCommitment :one
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, waiting, watch FROM bot_commitments WHERE id = ?
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, question_user_seq, wake_progress, wake_attempts, wake_at_ms FROM bot_commitments WHERE id = ?
 `
 
 func (q *Queries) GetCommitment(ctx context.Context, id int64) (BotCommitment, error) {
@@ -114,15 +132,18 @@ func (q *Queries) GetCommitment(ctx context.Context, id int64) (BotCommitment, e
 		&i.Status,
 		&i.OpenedAtMs,
 		&i.ClosedAtMs,
-		&i.Waiting,
-		&i.Watch,
+		&i.QuestionSeq,
+		&i.QuestionUserSeq,
+		&i.WakeProgress,
+		&i.WakeAttempts,
+		&i.WakeAtMs,
 	)
 	return i, err
 }
 
 const insertCommitment = `-- name: InsertCommitment :one
-INSERT INTO bot_commitments (bot_id, requester, request, note, waiting, opened_at_ms)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+INSERT INTO bot_commitments (bot_id, requester, request, note, status, opened_at_ms)
+VALUES (?1, ?2, ?3, ?4, 'pending', ?5)
 RETURNING id
 `
 
@@ -131,7 +152,6 @@ type InsertCommitmentParams struct {
 	Requester  string `json:"requester"`
 	Request    string `json:"request"`
 	Note       string `json:"note"`
-	Waiting    string `json:"waiting"`
 	OpenedAtMs int64  `json:"opened_at_ms"`
 }
 
@@ -141,7 +161,6 @@ func (q *Queries) InsertCommitment(ctx context.Context, arg InsertCommitmentPara
 		arg.Requester,
 		arg.Request,
 		arg.Note,
-		arg.Waiting,
 		arg.OpenedAtMs,
 	)
 	var id int64
@@ -149,10 +168,33 @@ func (q *Queries) InsertCommitment(ctx context.Context, arg InsertCommitmentPara
 	return id, err
 }
 
+const linkCommitmentDependency = `-- name: LinkCommitmentDependency :execrows
+INSERT INTO bot_commitment_dependencies (commitment_id, prerequisite_id)
+SELECT c.id, p.id FROM bot_commitments c JOIN bot_commitments p ON p.bot_id = c.bot_id
+WHERE c.id = ?1 AND p.id = ?2
+`
+
+type LinkCommitmentDependencyParams struct {
+	CommitmentID   int64 `json:"commitment_id"`
+	PrerequisiteID int64 `json:"prerequisite_id"`
+}
+
+func (q *Queries) LinkCommitmentDependency(ctx context.Context, arg LinkCommitmentDependencyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, linkCommitmentDependency, arg.CommitmentID, arg.PrerequisiteID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const linkCommitmentThread = `-- name: LinkCommitmentThread :execrows
 INSERT INTO bot_commitment_threads (thread_id, commitment_id)
 SELECT ?1, c.id FROM bot_commitments c
-WHERE c.id = ?2 AND c.bot_id = ?3 AND c.status = 'open'
+WHERE c.id = ?2 AND c.bot_id = ?3 AND c.status IN ('pending', 'in_progress')
+  AND NOT EXISTS (
+    SELECT 1 FROM bot_commitment_dependencies d JOIN bot_commitments p ON p.id = d.prerequisite_id
+    WHERE d.commitment_id = c.id AND p.status IN ('pending', 'in_progress', 'waiting_for_user')
+  )
 `
 
 type LinkCommitmentThreadParams struct {
@@ -170,8 +212,8 @@ func (q *Queries) LinkCommitmentThread(ctx context.Context, arg LinkCommitmentTh
 }
 
 const listClosedCommitments = `-- name: ListClosedCommitments :many
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, waiting, watch FROM bot_commitments
-WHERE bot_id = ?1 AND status <> 'open' AND closed_at_ms >= ?2
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, question_user_seq, wake_progress, wake_attempts, wake_at_ms FROM bot_commitments
+WHERE bot_id = ?1 AND status IN ('completed', 'cancelled') AND closed_at_ms >= ?2
 ORDER BY id
 `
 
@@ -198,8 +240,11 @@ func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommi
 			&i.Status,
 			&i.OpenedAtMs,
 			&i.ClosedAtMs,
-			&i.Waiting,
-			&i.Watch,
+			&i.QuestionSeq,
+			&i.QuestionUserSeq,
+			&i.WakeProgress,
+			&i.WakeAttempts,
+			&i.WakeAtMs,
 		); err != nil {
 			return nil, err
 		}
@@ -214,9 +259,47 @@ func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommi
 	return items, nil
 }
 
+const listCommitmentDependencies = `-- name: ListCommitmentDependencies :many
+SELECT commitment_id, prerequisite_id FROM bot_commitment_dependencies
+WHERE commitment_id IN (/*SLICE:ids*/?) ORDER BY prerequisite_id
+`
+
+func (q *Queries) ListCommitmentDependencies(ctx context.Context, ids []int64) ([]BotCommitmentDependency, error) {
+	query := listCommitmentDependencies
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BotCommitmentDependency{}
+	for rows.Next() {
+		var i BotCommitmentDependency
+		if err := rows.Scan(&i.CommitmentID, &i.PrerequisiteID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCommitmentMotion = `-- name: ListCommitmentMotion :many
-SELECT c.id, CAST(p.moving AS INTEGER) AS moving,
-  CAST(c.waiting = '' AND NOT p.moving AND c.watch = 'stalled:' || p.progress AS INTEGER) AS stalled
+SELECT c.id, CAST(p.moving AS INTEGER) AS moving, CAST(p.blocked AS INTEGER) AS blocked,
+  CAST(c.status <> 'waiting_for_user' AND NOT p.moving AND NOT p.blocked AND c.wake_attempts > 0 AS INTEGER) AS stalled
 FROM bot_commitments c
 JOIN bot_commitment_progress p ON p.commitment_id = c.id
 WHERE c.id IN (/*SLICE:ids*/?)
@@ -225,12 +308,10 @@ WHERE c.id IN (/*SLICE:ids*/?)
 type ListCommitmentMotionRow struct {
 	ID      int64 `json:"id"`
 	Moving  int64 `json:"moving"`
+	Blocked int64 `json:"blocked"`
 	Stalled int64 `json:"stalled"`
 }
 
-// Whether a thread moves each open commitment on, and whether the user was
-// told it stalled while nothing moves on it, waits on anything or has got
-// further since.
 func (q *Queries) ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error) {
 	query := listCommitmentMotion
 	var queryParams []interface{}
@@ -250,7 +331,12 @@ func (q *Queries) ListCommitmentMotion(ctx context.Context, ids []int64) ([]List
 	items := []ListCommitmentMotionRow{}
 	for rows.Next() {
 		var i ListCommitmentMotionRow
-		if err := rows.Scan(&i.ID, &i.Moving, &i.Stalled); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Moving,
+			&i.Blocked,
+			&i.Stalled,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -318,7 +404,7 @@ func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]Lis
 }
 
 const listOpenCommitments = `-- name: ListOpenCommitments :many
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, waiting, watch FROM bot_commitments WHERE bot_id = ?1 AND status = 'open' ORDER BY id
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, question_user_seq, wake_progress, wake_attempts, wake_at_ms FROM bot_commitments WHERE bot_id = ?1 AND status IN ('pending', 'in_progress', 'waiting_for_user') ORDER BY id
 `
 
 func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error) {
@@ -339,8 +425,11 @@ func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotC
 			&i.Status,
 			&i.OpenedAtMs,
 			&i.ClosedAtMs,
-			&i.Waiting,
-			&i.Watch,
+			&i.QuestionSeq,
+			&i.QuestionUserSeq,
+			&i.WakeProgress,
+			&i.WakeAttempts,
+			&i.WakeAtMs,
 		); err != nil {
 			return nil, err
 		}
@@ -355,37 +444,24 @@ func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotC
 	return items, nil
 }
 
-const markStalled = `-- name: MarkStalled :many
-UPDATE bot_commitments
-SET watch = 'stalled:' || (SELECT progress FROM bot_commitment_progress WHERE commitment_id = bot_commitments.id)
-WHERE id IN (
-  SELECT w.id FROM bot_commitment_watch w
-  WHERE w.bot_id = ?1 AND w.waiting = '' AND NOT w.moving AND w.watch = 'woke:' || w.progress
-)
-RETURNING id, requester, request
+const listWatchBots = `-- name: ListWatchBots :many
+SELECT DISTINCT bot_id FROM bot_commitment_watch
+WHERE wake_at_ms <= CAST(?1 AS INTEGER) OR wake_progress <> progress
 `
 
-type MarkStalledRow struct {
-	ID        int64  `json:"id"`
-	Requester string `json:"requester"`
-	Request   string `json:"request"`
-}
-
-// Records that the user is told about each commitment that did not move after
-// its bot was woken about it.
-func (q *Queries) MarkStalled(ctx context.Context, botID string) ([]MarkStalledRow, error) {
-	rows, err := q.db.QueryContext(ctx, markStalled, botID)
+func (q *Queries) ListWatchBots(ctx context.Context, nowMs int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listWatchBots, nowMs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []MarkStalledRow{}
+	items := []string{}
 	for rows.Next() {
-		var i MarkStalledRow
-		if err := rows.Scan(&i.ID, &i.Requester, &i.Request); err != nil {
+		var bot_id string
+		if err := rows.Scan(&bot_id); err != nil {
 			return nil, err
 		}
-		items = append(items, i)
+		items = append(items, bot_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -396,35 +472,45 @@ func (q *Queries) MarkStalled(ctx context.Context, botID string) ([]MarkStalledR
 	return items, nil
 }
 
-const stopWaiting = `-- name: StopWaiting :exec
-UPDATE bot_commitments SET waiting = '' WHERE id = ?
+const startCommitment = `-- name: StartCommitment :exec
+UPDATE bot_commitments SET status = 'in_progress' WHERE id = ?
 `
 
-// A thread started for a commitment is what it waits on now.
-func (q *Queries) StopWaiting(ctx context.Context, id int64) error {
-	_, err := q.db.ExecContext(ctx, stopWaiting, id)
+func (q *Queries) StartCommitment(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, startCommitment, id)
 	return err
 }
 
 const updateCommitment = `-- name: UpdateCommitment :execrows
 UPDATE bot_commitments
-SET request = ?1, note = ?2, waiting = ?3
-WHERE id = ?4 AND bot_id = ?5 AND status = 'open'
+SET request = ?1, note = ?2, status = ?3,
+  question_seq = ?4,
+  question_user_seq = ?5
+WHERE id = ?6 AND bot_id = ?7 AND status IN ('pending', 'in_progress', 'waiting_for_user')
+  AND (?4 = 0 OR (
+    EXISTS (SELECT 1 FROM session_events e WHERE e.thread_id = bot_id AND e.seq = ?4
+      AND e.type = 'room_message' AND json_extract(e.content, '$.speaker') = 'bot' AND json_extract(e.content, '$.text') <> '')
+    AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.thread_id = bot_id AND m.from_user <> 0 AND m.seq > ?5)
+  ))
 `
 
 type UpdateCommitmentParams struct {
-	Request string `json:"request"`
-	Note    string `json:"note"`
-	Waiting string `json:"waiting"`
-	ID      int64  `json:"id"`
-	BotID   string `json:"bot_id"`
+	Request         string `json:"request"`
+	Note            string `json:"note"`
+	Status          string `json:"status"`
+	QuestionSeq     int64  `json:"question_seq"`
+	QuestionUserSeq int64  `json:"question_user_seq"`
+	ID              int64  `json:"id"`
+	BotID           string `json:"bot_id"`
 }
 
 func (q *Queries) UpdateCommitment(ctx context.Context, arg UpdateCommitmentParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, updateCommitment,
 		arg.Request,
 		arg.Note,
-		arg.Waiting,
+		arg.Status,
+		arg.QuestionSeq,
+		arg.QuestionUserSeq,
 		arg.ID,
 		arg.BotID,
 	)
@@ -436,18 +522,25 @@ func (q *Queries) UpdateCommitment(ctx context.Context, arg UpdateCommitmentPara
 
 const wakeStalled = `-- name: WakeStalled :many
 UPDATE bot_commitments
-SET watch = 'woke:' || (SELECT progress FROM bot_commitment_progress WHERE commitment_id = bot_commitments.id)
+SET wake_progress = (SELECT progress FROM bot_commitment_progress WHERE commitment_id = bot_commitments.id),
+  wake_at_ms = CAST(?1 AS INTEGER) + CASE WHEN bot_commitments.wake_progress = (SELECT progress FROM bot_commitment_progress WHERE commitment_id = bot_commitments.id)
+    THEN min(300000, 30000 << bot_commitments.wake_attempts) ELSE 30000 END,
+  wake_attempts = CASE WHEN bot_commitments.wake_progress = (SELECT progress FROM bot_commitment_progress WHERE commitment_id = bot_commitments.id)
+    THEN min(4, bot_commitments.wake_attempts + 1) ELSE 1 END
 WHERE id IN (
   SELECT w.id FROM bot_commitment_watch w
-  WHERE w.bot_id = ?1 AND w.waiting = '' AND NOT w.moving AND w.watch NOT IN ('woke:' || w.progress, 'stalled:' || w.progress)
+  WHERE w.bot_id = ?2 AND (w.wake_at_ms <= CAST(?1 AS INTEGER) OR w.wake_progress <> w.progress)
 )
 RETURNING id
 `
 
-// Records that the bot is woken about each of its commitments that nothing
-// moves and nothing waits on, unless it was woken at this progress already.
-func (q *Queries) WakeStalled(ctx context.Context, botID string) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, wakeStalled, botID)
+type WakeStalledParams struct {
+	NowMs int64  `json:"now_ms"`
+	BotID string `json:"bot_id"`
+}
+
+func (q *Queries) WakeStalled(ctx context.Context, arg WakeStalledParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, wakeStalled, arg.NowMs, arg.BotID)
 	if err != nil {
 		return nil, err
 	}

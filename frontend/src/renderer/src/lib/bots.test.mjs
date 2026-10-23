@@ -5,6 +5,7 @@ import { optimisticTranscriptMessages } from './optimisticUserMessage'
 describe('owed commitment state', () => {
   const owed = {
     id: 38,
+    status: 'in_progress',
     request: 'Implement, review and merge to local main',
     next: 'Review the merged changes',
     opened_at: '2026-10-19T12:00:00Z',
@@ -15,7 +16,7 @@ describe('owed commitment state', () => {
       ...['implementation', 'review', 'verification', 'integration', 'delivery'].map((title) => ({ id: `${title}-claude`, title, state: 'failed' })),
       ...['implementation', 'review', 'verification', 'integration', 'delivery'].map((title) => ({ id: `${title}-codex`, title, state: 'finished' })),
     ]
-    const commitment = { ...owed, waiting: 'requester', threads }
+    const commitment = { ...owed, status: 'waiting_for_user', threads }
     const history = structuredClone(threads)
     expect(owedState(commitment)).toEqual({ danger: false, standing: 'Waiting on you' })
     expect(commitment.threads).toEqual(history)
@@ -41,8 +42,8 @@ describe('owed commitment state', () => {
 
   test.each([
     [{ stalled: true }, true, 'Stalled'],
-    [{ waiting: 'outside' }, false, 'Waiting on an outside job Jaz is not told about'],
-    [{ waiting: 'requester', for: 'Operations' }, false, 'Waiting on Operations'],
+    [{ status: 'pending' }, false, 'Not started'],
+    [{ status: 'waiting_for_user', for: 'Operations' }, false, 'Waiting on you'],
   ])('commitment standing %j takes precedence after recovery', (fields, danger, standing) => {
     const threads = [{ id: 'first', title: 'Work', state: 'failed' }, { id: 'retry', title: 'Work', state: 'finished' }]
     expect(owedState({ ...owed, ...fields, threads })).toEqual({ danger, standing })
@@ -50,7 +51,7 @@ describe('owed commitment state', () => {
 
   test('waiting on the user does not clear a current failure', () => {
     const threads = [{ id: 'latest', title: 'Work', state: 'failed' }]
-    expect(owedState({ ...owed, waiting: 'requester', threads })).toEqual({ danger: true, standing: 'Waiting on you' })
+    expect(owedState({ ...owed, status: 'waiting_for_user', threads })).toEqual({ danger: true, standing: 'Waiting on you' })
   })
 })
 

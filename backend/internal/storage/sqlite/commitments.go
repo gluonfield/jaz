@@ -12,29 +12,82 @@ import (
 )
 
 func (s *Store) OpenCommitment(commitment storage.Commitment) (storage.Commitment, error) {
-	commitment.Status = storage.CommitmentOpen
+	commitment.Status = storage.CommitmentPending
 	commitment.OpenedAt = time.Now().UTC()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	id, err := botdb.New(s.db).InsertCommitment(context.Background(), botdb.InsertCommitmentParams{
-		BotID: commitment.BotID, Requester: commitment.Requester, Request: commitment.Request, Note: commitment.Note, Waiting: commitment.Waiting, OpenedAtMs: timeToMs(commitment.OpenedAt),
+		BotID: commitment.BotID, Requester: commitment.Requester, Request: commitment.Request, Note: commitment.Note, OpenedAtMs: timeToMs(commitment.OpenedAt),
 	})
 	commitment.ID = id
 	return commitment, err
 }
 
-// UpdateCommitment saves an open commitment's request, note and what it
-// waits on.
 func (s *Store) UpdateCommitment(commitment storage.Commitment) error {
+	ctx := context.Background()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	updated, err := botdb.New(s.db).UpdateCommitment(context.Background(), botdb.UpdateCommitmentParams{
-		ID: commitment.ID, BotID: commitment.BotID, Request: commitment.Request, Note: commitment.Note, Waiting: commitment.Waiting,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := updateCommitment(ctx, botdb.New(tx), commitment); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func updateCommitment(ctx context.Context, q *botdb.Queries, commitment storage.Commitment) error {
+	if !commitment.IsOpen() {
+		return fmt.Errorf("invalid open task status %q", commitment.Status)
+	}
+	if (commitment.Status == storage.CommitmentWaitingForUser) != (commitment.QuestionSeq > 0) {
+		return errors.New("waiting_for_user requires a delivered question")
+	}
+	updated, err := q.UpdateCommitment(ctx, botdb.UpdateCommitmentParams{
+		ID: commitment.ID, BotID: commitment.BotID, Request: commitment.Request, Note: commitment.Note,
+		Status: commitment.Status, QuestionSeq: commitment.QuestionSeq, QuestionUserSeq: commitment.QuestionUserSeq,
 	})
-	if err == nil && updated == 0 {
+	if err != nil {
+		return err
+	}
+	if updated == 0 {
 		return fmt.Errorf("#%d: %w", commitment.ID, storage.ErrCommitmentNotOpen)
 	}
-	return err
+	if err := q.DeleteCommitmentDependencies(ctx, commitment.ID); err != nil {
+		return err
+	}
+	for _, prerequisite := range commitment.DependsOn {
+		cycle, err := q.CommitmentDependencyCycle(ctx, botdb.CommitmentDependencyCycleParams{CommitmentID: commitment.ID, PrerequisiteID: prerequisite})
+		if err != nil {
+			return err
+		}
+		if cycle {
+			return errors.New("task dependencies must have no cycles")
+		}
+		linked, err := q.LinkCommitmentDependency(ctx, botdb.LinkCommitmentDependencyParams{CommitmentID: commitment.ID, PrerequisiteID: prerequisite})
+		if err != nil {
+			return err
+		}
+		if linked == 0 {
+			return fmt.Errorf("invalid prerequisite #%d: tasks must belong to the same bot and dependencies must have no cycles", prerequisite)
+		}
+	}
+	motions, err := q.ListCommitmentMotion(ctx, []int64{commitment.ID})
+	if err != nil {
+		return err
+	}
+	for _, motion := range motions {
+		if motion.Moving != 0 && motion.Blocked != 0 {
+			return errors.New("stop the task's active workers before adding unfinished prerequisites")
+		}
+	}
+	return nil
+}
+
+func (s *Store) ListWatchBots() ([]string, error) {
+	return botdb.New(s.db).ListWatchBots(context.Background(), time.Now().UnixMilli())
 }
 
 // DropCommitment closes an open commitment without a delivery, saying why;
@@ -60,34 +113,6 @@ func (s *Store) DropCommitment(id int64, why string, at time.Time) error {
 		return err
 	}
 	return tx.Commit()
-}
-
-// MarkStalled marks and returns the commitments of a bot with nothing left
-// to do that nothing moved on since it was woken about them: the user is told
-// they stalled. A wait the bot declared first ends any earlier stall, so the
-// next one wakes it again.
-func (s *Store) MarkStalled(botID string) ([]storage.Commitment, error) {
-	ctx := context.Background()
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	q := botdb.New(tx)
-	if err := q.ForgetWatch(ctx, botID); err != nil {
-		return nil, err
-	}
-	rows, err := q.MarkStalled(ctx, botID)
-	if err != nil {
-		return nil, err
-	}
-	stalled := make([]storage.Commitment, 0, len(rows))
-	for _, row := range rows {
-		stalled = append(stalled, storage.Commitment{ID: row.ID, BotID: botID, Requester: row.Requester, Request: row.Request, Status: storage.CommitmentOpen, Stalled: true})
-	}
-	return stalled, tx.Commit()
 }
 
 // closeDelivered closes as done the commitments a delivery written in the
@@ -119,7 +144,8 @@ func closeAnswered(ctx context.Context, q *botdb.Queries, ids []int64, at time.T
 // works.
 func closable(ctx context.Context, q *botdb.Queries, id int64) error {
 	row, err := q.GetCommitment(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && row.Status != storage.CommitmentOpen {
+	commitment := storage.Commitment{Status: row.Status}
+	if errors.Is(err, sql.ErrNoRows) || err == nil && !commitment.IsOpen() {
 		return fmt.Errorf("#%d: %w", id, storage.ErrCommitmentNotOpen)
 	}
 	if err != nil {
@@ -205,6 +231,14 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	for _, row := range motions {
 		motion[row.ID] = row
 	}
+	prerequisites, err := q.ListCommitmentDependencies(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	dependencies := map[int64][]int64{}
+	for _, row := range prerequisites {
+		dependencies[row.CommitmentID] = append(dependencies[row.CommitmentID], row.PrerequisiteID)
+	}
 	threads := map[int64][]storage.CommitmentThread{}
 	for _, link := range links {
 		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State})
@@ -212,8 +246,8 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	commitments := make([]storage.Commitment, 0, len(rows))
 	for _, row := range rows {
 		commitments = append(commitments, storage.Commitment{
-			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, Waiting: row.Waiting,
-			Moving: motion[row.ID].Moving != 0, Stalled: motion[row.ID].Stalled != 0, Status: row.Status,
+			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, QuestionUserSeq: row.QuestionUserSeq, DependsOn: dependencies[row.ID],
+			Moving: motion[row.ID].Moving != 0, Blocked: motion[row.ID].Blocked != 0, Stalled: motion[row.ID].Stalled != 0, Status: row.Status,
 			OpenedAt: msToTime(row.OpenedAtMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
 		})
 	}

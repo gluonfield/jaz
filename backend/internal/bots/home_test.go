@@ -280,11 +280,11 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The bot dropped the request its archived side chat served.
-	if _, err := service.Commit(research.ID, Commit{ID: commitments["Old idea"], Drop: "Abandoned"}); err != nil {
+	if _, err := service.Commit(research.ID, Commit{ID: commitments["Old idea"], Status: storage.CommitmentDropped, Message: "Abandoned"}); err != nil {
 		t.Fatal(err)
 	}
 	// A thread taken up again after its commitment closed runs on its own.
-	if _, err := service.Commit(research.ID, Commit{ID: commitments["Rerun"], Drop: "Superseded"}); err != nil {
+	if _, err := service.Commit(research.ID, Commit{ID: commitments["Rerun"], Status: storage.CommitmentDropped, Message: "Superseded"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{working, running, rerun} {
@@ -395,8 +395,8 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	slices.Sort(got)
 	// Side chats that serve commitments show through them.
 	want := []string{
-		"commitment:Old idea:Abandoned:dropped",
-		"commitment:Rerun:Superseded:dropped",
+		"commitment:Old idea:Abandoned:cancelled",
+		"commitment:Rerun:Superseded:cancelled",
 		"file_changed:MEMORY.md::",
 		"message_received:Operations:The queue fixes.:",
 		"message_sent:Operations:Which fixes matter this week?:",

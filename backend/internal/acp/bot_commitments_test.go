@@ -89,10 +89,10 @@ func TestABotsCommitmentLinksItsThreadAndClosesOnlyWhenTheResultReachesTheUserAc
 	jaz.eventually("the thread's result reaching the bot", func() bool {
 		return jaz.promptWith("ACP session quotes") != ""
 	})
-	if note := fmt.Sprintf("#%d for the user: Compare the two quotes · thread quotes finished · next: send the comparison", id); !strings.Contains(jaz.promptWith("ACP session quotes"), note) {
+	if note := fmt.Sprintf("#%d [in_progress] for the user: Compare the two quotes · thread quotes finished · next: send the comparison", id); !strings.Contains(jaz.promptWith("ACP session quotes"), note) {
 		t.Fatalf("the result turn opened with %q, want the note %q", jaz.promptWith("ACP session quotes"), note)
 	}
-	if commitment := jaz.commitment(id); commitment.Status != storage.CommitmentOpen {
+	if commitment := jaz.commitment(id); !commitment.IsOpen() {
 		t.Fatalf("closed before delivery: %+v", commitment)
 	}
 	if err := jaz.bots.Say(bot.ID, "The first quote is cheaper.", id); err != nil {
@@ -160,7 +160,7 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ThreadID)
-	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Drop: "the user cancelled it"}); err == nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Status: storage.CommitmentDropped, Message: "the user cancelled it"}); err == nil {
 		t.Fatal("dropped while its thread works")
 	}
 	jaz.cancel(thread.ThreadID)
@@ -168,7 +168,7 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 		session, err := store.LoadSession(thread.ThreadID)
 		return err == nil && session.Status != storage.StatusRunning
 	})
-	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Drop: "the user cancelled it"}); err != nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Status: storage.CommitmentDropped, Message: "the user cancelled it"}); err != nil {
 		t.Fatal(err)
 	}
 	if commitment := jaz.commitment(id); commitment.Status != storage.CommitmentDropped || commitment.Note != "the user cancelled it" {
@@ -250,7 +250,7 @@ func TestABotsTurnsShowItsTasksAgainOnlyAsTheyChange(t *testing.T) {
 	jaz.write(bot.ID, "hello")
 	open := func(request, next string) int64 {
 		t.Helper()
-		id, err := jaz.commit(bot.ID, bots.Commit{Request: request, Next: next, Waiting: "requester"})
+		id, err := jaz.commit(bot.ID, bots.Commit{Request: request, Next: next})
 		if err != nil {
 			t.Fatal(err)
 		}

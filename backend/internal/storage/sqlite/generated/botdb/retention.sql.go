@@ -21,7 +21,7 @@ WHERE threads.id = ?1
   AND last_attention_at_ms < ?3 AND updated_at_ms < ?3
   AND NOT EXISTS (
     SELECT 1 FROM bot_commitment_threads l JOIN bot_commitments c ON c.id = l.commitment_id
-    WHERE l.thread_id = threads.id AND (c.status = 'open' OR c.closed_at_ms >= ?3)
+    WHERE l.thread_id = threads.id AND (c.status IN ('pending', 'in_progress', 'waiting_for_user') OR c.closed_at_ms >= ?3)
   )
 `
 
@@ -41,7 +41,7 @@ WITH RECURSIVE finished(id) AS (
   SELECT threads.id FROM threads WHERE id IN (
     SELECT l.thread_id FROM bot_commitment_threads l
     JOIN bot_commitments c ON c.id = l.commitment_id
-    WHERE c.status <> 'open' AND c.closed_at_ms < ?1
+    WHERE c.status IN ('completed', 'cancelled') AND c.closed_at_ms < ?1
   )
   UNION
   SELECT threads.id FROM threads JOIN finished ON threads.parent_id = finished.id

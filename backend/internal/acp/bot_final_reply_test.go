@@ -90,7 +90,7 @@ func TestABotsFallbackRecordsDeliveryWithoutClosingCommitmentsAndRespectsPresent
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
-	commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare the quotes", Waiting: storage.WaitingRequester})
+	commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare the quotes"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,10 +98,12 @@ func TestABotsFallbackRecordsDeliveryWithoutClosingCommitmentsAndRespectsPresent
 	jaz.manager.TurnEnding = func(job acp.Job) {
 		jaz.bots.TurnEnding(job)
 		session, err := store.LoadSession(job.ID)
-		shown <- err == nil && session.Turn != nil && session.Turn.Output != nil && session.Turn.Output.Shown
+		if err == nil && session.Turn != nil && session.Turn.Output != nil && session.Turn.Output.User {
+			shown <- session.Turn.Output.Shown
+		}
 	}
 	jaz.write(bot.ID, "answer in the final reply")
-	if !<-shown || jaz.commitment(commitment.ID).Status != storage.CommitmentOpen {
+	if !<-shown || !jaz.commitment(commitment.ID).IsOpen() {
 		t.Fatal("fallback must mark the turn shown and leave the commitment open")
 	}
 	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "answer in the final reply until released", Completion: acp.CompletionAsync, FromUser: true}); err != nil {

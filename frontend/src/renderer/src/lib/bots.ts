@@ -46,10 +46,12 @@ export function owedState(owed: BotOwed): { danger: boolean; standing: string } 
   let standing = ''
   if (owed.stalled) {
     standing = 'Stalled'
-  } else if (owed.waiting === 'requester') {
-    standing = `Waiting on ${owed.for ?? 'you'}`
-  } else if (owed.waiting === 'outside') {
-    standing = 'Waiting on an outside job Jaz is not told about'
+  } else if (owed.status === 'waiting_for_user') {
+    standing = 'Waiting on you'
+  } else if (owed.blocked) {
+    standing = 'Waiting on prerequisites'
+  } else if (owed.status === 'pending') {
+    standing = 'Not started'
   } else if (failed) {
     standing = 'A thread failed'
   } else if (threads.some((thread) => thread.state === 'working' || thread.state === 'background')) {

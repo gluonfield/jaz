@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/eventdb"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/messagedb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
 
@@ -76,7 +77,7 @@ func (s *Store) LoadLatestSessionEvent(id, eventType string) (sessionevents.Even
 func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return s.appendSessionEventBatch(id, nil, events...)
+	return s.appendSessionEventBatch(id, nil, nil, events...)
 }
 
 // DeliverMessage appends a bot's message to a thread and closes as done the
@@ -86,7 +87,18 @@ func (s *Store) DeliverMessage(event sessionevents.Event, closes []int64) (sessi
 	events := []sessionevents.Event{event}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	err := s.appendSessionEventBatch(event.SessionID, closes, events...)
+	err := s.appendSessionEventBatch(event.SessionID, closes, nil, events...)
+	return events[0], err
+}
+
+func (s *Store) AskCommitment(commitment storage.Commitment, event sessionevents.Event) (sessionevents.Event, error) {
+	if event.SessionID != commitment.BotID || event.RoomMessage == nil || event.RoomMessage.Speaker != "bot" || event.RoomMessage.Text == "" {
+		return sessionevents.Event{}, errors.New("a task question must be delivered in its bot's chat")
+	}
+	events := []sessionevents.Event{event}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	err := s.appendSessionEventBatch(event.SessionID, nil, &commitment, events...)
 	return events[0], err
 }
 
@@ -102,11 +114,11 @@ func (s *Store) UpdateSessionGoal(id string, previous, next *goal.State) (sessio
 		return sessionevents.Event{}, err
 	}
 	events := []sessionevents.Event{event}
-	err = s.appendSessionEventBatch(session.ID, nil, events...)
+	err = s.appendSessionEventBatch(session.ID, nil, nil, events...)
 	return events[0], err
 }
 
-func (s *Store) appendSessionEventBatch(id string, closes []int64, events ...sessionevents.Event) error {
+func (s *Store) appendSessionEventBatch(id string, closes []int64, question *storage.Commitment, events ...sessionevents.Event) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -123,7 +135,7 @@ func (s *Store) appendSessionEventBatch(id string, closes []int64, events ...ses
 		}
 	}
 	expanded, last := sessionevents.SplitTextEvents(events, storage.MaxTextEventBytes)
-	compactionPending, appendErr := s.appendSessionEvents(context.Background(), id, now, goalProjection.Seen, goalRaw, expanded, closes)
+	compactionPending, appendErr := s.appendSessionEvents(context.Background(), id, now, goalProjection.Seen, goalRaw, expanded, closes, question)
 	if appendErr != nil {
 		return appendErr
 	}
@@ -150,7 +162,7 @@ func (s *Store) appendSessionEventBatch(id string, closes []int64, events ...ses
 	return nil
 }
 
-func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Time, goalSeen bool, goalRaw string, events []sessionevents.Event, closes []int64) (bool, error) {
+func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Time, goalSeen bool, goalRaw string, events []sessionevents.Event, closes []int64, question *storage.Commitment) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -217,6 +229,18 @@ func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Tim
 	}
 	if err := closeDelivered(ctx, botdb.New(tx), closes, now); err != nil {
 		return false, err
+	}
+	if question != nil {
+		question.Status = storage.CommitmentWaitingForUser
+		question.QuestionSeq = events[len(events)-1].Seq
+		nextUserSeq, err := messagedb.New(tx).NextMessageSeq(ctx, id)
+		if err != nil {
+			return false, err
+		}
+		question.QuestionUserSeq = nextUserSeq - 1
+		if err := updateCommitment(ctx, botdb.New(tx), *question); err != nil {
+			return false, err
+		}
 	}
 	if goalSeen {
 		err = threadq.UpdateGoal(ctx, threaddb.UpdateGoalParams{Goal: goalRaw, UpdatedAtMs: timeToMs(now), ID: id})
