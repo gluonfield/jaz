@@ -15,7 +15,7 @@ func TestRenderFullAndMinimal(t *testing.T) {
 		"ACP session codex-plan (codex) completed a turn with state idle.",
 		"Error: boom",
 		"Assistant result:\ndid the thing",
-		"Report/update the user with relevant delivered work",
+		"Update the user only when there is a relevant new result or blocker",
 	} {
 		if !strings.Contains(full, want) {
 			t.Fatalf("missing %q in:\n%s", want, full)

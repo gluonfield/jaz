@@ -68,7 +68,6 @@ func (s *Server) finishTurn(job acp.Job) error {
 			}
 			message := storage.NewInternalQueuedMessage(acp.CompletionPrompt(job, "the user"))
 			message.From = job.ID
-			message.Result = &storage.TurnResult{Number: session.TurnsEnded + 1, Status: status}
 			// Work started for another bot reports to that bot while it is
 			// still there.
 			if recipient.ReplyTo != "" {
@@ -116,23 +115,6 @@ func (s *Server) finishTurn(job acp.Job) error {
 	return nil
 }
 
-func (s *Server) filterSupersededResults(prompts []storage.QueuedMessage) ([]storage.QueuedMessage, error) {
-	kept := prompts[:0]
-	for _, prompt := range prompts {
-		if prompt.IsInternal() && prompt.From != "" && prompt.Result != nil && prompt.Result.Status == storage.StatusError {
-			source, err := s.Store.LoadSession(prompt.From)
-			if err != nil && !errors.Is(err, storage.ErrSessionNotFound) {
-				return nil, err
-			}
-			if err == nil && (source.Turn != nil || source.TurnsEnded > prompt.Result.Number) {
-				continue
-			}
-		}
-		kept = append(kept, prompt)
-	}
-	return kept, nil
-}
-
 func (s *Server) internalPrompt(prompt storage.QueuedMessage) (string, error) {
 	if prompt.From == "" {
 		return prompt.Text, nil
@@ -144,7 +126,7 @@ func (s *Server) internalPrompt(prompt storage.QueuedMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Historical result from thread %s. Its current status is %s.\n\n<completed_turn_result>\n%s\n</completed_turn_result>\n\nNewer user instructions and current thread state take precedence over this historical result.", source.Slug, source.Status, prompt.Text), nil
+	return fmt.Sprintf("%s\n\nCurrent state of thread %s: %s. The result above describes a completed turn. Newer user instructions and current thread state take precedence over its earlier directions.", prompt.Text, source.Slug, source.Status), nil
 }
 
 // compactAt is how full, in percent, a bot's context may grow before its

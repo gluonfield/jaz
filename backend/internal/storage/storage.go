@@ -143,7 +143,6 @@ type Session struct {
 	ParentID        string          `json:"parent_id,omitempty"`
 	Status          string          `json:"status"`
 	Turn            *Turn           `json:"turn,omitempty"`
-	TurnsEnded      int64           `json:"-"`
 	Error           string          `json:"error,omitempty"`
 	Runtime         string          `json:"runtime"`
 	RuntimeRef      *RuntimeRef     `json:"runtime_ref,omitempty"`

@@ -386,10 +386,6 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 		return session, nil, false, nil
 	}
 	prompts := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
-	prompts, err = s.filterSupersededResults(prompts)
-	if err != nil {
-		return session, nil, false, err
-	}
 	if len(prompts) == 0 {
 		// Empty queue still yields work when a goal is live; otherwise drop any
 		// stale (non-canonical) entries and report nothing to run. A goal goes
