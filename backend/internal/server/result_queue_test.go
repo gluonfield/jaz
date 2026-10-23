@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -12,18 +13,21 @@ import (
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestQueuedWorkerResultsReconcileLaterTurns(t *testing.T) {
+func TestWorkerResultsRemainEvidenceAcrossLaterTurns(t *testing.T) {
 	for _, test := range []struct {
 		name       string
 		firstState string
 		laterState string
-		wantResult string
+		laterTurn  storage.Turn
 	}{
-		{"current failure", acp.StateFailed, "", "Authentication required"},
-		{"failure then running", acp.StateFailed, acp.StateRunning, ""},
-		{"failure then success", acp.StateFailed, acp.StateIdle, "Revised design"},
-		{"failure then new failure", acp.StateFailed, acp.StateFailed, "Capacity exhausted"},
-		{"success then running", acp.StateIdle, acp.StateRunning, "Original design"},
+		{"current failure", acp.StateFailed, "", storage.Turn{}},
+		{"failure then running", acp.StateFailed, acp.StateRunning, storage.Turn{}},
+		{"failure then success", acp.StateFailed, acp.StateIdle, storage.Turn{}},
+		{"failure then new failure", acp.StateFailed, acp.StateFailed, storage.Turn{}},
+		{"success then running", acp.StateIdle, acp.StateRunning, storage.Turn{}},
+		{"failure then compact", acp.StateFailed, acp.StateIdle, storage.Turn{ActiveOperation: acp.ActiveOperationCompact}},
+		{"failure then plan", acp.StateFailed, acp.StateIdle, storage.Turn{PlanRequested: true}},
+		{"failure then cancellation", acp.StateFailed, acp.StateCancelled, storage.Turn{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -65,11 +69,15 @@ func TestQueuedWorkerResultsReconcileLaterTurns(t *testing.T) {
 			}
 			srv.Store = store
 			queued, err := store.LoadSession(parent.ID)
-			if err != nil || len(queued.QueuedMessages) != 1 || queued.QueuedMessages[0].Result == nil || queued.QueuedMessages[0].Result.Number != 1 {
-				t.Fatalf("completion provenance did not survive reopen: %+v, %v", queued.QueuedMessages, err)
+			if err != nil || len(queued.QueuedMessages) != 1 {
+				t.Fatalf("completion did not survive reopen: %+v, %v", queued.QueuedMessages, err)
 			}
+			original := queued.QueuedMessages[0]
+			wantPending := 0
 			if test.laterState != "" {
-				if err := store.StartSessionTurn(child.ID, storage.Turn{NotifyParent: true}); err != nil {
+				turn := test.laterTurn
+				turn.NotifyParent = !turn.PlanRequested && turn.ActiveOperation == ""
+				if err := store.StartSessionTurn(child.ID, turn); err != nil {
 					t.Fatal(err)
 				}
 				if test.laterState != acp.StateRunning {
@@ -80,25 +88,37 @@ func TestQueuedWorkerResultsReconcileLaterTurns(t *testing.T) {
 					if err := srv.finishTurn(later); err != nil {
 						t.Fatal(err)
 					}
+					if turn.NotifyParent {
+						wantPending = 1
+					}
 				}
 			}
 			if err := store.FinishSessionTurn(parent.ID, storage.StatusIdle, "", time.Now(), nil); err != nil {
 				t.Fatal(err)
 			}
-			_, prompt, ok, err := srv.claimNextTurn(parent.ID)
+			manager := &fakeACPManager{}
+			srv.ACP = manager
+			session, prompt, ok, err := srv.claimNextTurn(parent.ID)
+			if err != nil || !ok || prompt == nil || prompt.Text != original.Text || prompt.From != child.ID {
+				t.Fatalf("undelivered worker result lost: %+v, %v", prompt, err)
+			}
+			if err := srv.startQueuedPrompt(context.Background(), session, *prompt); err != nil {
+				t.Fatal(err)
+			}
+			current, err := store.LoadSession(child.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if test.wantResult == "" {
-				if ok || prompt != nil {
-					t.Fatalf("superseded failure reached parent: %+v", prompt)
-				}
-			} else if !ok || prompt == nil || !strings.Contains(prompt.Text, test.wantResult) {
-				t.Fatalf("result = %+v, want %q", prompt, test.wantResult)
+			manager.mu.Lock()
+			message := manager.internal.Message
+			manager.mu.Unlock()
+			if !strings.HasPrefix(message, original.Text+"\n\n") ||
+				!strings.Contains(message, "Current state of thread design: "+current.Status+".") {
+				t.Fatalf("worker result lost its envelope or current state: %s", message)
 			}
 			saved, err := store.LoadSession(parent.ID)
-			if err != nil || len(saved.QueuedMessages) != 0 {
-				t.Fatalf("result queue not drained: %+v, %v", saved.QueuedMessages, err)
+			if err != nil || saved.Turn.PendingMessage.Text != original.Text || len(saved.QueuedMessages) != wantPending {
+				t.Fatalf("worker evidence changed or newer result lost: %+v, %v", saved, err)
 			}
 		})
 	}
@@ -130,7 +150,18 @@ func TestClaimedWorkerResultUsesCurrentStateOnResume(t *testing.T) {
 			result.From = child.ID
 			if typed {
 				result.Text = acp.CompletionPrompt(acp.Job{Slug: child.Slug, State: acp.StateFailed, Error: "Authentication required"}, "the user")
-				result.Result = &storage.TurnResult{Number: 1, Status: storage.StatusError}
+				raw, err := json.Marshal(map[string]any{
+					"kind": "internal", "from": child.ID, "text": result.Text,
+					"result": map[string]any{"number": 1, "status": storage.StatusError},
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				decoded, err := storage.UnmarshalQueuedMessage(string(raw))
+				if err != nil || decoded == nil {
+					t.Fatalf("read stored versioned result: %+v, %v", decoded, err)
+				}
+				result = *decoded
 			}
 			if err := store.QueueTurn(storage.TurnDelivery{SessionID: parent.ID, Message: result}); err != nil {
 				t.Fatal(err)
@@ -150,8 +181,8 @@ func TestClaimedWorkerResultUsesCurrentStateOnResume(t *testing.T) {
 			manager.mu.Lock()
 			message := manager.internal.Message
 			manager.mu.Unlock()
-			if !strings.Contains(message, "current status is running") || !strings.Contains(message, "<completed_turn_result>\n"+claimed.Text+"\n</completed_turn_result>") {
-				t.Fatalf("result lost its evidence boundary or current state: %s", message)
+			if !strings.HasPrefix(message, claimed.Text+"\n\n") || !strings.Contains(message, "Current state of thread worker: running.") {
+				t.Fatalf("result lost its envelope or current state: %s", message)
 			}
 			saved, err := store.LoadSession(parent.ID)
 			if err != nil || saved.Turn.PendingMessage.Text != claimed.Text {

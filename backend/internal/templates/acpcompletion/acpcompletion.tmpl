@@ -7,4 +7,4 @@ Assistant result:
 {{.Assistant}}
 {{- end}}
 
-Reconcile this completed turn's result with newer user instructions and the thread's current state. Report/update {{.Recipient}} with relevant delivered work, files, URLs and verification. A later turn may already be running; an earlier failure does not establish that it is still blocked.
+Reconcile this completed turn's result with newer user instructions and the thread's current state. Continue unfinished work. Update {{.Recipient}} only when there is a relevant new result or blocker, with deliverable links and verification when available. Stay quiet for stale or already-delivered updates. A later turn may already be running; an earlier failure does not establish that it is still blocked.
