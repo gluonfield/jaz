@@ -24,8 +24,7 @@ export function SendButton({
   const [hovered, setHovered] = useState(false)
   const closeTimer = useRef<number | undefined>(undefined)
   const hold = useContextMenuTrigger(() => setHovered(true))
-  const queue = disabled ? undefined : onQueue
-  const triggers = queue ? hold : undefined
+  const triggers = onQueue ? hold : undefined
   useEffect(() => () => window.clearTimeout(closeTimer.current), [])
 
   const choose = (action: () => void) => {
@@ -48,7 +47,7 @@ export function SendButton({
       }}
     >
       <Popover
-        open={hovered && Boolean(queue)}
+        open={hovered && Boolean(onQueue)}
         onClose={() => setHovered(false)}
         align="end"
         trigger={
@@ -57,7 +56,7 @@ export function SendButton({
             size="md"
             className="relative after:absolute after:-inset-1"
             aria-label={label}
-            title={queue ? undefined : label}
+            title={onQueue ? undefined : label}
             disabled={disabled}
             {...triggers}
             onClick={(event) => {
@@ -74,8 +73,8 @@ export function SendButton({
         <MenuRow trailing={<KeyboardShortcut modifier="" value="↵" />} onClick={() => choose(onSend)}>
           Send
         </MenuRow>
-        {queue ? (
-          <MenuRow trailing={<KeyboardShortcut value="↵" />} onClick={() => choose(queue)}>
+        {onQueue ? (
+          <MenuRow trailing={<KeyboardShortcut value="↵" />} onClick={() => choose(onQueue)}>
             Queue
           </MenuRow>
         ) : null}

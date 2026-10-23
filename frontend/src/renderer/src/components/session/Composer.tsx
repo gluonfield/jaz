@@ -327,6 +327,7 @@ export function ComposerCard({
       rollback?.dispose()
     }
   }
+  const queue = streaming && onQueuePrompt && !submitDisabled ? () => void submit(mention.value(), onQueuePrompt) : undefined
 
   const textarea = (
     <MentionTextarea
@@ -345,8 +346,8 @@ export function ComposerCard({
           e.preventDefault()
           if (dictation.phase) {
             void dictation.stop()
-          } else if ((e.metaKey || e.ctrlKey) && streaming && onQueuePrompt) {
-            void submit(mention.value(), onQueuePrompt)
+          } else if ((e.metaKey || e.ctrlKey) && queue) {
+            queue()
           } else {
             void submit()
           }
@@ -578,7 +579,7 @@ export function ComposerCard({
                 label={actionLabel}
                 disabled={showVoiceButton ? disabled || Boolean(dictation.phase) : submitDisabled}
                 onSend={() => (showVoiceButton ? onVoice?.() : void submit())}
-                onQueue={streaming && onQueuePrompt && hasDraftContent && !voiceActive ? () => void submit(mention.value(), onQueuePrompt) : undefined}
+                onQueue={queue}
               >
                 {showVoiceButton ? <AudioLines size={16} /> : <ArrowUp size={16} />}
               </SendButton>
