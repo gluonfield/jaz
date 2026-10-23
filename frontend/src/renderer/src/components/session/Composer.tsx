@@ -341,14 +341,12 @@ export function ComposerCard({
           e.preventDefault()
           mention.insertText(suggestion)
         }
-        if (plainTab && streaming && onQueuePrompt && hasDraftContent && !dictation.phase) {
-          e.preventDefault()
-          void submit(mention.value(), onQueuePrompt)
-        }
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault()
           if (dictation.phase) {
             void dictation.stop()
+          } else if ((e.metaKey || e.ctrlKey) && streaming && onQueuePrompt) {
+            void submit(mention.value(), onQueuePrompt)
           } else {
             void submit()
           }

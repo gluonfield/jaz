@@ -49,6 +49,11 @@ const SHORTCUTS: Shortcut[] = [
     keys: ['⌘', '1-9'],
   },
   {
+    command: 'Queue message',
+    description: 'While a turn runs, queue the draft to send after it instead of now.',
+    keys: ['⌘', 'Enter'],
+  },
+  {
     command: 'Toggle Plan mode',
     description: 'Turn Plan mode on or off for the current composer.',
     keys: ['Shift', 'Tab'],

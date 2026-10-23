@@ -75,7 +75,7 @@ export function SendButton({
           Send
         </MenuRow>
         {queue ? (
-          <MenuRow trailing={<KeyboardShortcut modifier="" value="Tab" />} onClick={() => choose(queue)}>
+          <MenuRow trailing={<KeyboardShortcut value="↵" />} onClick={() => choose(queue)}>
             Queue
           </MenuRow>
         ) : null}

@@ -4,6 +4,7 @@ import { ComposerCard } from '@/components/session/Composer'
 
 // While a turn runs, hovering send offers Send and Queue; the menu survives
 // the gap between button and menu, and each row reaches its own handler.
+// From the keyboard, Enter sends and Command-Enter queues.
 export async function exerciseComposerSendMenu(): Promise<void> {
   const element = document.createElement('div')
   element.style.width = '560px'
@@ -97,6 +98,17 @@ export async function exerciseComposerSendMenu(): Promise<void> {
     }
     row('Queue')!.click()
     await until(() => calls.join() === 'queue:Held follow-up')
+    calls.length = 0
+
+    for (const [metaKey, expected] of [[true, 'queue'], [false, 'send']] as const) {
+      await type('Keyboard follow-up')
+      textarea().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey, bubbles: true, cancelable: true }))
+      await until(() => calls.length > 0)
+      if (calls.join() !== `${expected}:Keyboard follow-up`) {
+        throw new Error(`${metaKey ? 'Command-Enter' : 'Enter'} called ${calls.join()}, not ${expected}`)
+      }
+      calls.length = 0
+    }
   } finally {
     root.unmount()
     element.remove()
