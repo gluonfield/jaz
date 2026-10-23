@@ -40,14 +40,12 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 			Root:             "/tmp/jaz",
 			AgentsPath:       "/tmp/jaz/AGENTS.md",
 			SoulPath:         "/tmp/jaz/SOUL.md",
-			InternalPath:     "/tmp/jaz/INTERNAL.md",
 			SkillsPath:       "/tmp/jaz/skills",
 			SessionsPath:     "/tmp/jaz/sessions",
 			DefaultWorkspace: "/tmp/jaz/workspaces/default",
 			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
 		},
 		Soul:           "soul",
-		Internal:       "prefer deletion fixes",
 		BrowserEnabled: true,
 		Memory: &MemoryData{
 			LongTerm:            "- Goal: $5m.",
@@ -84,14 +82,11 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"Do not batch status changes at the end.",
 		"## Runtime paths",
 		"/tmp/jaz: runtime state",
-		"/tmp/jaz/AGENTS.md, /tmp/jaz/SOUL.md, /tmp/jaz/INTERNAL.md: prompt files rendered below when present.",
+		"/tmp/jaz/AGENTS.md, /tmp/jaz/SOUL.md: prompt files rendered below when present.",
 		"/tmp/jaz/workspaces/default/.worktrees: ACP worktrees.",
 		"The prompt files are writable persistent state, not read-only context",
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
-		"## INTERNAL.md",
-		"Agent-owned self-realizations only.",
-		"prefer deletion fixes",
 		"## connections",
 		"Connected accounts, agent-relevant memory paths, and providers available to connect",
 		"write its connect link alone on its own line",
@@ -135,9 +130,6 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 		"revise it in place instead of appending a near-duplicate",
 		"`AGENTS.md` contains the user's standing rules. Write when the user states a durable instruction",
 		"`SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`",
-		"`INTERNAL.md` belongs to the agent. Write when you learn something durable",
-		"Never store task- or project-specific facts",
-		"Write when the user corrects your approach",
 		"Use `create_thread` only when",
 		"Merely discussing or reviewing one of these agent harnesses does not authorize a separate session",
 		"Omit model overrides unless the user asks for a specific model",
@@ -207,7 +199,7 @@ func TestRenderMemoryStates(t *testing.T) {
 	if strings.Contains(disabled, "## memory") || strings.Contains(disabled, "Capture as you go") {
 		t.Fatalf("nil memory must omit the memory block:\n%s", disabled)
 	}
-	if !strings.Contains(disabled, "## AGENTS.md") || !strings.Contains(disabled, "## SOUL.md") || !strings.Contains(disabled, "## INTERNAL.md") {
+	if !strings.Contains(disabled, "## AGENTS.md") || !strings.Contains(disabled, "## SOUL.md") {
 		t.Fatalf("prompt files must render regardless of memory:\n%s", disabled)
 	}
 
@@ -274,7 +266,6 @@ func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	for _, want := range []string{
 		"## AGENTS.md\n\nagents",
 		"## SOUL.md\n\nsoul",
-		"## INTERNAL.md",
 		"## Jaz threads",
 		"create_thread",
 		"list_agent_options",
@@ -312,14 +303,12 @@ func testData(agents, soul string) Data {
 			Root:             "/tmp/jaz",
 			AgentsPath:       "/tmp/jaz/AGENTS.md",
 			SoulPath:         "/tmp/jaz/SOUL.md",
-			InternalPath:     "/tmp/jaz/INTERNAL.md",
 			SkillsPath:       "/tmp/jaz/skills",
 			SessionsPath:     "/tmp/jaz/sessions",
 			DefaultWorkspace: "/tmp/jaz/workspaces/default",
 			WorktreesPath:    "/tmp/jaz/workspaces/default/.worktrees",
 		},
-		Soul:     soul,
-		Internal: "(empty)",
+		Soul: soul,
 	}
 }
 

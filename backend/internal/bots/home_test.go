@@ -47,7 +47,7 @@ func write(t *testing.T, path, text string) {
 	}
 }
 
-func TestABotsThreadsAndRoutinesStartWithItsMemory(t *testing.T) {
+func TestABotsThreadsAndRoutinesAreToldToReadItsHomeFiles(t *testing.T) {
 	service, store, manager := newHomeService(t)
 	bot, err := service.Create(t.Context(), CreateBot{Name: "Research", Prompt: "Follow robotics research."})
 	if err != nil {
@@ -85,32 +85,20 @@ func TestABotsThreadsAndRoutinesStartWithItsMemory(t *testing.T) {
 		return RoutineInstructions(store)(loops.Loop{BotID: bot.ID, Directory: directory}, loops.Run{})
 	}
 
-	if modules := prompt(bot.ID); len(modules) != 2 || slices.ContainsFunc(modules, isMemory) {
-		t.Fatalf("a bot with no MEMORY.md was given one: %q", modules)
-	}
-	write(t, filepath.Join(home, memoryFile), "  The user's dog is Biscuit.\n")
+	write(t, filepath.Join(home, memoryFile), "The user's dog is Biscuit.\n")
 	write(t, filepath.Join(home, agentsFile), "Sign reports as Research.")
 	for _, id := range []string{bot.ID, seat.ID} {
-		if modules := prompt(id); modules[len(modules)-1] != "## Your MEMORY.md\n\nThe user's dog is Biscuit." {
-			t.Fatalf("thread %s starts without the bot's memory: %q", id, modules)
+		modules := prompt(id)
+		if text := strings.Join(modules, "\n"); strings.Contains(text, "Biscuit") || strings.Contains(text, "Sign reports") || !strings.Contains(text, "Read it before your first answer") {
+			t.Fatalf("thread %s carries its home files instead of being told to read them: %q", id, modules)
 		}
 	}
-	if text := routine(""); !strings.Contains(text, "Follow robotics research.") || !strings.Contains(text, "The user's dog is Biscuit.") || strings.Contains(text, "Sign reports") {
-		t.Fatalf("a routine run in the bot's home got %q, want its prompt and memory but not the AGENTS.md its agent loads", text)
+	if text := routine(""); !strings.Contains(text, "Follow robotics research.") || !strings.Contains(text, "read MEMORY.md in your bot's home, "+home) || strings.Contains(text, "Biscuit") {
+		t.Fatalf("a routine run in the bot's home got %q, want its prompt and where its memory is", text)
 	}
-	if text := routine("/projects/site"); !strings.Contains(text, "## Your AGENTS.md\n\nSign reports as Research.") {
-		t.Fatalf("a routine run outside the bot's home got %q, want the bot's AGENTS.md too", text)
+	if text := routine("/projects/site"); !strings.Contains(text, "read AGENTS.md and MEMORY.md in your bot's home, "+home) || strings.Contains(text, "Sign reports") {
+		t.Fatalf("a routine run outside the bot's home got %q, want where its AGENTS.md and memory are", text)
 	}
-
-	write(t, filepath.Join(home, memoryFile), strings.Repeat("é", fileLimit+500))
-	memory := prompt(bot.ID)[2]
-	if !strings.HasPrefix(memory, "## Your MEMORY.md\n\n"+strings.Repeat("é", fileLimit)+"\n\n[MEMORY.md continues past 8000 characters") {
-		t.Fatalf("an oversized MEMORY.md was not cut at %d characters: %q…", fileLimit, memory[:80])
-	}
-}
-
-func isMemory(module string) bool {
-	return strings.HasPrefix(module, "## Your MEMORY.md")
 }
 
 func TestABotIsToldToRereadItsFilesUntilATurnSucceedsAfterTheyChange(t *testing.T) {

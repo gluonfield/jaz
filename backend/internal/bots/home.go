@@ -19,33 +19,13 @@ import (
 
 // A bot's identity lives in two files in its home: AGENTS.md, who it is and
 // how it works, which agents load themselves when a session starts, and
-// MEMORY.md, what it knows, which Jaz adds to its prompt.
+// MEMORY.md, what it knows, which the bot reads when it needs it.
 const (
 	agentsFile = "AGENTS.md"
 	memoryFile = "MEMORY.md"
 )
 
 var homeFiles = []string{agentsFile, memoryFile}
-
-// fileLimit bounds how much of an identity file a prompt carries, in
-// characters.
-const fileLimit = 8000
-
-// homeModule is one of the identity files in bot's home as a prompt module.
-func homeModule(bot storage.Session, name string) string {
-	if bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
-		return ""
-	}
-	data, err := os.ReadFile(filepath.Join(bot.RuntimeRef.Cwd, name))
-	text := strings.TrimSpace(string(data))
-	if err != nil || text == "" {
-		return ""
-	}
-	if runes := []rune(text); len(runes) > fileLimit {
-		text = string(runes[:fileLimit]) + fmt.Sprintf("\n\n[%s continues past %d characters and is cut here. Read the rest from the file and shorten it.]", name, fileLimit)
-	}
-	return fmt.Sprintf("## Your %s\n\n%s", name, text)
-}
 
 // ErrFileChanged refuses a save made over a version of the file that is no
 // longer current.
@@ -226,7 +206,7 @@ func identityNote(store PromptStore, thread storage.Session) (note, promptDigest
 	if !acp.KeepsStartPrompt(thread.RuntimeRef.Agent) {
 		return "", ""
 	}
-	identity, err := threadIdentity(store, thread)
+	identity, err := Prompt(store, thread)
 	if err != nil || identity == nil {
 		return "", ""
 	}

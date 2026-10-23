@@ -15,7 +15,6 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "AGENTS.md", "agents")
 	write(t, root, "SOUL.md", "soul")
-	write(t, root, "INTERNAL.md", "realizations")
 
 	now := time.Date(2026, 6, 2, 9, 8, 7, 0, time.FixedZone("BST", 3600))
 	workspace := filepath.Join(root, "workspaces", "default")
@@ -23,7 +22,7 @@ func TestPromptCombinesCoordinatorFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertOrder(t, prompt, "You are Jaz", "## Jaz platform", "## Runtime paths", root+": runtime state", filepath.Join(root, "workspaces", "default")+": default workspace.", "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "## INTERNAL.md", "realizations", "skills", "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "Device: Desktop")
+	assertOrder(t, prompt, "You are Jaz", "## Jaz platform", "## Runtime paths", root+": runtime state", filepath.Join(root, "workspaces", "default")+": default workspace.", "## AGENTS.md\n\nagents", "## SOUL.md\n\nsoul", "skills", "Date: June 2, 2026", "Time: 09:08:07 BST", "Timezone: BST (UTC+01:00)", "Weekday: Tuesday", "Current working directory: "+workspace, "Device: Desktop")
 }
 
 func TestPromptOmitsMissingFiles(t *testing.T) {
@@ -31,10 +30,9 @@ func TestPromptOmitsMissingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(prompt, "## AGENTS.md\n\n(empty)") || !strings.Contains(prompt, "## SOUL.md\n\n(empty)") || !strings.Contains(prompt, "## INTERNAL.md") || !strings.Contains(prompt, "Agent-owned self-realizations only") {
+	if !strings.Contains(prompt, "## AGENTS.md\n\n(empty)") || !strings.Contains(prompt, "## SOUL.md\n\n(empty)") {
 		t.Fatalf("missing files must render as (empty) sections:\n%s", prompt)
 	}
-	assertOrder(t, prompt, "## INTERNAL.md", "Agent-owned self-realizations only", "(empty)")
 }
 
 func TestPromptIgnoresHeartbeatFile(t *testing.T) {

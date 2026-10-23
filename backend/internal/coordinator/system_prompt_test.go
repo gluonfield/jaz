@@ -40,8 +40,6 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"## Jaz platform",
 		"## AGENTS.md\n\nalways cite sources",
 		"## SOUL.md\n\nbe direct",
-		"## INTERNAL.md",
-		"collapse stale layers",
 		"## Jaz threads",
 		"one of: `codex`, `claude`",
 		"## Browser tools",
@@ -59,19 +57,20 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		"Current working directory:",
 	)
 	for marker, want := range map[string]int{
-		"## Jaz platform":     1,
-		"<available_skills>":  1,
-		"</available_skills>": 1,
-		"## Skills":           1,
-		"Date: ":              1,
-		"Time: ":              1,
-		"Timezone: ":          1,
-		"Weekday: ":           1,
-		"Now: ":               1,
-		"## AGENTS.md":        1,
-		"## SOUL.md":          1,
-		"## INTERNAL.md":      1,
-		"Capture as you go":   1,
+		"## Jaz platform":       1,
+		"<available_skills>":    1,
+		"</available_skills>":   1,
+		"## Skills":             1,
+		"Date: ":                1,
+		"Time: ":                1,
+		"Timezone: ":            1,
+		"Weekday: ":             1,
+		"Now: ":                 1,
+		"## AGENTS.md":          1,
+		"## SOUL.md":            1,
+		"INTERNAL.md":           0,
+		"collapse stale layers": 0,
+		"Capture as you go":     1,
 	} {
 		if got := strings.Count(system, marker); got != want {
 			t.Fatalf("%q must appear exactly %d time(s), got %d:\n%s", marker, want, got, system)
@@ -131,8 +130,6 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 	}
 	for _, want := range []string{
 		"## AGENTS.md\n\nalways cite sources",
-		"## INTERNAL.md",
-		"collapse stale layers",
 		"## Jaz threads",
 		"create_thread",
 		"## Artifacts and visualisation",

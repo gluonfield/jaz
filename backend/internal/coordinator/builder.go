@@ -75,7 +75,7 @@ func (b *Builder) SkillsPrompt() (string, error) {
 // ACPPrompt builds the prompt extension delivered to ACP agent sessions. Unlike
 // the coordinator prompt it carries no Jaz identity — agents keep their own
 // system prompt and this is appended to it: runtime context, Jaztools policy,
-// AGENTS.md, SOUL.md, INTERNAL.md, connected-account paths, the jazmem memory
+// AGENTS.md, SOUL.md, connected-account paths, the jazmem memory
 // horizons, and the skills catalog.
 func (b *Builder) ACPPrompt(cwd string) (string, error) {
 	return b.ACPPromptForArtifactSurface(cwd, string(visualize.SurfaceChat))
