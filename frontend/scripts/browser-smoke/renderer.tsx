@@ -34,6 +34,7 @@ import { exerciseAppNavigation } from './app-navigation'
 import { exerciseCanvas } from './canvas'
 import { exerciseImages } from './images'
 import { exerciseBrowserAppearance } from './appearance'
+import { exerciseAddressBar } from './address-bar'
 
 declare global {
   interface Window {
@@ -43,6 +44,7 @@ declare global {
       tabURLs(): Promise<string[]>
       backend(): Promise<string>
       browserExists(id: number): Promise<boolean>
+      navigationProbe(enabled?: boolean): Promise<{ url: string; webContentsId: number }[]>
       passwordStore(): Promise<{ count: number; plaintext: boolean }>
       pointer(type: string, x: number, y: number, button?: 'left' | 'right'): Promise<void>
       key(key: string, modifiers?: string[]): Promise<void>
@@ -86,6 +88,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'address-bar') {
+        progress('address-bar Enter navigation and searches')
+        await exerciseAddressBar()
+        if (suite === 'address-bar') {
+          window.smoke.result({ ok: true, checks: ['address-bar Enter searches preserve encoded terms and URL inputs, ignore blanks and navigate only the owning webview'] })
+          return
+        }
+      }
       if (suite === 'appearance') {
         progress('browser page backgrounds in light and dark themes')
         await exerciseBrowserAppearance(browser, evaluate)

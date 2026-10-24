@@ -97,5 +97,8 @@ export function normalizePreviewURL(value: string): string {
     : isLoopbackInput(trimmed)
       ? `http://${trimmed}`
       : `https://${trimmed}`
-  return previewURL(withScheme)?.toString() ?? ''
+  const parsed = previewURL(withScheme)
+  return parsed && (/^[^/?#]*:/.test(trimmed) || /[.:]|^localhost$/.test(parsed.hostname))
+    ? parsed.toString()
+    : `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`
 }

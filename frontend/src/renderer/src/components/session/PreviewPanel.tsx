@@ -235,7 +235,6 @@ export function PreviewPanel({
   const openDraft = () => {
     const next = normalizePreviewURL(draft)
     if (!next) {
-      setError('Enter a website URL or an absolute file path.')
       return
     }
     setError('')
