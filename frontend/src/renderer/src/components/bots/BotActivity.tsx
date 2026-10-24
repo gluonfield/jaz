@@ -18,7 +18,7 @@ type Row = {
   at: string
   running?: boolean
   danger?: boolean
-  open?: { thread: string } | { routine: string } | { file: BotFileName } | { message: BotActivity } | { owed: BotOwed }
+  open?: { thread: string } | { routine: string } | { file: BotFileName } | { message: BotActivity }
 }
 
 export function BotActivity({
@@ -59,16 +59,21 @@ export function BotActivity({
     if ('routine' in target) onOpenRoutine(target.routine)
     else if ('file' in target) onOpenFile(target.file)
     else if ('message' in target) setMessage(target.message)
-    else if ('owed' in target) setShown(target.owed.id)
   }
   return (
     <div className="flex flex-col gap-5">
       <section aria-label="Tasks" className="flex flex-col gap-0.5">
         <h3 className="mb-1 text-[13px] font-semibold text-ink">Open Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
         {!owed.length ? <p className="text-[13px] text-ink-3">No open tasks</p> : null}
-        {owed.map((task) => (
-          <ActivityRow key={task.id} item={owedRow(task)} started={started} now={now} onOpen={open} />
-        ))}
+        {owed.map((task) => {
+          const state = owedState(task)
+          return (
+            <button key={task.id} type="button" onClick={() => setShown(task.id)} className="-mx-2 flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 text-left transition-colors duration-150 hover:bg-list-hover">
+              <span role="img" aria-label={state.standing} title={state.standing} className={`size-1.5 shrink-0 rounded-full ${state.danger ? 'bg-danger' : 'bg-ink-3'}`} />
+              <span className="min-w-0 truncate text-[13px] font-medium text-ink">{task.request}</span>
+            </button>
+          )
+        })}
       </section>
       {running.length ? (
         <Group title="Now">
@@ -92,18 +97,6 @@ export function BotActivity({
       {selected ? <OwedModal owed={selected} started={started} now={now} onClose={() => setShown(null)} /> : null}
     </div>
   )
-}
-
-function owedRow(owed: BotOwed): Row {
-  const state = owedState(owed)
-  return {
-    key: `owed:${owed.id}`,
-    title: owed.request,
-    detail: state.standing,
-    at: owed.opened_at,
-    danger: state.danger,
-    open: { owed },
-  }
 }
 
 const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', background: 'Working in the background', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
@@ -205,16 +198,13 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 function ActivityRow({ item, started, now, onOpen }: { item: Row; started: Started; now: number; onOpen: (target: Row['open']) => void }) {
   const since = item.running && item.at ? now - Date.parse(item.at) : undefined
-  const task = item.open && 'owed' in item.open
   const content = (
     <>
       <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
       {item.detail ? <span className={`line-clamp-2 text-[12px] ${item.danger ? 'text-danger' : 'text-ink-2'}`}>{item.detail}</span> : null}
-      {!task ? (
-        <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
-          {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : clockTime(item.at)}
-        </span>
-      ) : null}
+      <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
+        {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : clockTime(item.at)}
+      </span>
     </>
   )
   const className = '-mx-2 flex min-w-0 flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150'
