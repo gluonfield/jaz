@@ -38,7 +38,7 @@ type Manager struct {
 	root             string
 	baseURL          string
 	client           *http.Client
-	installMu        sync.Mutex
+	installation     chan struct{}
 	mu               sync.Mutex
 	status           map[string]Status
 	museInstallerURL string
@@ -49,6 +49,7 @@ func New(root string) *Manager {
 		root:             root,
 		baseURL:          antigravityBaseURL,
 		client:           &http.Client{Timeout: 10 * time.Minute},
+		installation:     make(chan struct{}, 1),
 		status:           map[string]Status{},
 		museInstallerURL: "https://dev.meta.ai/install.sh",
 	}
@@ -65,29 +66,29 @@ func NewForTest(root, baseURL string, client *http.Client) *Manager {
 
 func (m *Manager) Prepare(ctx context.Context, name string, env map[string]string) error {
 	name = strings.TrimSpace(name)
-	if name == MuseCLI {
-		return m.prepareMuse(ctx, env)
-	}
-	if status, ok := m.localReadyStatus(name); ok {
-		m.setStatus(name, status)
+	if m.Status(name, env).State == StateReady {
 		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case m.installation <- struct{}{}:
+	}
+	defer func() {
+		<-m.installation
+	}()
+	if m.Status(name, env).State == StateReady {
+		return nil
+	}
+	if name == MuseCLI {
+		return m.prepareMuse(ctx)
 	}
 	spec, err := m.resolveSpec(ctx, name)
 	if err != nil {
 		m.setResolveErrorStatus(name, err)
 		return err
 	}
-	if fileExists(spec.Command) {
-		m.setStatus(name, readyStatus(spec))
-		return nil
-	}
 	m.setStatus(name, downloadingStatus(spec))
-	m.installMu.Lock()
-	defer m.installMu.Unlock()
-	if fileExists(spec.Command) {
-		m.setStatus(name, readyStatus(spec))
-		return nil
-	}
 	if err := m.install(ctx, spec); err != nil {
 		m.setStatus(name, failedStatus(spec, err))
 		return err

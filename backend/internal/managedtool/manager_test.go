@@ -18,6 +18,9 @@ import (
 )
 
 func TestPrepareDownloadsVerifiesAndInstallsAntigravityCLI(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("SHELL", "/bin/sh")
 	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		t.Skip(err)
@@ -59,6 +62,7 @@ func TestPrepareDownloadsVerifiesAndInstallsAntigravityCLI(t *testing.T) {
 }
 
 func TestPrepareRejectsBadChecksum(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("SHELL", "/bin/sh")
 	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)

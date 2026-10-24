@@ -143,7 +143,7 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
   useEffect(() => {
     if (!installationRunning) return
     const timer = window.setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings }, { cancelRefetch: false })
     }, 1500)
     return () => window.clearInterval(timer)
   }, [installationRunning, queryClient])

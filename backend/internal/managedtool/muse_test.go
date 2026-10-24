@@ -11,6 +11,7 @@ import (
 )
 
 func TestPrepareMuseInstallerFailureCanBeRetried(t *testing.T) {
+	env := museTestEnv(t)
 	root := t.TempDir()
 	var fail atomic.Bool
 	fail.Store(true)
@@ -40,17 +41,17 @@ Set-Content -Path (Join-Path $env:MUSE_INSTALL_DIR 'muse.cmd') -Value 'native la
 	defer installer.Close()
 	manager := New(root)
 	manager.museInstallerURL = installer.URL + "/install.sh"
-	if err := manager.Prepare(t.Context(), MuseCLI, nil); err == nil {
+	if err := manager.Prepare(t.Context(), MuseCLI, env); err == nil {
 		t.Fatal("installer download failure was ignored")
 	}
-	if status := manager.Status(MuseCLI, nil); status.State != StateFailed {
+	if status := manager.Status(MuseCLI, env); status.State != StateFailed {
 		t.Fatalf("failed installation status = %#v", status)
 	}
 	fail.Store(false)
-	if err := manager.Prepare(t.Context(), MuseCLI, nil); err != nil {
+	if err := manager.Prepare(t.Context(), MuseCLI, env); err != nil {
 		t.Fatal(err)
 	}
-	status := manager.Status(MuseCLI, nil)
+	status := manager.Status(MuseCLI, env)
 	if status.State != StateReady || status.Path != ExecutablePath(root, MuseCLI) {
 		t.Fatalf("installed status = %#v", status)
 	}
@@ -59,44 +60,47 @@ Set-Content -Path (Join-Path $env:MUSE_INSTALL_DIR 'muse.cmd') -Value 'native la
 		t.Fatalf("native launcher missing: %q, %v", data, err)
 	}
 	installer.Close()
-	if err := manager.Prepare(t.Context(), MuseCLI, nil); err != nil {
+	if err := manager.Prepare(t.Context(), MuseCLI, env); err != nil {
 		t.Fatalf("installed launcher required another download: %v", err)
 	}
 }
 
 func TestPrepareMuseRejectsInstallerWithoutLauncher(t *testing.T) {
+	env := museTestEnv(t)
 	installer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("exit 0\n"))
 	}))
 	defer installer.Close()
 	manager := New(t.TempDir())
 	manager.museInstallerURL = installer.URL + "/install.sh"
-	if err := manager.Prepare(t.Context(), MuseCLI, nil); err == nil {
+	if err := manager.Prepare(t.Context(), MuseCLI, env); err == nil {
 		t.Fatal("an installer that produced no launcher was accepted")
 	}
-	if status := manager.Status(MuseCLI, nil); status.State != StateFailed {
+	if status := manager.Status(MuseCLI, env); status.State != StateFailed {
 		t.Fatalf("missing-launcher status = %#v", status)
 	}
 }
 
 func TestPrepareMuseReusesExistingCLI(t *testing.T) {
+	env := museTestEnv(t)
 	bin := t.TempDir()
 	path := filepath.Join(bin, ExecutableName(MuseCLI))
 	if err := os.WriteFile(path, []byte("native launcher"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin)
+	env["PATH"] = bin
 	manager := New(t.TempDir())
 	manager.museInstallerURL = "http://127.0.0.1:1"
-	if err := manager.Prepare(t.Context(), MuseCLI, nil); err != nil {
+	if err := manager.Prepare(t.Context(), MuseCLI, env); err != nil {
 		t.Fatal(err)
 	}
-	if status := manager.Status(MuseCLI, nil); status.State != StateReady || status.Path != path {
+	if status := manager.Status(MuseCLI, env); status.State != StateReady || status.Path != path {
 		t.Fatalf("existing CLI status = %#v", status)
 	}
 }
 
 func TestMuseFailureDoesNotPublishPartialLauncher(t *testing.T) {
+	env := museTestEnv(t)
 	installer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := `mkdir -p "$MUSE_INSTALL_DIR"
 printf 'partial launcher' > "$MUSE_INSTALL_DIR/muse"
@@ -114,13 +118,22 @@ exit 1
 	root := t.TempDir()
 	manager := New(root)
 	manager.museInstallerURL = installer.URL + "/install.sh"
-	if err := manager.Prepare(t.Context(), MuseCLI, nil); err == nil {
+	if err := manager.Prepare(t.Context(), MuseCLI, env); err == nil {
 		t.Fatal("partial installation succeeded")
 	}
-	if status := manager.Status(MuseCLI, nil); status.State != StateFailed {
+	if status := manager.Status(MuseCLI, env); status.State != StateFailed {
 		t.Fatalf("partial launcher became ready: %#v", status)
 	}
-	if status := New(root).Status(MuseCLI, nil); status.State != StateMissing {
+	if status := New(root).Status(MuseCLI, env); status.State != StateMissing {
 		t.Fatalf("partial launcher survived restart as installed: %#v", status)
 	}
+}
+
+func museTestEnv(t *testing.T) map[string]string {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	t.Setenv("MUSE_CLI", "")
+	t.Setenv("MUSE_INSTALL_DIR", "")
+	return map[string]string{"PATH": t.TempDir()}
 }

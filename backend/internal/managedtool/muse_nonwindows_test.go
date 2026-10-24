@@ -17,9 +17,7 @@ import (
 )
 
 func TestMuseCancellationStopsInstallerChildrenAndAllowsRetry(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("MUSE_CLI", "")
-	t.Setenv("MUSE_INSTALL_DIR", "")
+	env := museTestEnv(t)
 	var requests atomic.Int32
 	installer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body := `sleep 60 &
@@ -41,7 +39,7 @@ chmod 755 "$MUSE_INSTALL_DIR/muse"
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- manager.Prepare(ctx, MuseCLI, nil)
+		done <- manager.Prepare(ctx, MuseCLI, env)
 	}()
 	pidFile := filepath.Join(filepath.Dir(filepath.Dir(ExecutablePath(root, MuseCLI))), "child.pid")
 	var pid int
@@ -76,15 +74,15 @@ chmod 755 "$MUSE_INSTALL_DIR/muse"
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	if status := manager.Status(MuseCLI, nil); status.State != StateFailed {
+	if status := manager.Status(MuseCLI, env); status.State != StateFailed {
 		t.Fatalf("cancelled installation status = %#v", status)
 	}
 	retry, stop := context.WithTimeout(t.Context(), 2*time.Second)
 	defer stop()
-	if err := manager.Prepare(retry, MuseCLI, nil); err != nil {
+	if err := manager.Prepare(retry, MuseCLI, env); err != nil {
 		t.Fatalf("retry after cancellation: %v", err)
 	}
-	if status := manager.Status(MuseCLI, nil); status.State != StateReady {
+	if status := manager.Status(MuseCLI, env); status.State != StateReady {
 		t.Fatalf("retry status = %#v", status)
 	}
 }

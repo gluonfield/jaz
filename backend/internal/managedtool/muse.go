@@ -29,12 +29,7 @@ func (m *Manager) museStatus(platform string, overrides map[string]string) Statu
 	return Status{Tool: MuseCLI, Platform: platform, Path: path, State: StateMissing}
 }
 
-func (m *Manager) prepareMuse(ctx context.Context, env map[string]string) error {
-	m.installMu.Lock()
-	defer m.installMu.Unlock()
-	if status := m.Status(MuseCLI, env); status.State == StateReady {
-		return nil
-	}
+func (m *Manager) prepareMuse(ctx context.Context) error {
 	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return err
