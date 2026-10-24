@@ -25,3 +25,8 @@ Verification: full Go 1.26 suite and vet; focused race regressions; 366 frontend
 Strict review moved HTTP secret parsing/redaction into `httpapi/mcp`, retained atomic storage ownership and removed duplicated joined-row mapping. It also caught and corrected saved-secret normalization, cross-endpoint credential preservation and the unguarded host-credential IPC entrypoint. No provider model, prompt, tool, compaction or authentication code changed; no native subscription experiments were launched. Phone/extension installed versions are unchanged; physical phone acceptance is unverified.
 
 Review conclusions: pending identity data belongs to a pairing request; credential replacement/revocation must invalidate older grants atomically; secret values belong to encrypted storage. Prefer these owning-layer corrections over UI checks or endpoint-specific flags. The report distinguishes verified behavior, prerequisites, dormant configuration paths, intended authority and untested edge/device behavior.
+
+| Before | After |
+| --- | --- |
+| Every approved client saw Add, address editing, approval and revocation controls. | Host-only controls follow the server's management capability; remote clients see the device list and a concise ownership message. |
+| Saved MCP keys and literal headers were returned as form values. | Forms show saved-value placeholders, preserve untouched secrets and allow explicit token removal. |

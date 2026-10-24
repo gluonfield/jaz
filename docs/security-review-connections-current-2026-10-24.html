@@ -7,9 +7,9 @@
 <article class="security-review">
 <h2 class="sr-only">Jaz connection security: tested tunnel authentication works; four remaining defects and broad device authority need attention.</h2>
 <h2>Connection security follow-up</h2>
-<p class="muted">24 October 2026 · Source 133d2517 · Assessment only</p>
-<p>The tested public routes enforce authentication. Four remaining defects concern pairing and optional manual MCP credentials. Approved devices also have broad administrative authority.</p>
-<h2>Remaining defects</h2>
+<p class="muted">24 October 2026 · Audit source 133d2517 · Fixes verified on 3d62e997; local activation pending</p>
+<p>The findings below record the follow-up audit. Augustinas authorised their correction; pairing, credential storage and direct device-administration fixes are implemented and verified. See requests-connection-security-followup.md for delivery status.</p>
+<h2>Findings addressed</h2>
 <table>
 <thead><tr><th>Priority</th><th>Finding, evidence and correction</th></tr></thead>
 <tbody>
@@ -39,10 +39,11 @@
 </details></td></tr>
 </tbody>
 </table>
-<h2>Device authority</h2>
+<h2>Original device authority</h2>
 <p>Every approved device can use privileged APIs and create an invitation that immediately approves another device. In an isolated run, a phone enrolled a successor; revoking the phone left the successor active. This follows the current trust model and is distinct from the pairing defects above.</p>
 <p>Treat a stolen phone bearer as computer compromise: terminal execution, connected-account actions and enrollment authority share this boundary. Separate device administration from ordinary client access, with owner approval for enrollment. Existing descendants require their own revocation.</p>
 <p><code>backend/internal/deviceauth/invitations.go:12</code><br><code>backend/internal/httpapi/devices/handler.go:117</code><br><code>backend/internal/server/terminal.go:44</code></p>
+<p>The implementation now requires the local host credential for direct enrollment, approval and revocation APIs. Normal phone chat and agent access remains high trust and provides powerful computer access.</p>
 <h2>Controls verified</h2>
 <table>
 <thead><tr><th>Boundary</th><th>Observed result</th></tr></thead>
