@@ -71,7 +71,7 @@ Write `/etc/jaz/jaz.env`:
 APPLICATION_CONFIG=/etc/jaz/application.yaml
 JAZ_LOG=info
 HOME=/var/lib/jaz
-JAZ_ADDR=:5299
+JAZ_ADDR=127.0.0.1:5299
 JAZ_PUBLIC_URL=https://jaz.example.com
 JAZ_PREVIEW_URL_TEMPLATE=https://{id}.preview.example.com
 ```
@@ -143,13 +143,9 @@ scp jaz root@SERVER:/tmp/jaz
 ssh root@SERVER 'install -o root -g root -m 755 /tmp/jaz /opt/jaz/bin/jaz && systemctl restart jaz'
 ```
 
-If the backend should be reachable directly, open the port:
-
-```sh
-ufw allow 5299/tcp comment "Jaz backend"
-```
-
-Prefer putting Caddy, nginx, or a tunnel in front of the backend for TLS instead of exposing plain HTTP. Keep runtime state under `/var/lib/jaz`; do not depend on paths from any client machine being visible to the server or agents.
+Keep port 5299 private. Put Caddy, nginx or a tunnel in front of the loopback
+listener and use HTTPS for remote clients. Keep runtime state under `/var/lib/jaz`;
+client-local paths are not visible to the server or agents.
 
 The backend is API-only. It does not serve the React web app or static assets.
 
@@ -230,21 +226,18 @@ JAZ_API_URL=https://jaz.example.com bun run dev
 
 The browser client is a static web app. Host `frontend/dist-web` on any static host, for example `https://web.jaz.chat` or a self-hosted origin. It connects directly to the backend URL the user supplies; the backend is not involved in serving the web app.
 
-For first setup from a browser, prefer a fragment URL so the bootstrap key is not sent to the static web host in the HTTP request:
+An approved device can share a one-use enrollment link. To open it in the browser client, put its invitation in the fragment:
 
 ```text
 https://web.jaz.chat/#server=https%3A%2F%2Fjaz.example.com&key=...
 ```
 
-Query URLs still work, but they are best kept for trusted/self-hosted web clients:
-
-```text
-https://web.jaz.chat/?server=https%3A%2F%2Fjaz.example.com&key=...
-```
 
 After a successful connection, the browser stores the backend URL and device token in that browser origin's `localStorage`, keyed by backend URL. Refreshing the page reconnects to the same backend; switching from `web.jaz.chat` to a self-hosted copy starts with separate browser storage.
 
-A production browser origin may call a private or loopback backend, for example `http://localhost:5299`, as long as the browser allows the request. Jaz answers normal CORS preflights and Chrome Private Network Access preflights with `Access-Control-Allow-Private-Network: true`.
+Trusted browser origins may call a private or loopback backend, for example `http://localhost:5299`, as long as the browser allows the request. Jaz answers normal CORS preflights and Chrome Private Network Access preflights with `Access-Control-Allow-Private-Network: true`.
+
+Additional self-hosted browser origins must be explicitly listed with `--allowed-origins=https://app.example.com`. The public backend origin, Jaz web origins and loopback development origins are supported by default.
 
 ### Self-host the app and backend behind one origin (optional)
 
@@ -310,137 +303,43 @@ Two lines in that `handle` block are load-bearing. **`try_files {path} /index.ht
 curl -fsS https://$HOST/health        # -> {"ok":true,...}
 ```
 
-Open `https://$HOST?key=...` — the key is in `/var/lib/jaz/client-url.txt` (or `/var/lib/jaz/auth.json`). The app loads from that origin and connects back to it, and the proxy forwards the API to the private backend. On a fresh backend the browser becomes the first approved device automatically.
+Open the server URL in Jaz and request device approval. For the first device on
+a headless server, approve its pending request over SSH with `jaz devices approve`.
+The desktop app can bootstrap locally from its protected root credential.
 
-Remote `--public-url` server logs print the public base URL and the auth file path, not the root key:
-
-```text
-client: https://jaz.example.com
-client key: /var/lib/jaz/auth.json
-```
-
-Keep the backend first-setup URL in a root-owned file such as `/var/lib/jaz/client-url.txt`:
-
-```text
-https://jaz.example.com?key=...
-```
-
-Use that URL directly in the desktop app, or convert it to the browser fragment form above. The root key is a bootstrap/recovery credential. Normal clients should store their own per-device token after registration. Local development runs without `--public-url` may still print the full client URL so the desktop launcher can start and connect to a local backend.
+Server logs print the public base URL and protected auth file path. The root key
+stays on the server for local bootstrap, recovery and authenticated agent MCP
+connections; remote clients receive device credentials or bounded invitations.
 
 ## Connected Devices
 
-Remote Jaz behaves like WhatsApp or Telegram: a new desktop or mobile client can request access, but it is not trusted until an already approved device approves it. Settings shows connected devices and pending requests.
+Each installation has a random, revocable bearer credential, stored as a hash
+on the server. Devices in Settings lists approved, pending and revoked devices.
+Revoking a device closes its active streams and cancels its unused invitations.
 
-Migration 20 stores device records instead of relying only on one shared API key:
+**Add Device** produces a one-use enrollment invitation that expires in ten
+minutes. The invitation sits in the link fragment and is exchanged for a separate
+device credential. It carries no permanent root authority. Entering the base URL
+instead creates a pending request that an approved device or server operator
+must approve.
 
-```text
-device
-  id
-  name
-  kind              desktop | mobile | browser | cli
-  status            pending | approved | revoked
-  public_key
-  platform
-  device_family
-  model_identifier
-  token_hash
-  created_at
-  approved_at
-  revoked_at
-  last_seen_at
-  last_seen_ip
-  user_agent
-  app_version
-```
+Pairing proof is sent in `X-Jaz-Pairing-Secret` and redeemed once for a fresh
+credential. Browser event streams and embedded files use one-minute resource tickets
+from the authenticated `/v1/auth/check` response. Native clients use Authorization
+headers; browser WebSockets and the Chrome bridge use a WebSocket subprotocol. Durable `?key=` resource
+authentication is rejected.
 
-Long-lived client tokens are random bearer tokens, hashed at rest, scoped to one device, and revocable without rotating every other device. The root key is only for bootstrap/recovery, not the token stored by normal clients.
+OAuth credentials are encrypted with AES-256-GCM and bound to their account ID.
+The separate 32-byte key defaults to `<root>/secrets.key`; `JAZ_SECRET_KEY_FILE`
+can point to a protected external key file. Preserve that key with secured
+backups: a database copy alone cannot restore connected accounts. Existing
+plaintext OAuth rows are encrypted on startup and SQLite plaintext pages are
+purged. The runtime directory is private and DB/WAL files use mode 0600.
+Desktop credentials use the OS encryption service; iOS uses Keychain.
 
-Migration 21 adds stable client identity. The desktop app generates an Ed25519 keypair, stores the private key locally, sends only the raw public key to the backend, and uses `sha256(public_key)` as `device_id`. The bearer token still authorizes normal HTTP requests; the device identity names the installation and leaves room for signed repair/recovery later.
-
-Migration 22 adds display metadata to devices: platform, device family, and model identifier. These fields are not authentication material. They exist so Settings and `jaz devices` can show recognizable pending devices such as `Johny / macOS / Mac / MacBookPro18,3`.
-
-## Pairing Flow
-
-First owner device:
-
-1. Backend starts with no approved devices.
-2. The owner retrieves the full client URL from the server, for example `ssh root@SERVER 'cat /var/lib/jaz/client-url.txt'`.
-3. The first desktop app connects with that URL, or the first browser client opens the static web app with `#server=<backend>&key=<key>`.
-4. The backend exchanges the root key for a per-device token and creates the first approved device.
-5. The desktop stores only the per-device token for normal use.
-
-Additional devices:
-
-1. New client enters the backend URL or scans a QR code.
-2. Client creates a pairing request with its stable `device_id`, public key, generated request secret, display name, app kind, platform, device family, model identifier, and app version.
-3. Backend stores the request as pending and returns a request ID.
-4. Client polls the request with its request secret.
-5. Settings on an approved device shows the pending request with enough context to recognize it.
-6. Owner approves or rejects it.
-7. Approval lets the pending client finish with the token scoped to that one device identity; rejection leaves the client unauthenticated.
-
-QR flow:
-
-- A QR shown by an approved client should carry a short-lived pairing approval or pairing session URL, not the root backend key.
-- A future QR scanned from a server terminal can be the first-device setup flow, but it should be one-time and expire quickly.
-
-SSE and websocket follow-up:
-
-- Do not put long-lived device bearer tokens in stream URLs.
-- Add a short-lived stream token endpoint for EventSource and websocket URLs, or use a transport that can set `Authorization` headers.
-- Existing `?key=` support can stay as a compatibility path during migration.
-
-## API Shape
-
-Keep device auth behind its own feature boundary:
-
-```text
-backend/internal/deviceauth
-backend/internal/httpapi/devices
-backend/internal/storage
-backend/internal/storage/sqlite/queries/devices
-backend/internal/storage/sqlite/generated/devices
-```
-
-Existing endpoints:
-
-```text
-GET    /v1/devices
-POST   /v1/devices/register
-PATCH  /v1/devices/{id}
-DELETE /v1/devices/{id}
-
-POST   /v1/devices/pairing-requests
-GET    /v1/devices/pairing-requests/{id}
-POST   /v1/devices/pairing-requests/{id}/approve
-POST   /v1/devices/pairing-requests/{id}/reject
-```
-
-Unauthenticated endpoints are narrow: health, pairing request creation, and pairing poll by request secret. The root key can register the first approved device only while no approved devices exist; once one exists, root-key registration creates a pending request. Everything else requires an approved device token.
-
-The auth middleware should resolve a request into an actor like:
-
-```text
-auth.Context
-  device_id
-  device_name
-  approved
-```
-
-Feature services should receive that actor explicitly where policy depends on it. They should not parse HTTP headers.
-
-## Settings UI
-
-Settings includes a Devices section:
-
-- Approved devices: name from client metadata, OS/platform details, model, app version, current-device marker, last seen, IP, revoke.
-- Pending devices: requested name, OS/platform details, model, approximate time, IP, approve, reject.
-- Revoked devices: collapsed history or hidden by default.
-- Link device: future QR code plus short pairing code.
-
-General Settings can keep local appearance and launch behavior. Device management deserves its own settings section once pairing exists because it is security state, not a cosmetic preference.
-
-The UI does not show the root backend key as the normal way to connect. The first client uses the server-side setup URL, then the app stores a per-device token.
+Upgrade the server and desktop client together, stopping the old server before
+opening its database with the upgraded binary. Existing per-device credentials
+continue to work. Unused invitations and resource tickets expire on restart.
 
 ## Device CLI
 
@@ -459,11 +358,3 @@ APPLICATION_CONFIG=/etc/jaz/application.yaml jaz devices approve <pairing-or-dev
 ```
 
 The listing includes display metadata for each approved device and pending request. Approval accepts either the pending pairing request ID or the pending device ID shown by `jaz devices`.
-
-## Migration
-
-1. Keep accepting the existing backend API key while no approved devices exist.
-2. Add device records and per-device tokens.
-3. When the first client connects with the root key, convert it into an approved device token.
-4. Once at least one approved device exists, make new root-key connections create pending devices instead of silently becoming trusted.
-5. Eventually reserve the root key for local recovery and explicit setup only.

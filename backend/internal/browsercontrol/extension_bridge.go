@@ -132,6 +132,10 @@ func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	stop := context.AfterFunc(r.Context(), func() {
+		_ = conn.Close()
+	})
+	defer stop()
 	client := &extensionClient{
 		conn:    conn,
 		pending: map[string]chan extensionResult{},

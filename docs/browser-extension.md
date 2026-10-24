@@ -5,16 +5,18 @@ extension repository:
 
 https://github.com/gluonfield/jaz-chrome-extension
 
-For a local desktop Jaz backend, the extension should use the default bridge URL
-without any pasted credential:
+Each browser profile connects as an approved device. Open Devices in Jaz Settings
+and approve the browser's request on first connection. The extension keeps its
+own revocable credential and sends it in the WebSocket handshake, outside the URL.
+
+The default local bridge address is:
 
 ```txt
 ws://127.0.0.1:5299/v1/browser/extension
 ```
 
-The backend accepts that unauthenticated path only for loopback requests whose
-WebSocket Origin is a Chrome extension. Remote backend bridges still need an
-authenticated `wss://` URL.
+Remote bridges use WSS. Browser origin headers and localhost source addresses
+are checked alongside credentials; they grant no access on their own.
 
 When Browser is enabled in Jaz settings, ordinary agent sessions receive typed
 extension-backed browser tools directly. Jaz does not spawn a separate coding

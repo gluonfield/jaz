@@ -1,6 +1,7 @@
 package computer
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -43,5 +44,9 @@ func (h DesktopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	stop := context.AfterFunc(r.Context(), func() {
+		_ = connection.Close()
+	})
+	defer stop()
 	h.Backend.Connect(r.Context(), session.ID, connection)
 }

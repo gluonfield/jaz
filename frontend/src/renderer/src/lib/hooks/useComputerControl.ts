@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { apiAuthenticatedWebSocketUrl } from '@/lib/api/client'
+import { apiWebSocketUrl, apiWebSocketProtocols } from '@/lib/api/client'
 import { computerSettingsQuery } from '@/lib/api/settings'
 import { connectComputer } from '@/lib/computerConnection'
 
@@ -9,7 +9,7 @@ export function useComputerControl(sessionId: string): void {
   useEffect(() => {
     const host = window.jaz?.computer
     if (host && settings.data?.enabled) {
-      return connectComputer(apiAuthenticatedWebSocketUrl('/v1/sessions/' + encodeURIComponent(sessionId) + '/computer'), host, sessionId)
+      return connectComputer(apiWebSocketUrl('/v1/sessions/' + encodeURIComponent(sessionId) + '/computer'), host, sessionId, apiWebSocketProtocols())
     }
   }, [settings.data?.enabled, sessionId])
 }

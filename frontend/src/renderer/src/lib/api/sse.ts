@@ -1,4 +1,4 @@
-import { apiEventSourceUrl } from './client'
+import { openEventStream } from '@/lib/api/eventStream'
 import type { SessionEvent } from './types'
 
 export function openSessionEvents(
@@ -8,7 +8,6 @@ export function openSessionEvents(
   onConnection?: (connected: boolean) => void,
 ): () => void {
   const suffix = afterSeq > 0 ? `?after_seq=${afterSeq}` : ''
-  const es = new EventSource(apiEventSourceUrl(`/v1/sessions/${sessionId}/events${suffix}`))
 
   const handle = (ev: MessageEvent) => {
     try {
@@ -18,9 +17,5 @@ export function openSessionEvents(
     }
   }
 
-  es.onmessage = handle
-  es.onopen = () => onConnection?.(true)
-  es.onerror = () => onConnection?.(false)
-
-  return () => es.close()
+  return openEventStream(`/v1/sessions/${sessionId}/events${suffix}`, { message: handle }, onConnection)
 }

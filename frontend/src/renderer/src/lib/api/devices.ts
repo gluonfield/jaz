@@ -11,6 +11,7 @@ export const devicesQuery = queryOptions({
 
 export const deviceConnectionLinkQuery = queryOptions({
   queryKey: keys.deviceConnectionLink,
+  refetchOnWindowFocus: false,
   queryFn: () => get<DeviceConnectionLink>('/v1/devices/connection-link'),
 })
 
@@ -31,6 +32,5 @@ export function revokeDevice(id: string): Promise<{ device: Device }> {
 }
 
 export function pollPairing(id: string, secret: string): Promise<PairingPoll> {
-  const params = new URLSearchParams({ secret })
-  return get<PairingPoll>(`/v1/devices/pairing-requests/${encodeURIComponent(id)}?${params}`)
+  return get<PairingPoll>(`/v1/devices/pairing-requests/${encodeURIComponent(id)}`, { headers: { 'X-Jaz-Pairing-Secret': secret } })
 }

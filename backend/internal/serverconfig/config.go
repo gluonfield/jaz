@@ -16,6 +16,7 @@ type Config struct {
 	Addr               string
 	PublicURL          string
 	PreviewURLTemplate string
+	AllowedOrigins     []string
 }
 
 type URLs struct {
@@ -54,11 +55,9 @@ func ClientURL(config Config, key string) string {
 	base := ClientBaseURL(config)
 	u, err := url.Parse(base)
 	if err != nil || u.Scheme == "" || u.Host == "" {
-		return base + "?key=" + url.QueryEscape(key)
+		return base + "#key=" + url.QueryEscape(key)
 	}
-	q := u.Query()
-	q.Set("key", key)
-	u.RawQuery = q.Encode()
+	u.Fragment = "key=" + url.QueryEscape(key)
 	return u.String()
 }
 

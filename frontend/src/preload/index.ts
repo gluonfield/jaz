@@ -83,6 +83,20 @@ if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
     } satisfies BrowserProfileAPI,
     browserCommand: (request: BrowserCommandRequest): Promise<unknown> =>
       ipcRenderer.invoke(BROWSER_COMMAND_CHANNEL, request),
+    encryptCredential: (value: string): string => {
+      const result = ipcRenderer.sendSync('jaz:credential-encryption', 'encrypt', value) as { value?: string; error?: string }
+      if (result.error || !result.value) {
+        throw new Error(result.error || 'Credential encryption failed')
+      }
+      return result.value
+    },
+    decryptCredential: (value: string): string => {
+      const result = ipcRenderer.sendSync('jaz:credential-encryption', 'decrypt', value) as { value?: string; error?: string }
+      if (result.error || result.value === undefined) {
+        throw new Error(result.error || 'Credential decryption failed')
+      }
+      return result.value
+    },
     apiBaseUrl,
     windowKind,
     pathForFile: (file: File) => webUtils.getPathForFile(file),

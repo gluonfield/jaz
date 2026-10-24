@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"crypto/cipher"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -18,6 +19,7 @@ import (
 
 type Store struct {
 	root           string
+	secrets        cipher.AEAD
 	db             *sql.DB
 	searchQueries  search.Querier
 	exportMirror   sessionExportMirror
@@ -66,7 +68,21 @@ func New(root string) (*Store, error) {
 	}
 	store := &Store{root: root, compactionWake: make(chan struct{}, 1)}
 	for _, dir := range []string{store.RootDir(), store.SessionsDir(), store.WorkspacesDir()} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, err
+		}
+	}
+	if err := os.Chmod(root, 0o700); err != nil {
+		return nil, err
+	}
+	for _, name := range []string{"jaz.sqlite", "jaz.sqlite-wal", "jaz.sqlite-shm"} {
+		file, err := os.OpenFile(filepath.Join(root, name), os.O_RDWR|os.O_CREATE, 0o600)
+		if err != nil {
+			return nil, err
+		}
+		err = file.Chmod(0o600)
+		_ = file.Close()
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -75,7 +91,7 @@ func New(root string) (*Store, error) {
 		return nil, err
 	}
 	store.exportMirror = exportMirror
-	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite")+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
+	db, err := sql.Open("sqlite", filepath.Join(root, "jaz.sqlite")+"?_pragma=secure_delete(ON)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +100,10 @@ func New(root string) (*Store, error) {
 	store.db = db
 	store.searchQueries = search.New(db)
 	if err := store.migrate(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := store.protectSecrets(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}

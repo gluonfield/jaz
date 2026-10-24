@@ -161,6 +161,8 @@ test.each([
   ['plots/chart.svg', 'plots/chart.svg'],
   ['../chart.webp', '../chart.webp'],
 ])('Markdown image %s loads from the authenticated backend', async (source, path) => {
+  const { setResourceTicket } = await import('@/lib/api/client')
+  setResourceTicket('https://jaz.example', { token: 'test-image-ticket', expires_at: '2030-01-01T00:00:00Z' })
   const { FileReaderLinkProvider, RenderedMarkdown, UserMessageMarkdown, MessageMarkdown } = await import('./MessageMarkdown')
   for (const component of [RenderedMarkdown, UserMessageMarkdown, MessageMarkdown]) {
     const html = renderToStaticMarkup(
@@ -175,7 +177,8 @@ test.each([
     expect(url.pathname).toBe('/v1/sessions/session-1/file')
     expect(url.searchParams.get('path')).toBe(path)
     expect(url.searchParams.get('raw')).toBe('1')
-    expect(url.searchParams.get('key')).toBe('test-image-key')
+    expect(url.searchParams.get('key')).toBeNull()
+    expect(url.searchParams.get('ticket')).toBe('test-image-ticket')
     expect(html).toContain('Expand image: Chart')
     expect(html).toContain('referrerPolicy="no-referrer"')
   }

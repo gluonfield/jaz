@@ -74,10 +74,10 @@ func TestFakeACPAgentProcess(t *testing.T) {
 	// slow login refresh holds an agent up.
 	fakeHold(os.Getenv("JAZ_FAKE_ACP_START_HOLD"))
 	launch, codex := readFakeCodexLaunch(t)
-	if os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED") == "1" {
-		disabled, ok := launch.Features["goals"]
-		if !ok || disabled {
-			t.Fatalf("Codex config = %#v, want features.goals=false", launch)
+	if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_GOALS"); want != "" {
+		value, set := launch.Features["goals"]
+		if set != (want != "unset") || set && value != (want == "true") {
+			t.Fatalf("Codex goals = %v (set %v), want %s", value, set, want)
 		}
 	}
 	if want := os.Getenv("JAZ_FAKE_ACP_EXPECT_CODEX_METADATA"); want != "" {
