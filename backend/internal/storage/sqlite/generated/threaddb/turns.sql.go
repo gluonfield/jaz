@@ -54,6 +54,22 @@ func (q *Queries) AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams
 	return result.RowsAffected()
 }
 
+const appendTurnSteer = `-- name: AppendTurnSteer :exec
+UPDATE threads
+SET turn = json_set(turn, '$.steers', json_insert(COALESCE(json_extract(turn, '$.steers'), '[]'), '$[#]', json(?1)))
+WHERE id = ?2 AND status = 'running' AND turn <> ''
+`
+
+type AppendTurnSteerParams struct {
+	Steer interface{} `json:"steer"`
+	ID    string      `json:"id"`
+}
+
+func (q *Queries) AppendTurnSteer(ctx context.Context, arg AppendTurnSteerParams) error {
+	_, err := q.db.ExecContext(ctx, appendTurnSteer, arg.Steer, arg.ID)
+	return err
+}
+
 const claimQueuedTurn = `-- name: ClaimQueuedTurn :execrows
 UPDATE threads
 SET status = 'running', error = NULL, turn = ?1,
@@ -156,6 +172,24 @@ func (q *Queries) GetRunningTurn(ctx context.Context, id string) (string, error)
 	var turn string
 	err := row.Scan(&turn)
 	return turn, err
+}
+
+const keepTurnSteers = `-- name: KeepTurnSteers :exec
+UPDATE threads
+SET turn = json_set(turn, '$.steers', json((SELECT json_group_array(json(value)) FROM json_each(turn, '$.steers')
+    WHERE key >= json_array_length(turn, '$.steers') - CAST(?1 AS INTEGER))))
+WHERE id = ?2 AND status = 'running'
+  AND json_array_length(NULLIF(turn, ''), '$.steers') > CAST(?1 AS INTEGER)
+`
+
+type KeepTurnSteersParams struct {
+	Keep int64  `json:"keep"`
+	ID   string `json:"id"`
+}
+
+func (q *Queries) KeepTurnSteers(ctx context.Context, arg KeepTurnSteersParams) error {
+	_, err := q.db.ExecContext(ctx, keepTurnSteers, arg.Keep, arg.ID)
+	return err
 }
 
 const markTurnShown = `-- name: MarkTurnShown :exec

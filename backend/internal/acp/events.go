@@ -12,6 +12,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/google/uuid"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type InteractiveAnswerValue struct {
@@ -91,7 +92,7 @@ func (m *Manager) AnswerInteractive(ctx context.Context, req InteractiveAnswer) 
 	if parentVisible {
 		job.mu.Lock()
 		if job.turn != nil {
-			if err := m.store.SetTurnIntent(job.ID, job.turn.goalRequested, true, job.turn.completion.propagates() && !job.turn.planRequested); err != nil {
+			if err := m.store.UpdateTurn(job.ID, storage.TurnUpdate{GoalRequested: job.turn.goalRequested, ParentVisible: true, NotifyParent: job.turn.completion.propagates() && !job.turn.planRequested}); err != nil {
 				job.mu.Unlock()
 				m.permissionMu.Unlock()
 				return err

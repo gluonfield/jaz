@@ -27,7 +27,7 @@ func (s missingTranscriptStore) AppendSessionEvents(string, ...sessionevents.Eve
 
 func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude} {
-		for _, kind := range []string{"chat", "plan", "goal", "steered_goal", "native_steer", "compact"} {
+		for _, kind := range []string{"chat", "plan", "goal", "steered_goal", "native_steer", "compact", "steered_compact"} {
 			t.Run(agent+"/"+kind, func(t *testing.T) {
 				store, err := sqlitestore.New(t.TempDir())
 				if err != nil {
@@ -54,6 +54,9 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				if kind == "steered_compact" {
+					env["JAZ_FAKE_ACP_UNREAD_PROMPT"] = "work to resume"
+				}
 				first := newFakeNamedAgentManagerWithOptions(t, missingTranscriptStore{Store: store}, root, agent, env, "", "")
 				t.Cleanup(first.Close)
 				ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
@@ -62,7 +65,7 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if kind == "compact" {
+				if kind == "compact" || kind == "steered_compact" {
 					_, err = first.Compact(ctx, acp.CompactRequest{Session: spawned.SessionID})
 				} else {
 					_, err = first.Send(ctx, acp.SendRequest{
@@ -87,7 +90,7 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 					case <-time.After(10 * time.Millisecond):
 					}
 				}
-				if kind == "steered_goal" || kind == "native_steer" {
+				if kind == "steered_goal" || kind == "native_steer" || kind == "steered_compact" {
 					if _, err := first.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "work to resume", GoalRequested: kind == "steered_goal"}); err != nil {
 						t.Fatal(err)
 					}
@@ -156,6 +159,9 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 				}
 				if kind == "compact" && !strings.Contains(string(requests), `"text":"/compact"`) {
 					t.Fatalf("compaction was not resumed: %s", requests)
+				}
+				if kind == "steered_compact" && !strings.Contains(string(requests), `"text":"work to resume"}`) {
+					t.Fatalf("the steer the compaction held back was not sent alone: %s", requests)
 				}
 				if goalRequested && !strings.Contains(string(requests), `create_goal`) {
 					t.Fatalf("goal mode was not resumed: %s", requests)

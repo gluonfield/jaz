@@ -39,7 +39,7 @@ func TestInputWaitsForFinishingTurnWithoutSpinning(t *testing.T) {
 			job := newIdleJob(session, "fake", "native", "", ModeState{})
 			job.steerMethod = method
 			job.startTurn(CompletionInline, false, false)
-			job.markFirstPromptSent()
+			manager.promptSent(job)
 			job.setState(StateIdle, StopReasonEndTurn, "")
 			manager.addJob(job, &agentProcess{peer: &jsonrpc.Peer{}})
 

@@ -14,6 +14,7 @@ type Querier interface {
 	AdvanceTranscriptRevision(ctx context.Context, id string) error
 	AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnParams) (int64, error)
 	AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error)
+	AppendTurnSteer(ctx context.Context, arg AppendTurnSteerParams) error
 	ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) (int64, error)
 	ClaimTurn(ctx context.Context, arg ClaimTurnParams) (int64, error)
 	ClearBackgroundWork(ctx context.Context) error
@@ -31,6 +32,7 @@ type Querier interface {
 	// Bot activity is Jaz's note beside the agent's work, never the agent's own.
 	HasAgentTranscript(ctx context.Context, id string) (int64, error)
 	IsMainBot(ctx context.Context, threadID string) (bool, error)
+	KeepTurnSteers(ctx context.Context, arg KeepTurnSteersParams) error
 	ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error)
 	ListErrorThreadIDsWithoutError(ctx context.Context, status string) ([]string, error)
 	ListOverviewChildren(ctx context.Context, parentID sql.NullString) ([]ListOverviewChildrenRow, error)
