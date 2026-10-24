@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('jaz', {
 contextBridge.exposeInMainWorld('smoke', {
   backend: () => ipcRenderer.invoke('smoke:backend'),
   browserExists: (id: number) => ipcRenderer.invoke('smoke:browser-exists', id),
+  navigationProbe: (enabled?: boolean) => ipcRenderer.invoke('smoke:navigation-probe', enabled),
   openedURLs: () => ipcRenderer.invoke('smoke:opened-urls'),
   popupURLs: () => ipcRenderer.invoke('smoke:popup-urls'),
   tabURLs: () => ipcRenderer.invoke('smoke:tab-urls'),
