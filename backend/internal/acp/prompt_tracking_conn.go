@@ -53,10 +53,24 @@ func (c *promptTrackingConn) Send(ctx context.Context, msg *jsonrpc.Message) err
 	c.sendMu.Lock()
 	err := c.MessageConn.Send(ctx, msg)
 	c.sendMu.Unlock()
-	if err == nil && id != "" && onSent != nil {
+	if err != nil {
+		return err
+	}
+	if id != "" && onSent != nil {
 		onSent()
 	}
-	return err
+	if sent, ok := ctx.Value(sentSignal{}).(func()); ok {
+		sent()
+	}
+	return nil
+}
+
+type sentSignal struct{}
+
+// whenSent has the request sent with the returned context close sent once
+// it went out. jsonrpc.Peer.Call hands its context to Send.
+func whenSent(ctx context.Context, sent chan struct{}) context.Context {
+	return context.WithValue(ctx, sentSignal{}, sync.OnceFunc(func() { close(sent) }))
 }
 
 func (c *promptTrackingConn) Receive(ctx context.Context) (*jsonrpc.Message, error) {

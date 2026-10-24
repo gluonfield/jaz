@@ -1,11 +1,13 @@
 import { type HTMLMotionProps, motion } from 'motion/react'
 
 type Variant = 'ghost' | 'inverse' | 'primary' | 'danger'
-type Size = 'xs' | 'sm' | 'md' | 'lg'
+type Size = '2xs' | 'xs' | 'sm' | 'md' | 'lg'
 
 // Heights mirror the text Button scale (sm h-7 / md h-8 / lg h-9) so icon and
-// text buttons line up in a toolbar; xs is for compact in-row icon actions.
+// text buttons line up in a toolbar; xs is for compact in-row icon actions and
+// 2xs for actions inside a field.
 const sizes: Record<Size, string> = {
+  '2xs': 'size-5',
   xs: 'size-6',
   sm: 'size-7',
   md: 'size-8',

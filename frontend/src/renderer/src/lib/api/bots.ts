@@ -49,7 +49,7 @@ export const botActivityQuery = (botId: string) =>
     refetchInterval: (query) => {
       const data = query.state.data
       const running = [...(data?.items ?? []), ...Object.values(data?.started ?? {}).flat()].some((item) => item.running)
-      return running || data?.owed.some((owed) => owed.threads?.some((thread) => thread.state === 'working')) ? 3_000 : 15_000
+      return running || data?.owed.some((owed) => owed.moving || owed.threads?.some((thread) => thread.state === 'working' || thread.state === 'background')) ? 3_000 : 15_000
     },
   })
 

@@ -2,8 +2,11 @@ package acp_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -252,9 +255,12 @@ func TestManagerSteerReusesPendingQuestionHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	requestLog := filepath.Join(t.TempDir(), "requests.jsonl")
 	manager := newFakeAgentManager(t, store, t.TempDir(), map[string]string{
 		"JAZ_FAKE_ACP_PROMPT_QUEUEING":   "1",
 		"JAZ_FAKE_ACP_STRICT_ELICIT_HOL": "1",
+		"JAZ_FAKE_ACP_ELICIT_STOP_DELAY": "1",
+		"JAZ_FAKE_ACP_REQUEST_LOG":       requestLog,
 	})
 	manager.Events = sessionevents.New()
 
@@ -272,11 +278,15 @@ func TestManagerSteerReusesPendingQuestionHandoff(t *testing.T) {
 	}
 	waitForSteerEventType(t, sub, "permission_request")
 
-	if _, err := manager.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "say hello"}); err != nil {
-		t.Fatal(err)
+	// Each waits for the question's hand-off; they reach the agent in order.
+	var steers []string
+	for i := range 8 {
+		steers = append(steers, fmt.Sprintf("steer %d", i+1))
 	}
-	if _, err := manager.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: "say hello again"}); err != nil {
-		t.Fatal(err)
+	for _, steer := range steers {
+		if _, err := manager.Steer(ctx, acp.SteerRequest{Session: spawned.SessionID, Message: steer}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
 	if err != nil {
@@ -289,11 +299,24 @@ func TestManagerSteerReusesPendingQuestionHandoff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 3 ||
-		provider.MessageContent(messages[0]) != "ask then block" ||
-		provider.MessageContent(messages[1]) != "say hello" ||
-		provider.MessageContent(messages[2]) != "say hello again" {
-		t.Fatalf("messages = %#v", messages)
+	contents := []string{}
+	for _, message := range messages {
+		contents = append(contents, provider.MessageContent(message))
+	}
+	if !slices.Equal(contents, append([]string{"ask then block"}, steers...)) {
+		t.Fatalf("messages = %q", contents)
+	}
+	requests, err := os.ReadFile(requestLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent := 0
+	for _, steer := range steers {
+		at := strings.Index(string(requests), strconv.Quote(steer))
+		if at < sent {
+			t.Fatalf("steers reached the agent out of order: %s", requests)
+		}
+		sent = at
 	}
 	events, err := store.LoadSessionEvents(spawned.SessionID)
 	if err != nil {

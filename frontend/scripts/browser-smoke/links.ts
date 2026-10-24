@@ -31,15 +31,30 @@ export async function exercisePreviewLinks(browser: SideBrowser, evaluate: (expr
     if (await evaluate('location.href') !== local) {
       throw new Error('Local browser navigation changed the original URL')
     }
-    const openButton = document.querySelector<HTMLButtonElement>('[aria-label="Open in Browser"]')!
-    await until(() => !openButton.disabled && document.querySelector<HTMLInputElement>('input[spellcheck="false"]')?.value === local)
-    const rect = openButton.getBoundingClientRect()
-    const x = Math.round(rect.x + rect.width / 2)
-    const y = Math.round(rect.y + rect.height / 2)
-    await window.smoke.pointer('mouseMove', x, y)
-    await window.smoke.pointer('mouseDown', x, y)
-    await window.smoke.pointer('mouseUp', x, y)
-    await until(async () => (await window.smoke.openedURLs()).includes(local))
+    const control = (label: string) => document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`)
+    await until(() => Boolean(control('Open in Browser')) && document.querySelector<HTMLInputElement>('input[spellcheck="false"]')?.value === local)
+    const actions = control('Open in Browser')!.parentElement!
+    const press = async (label: string) => {
+      const rect = control(label)!.getBoundingClientRect()
+      const x = Math.round(rect.x + rect.width / 2)
+      const y = Math.round(rect.y + rect.height / 2)
+      await window.smoke.pointer('mouseMove', x, y)
+      await window.smoke.pointer('mouseDown', x, y)
+      await window.smoke.pointer('mouseUp', x, y)
+    }
+    await window.smoke.pointer('mouseMove', 1, 1)
+    await until(() => getComputedStyle(actions).opacity === '0')
+    await press('Open in Browser')
+    await until(async () => getComputedStyle(actions).opacity === '1' && (await window.smoke.openedURLs()).includes(local))
+    const qr = () => document.querySelector('svg[aria-label="QR code for this page"]')
+    await press('Open on phone')
+    await until(() => {
+      const panel = qr()?.closest<HTMLElement>('[data-escape-surface]')
+      return Boolean(panel && getComputedStyle(panel).opacity === '1')
+    })
+    await window.smoke.capture('browser-address-actions')
+    await press('Open on phone')
+    await until(() => !qr())
     if (proxyRequests !== 0) {
       throw new Error('Local previews must bypass proxy creation')
     }

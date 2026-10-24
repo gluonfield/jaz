@@ -60,11 +60,6 @@ func configureCodexEnv(
 	config["sandbox_mode"] = "danger-full-access"
 	config["approval_policy"] = "never"
 	config["suppress_unstable_features_warning"] = true
-	features := nestedMap(config, "features")
-	// Native goals continue outside Jaz prompts, leaving Jaz idle, missing parent
-	// delivery and losing usage. Both goal loops would schedule the same turns;
-	// Jaz goal mode owns continuation.
-	features["goals"] = false
 	if developerInstructions != "" {
 		config["developer_instructions"] = developerInstructions
 	}

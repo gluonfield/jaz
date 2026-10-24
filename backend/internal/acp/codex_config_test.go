@@ -47,7 +47,7 @@ func TestConfigureCodexEnv(t *testing.T) {
 		t.Fatalf("config = %#v", config)
 	}
 	features := config["features"].(map[string]any)
-	if features["existing"] != true || features["goals"] != false {
+	if !reflect.DeepEqual(features, map[string]any{"existing": true}) {
 		t.Fatalf("features = %#v", features)
 	}
 	modelProviders := config["model_providers"].(map[string]any)

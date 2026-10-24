@@ -20,14 +20,19 @@ import (
 type acpMCPServerReader struct {
 	proxyURL    string
 	jaztoolsURL string
+	authKey     string
 }
 
 func (r acpMCPServerReader) ListMCPServers() ([]mcpconfig.Server, error) {
-	return []mcpconfig.Server{mcpruntime.ProxyServerConfig(r.proxyURL), jaztools.ServerConfig(r.jaztoolsURL)}, nil
+	servers := []mcpconfig.Server{mcpruntime.ProxyServerConfig(r.proxyURL), jaztools.ServerConfig(r.jaztoolsURL)}
+	for i := range servers {
+		servers[i].Headers = append(servers[i].Headers, mcpconfig.Header{Name: "Authorization", Value: "Bearer " + r.authKey})
+	}
+	return servers, nil
 }
 
-func NewACPMCPServerReader(jaz *jaztools.Service, urls serverconfig.URLs) mcpconfig.ServerReader {
-	return acpMCPServerReader{proxyURL: urls.MCPProxy, jaztoolsURL: jaz.URL()}
+func NewACPMCPServerReader(jaz *jaztools.Service, urls serverconfig.URLs, key RuntimeAuthKey) mcpconfig.ServerReader {
+	return acpMCPServerReader{proxyURL: urls.MCPProxy, jaztoolsURL: jaz.URL(), authKey: string(key)}
 }
 
 // DeclareMCPServers applies JAZ_MCP_SERVERS before the MCP manager first

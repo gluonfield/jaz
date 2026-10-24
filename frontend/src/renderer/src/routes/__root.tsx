@@ -18,6 +18,7 @@ import { ConnectOverlay } from '@/components/connection/ConnectOverlay'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { isSettingsSection, type SettingsSection } from '@/components/settings/sections'
 import { MCPApps } from '@/components/apps/MCPAppFrame'
+import { SettingsNav } from '@/components/settings/SettingsNav'
 import { SettingsOverlay } from '@/components/settings/SettingsOverlay'
 import { NavRail, railTab } from '@/components/sidebar/NavRail'
 import { BotsPanel } from '@/components/bots/BotsPanel'
@@ -171,6 +172,9 @@ function RootLayout() {
   const tab = railTab(pathname, settingsOpen)
   const hasPanel = isMobile || tab === 'chat' || tab === '/bots'
   const panelOpen = hasPanel && sidebarOpen
+  // Desktop Settings keeps its menu in the column whatever the list toggle says.
+  const settingsMenu = settingsOpen && !isMobile
+  const columnOpen = settingsMenu || sidebarOpen
   // A specific board paints itself on bg-surface so its tiles blend; match main
   // to surface there too so no bg-bg seam shows around the board.
   const onBoard = /^\/boards\/.+/.test(pathname)
@@ -272,7 +276,7 @@ function RootLayout() {
   const slide = resizing ? { duration: 0 } : { duration: 0.2, ease: [0.4, 0, 0.2, 1] as const }
   // On desktop there's no titlebar strip: the window buttons sit above the
   // thread list and hide while the list is collapsed, so they never jump.
-  const windowButtonsVisible = isMobile || panelOpen
+  const windowButtonsVisible = isMobile || panelOpen || settingsMenu
   useEffect(() => {
     clientRuntime.setWindowButtonsVisible?.(windowButtonsVisible)
   }, [windowButtonsVisible])
@@ -321,15 +325,15 @@ function RootLayout() {
               <div className="flex min-h-0 flex-1">
                 <NavRail tab={tab} onOpenChat={() => setSidebarOpen(true)} onOpenSettings={openSettings} />
                 <motion.div
-                  className={`shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-drawer max-sm:w-full! ${hasPanel ? '' : 'hidden'}`}
+                  className={`shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-drawer max-sm:w-full! ${hasPanel || settingsMenu ? '' : 'hidden'}`}
                   initial={false}
-                  animate={drawerSlide({ isMobile, open: sidebarOpen, side: 'left', width: sidebarWidth })}
+                  animate={drawerSlide({ isMobile, open: columnOpen, side: 'left', width: sidebarWidth })}
                   transition={slide}
                 >
                   <motion.div
                     className="h-full"
                     initial={false}
-                    animate={isMobile || sidebarOpen ? { opacity: 1, x: 0 } : { opacity: 0, x: -12 }}
+                    animate={isMobile || columnOpen ? { opacity: 1, x: 0 } : { opacity: 0, x: -12 }}
                     transition={slide}
                   >
                     <Sidebar
@@ -342,7 +346,14 @@ function RootLayout() {
                       onOpenSettings={() => openSettings()}
                       onOpenConnect={() => setConnectOpen(true)}
                     >
-                      {tab === '/bots' ? (
+                      {settingsMenu ? (
+                        <SettingsNav
+                          section={settingsSection}
+                          onSectionChange={goToSettingsSection}
+                          onClose={closeSettings}
+                          onOpenConnect={() => setConnectOpen(true)}
+                        />
+                      ) : tab === '/bots' ? (
                         <BotsPanel mobile={isMobile} />
                       ) : (
                         <ChatPanel open={panelOpen && tab === 'chat'} mobile={isMobile} onOpenCommandPalette={() => setCommandOpen(true)} />
@@ -356,7 +367,7 @@ function RootLayout() {
             <div ref={setPanelRow} className="flex min-w-0 flex-1 sm:pt-2">
               {/* --titlebar-height is the floating title row's height; content
                   starts below it and may scroll beneath it. */}
-              <div className="relative flex min-w-0 flex-1 overflow-hidden bg-bg sm:mr-2 sm:mb-2 sm:rounded-[14px] sm:shadow-[var(--shadow-raised)] sm:ring-1 sm:ring-border/80 sm:[--titlebar-height:2.5rem]">
+              <div className="relative flex min-w-0 flex-1 overflow-hidden bg-bg sm:mr-2 sm:mb-2 sm:rounded-[14px] sm:shadow-[var(--shadow-raised)] sm:[--titlebar-height:2.5rem]">
                 {!isMobile && (
                   <div
                     // Settings sits below the row, so nothing should show through it there.

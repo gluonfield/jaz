@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/agent"
-	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
 )
@@ -23,7 +22,7 @@ func TestSteerBeforeAgentStartsIsUnsupported(t *testing.T) {
 	}
 }
 
-func (s rejectingMessageStore) AppendMessages(string, ...provider.Message) error {
+func (s rejectingMessageStore) UpdateTurn(string, storage.TurnUpdate, ...storage.Message) error {
 	return errors.New("message persistence failed")
 }
 
@@ -137,7 +136,7 @@ func TestSendDoesNotPersistMessageWhenTurnCannotBeReserved(t *testing.T) {
 	}
 }
 
-func TestReserveSteerDoesNotQueuePromptWhenUserMessageCannotPersist(t *testing.T) {
+func TestReserveSteerDoesNotJoinTheTurnWhenItCannotPersist(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -154,25 +153,15 @@ func TestReserveSteerDoesNotQueuePromptWhenUserMessageCannotPersist(t *testing.T
 	job.steerMethod = steerPromptQueueing
 	job.startTurn(CompletionInline, false, false)
 	// Steering waits for the turn's prompt to reach the agent.
-	job.markFirstPromptSent()
+	manager.promptSent(job)
 
-	_, err = manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "keep me", GoalRequested: true}, nil)
-	if err == nil || !strings.Contains(err.Error(), "append user message: message persistence failed") {
+	before := *job.turn
+	_, err = manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "keep me", GoalRequested: true}, nil, "keep me")
+	if err == nil || !strings.Contains(err.Error(), "reserve steering: message persistence failed") {
 		t.Fatalf("reserve steer error = %v", err)
 	}
-	stored, err := store.LoadSession(session.ID)
-	if err != nil || stored.Turn == nil || stored.Turn.GoalRequested {
-		t.Fatalf("failed steering changed turn settings: %+v, err = %v", stored.Turn, err)
-	}
-	if job.turn.promptCalls != 1 {
-		t.Fatalf("prompt calls = %d, want original prompt only", job.turn.promptCalls)
-	}
-	messages, err := store.LoadMessages(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(messages) != 0 {
-		t.Fatalf("messages = %#v", messages)
+	if after := job.turn; after.promptCalls != before.promptCalls || after.unsent != before.unsent || after.kept != 0 || after.steerSent != nil || after.goalRequested {
+		t.Fatalf("failed steering joined the turn: %+v", after)
 	}
 }
 
@@ -195,17 +184,17 @@ func TestReserveSteerRefusesUntilTheRetryContinuationIsSent(t *testing.T) {
 	job := newIdleJob(session, "fake", "runtime-session", "", ModeState{})
 	job.steerMethod = steerNative
 	job.startTurn(CompletionInline, false, false)
-	job.markFirstPromptSent()
+	manager.promptSent(job)
 	job.mu.Lock()
 	job.turn.waitToRetry(time.Hour)
 	job.turn.endRetryWait()
 	job.mu.Unlock()
 
-	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil); !errors.Is(err, errPromptPending) {
+	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil, "and the hotel"); !errors.Is(err, errPromptPending) {
 		t.Fatalf("steer before the continuation was sent = %v, want it refused", err)
 	}
-	job.markFirstPromptSent()
-	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil); err != nil {
+	manager.promptSent(job)
+	if _, err := manager.reserveSteer(job, SteerRequest{Session: session.ID, Message: "and the hotel"}, nil, "and the hotel"); err != nil {
 		t.Fatalf("steer after the continuation was sent = %v", err)
 	}
 }

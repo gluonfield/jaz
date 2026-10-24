@@ -487,25 +487,6 @@ func TestProcessEnvUsesJazConfigForClaudeCodeWithoutHostAuthTokens(t *testing.T)
 	})
 }
 
-func TestProcessEnvPreparedSyncsClaudeSkills(t *testing.T) {
-	clearHostEnv(t)
-	root := t.TempDir()
-	writeACPTestSkill(t, root, "alpha")
-	t.Setenv("CLAUDE_CODE_EXECUTABLE", "/usr/local/bin/claude")
-
-	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared("claude", AgentConfig{
-		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(env["CLAUDE_CONFIG_DIR"], "skills", "alpha", "SKILL.md")
-	if data, err := os.ReadFile(path); err != nil || !strings.Contains(string(data), "Alpha skill") {
-		t.Fatalf("claude skill copy = %q, %v", data, err)
-	}
-}
-
 func TestProcessEnvFindsClaudeCodeFromLoginShell(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("login shell executable lookup is POSIX-only")

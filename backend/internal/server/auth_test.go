@@ -50,41 +50,6 @@ func TestAuthMiddlewareAcceptsBearerKey(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareAcceptsQueryKeyForEventStreams(t *testing.T) {
-	for _, path := range []string{"/v1/sessions/session-id/events", "/v1/bots/events"} {
-		req := httptest.NewRequest(http.MethodGet, path+"?key=secret", nil)
-		res := httptest.NewRecorder()
-		(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		})).ServeHTTP(res, req)
-		if res.Code != http.StatusNoContent {
-			t.Fatalf("%s: status = %d, body = %s", path, res.Code, res.Body.String())
-		}
-	}
-}
-
-func TestAuthMiddlewareAcceptsQueryKeyForRawSessionFile(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/file?raw=1&path=paper.pdf&key=secret", nil)
-	res := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})).ServeHTTP(res, req)
-	if res.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
-func TestAuthMiddlewareAcceptsQueryKeyForSessionAttachment(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/attachments/attachment-id?key=secret", nil)
-	res := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})).ServeHTTP(res, req)
-	if res.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
 func TestAuthMiddlewareRejectsQueryKeyForSessionFileJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/file?path=paper.pdf&key=secret", nil)
 	res := httptest.NewRecorder()
@@ -93,66 +58,6 @@ func TestAuthMiddlewareRejectsQueryKeyForSessionFileJSON(t *testing.T) {
 	})).ServeHTTP(res, req)
 	if res.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
-func TestAuthMiddlewareAcceptsQueryKeyForBrowserExtension(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension?key=secret", nil)
-	res := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})).ServeHTTP(res, req)
-	if res.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
-func TestDesktopControlAuth(t *testing.T) {
-	for _, test := range []struct {
-		action string
-		method string
-		key    string
-		status int
-	}{
-		{"browser", http.MethodGet, "secret", http.StatusNoContent},
-		{"browser", http.MethodGet, "wrong", http.StatusUnauthorized},
-		{"browser", http.MethodPost, "secret", http.StatusUnauthorized},
-		{"computer", http.MethodGet, "secret", http.StatusNoContent},
-		{"computer", http.MethodGet, "wrong", http.StatusUnauthorized},
-		{"computer", http.MethodPost, "secret", http.StatusUnauthorized},
-	} {
-		req := httptest.NewRequest(test.method, "/v1/sessions/thread/"+test.action+"?key="+test.key, nil)
-		res := httptest.NewRecorder()
-		(&Server{AuthKey: "secret"}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		})).ServeHTTP(res, req)
-		if res.Code != test.status {
-			t.Fatalf("%s %s key=%s status=%d", test.method, test.action, test.key, res.Code)
-		}
-	}
-}
-
-func TestAuthMiddlewareAcceptsDeviceQueryKeyForSessionRoutesAfterBootstrap(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	devices := deviceauth.New(store)
-	registered, err := devices.Register(testDeviceInfo("First Mac", "desktop", 1))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, action := range []string{"attachments/attachment-id", "browser", "computer"} {
-		req := httptest.NewRequest(http.MethodGet, "/v1/sessions/session-id/"+action+"?key="+registered.Token, nil)
-		res := httptest.NewRecorder()
-		(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key", Devices: devices}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNoContent)
-		})).ServeHTTP(res, req)
-		if res.Code != http.StatusNoContent {
-			t.Fatalf("%s status = %d, body = %s", action, res.Code, res.Body.String())
-		}
 	}
 }
 
@@ -207,28 +112,7 @@ func TestAuthMiddlewareRequiresDeviceAfterBootstrap(t *testing.T) {
 	}
 }
 
-func TestAuthMiddlewareAcceptsBrowserExtensionQueryKeyAfterBootstrap(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	devices := deviceauth.New(store)
-	if _, err := devices.Register(testDeviceInfo("First Mac", "desktop", 1)); err != nil {
-		t.Fatal(err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension?key=root-key", nil)
-	res := httptest.NewRecorder()
-	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key", Devices: devices}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})).ServeHTTP(res, req)
-	if res.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
-	}
-}
-
-func TestAuthMiddlewareAcceptsLocalBrowserExtensionWithoutKeyAfterBootstrap(t *testing.T) {
+func TestAuthMiddlewareRejectsLocalBrowserExtensionWithoutKeyAfterBootstrap(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -246,7 +130,7 @@ func TestAuthMiddlewareAcceptsLocalBrowserExtensionWithoutKeyAfterBootstrap(t *t
 	(&Server{ModelCatalog: modelcatalog.NewService(nil), AuthKey: "root-key", Devices: devices}).withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})).ServeHTTP(res, req)
-	if res.Code != http.StatusNoContent {
+	if res.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
 	}
 }

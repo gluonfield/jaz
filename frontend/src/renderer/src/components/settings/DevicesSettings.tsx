@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Check, Copy, LoaderCircle, MonitorSmartphone, Plus, QrCode, Trash2, X } from 'lucide-react'
-import * as QRCode from 'qrcode'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { QRCodeImage } from '@/components/ui/QRCodeImage'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { SettingsCard } from './SettingsCard'
@@ -61,7 +61,10 @@ export function DevicesSettings() {
           <p className="text-sm font-medium text-ink">Devices</p>
           <p className="mt-0.5 text-[13px] text-ink-2">Desktop and mobile clients allowed to use this backend.</p>
         </div>
-        <Button variant="secondary" size="md" onClick={() => setAddOpen(true)}>
+        <Button variant="secondary" size="md" onClick={() => {
+          void connectionLink.refetch()
+          setAddOpen(true)
+        }}>
           <Plus size={14} />
           Add device
         </Button>
@@ -240,7 +243,7 @@ function AddDeviceModal({
       open={open}
       onClose={onClose}
       title="Add device"
-      description="Scan the code on another Jaz app, or paste this connection URL there."
+      description="Scan the code in another Jaz app. This link works once and expires in ten minutes."
       icon={<QrCode size={17} />}
       size="lg"
       footer={
@@ -259,7 +262,9 @@ function AddDeviceModal({
         <p className="rounded-card bg-danger-soft px-3 py-3 text-[13px] text-danger">{error}</p>
       ) : displayURL ? (
         <div className="grid gap-4 sm:grid-cols-[190px_minmax(0,1fr)]">
-          <QRCodeImage value={displayURL} />
+          <div className="grid size-[190px] shrink-0 place-items-center rounded-card bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
+            <QRCodeImage value={displayURL} label="Device connection QR code" />
+          </div>
           <div className="min-w-0 space-y-3">
             <ConnectionValue label="Connection URL" value={displayURL} />
             <Button
@@ -303,40 +308,6 @@ function isLocalConnectionAddress(value?: string): boolean {
   } catch {
     return false
   }
-}
-
-function QRCodeImage({ value }: { value: string }) {
-  const [src, setSrc] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    setSrc('')
-    void QRCode.toDataURL(value, {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 190,
-      color: { dark: '#111111', light: '#ffffff' },
-    })
-      .then((next) => {
-        if (!cancelled) setSrc(next)
-      })
-      .catch(() => {
-        if (!cancelled) setSrc('')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [value])
-
-  return (
-    <div className="grid size-[190px] shrink-0 place-items-center rounded-card bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
-      {src ? (
-        <img src={src} alt="Device connection QR code" className="size-full" />
-      ) : (
-        <LoaderCircle size={18} className="animate-spin text-ink-3" />
-      )}
-    </div>
-  )
 }
 
 function ConnectionValue({ label, value }: { label: string; value: string }) {

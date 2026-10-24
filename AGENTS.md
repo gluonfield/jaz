@@ -24,6 +24,7 @@
 - Use Fx constructors directly in `fx.Provide`; avoid pass-through wrappers.
 - Do not add defensive nil checks for required constructor-injected dependencies. If a required Fx service is missing, fail fast instead of silently degrading; model truly optional dependencies explicitly.
 - Codex ACP defaults to the user's Codex OAuth credentials. Never silently pass coordinator provider keys to Codex subprocesses; a provider API key reaches Codex only when the user explicitly selects a non-OpenAI model provider (e.g. OpenRouter) for it.
+- Expose Jaz skills through the ACP prompt catalogue with original paths. Never copy Jaz skills into native CLI profiles or global skill directories.
 - Target deployments run the Jaz server on a VM and clients on user computers; never assume client-local file paths are visible to the server or agents.
 - Before handing off a completed feature or fix, run a code-review pass; use `thermo-nuclear-code-quality-review` when available.
 - Never add useless or fake tests. Every test must run in the normal verification path, exercise real production behavior, and fail when that behavior breaks. Delete tautologies, tests of trivial helpers or forwarding, checks of source text or internal constants, duplicate coverage, and permanently skipped or inactive tests. Fakes may isolate external boundaries; they must preserve the real contract and never stand in for end-to-end verification.

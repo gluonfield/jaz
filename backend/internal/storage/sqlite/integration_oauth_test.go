@@ -1,10 +1,15 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	oauthdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationoauth"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
@@ -36,5 +41,101 @@ func TestIntegrationOAuthTokenRoundTrip(t *testing.T) {
 	}
 	if got.AccessToken != want.AccessToken || got.RefreshToken != want.RefreshToken || got.ClientID != want.ClientID || got.TokenURL != want.TokenURL || !got.Expiry.Equal(want.Expiry) {
 		t.Fatalf("token = %#v, want %#v", got, want)
+	}
+}
+
+func TestOAuthSecretsMigrateAndRequireOriginalKey(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	plain := `{"access_token":"legacy-access-sensitive","refresh_token":"legacy-refresh-sensitive","token_url":"https://example.com/token"}`
+	if err := oauthdb.New(store.db).SaveToken(ctx, oauthdb.SaveTokenParams{ConnectionID: "account", TokenJson: plain, UpdatedAtMs: 123}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := store.LoadToken(ctx, "account")
+	if err != nil || !ok || got.RefreshToken != "legacy-refresh-sensitive" {
+		t.Fatalf("migrated credential unavailable: %v", err)
+	}
+	rows, err := oauthdb.New(store.db).ListTokens(ctx)
+	if err != nil || len(rows) != 1 || rows[0].UpdatedAtMs != 123 || !strings.HasPrefix(rows[0].TokenJson, secretPrefix) {
+		t.Fatalf("encrypted record or metadata incorrect: %v", err)
+	}
+	if err := oauthdb.New(store.db).SaveToken(ctx, oauthdb.SaveTokenParams{ConnectionID: "other-account", TokenJson: rows[0].TokenJson}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.LoadToken(ctx, "other-account"); err == nil {
+		t.Fatal("ciphertext from another account was accepted")
+	}
+	if err := store.DeleteToken(ctx, "other-account"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"jaz.sqlite", "jaz.sqlite-wal"} {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, []byte("legacy-refresh-sensitive")) {
+			t.Fatalf("legacy plaintext remains in %s", name)
+		}
+		info, err := os.Stat(filepath.Join(root, name))
+		if err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("credential database permissions: %v", err)
+		}
+	}
+	if err := os.Remove(filepath.Join(root, "secrets.key")); err != nil {
+		t.Fatal(err)
+	}
+	if reopened, err := New(root); err == nil {
+		_ = reopened.Close()
+		t.Fatal("lost encryption key silently replaced")
+	}
+}
+
+func TestOAuthMigrationRollsBackAllCredentialsOnFailure(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+	q := oauthdb.New(store.db)
+	for _, id := range []string{"first", "second"} {
+		if err := q.SaveToken(ctx, oauthdb.SaveTokenParams{ConnectionID: id, TokenJson: `{"access_token":"legacy"}`}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err = store.db.ExecContext(ctx, `CREATE TRIGGER reject_second_encryption BEFORE UPDATE OF token_json ON integration_oauth_tokens
+		WHEN (SELECT COUNT(*) FROM integration_oauth_tokens WHERE token_json LIKE 'encrypted:%') > 0
+		BEGIN SELECT RAISE(ABORT, 'migration failure'); END`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.protectSecrets(); err == nil {
+		t.Fatal("migration ignored a failed credential write")
+	}
+	rows, err := q.ListTokens(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if strings.HasPrefix(row.TokenJson, secretPrefix) {
+			t.Fatal("failed migration left credentials partially rewritten")
+		}
 	}
 }

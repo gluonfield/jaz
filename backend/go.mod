@@ -7,7 +7,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/evanw/esbuild v0.28.2
 	github.com/gluonfield/acp-transport v0.0.0-20260925121224-9e5d8f001fb3
-	github.com/gluonfield/jazmem v0.0.0-20260915200900-30df5981063e
+	github.com/gluonfield/jazmem v0.0.0-20261024150224-bae5cf39ccd8
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3

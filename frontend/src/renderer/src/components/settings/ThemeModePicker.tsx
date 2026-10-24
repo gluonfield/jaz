@@ -45,7 +45,7 @@ function ThemePreviewCard({ value }: { value: ThemePref }) {
       className="group flex cursor-pointer flex-col items-center gap-2"
     >
       <div
-        className={`relative aspect-[2/1] w-full overflow-hidden rounded-xl transition ${
+        className={`relative aspect-[2/1] min-h-[72px] w-full overflow-hidden rounded-xl transition ${
           active ? 'ring-2 ring-primary ring-offset-2 ring-offset-bg' : 'ring-1 ring-border/70 group-hover:ring-border'
         }`}
       >

@@ -50,6 +50,10 @@ own release tag; local development falls back to the latest release manifest.
 The downloaded archives are checksum-verified and installed under `~/.jaz/acp`.
 Codex and Claude then launch through those managed binaries.
 
+Jaz exposes skills from `~/.jaz/skills` and workspace skill directories through
+the ACP prompt catalogue, with paths to the original files. Agent startup never
+copies Jaz skills into CLI profiles, including `~/.codex` and `~/.claude`.
+
 When developing an unmanaged ACP adapter, add a custom command-based agent in
 config and point it at the locally built binary:
 

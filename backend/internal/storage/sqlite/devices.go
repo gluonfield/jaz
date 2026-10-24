@@ -53,7 +53,6 @@ func (s *Store) SavePairingDevice(input storage.SavePairingDevice) (storage.Devi
 		Platform:        input.Platform,
 		DeviceFamily:    input.Family,
 		ModelIdentifier: input.Model,
-		TokenHash:       input.TokenHash,
 		CreatedAtMs:     timeToMs(input.CreatedAt),
 		LastSeenIp:      input.LastSeenIP,
 		UserAgent:       input.UserAgent,
@@ -227,13 +226,13 @@ func (s *Store) ApproveDevicePairing(id string, at time.Time) (storage.DevicePai
 		s.writeMu.Unlock()
 		return storage.DevicePairing{}, deviceError(err)
 	}
-	if pairing.Status != storage.PairingStatusPending {
+	if pairing.Status != storage.PairingStatusPending || pairing.ExpiresAtMs <= timeToMs(at) {
 		_ = tx.Rollback()
 		s.writeMu.Unlock()
 		return storage.DevicePairing{}, fmt.Errorf("pairing request not pending: %s", id)
 	}
 	approvedAt := timeToMs(at)
-	if changed, err := q.ApproveDevice(context.Background(), devicequeries.ApproveDeviceParams{ID: pairing.DeviceID, TokenHash: pairing.SecretHash, ApprovedAtMs: approvedAt}); err != nil {
+	if changed, err := q.ApproveDevice(context.Background(), devicequeries.ApproveDeviceParams{ID: pairing.DeviceID, TokenHash: "pending:" + pairing.DeviceID, ApprovedAtMs: approvedAt}); err != nil {
 		_ = tx.Rollback()
 		s.writeMu.Unlock()
 		return storage.DevicePairing{}, err
@@ -479,4 +478,31 @@ func deviceError(err error) error {
 		return fmt.Errorf("device not found")
 	}
 	return err
+}
+
+func (s *Store) ClaimDevicePairing(id, secretHash, tokenHash string, at time.Time) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := devicequeries.New(s.db).WithTx(tx)
+	pairing, err := q.GetPairingRequest(context.Background(), id)
+	if err != nil {
+		return err
+	}
+	changed, err := q.ClaimPairingRequest(context.Background(), devicequeries.ClaimPairingRequestParams{ID: id, SecretHash: secretHash, AtMs: timeToMs(at)})
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return fmt.Errorf("pairing is unavailable")
+	}
+	_, err = q.ApproveDevice(context.Background(), devicequeries.ApproveDeviceParams{ID: pairing.DeviceID, TokenHash: tokenHash, ApprovedAtMs: timeToMs(at)})
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }

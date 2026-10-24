@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	DeleteToken(ctx context.Context, connectionID string) error
+	ListTokens(ctx context.Context) ([]IntegrationOauthToken, error)
 	LoadToken(ctx context.Context, connectionID string) (string, error)
 	SaveToken(ctx context.Context, arg SaveTokenParams) error
 }

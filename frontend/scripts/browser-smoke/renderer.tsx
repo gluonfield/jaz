@@ -88,6 +88,12 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (suite === 'bot-panel') {
+        progress('bot sidebar tasks, activity, routines and identity')
+        await exerciseBotPanel()
+        window.smoke.result({ ok: true, checks: ['Activity default; compact inline tasks; live details, worker links, completion refresh; desktop and phone; routines and identity'] })
+        return
+      }
       if (!suite || suite === 'address-bar') {
         progress('address-bar Enter navigation and searches')
         await exerciseAddressBar()

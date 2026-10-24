@@ -20,6 +20,8 @@ export interface ClientRuntime {
     updates: boolean
     previewWebview: boolean
   }
+  encryptCredential?: (value: string) => string
+  decryptCredential?: (value: string) => string
   defaultApiBaseUrl: () => string
   setNativeTheme?: (source: 'light' | 'dark' | 'system') => void
   setWindowButtonsVisible?: (visible: boolean) => void
@@ -75,6 +77,8 @@ function createRuntime(): ClientRuntime {
       setWindowButtonsVisible: electron.setWindowButtonsVisible,
       startLocalBackend: electron.startLocalBackend,
       getDeviceIdentity: electron.getDeviceIdentity,
+      encryptCredential: electron.encryptCredential,
+      decryptCredential: electron.decryptCredential,
       getDeviceMetadata: electron.getDeviceMetadata,
       configureThreadNotifications: electron.configureThreadNotifications,
       getUpdateStatus: electron.getUpdateStatus,
