@@ -63,14 +63,14 @@ func NewForTest(root, baseURL string, client *http.Client) *Manager {
 	return m
 }
 
-func (m *Manager) Prepare(ctx context.Context, name string) error {
+func (m *Manager) Prepare(ctx context.Context, name string, env map[string]string) error {
 	name = strings.TrimSpace(name)
+	if name == MuseCLI {
+		return m.prepareMuse(ctx, env)
+	}
 	if status, ok := m.localReadyStatus(name); ok {
 		m.setStatus(name, status)
 		return nil
-	}
-	if name == MuseCLI {
-		return m.prepareMuse(ctx)
 	}
 	spec, err := m.resolveSpec(ctx, name)
 	if err != nil {
@@ -96,11 +96,14 @@ func (m *Manager) Prepare(ctx context.Context, name string) error {
 	return nil
 }
 
-func (m *Manager) Status(name string) Status {
+func (m *Manager) Status(name string, env map[string]string) Status {
 	name = strings.TrimSpace(name)
 	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return Status{Tool: name, State: StateUnsupported, Message: err.Error()}
+	}
+	if name == MuseCLI {
+		return m.museStatus(platform, env)
 	}
 	if status, ok := m.storedStatus(name); ok {
 		if status.State == StateDownloading {
@@ -130,8 +133,8 @@ func (m *Manager) Status(name string) Status {
 	}
 }
 
-func (m *Manager) BinDir(name string) string {
-	status := m.Status(name)
+func (m *Manager) BinDir(name string, env map[string]string) string {
+	status := m.Status(name, env)
 	if status.State != StateReady || strings.TrimSpace(status.Path) == "" {
 		return ""
 	}
@@ -153,7 +156,7 @@ func (m *Manager) localReadyStatus(name string) (Status, bool) {
 }
 
 func existingReadyStatus(name, platform string) (Status, bool) {
-	if name != AntigravityCLI && name != MuseCLI {
+	if name != AntigravityCLI {
 		return Status{}, false
 	}
 	path, err := execpath.Resolve(ExecutableName(name))

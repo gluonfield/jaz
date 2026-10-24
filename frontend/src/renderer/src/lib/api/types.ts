@@ -1378,6 +1378,8 @@ export interface AgentSettings {
   agents: string[]
 }
 
+export type AgentSettingsInput = Pick<AgentSettings, 'acp' | 'acp_keys'>
+
 export interface BrowserExtensionStatus {
   connected: boolean
   extension_id?: string

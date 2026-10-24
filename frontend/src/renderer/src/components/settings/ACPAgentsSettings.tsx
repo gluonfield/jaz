@@ -29,7 +29,8 @@ import {
   selectableACPModelProviders,
   selectedACPModelProvider,
 } from '@/lib/agentRuntimes'
-import { cloneAgentSettings, disconnectACPAuth, prepareACPAgent, startACPAuthLogin } from '@/lib/api/settings'
+import { cloneAgentSettings } from '@/lib/agentSettings'
+import { disconnectACPAuth, prepareACPAgent, startACPAuthLogin } from '@/lib/api/settings'
 import type {
   ACPAgentAuthStatus,
   ACPAuthLogin,

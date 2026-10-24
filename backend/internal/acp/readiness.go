@@ -3,6 +3,8 @@ package acp
 import (
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/musecli"
+
 	"github.com/wins/jaz/backend/internal/provider"
 )
 
@@ -28,7 +30,7 @@ func ProbeReadinessWithProviders(name string, cfg AgentConfig, root string, env 
 	}
 	if name == AgentMuse {
 		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, cfg)
-		if _, err := museExecutable(probeEnv); err != nil {
+		if _, err := musecli.Resolve(probeEnv, ""); err != nil {
 			return Readiness{Reason: "Muse Code executable (muse) not found"}
 		}
 	}

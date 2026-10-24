@@ -17,6 +17,7 @@ import (
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
+	"github.com/wins/jaz/backend/internal/subprocess"
 )
 
 func TestLiveACPProbe(t *testing.T) {
@@ -258,10 +259,7 @@ func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentCon
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = envList(env)
 	cmd.Dir = cwd
-	prepareProcessCommand(cmd)
-	process := newProcessSupervisor(cmd)
-	cmd.Cancel = process.terminate
-	cmd.WaitDelay = acpProcessStdioDrain
+	process := subprocess.New(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -274,15 +272,15 @@ func probeOpenConn(t *testing.T, ctx context.Context, agent string, cfg AgentCon
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := process.started(); err != nil {
-		_ = process.terminate()
+	if err := process.Started(); err != nil {
+		_ = process.Terminate()
 		_ = cmd.Wait()
 		t.Fatal(err)
 	}
 	conn := stdio.New(stdout, stdin)
 	return conn, func() {
 		_ = stdin.Close()
-		_ = process.terminate()
+		_ = process.Terminate()
 		_ = cmd.Wait()
 	}
 }

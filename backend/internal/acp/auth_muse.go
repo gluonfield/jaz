@@ -6,46 +6,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
+	"github.com/wins/jaz/backend/internal/musecli"
 	"github.com/wins/jaz/backend/internal/processenv"
+	"github.com/wins/jaz/backend/internal/subprocess"
 )
-
-func museExecutable(env map[string]string) (string, error) {
-	command := strings.TrimSpace(env["MUSE_CLI"])
-	pathList := env["PATH"]
-	if command == "" {
-		command = "muse"
-		dir := env["MUSE_INSTALL_DIR"]
-		if dir == "" {
-			dir = filepath.Join(env["HOME"], ".local", "bin")
-			if runtime.GOOS == "windows" {
-				dir = filepath.Join(env["LOCALAPPDATA"], "Programs", "muse")
-			}
-		}
-		pathList += string(os.PathListSeparator) + dir
-	}
-	if strings.ContainsAny(command, `/\`) {
-		resolved, err := filepath.Abs(command)
-		if err != nil {
-			return "", err
-		}
-		command = resolved
-	}
-	resolved, err := executableInPath(command, pathList)
-	if err != nil && runtime.GOOS == "windows" && command == "muse" {
-		resolved, err = executableInPath("muse.cmd", pathList)
-	}
-	if err != nil {
-		return "", err
-	}
-	return filepath.Abs(resolved)
-}
 
 func prepareMuseEnv(root string, env map[string]string) {
 	processenv.PreserveHost(env, "META_API_KEY", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "LANG", "LC_ALL", "LC_CTYPE")
@@ -55,7 +24,7 @@ func prepareMuseEnv(root string, env map[string]string) {
 			env[key] = value
 		}
 	}
-	if command, err := museExecutable(env); err == nil {
+	if command, err := musecli.Resolve(env, ""); err == nil {
 		env["MUSE_CLI"] = command
 	}
 	if value, ok := explicitAgentAPIKey(AgentMuse, root, env); ok {
@@ -65,7 +34,7 @@ func prepareMuseEnv(root string, env map[string]string) {
 
 func disconnectMuseAuth(ctx context.Context, cfg AgentConfig, root string) error {
 	env := NewManager(nil, Config{Root: root}, nil).probeEnv(AgentMuse, cfg)
-	command, err := museExecutable(env)
+	command, err := musecli.Resolve(env, "")
 	if err != nil {
 		return err
 	}
@@ -86,7 +55,7 @@ func museLoginInvocation(env map[string]string) AgentLoginInvocation {
 		Args:    []string{"login"},
 		Display: "muse login",
 	}
-	command, err := museExecutable(env)
+	command, err := musecli.Resolve(env, "")
 	invocation.Available = err == nil
 	if err != nil {
 		invocation.Reason = "Muse Code executable (muse) not found"
@@ -112,7 +81,7 @@ func resolveMuseAuth(root string, env map[string]string) resolvedAgentAuth {
 		status.markAuthenticated("api_key_env", AuthKindAPIKey)
 		return status
 	}
-	command, err := museExecutable(env)
+	command, err := musecli.Resolve(env, "")
 	if err != nil {
 		status.Reason = "Muse Code executable (muse) not found; install it from https://dev.meta.ai/docs/muse-code"
 		return status
@@ -147,11 +116,8 @@ func museAccountState(command string, env map[string]string) (museAccount, error
 	defer cancel()
 	command, args := launchCommand(command, []string{"serve"})
 	cmd := exec.CommandContext(ctx, command, args...)
-	prepareProcessCommand(cmd)
-	process := newProcessSupervisor(cmd)
-	cmd.Cancel = process.terminate
+	process := subprocess.New(cmd)
 	cmd.Env = processenv.List(env)
-	cmd.WaitDelay = processTerminateGrace + acpProcessStdioDrain
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return museAccount{}, err
@@ -166,10 +132,10 @@ func museAccountState(command string, env map[string]string) (museAccount, error
 	defer func() {
 		_ = stdin.Close()
 		_ = cmd.Wait()
-		_ = process.terminate()
+		_ = process.Terminate()
 	}()
-	if err := process.started(); err != nil {
-		_ = process.terminate()
+	if err := process.Started(); err != nil {
+		_ = process.Terminate()
 		return museAccount{}, err
 	}
 	peer := jsonrpc.NewPeer(stdio.New(stdout, stdin), nil)

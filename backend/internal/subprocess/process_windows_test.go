@@ -1,4 +1,4 @@
-package acp
+package subprocess
 
 import (
 	"bufio"
@@ -17,7 +17,7 @@ import (
 func TestPrepareProcessCommandSuppressesWindowsConsole(t *testing.T) {
 	cmd := exec.Command("cmd.exe", "/d", "/s", "/c", "echo ok")
 
-	prepareProcessCommand(cmd)
+	prepareCommand(cmd)
 
 	if cmd.SysProcAttr == nil {
 		t.Fatal("SysProcAttr is nil")
@@ -46,20 +46,17 @@ func TestProcessSupervisorTerminatesWindowsJobChildren(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepareProcessCommand(cmd)
-	process := newProcessSupervisor(cmd)
-	cmd.Cancel = process.terminate
-	cmd.WaitDelay = acpProcessStdioDrain
+	process := New(cmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := process.started(); err != nil {
-		_ = process.terminate()
+	if err := process.Started(); err != nil {
+		_ = process.Terminate()
 		_ = cmd.Wait()
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_ = process.terminate()
+		_ = process.Terminate()
 		_ = cmd.Wait()
 	})
 	if _, err := stdin.Write([]byte{'\n'}); err != nil {
@@ -74,7 +71,7 @@ func TestProcessSupervisorTerminatesWindowsJobChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := process.terminate(); err != nil {
+	if err := process.Terminate(); err != nil {
 		t.Fatal(err)
 	}
 	_ = cmd.Wait()

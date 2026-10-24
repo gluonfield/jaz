@@ -167,7 +167,7 @@ func (s *Server) handlePrepareACPAgent(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusServiceUnavailable, fmt.Errorf("managed tool downloader is not available"))
 			return
 		}
-		if err := s.ManagedTools.Prepare(r.Context(), tool); err != nil {
+		if err := s.ManagedTools.Prepare(r.Context(), tool, cfg.Env); err != nil {
 			writeError(w, http.StatusBadGateway, err)
 			return
 		}
@@ -273,7 +273,7 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		adapter := s.managedAdapterStatus(cfg)
 		adapterReady := adapter == nil || adapter.State == acpadapter.StateReady
-		tool := s.managedToolStatus(cfg.ManagedTool)
+		tool := s.managedToolStatus(cfg.ManagedTool, cfg.Env)
 		toolReady := tool == nil || tool.State == managedtool.StateReady
 		installed := (adapterInstalled || auth.LoginCommandAvailable) && adapterReady && toolReady
 		reason := ""
@@ -333,7 +333,7 @@ func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *acpAdapterStatusResp
 	}
 }
 
-func (s *Server) managedToolStatus(tool string) *acpToolStatusResponse {
+func (s *Server) managedToolStatus(tool string, env map[string]string) *acpToolStatusResponse {
 	tool = strings.TrimSpace(tool)
 	if tool == "" {
 		return nil
@@ -344,7 +344,7 @@ func (s *Server) managedToolStatus(tool string) *acpToolStatusResponse {
 		Message: "managed tool downloader is not available",
 	}
 	if s.ManagedTools != nil {
-		status = s.ManagedTools.Status(tool)
+		status = s.ManagedTools.Status(tool, env)
 	}
 	return &acpToolStatusResponse{
 		Tool:     status.Tool,
@@ -369,8 +369,8 @@ func (s *Server) adapterBundleDir(adapter string) string {
 	return filepath.Dir(path)
 }
 
-func (s *Server) managedToolBinDir(tool string) string {
-	status := s.managedToolStatus(tool)
+func (s *Server) managedToolBinDir(tool string, env map[string]string) string {
+	status := s.managedToolStatus(tool, env)
 	if status == nil || status.State != managedtool.StateReady || strings.TrimSpace(status.Path) == "" {
 		return ""
 	}
@@ -382,7 +382,7 @@ func (s *Server) agentLoginBinDirs(cfg acp.AgentConfig) string {
 	if dir := strings.TrimSpace(cfg.AdapterBinDir); dir != "" {
 		dirs = append(dirs, dir)
 	}
-	if dir := strings.TrimSpace(s.managedToolBinDir(cfg.ManagedTool)); dir != "" {
+	if dir := strings.TrimSpace(s.managedToolBinDir(cfg.ManagedTool, cfg.Env)); dir != "" {
 		dirs = append(dirs, dir)
 	}
 	return strings.Join(dirs, string(os.PathListSeparator))

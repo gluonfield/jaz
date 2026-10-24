@@ -1,6 +1,6 @@
 //go:build !windows
 
-package acp
+package subprocess
 
 import (
 	"bufio"
@@ -18,7 +18,7 @@ import (
 func TestPrepareProcessCommandStartsOwnProcessGroup(t *testing.T) {
 	cmd := exec.Command("sh", "-c", "sleep 60")
 
-	prepareProcessCommand(cmd)
+	prepareCommand(cmd)
 
 	if cmd.SysProcAttr == nil {
 		t.Fatal("SysProcAttr is nil")
@@ -30,8 +30,7 @@ func TestPrepareProcessCommandStartsOwnProcessGroup(t *testing.T) {
 
 func TestProcessSupervisorAcceptsExitedProcess(t *testing.T) {
 	cmd := exec.Command("sh", "-c", "exit 0")
-	prepareProcessCommand(cmd)
-	process := newProcessSupervisor(cmd)
+	process := New(cmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -39,8 +38,8 @@ func TestProcessSupervisorAcceptsExitedProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := process.terminate(); err != nil {
-		t.Fatalf("process.terminate after exit = %v", err)
+	if err := process.Terminate(); err != nil {
+		t.Fatalf("process.Terminate after exit = %v", err)
 	}
 }
 
@@ -75,16 +74,21 @@ func runSupervisedShell(t *testing.T, disposition string) *os.ProcessState {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	ready := filepath.Join(t.TempDir(), "ready")
-	cmd := exec.CommandContext(ctx, "sh", "-c", disposition+`; : > "$0"; while :; do sleep 0.05; done`, ready)
-	prepareProcessCommand(cmd)
-	process := newProcessSupervisor(cmd)
-	cmd.Cancel = process.terminate
-	cmd.WaitDelay = processTerminateGrace + acpProcessStdioDrain
+	cmd := exec.CommandContext(ctx, "sh", "-c", disposition+`
+: > "$0"
+while :
+do
+    sleep 0.05
+done
+`, ready)
+	New(cmd)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	waitErr := make(chan error, 1)
-	go func() { waitErr <- cmd.Wait() }()
+	go func() {
+		waitErr <- cmd.Wait()
+	}()
 
 	deadline := time.Now().Add(10 * time.Second)
 	for {
@@ -102,9 +106,11 @@ func runSupervisedShell(t *testing.T, disposition string) *os.ProcessState {
 }
 
 func TestProcessSupervisorKillsProcessGroupChildren(t *testing.T) {
-	cmd := exec.Command("sh", "-c", "sleep 60 & echo $!; wait")
-	prepareProcessCommand(cmd)
-	process := newProcessSupervisor(cmd)
+	cmd := exec.Command("sh", "-c", `sleep 60 &
+echo $!
+wait
+`)
+	process := New(cmd)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -121,13 +127,15 @@ func TestProcessSupervisorKillsProcessGroupChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitErr := make(chan error, 1)
-	go func() { waitErr <- cmd.Wait() }()
+	go func() {
+		waitErr <- cmd.Wait()
+	}()
 	t.Cleanup(func() {
-		_ = process.terminate()
+		_ = process.Terminate()
 		<-waitErr
 	})
 
-	if err := process.terminate(); err != nil {
+	if err := process.Terminate(); err != nil {
 		t.Fatal(err)
 	}
 

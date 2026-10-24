@@ -1,49 +1,31 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Save } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useReducer } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
-import {
-  agentSettingsQuery,
-  cloneAgentSettings,
-  inputFromSettings,
-  updateAgentSettings,
-} from '@/lib/api/settings'
+import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
 import type { AgentSettings as AgentSettingsData } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
+import { agentSettingsDraft, agentSettingsDraftDirty } from '@/lib/agentSettingsDraft'
 
-function settingsKey(settings: AgentSettingsData | null): string {
-  return settings ? JSON.stringify(inputFromSettings(settings)) : ''
-}
-
-// Shared shell for the two agent-settings screens: load the settings, hold an
-// editable draft plus write-only provider keys, and expose a save that re-seeds
-// the draft and refreshes dependent queries. `label` only varies the toast copy.
 export function useAgentSettingsDraft(label: string) {
   const queryClient = useQueryClient()
   const toast = useToast()
   const settings = useQuery(agentSettingsQuery)
-  const [draft, setDraft] = useState<AgentSettingsData | null>(null)
-  // The backend never returns provider key values, so they live outside the draft.
-  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
-  const loadedKey = useRef('')
+  const [state, dispatch] = useReducer(agentSettingsDraft, null)
+  const draft = state ? { ...state.server, ...state.input } : null
+  const setDraft = (settings: AgentSettingsData) => dispatch({ type: 'edit', settings })
 
   useEffect(() => {
-    const incoming = settings.data
-    if (!incoming) return
-    const previousKey = loadedKey.current
-    setDraft((current) => current && settingsKey(current) !== previousKey
-      ? { ...current, acp_auth: incoming.acp_auth, acp_options: incoming.acp_options }
-      : cloneAgentSettings(incoming))
-    loadedKey.current = settingsKey(incoming)
+    if (settings.data) dispatch({ type: 'refresh', settings: settings.data })
   }, [settings.data])
 
   const save = useMutation({
-    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input, providerKeys),
+    mutationFn: (input: AgentSettingsData) => updateAgentSettings(input),
     onSuccess: (saved) => {
-      setDraft(cloneAgentSettings(saved))
-      setProviderKeys({})
+      dispatch({ type: 'reset', settings: saved })
+      queryClient.setQueryData(keys.agentSettings, saved)
       toast(`Saved ${label}`)
     },
     onError: (error: Error) => toast(`Couldn't save ${label}: ${error.message}`, 'danger'),
@@ -54,13 +36,7 @@ export function useAgentSettingsDraft(label: string) {
     },
   })
 
-  const dirty = useMemo(
-    () => settingsKey(draft) !== settingsKey(settings.data ?? null),
-    [draft, settings.data],
-  )
-  const providerKeyDirty = Object.values(providerKeys).some((value) => value.trim().length > 0)
-
-  return { settings, draft, setDraft, providerKeys, setProviderKeys, save, dirty, providerKeyDirty }
+  return { settings, draft, setDraft, save, dirty: agentSettingsDraftDirty(state) }
 }
 
 // The chrome both agent-settings screens share: heading, optional save action, body slot.

@@ -81,8 +81,8 @@ type ACPAdapterStatusReader interface {
 }
 
 type ManagedToolStatusReader interface {
-	Status(name string) managedtool.Status
-	Prepare(context.Context, string) error
+	Status(name string, env map[string]string) managedtool.Status
+	Prepare(context.Context, string, map[string]string) error
 }
 
 type Server struct {

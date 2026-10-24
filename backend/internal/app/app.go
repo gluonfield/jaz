@@ -233,7 +233,7 @@ func (s managedToolAgentConfigSource) AgentConfig(name string) (acp.AgentConfig,
 	if err != nil || !ok {
 		return cfg, ok, err
 	}
-	if tool := s.tools.Status(cfg.ManagedTool); tool.State == managedtool.StateReady && strings.TrimSpace(tool.Path) != "" {
+	if tool := s.tools.Status(cfg.ManagedTool, cfg.Env); tool.State == managedtool.StateReady && strings.TrimSpace(tool.Path) != "" {
 		cfg.LoginBinDir = appendPathList(cfg.LoginBinDir, filepath.Dir(tool.Path))
 		cfg.ManagedAdapterArgs = withManagedToolAdapterArg(cfg.ManagedAdapterArgs, cfg.ManagedToolAdapterArg, tool.Path)
 	}

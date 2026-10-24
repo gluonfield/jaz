@@ -45,11 +45,11 @@ type fakeManagedToolStatusReader struct {
 	prepareErr error
 }
 
-func (r fakeManagedToolStatusReader) Status(string) managedtool.Status {
+func (r fakeManagedToolStatusReader) Status(string, map[string]string) managedtool.Status {
 	return r.status
 }
 
-func (r fakeManagedToolStatusReader) Prepare(context.Context, string) error {
+func (r fakeManagedToolStatusReader) Prepare(context.Context, string, map[string]string) error {
 	if r.prepared != nil {
 		*r.prepared = *r.prepared + 1
 	}

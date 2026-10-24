@@ -176,7 +176,7 @@ func (s *Server) acpAgentAuthStatuses(defaults agentsettings.AgentDefaults) map[
 		readiness := acp.ProbeReadinessWithProviders(name, cfg, s.runtimeRoot(), nil, s.modelProviders())
 		status := newACPAuthStatusResponse(auth, readiness)
 		status.ManagedAdapter = s.managedAdapterStatus(cfg)
-		status.ManagedTool = s.managedToolStatus(cfg.ManagedTool)
+		status.ManagedTool = s.managedToolStatus(cfg.ManagedTool, cfg.Env)
 		out[name] = status
 	}
 	return out

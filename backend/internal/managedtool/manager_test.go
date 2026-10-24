@@ -42,10 +42,10 @@ func TestPrepareDownloadsVerifiesAndInstallsAntigravityCLI(t *testing.T) {
 	defer server.Close()
 
 	manager := NewForTest(t.TempDir(), server.URL, server.Client())
-	if err := manager.Prepare(context.Background(), AntigravityCLI); err != nil {
+	if err := manager.Prepare(context.Background(), AntigravityCLI, nil); err != nil {
 		t.Fatal(err)
 	}
-	status := manager.Status(AntigravityCLI)
+	status := manager.Status(AntigravityCLI, nil)
 	if status.State != StateReady || status.Version != "1.2.3" || status.Platform != platform {
 		t.Fatalf("status = %#v", status)
 	}
@@ -79,7 +79,7 @@ func TestPrepareRejectsBadChecksum(t *testing.T) {
 	defer server.Close()
 
 	manager := NewForTest(t.TempDir(), server.URL, server.Client())
-	if err := manager.Prepare(context.Background(), AntigravityCLI); err == nil {
+	if err := manager.Prepare(context.Background(), AntigravityCLI, nil); err == nil {
 		t.Fatal("expected checksum error")
 	}
 	if status, ok := manager.storedStatus(AntigravityCLI); !ok || status.State != StateFailed {
@@ -97,10 +97,10 @@ func TestPrepareUsesExistingManagedToolWithoutFetchingManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewForTest(root, "http://127.0.0.1:1", nil)
-	if err := manager.Prepare(context.Background(), AntigravityCLI); err != nil {
+	if err := manager.Prepare(context.Background(), AntigravityCLI, nil); err != nil {
 		t.Fatal(err)
 	}
-	if status := manager.Status(AntigravityCLI); status.State != StateReady || status.Path != path {
+	if status := manager.Status(AntigravityCLI, nil); status.State != StateReady || status.Path != path {
 		t.Fatalf("status = %#v, want existing ready tool", status)
 	}
 }
@@ -114,7 +114,7 @@ func TestStatusFindsExistingManagedTool(t *testing.T) {
 	if err := os.WriteFile(path, []byte("ok"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if status := New(root).Status(AntigravityCLI); status.State != StateReady || status.Path != path {
+	if status := New(root).Status(AntigravityCLI, nil); status.State != StateReady || status.Path != path {
 		t.Fatalf("status = %#v", status)
 	}
 }
@@ -129,11 +129,11 @@ func TestStatusFindsExistingToolOnPath(t *testing.T) {
 	t.Setenv("PATH", bin)
 	t.Setenv("SHELL", "/bin/sh")
 
-	status := New(root).Status(AntigravityCLI)
+	status := New(root).Status(AntigravityCLI, nil)
 	if status.State != StateReady || status.Path != path {
 		t.Fatalf("status = %#v, want PATH tool %s", status, path)
 	}
-	if dir := New(root).BinDir(AntigravityCLI); dir != bin {
+	if dir := New(root).BinDir(AntigravityCLI, nil); dir != bin {
 		t.Fatalf("bin dir = %q, want %q", dir, bin)
 	}
 }

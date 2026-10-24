@@ -20,18 +20,10 @@ import (
 	"github.com/gluonfield/acp-transport/streamhttp"
 	"github.com/wins/jaz/backend/internal/processenv"
 	"github.com/wins/jaz/backend/internal/skills"
+	"github.com/wins/jaz/backend/internal/subprocess"
 )
 
-const (
-	processStderrTailLimit = 2000
-	acpProcessStdioDrain   = 2 * time.Second
-	// Coding agents rotate their own OAuth credentials while running: the
-	// provider retires the old refresh token the moment the new one is issued,
-	// so a process killed between the rotation and the write that persists it
-	// leaves a credential the provider has already invalidated. Let the process
-	// group shut itself down before forcing it.
-	processTerminateGrace = 5 * time.Second
-)
+const processStderrTailLimit = 2000
 
 type processStderrTail struct {
 	mu      sync.Mutex
@@ -148,10 +140,7 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	command, args := launchCommand(cfg.Command, cfg.Args)
 	addCommandDirToPath(env, command)
 	cmd := exec.CommandContext(ctx, command, args...)
-	prepareProcessCommand(cmd)
-	process := newProcessSupervisor(cmd)
-	cmd.Cancel = process.terminate
-	cmd.WaitDelay = processTerminateGrace + acpProcessStdioDrain
+	process := subprocess.New(cmd)
 	cmd.Env = processenv.List(env)
 	if cwd != "" {
 		cmd.Dir = cwd
@@ -169,15 +158,15 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	if err := cmd.Start(); err != nil {
 		return nil, nil, fmt.Errorf("start acp agent %q (%s): %w", name, command, err)
 	}
-	if err := process.started(); err != nil {
-		_ = process.terminate()
+	if err := process.Started(); err != nil {
+		_ = process.Terminate()
 		stderr.close(cmd.Wait())
 		return nil, stderr, fmt.Errorf("prepare acp agent %q process: %w", name, err)
 	}
 	conn := stdio.New(stdout, stdin)
 	go func() {
 		waitErr := cmd.Wait()
-		_ = process.terminate()
+		_ = process.Terminate()
 		cleanup()
 		stderr.close(waitErr)
 		_ = conn.Close()

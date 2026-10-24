@@ -1,4 +1,4 @@
-package acp
+package subprocess
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func prepareProcessCommand(cmd *exec.Cmd) {
+func prepareCommand(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
@@ -19,18 +19,14 @@ func prepareProcessCommand(cmd *exec.Cmd) {
 	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NO_WINDOW
 }
 
-type processSupervisor struct {
+type Supervisor struct {
 	cmd *exec.Cmd
 	mu  sync.Mutex
 	job windows.Handle
 }
 
-func newProcessSupervisor(cmd *exec.Cmd) *processSupervisor {
-	return &processSupervisor{cmd: cmd}
-}
-
-func (p *processSupervisor) started() error {
-	job, err := createACPProcessJob()
+func (p *Supervisor) Started() error {
+	job, err := createProcessJob()
 	if err != nil {
 		return err
 	}
@@ -57,7 +53,7 @@ func (p *processSupervisor) started() error {
 	return nil
 }
 
-func (p *processSupervisor) terminate() error {
+func (p *Supervisor) Terminate() error {
 	p.mu.Lock()
 	job := p.job
 	p.job = 0
@@ -75,7 +71,7 @@ func (p *processSupervisor) terminate() error {
 	return nil
 }
 
-func createACPProcessJob() (windows.Handle, error) {
+func createProcessJob() (windows.Handle, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return 0, err

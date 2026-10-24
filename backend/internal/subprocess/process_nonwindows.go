@@ -1,6 +1,6 @@
 //go:build !windows
 
-package acp
+package subprocess
 
 import (
 	"errors"
@@ -10,26 +10,22 @@ import (
 	"time"
 )
 
-func prepareProcessCommand(cmd *exec.Cmd) {
+func prepareCommand(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
 	cmd.SysProcAttr.Setpgid = true
 }
 
-type processSupervisor struct {
+type Supervisor struct {
 	cmd *exec.Cmd
 }
 
-func newProcessSupervisor(cmd *exec.Cmd) *processSupervisor {
-	return &processSupervisor{cmd: cmd}
-}
-
-func (p *processSupervisor) started() error {
+func (p *Supervisor) Started() error {
 	return nil
 }
 
-func (p *processSupervisor) terminate() error {
+func (p *Supervisor) Terminate() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
@@ -40,7 +36,7 @@ func (p *processSupervisor) terminate() error {
 		}
 		return err
 	}
-	for deadline := time.Now().Add(processTerminateGrace); time.Now().Before(deadline); {
+	for deadline := time.Now().Add(terminateGrace); time.Now().Before(deadline); {
 		if groupGone(group) {
 			return nil
 		}
