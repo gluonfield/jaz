@@ -33,11 +33,17 @@ func TestPendingInstallDoesNotBlockReadyToolsOrCancelledRequests(t *testing.T) {
 		t.Fatal("installer did not start")
 	}
 	cancelled, stop := context.WithCancel(t.Context())
-	stop()
+	defer stop()
 	done := make(chan error, 1)
 	go func() {
 		done <- manager.Prepare(cancelled, MuseCLI, env)
 	}()
+	select {
+	case err := <-done:
+		t.Fatalf("pending installation returned before cancellation: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	stop()
 	select {
 	case err := <-done:
 		if !errors.Is(err, context.Canceled) {
