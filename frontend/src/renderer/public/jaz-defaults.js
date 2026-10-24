@@ -25,15 +25,16 @@ window.__JAZ_DEFAULTS__ = {
   //   hideProjectPicker: false,
   // },
 
-  // Default colour theme for light and dark. `preset` names a built-in (cobalt,
-  // ocean, forest, sand, ember, rose, aurora, graphite); any value below
-  // overrides it. Users can still change all of this in Settings.
+  // Default colour theme for light and dark (Settings → Appearance → Color).
+  // Users can still change all of this in Settings.
   // color: {
-  //   preset: 'ocean',
   //   hue: 205,          // 0–360, the main colour
   //   colors: 2,         // 0 (graphite) to 3 linked colours
-  //   strength: 0.6,     // 0.1–1, how strongly they wash the window
-  //   grain: 0,          // 0–100 film grain over the window
+  //   harmony: 1,        // how they link; 2 colours: 0 complementary, 1 analogous;
+  //                      // 3 colours: 0 analogous, 1 split complementary, 2 triadic
+  //   saturation: 0.6,   // 0–1
+  //   strength: 0.45,    // 0–1, how strongly they wash the window
+  //   grain: 0,          // 0–1 film grain over the window
   // },
 
   // Inline web-preview cards. A URL in an assistant reply matching any of these

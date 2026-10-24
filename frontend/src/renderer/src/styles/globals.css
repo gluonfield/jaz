@@ -72,17 +72,17 @@
 
 /* The colour theme (Settings → Appearance, lib/appearanceScheme.ts): the main
  * hue every token takes a trace of, whether it is tinted at all (graphite is
- * not), up to three linked wash hues for the window and how strongly they mix
- * in, and the window grain. Stock is Cobalt; zero specificity lets the
- * Appearance override win whichever stylesheet loads first. */
+ * not), the three wash hues for the window with their chroma and how strongly
+ * they mix in, and the window grain. Zero specificity lets the Appearance
+ * override win whichever stylesheet loads first. */
 :where(:root) {
   --hue: 264;
   --tint: 1;
   --wash-1: 264;
-  --wash-2: 229;
-  --wash-3: 229;
-  --wash-mix: 40.8%;
-  --wash-3-mix: 0%;
+  --wash-2: 214;
+  --wash-3: 214;
+  --wash-chroma: 0.12;
+  --wash-mix: 42%;
   --grain: 0;
 }
 
@@ -90,9 +90,9 @@
   color-scheme: light;
 
   /* The washes sit at one lightness per mode, so every hue reads; the
-   * Appearance swatches and wheel sit at their own. */
+   * Appearance colour dots and swatches sit at their own. */
   --wash-l: 0.8;
-  --wheel-l: 0.8;
+  --swatch-l: 0.76;
 
   --thread-max: 760px;
   --prose-max: 80ch;
@@ -175,7 +175,7 @@
   --color-surface: oklch(0.235 0.006 var(--hue));
   --color-surface-2: oklch(0.28 0.008 var(--hue));
   --wash-l: 0.46;
-  --wheel-l: 0.56;
+  --swatch-l: 0.64;
   --color-list-hover: color-mix(in oklab, var(--color-ink) 8%, transparent);
   --color-list-active: color-mix(in oklab, var(--color-ink) 16%, transparent);
 
@@ -746,9 +746,8 @@ body {
   --wash-l: 0.46;
 }
 
-/* The window behind the cards takes the theme's washes, the way Arc colours
- * its window: two tones across it and, with three colours, a third rising
- * from the corner. A film grain sits over the wash, under everything else.
+/* The window behind the cards takes the theme's washes in Zen's (Arc's)
+ * shapes: one from each top corner and one rising from the bottom. A film grain sits over the wash, under everything else.
  * The Appearance theme tiles reuse the rule in each mode's colours. On macOS,
  * index.html adds .vibrant: the page goes transparent so the rail and thread
  * list show the native material through a weak surface tint under the wash;
@@ -763,15 +762,21 @@ body {
   .theme-tile {
     background:
       radial-gradient(
-        circle at 0% 100%,
-        color-mix(in oklab, oklch(var(--wash-l) 0.13 var(--wash-3)) var(--wash-3-mix), transparent),
+        circle at 0% 0%,
+        color-mix(in oklab, oklch(var(--wash-l) var(--wash-chroma) var(--wash-1)) var(--wash-mix), var(--chrome-ground)) 10%,
         transparent 70%
       ),
+      radial-gradient(
+        circle at 95% 0%,
+        color-mix(in oklab, oklch(var(--wash-l) var(--wash-chroma) var(--wash-2)) var(--wash-mix), var(--chrome-ground)),
+        transparent 75%
+      ),
       linear-gradient(
-        155deg,
-        color-mix(in oklab, oklch(var(--wash-l) 0.13 var(--wash-1)) var(--wash-mix), var(--chrome-ground)),
-        color-mix(in oklab, oklch(var(--wash-l) 0.13 var(--wash-2)) var(--wash-mix), var(--chrome-ground))
-      );
+        -5deg,
+        color-mix(in oklab, oklch(var(--wash-l) var(--wash-chroma) var(--wash-3)) var(--wash-mix), var(--chrome-ground)) 10%,
+        transparent 80%
+      ),
+      var(--chrome-ground);
   }
   .app-chrome::before {
     content: '';

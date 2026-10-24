@@ -1,147 +1,44 @@
-import { Minus, Plus } from 'lucide-react'
-import type { KeyboardEvent, PointerEvent } from 'react'
-import {
-  applyPreset,
-  type ColorTheme,
-  linkedHues,
-  MAX_COLORS,
-  presetMatches,
-  resetColorTheme,
-  setColorTheme,
-  THEME_PRESETS,
-  useColorTheme,
-} from '@/lib/appearanceScheme'
-import { SettingsCard, SettingsRow } from './SettingsCard'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
+import { linkedHues, resetColorTheme, setColorTheme, useColorTheme } from '@/lib/appearanceScheme'
+import { ColorPad, GrainDial, StrengthWave, swatch } from './ColorControls'
+import { SettingsCard } from './SettingsCard'
 
-const WHEEL = 176
-// Distance from the centre, in wheel pixels: muted near the middle, full at the rim.
-const INNER = 24
-const SPAN = 58
-const radius = (strength: number) => INNER + strength * SPAN
-const clampStrength = (strength: number) => Math.min(1, Math.max(0.1, strength))
+// Starting points carry as many colours as you have (one when there are none),
+// linked the same way; the pages step from vivid to soft.
+const PALETTE_HUES = [20, 50, 85, 140, 175, 215, 264, 320]
+const PALETTE_PAGES = [
+  { label: 'Vivid', saturation: 0.8 },
+  { label: 'Balanced', saturation: 0.55 },
+  { label: 'Soft', saturation: 0.3 },
+]
 
-// Hues at one lightness per mode (--wheel-l in globals.css), so they read like the wash.
-const swatch = (hue: number, chroma: number) => `oklch(var(--wheel-l) ${chroma} ${hue})`
-const WHEEL_BACKGROUND = `radial-gradient(circle, var(--color-surface), transparent 72%), conic-gradient(${Array.from(
-  { length: 13 },
-  (_, i) => swatch(i * 30, 0.13),
-).join(', ')})`
-
-const KEY_STEPS: Record<string, [hue: number, strength: number]> = {
-  ArrowLeft: [-5, 0],
-  ArrowRight: [5, 0],
-  ArrowDown: [0, -0.05],
-  ArrowUp: [0, 0.05],
+// Zen's swatch shapes: one colour flat, two across, three from the corners.
+function ideaBackground(hues: number[], saturation: number) {
+  const [a, b, c] = hues.map((hue) => swatch(hue, saturation))
+  if (!b) return a
+  if (!c) return `linear-gradient(135deg, ${a}, ${b})`
+  return `radial-gradient(circle at 0% 0%, ${a}, transparent 100%), radial-gradient(circle at 100% 0%, ${b}, transparent 100%), linear-gradient(to top, ${c} 0%, transparent 60%), ${a}`
 }
 
-// The main colour sits where you point: its angle is the hue, its distance from
-// the centre the strength. The linked colours follow it round.
-function ColorWheel({ theme }: { theme: ColorTheme }) {
-  const hues = linkedHues(theme.hue, theme.colors)
-  const points = hues.map((hue) => {
-    const angle = ((hue - 90) * Math.PI) / 180
-    return { x: WHEEL / 2 + Math.cos(angle) * radius(theme.strength), y: WHEEL / 2 + Math.sin(angle) * radius(theme.strength) }
-  })
-  const pick = (event: PointerEvent<HTMLDivElement>) => {
-    const box = event.currentTarget.getBoundingClientRect()
-    const x = event.clientX - box.left - box.width / 2
-    const y = event.clientY - box.top - box.height / 2
-    setColorTheme({
-      hue: Math.round((Math.atan2(y, x) * 180) / Math.PI + 450) % 360,
-      colors: Math.max(1, theme.colors),
-      strength: clampStrength(((Math.hypot(x, y) * WHEEL) / box.width - INNER) / SPAN),
-    })
-  }
-  const nudge = (event: KeyboardEvent) => {
-    const step = KEY_STEPS[event.key]
-    if (!step) return
-    event.preventDefault()
-    setColorTheme({
-      hue: (theme.hue + step[0] + 360) % 360,
-      colors: Math.max(1, theme.colors),
-      strength: clampStrength(theme.strength + step[1]),
-    })
-  }
-  return (
-    <div
-      role="slider"
-      tabIndex={0}
-      aria-label="Window color"
-      aria-valuemin={0}
-      aria-valuemax={359}
-      aria-valuenow={theme.hue}
-      aria-valuetext={theme.colors ? `Hue ${theme.hue}°, strength ${Math.round(theme.strength * 100)}%` : 'Graphite'}
-      onPointerDown={(event) => {
-        event.currentTarget.setPointerCapture(event.pointerId)
-        pick(event)
-      }}
-      onPointerMove={(event) => {
-        if (event.currentTarget.hasPointerCapture(event.pointerId)) pick(event)
-      }}
-      onKeyDown={nudge}
-      style={{ width: WHEEL, height: WHEEL, background: WHEEL_BACKGROUND }}
-      className="relative shrink-0 cursor-crosshair touch-none rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0/0.08),0_6px_18px_-8px_rgb(0_0_0/0.4)]"
-    >
-      <svg aria-hidden className="absolute inset-0" width={WHEEL} height={WHEEL}>
-        {points.slice(1).map((point, index) => (
-          <line
-            key={hues[index + 1]}
-            x1={points[0].x}
-            y1={points[0].y}
-            x2={point.x}
-            y2={point.y}
-            stroke="white"
-            strokeOpacity={0.85}
-            strokeWidth={1.5}
-          />
-        ))}
-      </svg>
-      {points.map((point, index) => {
-        const size = index ? 15 : 21
-        return (
-          <span
-            key={hues[index]}
-            aria-hidden
-            className="absolute rounded-full shadow-[0_0_0_2.5px_white,0_2px_6px_rgb(0_0_0/0.35)]"
-            style={{
-              left: point.x - size / 2,
-              top: point.y - size / 2,
-              width: size,
-              height: size,
-              background: swatch(hues[index], 0.04 + theme.strength * 0.12),
-            }}
-          />
-        )
-      })}
-    </div>
-  )
-}
-
-function presetBackground(hue: number, colors: number) {
-  const hues = linkedHues(hue, colors)
-  const stops = hues.length
-    ? [...hues, hues[hues.length - 1] - 18].map((h) => swatch(h, 0.13))
-    : ['oklch(0.82 0 0)', 'oklch(0.42 0 0)']
-  return `linear-gradient(135deg, ${stops.join(', ')})`
-}
-
-export function PresetSwatches() {
+export function PaletteIdeas({ page = 0, className = 'gap-2' }: { page?: number; className?: string }) {
   const theme = useColorTheme()
+  const { label, saturation } = PALETTE_PAGES[page]
+  const colors = Math.max(1, theme.colors)
   return (
-    <div className="flex gap-1.5">
-      {THEME_PRESETS.map((preset) => {
-        const active = presetMatches(preset, theme)
+    <div className={`flex ${className}`}>
+      {PALETTE_HUES.map((hue) => {
+        const active = theme.colors === colors && theme.hue === hue && theme.saturation === saturation
         return (
           <button
-            key={preset.id}
+            key={hue}
             type="button"
-            aria-label={preset.label}
+            aria-label={`${label}, hue ${hue}°`}
             aria-pressed={active}
-            title={preset.label}
-            onClick={() => applyPreset(preset)}
-            style={{ background: presetBackground(preset.hue, preset.colors) }}
-            className={`size-[22px] cursor-pointer rounded-full ${
-              active ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface' : 'ring-1 ring-inset ring-black/10'
+            onClick={() => setColorTheme({ hue, colors, saturation })}
+            style={{ background: ideaBackground(linkedHues({ ...theme, hue, colors }), saturation) }}
+            className={`size-[26px] shrink-0 cursor-pointer rounded-full transition-transform duration-100 hover:scale-105 active:scale-95 ${
+              active ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface' : 'shadow-[0_0_1px_1px_rgb(0_0_0/0.1)]'
             }`}
           />
         )
@@ -150,11 +47,12 @@ export function PresetSwatches() {
   )
 }
 
-const STEP_BUTTON =
-  'grid size-7 cursor-pointer place-items-center rounded-[7px] text-ink-2 transition-colors duration-150 hover:bg-bg hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent'
+const PAGE_BUTTON =
+  'grid size-6 shrink-0 cursor-pointer place-items-center rounded-md text-ink-3 transition-colors duration-150 hover:text-ink disabled:cursor-default disabled:opacity-30 disabled:hover:text-ink-3'
 
 export function ColorThemeSettings() {
   const theme = useColorTheme()
+  const [page, setPage] = useState(0)
   return (
     <>
       <div className="mt-6 flex items-end justify-between gap-3">
@@ -173,49 +71,51 @@ export function ColorThemeSettings() {
         </button>
       </div>
 
-      <SettingsCard className="mt-4 grid overflow-hidden md:grid-cols-[208px_minmax(0,1fr)]">
-        <div className="grid place-items-center border-border p-4 max-md:border-b md:border-r">
-          <ColorWheel theme={theme} />
-        </div>
-        <div className="grid md:grid-rows-3">
-          <SettingsRow title="Palette" description="Tuned starting points.">
-            <PresetSwatches />
-          </SettingsRow>
-          <SettingsRow title="Colors" description="Linked: move one and the others turn with it.">
-            <div className="flex items-center gap-0.5 rounded-[9px] bg-surface-2 p-0.5">
+      <SettingsCard className="mt-4 grid gap-5 p-3 md:grid-cols-[300px_minmax(0,1fr)]">
+        <ColorPad theme={theme} />
+        <div className="flex min-w-0 flex-col justify-center gap-7">
+          <div>
+            <div className="flex items-baseline justify-between">
+              <p className="text-[13px] font-medium text-ink">Palette</p>
+              <p className="text-[12px] text-ink-3">{PALETTE_PAGES[page].label}</p>
+            </div>
+            <div className="mt-3 flex items-center gap-1">
               <button
                 type="button"
-                aria-label="Fewer colors"
-                disabled={theme.colors === 0}
-                onClick={() => setColorTheme({ colors: theme.colors - 1 })}
-                className={STEP_BUTTON}
+                aria-label="Previous palette"
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
+                className={PAGE_BUTTON}
               >
-                <Minus size={14} />
+                <ChevronLeft size={16} />
               </button>
-              <span className="w-5 text-center text-[13px] font-medium tabular-nums text-ink">{theme.colors}</span>
+              <PaletteIdeas page={page} className="flex-1 justify-between" />
               <button
                 type="button"
-                aria-label="More colors"
-                disabled={theme.colors === MAX_COLORS}
-                onClick={() => setColorTheme({ colors: theme.colors + 1 })}
-                className={STEP_BUTTON}
+                aria-label="Next palette"
+                disabled={page === PALETTE_PAGES.length - 1}
+                onClick={() => setPage(page + 1)}
+                className={PAGE_BUTTON}
               >
-                <Plus size={14} />
+                <ChevronRight size={16} />
               </button>
             </div>
-          </SettingsRow>
-          <SettingsRow title="Grain" description="A fine film texture over the window color.">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={theme.grain}
-              aria-label="Grain"
-              onChange={(event) => setColorTheme({ grain: Number(event.target.value) })}
-              className="w-40 accent-primary"
-            />
-          </SettingsRow>
+            <div aria-hidden className="mt-2.5 flex justify-center gap-1.5">
+              {PALETTE_PAGES.map(({ label }, index) => (
+                <span key={label} className={`size-[5px] rounded-full bg-ink ${index === page ? 'opacity-60' : 'opacity-20'}`} />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <StrengthWave value={theme.strength} onChange={(strength) => setColorTheme({ strength })} />
+              <p className="mt-1 text-center text-[12px] text-ink-3">Strength</p>
+            </div>
+            <div>
+              <GrainDial value={theme.grain} onChange={(grain) => setColorTheme({ grain })} />
+              <p className="mt-1 text-center text-[12px] text-ink-3">Grain</p>
+            </div>
+          </div>
         </div>
       </SettingsCard>
     </>

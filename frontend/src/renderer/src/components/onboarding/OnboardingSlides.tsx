@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import type { SystemPermission } from '@shared/systemPermissions'
 import { BotAvatar } from '@/components/bots/BotAvatar'
 import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
-import { PresetSwatches } from '@/components/settings/ColorThemeSettings'
+import { PaletteIdeas } from '@/components/settings/ColorThemeSettings'
 import { ThemeModePicker } from '@/components/settings/ThemeModePicker'
 import { Button } from '@/components/ui/Button'
 import { botsQuery } from '@/lib/api/bots'
@@ -192,7 +192,7 @@ export function ThemeChoice() {
       <ThemeModePicker />
       <div className="mt-4 flex items-center justify-between gap-3 rounded-[14px] bg-surface p-3.5">
         <p className="text-[13.5px] font-medium text-ink">Color</p>
-        <PresetSwatches />
+        <PaletteIdeas />
       </div>
     </>
   )

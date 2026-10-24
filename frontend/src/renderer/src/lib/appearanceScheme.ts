@@ -1,57 +1,57 @@
 import { useSyncExternalStore } from 'react'
 import { jazDefaults } from './jazDefaults'
 
-// The colour theme: up to three linked hues that wash the window, how strongly,
-// and a film grain over it. globals.css derives every token from the CSS
-// variables this emits, at lightness steps tuned per mode, so text, cards and
-// buttons always match whatever colour is picked.
+// The colour theme, as on Arc and Zen's picker: a main hue with up to two more
+// linked to it, how saturated they are, how strongly they wash the window, and
+// a film grain over it. globals.css derives every token from the CSS variables
+// this emits, at lightness steps tuned per mode, so text, cards and buttons
+// always match whatever colour is picked.
 export interface ColorTheme {
   hue: number
   /** 0 is graphite (untinted); 1–3 linked colours */
   colors: number
-  /** 0.1–1: how strongly the colours wash the window */
+  /** Which way the colours are linked: an index into HARMONIES[colors] */
+  harmony: number
+  /** 0–1: how saturated the colours are */
+  saturation: number
+  /** 0–1: how strongly they wash the window */
   strength: number
-  /** 0–100 */
+  /** 0–1: the grain's opacity */
   grain: number
 }
 
-export interface ThemePreset {
-  id: string
-  label: string
-  hue: number
-  colors: number
-  strength: number
-}
-
-// The first entry is the stock look: equal to it, colorCss emits nothing and
-// the globals.css defaults rule.
-export const THEME_PRESETS: readonly ThemePreset[] = [
-  { id: 'cobalt', label: 'Cobalt', hue: 264, colors: 2, strength: 0.6 },
-  { id: 'ocean', label: 'Ocean', hue: 205, colors: 2, strength: 0.6 },
-  { id: 'forest', label: 'Forest', hue: 150, colors: 2, strength: 0.55 },
-  { id: 'sand', label: 'Sand', hue: 82, colors: 2, strength: 0.55 },
-  { id: 'ember', label: 'Ember', hue: 48, colors: 2, strength: 0.6 },
-  { id: 'rose', label: 'Rose', hue: 355, colors: 2, strength: 0.55 },
-  { id: 'aurora', label: 'Aurora', hue: 165, colors: 3, strength: 0.6 },
-  { id: 'graphite', label: 'Graphite', hue: 264, colors: 0, strength: 0.6 },
-]
-
 export const MAX_COLORS = 3
 
-// The colours are linked: one main hue, the others at fixed turns from it.
-export function linkedHues(hue: number, colors: number): number[] {
-  return [[], [hue], [hue, hue - 35], [hue, hue + 50, hue - 50]][colors]
+// Zen's ways of linking colours, as turns from the main hue, per colour count.
+export const HARMONIES: readonly (readonly { label: string; turns: readonly number[] }[])[] = [
+  [],
+  [{ label: 'Single', turns: [] }],
+  [
+    { label: 'Complementary', turns: [180] },
+    { label: 'Analogous', turns: [-50] },
+  ],
+  [
+    { label: 'Analogous', turns: [50, -50] },
+    { label: 'Split complementary', turns: [150, 210] },
+    { label: 'Triadic', turns: [120, 240] },
+  ],
+]
+
+export const harmonyOf = ({ colors, harmony }: Pick<ColorTheme, 'colors' | 'harmony'>) =>
+  HARMONIES[colors][harmony % HARMONIES[colors].length]
+
+export function linkedHues(c: Pick<ColorTheme, 'hue' | 'colors' | 'harmony'>): number[] {
+  return c.colors ? [c.hue, ...harmonyOf(c).turns.map((turn) => c.hue + turn)] : []
 }
 
-const fromPreset = ({ hue, colors, strength }: ThemePreset): ColorTheme => ({ hue, colors, strength, grain: 0 })
+// Chroma for a saturation, shared by the window washes and the picker's swatches.
+export const washChroma = (saturation: number) => 0.03 + saturation * 0.15
 
-const STOCK = fromPreset(THEME_PRESETS[0])
+// The stock look: equal to it, colorCss emits nothing and the globals.css defaults rule.
+const STOCK: ColorTheme = { hue: 264, colors: 2, harmony: 1, saturation: 0.6, strength: 0.45, grain: 0 }
 
 export const sameTheme = (a: ColorTheme, b: ColorTheme): boolean =>
-  a.hue === b.hue && a.colors === b.colors && a.strength === b.strength && a.grain === b.grain
-
-export const presetMatches = (preset: ThemePreset, theme: ColorTheme): boolean =>
-  preset.colors === theme.colors && (!preset.colors || (preset.hue === theme.hue && preset.strength === theme.strength))
+  (Object.keys(STOCK) as (keyof ColorTheme)[]).every((key) => a[key] === b[key])
 
 const inRange = (value: unknown, min: number, max: number, fallback: number): number =>
   typeof value === 'number' && value >= min && value <= max ? value : fallback
@@ -61,35 +61,31 @@ function parseTheme(raw: Partial<Record<keyof ColorTheme, unknown>> | undefined,
   return {
     hue: inRange(raw?.hue, 0, 360, base.hue),
     colors: Math.round(inRange(raw?.colors, 0, MAX_COLORS, base.colors)),
-    strength: inRange(raw?.strength, 0.1, 1, base.strength),
-    grain: inRange(raw?.grain, 0, 100, base.grain),
+    harmony: Math.round(inRange(raw?.harmony, 0, 2, base.harmony)),
+    saturation: inRange(raw?.saturation, 0, 1, base.saturation),
+    strength: inRange(raw?.strength, 0, 1, base.strength),
+    grain: inRange(raw?.grain, 0, 1, base.grain),
   }
 }
 
-// The deployment default from jaz-defaults.js: an optional named preset with
-// individual values over it. The user's own choice layers on top.
-const CONFIG_BASE: ColorTheme = (() => {
-  const cfg = jazDefaults().color
-  const preset = THEME_PRESETS.find((p) => p.id === cfg?.preset)
-  return parseTheme(cfg, preset ? fromPreset(preset) : STOCK)
-})()
+// The deployment default from jaz-defaults.js; the user's own choice layers on top.
+const CONFIG_BASE = parseTheme(jazDefaults().color, STOCK)
 
-// The CSS variables globals.css derives every colour from. One colour gets a
-// second, slightly turned tone so the window still has depth; graphite washes
+// The CSS variables globals.css derives every colour from. With fewer than
+// three colours the last one fills the remaining wash layers; graphite washes
 // nothing.
 export function colorCss(c: ColorTheme): string {
   if (sameTheme(c, STOCK)) return ''
-  const [h1 = c.hue, h2 = h1 - 18, h3] = linkedHues(c.hue, c.colors)
-  const wash = c.colors ? Math.round(120 + c.strength * 480) / 10 : 0
+  const [h1 = c.hue, h2 = h1, h3 = h2] = linkedHues(c)
   const vars = {
     '--hue': c.hue,
     '--tint': c.colors ? 1 : 0,
     '--wash-1': h1,
     '--wash-2': h2,
-    '--wash-3': h3 ?? h2,
-    '--wash-mix': `${wash}%`,
-    '--wash-3-mix': `${h3 === undefined ? 0 : wash}%`,
-    '--grain': c.grain / 100,
+    '--wash-3': h3,
+    '--wash-chroma': washChroma(c.saturation).toFixed(3),
+    '--wash-mix': `${c.colors ? Math.round(15 + c.strength * 60) : 0}%`,
+    '--grain': c.grain,
   }
   return `:root{${Object.entries(vars).map(([k, v]) => `${k}:${v}`).join(';')}}`
 }
@@ -148,10 +144,6 @@ export function getColorTheme(): ColorTheme {
 
 export function setColorTheme(patch: Partial<ColorTheme>) {
   commit({ ...current, ...patch })
-}
-
-export function applyPreset(preset: ThemePreset) {
-  commit({ ...fromPreset(preset), grain: current.grain })
 }
 
 export function resetColorTheme() {
