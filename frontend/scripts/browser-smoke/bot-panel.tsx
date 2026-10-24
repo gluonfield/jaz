@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client'
 import { BotDetails } from '@/components/bots/BotDetails'
 import { BotsPanel } from '@/components/bots/BotsPanel'
 import { getAppearance, setAppearance } from '@/lib/appearance'
+import { botsQuery } from '@/lib/api/bots'
+import { Route as botsIndexRoute } from '@/routes/bots.index'
 import type { Bot, BotActivity, BotFile, BotOwed, BotStartedThread, Loop, LoopRun } from '@/lib/api/types'
 
 // A bot's side panel against a stubbed server: what it owes, is doing and
@@ -116,7 +118,10 @@ export async function exerciseBotPanel(): Promise<void> {
   element.className = 'bg-bg'
   document.body.append(element)
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const originalLastBot = localStorage.getItem('jaz.lastBot')
+  localStorage.removeItem('jaz.lastBot')
   const rootRoute = createRootRoute()
+  const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/bots', component: botsIndexRoute.options.component })
   const botRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/bots/$botId',
@@ -137,7 +142,7 @@ export async function exerciseBotPanel(): Promise<void> {
     ),
   })
   const threadRoute = createRoute({ getParentRoute: () => rootRoute, path: '/sessions/$sessionId', component: () => <p>thread</p> })
-  const router = createRouter({ routeTree: rootRoute.addChildren([botRoute, threadRoute]), history: createMemoryHistory({ initialEntries: ['/bots/panel'] }) })
+  const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, botRoute, threadRoute]), history: createMemoryHistory({ initialEntries: ['/bots'] }) })
   const root = createRoot(element)
   // The app renders in StrictMode, which mounts every component twice in
   // development; the panel must work the same way here.
@@ -153,7 +158,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const end = Date.now() + 5000
     while (!check()) {
       if (Date.now() > end) {
-        throw new Error(`Bot panel: ${what}`)
+        throw new Error(`Bot panel: ${what}; path=${router.state.location.pathname}`)
       }
       await new Promise((resolve) => setTimeout(resolve, 20))
     }
@@ -191,6 +196,21 @@ export async function exerciseBotPanel(): Promise<void> {
   const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:last-child')].map((node) => node.textContent)
 
   try {
+    await until('a fresh Bots page did not focus its first bot', () => router.state.location.pathname === '/bots/asking' && element.querySelector('a[href="/bots/asking"]')?.getAttribute('aria-current') === 'page')
+    await capture('bot-first-selected')
+    localStorage.setItem('jaz.lastBot', 'busy')
+    await router.navigate({ to: '/bots' })
+    await until('Bots did not restore the remembered selection', () => router.state.location.pathname === '/bots/busy')
+    localStorage.setItem('jaz.lastBot', 'removed')
+    const listed = client.getQueryData(botsQuery.queryKey)!
+    client.setQueryData(botsQuery.queryKey, listed.map((item) => ({ ...item, pinned: item.id === 'busy' ? 1 : 2 })))
+    await router.navigate({ to: '/bots' })
+    await until('an unavailable remembered bot did not fall back to the first pin', () => router.state.location.pathname === '/bots/busy' && element.querySelector('a[href="/bots/busy"]')?.getAttribute('aria-current') === 'page')
+    client.setQueryData(botsQuery.queryKey, [])
+    await router.navigate({ to: '/bots' })
+    await until('an empty Bots page did not keep its creation control', () => router.state.location.pathname === '/bots' && Boolean(find('New bot')))
+    client.setQueryData(botsQuery.queryKey, listed)
+    await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     dark(false)
     await until('Activity did not open with tasks and history', () => find('Activity')?.getAttribute('aria-pressed') === 'true' && text().includes('Open Tasks 7') && text().includes('Learned something new'))
     if (find('Tasks') || !find('Activity')?.textContent?.includes('Activity')) {
@@ -410,6 +430,8 @@ export async function exerciseBotPanel(): Promise<void> {
       await until('a moving task waited longer than the active polling interval to refresh', () => taskStates().includes('Blocked by Human'))
     }
   } finally {
+    if (originalLastBot === null) localStorage.removeItem('jaz.lastBot')
+    else localStorage.setItem('jaz.lastBot', originalLastBot)
     dark(wasDark)
     root.unmount()
     element.remove()
