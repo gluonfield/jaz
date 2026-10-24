@@ -354,38 +354,47 @@ func (r fakeAdapterResolver) ResolveAdapter(context.Context, string) (acp.Adapte
 	return r.launch, nil
 }
 
-func TestManagerSpawnsManagedCodexAdapterWithNativeGoalsDisabled(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := acp.NewManager(store, acp.Config{
-		Root:      t.TempDir(),
-		Workspace: t.TempDir(),
-		Adapters: fakeAdapterResolver{launch: acp.AdapterLaunch{
-			Command: os.Args[0],
-			Args:    []string{"-test.run=TestFakeACPAgentProcess"},
-		}},
-		Agents: map[string]acp.AgentConfig{
-			acp.AgentCodex: {
-				ManagedAdapter: "fake",
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":                       "1",
-					"JAZ_FAKE_ACP_EXPECT_CODEX_GOALS_DISABLED": "1",
+func TestManagerSpawnsManagedCodexAdapterWithNativeGoalsUnchanged(t *testing.T) {
+	for _, goals := range []string{"unset", "true", "false"} {
+		t.Run(goals, func(t *testing.T) {
+			config := "{}"
+			if goals != "unset" {
+				config = `{"features":{"goals":` + goals + `}}`
+			}
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			manager := acp.NewManager(store, acp.Config{
+				Root:      t.TempDir(),
+				Workspace: t.TempDir(),
+				Adapters: fakeAdapterResolver{launch: acp.AdapterLaunch{
+					Command: os.Args[0],
+					Args:    []string{"-test.run=TestFakeACPAgentProcess"},
+				}},
+				Agents: map[string]acp.AgentConfig{
+					acp.AgentCodex: {
+						ManagedAdapter: "fake",
+						Env: map[string]string{
+							"JAZ_FAKE_ACP_AGENT":              "1",
+							"JAZ_FAKE_ACP_EXPECT_CODEX_GOALS": goals,
+							"CODEX_CONFIG":                    config,
+						},
+					},
 				},
-			},
-		},
-	}, log.New(io.Discard))
+			}, log.New(io.Discard))
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "managed-codex"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	if spawned.State != acp.StateIdle {
-		t.Fatalf("spawn state = %s, want %s", spawned.State, acp.StateIdle)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentCodex, Slug: "managed-codex"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
+			if spawned.State != acp.StateIdle {
+				t.Fatalf("spawn state = %s, want %s", spawned.State, acp.StateIdle)
+			}
+		})
 	}
 }
 
