@@ -2,6 +2,8 @@ import { ArrowRight } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { SystemPermission } from '@shared/systemPermissions'
 import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
+import { PresetSwatches } from '@/components/settings/ColorThemeSettings'
+import { ThemeModePicker } from '@/components/settings/ThemeModePicker'
 import { Button } from '@/components/ui/Button'
 import { type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
 
@@ -44,11 +46,29 @@ function heroGlow(g: Parameters<Silhouette>[0], w: number, h: number) {
 }
 
 // The setup slides in order; the last one finishes setup.
-export const SETUP_STEPS: SetupStep[] = ['agents', 'memory', 'connections', 'computer', 'voice', 'loops']
+export const SETUP_STEPS: SetupStep[] = ['appearance', 'agents', 'memory', 'connections', 'computer', 'voice', 'loops']
 
 // Everything that defines a setup slide lives in this one table: the dithered
 // hero mark, the copy, and the system permissions it asks for.
 export const SLIDES: Record<SetupStep, { motif: Silhouette; title: string; subtitle: string; permissions?: SystemPermission[] }> = {
+  appearance: {
+    title: 'Make it yours',
+    subtitle: 'Pick a mode and a color. Fine-tune both any time in Settings.',
+    motif: (g, w, h) => {
+      heroGlow(g, w, h)
+      const disc = new Path2D()
+      disc.arc(w * 0.5, h * 0.5, h * 0.32, 0, Math.PI * 2)
+      // The glow is cut from the disc so its empty half reads as empty.
+      g.globalCompositeOperation = 'destination-out'
+      g.fill(disc)
+      g.globalCompositeOperation = 'source-over'
+      g.lineWidth = h * 0.1
+      g.stroke(disc)
+      g.beginPath()
+      g.arc(w * 0.5, h * 0.5, h * 0.32, -Math.PI / 2, Math.PI / 2)
+      g.fill()
+    },
+  },
   agents: {
     title: 'Connect your agents',
     subtitle: 'jaz runs on the coding agents you already use.',
@@ -170,6 +190,20 @@ export function slideFooter(
     nextLabel: step === 'loops' ? 'Launch jaz' : state.skippable ? 'Skip for now' : 'Continue',
     nextDisabled: step === 'agents' ? !state.canContinue : step === 'memory' ? !state.memoryReady : false,
   }
+}
+
+// The mode tiles are miniature windows in the chosen colour, so a palette
+// pick previews there and across the whole slide at once.
+export function ThemeChoice() {
+  return (
+    <>
+      <ThemeModePicker />
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-[14px] bg-surface p-3.5">
+        <p className="text-[13.5px] font-medium text-ink">Color</p>
+        <PresetSwatches />
+      </div>
+    </>
+  )
 }
 
 // Two miniature product mocks instead of prose: a loop schedule and the live

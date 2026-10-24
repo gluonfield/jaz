@@ -20,7 +20,7 @@ const SPAN = 58
 const radius = (strength: number) => INNER + strength * SPAN
 const clampStrength = (strength: number) => Math.min(1, Math.max(0.1, strength))
 
-// Hues at one lightness per mode (--wheel-l on the card), so they read like the wash.
+// Hues at one lightness per mode (--wheel-l in globals.css), so they read like the wash.
 const swatch = (hue: number, chroma: number) => `oklch(var(--wheel-l) ${chroma} ${hue})`
 const WHEEL_BACKGROUND = `radial-gradient(circle, var(--color-surface), transparent 72%), conic-gradient(${Array.from(
   { length: 13 },
@@ -125,6 +125,31 @@ function presetBackground(hue: number, colors: number) {
   return `linear-gradient(135deg, ${stops.join(', ')})`
 }
 
+export function PresetSwatches() {
+  const theme = useColorTheme()
+  return (
+    <div className="flex gap-1.5">
+      {THEME_PRESETS.map((preset) => {
+        const active = presetMatches(preset, theme)
+        return (
+          <button
+            key={preset.id}
+            type="button"
+            aria-label={preset.label}
+            aria-pressed={active}
+            title={preset.label}
+            onClick={() => applyPreset(preset)}
+            style={{ background: presetBackground(preset.hue, preset.colors) }}
+            className={`size-[22px] cursor-pointer rounded-full ${
+              active ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface' : 'ring-1 ring-inset ring-black/10'
+            }`}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 const STEP_BUTTON =
   'grid size-7 cursor-pointer place-items-center rounded-[7px] text-ink-2 transition-colors duration-150 hover:bg-bg hover:text-ink disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent'
 
@@ -148,31 +173,13 @@ export function ColorThemeSettings() {
         </button>
       </div>
 
-      <SettingsCard className="mt-4 grid overflow-hidden [--wheel-l:0.8] md:grid-cols-[208px_minmax(0,1fr)] dark:[--wheel-l:0.56]">
+      <SettingsCard className="mt-4 grid overflow-hidden md:grid-cols-[208px_minmax(0,1fr)]">
         <div className="grid place-items-center border-border p-4 max-md:border-b md:border-r">
           <ColorWheel theme={theme} />
         </div>
         <div className="grid md:grid-rows-3">
           <SettingsRow title="Palette" description="Tuned starting points.">
-            <div className="flex gap-1.5">
-              {THEME_PRESETS.map((preset) => {
-                const active = presetMatches(preset, theme)
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    aria-label={preset.label}
-                    aria-pressed={active}
-                    title={preset.label}
-                    onClick={() => applyPreset(preset)}
-                    style={{ background: presetBackground(preset.hue, preset.colors) }}
-                    className={`size-[22px] cursor-pointer rounded-full ${
-                      active ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface' : 'ring-1 ring-inset ring-black/10'
-                    }`}
-                  />
-                )
-              })}
-            </div>
+            <PresetSwatches />
           </SettingsRow>
           <SettingsRow title="Colors" description="Linked: move one and the others turn with it.">
             <div className="flex items-center gap-0.5 rounded-[9px] bg-surface-2 p-0.5">

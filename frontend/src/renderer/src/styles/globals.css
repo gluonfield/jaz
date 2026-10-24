@@ -89,8 +89,10 @@
 :root {
   color-scheme: light;
 
-  /* The washes sit at one lightness per mode, so every hue reads. */
+  /* The washes sit at one lightness per mode, so every hue reads; the
+   * Appearance swatches and wheel sit at their own. */
   --wash-l: 0.8;
+  --wheel-l: 0.8;
 
   --thread-max: 760px;
   --prose-max: 80ch;
@@ -173,6 +175,7 @@
   --color-surface: oklch(0.235 0.006 var(--hue));
   --color-surface-2: oklch(0.28 0.008 var(--hue));
   --wash-l: 0.46;
+  --wheel-l: 0.56;
   --color-list-hover: color-mix(in oklab, var(--color-ink) 8%, transparent);
   --color-list-active: color-mix(in oklab, var(--color-ink) 16%, transparent);
 

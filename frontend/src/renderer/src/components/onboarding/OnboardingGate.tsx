@@ -27,7 +27,7 @@ import {
 } from './OnboardingParts'
 import { SystemPermissionRows } from '@/components/settings/SystemPermissionRows'
 import { hasSystemPermissions, useSystemPermissions } from '@/lib/systemPermissions'
-import { LoopsBoardsShowcase, SETUP_STEPS, SLIDES, WelcomeStep, slideFooter } from './OnboardingSlides'
+import { LoopsBoardsShowcase, SETUP_STEPS, SLIDES, ThemeChoice, WelcomeStep, slideFooter } from './OnboardingSlides'
 
 const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'kimi', 'opencode', 'antigravity', 'grok']
 
@@ -133,6 +133,7 @@ function OnboardingScreen({
   const readyAgents = useMemo(() => new Set(readyAgentNames), [readyAgentNames])
   const canContinue = readyAgentNames.length > 0
   const memoryReady = !memoryEnabled || memoryAgent.trim() !== ''
+  const position = STEPS.findIndex((value) => value === step)
 
   useEffect(() => {
     setMemoryEnabled(status.memory?.enabled ?? true)
@@ -143,8 +144,8 @@ function OnboardingScreen({
   }, [readyAgentNames, status.memory?.agent])
 
   useEffect(() => {
-    if (!canContinue && step !== 'welcome' && step !== 'agents') setStep('agents')
-  }, [canContinue, step])
+    if (!canContinue && position > STEPS.indexOf('agents')) setStep('agents')
+  }, [canContinue, position])
 
   useEffect(() => {
     if (!adapterPreparing) return
@@ -200,7 +201,6 @@ function OnboardingScreen({
     },
   })
 
-  const position = STEPS.findIndex((value) => value === step)
   const next = STEPS[position + 1]
   const slide = step === 'welcome' ? null : SLIDES[step]
   const permissions = slide?.permissions
@@ -212,7 +212,7 @@ function OnboardingScreen({
   return (
     <AnimatePresence mode="wait">
       {!slide || !footer ? (
-        <WelcomeStep key="welcome" onStart={() => setStep('agents')} />
+        <WelcomeStep key="welcome" onStart={() => setStep(STEPS[0])} />
       ) : (
         <motion.div
           key={step}
@@ -223,7 +223,7 @@ function OnboardingScreen({
           className="flex w-full max-w-[460px] flex-col items-center"
         >
         <motion.div variants={slideRise}>
-          <DitherArt draw={slide.motif} cols={104} rows={34} delay={0.1} />
+          <DitherArt draw={slide.motif} cols={104} rows={34} delay={0.1} buildKey={`onboarding-${step}`} />
         </motion.div>
         <motion.h1
           variants={slideRise}
@@ -239,7 +239,9 @@ function OnboardingScreen({
         </motion.p>
 
         <motion.div variants={slideRise} className="mt-7 w-full">
-          {step === 'agents' ? (
+          {step === 'appearance' ? (
+            <ThemeChoice />
+          ) : step === 'agents' ? (
             <AgentList
               probes={onboardingProbes}
               remote={remote}
