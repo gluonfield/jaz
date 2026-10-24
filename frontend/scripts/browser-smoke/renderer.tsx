@@ -35,6 +35,7 @@ import { exerciseCanvas } from './canvas'
 import { exerciseImages } from './images'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
+import { exerciseConnectionSecurity } from './connection-security'
 
 declare global {
   interface Window {
@@ -88,6 +89,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'connection-security') {
+        progress('host device administration and saved MCP credentials')
+        await exerciseConnectionSecurity()
+        if (suite === 'connection-security') {
+          window.smoke.result({ ok: true, checks: ['host-only device management and saved-secret edit/removal at desktop and phone widths'] })
+          return
+        }
+      }
       if (suite === 'bot-panel') {
         progress('bot sidebar tasks, activity, routines and identity')
         await exerciseBotPanel()
@@ -192,7 +201,7 @@ function Fixture() {
       progress('readable button text in every colour theme')
       await exerciseAccentText()
       if (new URLSearchParams(location.search).get('suite') === 'model-picker') {
-        window.smoke.result({ ok: true, checks: ['Tab-only focus rings; Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence; existing composer pending settings survive menu closure and await refreshed state; every colour theme keeps readable button text in both modes'] })
+        window.smoke.result({ ok: true, checks: ['Tab-only focus rings; Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence; existing composer pending settings survive menu closure and await refreshed state; every hue and graphite keep readable button text in both modes'] })
         return
       }
       progress('cancellation while opening the browser panel')

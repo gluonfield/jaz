@@ -1,0 +1,62 @@
+<style>
+.security-review{font:16px/1.7 var(--font-sans,system-ui,sans-serif);color:var(--color-text-primary,CanvasText);max-width:960px;margin:auto}
+.security-review h2{font-size:18px;font-weight:500;margin:20px 0 8px}.security-review p{margin:8px 0}.security-review .muted{color:var(--color-text-secondary,GrayText)}
+.security-review table{width:100%;border-collapse:collapse;font-size:14px}.security-review th{text-align:left;font-weight:500}.security-review th,.security-review td{padding:12px 8px;border-bottom:1px solid var(--color-border-tertiary,GrayText);vertical-align:top}
+.security-review summary{cursor:pointer;font-weight:500}.security-review details p{font-size:14px}.security-review code{font:12px/1.6 var(--font-mono,monospace);overflow-wrap:anywhere}.security-review .sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+</style>
+<article class="security-review">
+<h2 class="sr-only">Jaz connection security: pairing, credential storage and direct device-administration fixes are active locally.</h2>
+<h2>Connection security follow-up</h2>
+<p class="muted">24 October 2026 · Audit source 133d2517 · Fixes active on local main a077136e</p>
+<p>The findings below record the follow-up audit. Augustinas authorised their correction; pairing, credential storage and direct device-administration fixes are implemented, verified and active locally. See requests-connection-security-followup.md for delivery evidence.</p>
+<h2>Findings addressed</h2>
+<table>
+<thead><tr><th>Priority</th><th>Finding, evidence and correction</th></tr></thead>
+<tbody>
+<tr><td>Medium</td><td><details><summary>1. Old pairing approval survives revocation and re-enrollment</summary>
+<p>An approved pairing proof that has never been redeemed remains usable until its original ten-minute expiry. After revoking and re-enrolling the same device, that old proof can obtain a new valid bearer credential and invalidate the freshly issued credential.</p>
+<p>Reproduced with the real device service and SQLite adapter: approve without claiming → revoke → re-enroll the same identity → redeem the old proof. The old proof succeeded and the fresh bearer stopped authenticating. This requires a previously approved, unclaimed proof and reapproval of the same identity inside ten minutes; it does not let arbitrary pending requests bypass approval.</p>
+<p>The fix invalidates outstanding pairing authorizations atomically whenever a device is revoked or its credential is replaced. Exchange consumes its own grant and invalidates older grants.</p>
+<p><code>backend/internal/storage/sqlite/pairings.go</code><br><code>backend/internal/storage/sqlite/queries/devices/devices.sql</code></p>
+</details></td></tr>
+<tr><td>Medium</td><td><details><summary>2. Anonymous pairing can overwrite a known approved device’s identity display</summary>
+<p>When the target’s public key and derived device ID are known, an unauthenticated pairing request can change that approved device’s name, kind, platform and other profile fields. The endpoint verifies the public-key hash but requires no private-key proof. The approved status and existing bearer remain valid.</p>
+<p>Reproduced through the production HTTP router and handler against an isolated database: an anonymous request returned 202 and changed an approved phone into the supplied desktop name/type. This is an integrity and approval-confusion defect; this test did not obtain access without approval or discover real device keys.</p>
+<p>The proposed identity/profile now lives on the pairing request. The canonical device changes only after approval and successful credential exchange.</p>
+<p><code>backend/internal/storage/sqlite/pairings.go</code><br><code>backend/internal/storage/sqlite/queries/devices/devices.sql</code></p>
+</details></td></tr>
+<tr><td>Medium</td><td><details><summary>3. Public pairing admission has no application-level bound</summary>
+<p>The unauthenticated pairing endpoint persists devices and requests without a rate limit, pending-request cap or periodic retention policy in this path. Listing retrieves all records; the UI treats every stored pending status as pending, including requests whose deadline has elapsed without another operation updating their status.</p>
+<p>A bounded isolated run accepted all 24 successive anonymous requests with distinct identities and persisted all 24. Live testing used invalid input only and returned the origin’s validation error through the tunnel. No live flood or availability test was performed; Cloudflare account-wide WAF/rate-limit policy was not audited.</p>
+<p>Admission is now atomic and bounded to five requests per minute globally and 32 unexpired outstanding grants, with 24-hour retention. HTTP rejection returns 429 and Retry-After. Expired requests display as expired.</p>
+<p><code>backend/internal/deviceauth/service.go</code><br><code>backend/internal/storage/sqlite/pairings.go</code></p>
+</details></td></tr>
+<tr><td>Medium, conditional</td><td><details><summary>4. Manually entered MCP bearer tokens and literal headers remain plaintext</summary>
+<p>The OAuth token store is encrypted, but the manual MCP configuration path writes bearer tokens and literal header values directly into SQLite.</p>
+<p>A dummy inactive server saved through CreateMCPServer had its dummy bearer and X-Api-Key header readable verbatim from the database. No provider was contacted. The live database currently contains zero manual MCP records, so this path exposed no current credential in this review.</p>
+<p>Manual MCP bearer/header fields now use the existing encrypted credential store, including atomic migration of existing rows. HTTP reads return saved-value presence flags. Omitted secrets are retained for the same endpoint; explicit empty values clear them.</p>
+<p><code>backend/internal/storage/sqlite/secrets.go</code><br><code>backend/internal/httpapi/mcp/settings.go</code></p>
+</details></td></tr>
+</tbody>
+</table>
+<h2>Original device authority</h2>
+<p>Before this correction, every approved device could use privileged APIs and create an invitation that immediately approved another device. In an isolated run, a phone enrolled a successor; revoking the phone left the successor active. This was distinct from the pairing defects above.</p>
+<p>A stolen phone bearer still grants powerful terminal and connected-account access. Direct device administration now requires the local host credential. Previously enrolled successors require their own revocation.</p>
+<p><code>backend/internal/deviceauth/invitations.go:12</code><br><code>backend/internal/httpapi/devices/handler.go:117</code><br><code>backend/internal/server/terminal.go:44</code></p>
+<p>The implementation now requires the local host credential for direct enrollment, approval and revocation APIs. Normal phone chat and agent access remains high trust and provides powerful computer access.</p>
+<h2>Controls verified</h2>
+<table>
+<thead><tr><th>Boundary</th><th>Observed result</th></tr></thead>
+<tbody>
+<tr><td>Local listener</td><td>127.0.0.1:5299; named tunnel forwards to localhost:5299.</td></tr>
+<tr><td>Local and public HTTP</td><td>Health 200; unauthenticated session, device-list and MCP requests 401; forged extension Origin 401; untrusted website Origin 403.</td></tr>
+<tr><td>Owner management</td><td>Local host credential returns 200 with management capability; adding forwarding headers returns 403. Ordinary-client administration denial is covered by production-route tests.</td></tr>
+<tr><td>Credential preservation</td><td>All 12 device credentials, six encrypted OAuth records, original encryption key and host credential are unchanged after live migration 77→79. All six OAuth records decrypt. Runtime directory 0700; database, WAL and keys 0600.</td></tr>
+<tr><td>Verification</td><td>Full Go 1.26 suite/vet and focused races pass; 366 frontend tests, typecheck/lint, builds and hidden desktop/phone-width settings journeys pass. A real isolated MCP server accepts saved bearer/header credentials before and after encrypted storage reopens.</td></tr>
+</tbody>
+</table>
+<h2>Scope and evidence</h2>
+<p>Live migration preserves settings and device credentials; private backups are retained. Successful enrollment, revocation, profile changes and dummy-secret storage were exercised only in an isolated database with production components. All scratch servers exited. No paid native agent experiments, consequential connector actions, login/refresh flows or physical-phone tests were launched.</p>
+<p>Evidence: <code>runs/connection-security-followup/active-http.json</code>, <code>active-state.json</code>, <code>migration-evidence.json</code>, <code>isolated-evidence.jsonl</code> and verification logs. The request ledger records the complete checks. These local evidence files are gitignored.</p>
+<p>The earlier report’s four High and three Medium findings describe the pre-fix version. Its backend/desktop protections are present in this source and the bounded live checks above. Physical iOS installation and the composed extension checkout update remain unverified. No incident or actual credential theft was established.</p>
+</article>

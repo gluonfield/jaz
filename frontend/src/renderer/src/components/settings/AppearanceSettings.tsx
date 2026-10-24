@@ -6,7 +6,6 @@ import { isHomeLogoUrl } from '@/lib/homeWordmark'
 import { ColorThemeSettings } from './ColorThemeSettings'
 import { FontPicker } from './FontPicker'
 import { SettingsCard, SettingsRow as Row } from './SettingsCard'
-import { ThemeModePicker } from './ThemeModePicker'
 
 const SIZE_LABELS: Record<number, string> = {
   0.9: 'Small',
@@ -63,11 +62,7 @@ export function AppearanceSettings() {
     <section className="py-4">
       <p className="text-sm font-medium text-ink">Appearance</p>
 
-      <div className="mt-4">
-        <ThemeModePicker />
-      </div>
-
-      <SettingsCard className="mt-5 overflow-hidden">
+      <SettingsCard className="mt-4 overflow-hidden">
         <Row
           title="Animated effects"
           description="The glow around the composer, shimmer dots and particle fields. Off swaps the glow for a calm border."

@@ -8,12 +8,13 @@ import { resolvePreviewPatterns } from '../../../shared/preview'
 // always layer on top. Read once at module load; lib/appearance.ts and lib/theme.ts
 // fold it under the user's stored prefs, and the pre-paint script in index.html
 // reads the same global.
-// The default colour theme (all fields optional): a built-in preset id with any
-// of its values overridden. lib/appearanceScheme.ts validates it.
+// The default colour theme (all fields optional, see ColorTheme in
+// lib/appearanceScheme.ts, which validates it).
 export interface ColorThemeConfig {
-  preset?: string
   hue?: number
   colors?: number
+  harmony?: number
+  saturation?: number
   strength?: number
   grain?: number
 }

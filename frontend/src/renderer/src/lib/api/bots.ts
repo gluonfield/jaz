@@ -43,8 +43,8 @@ export const botActivityQuery = (botId: string) =>
   queryOptions({
     queryKey: keys.botActivity(botId),
     queryFn: async () => {
-      const activity = await get<{ items: BotActivity[] | null; owed: BotOwed[] | null; started: Record<string, BotStartedThread[]> | null }>(`/v1/bots/${botId}/activity`)
-      return { items: activity.items ?? [], owed: activity.owed ?? [], started: activity.started ?? {} }
+      const activity = await get<{ items: (BotActivity | { kind: 'commitment' })[] | null; owed: BotOwed[] | null; started: Record<string, BotStartedThread[]> | null }>(`/v1/bots/${botId}/activity`)
+      return { items: (activity.items ?? []).filter((item) => item.kind !== 'commitment'), owed: activity.owed ?? [], started: activity.started ?? {} }
     },
     refetchInterval: (query) => {
       const data = query.state.data

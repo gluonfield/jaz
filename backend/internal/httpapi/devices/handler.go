@@ -37,6 +37,7 @@ type listResponse struct {
 	Devices         []deviceDTO  `json:"devices"`
 	Pairings        []pairingDTO `json:"pairings"`
 	CurrentDeviceID string       `json:"current_device_id,omitempty"`
+	CanManage       bool         `json:"can_manage"`
 }
 
 type connectionLinkResponse struct {
@@ -91,6 +92,9 @@ func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) UpdateConnectionLink(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
 	var input connectionLinkInput
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
@@ -149,6 +153,7 @@ func (h Handler) List(w http.ResponseWriter, r *http.Request) {
 		Devices:         deviceDTOs(devices),
 		Pairings:        pairingDTOs(pairings),
 		CurrentDeviceID: principal.DeviceID,
+		CanManage:       principal.Kind == deviceauth.PrincipalRoot,
 	})
 }
 
@@ -204,6 +209,9 @@ func (h Handler) Pairing(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusNotFound, err)
 		return
 	}
+	if action != "" && !requireOwner(w, r) {
+		return
+	}
 	switch {
 	case r.Method == http.MethodGet && action == "":
 		h.pollPairing(w, r, id)
@@ -219,6 +227,9 @@ func (h Handler) Pairing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h Handler) Revoke(w http.ResponseWriter, r *http.Request) {
+	if !requireOwner(w, r) {
+		return
+	}
 	id := strings.TrimSpace(r.PathValue("id"))
 	if id == "" {
 		httpapi.WriteError(w, http.StatusNotFound, fmt.Errorf("not found"))
@@ -325,7 +336,16 @@ func deviceNameFromHeader(r *http.Request, fallback string) string {
 }
 
 func writeDeviceAuthError(w http.ResponseWriter, err error) {
-	if errors.Is(err, deviceauth.ErrUnauthorized) || errors.Is(err, deviceauth.ErrForbidden) {
+	if errors.Is(err, storage.ErrPairingLimit) {
+		w.Header().Set("Retry-After", "60")
+		httpapi.WriteError(w, http.StatusTooManyRequests, err)
+		return
+	}
+	if errors.Is(err, deviceauth.ErrForbidden) {
+		httpapi.WriteError(w, http.StatusForbidden, err)
+		return
+	}
+	if errors.Is(err, deviceauth.ErrUnauthorized) {
 		httpapi.WriteError(w, http.StatusUnauthorized, err)
 		return
 	}
@@ -334,6 +354,15 @@ func writeDeviceAuthError(w http.ResponseWriter, err error) {
 		return
 	}
 	httpapi.WriteError(w, http.StatusInternalServerError, err)
+}
+
+func requireOwner(w http.ResponseWriter, r *http.Request) bool {
+	principal, _ := deviceauth.PrincipalFromContext(r.Context())
+	if principal.Kind != deviceauth.PrincipalRoot {
+		httpapi.WriteError(w, http.StatusForbidden, fmt.Errorf("manage devices from the host computer"))
+		return false
+	}
+	return true
 }
 
 func pairingPath(path string) (string, string, error) {

@@ -420,6 +420,7 @@ export interface DeviceList {
   devices: Device[]
   pairings: DevicePairing[]
   current_device_id?: string
+  can_manage?: boolean
 }
 
 export interface DeviceConnectionLink {
@@ -774,7 +775,7 @@ export interface BotActivityEvent {
 // running item started, or else when it happened or ended; `title` names the
 // side chat, routine, other bot or file.
 export interface BotActivity {
-  kind: 'side_chat' | 'routine' | 'commitment' | 'message_sent' | 'message_received' | 'file_changed' | 'file_edited'
+  kind: 'side_chat' | 'routine' | 'message_sent' | 'message_received' | 'file_changed' | 'file_edited'
   at: string
   running?: boolean
   title: string
@@ -782,8 +783,6 @@ export interface BotActivity {
   status?: string
   thread_id?: string
   loop_id?: string
-  // The bot a closed commitment was owed to; none for you.
-  for?: string
 }
 
 // A side chat that another of the bot's side chats started, listed under it.
@@ -799,6 +798,8 @@ export interface BotOwed {
   next?: string
   status: 'pending' | 'in_progress' | 'waiting_for_user'
   question_seq?: number
+  reply_seq?: number
+  check_at?: string
   depends_on?: number[]
   blocked?: boolean
   moving?: boolean
@@ -1161,6 +1162,7 @@ export interface MCPHeader {
   name: string
   value?: string
   envvar?: string
+  value_set?: boolean
 }
 
 export interface MCPOAuthConfig {
@@ -1177,6 +1179,7 @@ export interface MCPServer {
   enabled: boolean
   bearer_token_env_var?: string
   bearer_token?: string
+  bearer_token_set?: boolean
   headers?: MCPHeader[]
   oauth?: MCPOAuthConfig
   status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'

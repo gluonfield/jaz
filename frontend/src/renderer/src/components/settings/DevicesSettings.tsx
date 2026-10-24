@@ -26,7 +26,8 @@ export function DevicesSettings() {
   const toast = useToast()
   const [addOpen, setAddOpen] = useState(false)
   const devices = useQuery(devicesQuery)
-  const connectionLink = useQuery(deviceConnectionLinkQuery)
+  const canManage = devices.data?.can_manage === true
+  const connectionLink = useQuery({ ...deviceConnectionLinkQuery, enabled: canManage })
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.devices })
 
   const approve = useMutation({
@@ -61,20 +62,20 @@ export function DevicesSettings() {
           <p className="text-sm font-medium text-ink">Devices</p>
           <p className="mt-0.5 text-[13px] text-ink-2">Desktop and mobile clients allowed to use this backend.</p>
         </div>
-        <Button variant="secondary" size="md" onClick={() => {
+        {canManage ? <Button variant="secondary" size="md" onClick={() => {
           void connectionLink.refetch()
           setAddOpen(true)
         }}>
           <Plus size={14} />
           Add device
-        </Button>
+        </Button> : null}
       </div>
 
-      <ConnectionAddressSettings
+      {canManage ? <ConnectionAddressSettings
         connection={connectionLink.data}
         loading={connectionLink.isPending}
         error={connectionLink.error?.message}
-      />
+      /> : <p className="mt-3 text-[13px] text-ink-2">Manage devices from the host computer.</p>}
 
       <div className="mt-5">
         {devices.isPending ? (
@@ -83,7 +84,7 @@ export function DevicesSettings() {
           <p className="py-2 text-[13px] text-danger">{devices.error.message}</p>
         ) : (
           <div className="space-y-4">
-            {pending.length > 0 ? (
+            {canManage && pending.length > 0 ? (
               <DeviceGroup title="Pending approval">
                 {pending.map((pairing) => (
                   <PendingRow
@@ -107,7 +108,7 @@ export function DevicesSettings() {
                     device={device}
                     current={device.id === data?.current_device_id}
                     busy={busy}
-                    onRevoke={() => revoke.mutate(device.id)}
+                    onRevoke={canManage ? () => revoke.mutate(device.id) : undefined}
                   />
                 ))
               )}
@@ -391,7 +392,7 @@ function DeviceRow({
   return (
     <div className="grid grid-cols-1 gap-3 bg-surface px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
       <DeviceSummary device={device} detail={detail} current={current} />
-      {!revoked ? (
+      {!revoked && onRevoke ? (
         <div className="flex items-center gap-1.5 md:justify-self-end">
           <Button size="sm" variant="danger" disabled={busy || current} onClick={onRevoke}>
             <Trash2 size={13} />

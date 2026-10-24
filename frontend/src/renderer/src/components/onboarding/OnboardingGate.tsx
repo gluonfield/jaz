@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, LoaderCircle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
-import { DitherArt, DitherTerrain, DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
+import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
 import { useToast } from '@/components/ui/toast'
 import { authProviderLabel } from '@/lib/agentLabel'
 import { connectionPluginsQuery } from '@/lib/api/connections'
@@ -22,18 +22,15 @@ import {
   MemoryCard,
   OnboardingFooter,
   type OnboardingStep,
-  onboardingEase,
   slideRise,
-  slideStagger,
-  slideExit,
 } from './OnboardingParts'
 import { SystemPermissionRows } from '@/components/settings/SystemPermissionRows'
 import { hasSystemPermissions, useSystemPermissions } from '@/lib/systemPermissions'
-import { BotTeam, SETUP_STEPS, SLIDES, ThemeChoice, WelcomeStep, slideFooter } from './OnboardingSlides'
+import { OnboardingStage } from './OnboardingStage'
+import { BotTeam } from './OnboardingBots'
+import { SETUP_STEPS, SLIDES, ThemeChoice, WelcomeStep, slideFooter } from './OnboardingSlides'
 
 const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'kimi', 'opencode', 'antigravity', 'grok']
-
-const NO_MOTIF: Silhouette = () => {}
 
 const STEPS = SETUP_STEPS.filter((step) => hasSystemPermissions || !SLIDES[step].permissions)
 
@@ -218,91 +215,11 @@ function OnboardingScreen({
       {!slide || !footer ? (
         <WelcomeStep key="welcome" onStart={() => setStep(STEPS[0])} />
       ) : (
-        // The hero and footer stay put across setup slides: the pixel art
-        // morphs into the next slide's mark (and away where a slide has
-        // none) while only the copy and controls between them change.
-        <motion.div
+        <OnboardingStage
           key="setup"
-          variants={slideStagger}
-          initial="hidden"
-          animate="show"
-          exit={slideExit}
-          className="relative flex min-h-[min(620px,calc(100vh-190px))] w-full max-w-[460px] flex-col items-center"
-        >
-          <motion.div
-            className="overflow-hidden"
-            initial={false}
-            animate={{ height: slide.motif ? 'auto' : 0, opacity: slide.motif ? 1 : 0 }}
-            transition={{ duration: 0.45, ease: onboardingEase }}
-          >
-            <DitherArt draw={slide.motif ?? NO_MOTIF} cols={104} rows={34} delay={0.1} buildKey="onboarding-hero" />
-          </motion.div>
-          <AnimatePresence mode="popLayout">
-            <motion.div
-              key={step}
-              variants={slideStagger}
-              initial="hidden"
-              animate="show"
-              exit={slideExit}
-              className="flex w-full flex-col items-center"
-            >
-              <motion.h1
-                variants={slideRise}
-                className="mt-6 text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
-              >
-                {slide.title}
-              </motion.h1>
-              <motion.p
-                variants={slideRise}
-                className="mt-2 max-w-[360px] text-center text-pretty text-[13px] leading-relaxed text-ink-2"
-              >
-                {slide.subtitle}
-              </motion.p>
-
-              <motion.div variants={slideRise} className="mt-7 w-full">
-                {step === 'appearance' ? (
-                  <ThemeChoice />
-                ) : step === 'agents' ? (
-                  <AgentList
-                    probes={onboardingProbes}
-                    remote={remote}
-                    acpKeysByAgent={acpKeysByAgent}
-                    loginJobs={loginJobs}
-                    loginPending={login.isPending ? login.variables?.agent : undefined}
-                    preparePending={prepare.isPending ? prepare.variables : undefined}
-                    onPrepare={(agent) => prepare.mutate(agent)}
-                    onStartLogin={(agent) => {
-                      const auth = onboardingLoginAuth(agent, draft.acp[agent]?.auth)
-                      setDraft((current) => withAgentAuth(current, agent, auth))
-                      login.mutate({ agent, auth })
-                    }}
-                    onAPIKeyChange={(agent, value) => setACPKeysByAgent((keys) => ({ ...keys, [agent]: value }))}
-                  />
-                ) : step === 'memory' ? (
-                  <MemoryCard
-                    enabled={memoryEnabled}
-                    agent={memoryAgent}
-                    agents={readyAgentNames}
-                    onEnabledChange={setMemoryEnabled}
-                    onAgentChange={setMemoryAgent}
-                  />
-                ) : step === 'connections' ? (
-                  <ConnectionsList />
-                ) : permissions ? (
-                  <>
-                    <div className="divide-y divide-border rounded-[14px] bg-surface">
-                      <SystemPermissionRows permissions={permissions} />
-                    </div>
-                    <p className="mt-2.5 text-center text-[12px] text-ink-3">You can change these any time in Settings.</p>
-                  </>
-                ) : (
-                  <BotTeam />
-                )}
-              </motion.div>
-            </motion.div>
-          </AnimatePresence>
-
-          <motion.div variants={slideRise} className="mt-auto w-full">
+          step={step}
+          mark={slide.mark}
+          footer={
             <OnboardingFooter
               step={step}
               steps={STEPS}
@@ -313,8 +230,62 @@ function OnboardingScreen({
               onBack={() => setStep(STEPS[position - 1] ?? 'welcome')}
               onNext={() => (next ? setStep(next) : save.mutate())}
             />
+          }
+        >
+          <motion.h1
+            variants={slideRise}
+            className="mt-6 text-balance text-center text-[22px] font-semibold tracking-tight text-ink"
+          >
+            {slide.title}
+          </motion.h1>
+          <motion.p
+            variants={slideRise}
+            className="mt-2 max-w-[360px] text-center text-pretty text-[13px] leading-relaxed text-ink-2"
+          >
+            {slide.subtitle}
+          </motion.p>
+
+          <motion.div variants={slideRise} className="mt-7 w-full">
+            {step === 'appearance' ? (
+              <ThemeChoice />
+            ) : step === 'agents' ? (
+              <AgentList
+                probes={onboardingProbes}
+                remote={remote}
+                acpKeysByAgent={acpKeysByAgent}
+                loginJobs={loginJobs}
+                loginPending={login.isPending ? login.variables?.agent : undefined}
+                preparePending={prepare.isPending ? prepare.variables : undefined}
+                onPrepare={(agent) => prepare.mutate(agent)}
+                onStartLogin={(agent) => {
+                  const auth = onboardingLoginAuth(agent, draft.acp[agent]?.auth)
+                  setDraft((current) => withAgentAuth(current, agent, auth))
+                  login.mutate({ agent, auth })
+                }}
+                onAPIKeyChange={(agent, value) => setACPKeysByAgent((keys) => ({ ...keys, [agent]: value }))}
+              />
+            ) : step === 'memory' ? (
+              <MemoryCard
+                enabled={memoryEnabled}
+                agent={memoryAgent}
+                agents={readyAgentNames}
+                onEnabledChange={setMemoryEnabled}
+                onAgentChange={setMemoryAgent}
+              />
+            ) : step === 'connections' ? (
+              <ConnectionsList />
+            ) : permissions ? (
+              <>
+                <div className="divide-y divide-border rounded-[14px] bg-surface">
+                  <SystemPermissionRows permissions={permissions} />
+                </div>
+                <p className="mt-2.5 text-center text-[12px] text-ink-3">You can change these any time in Settings.</p>
+              </>
+            ) : (
+              <BotTeam />
+            )}
           </motion.div>
-        </motion.div>
+        </OnboardingStage>
       )}
     </AnimatePresence>
   )

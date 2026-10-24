@@ -92,7 +92,7 @@ func (s *Server) rootKeyHasFullAccess() bool {
 }
 
 func rootKeyAllowed(r *http.Request) bool {
-	return (r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register") || internalMCPRequest(r)
+	return r.URL.Path == "/v1/devices" || strings.HasPrefix(r.URL.Path, "/v1/devices/") || internalMCPRequest(r)
 }
 
 func trustedLocalRequest(r *http.Request) bool {

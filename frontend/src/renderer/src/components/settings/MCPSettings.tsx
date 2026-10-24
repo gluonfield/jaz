@@ -43,7 +43,7 @@ import { keys } from '@/lib/query/keys'
 import { mcpStatusText, mcpToolCountLabel } from './MCPSettingsFormatting'
 import { MCPToolsModal } from './MCPToolsModal'
 
-type Draft = MCPServerInput & { id?: string }
+type Draft = MCPServerInput & { id?: string; bearer_token_set?: boolean }
 type AuthorizeVariables = { id: string; authWindow: Window | null }
 
 function emptyDraft(): Draft {
@@ -65,7 +65,7 @@ function draftFromServer(server: MCPServer): Draft {
     url: server.url,
     enabled: server.enabled,
     bearer_token_env_var: server.bearer_token_env_var ?? '',
-    bearer_token: server.bearer_token ?? '',
+    bearer_token_set: server.bearer_token_set,
     headers: server.headers ?? [],
     oauth: server.oauth ?? {},
   }
@@ -487,10 +487,13 @@ function MCPServerForm({
         <Input
           type="password"
           autoComplete="off"
-          placeholder="Paste an API key"
+          placeholder={draft.bearer_token_set ? 'Saved token' : 'Paste an API key'}
           value={draft.bearer_token ?? ''}
           onChange={(event) => onChange({ ...draft, bearer_token: event.target.value })}
         />
+        {draft.bearer_token_set && draft.bearer_token === undefined ? (
+          <Button variant="ghost" size="sm" onClick={() => onChange({ ...draft, bearer_token: '', bearer_token_set: false })}>Remove saved token</Button>
+        ) : null}
       </Field>
 
       <div className="border-t border-border">
@@ -628,7 +631,7 @@ function HeaderEditor({
                 {isEnv ? 'Env' : 'Value'}
               </button>
               <Input
-                placeholder={isEnv ? 'ENV_VAR' : 'Value'}
+                placeholder={isEnv ? 'ENV_VAR' : header.value_set ? 'Saved value' : 'Value'}
                 value={isEnv ? (header.envvar ?? '') : (header.value ?? '')}
                 onChange={(event) =>
                   replaceHeader(

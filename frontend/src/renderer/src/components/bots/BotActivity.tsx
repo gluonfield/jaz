@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread, BotStartedThread } from '@/lib/api/types'
-import { BOT_FILE_LABELS, owedState } from '@/lib/bots'
+import { BOT_FILE_LABELS, taskStateLabel } from '@/lib/bots'
 import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/time'
 import { type ProviderSubagentView, subagentRunning } from '@/lib/providerSubagents'
 
@@ -66,11 +66,11 @@ export function BotActivity({
         <h3 className="mb-1 text-[13px] font-semibold text-ink">Open Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
         {!owed.length ? <p className="text-[13px] text-ink-3">No open tasks</p> : null}
         {owed.map((task) => {
-          const state = owedState(task)
+          const state = taskStateLabel(task)
           return (
             <button key={task.id} type="button" onClick={() => setShown(task.id)} className="-mx-2 flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 text-left transition-colors duration-150 hover:bg-list-hover">
-              <span role="img" aria-label={state.standing} title={state.standing} className={`size-1.5 shrink-0 rounded-full ${state.danger ? 'bg-danger' : 'bg-ink-3'}`} />
-              <span className="min-w-0 truncate text-[13px] font-medium text-ink">{task.request}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{task.request}</span>
+              <span className="shrink-0 text-[11px] text-ink-3">{state}</span>
             </button>
           )
         })}
@@ -103,8 +103,9 @@ const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Workin
 
 function OwedModal({ owed, started, now, onClose }: { owed: BotOwed; started: Started; now: number; onClose: () => void }) {
   return (
-    <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, owedState(owed).standing, `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
+    <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, taskStateLabel(owed), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
+        {owed.check_at ? <p>Check: {messageTime(owed.check_at)}</p> : null}
         {owed.next ? <p className="whitespace-pre-wrap wrap-break-word">Next: {owed.next}</p> : null}
         {owed.blocked && owed.depends_on?.length ? <p>Prerequisites: {owed.depends_on.map((id) => `#${id}`).join(', ')}</p> : null}
         {owed.threads?.length ? (
@@ -144,13 +145,6 @@ function row(item: BotActivity, index: number): Row {
         detail: item.status === 'error' ? item.text || 'Failed' : item.status === 'skipped' ? 'Skipped' : item.status === 'cancelled' ? 'Stopped' : 'Routine',
         danger: item.status === 'error',
         open: item.loop_id ? { routine: item.loop_id } : undefined,
-      }
-    case 'commitment':
-      return {
-        ...base,
-        title: item.title,
-        detail: item.status === 'completed' ? `Delivered to ${item.for ?? 'you'}` : `Cancelled · ${item.text}`,
-        open: item.thread_id ? { thread: item.thread_id } : undefined,
       }
     case 'message_sent':
     case 'message_received':

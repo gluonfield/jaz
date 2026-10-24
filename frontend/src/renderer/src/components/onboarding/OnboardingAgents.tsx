@@ -133,15 +133,6 @@ function AgentCard({
   const canPrepare = hasManagedInstall(probe) && !installReady(probe)
   const adapterProgress = state === 'downloading' ? adapterDownloadProgress(probe.managed_adapter) : undefined
   const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
-  const status = companionAppBlocked
-    ? `Needs ${onboardingAgentLabel(probe.agent)}`
-    : {
-        ready: '',
-        action: canLogin ? 'Sign in' : 'Add API key',
-        missing: 'Not installed',
-        downloading: 'Downloading',
-        failed: 'Download failed',
-      }[state]
   let missingDetail = ''
   if (companionAppBlocked) {
     missingDetail = `${probe.app_name || authProviderLabel(probe.agent)} is installed on ${agentHost}, but ${onboardingAgentLabel(probe.agent)} is not available to jaz.`
@@ -189,7 +180,14 @@ function AgentCard({
             <span
               className={`flex shrink-0 items-center gap-1 text-[12.5px] ${actionable ? 'font-medium text-ink-2' : 'text-ink-3'}`}
             >
-              {status}
+              {companionAppBlocked
+                ? `Needs ${onboardingAgentLabel(probe.agent)}`
+                : {
+                    action: canLogin ? 'Sign in' : 'Add API key',
+                    missing: 'Not installed',
+                    downloading: 'Downloading',
+                    failed: 'Download failed',
+                  }[state]}
               {actionable ? (
                 <ChevronDown
                   size={14}

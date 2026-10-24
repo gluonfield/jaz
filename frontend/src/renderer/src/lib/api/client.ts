@@ -214,9 +214,9 @@ function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
   return parsed.toString()
 }
 
-export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): Promise<Response> {
   assertBackendRelativePath(path, 'apiFetch')
-  return fetch(apiUrl(path), withAPIHeaders(init))
+  return fetch(`${url}${path}`, withAPIHeaders(init, url))
 }
 
 export function apiEventSourceUrl(path: string): string {

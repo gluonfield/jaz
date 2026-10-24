@@ -220,7 +220,7 @@ func TestUnfinishedTasksRetryWithoutDuplicateWakesAndKeepBackoffAcrossRestart(t 
 	finish()
 }
 
-func TestWaitingTaskRequiresADeliveredQuestionAndARealUserReplyReleasesIt(t *testing.T) {
+func TestWaitingTaskResumesOnlyItsDeliveredQuestionAfterARealUserReply(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -287,8 +287,20 @@ func TestWaitingTaskRequiresADeliveredQuestionAndARealUserReplyReleasesIt(t *tes
 		t.Fatal(err)
 	}
 	loaded, err = store.LoadCommitment(task.ID)
-	if err != nil || loaded.Status != storage.CommitmentPending || loaded.QuestionSeq != 0 {
-		t.Fatalf("user reply did not release the wait: %+v, %v", loaded, err)
+	if err != nil || loaded.Status != storage.CommitmentWaitingForUser || loaded.QuestionSeq != task.QuestionSeq || loaded.ReplySeq == 0 {
+		t.Fatalf("user reply must leave the task blocked with answer evidence: %+v, %v", loaded, err)
+	}
+	resume := storage.Commitment{ID: task.ID, BotID: bot.ID, Status: storage.CommitmentPending, QuestionSeq: task.QuestionSeq + 1}
+	if err := store.UpdateCommitment(resume); err == nil {
+		t.Fatal("a different question's receipt resumed the wait")
+	}
+	resume.QuestionSeq = task.QuestionSeq
+	if err := store.UpdateCommitment(resume); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadCommitment(task.ID)
+	if err != nil || loaded.Status != storage.CommitmentPending || loaded.QuestionSeq != 0 || loaded.ReplySeq != 0 {
+		t.Fatalf("explicit resume = %+v, %v", loaded, err)
 	}
 	if err := store.UpdateCommitment(task); err == nil {
 		t.Fatal("a stale update reinstated an answered question")
@@ -369,7 +381,7 @@ func TestTaskDependenciesBlockExecutionAndRejectCyclesOrOtherBots(t *testing.T) 
 	}
 }
 
-func TestTaskQuestionSurvivesHistoryReplacementAndReleasesOnTheNextUserMessage(t *testing.T) {
+func TestTaskQuestionSurvivesHistoryReplacementAndResumesExplicitly(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -421,8 +433,11 @@ func TestTaskQuestionSurvivesHistoryReplacementAndReleasesOnTheNextUserMessage(t
 		t.Fatal(err)
 	}
 	loaded, err = store.LoadCommitment(task.ID)
-	if err != nil || loaded.Status != storage.CommitmentPending {
-		t.Fatalf("renumbered user message did not release the question: %+v, %v", loaded, err)
+	if err != nil || loaded.Status != storage.CommitmentWaitingForUser || loaded.ReplySeq == 0 {
+		t.Fatalf("renumbered user message did not record its answer evidence: %+v, %v", loaded, err)
+	}
+	if err := store.UpdateCommitment(storage.Commitment{ID: task.ID, BotID: bot.ID, Status: storage.CommitmentPending, QuestionSeq: task.QuestionSeq}); err != nil {
+		t.Fatal(err)
 	}
 	if err := store.UpdateCommitment(task); err == nil {
 		t.Fatal("a stale question update reinstated the wait after history replacement")

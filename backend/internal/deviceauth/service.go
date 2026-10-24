@@ -34,13 +34,12 @@ type Store interface {
 	ListDevices() ([]storage.Device, error)
 	CountApprovedDevices() (int, error)
 	LoadDeviceByTokenHash(string) (storage.Device, error)
-	SavePairingDevice(storage.SavePairingDevice) (storage.Device, error)
 	SaveApprovedDevice(storage.SaveApprovedDevice) (storage.Device, error)
 	UpdateDeviceSeen(id, ip, userAgent string, at time.Time) error
 	RevokeDevice(id string, at time.Time) (storage.Device, error)
 	CreateDevicePairing(storage.CreateDevicePairing) (storage.DevicePairing, error)
 	LoadDevicePairing(id string) (storage.DevicePairing, string, error)
-	ListDevicePairings() ([]storage.DevicePairing, error)
+	ListDevicePairings(time.Time) ([]storage.DevicePairing, error)
 	ApproveDevicePairing(id string, at time.Time) (storage.DevicePairing, error)
 	ClaimDevicePairing(id, secretHash, tokenHash string, at time.Time) error
 	RejectDevicePairing(id string, at time.Time) (storage.DevicePairing, error)
@@ -184,7 +183,7 @@ func (s *Service) createPairing(reg Registration) (storage.DevicePairing, string
 		return storage.DevicePairing{}, "", err
 	}
 	now := s.now()
-	device, err := s.store.SavePairingDevice(storage.SavePairingDevice{
+	device := storage.Device{
 		ID:         reg.Identity.DeviceID,
 		Name:       reg.Profile.Name,
 		Kind:       reg.Profile.Kind,
@@ -196,17 +195,20 @@ func (s *Service) createPairing(reg Registration) (storage.DevicePairing, string
 		LastSeenIP: reg.Seen.IP,
 		UserAgent:  reg.Seen.UserAgent,
 		AppVersion: reg.Profile.AppVersion,
-	})
-	if err != nil {
-		return storage.DevicePairing{}, "", err
+		Status:     storage.DeviceStatusPending,
 	}
 	pairing, err := s.store.CreateDevicePairing(storage.CreateDevicePairing{
 		ID:         newID("pair"),
-		DeviceID:   device.ID,
+		Device:     device,
 		SecretHash: TokenHash(secret),
-		Status:     storage.PairingStatusPending,
 		CreatedAt:  now,
 		ExpiresAt:  now.Add(pairingTTL),
+		Policy: storage.PairingPolicy{
+			RecentAfter:  now.Add(-time.Minute),
+			RecentLimit:  5,
+			PendingLimit: 32,
+			RetainAfter:  now.Add(-24 * time.Hour),
+		},
 	})
 	return pairing, secret, err
 }
@@ -232,6 +234,8 @@ func (s *Service) PollPairing(id, secret string) (PairingPoll, error) {
 		if err := s.store.ClaimDevicePairing(pairing.ID, secretHash, TokenHash(token), s.now()); err != nil {
 			return PairingPoll{}, ErrUnauthorized
 		}
+		pairing.Device.Status = storage.DeviceStatusApproved
+		pairing.Device.ApprovedAt = s.now()
 		s.cancelAccessLocked(pairing.DeviceID)
 		return PairingPoll{Pairing: pairing, Token: token}, nil
 	}
@@ -239,13 +243,7 @@ func (s *Service) PollPairing(id, secret string) (PairingPoll, error) {
 }
 
 func (s *Service) ApprovePairing(id string) (storage.DevicePairing, error) {
-	s.access.mu.Lock()
-	defer s.access.mu.Unlock()
-	pairing, err := s.store.ApproveDevicePairing(strings.TrimSpace(id), s.now())
-	if err == nil {
-		s.cancelAccessLocked(pairing.DeviceID)
-	}
-	return pairing, err
+	return s.store.ApproveDevicePairing(strings.TrimSpace(id), s.now())
 }
 
 func (s *Service) RejectPairing(id string) (storage.DevicePairing, error) {
@@ -267,9 +265,14 @@ func (s *Service) List() ([]storage.Device, []storage.DevicePairing, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	pairings, err := s.store.ListDevicePairings()
+	pairings, err := s.store.ListDevicePairings(s.now().Add(-24 * time.Hour))
 	if err != nil {
 		return nil, nil, err
+	}
+	for i := range pairings {
+		if pairings[i].Status == storage.PairingStatusPending && !s.now().Before(pairings[i].ExpiresAt) {
+			pairings[i].Status = storage.PairingStatusExpired
+		}
 	}
 	return devices, pairings, nil
 }

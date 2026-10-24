@@ -6,16 +6,22 @@ RETURNING id;
 -- name: UpdateCommitment :execrows
 UPDATE bot_commitments
 SET request = coalesce(sqlc.narg(request), request), note = coalesce(sqlc.narg(note), note), status = coalesce(sqlc.narg(status), status),
+  wake_at_ms = CASE WHEN status = 'waiting_for_user' AND sqlc.narg(status) IS NOT NULL AND sqlc.narg(status) <> 'waiting_for_user' THEN 0 ELSE wake_at_ms END,
+  wake_attempts = CASE WHEN status = 'waiting_for_user' AND sqlc.narg(status) IS NOT NULL AND sqlc.narg(status) <> 'waiting_for_user' THEN 0 ELSE wake_attempts END,
+  check_at_ms = coalesce(sqlc.narg(check_at_ms), check_at_ms),
+  reply_seq = CASE WHEN sqlc.narg(status) IS NULL OR sqlc.narg(status) = 'waiting_for_user' THEN reply_seq ELSE 0 END,
   question_seq = CASE WHEN sqlc.narg(status) IS NULL OR sqlc.narg(status) = 'waiting_for_user' THEN question_seq ELSE 0 END
 WHERE id = sqlc.arg(id) AND bot_id = sqlc.arg(bot_id) AND status IN ('pending', 'in_progress', 'waiting_for_user')
+  AND (status <> 'waiting_for_user' OR sqlc.narg(status) IS NULL OR sqlc.narg(status) = 'waiting_for_user'
+       OR (question_seq = sqlc.arg(question_seq) AND reply_seq > 0))
   AND (sqlc.narg(status) IS NOT 'waiting_for_user' OR (status = 'waiting_for_user' AND question_seq = sqlc.arg(question_seq)));
 
 -- name: AskCommitment :exec
-UPDATE bot_commitments SET status = 'waiting_for_user', question_seq = sqlc.arg(question_seq)
+UPDATE bot_commitments SET status = 'waiting_for_user', question_seq = sqlc.arg(question_seq), reply_seq = 0, check_at_ms = 0
 WHERE id = sqlc.arg(id) AND bot_id = sqlc.arg(bot_id) AND status IN ('pending', 'in_progress', 'waiting_for_user');
 
--- name: AnswerTaskQuestions :exec
-UPDATE bot_commitments SET status = 'pending', question_seq = 0, wake_at_ms = 0, wake_attempts = 0, wake_progress = ''
+-- name: RecordTaskReply :exec
+UPDATE bot_commitments SET reply_seq = sqlc.arg(reply_seq)
 WHERE bot_id = sqlc.arg(bot_id) AND status = 'waiting_for_user';
 
 -- name: CommitmentWorking :one
@@ -89,13 +95,14 @@ SET wake_progress = (SELECT progress FROM bot_commitment_progress WHERE commitme
     THEN min(4, bot_commitments.wake_attempts + 1) ELSE 1 END
 WHERE id IN (
   SELECT w.id FROM bot_commitment_watch w
-  WHERE w.bot_id = sqlc.arg(bot_id) AND (w.wake_at_ms <= CAST(sqlc.arg(now_ms) AS INTEGER) OR w.wake_progress <> w.progress)
+  WHERE w.bot_id = sqlc.arg(bot_id) AND w.check_at_ms <= CAST(sqlc.arg(now_ms) AS INTEGER) AND (w.wake_at_ms <= CAST(sqlc.arg(now_ms) AS INTEGER) OR w.wake_progress <> w.progress)
 )
 RETURNING id;
 
 -- name: ListWatchBots :many
 SELECT DISTINCT bot_id FROM bot_commitment_watch
-WHERE wake_at_ms <= CAST(sqlc.arg(now_ms) AS INTEGER) OR wake_progress <> progress;
+WHERE check_at_ms <= CAST(sqlc.arg(now_ms) AS INTEGER)
+  AND (wake_at_ms <= CAST(sqlc.arg(now_ms) AS INTEGER) OR wake_progress <> progress);
 
 -- name: DeleteCommitmentDependencies :exec
 DELETE FROM bot_commitment_dependencies WHERE commitment_id = ?;

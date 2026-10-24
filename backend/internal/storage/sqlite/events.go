@@ -230,6 +230,7 @@ func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Tim
 		return false, err
 	}
 	if question != nil {
+		question.CheckAt = nil
 		question.Status = storage.CommitmentWaitingForUser
 		question.QuestionSeq = events[len(events)-1].Seq
 		q := botdb.New(tx)

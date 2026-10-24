@@ -12,7 +12,7 @@ const bundle = await build({
       builder.onResolve({ filter: /^connection-security-fixture$/ }, () => ({ path: 'fixture', namespace: 'security' }))
       builder.onResolve({ filter: /^\//, namespace: 'security' }, (args) => ({ path: args.path, namespace: 'file' }))
       builder.onLoad({ filter: /.*/, namespace: 'security' }, () => ({
-        contents: `export * from ${JSON.stringify(new URL('./client.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./eventStream.ts', import.meta.url).pathname)}`,
+        contents: `export * from ${JSON.stringify(new URL('./client.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./eventStream.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./devices.ts', import.meta.url).pathname)}`,
         loader: 'ts',
       }))
     },
@@ -45,10 +45,10 @@ afterEach(() => {
   originals.clear()
 })
 
-function fixture(base = 'https://jaz.example') {
+function fixture(base = 'https://jaz.example', jaz) {
   const stored = new Map()
   const sockets = []
-  replace('window', { location: { origin: 'https://web.jaz.chat' } })
+  replace('window', { location: { origin: 'https://web.jaz.chat' }, jaz })
   replace('localStorage', {
     getItem: (key) => stored.get(key) ?? null,
     setItem: (key, value) => stored.set(key, value),
@@ -84,6 +84,35 @@ test('browser transports keep device credentials in headers and bound URLs to re
   expect(sockets).toEqual([{ url: 'wss://jaz.example/v1/sessions/thread/terminal', protocols: ['jaz-auth.device-credential'] }])
   api.setApiAuthToken(api.apiBaseUrl(), null)
   expect(api.apiEmbeddedGetUrl('/v1/sessions/thread/file?raw=1')).not.toContain('ticket=')
+})
+
+test('host management credentials stay bound to the local backend during a connection change', async () => {
+  let release
+  let starts = 0
+  const local = 'http://127.0.0.1:5299'
+  const bridge = new Promise((resolve) => {
+    release = resolve
+  })
+  const { api } = fixture(local, { apiBaseUrl: local, startLocalBackend: () => {
+    starts += 1
+    return bridge
+  } })
+  const requests = []
+  replace('fetch', async (url, init) => {
+    requests.push({ url, authorization: init.headers.get('Authorization') })
+    return Response.json({ devices: [], pairings: [], can_manage: false })
+  })
+  const pending = api.devicesQuery.queryFn()
+  api.setApiBaseUrl('https://remote.example')
+  api.setApiAuthToken('https://remote.example', 'remote-device')
+  release({ ok: true, url: local, key: 'host-credential' })
+  await pending
+  await api.devicesQuery.queryFn()
+  expect(starts).toBe(1)
+  expect(requests).toEqual([
+    { url: `${local}/v1/devices`, authorization: 'Bearer host-credential' },
+    { url: 'https://remote.example/v1/devices', authorization: 'Bearer remote-device' },
+  ])
 })
 
 test('HTTP remote addresses fail before any credential-bearing network call', () => {
