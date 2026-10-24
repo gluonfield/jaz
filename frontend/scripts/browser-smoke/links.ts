@@ -31,15 +31,25 @@ export async function exercisePreviewLinks(browser: SideBrowser, evaluate: (expr
     if (await evaluate('location.href') !== local) {
       throw new Error('Local browser navigation changed the original URL')
     }
-    const openButton = document.querySelector<HTMLButtonElement>('[aria-label="Open in Browser"]')!
-    await until(() => !openButton.disabled && document.querySelector<HTMLInputElement>('input[spellcheck="false"]')?.value === local)
-    const rect = openButton.getBoundingClientRect()
+    const qrButton = document.querySelector<HTMLButtonElement>('[aria-label="Open on phone"]')!
+    await until(() => !qrButton.disabled && document.querySelector<HTMLInputElement>('input[spellcheck="false"]')?.value === local)
+    const rect = qrButton.getBoundingClientRect()
     const x = Math.round(rect.x + rect.width / 2)
     const y = Math.round(rect.y + rect.height / 2)
-    await window.smoke.pointer('mouseMove', x, y)
-    await window.smoke.pointer('mouseDown', x, y)
-    await window.smoke.pointer('mouseUp', x, y)
-    await until(async () => (await window.smoke.openedURLs()).includes(local))
+    const press = async () => {
+      await window.smoke.pointer('mouseMove', x, y)
+      await window.smoke.pointer('mouseDown', x, y)
+      await window.smoke.pointer('mouseUp', x, y)
+    }
+    const qr = () => document.querySelector<HTMLImageElement>('img[alt="QR code for this page"]')
+    await press()
+    await until(() => {
+      const panel = qr()?.closest<HTMLElement>('[data-escape-surface]')
+      return Boolean(qr()?.naturalWidth && panel?.textContent === local && getComputedStyle(panel).opacity === '1')
+    })
+    await window.smoke.capture('browser-qr')
+    await press()
+    await until(() => !qr())
     if (proxyRequests !== 0) {
       throw new Error('Local previews must bypass proxy creation')
     }

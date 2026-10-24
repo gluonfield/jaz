@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  ExternalLink,
   Globe,
   LoaderCircle,
   MessageCirclePlus,
@@ -13,7 +12,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import { previewDisplayUrl, resolvePreviewSource } from '@/lib/api/preview'
 import type { Attachment } from '@/lib/api/types'
-import { clientRuntime, openExternal } from '@/lib/clientRuntime'
+import { clientRuntime } from '@/lib/clientRuntime'
 import type { BrowserAnnotation } from '@/lib/messageContext'
 import { isPreviewURL, normalizePreviewURL, shouldProxyPreview } from '@shared/preview'
 import {
@@ -32,6 +31,7 @@ import {
 import type { PreviewTarget } from '@/lib/browserSessions'
 import type { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserMenu } from '@/components/browser/BrowserMenu'
+import { BrowserQRCode } from '@/components/browser/BrowserQRCode'
 import { PREVIEW_PARTITION } from '@shared/preview'
 import { usePreviewFindControls } from './usePreviewFindControls'
 
@@ -352,15 +352,7 @@ export function PreviewPanel({
         >
           {annotating ? <SquareStop size={14} /> : <MessageCirclePlus size={15} />}
         </IconButton>
-        <IconButton
-          size="sm" className="pointer-coarse:size-10"
-          aria-label="Open in Browser"
-          title="Open in Browser"
-          disabled={!resolvedSourceUrl}
-          onClick={() => openExternal(resolvedSourceUrl)}
-        >
-          <ExternalLink size={14} />
-        </IconButton>
+        <BrowserQRCode url={resolvedSourceUrl} visible={visible} />
         <BrowserMenu webContentsId={webviewReady && webview ? webview.getWebContentsId() : null} visible={visible} />
         {onClose ? <button
           type="button"

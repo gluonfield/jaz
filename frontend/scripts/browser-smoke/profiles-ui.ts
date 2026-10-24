@@ -26,7 +26,7 @@ export async function exerciseProfileImport(browser: SideBrowser): Promise<void>
   }
   const openImport = async () => {
     await click(document.querySelector<HTMLButtonElement>('[aria-label="Browser menu"]')!)
-    const entry = await until(() => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === 'Import cookies and passwords'))
+    const entry = await until(() => [...document.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === 'Import cookies and passwords'))
     await new Promise((resolve) => setTimeout(resolve, 180))
     await window.smoke.capture('browser-menu')
     await click(entry)

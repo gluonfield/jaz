@@ -47,9 +47,9 @@ document.querySelector('form').requestSubmit()`)
   }
 
   document.querySelector<HTMLButtonElement>('[aria-label="Browser menu"]')!.click()
-  await until(() => [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].some((button) => button.textContent === 'Downloads' && !button.disabled))
-  const downloadsEntry = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((button) => button.textContent === 'Downloads')!
-  downloadsEntry.click()
+  const entry = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent === label && !button.disabled)
+  await until(() => Boolean(entry('Downloads')))
+  entry('Downloads')!.click()
   await until(() => Boolean(document.querySelector('[aria-label="Browser downloads"]')))
   await navigate(location.origin + '/target')
   await until(async () => (await state()).origin === '')
@@ -100,8 +100,8 @@ document.querySelector('form').requestSubmit()`)
   await until(async () => !(await state()).pending)
   await navigate(origin + '/login')
   document.querySelector<HTMLButtonElement>('[aria-label="Browser menu"]')!.click()
-  await until(() => Boolean(document.querySelector('[aria-label="Passwords"]')))
-  document.querySelector<HTMLButtonElement>('[aria-label="Passwords"]')!.click()
+  await until(() => Boolean(entry('Passwords')))
+  entry('Passwords')!.click()
   await until(() => {
     const button = document.querySelector<HTMLButtonElement>('[title="Fill this login"]')
     return Boolean(button && !button.disabled && document.querySelector('[aria-label="Browser menu"][aria-expanded="true"]'))

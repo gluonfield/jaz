@@ -1,8 +1,8 @@
 import { CheckCircle2, Clock3, KeyRound, Loader2, QrCode, RefreshCw, TriangleAlert } from 'lucide-react'
-import * as QRCode from 'qrcode'
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
+import { QRCodeImage } from '@/components/ui/QRCodeImage'
 import type { ConnectionQRStart, ConnectionQRStatus, IntegrationPlugin } from '@/lib/api/types'
 import { PluginGlyph, PluginIcon } from './ConnectionPluginVisuals'
 
@@ -64,7 +64,16 @@ export function ConnectionQRModal({
       <div className="grid gap-5 sm:grid-cols-[248px_minmax(0,1fr)]">
         <div className="mx-auto w-full max-w-[248px] space-y-3 sm:max-w-none">
           <div className="rounded-[20px] bg-surface p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]">
-            <QRCodeImage value={currentCode} failed={failed} />
+            <div className="relative grid aspect-square w-full shrink-0 place-items-center rounded-[14px] bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
+              <QRCodeImage value={currentCode} alt="Connection QR code" className={failed ? 'size-full opacity-35' : 'size-full'} />
+              {failed ? (
+                <div className="absolute inset-0 grid place-items-center rounded-[14px] bg-white/75 text-danger">
+                  <div className="grid size-12 place-items-center rounded-full bg-danger-soft">
+                    <TriangleAlert size={24} />
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="flex items-center justify-center gap-2 text-[12px] text-ink-3">
             <Clock3 size={13} />
@@ -85,47 +94,6 @@ export function ConnectionQRModal({
         </div>
       </div>
     </Modal>
-  )
-}
-
-function QRCodeImage({ value, failed }: { value: string; failed: boolean }) {
-  const [src, setSrc] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    setSrc('')
-    void QRCode.toDataURL(value, {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 224,
-      color: { dark: '#111111', light: '#ffffff' },
-    })
-      .then((next) => {
-        if (!cancelled) setSrc(next)
-      })
-      .catch(() => {
-        if (!cancelled) setSrc('')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [value])
-
-  return (
-    <div className="relative grid aspect-square w-full shrink-0 place-items-center rounded-[14px] bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
-      {src ? (
-        <img src={src} alt="Connection QR code" className={failed ? 'size-full opacity-35' : 'size-full'} />
-      ) : (
-        <Loader2 size={18} className="animate-spin text-ink-3" />
-      )}
-      {failed ? (
-        <div className="absolute inset-0 grid place-items-center rounded-[14px] bg-white/75 text-danger">
-          <div className="grid size-12 place-items-center rounded-full bg-danger-soft">
-            <TriangleAlert size={24} />
-          </div>
-        </div>
-      ) : null}
-    </div>
   )
 }
 

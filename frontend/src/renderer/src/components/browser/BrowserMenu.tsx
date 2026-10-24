@@ -2,7 +2,7 @@ import { Cookie, Download, KeyRound, MoreVertical, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { IconButton } from '@/components/ui/IconButton'
-import { Popover } from '@/components/ui/Popover'
+import { MenuRow, Popover } from '@/components/ui/Popover'
 import { BrowserProfileImportDialog } from '@/components/browser/BrowserProfileImportDialog'
 import { BrowserDownloads } from '@/components/browser/BrowserDownloads'
 import type { BrowserPasswordAction, BrowserPasswordState } from '@shared/browserPasswords'
@@ -91,20 +91,20 @@ export function BrowserMenu({ webContentsId, visible }: { webContentsId: number 
       className={`pointer-coarse:size-10 ${pending ? 'text-primary' : ''}`}
     ><MoreVertical size={15} /></IconButton>}
   >
-    {view === 'menu' ? <div role="menu" aria-label="Browser options" className="w-64 max-w-[calc(100vw-32px)]">
-      <button type="button" role="menuitem" disabled={!window.jaz?.browserDownloads} onClick={() => setView('downloads')} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[13px] text-ink hover:bg-surface-2 disabled:opacity-50">
-        <Download size={17} />Downloads
-      </button>
-      <button type="button" role="menuitem" aria-label="Passwords" disabled={webContentsId === null} onClick={() => setView('passwords')} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[13px] text-ink hover:bg-surface-2 disabled:opacity-50">
-        <KeyRound size={17} />Passwords
-      </button>
-      <button type="button" role="menuitem" disabled={!window.jaz?.browserProfiles} onClick={() => {
+    {view === 'menu' ? <>
+      <MenuRow disabled={!window.jaz?.browserDownloads} onClick={() => setView('downloads')}>
+        <span className="flex items-center gap-2"><Download size={13} />Downloads</span>
+      </MenuRow>
+      <MenuRow disabled={webContentsId === null} onClick={() => setView('passwords')}>
+        <span className="flex items-center gap-2"><KeyRound size={13} />Passwords</span>
+      </MenuRow>
+      <MenuRow disabled={!window.jaz?.browserProfiles} onClick={() => {
         close()
         setImportOpen(true)
-      }} className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-[13px] text-ink hover:bg-surface-2 disabled:opacity-50">
-        <Cookie size={17} />Import cookies and passwords
-      </button>
-    </div> : view === 'downloads' && window.jaz?.browserDownloads ? <BrowserDownloads api={window.jaz.browserDownloads} onBack={() => setView('menu')} /> : (
+      }}>
+        <span className="flex items-center gap-2"><Cookie size={13} />Import cookies and passwords</span>
+      </MenuRow>
+    </> : view === 'downloads' && window.jaz?.browserDownloads ? <BrowserDownloads api={window.jaz.browserDownloads} onBack={() => setView('menu')} /> : (
     <section aria-label="Browser passwords" className="w-72 max-w-[calc(100vw-32px)] p-2.5">
       <h2 className="text-[14px] font-medium text-ink">{pending ? pending.update ? 'Update password?' : 'Save password?' : 'Saved passwords'}</h2>
       {state.origin ? <p className="mt-1 break-all text-[12px] text-ink-2">{state.origin}</p> : null}
