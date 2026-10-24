@@ -106,3 +106,36 @@ func TestOAuthSecretsMigrateAndRequireOriginalKey(t *testing.T) {
 		t.Fatal("lost encryption key silently replaced")
 	}
 }
+
+func TestOAuthMigrationRollsBackAllCredentialsOnFailure(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+	q := oauthdb.New(store.db)
+	for _, id := range []string{"first", "second"} {
+		if err := q.SaveToken(ctx, oauthdb.SaveTokenParams{ConnectionID: id, TokenJson: `{"access_token":"legacy"}`}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err = store.db.ExecContext(ctx, `CREATE TRIGGER reject_second_encryption BEFORE UPDATE OF token_json ON integration_oauth_tokens
+		WHEN (SELECT COUNT(*) FROM integration_oauth_tokens WHERE token_json LIKE 'encrypted:%') > 0
+		BEGIN SELECT RAISE(ABORT, 'migration failure'); END`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.protectSecrets(); err == nil {
+		t.Fatal("migration ignored a failed credential write")
+	}
+	rows, err := q.ListTokens(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if strings.HasPrefix(row.TokenJson, secretPrefix) {
+			t.Fatal("failed migration left credentials partially rewritten")
+		}
+	}
+}

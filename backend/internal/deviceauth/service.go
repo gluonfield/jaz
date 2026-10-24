@@ -31,7 +31,6 @@ const (
 const pairingTTL = 10 * time.Minute
 
 type Store interface {
-	LoadDevice(string) (storage.Device, error)
 	ListDevices() ([]storage.Device, error)
 	CountApprovedDevices() (int, error)
 	LoadDeviceByTokenHash(string) (storage.Device, error)

@@ -33,7 +33,7 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 			return
 		}
 		token := requestAuthKey(r)
-		if s.Devices != nil && r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register" && s.Devices.IsInvitation(token) {
+		if s.Devices != nil && r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register" && strings.HasPrefix(token, "invite_") {
 			principal := deviceauth.Principal{Kind: deviceauth.PrincipalEnrollment, EnrollmentToken: token}
 			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
 			return

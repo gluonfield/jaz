@@ -70,7 +70,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(serverconfig.JazmemMCPPath, s.memoryMCPHandler())
 	mux.Handle(serverconfig.MCPProxyPath, s.mcpProxyHandler())
 	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
-	authed := withCORS(withGzip(s.withAuth(mux)), append([]string{s.ServerConfig.PublicURL}, s.ServerConfig.AllowedOrigins...)...)
+	authed := withCORS(withGzip(s.withAuth(mux)), append([]string{serverconfig.ClientBaseURL(s.ServerConfig)}, s.ServerConfig.AllowedOrigins...)...)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, route := range s.PublicRoutes {
 			if route.Match(r) {

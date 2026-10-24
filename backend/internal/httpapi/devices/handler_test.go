@@ -23,7 +23,9 @@ func TestConnectionLinkUsesPublicURL(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 	handler := NewHandler(deviceauth.New(store), store, serverconfig.Config{Addr: ":5299", PublicURL: "https://jaz.example.com/app"})
 	res := httptest.NewRecorder()
-	handler.ConnectionLink(res, httptest.NewRequest(http.MethodGet, "/v1/devices/connection-link", nil))
+	req := httptest.NewRequest(http.MethodGet, "/v1/devices/connection-link", nil)
+	req = req.WithContext(deviceauth.WithPrincipal(req.Context(), deviceauth.Principal{Kind: deviceauth.PrincipalRoot}))
+	handler.ConnectionLink(res, req)
 
 	var got connectionLinkResponse
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
@@ -45,6 +47,7 @@ func TestConnectionLinkFallsBackToRequestHost(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 	handler := NewHandler(deviceauth.New(store), store, serverconfig.Config{Addr: ":5299"})
 	req := httptest.NewRequest(http.MethodGet, "/v1/devices/connection-link", nil)
+	req = req.WithContext(deviceauth.WithPrincipal(req.Context(), deviceauth.Principal{Kind: deviceauth.PrincipalRoot}))
 	req.Host = "jaz.example.net:5299"
 	req.Header.Set("X-Forwarded-Proto", "https")
 	res := httptest.NewRecorder()
@@ -68,6 +71,7 @@ func TestUpdateConnectionLinkPersistsPublicURL(t *testing.T) {
 	handler := NewHandler(deviceauth.New(store), store, serverconfig.Config{Addr: ":5299", PublicURL: "https://startup.example.com"})
 	req := httptest.NewRequest(http.MethodPut, "/v1/devices/connection-link", strings.NewReader(`{"public_url":"jaz.example.com"}`))
 	res := httptest.NewRecorder()
+	req = req.WithContext(deviceauth.WithPrincipal(req.Context(), deviceauth.Principal{Kind: deviceauth.PrincipalRoot}))
 	handler.UpdateConnectionLink(res, req)
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
@@ -82,7 +86,9 @@ func TestUpdateConnectionLinkPersistsPublicURL(t *testing.T) {
 	}
 
 	getRes := httptest.NewRecorder()
-	handler.ConnectionLink(getRes, httptest.NewRequest(http.MethodGet, "/v1/devices/connection-link", nil))
+	req = httptest.NewRequest(http.MethodGet, "/v1/devices/connection-link", nil)
+	req = req.WithContext(deviceauth.WithPrincipal(req.Context(), deviceauth.Principal{Kind: deviceauth.PrincipalRoot}))
+	handler.ConnectionLink(getRes, req)
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +97,9 @@ func TestUpdateConnectionLinkPersistsPublicURL(t *testing.T) {
 	}
 
 	clearRes := httptest.NewRecorder()
-	handler.UpdateConnectionLink(clearRes, httptest.NewRequest(http.MethodPut, "/v1/devices/connection-link", strings.NewReader(`{"public_url":""}`)))
+	req = httptest.NewRequest(http.MethodPut, "/v1/devices/connection-link", strings.NewReader(`{"public_url":""}`))
+	req = req.WithContext(deviceauth.WithPrincipal(req.Context(), deviceauth.Principal{Kind: deviceauth.PrincipalRoot}))
+	handler.UpdateConnectionLink(clearRes, req)
 	if err := json.Unmarshal(clearRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}

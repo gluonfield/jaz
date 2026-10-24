@@ -109,7 +109,7 @@ function connectUrlWithKey(target: string, key: string): string {
 // the user's server. An explicit runtime default still wins for desktop preload
 // and VITE_JAZ_API_URL-pinned development builds.
 let baseUrl = ((): string => {
-   const local = localBaseUrl()
+  const local = localBaseUrl()
   if (local !== DEFAULT_API_BASE_URL) return normalizeBaseUrl(local)
   const stored = localStorage.getItem(BACKEND_URL_KEY)
   return stored ? normalizeBaseUrl(stored) : local

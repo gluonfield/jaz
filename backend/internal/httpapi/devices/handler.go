@@ -84,7 +84,7 @@ func NewHandler(service *deviceauth.Service, settings storage.SettingsStorage, c
 func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
 	response, err := h.connectionLink(r)
 	if err != nil {
-		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		writeDeviceAuthError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, response)
@@ -110,7 +110,7 @@ func (h Handler) UpdateConnectionLink(w http.ResponseWriter, r *http.Request) {
 	}
 	response, err := h.connectionLink(r)
 	if err != nil {
-		httpapi.WriteError(w, http.StatusInternalServerError, err)
+		writeDeviceAuthError(w, err)
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, response)
@@ -127,7 +127,7 @@ func (h Handler) connectionLink(r *http.Request) (connectionLinkResponse, error)
 	}
 	cfg.PublicURL = connectionBaseURL(cfg, httpapi.RequestBaseURL(r), firstLocalNetworkIP)
 	principal, _ := deviceauth.PrincipalFromContext(r.Context())
-	token, err := h.service.CreateInvitation(principal.DeviceID)
+	token, err := h.service.CreateInvitation(principal)
 	if err != nil {
 		return connectionLinkResponse{}, err
 	}

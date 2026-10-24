@@ -89,11 +89,6 @@ func (s *Service) AuthenticateResourceTicket(token string) (Principal, error) {
 }
 
 func (s *Service) cancelAccessLocked(deviceID string) {
-	for hash, entry := range s.access.invitations {
-		if entry.owner == deviceID {
-			delete(s.access.invitations, hash)
-		}
-	}
 	for _, cancel := range s.access.active[deviceID] {
 		cancel()
 	}

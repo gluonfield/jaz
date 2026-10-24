@@ -278,3 +278,14 @@ func TestRevocationClosesExistingTerminal(t *testing.T) {
 		break
 	}
 }
+
+func TestPublicClientOriginUsesNormalizedConnectionURL(t *testing.T) {
+	srv := &Server{ServerConfig: serverconfig.Config{PublicURL: "https://self-hosted.example/app"}}
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.Header.Set("Origin", "https://self-hosted.example")
+	res := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(res, req)
+	if res.Code != http.StatusOK || res.Header().Get("Access-Control-Allow-Origin") != "https://self-hosted.example" {
+		t.Fatalf("configured client origin rejected: status=%d", res.Code)
+	}
+}

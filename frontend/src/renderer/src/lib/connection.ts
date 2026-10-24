@@ -386,13 +386,17 @@ async function reconnectKnown(url: string): Promise<void> {
   markConnected(url)
 }
 
-async function registerDevice(url: string, rootToken: string): Promise<string | null> {
+async function registerDevice(url: string, credential: string): Promise<string | null> {
+  const gen = ++pairingGen
   try {
     const profile = await getDeviceProfile()
+    if (gen !== pairingGen) {
+      return null
+    }
     const res = await fetch(`${url}/v1/devices/register`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${rootToken}`,
+        Authorization: `Bearer ${credential}`,
         'Content-Type': 'application/json',
         [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM,
       },
@@ -405,9 +409,18 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
       pairing_secret?: string
       error?: string
     }>(res)
+    if (gen !== pairingGen) {
+      return null
+    }
     if (res.ok && body?.token) {
       setApiAuthToken(url, body.token)
-      await checkAuthAccess(url, body.token)
+      const access = await checkAuthAccess(url, body.token)
+      if (gen !== pairingGen) {
+        return null
+      }
+      if (!access.ok) {
+        return access.error
+      }
       markConnected(url)
       return null
     }
@@ -490,8 +503,12 @@ function schedulePairingPoll() {
       }
       if (res.ok && body?.pairing?.status === 'approved') {
         setApiAuthToken(pairing.url, body.token || '')
-        await checkAuthAccess(pairing.url, body.token || '')
+        const access = await checkAuthAccess(pairing.url, body.token || '')
         if (gen !== pairingGen) {
+          return
+        }
+        if (!access.ok) {
+          abandonPairing(access.error)
           return
         }
         markConnected(pairing.url)
@@ -731,4 +748,7 @@ if (typeof window !== 'undefined') {
   document.addEventListener('visibilitychange', resumePolling)
 }
 
-void init()
+void init().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : 'Could not open the saved connection'
+  setState({ status: 'disconnected', pairing: null, error: message })
+})

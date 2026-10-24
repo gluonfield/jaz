@@ -18,7 +18,13 @@ const secretPrefix = "encrypted:v1:"
 
 func (s *Store) protectSecrets() error {
 	ctx := context.Background()
-	rows, err := oauthdb.New(s.db).ListTokens(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := oauthdb.New(s.db).WithTx(tx)
+	rows, err := q.ListTokens(ctx)
 	if err != nil {
 		return err
 	}
@@ -92,10 +98,13 @@ func (s *Store) protectSecrets() error {
 		if err != nil {
 			return err
 		}
-		if err := oauthdb.New(s.db).SaveToken(ctx, oauthdb.SaveTokenParams{ConnectionID: row.ConnectionID, TokenJson: sealed, UpdatedAtMs: row.UpdatedAtMs}); err != nil {
+		if err := q.SaveToken(ctx, oauthdb.SaveTokenParams{ConnectionID: row.ConnectionID, TokenJson: sealed, UpdatedAtMs: row.UpdatedAtMs}); err != nil {
 			return err
 		}
 		changed = true
+	}
+	if err := tx.Commit(); err != nil {
+		return err
 	}
 	if changed {
 		if _, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {

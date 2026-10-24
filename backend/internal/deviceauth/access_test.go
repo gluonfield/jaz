@@ -73,7 +73,11 @@ func TestEnrollmentInvitationsExpireAndAreRevokedWithTheirOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	invite, err := service.CreateInvitation(owner.Device.ID)
+	principal, err := service.Authenticate(owner.Token, SeenInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invite, err := service.CreateInvitation(principal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +88,7 @@ func TestEnrollmentInvitationsExpireAndAreRevokedWithTheirOwner(t *testing.T) {
 	if _, err := service.RegisterInvited(invite, testClientInfo("Other phone", "mobile", 3)); err == nil {
 		t.Fatal("invitation reused")
 	}
-	invite, err = service.CreateInvitation(owner.Device.ID)
+	invite, err = service.CreateInvitation(principal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,17 +96,41 @@ func TestEnrollmentInvitationsExpireAndAreRevokedWithTheirOwner(t *testing.T) {
 	if _, err := service.RegisterInvited(invite, testClientInfo("Other phone", "mobile", 3)); err == nil {
 		t.Fatal("expired invitation reused")
 	}
-	invite, err = service.CreateInvitation(owner.Device.ID)
+	invite, err = service.CreateInvitation(principal)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.RevokeDevice(owner.Device.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.CreateInvitation(owner.Device.ID); err == nil {
+	if _, err := service.CreateInvitation(principal); err == nil {
 		t.Fatal("revoked owner could create another invitation")
 	}
-	if service.IsInvitation(invite) {
+	if _, err := service.RegisterInvited(invite, testClientInfo("Other phone", "mobile", 3)); err == nil {
 		t.Fatal("revoked device retained enrollment authority")
+	}
+}
+
+func TestInvitationCreationRejectsRotatedCredentials(t *testing.T) {
+	store, err := sqlite.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	service := New(store)
+	identity := testClientInfo("Owner", "desktop", 1)
+	owner, err := service.RegisterApproved(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal, err := service.Authenticate(owner.Token, SeenInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RegisterApproved(identity); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateInvitation(principal); err == nil {
+		t.Fatal("a request authenticated before rotation could mint an invitation afterward")
 	}
 }

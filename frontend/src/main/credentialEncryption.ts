@@ -1,12 +1,10 @@
 import { ipcMain, safeStorage } from 'electron'
-import { isTrustedRendererURL } from '@main/permissions'
+import { trustedWindow } from '@main/permissions'
 
 export function installCredentialEncryption(): void {
   ipcMain.on('jaz:credential-encryption', (event, operation: unknown, value: unknown) => {
     try {
-      if (event.sender.getType() !== 'window' || event.senderFrame !== event.sender.mainFrame || !isTrustedRendererURL(event.senderFrame.url)) {
-        throw new Error('Credentials require a trusted Jaz window')
-      }
+      trustedWindow(event)
       if (typeof value !== 'string' || value.length > 16_384 || (operation !== 'encrypt' && operation !== 'decrypt')) {
         throw new Error('Invalid credential request')
       }
