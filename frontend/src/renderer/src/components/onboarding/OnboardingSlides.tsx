@@ -1,13 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, ArrowUp } from 'lucide-react'
+import { ArrowRight, Check } from 'lucide-react'
 import { motion } from 'motion/react'
+import { useEffect, useState } from 'react'
 import type { SystemPermission } from '@shared/systemPermissions'
 import { BotAvatar } from '@/components/bots/BotAvatar'
+import { ARRIVE } from '@/components/bots/ChatLog'
 import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
 import { PresetSwatches } from '@/components/settings/ColorThemeSettings'
 import { ThemeModePicker } from '@/components/settings/ThemeModePicker'
 import { Button } from '@/components/ui/Button'
 import { botsQuery } from '@/lib/api/bots'
+import type { BotAvatar as BotAvatarShape } from '@/lib/api/types'
+import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import { type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
 
 // The first thing a new user ever sees: the wordmark assembles itself out of
@@ -53,7 +57,7 @@ export const SETUP_STEPS: SetupStep[] = ['appearance', 'agents', 'memory', 'conn
 
 // Everything that defines a setup slide lives in this one table: the dithered
 // hero mark, the copy, and the system permissions it asks for. The bot slide
-// has no mark: the user's own bot stands in for it.
+// has no mark: its bots are the picture.
 export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subtitle: string; permissions?: SystemPermission[] }> = {
   appearance: {
     title: 'Make it yours',
@@ -164,8 +168,8 @@ export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subt
     },
   },
   bot: {
-    title: 'Meet your bot',
-    subtitle: "It remembers everything you tell it and works for you, even while you're away.",
+    title: 'Meet your bots',
+    subtitle: "Each has a job, remembers everything you tell it, and keeps working while you're away.",
   },
 }
 
@@ -194,55 +198,73 @@ export function ThemeChoice() {
   )
 }
 
-const useMainBot = () => useQuery(botsQuery).data?.find((bot) => bot.main)
-
-// Every install starts with a main bot. It stands live on its slide, large
-// enough that its eyes follow the cursor.
-export function MainBotFace() {
-  const main = useMainBot()
-  return <div className="grid size-[104px] place-items-center">{main ? <BotAvatar avatar={main.avatar} size={96} live /> : null}</div>
-}
-
-// A day with the bot: something it keeps in mind, a job it takes on, and the
-// next morning's work, done while the user was away and shaped by what it kept.
-const BOT_CHAT = [
-  { mine: true, text: 'Keep my meetings before noon.' },
-  { mine: false, text: "Got it. I'll remember that." },
-  { mine: true, text: 'Brief me on my inbox every morning.' },
-  { day: 'Tomorrow, 8:00' },
-  { mine: false, text: 'Morning! Sam needs the deck by Friday. Lena wants to meet, so I offered her 11:30.' },
+// Three bots at work, each with its own job: the main bot every install
+// starts with, then two the user could add. Every few seconds one finishes a
+// task, cheers, and starts the next. Resting faces follow the cursor.
+const TEAM: { name?: string; role: string; avatar?: BotAvatarShape; tasks: { doing: string; done: string }[] }[] = [
+  {
+    role: 'Chief of staff',
+    tasks: [
+      { doing: 'Planning your week', done: 'Meetings kept before noon' },
+      { doing: 'Booking lunch with Lena', done: 'Lunch with Lena at 11:30' },
+      { doing: 'Preparing your 1:1 notes', done: '1:1 notes ready' },
+    ],
+  },
+  {
+    name: 'Scout',
+    role: 'Researcher',
+    avatar: { shape: 'squircle', color: 'orange' },
+    tasks: [
+      { doing: 'Reading 14 battery papers', done: 'Battery brief ready' },
+      { doing: 'Comparing 3 CRM vendors', done: 'Vendor comparison sent' },
+      { doing: 'Watching competitor launches', done: '2 launches flagged' },
+    ],
+  },
+  {
+    name: 'Relay',
+    role: 'Inbox',
+    avatar: { shape: 'pill', color: 'purple' },
+    tasks: [
+      { doing: 'Sorting 48 new emails', done: '6 need you today' },
+      { doing: 'Drafting replies', done: '4 drafts ready to send' },
+      { doing: 'Chasing late invoices', done: 'Followed up with 3 clients' },
+    ],
+  },
 ]
 
-export function BotShowcase() {
-  const main = useMainBot()
+export function BotTeam() {
+  const main = useQuery(botsQuery).data?.find((bot) => bot.main)
+  const arrive = useReducedEffectsMotion() ? '' : ARRIVE
+  const [tick, setTick] = useState(0)
+  useEffect(() => {
+    const timer = window.setInterval(() => setTick((value) => value + 1), 2400)
+    return () => window.clearInterval(timer)
+  }, [])
   return (
-    <div className="rounded-[14px] bg-surface p-2.5">
-      <div className="flex flex-col gap-1.5 rounded-[9px] bg-bg p-3">
-        {BOT_CHAT.map((line) =>
-          line.day ? (
-            <p key={line.day} className="py-1 text-center text-[11px] text-ink-3">
-              {line.day}
-            </p>
-          ) : (
-            <div key={line.text} className={`flex items-end gap-2 ${line.mine ? 'justify-end' : ''}`}>
-              {!line.mine && main ? <BotAvatar avatar={main.avatar} size={24} /> : null}
-              <p
-                className={`max-w-[78%] rounded-[18px] px-3.5 py-2 text-[13px] leading-snug text-ink ${
-                  line.mine ? 'bg-bubble-sent' : 'bg-surface'
-                }`}
-              >
-                {line.text}
+    <div className="grid grid-cols-3 gap-2">
+      {TEAM.map((bot, index) => {
+        const finished = Math.floor((tick + TEAM.length - 1 - index) / TEAM.length)
+        const { tasks } = bot
+        const doing = tasks[finished % tasks.length].doing
+        const done = tasks[(finished + tasks.length - 1) % tasks.length].done
+        const avatar = bot.avatar ?? main?.avatar ?? { shape: 'blob', color: 'teal' }
+        return (
+          <div key={bot.role} className="flex flex-col items-center rounded-[14px] bg-surface px-2.5 pb-2.5 pt-4 text-center">
+            <BotAvatar avatar={avatar} size={64} live completion={String(finished)} />
+            <p className="mt-2.5 text-[13.5px] font-medium leading-tight text-ink">{bot.name ?? main?.name ?? 'Prime'}</p>
+            <p className="text-[11.5px] text-ink-3">{bot.role}</p>
+            <div className="mt-3 min-h-[76px] w-full rounded-[10px] bg-bg px-2.5 py-2 text-left">
+              <p key={doing} className={`text-[12px] leading-snug text-ink-2 ${arrive}`}>
+                <span className="live-shimmer">{doing}…</span>
+              </p>
+              <p key={done} className={`mt-1.5 flex gap-1 text-[11.5px] leading-snug text-ink-3 ${arrive}`}>
+                <Check size={12} className="mt-[3px] shrink-0 text-ok" />
+                {done}
               </p>
             </div>
-          ),
-        )}
-      </div>
-      <div className="mt-2 flex items-center gap-2 rounded-full bg-bg py-1.5 pl-4 pr-1.5">
-        <span className="flex-1 text-[13px] text-ink-3">Message {main?.name ?? 'your bot'}</span>
-        <span className="grid size-7 place-items-center rounded-full bg-primary text-on-primary">
-          <ArrowUp size={14} />
-        </span>
-      </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
