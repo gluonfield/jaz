@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/httpapi"
+	mcpapi "github.com/wins/jaz/backend/internal/httpapi/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/serverconfig"
@@ -34,21 +34,6 @@ type mcpProxySessionStore interface {
 	LoadSession(string) (storage.Session, error)
 }
 
-// mcpServerInput is the settings a client sends, where a missing enabled
-// keeps the server's current state.
-type mcpServerInput struct {
-	mcpconfig.ServerInput
-	Enabled *bool `json:"enabled,omitempty"`
-}
-
-type mcpServerView struct {
-	mcpconfig.Server
-	Status    string                 `json:"status"`
-	ToolCount int                    `json:"tool_count"`
-	Tools     []mcpconfig.ServerTool `json:"tools,omitempty"`
-	Error     string                 `json:"error,omitempty"`
-}
-
 func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
 	store, ok := s.Store.(mcpStore)
 	if !ok {
@@ -60,7 +45,7 @@ func (s *Server) handleListMCPServers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	out := make([]mcpServerView, 0, len(servers))
+	out := make([]mcpapi.ServerView, 0, len(servers))
 	for _, server := range servers {
 		out = append(out, s.mcpServerView(server))
 	}
@@ -73,7 +58,7 @@ func (s *Server) handleCreateMCPServer(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("mcp store is not configured"))
 		return
 	}
-	input, err := decodeMCPServerInput(r, nil)
+	input, err := mcpapi.DecodeServerInput(r, nil)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
@@ -111,7 +96,7 @@ func (s *Server) handleMCPServerAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, err)
 			return
 		}
-		input, err := decodeMCPServerInput(r, &current)
+		input, err := mcpapi.DecodeServerInput(r, &current)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
 			return
@@ -162,7 +147,7 @@ func (s *Server) handleMCPServerPostAction(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if r.Body != nil && r.ContentLength != 0 {
-			if input, err := decodeMCPServerInput(r, &server); err == nil {
+			if input, err := mcpapi.DecodeServerInput(r, &server); err == nil {
 				server = input.Server(server.ID, server.CreatedAt, server.UpdatedAt)
 			}
 		}
@@ -241,19 +226,6 @@ func writeMCPOAuthCallbackHTML(w http.ResponseWriter, status int, title, message
 	_, _ = w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>Jaz</title></head><body style="font-family:-apple-system,system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;color:#333;background:#fff"><main style="width:min(640px,calc(100vw - 48px));text-align:center"><h2 style="margin:0 0 10px;font-size:22px;font-weight:600">` + html.EscapeString(title) + `</h2><p style="margin:0;color:#666;font-size:14px;line-height:1.5">` + html.EscapeString(message) + `</p></main>` + script + `</body></html>`))
 }
 
-func decodeMCPServerInput(r *http.Request, current *mcpconfig.Server) (mcpconfig.ServerInput, error) {
-	var req mcpServerInput
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return mcpconfig.ServerInput{}, err
-	}
-	input := req.ServerInput
-	input.Enabled = current == nil || current.Enabled
-	if req.Enabled != nil {
-		input.Enabled = *req.Enabled
-	}
-	return mcpconfig.ValidateInput(input)
-}
-
 func (s *Server) refreshMCP() {
 	if s.MCP == nil {
 		return
@@ -287,7 +259,7 @@ func (s *Server) mcpProxyHandler() http.Handler {
 	})
 }
 
-func (s *Server) mcpServerView(server mcpconfig.Server) mcpServerView {
+func (s *Server) mcpServerView(server mcpconfig.Server) mcpapi.ServerView {
 	status := mcpconfig.ServerStatus{Status: "disabled"}
 	if server.Enabled {
 		status = mcpconfig.ServerStatus{Status: "unknown"}
@@ -297,5 +269,5 @@ func (s *Server) mcpServerView(server mcpconfig.Server) mcpServerView {
 			status = live
 		}
 	}
-	return mcpServerView{Server: server, Status: status.Status, ToolCount: status.ToolCount, Tools: status.Tools, Error: status.Error}
+	return mcpapi.NewServerView(server, status)
 }

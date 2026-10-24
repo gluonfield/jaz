@@ -21,7 +21,7 @@ import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { installCredentialEncryption } from './credentialEncryption'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
-import { configureAppPermissions } from './permissions'
+import { configureAppPermissions, trustedWindow } from './permissions'
 import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
 import { installComputerControl } from '@main/computerControl'
@@ -366,7 +366,10 @@ app.whenReady().then(() => {
   })
 
   installCredentialEncryption()
-  ipcMain.handle('jaz:start-local-backend', () => startLocalBackend())
+  ipcMain.handle('jaz:start-local-backend', (event) => {
+    trustedWindow(event)
+    return startLocalBackend()
+  })
   ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
   ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())
   ipcMain.handle('jaz:configure-thread-notifications', (_event, config) =>

@@ -3,3 +3,15 @@
 //   sqlc v1.31.1
 
 package devices
+
+type DevicePairingRequest struct {
+	ID           string `json:"id"`
+	DeviceID     string `json:"device_id"`
+	SecretHash   string `json:"secret_hash"`
+	Status       string `json:"status"`
+	CreatedAtMs  int64  `json:"created_at_ms"`
+	ExpiresAtMs  int64  `json:"expires_at_ms"`
+	ApprovedAtMs int64  `json:"approved_at_ms"`
+	RejectedAtMs int64  `json:"rejected_at_ms"`
+	ProfileJson  string `json:"profile_json"`
+}

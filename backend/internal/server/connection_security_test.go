@@ -82,7 +82,7 @@ func TestSharingUsesScopedSingleUseEnrollment(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	devices := deviceauth.New(store)
-	owner, err := devices.RegisterApproved(testDeviceInfo("Owner", "desktop", 1))
+	_, err = devices.RegisterApproved(testDeviceInfo("Owner", "desktop", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestSharingUsesScopedSingleUseEnrollment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+owner.Token)
+	req.Header.Set("Authorization", "Bearer permanent-root")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -221,7 +221,7 @@ func TestRevocationClosesExistingTerminal(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	devices := deviceauth.New(store)
-	admin, err := devices.RegisterApproved(testDeviceInfo("Owner", "desktop", 1))
+	_, err = devices.RegisterApproved(testDeviceInfo("Owner", "desktop", 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestRevocationClosesExistingTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req.Header.Set("Authorization", "Bearer "+admin.Token)
+	req.Header.Set("Authorization", "Bearer root")
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)

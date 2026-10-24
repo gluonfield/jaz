@@ -5,11 +5,13 @@ import "time"
 const PrincipalEnrollment = "enrollment"
 
 type invitation struct {
-	owner     Principal
 	expiresAt time.Time
 }
 
 func (s *Service) CreateInvitation(owner Principal) (string, error) {
+	if owner.Kind != PrincipalRoot {
+		return "", ErrForbidden
+	}
 	token, err := newToken()
 	if err != nil {
 		return "", err
@@ -17,9 +19,6 @@ func (s *Service) CreateInvitation(owner Principal) (string, error) {
 	token = "invite_" + token
 	s.access.mu.Lock()
 	defer s.access.mu.Unlock()
-	if !s.invitationOwnerActive(owner) {
-		return "", ErrUnauthorized
-	}
 	if s.access.invitations == nil {
 		s.access.invitations = make(map[string]invitation)
 	}
@@ -28,7 +27,7 @@ func (s *Service) CreateInvitation(owner Principal) (string, error) {
 			delete(s.access.invitations, hash)
 		}
 	}
-	s.access.invitations[TokenHash(token)] = invitation{owner: owner, expiresAt: s.now().Add(pairingTTL)}
+	s.access.invitations[TokenHash(token)] = invitation{expiresAt: s.now().Add(pairingTTL)}
 	return token, nil
 }
 
@@ -40,7 +39,7 @@ func (s *Service) RegisterInvited(token string, reg Registration) (RegisterResul
 	s.access.mu.Lock()
 	defer s.access.mu.Unlock()
 	entry, ok := s.access.invitations[TokenHash(token)]
-	if !ok || !s.now().Before(entry.expiresAt) || !s.invitationOwnerActive(entry.owner) {
+	if !ok || !s.now().Before(entry.expiresAt) {
 		return RegisterResult{}, ErrUnauthorized
 	}
 	result, err := s.saveApprovedDevice(reg)
@@ -48,15 +47,4 @@ func (s *Service) RegisterInvited(token string, reg Registration) (RegisterResul
 		delete(s.access.invitations, TokenHash(token))
 	}
 	return result, err
-}
-
-func (s *Service) invitationOwnerActive(owner Principal) bool {
-	if owner.Kind == PrincipalRoot {
-		return true
-	}
-	if owner.Kind != PrincipalDevice {
-		return false
-	}
-	device, err := s.store.LoadDeviceByTokenHash(owner.CredentialHash)
-	return err == nil && device.Status == "approved"
 }

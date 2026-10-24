@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	oauthdb "github.com/wins/jaz/backend/internal/storage/sqlite/generated/integrationoauth"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/mcpdb"
 )
 
 const secretPrefix = "encrypted:v1:"
@@ -28,6 +29,11 @@ func (s *Store) protectSecrets() error {
 	if err != nil {
 		return err
 	}
+	mcpq := mcpdb.New(s.db).WithTx(tx)
+	mcpRows, err := mcpq.ListMCPServers(ctx)
+	if err != nil {
+		return err
+	}
 	keyPath := strings.TrimSpace(os.Getenv("JAZ_SECRET_KEY_FILE"))
 	if keyPath == "" {
 		keyPath = filepath.Join(s.root, "secrets.key")
@@ -38,6 +44,11 @@ func (s *Store) protectSecrets() error {
 		for _, row := range rows {
 			if strings.HasPrefix(row.TokenJson, secretPrefix) {
 				return fmt.Errorf("OAuth secrets require their original key file: %s", keyPath)
+			}
+		}
+		for _, row := range mcpRows {
+			if strings.HasPrefix(row.BearerToken.String, secretPrefix) || strings.HasPrefix(row.HeadersJson, secretPrefix) {
+				return fmt.Errorf("MCP secrets require their original key file: %s", keyPath)
 			}
 		}
 		key = make([]byte, 32)
@@ -88,17 +99,31 @@ func (s *Store) protectSecrets() error {
 	}
 	changed := false
 	for _, row := range rows {
-		if strings.HasPrefix(row.TokenJson, secretPrefix) {
-			if _, err := s.decryptSecret(row.ConnectionID, row.TokenJson); err != nil {
-				return fmt.Errorf("unlock OAuth credentials: %w", err)
-			}
-			continue
-		}
-		sealed, err := s.encryptSecret(row.ConnectionID, []byte(row.TokenJson))
+		sealed, err := s.protectSecret(row.ConnectionID, row.TokenJson)
 		if err != nil {
 			return err
 		}
+		if sealed == row.TokenJson {
+			continue
+		}
 		if err := q.SaveToken(ctx, oauthdb.SaveTokenParams{ConnectionID: row.ConnectionID, TokenJson: sealed, UpdatedAtMs: row.UpdatedAtMs}); err != nil {
+			return err
+		}
+		changed = true
+	}
+	for _, row := range mcpRows {
+		bearer, err := s.protectSecret("mcp:"+row.ID+":bearer", row.BearerToken.String)
+		if err != nil {
+			return err
+		}
+		headers, err := s.protectSecret("mcp:"+row.ID+":headers", row.HeadersJson)
+		if err != nil {
+			return err
+		}
+		if bearer == row.BearerToken.String && headers == row.HeadersJson {
+			continue
+		}
+		if err := mcpq.UpdateMCPSecrets(ctx, mcpdb.UpdateMCPSecretsParams{ID: row.ID, BearerToken: nullDBString(bearer), HeadersJson: headers}); err != nil {
 			return err
 		}
 		changed = true
@@ -118,6 +143,14 @@ func (s *Store) protectSecrets() error {
 		}
 	}
 	return nil
+}
+
+func (s *Store) protectSecret(id, value string) (string, error) {
+	if strings.HasPrefix(value, secretPrefix) {
+		_, err := s.decryptSecret(id, value)
+		return value, err
+	}
+	return s.encryptSecret(id, []byte(value))
 }
 
 func (s *Store) encryptSecret(id string, value []byte) (string, error) {

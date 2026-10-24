@@ -9,33 +9,6 @@ import (
 	"context"
 )
 
-const approveDevice = `-- name: ApproveDevice :execrows
-UPDATE devices
-SET
-  status = 'approved',
-  token_hash = CASE
-    WHEN CAST(?1 AS TEXT) = '' THEN token_hash
-    ELSE CAST(?1 AS TEXT)
-  END,
-  approved_at_ms = ?2,
-  revoked_at_ms = 0
-WHERE id = ?3
-`
-
-type ApproveDeviceParams struct {
-	TokenHash    string `json:"token_hash"`
-	ApprovedAtMs int64  `json:"approved_at_ms"`
-	ID           string `json:"id"`
-}
-
-func (q *Queries) ApproveDevice(ctx context.Context, arg ApproveDeviceParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, approveDevice, arg.TokenHash, arg.ApprovedAtMs, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const approvePairingRequest = `-- name: ApprovePairingRequest :execrows
 UPDATE device_pairing_requests
 SET
@@ -43,6 +16,7 @@ SET
   approved_at_ms = ?1
 WHERE id = ?2
   AND status = 'pending'
+  AND expires_at_ms > ?1
 `
 
 type ApprovePairingRequestParams struct {
@@ -65,7 +39,6 @@ WHERE device_pairing_requests.id = ?1
   AND secret_hash = ?2
   AND status = 'approved'
   AND expires_at_ms > ?3
-  AND EXISTS (SELECT 1 FROM devices WHERE devices.id = device_pairing_requests.device_id AND devices.status = 'approved')
 `
 
 type ClaimPairingRequestParams struct {
@@ -97,19 +70,10 @@ func (q *Queries) CountApprovedDevices(ctx context.Context) (int64, error) {
 
 const createPairingRequest = `-- name: CreatePairingRequest :exec
 INSERT INTO device_pairing_requests (
-  id,
-  device_id,
-  secret_hash,
-  status,
-  created_at_ms,
-  expires_at_ms
+  id, device_id, secret_hash, status, created_at_ms, expires_at_ms, profile_json
 ) VALUES (
-  ?1,
-  ?2,
-  ?3,
-  ?4,
-  ?5,
-  ?6
+  ?1, ?2, ?3, 'pending',
+  ?4, ?5, ?6
 )
 `
 
@@ -117,9 +81,9 @@ type CreatePairingRequestParams struct {
 	ID          string `json:"id"`
 	DeviceID    string `json:"device_id"`
 	SecretHash  string `json:"secret_hash"`
-	Status      string `json:"status"`
 	CreatedAtMs int64  `json:"created_at_ms"`
 	ExpiresAtMs int64  `json:"expires_at_ms"`
+	ProfileJson string `json:"profile_json"`
 }
 
 func (q *Queries) CreatePairingRequest(ctx context.Context, arg CreatePairingRequestParams) error {
@@ -127,33 +91,11 @@ func (q *Queries) CreatePairingRequest(ctx context.Context, arg CreatePairingReq
 		arg.ID,
 		arg.DeviceID,
 		arg.SecretHash,
-		arg.Status,
 		arg.CreatedAtMs,
 		arg.ExpiresAtMs,
+		arg.ProfileJson,
 	)
 	return err
-}
-
-const expirePairingRequest = `-- name: ExpirePairingRequest :execrows
-UPDATE device_pairing_requests
-SET
-  status = 'expired',
-  rejected_at_ms = ?1
-WHERE id = ?2
-  AND status = 'pending'
-`
-
-type ExpirePairingRequestParams struct {
-	RejectedAtMs int64  `json:"rejected_at_ms"`
-	ID           string `json:"id"`
-}
-
-func (q *Queries) ExpirePairingRequest(ctx context.Context, arg ExpirePairingRequestParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, expirePairingRequest, arg.RejectedAtMs, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
 }
 
 const getDevice = `-- name: GetDevice :one
@@ -289,67 +231,12 @@ func (q *Queries) GetDeviceByTokenHash(ctx context.Context, tokenHash string) (G
 }
 
 const getPairingRequest = `-- name: GetPairingRequest :one
-SELECT
-  p.id,
-  p.device_id,
-  p.secret_hash,
-  p.status,
-  p.created_at_ms,
-  p.expires_at_ms,
-  p.approved_at_ms,
-  p.rejected_at_ms,
-  d.id AS device_db_id,
-  d.name AS device_name,
-  d.kind AS device_kind,
-  d.status AS device_status,
-  d.public_key AS device_public_key,
-  d.platform AS device_platform,
-  d.device_family AS device_family,
-  d.model_identifier AS device_model_identifier,
-  d.token_hash AS device_token_hash,
-  d.created_at_ms AS device_created_at_ms,
-  d.approved_at_ms AS device_approved_at_ms,
-  d.revoked_at_ms AS device_revoked_at_ms,
-  d.last_seen_at_ms AS device_last_seen_at_ms,
-  d.last_seen_ip AS device_last_seen_ip,
-  d.user_agent AS device_user_agent,
-  d.app_version AS device_app_version
-FROM device_pairing_requests p
-JOIN devices d ON d.id = p.device_id
-WHERE p.id = ?1
-LIMIT 1
+SELECT id, device_id, secret_hash, status, created_at_ms, expires_at_ms, approved_at_ms, rejected_at_ms, profile_json FROM device_pairing_requests WHERE id = ?1
 `
 
-type GetPairingRequestRow struct {
-	ID                    string `json:"id"`
-	DeviceID              string `json:"device_id"`
-	SecretHash            string `json:"secret_hash"`
-	Status                string `json:"status"`
-	CreatedAtMs           int64  `json:"created_at_ms"`
-	ExpiresAtMs           int64  `json:"expires_at_ms"`
-	ApprovedAtMs          int64  `json:"approved_at_ms"`
-	RejectedAtMs          int64  `json:"rejected_at_ms"`
-	DeviceDbID            string `json:"device_db_id"`
-	DeviceName            string `json:"device_name"`
-	DeviceKind            string `json:"device_kind"`
-	DeviceStatus          string `json:"device_status"`
-	DevicePublicKey       string `json:"device_public_key"`
-	DevicePlatform        string `json:"device_platform"`
-	DeviceFamily          string `json:"device_family"`
-	DeviceModelIdentifier string `json:"device_model_identifier"`
-	DeviceTokenHash       string `json:"device_token_hash"`
-	DeviceCreatedAtMs     int64  `json:"device_created_at_ms"`
-	DeviceApprovedAtMs    int64  `json:"device_approved_at_ms"`
-	DeviceRevokedAtMs     int64  `json:"device_revoked_at_ms"`
-	DeviceLastSeenAtMs    int64  `json:"device_last_seen_at_ms"`
-	DeviceLastSeenIp      string `json:"device_last_seen_ip"`
-	DeviceUserAgent       string `json:"device_user_agent"`
-	DeviceAppVersion      string `json:"device_app_version"`
-}
-
-func (q *Queries) GetPairingRequest(ctx context.Context, id string) (GetPairingRequestRow, error) {
+func (q *Queries) GetPairingRequest(ctx context.Context, id string) (DevicePairingRequest, error) {
 	row := q.db.QueryRowContext(ctx, getPairingRequest, id)
-	var i GetPairingRequestRow
+	var i DevicePairingRequest
 	err := row.Scan(
 		&i.ID,
 		&i.DeviceID,
@@ -359,24 +246,25 @@ func (q *Queries) GetPairingRequest(ctx context.Context, id string) (GetPairingR
 		&i.ExpiresAtMs,
 		&i.ApprovedAtMs,
 		&i.RejectedAtMs,
-		&i.DeviceDbID,
-		&i.DeviceName,
-		&i.DeviceKind,
-		&i.DeviceStatus,
-		&i.DevicePublicKey,
-		&i.DevicePlatform,
-		&i.DeviceFamily,
-		&i.DeviceModelIdentifier,
-		&i.DeviceTokenHash,
-		&i.DeviceCreatedAtMs,
-		&i.DeviceApprovedAtMs,
-		&i.DeviceRevokedAtMs,
-		&i.DeviceLastSeenAtMs,
-		&i.DeviceLastSeenIp,
-		&i.DeviceUserAgent,
-		&i.DeviceAppVersion,
+		&i.ProfileJson,
 	)
 	return i, err
+}
+
+const invalidateDevicePairings = `-- name: InvalidateDevicePairings :exec
+UPDATE device_pairing_requests
+SET status = 'rejected', secret_hash = '', rejected_at_ms = ?1
+WHERE device_id = ?2 AND secret_hash != ''
+`
+
+type InvalidateDevicePairingsParams struct {
+	AtMs     int64  `json:"at_ms"`
+	DeviceID string `json:"device_id"`
+}
+
+func (q *Queries) InvalidateDevicePairings(ctx context.Context, arg InvalidateDevicePairingsParams) error {
+	_, err := q.db.ExecContext(ctx, invalidateDevicePairings, arg.AtMs, arg.DeviceID)
+	return err
 }
 
 const listDevices = `-- name: ListDevices :many
@@ -468,72 +356,20 @@ func (q *Queries) ListDevices(ctx context.Context) ([]ListDevicesRow, error) {
 }
 
 const listPairingRequests = `-- name: ListPairingRequests :many
-SELECT
-  p.id,
-  p.device_id,
-  p.secret_hash,
-  p.status,
-  p.created_at_ms,
-  p.expires_at_ms,
-  p.approved_at_ms,
-  p.rejected_at_ms,
-  d.id AS device_db_id,
-  d.name AS device_name,
-  d.kind AS device_kind,
-  d.status AS device_status,
-  d.public_key AS device_public_key,
-  d.platform AS device_platform,
-  d.device_family AS device_family,
-  d.model_identifier AS device_model_identifier,
-  d.token_hash AS device_token_hash,
-  d.created_at_ms AS device_created_at_ms,
-  d.approved_at_ms AS device_approved_at_ms,
-  d.revoked_at_ms AS device_revoked_at_ms,
-  d.last_seen_at_ms AS device_last_seen_at_ms,
-  d.last_seen_ip AS device_last_seen_ip,
-  d.user_agent AS device_user_agent,
-  d.app_version AS device_app_version
-FROM device_pairing_requests p
-JOIN devices d ON d.id = p.device_id
-ORDER BY p.created_at_ms DESC
+SELECT id, device_id, secret_hash, status, created_at_ms, expires_at_ms, approved_at_ms, rejected_at_ms, profile_json FROM device_pairing_requests
+WHERE created_at_ms >= ?1
+ORDER BY created_at_ms DESC
 `
 
-type ListPairingRequestsRow struct {
-	ID                    string `json:"id"`
-	DeviceID              string `json:"device_id"`
-	SecretHash            string `json:"secret_hash"`
-	Status                string `json:"status"`
-	CreatedAtMs           int64  `json:"created_at_ms"`
-	ExpiresAtMs           int64  `json:"expires_at_ms"`
-	ApprovedAtMs          int64  `json:"approved_at_ms"`
-	RejectedAtMs          int64  `json:"rejected_at_ms"`
-	DeviceDbID            string `json:"device_db_id"`
-	DeviceName            string `json:"device_name"`
-	DeviceKind            string `json:"device_kind"`
-	DeviceStatus          string `json:"device_status"`
-	DevicePublicKey       string `json:"device_public_key"`
-	DevicePlatform        string `json:"device_platform"`
-	DeviceFamily          string `json:"device_family"`
-	DeviceModelIdentifier string `json:"device_model_identifier"`
-	DeviceTokenHash       string `json:"device_token_hash"`
-	DeviceCreatedAtMs     int64  `json:"device_created_at_ms"`
-	DeviceApprovedAtMs    int64  `json:"device_approved_at_ms"`
-	DeviceRevokedAtMs     int64  `json:"device_revoked_at_ms"`
-	DeviceLastSeenAtMs    int64  `json:"device_last_seen_at_ms"`
-	DeviceLastSeenIp      string `json:"device_last_seen_ip"`
-	DeviceUserAgent       string `json:"device_user_agent"`
-	DeviceAppVersion      string `json:"device_app_version"`
-}
-
-func (q *Queries) ListPairingRequests(ctx context.Context) ([]ListPairingRequestsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listPairingRequests)
+func (q *Queries) ListPairingRequests(ctx context.Context, afterMs int64) ([]DevicePairingRequest, error) {
+	rows, err := q.db.QueryContext(ctx, listPairingRequests, afterMs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListPairingRequestsRow{}
+	items := []DevicePairingRequest{}
 	for rows.Next() {
-		var i ListPairingRequestsRow
+		var i DevicePairingRequest
 		if err := rows.Scan(
 			&i.ID,
 			&i.DeviceID,
@@ -543,22 +379,7 @@ func (q *Queries) ListPairingRequests(ctx context.Context) ([]ListPairingRequest
 			&i.ExpiresAtMs,
 			&i.ApprovedAtMs,
 			&i.RejectedAtMs,
-			&i.DeviceDbID,
-			&i.DeviceName,
-			&i.DeviceKind,
-			&i.DeviceStatus,
-			&i.DevicePublicKey,
-			&i.DevicePlatform,
-			&i.DeviceFamily,
-			&i.DeviceModelIdentifier,
-			&i.DeviceTokenHash,
-			&i.DeviceCreatedAtMs,
-			&i.DeviceApprovedAtMs,
-			&i.DeviceRevokedAtMs,
-			&i.DeviceLastSeenAtMs,
-			&i.DeviceLastSeenIp,
-			&i.DeviceUserAgent,
-			&i.DeviceAppVersion,
+			&i.ProfileJson,
 		); err != nil {
 			return nil, err
 		}
@@ -573,34 +394,56 @@ func (q *Queries) ListPairingRequests(ctx context.Context) ([]ListPairingRequest
 	return items, nil
 }
 
-const rejectOtherPendingPairingRequests = `-- name: RejectOtherPendingPairingRequests :execrows
-UPDATE device_pairing_requests
-SET
-  status = 'rejected',
-  rejected_at_ms = ?1
-WHERE device_id = ?2
-  AND id != ?3
-  AND status = 'pending'
+const pairingAdmission = `-- name: PairingAdmission :one
+SELECT
+  CAST(coalesce(sum(CASE WHEN created_at_ms > ?1 THEN 1 ELSE 0 END), 0) AS INTEGER) AS recent,
+  CAST(coalesce(sum(CASE WHEN secret_hash != '' AND status IN ('pending', 'approved') AND expires_at_ms > ?2 THEN 1 ELSE 0 END), 0) AS INTEGER) AS pending
+FROM device_pairing_requests
 `
 
-type RejectOtherPendingPairingRequestsParams struct {
-	RejectedAtMs int64  `json:"rejected_at_ms"`
-	DeviceID     string `json:"device_id"`
-	ID           string `json:"id"`
+type PairingAdmissionParams struct {
+	RecentAfterMs int64 `json:"recent_after_ms"`
+	AtMs          int64 `json:"at_ms"`
 }
 
-func (q *Queries) RejectOtherPendingPairingRequests(ctx context.Context, arg RejectOtherPendingPairingRequestsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, rejectOtherPendingPairingRequests, arg.RejectedAtMs, arg.DeviceID, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+type PairingAdmissionRow struct {
+	Recent  int64 `json:"recent"`
+	Pending int64 `json:"pending"`
+}
+
+func (q *Queries) PairingAdmission(ctx context.Context, arg PairingAdmissionParams) (PairingAdmissionRow, error) {
+	row := q.db.QueryRowContext(ctx, pairingAdmission, arg.RecentAfterMs, arg.AtMs)
+	var i PairingAdmissionRow
+	err := row.Scan(&i.Recent, &i.Pending)
+	return i, err
+}
+
+const prunePairingDevices = `-- name: PrunePairingDevices :exec
+DELETE FROM devices
+WHERE devices.token_hash = 'pending:' || devices.id
+  AND devices.created_at_ms < ?1
+  AND NOT EXISTS (SELECT 1 FROM device_pairing_requests WHERE device_id = devices.id)
+`
+
+func (q *Queries) PrunePairingDevices(ctx context.Context, beforeMs int64) error {
+	_, err := q.db.ExecContext(ctx, prunePairingDevices, beforeMs)
+	return err
+}
+
+const prunePairingRequests = `-- name: PrunePairingRequests :exec
+DELETE FROM device_pairing_requests WHERE created_at_ms < ?1
+`
+
+func (q *Queries) PrunePairingRequests(ctx context.Context, beforeMs int64) error {
+	_, err := q.db.ExecContext(ctx, prunePairingRequests, beforeMs)
+	return err
 }
 
 const rejectPairingRequest = `-- name: RejectPairingRequest :execrows
 UPDATE device_pairing_requests
 SET
   status = 'rejected',
+  secret_hash = '',
   rejected_at_ms = ?1
 WHERE id = ?2
   AND status = 'pending'
@@ -613,28 +456,6 @@ type RejectPairingRequestParams struct {
 
 func (q *Queries) RejectPairingRequest(ctx context.Context, arg RejectPairingRequestParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, rejectPairingRequest, arg.RejectedAtMs, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const rejectPendingPairingRequestsForDevice = `-- name: RejectPendingPairingRequestsForDevice :execrows
-UPDATE device_pairing_requests
-SET
-  status = 'rejected',
-  rejected_at_ms = ?1
-WHERE device_id = ?2
-  AND status = 'pending'
-`
-
-type RejectPendingPairingRequestsForDeviceParams struct {
-	RejectedAtMs int64  `json:"rejected_at_ms"`
-	DeviceID     string `json:"device_id"`
-}
-
-func (q *Queries) RejectPendingPairingRequestsForDevice(ctx context.Context, arg RejectPendingPairingRequestsForDeviceParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, rejectPendingPairingRequestsForDevice, arg.RejectedAtMs, arg.DeviceID)
 	if err != nil {
 		return 0, err
 	}
@@ -781,16 +602,7 @@ INSERT INTO devices (
   ?10,
   ?11
 )
-ON CONFLICT(id) DO UPDATE SET
-  name = excluded.name,
-  kind = excluded.kind,
-  public_key = excluded.public_key,
-  platform = excluded.platform,
-  device_family = excluded.device_family,
-  model_identifier = excluded.model_identifier,
-  last_seen_ip = excluded.last_seen_ip,
-  user_agent = excluded.user_agent,
-  app_version = excluded.app_version
+ON CONFLICT(id) DO NOTHING
 `
 
 type SavePairingDeviceParams struct {
