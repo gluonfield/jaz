@@ -1,0 +1,60 @@
+<style>
+.audit{font:16px/1.7 var(--font-sans,system-ui,sans-serif);color:var(--color-text-primary,#202020);max-width:960px;margin:auto}
+.audit h2{font-size:22px;font-weight:500;margin:0 0 8px}.audit p{margin:8px 0}.audit .muted{color:var(--color-text-secondary,#727272)}
+.audit table{width:100%;border-collapse:collapse;font-size:14px}.audit th{text-align:left;font-weight:500}.audit th,.audit td{padding:12px 10px;border-bottom:1px solid var(--color-border-tertiary,#dedede);vertical-align:top}
+.audit td:first-child{width:60px}.audit td:last-child{width:112px}.audit summary{cursor:pointer;font-size:16px;font-weight:500}.audit details p{font-size:14px}.audit code{font:12px/1.6 var(--font-mono,monospace);overflow-wrap:anywhere}
+.audit .high{color:var(--color-text-danger,#a33333)}.audit .medium{color:var(--color-text-warning,#8d6400)}.audit .sr-only{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+@media(prefers-color-scheme:dark){.audit{color:var(--color-text-primary,#eee)}.audit .muted{color:var(--color-text-secondary,#aaa)}.audit .high{color:var(--color-text-danger,#f09595)}.audit .medium{color:var(--color-text-warning,#e8ca80)}.audit th,.audit td{border-color:var(--color-border-tertiary,#454545)}}
+</style>
+<article class="audit">
+<h2 class="sr-only">Jaz connection security review: four high-priority findings and three medium-priority findings.</h2>
+<h2>Connection security review</h2>
+<p class="muted">24 October 2026 · Source 6b73bcf5 · Assessment only</p>
+<table>
+<thead><tr><th>Priority</th><th>Finding and correction</th><th>Evidence</th></tr></thead>
+<tbody>
+<tr><td class="high">High</td><td><details><summary>1. Websites can reach local agent tools without credentials</summary>
+<p>Local MCP requests bypass authentication, CORS accepts arbitrary HTTP and HTTPS origins, and the MCP handler has no Origin protection configured. A request with <code>Origin: https://review.invalid</code> successfully initialized, listed 58 tools and invoked the harmless agent-options tool in one JSON-RPC batch. Batching avoids needing to read or resend the MCP session header.</p>
+<p>A webpage that can reach localhost can therefore reach sensitive agent tools. Actual browser exploitation depends on the browser's local-network restrictions; this audit verified server acceptance and CORS preflight responses, without running an attack page. Email and other consequential tools were inspected in source and were not invoked.</p>
+<p>Require agent credentials at the MCP boundary and enforce explicit trusted browser origins. Remove IP-based authentication exemptions. An origin allowlist alone does not authenticate local programs.</p>
+<p><code>backend/internal/server/auth.go:163</code><br><code>backend/internal/server/cors.go:9</code><br><code>backend/internal/jaztools/service.go:303</code></p>
+</details></td><td>Live local<br>tool invocation</td></tr>
+<tr><td class="high">High</td><td><details><summary>2. The tunnel bypasses extension-bridge authentication</summary>
+<p>The tunnel forwards requests from localhost. The extension exemption accepts any syntactically valid extension Origin, which an Internet client can supply. A public request without credentials returned 401; adding a fabricated extension Origin reached the WebSocket upgrader and returned 400 for missing upgrade headers.</p>
+<p>The bridge accepts a self-declared protocol hello and replaces its previous client. This permits bridge impersonation and interception of extension-directed browser actions when Extension mode is used. Current settings select Desktop mode, so a takeover of the active side browser is not established. The audit deliberately did not complete a bridge hello or replace a client.</p>
+<p>Authenticate bridge clients with a dedicated credential and remove the localhost-plus-Origin exemption. Restrict public ingress to the client API surfaces that need it.</p>
+<p><code>backend/internal/server/auth.go:87</code><br><code>backend/internal/browsercontrol/extension_bridge.go:143</code><br><code>backend/internal/browsercontrol/extension_bridge.go:201</code></p>
+</details></td><td>Live public<br>auth bypass</td></tr>
+<tr><td class="high">High</td><td><details><summary>3. Every approved device can obtain permanent enrollment authority</summary>
+<p>The connection-link endpoint returns the shared root key to an ordinary approved device. Possession of that key permits immediate approved registration of another device. The root key remains valid when an individual device is revoked.</p>
+<p>An isolated server with the real HTTP handlers, device service and SQLite adapter confirmed both steps: device-token access to the root-bearing link returned 200, and root-key enrollment returned 200 with an approved device and token. A compromised phone can retain enrollment authority beyond its device's revocation.</p>
+<p>Keep the root key local to bootstrap and recovery. Replace root-bearing QR links with expiring, single-use enrollment invitations, and make recovery-key rotation explicit. Existing root links should be treated as administrator credentials.</p>
+<p><code>backend/internal/httpapi/devices/handler.go:120</code><br><code>backend/internal/server/auth.go:80</code><br><code>backend/internal/httpapi/devices/handler.go:169</code></p>
+</details></td><td>Real routes<br>isolated DB</td></tr>
+<tr><td class="high">High</td><td><details><summary>4. Revocation leaves an existing terminal operational</summary>
+<p>Device authentication runs before WebSocket upgrade. Terminal input then executes without another device check, and revocation does not cancel the device's open connections.</p>
+<p>An isolated production-route probe opened a terminal, revoked its device and verified that fresh HTTP requests returned 401. The already-open terminal then successfully executed a command that wrote a marker inside the isolated audit directory. The hidden terminal and server were closed afterward.</p>
+<p>Associate long-lived streams with their authenticated device and cancel them when it is revoked. Apply this ownership contract to terminals, browser/computer streams and event subscriptions. Revocation should end access without requiring a server restart.</p>
+<p><code>backend/internal/server/auth.go:29</code><br><code>backend/internal/server/terminal.go:87</code><br><code>backend/internal/deviceauth/service.go:232</code></p>
+</details></td><td>Real terminal<br>after revocation</td></tr>
+<tr><td class="medium">Medium</td><td><details><summary>5. URLs carry durable credentials</summary>
+<p>Root links contain <code>?key=</code>. Event streams, browser/computer/terminal sockets and embedded files use device tokens in URL queries. Pairing polling sends <code>?secret=</code>, and that same secret becomes the approved device's persistent bearer token. Expiry applies to pending pairing, while approved device tokens have no expiry check.</p>
+<p>URL capture in proxy logs, copied links or diagnostics can therefore capture reusable access. This audit establishes the exposure paths, not an actual leak. Native iOS socket requests already support an Authorization header but also append the token to the URL.</p>
+<p>Use headers where supported. Exchange short-lived, single-use tickets for browser transports that cannot set headers, and exchange pairing proof for a distinct device credential. Redact credentials from URLs and diagnostic output.</p>
+<p><code>backend/internal/deviceauth/service.go:173</code><br><code>backend/internal/deviceauth/service.go:207</code><br><code>frontend/src/renderer/src/lib/api/client.ts:164</code><br><code>jaz-ios/jaz/jaz/Network/APIClient.swift:224</code></p>
+</details></td><td>Source paths<br>desktop + iOS</td></tr>
+<tr><td class="medium">Medium</td><td><details><summary>6. Connected-account credentials are stored as plain JSON</summary>
+<p>OAuth access tokens, refresh tokens and client secrets are serialized directly into SQLite. The running database and WAL have mode 0644; the Jaz directory has mode 0755. The home directory has mode 0750 with group staff, so other-user access still depends on ancestor permissions and ACLs. Six OAuth-token rows exist; no token values were printed.</p>
+<p>A copied database or a process able to read it can obtain connected-account credentials. Desktop device bearer tokens also reside in renderer localStorage. The iOS client uses Keychain, and the server root-key file is correctly mode 0600.</p>
+<p>Use a private runtime directory and restrictive database/WAL permissions. Protect reusable OAuth secrets with the platform credential store or an external secret key, and move desktop credentials behind the main-process credential boundary. Backups need the same protection.</p>
+<p><code>backend/internal/storage/sqlite/integration_oauth.go:28</code><br><code>backend/internal/storage/sqlite/store.go:63</code><br><code>frontend/src/renderer/src/lib/api/client.ts:144</code></p>
+</details></td><td>Source + live<br>file permissions</td></tr>
+<tr><td class="medium">Medium</td><td><details><summary>7. The backend also listens on every network interface</summary>
+<p>The running server listens on <code>*:5299</code>, matching the default <code>:5299</code> listen address. The phone tunnel only needs a loopback origin, so the wider listener adds a separate LAN-facing HTTP surface. Actual reachability from another device depends on the Mac firewall and network.</p>
+<p>The clients also default a scheme-less address to HTTP. Your configured phone tunnel uses HTTPS; this finding concerns the additional direct listener and other connection choices.</p>
+<p>For a same-computer tunnel deployment, bind the backend explicitly to loopback. Require HTTPS for ordinary remote connections, with an explicit local development exception where needed. Keep intentional LAN deployments separately configured.</p>
+<p><code>backend/cmd/jaz/serve.go:191</code><br><code>frontend/src/renderer/src/lib/api/client.ts:25</code><br><code>jaz-ios/jaz/jaz/Environment/BackendSettings.swift:51</code></p>
+</details></td><td>Live listener<br>+ defaults</td></tr>
+</tbody>
+</table>
+</article>
