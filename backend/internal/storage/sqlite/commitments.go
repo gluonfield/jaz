@@ -46,9 +46,16 @@ func updateCommitment(ctx context.Context, q *botdb.Queries, commitment storage.
 	if commitment.Status == storage.CommitmentWaitingForUser && commitment.QuestionSeq <= 0 {
 		return errors.New("waiting_for_user requires a delivered question")
 	}
+	checkAt := sql.NullInt64{}
+	if commitment.CheckAt != nil {
+		checkAt.Valid = true
+		if !commitment.CheckAt.IsZero() {
+			checkAt.Int64 = commitment.CheckAt.UnixMilli()
+		}
+	}
 	updated, err := q.UpdateCommitment(ctx, botdb.UpdateCommitmentParams{
 		ID: commitment.ID, BotID: commitment.BotID, Request: nullDBString(commitment.Request), Note: nullDBString(commitment.Note),
-		Status: nullDBString(commitment.Status), QuestionSeq: commitment.QuestionSeq,
+		Status: nullDBString(commitment.Status), QuestionSeq: commitment.QuestionSeq, CheckAtMs: checkAt,
 	})
 	if err != nil {
 		return err
@@ -248,8 +255,13 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	}
 	commitments := make([]storage.Commitment, 0, len(rows))
 	for _, row := range rows {
+		var checkAt *time.Time
+		if row.CheckAtMs > 0 {
+			at := msToTime(row.CheckAtMs)
+			checkAt = &at
+		}
 		commitments = append(commitments, storage.Commitment{
-			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, DependsOn: dependencies[row.ID],
+			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, ReplySeq: row.ReplySeq, CheckAt: checkAt, DependsOn: dependencies[row.ID],
 			Moving: motion[row.ID].Moving != 0, Blocked: motion[row.ID].Blocked != 0, Stalled: motion[row.ID].Stalled != 0, Status: row.Status,
 			OpenedAt: msToTime(row.OpenedAtMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
 		})

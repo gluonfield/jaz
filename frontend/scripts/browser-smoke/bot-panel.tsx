@@ -22,7 +22,7 @@ export async function exerciseBotPanel(): Promise<void> {
     { id: 1, request: 'Capacity test with 20 threads', status: 'in_progress', opened_at: minutes(60 * 4), threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
     { id: 7, request: 'Run the login suites', status: 'in_progress', opened_at: minutes(25), threads: [{ id: 'side-i', title: 'Login suites', state: 'background' }, { id: 'side-j', title: 'Login fix', state: 'finished' }] },
   ]
-  const activity: BotActivity[] = [
+  const activity: (BotActivity | { kind: 'commitment'; at: string; title: string; status: string; text?: string; thread_id?: string })[] = [
     { kind: 'commitment', at: minutes(20), title: 'Calmer bot faces', status: 'completed', thread_id: 'side-d' },
     { kind: 'commitment', at: minutes(60 * 24 + 40), title: 'Muse-style identity cards', status: 'cancelled', text: 'He chose option A instead' },
     { kind: 'side_chat', at: minutes(14), running: true, title: 'Notes cleanup', status: 'running', thread_id: 'side-c2' },
@@ -188,7 +188,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const wasDark = document.documentElement.classList.contains('dark')
   const dark = (on: boolean) => document.documentElement.classList.toggle('dark', on)
   const editor = () => document.querySelector<HTMLElement>('[role="dialog"] .ProseMirror')
-  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] [role="img"]')].map((node) => node.getAttribute('aria-label'))
+  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:last-child')].map((node) => node.textContent)
 
   try {
     dark(false)
@@ -196,14 +196,9 @@ export async function exerciseBotPanel(): Promise<void> {
     if (find('Tasks') || !find('Activity')?.textContent?.includes('Activity')) {
       throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
-    for (const state of ['Working', 'Result in', 'Stalled', 'Waiting on prerequisites', 'Waiting on you', 'A thread failed']) {
-      if (!taskStates().includes(state)) {
-        throw new Error(`Bot panel: Tasks does not say "${state}"`)
-      }
-    }
-    const indicatorOf = (title: string) => find(title)?.querySelector('[role="img"]')
-    if (!indicatorOf('Compare the supplier quotes')?.classList.contains('bg-danger') || indicatorOf('Overnight stress run')?.classList.contains('bg-danger')) {
-      throw new Error('Bot panel: a stalled commitment is not marked as a problem, or a waiting one is')
+    const states = taskStates()
+    if (states.length !== 7 || states.filter((state) => state === 'Active').length !== 6 || states.filter((state) => state === 'Blocked by Human').length !== 1) {
+      throw new Error(`Bot panel: tasks should have two visible states, got ${states}`)
     }
     const title = find(owed[0].request)?.querySelector('span.truncate')
     if (!title || title.getBoundingClientRect().height > parseFloat(getComputedStyle(title).lineHeight) + 1 || !title.classList.contains('truncate')) {
@@ -218,7 +213,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const tasks = document.querySelector<HTMLElement>('section[aria-label="Tasks"]')!
     for (const task of owed) {
       const row = find(task.request)!
-      if (row.textContent !== task.request || row.getBoundingClientRect().height > 42) {
+      if (row.textContent !== task.request + (task.status === 'waiting_for_user' ? 'Blocked by Human' : 'Active') || row.getBoundingClientRect().height > 42) {
         throw new Error('Bot panel: a task row shows a subtitle or body instead of one compact title')
       }
     }
@@ -266,13 +261,13 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Run the login suites')
-    await until('a thread working in the background did not show as working', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Login suitesWorking in the background|Login fixFinished' && (document.querySelector('[role="dialog"]')?.textContent?.includes('For you · Working') ?? false))
+    await until('a thread working in the background did not show as working', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Login suitesWorking in the background|Login fixFinished' && (document.querySelector('[role="dialog"]')?.textContent?.includes('For you · Active') ?? false))
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Activity')
     await until('Activity never listed Now and today', () => text().includes('Now') && text().includes('Today') && text().includes('Learned something new'))
-    if (!text().includes('Delivered to you') || !text().includes('Cancelled · He chose option A instead')) {
-      throw new Error('Bot panel: completed and cancelled task history is missing')
+    if (text().includes('Delivered to you') || text().includes('He chose option A instead') || text().includes('Calmer bot faces') || text().includes('Muse-style identity cards')) {
+      throw new Error('Bot panel: completed or cancelled task history leaked into Activity')
     }
     find('Merged both reviews into one plan')?.scrollIntoView({ block: 'center' })
     await capture('bot-panel-started')
@@ -410,9 +405,9 @@ export async function exerciseBotPanel(): Promise<void> {
     for (const motion of [{ threads: [{ id: 'background-worker', title: 'Report worker', state: 'background' as const }] }, { moving: true }]) {
       owed.splice(0, owed.length, { id: 8, request: 'Deliver the report', status: 'in_progress', opened_at: minutes(1), next: 'Check the report', ...motion })
       await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-      await until('the moving task did not appear', () => taskStates().includes('Working'))
+      await until('the moving task did not appear', () => taskStates().includes('Active'))
       owed[0].status = 'waiting_for_user'
-      await until('a moving task waited longer than the active polling interval to refresh', () => taskStates().includes('Waiting on you'))
+      await until('a moving task waited longer than the active polling interval to refresh', () => taskStates().includes('Blocked by Human'))
     }
   } finally {
     dark(wasDark)

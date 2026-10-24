@@ -125,7 +125,22 @@ func TestABotRecoversUnfinishedWorkAndReleasesAQuestionWaitAcrossARestart(t *tes
 	if view, err := jaz.bots.Activity(bot.ID); err != nil || view.Owed[0].Status != storage.CommitmentWaitingForUser || view.Owed[0].QuestionSeq == 0 || view.Owed[0].Stalled {
 		t.Fatalf("owed = %+v, %v; want a real unanswered question", view.Owed, err)
 	}
+	jaz.write(bot.ID, "Anything else today?")
+	jaz.settles(bot.ID, 2, 0)
+	question := jaz.commitment(id).QuestionSeq
+	jaz = jaz.restart(nil)
+	jaz.settles(bot.ID, 2, 0)
+	if task := jaz.commitment(id); task.Status != storage.CommitmentWaitingForUser || task.QuestionSeq != question || task.ReplySeq == 0 {
+		t.Fatalf("restart lost the question or a user message released it: %+v", task)
+	}
 	jaz.write(bot.ID, "The second one.")
+	jaz.settles(bot.ID, 2, 0)
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Status: storage.CommitmentInProgress, AnsweredQuestion: question}); err != nil {
+		t.Fatal(err)
+	}
+	if err := jaz.bots.WatchAll(); err != nil {
+		t.Fatal(err)
+	}
 	jaz.settles(bot.ID, 3, 0)
 
 	if err := jaz.bots.Say(bot.ID, "The second quote is cheaper.", id); err != nil {

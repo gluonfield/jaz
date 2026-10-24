@@ -69,6 +69,8 @@ type Commitment struct {
 	// Note is the bot's next step while it is open, or why it was dropped.
 	Note        string
 	QuestionSeq int64
+	ReplySeq    int64
+	CheckAt     *time.Time
 	DependsOn   []int64
 	// Moving is set while one of its threads works on it, in a turn or in
 	// the background.

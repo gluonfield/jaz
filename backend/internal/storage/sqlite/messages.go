@@ -135,7 +135,7 @@ func appendMessageRecords(tx *sql.Tx, id string, records []storage.Message, now 
 			return err
 		}
 		if record.FromUser {
-			if err := botdb.New(tx).AnswerTaskQuestions(context.Background(), id); err != nil {
+			if err := botdb.New(tx).RecordTaskReply(context.Background(), botdb.RecordTaskReplyParams{BotID: id, ReplySeq: record.Seq}); err != nil {
 				return err
 			}
 		}

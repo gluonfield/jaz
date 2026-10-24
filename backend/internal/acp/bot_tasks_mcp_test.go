@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
@@ -61,6 +62,36 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	decodeMCPTaskResult(t, listed, &tasks)
 	if len(tasks.Tasks) != 1 || tasks.Tasks[0].ID != legacy || tasks.Tasks[0].Status != storage.CommitmentWaitingForUser {
 		t.Fatalf("unfinished tasks = %+v", tasks.Tasks)
+	}
+	question := jaz.commitment(legacy).QuestionSeq
+	call("bot_task_update", map[string]any{"id": legacy, "status": "pending", "answered_question": question}, true)
+	otherWait := create("Book the courier")
+	call("bot_task_update", map[string]any{"id": otherWait, "status": "waiting_for_user", "message": "Which delivery address?"}, false)
+	if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Supplier B", FromUser: true}); err != nil {
+		t.Fatal(err)
+	}
+	call("bot_task_update", map[string]any{"id": legacy, "status": "pending"}, true)
+	call("bot_task_update", map[string]any{"id": legacy, "status": "pending", "answered_question": question + 1}, true)
+	call("bot_task_update", map[string]any{"id": legacy, "status": "pending", "answered_question": question}, false)
+	if task := jaz.commitment(otherWait); task.Status != storage.CommitmentWaitingForUser {
+		t.Fatalf("an unrelated question was released: %+v", task)
+	}
+	call("bot_task_update", map[string]any{"id": otherWait, "status": "waiting_for_user", "message": "Please confirm the address."}, false)
+	if task := jaz.commitment(otherWait); task.ReplySeq != 0 {
+		t.Fatalf("a replacement question reused an old answer: %+v", task)
+	}
+	call("bot_task_update", map[string]any{"id": otherWait, "status": "pending", "answered_question": jaz.commitment(otherWait).QuestionSeq}, true)
+	call("bot_task_update", map[string]any{"id": otherWait, "status": "cancelled", "message": "The courier is no longer needed."}, false)
+	future := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
+	call("bot_task_update", map[string]any{"id": legacy, "check_at": "tomorrow"}, true)
+	call("bot_task_update", map[string]any{"id": legacy, "check_at": future.Format(time.RFC3339)}, false)
+	call("bot_task_update", map[string]any{"id": legacy, "next": "Check the supplier response"}, false)
+	if task := jaz.commitment(legacy); task.CheckAt == nil || !task.CheckAt.Equal(future) {
+		t.Fatalf("progress lost the scheduled check: %+v", task)
+	}
+	call("bot_task_update", map[string]any{"id": legacy, "check_at": ""}, false)
+	if task := jaz.commitment(legacy); task.CheckAt != nil {
+		t.Fatalf("explicit clear kept a future check: %+v", task)
 	}
 	id := create("Compare the two quotes")
 	dependent := create("Prepare the purchase summary")
@@ -121,6 +152,14 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	}
 	if open, err := store.ListOpenCommitments(bot.ID); err != nil || len(open) != 0 {
 		t.Fatalf("unexpected open tasks: %+v, %v", open, err)
+	}
+	decodeMCPTaskResult(t, call("bot_task_list", map[string]any{}, false), &tasks)
+	if len(tasks.Tasks) != 0 {
+		t.Fatalf("closed tasks leaked into working context: %+v", tasks.Tasks)
+	}
+	view, err := jaz.bots.Activity(bot.ID)
+	if err != nil || len(view.Items) != 0 || len(view.Owed) != 0 {
+		t.Fatalf("closed tasks leaked into Activity: %+v, %v", view, err)
 	}
 	for range 101 {
 		if _, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Unfinished work"}); err != nil {

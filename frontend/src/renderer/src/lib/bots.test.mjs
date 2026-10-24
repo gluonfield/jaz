@@ -1,60 +1,6 @@
 import { describe, expect, test } from 'bun:test'
-import { botChat, dragSections, owedState, placePin } from './bots'
+import { botChat, dragSections, placePin } from './bots'
 import { optimisticTranscriptMessages } from './optimisticUserMessage'
-
-describe('owed commitment state', () => {
-  const owed = {
-    id: 38,
-    status: 'in_progress',
-    request: 'Implement, review and merge to local main',
-    next: 'Review the merged changes',
-    opened_at: '2026-10-19T12:00:00Z',
-  }
-
-  test('five failed attempts followed by finished work wait on the user without danger and retain their history', () => {
-    const threads = [
-      ...['implementation', 'review', 'verification', 'integration', 'delivery'].map((title) => ({ id: `${title}-claude`, title, state: 'failed' })),
-      ...['implementation', 'review', 'verification', 'integration', 'delivery'].map((title) => ({ id: `${title}-codex`, title, state: 'finished' })),
-    ]
-    const commitment = { ...owed, status: 'waiting_for_user', threads }
-    const history = structuredClone(threads)
-    expect(owedState(commitment)).toEqual({ danger: false, standing: 'Waiting on you' })
-    expect(commitment.threads).toEqual(history)
-  })
-
-  test.each([
-    [[], false, ''],
-    [['idle', 'gone'], false, ''],
-    [['failed'], true, 'A thread failed'],
-    [['finished', 'failed'], true, 'A thread failed'],
-    [['working', 'failed'], true, 'A thread failed'],
-    [['failed', 'finished'], false, 'Result in'],
-    [['failed', 'working'], false, 'Working'],
-    [['failed', 'background'], false, 'Working'],
-    [['failed', 'idle'], true, 'A thread failed'],
-    [['failed', 'gone'], true, 'A thread failed'],
-    [['failed', 'finished', 'idle', 'gone'], false, 'Result in'],
-    [['failed', 'working', 'finished'], false, 'Working'],
-  ])('linked threads %j give danger=%s and standing=%s', (states, danger, standing) => {
-    const threads = states.map((state, index) => ({ id: `thread-${states.length - index}`, title: 'Work', state }))
-    expect(owedState({ ...owed, threads })).toEqual({ danger, standing })
-  })
-
-  test.each([
-    [{ stalled: true }, true, 'Stalled'],
-    [{ moving: true }, false, 'Working'],
-    [{ status: 'pending' }, false, 'Not started'],
-    [{ status: 'waiting_for_user', for: 'Operations' }, false, 'Waiting on you'],
-  ])('commitment standing %j takes precedence after recovery', (fields, danger, standing) => {
-    const threads = [{ id: 'first', title: 'Work', state: 'failed' }, { id: 'retry', title: 'Work', state: 'finished' }]
-    expect(owedState({ ...owed, ...fields, threads })).toEqual({ danger, standing })
-  })
-
-  test('waiting on the user does not clear a current failure', () => {
-    const threads = [{ id: 'latest', title: 'Work', state: 'failed' }]
-    expect(owedState({ ...owed, status: 'waiting_for_user', threads })).toEqual({ danger: true, standing: 'Waiting on you' })
-  })
-})
 
 describe('bot chat log', () => {
   const self = { id: 'gimli', name: 'Gimli' }

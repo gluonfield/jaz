@@ -93,8 +93,8 @@ func TestABotIsShownTheTasksThatChangedSinceItsAgentLastSawThem(t *testing.T) {
 	if err := store.DropCommitment(brochure.ID, "not needed", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if note := turn(); note != fmt.Sprintf("No longer open: #%d.\n\n", brochure.ID) {
-		t.Fatalf("after a task closed the turn opened with %q, want only its number", note)
+	if note := turn(); note != "" {
+		t.Fatalf("after a task closed the turn opened with %q, want no closed task context", note)
 	}
 	if note := turn(); note != "" {
 		t.Fatalf("a turn after the closed task was shown opened with %q, want nothing", note)

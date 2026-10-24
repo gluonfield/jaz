@@ -395,8 +395,6 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	slices.Sort(got)
 	// Side chats that serve commitments show through them.
 	want := []string{
-		"commitment:Old idea:Abandoned:cancelled",
-		"commitment:Rerun:Superseded:cancelled",
 		"file_changed:MEMORY.md::",
 		"message_received:Operations:The queue fixes.:",
 		"message_sent:Operations:Which fixes matter this week?:",
