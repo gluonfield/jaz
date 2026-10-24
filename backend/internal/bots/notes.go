@@ -4,10 +4,8 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -134,8 +132,8 @@ func changedFilesNote(thread storage.Session) string {
 }
 
 // taskNote shows a bot the open tasks whose line its agent does not hold, by
-// the digests in held, with the numbers of the rest, and the held ones that
-// closed; lines are the digests of the open tasks' lines the agent holds
+// the digests in held, with the numbers of the rest; lines are the digests
+// of the open tasks' lines the agent holds
 // after the note.
 func taskNote(store NoteStore, bot string, held map[int64]string) (note string, lines map[int64]string) {
 	open, err := store.ListOpenCommitments(bot)
@@ -144,7 +142,7 @@ func taskNote(store NoteStore, bot string, held map[int64]string) (note string, 
 	}
 	lines = make(map[int64]string, len(open))
 	var changed strings.Builder
-	var unchanged, closed []string
+	var unchanged []string
 	for _, commitment := range open {
 		line, err := taskLine(store, commitment)
 		if err != nil {
@@ -157,20 +155,12 @@ func taskNote(store NoteStore, bot string, held map[int64]string) (note string, 
 		}
 		changed.WriteString(line + "\n")
 	}
-	for _, id := range slices.Sorted(maps.Keys(held)) {
-		if _, ok := lines[id]; !ok {
-			closed = append(closed, fmt.Sprintf("#%d", id))
-		}
-	}
 	var b strings.Builder
 	if changed.Len() > 0 {
 		b.WriteString("Your open tasks that are new or changed since you last saw them. Use bot_task_update with status completed and message to deliver results, or cancelled with a reason. bot_task_list reads every open task:\n" + changed.String())
 		if len(unchanged) > 0 {
 			b.WriteString("Unchanged: " + strings.Join(unchanged, ", ") + ".\n")
 		}
-	}
-	if len(closed) > 0 {
-		b.WriteString("No longer open: " + strings.Join(closed, ", ") + ".\n")
 	}
 	if b.Len() == 0 {
 		return "", lines

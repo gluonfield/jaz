@@ -33,25 +33,22 @@ func listedActivity(activity *sessionevents.BotActivityEvent) bool {
 }
 
 // Activity is one thing a bot is doing or did: a side chat, a routine run,
-// a message to or from another bot, a change to its MEMORY.md, or a
-// commitment it closed.
+// a message to or from another bot, or a change to its MEMORY.md.
 type Activity struct {
-	// Kind is side_chat, routine, commitment, or the kind of the bot activity
+	// Kind is side_chat, routine, or the kind of the bot activity
 	// event.
 	Kind string `json:"kind"`
 	// At is when a running item started, or else when it happened or ended.
 	At      time.Time `json:"at"`
 	Running bool      `json:"running,omitempty"`
 	// Title is the side chat's or routine's name, the other bot's name, the
-	// file's name or what a commitment asked.
+	// file's name.
 	Title string `json:"title"`
-	// Text is a message's text, a run's error or why a commitment was dropped.
+	// Text is a message's text or a run's error.
 	Text     string `json:"text,omitempty"`
 	Status   string `json:"status,omitempty"`
 	ThreadID string `json:"thread_id,omitempty"`
 	LoopID   string `json:"loop_id,omitempty"`
-	// For names the bot a commitment was owed to; empty for the user.
-	For string `json:"for,omitempty"`
 }
 
 // Owed is a commitment a bot has not closed yet.
@@ -62,6 +59,8 @@ type Owed struct {
 	For         string       `json:"for,omitempty"`
 	Next        string       `json:"next,omitempty"`
 	Status      string       `json:"status"`
+	CheckAt     *time.Time   `json:"check_at,omitempty"`
+	ReplySeq    int64        `json:"reply_seq,omitempty"`
 	QuestionSeq int64        `json:"question_seq,omitempty"`
 	DependsOn   []int64      `json:"depends_on,omitempty"`
 	Blocked     bool         `json:"blocked,omitempty"`
@@ -119,18 +118,9 @@ func (s *Service) Activity(botID string) (ActivityView, error) {
 	}
 	var out []Activity
 	for _, commitment := range closed {
-		_, name, err := owedTo(s.store, commitment)
-		if err != nil {
-			return ActivityView{}, err
-		}
-		item := Activity{Kind: "commitment", At: commitment.ClosedAt, Title: commitment.Request, Status: commitment.Status, For: name}
-		if commitment.Status == storage.CommitmentDropped {
-			item.Text = commitment.Note
-		}
 		for _, thread := range commitment.Threads {
-			item.ThreadID, served[thread.ID] = thread.ID, true
+			served[thread.ID] = true
 		}
-		out = append(out, item)
 	}
 	var chats []storage.Session
 	for _, archived := range []bool{false, true} {
@@ -231,7 +221,7 @@ func (s *Service) taskView(commitment storage.Commitment) (Owed, error) {
 		return Owed{}, err
 	}
 	task := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note,
-		Status: commitment.Status, QuestionSeq: commitment.QuestionSeq, DependsOn: commitment.DependsOn,
+		Status: commitment.Status, ReplySeq: commitment.ReplySeq, CheckAt: commitment.CheckAt, QuestionSeq: commitment.QuestionSeq, DependsOn: commitment.DependsOn,
 		Blocked: commitment.Blocked, Moving: commitment.Moving, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
 	for _, thread := range commitment.Threads {
 		task.Threads = append(task.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})

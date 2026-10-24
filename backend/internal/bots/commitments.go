@@ -27,12 +27,14 @@ type CommitmentStore interface {
 }
 
 type Commit struct {
-	ID        int64
-	Request   string
-	Next      string
-	Status    string
-	Message   string
-	DependsOn *[]int64
+	ID               int64
+	Request          string
+	Next             string
+	Status           string
+	Message          string
+	DependsOn        *[]int64
+	AnsweredQuestion int64
+	CheckAt          *time.Time
 }
 
 func (s *Service) Commit(threadID string, change Commit) (int64, error) {
@@ -60,7 +62,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	}
 	status := cmp.Or(change.Status, commitment.Status)
 	if status == storage.CommitmentDone || status == storage.CommitmentDropped {
-		if message == "" || request != "" || next != "" || change.DependsOn != nil {
+		if message == "" || request != "" || next != "" || change.DependsOn != nil || change.CheckAt != nil || change.AnsweredQuestion != 0 {
 			return 0, errors.New("completing or cancelling requires status and message only")
 		}
 		if status == storage.CommitmentDone {
@@ -71,6 +73,15 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	if status != storage.CommitmentPending && status != storage.CommitmentInProgress && status != storage.CommitmentWaitingForUser {
 		return 0, fmt.Errorf("invalid task status %q", status)
 	}
+	if commitment.Status == storage.CommitmentWaitingForUser && status != commitment.Status {
+		if change.AnsweredQuestion != commitment.QuestionSeq || commitment.ReplySeq == 0 {
+			return 0, errors.New("resuming requires answered_question matching the current question and a new user reply")
+		}
+	}
+	if status == storage.CommitmentWaitingForUser && change.CheckAt != nil {
+		return 0, errors.New("check_at is for active tasks; waiting_for_user waits for the user's answer")
+	}
+	commitment.CheckAt = change.CheckAt
 	commitment.Request = request
 	commitment.Note = next
 	commitment.DependsOn = nil
@@ -154,7 +165,12 @@ func explain(err error) error {
 func standing(commitment storage.Commitment) string {
 	switch {
 	case commitment.Status == storage.CommitmentWaitingForUser:
+		if commitment.ReplySeq > 0 {
+			return fmt.Sprintf(" · question #%d has a new user reply; resume with answered_question only if it answers this question", commitment.QuestionSeq)
+		}
 		return fmt.Sprintf(" · waiting on the user: question #%d", commitment.QuestionSeq)
+	case commitment.CheckAt != nil:
+		return " · check at " + commitment.CheckAt.Format(time.RFC3339)
 	case commitment.Blocked:
 		return fmt.Sprintf(" · prerequisites: %v", commitment.DependsOn)
 	case commitment.Moving:

@@ -3,6 +3,8 @@ package bots
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -52,7 +54,7 @@ func (t *MCPTools) AddBotTo(server *mcp.Server) {
 		Name:        "bot_task_update",
 		InputSchema: updateSchema,
 		Title:       "Update a task",
-		Description: "Update a task's progress, status or prerequisites. Use pending, in_progress, waiting_for_user, completed or cancelled. completed delivers message as the result and closes the task together; cancelled requires message explaining why. waiting_for_user delivers message as an actual question and records its reference; the user's next message releases the wait. Dependencies stay pending until their prerequisites end.",
+		Description: "Update a task's progress, status or prerequisites. Use pending, in_progress, waiting_for_user, completed or cancelled. completed delivers message as the result and closes the task together; cancelled requires message explaining why. waiting_for_user delivers message as an actual question and records its reference. Resume only after a relevant user answer, setting pending or in_progress with answered_question equal to the current question_seq. Use check_at for a future check without repeated wakes. Dependencies stay pending until their prerequisites end.",
 	}, t.UpdateTask)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bot_task_list",
@@ -125,12 +127,14 @@ type MCPTaskCreateInput struct {
 }
 
 type MCPTaskUpdateInput struct {
-	ID        int64    `json:"id" jsonschema:"The open task's id."`
-	Request   string   `json:"request,omitempty" jsonschema:"Short task title, ideally 3-8 words. Context belongs in the linked work threads."`
-	Next      string   `json:"next,omitempty" jsonschema:"Progress or the next step."`
-	Status    string   `json:"status,omitempty" jsonschema:"Task status; omit to preserve it."`
-	Message   string   `json:"message,omitempty" jsonschema:"For completed, the result to deliver; for waiting_for_user, the question to deliver; for cancelled, the reason. Completion or cancellation takes only id, status and message."`
-	DependsOn *[]int64 `json:"depends_on,omitempty" jsonschema:"Ids of this bot's prerequisite tasks. Omit to preserve; send an empty list to clear. Keep dependent work pending until prerequisites end."`
+	ID               int64    `json:"id" jsonschema:"The open task's id."`
+	Request          string   `json:"request,omitempty" jsonschema:"Short task title, ideally 3-8 words. Context belongs in the linked work threads."`
+	Next             string   `json:"next,omitempty" jsonschema:"Progress or the next step."`
+	Status           string   `json:"status,omitempty" jsonschema:"Task status; omit to preserve it."`
+	Message          string   `json:"message,omitempty" jsonschema:"For completed, the result to deliver; for waiting_for_user, the question to deliver; for cancelled, the reason. Completion or cancellation takes only id, status and message."`
+	AnsweredQuestion int64    `json:"answered_question,omitempty" jsonschema:"Current question_seq whose user reply answers this task; required to resume waiting_for_user."`
+	CheckAt          *string  `json:"check_at,omitempty" jsonschema:"Next check time in RFC3339 for active work. Omit to preserve; empty string clears it. Work stays Active and the watchdog waits until this time."`
+	DependsOn        *[]int64 `json:"depends_on,omitempty" jsonschema:"Ids of this bot's prerequisite tasks. Omit to preserve; send an empty list to clear. Keep dependent work pending until prerequisites end."`
 }
 
 type MCPTaskOutput struct {
@@ -146,7 +150,19 @@ func (t *MCPTools) UpdateTask(_ context.Context, req *mcp.CallToolRequest, input
 	if input.ID <= 0 {
 		return nil, MCPTaskOutput{}, errors.New("task id must be positive")
 	}
-	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{ID: input.ID, Request: input.Request, Next: input.Next, Status: input.Status, Message: input.Message, DependsOn: input.DependsOn})
+	var checkAt *time.Time
+	if input.CheckAt != nil {
+		at := time.Time{}
+		if value := strings.TrimSpace(*input.CheckAt); value != "" {
+			parsed, err := time.Parse(time.RFC3339, value)
+			if err != nil {
+				return nil, MCPTaskOutput{}, errors.New("check_at must be an RFC3339 timestamp or empty to clear")
+			}
+			at = parsed
+		}
+		checkAt = &at
+	}
+	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{ID: input.ID, Request: input.Request, Next: input.Next, Status: input.Status, Message: input.Message, DependsOn: input.DependsOn, AnsweredQuestion: input.AnsweredQuestion, CheckAt: checkAt})
 	return nil, MCPTaskOutput{ID: id}, err
 }
 

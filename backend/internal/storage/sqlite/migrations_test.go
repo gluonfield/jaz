@@ -61,8 +61,9 @@ func TestBotTaskQuestionMigrationReleasesOnlyAnsweredQuestions(t *testing.T) {
 	if _, err := store.db.Exec("INSERT INTO messages (thread_id, seq, role, content, blocks, created_at_ms, from_user) VALUES (?, 1, 'user', 'Supplier A', '[]', 2000, 1)", answered.BotID); err != nil {
 		t.Fatal(err)
 	}
-	before, err := store.LoadCommitment(answered.ID)
-	if err != nil || before.Status != storage.CommitmentWaitingForUser {
+	var before string
+	err = store.db.QueryRow("SELECT status FROM bot_commitments WHERE id = ?", answered.ID).Scan(&before)
+	if err != nil || before != storage.CommitmentWaitingForUser {
 		t.Fatalf("legacy stuck wait was not reproduced: %+v, %v", before, err)
 	}
 	if err := store.Close(); err != nil {

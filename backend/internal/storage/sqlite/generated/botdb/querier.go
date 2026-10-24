@@ -10,7 +10,6 @@ import (
 )
 
 type Querier interface {
-	AnswerTaskQuestions(ctx context.Context, botID string) error
 	ArchiveFinishedBotWork(ctx context.Context, arg ArchiveFinishedBotWorkParams) error
 	AskCommitment(ctx context.Context, arg AskCommitmentParams) error
 	CloseCommitment(ctx context.Context, arg CloseCommitmentParams) (int64, error)
@@ -39,6 +38,7 @@ type Querier interface {
 	ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error)
 	ListWatchBots(ctx context.Context, nowMs int64) ([]string, error)
 	PinBot(ctx context.Context, arg PinBotParams) error
+	RecordTaskReply(ctx context.Context, arg RecordTaskReplyParams) error
 	SaveMembership(ctx context.Context, arg SaveMembershipParams) error
 	StartCommitment(ctx context.Context, id int64) error
 	UnpinBots(ctx context.Context) error

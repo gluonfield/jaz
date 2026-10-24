@@ -39,27 +39,8 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
   return bot.away ? 'away' : 'idle'
 }
 
-export function owedState(owed: BotOwed): { danger: boolean; standing: string } {
-  const threads = owed.threads ?? []
-  const latest = threads.findLast((thread) => thread.state !== 'gone' && thread.state !== 'idle')
-  const failed = latest?.state === 'failed'
-  let standing = ''
-  if (owed.stalled) {
-    standing = 'Stalled'
-  } else if (owed.status === 'waiting_for_user') {
-    standing = 'Waiting on you'
-  } else if (owed.blocked) {
-    standing = 'Waiting on prerequisites'
-  } else if (owed.status === 'pending') {
-    standing = 'Not started'
-  } else if (failed) {
-    standing = 'A thread failed'
-  } else if (owed.moving || threads.some((thread) => thread.state === 'working' || thread.state === 'background')) {
-    standing = 'Working'
-  } else if (latest?.state === 'finished') {
-    standing = 'Result in'
-  }
-  return { danger: !!owed.stalled || failed, standing }
+export function taskStateLabel(task: Pick<BotOwed, 'status'>): string {
+  return task.status === 'waiting_for_user' ? 'Blocked by Human' : 'Active'
 }
 
 // What a bot's identity files are called on screen.

@@ -11,18 +11,8 @@ import (
 	"strings"
 )
 
-const answerTaskQuestions = `-- name: AnswerTaskQuestions :exec
-UPDATE bot_commitments SET status = 'pending', question_seq = 0, wake_at_ms = 0, wake_attempts = 0, wake_progress = ''
-WHERE bot_id = ?1 AND status = 'waiting_for_user'
-`
-
-func (q *Queries) AnswerTaskQuestions(ctx context.Context, botID string) error {
-	_, err := q.db.ExecContext(ctx, answerTaskQuestions, botID)
-	return err
-}
-
 const askCommitment = `-- name: AskCommitment :exec
-UPDATE bot_commitments SET status = 'waiting_for_user', question_seq = ?1
+UPDATE bot_commitments SET status = 'waiting_for_user', question_seq = ?1, reply_seq = 0, check_at_ms = 0
 WHERE id = ?2 AND bot_id = ?3 AND status IN ('pending', 'in_progress', 'waiting_for_user')
 `
 
@@ -143,7 +133,7 @@ func (q *Queries) DropDeliveredResults(ctx context.Context, id int64) error {
 }
 
 const getCommitment = `-- name: GetCommitment :one
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms FROM bot_commitments WHERE id = ?
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms FROM bot_commitments WHERE id = ?
 `
 
 func (q *Queries) GetCommitment(ctx context.Context, id int64) (BotCommitment, error) {
@@ -162,6 +152,8 @@ func (q *Queries) GetCommitment(ctx context.Context, id int64) (BotCommitment, e
 		&i.WakeProgress,
 		&i.WakeAttempts,
 		&i.WakeAtMs,
+		&i.ReplySeq,
+		&i.CheckAtMs,
 	)
 	return i, err
 }
@@ -237,7 +229,7 @@ func (q *Queries) LinkCommitmentThread(ctx context.Context, arg LinkCommitmentTh
 }
 
 const listClosedCommitments = `-- name: ListClosedCommitments :many
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms FROM bot_commitments
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms FROM bot_commitments
 WHERE bot_id = ?1 AND status IN ('completed', 'cancelled') AND closed_at_ms >= ?2
 ORDER BY id
 `
@@ -269,6 +261,8 @@ func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommi
 			&i.WakeProgress,
 			&i.WakeAttempts,
 			&i.WakeAtMs,
+			&i.ReplySeq,
+			&i.CheckAtMs,
 		); err != nil {
 			return nil, err
 		}
@@ -429,7 +423,7 @@ func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]Lis
 }
 
 const listOpenCommitments = `-- name: ListOpenCommitments :many
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms FROM bot_commitments WHERE bot_id = ?1 AND status IN ('pending', 'in_progress', 'waiting_for_user') ORDER BY id
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms FROM bot_commitments WHERE bot_id = ?1 AND status IN ('pending', 'in_progress', 'waiting_for_user') ORDER BY id
 `
 
 func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error) {
@@ -454,6 +448,8 @@ func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotC
 			&i.WakeProgress,
 			&i.WakeAttempts,
 			&i.WakeAtMs,
+			&i.ReplySeq,
+			&i.CheckAtMs,
 		); err != nil {
 			return nil, err
 		}
@@ -470,7 +466,8 @@ func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotC
 
 const listWatchBots = `-- name: ListWatchBots :many
 SELECT DISTINCT bot_id FROM bot_commitment_watch
-WHERE wake_at_ms <= CAST(?1 AS INTEGER) OR wake_progress <> progress
+WHERE check_at_ms <= CAST(?1 AS INTEGER)
+  AND (wake_at_ms <= CAST(?1 AS INTEGER) OR wake_progress <> progress)
 `
 
 func (q *Queries) ListWatchBots(ctx context.Context, nowMs int64) ([]string, error) {
@@ -496,6 +493,21 @@ func (q *Queries) ListWatchBots(ctx context.Context, nowMs int64) ([]string, err
 	return items, nil
 }
 
+const recordTaskReply = `-- name: RecordTaskReply :exec
+UPDATE bot_commitments SET reply_seq = ?1
+WHERE bot_id = ?2 AND status = 'waiting_for_user'
+`
+
+type RecordTaskReplyParams struct {
+	ReplySeq int64  `json:"reply_seq"`
+	BotID    string `json:"bot_id"`
+}
+
+func (q *Queries) RecordTaskReply(ctx context.Context, arg RecordTaskReplyParams) error {
+	_, err := q.db.ExecContext(ctx, recordTaskReply, arg.ReplySeq, arg.BotID)
+	return err
+}
+
 const startCommitment = `-- name: StartCommitment :exec
 UPDATE bot_commitments SET status = 'in_progress' WHERE id = ?
 `
@@ -508,15 +520,22 @@ func (q *Queries) StartCommitment(ctx context.Context, id int64) error {
 const updateCommitment = `-- name: UpdateCommitment :execrows
 UPDATE bot_commitments
 SET request = coalesce(?1, request), note = coalesce(?2, note), status = coalesce(?3, status),
+  wake_at_ms = CASE WHEN status = 'waiting_for_user' AND ?3 IS NOT NULL AND ?3 <> 'waiting_for_user' THEN 0 ELSE wake_at_ms END,
+  wake_attempts = CASE WHEN status = 'waiting_for_user' AND ?3 IS NOT NULL AND ?3 <> 'waiting_for_user' THEN 0 ELSE wake_attempts END,
+  check_at_ms = coalesce(?4, check_at_ms),
+  reply_seq = CASE WHEN ?3 IS NULL OR ?3 = 'waiting_for_user' THEN reply_seq ELSE 0 END,
   question_seq = CASE WHEN ?3 IS NULL OR ?3 = 'waiting_for_user' THEN question_seq ELSE 0 END
-WHERE id = ?4 AND bot_id = ?5 AND status IN ('pending', 'in_progress', 'waiting_for_user')
-  AND (?3 IS NOT 'waiting_for_user' OR (status = 'waiting_for_user' AND question_seq = ?6))
+WHERE id = ?5 AND bot_id = ?6 AND status IN ('pending', 'in_progress', 'waiting_for_user')
+  AND (status <> 'waiting_for_user' OR ?3 IS NULL OR ?3 = 'waiting_for_user'
+       OR (question_seq = ?7 AND reply_seq > 0))
+  AND (?3 IS NOT 'waiting_for_user' OR (status = 'waiting_for_user' AND question_seq = ?7))
 `
 
 type UpdateCommitmentParams struct {
 	Request     sql.NullString `json:"request"`
 	Note        sql.NullString `json:"note"`
 	Status      sql.NullString `json:"status"`
+	CheckAtMs   sql.NullInt64  `json:"check_at_ms"`
 	ID          int64          `json:"id"`
 	BotID       string         `json:"bot_id"`
 	QuestionSeq int64          `json:"question_seq"`
@@ -527,6 +546,7 @@ func (q *Queries) UpdateCommitment(ctx context.Context, arg UpdateCommitmentPara
 		arg.Request,
 		arg.Note,
 		arg.Status,
+		arg.CheckAtMs,
 		arg.ID,
 		arg.BotID,
 		arg.QuestionSeq,
@@ -546,7 +566,7 @@ SET wake_progress = (SELECT progress FROM bot_commitment_progress WHERE commitme
     THEN min(4, bot_commitments.wake_attempts + 1) ELSE 1 END
 WHERE id IN (
   SELECT w.id FROM bot_commitment_watch w
-  WHERE w.bot_id = ?2 AND (w.wake_at_ms <= CAST(?1 AS INTEGER) OR w.wake_progress <> w.progress)
+  WHERE w.bot_id = ?2 AND w.check_at_ms <= CAST(?1 AS INTEGER) AND (w.wake_at_ms <= CAST(?1 AS INTEGER) OR w.wake_progress <> w.progress)
 )
 RETURNING id
 `

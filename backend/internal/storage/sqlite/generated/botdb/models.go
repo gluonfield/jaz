@@ -32,6 +32,8 @@ type BotCommitment struct {
 	WakeProgress string        `json:"wake_progress"`
 	WakeAttempts int64         `json:"wake_attempts"`
 	WakeAtMs     int64         `json:"wake_at_ms"`
+	ReplySeq     int64         `json:"reply_seq"`
+	CheckAtMs    int64         `json:"check_at_ms"`
 }
 
 type BotCommitmentDependency struct {
