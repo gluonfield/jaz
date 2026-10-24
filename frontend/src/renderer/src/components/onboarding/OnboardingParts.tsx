@@ -4,7 +4,7 @@ import { Select } from '@/components/ui/Select'
 import { Switch } from '@/components/ui/Switch'
 import { onboardingAgentLabel } from '@/lib/agentLabel'
 
-export type OnboardingStep = 'welcome' | 'appearance' | 'agents' | 'memory' | 'connections' | 'computer' | 'voice' | 'loops'
+export type OnboardingStep = 'welcome' | 'appearance' | 'agents' | 'memory' | 'connections' | 'computer' | 'voice' | 'bot'
 export type SetupStep = Exclude<OnboardingStep, 'welcome'>
 
 // The onboarding motion vocabulary, shared by the gate and the slides.

@@ -27,7 +27,7 @@ import {
 } from './OnboardingParts'
 import { SystemPermissionRows } from '@/components/settings/SystemPermissionRows'
 import { hasSystemPermissions, useSystemPermissions } from '@/lib/systemPermissions'
-import { LoopsBoardsShowcase, SETUP_STEPS, SLIDES, ThemeChoice, WelcomeStep, slideFooter } from './OnboardingSlides'
+import { BotShowcase, MainBotFace, SETUP_STEPS, SLIDES, ThemeChoice, WelcomeStep, slideFooter } from './OnboardingSlides'
 
 const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'kimi', 'opencode', 'antigravity', 'grok']
 
@@ -223,7 +223,11 @@ function OnboardingScreen({
           className="flex w-full max-w-[460px] flex-col items-center"
         >
         <motion.div variants={slideRise}>
-          <DitherArt draw={slide.motif} cols={104} rows={34} delay={0.1} buildKey={`onboarding-${step}`} />
+          {slide.motif ? (
+            <DitherArt draw={slide.motif} cols={104} rows={34} delay={0.1} buildKey={`onboarding-${step}`} />
+          ) : (
+            <MainBotFace />
+          )}
         </motion.div>
         <motion.h1
           variants={slideRise}
@@ -275,7 +279,7 @@ function OnboardingScreen({
               <p className="mt-2.5 text-center text-[12px] text-ink-3">You can change these any time in Settings.</p>
             </>
           ) : (
-            <LoopsBoardsShowcase />
+            <BotShowcase />
           )}
         </motion.div>
 
