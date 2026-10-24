@@ -349,6 +349,14 @@ func (s *ACPConfigSource) effectiveDefaults() (AgentDefaults, error) {
 }
 
 func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error) {
+	return s.agentConfig(name, true)
+}
+
+func (s *ACPConfigSource) MetadataConfig(name string) (acp.AgentConfig, bool, error) {
+	return s.agentConfig(name, false)
+}
+
+func (s *ACPConfigSource) agentConfig(name string, enabledOnly bool) (acp.AgentConfig, bool, error) {
 	name = acp.CanonicalAgentName(name)
 	cfg, ok := s.catalog.Agent(name)
 	if !ok {
@@ -359,7 +367,7 @@ func (s *ACPConfigSource) AgentConfig(name string) (acp.AgentConfig, bool, error
 		return acp.AgentConfig{}, false, err
 	}
 	agent, ok := defaults.ACP[name]
-	if !ok || !agent.Enabled {
+	if !ok || (enabledOnly && !agent.Enabled) {
 		return acp.AgentConfig{}, false, nil
 	}
 	// cfg already carries the catalog's launch command/args; the launch command is

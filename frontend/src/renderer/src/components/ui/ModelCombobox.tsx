@@ -12,6 +12,8 @@ export function ModelCombobox({
   value,
   suggestions,
   loading,
+  placeholder = 'Default',
+  error,
   disabled,
   onChange,
   className = '',
@@ -20,6 +22,8 @@ export function ModelCombobox({
   value: string
   suggestions: ModelSuggestion[]
   loading?: boolean
+  placeholder?: string
+  error?: string
   disabled?: boolean
   onChange: (value: string) => void
   className?: string
@@ -35,7 +39,7 @@ export function ModelCombobox({
   const reduce = useReducedMotion()
 
   const filtered = filtering ? filterModelSuggestions(suggestions, value) : suggestions
-  const hasMenu = suggestions.length > 0 || Boolean(loading)
+  const hasMenu = suggestions.length > 0 || Boolean(loading) || Boolean(error)
 
   const openMenu = () => {
     if (!hasMenu) return
@@ -82,6 +86,7 @@ export function ModelCombobox({
         ref={inputRef}
         value={open ? value : modelSuggestionLabel(suggestions, value)}
         disabled={disabled}
+        placeholder={placeholder}
         aria-label={ariaLabel}
         aria-expanded={open}
         role="combobox"
@@ -149,6 +154,8 @@ export function ModelCombobox({
                   <LoaderCircle size={13} className="animate-spin" />
                   Loading models...
                 </div>
+              ) : error ? (
+                <div className="px-2 py-1 text-[12px] text-danger">{error}</div>
               ) : filtered.length > 0 ? (
                 filtered.map((s, index) => {
                   const selected = s.value === value

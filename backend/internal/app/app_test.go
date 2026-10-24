@@ -252,3 +252,40 @@ func TestReloadableProviderReadsRuntimeEnv(t *testing.T) {
 		t.Fatalf("openrouter key = %q", openRouter.APIKey)
 	}
 }
+
+func TestMetadataConfigKeepsDisabledAgentsDisabled(t *testing.T) {
+	t.Setenv("MUSE_CLI", "")
+	t.Setenv("MUSE_INSTALL_DIR", "")
+	root := t.TempDir()
+	toolPath := managedtool.ExecutablePath(root, managedtool.MuseCLI)
+	if err := os.MkdirAll(filepath.Dir(toolPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(toolPath, []byte("native launcher"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	catalog := acp.BuiltinAgents()
+	defaults := agentsettings.AgentDefaultsFromCatalog(catalog)
+	if _, err := agentsettings.SaveAgentDefaults(store, defaults); err != nil {
+		t.Fatal(err)
+	}
+	source := NewACPAgentConfigSource(store, catalog, managedtool.New(root))
+	if _, enabled, err := source.AgentConfig(acp.AgentMuse); err != nil || enabled {
+		t.Fatalf("disabled Muse runtime = %v, %v", enabled, err)
+	}
+	metadata := source.(interface {
+		MetadataConfig(string) (acp.AgentConfig, bool, error)
+	})
+	cfg, ok, err := metadata.MetadataConfig(acp.AgentMuse)
+	if err != nil || !ok || cfg.LoginBinDir != filepath.Dir(toolPath) {
+		t.Fatalf("disabled Muse metadata = %#v, %v, %v", cfg, ok, err)
+	}
+	if _, enabled, err := source.AgentConfig(acp.AgentMuse); err != nil || enabled {
+		t.Fatalf("metadata enabled Muse: %v, %v", enabled, err)
+	}
+}

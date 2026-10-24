@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
@@ -40,6 +41,7 @@ import (
 type routeDeps struct {
 	fx.In
 
+	ACP              *acp.Manager
 	Usage            usagecore.Service
 	Feed             feedcore.Service
 	ModelCatalog     *modelcatalog.Service `optional:"true"`
@@ -68,6 +70,7 @@ type routeDeps struct {
 
 func NewRoutes(deps routeDeps) server.Routes {
 	routes := server.Routes{
+		{Pattern: "GET /v1/acp/agents/{agent}/models", Handler: modelcapabilitiesapi.NewAgentModelsHandler(deps.ACP)},
 		{Pattern: "POST /v1/filesystem/dirs", Handler: http.HandlerFunc(filesystemapi.CreateDirectory)},
 		{Pattern: "GET /v1/sessions", Handler: sessionsapi.NewListHandler(deps.Store)},
 		{Pattern: "PUT /v1/sessions/{session}/agent/config", Handler: http.HandlerFunc(deps.AgentSession.SetConfig)},

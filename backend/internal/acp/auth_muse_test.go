@@ -140,20 +140,24 @@ func runFakeMuseCLI(root string) int {
 	}
 	decoder := json.NewDecoder(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
-	for _, method := range []string{"initialize", "initialized", "account/read"} {
+	for _, method := range []string{"initialize", "initialized", "read"} {
 		var request struct {
 			ID     int    `json:"id"`
 			Method string `json:"method"`
 		}
-		if err := decoder.Decode(&request); err != nil || request.Method != method {
+		if err := decoder.Decode(&request); err != nil || (method != "read" && request.Method != method) {
 			return 5
 		}
 		if method == "initialized" {
 			continue
 		}
 		result := json.RawMessage("{}")
-		if method == "account/read" {
-			data, err := os.ReadFile(accountFile)
+		if method == "read" {
+			name := map[string]string{"account/read": "account.json", "model/list": "models.json"}[request.Method]
+			if name == "" {
+				return 5
+			}
+			data, err := os.ReadFile(filepath.Join(root, name))
 			if err != nil {
 				return 6
 			}

@@ -1,6 +1,7 @@
 import { queryOptions, useQuery } from '@tanstack/react-query'
 import { get } from './api/client'
 import { agentSettingsQuery } from './api/settings'
+import { keys } from '@/lib/query/keys'
 import type { AgentSettings, ModelCatalogEntry, ModelProviderOption, Session } from './api/types'
 import { modelProviderModelsRequest } from './modelProviderRequest'
 import { modelSuggestionFor, type ModelSuggestion } from './modelSuggestion'
@@ -79,6 +80,20 @@ export function modelProviderModelsQuery(provider: string | undefined, agent: st
 }
 
 export const openRouterModelsQuery = modelProviderModelsQuery('openrouter', '')
+
+export function agentModelsQuery(agent: string) {
+  return queryOptions({
+    queryKey: keys.acpAgentModels(agent),
+    queryFn: async () => {
+      const body = await get<{ models: ModelCatalogEntry[]; default_model?: string }>(
+        `/v1/acp/agents/${encodeURIComponent(agent)}/models`,
+      )
+      return { models: modelSuggestionsFromCatalog(body.models), defaultModel: body.default_model }
+    },
+    staleTime: 60_000,
+    retry: false,
+  })
+}
 
 function modelSuggestionsFromCatalog(models: ModelCatalogEntry[]): ModelSuggestion[] {
   return models.map((model) => ({

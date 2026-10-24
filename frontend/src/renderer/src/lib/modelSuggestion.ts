@@ -25,7 +25,7 @@ export function modelSuggestionFor<T extends Pick<ModelSuggestion, 'value' | 'al
   const raw = value.trim()
   return raw
     ? suggestions.find((suggestion) => suggestion.value === raw || suggestion.aliases?.includes(raw))
-    : suggestions[0]
+    : undefined
 }
 
 export function filterModelSuggestions(

@@ -224,7 +224,7 @@ func NewACPAgentConfigSource(store *sqlitestore.Store, catalog acp.AgentCatalog,
 }
 
 type managedToolAgentConfigSource struct {
-	source acp.AgentConfigSource
+	source *agentsettings.ACPConfigSource
 	tools  *managedtool.Manager
 }
 
@@ -233,11 +233,23 @@ func (s managedToolAgentConfigSource) AgentConfig(name string) (acp.AgentConfig,
 	if err != nil || !ok {
 		return cfg, ok, err
 	}
+	return s.withManagedTool(cfg), true, nil
+}
+
+func (s managedToolAgentConfigSource) MetadataConfig(name string) (acp.AgentConfig, bool, error) {
+	cfg, ok, err := s.source.MetadataConfig(name)
+	if err != nil || !ok {
+		return cfg, ok, err
+	}
+	return s.withManagedTool(cfg), true, nil
+}
+
+func (s managedToolAgentConfigSource) withManagedTool(cfg acp.AgentConfig) acp.AgentConfig {
 	if tool := s.tools.Status(cfg.ManagedTool, cfg.Env); tool.State == managedtool.StateReady && strings.TrimSpace(tool.Path) != "" {
 		cfg.LoginBinDir = appendPathList(cfg.LoginBinDir, filepath.Dir(tool.Path))
 		cfg.ManagedAdapterArgs = withManagedToolAdapterArg(cfg.ManagedAdapterArgs, cfg.ManagedToolAdapterArg, tool.Path)
 	}
-	return cfg, true, nil
+	return cfg
 }
 
 func (s managedToolAgentConfigSource) EnabledAgentNames() ([]string, error) {

@@ -246,6 +246,8 @@ function ACPAgentRow({
   const {
     modelSuggestions,
     modelsLoading,
+    defaultModel,
+    modelsError,
     reasoningOptions,
     reasoningEffortSupported,
     reasoningForModel,
@@ -402,6 +404,8 @@ function ACPAgentRow({
             value={current.model ?? ''}
             suggestions={modelSuggestions}
             loading={modelsLoading}
+            placeholder={defaultModel ? `Default: ${defaultModel}` : 'Default'}
+            error={modelsError}
             disabled={disabled}
             onChange={(model) => {
               const nextReasoning = reasoningForModel(model, reasoningEffort)
@@ -423,7 +427,10 @@ function ACPAgentRow({
               value={normalizedReasoningEffort}
               options={reasoningOptions}
               disabled={disabled}
-              onChange={(reasoning_effort) => update({ reasoning_effort })}
+              onChange={(reasoning_effort) => update({
+                model: current.model || (reasoning_effort ? defaultModel : '') || '',
+                reasoning_effort,
+              })}
               aria-label={`${agentLabel(agent)} reasoning effort`}
               className={rowControlClass}
             />

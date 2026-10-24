@@ -9,11 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gluonfield/acp-transport/jsonrpc"
-	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/wins/jaz/backend/internal/musecli"
 	"github.com/wins/jaz/backend/internal/processenv"
-	"github.com/wins/jaz/backend/internal/subprocess"
 )
 
 func prepareMuseEnv(root string, env map[string]string) {
@@ -112,47 +109,7 @@ type museAccount struct {
 }
 
 func museAccountState(command string, env map[string]string) (museAccount, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	command, args := launchCommand(command, []string{"serve"})
-	cmd := exec.CommandContext(ctx, command, args...)
-	process := subprocess.New(cmd)
-	cmd.Env = processenv.List(env)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return museAccount{}, err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return museAccount{}, err
-	}
-	if err := cmd.Start(); err != nil {
-		return museAccount{}, err
-	}
-	defer func() {
-		_ = stdin.Close()
-		_ = cmd.Wait()
-		_ = process.Terminate()
-	}()
-	if err := process.Started(); err != nil {
-		_ = process.Terminate()
-		return museAccount{}, err
-	}
-	peer := jsonrpc.NewPeer(stdio.New(stdout, stdin), nil)
-	defer peer.Close()
-	go func() {
-		_ = peer.Serve(ctx)
-	}()
-	if _, err := peer.Call(ctx, "initialize", map[string]any{
-		"clientInfo":   map[string]string{"name": "jaz_auth", "version": "0.1.0"},
-		"capabilities": map[string]bool{"experimentalApi": true},
-	}); err != nil {
-		return museAccount{}, err
-	}
-	if err := peer.Notify(ctx, "initialized", map[string]any{}); err != nil {
-		return museAccount{}, err
-	}
-	raw, err := peer.Call(ctx, "account/read", map[string]any{})
+	raw, err := museCall(context.Background(), command, env, "account/read")
 	if err != nil {
 		return museAccount{}, err
 	}
