@@ -19,6 +19,8 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
+	jaz.write(bot.ID, "Compare the supplier quotes.")
+	jaz.settles(bot.ID, 0, 0)
 	legacy := owe(t, store, bot.ID)
 	server := mcp.NewServer(&mcp.Implementation{Name: "jaztools", Version: "1"}, nil)
 	bots.NewMCPTools(jaz.bots).AddBotTo(server)
@@ -67,9 +69,8 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	call("bot_task_update", map[string]any{"id": legacy, "status": "pending", "answered_question": question}, true)
 	otherWait := create("Book the courier")
 	call("bot_task_update", map[string]any{"id": otherWait, "status": "waiting_for_user", "message": "Which delivery address?"}, false)
-	if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Supplier B", FromUser: true}); err != nil {
-		t.Fatal(err)
-	}
+	jaz.write(bot.ID, "Supplier B")
+	jaz.settles(bot.ID, 0, 0)
 	call("bot_task_update", map[string]any{"id": legacy, "status": "pending"}, true)
 	call("bot_task_update", map[string]any{"id": legacy, "status": "pending", "answered_question": question + 1}, true)
 	call("bot_task_update", map[string]any{"id": legacy, "status": "pending", "answered_question": question}, false)
