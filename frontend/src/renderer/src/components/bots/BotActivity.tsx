@@ -10,40 +10,15 @@ import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/
 import { type ProviderSubagentView, subagentRunning } from '@/lib/providerSubagents'
 
 // A row says what happened and how to open it: a thread, a routine, a file, or
-// a message or commitment shown in full. Since marks what is still owed.
+// a message or commitment shown in full.
 type Row = {
   key: string
   title: string
   detail?: string
   at: string
   running?: boolean
-  since?: boolean
   danger?: boolean
   open?: { thread: string } | { routine: string } | { file: BotFileName } | { message: BotActivity } | { owed: BotOwed }
-}
-
-export function BotTasks({ bot }: { bot: Bot }) {
-  const activity = useQuery(botActivityQuery(bot.id))
-  const [shown, setShown] = useState<number | null>(null)
-  const now = useNow()
-  if (activity.isPending) {
-    return <p className="text-[13px] text-ink-3">Loading tasks…</p>
-  }
-  if (activity.isError && !activity.data) {
-    return <p role="alert" className="text-[13px] text-danger">Couldn’t load tasks.</p>
-  }
-  const { owed, started } = activity.data
-  const selected = owed.find((task) => task.id === shown)
-  return (
-    <section aria-label="Tasks" className="flex flex-col gap-0.5">
-      <h3 className="mb-1 text-[13px] font-semibold text-ink">Open Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
-      {!owed.length ? <p className="text-[13px] text-ink-3">No open tasks</p> : null}
-      {owed.map((task) => (
-        <ActivityRow key={task.id} item={owedRow(task)} started={started} now={now} onOpen={() => setShown(task.id)} />
-      ))}
-      {selected ? <OwedModal owed={selected} started={started} now={now} onClose={() => setShown(null)} /> : null}
-    </section>
-  )
 }
 
 export function BotActivity({
@@ -59,10 +34,17 @@ export function BotActivity({
 }) {
   const activity = useQuery(botActivityQuery(bot.id))
   const [message, setMessage] = useState<BotActivity | null>(null)
+  const [shown, setShown] = useState<number | null>(null)
   const now = useNow()
-  if (activity.isPending) return null
-  const rows = (activity.data?.items ?? []).map(row)
-  const started = activity.data?.started ?? {}
+  if (activity.isPending) {
+    return <p className="text-[13px] text-ink-3">Loading activity…</p>
+  }
+  if (activity.isError && !activity.data) {
+    return <p role="alert" className="text-[13px] text-danger">Couldn’t load activity.</p>
+  }
+  const { owed, started, items } = activity.data
+  const selected = owed.find((task) => task.id === shown)
+  const rows = items.map(row)
   const helpers: Row[] = subagents.filter(subagentRunning).map((subagent) => ({
     key: subagent.key,
     title: subagent.name || subagent.task || 'Helper',
@@ -72,17 +54,22 @@ export function BotActivity({
   }))
   const running = [...rows.filter((item) => item.running), ...helpers]
   const days = groupByDay(rows.filter((item) => !item.running), now)
-  if (!running.length && !days.length) {
-    return <p className="text-[13px] text-ink-3">{bot.name}'s side chats, routine runs and messages show up here.</p>
-  }
   const open = (target: Row['open']) => {
     if (!target) return
     if ('routine' in target) onOpenRoutine(target.routine)
     else if ('file' in target) onOpenFile(target.file)
     else if ('message' in target) setMessage(target.message)
+    else if ('owed' in target) setShown(target.owed.id)
   }
   return (
     <div className="flex flex-col gap-5">
+      <section aria-label="Tasks" className="flex flex-col gap-0.5">
+        <h3 className="mb-1 text-[13px] font-semibold text-ink">Open Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
+        {!owed.length ? <p className="text-[13px] text-ink-3">No open tasks</p> : null}
+        {owed.map((task) => (
+          <ActivityRow key={task.id} item={owedRow(task)} started={started} now={now} onOpen={open} />
+        ))}
+      </section>
       {running.length ? (
         <Group title="Now">
           {running.map((item) => (
@@ -102,6 +89,7 @@ export function BotActivity({
           <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{message.text}</p>
         </Modal>
       ) : null}
+      {selected ? <OwedModal owed={selected} started={started} now={now} onClose={() => setShown(null)} /> : null}
     </div>
   )
 }
@@ -111,9 +99,8 @@ function owedRow(owed: BotOwed): Row {
   return {
     key: `owed:${owed.id}`,
     title: owed.request,
-    detail: [`For ${owed.for ?? 'you'}`, state.standing, owed.next && `Next: ${owed.next}`].filter(Boolean).join(' · '),
+    detail: state.standing,
     at: owed.opened_at,
-    since: true,
     danger: state.danger,
     open: { owed },
   }
@@ -218,13 +205,16 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 function ActivityRow({ item, started, now, onOpen }: { item: Row; started: Started; now: number; onOpen: (target: Row['open']) => void }) {
   const since = item.running && item.at ? now - Date.parse(item.at) : undefined
+  const task = item.open && 'owed' in item.open
   const content = (
     <>
-      <span className={`${item.since ? 'wrap-break-word' : 'block truncate'} text-[13px] font-medium text-ink`}>{item.title}</span>
+      <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
       {item.detail ? <span className={`line-clamp-2 text-[12px] ${item.danger ? 'text-danger' : 'text-ink-2'}`}>{item.detail}</span> : null}
-      <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
-        {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : item.since ? `Since ${messageTime(item.at, now)}` : clockTime(item.at)}
-      </span>
+      {!task ? (
+        <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
+          {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : clockTime(item.at)}
+        </span>
+      ) : null}
     </>
   )
   const className = '-mx-2 flex min-w-0 flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150'

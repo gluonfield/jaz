@@ -91,7 +91,7 @@ function Fixture() {
       if (suite === 'bot-panel') {
         progress('bot sidebar tasks, activity, routines and identity')
         await exerciseBotPanel()
-        window.smoke.result({ ok: true, checks: ['labelled Tasks default; wrapped titles; live details, worker links, completion refresh; desktop and phone; activity, routines and identity'] })
+        window.smoke.result({ ok: true, checks: ['Activity default; compact inline tasks; live details, worker links, completion refresh; desktop and phone; routines and identity'] })
         return
       }
       if (!suite || suite === 'address-bar') {

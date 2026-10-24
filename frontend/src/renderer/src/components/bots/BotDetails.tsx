@@ -1,4 +1,4 @@
-import { Fingerprint, List, ListTodo, Pencil, Repeat, SlidersHorizontal } from 'lucide-react'
+import { Fingerprint, List, Pencil, Repeat, SlidersHorizontal } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { SidePanelShell } from '@/components/session/SidePanelShell'
 import type { ThreadDetailsView } from '@/components/session/ThreadView'
@@ -7,7 +7,7 @@ import { Segmented } from '@/components/ui/Segmented'
 import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
 import { BOT_COLORS, BOT_SHAPES, botMood } from '@/lib/bots'
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
-import { BotActivity, BotTasks } from '@/components/bots/BotActivity'
+import { BotActivity } from '@/components/bots/BotActivity'
 import { BotAgentSettings } from './BotAgentSettings'
 import { BotAvatar } from './BotAvatar'
 import { BotFileEditor } from './BotFileEditor'
@@ -17,10 +17,9 @@ import { BotRoutineModal } from './BotRoutineModal'
 import { BotRoutines } from './BotRoutines'
 import { useUpdateBot } from './useUpdateBot'
 
-type Tab = 'tasks' | 'activity' | 'routines' | 'identity' | 'agent'
+type Tab = 'activity' | 'routines' | 'identity' | 'agent'
 
 const TABS: { value: Tab; label: string; icon: ReactNode }[] = [
-  { value: 'tasks', label: 'Tasks', icon: <ListTodo size={16} /> },
   { value: 'activity', label: 'Activity', icon: <List size={16} /> },
   { value: 'routines', label: 'Routines', icon: <Repeat size={16} /> },
   { value: 'identity', label: 'Identity', icon: <Fingerprint size={16} /> },
@@ -28,7 +27,7 @@ const TABS: { value: Tab; label: string; icon: ReactNode }[] = [
 ]
 
 export function BotDetails({ bot, focusName, agentSession, working, subagents }: { bot: Bot; focusName: boolean } & ThreadDetailsView) {
-  const [tab, setTab] = useState<Tab>('tasks')
+  const [tab, setTab] = useState<Tab>('activity')
   const [routine, setRoutine] = useState<string | null>(null)
   const [file, setFile] = useState<BotFileName | null>(null)
   return (
@@ -45,9 +44,7 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
       <div className="flex justify-center [&>div]:h-11 [&_button]:h-10 [&_button]:min-w-10 [&_button]:px-1.5">
         <Segmented value={tab} options={TABS} onChange={setTab} layoutId={`bot-details-${bot.id}`} compact />
       </div>
-      {tab === 'tasks' ? (
-        <BotTasks bot={bot} />
-      ) : tab === 'activity' ? (
+      {tab === 'activity' ? (
         <BotActivity bot={bot} subagents={subagents} onOpenRoutine={setRoutine} onOpenFile={setFile} />
       ) : tab === 'routines' ? (
         <BotRoutines bot={bot} onOpen={setRoutine} />
