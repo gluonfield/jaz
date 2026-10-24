@@ -81,6 +81,11 @@ WHERE id = sqlc.arg(id);
 DELETE FROM mcp_servers
 WHERE id = sqlc.arg(id);
 
+-- name: UpdateMCPSecrets :exec
+UPDATE mcp_servers
+SET bearer_token = sqlc.arg(bearer_token), headers_json = sqlc.arg(headers_json)
+WHERE id = sqlc.arg(id);
+
 -- name: SetMCPServerEnabled :execrows
 UPDATE mcp_servers
 SET

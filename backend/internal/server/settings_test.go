@@ -119,9 +119,10 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		Servers []struct {
 			ID      string `json:"id"`
 			Headers []struct {
-				Name   string `json:"name"`
-				Value  string `json:"value"`
-				EnvVar string `json:"envvar"`
+				Name     string `json:"name"`
+				Value    string `json:"value"`
+				ValueSet bool   `json:"value_set"`
+				EnvVar   string `json:"envvar"`
 			} `json:"headers"`
 			OAuth struct {
 				ClientID string `json:"client_id"`
@@ -132,7 +133,7 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(listed.Servers) != 1 || listed.Servers[0].ID != created.ID ||
-		len(listed.Servers[0].Headers) != 2 || listed.Servers[0].Headers[0].Value != "platform" ||
+		len(listed.Servers[0].Headers) != 2 || listed.Servers[0].Headers[0].Value != "" || !listed.Servers[0].Headers[0].ValueSet ||
 		listed.Servers[0].Headers[1].EnvVar != "DOCS_SECRET" ||
 		listed.Servers[0].OAuth.ClientID != "docs-client" {
 		t.Fatalf("listed = %#v", listed)
@@ -156,7 +157,7 @@ func TestMCPServerSettingsAPI(t *testing.T) {
 	updateRes := httptest.NewRecorder()
 	handler.ServeHTTP(updateRes, updateReq)
 	if updated, err := store.LoadMCPServer(created.ID); err != nil || updateRes.Code != http.StatusOK || updated.Enabled || updated.BearerToken != "docs-key" ||
-		!strings.Contains(updateRes.Body.String(), `"bearer_token":"docs-key"`) {
+		strings.Contains(updateRes.Body.String(), "docs-key") || !strings.Contains(updateRes.Body.String(), `"bearer_token_set":true`) {
 		t.Fatalf("an update without enabled keeps the server disabled and saves its key: %d %s %#v", updateRes.Code, updateRes.Body.String(), updated)
 	}
 

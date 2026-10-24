@@ -35,6 +35,7 @@ import { exerciseCanvas } from './canvas'
 import { exerciseImages } from './images'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
+import { exerciseConnectionSecurity } from './connection-security'
 
 declare global {
   interface Window {
@@ -88,6 +89,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'connection-security') {
+        progress('host device administration and saved MCP credentials')
+        await exerciseConnectionSecurity()
+        if (suite === 'connection-security') {
+          window.smoke.result({ ok: true, checks: ['host-only device management and saved-secret edit/removal at desktop and phone widths'] })
+          return
+        }
+      }
       if (suite === 'bot-panel') {
         progress('bot sidebar tasks, activity, routines and identity')
         await exerciseBotPanel()

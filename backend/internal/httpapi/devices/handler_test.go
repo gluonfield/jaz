@@ -143,6 +143,26 @@ func TestRegisterUsesRootPrincipalForApprovedRegistration(t *testing.T) {
 	}
 }
 
+func TestPublicPairingRateLimitReturnsRetryAfter(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	handler := NewHandler(deviceauth.New(store), store, serverconfig.Config{})
+	for seed := byte(1); seed <= 6; seed++ {
+		request := httptest.NewRequest(http.MethodPost, "/v1/devices/pairing-requests", strings.NewReader(testDeviceBody("Phone", seed)))
+		response := httptest.NewRecorder()
+		handler.CreatePairing(response, request)
+		if seed <= 5 && response.Code != http.StatusAccepted {
+			t.Fatalf("pairing request failed: %d %s", response.Code, response.Body.String())
+		}
+		if seed == 6 && (response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") != "60") {
+			t.Fatalf("pairing limit response: %d %s", response.Code, response.Body.String())
+		}
+	}
+}
+
 func testRegistration(name string, seed byte) deviceauth.Registration {
 	raw := make([]byte, 32)
 	for i := range raw {

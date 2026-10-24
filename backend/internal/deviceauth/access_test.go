@@ -60,7 +60,7 @@ func TestPairingProofIsSingleUseAndTicketsExpire(t *testing.T) {
 	}
 }
 
-func TestEnrollmentInvitationsExpireAndAreRevokedWithTheirOwner(t *testing.T) {
+func TestEnrollmentInvitationsRequireOwnerAndExpire(t *testing.T) {
 	store, err := sqlite.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -69,15 +69,8 @@ func TestEnrollmentInvitationsExpireAndAreRevokedWithTheirOwner(t *testing.T) {
 	service := New(store)
 	now := time.Now().UTC()
 	service.now = func() time.Time { return now }
-	owner, err := service.RegisterApproved(testClientInfo("Owner", "desktop", 1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	principal, err := service.Authenticate(owner.Token, SeenInfo{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	invite, err := service.CreateInvitation(principal)
+	owner := Principal{Kind: PrincipalRoot}
+	invite, err := service.CreateInvitation(owner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,49 +81,19 @@ func TestEnrollmentInvitationsExpireAndAreRevokedWithTheirOwner(t *testing.T) {
 	if _, err := service.RegisterInvited(invite, testClientInfo("Other phone", "mobile", 3)); err == nil {
 		t.Fatal("invitation reused")
 	}
-	invite, err = service.CreateInvitation(principal)
+	principal, err := service.Authenticate(registered.Token, SeenInfo{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateInvitation(principal); err == nil {
+		t.Fatal("ordinary device received enrollment authority")
+	}
+	invite, err = service.CreateInvitation(owner)
 	if err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(11 * time.Minute)
 	if _, err := service.RegisterInvited(invite, testClientInfo("Other phone", "mobile", 3)); err == nil {
 		t.Fatal("expired invitation reused")
-	}
-	invite, err = service.CreateInvitation(principal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.RevokeDevice(owner.Device.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.CreateInvitation(principal); err == nil {
-		t.Fatal("revoked owner could create another invitation")
-	}
-	if _, err := service.RegisterInvited(invite, testClientInfo("Other phone", "mobile", 3)); err == nil {
-		t.Fatal("revoked device retained enrollment authority")
-	}
-}
-
-func TestInvitationCreationRejectsRotatedCredentials(t *testing.T) {
-	store, err := sqlite.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	service := New(store)
-	identity := testClientInfo("Owner", "desktop", 1)
-	owner, err := service.RegisterApproved(identity)
-	if err != nil {
-		t.Fatal(err)
-	}
-	principal, err := service.Authenticate(owner.Token, SeenInfo{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.RegisterApproved(identity); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.CreateInvitation(principal); err == nil {
-		t.Fatal("a request authenticated before rotation could mint an invitation afterward")
 	}
 }

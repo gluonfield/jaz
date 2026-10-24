@@ -231,6 +231,23 @@ func (q *Queries) SetMCPServerEnabled(ctx context.Context, arg SetMCPServerEnabl
 	return result.RowsAffected()
 }
 
+const updateMCPSecrets = `-- name: UpdateMCPSecrets :exec
+UPDATE mcp_servers
+SET bearer_token = ?1, headers_json = ?2
+WHERE id = ?3
+`
+
+type UpdateMCPSecretsParams struct {
+	BearerToken sql.NullString `json:"bearer_token"`
+	HeadersJson string         `json:"headers_json"`
+	ID          string         `json:"id"`
+}
+
+func (q *Queries) UpdateMCPSecrets(ctx context.Context, arg UpdateMCPSecretsParams) error {
+	_, err := q.db.ExecContext(ctx, updateMCPSecrets, arg.BearerToken, arg.HeadersJson, arg.ID)
+	return err
+}
+
 const updateMCPServer = `-- name: UpdateMCPServer :execrows
 UPDATE mcp_servers
 SET

@@ -18,7 +18,7 @@ function normalizeInput(input: MCPServerInput): MCPServerInput {
     name: input.name.trim(),
     url: input.url.trim(),
     bearer_token_env_var: input.bearer_token_env_var?.trim() || undefined,
-    bearer_token: input.bearer_token?.trim() || undefined,
+    bearer_token: input.bearer_token?.trim(),
     oauth: normalizeOAuth(input.oauth),
     headers: (input.headers ?? [])
       .map((header) => normalizedHeader(header))
@@ -30,7 +30,7 @@ function normalizedHeader(header: NonNullable<MCPServerInput['headers']>[number]
   const name = header.name.trim()
   const envvar = header.envvar?.trim()
   if (envvar) return { name, envvar }
-  return { name, value: header.value ?? '' }
+  return { name, value: header.value }
 }
 
 function normalizeOAuth(oauth: MCPServerInput['oauth']): MCPServerInput['oauth'] | undefined {

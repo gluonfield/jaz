@@ -1,6 +1,11 @@
 package storage
 
-import "time"
+import (
+	"errors"
+	"time"
+)
+
+var ErrPairingLimit = errors.New("too many pairing requests; try again later or use an invitation")
 
 const (
 	DeviceStatusPending  = "pending"
@@ -40,20 +45,6 @@ type Device struct {
 	AppVersion string    `json:"app_version,omitempty"`
 }
 
-type SavePairingDevice struct {
-	ID         string
-	Name       string
-	Kind       string
-	PublicKey  string
-	Platform   string
-	Family     string
-	Model      string
-	CreatedAt  time.Time
-	LastSeenIP string
-	UserAgent  string
-	AppVersion string
-}
-
 type SaveApprovedDevice struct {
 	ID         string
 	Name       string
@@ -84,9 +75,16 @@ type DevicePairing struct {
 
 type CreateDevicePairing struct {
 	ID         string
-	DeviceID   string
+	Device     Device
 	SecretHash string
-	Status     string
 	CreatedAt  time.Time
 	ExpiresAt  time.Time
+	Policy     PairingPolicy
+}
+
+type PairingPolicy struct {
+	RecentAfter  time.Time
+	RecentLimit  int
+	PendingLimit int
+	RetainAfter  time.Time
 }

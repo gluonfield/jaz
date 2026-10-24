@@ -420,6 +420,7 @@ export interface DeviceList {
   devices: Device[]
   pairings: DevicePairing[]
   current_device_id?: string
+  can_manage?: boolean
 }
 
 export interface DeviceConnectionLink {
@@ -1161,6 +1162,7 @@ export interface MCPHeader {
   name: string
   value?: string
   envvar?: string
+  value_set?: boolean
 }
 
 export interface MCPOAuthConfig {
@@ -1177,6 +1179,7 @@ export interface MCPServer {
   enabled: boolean
   bearer_token_env_var?: string
   bearer_token?: string
+  bearer_token_set?: boolean
   headers?: MCPHeader[]
   oauth?: MCPOAuthConfig
   status: 'connected' | 'disabled' | 'error' | 'needs_auth' | 'unknown'

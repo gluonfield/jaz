@@ -47,7 +47,7 @@ func TestRunDevicesListAndApprove(t *testing.T) {
 	if _, err := service.Register(testDeviceInfo("Owner", "desktop", 1)); err != nil {
 		t.Fatalf("register owner: %v", err)
 	}
-	pairing, _, err := service.CreatePairing(testDeviceInfo("New desktop", "desktop", 2))
+	pairing, proof, err := service.CreatePairing(testDeviceInfo("New desktop", "desktop", 2))
 	if err != nil {
 		t.Fatalf("create pairing: %v", err)
 	}
@@ -79,7 +79,11 @@ func TestRunDevicesListAndApprove(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	devices, pairings, err := deviceauth.New(store).List()
+	service = deviceauth.New(store)
+	if _, err := service.PollPairing(pairing.ID, proof); err != nil {
+		t.Fatalf("claim approved pairing: %v", err)
+	}
+	devices, pairings, err := service.List()
 	if err != nil {
 		t.Fatal(err)
 	}

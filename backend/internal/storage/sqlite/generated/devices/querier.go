@@ -9,20 +9,20 @@ import (
 )
 
 type Querier interface {
-	ApproveDevice(ctx context.Context, arg ApproveDeviceParams) (int64, error)
 	ApprovePairingRequest(ctx context.Context, arg ApprovePairingRequestParams) (int64, error)
 	ClaimPairingRequest(ctx context.Context, arg ClaimPairingRequestParams) (int64, error)
 	CountApprovedDevices(ctx context.Context) (int64, error)
 	CreatePairingRequest(ctx context.Context, arg CreatePairingRequestParams) error
-	ExpirePairingRequest(ctx context.Context, arg ExpirePairingRequestParams) (int64, error)
 	GetDevice(ctx context.Context, id string) (GetDeviceRow, error)
 	GetDeviceByTokenHash(ctx context.Context, tokenHash string) (GetDeviceByTokenHashRow, error)
-	GetPairingRequest(ctx context.Context, id string) (GetPairingRequestRow, error)
+	GetPairingRequest(ctx context.Context, id string) (DevicePairingRequest, error)
+	InvalidateDevicePairings(ctx context.Context, arg InvalidateDevicePairingsParams) error
 	ListDevices(ctx context.Context) ([]ListDevicesRow, error)
-	ListPairingRequests(ctx context.Context) ([]ListPairingRequestsRow, error)
-	RejectOtherPendingPairingRequests(ctx context.Context, arg RejectOtherPendingPairingRequestsParams) (int64, error)
+	ListPairingRequests(ctx context.Context, afterMs int64) ([]DevicePairingRequest, error)
+	PairingAdmission(ctx context.Context, arg PairingAdmissionParams) (PairingAdmissionRow, error)
+	PrunePairingDevices(ctx context.Context, beforeMs int64) error
+	PrunePairingRequests(ctx context.Context, beforeMs int64) error
 	RejectPairingRequest(ctx context.Context, arg RejectPairingRequestParams) (int64, error)
-	RejectPendingPairingRequestsForDevice(ctx context.Context, arg RejectPendingPairingRequestsForDeviceParams) (int64, error)
 	RevokeDevice(ctx context.Context, arg RevokeDeviceParams) (int64, error)
 	SaveApprovedDevice(ctx context.Context, arg SaveApprovedDeviceParams) error
 	// The tagged placeholder is outside the bearer-token hash alphabet.
