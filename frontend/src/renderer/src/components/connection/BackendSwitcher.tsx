@@ -32,7 +32,7 @@ export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => vo
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="flex w-full items-center gap-2 rounded-card bg-bg px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2"
+          className="flex w-full items-center gap-2 rounded-card bg-list-hover px-3 py-2 text-left transition-colors duration-150 hover:bg-list-active"
         >
           <span className="min-w-0 flex-1">
             <span className="block text-[10px] font-medium uppercase tracking-wide text-ink-3">Backend</span>

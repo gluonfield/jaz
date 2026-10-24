@@ -1,8 +1,6 @@
-import { ArrowLeft, PanelLeft } from 'lucide-react'
+import { PanelLeft } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Fragment, useEffect, useRef, useState } from 'react'
-import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
-import { SearchField } from '@/components/ui/SearchField'
+import { useEffect, useRef, useState } from 'react'
 import { dismissOnEmptyTap } from '@/lib/dom/drawer'
 import {
   consumeEscapeKey,
@@ -25,6 +23,7 @@ import { KeyboardShortcutsSettings } from './KeyboardShortcutsSettings'
 import { MCPSettings } from './MCPSettings'
 import { MemorySettings } from './MemorySettings'
 import { PersonalizationSettings } from './PersonalizationSettings'
+import { SettingsNav } from './SettingsNav'
 import {
   type SettingsSection,
   useExperimentalFeaturesEnabled,
@@ -51,7 +50,6 @@ export function SettingsOverlay({
   const reduce = useReducedMotion()
   const isMobile = useIsMobile()
   const [experimentalEnabled] = useExperimentalFeaturesEnabled()
-  const [query, setQuery] = useState('')
   const escapeLayerID = useRef<string | null>(null)
   if (!escapeLayerID.current) escapeLayerID.current = createEscapeLayerID('settings')
   // Phone: the nav is a full-screen drawer over the content rather than a fixed
@@ -63,7 +61,6 @@ export function SettingsOverlay({
   // so it dismisses itself before Escape closes the whole panel.
   useEffect(() => {
     if (!open) return
-    setQuery('')
     setNavOpen(true)
     const layerID = escapeLayerID.current
     if (!layerID) return
@@ -85,16 +82,15 @@ export function SettingsOverlay({
   }, [open, onClose])
 
   const visibleSections = visibleSettingsSections(experimentalEnabled)
-  const q = query.trim().toLowerCase()
-  const items = visibleSections.filter((item) => !q || item.label.toLowerCase().includes(q))
   const current = visibleSections.find((item) => item.id === section) ?? visibleSections[0]
 
   useEffect(() => {
     if (open && section && section !== current.id) onSectionChange(current.id, { replace: true })
   }, [current.id, onSectionChange, open, section])
 
-  // Desktop: Settings fills the content card, so the rail and titlebar stay in
-  // reach. Phones have no rail, so it covers the screen.
+  // Desktop: the page fills the content card while its menu takes the left
+  // column (see the root layout), so the rail and titlebar stay in reach.
+  // Phones have no rail, so it covers the screen with the menu as a drawer.
   return (
     <AnimatePresence>
       {open ? (
@@ -108,79 +104,25 @@ export function SettingsOverlay({
           aria-modal="true"
           aria-label="Settings"
         >
-          <aside
-            onClick={isMobile ? dismissOnEmptyTap(() => setNavOpen(false)) : undefined}
-            className={`flex w-[272px] shrink-0 flex-col border-r border-border bg-panel max-sm:absolute max-sm:inset-y-0 max-sm:left-0 max-sm:z-drawer max-sm:w-full max-sm:transition-transform max-sm:duration-300 ${
-              navOpen ? '' : 'max-sm:-translate-x-full'
-            }`}
-          >
-            <div className="h-[52px] shrink-0 sm:h-3" />
-
-            <div className="px-3 pb-1.5">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px]"
-              >
-                <ArrowLeft size={15} className="text-ink-3 max-sm:size-[18px]" />
-                <span className="flex-1">Back to jaz</span>
-              </button>
-            </div>
-
-            {/* The backend these settings apply to — switch above everything. */}
-            <div className="px-3 pb-2.5">
-              <BackendSwitcher
-                onConnectServer={() => {
-                  onClose()
-                  onOpenConnect()
+          {isMobile ? (
+            <aside
+              onClick={dismissOnEmptyTap(() => setNavOpen(false))}
+              className={`absolute inset-y-0 left-0 z-drawer flex w-full flex-col bg-panel transition-transform duration-300 ${
+                navOpen ? '' : '-translate-x-full'
+              }`}
+            >
+              <div className="h-[52px] shrink-0" />
+              <SettingsNav
+                section={current.id}
+                onSectionChange={(next) => {
+                  onSectionChange(next)
+                  setNavOpen(false)
                 }}
+                onClose={onClose}
+                onOpenConnect={onOpenConnect}
               />
-            </div>
-
-            <div className="px-3 pb-2.5">
-              <SearchField
-                value={query}
-                onChange={setQuery}
-                placeholder="Search settings…"
-                className="h-8 max-sm:h-11 max-sm:pl-9 max-sm:text-[15px]"
-              />
-            </div>
-
-            <nav className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-3 pb-2.5">
-              {items.map((item, index) => {
-                const Icon = item.icon
-                const selected = item.id === current.id
-                const heading = item.group !== items[index - 1]?.group ? item.group : undefined
-                return (
-                  <Fragment key={item.id}>
-                    {heading ? (
-                      <p className="px-2.5 pb-1 pt-3 text-[11.5px] font-medium text-ink-3 max-sm:px-3 max-sm:text-[13px]">
-                        {heading}
-                      </p>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSectionChange(item.id)
-                        if (isMobile) setNavOpen(false)
-                      }}
-                      className={`flex items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[13px] transition-colors duration-150 max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px] ${
-                        selected
-                          ? 'bg-list-active font-medium text-ink'
-                          : 'text-ink-2 hover:bg-list-hover hover:text-ink'
-                      }`}
-                    >
-                      <Icon size={15} className={`max-sm:size-[18px] ${selected ? 'text-ink' : 'text-ink-3'}`} />
-                      <span className="flex-1">{item.label}</span>
-                    </button>
-                  </Fragment>
-                )
-              })}
-              {items.length === 0 ? (
-                <p className="px-2 text-[13px] text-ink-3">No matching settings.</p>
-              ) : null}
-            </nav>
-          </aside>
+            </aside>
+          ) : null}
 
           <div className="flex min-w-0 flex-1 flex-col bg-bg">
             <div className="flex h-[52px] shrink-0 items-center px-3 sm:h-6">
