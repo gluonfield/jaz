@@ -392,6 +392,18 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('new tasks did not appear', () => text().includes(completed[0].request))
     element.style.setProperty('--side-panel-width', '420px')
     await capture('bot-panel-wide')
+
+    activity.splice(0)
+    for (const parent of Object.keys(started)) {
+      delete started[parent]
+    }
+    for (const motion of [{ threads: [{ id: 'background-worker', title: 'Report worker', state: 'background' as const }] }, { moving: true }]) {
+      owed.splice(0, owed.length, { id: 8, request: 'Deliver the report', status: 'in_progress', opened_at: minutes(1), next: 'Check the report', ...motion })
+      await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
+      await until('the moving task did not appear', () => text().includes('Next: Check the report'))
+      owed[0].next = 'Deliver the report now'
+      await until('a moving task waited longer than the active polling interval to refresh', () => text().includes('Next: Deliver the report now'))
+    }
   } finally {
     dark(wasDark)
     root.unmount()
