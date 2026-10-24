@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -130,6 +129,13 @@ func TestSyncRemoteInstallsManifestSkills(t *testing.T) {
 	if data, err := os.ReadFile(path); err != nil || string(data) != "export" {
 		t.Fatalf("synced file = %q, %v", data, err)
 	}
+	info, err := os.Stat(filepath.Join(UserRoot(root), "create-animated-video"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+		t.Fatalf("installed skill directory mode = %v", info.Mode().Perm())
+	}
 	state, err := loadSyncState(root)
 	if err != nil {
 		t.Fatal(err)
@@ -160,6 +166,48 @@ func TestSyncRemoteVerifiesManifestHash(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "manifest sha256 mismatch") {
 		t.Fatalf("err = %v, want manifest sha mismatch", err)
+	}
+}
+
+func TestInstallRemoteArchivePreservesRootFiles(t *testing.T) {
+	root := t.TempDir()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	for name, body := range map[string]string{
+		"SKILL.md":          "---\nname: alpha\ndescription: Alpha skill\n---\nbody",
+		"references/run.sh": "#!/bin/sh\nprintf ready\n",
+	} {
+		header := &zip.FileHeader{Name: name}
+		header.SetMode(0o755)
+		file, err := writer.CreateHeader(header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(archive.Bytes())
+	if err := installRemoteArchive(root, RemoteSkill{Name: "alpha"}, archive.Bytes(), hex.EncodeToString(sum[:])); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(UserRoot(root), "alpha", "references", "run.sh")
+	if data, err := os.ReadFile(path); err != nil || string(data) != "#!/bin/sh\nprintf ready\n" {
+		t.Fatalf("installed script = %q, %v", data, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
+		t.Fatalf("installed script mode = %v", info.Mode().Perm())
+	}
+	entries, err := os.ReadDir(UserRoot(root))
+	if err != nil || len(entries) != 1 || entries[0].Name() != "alpha" {
+		t.Fatalf("skill directory contains staging files: %v, %v", entries, err)
 	}
 }
 
@@ -195,6 +243,8 @@ func TestSyncRemoteRefreshesManagedSkill(t *testing.T) {
 	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{ManifestURL: server.URL + "/manifest.json"}); err != nil {
 		t.Fatal(err)
 	}
+	stale := filepath.Join(UserRoot(root), "alpha", "stale.md")
+	writeFile(t, stale, "old version")
 	body = "second"
 	refreshArchive()
 	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{ManifestURL: server.URL + "/manifest.json"}); err != nil {
@@ -203,6 +253,9 @@ func TestSyncRemoteRefreshesManagedSkill(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(UserRoot(root), "alpha", "SKILL.md"))
 	if err != nil || !strings.Contains(string(data), "second") {
 		t.Fatalf("managed skill = %q, %v", data, err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale skill file remains: %v", err)
 	}
 }
 
@@ -235,140 +288,6 @@ func TestSyncRemoteLeavesUserOwnedSkill(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(UserRoot(root), "create-animated-video", "SKILL.md"))
 	if err != nil || !strings.Contains(string(data), "user-owned") {
 		t.Fatalf("user-owned skill = %q, %v", data, err)
-	}
-}
-
-func TestInstallToCopiesMissingSkillsAndLeavesExistingDirs(t *testing.T) {
-	root := t.TempDir()
-	dst := t.TempDir()
-	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
-	writeFile(t, filepath.Join(root, "skills", "alpha", "references", "guide.md"), "guide")
-	script := filepath.Join(root, "skills", "alpha", "scripts", "run.sh")
-	writeFile(t, script, "#!/bin/sh\n")
-	if err := os.Chmod(script, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := InstallTo(root, dst); err != nil {
-		t.Fatal(err)
-	}
-
-	if data, err := os.ReadFile(filepath.Join(dst, "alpha", "references", "guide.md")); err != nil || string(data) != "guide" {
-		t.Fatalf("copied reference = %q, %v", data, err)
-	}
-	info, err := os.Stat(filepath.Join(dst, "alpha", "scripts", "run.sh"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
-		t.Fatalf("copied script mode = %v", info.Mode().Perm())
-	}
-
-	writeFile(t, filepath.Join(root, "skills", "alpha", "SKILL.md"), "---\nname: alpha\ndescription: Updated\n---\nnew body")
-	if err := InstallTo(root, dst); err != nil {
-		t.Fatal(err)
-	}
-	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(data), "Updated") {
-		t.Fatalf("existing skill was overwritten:\n%s", data)
-	}
-}
-
-func TestInstallToRefreshesManagedSkills(t *testing.T) {
-	root := t.TempDir()
-	dst := t.TempDir()
-	writeSkill(t, root, "alpha", "alpha", "First")
-	if err := saveSyncState(root, map[string]managedSkill{
-		"alpha": {Source: firstPartySkillSource, Name: "alpha", SHA256: "first"},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := InstallTo(root, dst); err != nil {
-		t.Fatal(err)
-	}
-
-	writeSkill(t, root, "alpha", "alpha", "Updated")
-	writeFile(t, filepath.Join(dst, "alpha", "stale.md"), "stale")
-	if err := InstallTo(root, dst); err != nil {
-		t.Fatal(err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
-	if err != nil || !strings.Contains(string(data), "Updated") {
-		t.Fatalf("managed skill = %q, %v", data, err)
-	}
-	if _, err := os.Stat(filepath.Join(dst, "alpha", "stale.md")); !os.IsNotExist(err) {
-		t.Fatalf("stale managed file remains: %v", err)
-	}
-}
-
-func TestInstallToSkipsExistingSkillConflictsAndLeavesOrphans(t *testing.T) {
-	root := t.TempDir()
-	dst := t.TempDir()
-	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
-	writeSkill(t, root, "stale", "stale", "Stale tasks")
-	writeFile(t, filepath.Join(dst, "alpha", "SKILL.md"), "user-owned")
-	writeFile(t, filepath.Join(dst, "orphan", "SKILL.md"), "user-owned orphan")
-
-	if err := InstallTo(root, dst); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dst, "stale", "SKILL.md")); err != nil {
-		t.Fatalf("stale skill missing before source removal: %v", err)
-	}
-
-	if err := os.RemoveAll(filepath.Join(root, "skills", "stale")); err != nil {
-		t.Fatal(err)
-	}
-	if err := InstallTo(root, dst); err != nil {
-		t.Fatal(err)
-	}
-
-	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(data) != "user-owned" {
-		t.Fatalf("user-owned skill was overwritten:\n%s", data)
-	}
-	if _, err := os.Stat(filepath.Join(dst, "orphan", "SKILL.md")); err != nil {
-		t.Fatalf("user-owned orphan should stay: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dst, "stale", "SKILL.md")); err != nil {
-		t.Fatalf("additive sync should leave old skills in place: %v", err)
-	}
-}
-
-func TestInstallToToleratesConcurrentMissingSkillCopies(t *testing.T) {
-	root := t.TempDir()
-	dst := t.TempDir()
-	writeSkill(t, root, "alpha", "alpha", "Alpha tasks")
-
-	errs := make(chan error, 32)
-	var wg sync.WaitGroup
-	for range 32 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			errs <- InstallTo(root, dst)
-		}()
-	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	data, err := os.ReadFile(filepath.Join(dst, "alpha", "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), "Alpha tasks") {
-		t.Fatalf("skill was not copied:\n%s", data)
 	}
 }
 

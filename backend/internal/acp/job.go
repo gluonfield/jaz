@@ -169,6 +169,10 @@ type activeTurn struct {
 	// the ids of those sent whose responses the connection has not yet read.
 	unsent  int
 	prompts map[string]struct{}
+	// kept counts the steers the stored turn keeps (see storage.Turn.Steers).
+	kept int
+	// steerSent closes once the turn's latest steer is on the wire.
+	steerSent <-chan struct{}
 	// agentRun marks a turn that the agent began on its own while that run
 	// goes on: it ends with the agent's report, not a prompt response.
 	agentRun bool
@@ -605,14 +609,6 @@ func (j *jobState) waitFirstPromptSent(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
-	}
-}
-
-func (j *jobState) markFirstPromptSent() {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if j.turn != nil {
-		j.turn.closeFirstPromptSent()
 	}
 }
 

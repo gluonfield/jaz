@@ -42,12 +42,14 @@ type Store interface {
 	LoadDevicePairing(id string) (storage.DevicePairing, string, error)
 	ListDevicePairings() ([]storage.DevicePairing, error)
 	ApproveDevicePairing(id string, at time.Time) (storage.DevicePairing, error)
+	ClaimDevicePairing(id, secretHash, tokenHash string, at time.Time) error
 	RejectDevicePairing(id string, at time.Time) (storage.DevicePairing, error)
 }
 
 type Service struct {
-	store Store
-	now   func() time.Time
+	store  Store
+	access access
+	now    func() time.Time
 }
 
 type SeenInfo struct {
@@ -76,8 +78,10 @@ type Registration struct {
 }
 
 type Principal struct {
-	Kind     string `json:"kind"`
-	DeviceID string `json:"device_id,omitempty"`
+	Kind            string `json:"kind"`
+	DeviceID        string `json:"device_id,omitempty"`
+	EnrollmentToken string `json:"-"`
+	CredentialHash  string `json:"-"`
 }
 
 type RegisterResult struct {
@@ -124,7 +128,7 @@ func (s *Service) Authenticate(token string, seen SeenInfo) (Principal, error) {
 	case storage.DeviceStatusApproved:
 		seen = normalizeSeenInfo(seen)
 		_ = s.store.UpdateDeviceSeen(device.ID, seen.IP, seen.UserAgent, s.now())
-		return Principal{Kind: PrincipalDevice, DeviceID: device.ID}, nil
+		return Principal{Kind: PrincipalDevice, DeviceID: device.ID, CredentialHash: TokenHash(token)}, nil
 	case storage.DeviceStatusPending:
 		return Principal{}, ErrApprovalRequired
 	default:
@@ -133,6 +137,8 @@ func (s *Service) Authenticate(token string, seen SeenInfo) (Principal, error) {
 }
 
 func (s *Service) Register(reg Registration) (RegisterResult, error) {
+	s.access.mu.Lock()
+	defer s.access.mu.Unlock()
 	var err error
 	reg, err = normalizeRegistration(reg)
 	if err != nil {
@@ -153,6 +159,8 @@ func (s *Service) Register(reg Registration) (RegisterResult, error) {
 }
 
 func (s *Service) RegisterApproved(reg Registration) (RegisterResult, error) {
+	s.access.mu.Lock()
+	defer s.access.mu.Unlock()
 	var err error
 	reg, err = normalizeRegistration(reg)
 	if err != nil {
@@ -184,7 +192,6 @@ func (s *Service) createPairing(reg Registration) (storage.DevicePairing, string
 		Platform:   reg.Profile.Platform,
 		Family:     reg.Profile.Family,
 		Model:      reg.Profile.Model,
-		TokenHash:  TokenHash(secret),
 		CreatedAt:  now,
 		LastSeenIP: reg.Seen.IP,
 		UserAgent:  reg.Seen.UserAgent,
@@ -212,17 +219,33 @@ func (s *Service) PollPairing(id, secret string) (PairingPoll, error) {
 	if subtle.ConstantTimeCompare([]byte(secretHash), []byte(TokenHash(secret))) != 1 {
 		return PairingPoll{}, ErrUnauthorized
 	}
-	if pairing.Status == storage.PairingStatusPending && s.now().After(pairing.ExpiresAt) {
+	if !s.now().Before(pairing.ExpiresAt) {
 		return PairingPoll{Pairing: pairing}, ErrPairingExpired
 	}
 	if pairing.Status == storage.PairingStatusApproved {
-		return PairingPoll{Pairing: pairing, Token: strings.TrimSpace(secret)}, nil
+		s.access.mu.Lock()
+		defer s.access.mu.Unlock()
+		token, err := newToken()
+		if err != nil {
+			return PairingPoll{}, err
+		}
+		if err := s.store.ClaimDevicePairing(pairing.ID, secretHash, TokenHash(token), s.now()); err != nil {
+			return PairingPoll{}, ErrUnauthorized
+		}
+		s.cancelAccessLocked(pairing.DeviceID)
+		return PairingPoll{Pairing: pairing, Token: token}, nil
 	}
 	return PairingPoll{Pairing: pairing}, nil
 }
 
 func (s *Service) ApprovePairing(id string) (storage.DevicePairing, error) {
-	return s.store.ApproveDevicePairing(strings.TrimSpace(id), s.now())
+	s.access.mu.Lock()
+	defer s.access.mu.Unlock()
+	pairing, err := s.store.ApproveDevicePairing(strings.TrimSpace(id), s.now())
+	if err == nil {
+		s.cancelAccessLocked(pairing.DeviceID)
+	}
+	return pairing, err
 }
 
 func (s *Service) RejectPairing(id string) (storage.DevicePairing, error) {
@@ -230,7 +253,13 @@ func (s *Service) RejectPairing(id string) (storage.DevicePairing, error) {
 }
 
 func (s *Service) RevokeDevice(id string) (storage.Device, error) {
-	return s.store.RevokeDevice(strings.TrimSpace(id), s.now())
+	s.access.mu.Lock()
+	defer s.access.mu.Unlock()
+	device, err := s.store.RevokeDevice(strings.TrimSpace(id), s.now())
+	if err == nil {
+		s.cancelAccessLocked(device.ID)
+	}
+	return device, err
 }
 
 func (s *Service) List() ([]storage.Device, []storage.DevicePairing, error) {
@@ -311,6 +340,7 @@ func (s *Service) saveApprovedDevice(reg Registration) (RegisterResult, error) {
 	if err != nil {
 		return RegisterResult{}, err
 	}
+	s.cancelAccessLocked(device.ID)
 	return RegisterResult{Device: device, Token: token}, nil
 }
 

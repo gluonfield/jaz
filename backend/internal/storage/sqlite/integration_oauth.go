@@ -18,15 +18,19 @@ func (s *Store) LoadToken(ctx context.Context, connectionID string) (integration
 	if err != nil {
 		return integrationoauth.Token{}, false, err
 	}
+	plain, err := s.decryptSecret(connectionID, data)
+	if err != nil {
+		return integrationoauth.Token{}, false, err
+	}
 	var token integrationoauth.Token
-	if err := json.Unmarshal([]byte(data), &token); err != nil {
+	if err := json.Unmarshal(plain, &token); err != nil {
 		return integrationoauth.Token{}, false, err
 	}
 	return token, true, nil
 }
 
 func (s *Store) SaveToken(ctx context.Context, connectionID string, token integrationoauth.Token) error {
-	data, err := tokenJSON(token)
+	data, err := s.tokenJSON(connectionID, token)
 	if err != nil {
 		return err
 	}
@@ -39,12 +43,12 @@ func (s *Store) SaveToken(ctx context.Context, connectionID string, token integr
 	})
 }
 
-func tokenJSON(token integrationoauth.Token) (string, error) {
+func (s *Store) tokenJSON(connectionID string, token integrationoauth.Token) (string, error) {
 	data, err := json.Marshal(token)
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+	return s.encryptSecret(connectionID, data)
 }
 
 func (s *Store) DeleteToken(ctx context.Context, connectionID string) error {

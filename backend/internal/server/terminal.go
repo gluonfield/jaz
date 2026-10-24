@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -23,9 +24,8 @@ type terminalClientMessage struct {
 }
 
 var terminalUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		return origin == "" || origin == "null" || strings.HasPrefix(origin, "file://") || allowedOrigin(origin)
+	CheckOrigin: func(*http.Request) bool {
+		return true
 	},
 }
 
@@ -51,6 +51,10 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 	if err != nil {
 		return
 	}
+	stop := context.AfterFunc(r.Context(), func() {
+		_ = conn.Close()
+	})
+	defer stop()
 	defer conn.Close()
 	size := terminal.Size{Cols: queryUint16(r, "cols"), Rows: queryUint16(r, "rows")}
 	term, err := s.terminalManager().Open(session.ID, cwd, size)

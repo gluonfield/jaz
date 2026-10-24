@@ -6,6 +6,8 @@ export { ApiError } from '@/lib/api/response'
 
 const BACKEND_URL_KEY = 'jaz.backendUrl'
 const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
+const authTokens = new Map<string, string>()
+const resourceTickets = new Map<string, { token: string; expires_at: string }>()
 // The port the local backend always runs on; a loopback host on this port is
 // "this machine", any other loopback port is a tunnel to a remote backend.
 export const DEFAULT_LOCAL_PORT = new URL(DEFAULT_API_BASE_URL).port
@@ -20,7 +22,9 @@ export function localBaseUrl(): string {
 
 export function normalizeBaseUrl(url: string): string {
   let trimmed = url.trim().replace(/\/+$/, '')
-  if (trimmed && !/^https?:\/\//i.test(trimmed)) trimmed = `http://${trimmed}`
+  if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+    trimmed = defaultConnectionScheme(trimmed)
+  }
   // keep only the origin: a pasted path like /health would break every request
   try {
     return new URL(trimmed).origin
@@ -40,10 +44,12 @@ export function isLocalBackendUrl(url: string): boolean {
 
 export function parseBackendConnectUrl(input: string): { url: string; key: string } {
   let raw = input.trim()
-  if (raw && !/^https?:\/\//i.test(raw)) raw = `http://${raw}`
+  if (raw && !/^https?:\/\//i.test(raw)) {
+    raw = defaultConnectionScheme(raw)
+  }
   try {
     const parsed = new URL(raw)
-    const key = parsed.searchParams.get('key')?.trim() ?? ''
+    const key = (parsed.searchParams.get('key') || new URLSearchParams(parsed.hash.slice(1)).get('key'))?.trim() ?? ''
     parsed.searchParams.delete('key')
     parsed.pathname = ''
     parsed.hash = ''
@@ -91,11 +97,11 @@ function hasStartupConnectParams(params: URLSearchParams): boolean {
 function connectUrlWithKey(target: string, key: string): string {
   const raw = target.trim()
   try {
-    const parsed = new URL(/^https?:\/\//i.test(raw) ? raw : `http://${raw}`)
-    parsed.searchParams.set('key', key)
+    const parsed = new URL(/^https?:\/\//i.test(raw) ? raw : defaultConnectionScheme(raw))
+    parsed.hash = new URLSearchParams({ key }).toString()
     return parsed.toString()
   } catch {
-    return `${raw}${raw.includes('?') ? '&' : '?'}key=${encodeURIComponent(key)}`
+    return `${raw}#key=${encodeURIComponent(key)}`
   }
 }
 
@@ -124,8 +130,16 @@ export function apiWebSocketUrl(path: string): string {
   return url.toString()
 }
 
-export function apiAuthenticatedWebSocketUrl(path: string): string {
-  return appendAuthQuery(apiWebSocketUrl(path))
+export function apiWebSocketProtocols(): string[] {
+  if (!secureBackendConnection(apiBaseUrl())) {
+    throw new Error('Remote connections require HTTPS')
+  }
+  const token = apiAuthToken()
+  return token ? [`jaz-auth.${token}`] : []
+}
+
+export function apiWebSocket(path: string): WebSocket {
+  return new WebSocket(apiWebSocketUrl(path), apiWebSocketProtocols())
 }
 
 export function apiEmbeddedGetUrl(path: string): string {
@@ -143,17 +157,43 @@ function authStorageKey(url: string): string {
 }
 
 export function apiAuthToken(url = apiBaseUrl()): string {
-  return localStorage.getItem(authStorageKey(url))?.trim() ?? ''
+  const key = authStorageKey(url)
+  const cached = authTokens.get(key)
+  if (cached !== undefined) {
+    return cached
+  }
+  const stored = localStorage.getItem(key)?.trim() ?? ''
+  if (!stored) {
+    return ''
+  }
+  const token = stored.startsWith('enc:v1:')
+    ? clientRuntime.decryptCredential?.(stored.slice(7)) ?? ''
+    : stored
+  if (clientRuntime.encryptCredential && !stored.startsWith('enc:v1:')) {
+    localStorage.setItem(key, 'enc:v1:' + clientRuntime.encryptCredential(token))
+  }
+  authTokens.set(key, token)
+  return token
 }
 
 export function setApiAuthToken(url: string, token?: string | null): void {
   const key = authStorageKey(url)
   const value = token?.trim() ?? ''
-  if (value) localStorage.setItem(key, value)
-  else localStorage.removeItem(key)
+  resourceTickets.delete(normalizeBaseUrl(url))
+  if (value) {
+    const stored = clientRuntime.encryptCredential ? 'enc:v1:' + clientRuntime.encryptCredential(value) : value
+    localStorage.setItem(key, stored)
+    authTokens.set(key, value)
+  } else {
+    localStorage.removeItem(key)
+    authTokens.delete(key)
+  }
 }
 
 function withAPIHeaders(init: RequestInit = {}, url = apiBaseUrl()): RequestInit {
+  if (!secureBackendConnection(url)) {
+    throw new Error('Remote connections require HTTPS')
+  }
   const token = apiAuthToken(url)
   const headers = new Headers(init.headers)
   if (!headers.has(CLIENT_PLATFORM_HEADER)) headers.set(CLIENT_PLATFORM_HEADER, CLIENT_PLATFORM)
@@ -162,15 +202,16 @@ function withAPIHeaders(init: RequestInit = {}, url = apiBaseUrl()): RequestInit
 }
 
 function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
-  const token = apiAuthToken(url)
-  if (!token) return rawUrl
-  try {
-    const parsed = new URL(rawUrl)
-    parsed.searchParams.set('key', token)
-    return parsed.toString()
-  } catch {
-    return `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}key=${encodeURIComponent(token)}`
+  if (!secureBackendConnection(url)) {
+    throw new Error('Remote connections require HTTPS')
   }
+  const token = resourceTickets.get(normalizeBaseUrl(url))?.token
+  if (!token) {
+    return rawUrl
+  }
+  const parsed = new URL(rawUrl)
+  parsed.searchParams.set('ticket', token)
+  return parsed.toString()
 }
 
 export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -222,5 +263,28 @@ export function del<T>(path: string): Promise<T> {
 function assertBackendRelativePath(path: string, helper: string): void {
   if (/^(?:https?|wss?):\/\//i.test(path)) {
     throw new Error(`${helper} only accepts backend-relative paths`)
+  }
+}
+
+export function setResourceTicket(url: string, ticket?: { token: string; expires_at: string }): void {
+  if (ticket) {
+    resourceTickets.set(normalizeBaseUrl(url), ticket)
+  } else {
+    resourceTickets.delete(normalizeBaseUrl(url))
+  }
+}
+
+function defaultConnectionScheme(value: string): string {
+  const host = value.split(/[/:?#]/)[0]?.toLowerCase()
+  const local = host === 'localhost' || host === '127.0.0.1' || value.startsWith('[::1]')
+  return `${local ? 'http' : 'https'}://${value}`
+}
+
+export function secureBackendConnection(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'https:' || (parsed.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname))
+  } catch {
+    return false
   }
 }

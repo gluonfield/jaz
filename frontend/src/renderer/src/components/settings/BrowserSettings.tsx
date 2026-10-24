@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { browserSettingsQuery, updateBrowserSettings } from '@/lib/api/settings'
 import type { BrowserMode, BrowserStatus } from '@/lib/api/types'
-import { apiAuthenticatedWebSocketUrl, apiBaseUrl } from '@/lib/api/client'
+import { apiWebSocketUrl, apiBaseUrl } from '@/lib/api/client'
 import { keys } from '@/lib/query/keys'
 import { BrowserProfileImport } from '@/components/browser/BrowserProfileImport'
 
@@ -36,9 +36,9 @@ function extensionEndpoint(): string {
       port === '5299'
     if (defaultLocal) return ''
   } catch {
-    return apiAuthenticatedWebSocketUrl('/v1/browser/extension')
+    return apiWebSocketUrl('/v1/browser/extension')
   }
-  return apiAuthenticatedWebSocketUrl('/v1/browser/extension')
+  return apiWebSocketUrl('/v1/browser/extension')
 }
 
 export function BrowserSettings() {

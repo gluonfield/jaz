@@ -138,7 +138,15 @@ function AgentCard({
   const canPrepare = hasManagedInstall(probe) && !installReady(probe)
   const adapterProgress = state === 'downloading' ? adapterDownloadProgress(probe.managed_adapter) : undefined
   const companionAppBlocked = Boolean(probe.app_installed && !probe.available && !probe.auth_command_available)
-  const missingLabel = companionAppBlocked ? `Needs ${onboardingAgentLabel(probe.agent)}` : undefined
+  const status = companionAppBlocked
+    ? `Needs ${onboardingAgentLabel(probe.agent)}`
+    : {
+        ready: '',
+        action: canLogin ? 'Sign in' : 'Add API key',
+        missing: 'Not installed',
+        downloading: 'Downloading',
+        failed: 'Download failed',
+      }[state]
   let missingDetail = ''
   if (companionAppBlocked) {
     missingDetail = `${probe.app_name || authProviderLabel(probe.agent)} is installed on ${agentHost}, but ${onboardingAgentLabel(probe.agent)} is not available to jaz.`
@@ -177,22 +185,24 @@ function AgentCard({
           <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-bg text-ink">
             <AgentLogo agent={probe.agent} />
           </span>
-          <span className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="truncate text-[13.5px] font-medium text-ink">
-              {onboardingAgentLabel(probe.agent)}
-            </span>
-            {state !== 'ready' ? (
-              <StatePill state={state} label={missingLabel} progressPercent={adapterProgress?.percent} />
-            ) : null}
+          <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-ink">
+            {onboardingAgentLabel(probe.agent)}
           </span>
           {state === 'ready' ? (
             <CheckCircle2 size={17} className="shrink-0 text-primary" />
-          ) : actionable ? (
-            <ChevronDown
-              size={15}
-              className={`shrink-0 text-ink-3 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-            />
-          ) : null}
+          ) : (
+            <span
+              className={`flex shrink-0 items-center gap-1 text-[12.5px] ${actionable ? 'font-medium text-ink-2' : 'text-ink-3'}`}
+            >
+              {status}
+              {actionable ? (
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+                />
+              ) : null}
+            </span>
+          )}
         </button>
         {missingDetail || adapterProgress ? (
           <div className="px-3 pb-2">
@@ -310,41 +320,6 @@ function AgentCard({
         </AnimatePresence>
       </div>
     </div>
-  )
-}
-
-function StatePill({
-  state,
-  label,
-  progressPercent,
-}: {
-  state: AgentState
-  label?: string
-  progressPercent?: number
-}) {
-  const tone =
-    state === 'ready'
-      ? 'bg-primary-soft text-primary-strong'
-      : state === 'missing' || state === 'failed'
-        ? 'bg-surface-2 text-ink-3'
-        : 'bg-accent-soft text-accent-strong'
-  const text =
-    label ??
-    (state === 'ready'
-      ? 'Connected'
-      : state === 'missing'
-        ? 'Not installed'
-        : state === 'downloading'
-          ? progressPercent === undefined
-            ? 'Downloading'
-            : `Downloading ${progressPercent}%`
-          : state === 'failed'
-            ? 'Download failed'
-            : 'Needs sign-in')
-  return (
-    <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-medium ${tone}`}>
-      {text}
-    </span>
   )
 }
 

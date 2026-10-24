@@ -18,6 +18,7 @@ import { startLocalBackend, stopLocalBackend } from './backend'
 import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } from '@main/browserNavigation'
 import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
+import { installCredentialEncryption } from './credentialEncryption'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
 import { configureAppPermissions } from './permissions'
@@ -364,6 +365,7 @@ app.whenReady().then(() => {
     }
   })
 
+  installCredentialEncryption()
   ipcMain.handle('jaz:start-local-backend', () => startLocalBackend())
   ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
   ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())

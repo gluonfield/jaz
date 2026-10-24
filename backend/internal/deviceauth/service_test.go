@@ -84,10 +84,17 @@ func TestApprovedDeviceRepairRotatesTokenOnApproval(t *testing.T) {
 	if _, err := service.ApprovePairing(pairing.ID); err != nil {
 		t.Fatal(err)
 	}
+	poll, err := service.PollPairing(pairing.ID, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if poll.Token == secret {
+		t.Fatal("pairing proof reused as device token")
+	}
 	if _, err := service.Authenticate(registered.Token, SeenInfo{}); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("old token auth error = %v, want ErrUnauthorized", err)
 	}
-	if _, err := service.Authenticate(secret, SeenInfo{}); err != nil {
+	if _, err := service.Authenticate(poll.Token, SeenInfo{}); err != nil {
 		t.Fatalf("rotated token auth: %v", err)
 	}
 }
@@ -183,7 +190,11 @@ func TestCreatePairingReplacesPendingRequestForDevice(t *testing.T) {
 	if _, err := service.ApprovePairing(second.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.Authenticate(secret, SeenInfo{}); err != nil {
+	poll, err := service.PollPairing(second.ID, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Authenticate(poll.Token, SeenInfo{}); err != nil {
 		t.Fatalf("replacement token auth: %v", err)
 	}
 }

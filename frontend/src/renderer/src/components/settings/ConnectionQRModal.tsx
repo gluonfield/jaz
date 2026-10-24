@@ -65,7 +65,7 @@ export function ConnectionQRModal({
         <div className="mx-auto w-full max-w-[248px] space-y-3 sm:max-w-none">
           <div className="rounded-[20px] bg-surface p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)]">
             <div className="relative grid aspect-square w-full shrink-0 place-items-center rounded-[14px] bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
-              <QRCodeImage value={currentCode} alt="Connection QR code" className={failed ? 'size-full opacity-35' : 'size-full'} />
+              <QRCodeImage value={currentCode} label="Connection QR code" className={failed ? 'size-full opacity-35' : 'size-full'} />
               {failed ? (
                 <div className="absolute inset-0 grid place-items-center rounded-[14px] bg-white/75 text-danger">
                   <div className="grid size-12 place-items-center rounded-full bg-danger-soft">

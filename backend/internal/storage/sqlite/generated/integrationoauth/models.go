@@ -3,3 +3,9 @@
 //   sqlc v1.31.1
 
 package integrationoauth
+
+type IntegrationOauthToken struct {
+	ConnectionID string `json:"connection_id"`
+	TokenJson    string `json:"token_json"`
+	UpdatedAtMs  int64  `json:"updated_at_ms"`
+}

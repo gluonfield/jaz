@@ -91,11 +91,7 @@ func (s *Store) AppendMessageRecords(id string, records ...storage.Message) erro
 	if err != nil {
 		return err
 	}
-	if s.exportMirror != nil {
-		if messages, err := providerMessagesFromRecords(records); err == nil {
-			_ = s.exportMirror.AppendMessages(id, messages...)
-		}
-	}
+	s.mirrorMessageRecords(id, records)
 	return nil
 }
 

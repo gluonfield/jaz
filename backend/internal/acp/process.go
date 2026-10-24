@@ -19,7 +19,6 @@ import (
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
 	"github.com/wins/jaz/backend/internal/processenv"
-	"github.com/wins/jaz/backend/internal/skills"
 )
 
 const (
@@ -310,9 +309,6 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 					prepareErr = firstError(prepareErr, fmt.Errorf("prepare codex profile %s: %w", codexHome, err))
 				}
 			}
-			if prepare {
-				m.installAgentSkills(name, root, filepath.Join(codexHome, "skills"))
-			}
 		}
 		for key := range modelProviderSecretEnvNames(providers) {
 			delete(env, key)
@@ -355,9 +351,6 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 					prepareErr = firstError(prepareErr, fmt.Errorf("prepare claude profile %s: %w", env["CLAUDE_CONFIG_DIR"], err))
 				}
 			}
-		}
-		if prepare && env["CLAUDE_CONFIG_DIR"] != "" {
-			m.installAgentSkills(name, root, filepath.Join(env["CLAUDE_CONFIG_DIR"], "skills"))
 		}
 		if env["CLAUDE_CODE_EXECUTABLE"] == "" {
 			if cli, err := ResolveExecutable("claude"); err == nil {
@@ -443,12 +436,6 @@ func preserveRuntimeHome(env map[string]string) {
 		if home := defaultHomePath(""); home != "" {
 			env["HOME"] = home
 		}
-	}
-}
-
-func (m *Manager) installAgentSkills(agent, root, dst string) {
-	if err := skills.InstallTo(root, dst); err != nil {
-		m.log.Warn("install acp skills failed", "agent", agent, "path", dst, "error", err)
 	}
 }
 

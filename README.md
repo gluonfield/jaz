@@ -36,47 +36,65 @@ memory, and git control. Client/server split, always-on, open source end to end.
 
 ## Examples
 
-Ultrathink
+**Every coding agent, one composer.** Codex, Claude, Kimi, Grok, OpenCode, Antigravity or Muse per thread, on the plans you already pay for.
+
+![Agent picker on the Jaz home screen](docs/images/readme/01-agents.webp)
+
+**Ultrathink.**
 
 https://github.com/user-attachments/assets/16062e29-f4ae-4484-87ca-3a5977fac88b
 
-Familiar chat UI
+**Canvas.** The agent keeps a live board of charts, tables and notes beside the chat.
 
-<img width="3358" height="2334" alt="image" src="https://github.com/user-attachments/assets/ab52e8f6-ff3b-450f-895b-027f2faa6481" />
+![Canvas with live charts beside the chat](docs/images/readme/02-canvas.webp)
 
-Interactive visualisations
+**Interactive visualisations.**
 
-<img width="1280" height="864" alt="ScreenRecording2026-06-20at12 56 26PM-ezgif com-video-to-gif-converter (1)" src="https://github.com/user-attachments/assets/16ef73b3-5525-45f3-86d1-7c16c07cc412" />
+<img width="1280" height="864" alt="Interactive visualisation in a thread" src="https://github.com/user-attachments/assets/16ef73b3-5525-45f3-86d1-7c16c07cc412" />
 
-Board with live artifacts
+**Talk to your bots.** Voice mode in the chat, and a floating pill with a live transcript once the app is minimised.
 
-<img width="4410" height="2924" alt="image" src="https://github.com/user-attachments/assets/29974b5b-26b2-4f30-aaea-cc4afed6c176" />
+![Voice mode in a bot chat and the floating voice pill](docs/images/readme/03-voice.webp)
 
-Customize
+**Bots hand off work.** A bot delegates a fix to Codex, reviews it, merges it and reports back. Its tasks, routines and memory live in its panel.
 
-<img width="3694" height="2710" alt="image" src="https://github.com/user-attachments/assets/f789b6e6-8dd1-4169-9bdd-65c6d36b7187" />
+![A bot delegating a fix to Codex, with its task panel](docs/images/readme/04-bot-hands-off-work.webp)
 
-Track usage
+**Routines with real output.** A bot wakes every morning, checks sources and keeps a living document up to date.
 
-<img width="3696" height="2712" alt="image" src="https://github.com/user-attachments/assets/fb7714a7-8494-4e34-a1f0-690412f606df" />
+![A routine bot and the events document it maintains](docs/images/readme/05-bot-routines.webp)
 
-Connect your coding agents and reuse your subscriptions
+**Ship from the thread.** Inline diffs, commands and checks, on a worktree.
 
-<img width="3656" height="2690" alt="image" src="https://github.com/user-attachments/assets/b4ee3750-8b35-4d33-a78e-dc7b2c4c6a54" />
+![Inline diffs in a coding thread](docs/images/readme/06-ship-from-thread.webp)
 
-Connect your apps (Slack, Gmail, Google Calendar, WhatsApp, Telegram, [Deployink](https://deployink.com))
-
-<img width="3834" height="2776" alt="image" src="https://github.com/user-attachments/assets/1b7ad3c9-b6cb-4dcc-9c62-74e8ab0b0c78" />
-
-Side panel
+**Side panel.**
 
 https://github.com/user-attachments/assets/de550dc1-75cc-43bb-aca0-f34c99573d47
 
+**Connect every coding agent.** Sign in once per agent with your own account; Jaz runs them natively.
 
+![Agents settings with all seven agents connected](docs/images/readme/07-connect-every-agent.webp)
 
+**Integrations.** Gmail, Calendar, Drive, Slack, Granola, WhatsApp and Telegram as agent tools and memory.
 
+![Connections settings](docs/images/readme/08-integrations.webp)
 
+**CRM, built in.** Pipeline, people, companies and follow-ups that every agent can read and update.
 
+![CRM deals pipeline inside Jaz](docs/images/readme/09-crm.webp)
+
+**Tasks, built in.** Issues, projects and cycles that every agent can plan and update.
+
+![Tasks issue list inside Jaz](docs/images/readme/10-tasks.webp)
+
+**Colour theme.** Up to three linked hues on a wheel, eight presets, film grain.
+
+![Appearance settings with the colour wheel](docs/images/readme/11-colour-theme.webp)
+
+**Every colour, light and dark.** The window wash and the dithered home follow your hue.
+
+![Four colour themes in light and dark](docs/images/readme/12-every-colour.webp)
 
 ## Get Started
 

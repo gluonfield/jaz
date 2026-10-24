@@ -61,7 +61,10 @@ export function DevicesSettings() {
           <p className="text-sm font-medium text-ink">Devices</p>
           <p className="mt-0.5 text-[13px] text-ink-2">Desktop and mobile clients allowed to use this backend.</p>
         </div>
-        <Button variant="secondary" size="md" onClick={() => setAddOpen(true)}>
+        <Button variant="secondary" size="md" onClick={() => {
+          void connectionLink.refetch()
+          setAddOpen(true)
+        }}>
           <Plus size={14} />
           Add device
         </Button>
@@ -240,7 +243,7 @@ function AddDeviceModal({
       open={open}
       onClose={onClose}
       title="Add device"
-      description="Scan the code on another Jaz app, or paste this connection URL there."
+      description="Scan the code in another Jaz app. This link works once and expires in ten minutes."
       icon={<QrCode size={17} />}
       size="lg"
       footer={
@@ -260,7 +263,7 @@ function AddDeviceModal({
       ) : displayURL ? (
         <div className="grid gap-4 sm:grid-cols-[190px_minmax(0,1fr)]">
           <div className="grid size-[190px] shrink-0 place-items-center rounded-card bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
-            <QRCodeImage value={displayURL} alt="Device connection QR code" />
+            <QRCodeImage value={displayURL} label="Device connection QR code" />
           </div>
           <div className="min-w-0 space-y-3">
             <ConnectionValue label="Connection URL" value={displayURL} />

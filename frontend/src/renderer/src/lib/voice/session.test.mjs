@@ -93,6 +93,9 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
     constructor() {
       subscriptions.push(this)
     }
+    addEventListener(name, handler) {
+      this["on" + name] = handler
+    }
     close() {}
   })
   replace('fetch', async (url, init = {}) => {
@@ -100,7 +103,9 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
     const body = init.body && JSON.parse(init.body)
     requests.push({ path, body })
     let value = {}
-    if (path.endsWith('/messages')) {
+    if (path === '/v1/auth/check') {
+      value = { ok: true }
+    } else if (path.endsWith('/messages')) {
       value = structuredClone(snapshot)
     } else if (path.endsWith('/connect')) {
       value = { provider: 'openai', sdp: 'v=0\r\nanswer' }

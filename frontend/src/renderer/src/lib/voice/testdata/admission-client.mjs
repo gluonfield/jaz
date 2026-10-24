@@ -69,6 +69,9 @@ globalThis.RTCPeerConnection = class {
   close() {}
 }
 globalThis.EventSource = class {
+  addEventListener(name, handler) {
+    this["on" + name] = handler
+  }
   abort = new AbortController()
   constructor(url) {
     assert.equal(new URL(url).origin, origin, 'SSE must stay on the fixture server')

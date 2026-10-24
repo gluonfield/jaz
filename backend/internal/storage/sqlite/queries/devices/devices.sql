@@ -76,6 +76,7 @@ WHERE token_hash = sqlc.arg(token_hash)
 LIMIT 1;
 
 -- name: SavePairingDevice :exec
+-- The tagged placeholder is outside the bearer-token hash alphabet.
 INSERT INTO devices (
   id,
   name,
@@ -99,7 +100,7 @@ INSERT INTO devices (
   sqlc.arg(platform),
   sqlc.arg(device_family),
   sqlc.arg(model_identifier),
-  sqlc.arg(token_hash),
+  'pending:' || sqlc.arg(id),
   sqlc.arg(created_at_ms),
   sqlc.arg(last_seen_ip),
   sqlc.arg(user_agent),
@@ -312,3 +313,12 @@ SET
   rejected_at_ms = sqlc.arg(rejected_at_ms)
 WHERE id = sqlc.arg(id)
   AND status = 'pending';
+
+-- name: ClaimPairingRequest :execrows
+UPDATE device_pairing_requests
+SET secret_hash = ''
+WHERE device_pairing_requests.id = sqlc.arg(id)
+  AND secret_hash = sqlc.arg(secret_hash)
+  AND status = 'approved'
+  AND expires_at_ms > sqlc.arg(at_ms)
+  AND EXISTS (SELECT 1 FROM devices WHERE devices.id = device_pairing_requests.device_id AND devices.status = 'approved');

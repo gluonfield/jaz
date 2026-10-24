@@ -1,14 +1,14 @@
 import type { ComputerAPI } from '@shared/computerControl'
 import { ComputerRepl } from '@/lib/computerRepl'
 
-export function connectComputer(url: string, host: ComputerAPI, sessionId: string): () => void {
+export function connectComputer(url: string, host: ComputerAPI, sessionId: string, protocols: string[] = []): () => void {
   const repl = new ComputerRepl(host, sessionId)
   let stopped = false
   let socket: WebSocket
   let retry: ReturnType<typeof setTimeout>
   let active: number | undefined
   const connect = () => {
-    socket = new WebSocket(url)
+    socket = new WebSocket(url, protocols)
     const current = socket
     current.onmessage = async (event) => {
       if (stopped) {

@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,8 @@ const (
 	syncStateFile         = "skills.sync.json"
 	maxExpandedArchive    = 512 << 20
 )
+
+var installMu sync.Mutex
 
 type RemoteSyncConfig struct {
 	ManifestURL     string
@@ -161,7 +164,13 @@ func installRemoteArchive(root string, skill RemoteSkill, archive []byte, sha st
 	if err != nil || !replace {
 		return err
 	}
-	if err := replaceSkill(skillRoot, dest); err != nil {
+	if err := os.Chmod(skillRoot, 0o700); err != nil {
+		return err
+	}
+	if err := os.RemoveAll(dest); err != nil {
+		return err
+	}
+	if err := os.Rename(skillRoot, dest); err != nil {
 		return err
 	}
 	state[name] = managedSkill{

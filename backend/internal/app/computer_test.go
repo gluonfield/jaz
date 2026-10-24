@@ -66,7 +66,7 @@ func TestComputerRoutesAuthenticateAndRouteToDesktop(t *testing.T) {
 		t.Fatal(err)
 	}
 	url := "ws" + strings.TrimPrefix(httpServer.URL, "http") + "/v1/sessions/" + session.Slug + "/computer"
-	peer, _, err := websocket.DefaultDialer.Dial(url+"?key=test-key", nil)
+	peer, _, err := websocket.DefaultDialer.Dial(url, http.Header{"Authorization": {"Bearer test-key"}})
 	if err != nil {
 		t.Fatal(err)
 	}

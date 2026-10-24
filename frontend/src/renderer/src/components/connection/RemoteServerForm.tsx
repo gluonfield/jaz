@@ -29,13 +29,13 @@ export function RemoteServerForm({
     >
       <div className="px-0.5">
         <p className="text-[13px] font-medium text-ink">Connect to a server</p>
-        <p className="mt-0.5 text-[12px] text-ink-3">Paste the client URL your server printed.</p>
+        <p className="mt-0.5 text-[12px] text-ink-3">Paste a connection link or your server’s HTTPS address.</p>
       </div>
       <Input
         autoFocus
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="http://192.168.1.10:5299?key=…"
+        placeholder="https://jaz.example.com"
         spellCheck={false}
         className="rounded-full font-mono text-[12px]"
       />

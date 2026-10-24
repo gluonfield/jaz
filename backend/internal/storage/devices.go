@@ -48,7 +48,6 @@ type SavePairingDevice struct {
 	Platform   string
 	Family     string
 	Model      string
-	TokenHash  string
 	CreatedAt  time.Time
 	LastSeenIP string
 	UserAgent  string

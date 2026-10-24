@@ -135,7 +135,6 @@ func TestKimiCredentialRequiresAccessToken(t *testing.T) {
 func TestProcessEnvPreparesIsolatedKimiProfile(t *testing.T) {
 	clearHostEnv(t)
 	root := t.TempDir()
-	writeACPTestSkill(t, root, "alpha")
 	t.Setenv("SSH_AUTH_SOCK", "/tmp/ssh-agent.sock")
 	env, err := NewManager(nil, Config{Root: root}, nil).processEnvPrepared(AgentKimi, AgentConfig{
 		Auth: AgentAuthConfig{Mode: AuthModeJazProfile},
@@ -150,9 +149,7 @@ func TestProcessEnvPreparesIsolatedKimiProfile(t *testing.T) {
 	if env["SSH_AUTH_SOCK"] != "/tmp/ssh-agent.sock" {
 		t.Fatalf("SSH_AUTH_SOCK = %q, want host agent", env["SSH_AUTH_SOCK"])
 	}
-	if _, err := os.Stat(filepath.Join(home, "skills", "alpha", "SKILL.md")); err != nil {
-		t.Fatalf("Kimi skill not installed: %v", err)
-	}
+
 	if _, err := os.Stat(filepath.Join(home, "AGENTS.md")); !os.IsNotExist(err) {
 		t.Fatalf("Kimi profile must not carry a prompt authority shim: %v", err)
 	}

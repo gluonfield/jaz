@@ -67,7 +67,7 @@ func TestSessionTerminalDoesNotStartBeforeWebsocketUpgrade(t *testing.T) {
 	}
 }
 
-func TestSessionTerminalAcceptsQueryKeyWithBackendAuth(t *testing.T) {
+func TestSessionTerminalAcceptsBearerWithBackendAuth(t *testing.T) {
 	cwd := t.TempDir()
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
@@ -99,7 +99,7 @@ func TestSessionTerminalAcceptsQueryKeyWithBackendAuth(t *testing.T) {
 		t.Fatal("terminal started before auth")
 	}
 
-	conn, _, err = websocket.DefaultDialer.Dial(wsURL(server.URL, path+"&key=secret"), http.Header{"Accept-Encoding": []string{"gzip"}})
+	conn, _, err = websocket.DefaultDialer.Dial(wsURL(server.URL, path), http.Header{"Accept-Encoding": {"gzip"}, "Authorization": {"Bearer secret"}})
 	if err != nil {
 		t.Fatal(err)
 	}
