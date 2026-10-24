@@ -154,6 +154,36 @@
           "binary": "kimi.exe"
         }
       }
+    },
+    "muse": {
+      "repo": "BrokkAi/muse-acp",
+      "tag": "v0.16.0",
+      "assets": {
+        "darwin-arm64": {
+          "name": "muse-acp-v0.16.0-aarch64-apple-darwin.tar.gz",
+          "binary": "muse-acp-v0.16.0-aarch64-apple-darwin/muse-acp"
+        },
+        "darwin-x64": {
+          "name": "muse-acp-v0.16.0-x86_64-apple-darwin.tar.gz",
+          "binary": "muse-acp-v0.16.0-x86_64-apple-darwin/muse-acp"
+        },
+        "linux-arm64": {
+          "name": "muse-acp-v0.16.0-aarch64-unknown-linux-gnu.tar.gz",
+          "binary": "muse-acp-v0.16.0-aarch64-unknown-linux-gnu/muse-acp"
+        },
+        "linux-x64": {
+          "name": "muse-acp-v0.16.0-x86_64-unknown-linux-gnu.tar.gz",
+          "binary": "muse-acp-v0.16.0-x86_64-unknown-linux-gnu/muse-acp"
+        },
+        "win32-arm64": {
+          "name": "muse-acp-v0.16.0-aarch64-pc-windows-msvc.zip",
+          "binary": "muse-acp.exe"
+        },
+        "win32-x64": {
+          "name": "muse-acp-v0.16.0-x86_64-pc-windows-msvc.zip",
+          "binary": "muse-acp.exe"
+        }
+      }
     }
   }
 }

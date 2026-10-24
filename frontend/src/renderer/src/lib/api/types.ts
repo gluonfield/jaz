@@ -1332,6 +1332,8 @@ export interface ACPAgentAuthStatus {
   login_command_available: boolean
   login_command_reason?: string
   refresh_owner?: string
+  managed_adapter?: ACPAdapterStatus
+  managed_tool?: ACPManagedToolStatus
 }
 
 export interface ACPAuthLogin {
@@ -1405,11 +1407,9 @@ export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   auth_command?: string
   auth_command_available: boolean
   auth_command_reason?: string
-  managed_adapter?: OnboardingACPAdapterStatus
-  managed_tool?: OnboardingManagedToolStatus
 }
 
-export interface OnboardingACPAdapterStatus {
+export interface ACPAdapterStatus {
   adapter: string
   version?: string
   platform?: string
@@ -1420,7 +1420,7 @@ export interface OnboardingACPAdapterStatus {
   progress_percent?: number
 }
 
-export interface OnboardingManagedToolStatus {
+export interface ACPManagedToolStatus {
   tool: string
   version?: string
   platform?: string

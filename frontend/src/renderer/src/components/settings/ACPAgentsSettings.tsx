@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, ChevronDown, CircleAlert, KeyRound, LoaderCircle, LogIn } from 'lucide-react'
+import { CheckCircle2, ChevronDown, CircleAlert, Download, KeyRound, LoaderCircle, LogIn } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AgentAvatar } from '@/components/acp/AgentAvatar'
@@ -16,6 +16,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import { Switch } from '@/components/ui/Switch'
 import { useToast } from '@/components/ui/toast'
 import { agentAPIKeyCopy, agentLabel, authProviderLabel } from '@/lib/agentLabel'
+import { agentInstallation } from '@/lib/agentInstallation'
 import {
   acpAgentEnableable,
   acpAgentEnabled,
@@ -28,7 +29,7 @@ import {
   selectableACPModelProviders,
   selectedACPModelProvider,
 } from '@/lib/agentRuntimes'
-import { cloneAgentSettings, disconnectACPAuth, startACPAuthLogin } from '@/lib/api/settings'
+import { cloneAgentSettings, disconnectACPAuth, prepareACPAgent, startACPAuthLogin } from '@/lib/api/settings'
 import type {
   ACPAgentAuthStatus,
   ACPAuthLogin,
@@ -125,6 +126,27 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
     onError: (error: Error) => toast(`Couldn't disconnect: ${error.message}`, 'danger'),
   })
 
+  const prepare = useMutation({
+    mutationFn: prepareACPAgent,
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+      queryClient.invalidateQueries({ queryKey: keys.acpAgents })
+      queryClient.invalidateQueries({ queryKey: keys.onboarding })
+    },
+    onError: (error: Error) => toast(`Couldn't install agent: ${error.message}`, 'danger'),
+  })
+
+  const installationRunning = prepare.isPending || Object.values(draft?.acp_auth ?? {}).some(
+    (status) => agentInstallation(status)?.state === 'downloading',
+  )
+  useEffect(() => {
+    if (!installationRunning) return
+    const timer = window.setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: keys.agentSettings })
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [installationRunning, queryClient])
+
   const invalid = draft ? hasInvalidACPProvider(draft) : true
   const canSave = draft != null && !invalid && dirty && !save.isPending
 
@@ -151,6 +173,8 @@ export function ACPAgentsSettings({ onOpenProviders }: { onOpenProviders: () => 
               loginJob={loginJobs[agent]}
               loginPending={login.isPending && login.variables?.agent === agent}
               disconnecting={disconnect.isPending && disconnect.variables === agent}
+              installing={prepare.isPending && prepare.variables === agent}
+              onInstall={() => prepare.mutate(agent)}
               onStartLogin={(auth) =>
                 login.mutate({ agent, auth: loginAuth(agent, auth) })
               }
@@ -172,6 +196,8 @@ function ACPAgentRow({
   loginJob,
   loginPending,
   disconnecting,
+  installing,
+  onInstall,
   onStartLogin,
   onDisconnect,
   onOpenProviders,
@@ -183,6 +209,8 @@ function ACPAgentRow({
   loginJob?: ACPAuthLogin
   loginPending: boolean
   disconnecting: boolean
+  installing: boolean
+  onInstall: () => void
   onStartLogin: (auth: ACPAuthDraft) => void
   onDisconnect: () => void
   onOpenProviders: () => void
@@ -190,6 +218,7 @@ function ACPAgentRow({
 }) {
   const current = settings.acp[agent] ?? emptyACPAgent
   const authStatus = settings.acp_auth?.[agent]
+  const installation = agentInstallation(authStatus)
   const options = settings.acp_options?.[agent]
   const supportsAuth = options?.supports_auth ?? true
   const usesModelProvider = acpUsesModelProvider(settings, agent)
@@ -201,7 +230,9 @@ function ACPAgentRow({
   const checked = acpAgentEnabled(settings, agent)
   const enableDescription = providerReady
     ? 'Show this ACP client in agent pickers.'
-    : authStatus?.authenticated && authStatus.ready === false
+    : installation
+      ? installation.message || 'Installation required.'
+      : authStatus?.authenticated && authStatus.ready === false
       ? (authStatus.reason ?? `Sign in with ${authProviderLabel(agent)} again.`)
       : selectedProviderNativeAuth || (supportsAuth && !usesModelProvider)
         ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
@@ -287,7 +318,22 @@ function ACPAgentRow({
       </div>
 
       <Collapse open={expanded}>
-        {showAuthPanel ? (
+        {installation ? (
+          <div className="flex flex-col items-start gap-2 border-t border-border/70 px-3 py-2.5">
+            <Button
+              variant="primary"
+              size="md"
+              disabled={disabled || installing || installation.state === 'downloading' || installation.state === 'unsupported'}
+              onClick={onInstall}
+            >
+              {installing || installation.state === 'downloading'
+                ? <LoaderCircle size={14} className="animate-spin" />
+                : <Download size={14} />}
+              {installing || installation.state === 'downloading' ? 'Installing…' : 'Download and Install'}
+            </Button>
+            {installation.message ? <p className="text-[12px] text-ink-3">{installation.message}</p> : null}
+          </div>
+        ) : showAuthPanel ? (
           <div className="border-t border-border/70 px-3 py-2.5">
             {/* Auth is never gated by the Enabled toggle: you must be able to connect
                 an agent you skipped in onboarding. Connecting it turns it on.

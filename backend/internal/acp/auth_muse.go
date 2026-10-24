@@ -38,6 +38,9 @@ func museExecutable(env map[string]string) (string, error) {
 		command = resolved
 	}
 	resolved, err := executableInPath(command, pathList)
+	if err != nil && runtime.GOOS == "windows" && command == "muse" {
+		resolved, err = executableInPath("muse.cmd", pathList)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -68,7 +71,8 @@ func disconnectMuseAuth(ctx context.Context, cfg AgentConfig, root string) error
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, command, "logout")
+	command, args := launchCommand(command, []string{"logout"})
+	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = processenv.List(env)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("Muse sign out: %w", err)
@@ -88,7 +92,7 @@ func museLoginInvocation(env map[string]string) AgentLoginInvocation {
 		invocation.Reason = "Muse Code executable (muse) not found"
 		return invocation
 	}
-	invocation.Executable = command
+	invocation.Executable, invocation.Args = launchCommand(command, invocation.Args)
 	invocation.Display = shellCommand(command, "login")
 	return invocation
 }
@@ -141,7 +145,8 @@ type museAccount struct {
 func museAccountState(command string, env map[string]string) (museAccount, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, command, "serve")
+	command, args := launchCommand(command, []string{"serve"})
+	cmd := exec.CommandContext(ctx, command, args...)
 	prepareProcessCommand(cmd)
 	process := newProcessSupervisor(cmd)
 	cmd.Cancel = process.terminate

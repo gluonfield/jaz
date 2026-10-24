@@ -173,6 +173,41 @@
           "binary": "kimi.exe"
         }
       }
+    },
+    "muse": {
+      "version": "0.16.0",
+      "assets": {
+        "darwin-arm64": {
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-aarch64-apple-darwin.tar.gz",
+          "sha256": "c21f2140ee066081df7069252c530a4642ea3ac2bafb3bf08341894f4d63598c",
+          "binary": "muse-acp-v0.16.0-aarch64-apple-darwin/muse-acp"
+        },
+        "darwin-x64": {
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-x86_64-apple-darwin.tar.gz",
+          "sha256": "8f834f964e382de89dac5fe83cc8b69d1b48e56db8add78c241ef8e227d990cd",
+          "binary": "muse-acp-v0.16.0-x86_64-apple-darwin/muse-acp"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "b309dc6edcff6ef97161bd2224aa82a8986a14ea7eccd0e8e4f47cb29b96abaf",
+          "binary": "muse-acp-v0.16.0-aarch64-unknown-linux-gnu/muse-acp"
+        },
+        "linux-x64": {
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "d7f14e9c02825e8d9b849cbec6faab2a5263b8973ab99a8b72224fe2e54722d9",
+          "binary": "muse-acp-v0.16.0-x86_64-unknown-linux-gnu/muse-acp"
+        },
+        "win32-arm64": {
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-aarch64-pc-windows-msvc.zip",
+          "sha256": "c31f65c52b2470e33bcbc418964c3b30c8a6be12c05fbf1ed9c16b5acd205f24",
+          "binary": "muse-acp.exe"
+        },
+        "win32-x64": {
+          "url": "https://github.com/BrokkAi/muse-acp/releases/download/v0.16.0/muse-acp-v0.16.0-x86_64-pc-windows-msvc.zip",
+          "sha256": "b646f7959db98e6b8802b467ea69ea1e8c81e59f88e629e361db03ea501f98d7",
+          "binary": "muse-acp.exe"
+        }
+      }
     }
   }
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -87,6 +88,30 @@ func TestMuseNativeAccountLoginAndDisconnect(t *testing.T) {
 	cfg.Env["MUSE_CLI"] = filepath.Base(executable)
 	if status := ProbeAgentAuth(AgentMuse, cfg, root, nil); !status.LoginCommandAvailable || status.Authenticated {
 		t.Fatalf("native executable was not resolved through the configured PATH: %#v", status)
+	}
+	managedBin := t.TempDir()
+	name := "muse"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	managedCLI := filepath.Join(managedBin, name)
+	binary, err := os.ReadFile(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedCLI, binary, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Env["MUSE_CLI"] = ""
+	cfg.Env["PATH"] = filepath.Dir(executable)
+	cfg.LoginBinDir = managedBin
+	status := ProbeAgentAuth(AgentMuse, cfg, root, nil)
+	if !status.LoginCommandAvailable {
+		t.Fatalf("managed native CLI was unavailable: %#v", status)
+	}
+	invocation = AgentLoginInvocationFor(AgentMuse, root, AgentAuthConfig{}, managedBin, cfg.Env)
+	if !invocation.Available || invocation.Executable != managedCLI || invocation.Env["MUSE_CLI"] != managedCLI {
+		t.Fatalf("login did not select the managed native CLI: %#v", invocation)
 	}
 }
 

@@ -108,7 +108,7 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 	case AgentGrok:
 		return loginInvocation(nil, true, binDir, "grok", "login", "--device-auth")
 	case AgentMuse:
-		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, AgentConfig{})
+		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, AgentConfig{LoginBinDir: binDir})
 		return museLoginInvocation(probeEnv)
 	case AgentAntigravity:
 		logFile := filepath.Join(root, "acp", "agy-login-"+randomHex(4)+".log")

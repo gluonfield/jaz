@@ -296,6 +296,7 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
 	if name == AgentMuse {
+		addPathDirsToPath(env, agent.LoginBinDir)
 		prepareMuseEnv(root, env)
 	}
 	if name == AgentCodex {

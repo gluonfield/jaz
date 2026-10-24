@@ -14,6 +14,7 @@ import (
 
 const (
 	AntigravityCLI = "antigravity-cli"
+	MuseCLI        = "muse"
 
 	StateMissing     = "missing"
 	StateDownloading = "downloading"
@@ -34,20 +35,22 @@ type Status struct {
 }
 
 type Manager struct {
-	root      string
-	baseURL   string
-	client    *http.Client
-	installMu sync.Mutex
-	mu        sync.Mutex
-	status    map[string]Status
+	root             string
+	baseURL          string
+	client           *http.Client
+	installMu        sync.Mutex
+	mu               sync.Mutex
+	status           map[string]Status
+	museInstallerURL string
 }
 
 func New(root string) *Manager {
 	return &Manager{
-		root:    root,
-		baseURL: antigravityBaseURL,
-		client:  &http.Client{Timeout: 10 * time.Minute},
-		status:  map[string]Status{},
+		root:             root,
+		baseURL:          antigravityBaseURL,
+		client:           &http.Client{Timeout: 10 * time.Minute},
+		status:           map[string]Status{},
+		museInstallerURL: "https://dev.meta.ai/install.sh",
 	}
 }
 
@@ -65,6 +68,9 @@ func (m *Manager) Prepare(ctx context.Context, name string) error {
 	if status, ok := m.localReadyStatus(name); ok {
 		m.setStatus(name, status)
 		return nil
+	}
+	if name == MuseCLI {
+		return m.prepareMuse(ctx)
 	}
 	spec, err := m.resolveSpec(ctx, name)
 	if err != nil {
@@ -147,7 +153,7 @@ func (m *Manager) localReadyStatus(name string) (Status, bool) {
 }
 
 func existingReadyStatus(name, platform string) (Status, bool) {
-	if name != AntigravityCLI {
+	if name != AntigravityCLI && name != MuseCLI {
 		return Status{}, false
 	}
 	path, err := execpath.Resolve(ExecutableName(name))
@@ -193,6 +199,8 @@ func displayName(name string) string {
 	switch name {
 	case AntigravityCLI:
 		return "Antigravity CLI"
+	case MuseCLI:
+		return "Muse Code"
 	default:
 		return name
 	}

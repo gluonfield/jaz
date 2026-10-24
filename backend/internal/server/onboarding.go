@@ -30,37 +30,15 @@ type onboardingStateResponse struct {
 
 type onboardingACPProbe struct {
 	acpAuthStatusResponse
-	Agent                string                       `json:"agent"`
-	Command              string                       `json:"command,omitempty"`
-	Installed            bool                         `json:"installed"`
-	AppInstalled         bool                         `json:"app_installed,omitempty"`
-	AppName              string                       `json:"app_name,omitempty"`
-	Available            bool                         `json:"available"`
-	AuthCommand          string                       `json:"auth_command,omitempty"`
-	AuthCommandAvailable bool                         `json:"auth_command_available"`
-	AuthCommandReason    string                       `json:"auth_command_reason,omitempty"`
-	ManagedAdapter       *onboardingACPAdapterStatus  `json:"managed_adapter,omitempty"`
-	ManagedTool          *onboardingManagedToolStatus `json:"managed_tool,omitempty"`
-}
-
-type onboardingACPAdapterStatus struct {
-	Adapter         string `json:"adapter"`
-	Version         string `json:"version,omitempty"`
-	Platform        string `json:"platform,omitempty"`
-	State           string `json:"state"`
-	Message         string `json:"message,omitempty"`
-	BytesDownloaded int64  `json:"bytes_downloaded,omitempty"`
-	BytesTotal      int64  `json:"bytes_total,omitempty"`
-	ProgressPercent int    `json:"progress_percent,omitempty"`
-}
-
-type onboardingManagedToolStatus struct {
-	Tool     string `json:"tool"`
-	Version  string `json:"version,omitempty"`
-	Platform string `json:"platform,omitempty"`
-	State    string `json:"state"`
-	Path     string `json:"path,omitempty"`
-	Message  string `json:"message,omitempty"`
+	Agent                string `json:"agent"`
+	Command              string `json:"command,omitempty"`
+	Installed            bool   `json:"installed"`
+	AppInstalled         bool   `json:"app_installed,omitempty"`
+	AppName              string `json:"app_name,omitempty"`
+	Available            bool   `json:"available"`
+	AuthCommand          string `json:"auth_command,omitempty"`
+	AuthCommandAvailable bool   `json:"auth_command_available"`
+	AuthCommandReason    string `json:"auth_command_reason,omitempty"`
 }
 
 type onboardingRequest struct {
@@ -312,6 +290,8 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 		}
 		authResponse := newACPAuthStatusResponse(auth, readiness)
 		authResponse.Reason = reason
+		authResponse.ManagedAdapter = adapter
+		authResponse.ManagedTool = tool
 		out = append(out, onboardingACPProbe{
 			acpAuthStatusResponse: authResponse,
 			Agent:                 name,
@@ -323,14 +303,12 @@ func (s *Server) probeACPAgents(defaults agentsettings.AgentDefaults) []onboardi
 			AuthCommand:           auth.LoginCommand,
 			AuthCommandAvailable:  auth.LoginCommandAvailable,
 			AuthCommandReason:     auth.LoginCommandReason,
-			ManagedAdapter:        adapter,
-			ManagedTool:           tool,
 		})
 	}
 	return out
 }
 
-func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapterStatus {
+func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *acpAdapterStatusResponse {
 	adapter := strings.TrimSpace(cfg.ManagedAdapter)
 	if adapter == "" {
 		return nil
@@ -343,7 +321,7 @@ func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapter
 	if s.ACPAdapters != nil {
 		status = s.ACPAdapters.Status(adapter)
 	}
-	return &onboardingACPAdapterStatus{
+	return &acpAdapterStatusResponse{
 		Adapter:         status.Adapter,
 		Version:         status.Version,
 		Platform:        status.Platform,
@@ -355,7 +333,7 @@ func (s *Server) managedAdapterStatus(cfg acp.AgentConfig) *onboardingACPAdapter
 	}
 }
 
-func (s *Server) managedToolStatus(tool string) *onboardingManagedToolStatus {
+func (s *Server) managedToolStatus(tool string) *acpToolStatusResponse {
 	tool = strings.TrimSpace(tool)
 	if tool == "" {
 		return nil
@@ -368,7 +346,7 @@ func (s *Server) managedToolStatus(tool string) *onboardingManagedToolStatus {
 	if s.ManagedTools != nil {
 		status = s.ManagedTools.Status(tool)
 	}
-	return &onboardingManagedToolStatus{
+	return &acpToolStatusResponse{
 		Tool:     status.Tool,
 		Version:  status.Version,
 		Platform: status.Platform,

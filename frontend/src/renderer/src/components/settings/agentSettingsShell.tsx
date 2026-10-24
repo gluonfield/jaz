@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Save } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/toast'
@@ -27,9 +27,16 @@ export function useAgentSettingsDraft(label: string) {
   const [draft, setDraft] = useState<AgentSettingsData | null>(null)
   // The backend never returns provider key values, so they live outside the draft.
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>({})
+  const loadedKey = useRef('')
 
   useEffect(() => {
-    if (settings.data) setDraft(cloneAgentSettings(settings.data))
+    const incoming = settings.data
+    if (!incoming) return
+    const previousKey = loadedKey.current
+    setDraft((current) => current && settingsKey(current) !== previousKey
+      ? { ...current, acp_auth: incoming.acp_auth, acp_options: incoming.acp_options }
+      : cloneAgentSettings(incoming))
+    loadedKey.current = settingsKey(incoming)
   }, [settings.data])
 
   const save = useMutation({

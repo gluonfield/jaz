@@ -1,4 +1,5 @@
 import { agentDefault } from './jazDefaults'
+import { agentInstallation } from '@/lib/agentInstallation'
 import type { AgentSettings, ModelProviderOption } from './api/types'
 
 export const ACP_PROVIDER_MODE_AGENT = 'agent_defaults'
@@ -103,6 +104,7 @@ export function acpAgentEnableable(settings: AgentSettings | undefined, agent: s
 }
 
 function acpAgentAuthReady(settings: AgentSettings | undefined, agent: string): boolean {
+  if (agentInstallation(settings?.acp_auth?.[agent])) return false
   const options = settings?.acp_options?.[agent]
   if (options?.local || !AUTH_REQUIRED_AGENTS.has(agent)) return true
   const auth = settings?.acp_auth?.[agent]

@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/Input'
 import { RAINBOW_BEAM } from '@/components/ui/rainbow'
 import { Segmented } from '@/components/ui/Segmented'
 import { agentAPIKeyCopy, authProviderLabel, onboardingAgentLabel } from '@/lib/agentLabel'
-import type { ACPAuthLogin, OnboardingACPAdapterStatus, OnboardingACPProbe } from '@/lib/api/types'
+import { agentInstallation } from '@/lib/agentInstallation'
+import type { ACPAuthLogin, ACPAdapterStatus, OnboardingACPProbe } from '@/lib/api/types'
 import { localDeviceLabel } from '@/lib/deviceLabel'
 import { onboardingEase } from './OnboardingParts'
 
@@ -84,18 +85,12 @@ function installReady(probe: OnboardingACPProbe): boolean {
 }
 
 function installState(probe: OnboardingACPProbe): AgentState {
-  const states = [probe.managed_adapter?.state, probe.managed_tool?.state].filter(Boolean)
-  if (states.some((state) => state === 'failed' || state === 'unsupported')) return 'failed'
-  if (states.some((state) => state === 'downloading')) return 'downloading'
-  if (states.some((state) => state === 'missing')) return 'missing'
-  return 'ready'
+  const state = agentInstallation(probe)?.state
+  return state === 'unsupported' ? 'failed' : state ?? 'ready'
 }
 
 function installMessage(probe: OnboardingACPProbe): string {
-  for (const status of [probe.managed_adapter, probe.managed_tool]) {
-    if (status && status.state !== 'ready' && status.message) return status.message
-  }
-  return ''
+  return agentInstallation(probe)?.message ?? ''
 }
 
 function hasManagedInstall(probe: OnboardingACPProbe): boolean {
@@ -348,7 +343,7 @@ function StatePill({
   )
 }
 
-function adapterDownloadProgress(adapter?: OnboardingACPAdapterStatus): { percent: number; label: string } | undefined {
+function adapterDownloadProgress(adapter?: ACPAdapterStatus): { percent: number; label: string } | undefined {
   if (!adapter || adapter.state !== 'downloading') return undefined
   let percent = finitePercent(adapter.progress_percent)
   if (percent === undefined && adapter.bytes_total && adapter.bytes_downloaded !== undefined) {

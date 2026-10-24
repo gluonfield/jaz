@@ -341,7 +341,8 @@ func BuiltinAgents() AgentCatalog {
 			ManagedToolAdapterArg: "--agy",
 		},
 		AgentMuse: {
-			Command: "muse-acp",
+			ManagedAdapter: "muse",
+			ManagedTool:    "muse",
 		},
 	}
 }

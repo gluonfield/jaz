@@ -129,6 +129,11 @@ func ExecutableName(name string) string {
 			return "agy.exe"
 		}
 		return "agy"
+	case MuseCLI:
+		if runtime.GOOS == "windows" {
+			return "muse.cmd"
+		}
+		return "muse"
 	default:
 		return name
 	}
