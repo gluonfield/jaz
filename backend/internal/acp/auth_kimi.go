@@ -123,14 +123,8 @@ func (m *Manager) prepareKimiProcessEnv(root string, cfg AgentConfig, env map[st
 	)
 	auth := resolveAgentAuthWithProviders(AgentKimi, cfg, root, env, m.providers())
 	env["KIMI_CODE_HOME"] = auth.Config.Path
-	if !prepare {
-		return nil
+	if prepare && auth.Authenticated {
+		return kimiModelConfigReady(auth.Config.Path)
 	}
-	if auth.Authenticated {
-		if err := kimiModelConfigReady(auth.Config.Path); err != nil {
-			return err
-		}
-	}
-	m.installAgentSkills(AgentKimi, root, filepath.Join(env["KIMI_CODE_HOME"], "skills"))
 	return nil
 }

@@ -126,7 +126,9 @@ func TestBuilderACPPrompt(t *testing.T) {
 		"## memory/LONG_TERM.md",
 		"- Goal: $5m.",
 		"<name>deploy</name>",
+		"<location>" + filepath.Join(skillDir, "SKILL.md") + "</location>",
 		"<name>local</name>",
+		"<location>" + filepath.Join(localSkillDir, "SKILL.md") + "</location>",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("acp prompt missing %q:\n%s", want, prompt)
