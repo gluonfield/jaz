@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -128,6 +129,13 @@ func TestSyncRemoteInstallsManifestSkills(t *testing.T) {
 	if data, err := os.ReadFile(path); err != nil || string(data) != "export" {
 		t.Fatalf("synced file = %q, %v", data, err)
 	}
+	info, err := os.Stat(filepath.Join(UserRoot(root), "create-animated-video"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+		t.Fatalf("installed skill directory mode = %v", info.Mode().Perm())
+	}
 	state, err := loadSyncState(root)
 	if err != nil {
 		t.Fatal(err)
@@ -158,6 +166,48 @@ func TestSyncRemoteVerifiesManifestHash(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "manifest sha256 mismatch") {
 		t.Fatalf("err = %v, want manifest sha mismatch", err)
+	}
+}
+
+func TestInstallRemoteArchivePreservesRootFiles(t *testing.T) {
+	root := t.TempDir()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	for name, body := range map[string]string{
+		"SKILL.md":          "---\nname: alpha\ndescription: Alpha skill\n---\nbody",
+		"references/run.sh": "#!/bin/sh\nprintf ready\n",
+	} {
+		header := &zip.FileHeader{Name: name}
+		header.SetMode(0o755)
+		file, err := writer.CreateHeader(header)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := file.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(archive.Bytes())
+	if err := installRemoteArchive(root, RemoteSkill{Name: "alpha"}, archive.Bytes(), hex.EncodeToString(sum[:])); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(UserRoot(root), "alpha", "references", "run.sh")
+	if data, err := os.ReadFile(path); err != nil || string(data) != "#!/bin/sh\nprintf ready\n" {
+		t.Fatalf("installed script = %q, %v", data, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
+		t.Fatalf("installed script mode = %v", info.Mode().Perm())
+	}
+	entries, err := os.ReadDir(UserRoot(root))
+	if err != nil || len(entries) != 1 || entries[0].Name() != "alpha" {
+		t.Fatalf("skill directory contains staging files: %v, %v", entries, err)
 	}
 }
 
@@ -193,6 +243,8 @@ func TestSyncRemoteRefreshesManagedSkill(t *testing.T) {
 	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{ManifestURL: server.URL + "/manifest.json"}); err != nil {
 		t.Fatal(err)
 	}
+	stale := filepath.Join(UserRoot(root), "alpha", "stale.md")
+	writeFile(t, stale, "old version")
 	body = "second"
 	refreshArchive()
 	if err := SyncRemote(t.Context(), root, RemoteSyncConfig{ManifestURL: server.URL + "/manifest.json"}); err != nil {
@@ -201,6 +253,9 @@ func TestSyncRemoteRefreshesManagedSkill(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(UserRoot(root), "alpha", "SKILL.md"))
 	if err != nil || !strings.Contains(string(data), "second") {
 		t.Fatalf("managed skill = %q, %v", data, err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("stale skill file remains: %v", err)
 	}
 }
 
