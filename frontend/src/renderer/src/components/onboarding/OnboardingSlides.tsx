@@ -4,7 +4,7 @@ import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import type { SystemPermission } from '@shared/systemPermissions'
 import { BotAvatar } from '@/components/bots/BotAvatar'
-import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
+import { DitherWordmark, type Entrance, type Silhouette } from '@/components/launch/DitherArt'
 import { PaletteIdeas } from '@/components/settings/ColorThemeSettings'
 import { ThemeModePicker } from '@/components/settings/ThemeModePicker'
 import { Button } from '@/components/ui/Button'
@@ -56,11 +56,16 @@ function heroGlow(g: Parameters<Silhouette>[0], w: number, h: number) {
 export const SETUP_STEPS: SetupStep[] = ['appearance', 'agents', 'memory', 'connections', 'computer', 'voice', 'bot']
 
 // Everything that defines a setup slide lives in this one table: the dithered
-// hero mark, the copy, and the system permissions it asks for. The bot slide
-// has no mark: its bots are the picture.
-export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subtitle: string; permissions?: SystemPermission[] }> = {
+// hero mark and how it arrives, the copy, and the system permissions it asks
+// for. The bot slide has no mark: its bots are the picture.
+export const SLIDES: Record<
+  SetupStep,
+  { motif?: Silhouette; entrance?: Entrance; title: string; subtitle: string; permissions?: SystemPermission[] }
+> = {
   appearance: {
     title: 'Make it yours',
+    // A dial: the dots gather in a bright core and sweep out clockwise from noon.
+    entrance: (x, y, w, h) => ({ x: w / 2, y: h / 2, at: (((Math.atan2(y - h / 2, x - w / 2) + Math.PI / 2) / (2 * Math.PI) + 1) % 1) }),
     subtitle: 'Pick a mode and a color. Fine-tune both any time in Settings.',
     motif: (g, w, h) => {
       heroGlow(g, w, h)
@@ -79,6 +84,8 @@ export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subt
   },
   agents: {
     title: 'Connect your agents',
+    // Typed: a pen point at the prompt's start draws the chevron top to bottom, then the cursor.
+    entrance: (x, y, w, h) => ({ x: w * 0.41, y: h * 0.24, at: x > w * 0.55 ? 1 : (0.85 * y) / h }),
     subtitle: 'jaz runs on the coding agents you already use.',
     motif: (g, w, h) => {
       heroGlow(g, w, h)
@@ -97,6 +104,8 @@ export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subt
   },
   memory: {
     title: 'Give jaz a memory',
+    // Stacked: the layers drop in from above, bottom first.
+    entrance: (x, y, w, h) => ({ x, y: y - h, at: y > h * 0.62 ? 0 : y > h * 0.34 ? 0.5 : 1 }),
     subtitle: 'Preferences, decisions, projects — agents start warm, not cold.',
     motif: (g, w, h) => {
       heroGlow(g, w, h)
@@ -113,6 +122,8 @@ export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subt
   },
   connections: {
     title: 'Connect your world',
+    // Linked: the rings slide in from either side and snap together.
+    entrance: (x, y, w, h) => ({ x: x < w / 2 ? x - w * 0.3 : x + w * 0.3, y, at: Math.abs(y - h / 2) / h }),
     subtitle: 'Your email and chats become context agents can use.',
     motif: (g, w, h) => {
       heroGlow(g, w, h)
@@ -126,6 +137,8 @@ export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subt
   },
   computer: {
     title: 'Let jaz use your computer',
+    // The screen powers on from a line, then the cursor swoops in.
+    entrance: (x, y, w, h) => (x > w * 0.53 && y > h * 0.4 ? { x: x + w * 0.25, y: y + h * 0.6, at: 1 } : { x, y: h * 0.43, at: 0 }),
     subtitle: 'Agents can click, type and read apps to finish tasks while you are away.',
     permissions: ['accessibility', 'screenRecording'],
     motif: (g, w, h) => {
@@ -153,6 +166,8 @@ export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subt
   },
   voice: {
     title: 'Talk to jaz',
+    // Spoken: the dots flatten onto a line and the bars spring out of it from the middle.
+    entrance: (x, y, w, h) => ({ x, y: h / 2, at: Math.min(1, Math.abs(x - w / 2) / (w * 0.22)) }),
     subtitle: 'Speak instead of typing, and get notified when a thread finishes.',
     permissions: ['microphone', 'notifications'],
     motif: (g, w, h) => {

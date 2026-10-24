@@ -217,6 +217,7 @@ function OnboardingScreen({
           key="setup"
           step={step}
           motif={slide.motif}
+          entrance={slide.entrance}
           footer={
             <OnboardingFooter
               step={step}

@@ -93,17 +93,23 @@ function sample(draw: Silhouette, cols: number, rows: number, palette: Palette):
 
 const GRAIN_EPOCH_MS = 150
 
-// A new silhouette under the same buildKey morphs in place, as a vortex: old
-// and new dots pair up in angular order around the centre, and each pair
-// spirals half a turn while the swirl pinches into a tight core and opens out
-// as the new mark. Old dots without a partner are drawn into the core and
-// vanish; new dots without one spin out of it. Starts after `delay`.
-const MORPH_TRAVEL = 0.7
-const MORPH_SPREAD = 0.12
-const MORPH_SPIN = Math.PI
-const MORPH_PINCH = 0.8
+// Where a dot of a new mark waits before it flies home, and when (0 to 1)
+// in the mark's entrance it sets off. The entrance is the mark's signature:
+// the order and the waiting place say what the step is about.
+export type Entrance = (x: number, y: number, cols: number, rows: number) => { x: number; y: number; at: number }
+
+const IN_PLACE: Entrance = (x, y) => ({ x, y, at: 0 })
+
+// A new silhouette under the same buildKey is built from the old one's dots:
+// they gather at the new mark's waiting places, then fly home in its entrance
+// order and overshoot a little. Spare old dots burst outward and fade; new
+// dots without an old one fade in where they wait. Starts after `delay`.
+const MORPH_GATHER = 0.3
+const MORPH_SPREAD = 0.35
+const MORPH_FLIGHT = 0.4
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
+const overshoot = (t: number) => 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 
@@ -122,6 +128,7 @@ export function DitherArt({
   waitForFonts = false,
   buildKey,
   label,
+  enter = IN_PLACE,
 }: {
   draw: Silhouette
   cols: number
@@ -132,6 +139,7 @@ export function DitherArt({
   waitForFonts?: boolean
   buildKey?: string
   label?: string
+  enter?: Entrance
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shown = useRef<{ draw: Silhouette; buildKey?: string; cols: number; rows: number; dots: Dot[] }>(undefined)
@@ -211,56 +219,38 @@ export function DitherArt({
 
       const morphs = previous && previous.draw !== draw && previous.buildKey === buildKey
       if (morphs && previous.cols === cols && previous.rows === rows) {
-        // Polar coordinates on the grid's own ellipse, so the swirl fills the art.
-        const squash = rows / cols
-        const polar = (d: Dot) => {
-          const y = (d.y - rows / 2) / squash
-          const x = d.x - cols / 2
-          return { d, r: Math.hypot(x, y), a: Math.atan2(y, x) }
-        }
-        const byAngle = (list: Dot[]) =>
-          list
-            .filter((d) => !d.ambient)
-            .map(polar)
-            .sort((p, q) => p.a - q.a)
-        const from = byAngle(previous.dots)
-        const to = byAngle(dots)
-        const sources = to.map((_, i) => from[Math.floor((i * from.length) / to.length)])
+        const byX = <T extends { x: number }>(list: T[]) => list.sort((a, b) => a.x - b.x)
+        const from = byX(previous.dots.filter((d) => !d.ambient))
+        const flights = byX(dots.filter((d) => !d.ambient).map((d) => ({ d, ...enter(d.x, d.y, cols, rows) })))
+        const sources = flights.map((_, i) => from[Math.floor((i * from.length) / flights.length)])
         const paired = new Set(sources)
-        const leaving = from.filter((p) => !paired.has(p))
+        const spare = from.filter((d) => !paired.has(d))
         const dust = dots.filter((d) => d.ambient)
-        const place = (d: Dot, r: number, a: number, alpha: number) => {
+        const place = (d: Dot, x: number, y: number, alpha: number) => {
           ctx.globalAlpha = alpha
           ctx.fillStyle = d.color
-          ctx.fillRect(
-            Math.round(cols / 2 + r * Math.cos(a)) * pitch,
-            Math.round(rows / 2 + r * Math.sin(a) * squash) * pitch,
-            dot,
-            dot,
-          )
+          ctx.fillRect(Math.round(x) * pitch, Math.round(y) * pitch, dot, dot)
         }
         const t0 = performance.now()
         const frame = (now: number) => {
           const t = (now - t0) / 1000 - delay
-          const progress = (d: Dot) => easeInOut(clamp01((t - (((d.seed >>> 8) % 256) / 256) * MORPH_SPREAD) / MORPH_TRAVEL))
+          const gather = easeInOut(clamp01(t / MORPH_GATHER))
           ctx.clearRect(0, 0, width, height)
           for (const d of dust) paintDot(d, d.color, d.alpha)
-          for (const p of leaving) {
-            const k = progress(p.d)
-            place(p.d, p.r * (1 - k), p.a + MORPH_SPIN * k, p.d.alpha * (1 - k))
+          for (const d of spare) {
+            place(d, d.x + (d.x - cols / 2) * gather, d.y + (d.y - rows / 2) * gather, d.alpha * (1 - gather))
           }
-          to.forEach((p, i) => {
-            const k = progress(p.d)
+          flights.forEach((f, i) => {
             const s = sources[i]
-            if (!s) {
-              place(p.d, p.r * k, p.a - MORPH_SPIN * (1 - k), p.d.alpha * k)
+            if (t < MORPH_GATHER) {
+              place(f.d, s ? s.x + (f.x - s.x) * gather : f.x, s ? s.y + (f.y - s.y) * gather : f.y, s ? f.d.alpha : f.d.alpha * gather)
               return
             }
-            const turn = Math.atan2(Math.sin(p.a - s.a), Math.cos(p.a - s.a)) + MORPH_SPIN
-            place(p.d, (s.r + (p.r - s.r) * k) * (1 - MORPH_PINCH * Math.sin(Math.PI * k)), s.a + turn * k, p.d.alpha)
+            const k = overshoot(clamp01((t - MORPH_GATHER - f.at * MORPH_SPREAD) / MORPH_FLIGHT))
+            place(f.d, f.x + (f.d.x - f.x) * k, f.y + (f.d.y - f.y) * k, f.d.alpha)
           })
           ctx.globalAlpha = 1
-          if (t < MORPH_TRAVEL + MORPH_SPREAD) {
+          if (t < MORPH_GATHER + MORPH_SPREAD + MORPH_FLIGHT) {
             raf = requestAnimationFrame(frame)
             return
           }
@@ -311,7 +301,7 @@ export function DitherArt({
       cancelAnimationFrame(raf)
       window.clearInterval(grainTimer)
     }
-  }, [animate, draw, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, buildKey, resolved, color])
+  }, [animate, draw, enter, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, buildKey, resolved, color])
 
   return (
     <canvas
