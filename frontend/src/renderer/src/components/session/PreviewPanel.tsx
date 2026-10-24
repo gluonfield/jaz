@@ -31,7 +31,7 @@ import {
 import type { PreviewTarget } from '@/lib/browserSessions'
 import type { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserMenu } from '@/components/browser/BrowserMenu'
-import { BrowserQRCode } from '@/components/browser/BrowserQRCode'
+import { BrowserAddressActions } from '@/components/browser/BrowserAddressActions'
 import { PREVIEW_PARTITION } from '@shared/preview'
 import { usePreviewFindControls } from './usePreviewFindControls'
 
@@ -332,7 +332,7 @@ export function PreviewPanel({
         >
           {loading ? <LoaderCircle size={14} className="animate-spin" /> : <RotateCw size={14} />}
         </IconButton>
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 h-6 rounded-md bg-bg/60 px-2 pointer-coarse:h-8 ring-1 ring-border/70">
+        <div className="group/address flex min-w-0 flex-1 items-center gap-1.5 h-6 rounded-md bg-bg/60 px-2 pointer-coarse:h-8 ring-1 ring-border/70">
           <Globe size={13} className="shrink-0 text-ink-3" aria-hidden />
           <input
             value={draft}
@@ -341,6 +341,7 @@ export function PreviewPanel({
             spellCheck={false}
             className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
           />
+          {resolvedSourceUrl ? <BrowserAddressActions url={resolvedSourceUrl} visible={visible} /> : null}
         </div>
         <IconButton
           aria-label={annotating ? 'Stop annotation' : 'Annotate preview'}
@@ -352,7 +353,6 @@ export function PreviewPanel({
         >
           {annotating ? <SquareStop size={14} /> : <MessageCirclePlus size={15} />}
         </IconButton>
-        <BrowserQRCode url={resolvedSourceUrl} visible={visible} />
         <BrowserMenu webContentsId={webviewReady && webview ? webview.getWebContentsId() : null} visible={visible} />
         {onClose ? <button
           type="button"

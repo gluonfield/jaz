@@ -343,13 +343,6 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     }
     await tabMenu(copy.id, 'Close')
     await until(() => panel.tabs.length === tabCount)
-    const external = tab('tabs')!.parentElement!.querySelector<HTMLButtonElement>('[aria-label="Open in Browser"]')!
-    await window.smoke.pointer('mouseMove', 1, 1)
-    await until(() => getComputedStyle(external).opacity === '0')
-    await click(external)
-    await until(() => getComputedStyle(external).opacity === '1')
-    const firstURL = await evaluate(first, 'location.href') as string
-    await until(async () => (await window.smoke.openedURLs()).includes(firstURL))
     const toolbar = document.querySelector('[data-browser-session="tabs"] form')!
     const browserBounds = toolbar.getBoundingClientRect()
     const headerBounds = element.querySelector('header')!.getBoundingClientRect()

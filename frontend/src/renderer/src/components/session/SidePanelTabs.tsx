@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, FileSpreadsheet, FileText, FolderGit2, Globe, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
+import { Copy, FileSpreadsheet, FileText, FolderGit2, Globe, MessageCirclePlus, Plus, RotateCw, Terminal, X, type LucideIcon } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { motion, Reorder } from 'motion/react'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -7,10 +7,8 @@ import { IconButton } from '@/components/ui/IconButton'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
 import { Favicon } from '@/components/ui/Favicon'
 import { isSpreadsheetPath } from '@shared/fileReader'
-import { isPreviewURL } from '@shared/preview'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { useBrowserSessions } from '@/lib/browserSessions'
-import { openExternal } from '@/lib/clientRuntime'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 import type { NewSidePanelTab, SidePanelTab } from '@/lib/sidePanelTabs'
 
@@ -163,9 +161,6 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
                       : <KindIcon kind={tab.kind} />}
                 <span className="truncate">{title}</span>
               </motion.button>
-              {tab.kind === 'preview' && target && isPreviewURL(target.sourceUrl) ? <button type="button" aria-label="Open in Browser" title="Open in Browser" onPointerDownCapture={(event) => event.stopPropagation()} onClick={() => openExternal(target.sourceUrl)} className="absolute inset-y-0 right-7 grid w-7 cursor-pointer place-items-center rounded-lg bg-inherit text-ink-3 opacity-0 transition-[opacity,color] hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:static pointer-coarse:size-10 pointer-coarse:opacity-100">
-                <ExternalLink size={12} />
-              </button> : null}
               <button type="button" aria-label={`Close ${title}`} title={`Close ${title}`} onPointerDownCapture={(event) => event.stopPropagation()} onClick={() => closeTabs([tab])} className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-lg pointer-coarse:size-10 text-ink-3 transition-colors hover:bg-surface-2 hover:text-ink">
                 <X size={12} />
               </button>

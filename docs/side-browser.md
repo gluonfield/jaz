@@ -25,7 +25,8 @@ and fragments. **Open in Browser** opens that same URL. Remote backends, includi
 loopback tunnels on other ports, use the server preview proxy.
 Ordinary app links and new-tab browser links open in side-browser tabs.
 JavaScript popup windows retain their shared browser session and `window.open`
-callbacks. **Open in Browser** explicitly uses the system browser.
+callbacks. Hovering the address bar shows **Open in Browser**, which uses the
+system browser, and **Open on phone**, which shows the same URL as a QR code.
 Only main-frame navigation updates a tab's URL; embedded frames cannot replace
 the page by changing their own URL or fragment.
 
