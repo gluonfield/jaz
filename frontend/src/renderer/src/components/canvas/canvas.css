@@ -57,11 +57,11 @@
 .canvas-chat-card.shown {
   overflow: hidden;
   background: var(--color-bg);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-ink) 10%, transparent), 0 12px 32px -8px rgb(0 0 0 / 0.28);
+  box-shadow: 0 12px 32px -8px rgb(0 0 0 / 0.28);
 }
 
 :root:where(.dark) .canvas-chat-card.shown {
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-ink) 12%, transparent), 0 16px 40px rgb(0 0 0 / 0.5);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.5);
 }
 
 .canvas-chat.collapsed {

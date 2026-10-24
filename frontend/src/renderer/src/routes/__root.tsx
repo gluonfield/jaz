@@ -367,7 +367,7 @@ function RootLayout() {
             <div ref={setPanelRow} className="flex min-w-0 flex-1 sm:pt-2">
               {/* --titlebar-height is the floating title row's height; content
                   starts below it and may scroll beneath it. */}
-              <div className="relative flex min-w-0 flex-1 overflow-hidden bg-bg sm:mr-2 sm:mb-2 sm:rounded-[14px] sm:shadow-[var(--shadow-raised)] sm:ring-1 sm:ring-border/80 sm:[--titlebar-height:2.5rem]">
+              <div className="relative flex min-w-0 flex-1 overflow-hidden bg-bg sm:mr-2 sm:mb-2 sm:rounded-[14px] sm:shadow-[var(--shadow-raised)] sm:[--titlebar-height:2.5rem]">
                 {!isMobile && (
                   <div
                     // Settings sits below the row, so nothing should show through it there.

@@ -40,7 +40,7 @@ export function SidePanelDrawer({ panel, isMobile, children }: {
         card clips its contents while the drawer's width animates. */}
     {isMobile ? children : (
       <div className="h-full pb-2 pr-2">
-        <div className={`h-full overflow-hidden rounded-[14px] bg-bg shadow-[var(--shadow-raised)] ring-1 ring-border/80 transition-opacity duration-200 ${panel.open ? '' : 'opacity-0'}`}>
+        <div className={`h-full overflow-hidden rounded-[14px] bg-bg shadow-[var(--shadow-raised)] transition-opacity duration-200 ${panel.open ? '' : 'opacity-0'}`}>
           {children}
         </div>
       </div>
