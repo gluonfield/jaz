@@ -196,6 +196,9 @@ type Turn struct {
 	// Prompt records prepared input and its delivery state, separate from
 	// the user-facing transcript and the queue claim that preceded it.
 	Prompt *TurnPrompt `json:"prompt,omitempty"`
+	// Steers are the prepared messages sent into the running turn that its
+	// agent has not taken in yet, oldest first. A restart sends them on.
+	Steers []TurnPrompt `json:"steers,omitempty"`
 	// ParentOutput is the output of the parent turn this one's result opens:
 	// the exchange with another bot the parent was answering when it started
 	// this turn.

@@ -319,6 +319,12 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 		return Job{}, fmt.Errorf("acp peer is not active")
 	}
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	// A queued prompt waits for the agent to take it in, and a restart before
+	// then would lose it, so the turn keeps it until then.
+	var steer *storage.TurnPrompt
+	if method == steerPromptQueueing {
+		steer = &storage.TurnPrompt{Message: promptMessage, Attachments: req.Attachments}
+	}
 	if req.FromUser && m.cfg.SteerNote != nil {
 		session, err := m.store.LoadSession(job.ID)
 		if err != nil {
@@ -330,7 +336,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
-	done, err := m.reserveSteer(job, req, contexts)
+	done, err := m.reserveSteer(job, req, contexts, steer)
 	if err != nil {
 		return Job{}, err
 	}
@@ -346,7 +352,7 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	return job.Snapshot(), nil
 }
 
-func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext) (chan struct{}, error) {
+func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext, steer *storage.TurnPrompt) (chan struct{}, error) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
 	if job.turn == nil || job.turn.promptCalls == 0 || (job.State != StateRunning && job.State != StateStarting) {
@@ -367,18 +373,21 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	if session.Turn == nil {
 		return nil, fmt.Errorf("active turn is missing from storage")
 	}
-	previous := *session.Turn
-	turn := previous
+	turn := *session.Turn
 	turn.GoalRequested = turn.GoalRequested || req.GoalRequested
 	turn.ParentVisible = turn.ParentVisible || req.ParentVisible
 	turn.NotifyParent = turn.ParentVisible && job.turn.completion.propagates() && !turn.PlanRequested
-	if err := m.store.SetTurnIntent(job.ID, turn.GoalRequested, turn.ParentVisible, turn.NotifyParent); err != nil {
+	var messages []storage.Message
+	if req.transcript == sendTranscriptUserMessage {
+		message := storage.UserMessageRecord(req.Message, contexts, req.Attachments)
+		message.FromUser = req.FromUser
+		messages = append(messages, message)
+	}
+	if err := m.store.SteerTurn(job.ID, turn.GoalRequested, turn.ParentVisible, turn.NotifyParent, steer, messages...); err != nil {
 		return nil, fmt.Errorf("reserve steering: %w", err)
 	}
-	if req.transcript == sendTranscriptUserMessage {
-		if err := storage.AppendUserMessage(m.store, job.ID, req.Message, contexts, req.Attachments, req.FromUser); err != nil {
-			return nil, errors.Join(fmt.Errorf("append user message: %w", err), m.store.SetTurnIntent(job.ID, previous.GoalRequested, previous.ParentVisible, previous.NotifyParent))
-		}
+	if steer != nil {
+		job.turn.steers++
 	}
 	if req.FromUser {
 		if err := m.store.ResetTurnHops(job.ID); err != nil {

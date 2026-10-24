@@ -27,7 +27,9 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 	req := SendRequest{Session: sessionID, Message: interruptedTurnContinuation, Completion: CompletionAsync}
 	opts := sendOptions{transcript: sendTranscriptHidden}
 	if session.Turn != nil {
-		if session.Turn.ActiveOperation == ActiveOperationCompact {
+		// Messages steered into the turn that its agent never took in go on
+		// with the continuation, which redoing a compaction would hold back.
+		if session.Turn.ActiveOperation == ActiveOperationCompact && len(session.Turn.Steers) == 0 {
 			_, err := m.Compact(ctx, CompactRequest{Session: sessionID})
 			return err
 		}
@@ -45,6 +47,10 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 		if unsent {
 			req.Message = session.Turn.Prompt.Message
 			req.Attachments = session.Turn.Prompt.Attachments
+		}
+		for _, steer := range session.Turn.Steers {
+			req.Message += "\n\n" + steer.Message
+			req.Attachments = append(req.Attachments, steer.Attachments...)
 		}
 	}
 	_, err = m.send(ctx, req, opts)

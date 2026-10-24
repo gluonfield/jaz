@@ -553,6 +553,11 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			if pendingPrompt != nil && os.Getenv("JAZ_FAKE_ACP_PROMPT_QUEUEING") == "1" {
+				// A prompt with this text stays in Claude Code's queue, as one
+				// sent during a long tool call does until the call ends.
+				if unread := os.Getenv("JAZ_FAKE_ACP_UNREAD_PROMPT"); unread != "" && strings.Contains(string(msg.Params), unread) {
+					continue
+				}
 				sendResult(conn, pendingPrompt, map[string]any{"stopReason": "end_turn"})
 				pendingPrompt = nil
 			}

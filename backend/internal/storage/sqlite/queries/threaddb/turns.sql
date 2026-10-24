@@ -40,6 +40,16 @@ SET turn = json_set(turn,
     '$.notify_parent', json(CASE WHEN CAST(sqlc.arg(notify_parent) AS INTEGER) THEN 'true' ELSE 'false' END))
 WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
+-- name: AppendTurnSteer :exec
+UPDATE threads
+SET turn = json_set(turn, '$.steers', json_insert(COALESCE(json_extract(turn, '$.steers'), '[]'), '$[#]', json(sqlc.arg(steer))))
+WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
+
+-- name: TakeTurnSteer :exec
+UPDATE threads
+SET turn = json_remove(turn, '$.steers[0]')
+WHERE id = sqlc.arg(id) AND status = 'running' AND json_array_length(NULLIF(turn, ''), '$.steers') > 0;
+
 -- name: SetTurnRetries :execrows
 UPDATE threads
 SET turn = json_set(turn, '$.retries', CAST(sqlc.arg(retries) AS INTEGER))

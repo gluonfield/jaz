@@ -111,6 +111,48 @@ func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyPar
 	return s.saveSession(session)
 }
 
+func (s *Store) SteerTurn(id string, goalRequested, parentVisible, notifyParent bool, steer *storage.TurnPrompt, messages ...storage.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil {
+		return err
+	}
+	if session.Turn == nil || session.Status != storage.StatusRunning {
+		return fmt.Errorf("%s has no active turn", id)
+	}
+	if len(messages) > 0 {
+		existing, err := s.loadMessages(id)
+		if err != nil {
+			return err
+		}
+		for _, message := range messages {
+			existing = append(existing, provider.UserMessage(message.Content))
+		}
+		if err := s.saveMessages(id, existing); err != nil {
+			return err
+		}
+	}
+	session.Turn.GoalRequested = goalRequested
+	session.Turn.ParentVisible = parentVisible
+	session.Turn.NotifyParent = notifyParent
+	if steer != nil {
+		session.Turn.Steers = append(session.Turn.Steers, *steer)
+	}
+	return s.saveSession(session)
+}
+
+func (s *Store) TakeTurnSteer(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, err := s.loadSessionByID(id)
+	if err != nil || session.Status != storage.StatusRunning || session.Turn == nil || len(session.Turn.Steers) == 0 {
+		return err
+	}
+	session.Turn.Steers = session.Turn.Steers[1:]
+	return s.saveSession(session)
+}
+
 func (s *Store) SetTurnRetries(id string, retries int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

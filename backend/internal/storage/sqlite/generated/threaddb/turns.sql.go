@@ -54,6 +54,22 @@ func (q *Queries) AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams
 	return result.RowsAffected()
 }
 
+const appendTurnSteer = `-- name: AppendTurnSteer :exec
+UPDATE threads
+SET turn = json_set(turn, '$.steers', json_insert(COALESCE(json_extract(turn, '$.steers'), '[]'), '$[#]', json(?1)))
+WHERE id = ?2 AND status = 'running' AND turn <> ''
+`
+
+type AppendTurnSteerParams struct {
+	Steer interface{} `json:"steer"`
+	ID    string      `json:"id"`
+}
+
+func (q *Queries) AppendTurnSteer(ctx context.Context, arg AppendTurnSteerParams) error {
+	_, err := q.db.ExecContext(ctx, appendTurnSteer, arg.Steer, arg.ID)
+	return err
+}
+
 const claimQueuedTurn = `-- name: ClaimQueuedTurn :execrows
 UPDATE threads
 SET status = 'running', error = NULL, turn = ?1,
@@ -292,5 +308,16 @@ type StartSessionTurnParams struct {
 
 func (q *Queries) StartSessionTurn(ctx context.Context, arg StartSessionTurnParams) error {
 	_, err := q.db.ExecContext(ctx, startSessionTurn, arg.Turn, arg.StartedAtMs, arg.ID)
+	return err
+}
+
+const takeTurnSteer = `-- name: TakeTurnSteer :exec
+UPDATE threads
+SET turn = json_remove(turn, '$.steers[0]')
+WHERE id = ?1 AND status = 'running' AND json_array_length(NULLIF(turn, ''), '$.steers') > 0
+`
+
+func (q *Queries) TakeTurnSteer(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, takeTurnSteer, id)
 	return err
 }

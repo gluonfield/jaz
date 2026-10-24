@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -103,6 +104,10 @@ func TestPromptRestartProcess(t *testing.T) {
 			}
 		}
 	}
+	if stage == "steered" {
+		env["JAZ_FAKE_ACP_PROMPT_QUEUEING"] = "1"
+		env["JAZ_FAKE_ACP_UNREAD_PROMPT"] = "Unread question"
+	}
 	env["JAZ_FAKE_ACP_UNIQUE_SESSION"] = "cwd"
 	manager := newFakeNamedAgentManagerWithOptions(t, boundary, root, agent, env, "", "")
 	kind := os.Getenv("JAZ_PROMPT_RESTART_KIND")
@@ -186,9 +191,76 @@ func TestPromptRestartProcess(t *testing.T) {
 		}
 		t.Fatal("agent never reached prompt boundary")
 	}
-	waitForBlockingTool(t, testContext(t), manager, id)
+	ctx := testContext(t)
+	waitForBlockingTool(t, ctx, manager, id)
+	if stage == "steered" {
+		// The agent takes the first message in; the second waits in its queue.
+		for kept, text := range []string{"Read question", "Unread question"} {
+			if _, err := manager.Input(ctx, acp.SteerRequest{Session: id, Message: text, FromUser: true}); err != nil {
+				t.Fatal(err)
+			}
+			for {
+				requests, _ := os.ReadFile(filepath.Join(root, "requests.jsonl"))
+				thread, err := store.LoadSession(id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(requests), text) && thread.Turn != nil && len(thread.Turn.Steers) == kept {
+					break
+				}
+				select {
+				case <-ctx.Done():
+					t.Fatalf("steer %q did not settle: %+v", text, thread.Turn)
+				case <-time.After(10 * time.Millisecond):
+				}
+			}
+		}
+	}
 	manager.Close()
 	os.Exit(42)
+}
+
+func TestRestartSendsOnTheSteersTheAgentHadNotTakenIn(t *testing.T) {
+	root, id := crashedPrompt(t, acp.AgentClaude, "user", "steered")
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	manager := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentClaude, map[string]string{
+		"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_UNIQUE_SESSION": "cwd", "JAZ_FAKE_ACP_REQUEST_LOG": filepath.Join(root, "resumed.jsonl"),
+	}, "", "")
+	t.Cleanup(manager.Close)
+	locks, events := sessionlock.New(), sessionevents.New()
+	handler := &server.Server{Store: store, ACP: manager, Locks: locks, Events: events}
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	if err := sessionrecovery.Resume(ctx, store, handler, locks, events, log.New(os.Stderr)); err != nil {
+		t.Fatal(err)
+	}
+	if job, err := manager.Wait(ctx, acp.WaitRequest{Session: string(id)}); err != nil || job.State != acp.StateIdle {
+		t.Fatalf("recovered job = %+v, %v", job, err)
+	}
+	requests, err := os.ReadFile(filepath.Join(root, "resumed.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(requests), `"method":"session/prompt"`) != 1 || !strings.Contains(string(requests), `Continue from where you left off.\n\nUnread question`) || strings.Contains(string(requests), "Read question") {
+		t.Fatalf("restart did not send on exactly the unread steer: %s", requests)
+	}
+	messages, err := store.LoadMessageRecords(string(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var users []string
+	for _, message := range messages {
+		if message.Role == "user" {
+			users = append(users, message.Content)
+		}
+	}
+	if !slices.Equal(users, []string{"Original task to deliver", "Read question", "Unread question"}) {
+		t.Fatalf("user messages = %q", users)
+	}
 }
 
 func TestRestartDeliversAnUnsentPromptAndContinuesADeliveredOne(t *testing.T) {

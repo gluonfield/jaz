@@ -179,3 +179,41 @@ func TestATurnTheAgentBeganHoldsTheThreadAndOwesWhatFinishesDuringIt(t *testing.
 		t.Fatalf("stored = %+v, turn %+v; want the run's turn, owing the asker too, with its reply", stored, turn)
 	}
 }
+
+func TestSteersAreKeptWithTheirMessageAndTakenOldestFirst(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	thread, err := store.CreateSession(storage.CreateSession{Slug: "steered"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A steer that finds no running turn leaves neither its message nor itself.
+	if err := store.SteerTurn(thread.ID, false, false, false, &storage.TurnPrompt{Message: "late"}, storage.UserMessageRecord("late", nil, nil)); err == nil {
+		t.Fatal("steered a thread without a running turn")
+	}
+	if err := store.StartSessionTurn(thread.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{"first", "second"} {
+		if err := store.SteerTurn(thread.ID, true, false, false, &storage.TurnPrompt{Message: text}, storage.UserMessageRecord(text, nil, nil)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.TakeTurnSteer(thread.ID); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.LoadSession(thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.Turn.GoalRequested || len(stored.Turn.Steers) != 1 || stored.Turn.Steers[0].Message != "second" {
+		t.Fatalf("turn = %+v, want the goal and only the second steer kept", stored.Turn)
+	}
+	messages, err := store.LoadMessageRecords(thread.ID)
+	if err != nil || len(messages) != 2 || messages[0].Content != "first" || messages[1].Content != "second" {
+		t.Fatalf("messages = %+v, %v", messages, err)
+	}
+}

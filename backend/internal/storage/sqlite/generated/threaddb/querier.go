@@ -14,6 +14,7 @@ type Querier interface {
 	AdvanceTranscriptRevision(ctx context.Context, id string) error
 	AppendQueuedTurn(ctx context.Context, arg AppendQueuedTurnParams) (int64, error)
 	AppendTurnReply(ctx context.Context, arg AppendTurnReplyParams) (int64, error)
+	AppendTurnSteer(ctx context.Context, arg AppendTurnSteerParams) error
 	ClaimQueuedTurn(ctx context.Context, arg ClaimQueuedTurnParams) (int64, error)
 	ClaimTurn(ctx context.Context, arg ClaimTurnParams) (int64, error)
 	ClearBackgroundWork(ctx context.Context) error
@@ -54,6 +55,7 @@ type Querier interface {
 	SetTurnPromptState(ctx context.Context, arg SetTurnPromptStateParams) (int64, error)
 	SetTurnRetries(ctx context.Context, arg SetTurnRetriesParams) (int64, error)
 	StartSessionTurn(ctx context.Context, arg StartSessionTurnParams) error
+	TakeTurnSteer(ctx context.Context, id string) error
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error
 	TouchThread(ctx context.Context, arg TouchThreadParams) error
 	UpdateGoal(ctx context.Context, arg UpdateGoalParams) error

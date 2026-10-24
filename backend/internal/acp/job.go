@@ -169,6 +169,8 @@ type activeTurn struct {
 	// the ids of those sent whose responses the connection has not yet read.
 	unsent  int
 	prompts map[string]struct{}
+	// steers counts the turn's kept steers its agent has not taken in.
+	steers int
 	// agentRun marks a turn that the agent began on its own while that run
 	// goes on: it ends with the agent's report, not a prompt response.
 	agentRun bool

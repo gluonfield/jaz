@@ -24,6 +24,13 @@ func (m *Manager) promptAnswered(job *jobState, id string) {
 				m.log.Error("record prompt confirmation", "session", job.ID, "error", err)
 			}
 			delete(turn.prompts, id)
+			// An agent that queues prompts answers one as it takes in the next.
+			if turn.steers > 0 {
+				turn.steers--
+				if err := m.store.TakeTurnSteer(job.ID); err != nil {
+					m.log.Error("record steer taken in", "session", job.ID, "error", err)
+				}
+			}
 		}
 	}
 }

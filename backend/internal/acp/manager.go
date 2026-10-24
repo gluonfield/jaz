@@ -57,6 +57,8 @@ type Store interface {
 	ClaimTurn(string, storage.Turn) (bool, error)
 	OweTurn(string, storage.Turn) error
 	SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error
+	SteerTurn(id string, goalRequested, parentVisible, notifyParent bool, steer *storage.TurnPrompt, messages ...storage.Message) error
+	TakeTurnSteer(id string) error
 	ResetTurnHops(id string) error
 	SetTurnRetries(id string, retries int) error
 	SetTurnPromptState(id, agentSessionID string, startedAt time.Time, state storage.PromptState) error
