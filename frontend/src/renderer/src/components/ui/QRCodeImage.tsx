@@ -1,29 +1,21 @@
-import { LoaderCircle } from 'lucide-react'
 import * as QRCode from 'qrcode'
-import { useEffect, useState } from 'react'
 
-export function QRCodeImage({ value, alt, className = 'size-full' }: { value: string; alt: string; className?: string }) {
-  const [src, setSrc] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    setSrc('')
-    void QRCode.toDataURL(value, {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 448,
-      color: { dark: '#111111', light: '#ffffff' },
-    })
-      .then((next) => {
-        if (!cancelled) setSrc(next)
-      })
-      .catch(() => {
-        if (!cancelled) setSrc('')
-      })
-    return () => {
-      cancelled = true
+// Renders nothing when the value exceeds QR capacity (about 2.3 KB).
+export function QRCodeImage({ value, label, className = 'size-full' }: { value: string; label: string; className?: string }) {
+  let modules: QRCode.BitMatrix
+  try {
+    modules = QRCode.create(value, { errorCorrectionLevel: 'M' }).modules
+  } catch {
+    return null
+  }
+  const { size, data } = modules
+  let path = ''
+  data.forEach((dark, index) => {
+    if (dark) {
+      path += `M${index % size} ${Math.floor(index / size)}h1v1h-1z`
     }
-  }, [value])
-
-  return src ? <img src={src} alt={alt} className={className} /> : <LoaderCircle size={18} className="animate-spin text-ink-3" />
+  })
+  return <svg role="img" aria-label={label} viewBox={`-1 -1 ${size + 2} ${size + 2}`} shapeRendering="crispEdges" className={className}>
+    <path d={path} fill="#111" />
+  </svg>
 }

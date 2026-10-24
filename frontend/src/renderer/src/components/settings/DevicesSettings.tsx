@@ -260,7 +260,7 @@ function AddDeviceModal({
       ) : displayURL ? (
         <div className="grid gap-4 sm:grid-cols-[190px_minmax(0,1fr)]">
           <div className="grid size-[190px] shrink-0 place-items-center rounded-card bg-white p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
-            <QRCodeImage value={displayURL} alt="Device connection QR code" />
+            <QRCodeImage value={displayURL} label="Device connection QR code" />
           </div>
           <div className="min-w-0 space-y-3">
             <ConnectionValue label="Connection URL" value={displayURL} />

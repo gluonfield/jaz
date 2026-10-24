@@ -46,11 +46,11 @@ export async function exercisePreviewLinks(browser: SideBrowser, evaluate: (expr
     await until(() => getComputedStyle(actions).opacity === '0')
     await press('Open in Browser')
     await until(async () => getComputedStyle(actions).opacity === '1' && (await window.smoke.openedURLs()).includes(local))
-    const qr = () => document.querySelector<HTMLImageElement>('img[alt="QR code for this page"]')
+    const qr = () => document.querySelector('svg[aria-label="QR code for this page"]')
     await press('Open on phone')
     await until(() => {
       const panel = qr()?.closest<HTMLElement>('[data-escape-surface]')
-      return Boolean(qr()?.naturalWidth && panel && getComputedStyle(panel).opacity === '1')
+      return Boolean(panel && getComputedStyle(panel).opacity === '1')
     })
     await window.smoke.capture('browser-address-actions')
     await press('Open on phone')
