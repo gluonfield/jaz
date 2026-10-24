@@ -29,7 +29,7 @@ export function BotTasks({ bot }: { bot: Bot }) {
   if (activity.isPending) {
     return <p className="text-[13px] text-ink-3">Loading tasks…</p>
   }
-  if (activity.isError) {
+  if (activity.isError && !activity.data) {
     return <p role="alert" className="text-[13px] text-danger">Couldn’t load tasks.</p>
   }
   const { owed, started } = activity.data

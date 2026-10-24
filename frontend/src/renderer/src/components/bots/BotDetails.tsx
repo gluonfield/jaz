@@ -42,7 +42,7 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
           className="mt-2 w-full rounded-md px-1 text-center text-[16px] font-semibold hover:bg-list-hover focus:bg-list-hover"
         />
       </header>
-      <div className="flex justify-center">
+      <div className="flex justify-center [&>div]:h-11 [&_button]:h-10 [&_button]:min-w-10 [&_button]:px-1.5">
         <Segmented value={tab} options={TABS} onChange={setTab} layoutId={`bot-details-${bot.id}`} compact />
       </div>
       {tab === 'tasks' ? (

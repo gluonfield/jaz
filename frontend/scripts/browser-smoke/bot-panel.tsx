@@ -61,6 +61,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const original = '# Memory\n\n- Nothing merges before an audit [Source: review_notes]\n- Augustinas reviews every release\n'
   let memory: BotFile = { name: 'MEMORY.md', content: original, version: 'm1', updated_at: minutes(62) }
   const requests: { method: string; path: string; body?: { content?: string; version?: string; status?: string } }[] = []
+  let activityFails = false
   const originalFetch = window.fetch
   window.fetch = async (input, init) => {
     const url = new URL(String(input), location.href)
@@ -80,6 +81,9 @@ export async function exerciseBotPanel(): Promise<void> {
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
     switch (`${method} ${url.pathname}`) {
       case 'GET /v1/bots/panel/activity':
+        if (activityFails) {
+          return json({ error: 'Unavailable' }, 503)
+        }
         return json({ items: activity, owed, started })
       case 'GET /v1/bots/panel/files':
         return json({ files: [agents, memory] })
@@ -214,6 +218,12 @@ export async function exerciseBotPanel(): Promise<void> {
     if ([tasks, ...tasks.querySelectorAll('button')].some((node) => node.getBoundingClientRect().right > innerWidth || node.getBoundingClientRect().left < 0)) {
       throw new Error('Bot panel: tasks overflow on a phone')
     }
+    for (const label of ['Tasks', 'Activity', 'Routines', 'Identity', 'Agent']) {
+      const bounds = find(label)!.getBoundingClientRect()
+      if (bounds.width < 40 || bounds.height < 40) {
+        throw new Error(`Bot panel: ${label} has a small click target (${bounds.width} × ${bounds.height})`)
+      }
+    }
     await window.smoke.resize(1200, 900)
     await click(owed[0].request)
     await until('a task with one worker did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: check its report') ?? false)
@@ -222,6 +232,13 @@ export async function exerciseBotPanel(): Promise<void> {
     if (!follows('side-a', 'review-a2') || !link('review-a2')?.textContent?.endsWith('Running for 4m')) {
       throw new Error('Bot panel: task details lost the worker descendants or their running state')
     }
+    activityFails = true
+    await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
+    await settle()
+    if (!document.querySelector('section[aria-label="Tasks"]') || !document.querySelector('[role="dialog"]')?.textContent?.includes('Next: check its report')) {
+      throw new Error('Bot panel: a failed background refresh hid the last loaded tasks or their open details')
+    }
+    activityFails = false
     owed[0].next = 'Deliver the verified report'
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await until('open task details did not refresh', () => document.querySelector('[role="dialog"]')?.textContent?.includes(owed[0].next!) ?? false)
