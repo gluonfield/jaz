@@ -10,13 +10,13 @@
 - [x] Complete the strict maintainability/security review and fix its findings.
 - [x] Build, test, commit and push iOS: `28d500e` (13 native tests; physical installation unverified).
 - [x] Commit the extension fix: `302a009`; preserve existing checkout changes. The composed patch passes five tests and applies cleanly.
-- [ ] Complete native CLI parity verification: explicit subscription approval requested.
+- [x] Complete the approved native CLI comparison: protected MCP, model/context, prompt sizes/counts, native tools, reload and manual compaction. Correct the Codex goal-tool override found by measurement.
 - [ ] Activate backend, desktop and composed extension together; verify the actual tunnel afterward.
 
-The backend and desktop changes are committed in the isolated Jaz worktree. The live backend, tunnel and device configuration remain unchanged while native verification awaits approval. Existing per-device credentials remain valid across the upgrade.
+The backend and desktop changes are committed in the isolated Jaz worktree. The live backend, tunnel and device configuration remain unchanged while a cutover is arranged around nine other running chats. Existing per-device credentials remain valid across the upgrade.
 
-The initial review resolved three contract gaps: pending pairing proofs had bearer authority; read tickets admitted interactive sockets; API CORS intercepted capability-based preview traffic. Device policy now lives in `deviceauth`, encryption in SQLite storage, and the server owns authentication/origin checks. No dependencies or provider prompt/model changes were added.
+The initial review resolved three contract gaps: pending pairing proofs had bearer authority; read tickets admitted interactive sockets; API CORS intercepted capability-based preview traffic. Device policy now lives in `deviceauth`, encryption in SQLite storage, and the server owns authentication/origin checks. No dependencies or provider prompt/model overrides were added. The native comparison removes the existing Codex goal-tool override; opt-in Jaz Goal mode explicitly names its MCP server.
 
-Validation: 391 frontend tests, typecheck, lint, desktop/web builds; full Go 1.26 suite, vet/build and focused security race checks; real SQLite/HTTP/WebSocket/MCP regressions. A private live-database copy preserved all six connected-account credentials through migration without provider requests. Detailed logs are in `runs/connection-security/`; Live native CLI verification remains the release gate.
+Validation before the latest rebase: 391 frontend tests, typecheck, lint, desktop/web builds; full Go 1.26 suite, vet/build and focused security race checks; real SQLite/HTTP/WebSocket/MCP regressions. A private live-database copy preserved all six connected-account credentials through migration without provider requests. Detailed logs are in `runs/connection-security/`; Native verification passed; see the measured results and limits in the review report. The latest main rebase passes 383 frontend tests and typechecking; final backend and build checks are recorded with the activation receipt.
 
 - [x] Complete the explicitly requested second thermo-nuclear review; fix reproduced failures and re-verify. See [review findings](security-fix-code-review-2026-10-24.md).
