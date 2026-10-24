@@ -93,6 +93,19 @@ function sample(draw: Silhouette, cols: number, rows: number, palette: Palette):
 
 const GRAIN_EPOCH_MS = 150
 
+// A new silhouette under the same buildKey morphs in place: each dot of the
+// new shape hops cell by cell from a dot of the old one (paired in column
+// order, so the shape flows sideways) in a wave that sweeps left to right;
+// old dots with no partner fade out, and dots with no source fade in.
+const MORPH_STAGGER = 0.35
+const MORPH_TRAVEL = 0.55
+
+const easeOut = (t: number) => 1 - (1 - t) ** 3
+
+const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
+
+const shapeOrder = (dots: Dot[]) => dots.filter((d) => !d.ambient).sort((a, b) => a.x - b.x || a.y - b.y)
+
 // Boot art plays its dissolve once per process. The launch screen, the
 // onboarding gate, and the onboarding screen each mount their own canvases;
 // without this, every handoff replays the build and the boot visibly blinks.
@@ -120,6 +133,7 @@ export function DitherArt({
   label?: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const shown = useRef<{ draw: Silhouette; buildKey?: string; cols: number; rows: number; dots: Dot[] }>(undefined)
   const effects = useEffectsEnabled()
   const reduced = useReducedMotion()
   const animate = effects && !reduced
@@ -150,6 +164,8 @@ export function DitherArt({
       if (cancelled) return
       const palette = readPalette()
       const dots = sample(draw, cols, rows, palette)
+      const previous = shown.current
+      shown.current = { draw, buildKey, cols, rows, dots }
 
       const paintDot = (d: Dot, color: string, alpha: number) => {
         ctx.clearRect(d.x * pitch, d.y * pitch, dot, dot)
@@ -190,6 +206,53 @@ export function DitherArt({
           rerolled.push(d)
         }
         ctx.globalAlpha = 1
+      }
+
+      const morphs = previous && previous.draw !== draw && previous.buildKey === buildKey
+      if (morphs && previous.cols === cols && previous.rows === rows) {
+        const from = shapeOrder(previous.dots)
+        const to = shapeOrder(dots)
+        const sources = to.map((_, i) => from[Math.floor((i * from.length) / to.length)])
+        const paired = new Set(sources)
+        const leaving = from.filter((d) => !paired.has(d))
+        const still = [...dots.filter((d) => d.ambient), ...leaving]
+        const wave = (d: Dot) => (d.x / cols) * MORPH_STAGGER + (d.seed % 128) / 1280
+        const t0 = performance.now()
+        const frame = (now: number) => {
+          const t = (now - t0) / 1000
+          ctx.clearRect(0, 0, width, height)
+          for (const d of still) {
+            const fade = d.ambient ? 1 : 1 - clamp01((t - wave(d)) / MORPH_TRAVEL)
+            ctx.globalAlpha = d.alpha * fade
+            ctx.fillStyle = d.color
+            ctx.fillRect(d.x * pitch, d.y * pitch, dot, dot)
+          }
+          let moving = false
+          to.forEach((d, i) => {
+            const k = easeOut(clamp01((t - wave(d)) / MORPH_TRAVEL))
+            moving ||= k < 1
+            const source = sources[i] ?? d
+            ctx.globalAlpha = sources[i] ? d.alpha : d.alpha * k
+            ctx.fillStyle = d.color
+            ctx.fillRect(
+              Math.round(source.x + (d.x - source.x) * k) * pitch,
+              Math.round(source.y + (d.y - source.y) * k) * pitch,
+              dot,
+              dot,
+            )
+          })
+          ctx.globalAlpha = 1
+          if (moving || leaving.some((d) => t < wave(d) + MORPH_TRAVEL)) {
+            raf = requestAnimationFrame(frame)
+            return
+          }
+          ctx.clearRect(0, 0, width, height)
+          paintRange(0, dots.length)
+          grainTimer = window.setInterval(grainTick, GRAIN_EPOCH_MS)
+        }
+        // First frame now: the resize above already cleared the canvas.
+        frame(t0)
+        return
       }
 
       if (alreadyBuilt) {
