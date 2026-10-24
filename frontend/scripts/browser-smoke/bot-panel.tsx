@@ -191,13 +191,13 @@ export async function exerciseBotPanel(): Promise<void> {
 
   try {
     dark(false)
-    await until('Tasks is not the labelled default view', () => find('Tasks')?.getAttribute('aria-pressed') === 'true' && text().includes('Open Tasks 7'))
-    if (!find('Tasks')?.textContent?.includes('Tasks') || text().includes('Learned something new')) {
-      throw new Error('Bot panel: Tasks is hidden behind an icon or mixed into activity')
+    await until('Activity did not open with tasks and history', () => find('Activity')?.getAttribute('aria-pressed') === 'true' && text().includes('Open Tasks 7') && text().includes('Learned something new'))
+    if (find('Tasks') || !find('Activity')?.textContent?.includes('Activity')) {
+      throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
-    for (const line of ['For you · Working · Next: check its report, then send it', 'For Priorities Bot · Result in', 'For you · Stalled · Next: send the comparison', 'For you · Waiting on prerequisites', 'For you · Waiting on you · Next: wait for his OK, then start the fork change', 'For you · A thread failed']) {
-      if (!text().includes(line)) {
-        throw new Error(`Bot panel: Tasks does not say "${line}"`)
+    for (const state of ['Working', 'Result in', 'Stalled', 'Waiting on prerequisites', 'Waiting on you', 'A thread failed']) {
+      if (!document.querySelector('section[aria-label="Tasks"]')?.textContent?.includes(state)) {
+        throw new Error(`Bot panel: Tasks does not say "${state}"`)
       }
     }
     const detailOf = (title: string) => find(title)?.querySelectorAll('span')[1]
@@ -205,8 +205,8 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: a stalled commitment is not marked as a problem, or a waiting one is')
     }
     const title = find(owed[0].request)?.querySelector('span')
-    if (!title || title.getBoundingClientRect().height <= parseFloat(getComputedStyle(title).lineHeight) || title.scrollWidth > title.clientWidth + 1) {
-      throw new Error('Bot panel: a long task title is truncated instead of wrapping')
+    if (!title || title.getBoundingClientRect().height > parseFloat(getComputedStyle(title).lineHeight) + 1 || !title.classList.contains('truncate')) {
+      throw new Error('Bot panel: a long task title expands the compact activity row')
     }
     await capture('bot-panel-tasks')
     dark(true)
@@ -215,10 +215,13 @@ export async function exerciseBotPanel(): Promise<void> {
     await window.smoke.resize(390, 844)
     await capture('bot-panel-tasks-phone')
     const tasks = document.querySelector<HTMLElement>('section[aria-label="Tasks"]')!
+    if (tasks.textContent?.includes('Next:') || tasks.textContent?.includes('For you')) {
+      throw new Error('Bot panel: task rows repeat work details instead of showing compact labels and status')
+    }
     if ([tasks, ...tasks.querySelectorAll('button')].some((node) => node.getBoundingClientRect().right > innerWidth || node.getBoundingClientRect().left < 0)) {
       throw new Error('Bot panel: tasks overflow on a phone')
     }
-    for (const label of ['Tasks', 'Activity', 'Routines', 'Identity', 'Agent']) {
+    for (const label of ['Activity', 'Routines', 'Identity', 'Agent']) {
       const bounds = find(label)!.getBoundingClientRect()
       if (bounds.width < 40 || bounds.height < 40) {
         throw new Error(`Bot panel: ${label} has a small click target (${bounds.width} × ${bounds.height})`)
@@ -245,7 +248,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Commitments design review')
     await until('a task worker did not open', () => router.state.location.pathname === '/sessions/review-a1')
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
-    await until('the panel did not return to Tasks', () => find('Tasks')?.getAttribute('aria-pressed') === 'true')
+    await until('the panel did not return to Activity', () => find('Activity')?.getAttribute('aria-pressed') === 'true' && text().includes('Open Tasks 7'))
     await click('Pause prompt suggestions on hidden turns')
     await until('a commitment without a thread did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: wait for his OK') ?? false)
     await click('Close')
@@ -383,7 +386,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await window.smoke.key('Escape')
     await until('Escape did not close the editor after the save', () => !editor())
 
-    await click('Tasks')
+    await click('Activity')
     const completed = owed.splice(0)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await until('completed tasks did not leave the open list', () => text().includes('No open tasks') && !text().includes(completed[0].request))
@@ -400,9 +403,9 @@ export async function exerciseBotPanel(): Promise<void> {
     for (const motion of [{ threads: [{ id: 'background-worker', title: 'Report worker', state: 'background' as const }] }, { moving: true }]) {
       owed.splice(0, owed.length, { id: 8, request: 'Deliver the report', status: 'in_progress', opened_at: minutes(1), next: 'Check the report', ...motion })
       await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-      await until('the moving task did not appear', () => text().includes('Next: Check the report'))
-      owed[0].next = 'Deliver the report now'
-      await until('a moving task waited longer than the active polling interval to refresh', () => text().includes('Next: Deliver the report now'))
+      await until('the moving task did not appear', () => document.querySelector('section[aria-label="Tasks"]')?.textContent?.includes('Working') ?? false)
+      owed[0].status = 'waiting_for_user'
+      await until('a moving task waited longer than the active polling interval to refresh', () => document.querySelector('section[aria-label="Tasks"]')?.textContent?.includes('Waiting on you') ?? false)
     }
   } finally {
     dark(wasDark)

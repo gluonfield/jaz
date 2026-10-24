@@ -120,13 +120,13 @@ func (t *MCPTools) Send(_ context.Context, req *mcp.CallToolRequest, input MCPSe
 }
 
 type MCPTaskCreateInput struct {
-	Request string `json:"request" jsonschema:"What the bot must finish, in a few words."`
+	Request string `json:"request" jsonschema:"Short task title, ideally 3-8 words. Context belongs in the linked work threads."`
 	Next    string `json:"next,omitempty" jsonschema:"The next step on this task."`
 }
 
 type MCPTaskUpdateInput struct {
 	ID        int64    `json:"id" jsonschema:"The open task's id."`
-	Request   string   `json:"request,omitempty" jsonschema:"What was asked, in a few words."`
+	Request   string   `json:"request,omitempty" jsonschema:"Short task title, ideally 3-8 words. Context belongs in the linked work threads."`
 	Next      string   `json:"next,omitempty" jsonschema:"Progress or the next step."`
 	Status    string   `json:"status,omitempty" jsonschema:"Task status; omit to preserve it."`
 	Message   string   `json:"message,omitempty" jsonschema:"For completed, the result to deliver; for waiting_for_user, the question to deliver; for cancelled, the reason. Completion or cancellation takes only id, status and message."`
