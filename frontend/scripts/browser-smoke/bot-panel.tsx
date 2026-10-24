@@ -69,7 +69,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const url = new URL(String(input), location.href)
     if (url.pathname === '/v1/bots') {
       const sidebar: Bot[] = [
-        { ...bot, id: 'asking', name: 'Asking Bot', status: 'running', waiting: true },
+        { ...bot, id: 'asking', name: 'Asking Bot', status: 'running', waiting: true, updated_at: minutes(20) },
         { ...bot, id: 'busy', name: 'Busy Bot', status: 'running' },
       ]
       return new Response(JSON.stringify({ bots: sidebar }), { headers: { 'Content-Type': 'application/json' } })
@@ -196,14 +196,18 @@ export async function exerciseBotPanel(): Promise<void> {
   const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:last-child')].map((node) => node.textContent)
 
   try {
-    await until('a fresh Bots page did not focus its first bot', () => router.state.location.pathname === '/bots/asking' && element.querySelector('a[href="/bots/asking"]')?.getAttribute('aria-current') === 'page')
+    await until('a fresh Bots page did not focus its first bot', () => router.state.location.pathname === '/bots/busy' && element.querySelector('a[href="/bots/busy"]')?.getAttribute('aria-current') === 'page')
     await capture('bot-first-selected')
-    localStorage.setItem('jaz.lastBot', 'busy')
+    localStorage.setItem('jaz.lastBot', 'asking')
     await router.navigate({ to: '/bots' })
-    await until('Bots did not restore the remembered selection', () => router.state.location.pathname === '/bots/busy')
+    await until('Bots did not restore the remembered selection', () => router.state.location.pathname === '/bots/asking')
     localStorage.setItem('jaz.lastBot', 'removed')
     const listed = client.getQueryData(botsQuery.queryKey)!
-    client.setQueryData(botsQuery.queryKey, listed.map((item) => ({ ...item, pinned: item.id === 'busy' ? 1 : 2 })))
+    client.setQueryData(botsQuery.queryKey, listed.map((item) => ({
+      ...item,
+      pinned: item.id === 'busy' ? 1 : 2,
+      updated_at: item.id === 'busy' ? minutes(40) : minutes(1),
+    })))
     await router.navigate({ to: '/bots' })
     await until('an unavailable remembered bot did not fall back to the first pin', () => router.state.location.pathname === '/bots/busy' && element.querySelector('a[href="/bots/busy"]')?.getAttribute('aria-current') === 'page')
     client.setQueryData(botsQuery.queryKey, [])
