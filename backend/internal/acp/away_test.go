@@ -38,7 +38,7 @@ func (p *jazProcess) idle(thread string) {
 	p.t.Helper()
 	p.eventually("the turn in "+thread+" ending", func() bool {
 		session, err := p.store.LoadSession(thread)
-		return err == nil && session.Status == storage.StatusIdle && len(session.QueuedMessages) == 0
+		return err == nil && session.Status == storage.StatusIdle && len(session.QueuedMessages) == 0 && p.finishing.Load() == 0
 	})
 }
 
