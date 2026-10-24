@@ -174,7 +174,7 @@ func TestSteerCannotJoinFailingTurn(t *testing.T) {
 		<-failed
 	})
 	<-gate.entered
-	if _, err := manager.reserveSteer(job, SteerRequest{Message: "Late correction"}, nil, nil); !errors.Is(err, errTurnEnded) {
+	if _, err := manager.reserveSteer(job, SteerRequest{Message: "Late correction"}, nil, "Late correction"); !errors.Is(err, errTurnEnded) {
 		t.Errorf("steering joined a failing turn: %v", err)
 	}
 	if conflict := job.sendConflict(false); conflict == nil || !conflict.finishing {

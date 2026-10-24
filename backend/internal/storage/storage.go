@@ -278,6 +278,16 @@ type TurnPrompt struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
+// TurnUpdate is what input reaching a running turn changes in it.
+type TurnUpdate struct {
+	GoalRequested, ParentVisible, NotifyParent bool
+	// EndExchange ends the bot-to-bot exchange the turn is part of, as the
+	// user writing into it does.
+	EndExchange bool
+	// Steer joins the turn's Steers.
+	Steer *TurnPrompt
+}
+
 type TurnOutput struct {
 	ReplyTo string   `json:"reply_to,omitempty"`
 	Replies []string `json:"replies,omitempty"`

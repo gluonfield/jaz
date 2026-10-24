@@ -36,11 +36,7 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...stora
 	}()
 	s.writeMu.Unlock()
 	if err == nil {
-		if s.exportMirror != nil {
-			if records, err := providerMessagesFromRecords(messages); err == nil {
-				_ = s.exportMirror.AppendMessages(id, records...)
-			}
-		}
+		s.mirrorMessageRecords(id, messages)
 		if current, loadErr := s.LoadSession(id); loadErr == nil {
 			s.mirrorSession(current)
 		}
@@ -139,30 +135,9 @@ func (s *Store) AppendTurnReply(id, message string, done []int64) error {
 	return tx.Commit()
 }
 
-// ResetTurnHops ends the bot-to-bot exchange a running turn is part of, as
-// the user writing into it does.
-func (s *Store) ResetTurnHops(id string) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	return threaddb.New(s.db).ResetTurnHops(context.Background(), id)
-}
-
-func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	updated, err := threaddb.New(s.db).SetTurnIntent(context.Background(), threaddb.SetTurnIntentParams{
-		ID: id, GoalRequested: boolInt(goalRequested), ParentVisible: boolInt(parentVisible), NotifyParent: boolInt(notifyParent),
-	})
-	if err == nil && updated == 0 {
-		return fmt.Errorf("%s has no active turn", id)
-	}
-	return err
-}
-
-// SteerTurn records a message steered into the running turn: the intent it
-// adds, the prepared steer its agent has yet to take in, if one is kept, and
-// the messages that show it, together or not at all.
-func (s *Store) SteerTurn(id string, goalRequested, parentVisible, notifyParent bool, steer *storage.TurnPrompt, messages ...storage.Message) error {
+// UpdateTurn applies update to the running turn, with the messages that show
+// the input, together or not at all.
+func (s *Store) UpdateTurn(id string, update storage.TurnUpdate, messages ...storage.Message) error {
 	ctx := context.Background()
 	s.writeMu.Lock()
 	err := func() error {
@@ -173,16 +148,21 @@ func (s *Store) SteerTurn(id string, goalRequested, parentVisible, notifyParent 
 		defer tx.Rollback()
 		q := threaddb.New(tx)
 		updated, err := q.SetTurnIntent(ctx, threaddb.SetTurnIntentParams{
-			ID: id, GoalRequested: boolInt(goalRequested), ParentVisible: boolInt(parentVisible), NotifyParent: boolInt(notifyParent),
+			ID: id, GoalRequested: boolInt(update.GoalRequested), ParentVisible: boolInt(update.ParentVisible), NotifyParent: boolInt(update.NotifyParent),
 		})
-		if err == nil && updated == 0 {
-			err = fmt.Errorf("%s has no active turn", id)
-		}
 		if err != nil {
 			return err
 		}
-		if steer != nil {
-			raw, err := json.Marshal(steer)
+		if updated == 0 {
+			return fmt.Errorf("%s has no active turn", id)
+		}
+		if update.EndExchange {
+			if err := q.ResetTurnHops(ctx, id); err != nil {
+				return err
+			}
+		}
+		if update.Steer != nil {
+			raw, err := json.Marshal(update.Steer)
 			if err != nil {
 				return err
 			}
@@ -196,19 +176,18 @@ func (s *Store) SteerTurn(id string, goalRequested, parentVisible, notifyParent 
 		return tx.Commit()
 	}()
 	s.writeMu.Unlock()
-	if err == nil && s.exportMirror != nil {
-		if records, err := providerMessagesFromRecords(messages); err == nil {
-			_ = s.exportMirror.AppendMessages(id, records...)
-		}
+	if err == nil {
+		s.mirrorMessageRecords(id, messages)
 	}
 	return err
 }
 
-// TakeTurnSteer drops the running turn's oldest steer, which its agent took in.
-func (s *Store) TakeTurnSteer(id string) error {
+// KeepTurnSteers keeps the running turn's newest n steers, dropping the older
+// ones its agent took in.
+func (s *Store) KeepTurnSteers(id string, n int) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	return threaddb.New(s.db).TakeTurnSteer(context.Background(), id)
+	return threaddb.New(s.db).KeepTurnSteers(context.Background(), threaddb.KeepTurnSteersParams{ID: id, Keep: int64(n)})
 }
 
 func (s *Store) SetTurnRetries(id string, retries int) error {

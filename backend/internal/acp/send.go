@@ -318,91 +318,100 @@ func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
 	if peer == nil {
 		return Job{}, fmt.Errorf("acp peer is not active")
 	}
-	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
-	// A queued prompt waits for the agent to take it in, and a restart before
-	// then would lose it, so the turn keeps it until then.
-	var steer *storage.TurnPrompt
-	if method == steerPromptQueueing {
-		steer = &storage.TurnPrompt{Message: promptMessage, Attachments: req.Attachments}
-	}
+	prepared, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	note := ""
 	if req.FromUser && m.cfg.SteerNote != nil {
 		session, err := m.store.LoadSession(job.ID)
 		if err != nil {
 			return Job{}, err
 		}
-		promptMessage = m.cfg.SteerNote(session) + promptMessage
+		note = m.cfg.SteerNote(session)
 	}
-	promptReq, err := m.promptRequest(job, goalPromptMessage(promptMessage, req.GoalRequested), req.Attachments)
+	promptReq, err := m.promptRequest(job, goalPromptMessage(note+prepared, req.GoalRequested), req.Attachments)
 	if err != nil {
 		return Job{}, err
 	}
-	done, err := m.reserveSteer(job, req, contexts, steer)
+	slot, err := m.reserveSteer(job, req, contexts, prepared)
 	if err != nil {
 		return Job{}, err
 	}
 	var handoff <-chan struct{}
 	if req.transcript == sendTranscriptUserMessage {
-		handoff = m.cancelPendingPermissionsForSteer(job, done)
+		handoff = m.cancelPendingPermissionsForSteer(job, slot.done)
 		m.touchJobAttention(job)
 	} else {
-		handoff = job.currentPromptHandoff(done)
+		handoff = job.currentPromptHandoff(slot.done)
 	}
 	m.publishACP(job.eventView())
-	go m.runSteerCallAfterHandoff(context.Background(), job, done, handoff, method, promptReq)
+	go m.runSteerCallAfterHandoff(context.Background(), job, slot, handoff, method, promptReq)
 	return job.Snapshot(), nil
 }
 
-func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext, steer *storage.TurnPrompt) (chan struct{}, error) {
+// steerSlot is a steer's place in its turn. Steers go out in the order they
+// were made: each waits until the one before it is on the wire.
+type steerSlot struct {
+	done  chan struct{}
+	after <-chan struct{}
+	sent  chan struct{}
+}
+
+func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []storage.MessageContext, prepared string) (steerSlot, error) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
 	if job.turn == nil || job.turn.promptCalls == 0 || (job.State != StateRunning && job.State != StateStarting) {
-		return nil, errTurnEnded
+		return steerSlot{}, errTurnEnded
 	}
 	// The gate is closed once the turn's latest prompt reached the agent; a
 	// retry reopens it until its continuation does.
 	if job.turn.retrying || !job.turn.firstPromptSentClosed {
-		return nil, errPromptPending
+		return steerSlot{}, errPromptPending
 	}
 	if job.steerMethod == steerUnsupported {
-		return nil, ErrSteeringUnsupported
+		return steerSlot{}, ErrSteeringUnsupported
 	}
 	session, err := m.store.LoadSession(job.ID)
 	if err != nil {
-		return nil, err
+		return steerSlot{}, err
 	}
 	if session.Turn == nil {
-		return nil, fmt.Errorf("active turn is missing from storage")
+		return steerSlot{}, fmt.Errorf("active turn is missing from storage")
 	}
-	turn := *session.Turn
-	turn.GoalRequested = turn.GoalRequested || req.GoalRequested
-	turn.ParentVisible = turn.ParentVisible || req.ParentVisible
-	turn.NotifyParent = turn.ParentVisible && job.turn.completion.propagates() && !turn.PlanRequested
+	update := storage.TurnUpdate{
+		GoalRequested: session.Turn.GoalRequested || req.GoalRequested,
+		ParentVisible: session.Turn.ParentVisible || req.ParentVisible,
+		EndExchange:   req.FromUser,
+	}
+	update.NotifyParent = update.ParentVisible && job.turn.completion.propagates() && !session.Turn.PlanRequested
+	queued := job.steerMethod == steerPromptQueueing
+	// A queued prompt waits for the agent to take it in, and a restart before
+	// then would lose it, so the turn keeps it until then. The agent's own
+	// run reports no take-in, so a steer into it is not kept.
+	if queued && !job.turn.agentRun {
+		update.Steer = &storage.TurnPrompt{Message: prepared, Attachments: req.Attachments}
+	}
 	var messages []storage.Message
 	if req.transcript == sendTranscriptUserMessage {
 		message := storage.UserMessageRecord(req.Message, contexts, req.Attachments)
 		message.FromUser = req.FromUser
 		messages = append(messages, message)
 	}
-	if err := m.store.SteerTurn(job.ID, turn.GoalRequested, turn.ParentVisible, turn.NotifyParent, steer, messages...); err != nil {
-		return nil, fmt.Errorf("reserve steering: %w", err)
+	if err := m.store.UpdateTurn(job.ID, update, messages...); err != nil {
+		return steerSlot{}, fmt.Errorf("reserve steering: %w", err)
 	}
-	if steer != nil {
-		job.turn.steers++
-	}
-	if req.FromUser {
-		if err := m.store.ResetTurnHops(job.ID); err != nil {
-			m.log.Warn("reset turn hops", "session", job.ID, "error", err)
-		}
-	}
-	job.turn.goalRequested = turn.GoalRequested
+	job.turn.goalRequested = update.GoalRequested
 	if req.ParentVisible {
 		job.ParentVisible = true
 	}
 	job.turn.promptCalls++
-	if job.steerMethod == steerPromptQueueing {
+	if queued {
 		job.turn.unsent++
 	}
-	return job.turn.done, nil
+	if update.Steer != nil {
+		job.turn.kept++
+	}
+	slot := steerSlot{done: job.turn.done, after: job.turn.steerSent, sent: make(chan struct{})}
+	job.turn.steerSent = slot.sent
+	return slot, nil
 }
 
 func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done chan struct{}, prompt acpschema.PromptRequest) {
@@ -441,10 +450,14 @@ func (m *Manager) runNativeSteerCall(ctx context.Context, job *jobState, done ch
 	m.completePromptCall(done, job, response.StopReason, response.Meta.terminal())
 }
 
-func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, done chan struct{}, handoff <-chan struct{}, method steerMethod, prompt acpschema.PromptRequest) {
-	if handoff != nil {
+func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, slot steerSlot, handoff <-chan struct{}, method steerMethod, prompt acpschema.PromptRequest) {
+	done := slot.done
+	for _, wait := range []<-chan struct{}{handoff, slot.after} {
+		if wait == nil {
+			continue
+		}
 		select {
-		case <-handoff:
+		case <-wait:
 		case <-done:
 			return
 		}
@@ -454,6 +467,7 @@ func (m *Manager) runSteerCallAfterHandoff(ctx context.Context, job *jobState, d
 		return
 	default:
 	}
+	ctx = whenSent(ctx, slot.sent)
 	switch method {
 	case steerPromptQueueing:
 		m.runPromptCall(ctx, job, done, prompt)

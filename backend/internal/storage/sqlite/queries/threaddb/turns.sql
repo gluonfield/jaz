@@ -45,10 +45,12 @@ UPDATE threads
 SET turn = json_set(turn, '$.steers', json_insert(COALESCE(json_extract(turn, '$.steers'), '[]'), '$[#]', json(sqlc.arg(steer))))
 WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
--- name: TakeTurnSteer :exec
+-- name: KeepTurnSteers :exec
 UPDATE threads
-SET turn = json_remove(turn, '$.steers[0]')
-WHERE id = sqlc.arg(id) AND status = 'running' AND json_array_length(NULLIF(turn, ''), '$.steers') > 0;
+SET turn = json_set(turn, '$.steers', json((SELECT json_group_array(json(value)) FROM json_each(turn, '$.steers')
+    WHERE key >= json_array_length(turn, '$.steers') - CAST(sqlc.arg(keep) AS INTEGER))))
+WHERE id = sqlc.arg(id) AND status = 'running'
+  AND json_array_length(NULLIF(turn, ''), '$.steers') > CAST(sqlc.arg(keep) AS INTEGER);
 
 -- name: SetTurnRetries :execrows
 UPDATE threads

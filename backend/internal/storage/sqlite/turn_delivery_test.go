@@ -87,7 +87,7 @@ func TestTurnIntentUpdateKeepsRepliesWrittenAfterSnapshot(t *testing.T) {
 	if err := store.AppendTurnReply(session.ID, "Reply after intent was read", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetTurnIntent(session.ID, true, before.Turn.ParentVisible, before.Turn.NotifyParent); err != nil {
+	if err := store.UpdateTurn(session.ID, storage.TurnUpdate{GoalRequested: true, ParentVisible: before.Turn.ParentVisible, NotifyParent: before.Turn.NotifyParent}); err != nil {
 		t.Fatal(err)
 	}
 	after, err := store.LoadSession(session.ID)
@@ -180,7 +180,7 @@ func TestATurnTheAgentBeganHoldsTheThreadAndOwesWhatFinishesDuringIt(t *testing.
 	}
 }
 
-func TestSteersAreKeptWithTheirMessageAndTakenOldestFirst(t *testing.T) {
+func TestTurnUpdatesApplyWholeAndKeepTheNewestSteers(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -190,30 +190,48 @@ func TestSteersAreKeptWithTheirMessageAndTakenOldestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A steer that finds no running turn leaves neither its message nor itself.
-	if err := store.SteerTurn(thread.ID, false, false, false, &storage.TurnPrompt{Message: "late"}, storage.UserMessageRecord("late", nil, nil)); err == nil {
-		t.Fatal("steered a thread without a running turn")
+	steer := func(text string) error {
+		return store.UpdateTurn(thread.ID, storage.TurnUpdate{GoalRequested: true, EndExchange: true, Steer: &storage.TurnPrompt{Message: text}}, storage.UserMessageRecord(text, nil, nil))
 	}
-	if err := store.StartSessionTurn(thread.ID, storage.Turn{}); err != nil {
+	if err := steer("late"); err == nil {
+		t.Fatal("updated a thread without a running turn")
+	}
+	if err := store.StartSessionTurn(thread.ID, storage.Turn{Output: &storage.TurnOutput{Hops: 3}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"first", "second"} {
-		if err := store.SteerTurn(thread.ID, true, false, false, &storage.TurnPrompt{Message: text}, storage.UserMessageRecord(text, nil, nil)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := store.TakeTurnSteer(thread.ID); err != nil {
+	if _, err := store.db.Exec(`CREATE TRIGGER reject_message BEFORE INSERT ON messages WHEN NEW.content = 'rejected'
+		BEGIN SELECT RAISE(ABORT, 'rejected'); END`); err != nil {
 		t.Fatal(err)
+	}
+	if err := steer("rejected"); err == nil {
+		t.Fatal("update applied although its message was rejected")
 	}
 	stored, err := store.LoadSession(thread.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !stored.Turn.GoalRequested || len(stored.Turn.Steers) != 1 || stored.Turn.Steers[0].Message != "second" {
-		t.Fatalf("turn = %+v, want the goal and only the second steer kept", stored.Turn)
+	if stored.Turn.GoalRequested || stored.Turn.Output.Hops != 3 || len(stored.Turn.Steers) != 0 {
+		t.Fatalf("turn = %+v, want it untouched by the rejected update", stored.Turn)
+	}
+	for _, text := range []string{"first", "second", "third"} {
+		if err := steer(text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, keep := range []int{2, 2, 1} {
+		if err := store.KeepTurnSteers(thread.ID, keep); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err = store.LoadSession(thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.Turn.GoalRequested || stored.Turn.Output.Hops != 0 || len(stored.Turn.Steers) != 1 || stored.Turn.Steers[0].Message != "third" {
+		t.Fatalf("turn = %+v, want the goal, no hops and only the third steer kept", stored.Turn)
 	}
 	messages, err := store.LoadMessageRecords(thread.ID)
-	if err != nil || len(messages) != 2 || messages[0].Content != "first" || messages[1].Content != "second" {
+	if err != nil || len(messages) != 3 || messages[0].Content != "first" || messages[2].Content != "third" {
 		t.Fatalf("messages = %+v, %v", messages, err)
 	}
 }

@@ -32,6 +32,7 @@ type Querier interface {
 	// Bot activity is Jaz's note beside the agent's work, never the agent's own.
 	HasAgentTranscript(ctx context.Context, id string) (int64, error)
 	IsMainBot(ctx context.Context, threadID string) (bool, error)
+	KeepTurnSteers(ctx context.Context, arg KeepTurnSteersParams) error
 	ListChildSessions(ctx context.Context, arg ListChildSessionsParams) ([]Thread, error)
 	ListErrorThreadIDsWithoutError(ctx context.Context, status string) ([]string, error)
 	ListOverviewChildren(ctx context.Context, parentID sql.NullString) ([]ListOverviewChildrenRow, error)
@@ -55,7 +56,6 @@ type Querier interface {
 	SetTurnPromptState(ctx context.Context, arg SetTurnPromptStateParams) (int64, error)
 	SetTurnRetries(ctx context.Context, arg SetTurnRetriesParams) (int64, error)
 	StartSessionTurn(ctx context.Context, arg StartSessionTurnParams) error
-	TakeTurnSteer(ctx context.Context, id string) error
 	TouchSessionAttention(ctx context.Context, arg TouchSessionAttentionParams) error
 	TouchThread(ctx context.Context, arg TouchThreadParams) error
 	UpdateGoal(ctx context.Context, arg UpdateGoalParams) error

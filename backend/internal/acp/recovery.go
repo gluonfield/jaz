@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -27,9 +28,10 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 	req := SendRequest{Session: sessionID, Message: interruptedTurnContinuation, Completion: CompletionAsync}
 	opts := sendOptions{transcript: sendTranscriptHidden}
 	if session.Turn != nil {
-		// Messages steered into the turn that its agent never took in go on
-		// with the continuation, which redoing a compaction would hold back.
-		if session.Turn.ActiveOperation == ActiveOperationCompact && len(session.Turn.Steers) == 0 {
+		compacting := session.Turn.ActiveOperation == ActiveOperationCompact
+		// A compaction is redone unless messages steered into it wait. Those
+		// are sent alone instead: the agent compacts by itself when it must.
+		if compacting && len(session.Turn.Steers) == 0 {
 			_, err := m.Compact(ctx, CompactRequest{Session: sessionID})
 			return err
 		}
@@ -44,14 +46,22 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 		opts.owes = session.Turn.Owes
 		req.ParentOutput = session.Turn.ParentOutput
 		opts.retries = session.Turn.Retries
-		if unsent {
-			req.Message = session.Turn.Prompt.Message
+		// What the agent never took in goes on: the turn's prompt, unless it
+		// was sent, and the messages steered into the turn.
+		var parts []string
+		switch {
+		case compacting:
+		case unsent:
+			parts = []string{session.Turn.Prompt.Message}
 			req.Attachments = session.Turn.Prompt.Attachments
+		default:
+			parts = []string{interruptedTurnContinuation}
 		}
 		for _, steer := range session.Turn.Steers {
-			req.Message += "\n\n" + steer.Message
+			parts = append(parts, steer.Message)
 			req.Attachments = append(req.Attachments, steer.Attachments...)
 		}
+		req.Message = strings.Join(parts, "\n\n")
 	}
 	_, err = m.send(ctx, req, opts)
 	return err

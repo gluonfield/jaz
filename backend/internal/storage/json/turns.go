@@ -15,17 +15,8 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...stora
 	if err != nil {
 		return err
 	}
-	if len(messages) > 0 {
-		existing, err := s.loadMessages(id)
-		if err != nil {
-			return err
-		}
-		for _, message := range messages {
-			existing = append(existing, provider.UserMessage(message.Content))
-		}
-		if err := s.saveMessages(id, existing); err != nil {
-			return err
-		}
+	if err := s.appendUserMessagesLocked(id, messages); err != nil {
+		return err
 	}
 	if turn.StartedAt.IsZero() {
 		turn.StartedAt = time.Now().UTC()
@@ -35,6 +26,20 @@ func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...stora
 	session.Turn = &turn
 	storage.MarkSessionAttention(&session, turn.StartedAt)
 	return s.saveSession(session)
+}
+
+func (s *Store) appendUserMessagesLocked(id string, messages []storage.Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	existing, err := s.loadMessages(id)
+	if err != nil {
+		return err
+	}
+	for _, message := range messages {
+		existing = append(existing, provider.UserMessage(message.Content))
+	}
+	return s.saveMessages(id, existing)
 }
 
 func (s *Store) ClaimTurn(id string, turn storage.Turn) (bool, error) {
@@ -95,7 +100,7 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 	return s.saveSession(session)
 }
 
-func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyParent bool) error {
+func (s *Store) UpdateTurn(id string, update storage.TurnUpdate, messages ...storage.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, err := s.loadSessionByID(id)
@@ -105,51 +110,29 @@ func (s *Store) SetTurnIntent(id string, goalRequested, parentVisible, notifyPar
 	if session.Turn == nil || session.Status != storage.StatusRunning {
 		return fmt.Errorf("%s has no active turn", id)
 	}
-	session.Turn.GoalRequested = goalRequested
-	session.Turn.ParentVisible = parentVisible
-	session.Turn.NotifyParent = notifyParent
-	return s.saveSession(session)
-}
-
-func (s *Store) SteerTurn(id string, goalRequested, parentVisible, notifyParent bool, steer *storage.TurnPrompt, messages ...storage.Message) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	session, err := s.loadSessionByID(id)
-	if err != nil {
+	if err := s.appendUserMessagesLocked(id, messages); err != nil {
 		return err
 	}
-	if session.Turn == nil || session.Status != storage.StatusRunning {
-		return fmt.Errorf("%s has no active turn", id)
+	session.Turn.GoalRequested = update.GoalRequested
+	session.Turn.ParentVisible = update.ParentVisible
+	session.Turn.NotifyParent = update.NotifyParent
+	if update.EndExchange && session.Turn.Output != nil {
+		session.Turn.Output.Hops = 0
 	}
-	if len(messages) > 0 {
-		existing, err := s.loadMessages(id)
-		if err != nil {
-			return err
-		}
-		for _, message := range messages {
-			existing = append(existing, provider.UserMessage(message.Content))
-		}
-		if err := s.saveMessages(id, existing); err != nil {
-			return err
-		}
-	}
-	session.Turn.GoalRequested = goalRequested
-	session.Turn.ParentVisible = parentVisible
-	session.Turn.NotifyParent = notifyParent
-	if steer != nil {
-		session.Turn.Steers = append(session.Turn.Steers, *steer)
+	if update.Steer != nil {
+		session.Turn.Steers = append(session.Turn.Steers, *update.Steer)
 	}
 	return s.saveSession(session)
 }
 
-func (s *Store) TakeTurnSteer(id string) error {
+func (s *Store) KeepTurnSteers(id string, n int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, err := s.loadSessionByID(id)
-	if err != nil || session.Status != storage.StatusRunning || session.Turn == nil || len(session.Turn.Steers) == 0 {
+	if err != nil || session.Status != storage.StatusRunning || session.Turn == nil || len(session.Turn.Steers) <= n {
 		return err
 	}
-	session.Turn.Steers = session.Turn.Steers[1:]
+	session.Turn.Steers = session.Turn.Steers[len(session.Turn.Steers)-n:]
 	return s.saveSession(session)
 }
 
@@ -164,17 +147,6 @@ func (s *Store) SetTurnRetries(id string, retries int) error {
 		return fmt.Errorf("%s has no active turn", id)
 	}
 	session.Turn.Retries = retries
-	return s.saveSession(session)
-}
-
-func (s *Store) ResetTurnHops(id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	session, err := s.loadSessionByID(id)
-	if err != nil || session.Status != storage.StatusRunning || session.Turn == nil || session.Turn.Output == nil {
-		return err
-	}
-	session.Turn.Output.Hops = 0
 	return s.saveSession(session)
 }
 

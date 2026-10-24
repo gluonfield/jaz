@@ -637,7 +637,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				continue
 			}
 			if strings.Contains(string(msg.Params), "ask then block") {
-				fakeAskThenBlock(conn, msg)
+				fakeAskThenBlock(t, conn, msg)
 				continue
 			}
 			if strings.Contains(string(msg.Params), "block until cancelled") || os.Getenv("JAZ_FAKE_ACP_BLOCK_PROMPT") == "1" {
@@ -816,7 +816,7 @@ func fakeModeSupported(mode string) bool {
 	return false
 }
 
-func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
+func fakeAskThenBlock(t *testing.T, conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 	req, err := jsonrpc.NewRequest(json.RawMessage(`"fake-elicit-1"`), "elicitation/create", map[string]any{
 		"mode":      "form",
 		"sessionId": fakeSessionID,
@@ -854,6 +854,7 @@ func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 		if err != nil {
 			os.Exit(0)
 		}
+		logFakeACPRequest(t, next)
 		switch {
 		case next.Method == "session/cancel":
 			sendResult(conn, prompt, map[string]any{"stopReason": fakeCancelStopReason()})
@@ -862,6 +863,11 @@ func fakeAskThenBlock(conn jsonrpc.MessageConn, prompt *jsonrpc.Message) {
 			stop := "end_turn"
 			if os.Getenv("JAZ_FAKE_ACP_ELICIT_CANCEL_STOP") == "1" {
 				stop = "cancelled"
+			}
+			// The prompt ends a while after its question does, so the steers
+			// made meanwhile all wait for it.
+			if os.Getenv("JAZ_FAKE_ACP_ELICIT_STOP_DELAY") == "1" {
+				time.Sleep(200 * time.Millisecond)
 			}
 			sendResult(conn, prompt, map[string]any{"stopReason": stop})
 			parkedResolved = true

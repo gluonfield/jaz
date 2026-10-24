@@ -174,6 +174,24 @@ func (q *Queries) GetRunningTurn(ctx context.Context, id string) (string, error)
 	return turn, err
 }
 
+const keepTurnSteers = `-- name: KeepTurnSteers :exec
+UPDATE threads
+SET turn = json_set(turn, '$.steers', json((SELECT json_group_array(json(value)) FROM json_each(turn, '$.steers')
+    WHERE key >= json_array_length(turn, '$.steers') - CAST(?1 AS INTEGER))))
+WHERE id = ?2 AND status = 'running'
+  AND json_array_length(NULLIF(turn, ''), '$.steers') > CAST(?1 AS INTEGER)
+`
+
+type KeepTurnSteersParams struct {
+	Keep int64  `json:"keep"`
+	ID   string `json:"id"`
+}
+
+func (q *Queries) KeepTurnSteers(ctx context.Context, arg KeepTurnSteersParams) error {
+	_, err := q.db.ExecContext(ctx, keepTurnSteers, arg.Keep, arg.ID)
+	return err
+}
+
 const markTurnShown = `-- name: MarkTurnShown :exec
 UPDATE threads
 SET turn = json_set(turn, '$.output.shown', json('true'))
@@ -308,16 +326,5 @@ type StartSessionTurnParams struct {
 
 func (q *Queries) StartSessionTurn(ctx context.Context, arg StartSessionTurnParams) error {
 	_, err := q.db.ExecContext(ctx, startSessionTurn, arg.Turn, arg.StartedAtMs, arg.ID)
-	return err
-}
-
-const takeTurnSteer = `-- name: TakeTurnSteer :exec
-UPDATE threads
-SET turn = json_remove(turn, '$.steers[0]')
-WHERE id = ?1 AND status = 'running' AND json_array_length(NULLIF(turn, ''), '$.steers') > 0
-`
-
-func (q *Queries) TakeTurnSteer(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, takeTurnSteer, id)
 	return err
 }
