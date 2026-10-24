@@ -10,11 +10,11 @@
 @custom-variant focus-visible (&:focus-visible:where([data-keyboard-focus] *));
 
 @theme {
-  /* ground + surfaces — near-white paper with a trace of the cobalt hue;
+  /* ground + surfaces — near-white paper with a trace of the theme hue;
    * surfaces deepen as they come forward */
-  --color-bg: oklch(0.99 0.002 264);
-  --color-surface: oklch(0.965 0.004 264);
-  --color-surface-2: oklch(0.935 0.006 264);
+  --color-bg: oklch(0.99 0.002 var(--hue));
+  --color-surface: oklch(0.965 0.004 var(--hue));
+  --color-surface-2: oklch(0.935 0.006 var(--hue));
   /* The thread panel steps between the window chrome and the page. */
   --color-panel: color-mix(in oklab, var(--color-surface) 45%, var(--color-bg));
   --color-list-hover: color-mix(in oklab, var(--color-ink) 5%, transparent);
@@ -22,19 +22,19 @@
    * pointing at and the thread you are actually in look identical. */
   --color-list-active: color-mix(in oklab, var(--color-ink) 11%, transparent);
 
-  /* text hierarchy — cool-neutral, same hue as the brand */
-  --color-ink: oklch(0.23 0.012 264);
-  --color-ink-2: oklch(0.46 0.012 264);
-  --color-ink-3: oklch(0.55 0.01 264);
+  /* text hierarchy — near-neutral, same hue as the brand */
+  --color-ink: oklch(0.23 0.012 var(--hue));
+  --color-ink-2: oklch(0.46 0.012 var(--hue));
+  --color-ink-3: oklch(0.55 0.01 var(--hue));
 
-  /* brand — cobalt: the everyday accent (primary actions, selection, links,
-   * caret). Rainbow is reserved for live states; clay stays as the warm
-   * counterpoint (attention markers, mono syntax). A custom color scheme
-   * (Settings → Appearance) overrides this whole family via a generated
-   * stylesheet; untouched, these stock values rule. */
-  --color-primary: oklch(0.53 0.17 264);
-  --color-primary-strong: oklch(0.46 0.17 264);
-  --color-primary-soft: oklch(0.95 0.028 264);
+  /* brand — the theme's main hue: the everyday accent (primary actions,
+   * selection, links, caret). Graphite (no colours) turns it to ink.
+   * Lightness 0.5 keeps white text above 4.5:1 on every hue, cyans included.
+   * Rainbow is reserved for live states; clay stays as the warm counterpoint
+   * (attention markers, mono syntax). */
+  --color-primary: oklch(calc(0.27 + 0.23 * var(--tint)) calc(0.17 * var(--tint)) var(--hue));
+  --color-primary-strong: oklch(calc(0.2 + 0.23 * var(--tint)) calc(0.17 * var(--tint)) var(--hue));
+  --color-primary-soft: oklch(0.95 calc(0.028 * var(--tint)) var(--hue));
   /* the person's own messages in a chat */
   --color-bubble-sent: var(--color-primary-soft);
   /* text/icons that sit on a primary fill */
@@ -54,7 +54,7 @@
   /* A solid destructive fill, like ending a call: one vivid red in both themes. */
   --color-danger-solid: oklch(0.64 0.24 24);
 
-  --color-border: oklch(0.905 0.006 264);
+  --color-border: oklch(0.905 0.006 var(--hue));
 
   --font-sans: var(--jaz-ui-font, 'Inter Variable'), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--jaz-mono-font, 'JetBrains Mono Variable'), ui-monospace, 'SF Mono', monospace;
@@ -70,17 +70,27 @@
   --color-rainbow-5: oklch(0.55 0.18 300);
 }
 
+/* The colour theme (Settings → Appearance, lib/appearanceScheme.ts): the main
+ * hue every token takes a trace of, whether it is tinted at all (graphite is
+ * not), up to three linked wash hues for the window and how strongly they mix
+ * in, and the window grain. Stock is Cobalt; zero specificity lets the
+ * Appearance override win whichever stylesheet loads first. */
+:where(:root) {
+  --hue: 264;
+  --tint: 1;
+  --wash-1: 264;
+  --wash-2: 229;
+  --wash-3: 229;
+  --wash-mix: 40.8%;
+  --wash-3-mix: 0%;
+  --grain: 0;
+}
+
 :root {
   color-scheme: light;
 
-  /* The window behind the cards takes a two-tone wash of the accent
-   * (Settings → Appearance), the way Arc colours its window. Only the
-   * accent's hue is kept: it is evened out to one lightness and a minimum
-   * chroma, so muted or dark accents still read, and the second tone turns
-   * the hue a little for depth. */
-  --wash: oklch(from var(--color-primary) 0.62 max(c, 0.13) h);
-  --wash-2: oklch(from var(--color-primary) 0.62 max(c, 0.13) calc(h - 25));
-  --wash-strength: 22%;
+  /* The washes sit at one lightness per mode, so every hue reads. */
+  --wash-l: 0.8;
 
   --thread-max: 760px;
   --prose-max: 80ch;
@@ -159,23 +169,23 @@
 :root:where(.dark) {
   color-scheme: dark;
 
-  --color-bg: oklch(0.195 0.005 264);
-  --color-surface: oklch(0.235 0.006 264);
-  --color-surface-2: oklch(0.28 0.008 264);
-  --wash-strength: 24%;
+  --color-bg: oklch(0.195 0.005 var(--hue));
+  --color-surface: oklch(0.235 0.006 var(--hue));
+  --color-surface-2: oklch(0.28 0.008 var(--hue));
+  --wash-l: 0.46;
   --color-list-hover: color-mix(in oklab, var(--color-ink) 8%, transparent);
   --color-list-active: color-mix(in oklab, var(--color-ink) 16%, transparent);
 
-  --color-ink: oklch(0.95 0.003 264);
-  --color-ink-2: oklch(0.78 0.006 264);
-  --color-ink-3: oklch(0.64 0.008 264);
+  --color-ink: oklch(0.95 0.003 var(--hue));
+  --color-ink-2: oklch(0.78 0.006 var(--hue));
+  --color-ink-3: oklch(0.64 0.008 var(--hue));
 
-  --color-primary: oklch(0.72 0.14 264);
-  --color-primary-strong: oklch(0.8 0.12 264);
-  --color-primary-soft: oklch(0.32 0.06 264);
+  --color-primary: oklch(calc(0.92 - 0.2 * var(--tint)) calc(0.14 * var(--tint)) var(--hue));
+  --color-primary-strong: oklch(calc(0.98 - 0.18 * var(--tint)) calc(0.12 * var(--tint)) var(--hue));
+  --color-primary-soft: oklch(0.32 calc(0.06 * var(--tint)) var(--hue));
   /* The soft tint sinks into a dark ground; a sent message needs more primary to stand out. */
   --color-bubble-sent: color-mix(in oklab, var(--color-primary) 40%, var(--color-surface));
-  --color-on-primary: oklch(0.2 0.03 264);
+  --color-on-primary: oklch(0.2 calc(0.03 * var(--tint)) var(--hue));
   --color-selection: color-mix(in oklab, var(--color-primary) 38%, transparent);
   --color-accent: oklch(0.74 0.14 55);
   --color-accent-strong: oklch(0.8 0.12 55);
@@ -186,7 +196,7 @@
   --color-danger: oklch(0.7 0.18 25);
   --color-danger-soft: oklch(0.31 0.07 25);
 
-  --color-border: oklch(0.31 0.008 264);
+  --color-border: oklch(0.31 0.008 var(--hue));
 
   --shadow-raised: 0 18px 46px rgba(0, 0, 0, 0.18);
 
@@ -722,18 +732,54 @@ body {
   user-select: none;
 }
 
-/* macOS vibrancy: index.html adds .vibrant when running in the mac app. The
- * page goes transparent so the rail and thread list show the native
- * material through a weak surface tint under the accent wash; the cards stay
- * opaque. */
+/* Appearance theme tiles: a mini window in one mode's colours, whatever mode the app is in. */
+.theme-tile {
+  --chrome-ground: oklch(0.965 0.004 var(--hue));
+  --wash-l: 0.8;
+  background: var(--chrome-ground);
+}
+.theme-tile[data-mode='dark'] {
+  --chrome-ground: oklch(0.235 0.006 var(--hue));
+  --wash-l: 0.46;
+}
+
+/* The window behind the cards takes the theme's washes, the way Arc colours
+ * its window: two tones across it and, with three colours, a third rising
+ * from the corner. A film grain sits over the wash, under everything else.
+ * The Appearance theme tiles reuse the rule in each mode's colours. On macOS,
+ * index.html adds .vibrant: the page goes transparent so the rail and thread
+ * list show the native material through a weak surface tint under the wash;
+ * the cards stay opaque. */
 @media (width >= 40rem) {
   .app-chrome {
     --chrome-ground: var(--color-surface);
-    background: linear-gradient(
-      155deg,
-      color-mix(in oklab, var(--wash) var(--wash-strength), var(--chrome-ground)),
-      color-mix(in oklab, var(--wash-2) var(--wash-strength), var(--chrome-ground))
-    );
+    position: relative;
+    isolation: isolate;
+  }
+  .app-chrome,
+  .theme-tile {
+    background:
+      radial-gradient(
+        circle at 0% 100%,
+        color-mix(in oklab, oklch(var(--wash-l) 0.13 var(--wash-3)) var(--wash-3-mix), transparent),
+        transparent 70%
+      ),
+      linear-gradient(
+        155deg,
+        color-mix(in oklab, oklch(var(--wash-l) 0.13 var(--wash-1)) var(--wash-mix), var(--chrome-ground)),
+        color-mix(in oklab, oklch(var(--wash-l) 0.13 var(--wash-2)) var(--wash-mix), var(--chrome-ground))
+      );
+  }
+  .app-chrome::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: var(--grain);
+    /* Per-pixel random greys at low alpha, the way Arc and Zen do it: a fine
+     * film rather than visible specks. Opacity is the Grain setting. */
+    background-image: url('../assets/grain.png');
   }
   html.vibrant .app-chrome {
     --chrome-ground: color-mix(in oklab, var(--color-surface) 30%, transparent);

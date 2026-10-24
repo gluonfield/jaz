@@ -1,189 +1,119 @@
 import { useSyncExternalStore } from 'react'
-import { jazDefaults, type ColorSchemeConfig } from './jazDefaults'
+import { jazDefaults } from './jazDefaults'
 
-// A color scheme is four user-facing inputs per light/dark mode; every other
-// --color-* token (surfaces, ink ramp, borders, primary family) is *derived*
-// from these via color-mix so a scheme stays internally coherent. Mirrors the
-// Codex appearance model: accent / background / foreground / contrast.
-export interface ColorScheme {
-  accent: string
-  background: string
-  foreground: string
-  /** 0–100: how far surfaces/ink step away from the background */
-  contrast: number
-}
-
-export interface ModeSchemes {
-  light: ColorScheme
-  dark: ColorScheme
+// The colour theme: up to three linked hues that wash the window, how strongly,
+// and a film grain over it. globals.css derives every token from the CSS
+// variables this emits, at lightness steps tuned per mode, so text, cards and
+// buttons always match whatever colour is picked.
+export interface ColorTheme {
+  hue: number
+  /** 0 is graphite (untinted); 1–3 linked colours */
+  colors: number
+  /** 0.1–1: how strongly the colours wash the window */
+  strength: number
+  /** 0–100 */
+  grain: number
 }
 
 export interface ThemePreset {
   id: string
   label: string
-  light: ColorScheme
-  dark: ColorScheme
+  hue: number
+  colors: number
+  strength: number
 }
 
-const scheme = (accent: string, background: string, foreground: string, contrast: number): ColorScheme => ({
-  accent,
-  background,
-  foreground,
-  contrast,
-})
-
-// Named example schemes. Each carries a light and dark variant; the per-mode
-// preset pickers apply the matching variant to that mode only. The first entry
-// ("Jaz") is the default — equal to it, schemeCss emits no override, so the
-// stock globals.css tokens rule. "Codex" is the exact stock chrome theme from
-// ChatGPT.app (surface/ink/accent/contrast); paste a Copy theme string for any
-// custom Codex combination.
+// The first entry is the stock look: equal to it, colorCss emits nothing and
+// the globals.css defaults rule.
 export const THEME_PRESETS: readonly ThemePreset[] = [
-  { id: 'jaz', label: 'Jaz', light: scheme('#3764cd', '#fbfcfd', '#1a1d23', 35), dark: scheme('#77a2fc', '#141517', '#edeef0', 55) },
-  // Exact defaults reverse-engineered from Codex desktop chromeTheme he.light/he.dark.
-  { id: 'codex', label: 'Codex', light: scheme('#339cff', '#ffffff', '#1a1c1f', 45), dark: scheme('#339cff', '#181818', '#ffffff', 60) },
-  // Explicit chrome seeds from Codex code themes (ChatGPT.app asar).
-  { id: 'ayu', label: 'Ayu', light: scheme('#f29718', '#fcfcfc', '#5c6166', 45), dark: scheme('#e6b450', '#10141c', '#bfbdb6', 60) },
-  { id: 'linear', label: 'Linear', light: scheme('#5e6ad2', '#fcfcfd', '#1b1b1b', 45), dark: scheme('#606acc', '#0f0f11', '#e3e4e6', 60) },
-  { id: 'raycast', label: 'Raycast', light: scheme('#ff6363', '#ffffff', '#030303', 45), dark: scheme('#ff6363', '#101010', '#fefefe', 60) },
-  { id: 'vercel', label: 'Vercel', light: scheme('#006aff', '#ffffff', '#171717', 40), dark: scheme('#006efe', '#000000', '#ededed', 50) },
-  { id: 'catppuccin', label: 'Catppuccin', light: scheme('#8839ef', '#eff1f5', '#4c4f69', 45), dark: scheme('#cba6f7', '#1e1e2e', '#cdd6f4', 55) },
-  { id: 'github', label: 'GitHub', light: scheme('#0969da', '#ffffff', '#1f2328', 42), dark: scheme('#2f81f7', '#0d1117', '#e6edf3', 52) },
-  { id: 'gruvbox', label: 'Gruvbox', light: scheme('#af3a03', '#fbf1c7', '#3c3836', 50), dark: scheme('#fe8019', '#282828', '#ebdbb2', 55) },
-  { id: 'rose-pine', label: 'Rosé Pine', light: scheme('#907aa9', '#faf4ed', '#575279', 45), dark: scheme('#c4a7e7', '#191724', '#e0def4', 55) },
-  { id: 'solarized', label: 'Solarized', light: scheme('#268bd2', '#fdf6e3', '#586e75', 40), dark: scheme('#268bd2', '#002b36', '#93a1a1', 50) },
-  { id: 'nord', label: 'Nord', light: scheme('#5e81ac', '#eceff4', '#2e3440', 45), dark: scheme('#88c0d0', '#2e3440', '#eceff4', 50) },
-  { id: 'tokyo-night', label: 'Tokyo Night', light: scheme('#34548a', '#d5d6db', '#343b58', 45), dark: scheme('#7aa2f7', '#1a1b26', '#c0caf5', 55) },
-  { id: 'everforest', label: 'Everforest', light: scheme('#8da101', '#fdf6e3', '#5c6a72', 45), dark: scheme('#a7c080', '#2d353b', '#d3c6aa', 50) },
-  { id: 'one', label: 'One', light: scheme('#4078f2', '#fafafa', '#383a42', 45), dark: scheme('#61afef', '#282c34', '#abb2bf', 50) },
-] as const
+  { id: 'cobalt', label: 'Cobalt', hue: 264, colors: 2, strength: 0.6 },
+  { id: 'ocean', label: 'Ocean', hue: 205, colors: 2, strength: 0.6 },
+  { id: 'forest', label: 'Forest', hue: 150, colors: 2, strength: 0.55 },
+  { id: 'sand', label: 'Sand', hue: 82, colors: 2, strength: 0.55 },
+  { id: 'ember', label: 'Ember', hue: 48, colors: 2, strength: 0.6 },
+  { id: 'rose', label: 'Rose', hue: 355, colors: 2, strength: 0.55 },
+  { id: 'aurora', label: 'Aurora', hue: 165, colors: 3, strength: 0.6 },
+  { id: 'graphite', label: 'Graphite', hue: 264, colors: 0, strength: 0.6 },
+]
 
-export const DEFAULT_SCHEME: ModeSchemes = { light: THEME_PRESETS[0].light, dark: THEME_PRESETS[0].dark }
+export const MAX_COLORS = 3
 
-const isHex = (v: unknown): v is string => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)
+// The colours are linked: one main hue, the others at fixed turns from it.
+export function linkedHues(hue: number, colors: number): number[] {
+  return [[], [hue], [hue, hue - 35], [hue, hue + 50, hue - 50]][colors]
+}
 
-function mergeScheme(base: ColorScheme, c?: ColorSchemeConfig): ColorScheme {
-  if (!c) return base
+const fromPreset = ({ hue, colors, strength }: ThemePreset): ColorTheme => ({ hue, colors, strength, grain: 0 })
+
+const STOCK = fromPreset(THEME_PRESETS[0])
+
+export const sameTheme = (a: ColorTheme, b: ColorTheme): boolean =>
+  a.hue === b.hue && a.colors === b.colors && a.strength === b.strength && a.grain === b.grain
+
+export const presetMatches = (preset: ThemePreset, theme: ColorTheme): boolean =>
+  preset.colors === theme.colors && (!preset.colors || (preset.hue === theme.hue && preset.strength === theme.strength))
+
+const inRange = (value: unknown, min: number, max: number, fallback: number): number =>
+  typeof value === 'number' && value >= min && value <= max ? value : fallback
+
+// Loose input (the deploy config, stored JSON) folded onto a base.
+function parseTheme(raw: Partial<Record<keyof ColorTheme, unknown>> | undefined, base: ColorTheme): ColorTheme {
   return {
-    accent: isHex(c.accent) ? c.accent.toLowerCase() : base.accent,
-    background: isHex(c.background) ? c.background.toLowerCase() : base.background,
-    foreground: isHex(c.foreground) ? c.foreground.toLowerCase() : base.foreground,
-    contrast:
-      typeof c.contrast === 'number' && c.contrast >= 0 && c.contrast <= 100 ? c.contrast : base.contrast,
+    hue: inRange(raw?.hue, 0, 360, base.hue),
+    colors: Math.round(inRange(raw?.colors, 0, MAX_COLORS, base.colors)),
+    strength: inRange(raw?.strength, 0.1, 1, base.strength),
+    grain: inRange(raw?.grain, 0, 100, base.grain),
   }
 }
 
-// The deployment default scheme from the build-time config (jaz-defaults.js):
-// an optional named preset, then per-mode color overrides, falling back to the
-// Jaz default. The user's own choices layer on top of this.
-const CONFIG_BASE: ModeSchemes = (() => {
-  const cfg = jazDefaults().scheme
-  if (!cfg) return DEFAULT_SCHEME
-  const base = (cfg.preset && THEME_PRESETS.find((p) => p.id === cfg.preset)) || DEFAULT_SCHEME
-  return { light: mergeScheme(base.light, cfg.light), dark: mergeScheme(base.dark, cfg.dark) }
+// The deployment default from jaz-defaults.js: an optional named preset with
+// individual values over it. The user's own choice layers on top.
+const CONFIG_BASE: ColorTheme = (() => {
+  const cfg = jazDefaults().color
+  const preset = THEME_PRESETS.find((p) => p.id === cfg?.preset)
+  return parseTheme(cfg, preset ? fromPreset(preset) : STOCK)
 })()
 
-// --- derivation -----------------------------------------------------------
-
-const mix = (toward: string, amount: number, base: string): string =>
-  `color-mix(in oklab, ${toward} ${amount.toFixed(1)}%, ${base})`
-
-// sRGB relative luminance, to choose readable text on an accent fill.
-function luminance(hex: string): number {
-  const h = hex.replace('#', '')
-  const v = h.length === 3 ? h.replace(/./g, (c) => c + c) : h
-  const ch = (i: number) => {
-    const c = parseInt(v.slice(i, i + 2), 16) / 255
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+// The CSS variables globals.css derives every colour from. One colour gets a
+// second, slightly turned tone so the window still has depth; graphite washes
+// nothing.
+export function colorCss(c: ColorTheme): string {
+  if (sameTheme(c, STOCK)) return ''
+  const [h1 = c.hue, h2 = h1 - 18, h3] = linkedHues(c.hue, c.colors)
+  const wash = c.colors ? Math.round(120 + c.strength * 480) / 10 : 0
+  const vars = {
+    '--hue': c.hue,
+    '--tint': c.colors ? 1 : 0,
+    '--wash-1': h1,
+    '--wash-2': h2,
+    '--wash-3': h3 ?? h2,
+    '--wash-mix': `${wash}%`,
+    '--wash-3-mix': `${h3 === undefined ? 0 : wash}%`,
+    '--grain': c.grain / 100,
   }
-  return 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4)
-}
-
-// Pragmatic luminance threshold: above ~0.34 the accent is light enough to need
-// dark text (amber, light cyans, pastel blues), while saturated mid-tone blues
-// and reds keep the conventional white text — Codex #339cff and Raycast #ff6363
-// sit at 0.31–0.32. (Pure WCAG crossover 0.179 over-darkens blues.)
-const onColor = (hex: string): string => (luminance(hex) > 0.34 ? '#10131a' : '#ffffff')
-
-// Map a scheme to the --color-* token set. Surfaces step from the background
-// toward the foreground; the ink ramp steps from the foreground toward the
-// background; contrast scales the step magnitude. Status colors are not
-// scheme inputs: the per-mode stock tokens in globals.css stay in force.
-function tokens(c: ColorScheme, mode: keyof ModeSchemes): Record<string, string> {
-  const { accent, background: bg, foreground: fg } = c
-  const k = 0.6 + (c.contrast / 100) * 0.8
-  const step = (p: number) => Math.min(60, p * k)
-  // The clay accent family mirrors primary in a custom scheme (one accent).
-  const strong = mix(fg, 16, accent)
-  // A dark ground swallows a light tint, so the soft fill needs more accent there.
-  const soft = mix(accent, mode === 'dark' ? 24 : 14, bg)
-  return {
-    bg,
-    surface: mix(fg, step(5), bg),
-    'surface-2': mix(fg, step(10), bg),
-    border: mix(fg, step(16), bg),
-    ink: fg,
-    'ink-2': mix(bg, step(26), fg),
-    'ink-3': mix(bg, step(40), fg),
-    primary: accent,
-    'primary-strong': strong,
-    'primary-soft': soft,
-    'on-primary': onColor(accent),
-    accent,
-    'accent-strong': strong,
-    'accent-soft': soft,
-  }
-}
-
-const block = (c: ColorScheme, mode: keyof ModeSchemes): string =>
-  Object.entries(tokens(c, mode))
-    .map(([k, v]) => `--color-${k}:${v}`)
-    .join(';')
-
-export const sameScheme = (a: ColorScheme, b: ColorScheme): boolean =>
-  a.accent === b.accent &&
-  a.background === b.background &&
-  a.foreground === b.foreground &&
-  a.contrast === b.contrast
-
-// Emit a token block only for a mode the user has actually changed, so editing
-// light leaves dark on the stock globals.css tokens (and vice versa). Stock in
-// both modes yields '' — no override at all.
-export function schemeCss(m: ModeSchemes): string {
-  const parts: string[] = []
-  if (!sameScheme(m.light, DEFAULT_SCHEME.light)) parts.push(`:root{${block(m.light, 'light')}}`)
-  if (!sameScheme(m.dark, DEFAULT_SCHEME.dark)) parts.push(`:root.dark{${block(m.dark, 'dark')}}`)
-  return parts.join('\n')
+  return `:root{${Object.entries(vars).map(([k, v]) => `${k}:${v}`).join(';')}}`
 }
 
 // --- store -----------------------------------------------------------------
 
-const KEY = 'jaz.appearance.scheme'
-// The derived CSS, cached so the pre-paint script in index.html can replay it
-// without re-running the derivation in vanilla JS.
+const KEY = 'jaz.appearance.color'
+// The CSS, cached so the pre-paint script in index.html can replay it.
 const CSS_KEY = 'jaz.appearance.themeCss'
 const STYLE_ID = 'jaz-theme-overrides'
 
 const listeners = new Set<() => void>()
 
-function readStored(): ModeSchemes {
+function readStored(): ColorTheme {
   try {
     const raw = localStorage.getItem(KEY)
-    if (!raw) return CONFIG_BASE
-    const p = JSON.parse(raw) as Partial<ModeSchemes>
-    return {
-      light: { ...CONFIG_BASE.light, ...p.light },
-      dark: { ...CONFIG_BASE.dark, ...p.dark },
-    }
+    return raw ? parseTheme(JSON.parse(raw), CONFIG_BASE) : CONFIG_BASE
   } catch {
     return CONFIG_BASE
   }
 }
 
-let current: ModeSchemes = readStored()
+let current = readStored()
 
-// Sync the injected <style> to the given CSS (empty ⇒ remove it). Stock keeps
-// the hand-tuned globals.css tokens exactly, since no override is emitted.
 function render(css: string) {
   const existing = document.getElementById(STYLE_ID)
   if (!css) {
@@ -196,55 +126,49 @@ function render(css: string) {
   if (!existing) document.head.appendChild(el)
 }
 
-function commit(next: ModeSchemes) {
-  current = next
-  // The user's override layers over the deployment base (CONFIG_BASE) per mode:
-  // a mode left at the base is not stored, so it keeps tracking the base when
-  // the stock theme changes. The derived CSS (vs the Jaz stock tokens) is
-  // cached separately for the pre-paint script.
-  const stored = {
-    light: sameScheme(next.light, CONFIG_BASE.light) ? undefined : next.light,
-    dark: sameScheme(next.dark, CONFIG_BASE.dark) ? undefined : next.dark,
-  }
-  if (stored.light || stored.dark) localStorage.setItem(KEY, JSON.stringify(stored))
-  else localStorage.removeItem(KEY)
-  const css = schemeCss(next)
+function cache(css: string) {
   if (css) localStorage.setItem(CSS_KEY, css)
   else localStorage.removeItem(CSS_KEY)
+}
+
+function commit(next: ColorTheme) {
+  current = next
+  // A theme left at the deployment base is not stored, so it keeps tracking the base.
+  if (sameTheme(next, CONFIG_BASE)) localStorage.removeItem(KEY)
+  else localStorage.setItem(KEY, JSON.stringify(next))
+  const css = colorCss(next)
+  cache(css)
   render(css)
   for (const l of listeners) l()
 }
 
-export function getScheme(): ModeSchemes {
+export function getColorTheme(): ColorTheme {
   return current
 }
 
-export function setMode(mode: keyof ModeSchemes, patch: Partial<ColorScheme>) {
-  commit({ ...current, [mode]: { ...current[mode], ...patch } })
+export function setColorTheme(patch: Partial<ColorTheme>) {
+  commit({ ...current, ...patch })
 }
 
-export function applyPreset(mode: keyof ModeSchemes, preset: ThemePreset) {
-  commit({ ...current, [mode]: { ...preset[mode] } })
+export function applyPreset(preset: ThemePreset) {
+  commit({ ...fromPreset(preset), grain: current.grain })
 }
 
-export function resetScheme() {
+export function resetColorTheme() {
   commit(CONFIG_BASE)
 }
 
 window.addEventListener('storage', (event) => {
   if (event.storageArea !== localStorage || event.key !== KEY) return
   current = readStored()
-  render(schemeCss(current))
+  render(colorCss(current))
   for (const l of listeners) l()
 })
 
-// Reconcile both the cached CSS and the live <style> with the current
-// derivation of the stored scheme. Refreshing the cache here keeps the
-// pre-paint script accurate across derivation changes (the script already
-// injected the previous CSS for first paint).
-const initialCss = schemeCss(current)
-if (initialCss) localStorage.setItem(CSS_KEY, initialCss)
-else localStorage.removeItem(CSS_KEY)
+// Refresh the cache from the stored theme so the pre-paint script stays
+// accurate across builds (it already replayed the previous CSS for first paint).
+const initialCss = colorCss(current)
+cache(initialCss)
 render(initialCss)
 
 function subscribe(fn: () => void) {
@@ -254,6 +178,6 @@ function subscribe(fn: () => void) {
   }
 }
 
-export function useScheme() {
-  return useSyncExternalStore(subscribe, getScheme)
+export function useColorTheme() {
+  return useSyncExternalStore(subscribe, getColorTheme)
 }

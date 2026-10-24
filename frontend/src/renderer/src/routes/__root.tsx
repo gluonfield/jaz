@@ -289,7 +289,9 @@ function RootLayout() {
     />
   )
   // Settings covers the page, so the page's own title and actions go too.
-  const titleRow = settingsOpen ? null : (
+  const titleRow = settingsOpen ? (
+    <span className="ml-3 text-[13px] font-medium text-ink-2">Settings</span>
+  ) : (
     <>
       <div id="titlebar-slot" className="relative z-shell ml-3 flex min-w-0 flex-1 items-center gap-1.5">
         <TitlebarSlotOutlet />
@@ -357,7 +359,8 @@ function RootLayout() {
               <div className="relative flex min-w-0 flex-1 overflow-hidden bg-bg sm:mr-2 sm:mb-2 sm:rounded-[14px] sm:shadow-[var(--shadow-raised)] sm:ring-1 sm:ring-border/80 sm:[--titlebar-height:2.5rem]">
                 {!isMobile && (
                   <div
-                    className={`titlebar-drag absolute inset-x-0 top-0 z-shell flex h-10 items-center bg-gradient-to-b to-transparent pr-3 pl-2 ${onBoard ? 'from-surface' : 'from-bg'} from-60%`}
+                    // Settings sits below the row, so nothing should show through it there.
+                    className={`titlebar-drag absolute inset-x-0 top-0 z-shell flex h-10 items-center pr-3 pl-2 ${settingsOpen ? 'bg-bg' : `bg-gradient-to-b to-transparent from-60% ${onBoard ? 'from-surface' : 'from-bg'}`}`}
                   >
                     {navigation}
                     {titleRow}

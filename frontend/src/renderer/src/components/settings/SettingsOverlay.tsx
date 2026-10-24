@@ -1,6 +1,6 @@
 import { ArrowLeft, PanelLeft } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { BackendSwitcher } from '@/components/connection/BackendSwitcher'
 import { SearchField } from '@/components/ui/SearchField'
 import { dismissOnEmptyTap } from '@/lib/dom/drawer'
@@ -147,26 +147,33 @@ export function SettingsOverlay({
             </div>
 
             <nav className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-3 pb-2.5">
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const Icon = item.icon
                 const selected = item.id === current.id
+                const heading = item.group !== items[index - 1]?.group ? item.group : undefined
                 return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => {
-                      onSectionChange(item.id)
-                      if (isMobile) setNavOpen(false)
-                    }}
-                    className={`flex items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[13px] transition-colors duration-150 max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px] ${
-                      selected
-                        ? 'bg-primary-soft font-medium text-ink'
-                        : 'text-ink-2 hover:bg-surface-2 hover:text-ink'
-                    }`}
-                  >
-                    <Icon size={15} className={`max-sm:size-[18px] ${selected ? 'text-ink' : 'text-ink-3'}`} />
-                    <span className="flex-1">{item.label}</span>
-                  </button>
+                  <Fragment key={item.id}>
+                    {heading ? (
+                      <p className="px-2.5 pb-1 pt-3 text-[11.5px] font-medium text-ink-3 max-sm:px-3 max-sm:text-[13px]">
+                        {heading}
+                      </p>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSectionChange(item.id)
+                        if (isMobile) setNavOpen(false)
+                      }}
+                      className={`flex items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[13px] transition-colors duration-150 max-sm:gap-2.5 max-sm:px-3 max-sm:py-2.5 max-sm:text-[15px] ${
+                        selected
+                          ? 'bg-list-active font-medium text-ink'
+                          : 'text-ink-2 hover:bg-list-hover hover:text-ink'
+                      }`}
+                    >
+                      <Icon size={15} className={`max-sm:size-[18px] ${selected ? 'text-ink' : 'text-ink-3'}`} />
+                      <span className="flex-1">{item.label}</span>
+                    </button>
+                  </Fragment>
                 )
               })}
               {items.length === 0 ? (
