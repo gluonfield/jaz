@@ -188,6 +188,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const wasDark = document.documentElement.classList.contains('dark')
   const dark = (on: boolean) => document.documentElement.classList.toggle('dark', on)
   const editor = () => document.querySelector<HTMLElement>('[role="dialog"] .ProseMirror')
+  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] [role="img"]')].map((node) => node.getAttribute('aria-label'))
 
   try {
     dark(false)
@@ -196,15 +197,15 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
     for (const state of ['Working', 'Result in', 'Stalled', 'Waiting on prerequisites', 'Waiting on you', 'A thread failed']) {
-      if (!document.querySelector('section[aria-label="Tasks"]')?.textContent?.includes(state)) {
+      if (!taskStates().includes(state)) {
         throw new Error(`Bot panel: Tasks does not say "${state}"`)
       }
     }
-    const detailOf = (title: string) => find(title)?.querySelectorAll('span')[1]
-    if (!detailOf('Compare the supplier quotes')?.classList.contains('text-danger') || detailOf('Overnight stress run')?.classList.contains('text-danger')) {
+    const indicatorOf = (title: string) => find(title)?.querySelector('[role="img"]')
+    if (!indicatorOf('Compare the supplier quotes')?.classList.contains('bg-danger') || indicatorOf('Overnight stress run')?.classList.contains('bg-danger')) {
       throw new Error('Bot panel: a stalled commitment is not marked as a problem, or a waiting one is')
     }
-    const title = find(owed[0].request)?.querySelector('span')
+    const title = find(owed[0].request)?.querySelector('span.truncate')
     if (!title || title.getBoundingClientRect().height > parseFloat(getComputedStyle(title).lineHeight) + 1 || !title.classList.contains('truncate')) {
       throw new Error('Bot panel: a long task title expands the compact activity row')
     }
@@ -215,6 +216,12 @@ export async function exerciseBotPanel(): Promise<void> {
     await window.smoke.resize(390, 844)
     await capture('bot-panel-tasks-phone')
     const tasks = document.querySelector<HTMLElement>('section[aria-label="Tasks"]')!
+    for (const task of owed) {
+      const row = find(task.request)!
+      if (row.textContent !== task.request || row.getBoundingClientRect().height > 42) {
+        throw new Error('Bot panel: a task row shows a subtitle or body instead of one compact title')
+      }
+    }
     if (tasks.textContent?.includes('Next:') || tasks.textContent?.includes('For you')) {
       throw new Error('Bot panel: task rows repeat work details instead of showing compact labels and status')
     }
@@ -403,9 +410,9 @@ export async function exerciseBotPanel(): Promise<void> {
     for (const motion of [{ threads: [{ id: 'background-worker', title: 'Report worker', state: 'background' as const }] }, { moving: true }]) {
       owed.splice(0, owed.length, { id: 8, request: 'Deliver the report', status: 'in_progress', opened_at: minutes(1), next: 'Check the report', ...motion })
       await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-      await until('the moving task did not appear', () => document.querySelector('section[aria-label="Tasks"]')?.textContent?.includes('Working') ?? false)
+      await until('the moving task did not appear', () => taskStates().includes('Working'))
       owed[0].status = 'waiting_for_user'
-      await until('a moving task waited longer than the active polling interval to refresh', () => document.querySelector('section[aria-label="Tasks"]')?.textContent?.includes('Waiting on you') ?? false)
+      await until('a moving task waited longer than the active polling interval to refresh', () => taskStates().includes('Waiting on you'))
     }
   } finally {
     dark(wasDark)
