@@ -12,7 +12,7 @@ Scope: Jaz `c3a9633c`, iOS `2c9ec63`, extension `302a009`. Applied thermo-nuclea
 
 Regression tests reproduced the first five findings before correction. Verification: full Go 1.26 suite/vet/build, focused race checks, 391 frontend tests/typecheck/lint/builds, 13 iOS tests/build. Hidden simulator checks recorded zero windows/focus.
 
-Extension patch preserves existing WIP. iOS `28d500e` is pushed. Native comparison is complete below; coordinated backend/desktop activation remains open.
+Extension patch preserves existing WIP. iOS `28d500e` is pushed. Native comparison is complete below. Core merged into main9b46bde7 and backend/desktop activation is verified; the composed extension checkout update and physical-phone installation remain unverified.
 
 Approved native verification completed on the installed runtimes: Codex 0.162.1 / ACP 2.2.2-jaz.3 and Claude 2.1.300 / ACP 0.93.0-jaz.3. Both use subscription OAuth in isolated homes without usable refresh-token copies. Authenticated MCP works initially and after server restart; reload and manual compaction preserve all four markers.
 
@@ -20,4 +20,4 @@ The comparison exposed an existing Codex override that removed native goal tools
 
 Claude uses Opus 5.5 and a 1,000,000-token context. The native system prefix is preserved, and no native tool is missing. Existing CLI/SDK Bash and Monitor definitions differ; SDK core definitions match the previous same-version control. Two dynamic MCP model schemas differ. First requests contain two messages (128,677 native / 157,580 Jaz bytes); both use two main requests, with two SDK auxiliary requests in Jaz. Jaz's system additions and MCP tools explain the larger payloads.
 
-Real login/refresh, physical-phone installation and automatic-compaction threshold timing remain unverified by this bounded security run. Private request/rollout evidence and extracted metrics: `runs/connection-security/native-checks/RESULTS.json`. Live activation remains separate from these successful checks.
+Real login/refresh, physical-phone installation and automatic-compaction threshold timing remain unverified by this bounded security run. Private request/rollout evidence and extracted metrics: `runs/connection-security/native-checks/RESULTS.json`. Subsequent core activation passed local/tunnel authentication and six-account credential migration checks; see the request ledger.
