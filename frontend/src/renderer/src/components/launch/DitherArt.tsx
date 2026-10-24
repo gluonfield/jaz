@@ -98,20 +98,53 @@ const GRAIN_EPOCH_MS = 150
 // the order and the waiting place say what the step is about.
 export type Entrance = (x: number, y: number, cols: number, rows: number) => { x: number; y: number; at: number }
 
-const IN_PLACE: Entrance = (x, y) => ({ x, y, at: 0 })
-
-// A new silhouette under the same buildKey is built from the old one's dots:
-// they gather at the new mark's waiting places, then fly home in its entrance
+// With an entrance, a new silhouette is built from the old one's dots: they
+// gather at the new mark's waiting places, then fly home in its entrance
 // order and overshoot a little. Spare old dots burst outward and fade; new
-// dots without an old one fade in where they wait. Starts after `delay`.
+// dots without an old one fade in where they wait.
 const MORPH_GATHER = 0.3
 const MORPH_SPREAD = 0.35
 const MORPH_FLIGHT = 0.4
+export const MORPH_SECONDS = MORPH_GATHER + MORPH_SPREAD + MORPH_FLIGHT
 
 const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const overshoot = (t: number) => 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
+
+type Place = (d: Dot, x: number, y: number, alpha: number) => void
+
+// The morph as a painter of second `t`; it reports whether it is still moving.
+// Its last frame is the new art itself.
+function morph(from: Dot[], to: Dot[], enter: Entrance, cols: number, rows: number, place: Place) {
+  const old = from.filter((d) => !d.ambient).sort((a, b) => a.x - b.x)
+  const flights = to
+    .filter((d) => !d.ambient)
+    .map((d) => ({ d, wait: enter(d.x, d.y, cols, rows) }))
+    .sort((a, b) => a.wait.x - b.wait.x)
+    .map((f, i, all) => ({ ...f, source: old.length ? old[Math.floor((i * old.length) / all.length)] : undefined }))
+  const paired = new Set(flights.map((f) => f.source))
+  const spare = old.filter((d) => !paired.has(d))
+  const dust = to.filter((d) => d.ambient)
+  return (t: number) => {
+    const gather = easeInOut(clamp01(t / MORPH_GATHER))
+    for (const d of dust) place(d, d.x, d.y, d.alpha)
+    for (const d of spare) place(d, d.x + (d.x - cols / 2) * gather, d.y + (d.y - rows / 2) * gather, d.alpha * (1 - gather))
+    for (const { d, wait, source } of flights) {
+      const gathering = t < MORPH_GATHER
+      const [a, b] = gathering ? [source ?? wait, wait] : [wait, d]
+      const k = gathering ? gather : overshoot(clamp01((t - MORPH_GATHER - wait.at * MORPH_SPREAD) / MORPH_FLIGHT))
+      place(d, a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, source ? d.alpha : d.alpha * gather)
+    }
+    return t < MORPH_SECONDS
+  }
+}
+
+// The canvas footprint in CSS pixels: `cols × rows` cells, less the trailing gap.
+export const ditherSize = (cols: number, rows: number, dot = 3, gap = 1) => ({
+  width: cols * (dot + gap) - gap,
+  height: rows * (dot + gap) - gap,
+})
 
 // Boot art plays its dissolve once per process. The launch screen, the
 // onboarding gate, and the onboarding screen each mount their own canvases;
@@ -128,7 +161,7 @@ export function DitherArt({
   waitForFonts = false,
   buildKey,
   label,
-  enter = IN_PLACE,
+  enter,
 }: {
   draw: Silhouette
   cols: number
@@ -142,7 +175,7 @@ export function DitherArt({
   enter?: Entrance
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const shown = useRef<{ draw: Silhouette; buildKey?: string; cols: number; rows: number; dots: Dot[] }>(undefined)
+  const shown = useRef<{ draw: Silhouette; dots: Dot[] }>(undefined)
   const effects = useEffectsEnabled()
   const reduced = useReducedMotion()
   const animate = effects && !reduced
@@ -151,8 +184,7 @@ export function DitherArt({
   const color = useColorTheme()
 
   const pitch = dot + gap
-  const width = cols * pitch - gap
-  const height = rows * pitch - gap
+  const { width, height } = ditherSize(cols, rows, dot, gap)
 
   // Layout effect so a remount of already-built art paints before the browser
   // does — an effect-timed paint leaves one blank frame, which reads as a blink.
@@ -174,7 +206,7 @@ export function DitherArt({
       const palette = readPalette()
       const dots = sample(draw, cols, rows, palette)
       const previous = shown.current
-      shown.current = { draw, buildKey, cols, rows, dots }
+      shown.current = { draw, dots }
 
       const paintDot = (d: Dot, color: string, alpha: number) => {
         ctx.clearRect(d.x * pitch, d.y * pitch, dot, dot)
@@ -183,18 +215,19 @@ export function DitherArt({
         ctx.fillRect(d.x * pitch, d.y * pitch, dot, dot)
       }
 
-      const paintRange = (from: number, to: number) => {
-        for (let i = from; i < to; i++) {
-          const d = dots[i]
-          ctx.globalAlpha = d.alpha
-          ctx.fillStyle = d.color
-          ctx.fillRect(d.x * pitch, d.y * pitch, dot, dot)
-        }
+      const place: Place = (d, x, y, alpha) => {
+        ctx.globalAlpha = alpha
+        ctx.fillStyle = d.color
+        ctx.fillRect(Math.round(x) * pitch, Math.round(y) * pitch, dot, dot)
+      }
+
+      const paint = (list: Dot[]) => {
+        for (const d of list) place(d, d.x, d.y, d.alpha)
         ctx.globalAlpha = 1
       }
 
       if (!animate) {
-        paintRange(0, dots.length)
+        paint(dots)
         return
       }
 
@@ -217,76 +250,45 @@ export function DitherArt({
         ctx.globalAlpha = 1
       }
 
-      const morphs = previous && previous.draw !== draw && previous.buildKey === buildKey
-      if (morphs && previous.cols === cols && previous.rows === rows) {
-        const byX = <T extends { x: number }>(list: T[]) => list.sort((a, b) => a.x - b.x)
-        const from = byX(previous.dots.filter((d) => !d.ambient))
-        const flights = byX(dots.filter((d) => !d.ambient).map((d) => ({ d, ...enter(d.x, d.y, cols, rows) })))
-        const sources = flights.map((_, i) => from[Math.floor((i * from.length) / flights.length)])
-        const paired = new Set(sources)
-        const spare = from.filter((d) => !paired.has(d))
-        const dust = dots.filter((d) => d.ambient)
-        const place = (d: Dot, x: number, y: number, alpha: number) => {
-          ctx.globalAlpha = alpha
-          ctx.fillStyle = d.color
-          ctx.fillRect(Math.round(x) * pitch, Math.round(y) * pitch, dot, dot)
-        }
+      const settle = () => {
+        if (buildKey) BUILT_KEYS.add(buildKey)
+        grainTimer = window.setInterval(grainTick, GRAIN_EPOCH_MS)
+      }
+
+      // Runs a painter of seconds since `delay` every frame, from this one on
+      // (the resize above already cleared the canvas), until it is done.
+      const play = (step: (t: number) => boolean) => {
         const t0 = performance.now()
         const frame = (now: number) => {
-          const t = (now - t0) / 1000 - delay
-          const gather = easeInOut(clamp01(t / MORPH_GATHER))
-          ctx.clearRect(0, 0, width, height)
-          for (const d of dust) paintDot(d, d.color, d.alpha)
-          for (const d of spare) {
-            place(d, d.x + (d.x - cols / 2) * gather, d.y + (d.y - rows / 2) * gather, d.alpha * (1 - gather))
-          }
-          flights.forEach((f, i) => {
-            const s = sources[i]
-            if (t < MORPH_GATHER) {
-              place(f.d, s ? s.x + (f.x - s.x) * gather : f.x, s ? s.y + (f.y - s.y) * gather : f.y, s ? f.d.alpha : f.d.alpha * gather)
-              return
-            }
-            const k = overshoot(clamp01((t - MORPH_GATHER - f.at * MORPH_SPREAD) / MORPH_FLIGHT))
-            place(f.d, f.x + (f.d.x - f.x) * k, f.y + (f.d.y - f.y) * k, f.d.alpha)
-          })
-          ctx.globalAlpha = 1
-          if (t < MORPH_GATHER + MORPH_SPREAD + MORPH_FLIGHT) {
+          if (step((now - t0) / 1000 - delay)) {
             raf = requestAnimationFrame(frame)
             return
           }
-          ctx.clearRect(0, 0, width, height)
-          paintRange(0, dots.length)
-          grainTimer = window.setInterval(grainTick, GRAIN_EPOCH_MS)
+          ctx.globalAlpha = 1
+          settle()
         }
-        // First frame now: the resize above already cleared the canvas.
         frame(t0)
-        return
       }
 
-      if (alreadyBuilt) {
-        paintRange(0, dots.length)
-        grainTimer = window.setInterval(grainTick, GRAIN_EPOCH_MS)
-        return
-      }
-
-      let index = 0
-      const t0 = performance.now()
-      const frame = (now: number) => {
-        const t = (now - t0) / 1000 - delay
-        let next = index
-        while (next < dots.length && dots[next].appear <= t) next++
-        if (next > index) {
-          paintRange(index, next)
+      if (enter && previous && previous.draw !== draw) {
+        const step = morph(previous.dots, dots, enter, cols, rows, place)
+        play((t) => {
+          ctx.clearRect(0, 0, width, height)
+          return step(t)
+        })
+      } else if (alreadyBuilt) {
+        paint(dots)
+        settle()
+      } else {
+        let index = 0
+        play((t) => {
+          let next = index
+          while (next < dots.length && dots[next].appear <= t) next++
+          paint(dots.slice(index, next))
           index = next
-        }
-        if (index < dots.length) {
-          raf = requestAnimationFrame(frame)
-        } else {
-          if (buildKey) BUILT_KEYS.add(buildKey)
-          grainTimer = window.setInterval(grainTick, GRAIN_EPOCH_MS)
-        }
+          return index < dots.length
+        })
       }
-      raf = requestAnimationFrame(frame)
     }
 
     // Once built, fonts are certainly loaded — start synchronously so the

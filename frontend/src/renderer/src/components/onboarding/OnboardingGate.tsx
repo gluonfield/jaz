@@ -26,7 +26,8 @@ import {
 import { SystemPermissionRows } from '@/components/settings/SystemPermissionRows'
 import { hasSystemPermissions, useSystemPermissions } from '@/lib/systemPermissions'
 import { OnboardingStage } from './OnboardingStage'
-import { BotTeam, SETUP_STEPS, SLIDES, ThemeChoice, WelcomeStep, slideFooter } from './OnboardingSlides'
+import { BotTeam } from './OnboardingBots'
+import { SETUP_STEPS, SLIDES, ThemeChoice, WelcomeStep, slideFooter } from './OnboardingSlides'
 
 const MEMORY_AGENT_PRIORITY = ['codex', 'claude', 'kimi', 'opencode', 'antigravity', 'grok']
 
@@ -216,8 +217,7 @@ function OnboardingScreen({
         <OnboardingStage
           key="setup"
           step={step}
-          motif={slide.motif}
-          entrance={slide.entrance}
+          mark={slide.mark}
           footer={
             <OnboardingFooter
               step={step}

@@ -2,10 +2,14 @@ import { ArrowLeft, ArrowRight, LoaderCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Switch } from '@/components/ui/Switch'
+import type { Entrance, Silhouette } from '@/components/launch/DitherArt'
 import { onboardingAgentLabel } from '@/lib/agentLabel'
 
 export type OnboardingStep = 'welcome' | 'appearance' | 'agents' | 'memory' | 'connections' | 'computer' | 'voice' | 'bot'
 export type SetupStep = Exclude<OnboardingStep, 'welcome'>
+
+// A slide's dithered hero: its shape and how it arrives.
+export type Mark = { draw: Silhouette; enter: Entrance }
 
 // The onboarding motion vocabulary, shared by the gate and the slides.
 export const onboardingEase = [0.22, 1, 0.36, 1] as const
