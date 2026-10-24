@@ -95,6 +95,16 @@ func TestABotsFallbackRecordsDeliveryWithoutClosingCommitmentsAndRespectsPresent
 		t.Fatal(err)
 	}
 	shown := make(chan bool, 2)
+	wasShown := func() bool {
+		t.Helper()
+		select {
+		case value := <-shown:
+			return value
+		case <-jaz.ctx.Done():
+			t.Fatalf("missing user turn completion; prompts = %q", jaz.prompts())
+			return false
+		}
+	}
 	jaz.manager.TurnEnding = func(job acp.Job) {
 		jaz.bots.TurnEnding(job)
 		session, err := store.LoadSession(job.ID)
@@ -103,7 +113,7 @@ func TestABotsFallbackRecordsDeliveryWithoutClosingCommitmentsAndRespectsPresent
 		}
 	}
 	jaz.write(bot.ID, "answer in the final reply")
-	if !<-shown || !jaz.commitment(commitment.ID).IsOpen() {
+	if !wasShown() || !jaz.commitment(commitment.ID).IsOpen() {
 		t.Fatal("fallback must mark the turn shown and leave the commitment open")
 	}
 	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "answer in the final reply until released", Completion: acp.CompletionAsync, FromUser: true}); err != nil {
@@ -115,7 +125,7 @@ func TestABotsFallbackRecordsDeliveryWithoutClosingCommitmentsAndRespectsPresent
 	}
 	jaz.release()
 	jaz.idle(bot.ID)
-	if !<-shown || !slices.Equal(jaz.notices(bot.ID), []string{finalReply}) {
+	if !wasShown() || !slices.Equal(jaz.notices(bot.ID), []string{finalReply}) {
 		t.Fatal("a presented app must suppress the fallback")
 	}
 }
