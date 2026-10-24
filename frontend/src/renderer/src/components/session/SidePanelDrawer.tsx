@@ -19,7 +19,7 @@ export function SidePanelDrawer({ panel, isMobile, children }: {
       width: isMobile ? undefined : panel.open ? panel.widthStyle : 0,
       transition: isMobile || panel.resizing || reducedMotion ? 'none' : widthTransition,
     } as CSSProperties}
-    className="relative h-full shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-shell max-sm:w-full!"
+    className="relative h-full shrink-0 max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-shell max-sm:w-full! max-sm:overflow-hidden"
     inert={!panel.open}
     aria-hidden={!panel.open}
     initial={false}
@@ -36,6 +36,14 @@ export function SidePanelDrawer({ panel, isMobile, children }: {
       onResize={panel.resize}
       onResizeEnd={() => panel.setResizing(false)}
     /> : null}
-    {children}
+    {/* Desktop: the panel floats as its own card beside the content card; the
+        card clips its contents while the drawer's width animates. */}
+    {isMobile ? children : (
+      <div className="h-full pb-2 pr-2">
+        <div className={`h-full overflow-hidden rounded-[14px] bg-bg shadow-[var(--shadow-raised)] transition-opacity duration-200 ${panel.open ? '' : 'opacity-0'}`}>
+          {children}
+        </div>
+      </div>
+    )}
   </motion.div>
 }

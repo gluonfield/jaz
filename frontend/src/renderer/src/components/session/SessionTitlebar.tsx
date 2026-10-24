@@ -15,7 +15,7 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
   header?: ReactNode
   overviewLabel?: string
 }) {
-  const { open, mode, tabs, activeTab, width, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode } = panel
+  const { open, mode, tabs, activeTab, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode } = panel
   const activeId = activeTab?.id
   const slot = useMemo(() => header ?? <>
     <RuntimeBadge session={session} truncate />
@@ -23,8 +23,9 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
   </>, [header, session])
   useTitlebarSlot(slot)
   const actions = useMemo(() => (
-    <div className="flex min-w-0 items-center gap-1" style={{ width: open && mode === 'tabs' ? isMobile ? '100%' : `calc(${width}px - 1rem)` : undefined }}>
-      {open && mode === 'tabs' ? <SidePanelTabs
+    <div className="flex min-w-0 items-center gap-1" style={{ width: isMobile && open && mode === 'tabs' ? '100%' : undefined }}>
+      {/* On desktop the tabs head the side panel's own card instead. */}
+      {isMobile && open && mode === 'tabs' ? <SidePanelTabs
         tabs={tabs}
         activeId={activeId}
         sideChatAvailable={sideChatAvailable}
@@ -36,7 +37,7 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
       /> : null}
       <SidePanelControl open={open} mode={mode} overviewLabel={overviewLabel} onToggle={toggleMode} />
     </div>
-  ), [open, mode, isMobile, width, tabs, activeId, sideChatAvailable, overviewLabel, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode])
+  ), [open, mode, isMobile, tabs, activeId, sideChatAvailable, overviewLabel, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode])
   useTitlebarActions(actions)
   return null
 }

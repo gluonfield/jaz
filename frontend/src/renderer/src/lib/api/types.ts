@@ -797,7 +797,11 @@ export interface BotOwed {
   request: string
   for?: string
   next?: string
-  waiting?: 'requester' | 'outside'
+  status: 'pending' | 'in_progress' | 'waiting_for_user'
+  question_seq?: number
+  depends_on?: number[]
+  blocked?: boolean
+  moving?: boolean
   stalled?: boolean
   opened_at: string
   // Threads in linking order, oldest first.

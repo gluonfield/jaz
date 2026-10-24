@@ -8,6 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/media"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/messagedb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
@@ -132,6 +133,11 @@ func appendMessageRecords(tx *sql.Tx, id string, records []storage.Message, now 
 	for _, record := range records {
 		if err := insertMessage(messageq, record); err != nil {
 			return err
+		}
+		if record.FromUser {
+			if err := botdb.New(tx).AnswerTaskQuestions(context.Background(), id); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

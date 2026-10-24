@@ -10,14 +10,13 @@ import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/
 import { type ProviderSubagentView, subagentRunning } from '@/lib/providerSubagents'
 
 // A row says what happened and how to open it: a thread, a routine, a file, or
-// a message or commitment shown in full. Since marks what is still owed.
+// a message or commitment shown in full.
 type Row = {
   key: string
   title: string
   detail?: string
   at: string
   running?: boolean
-  since?: boolean
   danger?: boolean
   open?: { thread: string } | { routine: string } | { file: BotFileName } | { message: BotActivity } | { owed: BotOwed }
 }
@@ -35,12 +34,17 @@ export function BotActivity({
 }) {
   const activity = useQuery(botActivityQuery(bot.id))
   const [message, setMessage] = useState<BotActivity | null>(null)
-  const [owedShown, setOwedShown] = useState<BotOwed | null>(null)
+  const [shown, setShown] = useState<number | null>(null)
   const now = useNow()
-  if (activity.isPending) return null
-  const rows = (activity.data?.items ?? []).map(row)
-  const owed = (activity.data?.owed ?? []).map(owedRow)
-  const started = activity.data?.started ?? {}
+  if (activity.isPending) {
+    return <p className="text-[13px] text-ink-3">Loading activity…</p>
+  }
+  if (activity.isError && !activity.data) {
+    return <p role="alert" className="text-[13px] text-danger">Couldn’t load activity.</p>
+  }
+  const { owed, started, items } = activity.data
+  const selected = owed.find((task) => task.id === shown)
+  const rows = items.map(row)
   const helpers: Row[] = subagents.filter(subagentRunning).map((subagent) => ({
     key: subagent.key,
     title: subagent.name || subagent.task || 'Helper',
@@ -50,25 +54,22 @@ export function BotActivity({
   }))
   const running = [...rows.filter((item) => item.running), ...helpers]
   const days = groupByDay(rows.filter((item) => !item.running), now)
-  if (!owed.length && !running.length && !days.length) {
-    return <p className="text-[13px] text-ink-3">{bot.name}'s tasks, side chats, routine runs and messages show up here.</p>
-  }
   const open = (target: Row['open']) => {
     if (!target) return
     if ('routine' in target) onOpenRoutine(target.routine)
     else if ('file' in target) onOpenFile(target.file)
     else if ('message' in target) setMessage(target.message)
-    else if ('owed' in target) setOwedShown(target.owed)
+    else if ('owed' in target) setShown(target.owed.id)
   }
   return (
     <div className="flex flex-col gap-5">
-      {owed.length ? (
-        <Group title="Tasks">
-          {owed.map((item) => (
-            <ActivityRow key={item.key} item={item} started={started} now={now} onOpen={open} />
-          ))}
-        </Group>
-      ) : null}
+      <section aria-label="Tasks" className="flex flex-col gap-0.5">
+        <h3 className="mb-1 text-[13px] font-semibold text-ink">Open Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
+        {!owed.length ? <p className="text-[13px] text-ink-3">No open tasks</p> : null}
+        {owed.map((task) => (
+          <ActivityRow key={task.id} item={owedRow(task)} started={started} now={now} onOpen={open} />
+        ))}
+      </section>
       {running.length ? (
         <Group title="Now">
           {running.map((item) => (
@@ -83,47 +84,42 @@ export function BotActivity({
           ))}
         </Group>
       ))}
-      {owedShown ? <OwedModal owed={owedShown} started={started} now={now} onClose={() => setOwedShown(null)} /> : null}
       {message ? (
         <Modal open onClose={() => setMessage(null)} title={messageTitle(message)} description={messageTime(message.at)} size="sm">
           <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{message.text}</p>
         </Modal>
       ) : null}
+      {selected ? <OwedModal owed={selected} started={started} now={now} onClose={() => setShown(null)} /> : null}
     </div>
   )
 }
 
-// owedRow is a commitment still open: who it is for, how it stands and the
-// next step. It opens its one live thread, or else its details.
 function owedRow(owed: BotOwed): Row {
-  const live = owed.threads?.filter((thread) => thread.state !== 'gone') ?? []
   const state = owedState(owed)
   return {
     key: `owed:${owed.id}`,
     title: owed.request,
-    detail: [`For ${owed.for ?? 'you'}`, state.standing, owed.next && `Next: ${owed.next}`].filter(Boolean).join(' · '),
+    detail: state.standing,
     at: owed.opened_at,
-    since: true,
     danger: state.danger,
-    open: live.length === 1 ? { thread: live[0].id } : { owed },
+    open: { owed },
   }
 }
 
 const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', background: 'Working in the background', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
 
-// OwedModal shows a commitment with no single thread to open: its next step
-// and the threads serving it.
 function OwedModal({ owed, started, now, onClose }: { owed: BotOwed; started: Started; now: number; onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, owedState(owed).standing, `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
-        {owed.next ? <p className="whitespace-pre-wrap">Next: {owed.next}</p> : null}
+        {owed.next ? <p className="whitespace-pre-wrap wrap-break-word">Next: {owed.next}</p> : null}
+        {owed.blocked && owed.depends_on?.length ? <p>Prerequisites: {owed.depends_on.map((id) => `#${id}`).join(', ')}</p> : null}
         {owed.threads?.length ? (
           <ul className="flex flex-col">
             {owed.threads.map((thread) => (
               <li key={thread.id}>
-                <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} onClick={onClose} className="-mx-2 flex items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-list-hover">
-                  <span className="truncate font-medium">{thread.title}</span>
+                <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} onClick={onClose} className="-mx-2 flex min-w-0 items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-list-hover">
+                  <span className="min-w-0 truncate font-medium">{thread.title}</span>
                   <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
                 </Link>
                 <StartedThreads started={started} by={thread.id} now={now} onOpen={onClose} />
@@ -160,7 +156,7 @@ function row(item: BotActivity, index: number): Row {
       return {
         ...base,
         title: item.title,
-        detail: item.status === 'done' ? `Delivered to ${item.for ?? 'you'}` : `Dropped · ${item.text}`,
+        detail: item.status === 'completed' ? `Delivered to ${item.for ?? 'you'}` : `Cancelled · ${item.text}`,
         open: item.thread_id ? { thread: item.thread_id } : undefined,
       }
     case 'message_sent':
@@ -209,13 +205,16 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 function ActivityRow({ item, started, now, onOpen }: { item: Row; started: Started; now: number; onOpen: (target: Row['open']) => void }) {
   const since = item.running && item.at ? now - Date.parse(item.at) : undefined
+  const task = item.open && 'owed' in item.open
   const content = (
     <>
       <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
       {item.detail ? <span className={`line-clamp-2 text-[12px] ${item.danger ? 'text-danger' : 'text-ink-2'}`}>{item.detail}</span> : null}
-      <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
-        {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : item.since ? `Since ${messageTime(item.at, now)}` : clockTime(item.at)}
-      </span>
+      {!task ? (
+        <span className={`block text-[12px] tabular-nums ${item.running ? 'text-running' : 'text-ink-3'}`}>
+          {item.running ? (since !== undefined ? `Running for ${formatDuration(since)}` : 'Running') : clockTime(item.at)}
+        </span>
+      ) : null}
     </>
   )
   const className = '-mx-2 flex min-w-0 flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150'

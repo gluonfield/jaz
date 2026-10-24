@@ -12,7 +12,8 @@ import { FileReaderPanel } from '@/components/session/FileReaderPanel'
 import { OverviewPanel } from '@/components/session/OverviewPanel'
 import { SideChatPanel } from '@/components/session/SideChatPanel'
 import { TerminalPanel } from '@/components/session/TerminalPanel'
-import { SidePanelTabMenu } from '@/components/session/SidePanelTabs'
+import { SidePanelTabMenu, SidePanelTabs } from '@/components/session/SidePanelTabs'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import type { useSidePanelState } from '@/components/session/SidePanelState'
 
 export function SidePanel({
@@ -36,6 +37,7 @@ export function SidePanel({
   onSendSideChat: (sideChatID: string, message: string, options?: SendMessageOptions) => Promise<void>
   overview?: ReactNode
 }) {
+  const isMobile = useIsMobile()
   return (
     <>
       {panel.open && panel.mode === 'overview' ? overview ?? (
@@ -51,6 +53,21 @@ export function SidePanel({
         />
       ) : null}
       <div hidden={panel.mode !== 'tabs'} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface" data-thread-find-shortcuts="off">
+        {/* Desktop: the tabs head the panel's own card; phones keep them in the titlebar. */}
+        {!isMobile ? (
+          <div className="flex h-10 shrink-0 items-center px-1.5">
+            <SidePanelTabs
+              tabs={panel.tabs}
+              activeId={panel.activeTab?.id}
+              sideChatAvailable={sideChatAvailable}
+              onSelect={panel.selectTab}
+              onReorder={panel.reorderTabs}
+              onClose={panel.closeTab}
+              onAdd={panel.addTab}
+              onDuplicate={panel.duplicateTab}
+            />
+          </div>
+        ) : null}
         {!panel.tabs.length ? <SidePanelTabMenu empty sideChatAvailable={sideChatAvailable} onAdd={panel.addTab} /> : null}
         {panel.tabs.map((tab) => {
           const active = panel.activeTab?.id === tab.id
@@ -63,7 +80,7 @@ export function SidePanel({
               aria-labelledby={`panel-tab-${tab.id}`}
               hidden={!active}
               inert={!visible}
-              className="h-full min-h-0"
+              className="min-h-0 flex-1"
             >
               {tab.kind === 'preview' ? (
                 <BrowserPanelSlot

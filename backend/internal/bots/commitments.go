@@ -22,61 +22,74 @@ type CommitmentStore interface {
 	ListOpenCommitments(botID string) ([]storage.Commitment, error)
 	ListClosedCommitments(botID string, since time.Time) ([]storage.Commitment, error)
 	DeliverMessage(event sessionevents.Event, closes []int64) (sessionevents.Event, error)
-	MarkStalled(botID string) ([]storage.Commitment, error)
+	AskCommitment(storage.Commitment, sessionevents.Event) (sessionevents.Event, error)
+	ListWatchBots() ([]string, error)
 }
 
-// Commit is a change a bot makes to its commitments: opening one when ID is
-// zero, else a new request, next step or what it waits on, or dropping it.
-// Waiting is requester, outside or none; empty leaves it as it is.
 type Commit struct {
-	ID      int64
-	Request string
-	Next    string
-	Waiting string
-	Drop    string
+	ID        int64
+	Request   string
+	Next      string
+	Status    string
+	Message   string
+	DependsOn *[]int64
 }
 
-// waits maps what a bot says a commitment waits on to what is stored.
-var waits = map[string]string{"requester": storage.WaitingRequester, "outside": storage.WaitingOutside, "none": ""}
-
-// Commit applies change from a turn in a bot's own thread and returns the
-// commitment's id. A commitment opens owed to whoever the turn answers.
 func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	record, session, err := s.load(threadID)
 	if err != nil || record.Kind != KindBot {
 		return 0, errors.New("tasks are kept in a bot's own chat")
 	}
-	var output storage.TurnOutput
-	if session.Turn != nil && session.Turn.Output != nil {
-		output = *session.Turn.Output
-	}
-	request, next, drop, wait := strings.TrimSpace(change.Request), strings.TrimSpace(change.Next), strings.TrimSpace(change.Drop), strings.TrimSpace(change.Waiting)
-	waiting, ok := waits[wait]
-	if !ok && wait != "" {
-		return 0, fmt.Errorf("waiting is requester, outside or none, not %q", wait)
-	}
+	request := strings.TrimSpace(change.Request)
+	next := strings.TrimSpace(change.Next)
+	message := strings.TrimSpace(change.Message)
 	if change.ID == 0 {
 		if request == "" {
 			return 0, errors.New("request is required to create a task")
 		}
-		commitment, err := s.store.OpenCommitment(storage.Commitment{BotID: threadID, Requester: output.ReplyTo, Request: request, Note: next, Waiting: waiting})
+		requester := ""
+		if session.Turn != nil && session.Turn.Output != nil {
+			requester = session.Turn.Output.ReplyTo
+		}
+		commitment, err := s.store.OpenCommitment(storage.Commitment{BotID: threadID, Requester: requester, Request: request, Note: next})
 		return commitment.ID, err
 	}
 	commitment, err := s.open(threadID, change.ID)
 	if err != nil {
 		return 0, err
 	}
-	if drop != "" {
-		return commitment.ID, explain(s.store.DropCommitment(commitment.ID, drop, time.Now()))
+	status := cmp.Or(change.Status, commitment.Status)
+	if status == storage.CommitmentDone || status == storage.CommitmentDropped {
+		if message == "" || request != "" || next != "" || change.DependsOn != nil {
+			return 0, errors.New("completing or cancelling requires status and message only")
+		}
+		if status == storage.CommitmentDone {
+			return commitment.ID, s.Say(threadID, message, commitment.ID)
+		}
+		return commitment.ID, explain(s.store.DropCommitment(commitment.ID, message, time.Now()))
 	}
-	if request != "" {
-		commitment.Request = request
+	if status != storage.CommitmentPending && status != storage.CommitmentInProgress && status != storage.CommitmentWaitingForUser {
+		return 0, fmt.Errorf("invalid task status %q", status)
 	}
-	if next != "" {
-		commitment.Note = next
+	commitment.Request = request
+	commitment.Note = next
+	commitment.DependsOn = nil
+	if change.DependsOn != nil {
+		commitment.DependsOn = append([]int64{}, *change.DependsOn...)
 	}
-	if ok {
-		commitment.Waiting = waiting
+	commitment.Status = change.Status
+	if status == storage.CommitmentWaitingForUser && message != "" {
+		event, err := s.store.AskCommitment(commitment, sessionevents.Event{
+			SessionID: threadID, Type: sessionevents.TypeRoomMessage, At: time.Now().UTC(),
+			RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", BotID: threadID, Name: session.Title, Text: message},
+		})
+		if err == nil {
+			s.events.Publish(event)
+		}
+		return commitment.ID, err
+	}
+	if message != "" {
+		return 0, errors.New("message is used with waiting_for_user, completed or cancelled")
 	}
 	return commitment.ID, s.store.UpdateCommitment(commitment)
 }
@@ -109,7 +122,7 @@ func (s *Service) owed(botID string, id int64) (string, string, error) {
 
 func (s *Service) open(botID string, id int64) (storage.Commitment, error) {
 	commitment, err := s.store.LoadCommitment(id)
-	if err == nil && (commitment.BotID != botID || commitment.Status != storage.CommitmentOpen) {
+	if err == nil && (commitment.BotID != botID || !commitment.IsOpen()) {
 		err = storage.ErrCommitmentNotOpen
 	}
 	if err != nil {
@@ -138,16 +151,16 @@ func explain(err error) error {
 }
 
 // standing says what a commitment waits on, or that nothing moves on it.
-func standing(commitment storage.Commitment, requester string) string {
+func standing(commitment storage.Commitment) string {
 	switch {
-	case commitment.Waiting == storage.WaitingRequester:
-		return " · waiting on " + requester
-	case commitment.Waiting == storage.WaitingOutside:
-		return " · waiting on an outside job"
+	case commitment.Status == storage.CommitmentWaitingForUser:
+		return fmt.Sprintf(" · waiting on the user: question #%d", commitment.QuestionSeq)
+	case commitment.Blocked:
+		return fmt.Sprintf(" · prerequisites: %v", commitment.DependsOn)
 	case commitment.Moving:
-		return ""
+		return " · work is running"
 	case commitment.Stalled:
-		return " · stalled: nothing moved after Jaz reminded you, and the user was told"
+		return " · stalled: no thread is working; resume this task"
 	}
 	return " · nothing moves on it"
 }

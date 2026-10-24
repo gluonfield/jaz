@@ -311,7 +311,7 @@ func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
 		}
 		defer tx.Rollback()
 		if delivery.Wake {
-			woken, err := botdb.New(tx).WakeStalled(ctx, delivery.SessionID)
+			woken, err := botdb.New(tx).WakeStalled(ctx, botdb.WakeStalledParams{BotID: delivery.SessionID, NowMs: time.Now().UnixMilli()})
 			if err != nil {
 				return err
 			}

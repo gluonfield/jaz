@@ -62,7 +62,7 @@
           var effects = localStorage.getItem('jaz.appearance.effects')
           if (effects === 'false' || (effects === null && sd.effects === false))
             el2.classList.add('jaz-no-effects')
-          // Custom color scheme: replay the derived token CSS cached by
+          // Colour theme: replay the CSS variables cached by
           // lib/appearanceScheme.ts so a themed launch paints correctly.
           var themeCss = localStorage.getItem('jaz.appearance.themeCss')
           if (themeCss) {

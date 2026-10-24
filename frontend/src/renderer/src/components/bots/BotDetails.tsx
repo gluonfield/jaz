@@ -7,7 +7,7 @@ import { Segmented } from '@/components/ui/Segmented'
 import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
 import { BOT_COLORS, BOT_SHAPES, botMood } from '@/lib/bots'
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
-import { BotActivity } from './BotActivity'
+import { BotActivity } from '@/components/bots/BotActivity'
 import { BotAgentSettings } from './BotAgentSettings'
 import { BotAvatar } from './BotAvatar'
 import { BotFileEditor } from './BotFileEditor'
@@ -41,8 +41,8 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
           className="mt-2 w-full rounded-md px-1 text-center text-[16px] font-semibold hover:bg-list-hover focus:bg-list-hover"
         />
       </header>
-      <div className="flex justify-center">
-        <Segmented value={tab} options={TABS} onChange={setTab} layoutId={`bot-details-${bot.id}`} iconOnly />
+      <div className="flex justify-center [&>div]:h-11 [&_button]:h-10 [&_button]:min-w-10 [&_button]:px-1.5">
+        <Segmented value={tab} options={TABS} onChange={setTab} layoutId={`bot-details-${bot.id}`} compact />
       </div>
       {tab === 'activity' ? (
         <BotActivity bot={bot} subagents={subagents} onOpenRoutine={setRoutine} onOpenFile={setFile} />

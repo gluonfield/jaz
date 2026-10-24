@@ -454,6 +454,7 @@ func startServer(
 		},
 	})
 	app.StartMCPManager(lc, mcpManager, manager, logger)
+	app.StartBotTaskWatch(lc, botService, recovered)
 	app.StartSessionRecovery(lc, store, handler, locks, events, logger, func(context.Context) error {
 		defer close(recovered)
 		return errors.Join(handler.ResumeQueuedTurns(), botService.WatchAll())

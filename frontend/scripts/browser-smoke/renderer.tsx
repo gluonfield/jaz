@@ -34,6 +34,7 @@ import { exerciseAppNavigation } from './app-navigation'
 import { exerciseCanvas } from './canvas'
 import { exerciseImages } from './images'
 import { exerciseBrowserAppearance } from './appearance'
+import { exerciseAddressBar } from './address-bar'
 
 declare global {
   interface Window {
@@ -43,6 +44,7 @@ declare global {
       tabURLs(): Promise<string[]>
       backend(): Promise<string>
       browserExists(id: number): Promise<boolean>
+      navigationProbe(enabled?: boolean): Promise<{ url: string; webContentsId: number }[]>
       passwordStore(): Promise<{ count: number; plaintext: boolean }>
       pointer(type: string, x: number, y: number, button?: 'left' | 'right'): Promise<void>
       key(key: string, modifiers?: string[]): Promise<void>
@@ -86,6 +88,20 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (suite === 'bot-panel') {
+        progress('bot sidebar tasks, activity, routines and identity')
+        await exerciseBotPanel()
+        window.smoke.result({ ok: true, checks: ['Activity default; compact inline tasks; live details, worker links, completion refresh; desktop and phone; routines and identity'] })
+        return
+      }
+      if (!suite || suite === 'address-bar') {
+        progress('address-bar Enter navigation and searches')
+        await exerciseAddressBar()
+        if (suite === 'address-bar') {
+          window.smoke.result({ ok: true, checks: ['address-bar Enter searches preserve encoded terms and URL inputs, ignore blanks and navigate only the owning webview'] })
+          return
+        }
+      }
       if (suite === 'appearance') {
         progress('browser page backgrounds in light and dark themes')
         await exerciseBrowserAppearance(browser, evaluate)
@@ -173,10 +189,10 @@ function Fixture() {
       await exerciseModelPicker()
       progress('existing composer setting changes across menu closure')
       await exerciseSessionConfig()
-      progress('readable text on custom accents')
+      progress('readable button text in every colour theme')
       await exerciseAccentText()
       if (new URLSearchParams(location.search).get('suite') === 'model-picker') {
-        window.smoke.result({ ok: true, checks: ['Tab-only focus rings; Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence; existing composer pending settings survive menu closure and await refreshed state; custom accents keep readable button text'] })
+        window.smoke.result({ ok: true, checks: ['Tab-only focus rings; Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence; existing composer pending settings survive menu closure and await refreshed state; every colour theme keeps readable button text in both modes'] })
         return
       }
       progress('cancellation while opening the browser panel')

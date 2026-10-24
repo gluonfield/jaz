@@ -67,7 +67,8 @@ export function SidebarScroll({ mobile, tight = false, children }: { mobile: boo
         }`}
       >
         <div className="h-px bg-border/70" />
-        <div className="absolute inset-x-0 top-px h-5 bg-gradient-to-b from-panel to-transparent" />
+        {/* Only the phone drawer has an opaque panel to fade from; on desktop the list sits on the window. */}
+        <div className="absolute inset-x-0 top-px h-5 bg-gradient-to-b from-panel to-transparent sm:hidden" />
       </div>
 
       <nav

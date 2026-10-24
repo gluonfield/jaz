@@ -34,7 +34,7 @@ export function Sidebar({
             }
           : undefined
       }
-      className="relative flex h-full shrink-0 flex-col border-r border-border bg-panel max-sm:w-full!"
+      className="relative flex h-full shrink-0 flex-col max-sm:w-full! max-sm:bg-panel"
       style={{ width }}
     >
       {children}

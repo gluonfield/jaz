@@ -1,6 +1,7 @@
 import { useReducedMotion } from 'motion/react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useEffectsEnabled } from '@/lib/appearance'
+import { useColorTheme } from '@/lib/appearanceScheme'
 import { useTheme } from '@/lib/theme'
 
 // Dithered pixel art: a silhouette is rasterized at grid resolution, then
@@ -122,8 +123,9 @@ export function DitherArt({
   const effects = useEffectsEnabled()
   const reduced = useReducedMotion()
   const animate = effects && !reduced
-  // The canvas samples the palette at mount; the theme key re-runs on flip.
+  // The canvas samples the palette at mount; the mode and colour theme re-run it.
   const { resolved } = useTheme()
+  const color = useColorTheme()
 
   const pitch = dot + gap
   const width = cols * pitch - gap
@@ -228,7 +230,7 @@ export function DitherArt({
       cancelAnimationFrame(raf)
       window.clearInterval(grainTimer)
     }
-  }, [animate, draw, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, buildKey, resolved])
+  }, [animate, draw, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, buildKey, resolved, color])
 
   return (
     <canvas

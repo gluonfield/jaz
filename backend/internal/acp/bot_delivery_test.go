@@ -375,7 +375,7 @@ func TestAResultForABotDeletedDuringTheAnswerReachesTheUserAfterARestart(t *test
 				}
 				return p.bots.Say(req.Session, "The parser is done.", owed)
 			case strings.HasPrefix(req.Message, "[undelivered]") && strings.Contains(req.Message, "The parser is done."):
-				if commitment := p.commitment(owed); commitment.Status != storage.CommitmentOpen {
+				if commitment := p.commitment(owed); !commitment.IsOpen() {
 					t.Errorf("an answer that never arrived closed its commitment: %+v", commitment)
 				}
 				return p.bots.Say(req.Session, "Asker left; the parser is done.", owed)

@@ -22,6 +22,7 @@ export interface ClientRuntime {
   }
   defaultApiBaseUrl: () => string
   setNativeTheme?: (source: 'light' | 'dark' | 'system') => void
+  setWindowButtonsVisible?: (visible: boolean) => void
   startLocalBackend?: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
   getDeviceIdentity?: () => Promise<{ device_id: string; public_key: string }>
   getDeviceMetadata?: () => Promise<{
@@ -71,6 +72,7 @@ function createRuntime(): ClientRuntime {
       },
       defaultApiBaseUrl: () => electron.apiBaseUrl,
       setNativeTheme: electron.setNativeTheme,
+      setWindowButtonsVisible: electron.setWindowButtonsVisible,
       startLocalBackend: electron.startLocalBackend,
       getDeviceIdentity: electron.getDeviceIdentity,
       getDeviceMetadata: electron.getDeviceMetadata,

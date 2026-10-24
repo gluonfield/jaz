@@ -3,7 +3,8 @@ import { usePrefetchQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { UserBubble } from '@/components/session/Bubble'
 import { Composer, PlanDecisionCard } from '@/components/session/Composer'
@@ -54,6 +55,7 @@ import {
 } from '@/lib/api/sessions'
 import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } from '@/lib/api/types'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
+import { SidePanelSlot } from '@/lib/sidePanelSlot'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { type HistoryPaging, useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useSessionQueue } from '@/lib/hooks/useSessionQueue'
@@ -203,6 +205,12 @@ export function ThreadView({
   // becomes a full-screen overlay (CSS `max-sm:w-full`) that slides in instead
   // of a column.
   const isMobile = useIsMobile()
+  // On desktop the side panel floats as its own card beside the content card,
+  // sizing itself against the row the two share.
+  const panelSlot = useContext(SidePanelSlot)
+  const floatPanel = !isMobile
+  const { containerRef: panelContainerRef } = sidePanel
+  useEffect(() => (floatPanel && panelSlot.row ? panelContainerRef(panelSlot.row) : undefined), [floatPanel, panelSlot.row, panelContainerRef])
 
   const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
     sessionId,
@@ -456,12 +464,38 @@ export function ThreadView({
     />
   ) : null
 
+  // Docked, never overlapping: the chat pane flexes and stays centered
+  // between the sidebar and this panel.
+  const sidePanelDrawer = (
+    <SidePanelDrawer panel={sidePanel} isMobile={isMobile}>
+      <SidePanel
+        session={session}
+        progress={panelProgress}
+        subagents={providerSubagents}
+        spawnedThreads={spawnedThreads}
+        working={sessionRunning}
+        panel={sidePanel}
+        sideChatAvailable={sideChatAvailable}
+        sideChatEvents={sideChatEvents}
+        overview={details?.({ agentSession: derived.agentSession, working: sessionRunning, threads: spawnedThreads, subagents: providerSubagents })}
+        onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
+        onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
+        onSend={handleSend}
+        onQueuePrompt={queue.onQueuePrompt}
+        onQueueAction={queue.onQueueAction}
+        onSendSideChat={handleSideChatSend}
+      />
+    </SidePanelDrawer>
+  )
+
   return (
     <FileReaderLinkProvider sessionId={session.id} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
-            clip horizontal overflow so it can't be revealed by scrolling. */}
-        <FileDropScope ref={canvas ? undefined : sidePanel.containerRef} className="relative flex h-full max-sm:overflow-x-clip">
+            clip horizontal overflow so it can't be revealed by scrolling.
+            Desktop: the thread reaches up under the card's floating title row
+            so messages scroll beneath it. */}
+        <FileDropScope ref={canvas || floatPanel ? undefined : sidePanel.containerRef} className="relative -mt-[var(--titlebar-height,0px)] flex h-[calc(100%+var(--titlebar-height,0px))] max-sm:overflow-x-clip">
           <SessionTitlebar
             session={session}
             isMobile={isMobile}
@@ -478,10 +512,10 @@ export function ThreadView({
           ) : null}
           {sidePanel.resizing || canvasChat.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
-          {/* A canvas thread's chat lies over the board's left edge, as Figma's
-              panels do. Hiding it sinks the transcript into the composer, which
-              stays; the board never moves. */}
-          <div style={canvas ? { width: canvasChat.width } : undefined} className={`h-full min-w-0 ${canvas ? `absolute inset-y-0 left-0 z-10 ${canvasChat.shown ? '' : 'pointer-events-none'}` : 'relative flex-1'}`}>
+          {/* A canvas thread's chat floats over the board's left edge as its own
+              card, 8px in, as Figma's panels do. Hiding it sinks the transcript
+              into the composer, which stays; the board never moves. */}
+          <div style={canvas ? { width: canvasChat.width } : undefined} className={`min-w-0 ${canvas ? `canvas-chat-card absolute bottom-2 left-2 top-[calc(var(--titlebar-height,0px)+0.5rem)] z-10 ${canvasChat.shown ? 'shown' : 'pointer-events-none'}` : 'relative h-full flex-1'}`}>
             {canvas && canvasChat.shown && !isMobile ? <HorizontalResizeHandle
               label="Resize canvas chat"
               side="right"
@@ -496,13 +530,13 @@ export function ThreadView({
             <div
               ref={attachScroll}
               inert={!canvasChat.shown}
-              className={`scrollbar-quiet relative z-0 h-full overflow-y-auto ${canvas ? `canvas-chat${canvasChat.shown ? '' : ' collapsed'}` : ''}`}
+              className={`scrollbar-quiet relative z-0 h-full scroll-pt-[var(--titlebar-height,0px)] overflow-y-auto ${canvas ? `canvas-chat${canvasChat.shown ? '' : ' collapsed'}` : ''}`}
               onScroll={onThreadScroll}
               onClickCapture={onThreadClickCapture}
             >
               <div
                 ref={threadFind.rootRef}
-                className={`${canvas ? 'px-4' : THREAD_COLUMN_CLASS} pt-6`}
+                className={canvas ? 'px-4 pt-6' : `${THREAD_COLUMN_CLASS} pt-[calc(var(--titlebar-height,0px)+1.5rem)]`}
                 style={{ paddingBottom: transcriptBottomPadding }}
               >
                 {chat ? (
@@ -664,34 +698,14 @@ export function ThreadView({
               )}
             </BottomDock>
           </div>
-          <div ref={canvas ? sidePanel.containerRef : undefined} className={canvas ? 'flex h-full min-w-0 flex-1' : 'contents'}>
+          <div ref={canvas && !floatPanel ? sidePanel.containerRef : undefined} className={canvas ? 'flex h-full min-w-0 flex-1' : 'contents'}>
             {canvas ? (
               <div ref={canvasChat.containerRef} className={`relative h-full min-w-0 flex-1${canvasChat.resizing ? ' canvas-chat-resizing' : ''}`}>
-                <ThreadCanvas sessionId={session.id} inset={canvasChat.shown ? canvasChat.width : 0} working={sessionRunning} selection={canvasContexts.selection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
+                <ThreadCanvas sessionId={session.id} inset={canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} selection={canvasContexts.selection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
               </div>
             ) : null}
 
-            {/* Docked, never overlapping: the chat pane flexes and stays centered
-                between the sidebar and this panel. */}
-            <SidePanelDrawer panel={sidePanel} isMobile={isMobile}>
-              <SidePanel
-                session={session}
-                progress={panelProgress}
-                subagents={providerSubagents}
-                spawnedThreads={spawnedThreads}
-                working={sessionRunning}
-                panel={sidePanel}
-                sideChatAvailable={sideChatAvailable}
-                sideChatEvents={sideChatEvents}
-                overview={details?.({ agentSession: derived.agentSession, working: sessionRunning, threads: spawnedThreads, subagents: providerSubagents })}
-                onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
-                onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
-                onSend={handleSend}
-                onQueuePrompt={queue.onQueuePrompt}
-                onQueueAction={queue.onQueueAction}
-                onSendSideChat={handleSideChatSend}
-              />
-            </SidePanelDrawer>
+            {floatPanel ? panelSlot.slot && createPortal(sidePanelDrawer, panelSlot.slot) : sidePanelDrawer}
           </div>
         </FileDropScope>
       </PreviewLinkProvider>

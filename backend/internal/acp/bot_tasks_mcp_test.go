@@ -52,11 +52,37 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 		return task.ID
 	}
 
-	call("bot_task_update", map[string]any{"id": legacy, "next": "deliver the existing result", "waiting": "requester"}, false)
-	if task := jaz.commitment(legacy); task.Note != "deliver the existing result" || task.Waiting != storage.WaitingRequester {
+	call("bot_task_update", map[string]any{"id": legacy, "next": "deliver the existing result", "status": "waiting_for_user", "message": "Which supplier should I use?"}, false)
+	if task := jaz.commitment(legacy); task.Note != "deliver the existing result" || task.Status != storage.CommitmentWaitingForUser || task.QuestionSeq == 0 {
 		t.Fatalf("existing task was not updated: %+v", task)
 	}
+	listed := call("bot_task_list", map[string]any{}, false)
+	var tasks bots.MCPTasksOutput
+	decodeMCPTaskResult(t, listed, &tasks)
+	if len(tasks.Tasks) != 1 || tasks.Tasks[0].ID != legacy || tasks.Tasks[0].Status != storage.CommitmentWaitingForUser {
+		t.Fatalf("unfinished tasks = %+v", tasks.Tasks)
+	}
 	id := create("Compare the two quotes")
+	dependent := create("Prepare the purchase summary")
+	call("bot_task_update", map[string]any{"id": dependent, "depends_on": []int64{id}}, false)
+	call("bot_task_update", map[string]any{"id": dependent, "next": "Wait for the comparison"}, false)
+	if task := jaz.commitment(dependent); task.Status != storage.CommitmentPending || !slices.Equal(task.DependsOn, []int64{id}) || task.Request != "Prepare the purchase summary" {
+		t.Fatalf("omitted task fields changed: %+v", task)
+	}
+	call("bot_task_update", map[string]any{"id": dependent, "depends_on": []int64{}}, false)
+	if task := jaz.commitment(dependent); task.Blocked || len(task.DependsOn) != 0 {
+		t.Fatalf("explicit empty dependencies did not clear them: %+v", task)
+	}
+	call("bot_task_update", map[string]any{"id": dependent, "depends_on": []int64{id}}, false)
+	call("create_thread", map[string]any{"prompt": "Start the dependent work", "task": dependent}, true)
+	call("bot_task_update", map[string]any{"id": dependent, "status": "waiting_for_user", "message": "This question must not be delivered.", "depends_on": []int64{dependent}}, true)
+	if task := jaz.commitment(dependent); task.Status != storage.CommitmentPending || !task.Blocked || task.QuestionSeq != 0 {
+		t.Fatalf("failed question update changed the task: %+v", task)
+	}
+	if slices.Contains(jaz.notices(bot.ID), "This question must not be delivered.") {
+		t.Fatal("a failed task update leaked its question")
+	}
+	call("bot_task_update", map[string]any{"id": dependent, "status": "cancelled", "message": "The summary is no longer required."}, false)
 	result := call("create_thread", map[string]any{"prompt": "Compare quotes until released", "task": id}, false)
 	var worker acp.ThreadSnapshot
 	decodeMCPTaskResult(t, result, &worker)
@@ -64,14 +90,18 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	if task := jaz.commitment(id); len(task.Threads) != 1 || task.Threads[0].ID != worker.ThreadID {
 		t.Fatalf("worker is not linked to the task: %+v", task)
 	}
-	call("bot_task_complete", map[string]any{"ids": []int64{id}, "message": "The first quote is cheaper."}, true)
-	call("bot_task_cancel", map[string]any{"id": id, "reason": "The user cancelled it"}, true)
-	if task := jaz.commitment(id); task.Status != storage.CommitmentOpen {
+	call("bot_task_update", map[string]any{"id": id, "status": "completed", "message": "The first quote is cheaper."}, true)
+	call("bot_task_update", map[string]any{"id": id, "status": "cancelled", "message": "The user cancelled it"}, true)
+	if task := jaz.commitment(id); !task.IsOpen() {
 		t.Fatalf("working task closed: %+v", task)
+	}
+	if slices.Contains(jaz.notices(bot.ID), "The first quote is cheaper.") {
+		t.Fatal("a refused completion delivered its result")
 	}
 	jaz.cancel(worker.ThreadID)
 	jaz.idle(worker.ThreadID)
-	call("bot_task_complete", map[string]any{"ids": []int64{legacy, id}, "message": "The first quote is cheaper."}, false)
+	call("bot_task_update", map[string]any{"id": legacy, "status": "completed", "message": "The supplier comparison is ready."}, false)
+	call("bot_task_update", map[string]any{"id": id, "status": "completed", "message": "The first quote is cheaper."}, false)
 	for _, taskID := range []int64{legacy, id} {
 		if task := jaz.commitment(taskID); task.Status != storage.CommitmentDone {
 			t.Fatalf("delivered task stayed open: %+v", task)
@@ -82,15 +112,28 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	}
 
 	cancelled := create("Draft the brochure")
-	call("bot_task_cancel", map[string]any{"id": cancelled, "reason": " "}, true)
-	call("bot_task_complete", map[string]any{"ids": []int64{}, "message": "Finished"}, true)
+	call("bot_task_update", map[string]any{"id": cancelled, "status": "cancelled", "message": " "}, true)
+	call("bot_task_update", map[string]any{"id": cancelled, "status": "waiting_for_user"}, true)
 	call("bot_task_update", map[string]any{"id": 0, "request": "Unexpected new work"}, true)
-	call("bot_task_cancel", map[string]any{"id": cancelled, "reason": "The user cancelled it"}, false)
+	call("bot_task_update", map[string]any{"id": cancelled, "status": "cancelled", "message": "The user cancelled it"}, false)
 	if task := jaz.commitment(cancelled); task.Status != storage.CommitmentDropped || task.Note != "The user cancelled it" {
 		t.Fatalf("cancelled task = %+v", task)
 	}
 	if open, err := store.ListOpenCommitments(bot.ID); err != nil || len(open) != 0 {
 		t.Fatalf("unexpected open tasks: %+v, %v", open, err)
+	}
+	for range 101 {
+		if _, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Unfinished work"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := jaz.newBot("Other")
+	if _, err := store.OpenCommitment(storage.Commitment{BotID: other.ID, Request: "Another bot's work"}); err != nil {
+		t.Fatal(err)
+	}
+	decodeMCPTaskResult(t, call("bot_task_list", map[string]any{}, false), &tasks)
+	if len(tasks.Tasks) != 101 {
+		t.Fatalf("task list was truncated or crossed bot ownership: %d tasks", len(tasks.Tasks))
 	}
 }
 

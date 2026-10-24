@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 )
@@ -151,7 +152,7 @@ func TestDeliveringACommitmentDropsTheResultsItsThreadsQueuedForTheBot(t *testin
 	}
 }
 
-func TestAStalledCommitmentWakesItsBotOnceThenStallsForTheUserAcrossARestart(t *testing.T) {
+func TestUnfinishedTasksRetryWithoutDuplicateWakesAndKeepBackoffAcrossRestart(t *testing.T) {
 	root := t.TempDir()
 	store, err := New(root)
 	if err != nil {
@@ -162,139 +163,329 @@ func TestAStalledCommitmentWakesItsBotOnceThenStallsForTheUserAcrossARestart(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare the quotes", Waiting: storage.WaitingRequester})
-	if err != nil {
+	if _, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare the quotes"}); err != nil {
 		t.Fatal(err)
 	}
-	wakes := func(want bool, why string) {
+	wake := func(want bool) {
 		t.Helper()
 		err := store.QueueTurn(storage.TurnDelivery{SessionID: bot.ID, Message: storage.NewInternalQueuedMessage("[owed]"), Wake: true})
 		if want && err != nil || !want && !errors.Is(err, storage.ErrNothingStalled) {
-			t.Fatalf("%s: wake = %v, want woken %v", why, err, want)
+			t.Fatalf("wake = %v, want eligible %v", err, want)
 		}
 	}
-	stalls := func(want int, why string) {
-		t.Helper()
-		if stalled, err := store.MarkStalled(bot.ID); err != nil || len(stalled) != want {
-			t.Fatalf("%s: stalled = %+v, %v; want %d", why, stalled, err, want)
-		}
-	}
-	// takeTurn runs the bot's queued turn to an end that does nothing.
-	takeTurn := func() {
+	finish := func() {
 		t.Helper()
 		session, err := store.LoadSession(bot.ID)
-		if err != nil || len(session.QueuedMessages) == 0 {
-			t.Fatalf("bot %+v, %v; want a queued turn", session, err)
+		if err != nil || len(session.QueuedMessages) != 1 {
+			t.Fatalf("expected exactly one durable wake: %+v, %v", session, err)
 		}
-		prompt := session.QueuedMessages[0]
-		session.QueuedMessages = session.QueuedMessages[1:]
-		if err := store.ClaimQueuedTurn(session, prompt); err != nil {
+		message := session.QueuedMessages[0]
+		session.QueuedMessages = nil
+		if err := store.ClaimQueuedTurn(session, message); err != nil {
 			t.Fatal(err)
 		}
 		if err := store.FinishSessionTurn(bot.ID, storage.StatusIdle, "", time.Now(), nil); err != nil {
 			t.Fatal(err)
 		}
 	}
-	runs := func(thread string) {
-		t.Helper()
-		if err := store.StartSessionTurn(thread, storage.Turn{}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ends := func(thread string) {
-		t.Helper()
-		if err := store.FinishSessionTurn(thread, storage.StatusIdle, "", time.Now(), nil); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	wakes(false, "waiting on its requester")
-	thread, err := store.CreateSession(storage.CreateSession{Slug: "quotes", SourceType: storage.SourceBotWorker, SourceID: bot.ID, Commitment: commitment.ID})
-	if err != nil {
+	wake(true)
+	wake(false)
+	finish()
+	wake(false)
+	var first int64
+	if err := store.db.QueryRow("SELECT wake_at_ms FROM bot_commitments").Scan(&first); err != nil {
 		t.Fatal(err)
 	}
-	if loaded, err := store.LoadCommitment(commitment.ID); err != nil || loaded.Waiting != "" {
-		t.Fatalf("commitment = %+v, %v; want the thread started for it to end its wait", loaded, err)
-	}
-	runs(thread.ID)
-	wakes(false, "its thread runs")
-	ends(thread.ID)
-	if err := store.SetBackgroundWork(thread.ID, true); err != nil {
-		t.Fatal(err)
-	}
-	wakes(false, "its thread works in the background")
-	if err := store.ClearBackgroundWork(); err != nil {
-		t.Fatal(err)
-	}
-	runs(bot.ID)
-	wakes(false, "its bot is taking a turn")
-	ends(bot.ID)
-	wakes(true, "its thread finished and its bot ended its turn")
-	stalls(0, "its bot has not yet taken the turn that wakes it")
-	takeTurn()
-	wakes(false, "its bot was woken at this progress")
-	stalls(1, "nothing moved after its bot was woken")
-	stalls(0, "the user was told already")
-	waits := func(waiting string) {
-		t.Helper()
-		loaded, err := store.LoadCommitment(commitment.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		loaded.Waiting = waiting
-		if err := store.UpdateCommitment(loaded); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if loaded, err := store.LoadCommitment(commitment.ID); err != nil || !loaded.Stalled {
-		t.Fatalf("commitment = %+v, %v; want it stalled", loaded, err)
-	}
-	waits(storage.WaitingOutside)
-	if loaded, err := store.LoadCommitment(commitment.ID); err != nil || loaded.Stalled {
-		t.Fatalf("commitment = %+v, %v; want a declared wait to show instead of the stall", loaded, err)
-	}
-	waits("")
-
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if store, err = New(root); err != nil {
+	store, err = New(root)
+	if err != nil {
 		t.Fatal(err)
 	}
-	wakes(false, "after a restart, its bot was woken at this progress")
-	stalls(0, "after a restart, the user was told already")
+	wake(false)
+	if _, err := store.db.Exec("UPDATE bot_commitments SET wake_at_ms = 0"); err != nil {
+		t.Fatal(err)
+	}
+	eligible, err := store.ListWatchBots()
+	if err != nil || !slices.Equal(eligible, []string{bot.ID}) {
+		t.Fatalf("eligible bots = %v, %v", eligible, err)
+	}
+	wake(true)
+	var second int64
+	if err := store.db.QueryRow("SELECT wake_at_ms FROM bot_commitments").Scan(&second); err != nil || second <= first {
+		t.Fatalf("retry did not back off: first %d, second %d, error %v", first, second, err)
+	}
+	wake(false)
+	finish()
+}
 
-	stalled := func(want bool, why string) {
+func TestWaitingTaskRequiresADeliveredQuestionAndARealUserReplyReleasesIt(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Compare the suppliers", FromUser: true}); err != nil {
+		t.Fatal(err)
+	}
+	task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare the suppliers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task.Status = storage.CommitmentWaitingForUser
+	if err := store.UpdateCommitment(task); err == nil {
+		t.Fatal("a wait without a delivered question was accepted")
+	}
+	task.QuestionSeq = 999
+	if err := store.UpdateCommitment(task); err == nil {
+		t.Fatal("a fabricated question reference was accepted")
+	}
+	event, err := store.AskCommitment(task, sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage,
+		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Which supplier should I compare?"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err = store.LoadCommitment(task.ID)
+	if err != nil || task.Status != storage.CommitmentWaitingForUser || task.QuestionSeq != event.Seq || event.Seq == 0 {
+		t.Fatalf("question wait = %+v, %v", task, err)
+	}
+	if err := store.UpdateCommitment(storage.Commitment{ID: task.ID, BotID: bot.ID, Note: "Use the user's choice"}); err != nil {
+		t.Fatal(err)
+	}
+	task, err = store.LoadCommitment(task.ID)
+	if err != nil || task.Status != storage.CommitmentWaitingForUser || task.QuestionSeq != event.Seq || task.Note != "Use the user's choice" {
+		t.Fatalf("progress update cleared the unanswered question: %+v, %v", task, err)
+	}
+	eligible, err := store.ListWatchBots()
+	if err != nil || len(eligible) != 0 {
+		t.Fatalf("a genuine user wait woke the bot: %v, %v", eligible, err)
+	}
+	messages, err := store.LoadMessages(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveMessages(bot.ID, messages); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadCommitment(task.ID)
+	if err != nil || loaded.Status != storage.CommitmentWaitingForUser {
+		t.Fatalf("replaying old user messages released the wait: %+v, %v", loaded, err)
+	}
+	if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Internal report", FromUser: false}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadCommitment(task.ID)
+	if err != nil || loaded.Status != storage.CommitmentWaitingForUser {
+		t.Fatalf("an internal message released the user wait: %+v, %v", loaded, err)
+	}
+	if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Supplier A and B", FromUser: true}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadCommitment(task.ID)
+	if err != nil || loaded.Status != storage.CommitmentPending || loaded.QuestionSeq != 0 {
+		t.Fatalf("user reply did not release the wait: %+v, %v", loaded, err)
+	}
+	if err := store.UpdateCommitment(task); err == nil {
+		t.Fatal("a stale update reinstated an answered question")
+	}
+}
+
+func TestTaskDependenciesBlockExecutionAndRejectCyclesOrOtherBots(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := store.CreateSession(storage.CreateSession{Slug: "other", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := func(bot, request string) storage.Commitment {
 		t.Helper()
-		if loaded, err := store.LoadCommitment(commitment.ID); err != nil || loaded.Stalled != want {
-			t.Fatalf("%s: commitment = %+v, %v; want stalled %v", why, loaded, err, want)
-		}
-	}
-	runs(thread.ID)
-	stalled(false, "its thread runs again")
-	ends(thread.ID)
-	stalled(false, "its thread's new turn ended")
-	wakes(true, "its thread ran again")
-	takeTurn()
-	waits(storage.WaitingRequester)
-	stalls(0, "waiting on its requester")
-	waits("")
-	wakes(true, "the wait it declared ended the stall it was woken about")
-
-	takeTurn()
-	runs(thread.ID)
-	ends(thread.ID)
-	runs(thread.ID)
-	if err := store.UpdateSessionStatus(thread.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
-		t.Fatal(err)
-	}
-	wakes(false, "recovery resumes or fails its interrupted thread")
-	for _, why := range []string{"its thread failed", "its thread failed again"} {
-		if err := store.FinishSessionTurn(thread.ID, storage.StatusError, "boom", time.Now(), nil); err != nil {
+		task, err := store.OpenCommitment(storage.Commitment{BotID: bot, Request: request})
+		if err != nil {
 			t.Fatal(err)
 		}
-		wakes(true, why)
-		takeTurn()
-		runs(thread.ID)
+		return task
+	}
+	prerequisite := open(bot.ID, "Read drawings")
+	dependent := open(bot.ID, "Cost the part")
+	foreign := open(other.ID, "Other bot's work")
+	dependent.DependsOn = []int64{prerequisite.ID}
+	if err := store.UpdateCommitment(dependent); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSession(storage.CreateSession{Slug: "too early", SourceType: storage.SourceBotWorker, SourceID: bot.ID, Commitment: dependent.ID}); err == nil {
+		t.Fatal("a worker started before its prerequisite ended")
+	}
+	prerequisite.DependsOn = []int64{dependent.ID}
+	if err := store.UpdateCommitment(prerequisite); err == nil {
+		t.Fatal("a dependency cycle was accepted")
+	}
+	dependent.DependsOn = []int64{foreign.ID}
+	if err := store.UpdateCommitment(dependent); err == nil {
+		t.Fatal("another bot's task was accepted as a prerequisite")
+	}
+	loaded, err := store.LoadCommitment(dependent.ID)
+	if err != nil || !slices.Equal(loaded.DependsOn, []int64{prerequisite.ID}) {
+		t.Fatalf("failed dependency update was not atomic: %+v, %v", loaded, err)
+	}
+	if _, err := store.DeliverMessage(sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage,
+		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Drawings reviewed."}}, []int64{prerequisite.ID}); err != nil {
+		t.Fatal(err)
+	}
+	worker, err := store.CreateSession(storage.CreateSession{Slug: "ready", SourceType: storage.SourceBotWorker, SourceID: bot.ID, Commitment: dependent.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadCommitment(dependent.ID)
+	if err != nil || loaded.Status != storage.CommitmentInProgress || len(loaded.Threads) != 1 || loaded.Threads[0].ID != worker.ID {
+		t.Fatalf("dependency-ready task did not start: %+v, %v", loaded, err)
+	}
+	if err := store.StartSessionTurn(worker.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	late := open(bot.ID, "New prerequisite")
+	loaded.DependsOn = []int64{late.ID}
+	if err := store.UpdateCommitment(loaded); err == nil {
+		t.Fatal("an unfinished prerequisite was added behind an active worker")
+	}
+	loaded, err = store.LoadCommitment(dependent.ID)
+	if err != nil || !loaded.Moving || loaded.Blocked || !slices.Equal(loaded.DependsOn, []int64{prerequisite.ID}) {
+		t.Fatalf("late dependency rejection was not atomic: %+v, %v", loaded, err)
+	}
+	loaded.Status = storage.CommitmentPending
+	if err := store.UpdateCommitment(loaded); err == nil {
+		t.Fatal("an active task was reset to pending")
+	}
+}
+
+func TestTaskQuestionSurvivesHistoryReplacementAndReleasesOnTheNextUserMessage(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(bot.ID,
+		storage.Message{Role: "user", Content: "Compare suppliers", FromUser: true},
+		storage.Message{Role: "assistant", Content: "Checking the records"},
+		storage.Message{Role: "user", Content: "Use the current list", FromUser: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Compare suppliers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updates := make(chan error, 2)
+	go func() {
+		_, err := store.AskCommitment(storage.Commitment{ID: task.ID, BotID: bot.ID}, sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage,
+			RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Which supplier should I use?"}})
+		updates <- err
+	}()
+	go func() {
+		updates <- store.UpdateCommitment(storage.Commitment{ID: task.ID, BotID: bot.ID, Note: "Use the user's answer"})
+	}()
+	for range 2 {
+		if err := <-updates; err != nil {
+			t.Fatalf("parallel task updates: %v", err)
+		}
+	}
+	task, err = store.LoadCommitment(task.ID)
+	if err != nil || task.Note != "Use the user's answer" || task.Status != storage.CommitmentWaitingForUser || task.Request != "Compare suppliers" {
+		t.Fatalf("parallel task update lost a field or question: %+v, %v", task, err)
+	}
+	if err := store.SaveMessages(bot.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadCommitment(task.ID)
+	if err != nil || loaded.Status != storage.CommitmentWaitingForUser {
+		t.Fatalf("history replacement released an unanswered question: %+v, %v", loaded, err)
+	}
+	if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Supplier A", FromUser: true}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err = store.LoadCommitment(task.ID)
+	if err != nil || loaded.Status != storage.CommitmentPending {
+		t.Fatalf("renumbered user message did not release the question: %+v, %v", loaded, err)
+	}
+	if err := store.UpdateCommitment(task); err == nil {
+		t.Fatal("a stale question update reinstated the wait after history replacement")
+	}
+}
+
+func TestTaskRecoveryAndCompletionAccountForWorkersStartedByItsWorker(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = store.Close()
+	})
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Review the suppliers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := store.CreateSession(storage.CreateSession{Slug: "worker", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: bot.ID, Commitment: task.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := store.CreateSession(storage.CreateSession{Slug: "review", SourceType: storage.SourceBotWorker, SourceID: bot.ID, ParentID: worker.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.StartSessionTurn(child.ID, storage.Turn{}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadCommitment(task.ID)
+	if err != nil || !loaded.Moving {
+		t.Fatalf("task ignored its active descendant worker: %+v, %v", loaded, err)
+	}
+	if len(loaded.Threads) != 1 || loaded.Threads[0].ID != worker.ID {
+		t.Fatalf("derived worker activity changed the direct task links: %+v", loaded.Threads)
+	}
+	watch, err := store.ListWatchBots()
+	if err != nil || len(watch) != 0 {
+		t.Fatalf("active descendant triggered recovery: %v, %v", watch, err)
+	}
+	if err := store.DropCommitment(task.ID, "Cancelled", time.Now()); !errors.Is(err, storage.ErrCommitmentWorking) {
+		t.Fatalf("task closed while its descendant worked: %v", err)
+	}
+	if _, err := store.DeliverMessage(sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage,
+		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "This must not be delivered"}}, []int64{task.ID}); !errors.Is(err, storage.ErrCommitmentWorking) {
+		t.Fatalf("task completed while its descendant worked: %v", err)
+	}
+	events, err := store.LoadSessionEvents(bot.ID)
+	if err != nil || len(events) != 0 {
+		t.Fatalf("refused completion leaked its result: %+v, %v", events, err)
+	}
+	if err := store.FinishSessionTurn(child.ID, storage.StatusIdle, "", time.Now(), nil); err != nil {
+		t.Fatal(err)
+	}
+	watch, err = store.ListWatchBots()
+	if err != nil || !slices.Equal(watch, []string{bot.ID}) {
+		t.Fatalf("finished descendant did not release recovery: %v, %v", watch, err)
+	}
+	if err := store.DropCommitment(task.ID, "Cancelled", time.Now()); err != nil {
+		t.Fatal(err)
 	}
 }

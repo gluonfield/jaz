@@ -8,13 +8,14 @@ import { resolvePreviewPatterns } from '../../../shared/preview'
 // always layer on top. Read once at module load; lib/appearance.ts and lib/theme.ts
 // fold it under the user's stored prefs, and the pre-paint script in index.html
 // reads the same global.
-// A per-mode color scheme override (all fields optional). Hex strings + a 0–100
-// contrast; lib/appearanceScheme.ts validates and derives the full token set.
-export interface ColorSchemeConfig {
-  accent?: string
-  background?: string
-  foreground?: string
-  contrast?: number
+// The default colour theme (all fields optional): a built-in preset id with any
+// of its values overridden. lib/appearanceScheme.ts validates it.
+export interface ColorThemeConfig {
+  preset?: string
+  hue?: number
+  colors?: number
+  strength?: number
+  grain?: number
 }
 
 export interface ComposerConfig {
@@ -44,13 +45,7 @@ export interface JazDefaults {
   inlineDiffs?: boolean
   inlineShellCommands?: boolean
   composer?: ComposerConfig
-  // Default color scheme. `preset` names a built-in (e.g. 'catppuccin'); the
-  // per-mode blocks override individual colors on top of it (or of the default).
-  scheme?: {
-    preset?: string
-    light?: ColorSchemeConfig
-    dark?: ColorSchemeConfig
-  }
+  color?: ColorThemeConfig
   // Inline web-preview cards: a URL in an assistant reply matching any of these
   // regex patterns gets an "Open preview" card below the message. Omit to use
   // the defaults (localhost + 127.0.0.1).

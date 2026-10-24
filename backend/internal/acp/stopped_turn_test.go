@@ -45,7 +45,7 @@ func TestWorkQueuedBehindAStoppedTurnRunsOnceAcrossARestart(t *testing.T) {
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
 	jaz = jaz.restart(map[string]string{"JAZ_FAKE_ACP_UNIQUE_SESSION": "1"})
 	// The bot reports nothing to the user, so the watchdog wakes it once.
-	jaz.settles(bot.ID, 1, 1)
+	jaz.settles(bot.ID, 1, 0)
 	messages, resumed, results := jaz.promptsContaining("and the flights"), jaz.promptsContaining(continuation), jaz.promptsContaining("completed a turn with state")
 	if messages != 1 || resumed != 1 || results != 1 {
 		t.Fatalf("the user's message ran %d times, resumed %d times, and the thread's result ran %d times; want each once", messages, resumed, results)

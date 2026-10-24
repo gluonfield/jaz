@@ -88,6 +88,7 @@ if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
     pathForFile: (file: File) => webUtils.getPathForFile(file),
     setNativeTheme: (source: 'light' | 'dark' | 'system') =>
       ipcRenderer.send('jaz:set-native-theme', source),
+    setWindowButtonsVisible: (visible: boolean) => ipcRenderer.send('jaz:set-window-buttons-visible', visible),
     startLocalBackend: (): Promise<{ ok: boolean; url?: string; key?: string; error?: string }> =>
       ipcRenderer.invoke('jaz:start-local-backend'),
     getDeviceIdentity: (): Promise<{ device_id: string; public_key: string }> =>

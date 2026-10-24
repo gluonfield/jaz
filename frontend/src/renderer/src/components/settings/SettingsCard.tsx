@@ -14,3 +14,24 @@ export function SettingsCard({
 }) {
   return <div className={`rounded-card bg-surface ${className}`}>{children}</div>
 }
+
+// One label/control row inside a card. Rows stack with hairline dividers.
+export function SettingsRow({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-2 border-t border-border px-3 py-2.5 first:border-t-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div className="min-w-0">
+        <p className="text-[13px] font-medium text-ink">{title}</p>
+        {description ? <p className="mt-0.5 text-[12px] text-ink-3">{description}</p> : null}
+      </div>
+      <div className="md:justify-self-end">{children}</div>
+    </div>
+  )
+}

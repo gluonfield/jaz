@@ -25,14 +25,15 @@ window.__JAZ_DEFAULTS__ = {
   //   hideProjectPicker: false,
   // },
 
-  // Default color scheme for light + dark. `preset` names a built-in (jaz,
-  // catppuccin, github, gruvbox, rose-pine, solarized, nord, tokyo-night,
-  // everforest, one); the per-mode blocks override individual colors on top.
-  // contrast is 0–100. Users can still change all of this in Settings.
-  // scheme: {
-  //   preset: 'catppuccin',
-  //   light: { accent: '#8839ef', background: '#eff1f5', foreground: '#4c4f69', contrast: 45 },
-  //   dark:  { accent: '#cba6f7', background: '#1e1e2e', foreground: '#cdd6f4', contrast: 55 },
+  // Default colour theme for light and dark. `preset` names a built-in (cobalt,
+  // ocean, forest, sand, ember, rose, aurora, graphite); any value below
+  // overrides it. Users can still change all of this in Settings.
+  // color: {
+  //   preset: 'ocean',
+  //   hue: 205,          // 0–360, the main colour
+  //   colors: 2,         // 0 (graphite) to 3 linked colours
+  //   strength: 0.6,     // 0.1–1, how strongly they wash the window
+  //   grain: 0,          // 0–100 film grain over the window
   // },
 
   // Inline web-preview cards. A URL in an assistant reply matching any of these

@@ -40,6 +40,8 @@ type SettingsNavItem = {
   id: SettingsSection
   label: string
   icon: LucideIcon
+  // The menu heading this item sits under; consecutive items share it.
+  group?: string
   fullHeight?: boolean
   experimental?: boolean
 }
@@ -48,19 +50,19 @@ export const SETTINGS_SECTIONS: SettingsNavItem[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'personalization', label: 'Personalization', icon: Sparkles, fullHeight: true },
-  { id: 'memory', label: 'Memory', icon: Brain },
-  { id: 'connections', label: 'Connections', icon: Link2, experimental: true },
-  { id: 'browser', label: 'Browser', icon: Globe },
-  { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone },
-  { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
-  { id: 'devices', label: 'Devices', icon: MonitorSmartphone },
   { id: 'keyboard', label: 'Keyboard shortcuts', icon: Keyboard },
-  { id: 'mcp', label: 'MCP servers', icon: Plug },
-  { id: 'providers', label: 'Model Providers', icon: Boxes },
-  { id: 'agents', label: 'Agents (ACP)', icon: Bot },
   { id: 'voice', label: 'Voice', icon: AudioLines },
-  { id: 'archived', label: 'Archived threads', icon: ArchiveRestore },
+  { id: 'personalization', label: 'Personalization', icon: Sparkles, group: 'You', fullHeight: true },
+  { id: 'memory', label: 'Memory', icon: Brain, group: 'You' },
+  { id: 'providers', label: 'Model Providers', icon: Boxes, group: 'Agents' },
+  { id: 'agents', label: 'Agents (ACP)', icon: Bot, group: 'Agents' },
+  { id: 'mcp', label: 'MCP servers', icon: Plug, group: 'Agents' },
+  { id: 'connections', label: 'Connections', icon: Link2, group: 'Agents', experimental: true },
+  { id: 'browser', label: 'Browser', icon: Globe, group: 'Agents' },
+  { id: 'computer', label: 'Computer Use', icon: MonitorSmartphone, group: 'Agents' },
+  { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn, group: 'Account' },
+  { id: 'devices', label: 'Devices', icon: MonitorSmartphone, group: 'Account' },
+  { id: 'archived', label: 'Archived threads', icon: ArchiveRestore, group: 'Account' },
 ]
 
 export const isSettingsSection = (value: unknown): value is SettingsSection =>

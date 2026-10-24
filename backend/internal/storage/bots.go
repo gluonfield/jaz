@@ -36,9 +36,11 @@ type BotMembership struct {
 }
 
 const (
-	CommitmentOpen    = "open"
-	CommitmentDone    = "done"
-	CommitmentDropped = "dropped"
+	CommitmentPending        = "pending"
+	CommitmentInProgress     = "in_progress"
+	CommitmentWaitingForUser = "waiting_for_user"
+	CommitmentDone           = "completed"
+	CommitmentDropped        = "cancelled"
 )
 
 // ErrCommitmentNotOpen refuses a commitment that is closed or another bot's.
@@ -52,15 +54,7 @@ var ErrCommitmentWorking = errors.New("a thread serving it is still working")
 // bot's running turn delivers.
 var ErrCommitmentStaged = errors.New("this turn's answer delivers it")
 
-// What an open commitment can wait on besides its threads: an answer only its
-// requester can give, or a job outside Jaz that cannot report back.
-const (
-	WaitingRequester = "requester"
-	WaitingOutside   = "outside"
-)
-
-// ErrNothingStalled refuses a wake when none of the bot's commitments still
-// stalls without its bot having been woken about it.
+// ErrNothingStalled refuses a wake when no unfinished task needs recovery.
 var ErrNothingStalled = errors.New("nothing stalls")
 
 // Commitment is something a bot owes beyond the turn it was asked in. It
@@ -73,21 +67,24 @@ type Commitment struct {
 	Requester string
 	Request   string
 	// Note is the bot's next step while it is open, or why it was dropped.
-	Note string
-	// Waiting is what an open one waits on, if anything: WaitingRequester or
-	// WaitingOutside.
-	Waiting string
+	Note        string
+	QuestionSeq int64
+	DependsOn   []int64
 	// Moving is set while one of its threads works on it, in a turn or in
 	// the background.
-	Moving bool
-	// Stalled is set once the user has been told nothing moves on it, until
-	// something does.
+	Moving  bool
+	Blocked bool
+	// Stalled means recovery has tried to resume it and no worker is active.
 	Stalled  bool
 	Status   string
 	OpenedAt time.Time
 	ClosedAt time.Time
 	// Threads are the threads the bot started for it, oldest first.
 	Threads []CommitmentThread
+}
+
+func (c Commitment) IsOpen() bool {
+	return c.Status == CommitmentPending || c.Status == CommitmentInProgress || c.Status == CommitmentWaitingForUser
 }
 
 // CommitmentThread is a thread serving a commitment and how far it has got:

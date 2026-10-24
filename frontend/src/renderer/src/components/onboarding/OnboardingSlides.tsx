@@ -1,8 +1,13 @@
-import { ArrowRight } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ArrowRight, ArrowUp } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { SystemPermission } from '@shared/systemPermissions'
+import { BotAvatar } from '@/components/bots/BotAvatar'
 import { DitherWordmark, type Silhouette } from '@/components/launch/DitherArt'
+import { PresetSwatches } from '@/components/settings/ColorThemeSettings'
+import { ThemeModePicker } from '@/components/settings/ThemeModePicker'
 import { Button } from '@/components/ui/Button'
+import { botsQuery } from '@/lib/api/bots'
 import { type SetupStep, onboardingEase, slideExit } from './OnboardingParts'
 
 // The first thing a new user ever sees: the wordmark assembles itself out of
@@ -44,11 +49,30 @@ function heroGlow(g: Parameters<Silhouette>[0], w: number, h: number) {
 }
 
 // The setup slides in order; the last one finishes setup.
-export const SETUP_STEPS: SetupStep[] = ['agents', 'memory', 'connections', 'computer', 'voice', 'loops']
+export const SETUP_STEPS: SetupStep[] = ['appearance', 'agents', 'memory', 'connections', 'computer', 'voice', 'bot']
 
 // Everything that defines a setup slide lives in this one table: the dithered
-// hero mark, the copy, and the system permissions it asks for.
-export const SLIDES: Record<SetupStep, { motif: Silhouette; title: string; subtitle: string; permissions?: SystemPermission[] }> = {
+// hero mark, the copy, and the system permissions it asks for. The bot slide
+// has no mark: the user's own bot stands in for it.
+export const SLIDES: Record<SetupStep, { motif?: Silhouette; title: string; subtitle: string; permissions?: SystemPermission[] }> = {
+  appearance: {
+    title: 'Make it yours',
+    subtitle: 'Pick a mode and a color. Fine-tune both any time in Settings.',
+    motif: (g, w, h) => {
+      heroGlow(g, w, h)
+      const disc = new Path2D()
+      disc.arc(w * 0.5, h * 0.5, h * 0.32, 0, Math.PI * 2)
+      // The glow is cut from the disc so its empty half reads as empty.
+      g.globalCompositeOperation = 'destination-out'
+      g.fill(disc)
+      g.globalCompositeOperation = 'source-over'
+      g.lineWidth = h * 0.1
+      g.stroke(disc)
+      g.beginPath()
+      g.arc(w * 0.5, h * 0.5, h * 0.32, -Math.PI / 2, Math.PI / 2)
+      g.fill()
+    },
+  },
   agents: {
     title: 'Connect your agents',
     subtitle: 'jaz runs on the coding agents you already use.',
@@ -139,25 +163,9 @@ export const SLIDES: Record<SetupStep, { motif: Silhouette; title: string; subti
       })
     },
   },
-  loops: {
-    title: 'Always working',
-    subtitle: 'Loops run agents on a schedule. Boards show their results live.',
-    motif: (g, w, h) => {
-      heroGlow(g, w, h)
-      g.lineWidth = h * 0.12
-      g.beginPath()
-      g.arc(w * 0.5, h * 0.5, h * 0.32, 0, Math.PI * 2)
-      g.stroke()
-      g.globalAlpha = 0.4
-      g.lineWidth = h * 0.07
-      g.beginPath()
-      g.arc(w * 0.5, h * 0.5, h * 0.46, -Math.PI * 0.45, -Math.PI * 0.05)
-      g.stroke()
-      g.globalAlpha = 1
-      g.beginPath()
-      g.arc(w * 0.5 + h * 0.46 * Math.cos(-Math.PI * 0.05), h * 0.5 + h * 0.46 * Math.sin(-Math.PI * 0.05), h * 0.1, 0, Math.PI * 2)
-      g.fill()
-    },
+  bot: {
+    title: 'Meet your bot',
+    subtitle: "It remembers everything you tell it and works for you, even while you're away.",
   },
 }
 
@@ -167,47 +175,73 @@ export function slideFooter(
   state: { canContinue: boolean; memoryReady: boolean; skippable: boolean },
 ): { nextLabel: string; nextDisabled: boolean } {
   return {
-    nextLabel: step === 'loops' ? 'Launch jaz' : state.skippable ? 'Skip for now' : 'Continue',
+    nextLabel: step === 'bot' ? 'Launch jaz' : state.skippable ? 'Skip for now' : 'Continue',
     nextDisabled: step === 'agents' ? !state.canContinue : step === 'memory' ? !state.memoryReady : false,
   }
 }
 
-// Two miniature product mocks instead of prose: a loop schedule and the live
-// board it feeds. The subtitle above them carries the one-line explanation.
-export function LoopsBoardsShowcase() {
+// The mode tiles are miniature windows in the chosen colour, so a palette
+// pick previews there and across the whole slide at once.
+export function ThemeChoice() {
   return (
-    <div className="grid grid-cols-2 gap-2">
-      <div className="rounded-[14px] bg-surface p-2.5">
-        <div className="flex h-[104px] flex-col justify-center gap-1.5 rounded-[9px] bg-bg px-2.5">
-          {(
-            [
-              ['Morning brief', '8:00'],
-              ['Watch CI', '10m'],
-              ['Week review', 'Fri'],
-            ] as const
-          ).map(([name, meta]) => (
-            <div key={name} className="flex items-center gap-2 rounded-full bg-surface px-2.5 py-1.5">
-              <span className="size-1.5 shrink-0 rounded-full bg-primary" />
-              <span className="min-w-0 flex-1 truncate text-[10.5px] font-medium leading-none text-ink-2">{name}</span>
-              <span className="shrink-0 font-mono text-[9.5px] leading-none text-ink-3">{meta}</span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-2.5 px-1 text-[13px] font-medium text-ink">Loops</p>
-        <p className="px-1 pb-0.5 text-[11.5px] leading-snug text-ink-3">Agents on a schedule</p>
+    <>
+      <ThemeModePicker />
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-[14px] bg-surface p-3.5">
+        <p className="text-[13.5px] font-medium text-ink">Color</p>
+        <PresetSwatches />
       </div>
+    </>
+  )
+}
 
-      <div className="rounded-[14px] bg-surface p-2.5">
-        <div className="grid h-[104px] grid-cols-2 gap-1.5 rounded-[9px] bg-bg p-2">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="flex flex-col justify-center gap-1.5 rounded-[6px] bg-surface px-2">
-              <span className={`h-1 rounded-full ${i === 0 ? 'w-3/4 bg-primary/70' : 'w-2/3 bg-ink/20'}`} />
-              <span className="h-1 w-1/2 rounded-full bg-ink/10" />
+const useMainBot = () => useQuery(botsQuery).data?.find((bot) => bot.main)
+
+// Every install starts with a main bot. It stands live on its slide, large
+// enough that its eyes follow the cursor.
+export function MainBotFace() {
+  const main = useMainBot()
+  return <div className="grid size-[104px] place-items-center">{main ? <BotAvatar avatar={main.avatar} size={96} live /> : null}</div>
+}
+
+// A day with the bot: something it keeps in mind, a job it takes on, and the
+// next morning's work, done while the user was away and shaped by what it kept.
+const BOT_CHAT = [
+  { mine: true, text: 'Keep my meetings before noon.' },
+  { mine: false, text: "Got it. I'll remember that." },
+  { mine: true, text: 'Brief me on my inbox every morning.' },
+  { day: 'Tomorrow, 8:00' },
+  { mine: false, text: 'Morning! Sam needs the deck by Friday. Lena wants to meet, so I offered her 11:30.' },
+]
+
+export function BotShowcase() {
+  const main = useMainBot()
+  return (
+    <div className="rounded-[14px] bg-surface p-2.5">
+      <div className="flex flex-col gap-1.5 rounded-[9px] bg-bg p-3">
+        {BOT_CHAT.map((line) =>
+          line.day ? (
+            <p key={line.day} className="py-1 text-center text-[11px] text-ink-3">
+              {line.day}
+            </p>
+          ) : (
+            <div key={line.text} className={`flex items-end gap-2 ${line.mine ? 'justify-end' : ''}`}>
+              {!line.mine && main ? <BotAvatar avatar={main.avatar} size={24} /> : null}
+              <p
+                className={`max-w-[78%] rounded-[18px] px-3.5 py-2 text-[13px] leading-snug text-ink ${
+                  line.mine ? 'bg-bubble-sent' : 'bg-surface'
+                }`}
+              >
+                {line.text}
+              </p>
             </div>
-          ))}
-        </div>
-        <p className="mt-2.5 px-1 text-[13px] font-medium text-ink">Boards</p>
-        <p className="px-1 pb-0.5 text-[11.5px] leading-snug text-ink-3">Their results, live</p>
+          ),
+        )}
+      </div>
+      <div className="mt-2 flex items-center gap-2 rounded-full bg-bg py-1.5 pl-4 pr-1.5">
+        <span className="flex-1 text-[13px] text-ink-3">Message {main?.name ?? 'your bot'}</span>
+        <span className="grid size-7 place-items-center rounded-full bg-primary text-on-primary">
+          <ArrowUp size={14} />
+        </span>
       </div>
     </div>
   )

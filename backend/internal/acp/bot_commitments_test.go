@@ -89,10 +89,10 @@ func TestABotsCommitmentLinksItsThreadAndClosesOnlyWhenTheResultReachesTheUserAc
 	jaz.eventually("the thread's result reaching the bot", func() bool {
 		return jaz.promptWith("ACP session quotes") != ""
 	})
-	if note := fmt.Sprintf("#%d for the user: Compare the two quotes · thread quotes finished · next: send the comparison", id); !strings.Contains(jaz.promptWith("ACP session quotes"), note) {
+	if note := fmt.Sprintf("#%d [in_progress] for the user: Compare the two quotes · thread quotes finished · next: send the comparison", id); !strings.Contains(jaz.promptWith("ACP session quotes"), note) {
 		t.Fatalf("the result turn opened with %q, want the note %q", jaz.promptWith("ACP session quotes"), note)
 	}
-	if commitment := jaz.commitment(id); commitment.Status != storage.CommitmentOpen {
+	if commitment := jaz.commitment(id); !commitment.IsOpen() {
 		t.Fatalf("closed before delivery: %+v", commitment)
 	}
 	if err := jaz.bots.Say(bot.ID, "The first quote is cheaper.", id); err != nil {
@@ -160,7 +160,7 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, thread.ThreadID)
-	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Drop: "the user cancelled it"}); err == nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Status: storage.CommitmentDropped, Message: "the user cancelled it"}); err == nil {
 		t.Fatal("dropped while its thread works")
 	}
 	jaz.cancel(thread.ThreadID)
@@ -168,7 +168,7 @@ func TestADroppedCommitmentClosesWithItsReasonOnceItsThreadStopped(t *testing.T)
 		session, err := store.LoadSession(thread.ThreadID)
 		return err == nil && session.Status != storage.StatusRunning
 	})
-	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Drop: "the user cancelled it"}); err != nil {
+	if _, err := jaz.commit(bot.ID, bots.Commit{ID: id, Status: storage.CommitmentDropped, Message: "the user cancelled it"}); err != nil {
 		t.Fatal(err)
 	}
 	if commitment := jaz.commitment(id); commitment.Status != storage.CommitmentDropped || commitment.Note != "the user cancelled it" {
@@ -250,7 +250,7 @@ func TestABotsTurnsShowItsTasksAgainOnlyAsTheyChange(t *testing.T) {
 	jaz.write(bot.ID, "hello")
 	open := func(request, next string) int64 {
 		t.Helper()
-		id, err := jaz.commit(bot.ID, bots.Commit{Request: request, Next: next, Waiting: "requester"})
+		id, err := jaz.commit(bot.ID, bots.Commit{Request: request, Next: next})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -258,18 +258,18 @@ func TestABotsTurnsShowItsTasksAgainOnlyAsTheyChange(t *testing.T) {
 	}
 	quotes, brochure := open("Compare the two quotes", "send the comparison"), open("Draft the brochure", "ask for the logo")
 	jaz.write(bot.ID, "what is open?")
-	if prompt := jaz.lastPrompt(); !strings.Contains(prompt, "Compare the two quotes") || !strings.Contains(prompt, "Draft the brochure") {
+	if prompt := jaz.promptWith("what is open?"); !strings.Contains(prompt, "Compare the two quotes") || !strings.Contains(prompt, "Draft the brochure") {
 		t.Fatalf("the first turn opened with %q, want every open task", prompt)
 	}
 	jaz.write(bot.ID, "anything new?")
-	if prompt := jaz.lastPrompt(); strings.Contains(prompt, "Your open tasks") {
+	if prompt := jaz.promptWith("anything new?"); prompt == "" || strings.Contains(prompt, "Your open tasks") {
 		t.Fatalf("a turn after nothing changed opened with %q, want no tasks", prompt)
 	}
 	if _, err := jaz.commit(bot.ID, bots.Commit{ID: brochure, Next: "send the draft"}); err != nil {
 		t.Fatal(err)
 	}
 	jaz.write(bot.ID, "and now?")
-	if prompt := jaz.lastPrompt(); !strings.Contains(prompt, "Draft the brochure · next: send the draft") || strings.Contains(prompt, "Compare the two quotes") || !strings.Contains(prompt, fmt.Sprintf("Unchanged: #%d.", quotes)) {
+	if prompt := jaz.promptWith("and now?"); !strings.Contains(prompt, "Draft the brochure · next: send the draft") || strings.Contains(prompt, "Compare the two quotes") || !strings.Contains(prompt, fmt.Sprintf("Unchanged: #%d.", quotes)) {
 		t.Fatalf("after one task moved the turn opened with %q, want only it and the other's number", prompt)
 	}
 }

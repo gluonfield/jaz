@@ -74,7 +74,7 @@ func (s *Store) insertNewSessionLocked(session storage.Session, commitment int64
 		if linked == 0 {
 			return fmt.Errorf("#%d: %w", commitment, storage.ErrCommitmentNotOpen)
 		}
-		if err := botdb.New(tx).StopWaiting(ctx, commitment); err != nil {
+		if err := botdb.New(tx).StartCommitment(ctx, commitment); err != nil {
 			return err
 		}
 	}

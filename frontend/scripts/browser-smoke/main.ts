@@ -18,12 +18,19 @@ import { configureAppPermissions } from '@main/permissions'
 import { clipboardFixture, exerciseClipboard } from './clipboard'
 
 app.setName('Jaz')
+let probingNavigation = false
+let navigationRequests: { url: string; webContentsId: number }[] = []
 // The suite runs on the developer's own desktop: no Dock icon, no focus and no
 // visible windows (popups included). Input is injected; focus is emulated over CDP.
 if (process.platform === 'darwin') {
   app.setActivationPolicy('prohibited')
 }
 app.on('web-contents-created', (_event, contents) => {
+  contents.on('did-start-navigation', ({ url, isMainFrame }) => {
+    if (probingNavigation && isMainFrame && contents.getType() === 'webview') {
+      navigationRequests.push({ url, webContentsId: contents.id })
+    }
+  })
   const setWindowOpenHandler = contents.setWindowOpenHandler.bind(contents)
   contents.setWindowOpenHandler = (handler) => setWindowOpenHandler((details) => {
     const response = handler(details)
@@ -188,6 +195,21 @@ server.listen(0, '127.0.0.1', async () => {
   }
   await app.whenReady()
   configurePreviewSession()
+  ipcMain.handle('smoke:navigation-probe', (_event, enabled?: boolean) => {
+    if (enabled !== undefined) {
+      probingNavigation = enabled
+      navigationRequests = []
+      const protocol = session.fromPartition(PREVIEW_PARTITION).protocol
+      for (const scheme of ['http', 'https']) {
+        if (enabled) {
+          protocol.handle(scheme, () => new Response('<!doctype html><title>Address probe</title>', { headers: { 'Content-Type': 'text/html' } }))
+        } else {
+          protocol.unhandle(scheme)
+        }
+      }
+    }
+    return navigationRequests
+  })
   installBrowserDownloads()
   process.env.ELECTRON_RENDERER_URL = `http://127.0.0.1:${address.port}`
   configureAppPermissions(session.defaultSession)
@@ -267,6 +289,9 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     window.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
     if (keyCode.length === 1 && modifiers.length === 0) {
       window.webContents.sendInputEvent({ type: 'char', keyCode })
+    }
+    if (keyCode === 'Enter') {
+      window.webContents.sendInputEvent({ type: 'char', keyCode: '\r' })
     }
     window.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
     await new Promise((resolve) => setTimeout(resolve, 20))
