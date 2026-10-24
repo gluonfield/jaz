@@ -18,7 +18,7 @@ func TestLiveArchives(t *testing.T) {
 		runtimeEnv     string
 		runtimeVersion string
 	}{
-		{"codex", []string{"CODEX_PATH", "CODEX_CODE_MODE_HOST_PATH"}, "CODEX_PATH", "codex-cli 0.162.1"},
+		{"codex", []string{"CODEX_PATH", "CODEX_CODE_MODE_HOST_PATH"}, "CODEX_PATH", "codex-cli 0.164.0"},
 		{"claude", []string{"CLAUDE_CODE_EXECUTABLE"}, "CLAUDE_CODE_EXECUTABLE", "2.1.300 (Claude Code)"},
 	}
 	for _, test := range tests {

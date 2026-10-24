@@ -22,21 +22,27 @@ await Promise.all(Object.entries(adapters).map(async ([name, [upstream, manifest
   })
 }))
 await Promise.all([
+  ...["antigravity", "muse"].map((name) => check(`${name} adapter`, async () => {
+    const { repo, tag } = spec.adapters[name]
+    const latest = execFileSync("gh", ["api", `repos/${repo}/releases/latest`, "--jq", ".tag_name"], { encoding: "utf8", timeout: 30_000 }).trim()
+    compare(`${name} adapter`, tag.replace(/^v/, ""), latest.replace(/^v/, ""))
+  })),
+  check("muse runtime", async () => compare("muse runtime (last observed)", verified.muse, (await json("https://api.meta.ai/muse-code/channels/muse-stable")).version)),
   check("opencode", async () => compare("opencode", config.match(/opencode-ai@([\d.]+)/)?.[1], await npmVersion("opencode-ai"))),
-  check("grok", async () => compare("grok (last verified)", verified.grok, await npmVersion("@xai-official/grok"))),
+  check("grok", async () => compare("grok (last observed)", verified.grok, await npmVersion("@xai-official/grok"))),
   check("antigravity", async () => {
     const manifest = await json("https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/darwin_arm64.json")
-    compare("antigravity (last verified)", verified.antigravity, manifest.version)
+    compare("antigravity (last observed)", verified.antigravity, manifest.version)
   }),
 ])
 
 rows.sort((a, b) => a.name.localeCompare(b.name))
 const report = [
-  "| Component | Bundled / verified | Latest upstream | Status |",
+  "| Component | Bundled / observed | Latest upstream | Status |",
   "| --- | --- | --- | --- |",
   ...rows.map((row) => `| ${row.name} | ${row.current ?? "unknown"} | ${row.latest ?? "unknown"} | ${row.status} |`),
   "",
-  "Grok and Antigravity use native updaters; their baseline is the version last verified with Jaz. Runtime changes require native-parity checks before release.",
+  "Grok, Antigravity and Muse use native updaters; their baseline is the last installed native version observed. Runtime changes require native-parity checks before release.",
 ].join("\n")
 console.log(report)
 if (process.env.GITHUB_STEP_SUMMARY) {
