@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
-	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/serverconfig"
@@ -18,17 +18,31 @@ import (
 
 func (s *Server) withAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		key := strings.TrimSpace(s.AuthKey)
-		if key == "" || r.URL.Path == "/health" || internalMCPRequest(r) || publicDeviceRequest(r) || publicOAuthCallback(r) || localBrowserExtensionRequest(r) {
+		key := s.AuthKey
+		if key == "" || r.URL.Path == "/health" || publicDeviceRequest(r) || publicOAuthCallback(r) {
 			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, deviceauth.Principal{})))
 			return
 		}
+		if s.Devices != nil && queryAuthAllowed(r) && r.URL.Query().Get("ticket") != "" {
+			principal, err := s.Devices.AuthenticateResourceTicket(r.URL.Query().Get("ticket"))
+			if err != nil {
+				writeAuthError(w, http.StatusUnauthorized, "unauthorized", err)
+				return
+			}
+			s.serveDevice(w, r, principal, next)
+			return
+		}
 		token := requestAuthKey(r)
+		if s.Devices != nil && r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register" && s.Devices.IsInvitation(token) {
+			principal := deviceauth.Principal{Kind: deviceauth.PrincipalEnrollment, EnrollmentToken: token}
+			next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
+			return
+		}
 		if s.Devices != nil {
 			info := httpapi.RequestInfoFrom(r)
 			principal, err := s.Devices.Authenticate(token, deviceauth.SeenInfo{IP: info.IP, UserAgent: info.UserAgent})
 			if err == nil {
-				next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
+				s.serveDevice(w, r, principal, next)
 				return
 			}
 			if errors.Is(err, deviceauth.ErrApprovalRequired) {
@@ -36,8 +50,8 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(key)) == 1 {
-			if rootKeyAllowed(r) || s.rootKeyHasFullAccess() {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(key)) == 1 {
+			if s.Devices == nil || (trustedLocalRequest(r) && (rootKeyAllowed(r) || s.rootKeyHasFullAccess())) {
 				principal := deviceauth.Principal{Kind: deviceauth.PrincipalRoot}
 				next.ServeHTTP(w, r.WithContext(contextWithClientInfo(r, principal)))
 				return
@@ -74,21 +88,37 @@ func (s *Server) rootKeyHasFullAccess() bool {
 		return true
 	}
 	count, err := s.Devices.ApprovedDeviceCount()
-	return err != nil || count == 0
+	return err == nil && count == 0
 }
 
 func rootKeyAllowed(r *http.Request) bool {
-	if r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register" {
-		return true
-	}
-	return r.Method == http.MethodGet && r.URL.Path == "/v1/browser/extension"
+	return (r.Method == http.MethodPost && r.URL.Path == "/v1/devices/register") || internalMCPRequest(r)
 }
 
-func localBrowserExtensionRequest(r *http.Request) bool {
-	return r.Method == http.MethodGet &&
-		r.URL.Path == "/v1/browser/extension" &&
-		loopbackRequest(r) &&
-		browsercontrol.IsChromeExtensionOrigin(r.Header.Get("Origin"))
+func trustedLocalRequest(r *http.Request) bool {
+	if !loopbackRequest(r) {
+		return false
+	}
+	host := (&url.URL{Host: r.Host}).Hostname()
+	if host != "localhost" && host != "127.0.0.1" && host != "::1" {
+		return false
+	}
+	for _, name := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "CF-Connecting-IP"} {
+		if r.Header.Get(name) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Server) serveDevice(w http.ResponseWriter, r *http.Request, principal deviceauth.Principal, next http.Handler) {
+	ctx, release, err := s.Devices.Track(contextWithClientInfo(r, principal), principal)
+	if err != nil {
+		writeAuthError(w, http.StatusUnauthorized, "unauthorized", err)
+		return
+	}
+	defer release()
+	next.ServeHTTP(w, r.WithContext(ctx))
 }
 
 func publicDeviceRequest(r *http.Request) bool {
@@ -112,28 +142,42 @@ func writeAuthError(w http.ResponseWriter, status int, code string, err error) {
 
 func (s *Server) handleAuthCheck(w http.ResponseWriter, r *http.Request) {
 	principal, _ := deviceauth.PrincipalFromContext(r.Context())
-	writeJSON(w, http.StatusOK, map[string]any{
+	response := map[string]any{
 		"ok":        true,
 		"auth_kind": principal.Kind,
 		"device_id": principal.DeviceID,
-	})
+	}
+	if principal.Kind == deviceauth.PrincipalDevice {
+		ticket, err := s.Devices.IssueResourceTicket(requestAuthKey(r))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		response["resource_ticket"] = ticket
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func requestAuthKey(r *http.Request) string {
 	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
 		return token
 	}
-	if !queryAuthAllowed(r) {
-		return ""
+	if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		for _, protocol := range strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",") {
+			protocol = strings.TrimSpace(protocol)
+			if strings.HasPrefix(protocol, "jaz-auth.") {
+				return strings.TrimPrefix(protocol, "jaz-auth.")
+			}
+		}
 	}
-	return strings.TrimSpace(r.URL.Query().Get("key"))
+	return ""
 }
 
 func queryAuthAllowed(r *http.Request) bool {
 	if r.Method != http.MethodGet {
 		return false
 	}
-	if r.URL.Path == "/v1/browser/extension" || r.URL.Path == "/v1/bots/events" {
+	if r.URL.Path == "/v1/bots/events" {
 		return true
 	}
 	sessionPath := strings.TrimPrefix(r.URL.Path, "/v1/sessions/")
@@ -145,9 +189,6 @@ func queryAuthAllowed(r *http.Request) bool {
 		return false
 	}
 	return action == "events" ||
-		action == "browser" ||
-		action == "computer" ||
-		action == "terminal" ||
 		strings.HasPrefix(action, "attachments/") ||
 		(action == "file" && rawSessionFileRequested(r))
 }
@@ -155,7 +196,7 @@ func queryAuthAllowed(r *http.Request) bool {
 func bearerToken(header string) string {
 	fields := strings.Fields(header)
 	if len(fields) == 2 && strings.EqualFold(fields[0], "Bearer") {
-		return strings.TrimSpace(fields[1])
+		return fields[1]
 	}
 	return ""
 }

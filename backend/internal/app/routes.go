@@ -46,7 +46,6 @@ type routeDeps struct {
 	Jaz              Config
 	Devices          *deviceauth.Service `optional:"true"`
 	Store            storage.Store
-	AuthKey          RuntimeAuthKey
 	Config           serverconfig.Config               `optional:"true"`
 	Browser          *browsercontrol.ConfiguredBackend `optional:"true"`
 	Computer         *computercontrol.DesktopBackend   `optional:"true"`
@@ -97,7 +96,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.MCP, deps.Config)
-	routes = appendDeviceRoutes(routes, deps.Devices, deps.Store, deps.Config, string(deps.AuthKey), deps.Jaz.Devices.DisablePairing)
+	routes = appendDeviceRoutes(routes, deps.Devices, deps.Store, deps.Config, deps.Jaz.Devices.DisablePairing)
 	if deps.Computer != nil && deps.ComputerSettings != nil {
 		routes = append(routes,
 			server.Route{Pattern: "GET /v1/computer", Handler: deps.ComputerSettings},
@@ -197,11 +196,11 @@ func appendConnectionRoutes(routes server.Routes, service *connections.Service, 
 	return routes
 }
 
-func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, settings storage.SettingsStorage, cfg serverconfig.Config, authKey string, disablePairing bool) server.Routes {
+func appendDeviceRoutes(routes server.Routes, devices *deviceauth.Service, settings storage.SettingsStorage, cfg serverconfig.Config, disablePairing bool) server.Routes {
 	if devices == nil {
 		return routes
 	}
-	handler := deviceapi.NewHandler(devices, settings, cfg, authKey)
+	handler := deviceapi.NewHandler(devices, settings, cfg)
 	routes = append(routes,
 		server.Route{Pattern: "GET /v1/devices/connection-link", Handler: httpHandlerFunc(handler.ConnectionLink)},
 		server.Route{Pattern: "PUT /v1/devices/connection-link", Handler: httpHandlerFunc(handler.UpdateConnectionLink)},

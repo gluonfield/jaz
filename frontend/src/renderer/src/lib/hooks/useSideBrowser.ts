@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ApiError, apiAuthenticatedWebSocketUrl, post } from '@/lib/api/client'
+import { ApiError, apiWebSocket, post } from '@/lib/api/client'
 import { getSession } from '@/lib/api/sessions'
 import { browserSettingsQuery } from '@/lib/api/settings'
 import type { BrowserCommand } from '@shared/browserControl'
@@ -63,7 +63,7 @@ export function useSideBrowser({ sessionId, open, show, visible, url, idleMs, co
     let socket: WebSocket
     let retry: ReturnType<typeof setTimeout>
     const connect = () => {
-      socket = new WebSocket(apiAuthenticatedWebSocketUrl(`/v1/sessions/${encodeURIComponent(sessionId)}/browser`))
+      socket = apiWebSocket(`/v1/sessions/${encodeURIComponent(sessionId)}/browser`)
       const current = socket
       current.onmessage = async (event) => {
         if (stopped) {

@@ -20,7 +20,6 @@ type Handler struct {
 	service      *deviceauth.Service
 	settings     storage.SettingsStorage
 	serverConfig serverconfig.Config
-	authKey      string
 }
 
 type deviceInput struct {
@@ -78,8 +77,8 @@ type pairingDTO struct {
 	Device     deviceDTO  `json:"device"`
 }
 
-func NewHandler(service *deviceauth.Service, settings storage.SettingsStorage, config serverconfig.Config, authKey string) Handler {
-	return Handler{service: service, settings: settings, serverConfig: config, authKey: authKey}
+func NewHandler(service *deviceauth.Service, settings storage.SettingsStorage, config serverconfig.Config) Handler {
+	return Handler{service: service, settings: settings, serverConfig: config}
 }
 
 func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +92,7 @@ func (h Handler) ConnectionLink(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) UpdateConnectionLink(w http.ResponseWriter, r *http.Request) {
 	var input connectionLinkInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&input); err != nil {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
@@ -127,8 +126,13 @@ func (h Handler) connectionLink(r *http.Request) (connectionLinkResponse, error)
 		cfg.PublicURL = settings.PublicURL
 	}
 	cfg.PublicURL = connectionBaseURL(cfg, httpapi.RequestBaseURL(r), firstLocalNetworkIP)
+	principal, _ := deviceauth.PrincipalFromContext(r.Context())
+	token, err := h.service.CreateInvitation(principal.DeviceID)
+	if err != nil {
+		return connectionLinkResponse{}, err
+	}
 	return connectionLinkResponse{
-		URL:       serverconfig.ClientURL(cfg, h.authKey),
+		URL:       serverconfig.ClientURL(cfg, token),
 		BaseURL:   serverconfig.ClientBaseURL(cfg),
 		PublicURL: settings.PublicURL,
 	}, nil
@@ -168,6 +172,9 @@ func (h Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 func (h Handler) register(r *http.Request, info deviceauth.Registration) (deviceauth.RegisterResult, error) {
 	principal, _ := deviceauth.PrincipalFromContext(r.Context())
+	if principal.Kind == deviceauth.PrincipalEnrollment {
+		return h.service.RegisterInvited(principal.EnrollmentToken, info)
+	}
 	if principal.Kind == deviceauth.PrincipalRoot {
 		return h.service.RegisterApproved(info)
 	}
@@ -276,7 +283,7 @@ func inputFromRequest(r *http.Request) (deviceauth.Registration, error) {
 		return reg, nil
 	}
 	var input deviceInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 8193)).Decode(&input); err != nil {
 		if errors.Is(err, io.EOF) {
 			return reg, nil
 		}
@@ -318,6 +325,10 @@ func deviceNameFromHeader(r *http.Request, fallback string) string {
 }
 
 func writeDeviceAuthError(w http.ResponseWriter, err error) {
+	if errors.Is(err, deviceauth.ErrUnauthorized) || errors.Is(err, deviceauth.ErrForbidden) {
+		httpapi.WriteError(w, http.StatusUnauthorized, err)
+		return
+	}
 	if errors.Is(err, deviceauth.ErrInvalidIdentity) {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return

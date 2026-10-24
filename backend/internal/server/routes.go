@@ -2,7 +2,6 @@ package server
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/wins/jaz/backend/internal/api"
 	"github.com/wins/jaz/backend/internal/serverconfig"
@@ -71,8 +70,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(serverconfig.JazmemMCPPath, s.memoryMCPHandler())
 	mux.Handle(serverconfig.MCPProxyPath, s.mcpProxyHandler())
 	mux.Handle("/jazmem/", http.StripPrefix("/jazmem", s.memoryAPIHandler()))
-	authed := withGzip(s.withAuth(mux))
-	return withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	authed := withCORS(withGzip(s.withAuth(mux)), append([]string{s.ServerConfig.PublicURL}, s.ServerConfig.AllowedOrigins...)...)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, route := range s.PublicRoutes {
 			if route.Match(r) {
 				route.Handler.ServeHTTP(w, r)
@@ -80,13 +79,13 @@ func (s *Server) Handler() http.Handler {
 			}
 		}
 		authed.ServeHTTP(w, r)
-	}))
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, healthResponse{
 		OK:           true,
-		AuthRequired: strings.TrimSpace(s.AuthKey) != "",
+		AuthRequired: s.AuthKey != "",
 		Capabilities: healthCapabilities{
 			SessionFileRead: true,
 		},

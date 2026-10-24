@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -188,13 +189,23 @@ func loadConfig() (config, error) {
 
 func parseServeConfig(args serveArgs) (serverconfig.Config, error) {
 	fs := flag.NewFlagSet("jaz", flag.ContinueOnError)
-	addr := fs.String("addr", ":5299", "HTTP listen address")
+	addr := fs.String("addr", "127.0.0.1:5299", "HTTP listen address")
 	publicURL := fs.String("public-url", "", "URL shown to Jaz clients")
+	allowedOrigins := fs.String("allowed-origins", "", "comma-separated browser client origins")
 	previewURLTemplate := fs.String("preview-url-template", "", "isolated preview origin URL containing {id}")
 	if err := fs.Parse(args.Args); err != nil {
 		return serverconfig.Config{}, err
 	}
 	cfg := serverconfig.New(*addr, *publicURL)
+	for _, origin := range strings.Split(*allowedOrigins, ",") {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			parsed, err := url.Parse(origin)
+			if err != nil || parsed.Host == "" || parsed.Path != "" || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+				return serverconfig.Config{}, fmt.Errorf("invalid allowed browser origin")
+			}
+			cfg.AllowedOrigins = append(cfg.AllowedOrigins, origin)
+		}
+	}
 	cfg.PreviewURLTemplate = strings.TrimSpace(*previewURLTemplate)
 	return cfg, nil
 }
@@ -353,8 +364,10 @@ func startServer(
 	}
 	manager.ThreadStarted = handler.TitleThread
 	srv := &http.Server{
-		Addr:    serverConfig.Addr,
-		Handler: handler.Handler(),
+		Addr:              serverConfig.Addr,
+		Handler:           handler.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       90 * time.Second,
 	}
 	var stopLoops context.CancelFunc
 	// The idle stopper finishes any stop it began before the manager closes.
@@ -366,12 +379,8 @@ func startServer(
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			fmt.Printf("jaz server listening on %s\n", serverconfig.DisplayAddr(serverConfig.Addr))
-			if strings.TrimSpace(serverConfig.PublicURL) == "" {
-				fmt.Printf("client: %s\n", serverconfig.ClientURL(serverConfig, authKey))
-			} else {
-				fmt.Printf("client: %s\n", serverconfig.ClientBaseURL(serverConfig))
-				fmt.Printf("client key: %s\n", runtimeauth.Path(store.RootDir()))
-			}
+			fmt.Printf("client: %s\n", serverconfig.ClientBaseURL(serverConfig))
+			fmt.Printf("client key: %s\n", runtimeauth.Path(store.RootDir()))
 			fmt.Printf("root: %s\n", store.RootDir())
 			fmt.Printf("workspace: %s\n", workspace)
 			if err := loopMemoryPaths.EnsureDir(); err != nil {

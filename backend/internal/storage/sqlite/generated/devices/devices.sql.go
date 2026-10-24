@@ -58,6 +58,30 @@ func (q *Queries) ApprovePairingRequest(ctx context.Context, arg ApprovePairingR
 	return result.RowsAffected()
 }
 
+const claimPairingRequest = `-- name: ClaimPairingRequest :execrows
+UPDATE device_pairing_requests
+SET secret_hash = ''
+WHERE device_pairing_requests.id = ?1
+  AND secret_hash = ?2
+  AND status = 'approved'
+  AND expires_at_ms > ?3
+  AND EXISTS (SELECT 1 FROM devices WHERE devices.id = device_pairing_requests.device_id AND devices.status = 'approved')
+`
+
+type ClaimPairingRequestParams struct {
+	ID         string `json:"id"`
+	SecretHash string `json:"secret_hash"`
+	AtMs       int64  `json:"at_ms"`
+}
+
+func (q *Queries) ClaimPairingRequest(ctx context.Context, arg ClaimPairingRequestParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, claimPairingRequest, arg.ID, arg.SecretHash, arg.AtMs)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const countApprovedDevices = `-- name: CountApprovedDevices :one
 SELECT count(*)
 FROM devices
@@ -751,11 +775,11 @@ INSERT INTO devices (
   ?5,
   ?6,
   ?7,
+  'pending:' || ?1,
   ?8,
   ?9,
   ?10,
-  ?11,
-  ?12
+  ?11
 )
 ON CONFLICT(id) DO UPDATE SET
   name = excluded.name,
@@ -777,13 +801,13 @@ type SavePairingDeviceParams struct {
 	Platform        string `json:"platform"`
 	DeviceFamily    string `json:"device_family"`
 	ModelIdentifier string `json:"model_identifier"`
-	TokenHash       string `json:"token_hash"`
 	CreatedAtMs     int64  `json:"created_at_ms"`
 	LastSeenIp      string `json:"last_seen_ip"`
 	UserAgent       string `json:"user_agent"`
 	AppVersion      string `json:"app_version"`
 }
 
+// The tagged placeholder is outside the bearer-token hash alphabet.
 func (q *Queries) SavePairingDevice(ctx context.Context, arg SavePairingDeviceParams) error {
 	_, err := q.db.ExecContext(ctx, savePairingDevice,
 		arg.ID,
@@ -793,7 +817,6 @@ func (q *Queries) SavePairingDevice(ctx context.Context, arg SavePairingDevicePa
 		arg.Platform,
 		arg.DeviceFamily,
 		arg.ModelIdentifier,
-		arg.TokenHash,
 		arg.CreatedAtMs,
 		arg.LastSeenIp,
 		arg.UserAgent,

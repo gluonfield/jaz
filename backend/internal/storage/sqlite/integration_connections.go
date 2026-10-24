@@ -53,7 +53,7 @@ func (s *Store) SaveConnection(ctx context.Context, connection integrations.Conn
 }
 
 func (s *Store) SaveOAuthConnection(ctx context.Context, token integrationoauth.Token, connection integrations.Connection) error {
-	tokenData, err := tokenJSON(token)
+	tokenData, err := s.tokenJSON(connection.ID, token)
 	if err != nil {
 		return err
 	}

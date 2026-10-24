@@ -106,8 +106,9 @@ func TestSessionFileRead(t *testing.T) {
 			}
 			for _, reference := range []string{asset.name, file, filepathx.FileURI(file)} {
 				for _, key := range []string{"", "wrong-key", "image-key"} {
-					params := url.Values{"path": {reference}, "raw": {"1"}, "key": {key}}
+					params := url.Values{"path": {reference}, "raw": {"1"}}
 					req := httptest.NewRequest(http.MethodGet, "/v1/sessions/"+session.ID+"/file?"+params.Encode(), nil)
+					req.Header.Set("Authorization", "Bearer "+key)
 					res := httptest.NewRecorder()
 					rawHandler.ServeHTTP(res, req)
 					if key != "image-key" {

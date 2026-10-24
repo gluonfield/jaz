@@ -11,6 +11,8 @@ import {
   parseBackendConnectUrl,
   setApiAuthToken,
   setApiBaseUrl,
+  setResourceTicket,
+  secureBackendConnection,
 } from './api/client'
 import { rememberBackend, removeKnownBackend } from './backends'
 import { clientRuntime } from './clientRuntime'
@@ -97,6 +99,7 @@ type AuthFailureBody = {
   code?: string
   auth_kind?: string
   device_id?: string
+  resource_ticket?: { token: string; expires_at: string }
 }
 
 function setState(next: Partial<ConnectionState>) {
@@ -243,6 +246,7 @@ async function checkAuthAccess(url: string, token: string): Promise<AuthAccess> 
         recoverable: true,
       }
     }
+    setResourceTicket(url, body?.resource_ticket)
     return { ok: true, authKind: body?.auth_kind, deviceId: body?.device_id }
   } catch {
     return { ok: false, reason: 'auth_failed', error: 'Backend auth check failed', recoverable: true }
@@ -254,6 +258,9 @@ async function verifyBackend(
   token = apiAuthToken(url),
   missingKeyMessage = `Backend at ${url} requires a key`,
 ): Promise<BackendCheck> {
+  if (!secureBackendConnection(url)) {
+    return backendFailure('auth_failed', 'Remote connections require HTTPS', false)
+  }
   const health = await readHealth(url)
   if (!health.ok) return health
   if (!health.authRequired) return { ok: true }
@@ -400,6 +407,7 @@ async function registerDevice(url: string, rootToken: string): Promise<string | 
     }>(res)
     if (res.ok && body?.token) {
       setApiAuthToken(url, body.token)
+      await checkAuthAccess(url, body.token)
       markConnected(url)
       return null
     }
@@ -468,9 +476,8 @@ function schedulePairingPoll() {
   pairingTimer = setTimeout(async () => {
     if (gen !== pairingGen || state.status !== 'pending_approval') return
     try {
-      const params = new URLSearchParams({ secret: pairing.secret })
-      const res = await fetch(`${pairing.url}/v1/devices/pairing-requests/${encodeURIComponent(pairing.id)}?${params}`, {
-        headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
+      const res = await fetch(`${pairing.url}/v1/devices/pairing-requests/${encodeURIComponent(pairing.id)}`, {
+        headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM, 'X-Jaz-Pairing-Secret': pairing.secret },
         signal: AbortSignal.timeout(5_000),
       })
       const body = await readJSON<{
@@ -478,9 +485,20 @@ function schedulePairingPoll() {
         pairing?: { status: string }
         error?: string
       }>(res)
+      if (gen !== pairingGen || state.status !== 'pending_approval') {
+        return
+      }
       if (res.ok && body?.pairing?.status === 'approved') {
-        setApiAuthToken(pairing.url, body.token || pairing.secret)
+        setApiAuthToken(pairing.url, body.token || '')
+        await checkAuthAccess(pairing.url, body.token || '')
+        if (gen !== pairingGen) {
+          return
+        }
         markConnected(pairing.url)
+        return
+      }
+      if (res.status === 401) {
+        abandonPairing('Pairing is no longer available. Connect again.')
         return
       }
       if (res.status === 410 || body?.pairing?.status === 'expired') {
@@ -590,7 +608,13 @@ export async function connectRemote(url: string): Promise<string | null> {
   const parsed = parseBackendConnectUrl(url)
   const target = normalizeBaseUrl(parsed.url)
   if (!target) return 'Enter a backend URL'
+  if (!secureBackendConnection(target)) {
+    return 'Remote connections require HTTPS'
+  }
   const token = parsed.key || apiAuthToken(target)
+  if (parsed.key.startsWith('invite_')) {
+    return registerDevice(target, parsed.key)
+  }
   const health = await readHealth(target)
   if (!health.ok) return health.message
   if (health.authRequired) {

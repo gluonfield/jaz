@@ -21,3 +21,6 @@ ON CONFLICT(connection_id) DO UPDATE SET
 -- name: DeleteToken :exec
 DELETE FROM integration_oauth_tokens
 WHERE connection_id = sqlc.arg(connection_id);
+
+-- name: ListTokens :many
+SELECT connection_id, token_json, updated_at_ms FROM integration_oauth_tokens;

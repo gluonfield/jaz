@@ -19,6 +19,33 @@ func (q *Queries) DeleteToken(ctx context.Context, connectionID string) error {
 	return err
 }
 
+const listTokens = `-- name: ListTokens :many
+SELECT connection_id, token_json, updated_at_ms FROM integration_oauth_tokens
+`
+
+func (q *Queries) ListTokens(ctx context.Context) ([]IntegrationOauthToken, error) {
+	rows, err := q.db.QueryContext(ctx, listTokens)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []IntegrationOauthToken{}
+	for rows.Next() {
+		var i IntegrationOauthToken
+		if err := rows.Scan(&i.ConnectionID, &i.TokenJson, &i.UpdatedAtMs); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const loadToken = `-- name: LoadToken :one
 SELECT token_json
 FROM integration_oauth_tokens

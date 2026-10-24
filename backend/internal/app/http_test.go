@@ -171,7 +171,6 @@ func TestNewRoutesMountsDeviceRevokeAsMethodRoute(t *testing.T) {
 		Usage:   usagecore.NewService(fakeUsageStore{}),
 		Devices: deviceauth.New(store),
 		Store:   store,
-		AuthKey: RuntimeAuthKey("secret"),
 		Preview: testPreviewHandler(t),
 	})
 	var foundRevoke bool
@@ -208,7 +207,6 @@ func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 			Jaz:     Config{Devices: DevicesConfig{DisablePairing: disable}},
 			Devices: deviceauth.New(store),
 			Store:   store,
-			AuthKey: RuntimeAuthKey("secret"),
 			Preview: testPreviewHandler(t),
 		})
 		for _, route := range routes {

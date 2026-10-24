@@ -26,6 +26,8 @@ declare global {
       browserPasswords: BrowserPasswordAPI
       browserDownloads: BrowserDownloadAPI
       browserCommand: (request: BrowserCommandRequest) => Promise<unknown>
+      encryptCredential: (value: string) => string
+      decryptCredential: (value: string) => string
       apiBaseUrl: string
       windowKind: WindowKind
       pathForFile: (file: File) => string
