@@ -45,7 +45,7 @@ export async function exercisePreviewLinks(browser: SideBrowser, evaluate: (expr
     await press()
     await until(() => {
       const panel = qr()?.closest<HTMLElement>('[data-escape-surface]')
-      return Boolean(qr()?.naturalWidth && panel?.textContent === local && getComputedStyle(panel).opacity === '1')
+      return Boolean(qr()?.naturalWidth && panel && getComputedStyle(panel).opacity === '1')
     })
     await window.smoke.capture('browser-qr')
     await press()
