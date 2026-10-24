@@ -18,6 +18,7 @@ export const slideStagger = {
 export const slideRise = {
   hidden: { opacity: 0, y: 12, filter: 'blur(5px)' },
   show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.42, ease: onboardingEase } },
+  out: { opacity: 0, y: -10, filter: 'blur(6px)', transition: { duration: 0.2, ease: onboardingEase } },
 }
 
 export const slideExit = {

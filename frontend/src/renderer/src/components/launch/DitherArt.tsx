@@ -93,18 +93,19 @@ function sample(draw: Silhouette, cols: number, rows: number, palette: Palette):
 
 const GRAIN_EPOCH_MS = 150
 
-// A new silhouette under the same buildKey morphs in place: each dot of the
-// new shape hops cell by cell from a dot of the old one (paired in column
-// order, so the shape flows sideways) in a wave that sweeps left to right;
-// old dots with no partner fade out, and dots with no source fade in.
-const MORPH_STAGGER = 0.35
-const MORPH_TRAVEL = 0.55
+// A new silhouette under the same buildKey morphs in place, as a vortex: old
+// and new dots pair up in angular order around the centre, and each pair
+// spirals half a turn while the swirl pinches into a tight core and opens out
+// as the new mark. Old dots without a partner are drawn into the core and
+// vanish; new dots without one spin out of it. Starts after `delay`.
+const MORPH_TRAVEL = 0.7
+const MORPH_SPREAD = 0.12
+const MORPH_SPIN = Math.PI
+const MORPH_PINCH = 0.8
 
-const easeOut = (t: number) => 1 - (1 - t) ** 3
+const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
-
-const shapeOrder = (dots: Dot[]) => dots.filter((d) => !d.ambient).sort((a, b) => a.x - b.x || a.y - b.y)
 
 // Boot art plays its dissolve once per process. The launch screen, the
 // onboarding gate, and the onboarding screen each mount their own canvases;
@@ -210,39 +211,56 @@ export function DitherArt({
 
       const morphs = previous && previous.draw !== draw && previous.buildKey === buildKey
       if (morphs && previous.cols === cols && previous.rows === rows) {
-        const from = shapeOrder(previous.dots)
-        const to = shapeOrder(dots)
+        // Polar coordinates on the grid's own ellipse, so the swirl fills the art.
+        const squash = rows / cols
+        const polar = (d: Dot) => {
+          const y = (d.y - rows / 2) / squash
+          const x = d.x - cols / 2
+          return { d, r: Math.hypot(x, y), a: Math.atan2(y, x) }
+        }
+        const byAngle = (list: Dot[]) =>
+          list
+            .filter((d) => !d.ambient)
+            .map(polar)
+            .sort((p, q) => p.a - q.a)
+        const from = byAngle(previous.dots)
+        const to = byAngle(dots)
         const sources = to.map((_, i) => from[Math.floor((i * from.length) / to.length)])
         const paired = new Set(sources)
-        const leaving = from.filter((d) => !paired.has(d))
-        const still = [...dots.filter((d) => d.ambient), ...leaving]
-        const wave = (d: Dot) => (d.x / cols) * MORPH_STAGGER + (d.seed % 128) / 1280
+        const leaving = from.filter((p) => !paired.has(p))
+        const dust = dots.filter((d) => d.ambient)
+        const place = (d: Dot, r: number, a: number, alpha: number) => {
+          ctx.globalAlpha = alpha
+          ctx.fillStyle = d.color
+          ctx.fillRect(
+            Math.round(cols / 2 + r * Math.cos(a)) * pitch,
+            Math.round(rows / 2 + r * Math.sin(a) * squash) * pitch,
+            dot,
+            dot,
+          )
+        }
         const t0 = performance.now()
         const frame = (now: number) => {
-          const t = (now - t0) / 1000
+          const t = (now - t0) / 1000 - delay
+          const progress = (d: Dot) => easeInOut(clamp01((t - (((d.seed >>> 8) % 256) / 256) * MORPH_SPREAD) / MORPH_TRAVEL))
           ctx.clearRect(0, 0, width, height)
-          for (const d of still) {
-            const fade = d.ambient ? 1 : 1 - clamp01((t - wave(d)) / MORPH_TRAVEL)
-            ctx.globalAlpha = d.alpha * fade
-            ctx.fillStyle = d.color
-            ctx.fillRect(d.x * pitch, d.y * pitch, dot, dot)
+          for (const d of dust) paintDot(d, d.color, d.alpha)
+          for (const p of leaving) {
+            const k = progress(p.d)
+            place(p.d, p.r * (1 - k), p.a + MORPH_SPIN * k, p.d.alpha * (1 - k))
           }
-          let moving = false
-          to.forEach((d, i) => {
-            const k = easeOut(clamp01((t - wave(d)) / MORPH_TRAVEL))
-            moving ||= k < 1
-            const source = sources[i] ?? d
-            ctx.globalAlpha = sources[i] ? d.alpha : d.alpha * k
-            ctx.fillStyle = d.color
-            ctx.fillRect(
-              Math.round(source.x + (d.x - source.x) * k) * pitch,
-              Math.round(source.y + (d.y - source.y) * k) * pitch,
-              dot,
-              dot,
-            )
+          to.forEach((p, i) => {
+            const k = progress(p.d)
+            const s = sources[i]
+            if (!s) {
+              place(p.d, p.r * k, p.a - MORPH_SPIN * (1 - k), p.d.alpha * k)
+              return
+            }
+            const turn = Math.atan2(Math.sin(p.a - s.a), Math.cos(p.a - s.a)) + MORPH_SPIN
+            place(p.d, (s.r + (p.r - s.r) * k) * (1 - MORPH_PINCH * Math.sin(Math.PI * k)), s.a + turn * k, p.d.alpha)
           })
           ctx.globalAlpha = 1
-          if (moving || leaving.some((d) => t < wave(d) + MORPH_TRAVEL)) {
+          if (t < MORPH_TRAVEL + MORPH_SPREAD) {
             raf = requestAnimationFrame(frame)
             return
           }
