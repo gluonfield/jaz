@@ -20,7 +20,7 @@ func TestBrowserSettingsDefaultDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.Enabled || settings.Mode != BrowserModeExtension {
+	if settings.Enabled {
 		t.Fatalf("default browser settings = %#v", settings)
 	}
 }
@@ -31,7 +31,7 @@ func TestBrowserEnabledFailsClosedOnLoadError(t *testing.T) {
 	}
 }
 
-func TestBrowserSettingsNormalizesPersistedMode(t *testing.T) {
+func TestBrowserSettingsRetainsEnablementFromLegacyRecord(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestBrowserSettingsNormalizesPersistedMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.Mode != BrowserModeDesktop || !settings.Enabled {
+	if !settings.Enabled {
 		t.Fatalf("settings = %#v", settings)
 	}
 }

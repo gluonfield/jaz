@@ -14,7 +14,7 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
   const local = 'http://127.0.0.1:5299'
   const saves: Record<string, unknown>[] = []
   let tokenSet = true
-  let browser = { enabled: true, mode: 'desktop', extension: { connected: false } }
+  let browser = { enabled: true }
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;padding:16px;background:var(--color-bg);overflow:auto'
   document.body.append(element)
@@ -144,25 +144,19 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
         throw new Error('Explicit saved-token removal was lost')
       }
       await until(() => !button('Save changes'))
-      browser.mode = 'desktop'
+      browser.enabled = true
       render('browser', `browser-${name}`)
-      await until(() => Boolean(button('Jaz side browser')))
-      if (element.textContent?.includes('Background Chromium')) {
-        throw new Error('Removed browser backend remains visible')
+      await until(() => Boolean(element.querySelector('[aria-label="Enable browser tools"]')))
+      if (element.textContent?.includes('Extension') || element.textContent?.includes('Background Chromium') || element.textContent?.includes('Browser backend')) {
+        throw new Error('Removed browser backend selection remains visible')
       }
-      await click(button('Extension')!)
-      await until(() => browser.mode === 'extension' && Boolean(element.textContent?.includes('No extension bridge is connected.')))
-      await click(button('Jaz side browser')!)
-      await until(() => browser.mode === 'desktop' && !element.textContent?.includes('No extension bridge is connected.'))
+      await click(element.querySelector('[aria-label="Enable browser tools"]')!)
+      await until(() => !browser.enabled && element.querySelector('[aria-label="Enable browser tools"]')?.getAttribute('aria-checked') === 'false')
+      await click(element.querySelector('[aria-label="Enable browser tools"]')!)
+      await until(() => browser.enabled && element.querySelector('[aria-label="Enable browser tools"]')?.getAttribute('aria-checked') === 'true')
       if (element.scrollWidth > element.clientWidth) {
         throw new Error('Browser settings overflow horizontally')
       }
-      await until(() => {
-        const selected = button('Jaz side browser')!
-        const highlight = selected.firstElementChild!.getBoundingClientRect()
-        const bounds = selected.getBoundingClientRect()
-        return selected.getAttribute('aria-pressed') === 'true' && Math.abs(highlight.x - bounds.x) < 1 && Math.abs(highlight.width - bounds.width) < 1
-      })
       await window.smoke.capture(`browser-settings-${name}`)
     }
   } finally {

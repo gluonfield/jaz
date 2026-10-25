@@ -150,11 +150,11 @@ func TestSharingUsesScopedSingleUseEnrollment(t *testing.T) {
 }
 
 func TestInternalEndpointsRequireCredentialsBehindTunnel(t *testing.T) {
-	for _, path := range []string{"/mcp/jaztools", "/mcp/jazmem", "/mcp/proxy", "/v1/browser/extension"} {
+	for _, path := range []string{"/mcp/jaztools", "/mcp/jazmem", "/mcp/proxy", "/v1/sessions/thread/browser"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "http://jaz.example.com"+path, nil)
 			req.RemoteAddr = "127.0.0.1:12345"
-			req.Header.Set("Origin", "chrome-extension://abcdefghijklmnopabcdefghijklmnop")
+			req.Header.Set("Origin", "https://web.jaz.chat")
 			req.Header.Set("X-Forwarded-Proto", "https")
 			res := httptest.NewRecorder()
 			(&Server{AuthKey: "root"}).Handler().ServeHTTP(res, req)

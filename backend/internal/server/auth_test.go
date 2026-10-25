@@ -123,7 +123,7 @@ func TestAuthMiddlewareRejectsLocalBrowserExtensionWithoutKeyAfterBootstrap(t *t
 		t.Fatal(err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/thread/browser", nil)
 	req.RemoteAddr = "127.0.0.1:53124"
 	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnopabcdefghijklmnop")
 	res := httptest.NewRecorder()
@@ -136,7 +136,7 @@ func TestAuthMiddlewareRejectsLocalBrowserExtensionWithoutKeyAfterBootstrap(t *t
 }
 
 func TestAuthMiddlewareRejectsWebsiteOriginBrowserExtensionWithoutKey(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/thread/browser", nil)
 	req.RemoteAddr = "127.0.0.1:53124"
 	req.Header.Set("Origin", "https://example.com")
 	res := httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestAuthMiddlewareRejectsWebsiteOriginBrowserExtensionWithoutKey(t *testing
 }
 
 func TestAuthMiddlewareRejectsMalformedChromeExtensionOriginWithoutKey(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/thread/browser", nil)
 	req.RemoteAddr = "127.0.0.1:53124"
 	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnop")
 	res := httptest.NewRecorder()
@@ -162,7 +162,7 @@ func TestAuthMiddlewareRejectsMalformedChromeExtensionOriginWithoutKey(t *testin
 }
 
 func TestAuthMiddlewareRejectsRemoteBrowserExtensionWithoutKey(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/v1/browser/extension", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/sessions/thread/browser", nil)
 	req.RemoteAddr = "203.0.113.10:53124"
 	req.Header.Set("Origin", "chrome-extension://abcdefghijklmnopabcdefghijklmnop")
 	res := httptest.NewRecorder()

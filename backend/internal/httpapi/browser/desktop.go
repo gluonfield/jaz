@@ -26,8 +26,8 @@ func (h DesktopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return
 	}
-	if !config.Enabled || config.Mode != settings.BrowserModeDesktop {
-		http.Error(w, "enable the Jaz side browser in Browser settings", http.StatusForbidden)
+	if !config.Enabled {
+		http.Error(w, "enable browser tools in Browser settings", http.StatusForbidden)
 		return
 	}
 	session, err := h.Store.LoadSession(r.PathValue("session"))

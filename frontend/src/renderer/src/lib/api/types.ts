@@ -1383,24 +1383,9 @@ export interface AgentSettings {
 
 export type AgentSettingsInput = Pick<AgentSettings, 'acp' | 'acp_keys'>
 
-export interface BrowserExtensionStatus {
-  connected: boolean
-  extension_id?: string
-  version?: string
-  protocol?: string
-  bridge_url?: string
-  user_agent?: string
-  actions?: string[]
-  last_connected_at?: string
-}
-
 export interface BrowserStatus {
   enabled: boolean
-  mode: BrowserMode
-  extension: BrowserExtensionStatus
 }
-
-export type BrowserMode = 'extension' | 'desktop'
 
 export interface OnboardingACPProbe extends ACPAgentAuthStatus {
   agent: string

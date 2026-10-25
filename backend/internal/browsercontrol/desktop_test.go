@@ -49,7 +49,7 @@ func TestDesktopSessionIsolationAndTabs(t *testing.T) {
 	if _, err := backend.Call(context.Background(), ActionInput{Session: "thread-2", Action: ActionTabs}); err == nil {
 		t.Fatal("another thread obtained the connected browser")
 	}
-	if _, err := backend.Call(context.Background(), ActionInput{Session: "thread-1", Action: ActionClaimTab, TabID: "foreign"}); err == nil {
+	if _, err := backend.Call(context.Background(), ActionInput{Session: "thread-1", Action: "claim_tab"}); err == nil {
 		t.Fatal("claimed a foreign tab")
 	}
 	go func() {

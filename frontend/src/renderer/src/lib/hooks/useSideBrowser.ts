@@ -40,7 +40,7 @@ export function useSideBrowser({ sessionId, open, show, visible, url, idleMs, co
     browser?.dispose()
     flushSync(() => setResident(false))
   }, idleMs))
-  const enabled = settings.data?.enabled && settings.data.mode === 'desktop'
+  const enabled = settings.data?.enabled
   useEffect(() => {
     if (visible) setResident(true)
     retention.configure(!visible && resident)

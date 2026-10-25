@@ -36,6 +36,7 @@ import { exerciseImages } from './images'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
 import { exerciseConnectionSecurity } from './connection-security'
+import { exerciseBrowserVisibility } from './browser-visibility'
 import { apiBaseUrl, apiWebSocketProtocols, setApiAuthToken } from '@/lib/api/client'
 
 declare global {
@@ -109,7 +110,15 @@ function Fixture() {
         progress('host device administration and saved MCP credentials')
         await exerciseConnectionSecurity(serveBrowser)
         if (suite === 'connection-security') {
-          window.smoke.result({ ok: true, checks: ['authenticated Chromium MCP navigation, reading and trusted input; invalid credential rejection; non-secret protocol negotiation', 'device/MCP security and two browser modes at desktop and phone widths'] })
+          window.smoke.result({ ok: true, checks: ['authenticated Chromium MCP navigation, reading and trusted input; invalid credential rejection; non-secret protocol negotiation', 'device/MCP security and side-browser-only settings at desktop and phone widths'] })
+          return
+        }
+      }
+      if (!suite || suite === 'browser-visibility') {
+        progress('agent browser panel visibility')
+        await exerciseBrowserVisibility()
+        if (suite === 'browser-visibility') {
+          window.smoke.result({ ok: true, checks: ['agent navigation, reads and scripts reveal their owning browser; background activity reveals on return and preserves the page'] })
           return
         }
       }

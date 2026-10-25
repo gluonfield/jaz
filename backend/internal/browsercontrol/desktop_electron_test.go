@@ -36,7 +36,7 @@ func TestDesktopElectron(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	if _, err := settings.SaveBrowserSettings(store, settings.BrowserSettings{Enabled: true, Mode: settings.BrowserModeDesktop}); err != nil {
+	if _, err := settings.SaveBrowserSettings(store, settings.BrowserSettings{Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	thread, err := store.CreateSession(storage.CreateSession{Slug: "browser-fixture", Runtime: storage.RuntimeACP})
@@ -48,7 +48,7 @@ func TestDesktopElectron(t *testing.T) {
 	if _, err := store.CreateSession(storage.CreateSession{Slug: "browser-background", Runtime: storage.RuntimeACP}); err != nil {
 		t.Fatal(err)
 	}
-	handler := browserapi.DesktopHandler{Backend: backend.Desktop, Store: store}
+	handler := browserapi.DesktopHandler{Backend: backend.DesktopBackend, Store: store}
 	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "browsercontrol", Version: "test"}, nil)
 	browsercontrol.AddMCPTools(mcpServer, backend)
 	mux := http.NewServeMux()
@@ -114,7 +114,7 @@ func TestDesktopElectron(t *testing.T) {
 	})
 	mux.HandleFunc("GET /v1/browser", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"enabled":true,"mode":"desktop"}`)
+		fmt.Fprint(w, `{"enabled":true}`)
 	})
 	mux.HandleFunc("POST /v1/preview/proxies", func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
