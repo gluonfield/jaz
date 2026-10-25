@@ -5,6 +5,8 @@ Request, 25 October 2026: inspect Claude Desktop's voice implementation and add 
 - [x] Inspect installed Claude Desktop and its cached first-party web client.
 - [x] Trace Jaz's current provider, connection and transcript boundaries.
 - [x] Check the existing Claude Code sign-in without generating a completion.
+- [x] Reproduce, repair and review authenticated desktop WebSocket negotiation.
+- [ ] Activate the reviewed connection correction with a coordinated backend restart.
 - [ ] Verify the signed-in Claude voice handshake and actual model identity.
 - [ ] Implement and verify the Claude provider, including delegation and interruption.
 - [ ] Review and commit the verified implementation.
@@ -50,6 +52,16 @@ A Claude connection must work with a remote Jaz server and local clients. Readin
 
 Augustinas confirmed that this conversation is already open in Jaz Desktop and Claude Desktop is also open. Both Jaz tools still report disconnected. Read-only checks confirm Browser is enabled in desktop mode and Computer use is enabled. An authenticated MCP check with this thread's explicit session ID returns the same disconnection, so this is not evidence of a missing session header. The HTTP handlers and frontend hooks use the same canonical session identity; no concrete attachment defect has been established.
 
-Asked Augustinas to reload the Jaz window once with Cmd-R to remount the desktop connections. Resume by rechecking attachment, then observing Claude's signed-in voice session and verifying the handshake, authentication and model identity before implementing the smallest measured adapter. Production code is unchanged; there is no Claude voice support yet.
+Asked Augustinas to reload the Jaz window once with Cmd-R to remount the desktop connections. That did not restore attachment. The signed-in Claude handshake, authentication and model check remain pending; there is no Claude voice support yet.
+
+## Desktop Connection Fix
+
+Reloading did not restore the connection. Investigation found a concrete transport defect: authenticated browser clients offer `jaz-auth.{credential}` as their only WebSocket subprotocol, while the browser, computer and terminal HTTP handlers acknowledge no subprotocol. The WebSockets browser standard requires a selected protocol when the client offers protocols, so Chromium closes the connection immediately. The previous backend security test explicitly expected an empty response header and used a Go client that accepts it.
+
+The correction offers a public `jaz` protocol alongside the request-only credential and uses one shared HTTP upgrader to select `jaz` for all three endpoints. Authentication, origin policy, credential storage and native agent behavior remain unchanged. Existing terminal revocation and browser endpoint tests now require the public protocol and reject credential echoing.
+
+A normal-path hidden Electron security smoke uses the production browser transport and HTTP adapter. It failed on the original code with `Authenticated browser socket handshake failed`; it passes with the correction and verifies registration with a real status request. The test creates no visible windows or focus changes. Full Go 1.26.3 backend tests/vet, the frontend's 376 tests, type checks, lint and desktop bundle pass. The thermo-nuclear self-review found no remaining blockers: one HTTP owner replaces three upgrader configurations, credentials remain request-only, and provider/native-agent behavior is unchanged. Logs: `runs/claude-voice/{handshake-before,handshake-after,backend-tests,backend-vet,frontend-tests,typecheck,lint,build}.log`.
+
+The connection correction is not active in the running server yet. The shared backend has eight other threads marked running; restarting it needs coordination to avoid interrupting their work. Claude voice itself remains unimplemented.
 
 Official feature documentation: [Use voice mode](https://support.claude.com/en/articles/11101966-use-voice-mode).

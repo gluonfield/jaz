@@ -93,7 +93,7 @@ function Fixture() {
         progress('host device administration and saved MCP credentials')
         await exerciseConnectionSecurity()
         if (suite === 'connection-security') {
-          window.smoke.result({ ok: true, checks: ['host-only device management and saved-secret edit/removal at desktop and phone widths'] })
+          window.smoke.result({ ok: true, checks: ['authenticated browser WebSocket negotiation; host-only device management and saved-secret edit/removal at desktop and phone widths'] })
           return
         }
       }
