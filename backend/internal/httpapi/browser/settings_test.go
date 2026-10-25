@@ -79,7 +79,7 @@ func TestSettingsEndpoint(t *testing.T) {
 	}
 }
 
-func TestSettingsEndpointAllowsManagedModeWithoutExtension(t *testing.T) {
+func TestSettingsEndpointOffersOnlyDesktopAndExtension(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -88,15 +88,21 @@ func TestSettingsEndpointAllowsManagedModeWithoutExtension(t *testing.T) {
 	handler := NewSettingsHandler(store, extensionStatusStub{}, nil)
 
 	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true,"mode":"managed"}`)))
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"mode":"managed"}`)))
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("removed mode status = %d", res.Code)
+	}
+
+	res = httptest.NewRecorder()
+	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true,"mode":"desktop"}`)))
 	if res.Code != http.StatusOK {
-		t.Fatalf("set managed browser = %d, body = %s", res.Code, res.Body.String())
+		t.Fatalf("set desktop browser = %d, body = %s", res.Code, res.Body.String())
 	}
 	var status StatusResponse
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if !status.Enabled || status.Mode != jazsettings.BrowserModeManaged {
+	if !status.Enabled || status.Mode != jazsettings.BrowserModeDesktop {
 		t.Fatalf("browser status = %#v", status)
 	}
 

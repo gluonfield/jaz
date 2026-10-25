@@ -12,7 +12,6 @@ const (
 	BrowserSettingsNamespace = "browser"
 	BrowserSettingsKey       = "settings"
 	BrowserModeExtension     = "extension"
-	BrowserModeManaged       = "managed"
 	BrowserModeDesktop       = "desktop"
 )
 
@@ -36,6 +35,9 @@ func LoadBrowserSettings(store storage.SettingsStorage) (BrowserSettings, error)
 	var settings BrowserSettings
 	if err := json.Unmarshal(setting.Value, &settings); err != nil {
 		return BrowserSettings{}, err
+	}
+	if settings.Mode == "managed" {
+		settings.Mode = BrowserModeDesktop
 	}
 	settings.Mode = BrowserMode(settings)
 	return settings, nil
@@ -76,13 +78,9 @@ func NormalizeBrowserMode(mode string) string {
 	switch strings.TrimSpace(mode) {
 	case "", BrowserModeExtension:
 		return BrowserModeExtension
-	case BrowserModeManaged, BrowserModeDesktop:
-		return strings.TrimSpace(mode)
+	case BrowserModeDesktop:
+		return BrowserModeDesktop
 	default:
 		return ""
 	}
-}
-
-func BrowserUsesExtension(settings BrowserSettings) bool {
-	return BrowserMode(settings) == BrowserModeExtension
 }

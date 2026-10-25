@@ -231,7 +231,7 @@ func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 func TestNewRoutesIncludesBrowserExtensionRoute(t *testing.T) {
 	routes := NewRoutes(routeDeps{
 		Usage:   usagecore.NewService(fakeUsageStore{}),
-		Browser: &browsercontrol.ConfiguredBackend{ExtensionBridge: browsercontrol.NewExtensionBridge(nil, nil)},
+		Browser: &browsercontrol.ConfiguredBackend{ExtensionBridge: browsercontrol.NewExtensionBridge()},
 		Preview: testPreviewHandler(t),
 	})
 	for _, route := range routes {

@@ -197,9 +197,15 @@ func (s *Server) FailInterruptedTurn(_ context.Context, id string, cause error) 
 	if err != nil {
 		return err
 	}
+	if session.Turn == nil && session.Status != storage.StatusInterrupted {
+		return nil
+	}
 	job := acp.Job{ID: id, Slug: session.Slug, State: acp.StateFailed, Error: cause.Error()}
 	if errors.Is(cause, storage.ErrPromptUnconfirmed) {
 		job.State, job.Error = acp.StateInterrupted, storage.ErrPromptUnconfirmed.Error()
+		if session.Turn != nil && !session.Turn.ContinuationOf.IsZero() {
+			job.Error = "Jaz restarted before the agent confirmed the continuation. Earlier task progress is saved."
+		}
 	}
 	if session.RuntimeRef != nil {
 		job.ACPAgent = session.RuntimeRef.Agent

@@ -12,7 +12,7 @@ import { FileReaderLinkProvider, PreviewLinkProvider, RenderedMarkdown } from '@
 import { isPreviewWebviewPending, type PreviewWebviewElement } from '@/components/session/previewWebview'
 import type { Session } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
-import { setApiBaseUrl } from '@/lib/api/client'
+import { setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import { connectRemote, disconnectBackend } from '@/lib/connection'
 import type { BrowserAction, BrowserActionResult } from '@/lib/browserApi'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
@@ -529,6 +529,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
 
     const backend = await window.smoke.backend()
     setApiBaseUrl(backend)
+    setApiAuthToken(backend, 'browser-smoke-credential')
     queryClient.setQueryData(keys.browserSettings, { enabled: true, mode: 'desktop' })
     const action = async (input: BrowserAction | { action: 'tabs' } | { action: 'script'; code: string }): Promise<BrowserActionResult> => {
       const endpoint = input.action === 'script' ? '/exercise-script/tabs' : '/v1/sessions/tabs/browser'

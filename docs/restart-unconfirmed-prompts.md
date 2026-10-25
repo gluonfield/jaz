@@ -10,6 +10,18 @@ The parent receives that result through the existing atomic turn-completion path
 Its commitment stays open. The parent or commitment watchdog chooses the next
 step. User threads retain the original visible prompt and show the error.
 
+An interrupted continuation with an explicitly acknowledged origin instead reports:
+
+> Jaz restarted before the agent confirmed the continuation. Earlier task progress is saved.
+
+The active turn's optional `ContinuationOf` retains the original acknowledged
+start time across prepared and confirmed recovery attempts. Each attempt keeps a
+fresh `StartedAt` for confirmation-write guards. Legacy evidence stays unknown;
+compaction, fresh instructions and new queue claims acquire no inherited origin.
+Finalization selects the reason before clearing the active turn and ignores a
+duplicate failure for an already-terminal session. This preserves diagnosis;
+automatic recovery for ambiguous continuations remains unresolved.
+
 | Durable prompt state | Recovery |
 | --- | --- |
 | Prepared, with no transport attempt | Send the original input once |
@@ -20,8 +32,9 @@ step. User threads retain the original visible prompt and show the error.
 Jaz records sending before writing to the transport, covering a crash between a
 pipe write and its callback. It confirms at the first primary message, thought,
 plan or tool update, or any response to that turn's `session/prompt`, including
-cancelled, error and typed provider-failure responses. Both share one confirmation
-write attempt per turn. Metadata,
+cancelled, error and typed provider-failure responses. After one successful
+confirmation write, later observations do not write again. A failed write permits
+another attempt only on a later qualifying observation. Metadata,
 side-chat output and load-time history replay do not confirm a task. A failed
 confirmation write leaves recovery uncertain. State writes carry the turn's
 start timestamp, so a stale state write cannot confirm a later task.

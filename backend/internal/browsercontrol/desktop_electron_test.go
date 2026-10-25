@@ -43,7 +43,7 @@ func TestDesktopElectron(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend := browsercontrol.NewConfiguredBackend(t.TempDir(), store)
+	backend := browsercontrol.NewConfiguredBackend(store)
 	defer backend.Close()
 	if _, err := store.CreateSession(storage.CreateSession{Slug: "browser-background", Runtime: storage.RuntimeACP}); err != nil {
 		t.Fatal(err)
@@ -126,7 +126,10 @@ func TestDesktopElectron(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(map[string]string{"url": request.URL})
 	})
-	mux.Handle("GET /v1/sessions/{session}/browser", handler)
+	mux.Handle("GET /v1/sessions/{session}/browser", (&serverapi.Server{
+		Store: store, AuthKey: "browser-smoke-credential",
+		Routes: serverapi.Routes{{Pattern: "GET /v1/sessions/{session}/browser", Handler: handler}},
+	}).Handler())
 	mux.Handle("POST /v1/sessions/{session}/browser", handler)
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil))
 	var client *mcp.ClientSession

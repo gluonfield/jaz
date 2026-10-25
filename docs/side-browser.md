@@ -168,7 +168,7 @@ or will keep an account unrestricted.
 `browser_navigate`, `browser_read_page`, `browser_find`, `browser_click`,
 `browser_form_input`, `browser_key`, `browser_scroll`, `browser_wait`, and
 `browser_screenshot` use the selected backend. `browser_hover` and `browser_drag`
-also support the side browser and managed Chromium.
+also support the side browser.
 
 `browser_get_ax_state` reads Chromium's actual accessibility tree in the side
 browser. It exposes computed names, roles, values and states, including closed
