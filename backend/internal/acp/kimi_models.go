@@ -16,8 +16,14 @@ import (
 )
 
 func (m *Manager) kimiModels(ctx context.Context, cfg AgentConfig) (catalog AgentModelCatalog, err error) {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	lifetime, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
+	deadline, _ := lifetime.Deadline()
+	ctx, cancelRequest := context.WithDeadline(ctx, deadline)
+	defer cancelRequest()
+	if err := ctx.Err(); err != nil {
+		return catalog, err
+	}
 	cwd := filepath.Join(firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz")), "acp", "model-discovery")
 	if err := os.MkdirAll(cwd, 0o700); err != nil {
 		return catalog, err
@@ -37,11 +43,14 @@ func (m *Manager) kimiModels(ctx context.Context, cfg AgentConfig) (catalog Agen
 	if capabilities == nil || capabilities.SessionCapabilities == nil || capabilities.SessionCapabilities.Delete == nil {
 		return catalog, fmt.Errorf("Kimi model discovery requires session/delete support")
 	}
-	raw, err := ac.peer.Call(ctx, acpschema.AgentMethodSessionNew, acpschema.NewSessionRequest{Cwd: cwd, MCPServers: []acpschema.MCPServer{}})
+	// Keep the creation receipt so cancellation can still delete the native session.
+	raw, err := ac.peer.Call(lifetime, acpschema.AgentMethodSessionNew, acpschema.NewSessionRequest{Cwd: cwd, MCPServers: []acpschema.MCPServer{}})
 	if err != nil {
 		return catalog, err
 	}
-	var session acpschema.NewSessionResponse
+	var session struct {
+		SessionID acpschema.SessionID `json:"sessionId"`
+	}
 	if err := json.Unmarshal(raw, &session); err != nil || session.SessionID == "" {
 		return catalog, fmt.Errorf("Kimi model discovery returned an invalid session")
 	}
@@ -53,6 +62,9 @@ func (m *Manager) kimiModels(ctx context.Context, cfg AgentConfig) (catalog Agen
 			err = errors.Join(err, fmt.Errorf("delete Kimi model discovery session: %w", deleteErr))
 		}
 	}()
+	if err := ctx.Err(); err != nil {
+		return catalog, err
+	}
 	var response struct {
 		Options []struct {
 			ID       string `json:"id"`
