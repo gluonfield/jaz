@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/terminal"
-	"github.com/wins/jaz/backend/internal/ws"
 )
 
 const terminalWriteTimeout = 5 * time.Second
@@ -42,7 +42,7 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 	if !ok {
 		return
 	}
-	conn, err := ws.Upgrader.Upgrade(w, r, nil)
+	conn, err := httpapi.UpgradeWebSocket(w, r)
 	if err != nil {
 		return
 	}

@@ -18,7 +18,6 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlite "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/terminal"
-	"github.com/wins/jaz/backend/internal/ws"
 )
 
 func TestAuthenticatedMCPProtocol(t *testing.T) {
@@ -241,14 +240,14 @@ func TestRevocationClosesExistingTerminal(t *testing.T) {
 		{Pattern: "DELETE /v1/devices/{id}", Handler: http.HandlerFunc(handler.Revoke)},
 	}}).Handler())
 	t.Cleanup(srv.Close)
-	dialer := websocket.Dialer{Subprotocols: []string{ws.Protocol, "jaz-auth." + phone.Token}}
+	dialer := websocket.Dialer{Subprotocols: []string{"jaz", "jaz-auth." + phone.Token}}
 	conn, response, err := dialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/v1/sessions/"+session.ID+"/terminal", http.Header{"Origin": {"https://web.jaz.chat"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if response.Header.Get("Sec-WebSocket-Protocol") != ws.Protocol {
-		t.Fatal("upgrade did not select the non-secret client protocol")
+	if response.Header.Get("Sec-WebSocket-Protocol") != "jaz" {
+		t.Fatal("upgrade must negotiate jaz without echoing the credential")
 	}
 	var message terminal.Message
 	if err := conn.ReadJSON(&message); err != nil || message.Type != "ready" {

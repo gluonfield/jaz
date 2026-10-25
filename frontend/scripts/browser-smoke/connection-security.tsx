@@ -76,7 +76,7 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
           resolve(false)
         }
       })
-      if (connected !== (credential === 'browser-smoke-credential') || (connected && socket.protocol !== 'jaz.v1')) {
+      if (connected !== (credential === 'browser-smoke-credential') || (connected && socket.protocol !== 'jaz')) {
         socket.close()
         throw new Error('Browser transport failed authentication or non-secret protocol negotiation')
       }

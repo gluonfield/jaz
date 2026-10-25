@@ -10,7 +10,6 @@ import (
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
-	"github.com/wins/jaz/backend/internal/ws"
 )
 
 type DesktopHandler struct {
@@ -64,7 +63,7 @@ func (h DesktopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteJSON(w, http.StatusOK, out)
 		return
 	}
-	conn, err := ws.Upgrader.Upgrade(w, r, nil)
+	conn, err := httpapi.UpgradeWebSocket(w, r)
 	if err != nil {
 		return
 	}

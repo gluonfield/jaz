@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/wins/jaz/backend/internal/ws"
 )
 
 const (
@@ -95,7 +94,6 @@ type extensionWireOutput struct {
 }
 
 var extensionUpgrader = websocket.Upgrader{
-	Subprotocols: []string{ws.Protocol},
 	CheckOrigin: func(r *http.Request) bool {
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
 		return origin == "" || IsChromeExtensionOrigin(origin)
