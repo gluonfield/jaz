@@ -796,7 +796,7 @@ export interface BotOwed {
   request: string
   for?: string
   next?: string
-  status: 'pending' | 'in_progress' | 'waiting_for_user'
+  status: 'pending' | 'in_progress' | 'waiting_for_user' | 'stopped'
   question_seq?: number
   reply_seq?: number
   check_at?: string

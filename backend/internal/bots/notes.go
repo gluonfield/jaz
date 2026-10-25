@@ -157,7 +157,7 @@ func taskNote(store NoteStore, bot string, held map[int64]string) (note string, 
 	}
 	var b strings.Builder
 	if changed.Len() > 0 {
-		b.WriteString("Your open tasks that are new or changed since you last saw them. Use bot_task_update with status completed and message to deliver results, or cancelled with a reason. bot_task_list reads every open task:\n" + changed.String())
+		b.WriteString("Your open tasks that are new or changed since you last saw them. Use bot_task_update with status completed and message to deliver results, or cancelled with a reason. Stopped tasks stay dormant until explicitly resumed to pending with a justified message; unrelated messages and stale results never resume them. bot_task_list reads every open task:\n" + changed.String())
 		if len(unchanged) > 0 {
 			b.WriteString("Unchanged: " + strings.Join(unchanged, ", ") + ".\n")
 		}
@@ -180,7 +180,11 @@ func taskLine(store PromptStore, commitment storage.Commitment) (string, error) 
 		fmt.Fprintf(&b, " · thread %s %s", thread.Slug, thread.State)
 	}
 	if commitment.Note != "" {
-		fmt.Fprintf(&b, " · next: %s", commitment.Note)
+		label := "next"
+		if commitment.Status == storage.CommitmentStopped {
+			label = "reason"
+		}
+		fmt.Fprintf(&b, " · %s: %s", label, commitment.Note)
 	}
 	b.WriteString(standing(commitment))
 	return b.String(), nil

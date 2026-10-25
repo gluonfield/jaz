@@ -201,21 +201,48 @@ func (s *Store) SetTurnRetries(id string, retries int) error {
 }
 
 func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMessage) error {
-	queue, err := storage.MarshalQueuedMessages(session.QueuedMessages)
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	tasks := botdb.New(tx)
+	if err := taskAdmission(ctx, tasks, session.ID); err != nil {
+		return err
+	}
+	if err := queuedTaskAdmission(ctx, tasks, session.ID, prompt); err != nil {
+		return err
+	}
+	kept := session.QueuedMessages[:0]
+	for _, message := range session.QueuedMessages {
+		err := queuedTaskAdmission(ctx, tasks, session.ID, message)
+		if errors.Is(err, storage.ErrTaskStopped) || errors.Is(err, storage.ErrNothingStalled) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		kept = append(kept, message)
+	}
+	queue, err := storage.MarshalQueuedMessages(kept)
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	claimed, err := threaddb.New(s.db).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
+	claimed, err := threaddb.New(tx).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
 		ID: session.ID, QueuedMessages: queue, Title: nullDBString(session.Title),
 		Turn: sessionTurnJSON(prompt.Turn(now)), StartedAtMs: timeToMs(now),
 	})
 	if err == nil && claimed == 0 {
 		return storage.ErrThreadRunning
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) FinishSessionTurn(id, status, errorMessage string, at time.Time, deliveries []storage.TurnDelivery) error {
@@ -255,12 +282,23 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 		if delivery.Wake {
 			return fmt.Errorf("a finished turn's delivery cannot wake a bot")
 		}
-		queued, err := s.queueMessage(ctx, q, delivery.SessionID, delivery.Message)
+		dormant := false
+		for _, id := range delivery.Closes {
+			task, err := botdb.New(tx).GetCommitment(ctx, id)
+			if err != nil {
+				return err
+			}
+			dormant = dormant || task.Status == storage.CommitmentStopped
+		}
+		if dormant {
+			continue
+		}
+		queued, err := s.queueMessage(ctx, tx, delivery.SessionID, delivery.Message)
 		if err != nil {
 			return err
 		}
 		if !queued && delivery.Fallback != nil {
-			if _, err := s.queueMessage(ctx, q, id, *delivery.Fallback); err != nil {
+			if _, err := s.queueMessage(ctx, tx, id, *delivery.Fallback); err != nil {
 				return err
 			}
 		}
@@ -297,8 +335,9 @@ func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
 			if len(woken) == 0 {
 				return storage.ErrNothingStalled
 			}
+			delivery.Message.Kind = storage.QueuedMessageKindTaskWake
 		}
-		queued, err := s.queueMessage(ctx, threaddb.New(tx), delivery.SessionID, delivery.Message)
+		queued, err := s.queueMessage(ctx, tx, delivery.SessionID, delivery.Message)
 		if err != nil {
 			return err
 		}
@@ -321,13 +360,19 @@ func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
 
 // queueMessage queues message in thread unless the thread is archived or
 // gone.
-func (s *Store) queueMessage(ctx context.Context, q *threaddb.Queries, thread string, message storage.QueuedMessage) (bool, error) {
+func (s *Store) queueMessage(ctx context.Context, db threaddb.DBTX, thread string, message storage.QueuedMessage) (bool, error) {
+	if err := queuedTaskAdmission(ctx, botdb.New(db), thread, message); err != nil {
+		if errors.Is(err, storage.ErrTaskStopped) || errors.Is(err, storage.ErrNothingStalled) {
+			return true, nil
+		}
+		return false, err
+	}
 	message.ID = s.NewSessionID()
 	raw, err := storage.MarshalQueuedMessage(&message)
 	if err != nil {
 		return false, err
 	}
-	updated, err := q.AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: thread, Message: raw})
+	updated, err := threaddb.New(db).AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: thread, Message: raw})
 	return updated > 0, err
 }
 

@@ -19,7 +19,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const owed: BotOwed[] = [
     { id: 4, request: 'Keep bot tasks and their results visible across delegated work, restarts and follow-up conversations', status: 'in_progress', next: 'check its report, then send it', opened_at: minutes(14), threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
     { id: 3, request: 'Which fixes matter this week', status: 'in_progress', for: 'Priorities Bot', opened_at: minutes(95), threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
-    { id: 6, request: 'Compare the supplier quotes', status: 'in_progress', stalled: true, next: 'send the comparison', opened_at: minutes(40), threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
+    { id: 6, request: 'Compare the supplier quotes', status: 'stopped', next: 'Checked both routes; neither supports this input. Retry after support is added.', opened_at: minutes(40), threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
     { id: 5, request: 'Overnight stress run', status: 'pending', blocked: true, depends_on: [1], opened_at: minutes(70) },
     { id: 2, request: 'Pause prompt suggestions on hidden turns', status: 'waiting_for_user', question_seq: 15, next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
     { id: 1, request: 'Capacity test with 20 threads', status: 'in_progress', opened_at: minutes(60 * 4), threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
@@ -247,8 +247,8 @@ export async function exerciseBotPanel(): Promise<void> {
     }
     const tabLayout = iconTabs('on the desktop panel')
     const states = taskStates()
-    if (document.querySelectorAll('section[aria-label="Tasks"] button').length !== 7 || states.join() !== 'Blocked by Human') {
-      throw new Error(`Bot panel: only the blocked task should have a visible state, got ${states}`)
+    if (document.querySelectorAll('section[aria-label="Tasks"] button').length !== 7 || states.join() !== 'Stopped,Blocked by Human') {
+      throw new Error(`Bot panel: only stopped and blocked tasks should have a visible state, got ${states}`)
     }
     const title = find(owed[0].request)?.querySelector('span.truncate')
     if (!title || title.getBoundingClientRect().height > parseFloat(getComputedStyle(title).lineHeight) + 1 || !title.classList.contains('truncate')) {
@@ -266,7 +266,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const tasks = document.querySelector<HTMLElement>('section[aria-label="Tasks"]')!
     for (const task of owed) {
       const row = find(task.request)!
-      if (row.textContent !== task.request + (task.status === 'waiting_for_user' ? 'Blocked by Human' : '') || row.getBoundingClientRect().height > 42) {
+      if (row.textContent !== task.request + (task.status === 'stopped' ? 'Stopped' : task.status === 'waiting_for_user' ? 'Blocked by Human' : '') || row.getBoundingClientRect().height > 42) {
         throw new Error('Bot panel: a task row shows a subtitle or body instead of one compact title')
       }
     }
@@ -315,6 +315,16 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('task details lost the prerequisite reason', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Prerequisites: #1') ?? false)
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
+    await click('Compare the supplier quotes')
+    await until('the stopped reason was not visible', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Reason: Checked both routes') ?? false)
+    if (!document.querySelector('[role="dialog"]')?.textContent?.includes('Stopped') || document.querySelector('[role="dialog"]')?.textContent?.includes('Next:')) {
+      throw new Error('Bot panel: stopped work lost its exception or reason label')
+    }
+    await capture('bot-panel-stopped')
+    await window.smoke.resize(390, 844)
+    await capture('bot-panel-stopped-phone')
+    await window.smoke.resize(1200, 900)
+    await click('Close')
     await click('Capacity test with 20 threads')
     await until('a commitment with several threads did not list them with what they started', () => /^Capacity harnessFinished\|Harness design review.+\|Capacity runFailed$/.test([...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|')))
     await capture('bot-panel-commitment')
@@ -426,7 +436,7 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: opening and closing a file that ends in a list saved it')
     }
     await click('Memory')
-    await until('MEMORY.md did not reopen for editing', () => Boolean(editor()))
+    await until('MEMORY.md did not reopen for editing with focus', () => Boolean(editor()) && document.activeElement === editor())
     await type('Owls')
     await click('Bold')
     await capture('bot-file-editor')

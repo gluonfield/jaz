@@ -48,6 +48,7 @@ type QueuedMessageKind string
 const (
 	QueuedMessageKindPublic   QueuedMessageKind = ""
 	QueuedMessageKindInternal QueuedMessageKind = "internal"
+	QueuedMessageKindTaskWake QueuedMessageKind = "task_wake"
 )
 
 type QueuedAction string
@@ -164,7 +165,7 @@ func PublicQueuedMessages(messages []QueuedMessage) []QueuedMessage {
 }
 
 func (message QueuedMessage) IsInternal() bool {
-	return message.Kind == QueuedMessageKindInternal
+	return message.Kind == QueuedMessageKindInternal || message.Kind == QueuedMessageKindTaskWake
 }
 
 func (message QueuedMessage) IsAction() bool {
@@ -184,7 +185,7 @@ func (message QueuedMessage) AsPublic() QueuedMessage {
 
 func normalizeQueuedMessageKind(kind QueuedMessageKind) QueuedMessageKind {
 	switch kind {
-	case QueuedMessageKindInternal:
+	case QueuedMessageKindInternal, QueuedMessageKindTaskWake:
 		return kind
 	default:
 		return QueuedMessageKindPublic

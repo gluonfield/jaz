@@ -105,7 +105,7 @@ function OwedModal({ owed, started, now, onClose }: { owed: BotOwed; started: St
     <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, taskStateLabel(owed), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
         {owed.check_at ? <p>Check: {messageTime(owed.check_at)}</p> : null}
-        {owed.next ? <p className="whitespace-pre-wrap wrap-break-word">Next: {owed.next}</p> : null}
+        {owed.next ? <p className="whitespace-pre-wrap wrap-break-word">{owed.status === 'stopped' ? 'Reason' : 'Next'}: {owed.next}</p> : null}
         {owed.blocked && owed.depends_on?.length ? <p>Prerequisites: {owed.depends_on.map((id) => `#${id}`).join(', ')}</p> : null}
         {owed.threads?.length ? (
           <ul className="flex flex-col">

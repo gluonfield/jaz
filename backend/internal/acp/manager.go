@@ -51,6 +51,7 @@ type Store interface {
 	storage.SessionGoalStore
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
+	CheckTaskAdmission(string) error
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	SaveSession(storage.Session) error
 	StartSessionTurn(string, storage.Turn, ...storage.Message) error

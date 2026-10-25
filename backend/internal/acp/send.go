@@ -136,6 +136,9 @@ func (m *Manager) send(ctx context.Context, req SendRequest, opts sendOptions) (
 }
 
 func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOptions) (Job, error) {
+	if err := m.store.CheckTaskAdmission(req.Session); err != nil {
+		return Job{}, err
+	}
 	if !storage.HasMessageContent(req.Message, req.Contexts, req.Attachments) {
 		return Job{}, fmt.Errorf("message is required")
 	}

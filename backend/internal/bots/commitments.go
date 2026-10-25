@@ -23,6 +23,7 @@ type CommitmentStore interface {
 	ListClosedCommitments(botID string, since time.Time) ([]storage.Commitment, error)
 	DeliverMessage(event sessionevents.Event, closes []int64) (sessionevents.Event, error)
 	AskCommitment(storage.Commitment, sessionevents.Event) (sessionevents.Event, error)
+	TransitionCommitment(storage.Commitment, sessionevents.Event) (sessionevents.Event, error)
 	ListWatchBots() ([]string, error)
 }
 
@@ -61,6 +62,20 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 		return 0, err
 	}
 	status := cmp.Or(change.Status, commitment.Status)
+	if status == storage.CommitmentStopped || commitment.Status == storage.CommitmentStopped && status != storage.CommitmentDropped {
+		if message == "" || request != "" || next != "" || change.DependsOn != nil || change.CheckAt != nil || change.AnsweredQuestion != 0 || commitment.Status == storage.CommitmentStopped && status != storage.CommitmentPending {
+			return 0, errors.New("stopping requires status stopped and an explanation; resuming requires status pending and a justified message only")
+		}
+		commitment.Status = status
+		event, err := s.store.TransitionCommitment(commitment, sessionevents.Event{
+			SessionID: threadID, Type: sessionevents.TypeRoomMessage, At: time.Now().UTC(),
+			RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", BotID: threadID, Name: session.Title, Text: message},
+		})
+		if err == nil {
+			s.events.Publish(event)
+		}
+		return commitment.ID, explain(err)
+	}
 	if status == storage.CommitmentDone || status == storage.CommitmentDropped {
 		if message == "" || request != "" || next != "" || change.DependsOn != nil || change.CheckAt != nil || change.AnsweredQuestion != 0 {
 			return 0, errors.New("completing or cancelling requires status and message only")
@@ -164,6 +179,8 @@ func explain(err error) error {
 // standing says what a commitment waits on, or that nothing moves on it.
 func standing(commitment storage.Commitment) string {
 	switch {
+	case commitment.Status == storage.CommitmentStopped:
+		return " · stopped: dormant; resume only to pending with a justified message after relevant user direction or changed conditions"
 	case commitment.Status == storage.CommitmentWaitingForUser:
 		if commitment.ReplySeq > 0 {
 			return fmt.Sprintf(" · question #%d has a new user reply; resume with answered_question only if it answers this question", commitment.QuestionSeq)

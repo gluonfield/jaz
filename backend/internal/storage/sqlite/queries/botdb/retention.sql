@@ -21,6 +21,6 @@ WHERE threads.id = sqlc.arg(id)
   AND last_completed_at_ms > 0 AND last_completed_at_ms < sqlc.arg(before_ms)
   AND last_attention_at_ms < sqlc.arg(before_ms) AND updated_at_ms < sqlc.arg(before_ms)
   AND NOT EXISTS (
-    SELECT 1 FROM bot_commitment_threads l JOIN bot_commitments c ON c.id = l.commitment_id
-    WHERE l.thread_id = threads.id AND (c.status IN ('pending', 'in_progress', 'waiting_for_user') OR c.closed_at_ms >= sqlc.arg(before_ms))
+    SELECT 1 FROM bot_commitment_workers l JOIN bot_commitments c ON c.id = l.commitment_id
+    WHERE l.thread_id = threads.id AND (c.status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped') OR c.closed_at_ms >= sqlc.arg(before_ms))
   );

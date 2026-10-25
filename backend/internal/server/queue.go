@@ -382,6 +382,12 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	if session.Runtime == "" {
 		session.Runtime = storage.RuntimeACP
 	}
+	if err := s.Store.CheckTaskAdmission(session.ID); err != nil {
+		if errors.Is(err, storage.ErrTaskStopped) {
+			return session, nil, false, nil
+		}
+		return storage.Session{}, nil, false, err
+	}
 	if s.sessionRuntimeRunning(session) || !takesQueuedTurns(session.Status) {
 		return session, nil, false, nil
 	}
@@ -419,7 +425,7 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	}
 	// A run the agent began on its own may hold the thread since it was read;
 	// the prompt then waits in the queue until that run's turn ends.
-	if err := s.Store.ClaimQueuedTurn(session, prompt); errors.Is(err, storage.ErrThreadRunning) {
+	if err := s.Store.ClaimQueuedTurn(session, prompt); errors.Is(err, storage.ErrThreadRunning) || errors.Is(err, storage.ErrTaskStopped) || errors.Is(err, storage.ErrNothingStalled) {
 		return session, nil, false, nil
 	} else if err != nil {
 		return storage.Session{}, nil, false, err

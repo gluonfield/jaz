@@ -8,6 +8,10 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
+func (s *Store) CheckTaskAdmission(string) error {
+	return nil
+}
+
 func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...storage.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
