@@ -1,5 +1,7 @@
 # Installed Device Registration
 
+Status update: diagnosis accepted; `7f4ec279` is held from integration as the final fix. Augustinas requires usable authenticated startup without Keychain persistence. The [session-authentication proposal](session-auth-proposal-2026-10-25.md) awaits independent review; the evidence below is preserved.
+
 The screenshot's generic error hides a failure to save the returned device token securely. macOS logs independently record Jaz Safe Storage ACL rejection for the installed app immediately before the screenshot. The repair reports the secure-save failure while retaining encrypted persistence as a prerequisite for connecting. It does **not** grant Keychain access or claim to cure the installed app's authorization failure.
 
 ## Evidence
@@ -33,4 +35,4 @@ Verification: 375 frontend tests; 20 final focused credential/connection tests; 
 
 Thermo-nuclear self-review applied `/Users/wins/.jaz/skills/thermo-nuclear-code-quality-review/SKILL.md`. Corrected the error wording to account for both OS encryption and local persistence failures, and expanded newly added one-line conditionals. No remaining structural, ownership, security-policy, duplication or file-size findings: production stays at 763 lines; its test file at 360. The narrow stage boundary earns its four added lines; a new error framework or storage layer would add unnecessary scope.
 
-Separate `cc44de8a` notification-cache changes and restart-continuation work are untouched. Deliver this commit for local integration only. No release, push, installation, restart, device reset, credential migration, Keychain permission change or security-contract change was performed.
+Separate `cc44de8a` notification-cache changes and restart-continuation work are untouched. The diagnostic commit remains separate from the proposed usable-startup policy. No release, push, installation, restart, device reset, credential migration, Keychain permission change or security-contract change was performed.
