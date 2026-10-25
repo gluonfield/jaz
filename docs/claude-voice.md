@@ -6,7 +6,7 @@ Request, 25 October 2026: inspect Claude Desktop's voice implementation and add 
 - [x] Trace Jaz's current provider, connection and transcript boundaries.
 - [x] Check the existing Claude Code sign-in without generating a completion.
 - [x] Reproduce, repair and review authenticated desktop WebSocket negotiation.
-- [ ] Activate the reviewed connection correction with a coordinated backend restart.
+- [x] Activate the reviewed connection correction with a coordinated backend restart.
 - [ ] Verify the signed-in Claude voice handshake and actual model identity.
 - [ ] Implement and verify the Claude provider, including delegation and interruption.
 - [ ] Review and commit the verified implementation.
@@ -62,6 +62,8 @@ The correction offers a public `jaz` protocol alongside the request-only credent
 
 A normal-path hidden Electron security smoke uses the production browser transport and HTTP adapter. It failed on the original code with `Authenticated browser socket handshake failed`; it passes with the correction and verifies registration with a real status request. The test creates no visible windows or focus changes. Full Go 1.26.3 backend tests/vet, the frontend's 376 tests, type checks, lint and desktop bundle pass. The thermo-nuclear self-review found no remaining blockers: one HTTP owner replaces three upgrader configurations, credentials remain request-only, and provider/native-agent behavior is unchanged. Logs: `runs/claude-voice/{handshake-before,handshake-after,backend-tests,backend-vet,frontend-tests,typecheck,lint,build}.log`.
 
-The connection correction is not active in the running server yet. The shared backend has eight other threads marked running; restarting it needs coordination to avoid interrupting their work. Claude voice itself remains unimplemented.
+Augustinas authorized the shared restart. The correction was merged into local main as `dd1e8b1b`, built with Go 1.26.3 and activated by a graceful backend replacement. The receipt reports healthy, exact prior environment reused and unchanged auth file. The side browser now connects to this conversation, confirming the production handshake correction. Computer use still reports disconnected. Claude voice itself remains unimplemented.
+
+Claude in the Jaz side browser shows its sign-in page; the installed Desktop session is separate. Requested sign-in there to verify the real voice authorization and model contract. No Claude credentials were extracted, copied or stored. Restart receipt: main checkout `runs/claude-voice/restart-receipt.json`. The replacement backend was started detached using the prior environment; its PID is registered in the existing Electron orphan-cleanup PID file.
 
 Official feature documentation: [Use voice mode](https://support.claude.com/en/articles/11101966-use-voice-mode).
