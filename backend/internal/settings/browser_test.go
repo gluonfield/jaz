@@ -37,14 +37,14 @@ func TestBrowserSettingsNormalizesPersistedMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	if _, err := SaveBrowserSettings(store, BrowserSettings{Enabled: true, Mode: BrowserModeManaged}); err != nil {
+	if _, err := store.SaveSetting(BrowserSettingsNamespace, BrowserSettingsKey, json.RawMessage(`{"enabled":true,"mode":"managed"}`)); err != nil {
 		t.Fatal(err)
 	}
 	settings, err := LoadBrowserSettings(store)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settings.Mode != BrowserModeManaged || BrowserUsesExtension(settings) {
+	if settings.Mode != BrowserModeDesktop || !settings.Enabled {
 		t.Fatalf("settings = %#v", settings)
 	}
 }

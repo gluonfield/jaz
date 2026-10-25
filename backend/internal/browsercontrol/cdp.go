@@ -41,14 +41,6 @@ type cdpReply struct {
 	err error
 }
 
-func dialCDP(ctx context.Context, endpoint string) (*cdpConn, error) {
-	ws, _, err := websocket.DefaultDialer.DialContext(ctx, endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	return newCDPConn(ws), nil
-}
-
 func newCDPConn(ws *websocket.Conn) *cdpConn {
 	ws.SetReadLimit(browserWireReadLimit)
 	conn := &cdpConn{

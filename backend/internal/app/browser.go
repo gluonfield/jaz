@@ -3,24 +3,18 @@ package app
 import (
 	"context"
 	"net/http"
-	"path/filepath"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/browsercontrol"
 	browserapi "github.com/wins/jaz/backend/internal/httpapi/browser"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
-	"github.com/wins/jaz/backend/internal/runtimefiles"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"go.uber.org/fx"
 )
 
 type BrowserSettingsHandler struct {
 	http.Handler
-}
-
-func NewBrowserBackend(layout runtimefiles.Layout, store *sqlitestore.Store) *browsercontrol.ConfiguredBackend {
-	return browsercontrol.NewConfiguredBackend(filepath.Join(layout.Root, "browser"), store)
 }
 
 func NewBrowserSettingsHandler(store *sqlitestore.Store, jaz *jaztools.Service, mcp *mcpruntime.Manager, backend *browsercontrol.ConfiguredBackend) *BrowserSettingsHandler {

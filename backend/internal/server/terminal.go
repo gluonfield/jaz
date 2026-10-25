@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/terminal"
+	"github.com/wins/jaz/backend/internal/ws"
 )
 
 const terminalWriteTimeout = 5 * time.Second
@@ -21,12 +22,6 @@ type terminalClientMessage struct {
 	Data string `json:"data,omitempty"`
 	Cols uint16 `json:"cols,omitempty"`
 	Rows uint16 `json:"rows,omitempty"`
-}
-
-var terminalUpgrader = websocket.Upgrader{
-	CheckOrigin: func(*http.Request) bool {
-		return true
-	},
 }
 
 func (s *Server) terminalManager() *terminal.Manager {
@@ -47,7 +42,7 @@ func (s *Server) handleSessionTerminal(w http.ResponseWriter, r *http.Request, s
 	if !ok {
 		return
 	}
-	conn, err := terminalUpgrader.Upgrade(w, r, nil)
+	conn, err := ws.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

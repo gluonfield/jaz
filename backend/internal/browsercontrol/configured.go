@@ -14,12 +14,8 @@ type ConfiguredBackend struct {
 	store   storage.SettingsStorage
 }
 
-func NewConfiguredBackend(profileRoot string, store storage.SettingsStorage) *ConfiguredBackend {
-	extension := NewExtensionBridge(NewLocalBackend(profileRoot), func() bool {
-		config, err := settings.LoadBrowserSettings(store)
-		return err != nil || settings.BrowserUsesExtension(config)
-	})
-	return &ConfiguredBackend{ExtensionBridge: extension, Desktop: NewDesktopBackend(), store: store}
+func NewConfiguredBackend(store storage.SettingsStorage) *ConfiguredBackend {
+	return &ConfiguredBackend{ExtensionBridge: NewExtensionBridge(), Desktop: NewDesktopBackend(), store: store}
 }
 
 func (b *ConfiguredBackend) Call(ctx context.Context, input ActionInput) (ActionOutput, error) {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/wins/jaz/backend/internal/ws"
 )
 
 const (
@@ -22,13 +23,11 @@ const (
 )
 
 type ExtensionBridge struct {
-	Fallback Backend
-	Timeout  time.Duration
+	Timeout time.Duration
 
-	useExtension func() bool
-	seq          atomic.Uint64
-	mu           sync.Mutex
-	client       *extensionClient
+	seq    atomic.Uint64
+	mu     sync.Mutex
+	client *extensionClient
 }
 
 type ExtensionStatus struct {
@@ -96,6 +95,7 @@ type extensionWireOutput struct {
 }
 
 var extensionUpgrader = websocket.Upgrader{
+	Subprotocols: []string{ws.Protocol},
 	CheckOrigin: func(r *http.Request) bool {
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
 		return origin == "" || IsChromeExtensionOrigin(origin)
@@ -119,8 +119,8 @@ func IsChromeExtensionOrigin(raw string) bool {
 	return true
 }
 
-func NewExtensionBridge(fallback Backend, useExtension func() bool) *ExtensionBridge {
-	return &ExtensionBridge{Fallback: fallback, useExtension: useExtension}
+func NewExtensionBridge() *ExtensionBridge {
+	return &ExtensionBridge{}
 }
 
 func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -155,12 +155,6 @@ func (b *ExtensionBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (b *ExtensionBridge) Call(ctx context.Context, input ActionInput) (ActionOutput, error) {
-	if !b.usesExtension() {
-		if b.Fallback != nil {
-			return b.Fallback.Call(ctx, input)
-		}
-		return ActionOutput{}, errors.New("background Chromium backend is not configured")
-	}
 	if client := b.currentClient(); client != nil {
 		if !client.supports(input.Action) {
 			return ActionOutput{}, UnsupportedActionError{Action: input.Action, Hint: "reload the updated Jaz Browser Bridge"}
@@ -168,10 +162,6 @@ func (b *ExtensionBridge) Call(ctx context.Context, input ActionInput) (ActionOu
 		return client.call(ctx, b.nextID(), input, b.callTimeout(input))
 	}
 	return ActionOutput{}, errors.New("browser extension bridge is not connected")
-}
-
-func (b *ExtensionBridge) usesExtension() bool {
-	return b.useExtension == nil || b.useExtension()
 }
 
 func (b *ExtensionBridge) Status() ExtensionStatus {
@@ -189,9 +179,6 @@ func (b *ExtensionBridge) Close() error {
 	b.mu.Unlock()
 	if client != nil {
 		client.close()
-	}
-	if closer, ok := b.Fallback.(interface{ Close() error }); ok {
-		return closer.Close()
 	}
 	return nil
 }

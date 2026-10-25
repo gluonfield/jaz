@@ -81,7 +81,7 @@ test('browser transports keep device credentials in headers and bound URLs to re
   expect(embedded.searchParams.get('ticket')).toBe('read-ticket')
   expect(embedded.toString()).not.toContain('device-credential')
   api.apiWebSocket('/v1/sessions/thread/terminal')
-  expect(sockets).toEqual([{ url: 'wss://jaz.example/v1/sessions/thread/terminal', protocols: ['jaz-auth.device-credential'] }])
+  expect(sockets).toEqual([{ url: 'wss://jaz.example/v1/sessions/thread/terminal', protocols: ['jaz.v1', 'jaz-auth.device-credential'] }])
   api.setApiAuthToken(api.apiBaseUrl(), null)
   expect(api.apiEmbeddedGetUrl('/v1/sessions/thread/file?raw=1')).not.toContain('ticket=')
 })

@@ -5,11 +5,11 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gorilla/websocket"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/ws"
 )
 
 type DesktopHandler struct {
@@ -39,8 +39,7 @@ func (h DesktopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, status, err)
 		return
 	}
-	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
-	connection, err := upgrader.Upgrade(w, r, nil)
+	connection, err := ws.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}

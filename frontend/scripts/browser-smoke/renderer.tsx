@@ -36,6 +36,7 @@ import { exerciseImages } from './images'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
 import { exerciseConnectionSecurity } from './connection-security'
+import { apiBaseUrl, apiWebSocketProtocols, setApiAuthToken } from '@/lib/api/client'
 
 declare global {
   interface Window {
@@ -93,7 +94,7 @@ function Fixture() {
         progress('host device administration and saved MCP credentials')
         await exerciseConnectionSecurity()
         if (suite === 'connection-security') {
-          window.smoke.result({ ok: true, checks: ['host-only device management and saved-secret edit/removal at desktop and phone widths'] })
+          window.smoke.result({ ok: true, checks: ['authenticated Chromium browser registration; invalid credential rejection; non-secret protocol negotiation', 'device/MCP security and two browser modes at desktop and phone widths'] })
           return
         }
       }
@@ -375,7 +376,8 @@ awaitPromise:true
       }
       const backend = await window.smoke.backend()
       progress('MCP and accessibility')
-      const socket = new WebSocket(`${backend.replace('http:', 'ws:')}/v1/sessions/browser-fixture/browser`)
+      setApiAuthToken(apiBaseUrl(), 'browser-smoke-credential')
+      const socket = new WebSocket(`${backend.replace('http:', 'ws:')}/v1/sessions/browser-fixture/browser`, apiWebSocketProtocols())
       socket.onmessage = async (event) => {
         const request = JSON.parse(event.data)
         pending.set(request.id, request.method + ' ' + String(request.params?.expression ?? '').slice(0, 100))
