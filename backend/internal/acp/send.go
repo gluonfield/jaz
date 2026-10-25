@@ -70,6 +70,7 @@ type sendOptions struct {
 	output                *storage.TurnOutput
 	owes                  []storage.Recipient
 	retries               int
+	continuationOf        time.Time
 	// claimed starts the turn a new thread was created with.
 	claimed bool
 }
@@ -226,8 +227,9 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 		output = &storage.TurnOutput{User: true}
 	}
 	turn := storage.Turn{
-		StartedAt:     time.Now().UTC(),
-		PlanRequested: req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
+		StartedAt:      time.Now().UTC(),
+		ContinuationOf: opts.continuationOf,
+		PlanRequested:  req.PlanRequested, GoalRequested: req.GoalRequested, ActiveOperation: opts.activeOperation,
 		ParentVisible: req.ParentVisible, NotifyParent: notifyParent,
 		AllowSilence: opts.allowSilence, Output: output, ParentOutput: parentOutput,
 		PromptDigest: promptDigest, Retries: opts.retries, Prompt: pending, Owes: opts.owes,

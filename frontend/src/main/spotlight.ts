@@ -20,6 +20,7 @@ interface Rect {
 }
 
 let launcher: BrowserWindow | null = null
+let attachSession: (window: BrowserWindow) => void
 
 function preloadPath(): string {
   return join(__dirname, '../preload/index.js')
@@ -64,6 +65,7 @@ function buildLauncher(): BrowserWindow {
   win.on('closed', () => {
     if (launcher === win) launcher = null
   })
+  attachSession(win)
   if (process.env['ELECTRON_RENDERER_URL']) {
     void win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}${LAUNCHER_HASH}`)
   } else {
@@ -168,7 +170,8 @@ function isRect(value: unknown): value is Rect {
   return Boolean(r) && [r.x, r.y, r.width, r.height].every((n) => typeof n === 'number')
 }
 
-export function setupLauncher(): void {
+export function setupLauncher(attach: (window: BrowserWindow) => void): void {
+  attachSession = attach
   if (process.platform !== 'darwin') return
   ipcMain.handle('jaz:capture-screen-rect', (_event, rect) =>
     isRect(rect) ? captureScreenRect(rect) : { ok: false },

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { VoiceSettings } from '@/components/settings/VoiceSettings'
-import { setApiBaseUrl } from '@/lib/api/client'
+import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
 import type { VoiceSettings as Settings } from '@/lib/api/liveVoice'
 
 export async function exerciseClaudeVoice(): Promise<void> {
@@ -59,7 +59,7 @@ export async function exerciseClaudeVoice(): Promise<void> {
   }
 
   const originalFetch = window.fetch
-  const originalBase = localStorage.getItem('jaz.backendUrl')
+  const originalBase = apiBaseUrl()
   const panel = document.createElement('div')
   panel.className = 'fixed inset-0 z-10 overflow-auto bg-bg px-4'
   document.body.append(panel)
@@ -113,7 +113,7 @@ export async function exerciseClaudeVoice(): Promise<void> {
     panel.remove()
     client.clear()
     window.fetch = originalFetch
-    setApiBaseUrl(originalBase ?? location.origin)
+    setApiBaseUrl(originalBase)
   }
 }
 

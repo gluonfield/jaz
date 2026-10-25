@@ -2,11 +2,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { DevicesSettings } from '@/components/settings/DevicesSettings'
 import { MCPSettings } from '@/components/settings/MCPSettings'
-import { apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
+import { BrowserSettings } from '@/components/settings/BrowserSettings'
+import { cachedApiAuthToken, apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import { clientRuntime } from '@/lib/clientRuntime'
 
-export async function exerciseConnectionSecurity(): Promise<void> {
-  await exerciseAuthenticatedWebSocket()
+export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocket) => void): Promise<void> {
+  const backend = await window.smoke.backend()
+  const originalToken = cachedApiAuthToken(backend)
   const originalFetch = window.fetch
   const originalStart = clientRuntime.startLocalBackend
   const originalURL = apiBaseUrl()
@@ -14,6 +16,7 @@ export async function exerciseConnectionSecurity(): Promise<void> {
   const local = 'http://127.0.0.1:5299'
   const saves: Record<string, unknown>[] = []
   let tokenSet = true
+  let socket: WebSocket | undefined
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;padding:16px;background:var(--color-bg);overflow:auto'
   document.body.append(element)
@@ -46,13 +49,50 @@ export async function exerciseConnectionSecurity(): Promise<void> {
     }
     return originalFetch(input, init)
   }
-  const render = (view: 'devices' | 'mcp', key: string) => {
+  const render = (view: 'devices' | 'mcp' | 'browser', key: string) => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     clients.push(client)
-    root.render(<QueryClientProvider client={client} key={key}>{view === 'devices' ? <DevicesSettings /> : <MCPSettings />}</QueryClientProvider>)
+    root.render(<QueryClientProvider client={client} key={key}>{view === 'devices' ? <DevicesSettings /> : view === 'browser' ? <BrowserSettings /> : <MCPSettings />}</QueryClientProvider>)
   }
   const button = (text: string) => [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === text)
   try {
+    setApiBaseUrl(backend)
+    for (const credential of ['wrong-credential', 'browser-smoke-credential']) {
+      setApiAuthToken(backend, credential)
+      socket = apiWebSocket('/v1/sessions/browser-fixture/browser')
+      const connected = await new Promise<boolean>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Authenticated browser socket did not settle')), 5000)
+        socket.onopen = () => {
+          clearTimeout(timer)
+          resolve(true)
+        }
+        socket.onerror = () => {
+          clearTimeout(timer)
+          resolve(false)
+        }
+      })
+      if (connected !== (credential === 'browser-smoke-credential') || (connected && socket.protocol !== 'jaz')) {
+        socket.close()
+        throw new Error('Browser transport failed authentication or non-secret protocol negotiation')
+      }
+      if (connected) {
+        serveBrowser(socket)
+        const response = await originalFetch(backend + '/v1/sessions/browser-fixture/browser', { method: 'POST', body: JSON.stringify({ action: 'status' }) })
+        const result = await response.json()
+        if (!response.ok || result.status !== 'ok') {
+          throw new Error('Authenticated browser did not register with the production backend')
+        }
+        const exercise = await originalFetch(backend + '/exercise?url=' + encodeURIComponent(location.origin + '/target?authenticated=1'))
+        if (!exercise.ok) {
+          throw new Error('Authenticated MCP browser actions failed: ' + await exercise.text())
+        }
+        const closed = new Promise((resolve) => {
+          socket.onclose = resolve
+        })
+        socket.close()
+        await closed
+      }
+    }
     for (const [width, name] of [[1440, 'desktop'], [390, 'phone']] as const) {
       await window.smoke.resize(width, 900)
       for (const host of [true, false]) {
@@ -99,47 +139,31 @@ export async function exerciseConnectionSecurity(): Promise<void> {
         throw new Error('Explicit saved-token removal was lost')
       }
       await until(() => !button('Save changes'))
+      setApiBaseUrl(backend)
+      render('browser', `browser-${name}`)
+      await until(() => Boolean(element.querySelector('[aria-label="Enable browser tools"]')))
+      if (element.textContent?.includes('Extension') || element.textContent?.includes('Background Chromium') || element.textContent?.includes('Browser backend')) {
+        throw new Error('Removed browser backend selection remains visible')
+      }
+      await click(element.querySelector('[aria-label="Enable browser tools"]')!)
+      await until(() => element.querySelector('[aria-label="Enable browser tools"]')?.getAttribute('aria-checked') === 'false')
+      await click(element.querySelector('[aria-label="Enable browser tools"]')!)
+      await until(() => element.querySelector('[aria-label="Enable browser tools"]')?.getAttribute('aria-checked') === 'true')
+      if (element.scrollWidth > element.clientWidth) {
+        throw new Error('Browser settings overflow horizontally')
+      }
+      await window.smoke.capture(`browser-settings-${name}`)
     }
   } finally {
+    socket?.close()
     root.unmount()
     clients.forEach((client) => client.clear())
     element.remove()
     window.fetch = originalFetch
     clientRuntime.startLocalBackend = originalStart
+    setApiAuthToken(backend, originalToken)
     setApiBaseUrl(originalURL)
     await window.smoke.resize(originalSize.width, originalSize.height)
-  }
-}
-
-async function exerciseAuthenticatedWebSocket(): Promise<void> {
-  const originalURL = apiBaseUrl()
-  const backend = await window.smoke.backend()
-  setApiBaseUrl(backend)
-  setApiAuthToken(backend, 'fixture-device-credential')
-  const socket = apiWebSocket('/v1/sessions/browser-fixture/browser')
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Authenticated browser socket timed out')), 5000)
-      socket.onopen = () => {
-        clearTimeout(timer)
-        resolve()
-      }
-      socket.onerror = () => {
-        clearTimeout(timer)
-        reject(new Error('Authenticated browser socket handshake failed'))
-      }
-    })
-    if (socket.protocol !== 'jaz') {
-      throw new Error('Socket must negotiate jaz without echoing the credential')
-    }
-    const response = await fetch(`${backend}/v1/sessions/browser-fixture/browser`, { method: 'POST', body: JSON.stringify({ action: 'status' }) })
-    if (!response.ok || (await response.json()).status !== 'ok') {
-      throw new Error('Authenticated browser connection was not registered')
-    }
-  } finally {
-    socket.close()
-    setApiAuthToken(backend, null)
-    setApiBaseUrl(originalURL)
   }
 }
 

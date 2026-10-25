@@ -111,8 +111,12 @@ func TestPromptRestartProcess(t *testing.T) {
 	env["JAZ_FAKE_ACP_UNIQUE_SESSION"] = "cwd"
 	manager := newFakeNamedAgentManagerWithOptions(t, boundary, root, agent, env, "", "")
 	kind := os.Getenv("JAZ_PROMPT_RESTART_KIND")
-	var id string
-	if kind == "worker" {
+	id := os.Getenv("JAZ_PROMPT_RESTART_SESSION")
+	if id != "" {
+		if err := manager.ResumeInterruptedTurn(t.Context(), id); err != nil {
+			t.Fatal(err)
+		}
+	} else if kind == "worker" {
 		parentDir := filepath.Join(root, "parent")
 		if err := os.MkdirAll(parentDir, 0o700); err != nil {
 			t.Fatal(err)
@@ -317,6 +321,9 @@ func TestRestartDeliversAnUnsentPromptAndContinuesADeliveredOne(t *testing.T) {
 					if thread.Turn == nil || thread.Turn.Prompt == nil || thread.Turn.Prompt.State != storage.PromptConfirmed {
 						t.Fatalf("prompt was not confirmed: %+v", thread.Turn)
 					}
+					if stage != "delivered" && !thread.Turn.ContinuationOf.IsZero() {
+						t.Fatalf("a new or unsent claim invented acknowledged ancestry: %+v", thread.Turn)
+					}
 					switch kind {
 					case "worker":
 						if thread.ParentID == "" || !thread.Turn.NotifyParent || !thread.Turn.ParentVisible {
@@ -386,12 +393,20 @@ func TestRestartDeliversAnUnsentPromptAndContinuesADeliveredOne(t *testing.T) {
 func crashedPrompt(t *testing.T, agent, kind, stage string) (string, []byte) {
 	t.Helper()
 	root := t.TempDir()
+	return root, crashStoredPrompt(t, root, agent, kind, stage, "")
+}
+
+func crashStoredPrompt(t *testing.T, root, agent, kind, stage, session string) []byte {
+	t.Helper()
+	if err := os.Remove(filepath.Join(root, "ready")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	cmd := exec.CommandContext(t.Context(), executable, "-test.run=^TestPromptRestartProcess$")
-	cmd.Env = append(os.Environ(), "TMPDIR="+root, "JAZ_PROMPT_RESTART_ROOT="+root, "JAZ_PROMPT_RESTART_AGENT="+agent, "JAZ_PROMPT_RESTART_KIND="+kind, "JAZ_PROMPT_RESTART_STAGE="+stage)
+	cmd.Env = append(os.Environ(), "TMPDIR="+root, "JAZ_PROMPT_RESTART_ROOT="+root, "JAZ_PROMPT_RESTART_AGENT="+agent, "JAZ_PROMPT_RESTART_KIND="+kind, "JAZ_PROMPT_RESTART_STAGE="+stage, "JAZ_PROMPT_RESTART_SESSION="+session)
 	output, err := cmd.CombinedOutput()
 	// A crashed host can leave a fake waiting in startup. Reap only
 	// the PIDs this helper recorded, before removing its files.
@@ -404,6 +419,7 @@ func crashedPrompt(t *testing.T, agent, kind, stage string) (string, []byte) {
 		process, _ := os.FindProcess(pid)
 		_ = process.Kill()
 	}
+	_ = os.Remove(filepath.Join(root, "pids"))
 	var exited *exec.ExitError
 	if !errors.As(err, &exited) || exited.ExitCode() != 42 {
 		t.Fatalf("boundary process = %v: %s", err, output)
@@ -412,7 +428,7 @@ func crashedPrompt(t *testing.T, agent, kind, stage string) (string, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return root, id
+	return id
 }
 
 func (s restartBoundaryStore) SetTurnPromptState(id, agentSessionID string, startedAt time.Time, state storage.PromptState) error {

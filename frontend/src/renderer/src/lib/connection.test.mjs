@@ -15,7 +15,7 @@ const bundle = await build({
       builder.onResolve({ filter: /^connection-fixture$/ }, () => ({ path: 'entry', namespace: 'fixture' }))
       builder.onResolve({ filter: /^\//, namespace: 'fixture' }, (args) => ({ path: args.path, namespace: 'file' }))
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
-        contents: `export * from ${JSON.stringify(new URL('./connection.ts', import.meta.url).pathname)}\nexport { ThreadNotifications } from ${JSON.stringify(new URL('../components/notifications/ThreadNotifications.tsx', import.meta.url).pathname)}`,
+        contents: `export * from ${JSON.stringify(new URL('./connection.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./api/client.ts', import.meta.url).pathname)}\nexport { ThreadNotifications } from ${JSON.stringify(new URL('../components/notifications/ThreadNotifications.tsx', import.meta.url).pathname)}`,
         loader: 'ts',
       }))
     },
@@ -55,16 +55,39 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, pairing = false, storedValues = [], decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false } = {}) {
+async function fixture({ auth, pairing = false, storedValues = [], encryptCredential, decryptCredential, health, registration, notifications = false, startLocalBackend, renderNotifications = false, owner = true, initialSnapshot, feature } = {}) {
   const stored = new Map(storedValues)
   const configured = []
   const timers = new Map()
   let nextTimer = 0
+  let snapshot = initialSnapshot || { revision: 0, phase: 'initial', url: '', session: null, error: null, localPending: false }
+  const session = {
+    read: () => ({ document: 1, owner, snapshot }),
+    subscribe: () => () => {},
+    update(request) {
+      snapshot = request.operation === 'begin'
+        ? { ...snapshot, revision: snapshot.revision + 1, phase: 'pending', url: request.url, session: null }
+        : request.operation === 'commit'
+          ? { ...snapshot, revision: snapshot.revision + 1, phase: 'connected', session: request.session }
+          : { ...snapshot, revision: snapshot.revision + 1, phase: 'blocked', session: null, error: request.error }
+      return snapshot
+    },
+    async local() {
+      const result = await startLocalBackend?.()
+      if (!result?.ok) {
+        throw new Error(result?.error || 'Fixture local start unavailable')
+      }
+      return { url: result.url, token: 'jaz_local-device-token', deviceId: 'identity', remembered: false }
+    },
+  }
   replace('window', {
     location: { origin: 'http://localhost', search: '', hash: '' },
     addEventListener() {},
     jaz: {
       apiBaseUrl: 'http://127.0.0.1:5299',
+      windowKind: owner ? 'main' : 'board',
+      connectionSession: session,
+      encryptCredential,
       decryptCredential,
       startLocalBackend,
       ...(notifications ? { configureThreadNotifications: (config) => configured.push(config) } : {}),
@@ -84,25 +107,31 @@ async function fixture({ auth, pairing = false, storedValues = [], decryptCreden
     return nextTimer
   })
   replace('clearTimeout', (id) => timers.delete(id))
-  replace('fetch', async (url) => {
+  replace('fetch', async (url, init) => {
     const target = new URL(url)
-    if (target.hostname === '127.0.0.1') {
+    if (target.hostname === '127.0.0.1' && target.pathname === '/health') {
       return Response.json({ ok: false })
     }
     if (target.pathname === '/health') {
       return health ? health() : Response.json({ ok: true, auth_required: true })
     }
     if (target.pathname === '/v1/devices/register') {
-      return Response.json({ token: 'device-token' })
+      if (registration) {
+        return registration(init)
+      }
+      return Response.json({ token: 'jaz_device-token' })
     }
     if (target.pathname === '/v1/devices/pairing-requests' && pairing) {
       return Response.json({ pairing: { id: 'pair-1', expires_at: new Date(Date.now() + 60_000).toISOString() }, pairing_secret: 'proof' }, { status: 202 })
     }
     if (target.pathname === '/v1/devices/pairing-requests/pair-1') {
-      return Response.json({ pairing: { status: 'approved' }, token: 'device-token' })
+      return Response.json({ pairing: { status: 'approved' }, token: 'jaz_device-token' })
     }
     if (target.pathname === '/v1/auth/check') {
-      return auth()
+      return auth(init)
+    }
+    if (feature) {
+      return feature(init)
     }
     throw new Error(`Unexpected request ${url}`)
   })
@@ -120,9 +149,11 @@ async function fixture({ auth, pairing = false, storedValues = [], decryptCreden
     stored,
     configured,
     timers,
+    session,
     async pollPairing() {
       const timer = [...timers.values()].find((entry) => entry.delay === 2_000)
       await timer.callback()
+      await settle()
     },
   }
 }
@@ -141,6 +172,47 @@ test('a redeemed pairing credential rejected by verification does not connect', 
   expect(connection.useConnection().status).toBe('disconnected')
 })
 
+test('local startup authenticates without touching encrypted storage', async () => {
+  const target = 'http://127.0.0.1:5299'
+  let unlocks = 0
+  let encryptions = 0
+  const { connection, stored } = await fixture({
+    storedValues: [['jaz.backendAuth.' + target, 'enc:v1:previous-ciphertext']],
+    decryptCredential() {
+      unlocks += 1
+      throw new Error('Denied')
+    },
+    encryptCredential() {
+      encryptions += 1
+      throw new Error('Denied')
+    },
+    startLocalBackend: async () => ({ ok: true, url: target, key: 'local-bootstrap-key' }),
+  })
+  expect(await connection.startLocal()).toBeNull()
+  expect(connection.useConnection().status).toBe('connected')
+  expect(connection.cachedApiAuthToken(target)).toBe('jaz_local-device-token')
+  expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:previous-ciphertext')
+  connection.disconnectBackend()
+  expect(connection.cachedApiAuthToken(target)).toBe('')
+  expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:previous-ciphertext')
+  expect(unlocks).toBe(0)
+  expect(encryptions).toBe(0)
+})
+
+test('registration rejection keeps the backend error and never saves a credential', async () => {
+  let encryptions = 0
+  const { connection } = await fixture({
+    registration: () => Response.json({ error: 'device identity is invalid' }, { status: 400 }),
+    encryptCredential() {
+      encryptions += 1
+      throw new Error('Should not encrypt')
+    },
+  })
+  expect(await connection.connectRemote('https://jaz.example#key=invite_once')).toBe('device identity is invalid')
+  expect(connection.useConnection().status).toBe('disconnected')
+  expect(encryptions).toBe(0)
+})
+
 test('disconnecting while enrollment verification runs wins over its late response', async () => {
   let respond
   let requested
@@ -156,7 +228,7 @@ test('disconnecting while enrollment verification runs wins over its late respon
   const attempt = connection.connectRemote('https://jaz.example#key=invite_once')
   await requestStarted
   connection.disconnectBackend()
-  respond(Response.json({ ok: true, auth_kind: 'device' }))
+  respond(Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }))
   await attempt
   expect(connection.useConnection().status).toBe('disconnected')
 })
@@ -196,7 +268,7 @@ test.each([false, true])('offline startup never unlocks a credential for notific
   })
   expect(connection.useConnection().status).toBe('disconnected')
   expect(unlocks).toBe(0)
-  expect(configured).toEqual([{ enabled: false }])
+  expect(configured.every((value) => value.enabled === false)).toBe(true)
 })
 
 test('remote startup waits for health before unlocking, stops on denial, and recovers after restart', async () => {
@@ -220,9 +292,9 @@ test('remote startup waits for health before unlocking, stops on denial, and rec
       if (denied) {
         throw new Error('Keychain denied')
       }
-      return 'device-token'
+      return 'jaz_device-token'
     },
-    auth: () => Response.json({ ok: true, auth_kind: 'device' }),
+    auth: () => Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }),
     notifications: true,
   }
   const first = await fixture(options)
@@ -231,6 +303,7 @@ test('remote startup waits for health before unlocking, stops on denial, and rec
   const pending = [...first.timers.entries()].find(([, timer]) => timer.delay === 5_000)
   first.timers.delete(pending[0])
   await pending[1].callback()
+  await settle()
   first.connection.ThreadNotifications()
   expect(events).toEqual(['health', 'health', 'unlock'])
   expect(first.connection.useConnection().error).toContain('restart Jaz')
@@ -242,7 +315,7 @@ test('remote startup waits for health before unlocking, stops on denial, and rec
   expect(restarted.connection.useConnection().status).toBe('connected')
   restarted.connection.ThreadNotifications()
   expect(events).toEqual(['health', 'health', 'unlock', 'health', 'unlock'])
-  expect(restarted.configured[0]).toEqual({ enabled: true, baseUrl: target, token: 'device-token' })
+  expect(restarted.configured).toContainEqual({ enabled: true, baseUrl: target, token: 'jaz_device-token' })
   expect(restarted.stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
 })
 
@@ -292,11 +365,11 @@ test.each([false, true])('notifications use only credentials resolved by connect
     health: () => Response.json({ ok: true, auth_required: authRequired }),
     decryptCredential() {
       unlocks += 1
-      return 'device-token'
+      return 'jaz_device-token'
     },
     auth() {
       authChecks += 1
-      return Response.json({ ok: true, auth_kind: 'device' })
+      return Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' })
     },
   })
   expect(connection.useConnection().status).toBe('connected')
@@ -304,6 +377,160 @@ test.each([false, true])('notifications use only credentials resolved by connect
   connection.ThreadNotifications()
   expect(unlocks).toBe(authRequired ? 1 : 0)
   expect(authChecks).toBe(authRequired ? 1 : 0)
-  expect(configured).toEqual([{ enabled: true, baseUrl: target, token: authRequired ? 'device-token' : '' }])
+  expect(configured).toEqual([{ enabled: true, baseUrl: target, token: authRequired ? 'jaz_device-token' : '' }])
+
   expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
+})
+
+test('a late same-origin candidate cannot replace the verified token or ticket', async () => {
+  let respond
+  let requested
+  const waiting = new Promise((resolve) => {
+    requested = resolve
+  })
+  const { connection, stored } = await fixture({ auth: (init) => {
+    if (init.headers.Authorization === 'Bearer jaz_first') {
+      requested()
+      return new Promise((resolve) => {
+        respond = resolve
+      })
+    }
+    return Response.json({ ok: true, auth_kind: 'device', device_id: 'identity', resource_ticket: { token: 'new-ticket', expires_at: '2099-01-01T00:00:00Z' } })
+  } })
+  const first = connection.connectRemote('https://jaz.example#key=jaz_first')
+  await waiting
+  expect(await connection.connectRemote('https://jaz.example#key=jaz_second')).toBeNull()
+  respond(Response.json({ ok: true, auth_kind: 'device', device_id: 'identity', resource_ticket: { token: 'old-ticket', expires_at: '2099-01-01T00:00:00Z' } }))
+  await first
+  expect(connection.cachedApiAuthToken('https://jaz.example')).toBe('jaz_second')
+  expect(connection.apiEmbeddedGetUrl('/v1/sessions/thread/file?raw=1')).toContain('new-ticket')
+  expect(connection.connectionPreference()).toBeNull()
+  expect(stored.has('jaz.backendAuth.https://jaz.example')).toBe(false)
+})
+
+test('explicit remember failure preserves the verified session and prior ciphertext', async () => {
+  const target = 'https://jaz.example'
+  const { connection, stored } = await fixture({
+    storedValues: [['jaz.backendAuth.' + target, 'enc:v1:older']],
+    encryptCredential() {
+      throw new Error('Denied')
+    },
+    decryptCredential() {
+      throw new Error('Must not unlock')
+    },
+    auth: () => Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }),
+  })
+  expect(await connection.connectRemote(target + '#key=jaz_fresh')).toBeNull()
+  expect(connection.rememberConnection()).toContain('Connected for this session')
+  expect(connection.cachedApiAuthToken(target)).toBe('jaz_fresh')
+  expect(connection.useConnection().status).toBe('connected')
+  expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:older')
+  expect(connection.connectionPreference()).toBeNull()
+})
+
+test.each([
+  { ok: true, auth_kind: 'root' },
+  { ok: true, auth_kind: 'device', device_id: 'wrong' },
+  { auth_kind: 'device', device_id: 'identity' },
+])('issued credentials require the expected verified device: %j', async (body) => {
+  const { connection } = await fixture({ auth: () => Response.json(body) })
+  expect(await connection.connectRemote('https://jaz.example#key=invite_once')).toContain('expected device')
+  expect(connection.cachedApiAuthToken('https://jaz.example')).toBe('')
+  expect(connection.useConnection().status).toBe('disconnected')
+})
+
+test('an old URL alone never restores encrypted remote credentials', async () => {
+  let unlocks = 0
+  const { connection } = await fixture({
+    storedValues: [['jaz.backendUrl', 'https://jaz.example'], ['jaz.backendAuth.https://jaz.example', 'enc:v1:older']],
+    decryptCredential() {
+      unlocks += 1
+    },
+  })
+  expect(connection.useConnection().status).toBe('disconnected')
+  expect(unlocks).toBe(0)
+})
+
+
+test.each([{ status: 401, code: 'unauthorized' }, { status: 403, code: 'device_approval_required' }])('feature and separate root denial preserve the session; auth rejection %j clears it', async (rejection) => {
+  let rejected = false
+  const { connection } = await fixture({
+    auth: () => Response.json({ ok: true, auth_kind: 'device', device_id: 'identity', resource_ticket: { token: 'read-ticket', expires_at: '2099-01-01T00:00:00Z' } }),
+    feature: () => rejected
+      ? Response.json({ error: 'revoked', code: rejection.code }, { status: rejection.status })
+      : Response.json({ error: 'Computer Use is disabled' }, { status: 403 }),
+  })
+  await connection.connectRemote('https://jaz.example#key=jaz_verified')
+  const forbidden = await connection.apiFetch('/fixture/feature')
+  expect(forbidden.status).toBe(403)
+  expect(await forbidden.json()).toEqual({ error: 'Computer Use is disabled' })
+  expect(connection.useConnection().status).toBe('connected')
+  expect(connection.cachedApiAuthToken()).toBe('jaz_verified')
+  expect(connection.apiEmbeddedGetUrl('/fixture/file')).toContain('read-ticket')
+  rejected = true
+  const hostDenied = await connection.apiFetch('/v1/devices', { headers: { Authorization: 'Bearer separate-root' } })
+  expect(hostDenied.status).toBe(rejection.status)
+  await hostDenied.json()
+  expect(connection.useConnection().status).toBe('connected')
+  await connection.apiFetch('/fixture/feature').catch(() => null)
+  expect(connection.useConnection().status).toBe('disconnected')
+  expect(connection.cachedApiAuthToken()).toBe('')
+  expect(connection.apiEmbeddedGetUrl('/fixture/file')).not.toContain('ticket=')
+})
+
+test.each([true, false])('recoverable hydration retains the snapshot and retries without credentials work (owner: %j)', async (owner) => {
+  let checks = 0
+  let keychain = 0
+  const url = 'https://jaz.example'
+  const snapshot = { revision: 4, phase: 'connected', url, session: { url, token: 'jaz_verified', deviceId: 'identity', remembered: false }, error: null, localPending: false }
+  const { connection, session, timers } = await fixture({
+    owner, initialSnapshot: snapshot,
+    encryptCredential() {
+      keychain += 1
+    },
+    decryptCredential() {
+      keychain += 1
+    },
+    registration() {
+      throw new Error('Must not register')
+    },
+    auth: () => ++checks === 1
+      ? Response.json({ error: 'temporary' }, { status: 503 })
+      : Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }),
+  })
+  expect(connection.useConnection().status).toBe('disconnected')
+  expect(session.read().snapshot).toBe(snapshot)
+  expect(connection.cachedApiAuthToken(url)).toBe('')
+  await [...timers.values()].find((entry) => entry.delay === 5000).callback()
+  await settle()
+  expect(connection.useConnection().status).toBe('connected')
+  expect(connection.cachedApiAuthToken(url)).toBe('jaz_verified')
+  expect(checks).toBe(2)
+  expect(keychain).toBe(0)
+})
+
+test('reusing a remembered current token keeps restart provenance without unlocking or saving again', async () => {
+  const url = 'https://jaz.example'
+  let saves = 0
+  let unlocks = 0
+  const { connection, stored } = await fixture({
+    encryptCredential(token) {
+      saves += 1;
+      return 'sealed-' + token
+    },
+    decryptCredential() {
+      unlocks += 1;
+      throw new Error('Must not unlock')
+    },
+    auth: () => Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }),
+  })
+  await connection.connectRemote(url + '#key=jaz_first')
+  expect(connection.rememberConnection()).toBeNull()
+  expect(await connection.connectRemote(url)).toBeNull()
+  expect(connection.connectionPreference()).toEqual({ mode: 'remote', remoteUrl: url })
+  expect(saves).toBe(1)
+  expect(unlocks).toBe(0)
+  expect(await connection.connectRemote(url + '#key=jaz_fresh')).toBeNull()
+  expect(connection.connectionPreference()).toBeNull()
+  expect(stored.get('jaz.backendAuth.' + url)).toBe('enc:v1:sealed-jaz_first')
 })

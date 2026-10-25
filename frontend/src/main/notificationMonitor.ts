@@ -19,17 +19,20 @@ export function createThreadCompletionMonitor(
   let history: Map<string, number> | null = null
   let polling = false
   let timer: NodeJS.Timeout | null = null
+  let request: AbortController | null = null
 
   async function poll(): Promise<void> {
     if (polling || !config) return
     const requestConfig = config
     polling = true
+    const controller = new AbortController()
+    request = controller
     try {
       const response = await fetcher(`${requestConfig.baseUrl}/v1/feed/completions`, {
         headers: requestConfig.token
           ? { Authorization: `Bearer ${requestConfig.token}` }
           : undefined,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),
       })
       if (!response.ok) return
       const items = parseThreadCompletions(await response.json())
@@ -41,12 +44,15 @@ export function createThreadCompletionMonitor(
       return
     } finally {
       polling = false
+      if (request === controller) request = null
       if (config && config !== requestConfig) void poll()
     }
   }
 
   function stop(): void {
     config = null
+    request?.abort()
+    request = null
     history = null
     if (timer) clearInterval(timer)
     timer = null

@@ -11,6 +11,7 @@ Request, 25 October 2026: inspect Claude Desktop's voice implementation and add 
 - [ ] Verify the native Opus voice mapping and real audio/delegation.
 - [x] Implement the Claude provider and verify signaling, delegation and cancellation against real protocol fixtures.
 - [x] Review and commit the locally verified implementation.
+- [x] Resolve the requested merge from current main and verify the combined branch.
 - [ ] Activate the provider and complete the live Opus/audio/handoff check.
 
 ## Evidence
@@ -91,3 +92,9 @@ The code passes the checks below and is ready for integration. No Claude provide
 ## Use
 
 On Jaz Desktop, choose Settings → Voice → Provider → Claude, sign in to Claude in the side browser if needed, then explicitly choose a model from Claude's live voice catalog. The selected coding agent continues to handle work through Jaz's existing admission stream. Browser-only clients show that this provider requires Desktop. The current OpenAI selection is preserved until changed explicitly.
+
+## Main Merge Repair
+
+Augustinas requested repair of the failed main merge. Merged main `91f9f05b`, preserving both Claude voice and the new connection-session preload APIs, plus both browser smoke selectors. Two existing browser checks used the removed `apiAuthToken` export; they now use `cachedApiAuthToken`, and the Claude check restores the actual in-memory API URL.
+
+The combined branch passes all 404 frontend tests, both type checks, lint, the desktop bundle and four affected Go 1.26.3 packages. Hidden Electron checks pass for Claude signaling/settings, authenticated connection security and browser visibility. An initial parallel run collided on the system clipboard; the sequential browser-visibility run passes. Logs are in `runs/claude-voice/merge-main-20261025/`. Thermo-nuclear self-review found no remaining merge issues. This merges main into the feature branch only; provider activation and the native-model live check remain pending.

@@ -117,6 +117,17 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 				if stored.Turn == nil || stored.Turn.PlanRequested != (kind == "plan") || stored.Turn.GoalRequested != goalRequested {
 					t.Fatalf("interrupted turn settings = %+v", stored.Turn)
 				}
+				origin := stored.Turn.StartedAt
+				if kind == "compact" || kind == "steered_compact" {
+					stored.Turn.ContinuationOf = origin.Add(-time.Second)
+					if err := store.StartSessionTurn(stored.ID, *stored.Turn); err != nil {
+						t.Fatal(err)
+					}
+					if err := store.UpdateSessionStatus(stored.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
+						t.Fatal(err)
+					}
+					origin = time.Time{}
+				}
 				events, err := store.LoadSessionEvents(spawned.SessionID)
 				if err != nil || len(events) != 0 {
 					t.Fatalf("expected unavailable transcript, events = %d, err = %v", len(events), err)
@@ -132,13 +143,26 @@ func TestResumeInterruptedTurnPreservesProviderSessionAndIntent(t *testing.T) {
 				locks := sessionlock.New()
 				bus := sessionevents.New()
 				handler := &server.Server{Store: store, ACP: second, Locks: locks, Events: bus}
-				second.TurnFinished = handler.HandleACPTurnFinished
+				ended := make(chan time.Time, 1)
+				second.TurnFinished = func(ctx context.Context, job acp.Job) {
+					current, err := store.LoadSession(job.ID)
+					if err != nil || current.Turn == nil {
+						t.Errorf("missing completed turn: %+v %v", current.Turn, err)
+						ended <- time.Time{}
+					} else {
+						ended <- current.Turn.ContinuationOf
+					}
+					handler.HandleACPTurnFinished(ctx, job)
+				}
 				if err := sessionrecovery.Resume(ctx, store, handler, locks, bus, log.New(io.Discard)); err != nil {
 					t.Fatal(err)
 				}
 				job, err := second.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID})
 				if err != nil || job.State != acp.StateIdle || job.ACPSession != "fake-session" {
 					t.Fatalf("resumed job = %+v, %v", job, err)
+				}
+				if actual := <-ended; !actual.Equal(origin) {
+					t.Fatalf("recovered origin=%v; want %v", actual, origin)
 				}
 				stored, err = store.LoadSession(spawned.SessionID)
 				if err != nil || stored.Status != storage.StatusIdle || stored.Error != "" || stored.Turn != nil {

@@ -31,7 +31,7 @@ func TestDesktopEndpointRequiresEnabledModeAndKnownSession(t *testing.T) {
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("disabled status=%d", response.Code)
 	}
-	if _, err := settings.SaveBrowserSettings(store, settings.BrowserSettings{Enabled: true, Mode: settings.BrowserModeDesktop}); err != nil {
+	if _, err := settings.SaveBrowserSettings(store, settings.BrowserSettings{Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 	response = httptest.NewRecorder()

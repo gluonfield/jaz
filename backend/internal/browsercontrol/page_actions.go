@@ -10,37 +10,6 @@ import (
 	"time"
 )
 
-func (p *browserPage) navigate(ctx context.Context, rawURL string) (ActionOutput, error) {
-	target, err := normalizeBrowserURL(rawURL)
-	if err != nil {
-		return ActionOutput{}, err
-	}
-	var navigation struct {
-		LoaderID  string `json:"loaderId"`
-		ErrorText string `json:"errorText"`
-	}
-	if err := p.conn.call(ctx, "Page.navigate", map[string]any{"url": target}, &navigation); err != nil {
-		return ActionOutput{}, err
-	}
-	if strings.TrimSpace(navigation.ErrorText) != "" {
-		return ActionOutput{}, fmt.Errorf("browser navigation failed: %s", strings.TrimSpace(navigation.ErrorText))
-	}
-	if navigation.LoaderID != "" {
-		p.contextID = 0
-	}
-	if err := p.waitNavigationCommit(ctx, target, navigation.LoaderID); err != nil {
-		return ActionOutput{}, err
-	}
-	if err := p.waitReady(ctx); err != nil {
-		return ActionOutput{}, fmt.Errorf("browser navigation did not become ready: %w", err)
-	}
-	info, err := p.info(ctx)
-	if err != nil {
-		return ActionOutput{}, err
-	}
-	return ActionOutput{Status: "ok", Text: "Navigated.\n" + info}, nil
-}
-
 func (p *browserPage) semanticState(ctx context.Context) (ActionOutput, error) {
 	var data json.RawMessage
 	if err := p.eval(ctx, semanticStateScript(), &data); err != nil {
@@ -343,31 +312,6 @@ func (p *browserPage) isolatedContext(ctx context.Context) (int64, error) {
 	return p.contextID, nil
 }
 
-func (p *browserPage) waitNavigationCommit(ctx context.Context, targetURL, loaderID string) error {
-	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		frame, err := p.topFrame(waitCtx)
-		if err != nil {
-			return fmt.Errorf("inspect browser navigation: %w", err)
-		}
-		if loaderID != "" {
-			if frame.LoaderID == loaderID {
-				return nil
-			}
-		} else if sameBrowserURL(frame.URL, targetURL) {
-			return nil
-		}
-		select {
-		case <-waitCtx.Done():
-			return fmt.Errorf("timed out waiting for browser navigation commit: %w", waitCtx.Err())
-		case <-ticker.C:
-		}
-	}
-}
-
 func (p *browserPage) topFrame(ctx context.Context) (cdpFrame, error) {
 	var out struct {
 		FrameTree struct {
@@ -387,12 +331,6 @@ func missingExecutionContext(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "context") &&
 		(strings.Contains(message, "destroy") || strings.Contains(message, "cannot find") || strings.Contains(message, "not found"))
-}
-
-func sameBrowserURL(left, right string) bool {
-	leftURL, leftErr := normalizeBrowserURL(left)
-	rightURL, rightErr := normalizeBrowserURL(right)
-	return leftErr == nil && rightErr == nil && leftURL == rightURL
 }
 
 func (p *browserPage) resolvePoint(ctx context.Context, ref string) (pointResult, error) {

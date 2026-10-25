@@ -1,11 +1,15 @@
 # Kimi Model Discovery
 
-- [x] Investigate connected Kimi with no model choices (25 October 2026 screenshot).
-- [x] Read the selected native profile for model aliases, labels, context sizes and default.
-- [x] Verify discovery, native parity and the actual Settings picker.
-- [x] Complete strict review and integrate locally.
-- [ ] Resolve the follow-up native-parity findings before release.
+- [x] Show the connected account’s native models and default.
+- [x] Preserve model overrides and environment models.
+- [x] Show native reasoning choices and apply saved choices through ACP.
+- [x] Preserve the Settings draft when metadata refreshes or fails.
+- [x] Resolve the strict-review findings and verify native session cleanup.
+- [x] Clean up after cancellation during session creation and malformed model metadata.
+- [x] Integrate the verified change locally.
 
-The account profile contains six models. Kimi previously fell through to the static catalogue, which has no Kimi entries. Discovery now uses the same resolved native profile as authentication and execution. Missing context metadata stays unknown. The follow-up review withdrew the initial sign-off: the installed adapter supports granular reasoning levels, and its effective catalogue can differ from the stored TOML fields.
+Discovery now reads Kimi’s ACP config options through a temporary session, selects each model to obtain its reasoning controls, and deletes the session. It sends no model prompt. Model IDs, labels, order and default come from Kimi; pre-turn context sizes remain unknown because this protocol response does not expose them. Existing runtime usage updates continue to supply native context sizes.
 
-Validation: Go 1.26.3 ACP/model-capabilities suites and vet; the regression fails against the old discovery code. Six stored profile rows matched the native provider-list output. Hidden Settings checks cover desktop/phone, save, refresh, reconnect and empty/error responses. That evidence does not establish effective native-catalogue parity; see [follow-up review](review-kimi-model-discovery.md). The change remains unreleased.
+Validation covers the installed adapter, all six account models, override/environment profiles, reasoning save and runtime application, unsupported-effort rejection, cancellation/cleanup, and hidden desktop/phone Settings journeys. Evidence: the `kimi-native-models` worktree’s `runs/` directory.
+
+The follow-up review’s creation-cancellation and malformed-metadata regressions fail against the preceding implementation and pass with the correction. Focused Go 1.26.3 tests, race checks, vet and installed-native verification pass; evidence is in `kimi-discovery-cleanup/runs/`.

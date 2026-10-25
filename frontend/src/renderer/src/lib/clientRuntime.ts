@@ -3,6 +3,7 @@ import type { ThreadNotificationConfig } from '../../../shared/notifications'
 import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { WindowKind } from '@shared/windowKind'
+import type { ConnectionSessionAPI } from '@shared/connectionSession'
 
 export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5299'
 
@@ -10,6 +11,7 @@ export type ClientRuntimeKind = 'electron' | 'web'
 export type ClientPlatform = 'desktop' | 'browser'
 
 export interface ClientRuntime {
+  connectionSession?: ConnectionSessionAPI
   voiceOverlay?: VoiceOverlayAPI
   kind: ClientRuntimeKind
   platform: ClientPlatform
@@ -64,6 +66,7 @@ function createRuntime(): ClientRuntime {
   if (electron) {
     return {
       kind: 'electron',
+      connectionSession: electron.connectionSession,
       platform: 'desktop',
       deviceKind: 'desktop',
       windowKind: electron.windowKind,

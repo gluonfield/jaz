@@ -3,12 +3,10 @@ package server
 import (
 	"net/http"
 	"net/url"
-
-	"github.com/wins/jaz/backend/internal/browsercontrol"
 )
 
 func allowedOrigin(origin string, trusted ...string) bool {
-	if origin == "null" || browsercontrol.IsChromeExtensionOrigin(origin) {
+	if origin == "null" {
 		return true
 	}
 	u, err := url.Parse(origin)

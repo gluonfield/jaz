@@ -48,25 +48,34 @@ export function getDeviceMetadata(): DeviceMetadata {
 }
 
 function readStoredIdentity(): StoredIdentity | null {
+  let contents: string
   try {
-    const parsed = JSON.parse(readFileSync(identityPath(), 'utf8')) as Partial<StoredIdentity>
+    contents = readFileSync(identityPath(), 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null
+    }
+    throw new Error('Could not read the existing device identity', { cause: error })
+  }
+  try {
+    const parsed = JSON.parse(contents) as Partial<StoredIdentity>
     if (
       parsed.version !== 1 ||
       typeof parsed.public_key_pem !== 'string' ||
       typeof parsed.private_key_pem !== 'string'
     ) {
-      return null
+      throw new Error('Invalid device identity format')
     }
     const identity = parsed as StoredIdentity
     const raw = rawPublicKey(identity.public_key_pem)
     const publicKey = base64Url(raw)
     const deviceID = deviceIDForRawKey(raw)
     if (identity.device_id !== deviceID || identity.public_key !== publicKey || !keyPairMatches(identity)) {
-      return null
+      throw new Error('Device identity keys do not match')
     }
     return identity
-  } catch {
-    return null
+  } catch (error) {
+    throw new Error('The existing device identity is invalid; it has been preserved', { cause: error })
   }
 }
 

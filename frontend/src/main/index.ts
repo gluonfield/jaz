@@ -21,7 +21,7 @@ import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { installCredentialEncryption } from './credentialEncryption'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
-import { configureAppPermissions, trustedWindow } from './permissions'
+import { configureAppPermissions } from './permissions'
 import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
 import { installClaudeVoice } from '@main/claudeVoice'
@@ -35,6 +35,7 @@ import { installBrowserDownloads } from '@main/browserDownloads'
 import { setupLauncher, teardownLauncher } from './spotlight'
 import { attachVoiceOverlay } from './voiceOverlay'
 import { createUpdateController } from './updater'
+import { createConnectionSession } from '@main/connectionSession'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
 // the renderer mounts so a dark launch doesn't flash white behind the content.
@@ -58,6 +59,12 @@ let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
 const threadNotifications = createThreadNotificationMonitor(openInMain)
+const connectionSession = createConnectionSession({
+  rendererPath: join(__dirname, '../renderer/index.html'),
+  startLocal: startLocalBackend,
+  profile: () => ({ ...getDeviceIdentity(), ...getDeviceMetadata() }),
+  stopConsumers: () => threadNotifications.stop(),
+})
 
 function installApplicationMenu(): void {
   if (process.platform !== 'darwin') return
@@ -255,6 +262,7 @@ function createWindow(): void {
   })
 
   mainWindow = win
+  connectionSession.attach(win, true)
   attachVoiceOverlay(win)
   attachWindowLifecycle(win, { label: 'main', onDidFinishLoad: () => updates.sendStatusTo(win) })
   attachBrowserNavigationCommands(win)
@@ -333,6 +341,7 @@ function openBoardWindow(boardId: string): void {
     },
   })
   boardWindows.set(boardId, win)
+  connectionSession.attach(win)
   attachWindowLifecycle(win, { label: `board ${boardId}` })
   attachBrowserNavigationCommands(win)
   win.on('close', () => saveBoardBounds(boardId, win.getBounds()))
@@ -369,14 +378,23 @@ app.whenReady().then(() => {
 
   installCredentialEncryption()
   ipcMain.handle('jaz:start-local-backend', (event) => {
-    trustedWindow(event)
-    return startLocalBackend()
+    const record = connectionSession.authorizeOwner(event)
+    const document = record.document
+    return startLocalBackend().then((result) => {
+      connectionSession.authorizeOwner(event, document)
+      return result
+    })
   })
   ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
   ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())
-  ipcMain.handle('jaz:configure-thread-notifications', (_event, config) =>
-    threadNotifications.configure(config),
-  )
+  ipcMain.handle('jaz:configure-thread-notifications', (event, config) => {
+    connectionSession.authorizeOwner(event)
+    const active = connectionSession.current()
+    if (config?.enabled && (active.phase !== 'connected' || config.baseUrl !== active.url || config.token !== active.session?.token)) {
+      return false
+    }
+    return threadNotifications.configure(config)
+  })
   updates.registerIpc()
 
   ipcMain.on('jaz:open-board-window', (_event, boardId) => {
@@ -408,7 +426,7 @@ app.whenReady().then(() => {
       applicationVersion: app.getVersion(),
     })
   }
-  setupLauncher()
+  setupLauncher((window) => connectionSession.attach(window))
   createWindow()
   updates.start()
   app.on('activate', () => {

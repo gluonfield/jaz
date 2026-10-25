@@ -2,6 +2,7 @@ package acp_test
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -116,7 +117,7 @@ func TestACommitmentToABotClosesWithTheAnswerThatReachesIt(t *testing.T) {
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	asker, helper := jaz.newBot("Asker"), jaz.newBot("Helper")
 	opened := make(chan int64, 1)
-	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, speak: func(req acp.InternalTurnRequest) error {
+	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, hold: filepath.Join(jaz.root, "scripted-turn"), speak: func(req acp.InternalTurnRequest) error {
 		if req.Session != helper.ID {
 			return nil
 		}
@@ -191,7 +192,7 @@ func TestAnAnswerWithDoneGoesToTheThreadThatAsked(t *testing.T) {
 	child := jaz.waitRun(run.ID, loops.RunStatusRunning).ThreadID
 	opened := make(chan int64, 1)
 	replies := make(chan string, 1)
-	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, speak: func(req acp.InternalTurnRequest) error {
+	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, hold: filepath.Join(jaz.root, "scripted-turn"), speak: func(req acp.InternalTurnRequest) error {
 		switch {
 		case req.Session == helper.ID && strings.HasPrefix(req.Message, "[message from Asker]"):
 			id, err := jaz.commit(helper.ID, bots.Commit{Request: "Price the part"})

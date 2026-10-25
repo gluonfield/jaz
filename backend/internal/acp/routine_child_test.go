@@ -1,6 +1,7 @@
 package acp_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -155,7 +156,7 @@ func TestAThreadARoutineChildStartsReportsToTheBotAfterTheRunAndARestart(t *test
 	// The run hands the audit to a thread; the thread's result reaches the
 	// run's thread after the run, which passes it on.
 	act := func(p *jazProcess) earlyReplyManager {
-		return earlyReplyManager{Manager: p.manager, speak: func(req acp.InternalTurnRequest) error {
+		return earlyReplyManager{Manager: p.manager, hold: filepath.Join(p.root, "scripted-turn"), speak: func(req acp.InternalTurnRequest) error {
 			session, err := p.store.LoadSession(req.Session)
 			if err != nil || session.SourceType != storage.SourceLoopRun {
 				return err

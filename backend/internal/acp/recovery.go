@@ -49,6 +49,12 @@ func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) e
 		opts.owes = session.Turn.Owes
 		req.ParentOutput = session.Turn.ParentOutput
 		opts.retries = session.Turn.Retries
+		if !compacting {
+			opts.continuationOf = session.Turn.ContinuationOf
+			if opts.continuationOf.IsZero() && session.Turn.Prompt != nil && session.Turn.Prompt.State == storage.PromptConfirmed {
+				opts.continuationOf = session.Turn.StartedAt
+			}
+		}
 		// What the agent never took in goes on: the turn's prompt, unless it
 		// was sent, and the messages steered into the turn.
 		var parts []string
