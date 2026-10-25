@@ -102,6 +102,20 @@ test('the composer offers the latest predicted prompt until a turn starts', () =
   expect(deriveSessionView(data([suggested, running]), [suggested]).suggestedPrompt).toBeUndefined()
 })
 
+test('a running turn shows the provider retry until the turn makes progress or ends', () => {
+  const retry = event(3, 'acp', { acp: { id: 'thread', agent: 'codex', state: 'running', error: 'Reconnecting... 2/5' } })
+  expect(deriveSessionView(data([retry]), []).retrying).toBe('Reconnecting... 2/5')
+  expect(deriveSessionView(data(), [retry]).retrying).toBe('Reconnecting... 2/5')
+  const midRetry = { ...data(), acp_state: 'running', acp_error: 'Reconnecting... 2/5', acp_last_event_at: at(3) }
+  expect(deriveSessionView(midRetry, []).retrying).toBe('Reconnecting... 2/5')
+  // Progress clears it, even with the retry envelope still cached from the stream.
+  expect(deriveSessionView(data([retry, event(4, 'acp_message', { content: 'Hi' })]), [retry]).retrying).toBeUndefined()
+  const failed = event(4, 'acp', { acp: { id: 'thread', agent: 'codex', state: 'failed', error: '429 Too Many Requests' } })
+  expect(deriveSessionView(data([retry, failed]), []).retrying).toBeUndefined()
+  const child = event(4, 'acp', { acp: { id: 'child', parent_id: 'thread', state: 'running', error: 'Reconnecting... 1/5' } })
+  expect(deriveSessionView(data([child]), []).retrying).toBeUndefined()
+})
+
 test('a starting agent stays starting until it streams its own first event', () => {
   const starting = { ...data(), acp_state: 'starting' }
   expect(deriveSessionView(starting, []).activity).toBe('starting')

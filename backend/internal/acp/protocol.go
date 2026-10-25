@@ -82,6 +82,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 	var thoughtChunk string
 	var thoughtMessageID string
 	var toolEvent *sessionevents.ACPToolCall
+	var planned bool
 	var attention bool
 	now := time.Now().UTC()
 	update, err := acpschema.DecodeSessionUpdate(raw)
@@ -199,6 +200,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		}
 		wasEmpty := len(job.Plan) == 0
 		publishACP = !slices.Equal(job.Plan, plan)
+		planned = publishACP
 		job.Plan = plan
 		attention = publishACP && wasEmpty && len(plan) > 0
 	case acpschema.CurrentModeSessionUpdate:
@@ -215,7 +217,19 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		}
 	}
 	if job.turn != nil {
-		job.turn.trackProviderRetries(warning, warning == nil && (messageChunk != "" || thoughtChunk != "" || toolEvent != nil))
+		progress := warning == nil && (messageChunk != "" || thoughtChunk != "" || toolEvent != nil || planned)
+		job.turn.trackProviderRetries(warning, progress)
+		retrying := warning != nil && !warning.notice()
+		if progress || retrying {
+			nextError := ""
+			if retrying {
+				nextError = warning.message()
+			}
+			if job.Error != nextError {
+				job.Error = nextError
+				publishACP = true
+			}
+		}
 	}
 	job.UpdatedAt = now
 	job.LastEventAt = now
@@ -230,7 +244,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 			job.mu.Lock()
 			job.Title = session.Title
 			job.mu.Unlock()
-			publishACP = updated && session.Title != currentTitle
+			publishACP = publishACP || updated && session.Title != currentTitle
 		}
 	}
 	if messageChunk != "" {

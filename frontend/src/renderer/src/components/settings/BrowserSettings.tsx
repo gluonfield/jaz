@@ -111,9 +111,7 @@ export function BrowserSettings() {
             <p className="mt-0.5 text-[12px] text-ink-2">
               {mode === 'extension'
                 ? 'Use the signed-in Chrome tab bridge for real browser sessions.'
-                : mode === 'desktop'
-                  ? 'Watch your agent browse in this conversation’s side panel, with a visible cursor.'
-                  : 'Use an isolated background Chromium profile managed by Jaz.'}
+                : 'Watch your agent browse in this conversation’s side panel, with a visible cursor.'}
             </p>
             {mode === 'extension' && !connected ? (
               <p className="mt-1 text-[12px] text-danger">Connect the extension before using this mode.</p>
@@ -127,7 +125,6 @@ export function BrowserSettings() {
             options={[
               { value: 'desktop', label: 'Jaz side browser', icon: <Monitor size={14} /> },
               { value: 'extension', label: 'Extension', icon: <Puzzle size={14} /> },
-              { value: 'managed', label: 'Background Chromium', icon: <Monitor size={14} /> },
             ]}
           />
         </div>
@@ -136,7 +133,7 @@ export function BrowserSettings() {
       {mode === 'desktop' ? (
         <div className="mt-4 space-y-3">
           <p className="text-[13px] text-ink-2">
-            Keep the conversation open in the desktop app while the agent browses. Closing the panel or leaving the conversation stops its browser work.
+            Keep the desktop app running while the agent browses. Each conversation keeps its own browser when you switch chats or close the panel.
           </p>
           <BrowserProfileImport />
         </div>

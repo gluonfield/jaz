@@ -68,11 +68,15 @@ func TestDesktopEndpointRequiresEnabledModeAndKnownSession(t *testing.T) {
 	mux.Handle("GET /v1/sessions/{session}/browser", handler)
 	server := httptest.NewServer(mux)
 	defer server.Close()
-	peer, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/sessions/"+session.Slug+"/browser", nil)
+	dialer := websocket.Dialer{Subprotocols: []string{"jaz", "jaz-auth.fixture-credential"}}
+	peer, _, err := dialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/v1/sessions/"+session.Slug+"/browser", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer peer.Close()
+	if peer.Subprotocol() != "jaz" {
+		t.Fatal("browser must negotiate jaz without echoing the credential")
+	}
 	deadline := time.Now().Add(time.Second)
 	for {
 		_, err = backend.Call(context.Background(), browsercontrol.ActionInput{Session: session.ID, Action: browsercontrol.ActionStatus})

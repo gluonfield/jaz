@@ -19,6 +19,7 @@ import (
 	"github.com/wins/jaz/backend/internal/agent"
 	"github.com/wins/jaz/backend/internal/app"
 	"github.com/wins/jaz/backend/internal/bots"
+	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	configloader "github.com/wins/jaz/backend/internal/config"
 	"github.com/wins/jaz/backend/internal/connections"
@@ -127,7 +128,7 @@ func serveOptions(args []string) []fx.Option {
 			app.NewToolRegistry,
 			computercontrol.NewDesktopBackend,
 			app.NewComputerSettingsHandler,
-			app.NewBrowserBackend,
+			fx.Annotate(browsercontrol.NewConfiguredBackend, fx.From(new(*sqlitestore.Store))),
 			app.NewBrowserSettingsHandler,
 			app.NewMCPManager,
 			app.NewProviderSource,
