@@ -6,7 +6,7 @@ import { BrowserSettings } from '@/components/settings/BrowserSettings'
 import { apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import { clientRuntime } from '@/lib/clientRuntime'
 
-export async function exerciseConnectionSecurity(): Promise<void> {
+export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocket) => void): Promise<void> {
   const originalFetch = window.fetch
   const originalStart = clientRuntime.startLocalBackend
   const originalURL = apiBaseUrl()
@@ -81,12 +81,19 @@ export async function exerciseConnectionSecurity(): Promise<void> {
         throw new Error('Browser transport failed authentication or non-secret protocol negotiation')
       }
       if (connected) {
+        serveBrowser(socket)
         const response = await originalFetch(backend + '/v1/sessions/browser-fixture/browser', { method: 'POST', body: JSON.stringify({ action: 'status' }) })
         const result = await response.json()
         if (!response.ok || result.status !== 'ok') {
           throw new Error('Authenticated browser did not register with the production backend')
         }
-        const closed = new Promise((resolve) => { socket.onclose = resolve })
+        const exercise = await originalFetch(backend + '/exercise?url=' + encodeURIComponent(location.origin + '/target?authenticated=1'))
+        if (!exercise.ok) {
+          throw new Error('Authenticated MCP browser actions failed: ' + await exercise.text())
+        }
+        const closed = new Promise((resolve) => {
+          socket.onclose = resolve
+        })
         socket.close()
         await closed
       }
