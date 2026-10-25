@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { useKnownBackends } from '@/lib/backends'
-import { connectRemote, startLocal, useConnection } from '@/lib/connection'
+import { connectRemote, rememberConnection, startLocal, useConnection } from '@/lib/connection'
 
 // State and orchestration shared by the two "Run jaz on" switchers — the sidebar
 // footer and the settings panel. Owns the open popover, the current backend and
@@ -27,5 +27,9 @@ export function useBackendSwitcher() {
     remotes,
     switchLocal: () => switchTo(startLocal),
     switchRemote: (remoteUrl: string) => switchTo(() => connectRemote(remoteUrl)),
+    remember: () => {
+      const error = rememberConnection()
+      toast(error || 'Connection remembered', error ? 'danger' : 'ok')
+    },
   }
 }

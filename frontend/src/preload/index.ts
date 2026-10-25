@@ -22,16 +22,46 @@ import type { ThreadNotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI, DictationEvent } from '../shared/dictation'
 import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/voice'
+import { CONNECTION_SESSION_CHANNEL, LOCAL_SESSION_CHANNEL, type ConnectionSessionAPI, type SessionDocument, type SessionSnapshot } from '@shared/connectionSession'
 
 const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
 
 const windowKind = SECONDARY_WINDOW_KINDS.find((kind) => process.argv.includes(`--jaz-${kind}-window`)) ?? 'main'
 let previewURLTargetSubscriptions = 0
+let sessionDocument: number | undefined
+
+function sessionRequest<T>(request: unknown): T {
+  const result = ipcRenderer.sendSync(CONNECTION_SESSION_CHANNEL, request) as { value: T; error?: string }
+  if (result.error) {
+    throw new Error(result.error)
+  }
+  return result.value
+}
+
+const connectionSession: ConnectionSessionAPI = {
+  read: () => {
+    const result = sessionRequest<SessionDocument>({ operation: 'read' })
+    sessionDocument = result.document
+    return result
+  },
+  update: (request) => sessionRequest<SessionSnapshot>(request),
+  local: (document, revision) => ipcRenderer.invoke(LOCAL_SESSION_CHANNEL, document, revision),
+  subscribe: (handler) => {
+    const listener = (_event: unknown, value: { document: number; snapshot: SessionSnapshot }) => {
+      if (value.document === sessionDocument) {
+        handler(value.snapshot)
+      }
+    }
+    ipcRenderer.on(CONNECTION_SESSION_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(CONNECTION_SESSION_CHANNEL, listener)
+  },
+}
 
 if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
   installBrowserPasswordCapture()
 } else {
   contextBridge.exposeInMainWorld('jaz', {
+    connectionSession,
     browserPasswords,
     browserDownloads,
     computer: {

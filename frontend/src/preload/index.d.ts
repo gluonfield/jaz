@@ -13,10 +13,12 @@ import type { BrowserProfileAPI } from '@shared/browserProfile'
 import type { BrowserPasswordAPI } from '@shared/browserPasswords'
 import type { BrowserDownloadAPI } from '@shared/browserDownloads'
 import type { VoiceOverlayAPI } from '@shared/voice'
+import type { ConnectionSessionAPI } from '@shared/connectionSession'
 
 declare global {
   interface Window {
     jaz?: {
+      connectionSession: ConnectionSessionAPI
       computer: ComputerAPI
       systemPermissions: SystemPermissionsAPI
       permissionGuide: PermissionGuideAPI

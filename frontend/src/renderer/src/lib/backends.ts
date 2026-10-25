@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { normalizeBaseUrl, setApiAuthToken } from './api/client'
+import { normalizeBaseUrl, forgetApiAuthToken } from './api/client'
 
 // The backends this device has connected to, offered as switch targets by the
 // connect screen, the sidebar switcher, and Settings. Auth keys already live
@@ -76,7 +76,7 @@ export function renameBackend(url: string, label: string): void {
 export function removeKnownBackend(url: string): void {
   const target = normalizeBaseUrl(url)
   commit(read().filter((b) => normalizeBaseUrl(b.url) !== target))
-  setApiAuthToken(target, null)
+  forgetApiAuthToken(target)
 }
 
 // The user-given name for a backend, if it's a known remote. Reads the cache
