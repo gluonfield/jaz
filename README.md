@@ -26,6 +26,26 @@ memory, and git control. Client/server split, always-on, open source end to end.
 - Connect core apps. Telegram, WhatsApp, Gmail, Calendar, and Slack should plug into the same owned context.
 - Open source.
 
+## Features
+
+| Category | Features |
+|---|---|
+| **Agents** | Codex, Claude Code, Kimi, Antigravity, Grok, Muse and OpenCode. Choose an agent and model per thread; connect existing subscriptions or API keys. |
+| **Bots** | Persistent assistants with their own identity, instructions and memory. Direct messages, group chats, mentions, activity history and delegation to coding agents. |
+| **Automation** | Scheduled bot routines and prompt loops. Run recurring work, maintain documents and continue working overnight. |
+| **Chat** | File and image attachments, streaming responses, reasoning and tool activity alongside the conversation. |
+| **Canvas** | Agent-editable workspace beside the chat for documents, charts, diagrams and interactive visualisations. File previews, including CAD and drawings. |
+| **Boards** | Persistent dashboards of live artifacts, with multiple boards and windows. |
+| **Memory** | Shared memory across conversations, searchable source material and editable Markdown files you own and can export. |
+| **Coding & Git** | Project workspaces, isolated worktrees, inline diffs, commands, checks, commits and merges from the thread. |
+| **Browser** | Integrated side browser with tabs and profiles. **Browser Use** lets agents navigate websites, read pages, fill forms and interact with web apps. |
+| **Computer Use** | Agents operate desktop applications using screenshots, mouse clicks and keyboard input. |
+| **Voice** | Voice conversations, dictation and a floating voice panel with a live transcript when the app is minimised. |
+| **Integrations & Tools** | Jaz CRM for contacts, companies, deals and follow-ups. Jaz Tasks for issues, projects and cycles. Gmail, Google Calendar, Drive, Slack, Granola, WhatsApp and Telegram. Extend agents with MCP servers and skills. |
+| **Usage** | Token usage and estimated cost tracking across agents, models and conversations. |
+| **Appearance** | Light and dark modes, custom colour themes, linked hues, presets and film grain. |
+| **Server & Clients** | The server runs agents, routines and integrations and stores your memory and workspaces. Run it on your computer or a remote machine. Connect from mobile or multiple desktops to access the same conversations and work. |
+
 ## Download
 [<img width="280" height="60" alt="download-macos" src="https://github.com/user-attachments/assets/1a702cd1-fe55-4ed0-ab99-4e42ca4d4c8f" /><svg xmlns="http://www.w3.org/2000/svg" width="280" height="60" viewBox="0 0 280 60" role="img" aria-label="Download for macOS">
   <rect x="0.5" y="0.5" width="279" height="59" rx="13" fill="#1d1d1f" stroke="#3a3a3c" stroke-width="1"/>
@@ -112,15 +132,6 @@ Jaz runs seven coding agents over [ACP](https://agentclientprotocol.com), and yo
 | **Grok** | xAI | Grok account, or xAI API key |
 | **Muse Code** | Meta | Meta account, or Meta API key |
 | **OpenCode** | Open source | OpenRouter or OpenAI API key |
-
-## Features
-
-- **Pick the agent per thread** — any agent in the table above.
-- **Loops** — scheduled prompts that run overnight.
-- **Boards** — multi-window dashboards of live artifacts.
-- **Memory** — survives the thread.
-- **Ship from the thread** — built-in git control.
-- **MCP servers & skills**, token-usage tracking, and an always-on mode for 24/7 work.
 
 ## Architecture
 
