@@ -35,7 +35,14 @@ func TestClaimedBotMessageRecoversBeforeProviderSessionExists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimQueuedTurn(bot, storage.NewInternalQueuedMessage("Saved result for the bot")); err != nil {
+	if err := store.QueueTurn(storage.TurnDelivery{SessionID: bot.ID, Message: storage.NewInternalQueuedMessage("Saved result for the bot")}); err != nil {
+		t.Fatal(err)
+	}
+	bot, err = store.LoadSession(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimQueuedTurn(bot, bot.QueuedMessages[0]); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Close(); err != nil {

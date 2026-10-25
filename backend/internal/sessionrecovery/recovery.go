@@ -87,6 +87,12 @@ func resume(ctx context.Context, store storage.SessionStore, runtime Runtime, id
 	if err != nil {
 		return false, err
 	}
+	if err := store.CheckTaskAdmission(session.ID); err != nil {
+		if errors.Is(err, storage.ErrTaskStopped) {
+			return false, nil
+		}
+		return false, err
+	}
 	if session.Status != storage.StatusInterrupted || session.Archived || ctx.Err() != nil {
 		return false, ctx.Err()
 	}

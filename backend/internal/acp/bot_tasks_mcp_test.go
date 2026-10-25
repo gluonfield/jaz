@@ -147,6 +147,9 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	call("bot_task_update", map[string]any{"id": cancelled, "status": "cancelled", "message": " "}, true)
 	call("bot_task_update", map[string]any{"id": cancelled, "status": "waiting_for_user"}, true)
 	call("bot_task_update", map[string]any{"id": 0, "request": "Unexpected new work"}, true)
+	call("bot_task_update", map[string]any{"id": cancelled, "status": "stopped", "message": "The supplied input cannot be read by either available route; retry with readable input."}, false)
+	call("bot_task_update", map[string]any{"id": cancelled, "status": "pending"}, true)
+	call("bot_task_update", map[string]any{"id": cancelled, "status": "pending", "message": "The user supplied readable input; review it before starting again."}, false)
 	call("bot_task_update", map[string]any{"id": cancelled, "status": "cancelled", "message": "The user cancelled it"}, false)
 	if task := jaz.commitment(cancelled); task.Status != storage.CommitmentDropped || task.Note != "The user cancelled it" {
 		t.Fatalf("cancelled task = %+v", task)

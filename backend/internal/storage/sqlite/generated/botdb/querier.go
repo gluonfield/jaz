@@ -14,8 +14,10 @@ type Querier interface {
 	AskCommitment(ctx context.Context, arg AskCommitmentParams) error
 	CloseCommitment(ctx context.Context, arg CloseCommitmentParams) (int64, error)
 	CommitmentDependencyCycle(ctx context.Context, arg CommitmentDependencyCycleParams) (bool, error)
+	CommitmentLive(ctx context.Context, id int64) (bool, error)
 	// A running turn of its bot holds an answer that delivers it.
 	CommitmentStaged(ctx context.Context, id int64) (bool, error)
+	CommitmentWorkerIDs(ctx context.Context, commitmentID int64) ([]string, error)
 	CommitmentWorking(ctx context.Context, id int64) (bool, error)
 	DeleteCommitmentDependencies(ctx context.Context, commitmentID int64) error
 	// The results a commitment's threads queued for its bot before it closed as
@@ -25,6 +27,7 @@ type Querier interface {
 	GetCommitment(ctx context.Context, id int64) (BotCommitment, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (BotMembership, error)
 	GetMembershipByThread(ctx context.Context, threadID string) (BotMembership, error)
+	HasOwedTasks(ctx context.Context, arg HasOwedTasksParams) (bool, error)
 	InsertCommitment(ctx context.Context, arg InsertCommitmentParams) (int64, error)
 	LinkCommitmentDependency(ctx context.Context, arg LinkCommitmentDependencyParams) (int64, error)
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
@@ -41,6 +44,8 @@ type Querier interface {
 	RecordTaskReply(ctx context.Context, arg RecordTaskReplyParams) error
 	SaveMembership(ctx context.Context, arg SaveMembershipParams) error
 	StartCommitment(ctx context.Context, id int64) error
+	StoppedTaskOwner(ctx context.Context, threadID string) (bool, error)
+	TransitionCommitment(ctx context.Context, arg TransitionCommitmentParams) (int64, error)
 	UnpinBots(ctx context.Context) error
 	UpdateCommitment(ctx context.Context, arg UpdateCommitmentParams) (int64, error)
 	UpsertBot(ctx context.Context, arg UpsertBotParams) error

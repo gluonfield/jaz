@@ -13,6 +13,9 @@ import (
 const interruptedTurnContinuation = "Continue from where you left off."
 
 func (m *Manager) ResumeInterruptedTurn(ctx context.Context, sessionID string) error {
+	if err := m.store.CheckTaskAdmission(sessionID); err != nil {
+		return err
+	}
 	session, err := m.store.LoadSession(sessionID)
 	if err != nil {
 		return err

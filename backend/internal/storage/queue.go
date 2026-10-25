@@ -48,6 +48,7 @@ type QueuedMessageKind string
 const (
 	QueuedMessageKindPublic   QueuedMessageKind = ""
 	QueuedMessageKindInternal QueuedMessageKind = "internal"
+	QueuedMessageKindTaskWake QueuedMessageKind = "task_wake"
 )
 
 type QueuedAction string
@@ -164,7 +165,7 @@ func PublicQueuedMessages(messages []QueuedMessage) []QueuedMessage {
 }
 
 func (message QueuedMessage) IsInternal() bool {
-	return message.Kind == QueuedMessageKindInternal
+	return message.Kind == QueuedMessageKindInternal || message.Kind == QueuedMessageKindTaskWake
 }
 
 func (message QueuedMessage) IsAction() bool {
@@ -173,7 +174,9 @@ func (message QueuedMessage) IsAction() bool {
 
 func (message QueuedMessage) AsInternal() QueuedMessage {
 	message.Action = ""
-	message.Kind = QueuedMessageKindInternal
+	if !message.IsInternal() {
+		message.Kind = QueuedMessageKindInternal
+	}
 	return message
 }
 
@@ -184,7 +187,7 @@ func (message QueuedMessage) AsPublic() QueuedMessage {
 
 func normalizeQueuedMessageKind(kind QueuedMessageKind) QueuedMessageKind {
 	switch kind {
-	case QueuedMessageKindInternal:
+	case QueuedMessageKindInternal, QueuedMessageKindTaskWake:
 		return kind
 	default:
 		return QueuedMessageKindPublic
@@ -252,6 +255,27 @@ func MarshalQueuedMessage(message *QueuedMessage) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+func TakeQueuedMessage(queue []QueuedMessage, selected QueuedMessage) (QueuedMessage, []QueuedMessage, error) {
+	wanted, err := MarshalQueuedMessage(&selected)
+	if err != nil {
+		return QueuedMessage{}, nil, err
+	}
+	for i, message := range queue {
+		if selected.ID == "" || message.ID != selected.ID {
+			continue
+		}
+		actual, err := MarshalQueuedMessage(&message)
+		if err != nil {
+			return QueuedMessage{}, nil, err
+		}
+		if actual != wanted {
+			break
+		}
+		return message, append(queue[:i:i], queue[i+1:]...), nil
+	}
+	return QueuedMessage{}, nil, ErrQueueChanged
 }
 
 func UnmarshalQueuedMessages(raw string) ([]QueuedMessage, error) {

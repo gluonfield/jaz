@@ -94,6 +94,7 @@ func (s *Store) AskCommitment(commitment storage.Commitment, event sessionevents
 	if event.SessionID != commitment.BotID || event.Type != sessionevents.TypeRoomMessage || event.RoomMessage == nil || event.RoomMessage.Speaker != "bot" || event.RoomMessage.Text == "" {
 		return sessionevents.Event{}, errors.New("a task question must be delivered in its bot's chat")
 	}
+	commitment.Status = storage.CommitmentWaitingForUser
 	events := []sessionevents.Event{event}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -117,7 +118,7 @@ func (s *Store) UpdateSessionGoal(id string, previous, next *goal.State) (sessio
 	return events[0], err
 }
 
-func (s *Store) appendSessionEventBatch(id string, closes []int64, question *storage.Commitment, events ...sessionevents.Event) error {
+func (s *Store) appendSessionEventBatch(id string, closes []int64, change *storage.Commitment, events ...sessionevents.Event) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -134,7 +135,7 @@ func (s *Store) appendSessionEventBatch(id string, closes []int64, question *sto
 		}
 	}
 	expanded, last := sessionevents.SplitTextEvents(events, storage.MaxTextEventBytes)
-	compactionPending, appendErr := s.appendSessionEvents(context.Background(), id, now, goalProjection.Seen, goalRaw, expanded, closes, question)
+	compactionPending, appendErr := s.appendSessionEvents(context.Background(), id, now, goalProjection.Seen, goalRaw, expanded, closes, change)
 	if appendErr != nil {
 		return appendErr
 	}
@@ -161,7 +162,7 @@ func (s *Store) appendSessionEventBatch(id string, closes []int64, question *sto
 	return nil
 }
 
-func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Time, goalSeen bool, goalRaw string, events []sessionevents.Event, closes []int64, question *storage.Commitment) (bool, error) {
+func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Time, goalSeen bool, goalRaw string, events []sessionevents.Event, closes []int64, change *storage.Commitment) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -229,15 +230,19 @@ func (s *Store) appendSessionEvents(ctx context.Context, id string, now time.Tim
 	if err := closeDelivered(ctx, botdb.New(tx), closes, now); err != nil {
 		return false, err
 	}
-	if question != nil {
-		question.CheckAt = nil
-		question.Status = storage.CommitmentWaitingForUser
-		question.QuestionSeq = events[len(events)-1].Seq
-		q := botdb.New(tx)
-		if err := q.AskCommitment(ctx, botdb.AskCommitmentParams{ID: question.ID, BotID: question.BotID, QuestionSeq: question.QuestionSeq}); err != nil {
+	if change != nil && change.Status != storage.CommitmentWaitingForUser {
+		if err := transitionCommitment(ctx, tx, *change); err != nil {
 			return false, err
 		}
-		if err := updateCommitment(ctx, q, *question); err != nil {
+	} else if change != nil {
+		change.CheckAt = nil
+		change.Status = storage.CommitmentWaitingForUser
+		change.QuestionSeq = events[len(events)-1].Seq
+		q := botdb.New(tx)
+		if err := q.AskCommitment(ctx, botdb.AskCommitmentParams{ID: change.ID, BotID: change.BotID, QuestionSeq: change.QuestionSeq}); err != nil {
+			return false, err
+		}
+		if err := updateCommitment(ctx, q, *change); err != nil {
 			return false, err
 		}
 	}

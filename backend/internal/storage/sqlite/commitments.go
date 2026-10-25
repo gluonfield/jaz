@@ -40,6 +40,9 @@ func (s *Store) UpdateCommitment(commitment storage.Commitment) error {
 }
 
 func updateCommitment(ctx context.Context, q *botdb.Queries, commitment storage.Commitment) error {
+	if commitment.Status == storage.CommitmentStopped {
+		return storage.ErrTaskStopped
+	}
 	if commitment.Status != "" && !commitment.IsOpen() {
 		return fmt.Errorf("invalid open task status %q", commitment.Status)
 	}
@@ -119,6 +122,15 @@ func (s *Store) DropCommitment(id int64, why string, at time.Time) error {
 	if staged {
 		return fmt.Errorf("#%d: %w", id, storage.ErrCommitmentStaged)
 	}
+	row, err := q.GetCommitment(ctx, id)
+	if err != nil {
+		return err
+	}
+	if row.Status == storage.CommitmentStopped {
+		if err := retireCommitmentQueues(ctx, tx, id, row.BotID, true); err != nil {
+			return err
+		}
+	}
 	if err := closeCommitment(ctx, q, id, storage.CommitmentDropped, why, at); err != nil {
 		return err
 	}
@@ -161,6 +173,9 @@ func closable(ctx context.Context, q *botdb.Queries, id int64) error {
 	if err != nil {
 		return err
 	}
+	if row.Status == storage.CommitmentStopped {
+		return storage.ErrTaskStopped
+	}
 	working, err := q.CommitmentWorking(ctx, id)
 	if err == nil && working {
 		err = fmt.Errorf("#%d: %w", id, storage.ErrCommitmentWorking)
@@ -171,7 +186,7 @@ func closable(ctx context.Context, q *botdb.Queries, id int64) error {
 // closeCommitment closes an open commitment none of whose threads works. One
 // closed as done delivered the results its threads queued for its bot.
 func closeCommitment(ctx context.Context, q *botdb.Queries, id int64, status, note string, at time.Time) error {
-	if err := closable(ctx, q, id); err != nil {
+	if err := closable(ctx, q, id); err != nil && !(status == storage.CommitmentDropped && errors.Is(err, storage.ErrTaskStopped)) {
 		return err
 	}
 	if _, err := q.CloseCommitment(ctx, botdb.CloseCommitmentParams{

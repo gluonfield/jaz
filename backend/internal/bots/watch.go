@@ -8,7 +8,7 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-const wakePrompt = "[owed] Your turn ended with unfinished tasks and no active worker or unmet prerequisite. Reconcile each task now: continue it, deliver its result with bot_task_update status completed and message, ask an actual missing question with status waiting_for_user and message, or cancel it with a reason. Use bot_task_list for the full current list."
+const wakePrompt = "[owed] Your turn ended with unfinished tasks and no active worker or unmet prerequisite. Reconcile active tasks now: continue it, deliver its result with bot_task_update status completed and message, ask an actual missing question with status waiting_for_user and message, stop it with a specific reason when no useful path remains, or cancel it. Stopped tasks remain dormant until explicitly resumed to pending with a justified message. Use bot_task_list for the full current list."
 
 func (s *Service) TurnEnded(threadID string) {
 	s.NoteHomeChanges(threadID)
