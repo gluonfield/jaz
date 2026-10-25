@@ -4,7 +4,6 @@ import { useState } from 'react'
 import { RemoteServerForm } from '@/components/connection/RemoteServerForm'
 import { Button } from '@/components/ui/Button'
 import { DitherTerrain, DitherWordmark } from '@/components/launch/DitherArt'
-import { PixelField } from '@/components/ui/PixelField'
 import { useKnownBackends } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
 import {
@@ -19,7 +18,6 @@ import {
 import { describeBackend, sameBackend } from '@/lib/connectionDisplay'
 import { devPreview } from '@/lib/devPreview'
 import { localDeviceLabel } from '@/lib/deviceLabel'
-import { useTheme } from '@/lib/theme'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
@@ -79,13 +77,10 @@ type LaunchScreenProps = { manual?: false; onClose?: never } | { manual: true; o
 // reachable (first launch, failed startup probe, lost connection). In `manual`
 // mode it is presented over the live app so a connected user can switch
 // machines through the exact same flow they onboarded with; on success it
-// dismisses itself via `onClose`. The particle field renders the wordmark, so
-// the chrome stays text-light.
+// dismisses itself via `onClose`.
 export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}) {
   const { status: liveStatus, error, pairing, url: currentUrl } = useConnection()
   const status = previewStatus ?? liveStatus
-  // PixelField samples the palette at mount; remount it when the theme flips.
-  const { resolved } = useTheme()
   const [mode, setMode] = useState<'options' | 'remote'>('options')
   // The target currently connecting: 'local', or a backend URL. Disables the
   // others and drives the per-row spinner.
@@ -117,10 +112,6 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   const connectTo = (target: string) => run(target, () => connectRemote(target))
   const isCurrent = (target: string) => manual && sameBackend(currentUrl, target)
 
-  // The boot gate flashes for a sub-second while the first probe runs, so it
-  // only spins up the GPU field once disconnected; the manual overlay always
-  // wants the full takeover.
-  const showField = manual || status === 'disconnected' || status === 'pending_approval'
   // While 'checking' we know what we're waiting on — tailor the copy so a
   // remembered server or a local start reads as intentional, not a hang.
   const checkingCopy =
@@ -137,8 +128,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
 
   return (
     <div className="relative flex h-full flex-col bg-bg">
-      {showField && <PixelField key={resolved} calm={mode === 'remote' || busy !== null} />}
-      {status === 'checking' ? <DitherTerrain className="absolute inset-x-0 bottom-0" delay={0.5} /> : null}
+      <DitherTerrain className="absolute inset-x-0 bottom-0" delay={0.5} />
       <div className="titlebar-drag relative h-[52px] shrink-0">
         {manual && onClose ? (
           <button
@@ -154,7 +144,10 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
       </div>
       {/* offset the titlebar so the content is optically centered */}
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-[52px]">
-        <AnimatePresence mode="wait">
+        <div className="mb-8">
+          <DitherWordmark delay={0.35} />
+        </div>
+        <AnimatePresence mode="wait" initial={false}>
           {status === 'checking' ? (
             <motion.div
               key="checking"
@@ -163,7 +156,6 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
               exit={{ opacity: 0, transition: { duration: 0.15 } }}
               className="flex flex-col items-center gap-8"
             >
-              <DitherWordmark delay={0.35} />
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1, transition: { duration: 0.4, delay: 1.1 } }}
@@ -309,7 +301,7 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
 // Full-width rounded pill: run locally / add a server. Primary = the cobalt
 // recommended path (run locally), secondary = a quiet surface pill. `connected`
 // marks it as the current backend with a settled dot instead of a CTA. Soft
-// drop shadow floats it over the particle field; scales on press.
+// drop shadow floats it over the terrain; scales on press.
 function ChoiceButton({
   label,
   busyLabel,
