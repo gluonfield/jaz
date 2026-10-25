@@ -55,7 +55,7 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, pairing = false, storedValues = [], decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false } = {}) {
+async function fixture({ auth, pairing = false, storedValues = [], encryptCredential, decryptCredential, health, registration, notifications = false, startLocalBackend, renderNotifications = false } = {}) {
   const stored = new Map(storedValues)
   const configured = []
   const timers = new Map()
@@ -65,6 +65,7 @@ async function fixture({ auth, pairing = false, storedValues = [], decryptCreden
     addEventListener() {},
     jaz: {
       apiBaseUrl: 'http://127.0.0.1:5299',
+      encryptCredential,
       decryptCredential,
       startLocalBackend,
       ...(notifications ? { configureThreadNotifications: (config) => configured.push(config) } : {}),
@@ -84,15 +85,18 @@ async function fixture({ auth, pairing = false, storedValues = [], decryptCreden
     return nextTimer
   })
   replace('clearTimeout', (id) => timers.delete(id))
-  replace('fetch', async (url) => {
+  replace('fetch', async (url, init) => {
     const target = new URL(url)
-    if (target.hostname === '127.0.0.1') {
+    if (target.hostname === '127.0.0.1' && target.pathname === '/health') {
       return Response.json({ ok: false })
     }
     if (target.pathname === '/health') {
       return health ? health() : Response.json({ ok: true, auth_required: true })
     }
     if (target.pathname === '/v1/devices/register') {
+      if (registration) {
+        return registration(init)
+      }
       return Response.json({ token: 'device-token' })
     }
     if (target.pathname === '/v1/devices/pairing-requests' && pairing) {
@@ -139,6 +143,63 @@ test('a redeemed pairing credential rejected by verification does not connect', 
   expect(connection.useConnection().status).toBe('pending_approval')
   await pollPairing()
   expect(connection.useConnection().status).toBe('disconnected')
+})
+
+test('local registration reports secure credential storage failure and recovers on an authorized retry', async () => {
+  const target = 'http://127.0.0.1:5299'
+  let denied = true
+  let authChecks = 0
+  const registrations = []
+  const { connection, stored } = await fixture({
+    storedValues: [['jaz.backendAuth.' + target, 'enc:v1:previous-ciphertext']],
+    decryptCredential: () => 'expired-device-token',
+    startLocalBackend: async () => ({ ok: true, url: target, key: 'local-bootstrap-key' }),
+    registration(init) {
+      registrations.push({ headers: init.headers, body: JSON.parse(init.body) })
+      return Response.json({ token: 'new-device-token' })
+    },
+    encryptCredential(value) {
+      expect(value).toBe('new-device-token')
+      if (denied) {
+        throw new Error('Error while encrypting text')
+      }
+      return 'new-ciphertext'
+    },
+    auth: () => {
+      authChecks += 1
+      return Response.json({ ok: true, auth_kind: 'device' })
+    },
+  })
+  const error = await connection.startLocal()
+  expect(error).toContain('Device registered')
+  expect(error).toContain('system keychain')
+  expect(connection.useConnection().status).toBe('disconnected')
+  expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:previous-ciphertext')
+  expect(authChecks).toBe(0)
+  expect(registrations).toHaveLength(1)
+  expect(registrations[0].headers.Authorization).toBe('Bearer local-bootstrap-key')
+  expect(registrations[0].body).toEqual({ device_id: 'identity', public_key: 'public', name: 'Test device', kind: 'desktop' })
+  denied = false
+  expect(await connection.startLocal()).toBeNull()
+  expect(connection.useConnection().status).toBe('connected')
+  expect(authChecks).toBe(1)
+  expect(registrations).toHaveLength(2)
+  expect(registrations[1].body).toEqual(registrations[0].body)
+  expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:new-ciphertext')
+})
+
+test('registration rejection keeps the backend error and never saves a credential', async () => {
+  let encryptions = 0
+  const { connection } = await fixture({
+    registration: () => Response.json({ error: 'device identity is invalid' }, { status: 400 }),
+    encryptCredential() {
+      encryptions += 1
+      throw new Error('Should not encrypt')
+    },
+  })
+  expect(await connection.connectRemote('https://jaz.example#key=invite_once')).toBe('device identity is invalid')
+  expect(connection.useConnection().status).toBe('disconnected')
+  expect(encryptions).toBe(0)
 })
 
 test('disconnecting while enrollment verification runs wins over its late response', async () => {

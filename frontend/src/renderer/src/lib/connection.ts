@@ -418,7 +418,11 @@ async function registerDevice(url: string, credential: string): Promise<string |
       return null
     }
     if (res.ok && body?.token) {
-      setApiAuthToken(url, body.token)
+      try {
+        setApiAuthToken(url, body.token)
+      } catch {
+        return 'Device registered, but its connection key could not be saved securely. Check system keychain access and available storage, then try again.'
+      }
       const access = await checkAuthAccess(url, body.token)
       if (gen !== pairingGen) {
         return null
