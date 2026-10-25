@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestKimiNativeCatalogProcess(t *testing.T) {
@@ -68,8 +69,20 @@ func TestKimiNativeCatalogProcess(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(root, "live"), nil, 0o600); err != nil {
 				t.Fatal(err)
 			}
+			if string(mode) == "hold-new" {
+				for {
+					if _, err := os.Stat(filepath.Join(root, "release")); err == nil {
+						break
+					}
+					time.Sleep(time.Millisecond)
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
 			result = response()
 			result["sessionId"] = "catalog-probe"
+			if string(mode) == "malformed-options" {
+				result["configOptions"] = "invalid"
+			}
 		case "session/set_config_option":
 			var params struct {
 				ConfigID string `json:"configId"`

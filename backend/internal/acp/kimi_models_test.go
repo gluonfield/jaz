@@ -3,6 +3,7 @@ package acp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -70,7 +71,7 @@ func TestKimiDiscoveryUsesNativeChoicesAndDeletesProbe(t *testing.T) {
 }
 
 func TestKimiDiscoveryCleansUpFailuresAndCancellation(t *testing.T) {
-	for _, mode := range []string{"no-delete", "fail-switch", "hold-switch", "fail-delete"} {
+	for _, mode := range []string{"no-delete", "hold-new", "malformed-options", "fail-switch", "hold-switch", "fail-delete"} {
 		t.Run(mode, func(t *testing.T) {
 			manager, root := newKimiCatalogManager(t)
 			if err := os.WriteFile(filepath.Join(root, "mode"), []byte(mode), 0o600); err != nil {
@@ -78,19 +79,30 @@ func TestKimiDiscoveryCleansUpFailuresAndCancellation(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
-			if mode == "hold-switch" {
+			if mode == "hold-switch" || mode == "hold-new" {
 				go func() {
+					marker := "switching"
+					if mode == "hold-new" {
+						marker = "live"
+					}
 					for ctx.Err() == nil {
-						if _, err := os.Stat(filepath.Join(root, "switching")); err == nil {
+						if _, err := os.Stat(filepath.Join(root, marker)); err == nil {
 							cancel()
+							if mode == "hold-new" {
+								_ = os.WriteFile(filepath.Join(root, "release"), nil, 0o600)
+							}
 							return
 						}
 						time.Sleep(time.Millisecond)
 					}
 				}()
 			}
-			if _, err := manager.DiscoverModels(ctx, AgentKimi); err == nil {
+			_, err := manager.DiscoverModels(ctx, AgentKimi)
+			if err == nil {
 				t.Fatal("native discovery failure was hidden")
+			}
+			if (mode == "hold-new" || mode == "hold-switch") && !errors.Is(err, context.Canceled) {
+				t.Fatalf("caller cancellation was lost: %v", err)
 			}
 			if mode != "fail-delete" {
 				if _, err := os.Stat(filepath.Join(root, "live")); !os.IsNotExist(err) {
@@ -132,7 +144,27 @@ func TestKimiConfiguredEffortUsesNativeThinkingContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	requests, err := os.ReadFile(filepath.Join(root, "requests.jsonl"))
-	if err != nil || !strings.Contains(string(requests), `"configId":"thinking","sessionId":"catalog-probe","value":"max"`) {
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied := false
+	for _, line := range strings.Split(strings.TrimSpace(string(requests)), "\n") {
+		var request struct {
+			Method string `json:"method"`
+			Params struct {
+				SessionID acpschema.SessionID `json:"sessionId"`
+				ConfigID  string              `json:"configId"`
+				Value     string              `json:"value"`
+			} `json:"params"`
+		}
+		if err := json.Unmarshal([]byte(line), &request); err != nil {
+			t.Fatal(err)
+		}
+		if request.Method == "session/set_config_option" && request.Params.SessionID == response.SessionID && request.Params.ConfigID == "thinking" && request.Params.Value == "max" {
+			applied = true
+		}
+	}
+	if !applied {
 		t.Fatalf("native thinking selection did not reach the adapter: %s, %v", requests, err)
 	}
 	for _, choice := range []struct{ model, effort string }{{"native-z", "invalid"}, {"native-plain", "high"}} {
