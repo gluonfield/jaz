@@ -49,15 +49,11 @@ func (h SettingsHandler) update(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, http.StatusBadRequest, err)
 		return
 	}
-	current, err := settings.LoadBrowserSettings(h.Store)
-	if err != nil {
-		httpapi.WriteError(w, http.StatusInternalServerError, err)
+	if input.Enabled == nil {
+		httpapi.WriteError(w, http.StatusBadRequest, fmt.Errorf("enabled is required"))
 		return
 	}
-	if input.Enabled != nil {
-		current.Enabled = *input.Enabled
-	}
-	current, err = settings.SaveBrowserSettings(h.Store, current)
+	current, err := settings.SaveBrowserSettings(h.Store, settings.BrowserSettings{Enabled: *input.Enabled})
 	if err != nil {
 		httpapi.WriteError(w, http.StatusInternalServerError, err)
 		return

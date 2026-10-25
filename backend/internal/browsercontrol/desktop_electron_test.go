@@ -112,10 +112,7 @@ func TestDesktopElectron(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(result)
 	})
-	mux.HandleFunc("GET /v1/browser", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"enabled":true}`)
-	})
+	mux.Handle("/v1/browser", browserapi.NewSettingsHandler(store, nil))
 	mux.HandleFunc("POST /v1/preview/proxies", func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			URL string `json:"url"`
@@ -342,7 +339,7 @@ nodeRepl.write('Accessibility checks completed')`, r.URL.Query().Get("url"), r.U
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
