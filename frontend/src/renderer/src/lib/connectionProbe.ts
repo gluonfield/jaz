@@ -15,19 +15,27 @@ export async function readJSON<T>(response: Response): Promise<T | null> {
 }
 
 function loginResponse(url: string, response: Response): boolean {
-  if (clientRuntime.kind !== 'web') return false
+  if (clientRuntime.kind !== 'web') {
+    return false
+  }
   const contentType = response.headers.get('content-type') || ''
   return contentType.includes('text/html') || (response.redirected && new URL(response.url).origin !== url) ||
     ((response.status === 401 || response.status === 403) && !contentType.includes('json'))
 }
 
 export async function readHealth(url: string, signal?: AbortSignal): Promise<Health> {
-  if (!secureBackendConnection(url)) return { ok: false, error: 'Remote connections require HTTPS', recoverable: false }
+  if (!secureBackendConnection(url)) {
+    return { ok: false, error: 'Remote connections require HTTPS', recoverable: false }
+  }
   try {
     const response = await fetch(url + '/health', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000) })
-    if (loginResponse(url, response)) return { ok: false, error: `Sign in through Teleport again to reach the backend at ${url}`, recoverable: false }
+    if (loginResponse(url, response)) {
+      return { ok: false, error: `Sign in through Teleport again to reach the backend at ${url}`, recoverable: false }
+    }
     const body = await readJSON<{ ok?: boolean; auth_required?: boolean }>(response)
-    if (response.ok && body?.ok === true && typeof body.auth_required === 'boolean') return { ok: true, authRequired: body.auth_required }
+    if (response.ok && body?.ok === true && typeof body.auth_required === 'boolean') {
+      return { ok: true, authRequired: body.auth_required }
+    }
   } catch {
     // A health failure never unlocks a credential or issues a replacement.
   }
@@ -35,7 +43,9 @@ export async function readHealth(url: string, signal?: AbortSignal): Promise<Hea
 }
 
 export async function readAccess(url: string, token: string, signal?: AbortSignal, expectedDeviceId?: string): Promise<Access> {
-  if (!token || !secureBackendConnection(url)) return { ok: false, error: 'A secure device credential is required', recoverable: false }
+  if (!token || !secureBackendConnection(url)) {
+    return { ok: false, error: 'A secure device credential is required', recoverable: false }
+  }
   try {
     const response = await fetch(url + '/v1/auth/check', {
       headers: { Authorization: `Bearer ${token}`, [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },

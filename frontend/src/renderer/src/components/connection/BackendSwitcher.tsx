@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from 'react'
 import { Input } from '@/components/ui/Input'
 import { Popover } from '@/components/ui/Popover'
 import { type KnownBackend, renameBackend } from '@/lib/backends'
+import { clientRuntime } from '@/lib/clientRuntime'
 import { forgetBackend } from '@/lib/connection'
 import {
   backendName,
@@ -56,7 +57,7 @@ export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => vo
         />
       ))}
       <div className="my-1 h-px bg-border/70" />
-      {status === 'connected' && !describeBackend(url).local ? (
+      {clientRuntime.encryptCredential && status === 'connected' && !describeBackend(url).local ? (
         <button type="button" onClick={remember} className="flex h-7 w-full items-center rounded-full px-2.5 text-left text-[13px] text-ink-2 hover:bg-surface-2">
           Remember Connection
         </button>

@@ -32,7 +32,9 @@ let sessionDocument: number | undefined
 
 function sessionRequest<T>(request: unknown): T {
   const result = ipcRenderer.sendSync(CONNECTION_SESSION_CHANNEL, request) as { value: T; error?: string }
-  if (result.error) throw new Error(result.error)
+  if (result.error) {
+    throw new Error(result.error)
+  }
   return result.value
 }
 
@@ -46,7 +48,9 @@ const connectionSession: ConnectionSessionAPI = {
   local: (document, revision) => ipcRenderer.invoke(LOCAL_SESSION_CHANNEL, document, revision),
   subscribe: (handler) => {
     const listener = (_event: unknown, value: { document: number; snapshot: SessionSnapshot }) => {
-      if (value.document === sessionDocument) handler(value.snapshot)
+      if (value.document === sessionDocument) {
+        handler(value.snapshot)
+      }
     }
     ipcRenderer.on(CONNECTION_SESSION_CHANNEL, listener)
     return () => ipcRenderer.removeListener(CONNECTION_SESSION_CHANNEL, listener)

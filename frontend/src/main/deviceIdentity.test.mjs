@@ -5,7 +5,9 @@ import { createRequire } from 'node:module'
 import { resolve, join } from 'node:path'
 
 const bundle = await build({ entrypoints: [new URL('./deviceIdentity.ts', import.meta.url).pathname], target: 'node', format: 'cjs', external: ['electron'] })
-if (!bundle.success) throw new AggregateError(bundle.logs)
+if (!bundle.success) {
+  throw new AggregateError(bundle.logs)
+}
 const evaluate = new Function('require', 'module', 'exports', await bundle.outputs[0].text())
 const require = createRequire(import.meta.url)
 mkdirSync(resolve('../runs/identity-regressions'), { recursive: true })

@@ -28,7 +28,7 @@ export function createConnectionSession(deps: Dependencies) {
   let nextDocument = 0
   let snapshot: SessionSnapshot = { revision: 0, phase: 'initial', url: '', session: null, error: null, localPending: false }
   let localGeneration = 0
-  let localFlight: { generation: number; promise: Promise<LocalSession> } | null = null
+  let localFlight: { generation: number; promise: Promise<LocalSession>; settled: boolean } | null = null
 
   function expectedDocument(value: string): boolean {
     try {
@@ -66,10 +66,14 @@ export function createConnectionSession(deps: Dependencies) {
   }
 
   function change(next: Omit<SessionSnapshot, 'revision'>, sender?: BrowserWindow): SessionSnapshot {
-    if (next.phase !== 'connected' || next.session?.token !== snapshot.session?.token || next.url !== snapshot.url) deps.stopConsumers()
+    if (next.phase !== 'connected' || next.session?.token !== snapshot.session?.token || next.url !== snapshot.url) {
+      deps.stopConsumers()
+    }
     snapshot = { ...next, revision: snapshot.revision + 1 }
     for (const record of windows.values()) {
-      if (record.window !== sender) deliver(record)
+      if (record.window !== sender) {
+        deliver(record)
+      }
     }
     return snapshot
   }
@@ -80,11 +84,15 @@ export function createConnectionSession(deps: Dependencies) {
   }
 
   function attach(window: BrowserWindow, connectionOwner = false): void {
-    if (connectionOwner) owner = window
+    if (connectionOwner) {
+      owner = window
+    }
     const record: WindowDocument = { window, document: ++nextDocument, active: false }
     windows.set(window.webContents.id, record)
     window.webContents.on('did-start-navigation', (event) => {
-      if (!event.isMainFrame || event.isSameDocument) return
+      if (!event.isMainFrame || event.isSameDocument) {
+        return
+      }
       record.document = ++nextDocument
       record.active = false
       record.frame = undefined
@@ -93,14 +101,18 @@ export function createConnectionSession(deps: Dependencies) {
       }
     })
     window.webContents.on('did-frame-navigate', (_event, _url, _code, _status, mainFrame) => {
-      if (mainFrame) record.active = true
+      if (mainFrame) {
+        record.active = true
+      }
     })
     const contentsId = window.webContents.id
     window.on('closed', () => {
       windows.delete(contentsId)
       if (owner === window) {
         owner = null
-        if (snapshot.phase === 'pending' && !snapshot.localPending) clear('Connection interrupted. Connect again.')
+        if (snapshot.phase === 'pending' && !snapshot.localPending) {
+          clear('Connection interrupted. Connect again.')
+        }
       }
     })
   }
@@ -114,35 +126,61 @@ export function createConnectionSession(deps: Dependencies) {
   function update(event: IpcMainEvent, request: SessionMutation): SessionSnapshot {
     if (request.operation === 'reject') {
       authorize(event, request.document)
-      if (request.revision === snapshot.revision && snapshot.phase === 'connected') clear('Backend device access was rejected')
+      if (request.revision === snapshot.revision && snapshot.phase === 'connected') {
+        clear('Backend device access was rejected')
+      }
       return snapshot
     }
     const record = authorizeOwner(event, request.document)
-    if (request.operation === 'clear') return clear(request.error, record.window)
+    if (request.operation === 'clear') {
+      return clear(request.error, record.window)
+    }
     if (request.operation === 'begin') {
-      if (!validBackendOrigin(request.url)) throw new Error('Invalid backend origin')
-      if (!(snapshot.localPending && request.url === LOCAL_URL)) localGeneration += 1
+      if (!validBackendOrigin(request.url)) {
+        throw new Error('Invalid backend origin')
+      }
+      if (!(snapshot.localPending && request.url === LOCAL_URL)) {
+        localGeneration += 1
+      }
       return change({ phase: 'pending', url: request.url, session: null, error: null, localPending: snapshot.localPending && request.url === LOCAL_URL }, record.window)
     }
     const session = request.session
     if (request.revision !== snapshot.revision || (snapshot.phase !== 'pending' && snapshot.phase !== 'connected') ||
-      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' ||
+      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.remembered !== 'boolean' ||
       (session.token && (!session.token.startsWith('jaz_') || !session.deviceId))) {
       throw new Error('Connection session was replaced')
     }
-    localFlight = null
+    if (localFlight?.settled) {
+      localFlight = null
+    }
     return change({ phase: 'connected', url: session.url, session, error: null, localPending: false }, record.window)
   }
 
-  async function issueLocal(): Promise<LocalSession> {
+  async function issueLocal(generation: number): Promise<LocalSession> {
     const local = await deps.startLocal()
-    if (!local.ok) throw new Error(local.error || 'Could not start the local backend')
-    if (local.url !== LOCAL_URL) throw new Error('Local bootstrap returned the wrong backend')
+    if (generation !== localGeneration) {
+      throw new Error('Local startup was cancelled')
+    }
+    if (!local.ok) {
+      throw new Error(local.error || 'Could not start the local backend')
+    }
+    if (local.url !== LOCAL_URL) {
+      throw new Error('Local bootstrap returned the wrong backend')
+    }
     const health = await fetch(LOCAL_URL + '/health', { redirect: 'error', signal: AbortSignal.timeout(3000) })
     const healthBody = await health.json() as { ok?: boolean; auth_required?: boolean }
-    if (!health.ok || healthBody.ok !== true || typeof healthBody.auth_required !== 'boolean') throw new Error('Local backend is not healthy')
-    if (!healthBody.auth_required) return { url: LOCAL_URL, token: '', deviceId: '', remembered: false }
-    if (!local.key) throw new Error('Local bootstrap credential is unavailable')
+    if (generation !== localGeneration) {
+      throw new Error('Local startup was cancelled')
+    }
+    if (!health.ok || healthBody.ok !== true || typeof healthBody.auth_required !== 'boolean') {
+      throw new Error('Local backend is not healthy')
+    }
+    if (!healthBody.auth_required) {
+      return { url: LOCAL_URL, token: '', deviceId: '', remembered: false }
+    }
+    if (!local.key) {
+      throw new Error('Local bootstrap credential is unavailable')
+    }
     const profile = deps.profile()
     const response = await fetch(LOCAL_URL + '/v1/devices/register', {
       method: 'POST', redirect: 'error',
@@ -150,33 +188,50 @@ export function createConnectionSession(deps: Dependencies) {
       body: JSON.stringify({ ...profile, kind: 'desktop' }), signal: AbortSignal.timeout(5000),
     })
     const body = await response.json() as { token?: string; error?: string }
-    if (!response.ok || !body.token?.startsWith('jaz_')) throw new Error(body.error || 'Local device registration failed')
+    if (!response.ok || !body.token?.startsWith('jaz_')) {
+      throw new Error(body.error || 'Local device registration failed')
+    }
     const check = await fetch(LOCAL_URL + '/v1/auth/check', {
       redirect: 'error', headers: { Authorization: `Bearer ${body.token}`, 'X-Jaz-Client-Platform': 'desktop' }, signal: AbortSignal.timeout(3000),
     })
-    if (!check.ok) throw new Error('Local device verification failed')
+    if (!check.ok) {
+      throw new Error('Local device verification failed')
+    }
     const access = deviceAccess(await check.json(), profile.device_id)
     return { url: LOCAL_URL, token: body.token, deviceId: access.deviceId, ticket: access.ticket, remembered: false }
   }
 
   async function local(event: IpcMainInvokeEvent, document: number, revision: number): Promise<LocalSession> {
     authorizeOwner(event, document)
-    if (snapshot.url !== LOCAL_URL || snapshot.revision !== revision || snapshot.phase !== 'pending') throw new Error('Local startup was cancelled')
+    if (snapshot.url !== LOCAL_URL || snapshot.revision !== revision || snapshot.phase !== 'pending') {
+      throw new Error('Local startup was cancelled')
+    }
     const generation = localGeneration
+    snapshot = { ...snapshot, localPending: true }
     if (localFlight && localFlight.generation !== generation) {
-      await localFlight.promise.catch(() => {})
+      const previous = localFlight
+      await previous.promise.catch(() => {})
       authorizeOwner(event, document)
-      if (snapshot.revision !== revision) throw new Error('Local startup was cancelled')
-      localFlight = null
+      if (snapshot.revision !== revision || generation !== localGeneration) {
+        throw new Error('Local startup was cancelled')
+      }
+      if (localFlight === previous) {
+        localFlight = null
+      }
     }
     if (!localFlight) {
-      localFlight = { generation, promise: issueLocal() }
-      snapshot = { ...snapshot, localPending: true }
+      const flight = { generation, promise: issueLocal(generation), settled: false }
+      localFlight = flight
+      void flight.promise.finally(() => {
+        flight.settled = true
+      }).catch(() => {})
     }
     try {
       const result = await localFlight.promise
       authorizeOwner(event, document)
-      if (snapshot.revision !== revision || generation !== localGeneration) throw new Error('Local startup was cancelled')
+      if (snapshot.revision !== revision || generation !== localGeneration) {
+        throw new Error('Local startup was cancelled')
+      }
       return result
     } catch (error) {
       if (owner && windows.get(owner.webContents.id)?.document === document && snapshot.revision === revision && generation === localGeneration) {

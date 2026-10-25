@@ -65,15 +65,21 @@ export function parseBackendConnectUrl(input: string): { url: string; key: strin
 }
 
 export function consumeStartupConnectUrl(): string {
-  if (clientRuntime.kind !== 'web') return ''
+  if (clientRuntime.kind !== 'web') {
+    return ''
+  }
   const { params, source } = startupConnectParams()
   const key = params.get('key')?.trim() ?? ''
-  if (!key) return ''
+  if (!key) {
+    return ''
+  }
   const target =
     params.get('server')?.trim() ||
     params.get('url')?.trim() ||
     clientRuntime.defaultApiBaseUrl()
-  if (!target) return ''
+  if (!target) {
+    return ''
+  }
   const raw = connectUrlWithKey(target, key)
   const next = new URL(window.location.href)
   if (source === 'hash') {
@@ -89,7 +95,9 @@ export function consumeStartupConnectUrl(): string {
 
 function startupConnectParams(): { params: URLSearchParams; source: 'search' | 'hash' } {
   const search = new URLSearchParams(window.location.search)
-  if (hasStartupConnectParams(search)) return { params: search, source: 'search' }
+  if (hasStartupConnectParams(search)) {
+    return { params: search, source: 'search' }
+  }
   const hash = new URLSearchParams(window.location.hash.replace(/^#\??/, ''))
   return { params: hash, source: 'hash' }
 }
@@ -109,9 +117,6 @@ function connectUrlWithKey(target: string, key: string): string {
   }
 }
 
-// A remembered remote URL wins over the local default so refresh reconnects to
-// the user's server. An explicit runtime default still wins for desktop preload
-// and VITE_JAZ_API_URL-pinned development builds.
 let baseUrl = normalizeBaseUrl(localBaseUrl())
 
 export function apiBaseUrl(): string {
@@ -133,7 +138,7 @@ export function apiWebSocketProtocols(): string[] {
   if (!secureBackendConnection(apiBaseUrl())) {
     throw new Error('Remote connections require HTTPS')
   }
-  const token = apiAuthToken()
+  const token = cachedApiAuthToken()
   return token ? ['jaz', `jaz-auth.${token}`] : []
 }
 
@@ -150,7 +155,9 @@ export function apiEmbeddedGetUrl(path: string): string {
 }
 
 export function setApiBaseUrl(url: string): void {
-  if (baseUrl === normalizeBaseUrl(url)) return
+  if (baseUrl === normalizeBaseUrl(url)) {
+    return
+  }
   baseUrl = normalizeBaseUrl(url)
   notifySessionChange()
 }
@@ -161,14 +168,13 @@ function authStorageKey(url: string): string {
 
 export function cachedApiAuthToken(url = apiBaseUrl()): string {
   return authTokens.get(authStorageKey(url)) ?? ''
-
 }
-
-export const apiAuthToken = cachedApiAuthToken
 
 export function restoreApiAuthToken(url: string): string {
   const stored = localStorage.getItem(authStorageKey(url))?.trim() ?? ''
-  if (!stored) return ''
+  if (!stored) {
+    return ''
+  }
   if (!stored.startsWith('enc:v1:') || !clientRuntime.decryptCredential) {
     throw new Error('Saved connection is not securely encrypted')
   }
@@ -196,7 +202,9 @@ export function setApiAuthToken(url: string, token?: string | null, ticket?: Res
     authTokens.delete(key)
   }
   setResourceTicket(url, ticket)
-  if (normalizeBaseUrl(url) === baseUrl) notifySessionChange()
+  if (normalizeBaseUrl(url) === baseUrl) {
+    notifySessionChange()
+  }
 }
 
 export function clearApiSession(): void {
@@ -226,19 +234,27 @@ export function onApiAuthRejected(handler: () => void): () => void {
 
 function notifySessionChange(): void {
   credentialRevision += 1
-  for (const request of requests) request.abort()
+  for (const request of requests) {
+    request.abort()
+  }
   requests.clear()
-  for (const handler of sessionListeners) handler()
+  for (const handler of sessionListeners) {
+    handler()
+  }
 }
 
 function withAPIHeaders(init: RequestInit = {}, url = apiBaseUrl()): RequestInit {
   if (!secureBackendConnection(url)) {
     throw new Error('Remote connections require HTTPS')
   }
-  const token = apiAuthToken(url)
+  const token = cachedApiAuthToken(url)
   const headers = new Headers(init.headers)
-  if (!headers.has(CLIENT_PLATFORM_HEADER)) headers.set(CLIENT_PLATFORM_HEADER, CLIENT_PLATFORM)
-  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
+  if (!headers.has(CLIENT_PLATFORM_HEADER)) {
+    headers.set(CLIENT_PLATFORM_HEADER, CLIENT_PLATFORM)
+  }
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
   return { ...init, headers }
 }
 
@@ -261,9 +277,17 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
   requests.add(controller)
   const signal = init?.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal
   const revision = credentialRevision
-  return fetch(`${url}${path}`, withAPIHeaders({ ...init, signal }, url)).then((response) => {
-    if ((response.status === 401 || response.status === 403) && revision === credentialRevision && url === apiBaseUrl()) {
-      for (const handler of rejectionListeners) handler()
+  const options = withAPIHeaders({ ...init, signal }, url)
+  const bearer = new Headers(options.headers).get('Authorization')
+  return fetch(`${url}${path}`, options).then(async (response) => {
+    if ((response.status === 401 || response.status === 403) && bearer === `Bearer ${cachedApiAuthToken(url)}`) {
+      const body = await response.clone().json().catch(() => null) as { code?: string } | null
+      if (revision === credentialRevision && url === apiBaseUrl() &&
+        (body?.code === 'unauthorized' || body?.code === 'device_approval_required')) {
+        for (const handler of rejectionListeners) {
+          handler()
+        }
+      }
     }
     if (!response.body) {
       requests.delete(controller)
@@ -277,7 +301,9 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
           if (chunk.done) {
             requests.delete(controller)
             stream.close()
-          } else stream.enqueue(chunk.value)
+          } else {
+            stream.enqueue(chunk.value)
+          }
         } catch (error) {
           requests.delete(controller)
           stream.error(error)
