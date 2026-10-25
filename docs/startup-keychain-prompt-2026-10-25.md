@@ -1,6 +1,6 @@
 # Startup Keychain Prompt — Coordinator Audit
 
-Status: scoped renderer fix `9d1d84f7` approved for local integration after coordinator audit. Candidate includes local main `973f3827` (Stopped lifecycle `f4d01439` and connected-account visibility). Imported frontend source was inspected; there were no conflicts, and the approved fix is unchanged. Frozen-revision gate and local merge receipts are in `runs/startup-keychain-prompt/integration/`. Automatic-connect policy, credentials, browser data and native provider auth are preserved. No push, tag, release, install, restart, credential migration or signing/trust change is authorized.
+Status: initial fix `9d1d84f7` merged locally as `b9379ee0`, preserving Stopped/account-card work; its exact-tree integration receipt is in `runs/startup-keychain-prompt/integration/`. The coordinator approved optional-notification correction `cc44de8a` for local integration on actual main. Focused gate and merge receipts are in `runs/startup-keychain-prompt/notification-cache/integration/`. Automatic-connect policy, credentials, browser data and native provider auth are preserved. No push, tag, release, install, restart, credential migration or signing/trust change is performed by this integration. Independent task112 (installed-device-registration) is excluded.
 
 ## Installed Build and Cause
 
@@ -71,3 +71,23 @@ Applied `/Users/wins/.jaz/skills/thermo-nuclear-code-quality-review/SKILL.md` as
 This removes the proven unnecessary startup access and denial failures. It **does not guarantee dialog-free restoration of a necessary protected credential when macOS requires new authorization**. The pinned synchronous Chromium provider caches a failed derivation for the process lifetime, so recovery instructions correctly require restoring access and restarting Jaz.
 
 If absolute dialog-free cold launch is required even with denied trust, the concrete next product contract is to defer protected connection restoration to the existing explicit Connect action and leave the chooser available at startup; this trades automatic protected reconnection for a guaranteed quiet launch. Separately, any development/production Keychain namespace separation or trust repair needs a reviewed legacy-decryption plan and must preserve existing ciphertext. Neither broader change is implemented here. The current evidence does not justify replacing keys, resetting entries, weakening storage or changing production signing.
+
+## Coordinator Follow-Up: Optional Notification Credentials
+
+Confirmed the remaining path: healthy `auth_required=false`, old encrypted token still saved, notifications enabled. Connection verification correctly performs no unlock, but the notification effect calls the storage-loading `apiAuthToken`. The earlier regression checked survival after denial and missed the unnecessary call. Its replacement checks zero optional unlocks and verifies the authenticated token explicitly; old source fails only the unauthenticated case (10 pass / 1 fail).
+
+The correction exposes `cachedApiAuthToken` as a read of the API client's existing `authTokens` map and uses it for notification configuration. It performs no storage access or decryption and adds no credential state. Authenticated connection verification and enrollment already populate this cache. The optional unlock/catch branch is deleted: production code is **two lines smaller** overall. Connection verification, launch recovery, persisted data, provider auth and signing are unchanged.
+
+The hidden fixture mounts the production notification component with real React, the production connection store and API client. Its synthetic backend and crypto boundary isolate this optional feature from unrelated application data fetches:
+
+| Hidden case | Credential-provider calls | Final notification configuration |
+| --- | --- | --- |
+| Before, authentication unnecessary, Keychain unavailable | 1 unnecessary attempt | Disabled after caught denial |
+| After, same input | 0; zero credential IPC | Enabled with empty token |
+| Before and after, authentication required | 1 by connection verification; no additional notification unlock | Enabled with the verified token |
+
+Both phases preserve the fixture ciphertext. Native audits: 170 before samples and 171 after samples, zero visible/focused fixture windows. The focused gate passes 18 connection/API/notification-monitor regressions, frontend typecheck, changed-file ESLint and whitespace checks. Only the small production-component fixture was bundled; broad suites and full app builds were not repeated. Evidence: `notification-cache/{before,after}-receipt.json`, logs, fixture bundles and native audits; the frozen commit/tree and seals are recorded in `freeze.json` and `manifest.json` there.
+
+Required thermo-nuclear self-review: no remaining findings. The canonical API cache owns resolved credentials; notifications consume it without adding a second cache, persistence mode or policy flag. Removing the independent unlock also removes its exception branch. Necessary protected connection restoration can still require macOS authorization; this correction covers optional notification setup only. Frozen `cc44de8a` was approved after coordinator audit.
+
+Release provenance: tag `v0.0.193` is `f297e93b`. It contains the original denial/recovery fix `b9379ee0` and the account/Stopped changes, but **does not contain** the later optional-notification cache correction `cc44de8a`. The correction is for local main and a future release; no containing release has been created or assigned by this integration. The v193 “Device registration failed” screenshot is tracked separately as task112 and is not evidence that this cache correction is installed.
