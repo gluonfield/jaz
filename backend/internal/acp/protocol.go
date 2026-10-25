@@ -215,7 +215,20 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		}
 	}
 	if job.turn != nil {
-		job.turn.trackProviderRetries(warning, warning == nil && (messageChunk != "" || thoughtChunk != "" || toolEvent != nil))
+		_, planned := update.(acpschema.PlanSessionUpdate)
+		progress := warning == nil && (messageChunk != "" || thoughtChunk != "" || toolEvent != nil || planned)
+		job.turn.trackProviderRetries(warning, progress)
+		retrying := warning != nil && !warning.notice()
+		if progress || retrying {
+			nextError := ""
+			if retrying {
+				nextError = warning.message()
+			}
+			if job.Error != nextError {
+				job.Error = nextError
+				publishACP = true
+			}
+		}
 	}
 	job.UpdatedAt = now
 	job.LastEventAt = now
@@ -230,7 +243,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 			job.mu.Lock()
 			job.Title = session.Title
 			job.mu.Unlock()
-			publishACP = updated && session.Title != currentTitle
+			publishACP = publishACP || updated && session.Title != currentTitle
 		}
 	}
 	if messageChunk != "" {

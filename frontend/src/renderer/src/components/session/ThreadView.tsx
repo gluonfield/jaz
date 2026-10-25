@@ -408,6 +408,7 @@ export function ThreadView({
     transcriptEvents,
     displayEvents,
     activity,
+    retrying,
     planAvailable,
     planActive,
     goalAvailable,
@@ -571,6 +572,7 @@ export function ThreadView({
                               agent={session.runtime_ref?.agent}
                               running={sessionRunning}
                               activity={activity}
+                              retrying={retrying}
                               activeOperation={detail.data?.acp_active_operation}
                               updatedAt={session.updated_at}
                               lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
