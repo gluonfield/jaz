@@ -88,12 +88,22 @@ func TestRestartResumesBotAndWorkerAndReturnsResult(t *testing.T) {
 	}
 }
 
+var earlyReplyLocks = sessionlock.New()
+
 type earlyReplyManager struct {
 	*acp.Manager
+	hold  string
 	speak func(acp.InternalTurnRequest) error
 }
 
 func (m earlyReplyManager) StartInternalTurn(ctx context.Context, req acp.InternalTurnRequest) (acp.Job, error) {
+	unlock := earlyReplyLocks.Lock(m.hold)
+	defer unlock()
+	// Keep scripted tools inside their turn before the fake provider can finish it.
+	if err := os.WriteFile(m.hold, nil, 0o600); err != nil {
+		return acp.Job{}, err
+	}
+	defer os.Remove(m.hold)
 	job, err := m.Manager.StartInternalTurn(ctx, req)
 	if err == nil {
 		err = m.speak(req)
@@ -108,7 +118,7 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	root := t.TempDir()
-	first := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, map[string]string{"JAZ_FAKE_ACP_BLOCK_PROMPT": "1"}, "", "")
+	first := newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, map[string]string{"JAZ_FAKE_ACP_BLOCK_PROMPT": "1", "JAZ_FAKE_ACP_THINK_HOLD": filepath.Join(root, "scripted-turn")}, "", "")
 	t.Cleanup(first.Close)
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
@@ -132,7 +142,7 @@ func TestEarlyPeerReplySurvivesServiceAndProviderRestart(t *testing.T) {
 	routines := loops.NewService(store, nil, logger)
 	service := bots.NewService(store, root, first, handler, handler, routines, bus, logger)
 	spoke := make(chan error, 1)
-	handler.ACP = earlyReplyManager{Manager: first, speak: func(req acp.InternalTurnRequest) error {
+	handler.ACP = earlyReplyManager{Manager: first, hold: filepath.Join(root, "scripted-turn"), speak: func(req acp.InternalTurnRequest) error {
 		err := service.Say(req.Session, "The complete reply.")
 		spoke <- err
 		return err
@@ -194,7 +204,7 @@ func TestThreadABotStartsForAnotherBotReportsBackToThatBotAcrossARestart(t *test
 	// The helper hands the asker's request to a thread, then reports what
 	// the thread found.
 	act := func(p *jazProcess) earlyReplyManager {
-		return earlyReplyManager{Manager: p.manager, speak: func(req acp.InternalTurnRequest) error {
+		return earlyReplyManager{Manager: p.manager, hold: filepath.Join(p.root, "scripted-turn"), speak: func(req acp.InternalTurnRequest) error {
 			turns <- req
 			switch {
 			case strings.HasPrefix(req.Message, "[message from Asker]"):
@@ -275,7 +285,7 @@ func TestThreadResultReachesTheUserWhenNoBotWaitsForIt(t *testing.T) {
 	tools := acp.NewMCPTools(jaz.manager)
 	completions := make(chan acp.InternalTurnRequest, 4)
 	worker := make(chan string, 1)
-	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, speak: func(req acp.InternalTurnRequest) error {
+	jaz.server.ACP = earlyReplyManager{Manager: jaz.manager, hold: filepath.Join(jaz.root, "scripted-turn"), speak: func(req acp.InternalTurnRequest) error {
 		switch {
 		case req.Session == helper.ID && strings.HasPrefix(req.Message, "[message from Asker]"):
 			_, thread, err := tools.Create(jaz.ctx, callAs(helper.ID), acp.MCPCreateInput{Prompt: "Draft the report until released", Commitment: owe(t, store, helper.ID)})
@@ -353,7 +363,7 @@ func TestAResultForABotDeletedDuringTheAnswerReachesTheUserAfterARestart(t *test
 	worker := make(chan string, 1)
 	var owed int64
 	act := func(p *jazProcess) earlyReplyManager {
-		return earlyReplyManager{Manager: p.manager, speak: func(req acp.InternalTurnRequest) error {
+		return earlyReplyManager{Manager: p.manager, hold: filepath.Join(p.root, "scripted-turn"), speak: func(req acp.InternalTurnRequest) error {
 			if req.Session != helper.ID {
 				return nil
 			}
