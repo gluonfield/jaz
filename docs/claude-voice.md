@@ -48,6 +48,8 @@ A Claude connection must work with a remote Jaz server and local clients. Readin
 
 ## Pending Live Check
 
-Both Jaz `browser_status` and `computer_status` report disconnected for this conversation. Augustinas has been asked to open it in Jaz Desktop. Resume by observing Claude's signed-in voice session, verifying the handshake, authentication and model identity, then implementing the smallest measured adapter. Production code is unchanged; there is no Claude voice support yet.
+Augustinas confirmed that this conversation is already open in Jaz Desktop and Claude Desktop is also open. Both Jaz tools still report disconnected. Read-only checks confirm Browser is enabled in desktop mode and Computer use is enabled. An authenticated MCP check with this thread's explicit session ID returns the same disconnection, so this is not evidence of a missing session header. The HTTP handlers and frontend hooks use the same canonical session identity; no concrete attachment defect has been established.
+
+Asked Augustinas to reload the Jaz window once with Cmd-R to remount the desktop connections. Resume by rechecking attachment, then observing Claude's signed-in voice session and verifying the handshake, authentication and model identity before implementing the smallest measured adapter. Production code is unchanged; there is no Claude voice support yet.
 
 Official feature documentation: [Use voice mode](https://support.claude.com/en/articles/11101966-use-voice-mode).
