@@ -1,6 +1,6 @@
 # Startup Keychain Prompt — Coordinator Audit
 
-Status: scoped renderer fix verified on `jaz/startup-keychain-prompt`, based on v192 (`205e14a6`). Awaiting coordinator audit before local integration. No merge, push, release, credential migration or signing/trust change. Task97 is untouched.
+Status: scoped renderer fix `9d1d84f7` approved for local integration after coordinator audit. Candidate includes local main `973f3827` (Stopped lifecycle `f4d01439` and connected-account visibility). Imported frontend source was inspected; there were no conflicts, and the approved fix is unchanged. Frozen-revision gate and local merge receipts are in `runs/startup-keychain-prompt/integration/`. Automatic-connect policy, credentials, browser data and native provider auth are preserved. No push, tag, release, install, restart, credential migration or signing/trust change is authorized.
 
 ## Installed Build and Cause
 
