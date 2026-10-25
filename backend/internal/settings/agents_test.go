@@ -85,6 +85,27 @@ func TestNormalizeAgentDefaultsAllowsClaudeOnlyReasoningEffort(t *testing.T) {
 	}
 }
 
+func TestKimiNativeEffortSurvivesSettingsSave(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentKimi: {
+		Enabled: true, Model: "native-model", ReasoningEffort: "max",
+	}}}
+	normalized, err := NormalizeAgentDefaults(input, acp.BuiltinAgents(), acp.ModelCapabilities{Catalog: modelcatalog.NewService(nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, err := SaveAgentDefaults(store, normalized)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.ACP[acp.AgentKimi].Model != "native-model" || saved.ACP[acp.AgentKimi].ReasoningEffort != "max" {
+		t.Fatalf("native selection changed: %#v", saved.ACP[acp.AgentKimi])
+	}
+}
+
 func TestNormalizeAgentDefaultsRejectsClaudeOnlyReasoningForOtherACPAgents(t *testing.T) {
 	input := testAgentDefaultsSeed()
 	codex := input.ACP["codex"]
