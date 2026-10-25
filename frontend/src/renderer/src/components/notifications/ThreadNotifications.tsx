@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { apiAuthToken } from '@/lib/api/client'
+import { cachedApiAuthToken } from '@/lib/api/client'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useConnection } from '@/lib/connection'
 import { useThreadNotificationsEnabled } from '@/lib/notificationSettings'
@@ -7,13 +7,15 @@ import { useThreadNotificationsEnabled } from '@/lib/notificationSettings'
 export function ThreadNotifications() {
   const configure = clientRuntime.configureThreadNotifications
   const [enabled] = useThreadNotificationsEnabled()
-  const { url } = useConnection()
-  const token = apiAuthToken(url)
+  const connection = useConnection()
 
   useEffect(() => {
     if (!configure) return
-    void configure(enabled ? { enabled: true, baseUrl: url, token } : { enabled: false })
-  }, [configure, enabled, token, url])
+    const { status, url } = connection
+    void configure(enabled && (status === 'connected' || status === 'reconnecting')
+      ? { enabled: true, baseUrl: url, token: cachedApiAuthToken(url) }
+      : { enabled: false })
+  }, [configure, enabled, connection])
 
   return null
 }

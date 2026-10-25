@@ -4,11 +4,22 @@ import { createRequire } from 'node:module'
 import * as React from 'react'
 
 const bundle = await build({
-  entrypoints: [new URL('./connection.ts', import.meta.url).pathname],
+  entrypoints: ['connection-fixture'],
   target: 'browser',
   format: 'cjs',
   external: ['react'],
   define: { 'import.meta.env': '{}' },
+  plugins: [{
+    name: 'connection-fixture',
+    setup(builder) {
+      builder.onResolve({ filter: /^connection-fixture$/ }, () => ({ path: 'entry', namespace: 'fixture' }))
+      builder.onResolve({ filter: /^\//, namespace: 'fixture' }, (args) => ({ path: args.path, namespace: 'file' }))
+      builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
+        contents: `export * from ${JSON.stringify(new URL('./connection.ts', import.meta.url).pathname)}\nexport { ThreadNotifications } from ${JSON.stringify(new URL('../components/notifications/ThreadNotifications.tsx', import.meta.url).pathname)}`,
+        loader: 'ts',
+      }))
+    },
+  }],
 })
 if (!bundle.success) {
   throw new AggregateError(bundle.logs)
@@ -44,8 +55,9 @@ async function settle() {
   }
 }
 
-async function fixture({ auth, pairing = false, storedValues = [], decryptCredential } = {}) {
+async function fixture({ auth, pairing = false, storedValues = [], decryptCredential, health, notifications = false, startLocalBackend, renderNotifications = false } = {}) {
   const stored = new Map(storedValues)
+  const configured = []
   const timers = new Map()
   let nextTimer = 0
   replace('window', {
@@ -54,6 +66,8 @@ async function fixture({ auth, pairing = false, storedValues = [], decryptCreden
     jaz: {
       apiBaseUrl: 'http://127.0.0.1:5299',
       decryptCredential,
+      startLocalBackend,
+      ...(notifications ? { configureThreadNotifications: (config) => configured.push(config) } : {}),
       getDeviceIdentity: async () => ({ device_id: 'identity', public_key: 'public' }),
       getDeviceMetadata: async () => ({ name: 'Test device' }),
     },
@@ -64,6 +78,7 @@ async function fixture({ auth, pairing = false, storedValues = [], decryptCreden
     setItem: (key, value) => stored.set(key, value),
     removeItem: (key) => stored.delete(key),
   })
+  window.localStorage = localStorage
   replace('setTimeout', (callback, delay) => {
     timers.set(++nextTimer, { callback, delay })
     return nextTimer
@@ -75,7 +90,7 @@ async function fixture({ auth, pairing = false, storedValues = [], decryptCreden
       return Response.json({ ok: false })
     }
     if (target.pathname === '/health') {
-      return Response.json({ ok: true, auth_required: true })
+      return health ? health() : Response.json({ ok: true, auth_required: true })
     }
     if (target.pathname === '/v1/devices/register') {
       return Response.json({ token: 'device-token' })
@@ -93,13 +108,18 @@ async function fixture({ auth, pairing = false, storedValues = [], decryptCreden
   })
   const module = { exports: {} }
   evaluate((name) => name === 'react'
-    ? { ...React, useSyncExternalStore: (_subscribe, snapshot) => snapshot() }
+    ? { ...React, useSyncExternalStore: (_subscribe, snapshot) => snapshot(), useEffect: (effect) => effect() }
     : require(name), module, module.exports)
   connection = module.exports
+  if (renderNotifications) {
+    connection.ThreadNotifications()
+  }
   await settle()
   return {
     connection,
     stored,
+    configured,
+    timers,
     async pollPairing() {
       const timer = [...timers.values()].find((entry) => entry.delay === 2_000)
       await timer.callback()
@@ -155,6 +175,135 @@ test('a locked credential store leaves startup in an actionable disconnected sta
     },
   })
   expect(connection.useConnection().status).toBe('disconnected')
-  expect(connection.useConnection().error).toBe('System keychain is locked')
+  expect(connection.useConnection().error).toContain('restart Jaz')
+  expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
+})
+
+test.each([false, true])('offline startup never unlocks a credential for notifications (enabled: %j)', async (enabled) => {
+  let unlocks = 0
+  const { connection, configured } = await fixture({
+    notifications: true,
+    renderNotifications: true,
+    storedValues: [
+      ['jaz.backendUrl', 'https://jaz.example'],
+      ['jaz.backendAuth.https://jaz.example', 'enc:v1:sealed-credential'],
+      ['jaz.notifications.threadFinished', String(enabled)],
+    ],
+    decryptCredential() {
+      unlocks += 1
+      throw new Error('Keychain denied')
+    },
+  })
+  expect(connection.useConnection().status).toBe('disconnected')
+  expect(unlocks).toBe(0)
+  expect(configured).toEqual([{ enabled: false }])
+})
+
+test('remote startup waits for health before unlocking, stops on denial, and recovers after restart', async () => {
+  const target = 'https://jaz.example'
+  let online = false
+  let denied = true
+  const events = []
+  const storedValues = [
+    ['jaz.backendUrl', target],
+    ['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: target })],
+    ['jaz.backendAuth.' + target, 'enc:v1:sealed-credential'],
+  ]
+  const options = {
+    storedValues,
+    health: () => {
+      events.push('health')
+      return Response.json({ ok: online, auth_required: true }, { status: online ? 200 : 503 })
+    },
+    decryptCredential() {
+      events.push('unlock')
+      if (denied) {
+        throw new Error('Keychain denied')
+      }
+      return 'device-token'
+    },
+    auth: () => Response.json({ ok: true, auth_kind: 'device' }),
+    notifications: true,
+  }
+  const first = await fixture(options)
+  expect(events).toEqual(['health'])
+  online = true
+  const pending = [...first.timers.entries()].find(([, timer]) => timer.delay === 5_000)
+  first.timers.delete(pending[0])
+  await pending[1].callback()
+  first.connection.ThreadNotifications()
+  expect(events).toEqual(['health', 'health', 'unlock'])
+  expect(first.connection.useConnection().error).toContain('restart Jaz')
+  expect(first.timers.size).toBe(0)
+  expect(first.stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
+  first.connection.disconnectBackend()
+  denied = false
+  const restarted = await fixture(options)
+  expect(restarted.connection.useConnection().status).toBe('connected')
+  restarted.connection.ThreadNotifications()
+  expect(events).toEqual(['health', 'health', 'unlock', 'health', 'unlock'])
+  expect(restarted.configured[0]).toEqual({ enabled: true, baseUrl: target, token: 'device-token' })
+  expect(restarted.stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
+})
+
+test('an unauthenticated health probe does not unlock saved credentials', async () => {
+  let unlocks = 0
+  const target = 'https://jaz.example'
+  const { connection } = await fixture({
+    storedValues: [
+      ['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: target })],
+      ['jaz.backendAuth.' + target, 'enc:v1:sealed-credential'],
+    ],
+    health: () => Response.json({ ok: true, auth_required: false }),
+    decryptCredential() {
+      unlocks += 1
+      throw new Error('Keychain denied')
+    },
+  })
+  expect(connection.useConnection().status).toBe('connected')
+  expect(await connection.connectRemote(target)).toBeNull()
+  expect(unlocks).toBe(0)
+})
+
+test('a failed local launch reports its error before touching saved credentials', async () => {
+  let unlocks = 0
+  const { connection } = await fixture({
+    storedValues: [['jaz.backendAuth.http://127.0.0.1:5299', 'enc:v1:sealed-credential']],
+    startLocalBackend: async () => ({ ok: false, error: 'Fixture backend could not start' }),
+    decryptCredential() {
+      unlocks += 1
+      throw new Error('Keychain denied')
+    },
+  })
+  expect(await connection.startLocal()).toBe('Fixture backend could not start')
+  expect(unlocks).toBe(0)
+})
+
+test.each([false, true])('notifications use only credentials resolved by connection verification (auth_required: %j)', async (authRequired) => {
+  const target = 'https://jaz.example'
+  let unlocks = 0
+  let authChecks = 0
+  const { connection, configured, stored } = await fixture({
+    notifications: true,
+    storedValues: [
+      ['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: target })],
+      ['jaz.backendAuth.' + target, 'enc:v1:sealed-credential'],
+    ],
+    health: () => Response.json({ ok: true, auth_required: authRequired }),
+    decryptCredential() {
+      unlocks += 1
+      return 'device-token'
+    },
+    auth() {
+      authChecks += 1
+      return Response.json({ ok: true, auth_kind: 'device' })
+    },
+  })
+  expect(connection.useConnection().status).toBe('connected')
+  expect(unlocks).toBe(authRequired ? 1 : 0)
+  connection.ThreadNotifications()
+  expect(unlocks).toBe(authRequired ? 1 : 0)
+  expect(authChecks).toBe(authRequired ? 1 : 0)
+  expect(configured).toEqual([{ enabled: true, baseUrl: target, token: authRequired ? 'device-token' : '' }])
   expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
 })

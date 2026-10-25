@@ -99,13 +99,18 @@ export function LaunchScreen({ manual = false, onClose }: LaunchScreenProps = {}
   const run = async (target: string, action: () => Promise<string | null>) => {
     setBusy(target)
     setActionError(null)
-    const err = await action()
-    if (err) {
-      setActionError(err)
+    try {
+      const err = await action()
+      if (err) {
+        setActionError(err)
+      } else {
+        onClose?.()
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not open the connection')
+    } finally {
       setBusy(null)
-      return
     }
-    onClose?.()
   }
 
   const onStartLocal = () => run('local', startLocal)

@@ -125,6 +125,9 @@ func (m *Manager) applySideChatUpdate(job *jobState, update acpschema.DecodedSes
 		}
 		m.publishSideChatMessage(job.eventView(), scope, "tool", firstNonEmpty(event.Title, string(event.ToolCallID)), status)
 		return true
+	case acpschema.PlanSessionUpdate:
+		_, side := sideChatScopeFromMeta(event.Meta, job.ID)
+		return side
 	default:
 		return false
 	}

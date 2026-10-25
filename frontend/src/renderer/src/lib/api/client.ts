@@ -156,6 +156,10 @@ function authStorageKey(url: string): string {
   return `${AUTH_KEY_PREFIX}${normalizeBaseUrl(url)}`
 }
 
+export function cachedApiAuthToken(url = apiBaseUrl()): string {
+  return authTokens.get(authStorageKey(url)) ?? ''
+}
+
 export function apiAuthToken(url = apiBaseUrl()): string {
   const key = authStorageKey(url)
   const cached = authTokens.get(key)
