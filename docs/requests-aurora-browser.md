@@ -4,7 +4,7 @@
 - [x] Remove Background Chromium and Extension from UI and backend.
 - [x] Remove backend-mode fields, extension route and external-tab claiming.
 - [x] Verify agent activity reveals its owning browser.
-- [ ] Integrate the final correction locally.
+- [x] Integrate the final correction locally (code `0a8dc58d`).
 
 Jaz has one browser per conversation. Agent navigation, page reads and scripts reveal that conversation’s side panel. Activity in another conversation leaves the current chat alone and reveals the retained browser when its owner is opened.
 
