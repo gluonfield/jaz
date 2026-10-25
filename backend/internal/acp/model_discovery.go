@@ -35,7 +35,7 @@ func (m *Manager) DiscoverModels(ctx context.Context, agent string) (AgentModelC
 		return antigravityModels(ctx, m.probeEnv(agent, cfg))
 	}
 	if agent == AgentKimi {
-		return kimiModels(m.probeEnv(agent, cfg)["KIMI_CODE_HOME"])
+		return m.kimiModels(ctx, cfg)
 	}
 	if agent != AgentMuse {
 		return AgentModelCatalog{Models: (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).AgentModels(agent), DefaultModel: cfg.Model}, nil

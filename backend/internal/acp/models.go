@@ -230,13 +230,13 @@ func (p agentPolicy) supportsReasoningEffort(value string) bool {
 
 func (p agentPolicy) normalizeReasoningEffort(value string) (string, error) {
 	value = strings.TrimSpace(value)
+	if strings.EqualFold(value, "none") && !p.supportsReasoningEffort("none") {
+		value = ""
+	}
 	if len(p.effortOptions) == 0 {
 		return value, nil
 	}
 	value = strings.ToLower(value)
-	if value == "none" && !p.supportsReasoningEffort(value) {
-		value = ""
-	}
 	for _, option := range p.effortOptions {
 		if option.Value == value {
 			return value, nil
@@ -479,7 +479,7 @@ func (m *Manager) applyConfiguredReasoningEffort(
 		return nil, nil
 	}
 	if !agentPolicyForAgent(agentName).usesReasoningEffortConfigOption() && options.effortConfigID == "" {
-		return nil, nil
+		return nil, fmt.Errorf("acp agent %q model %q did not advertise reasoning controls", agentName, model)
 	}
 	if activeModelOptions && !options.effortConfigPresent {
 		return nil, nil
