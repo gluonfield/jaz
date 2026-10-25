@@ -75,7 +75,9 @@ export function useModelReasoningState({
     modelSuggestions,
     modelsLoading: query.isLoading,
     defaultModel,
-    modelsError: query.error?.message,
+    modelsError: query.error?.message || (nativeEnabled && nativeModels.data?.models.length === 0
+      ? 'No models reported by this agent.'
+      : undefined),
     reasoningOptions: reasoning.options,
     effectiveReasoningEffort: reasoning.effectiveEffort,
     reasoningEffortSupported: reasoning.supported,
