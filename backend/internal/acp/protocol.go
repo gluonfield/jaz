@@ -82,6 +82,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 	var thoughtChunk string
 	var thoughtMessageID string
 	var toolEvent *sessionevents.ACPToolCall
+	var planned bool
 	var attention bool
 	now := time.Now().UTC()
 	update, err := acpschema.DecodeSessionUpdate(raw)
@@ -199,6 +200,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		}
 		wasEmpty := len(job.Plan) == 0
 		publishACP = !slices.Equal(job.Plan, plan)
+		planned = publishACP
 		job.Plan = plan
 		attention = publishACP && wasEmpty && len(plan) > 0
 	case acpschema.CurrentModeSessionUpdate:
@@ -215,7 +217,6 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		}
 	}
 	if job.turn != nil {
-		_, planned := update.(acpschema.PlanSessionUpdate)
 		progress := warning == nil && (messageChunk != "" || thoughtChunk != "" || toolEvent != nil || planned)
 		job.turn.trackProviderRetries(warning, progress)
 		retrying := warning != nil && !warning.notice()

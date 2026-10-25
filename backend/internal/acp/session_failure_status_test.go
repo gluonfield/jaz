@@ -67,8 +67,9 @@ func TestProviderRetryStatusClearsWhenTheTurnMakesProgress(t *testing.T) {
 			manager.applyJobUpdate(job, json.RawMessage(`{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"side answer"},"_meta":{"codex":{"sideChat":{"id":"side-1","command":"side"}}}}`))
 			manager.applyJobUpdate(job, json.RawMessage(`{"sessionUpdate":"plan","entries":[{"content":"side work","status":"in_progress","priority":"high"}],"_meta":{"codex":{"sideChat":{"id":"side-1","command":"side"}}}}`))
 			manager.applyJobUpdate(job, json.RawMessage(`{"sessionUpdate":"session_info_update","_meta":{"jetbrains":{"air":{"sessionFailure":{"id":"notice-1","category":"unknown","severity":"warning","title":"Configuration notice"}}}}}`))
+			manager.applyJobUpdate(job, json.RawMessage(`{"sessionUpdate":"plan","entries":[]}`))
 			if snapshot := job.Snapshot(); snapshot.Error != want || len(snapshot.Plan) != 0 {
-				t.Fatal("side chat or configuration notice cleared the primary retry status")
+				t.Fatal("side chat, configuration notice or unchanged plan cleared the primary retry status")
 			}
 			if _, retry := job.turn.retryDelay(sessionFailure{Category: "limit", Actions: []string{"retry"}}); retry {
 				t.Fatal("side chat progress allowed another retry of a failure the provider already retried")
