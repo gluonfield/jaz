@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/gorilla/websocket"
 	"github.com/wins/jaz/backend/internal/computercontrol"
 	"github.com/wins/jaz/backend/internal/httpapi"
 	"github.com/wins/jaz/backend/internal/settings"
@@ -39,8 +38,7 @@ func (h DesktopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		httpapi.WriteError(w, status, err)
 		return
 	}
-	upgrader := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
-	connection, err := upgrader.Upgrade(w, r, nil)
+	connection, err := httpapi.UpgradeWebSocket(w, r)
 	if err != nil {
 		return
 	}

@@ -25,8 +25,6 @@ func NormalizeActionInput(input ActionInput) (ActionInput, error) {
 	}
 	switch input.Action {
 	case ActionStatus, ActionTabs, ActionState, ActionAXState, ActionScreenshot, ActionClick, ActionHover:
-	case ActionClaimTab:
-		input.TabID, err = requiredText(input.TabID, "tab_id", browserTabIDLimit)
 	case ActionNavigate:
 		input.URL, err = requiredText(input.URL, "url", browserURLLimit)
 	case ActionFind:

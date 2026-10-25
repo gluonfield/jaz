@@ -55,3 +55,12 @@ test('a starting session names its agent until stale state takes over', () => {
   expect(renderIndicator({ activity: 'starting', updatedAt: new Date(Date.now() - 600_000).toISOString() }))
     .toContain('Codex is still marked running')
 })
+
+test('a provider retry replaces the stale warning with its own status', () => {
+  const html = renderIndicator({ retrying: 'Reconnecting... 2/5', updatedAt: new Date(Date.now() - 5 * 60_000).toISOString() })
+  expect(html).toContain('Reconnecting... 2/5')
+  expect(html).toContain('- 5m ago')
+  expect(html).toContain('text-danger')
+  expect(html).not.toContain('still marked running')
+  expect(renderIndicator({ retrying: 'Reconnecting... 2/5', running: false })).toBe('')
+})

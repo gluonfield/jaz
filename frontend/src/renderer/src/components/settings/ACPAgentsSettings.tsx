@@ -249,7 +249,6 @@ function ACPAgentRow({
     defaultModel,
     modelsError,
     reasoningOptions,
-    reasoningEffortSupported,
     reasoningForModel,
   } = useModelReasoningState({
     settings,
@@ -261,7 +260,6 @@ function ACPAgentRow({
     selectedProvider,
     settingsMode: true,
   })
-  const normalizedReasoningEffort = reasoningEffortSupported ? reasoningEffort : ''
   const update = useCallback((next: Partial<typeof current>) => {
     const value = { ...current, ...next }
     const nextSettings = {
@@ -273,12 +271,6 @@ function ACPAgentRow({
     }
     onChange(normalizeACPAgentEnabled(nextSettings, agent))
   }, [agent, current, onChange, settings])
-  useEffect(() => {
-    if (reasoningEffort !== normalizedReasoningEffort) {
-      update({ reasoning_effort: normalizedReasoningEffort })
-    }
-  }, [normalizedReasoningEffort, reasoningEffort, update])
-
   return (
     <SettingsCard className="overflow-hidden">
       {/* Collapsed header: the whole row toggles expand; the Switch stays live so
@@ -424,7 +416,7 @@ function ACPAgentRow({
         {reasoningOptions.some((option) => option.value !== '') ? (
           <SettingsRow title="Reasoning" description="Reasoning effort copied into new threads.">
             <Select
-              value={normalizedReasoningEffort}
+              value={reasoningEffort}
               options={reasoningOptions}
               disabled={disabled}
               onChange={(reasoning_effort) => update({

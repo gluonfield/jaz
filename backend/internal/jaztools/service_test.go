@@ -72,10 +72,6 @@ func (fakeBrowserBackend) Call(context.Context, browsercontrol.ActionInput) (bro
 	return browsercontrol.ActionOutput{Status: "ok", Text: "fake browser"}, nil
 }
 
-func (fakeBrowserBackend) Status() browsercontrol.ExtensionStatus {
-	return browsercontrol.ExtensionStatus{Connected: true}
-}
-
 func (fakeWhatsAppSender) SendMessage(context.Context, whatsapp.SendMessageRequest) (whatsapp.SendMessageResult, error) {
 	return whatsapp.SendMessageResult{}, nil
 }
@@ -845,9 +841,6 @@ func TestBrowserToolsUseDirectThreadSurface(t *testing.T) {
 	}
 	if !strings.Contains(findTool(t, session, browsercontrol.ToolReadPage).Description, "do not invent CSS selectors") {
 		t.Fatal("read-page tool does not enforce the state/ref workflow")
-	}
-	if !strings.Contains(findTool(t, session, browsercontrol.ToolClaimTab).Description, "only when the user explicitly asks") {
-		t.Fatal("claim-tab tool does not guard existing user tabs")
 	}
 	if tool := findTool(t, session, browsercontrol.ToolReadPage); tool.Annotations == nil || !tool.Annotations.ReadOnlyHint {
 		t.Fatal("read-page tool is not marked read-only")

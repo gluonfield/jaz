@@ -148,7 +148,8 @@ func (c ModelCapabilities) ValidateReasoningEffort(agent, providerID, model, eff
 		return err
 	}
 	found, ok := findCapabilityModel(models, model)
-	if !ok && agentOwnsModelMetadata(agent, providerID) && agentPolicyForAgent(agent).supportsReasoningEffort(effort) {
+	if !ok && agentOwnsModelMetadata(agent, providerID) {
+		// Native session config options validate the effort before a turn starts.
 		return nil
 	}
 	if !ok || found.Reasoning.Status == modelcatalog.ReasoningUnavailable {

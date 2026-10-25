@@ -12,7 +12,7 @@ import { FileReaderLinkProvider, PreviewLinkProvider, RenderedMarkdown } from '@
 import { isPreviewWebviewPending, type PreviewWebviewElement } from '@/components/session/previewWebview'
 import type { Session } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
-import { setApiBaseUrl } from '@/lib/api/client'
+import { setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import { connectRemote, disconnectBackend } from '@/lib/connection'
 import type { BrowserAction, BrowserActionResult } from '@/lib/browserApi'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
@@ -27,7 +27,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
   const root = createRoot(element)
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   queryClient.setQueryData(keys.onboardingState, { completed: true })
-  queryClient.setQueryData(keys.browserSettings, { enabled: false, mode: 'desktop' })
+  queryClient.setQueryData(keys.browserSettings, { enabled: false })
   queryClient.setQueryData(keys.health, { capabilities: { session_file_read: true } })
   queryClient.setQueryData(keys.sessionRepo('tabs'), { git: false })
   queryClient.setQueryData(keys.sessionRepoChanges('tabs'), { files: [{ path: 'change.ts', status: 'modified', added: 1, deleted: 0 }], total_added: 1, total_deleted: 0 })
@@ -529,7 +529,8 @@ export async function exerciseSidePanelTabs(): Promise<void> {
 
     const backend = await window.smoke.backend()
     setApiBaseUrl(backend)
-    queryClient.setQueryData(keys.browserSettings, { enabled: true, mode: 'desktop' })
+    setApiAuthToken(backend, 'browser-smoke-credential')
+    queryClient.setQueryData(keys.browserSettings, { enabled: true })
     const action = async (input: BrowserAction | { action: 'tabs' } | { action: 'script'; code: string }): Promise<BrowserActionResult> => {
       const endpoint = input.action === 'script' ? '/exercise-script/tabs' : '/v1/sessions/tabs/browser'
       const response = await fetch(backend + endpoint, { method: 'POST', body: JSON.stringify(input) })

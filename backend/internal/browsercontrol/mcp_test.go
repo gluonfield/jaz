@@ -22,24 +22,6 @@ func (b *recordingBackend) Call(_ context.Context, input ActionInput) (ActionOut
 	return b.outputs[input.Action], nil
 }
 
-func TestClaimTabUsesExplicitTabAndSession(t *testing.T) {
-	backend := &recordingBackend{outputs: map[string]ActionOutput{
-		ActionClaimTab: {Status: "ok", Text: "claimed"},
-	}}
-	_, out, err := (directTools{backend: backend}).ClaimTab(context.Background(), &mcp.CallToolRequest{
-		Extra: &mcp.RequestExtra{Header: mcpsession.Header("browser-session-1")},
-	}, ClaimTabInput{TabID: "42"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out.Text != "claimed" || len(backend.inputs) != 1 {
-		t.Fatalf("out=%#v inputs=%#v", out, backend.inputs)
-	}
-	if input := backend.inputs[0]; input.Action != ActionClaimTab || input.TabID != "42" || input.Session != "browser-session-1" {
-		t.Fatalf("claim input=%#v", input)
-	}
-}
-
 func TestUnavailableBackendReportsMissingBridge(t *testing.T) {
 	session := connectBrowserMCP(t, nil)
 
@@ -171,9 +153,6 @@ func TestScrollAndWaitRejectInvalidBounds(t *testing.T) {
 func TestDirectToolsRejectOversizedInputs(t *testing.T) {
 	tools := directTools{backend: &recordingBackend{}}
 	request := &mcp.CallToolRequest{}
-	if _, _, err := tools.ClaimTab(context.Background(), request, ClaimTabInput{TabID: strings.Repeat("x", browserTabIDLimit+1)}); err == nil {
-		t.Fatal("oversized tab id was accepted")
-	}
 	if _, _, err := tools.Navigate(context.Background(), request, NavigateInput{URL: strings.Repeat("x", browserURLLimit+1)}); err == nil {
 		t.Fatal("oversized URL was accepted")
 	}

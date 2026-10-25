@@ -150,11 +150,11 @@ func TestSharingUsesScopedSingleUseEnrollment(t *testing.T) {
 }
 
 func TestInternalEndpointsRequireCredentialsBehindTunnel(t *testing.T) {
-	for _, path := range []string{"/mcp/jaztools", "/mcp/jazmem", "/mcp/proxy", "/v1/browser/extension"} {
+	for _, path := range []string{"/mcp/jaztools", "/mcp/jazmem", "/mcp/proxy", "/v1/sessions/thread/browser"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "http://jaz.example.com"+path, nil)
 			req.RemoteAddr = "127.0.0.1:12345"
-			req.Header.Set("Origin", "chrome-extension://abcdefghijklmnopabcdefghijklmnop")
+			req.Header.Set("Origin", "https://web.jaz.chat")
 			req.Header.Set("X-Forwarded-Proto", "https")
 			res := httptest.NewRecorder()
 			(&Server{AuthKey: "root"}).Handler().ServeHTTP(res, req)
@@ -240,14 +240,14 @@ func TestRevocationClosesExistingTerminal(t *testing.T) {
 		{Pattern: "DELETE /v1/devices/{id}", Handler: http.HandlerFunc(handler.Revoke)},
 	}}).Handler())
 	t.Cleanup(srv.Close)
-	dialer := websocket.Dialer{Subprotocols: []string{"jaz-auth." + phone.Token}}
+	dialer := websocket.Dialer{Subprotocols: []string{"jaz", "jaz-auth." + phone.Token}}
 	conn, response, err := dialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/v1/sessions/"+session.ID+"/terminal", http.Header{"Origin": {"https://web.jaz.chat"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if response.Header.Get("Sec-WebSocket-Protocol") != "" {
-		t.Fatal("credential was echoed in the upgrade response")
+	if response.Header.Get("Sec-WebSocket-Protocol") != "jaz" {
+		t.Fatal("upgrade must negotiate jaz without echoing the credential")
 	}
 	var message terminal.Message
 	if err := conn.ReadJSON(&message); err != nil || message.Type != "ready" {

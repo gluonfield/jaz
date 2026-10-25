@@ -61,7 +61,7 @@ export function stripProgressSignal(event: SessionEvent): SessionEvent {
 }
 
 export function sessionEventErrorMessage(event: SessionEvent): string {
-  return event.acp?.error?.trim() ?? ''
+  return event.acp?.state === 'running' ? '' : event.acp?.error?.trim() ?? ''
 }
 
 export function modeStateKnown(modes?: ACPModeState): boolean {
@@ -327,6 +327,10 @@ export function deriveSessionView(
   // agent's first streamed event for this session ends that wait.
   const agentStarting = acpState === 'starting' && !liveEvents.some((event) => event.acp?.id === session.id)
   const activity: TurnActivity = agentStarting ? 'starting' : latestActivity?.type === 'acp_thought' ? 'thinking' : 'working'
+  // A running turn's error is the provider retrying a failure; every envelope
+  // carries it until the turn makes progress.
+  const ownStatus = transcriptEvents.findLast((event) => event.acp?.id === session.id)?.acp
+  const retrying = ownStatus?.state === 'running' ? ownStatus.error?.trim() : undefined
   // What the server said, without the snapshot events this page builds.
   const serverEvents = coalesceSessionEvents([...(overview?.agent_events ?? []), ...persistedEvents, ...liveEvents])
   const agentSession = serverEvents.findLast((event) => event.session_id === session.id && (event.agent_session || event.type === 'agent_switch'))?.agent_session
@@ -339,6 +343,7 @@ export function deriveSessionView(
     displayEvents,
     latestUserAt,
     activity,
+    retrying,
     planAvailable,
     planActive,
     goalAvailable,

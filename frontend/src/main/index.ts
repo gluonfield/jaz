@@ -414,11 +414,14 @@ app.whenReady().then(() => {
 
   configureAppPermissions(session.defaultSession)
   if (process.platform === 'darwin') {
-    app.dock?.setIcon(appIcon)
+    // Development runs inside Electron.app, so it borrows the Jaz icon. Packaged builds keep the bundle icon,
+    // which follows the system icon style.
+    if (!app.isPackaged) {
+      app.dock?.setIcon(appIcon)
+    }
     app.setAboutPanelOptions({
       applicationName: APP_NAME,
       applicationVersion: app.getVersion(),
-      iconPath: appIcon,
     })
   }
   setupLauncher((window) => connectionSession.attach(window))

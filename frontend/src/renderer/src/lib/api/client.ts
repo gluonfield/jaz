@@ -134,7 +134,7 @@ export function apiWebSocketProtocols(): string[] {
     throw new Error('Remote connections require HTTPS')
   }
   const token = apiAuthToken()
-  return token ? [`jaz-auth.${token}`] : []
+  return token ? ['jaz', `jaz-auth.${token}`] : []
 }
 
 export function apiWebSocket(path: string): WebSocket {
@@ -161,6 +161,7 @@ function authStorageKey(url: string): string {
 
 export function cachedApiAuthToken(url = apiBaseUrl()): string {
   return authTokens.get(authStorageKey(url)) ?? ''
+
 }
 
 export const apiAuthToken = cachedApiAuthToken

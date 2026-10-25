@@ -36,6 +36,8 @@ import { exerciseImages } from './images'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
 import { exerciseConnectionSecurity } from './connection-security'
+import { exerciseBrowserVisibility } from './browser-visibility'
+import { apiBaseUrl, apiWebSocketProtocols, setApiAuthToken } from '@/lib/api/client'
 
 declare global {
   interface Window {
@@ -83,6 +85,21 @@ function Fixture() {
       stage = next
     }
     const timeout = setTimeout(() => window.smoke.result({ ok: false, error: 'Browser smoke timed out', stage, pending: [...pending.values()] }), Number(new URLSearchParams(location.search).get('timeout') || 30000))
+    const serveBrowser = (socket: WebSocket) => {
+      socket.onmessage = async (event) => {
+        const request = JSON.parse(event.data)
+        pending.set(request.id, request.method + ' ' + String(request.params?.expression ?? '').slice(0, 100))
+        try {
+          const result = await browser.call(request)
+          socket.send(JSON.stringify({ id: request.id, result }))
+        } catch (error) {
+          socket.send(JSON.stringify({ id: request.id, error: { code: -32000, message: String(error) } }))
+        } finally {
+          pending.delete(request.id)
+        }
+      }
+      socket.addEventListener('close', () => browser.cancel())
+    }
     const run = async () => {
       const evaluate = async (expression: string) => {
         const result = await browser.call({ method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }) as { result: { value: unknown } }
@@ -91,9 +108,17 @@ function Fixture() {
       const suite = new URLSearchParams(location.search).get('suite')
       if (!suite || suite === 'connection-security') {
         progress('host device administration and saved MCP credentials')
-        await exerciseConnectionSecurity()
+        await exerciseConnectionSecurity(serveBrowser)
         if (suite === 'connection-security') {
-          window.smoke.result({ ok: true, checks: ['host-only device management and saved-secret edit/removal at desktop and phone widths'] })
+          window.smoke.result({ ok: true, checks: ['authenticated Chromium MCP navigation, reading and trusted input; invalid credential rejection; non-secret protocol negotiation', 'device/MCP security and side-browser-only settings at desktop and phone widths'] })
+          return
+        }
+      }
+      if (!suite || suite === 'browser-visibility') {
+        progress('agent browser panel visibility')
+        await exerciseBrowserVisibility()
+        if (suite === 'browser-visibility') {
+          window.smoke.result({ ok: true, checks: ['agent navigation, reads and scripts reveal their owning browser; background activity reveals on return and preserves the page'] })
           return
         }
       }
@@ -375,19 +400,9 @@ awaitPromise:true
       }
       const backend = await window.smoke.backend()
       progress('MCP and accessibility')
-      const socket = new WebSocket(`${backend.replace('http:', 'ws:')}/v1/sessions/browser-fixture/browser`)
-      socket.onmessage = async (event) => {
-        const request = JSON.parse(event.data)
-        pending.set(request.id, request.method + ' ' + String(request.params?.expression ?? '').slice(0, 100))
-        try {
-          const result = await browser.call(request)
-          socket.send(JSON.stringify({ id: request.id, result }))
-        } catch (error) {
-          socket.send(JSON.stringify({ id: request.id, error: { code: -32000, message: String(error) } }))
-        } finally {
-          pending.delete(request.id)
-        }
-      }
+      setApiAuthToken(apiBaseUrl(), 'browser-smoke-credential')
+      const socket = new WebSocket(`${backend.replace('http:', 'ws:')}/v1/sessions/browser-fixture/browser`, apiWebSocketProtocols())
+      serveBrowser(socket)
       await new Promise((resolve, reject) => {
         socket.onopen = resolve
         socket.onerror = reject

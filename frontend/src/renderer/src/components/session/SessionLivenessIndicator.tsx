@@ -8,8 +8,9 @@ import {
   type RunSignal,
 } from '@/lib/sessionLiveness'
 
-function detailFor(signal: RunSignal, ageMs: number | undefined): string {
+function detailFor(signal: RunSignal, ageMs: number | undefined, retrying: boolean): string {
   const age = formatDuration(ageMs)
+  if (retrying) return age ? `- ${age} ago` : ''
   if (signal === 'live') return age ? `- live ${age} ago` : '- live'
   if (signal === 'quiet') return age ? `- quiet for ${age}` : '- quiet'
   if (signal === 'stale') return age ? `no updates for ${age}` : 'no recent updates'
@@ -22,6 +23,7 @@ export function SessionLivenessIndicator({
   agent,
   running,
   activity = 'working',
+  retrying,
   activeOperation,
   updatedAt,
   lastActivityAt,
@@ -29,6 +31,7 @@ export function SessionLivenessIndicator({
   agent?: string
   running: boolean
   activity?: TurnActivity
+  retrying?: string
   activeOperation?: string
   updatedAt: string
   lastActivityAt?: string
@@ -48,8 +51,9 @@ export function SessionLivenessIndicator({
   }, [signal])
 
   const stale = signal === 'stale'
-  const detail = detailFor(signal, ageMs)
-  const label = livenessLabel(agent, activeOperation, stale, activity)
+  const alert = stale || Boolean(retrying)
+  const detail = detailFor(signal, ageMs, Boolean(retrying))
+  const label = retrying || livenessLabel(agent, activeOperation, stale, activity)
 
   return (
     <AnimatePresence initial={false}>
@@ -61,10 +65,10 @@ export function SessionLivenessIndicator({
           exit={{ opacity: 0, y: 4, scale: 0.98 }}
           transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
           className={`flex w-fit max-w-full items-center gap-1.5 text-sm leading-5 ${
-            stale ? 'text-danger' : 'text-ink-3 live-shimmer'
+            alert ? 'text-danger' : 'text-ink-3 live-shimmer'
           }`}
         >
-          {stale ? (
+          {alert ? (
             <CircleAlert className="size-3.5 shrink-0" aria-hidden />
           ) : null}
           <span className="min-w-0 truncate">{label}</span>

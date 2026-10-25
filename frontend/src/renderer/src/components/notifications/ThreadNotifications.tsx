@@ -12,11 +12,10 @@ export function ThreadNotifications() {
   useEffect(() => {
     if (!configure || !ownsConnection) return
     const { status, url } = connection
-    if (enabled && (status === 'connected' || status === 'reconnecting')) {
-      void configure({ enabled: true, baseUrl: url, token: cachedApiAuthToken(url) })
-      return
-    }
-    void configure({ enabled: false })
+    void configure(enabled && (status === 'connected' || status === 'reconnecting')
+      ? { enabled: true, baseUrl: url, token: cachedApiAuthToken(url) }
+      : { enabled: false })
+
   }, [configure, enabled, connection])
 
   return null
