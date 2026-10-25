@@ -81,9 +81,14 @@ func TestStoppedTaskSurvivesFollowupsUserMessagesQueuesAndJazRestart(t *testing.
 	update(storage.CommitmentPending, "", true)
 	jaz.cancel(worker.ThreadID)
 	update(storage.CommitmentPending, "The user supplied a supported input. Review it with the revised instructions.", false)
-	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: worker.ThreadID, Message: "Fresh reviewed instructions", Completion: acp.CompletionAsync}); err != nil {
+	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: worker.ThreadID, Message: "Fresh reviewed instructions until released", Completion: acp.CompletionAsync}); err != nil {
 		t.Fatal(err)
 	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, worker.ThreadID)
+	if turn := jaz.session(worker.ThreadID).Turn; turn == nil || !turn.ContinuationOf.IsZero() {
+		t.Fatalf("reactivated task inherited old lineage: %+v", turn)
+	}
+	jaz.release()
 	jaz.idle(worker.ThreadID)
 	if jaz.promptsContaining("Old task continuation") != 0 || jaz.promptsContaining("Fresh reviewed instructions") != 1 {
 		t.Fatal("resume replayed old instructions or missed the new instructions")

@@ -1,6 +1,6 @@
 # Restart continuation: evidence and repair design
 
-2026-10-25. Investigation only, based on v193 `f297e93b`. Lifecycle implementation awaits independent design review.
+2026-10-25. Original investigation based on v193 `f297e93b`. Independent design review accepted F2/F4's bounded lineage/finalizer corrections and F3's confirmation-write liveness correction. The local implementation is documented in `restart-agent-continuation-implementation.md` and awaits independent after-review before integration. Automatic ambiguous-continuation recovery remains open.
 
 ## Finding
 
@@ -40,7 +40,7 @@ Installed app metadata reports `0.0.193`, Go 1.26.9, revision `f297e93b23a2151f7
 5. Transport records the continuation as `sending` before writing. First primary output or its prompt response would confirm it.
 6. Shutdown preserves that current turn. The next startup sees the unresolved **continuation**, but has no typed record of its acknowledged origin. `FailInterruptedTurn` uses the task-unconfirmed error and terminal completion path.
 
-An independent possible cause remains confirmation-write failure: `prompt_delivery.go:63–66` suppresses further confirmation attempts after the first attempt, including a failed one. That is documented fail-closed behavior, and is not demonstrated as the installer cause.
+Before the local patch, `prompt_delivery.go:63–66` suppressed further confirmation attempts after the first attempt, including a failed one. F3 identifies this as a separate liveness defect, now corrected to permit a later qualifying observation to retry persistence. A historical confirmation-write failure is not demonstrated as the installer cause.
 
 ## Reproduction and safety controls
 
@@ -97,4 +97,4 @@ GOTOOLCHAIN=go1.26.3 go test -overlay ../runs/restart-agent-continuation/overlay
 GOTOOLCHAIN=go1.26.3 go test -overlay ../runs/restart-agent-continuation/unsafe-overlay.json ./internal/acp -run '^TestContinuationRestartDiagnostic/(codex|claude)/acted$' -count=1 -v
 ```
 
-The second command must fail on duplicate effects. No lifecycle implementation, integration, release or live repair has been made.
+The second command must fail on duplicate effects against the frozen diagnostic base. These preserved overlays describe the original investigation; current normal-path regression coverage and verification are listed in `restart-agent-continuation-implementation.md`. No integration, release or live repair has been made.

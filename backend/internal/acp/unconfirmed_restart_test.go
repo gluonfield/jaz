@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -173,6 +172,7 @@ type confirmationStore struct {
 	acp.Store
 	attempts      atomic.Int32
 	reject        bool
+	rejectFirst   int32
 	rejectSending bool
 }
 
@@ -181,8 +181,8 @@ func (s *confirmationStore) SetTurnPromptState(id, agentSessionID string, starte
 		return errors.New("sending write unavailable")
 	}
 	if state == storage.PromptConfirmed {
-		s.attempts.Add(1)
-		if s.reject {
+		attempt := s.attempts.Add(1)
+		if s.reject || attempt <= s.rejectFirst {
 			return errors.New("confirmation write unavailable")
 		}
 	}
@@ -191,16 +191,20 @@ func (s *confirmationStore) SetTurnPromptState(id, agentSessionID string, starte
 
 func TestPromptConfirmationIsRecordedOncePerTurn(t *testing.T) {
 	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude} {
-		for _, reject := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/reject=%t", agent, reject), func(t *testing.T) {
+		for _, failure := range []string{"none", "transient", "persistent"} {
+			t.Run(agent+"/"+failure, func(t *testing.T) {
 				store, root := newTestStore(t)
-				counted := &confirmationStore{Store: store, reject: reject}
+				counted := &confirmationStore{Store: store, reject: failure == "persistent"}
+				if failure == "transient" {
+					counted.rejectFirst = 1
+				}
 				manager := newFakeNamedAgentManagerWithOptions(t, counted, root, agent, nil, "", "")
 				t.Cleanup(manager.Close)
 				spawned, err := manager.Spawn(t.Context(), acp.SpawnRequest{ACPAgent: agent, Slug: "confirmation"})
 				if err != nil {
 					t.Fatal(err)
 				}
+				var previous int32
 				for turn := range 2 {
 					sendAndWait(t, t.Context(), manager, spawned.SessionID, "answer in the final reply")
 					thread, err := store.LoadSession(spawned.SessionID)
@@ -208,12 +212,58 @@ func TestPromptConfirmationIsRecordedOncePerTurn(t *testing.T) {
 						t.Fatal(err)
 					}
 					want := storage.PromptConfirmed
-					if reject {
+					attempts := counted.attempts.Load()
+					if counted.reject {
 						want = storage.PromptSending
+						if attempts-previous < 2 {
+							t.Fatal("later observations never retried failed persistence")
+						}
+					} else if attempts != int32(turn+1)+counted.rejectFirst {
+						t.Fatalf("confirmation attempts=%d, want %d", attempts, int32(turn+1)+counted.rejectFirst)
 					}
-					if counted.attempts.Load() != int32(turn+1) || thread.Turn.Prompt.State != want {
-						t.Fatalf("confirmation attempts=%d, state=%s; want %d, %s", counted.attempts.Load(), thread.Turn.Prompt.State, turn+1, want)
+					if thread.Turn.Prompt.State != want {
+						t.Fatalf("confirmation state=%s; want %s", thread.Turn.Prompt.State, want)
 					}
+					previous = attempts
+				}
+				manager.Close()
+				before, err := store.LoadSession(spawned.SessionID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := store.Close(); err != nil {
+					t.Fatal(err)
+				}
+				store, err = sqlitestore.New(root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = store.Close() })
+				requestLog := filepath.Join(root, "recovered.jsonl")
+				recovered := newFakeNamedAgentManagerWithOptions(t, store, root, agent, map[string]string{"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_REQUEST_LOG": requestLog}, "", "")
+				t.Cleanup(recovered.Close)
+				err = recovered.ResumeInterruptedTurn(t.Context(), spawned.SessionID)
+				if counted.reject {
+					if !errors.Is(err, storage.ErrPromptUnconfirmed) {
+						t.Fatalf("persistent failed confirmation recovered: %v", err)
+					}
+					if _, err := os.Stat(requestLog); !errors.Is(err, os.ErrNotExist) {
+						t.Fatalf("persistent failure started an agent: %v", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if job, err := recovered.Wait(t.Context(), acp.WaitRequest{Session: spawned.SessionID}); err != nil || job.State != acp.StateIdle {
+					t.Fatalf("confirmed recovery failed: %+v %v", job, err)
+				}
+				after, err := store.LoadSession(spawned.SessionID)
+				if err != nil || after.Turn == nil || !after.Turn.ContinuationOf.Equal(before.Turn.StartedAt) {
+					t.Fatalf("confirmation recovery lost lineage: %+v %v", after.Turn, err)
+				}
+				if prompts := agentPrompts(t, requestLog); len(prompts) != 1 || prompts[0] != "Continue from where you left off." {
+					t.Fatalf("recovery resent the task: %q", prompts)
 				}
 			})
 		}
