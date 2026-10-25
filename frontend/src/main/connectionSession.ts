@@ -146,14 +146,16 @@ export function createConnectionSession(deps: Dependencies) {
     }
     const session = request.session
     if (request.revision !== snapshot.revision || (snapshot.phase !== 'pending' && snapshot.phase !== 'connected') ||
-      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.remembered !== 'boolean' ||
+      session.url !== snapshot.url || !validBackendOrigin(session.url) || typeof session.token !== 'string' || typeof session.deviceId !== 'string' || typeof session.remembered !== 'boolean' ||
       (session.token && (!session.token.startsWith('jaz_') || !session.deviceId))) {
       throw new Error('Connection session was replaced')
     }
     if (localFlight?.settled) {
       localFlight = null
     }
-    return change({ phase: 'connected', url: session.url, session, error: null, localPending: false }, record.window)
+    return change({ phase: 'connected', url: session.url,
+      session: { url: session.url, token: session.token, deviceId: session.deviceId, remembered: session.remembered },
+      error: null, localPending: false }, record.window)
   }
 
   async function issueLocal(generation: number): Promise<LocalSession> {

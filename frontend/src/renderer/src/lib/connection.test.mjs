@@ -452,12 +452,12 @@ test('an old URL alone never restores encrypted remote credentials', async () =>
 })
 
 
-test('feature denial and a separate rejected root grant preserve the device session; auth rejection clears it', async () => {
+test.each([{ status: 401, code: 'unauthorized' }, { status: 403, code: 'device_approval_required' }])('feature and separate root denial preserve the session; auth rejection %j clears it', async (rejection) => {
   let rejected = false
   const { connection } = await fixture({
     auth: () => Response.json({ ok: true, auth_kind: 'device', device_id: 'identity', resource_ticket: { token: 'read-ticket', expires_at: '2099-01-01T00:00:00Z' } }),
     feature: () => rejected
-      ? Response.json({ error: 'revoked', code: 'unauthorized' }, { status: 401 })
+      ? Response.json({ error: 'revoked', code: rejection.code }, { status: rejection.status })
       : Response.json({ error: 'Computer Use is disabled' }, { status: 403 }),
   })
   await connection.connectRemote('https://jaz.example#key=jaz_verified')
@@ -469,7 +469,7 @@ test('feature denial and a separate rejected root grant preserve the device sess
   expect(connection.apiEmbeddedGetUrl('/fixture/file')).toContain('read-ticket')
   rejected = true
   const hostDenied = await connection.apiFetch('/v1/devices', { headers: { Authorization: 'Bearer separate-root' } })
-  expect(hostDenied.status).toBe(401)
+  expect(hostDenied.status).toBe(rejection.status)
   await hostDenied.json()
   expect(connection.useConnection().status).toBe('connected')
   await connection.apiFetch('/fixture/feature').catch(() => null)

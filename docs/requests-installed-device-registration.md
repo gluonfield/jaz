@@ -22,19 +22,23 @@ Source: Augustinas, follow-up and restart recovery, 2026-10-25.
 - [x] Accept diagnosis while preserving all original fixture evidence.
 - [x] Establish a concrete session-cache/local-bootstrap lifecycle and explicit remembering proposal from production source.
 - [x] Coordinator approves the corrected R1–R6 contract in `runs/installed-device-registration/SESSION-AUTH-REVIEW.md`, including privileged cold local recovery.
-- [ ] Implement only the approved policy; no plaintext disk fallback, provider-auth change or device/credential reset workaround.
-- [ ] Verify usable authenticated startup with Keychain denied, local cold restart, ciphertext/identity preservation and protected remote restore.
+- [x] Implement only the approved policy; no plaintext disk fallback, provider-auth change or device/credential reset workaround.
+- [x] Verify usable authenticated startup with Keychain denied, local cold restart, ciphertext/identity preservation and protected remote restore.
 
-Proposal: [Session Authentication](session-auth-proposal-2026-10-25.md). No persistence-policy implementation is part of this proposal. The user remains blocked; error wording alone is not delivery of usable startup.
+Proposal: [Session Authentication](session-auth-proposal-2026-10-25.md). Implementation and evidence: [approved lifecycle repair](session-auth-implementation-2026-10-25.md). The installed app remains unchanged until a separately authorized activation.
 
 ## Approved Implementation
 
-- [ ] R1: cold-vs-live local recovery; exact local grant target; live rejection persists across reload.
-- [ ] R2: pure verification, one guarded token/ticket commit, serialized issuance and cancellation.
-- [ ] R3: one main-owned RAM snapshot, actual owner/document checks, bounded recipients and reload-safe local flight.
-- [ ] R4: invalid existing identity fails without rewriting; missing first install remains distinct.
-- [ ] R5: invalidate every app-owned token/ticket/consumer; preserve ciphertext except explicit Forget.
-- [ ] R6: explicit secure restore/remember, one remote switcher action, correct auto-connect intent.
-- [ ] Production-boundary acceptance, thermo self-review, committed freeze for existing independent after-review.
+- [x] R1: cold-vs-live local recovery; exact local grant target; live rejection persists across reload.
+- [x] R2: pure verification, one guarded token/ticket commit, serialized issuance and cancellation.
+- [x] R3: one main-owned RAM snapshot, actual owner/document checks, bounded recipients and reload-safe local flight.
+- [x] R4: invalid existing identity fails without rewriting; missing first install remains distinct.
+- [x] R5: invalidate every app-owned token/ticket/consumer; preserve ciphertext except explicit Forget.
+- [x] R6: explicit secure restore/remember, one remote switcher action, correct auto-connect intent.
+- [x] Production-boundary acceptance, thermo self-review, committed freeze for existing independent after-review.
 
 Implementation structure: the existing renderer credential map owns synchronous headers; main retains only the active verified snapshot and lifecycle/revision, with synchronous guarded memory IPC and one asynchronous local bootstrap flight. One renderer connection attempt owns candidate verification/publication. Original evidence is preserved. No backend/device/provider policy change or release/install/restart.
+
+- [x] Correct B1–B4 and integrate current main; preserve notification cache-only and restart fixes.
+- [ ] Existing independent delta review approves the exact corrected freeze.
+- [ ] Required passing checks plus delta approval → immediate local `--no-ff` merge; no further coordinator pause.

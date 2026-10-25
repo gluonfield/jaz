@@ -101,7 +101,7 @@ test('handoff accepts actual app windows and exact documents, with owner-only pu
   expect(() => board.call({ operation: 'begin', document: secondary.document, url: 'https://remote.example' })).toThrow('owner')
   const pending = owner.call({ operation: 'begin', document, url: 'https://remote.example' })
   owner.call({ operation: 'commit', document, revision: pending.revision,
-    session: { url: 'https://remote.example', token: 'jaz_authorized', deviceId: 'identity', remembered: false } })
+    session: { url: 'https://remote.example', token: 'jaz_authorized', deviceId: 'identity', remembered: false, rootGrant: 'must-stay-private' } })
   expect(board.messages.at(-1).snapshot.session.token).toBe('jaz_authorized')
   expect(Object.keys(board.read().snapshot.session).sort()).toEqual(['deviceId', 'remembered', 'token', 'url'])
   expect(() => owner.call({ operation: 'commit', document, revision: pending.revision,
