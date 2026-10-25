@@ -197,8 +197,9 @@ export async function exerciseBotPanel(): Promise<void> {
   const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:last-child')].map((node) => node.textContent)
   const selected = () => document.querySelector('[role="tablist"][aria-label="Bot details"] [aria-selected="true"]')
   const tabpanel = () => document.getElementById(selected()!.getAttribute('aria-controls')!)!
-  // Named, equal icon targets with no text, selected or not, in a capsule that
-  // hugs them inside the card. Returns the layout to compare across changes.
+  // Named, equal icon targets with no text, selected or not, each the only
+  // target across its own 40×40, in a capsule that hugs them inside the card.
+  // Returns the layout to compare across changes.
   const iconTabs = (where: string) => {
     const tablist = selected()!.parentElement!
     const list = tablist.getBoundingClientRect()
@@ -206,11 +207,13 @@ export async function exerciseBotPanel(): Promise<void> {
     const tabs = [...tablist.children]
     const boxes = tabs.map((tab) => tab.getBoundingClientRect())
     const { width, height } = boxes[0]
+    const hit = (tab: Element, box: DOMRect) => [[-19.5, 0], [19.5, 0], [0, -19.5], [0, 19.5]].every(([x, y]) => document.elementFromPoint(box.left + width / 2 + x, box.top + height / 2 + y)?.closest('[role="tab"]') === tab)
     if (
       tabs.map((tab) => tab.getAttribute('aria-label')).join() !== 'Activity,Routines,Identity,Agent' ||
       tabs.some((tab) => tab.textContent || !tab.querySelector('svg')) ||
       boxes.some((box) => box.width !== width || box.height !== height) ||
-      width < 40 || height < 40 || list.width > boxes.length * width + 8 || list.left < card.left || list.right > card.right
+      tabs.some((tab, i) => !hit(tab, boxes[i])) ||
+      list.width > boxes.length * width + 8 || list.left < card.left || list.right > card.right
     ) {
       throw new Error(`Bot panel: the tabs are not equal named icon targets ${where}`)
     }
