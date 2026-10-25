@@ -5,14 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
-	"github.com/wins/jaz/backend/internal/processenv"
 	modelprovider "github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
@@ -419,25 +417,18 @@ var antigravityAuthCache = struct {
 const antigravityAuthTTL = 30 * time.Second
 
 func antigravityCLIAuthenticated(env map[string]string) bool {
-	path, err := executableInPath("agy", env["PATH"])
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd, err := antigravityModelsCommand(ctx, env)
 	if err != nil {
-		path, err = ResolveExecutable("agy")
-		if err != nil {
-			return false
-		}
+		return false
 	}
-	key := path + "\x00" + env["HOME"]
+	key := cmd.Path + "\x00" + env["HOME"]
 	antigravityAuthCache.Lock()
 	fresh := time.Now().Before(antigravityAuthCache.authedUntil[key])
 	antigravityAuthCache.Unlock()
 	if fresh {
 		return true
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "models")
-	if len(env) > 0 {
-		cmd.Env = processenv.List(env)
 	}
 	if cmd.Run() != nil {
 		return false
