@@ -1,4 +1,5 @@
-import { Pencil } from 'lucide-react'
+import { Fingerprint, List, Pencil, Repeat, SlidersHorizontal } from 'lucide-react'
+import { motion } from 'motion/react'
 import { useId, useState } from 'react'
 import { SidePanelShell } from '@/components/session/SidePanelShell'
 import type { ThreadDetailsView } from '@/components/session/ThreadView'
@@ -16,10 +17,11 @@ import { BotRoutineModal } from './BotRoutineModal'
 import { BotRoutines } from './BotRoutines'
 import { useUpdateBot } from './useUpdateBot'
 
-const TABS = ['Activity', 'Routines', 'Identity', 'Agent'] as const
+const TABS = { Activity: List, Routines: Repeat, Identity: Fingerprint, Agent: SlidersHorizontal }
+const NAMES = Object.keys(TABS) as (keyof typeof TABS)[]
 
 export function BotDetails({ bot, focusName, agentSession, working, subagents }: { bot: Bot; focusName: boolean } & ThreadDetailsView) {
-  const [tab, setTab] = useState<(typeof TABS)[number]>('Activity')
+  const [tab, setTab] = useState<keyof typeof TABS>('Activity')
   const id = useId()
   const [routine, setRoutine] = useState<string | null>(null)
   const [file, setFile] = useState<BotFileName | null>(null)
@@ -37,32 +39,44 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
       <div
         role="tablist"
         aria-label="Bot details"
-        className="-mt-3 flex justify-between border-b border-border"
+        className="flex h-11 items-center self-center rounded-full bg-bg p-0.5"
         onKeyDown={(event) => {
-          const index = TABS.indexOf(tab)
+          const index = NAMES.indexOf(tab)
           const next = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: -1 }[event.key]
           if (next === undefined) return
           event.preventDefault()
-          const name = TABS[(next + TABS.length) % TABS.length]
+          const name = NAMES[(next + NAMES.length) % NAMES.length]
           setTab(name)
           document.getElementById(id + name)?.focus()
         }}
       >
-        {TABS.map((name) => (
-          <button
-            key={name}
-            id={id + name}
-            type="button"
-            role="tab"
-            aria-selected={name === tab}
-            aria-controls={id}
-            tabIndex={name === tab ? 0 : -1}
-            onClick={() => setTab(name)}
-            className="group -mx-2.5 h-10 cursor-pointer rounded-lg px-2.5 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:text-ink aria-selected:text-ink"
-          >
-            <span className="relative flex h-full items-center after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full group-aria-selected:after:bg-ink">{name}</span>
-          </button>
-        ))}
+        {NAMES.map((name) => {
+          const Icon = TABS[name]
+          return (
+            <motion.button
+              key={name}
+              id={id + name}
+              type="button"
+              role="tab"
+              aria-label={name}
+              aria-selected={name === tab}
+              aria-controls={id}
+              tabIndex={name === tab ? 0 : -1}
+              onClick={() => setTab(name)}
+              whileTap={{ scale: 0.96 }}
+              className="relative flex h-10 w-12 cursor-pointer items-center justify-center rounded-full text-ink-2 transition-colors duration-150 hover:text-ink aria-selected:text-ink"
+            >
+              {name === tab ? (
+                <motion.span
+                  layoutId={id}
+                  transition={{ type: 'spring', duration: 0.32, bounce: 0 }}
+                  className="absolute inset-0 rounded-full bg-surface-2 shadow-sm ring-1 ring-border/50"
+                />
+              ) : null}
+              <Icon size={16} className="relative" />
+            </motion.button>
+          )
+        })}
       </div>
       <div role="tabpanel" id={id} aria-labelledby={id + tab}>
         {tab === 'Activity' ? (
