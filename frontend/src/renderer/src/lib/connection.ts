@@ -255,7 +255,7 @@ async function checkAuthAccess(url: string, token: string): Promise<AuthAccess> 
 
 async function verifyBackend(
   url: string,
-  token = apiAuthToken(url),
+  token?: string,
   missingKeyMessage = `Backend at ${url} requires a key`,
 ): Promise<BackendCheck> {
   if (!secureBackendConnection(url)) {
@@ -264,6 +264,11 @@ async function verifyBackend(
   const health = await readHealth(url)
   if (!health.ok) return health
   if (!health.authRequired) return { ok: true }
+  try {
+    token ??= apiAuthToken(url)
+  } catch {
+    return backendFailure('auth_failed', 'Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.')
+  }
   if (!token) return backendFailure('missing_key', missingKeyMessage)
   const access = await checkAuthAccess(url, token)
   if (access.ok) return { ok: true }
@@ -338,12 +343,12 @@ function schedulePoll(delay = POLL_INTERVAL_MS) {
     } else if (check.ok) {
       markConnected(url)
       return
-    } else if (state.status === 'reconnecting' && !check.recoverable) {
+    } else if (!check.recoverable) {
       setState({ status: 'disconnected', error: check.message })
     } else if (state.status === 'reconnecting' && Date.now() - lostAt > RECONNECT_GRACE_MS) {
       setState({ status: 'disconnected', error: check.message })
     }
-    schedulePoll()
+    if (check.ok || check.recoverable) schedulePoll()
   }, delay)
 }
 
@@ -380,7 +385,7 @@ async function reconnectKnown(url: string): Promise<void> {
       return
     }
     setState({ status: 'disconnected', url, pairing: null, error: check.message })
-    schedulePoll()
+    if (check.recoverable) schedulePoll()
     return
   }
   markConnected(url)
@@ -628,13 +633,13 @@ export async function connectRemote(url: string): Promise<string | null> {
   if (!secureBackendConnection(target)) {
     return 'Remote connections require HTTPS'
   }
-  const token = parsed.key || apiAuthToken(target)
   if (parsed.key.startsWith('invite_')) {
     return registerDevice(target, parsed.key)
   }
   const health = await readHealth(target)
   if (!health.ok) return health.message
   if (health.authRequired) {
+    const token = parsed.key || apiAuthToken(target)
     if (!token) return startPairing(target)
     const access = await checkAuthAccess(target, token)
     if (access.ok) {
@@ -658,10 +663,10 @@ export async function startLocal(): Promise<string | null> {
   }
   const result = await clientRuntime.startLocalBackend()
   const url = normalizeBaseUrl(result.url ?? localBaseUrl())
+  if (!result.ok) return result.error ?? 'Failed to start the backend'
   if (await connectStoredToken(url)) {
     return null
   }
-  if (!result.ok) return result.error ?? 'Failed to start the backend'
   if (result.key) {
     const error = await registerDevice(url, result.key)
     if (state.status === 'pending_approval' || error) return error
