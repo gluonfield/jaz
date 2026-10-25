@@ -11,7 +11,7 @@ extraResources:
   - from: resources/bin
     to: bin
 mac:
-  icon: src/assets/jaz.icns
+  icon: src/assets/jaz.icon
   target:
     - target: dmg
       arch:
@@ -39,18 +39,13 @@ nsis:
   artifactName: ${productName}-Setup-${version}.${ext}
 dmg:
   background: build/dmg-background.png
-  window:
-    width: 540
-    height: 380
-  icon: src/assets/jaz.icns
-  iconSize: 96
-  iconTextSize: 12
+  iconSize: 128
   contents:
-    - x: 136
-      y: 242
+    - x: 150
+      y: 150
       type: file
-    - x: 404
-      y: 242
+    - x: 390
+      y: 150
       type: link
       path: /Applications
 publish:
