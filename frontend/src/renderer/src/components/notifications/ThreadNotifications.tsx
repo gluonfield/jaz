@@ -7,13 +7,21 @@ import { useThreadNotificationsEnabled } from '@/lib/notificationSettings'
 export function ThreadNotifications() {
   const configure = clientRuntime.configureThreadNotifications
   const [enabled] = useThreadNotificationsEnabled()
-  const { url } = useConnection()
-  const token = apiAuthToken(url)
+  const connection = useConnection()
 
   useEffect(() => {
     if (!configure) return
-    void configure(enabled ? { enabled: true, baseUrl: url, token } : { enabled: false })
-  }, [configure, enabled, token, url])
+    const { status, url } = connection
+    if (enabled && (status === 'connected' || status === 'reconnecting')) {
+      try {
+        void configure({ enabled: true, baseUrl: url, token: apiAuthToken(url) })
+        return
+      } catch {
+        // A locked optional credential must not unmount the app.
+      }
+    }
+    void configure({ enabled: false })
+  }, [configure, enabled, connection])
 
   return null
 }
