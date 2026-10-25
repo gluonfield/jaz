@@ -28,10 +28,7 @@ type kimiProvider struct {
 }
 
 type kimiModelAlias struct {
-	Provider       string `toml:"provider"`
-	Model          string `toml:"model"`
-	DisplayName    string `toml:"display_name"`
-	MaxContextSize int    `toml:"max_context_size"`
+	Provider string `toml:"provider"`
 }
 
 func resolveKimiAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env map[string]string) resolvedAgentAuth {

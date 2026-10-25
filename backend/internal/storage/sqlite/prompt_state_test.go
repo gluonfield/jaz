@@ -44,6 +44,18 @@ func TestPromptConfirmationCannotRegressOrConfirmALaterTurn(t *testing.T) {
 	if err != nil || thread.Turn.Prompt.State != "" || thread.Turn.Prompt.Message != "next task" {
 		t.Fatalf("old confirmation changed the next task: %+v, %v", thread.Turn, err)
 	}
+	if changed, err := store.ReplaceRuntimeSessionID(session.ID, "native", "replacement"); err != nil || !changed {
+		t.Fatalf("replace provider session: %t %v", changed, err)
+	}
+	for range 2 {
+		if err := store.SetTurnPromptState(session.ID, "native", turn.StartedAt, storage.PromptConfirmed); err == nil {
+			t.Fatal("an old provider session confirmed a new attempt")
+		}
+	}
+	thread, err = store.LoadSession(session.ID)
+	if err != nil || thread.Turn.Prompt.State != "" || thread.RuntimeRef.SessionID != "replacement" {
+		t.Fatalf("stale provider retries changed the current attempt: %+v %v", thread, err)
+	}
 }
 
 func TestATurnKeepsWhatItsAgentWasShownOnlyOnceTheAgentTookItsPrompt(t *testing.T) {

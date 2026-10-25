@@ -187,6 +187,7 @@ func (s Session) Owner() string {
 
 type Turn struct {
 	StartedAt       time.Time      `json:"started_at,omitzero"`
+	ContinuationOf  time.Time      `json:"continuation_of,omitzero"`
 	PlanRequested   bool           `json:"plan_requested,omitempty"`
 	GoalRequested   bool           `json:"goal_requested,omitempty"`
 	ActiveOperation string         `json:"active_operation,omitempty"`
