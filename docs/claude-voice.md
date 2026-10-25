@@ -8,7 +8,8 @@ Request, 25 October 2026: inspect Claude Desktop's voice implementation and add 
 - [x] Reproduce, repair and review authenticated desktop WebSocket negotiation.
 - [x] Activate the reviewed connection correction with a coordinated backend restart.
 - [x] Verify signed-in WebSocket/WebRTC signaling and detect the model-ID mismatch.
-- [ ] Verify the native Opus voice mapping and real audio/delegation.
+- [x] Verify the current native Opus voice mapping and inspect the reported live model.
+- [ ] Resolve the live model identity mismatch and verify real audio/delegation.
 - [x] Implement the Claude provider and verify signaling, delegation and cancellation against real protocol fixtures.
 - [x] Review and commit the locally verified implementation.
 - [x] Resolve the requested merge from current main and verify the combined branch.
@@ -98,3 +99,9 @@ On Jaz Desktop, choose Settings → Voice → Provider → Claude, sign in to Cl
 Augustinas requested repair of the failed main merge. Merged main `91f9f05b`, preserving both Claude voice and the new connection-session preload APIs, plus both browser smoke selectors. Two existing browser checks used the removed `apiAuthToken` export; they now use `cachedApiAuthToken`, and the Claude check restores the actual in-memory API URL.
 
 The combined branch passes all 404 frontend tests, both type checks, lint, the desktop bundle and four affected Go 1.26.3 packages. Hidden Electron checks pass for Claude signaling/settings, authenticated connection security and browser visibility. An initial parallel run collided on the system clipboard; the sequential browser-visibility run passes. Logs are in `runs/claude-voice/merge-main-20261025/`. Thermo-nuclear self-review found no remaining merge issues. This merges main into the feature branch only; provider activation and the native-model live check remain pending.
+
+## Live Identity Check
+
+At 22:03 UTC, the signed-in native `/model_selector/chat` metadata explicitly mapped text model `claude-opus-5-5` to voice ID `claude-opus-5`. This establishes the provider-owned request mapping; it does not establish the generation's identity. A temporary conversation and synthetic silent WebRTC track connected on protocol 2.1. The first `message_start` after a minimal text request reported `claude-opus-4-8`. The check immediately closed the socket and peer, stopped the synthetic source, and deleted its own temporary conversation (204). No user microphone was captured or output played. Evidence: `runs/claude-voice/live-acceptance/identity-check.json`.
+
+The advertised native voice ID and the returned model ID differ, so the current model guard rejects this live response. Native Opus 5.5 identity, real audio and live Jaz delegation remain unverified. Asked Augustinas whether native Opus voice may handle speech despite its reported model, while the selected coding agent handles work. This is an explicit exception to his Opus 5.5-only Anthropic instruction; no answer is assumed. Main and the running app remain unchanged.
