@@ -17,8 +17,6 @@ type browserPage struct {
 
 func (page *browserPage) call(ctx context.Context, input ActionInput) (ActionOutput, error) {
 	switch input.Action {
-	case ActionNavigate:
-		return page.navigate(ctx, input.URL)
 	case ActionState:
 		return page.semanticState(ctx)
 	case ActionFind:

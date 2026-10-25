@@ -12,7 +12,7 @@ export function BrowserSettings() {
   const queryClient = useQueryClient()
   const toast = useToast()
   const toggle = useMutation({
-    mutationFn: (enabled: boolean) => updateBrowserSettings({ enabled }),
+    mutationFn: updateBrowserSettings,
     onSuccess: (next) => queryClient.setQueryData(keys.browserSettings, next),
     onError: (error: Error) => toast(`Couldn't update browser settings: ${error.message}`, 'danger'),
   })

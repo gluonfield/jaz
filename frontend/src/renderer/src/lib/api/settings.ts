@@ -35,10 +35,8 @@ export function updateAgentSettings(
   )
 }
 
-export function updateBrowserSettings(input: {
-  enabled?: boolean
-}): Promise<BrowserStatus> {
-  return put<BrowserStatus>('/v1/browser', input)
+export function updateBrowserSettings(enabled: boolean): Promise<BrowserStatus> {
+  return put<BrowserStatus>('/v1/browser', { enabled })
 }
 
 export function startACPAuthLogin(agent: string, auth?: ACPAgentAuth): Promise<ACPAuthLogin> {

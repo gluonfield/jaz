@@ -3,10 +3,12 @@ import { createRoot } from 'react-dom/client'
 import { DevicesSettings } from '@/components/settings/DevicesSettings'
 import { MCPSettings } from '@/components/settings/MCPSettings'
 import { BrowserSettings } from '@/components/settings/BrowserSettings'
-import { apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
+import { apiAuthToken, apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import { clientRuntime } from '@/lib/clientRuntime'
 
 export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocket) => void): Promise<void> {
+  const backend = await window.smoke.backend()
+  const originalToken = apiAuthToken(backend)
   const originalFetch = window.fetch
   const originalStart = clientRuntime.startLocalBackend
   const originalURL = apiBaseUrl()
@@ -14,7 +16,7 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
   const local = 'http://127.0.0.1:5299'
   const saves: Record<string, unknown>[] = []
   let tokenSet = true
-  let browser = { enabled: true }
+  let socket: WebSocket | undefined
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;padding:16px;background:var(--color-bg);overflow:auto'
   document.body.append(element)
@@ -24,12 +26,6 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
   window.fetch = async (input, init) => {
     const url = String(input)
     const authorization = new Headers(init?.headers).get('Authorization')
-    if (url.endsWith('/v1/browser')) {
-      if (init?.method === 'PUT') {
-        browser = { ...browser, ...JSON.parse(String(init.body)) }
-      }
-      return Response.json(browser)
-    }
     if (authorization === 'Bearer fixture-host-credential' && !url.startsWith(local + '/')) {
       throw new Error('Host credential escaped the local backend')
     }
@@ -60,11 +56,10 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
   }
   const button = (text: string) => [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === text)
   try {
-    const backend = await window.smoke.backend()
     setApiBaseUrl(backend)
     for (const credential of ['wrong-credential', 'browser-smoke-credential']) {
       setApiAuthToken(backend, credential)
-      const socket = apiWebSocket('/v1/sessions/browser-fixture/browser')
+      socket = apiWebSocket('/v1/sessions/browser-fixture/browser')
       const connected = await new Promise<boolean>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error('Authenticated browser socket did not settle')), 5000)
         socket.onopen = () => {
@@ -144,27 +139,29 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
         throw new Error('Explicit saved-token removal was lost')
       }
       await until(() => !button('Save changes'))
-      browser.enabled = true
+      setApiBaseUrl(backend)
       render('browser', `browser-${name}`)
       await until(() => Boolean(element.querySelector('[aria-label="Enable browser tools"]')))
       if (element.textContent?.includes('Extension') || element.textContent?.includes('Background Chromium') || element.textContent?.includes('Browser backend')) {
         throw new Error('Removed browser backend selection remains visible')
       }
       await click(element.querySelector('[aria-label="Enable browser tools"]')!)
-      await until(() => !browser.enabled && element.querySelector('[aria-label="Enable browser tools"]')?.getAttribute('aria-checked') === 'false')
+      await until(() => element.querySelector('[aria-label="Enable browser tools"]')?.getAttribute('aria-checked') === 'false')
       await click(element.querySelector('[aria-label="Enable browser tools"]')!)
-      await until(() => browser.enabled && element.querySelector('[aria-label="Enable browser tools"]')?.getAttribute('aria-checked') === 'true')
+      await until(() => element.querySelector('[aria-label="Enable browser tools"]')?.getAttribute('aria-checked') === 'true')
       if (element.scrollWidth > element.clientWidth) {
         throw new Error('Browser settings overflow horizontally')
       }
       await window.smoke.capture(`browser-settings-${name}`)
     }
   } finally {
+    socket?.close()
     root.unmount()
     clients.forEach((client) => client.clear())
     element.remove()
     window.fetch = originalFetch
     clientRuntime.startLocalBackend = originalStart
+    setApiAuthToken(backend, originalToken)
     setApiBaseUrl(originalURL)
     await window.smoke.resize(originalSize.width, originalSize.height)
   }

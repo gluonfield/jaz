@@ -7,13 +7,14 @@ import { SidePanel } from '@/components/session/SidePanel'
 import { SidePanelDrawer } from '@/components/session/SidePanelDrawer'
 import { SidePanelStateProvider, useSidePanelState } from '@/components/session/SidePanelState'
 import type { PreviewWebviewElement } from '@/components/session/previewWebview'
-import { apiBaseUrl, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
+import { apiAuthToken, apiBaseUrl, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import type { Session } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
 export async function exerciseBrowserVisibility(): Promise<void> {
   const backend = await window.smoke.backend()
   const originalURL = apiBaseUrl()
+  const originalToken = apiAuthToken(backend)
   setApiBaseUrl(backend)
   setApiAuthToken(backend, 'browser-smoke-credential')
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -103,6 +104,7 @@ export async function exerciseBrowserVisibility(): Promise<void> {
     root.unmount()
     client.clear()
     element.remove()
+    setApiAuthToken(backend, originalToken)
     setApiBaseUrl(originalURL)
   }
 }
