@@ -4,7 +4,8 @@
 - [x] Read the selected native profile for model aliases, labels, context sizes and default.
 - [x] Verify discovery, native parity and the actual Settings picker.
 - [x] Complete strict review and integrate locally.
+- [ ] Resolve the follow-up native-parity findings before release.
 
-The account profile contains six models. Kimi previously fell through to the static catalogue, which has no Kimi entries. Discovery now uses the same resolved native profile as authentication and execution. Missing context metadata stays unknown. Kimi's ACP interface exposes thinking as an on/off control, so this change does not advertise the profile's granular efforts as selectable ACP efforts.
+The account profile contains six models. Kimi previously fell through to the static catalogue, which has no Kimi entries. Discovery now uses the same resolved native profile as authentication and execution. Missing context metadata stays unknown. The follow-up review withdrew the initial sign-off: the installed adapter supports granular reasoning levels, and its effective catalogue can differ from the stored TOML fields.
 
-Validation: Go 1.26.3 ACP/model-capabilities suites and vet; the regression fails against the old discovery code. The real HTTP handler matches all six models from the installed native CLI. Hidden production Settings checks cover desktop/phone, save, refresh, reconnect, empty/error responses and the native default. Evidence and strict review: worktree `runs/`. The installed app needs a release to receive this change.
+Validation: Go 1.26.3 ACP/model-capabilities suites and vet; the regression fails against the old discovery code. Six stored profile rows matched the native provider-list output. Hidden Settings checks cover desktop/phone, save, refresh, reconnect and empty/error responses. That evidence does not establish effective native-catalogue parity; see [follow-up review](review-kimi-model-discovery.md). The change remains unreleased.
