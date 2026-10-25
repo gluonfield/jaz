@@ -1,13 +1,17 @@
 import { readAPIResponse } from '@/lib/api/response'
 import { DEFAULT_API_BASE_URL, clientRuntime } from '@/lib/clientRuntime'
 import { isPreviewProxyTargetHostname } from '@shared/preview'
+import type { ResourceTicket } from '@shared/connectionSession'
 
 export { ApiError } from '@/lib/api/response'
 
-const BACKEND_URL_KEY = 'jaz.backendUrl'
 const AUTH_KEY_PREFIX = 'jaz.backendAuth.'
 const authTokens = new Map<string, string>()
-const resourceTickets = new Map<string, { token: string; expires_at: string }>()
+const resourceTickets = new Map<string, ResourceTicket>()
+let credentialRevision = 0
+const sessionListeners = new Set<() => void>()
+const requests = new Set<AbortController>()
+const rejectionListeners = new Set<() => void>()
 // The port the local backend always runs on; a loopback host on this port is
 // "this machine", any other loopback port is a tunnel to a remote backend.
 export const DEFAULT_LOCAL_PORT = new URL(DEFAULT_API_BASE_URL).port
@@ -108,12 +112,7 @@ function connectUrlWithKey(target: string, key: string): string {
 // A remembered remote URL wins over the local default so refresh reconnects to
 // the user's server. An explicit runtime default still wins for desktop preload
 // and VITE_JAZ_API_URL-pinned development builds.
-let baseUrl = ((): string => {
-  const local = localBaseUrl()
-  if (local !== DEFAULT_API_BASE_URL) return normalizeBaseUrl(local)
-  const stored = localStorage.getItem(BACKEND_URL_KEY)
-  return stored ? normalizeBaseUrl(stored) : local
-})()
+let baseUrl = normalizeBaseUrl(localBaseUrl())
 
 export function apiBaseUrl(): string {
   return baseUrl
@@ -139,7 +138,10 @@ export function apiWebSocketProtocols(): string[] {
 }
 
 export function apiWebSocket(path: string): WebSocket {
-  return new WebSocket(apiWebSocketUrl(path), apiWebSocketProtocols())
+  const socket = new WebSocket(apiWebSocketUrl(path), apiWebSocketProtocols())
+  const unsubscribe = onApiSessionChange(() => socket.close())
+  socket.addEventListener('close', unsubscribe, { once: true })
+  return socket
 }
 
 export function apiEmbeddedGetUrl(path: string): string {
@@ -148,46 +150,84 @@ export function apiEmbeddedGetUrl(path: string): string {
 }
 
 export function setApiBaseUrl(url: string): void {
+  if (baseUrl === normalizeBaseUrl(url)) return
   baseUrl = normalizeBaseUrl(url)
-  localStorage.setItem(BACKEND_URL_KEY, baseUrl)
+  notifySessionChange()
 }
 
 function authStorageKey(url: string): string {
   return `${AUTH_KEY_PREFIX}${normalizeBaseUrl(url)}`
 }
 
-export function apiAuthToken(url = apiBaseUrl()): string {
-  const key = authStorageKey(url)
-  const cached = authTokens.get(key)
-  if (cached !== undefined) {
-    return cached
-  }
-  const stored = localStorage.getItem(key)?.trim() ?? ''
-  if (!stored) {
-    return ''
-  }
-  const token = stored.startsWith('enc:v1:')
-    ? clientRuntime.decryptCredential?.(stored.slice(7)) ?? ''
-    : stored
-  if (clientRuntime.encryptCredential && !stored.startsWith('enc:v1:')) {
-    localStorage.setItem(key, 'enc:v1:' + clientRuntime.encryptCredential(token))
-  }
-  authTokens.set(key, token)
-  return token
+export function cachedApiAuthToken(url = apiBaseUrl()): string {
+  return authTokens.get(authStorageKey(url)) ?? ''
 }
 
-export function setApiAuthToken(url: string, token?: string | null): void {
+export const apiAuthToken = cachedApiAuthToken
+
+export function restoreApiAuthToken(url: string): string {
+  const stored = localStorage.getItem(authStorageKey(url))?.trim() ?? ''
+  if (!stored) return ''
+  if (!stored.startsWith('enc:v1:') || !clientRuntime.decryptCredential) {
+    throw new Error('Saved connection is not securely encrypted')
+  }
+  return clientRuntime.decryptCredential(stored.slice(7))
+}
+
+export function rememberApiAuthToken(url: string, current: () => boolean): void {
+  const token = cachedApiAuthToken(url)
+  const revision = credentialRevision
+  if (!token || !clientRuntime.encryptCredential || !current()) {
+    throw new Error('Secure credential storage is unavailable')
+  }
+  const ciphertext = clientRuntime.encryptCredential(token)
+  if (revision !== credentialRevision || token !== cachedApiAuthToken(url) || !current()) {
+    throw new Error('Connection changed before it could be remembered')
+  }
+  localStorage.setItem(authStorageKey(url), 'enc:v1:' + ciphertext)
+}
+
+export function setApiAuthToken(url: string, token?: string | null, ticket?: ResourceTicket): void {
   const key = authStorageKey(url)
-  const value = token?.trim() ?? ''
-  resourceTickets.delete(normalizeBaseUrl(url))
-  if (value) {
-    const stored = clientRuntime.encryptCredential ? 'enc:v1:' + clientRuntime.encryptCredential(value) : value
-    localStorage.setItem(key, stored)
-    authTokens.set(key, value)
+  if (token) {
+    authTokens.set(key, token)
   } else {
-    localStorage.removeItem(key)
     authTokens.delete(key)
   }
+  setResourceTicket(url, ticket)
+  if (normalizeBaseUrl(url) === baseUrl) notifySessionChange()
+}
+
+export function clearApiSession(): void {
+  authTokens.clear()
+  resourceTickets.clear()
+  notifySessionChange()
+}
+
+export function forgetApiAuthToken(url: string): void {
+  setApiAuthToken(url, null)
+  localStorage.removeItem(authStorageKey(url))
+}
+
+export function apiSessionRevision(): number {
+  return credentialRevision
+}
+
+export function onApiSessionChange(handler: () => void): () => void {
+  sessionListeners.add(handler)
+  return () => sessionListeners.delete(handler)
+}
+
+export function onApiAuthRejected(handler: () => void): () => void {
+  rejectionListeners.add(handler)
+  return () => rejectionListeners.delete(handler)
+}
+
+function notifySessionChange(): void {
+  credentialRevision += 1
+  for (const request of requests) request.abort()
+  requests.clear()
+  for (const handler of sessionListeners) handler()
 }
 
 function withAPIHeaders(init: RequestInit = {}, url = apiBaseUrl()): RequestInit {
@@ -216,7 +256,47 @@ function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
 
 export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): Promise<Response> {
   assertBackendRelativePath(path, 'apiFetch')
-  return fetch(`${url}${path}`, withAPIHeaders(init, url))
+  const controller = new AbortController()
+  requests.add(controller)
+  const signal = init?.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal
+  const revision = credentialRevision
+  return fetch(`${url}${path}`, withAPIHeaders({ ...init, signal }, url)).then((response) => {
+    if ((response.status === 401 || response.status === 403) && revision === credentialRevision && url === apiBaseUrl()) {
+      for (const handler of rejectionListeners) handler()
+    }
+    if (!response.body) {
+      requests.delete(controller)
+      return response
+    }
+    const reader = response.body.getReader()
+    const body = new ReadableStream({
+      async pull(stream) {
+        try {
+          const chunk = await reader.read()
+          if (chunk.done) {
+            requests.delete(controller)
+            stream.close()
+          } else stream.enqueue(chunk.value)
+        } catch (error) {
+          requests.delete(controller)
+          stream.error(error)
+        }
+      },
+      cancel(reason) {
+        requests.delete(controller)
+        controller.abort(reason)
+        return reader.cancel(reason)
+      },
+    })
+    const result = new Response(body, response)
+    Object.defineProperties(result, {
+      url: { value: response.url }, redirected: { value: response.redirected }, type: { value: response.type },
+    })
+    return result
+  }).catch((error: unknown) => {
+    requests.delete(controller)
+    throw error
+  })
 }
 
 export function apiEventSourceUrl(path: string): string {

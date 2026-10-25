@@ -57,6 +57,8 @@ function fixture(base = 'https://jaz.example', jaz) {
   replace('WebSocket', class {
     constructor(url, protocols) {
       sockets.push({ url, protocols })
+      this.addEventListener = () => {}
+      this.close = () => {}
     }
   })
   const module = { exports: {} }
@@ -176,4 +178,39 @@ test('event reconnection renews the read ticket and resumes from the last delive
   expect(received).toEqual(['delivered'])
   closeStream()
   expect(sources[1].closed).toBe(true)
+})
+
+test('late same-origin ticket refresh cannot replace a new credential or reopen a cleared stream', async () => {
+  const { api } = fixture()
+  let respond
+  let requested
+  const pending = new Promise((resolve) => { requested = resolve })
+  replace('fetch', () => {
+    requested()
+    return new Promise((resolve) => { respond = resolve })
+  })
+  let sources = 0
+  replace('EventSource', class { constructor() { sources += 1 } })
+  closeStream = api.openEventStream('/v1/bots/events', {})
+  await pending
+  api.setApiAuthToken(api.apiBaseUrl(), 'replacement', { token: 'replacement-ticket', expires_at: '2099-01-01T00:00:00Z' })
+  respond(Response.json({ resource_ticket: { token: 'old-ticket', expires_at: '2099-01-01T00:00:00Z' } }))
+  for (let i = 0; i < 40; i += 1) await Promise.resolve()
+  expect(sources).toBe(0)
+  expect(api.apiEmbeddedGetUrl('/v1/sessions/thread/file?raw=1')).toContain('replacement-ticket')
+  api.clearApiSession()
+  expect(api.apiEmbeddedGetUrl('/v1/sessions/thread/file?raw=1')).not.toContain('ticket=')
+})
+
+test('session clear aborts an authenticated response body after its headers arrive', async () => {
+  const { api } = fixture()
+  replace('fetch', async (_url, init) => new Response(new ReadableStream({
+    start(controller) {
+      init.signal.addEventListener('abort', () => controller.error(new Error('Session ended')), { once: true })
+    },
+  })))
+  const response = await api.apiFetch('/v1/sessions/thread/messages')
+  const body = response.text().catch((error) => error)
+  api.clearApiSession()
+  expect(await body).toBeInstanceOf(Error)
 })

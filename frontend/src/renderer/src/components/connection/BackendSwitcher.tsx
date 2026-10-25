@@ -18,7 +18,7 @@ import { useBackendSwitcher } from './useBackendSwitcher'
 // servers, or connect a new one. Backends are the context for settings, not a
 // settings page of their own.
 export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => void }) {
-  const { open, setOpen, status, url, remotes, switchLocal, switchRemote } = useBackendSwitcher()
+  const { open, setOpen, status, url, remotes, switchLocal, switchRemote, remember } = useBackendSwitcher()
 
   const { dot } = connectionStatusDisplay(status)
 
@@ -56,6 +56,11 @@ export function BackendSwitcher({ onConnectServer }: { onConnectServer: () => vo
         />
       ))}
       <div className="my-1 h-px bg-border/70" />
+      {status === 'connected' && !describeBackend(url).local ? (
+        <button type="button" onClick={remember} className="flex h-7 w-full items-center rounded-full px-2.5 text-left text-[13px] text-ink-2 hover:bg-surface-2">
+          Remember Connection
+        </button>
+      ) : null}
       <button
         type="button"
         onClick={() => {

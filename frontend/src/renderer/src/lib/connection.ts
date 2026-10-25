@@ -1,577 +1,79 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import {
-  apiAuthToken,
-  apiBaseUrl,
-  CLIENT_PLATFORM,
-  CLIENT_PLATFORM_HEADER,
-  consumeStartupConnectUrl,
-  isLocalBackendUrl,
-  localBaseUrl,
-  normalizeBaseUrl,
-  parseBackendConnectUrl,
-  setApiAuthToken,
-  setApiBaseUrl,
-  setResourceTicket,
-  secureBackendConnection,
-} from './api/client'
-import { rememberBackend, removeKnownBackend } from './backends'
-import { clientRuntime } from './clientRuntime'
-import { getDeviceProfile } from './deviceIdentity'
-import { queryClient } from './query/queryClient'
+  apiBaseUrl, cachedApiAuthToken, clearApiSession, CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER,
+  consumeStartupConnectUrl, isLocalBackendUrl, localBaseUrl, normalizeBaseUrl,
+  parseBackendConnectUrl, rememberApiAuthToken, restoreApiAuthToken, secureBackendConnection,
+  setApiAuthToken, setApiBaseUrl, onApiAuthRejected,
+} from '@/lib/api/client'
+import { rememberBackend, removeKnownBackend } from '@/lib/backends'
+import { clientRuntime } from '@/lib/clientRuntime'
+import { getDeviceProfile } from '@/lib/deviceIdentity'
+import { queryClient } from '@/lib/query/queryClient'
+import { readAccess, readHealth, readJSON } from '@/lib/connectionProbe'
+import type { ResourceTicket, SessionSnapshot, VerifiedSession } from '@shared/connectionSession'
 
 export { isLocalBackendUrl } from '@/lib/api/client'
-
-// Gate for the whole app: 'checking' on first probe of the remembered URL,
-// 'connected' while periodic /health polls pass. On loss the app stays
-// mounted as 'reconnecting' (banner over live UI, state preserved); only a
-// sustained outage degrades to 'disconnected', which swaps in the launch
-// screen.
 export type ConnectionStatus = 'checking' | 'connected' | 'reconnecting' | 'disconnected' | 'pending_approval'
-
-export type PendingPairing = {
-  url: string
-  id: string
-  secret: string
-  deviceName: string
-  expiresAt: string
-}
-
-export type ConnectionState = {
-  status: ConnectionStatus
-  url: string
-  pairing: PendingPairing | null
-  // Set when a connection was lost or a connect attempt failed; the first
-  // launch with no backend shows the launch screen without an error.
-  error: string | null
-}
-
-const POLL_INTERVAL_MS = 5_000
-const REQUEST_TIMEOUT_MS = clientRuntime.kind === 'web' ? 10_000 : 3_000
-// One missed poll can be a transient blip (remote backends especially);
-// only treat the connection as lost after consecutive failures.
-const FAILURES_BEFORE_DISCONNECT = 2
-// How long 'reconnecting' keeps the app mounted before giving up and
-// falling back to the launch screen.
-const RECONNECT_GRACE_MS = clientRuntime.kind === 'web' ? 10 * 60_000 : 30_000
-
+export type PendingPairing = { url: string; id: string; secret: string; deviceName: string; expiresAt: string }
+export type ConnectionState = { status: ConnectionStatus; url: string; pairing: PendingPairing | null; error: string | null }
+export type ConnectionMode = 'local' | 'remote'
+type ConnectionPreference = { mode: ConnectionMode; remoteUrl?: string }
+type Attempt = { url: string; revision: number; controller: AbortController }
+type Candidate = VerifiedSession & { ticket?: ResourceTicket }
+const LOCAL_URL = 'http://127.0.0.1:5299'
+const PREFERENCE_KEY = 'jaz.connection'
+const bridge = ['main', 'board', 'launcher'].includes(clientRuntime.windowKind) ? clientRuntime.connectionSession : undefined
+const desktop = bridge?.read()
+export const ownsConnection = desktop?.owner ?? clientRuntime.windowKind === 'main'
+let authoritative = desktop?.snapshot
+let attempt: Attempt | null = null
+let pollTimer: ReturnType<typeof setTimeout> | undefined
+let pairingTimer: ReturnType<typeof setTimeout> | undefined
+let issuance: Promise<unknown> = Promise.resolve()
 let state: ConnectionState = { status: 'checking', url: apiBaseUrl(), pairing: null, error: null }
 const listeners = new Set<() => void>()
 
-type HealthStatus = {
-  authRequired: boolean
-}
-
-type BackendFailureReason =
-  | 'unreachable'
-  | 'browser_session_required'
-  | 'missing_key'
-  | 'auth_rejected'
-  | 'device_approval_required'
-  | 'auth_failed'
-
-type BackendCheck =
-  | { ok: true }
-  | {
-      ok: false
-      reason: BackendFailureReason
-      message: string
-      recoverable: boolean
-    }
-
-type HealthProbe = ({ ok: true } & HealthStatus) | Extract<BackendCheck, { ok: false }>
-
-type AuthAccess =
-  | {
-      ok: true
-      authKind?: string
-      deviceId?: string
-    }
-  | {
-      ok: false
-      reason: BackendFailureReason
-      error: string
-      recoverable: boolean
-      code?: string
-    }
-
-type AuthFailureBody = {
-  error?: string
-  code?: string
-  auth_kind?: string
-  device_id?: string
-  resource_ticket?: { token: string; expires_at: string }
-}
-
-function setState(next: Partial<ConnectionState>) {
+function setState(next: Partial<ConnectionState>): void {
   state = { ...state, ...next }
-  for (const l of listeners) l()
-}
-
-function subscribe(fn: () => void) {
-  listeners.add(fn)
-  return () => {
-    listeners.delete(fn)
-  }
+  for (const listener of listeners) listener()
 }
 
 export function useConnection(): ConnectionState {
-  return useSyncExternalStore(subscribe, () => state)
+  return useSyncExternalStore((listener) => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }, () => state)
 }
 
-// Runs `onChange` when the connected backend changes — a real switch, not the
-// first connect or a reconnect to the same backend. Fires as the connection
-// settles (when markConnected clears the cache), so callers mask that reload.
 export function useBackendChange(onChange: (url: string) => void): void {
   const { url, status } = useConnection()
-  const lastConnected = useRef<string | null>(null)
+  const previous = useRef<string | null>(null)
   const handler = useRef(onChange)
   handler.current = onChange
   useEffect(() => {
-    if (status !== 'connected' || lastConnected.current === url) return
-    const isSwitch = lastConnected.current !== null
-    lastConnected.current = url
-    if (isSwitch) handler.current(url)
+    if (status !== 'connected' || previous.current === url) return
+    const changed = previous.current !== null
+    previous.current = url
+    if (changed) handler.current(url)
   }, [url, status])
 }
 
-function backendFailure(
-  reason: BackendFailureReason,
-  message: string,
-  recoverable = false,
-): Extract<BackendCheck, { ok: false }> {
-  return { ok: false, reason, message, recoverable }
-}
-
-function teleportSessionMessage(url: string): string {
-  return `Sign in through Teleport again to reach the backend at ${url}`
-}
-
-function responseMovedOffBackend(url: string, res: Response): boolean {
-  if (!res.redirected) return false
-  try {
-    return new URL(res.url).origin !== new URL(normalizeBaseUrl(url)).origin
-  } catch {
-    return true
-  }
-}
-
-function responseIsJSON(contentType: string): boolean {
-  return contentType.includes('json')
-}
-
-function responseLooksLikeBrowserLogin(url: string, res: Response, contentType: string): boolean {
-  if (clientRuntime.kind !== 'web') return false
-  const authStatusWithoutAPIJSON =
-    (res.status === 401 || res.status === 403) && !responseIsJSON(contentType)
-  return responseMovedOffBackend(url, res) || authStatusWithoutAPIJSON || contentType.includes('text/html')
-}
-
-async function readHealth(url: string): Promise<HealthProbe> {
-  try {
-    const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
-    const contentType = res.headers.get('content-type')?.toLowerCase() ?? ''
-    if (responseLooksLikeBrowserLogin(url, res, contentType)) {
-      return backendFailure('browser_session_required', teleportSessionMessage(url))
-    }
-    if (!res.ok) {
-      return backendFailure('unreachable', `No backend responded at ${url}`, true)
-    }
-    if (!responseIsJSON(contentType)) {
-      return backendFailure('unreachable', `No Jaz backend responded at ${url}`, true)
-    }
-    const body = (await res.json()) as { ok?: boolean; auth_required?: boolean }
-    if (body.ok !== true) {
-      return backendFailure('unreachable', `No backend responded at ${url}`, true)
-    }
-    return { ok: true, authRequired: body.auth_required === true }
-  } catch {
-    return backendFailure('unreachable', `No backend responded at ${url}`, true)
-  }
-}
-
-async function readJSON<T>(res: Response): Promise<T | null> {
-  try {
-    return (await res.json()) as T
-  } catch {
-    return null
-  }
-}
-
-export async function checkHealth(url: string): Promise<boolean> {
-  return (await readHealth(url)).ok === true
-}
-
-async function checkAuthAccess(url: string, token: string): Promise<AuthAccess> {
-  try {
-    const headers = new Headers()
-    headers.set('Authorization', `Bearer ${token}`)
-    headers.set(CLIENT_PLATFORM_HEADER, CLIENT_PLATFORM)
-    const res = await fetch(`${url}/v1/auth/check`, {
-      headers,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    })
-    const contentType = res.headers.get('content-type')?.toLowerCase() ?? ''
-    if (responseLooksLikeBrowserLogin(url, res, contentType)) {
-      return {
-        ok: false,
-        reason: 'browser_session_required',
-        error: teleportSessionMessage(url),
-        recoverable: false,
-      }
-    }
-    const body = responseIsJSON(contentType) ? await readJSON<AuthFailureBody>(res) : null
-    if (res.status === 401) {
-      return {
-        ok: false,
-        reason: 'auth_rejected',
-        error: 'Backend key was rejected',
-        recoverable: false,
-        code: body?.code,
-      }
-    }
-    if (!res.ok) {
-      return {
-        ok: false,
-        reason: body?.code === 'device_approval_required' ? 'device_approval_required' : 'auth_failed',
-        error: body?.error || `Backend auth check failed with ${res.status}`,
-        recoverable: res.status >= 500,
-        code: body?.code,
-      }
-    }
-    if (!responseIsJSON(contentType)) {
-      return {
-        ok: false,
-        reason: 'auth_failed',
-        error: `Backend auth check returned an invalid response from ${url}`,
-        recoverable: true,
-      }
-    }
-    setResourceTicket(url, body?.resource_ticket)
-    return { ok: true, authKind: body?.auth_kind, deviceId: body?.device_id }
-  } catch {
-    return { ok: false, reason: 'auth_failed', error: 'Backend auth check failed', recoverable: true }
-  }
-}
-
-async function verifyBackend(
-  url: string,
-  token?: string,
-  missingKeyMessage = `Backend at ${url} requires a key`,
-): Promise<BackendCheck> {
-  if (!secureBackendConnection(url)) {
-    return backendFailure('auth_failed', 'Remote connections require HTTPS', false)
-  }
-  const health = await readHealth(url)
-  if (!health.ok) return health
-  if (!health.authRequired) return { ok: true }
-  try {
-    token ??= apiAuthToken(url)
-  } catch {
-    return backendFailure('auth_failed', 'Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.')
-  }
-  if (!token) return backendFailure('missing_key', missingKeyMessage)
-  const access = await checkAuthAccess(url, token)
-  if (access.ok) return { ok: true }
-  return backendFailure(access.reason, access.error || 'Backend auth check failed', access.recoverable)
-}
-
-let pollTimer: ReturnType<typeof setTimeout> | null = null
-let pairingTimer: ReturnType<typeof setTimeout> | null = null
-let pollGen = 0
-let pairingGen = 0
-let failures = 0
-let lostAt = 0
-// What we were connected to before opening a device approval, so abandoning it
-// returns there. Only set when the approval was started from a live connection
-// (a mid-session machine switch); null on first-run/reconnect.
-type ConnectionSnapshot = { url: string; preference: ConnectionPreference | null }
-let preflightSnapshot: ConnectionSnapshot | null = null
-// The backend the React Query cache currently holds data for. Tracked apart
-// from state.url because markPendingApproval parks the pending URL in state.url
-// before approval, which would otherwise hide a real backend switch from the
-// cache-clear check in markConnected.
-let cacheOwnerUrl = ''
-
-function pageHidden(): boolean {
-  return typeof document !== 'undefined' && document.visibilityState === 'hidden'
-}
-
-function recoverableReconnect(url: string, failure: Extract<BackendCheck, { ok: false }>): boolean {
-  return clientRuntime.kind === 'web' && Boolean(apiAuthToken(url)) && failure.recoverable
-}
-
-function enterReconnecting(url: string, error: string): void {
-  lostAt = Date.now()
-  setState({ status: 'reconnecting', url: normalizeBaseUrl(url), pairing: null, error })
-  schedulePoll()
-}
-
-function resumePolling(): void {
-  if (pageHidden() || (state.status !== 'connected' && state.status !== 'reconnecting')) return
-  if (state.status === 'reconnecting') lostAt = Date.now()
-  schedulePoll(0)
-}
-
-// Polls in every state: while connected it watches for loss; while
-// reconnecting/disconnected it keeps probing so the app recovers by itself
-// the moment the backend comes back (slow `go run` compile, backend restart,
-// login race).
-function schedulePoll(delay = POLL_INTERVAL_MS) {
-  const gen = ++pollGen
-  if (pollTimer) clearTimeout(pollTimer)
-  pollTimer = setTimeout(async () => {
-    if (pageHidden()) {
-      schedulePoll()
-      return
-    }
-    const url = state.url
-    const check = await verifyBackend(url)
-    if (gen !== pollGen || state.url !== url) return
-    if (state.status === 'connected') {
-      if (check.ok) {
-        failures = 0
-      } else if (!check.recoverable) {
-        failures = 0
-        setState({ status: 'disconnected', error: check.message })
-      } else {
-        failures += 1
-        if (failures >= FAILURES_BEFORE_DISCONNECT) {
-          enterReconnecting(url, `Lost connection to the backend at ${url}`)
-          return
-        }
-      }
-    } else if (check.ok) {
-      markConnected(url)
-      return
-    } else if (!check.recoverable) {
-      setState({ status: 'disconnected', error: check.message })
-    } else if (state.status === 'reconnecting' && Date.now() - lostAt > RECONNECT_GRACE_MS) {
-      setState({ status: 'disconnected', error: check.message })
-    }
-    if (check.ok || check.recoverable) schedulePoll()
-  }, delay)
-}
-
-function markConnected(url: string) {
-  if (pairingTimer) clearTimeout(pairingTimer)
-  pairingGen += 1
-  preflightSnapshot = null
-  const normalized = normalizeBaseUrl(url)
-  setApiBaseUrl(url)
-  failures = 0
-  if (isLocalBackendUrl(normalized)) {
-    savePreference({ mode: 'local' })
-  } else {
-    savePreference({ mode: 'remote', remoteUrl: normalized })
-    rememberBackend(normalized, new Date().toISOString())
-  }
-  // The cache belongs to the backend we were last connected to; drop it when we
-  // actually connect somewhere new so the app refetches against the right one.
-  if (cacheOwnerUrl !== normalized) queryClient.clear()
-  cacheOwnerUrl = normalized
-  setState({ status: 'connected', url: normalized, pairing: null, error: null })
-  schedulePoll()
-}
-
-// Re-probe a backend whose identity we already trust — a saved remote at
-// startup, or the one we were on before a cancelled approval — and either
-// reconnect or surface why it's now unreachable.
-async function reconnectKnown(url: string): Promise<void> {
-  setState({ status: 'checking', url, pairing: null, error: null })
-  const check = await verifyBackend(url)
-  if (!check.ok) {
-    if (recoverableReconnect(url, check)) {
-      enterReconnecting(url, check.message)
-      return
-    }
-    setState({ status: 'disconnected', url, pairing: null, error: check.message })
-    if (check.recoverable) schedulePoll()
-    return
-  }
-  markConnected(url)
-}
-
-async function registerDevice(url: string, credential: string): Promise<string | null> {
-  const gen = ++pairingGen
-  try {
-    const profile = await getDeviceProfile()
-    if (gen !== pairingGen) {
-      return null
-    }
-    const res = await fetch(`${url}/v1/devices/register`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${credential}`,
-        'Content-Type': 'application/json',
-        [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM,
-      },
-      body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }),
-      signal: AbortSignal.timeout(5_000),
-    })
-    const body = await readJSON<{
-      token?: string
-      pairing?: { id: string; expires_at: string; device?: { name?: string } }
-      pairing_secret?: string
-      error?: string
-    }>(res)
-    if (gen !== pairingGen) {
-      return null
-    }
-    if (res.ok && body?.token) {
-      try {
-        setApiAuthToken(url, body.token)
-      } catch {
-        return 'Device registered, but its connection key could not be saved securely. Check system keychain access and available storage, then try again.'
-      }
-      const access = await checkAuthAccess(url, body.token)
-      if (gen !== pairingGen) {
-        return null
-      }
-      if (!access.ok) {
-        return access.error
-      }
-      markConnected(url)
-      return null
-    }
-    if (res.status === 202 && body?.pairing && body.pairing_secret) {
-      markPendingApproval({
-        url,
-        id: body.pairing.id,
-        secret: body.pairing_secret,
-        deviceName: body.pairing.device?.name || profile.name,
-        expiresAt: body.pairing.expires_at,
-      })
-      return null
-    }
-    return body?.error || `Device registration failed with ${res.status}`
-  } catch {
-    return 'Device registration failed'
-  }
-}
-
-async function startPairing(url: string): Promise<string | null> {
-  try {
-    const profile = await getDeviceProfile()
-    const res = await fetch(`${url}/v1/devices/pairing-requests`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
-      body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }),
-      signal: AbortSignal.timeout(5_000),
-    })
-    const body = await readJSON<{
-      pairing?: { id: string; expires_at: string; device?: { name?: string } }
-      pairing_secret?: string
-      error?: string
-    }>(res)
-    if (!res.ok || !body?.pairing || !body.pairing_secret) {
-      return body?.error || 'Paste the client URL from the backend; it includes the key'
-    }
-    markPendingApproval({
-      url,
-      id: body.pairing.id,
-      secret: body.pairing_secret,
-      deviceName: body.pairing.device?.name || profile.name,
-      expiresAt: body.pairing.expires_at,
-    })
-    return null
-  } catch {
-    return 'Could not create a device approval request'
-  }
-}
-
-function markPendingApproval(pairing: PendingPairing) {
-  if (pollTimer) clearTimeout(pollTimer)
-  // Snapshot a healthy connection before we re-point at the pending backend,
-  // so cancel/expire/reject can return to it.
-  preflightSnapshot =
-    state.status === 'connected' ? { url: state.url, preference: connectionPreference() } : null
-  setApiBaseUrl(pairing.url)
-  setState({ status: 'pending_approval', url: normalizeBaseUrl(pairing.url), pairing, error: null })
-  schedulePairingPoll()
-}
-
-function schedulePairingPoll() {
-  const pairing = state.pairing
-  if (!pairing || state.status !== 'pending_approval') return
-  const gen = ++pairingGen
-  if (pairingTimer) clearTimeout(pairingTimer)
-  pairingTimer = setTimeout(async () => {
-    if (gen !== pairingGen || state.status !== 'pending_approval') return
-    try {
-      const res = await fetch(`${pairing.url}/v1/devices/pairing-requests/${encodeURIComponent(pairing.id)}`, {
-        headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM, 'X-Jaz-Pairing-Secret': pairing.secret },
-        signal: AbortSignal.timeout(5_000),
-      })
-      const body = await readJSON<{
-        token?: string
-        pairing?: { status: string }
-        error?: string
-      }>(res)
-      if (gen !== pairingGen || state.status !== 'pending_approval') {
-        return
-      }
-      if (res.ok && body?.pairing?.status === 'approved') {
-        setApiAuthToken(pairing.url, body.token || '')
-        const access = await checkAuthAccess(pairing.url, body.token || '')
-        if (gen !== pairingGen) {
-          return
-        }
-        if (!access.ok) {
-          abandonPairing(access.error)
-          return
-        }
-        markConnected(pairing.url)
-        return
-      }
-      if (res.status === 401) {
-        abandonPairing('Pairing is no longer available. Connect again.')
-        return
-      }
-      if (res.status === 410 || body?.pairing?.status === 'expired') {
-        abandonPairing('Device approval request expired')
-        return
-      }
-      if (body?.pairing?.status === 'rejected') {
-        abandonPairing('Device approval was rejected')
-        return
-      }
-    } catch {
-      // Keep waiting; the backend may be restarting while approval is open.
-    }
-    schedulePairingPoll()
-  }, 2_000)
-}
-
-// How the app should reach a backend on launch. 'local' = start (or adopt) a
-// backend on this machine every time; 'remote' = connect to a saved server.
-// Persisting the choice is what lets a first launch present a clean welcome
-// instead of a connection error, and lets later launches act without asking.
-export type ConnectionMode = 'local' | 'remote'
-type ConnectionPreference = { mode: ConnectionMode; remoteUrl?: string }
-
-const PREFERENCE_KEY = 'jaz.connection'
-
 export function connectionPreference(): ConnectionPreference | null {
   try {
-    const raw = localStorage.getItem(PREFERENCE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<ConnectionPreference>
-    if (parsed.mode === 'local') return { mode: 'local' }
-    // A remote preference is only usable with its URL; a malformed one falls
-    // through to null so init takes the first-launch (local) path instead of
-    // reconnecting to whatever stale base URL it would otherwise borrow.
-    if (parsed.mode === 'remote' && parsed.remoteUrl) return { mode: 'remote', remoteUrl: parsed.remoteUrl }
-    return null
+    const value = JSON.parse(localStorage.getItem(PREFERENCE_KEY) || 'null') as ConnectionPreference | null
+    if (value?.mode === 'local') return { mode: 'local' }
+    if (value?.mode === 'remote' && value.remoteUrl) return { mode: 'remote', remoteUrl: normalizeBaseUrl(value.remoteUrl) }
   } catch {
     return null
   }
+  return null
 }
 
-function savePreference(pref: ConnectionPreference): void {
+function savePreference(value: ConnectionPreference): void {
   try {
-    localStorage.setItem(PREFERENCE_KEY, JSON.stringify(pref))
+    localStorage.setItem(PREFERENCE_KEY, JSON.stringify(value))
   } catch {
-    // preference is a convenience; never fail a connect over storage
+    // Launch intent is independent of current authentication.
   }
 }
 
@@ -579,185 +81,371 @@ export function clearConnectionPreference(): void {
   localStorage.removeItem(PREFERENCE_KEY)
 }
 
-// Forget a saved backend everywhere: drop it from the registry and its key, and
-// clear the launch preference if it pointed here, so a restart never keeps
-// aiming at a backend the user just removed.
-export function forgetBackend(url: string): void {
-  removeKnownBackend(url)
-  const pref = connectionPreference()
-  if (pref?.mode === 'remote' && pref.remoteUrl && normalizeBaseUrl(pref.remoteUrl) === normalizeBaseUrl(url)) {
+function invalidate(): void {
+  attempt?.controller.abort()
+  attempt = null
+  clearTimeout(pollTimer)
+  clearTimeout(pairingTimer)
+  clearApiSession()
+  void queryClient.cancelQueries()
+  queryClient.clear()
+}
+
+function current(value: Attempt): boolean {
+  return attempt === value && !value.controller.signal.aborted && (!authoritative || authoritative.revision === value.revision)
+}
+
+function begin(url: string, announce = true): Attempt {
+  if (!ownsConnection && announce) throw new Error('Use the main Jaz window to connect')
+  invalidate()
+  if (announce && bridge && desktop) authoritative = bridge.update({ operation: 'begin', document: desktop.document, url })
+  const value = { url, revision: authoritative?.revision ?? 0, controller: new AbortController() }
+  attempt = value
+  setApiBaseUrl(url)
+  setState({ status: 'checking', url, pairing: null, error: null })
+  return value
+}
+
+function block(error: string | null): void {
+  invalidate()
+  if (ownsConnection) {
     clearConnectionPreference()
-  }
-}
-
-// Leave the current backend for the connect chooser without auto-reconnecting.
-// Explicit disconnect wins over the persisted refresh target; saved backend
-// tokens stay available for later manual reconnects.
-export function disconnectBackend(): void {
-  if (pollTimer) clearTimeout(pollTimer)
-  if (pairingTimer) clearTimeout(pairingTimer)
-  pollGen += 1
-  pairingGen += 1
-  preflightSnapshot = null
-  clearConnectionPreference()
-  setState({ status: 'disconnected', pairing: null, error: null })
-}
-
-export function cancelPendingApproval(): void {
-  abandonPairing(null)
-}
-
-// Single exit for a pending approval that won't complete. If it was opened over
-// a working connection, return there; otherwise fall back to the launch screen
-// with the reason, if any.
-function abandonPairing(error: string | null): void {
-  if (pairingTimer) clearTimeout(pairingTimer)
-  pairingGen += 1
-  const snapshot = preflightSnapshot
-  preflightSnapshot = null
-  if (snapshot) {
-    void restoreConnection(snapshot)
-    return
+    if (bridge && desktop) authoritative = bridge.update({ operation: 'clear', document: desktop.document, error })
+    void clientRuntime.configureThreadNotifications?.({ enabled: false })
+  } else if (bridge && desktop && authoritative?.phase === 'connected') {
+    authoritative = bridge.update({ operation: 'reject', document: desktop.document, revision: authoritative.revision })
   }
   setState({ status: 'disconnected', pairing: null, error })
 }
 
-async function restoreConnection(snapshot: ConnectionSnapshot): Promise<void> {
-  // Restore the launch preference first so a failed re-probe degrades exactly
-  // like any other loss of that backend.
-  if (snapshot.preference) savePreference(snapshot.preference)
-  await reconnectKnown(snapshot.url)
+function activate(value: Attempt, candidate: Candidate): void {
+  if (!current(value)) return
+  if (ownsConnection && bridge && desktop) {
+    authoritative = bridge.update({ operation: 'commit', document: desktop.document, revision: value.revision,
+      session: { url: candidate.url, token: candidate.token, deviceId: candidate.deviceId, remembered: candidate.remembered } })
+    value.revision = authoritative.revision
+  }
+  setApiAuthToken(candidate.url, candidate.token, candidate.ticket)
+  setState({ status: 'connected', url: candidate.url, pairing: null, error: null })
+  if (ownsConnection) {
+    if (candidate.url === LOCAL_URL && clientRuntime.kind === 'electron') savePreference({ mode: 'local' })
+    else {
+      clearConnectionPreference()
+      rememberBackend(candidate.url, new Date().toISOString())
+      if (candidate.remembered) savePreference({ mode: 'remote', remoteUrl: candidate.url })
+    }
+    schedulePoll(value, candidate)
+  }
 }
 
-// Probe whatever URL the user typed; persist it only once it answers.
-export async function connectRemote(url: string): Promise<string | null> {
-  const parsed = parseBackendConnectUrl(url)
-  const target = normalizeBaseUrl(parsed.url)
-  if (!target) return 'Enter a backend URL'
-  if (!secureBackendConnection(target)) {
-    return 'Remote connections require HTTPS'
+async function verify(value: Attempt, candidate: Candidate): Promise<string | null> {
+  const access = await readAccess(value.url, candidate.token, value.controller.signal, candidate.deviceId || undefined)
+  if (!current(value)) return null
+  if (!access.ok || access.kind !== 'device') {
+    const error = access.ok ? 'A device credential is required' : access.error
+    block(error)
+    return error
   }
-  if (parsed.key.startsWith('invite_')) {
-    return registerDevice(target, parsed.key)
-  }
-  const health = await readHealth(target)
-  if (!health.ok) return health.message
-  if (health.authRequired) {
-    const token = parsed.key || apiAuthToken(target)
-    if (!token) return startPairing(target)
-    const access = await checkAuthAccess(target, token)
-    if (access.ok) {
-      if (access.authKind === 'root') {
-        return registerDevice(target, token)
-      }
-      if (parsed.key) setApiAuthToken(target, parsed.key)
-    } else if (access.code === 'device_approval_required') {
-      return registerDevice(target, token)
-    } else {
-      return access.error ?? 'Backend auth check failed'
-    }
-  }
-  markConnected(target)
+  activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
   return null
+}
+
+function schedulePoll(value: Attempt, candidate: Candidate): void {
+  clearTimeout(pollTimer)
+  pollTimer = setTimeout(async () => {
+    if (!current(value)) return
+    const health = await readHealth(value.url, value.controller.signal)
+    if (!current(value)) return
+    const access = health.ok && candidate.token ? await readAccess(value.url, candidate.token, value.controller.signal, candidate.deviceId) : health
+    if (!current(value)) return
+    if (!access.ok) {
+      if (!access.recoverable) {
+        block(access.error)
+        return
+      }
+      setState({ status: 'reconnecting', error: access.error })
+    } else setState({ status: 'connected', error: null })
+    schedulePoll(value, candidate)
+  }, 5000)
+}
+
+async function serialized<T>(value: Attempt, issue: () => Promise<T>): Promise<T | undefined> {
+  const next = issuance.catch(() => {}).then(() => current(value) ? issue() : undefined)
+  issuance = next
+  return next
+}
+
+async function register(value: Attempt, credential: string): Promise<string | null> {
+  const profile = await getDeviceProfile()
+  if (!current(value)) return null
+  const response = await serialized(value, () => fetch(value.url + '/v1/devices/register', {
+    method: 'POST', redirect: 'error',
+    headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
+    body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }), signal: AbortSignal.timeout(5000),
+  }))
+  if (!response || !current(value)) return null
+  const body = await readJSON<{ token?: string; error?: string; pairing?: { id: string; expires_at: string }; pairing_secret?: string }>(response)
+  if (!current(value)) return null
+  if (response.ok && body?.token) return verify(value, { url: value.url, token: body.token, deviceId: profile.device_id, remembered: false })
+  if (response.status === 202 && body?.pairing && body.pairing_secret) {
+    pending(value, { url: value.url, id: body.pairing.id, secret: body.pairing_secret, expiresAt: body.pairing.expires_at, deviceName: profile.name }, profile.device_id)
+    return null
+  }
+  const error = body?.error || 'Device registration failed'
+  block(error)
+  return error
+}
+
+function pending(value: Attempt, pairing: PendingPairing, deviceId: string): void {
+  if (!current(value)) return
+  setState({ status: 'pending_approval', pairing })
+  const poll = async (): Promise<void> => {
+    if (!current(value)) return
+    try {
+      const response = await fetch(value.url + '/v1/devices/pairing-requests/' + encodeURIComponent(pairing.id), {
+        headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM, 'X-Jaz-Pairing-Secret': pairing.secret },
+        signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
+      })
+      const body = await readJSON<{ token?: string; error?: string; pairing?: { status: string } }>(response)
+      if (!current(value)) return
+      if (response.ok && body?.pairing?.status === 'approved' && body.token) {
+        await verify(value, { url: value.url, token: body.token, deviceId, remembered: false })
+        return
+      }
+      if (!response.ok || body?.pairing?.status === 'rejected' || body?.pairing?.status === 'expired') {
+        block(body?.error || 'Device approval is no longer available. Connect again.')
+        return
+      }
+    } catch {
+      if (!current(value)) return
+    }
+    pairingTimer = setTimeout(() => void poll(), 2000)
+  }
+  pairingTimer = setTimeout(() => void poll(), 2000)
+}
+
+async function pair(value: Attempt): Promise<string | null> {
+  const profile = await getDeviceProfile()
+  if (!current(value)) return null
+  const response = await fetch(value.url + '/v1/devices/pairing-requests', {
+    method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
+    body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }), signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
+  })
+  const body = await readJSON<{ pairing?: { id: string; expires_at: string }; pairing_secret?: string; error?: string }>(response)
+  if (!current(value)) return null
+  if (!response.ok || !body?.pairing || !body.pairing_secret) {
+    const error = body?.error || 'Could not create a device approval request'
+    block(error)
+    return error
+  }
+  pending(value, { url: value.url, id: body.pairing.id, secret: body.pairing_secret, expiresAt: body.pairing.expires_at, deviceName: profile.name }, profile.device_id)
+  return null
+}
+
+export async function connectRemote(input: string): Promise<string | null> {
+  const parsed = parseBackendConnectUrl(input)
+  const url = normalizeBaseUrl(parsed.url)
+  if (!secureBackendConnection(url)) return 'Remote connections require HTTPS'
+  const cached = cachedApiAuthToken(url)
+  const value = begin(url)
+  clearConnectionPreference()
+  try {
+    if (parsed.key.startsWith('invite_')) return await register(value, parsed.key)
+    const health = await readHealth(url, value.controller.signal)
+    if (!current(value)) return null
+    if (!health.ok) {
+      block(health.error)
+      return health.error
+    }
+    if (!health.authRequired) {
+      activate(value, { url, token: '', deviceId: '', remembered: false })
+      return null
+    }
+    let token = parsed.key || cached
+    let remembered = false
+    if (!token) {
+      token = restoreApiAuthToken(url)
+      remembered = Boolean(token)
+    }
+    if (!token) return await pair(value)
+    const access = await readAccess(url, token, value.controller.signal)
+    if (!current(value)) return null
+    if (access.ok && access.kind === 'root') return await register(value, token)
+    if (!access.ok) {
+      if (access.code === 'device_approval_required' && parsed.key) return await register(value, token)
+      block(access.error)
+      return access.error
+    }
+    activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered })
+    return null
+  } catch (error) {
+    if (!current(value)) return null
+    const message = error instanceof Error ? error.message : 'Could not connect'
+    block(message)
+    return message
+  }
 }
 
 export async function startLocal(): Promise<string | null> {
-  if (!clientRuntime.startLocalBackend) {
-    return 'Local backend control is only available in the desktop app'
-  }
-  const result = await clientRuntime.startLocalBackend()
-  const url = normalizeBaseUrl(result.url ?? localBaseUrl())
-  if (!result.ok) return result.error ?? 'Failed to start the backend'
-  if (await connectStoredToken(url)) {
-    return null
-  }
-  if (result.key) {
-    const error = await registerDevice(url, result.key)
-    if (state.status === 'pending_approval' || error) return error
-    return null
-  }
-  const error = await verifyBackend(
-    url,
-    '',
-    `Backend at ${url} requires a key. Paste its client URL or stop that backend and start locally.`,
-  )
-  if (!error.ok) return error.message
-  markConnected(url)
-  return null
-}
-
-async function connectStoredToken(url: string): Promise<boolean> {
-  const token = apiAuthToken(url)
-  if (!token) return false
-  if ((await verifyBackend(url, token)).ok) {
-    markConnected(url)
-    return true
-  }
-  return false
-}
-
-// Run once at app start. The branch hinges on the saved preference so first
-// launch never shows a connection error: only an *expected* backend (a saved
-// remote, or a local start the user already opted into) can surface one.
-async function init() {
-  const startupURL = consumeStartupConnectUrl()
-  if (startupURL) {
-    const target = normalizeBaseUrl(parseBackendConnectUrl(startupURL).url)
-    setState({ status: 'checking', url: target || state.url, pairing: null, error: null })
-    const error = await connectRemote(startupURL)
-    if (error) {
-      setState({ status: 'disconnected', url: target || state.url, pairing: null, error })
-      schedulePoll()
+  const cached = cachedApiAuthToken(LOCAL_URL)
+  const value = begin(LOCAL_URL)
+  clearConnectionPreference()
+  try {
+    if (cached) {
+      const local = await clientRuntime.startLocalBackend?.()
+      if (!current(value)) return null
+      if (!local?.ok || local.url !== LOCAL_URL) throw new Error('Local backend did not start at its trusted origin')
+      return await verify(value, { url: LOCAL_URL, token: cached, deviceId: '', remembered: false })
     }
-    return
+    if (!bridge || !desktop) throw new Error('Local authenticated startup requires the desktop app')
+    const candidate = await bridge.local(desktop.document, value.revision)
+    if (!current(value)) return null
+    activate(value, candidate)
+    return null
+  } catch (error) {
+    if (!current(value)) return null
+    const message = error instanceof Error ? error.message : 'Could not start local Jaz'
+    block(message)
+    return message
   }
+}
 
-  const pref = connectionPreference()
+export function disconnectBackend(): void {
+  block(null)
+}
 
-  // A remote server was expected here, so reconnectKnown surfacing the failure
-  // (rather than a silent welcome) is right.
-  if (pref?.mode === 'remote') {
-    await reconnectKnown(normalizeBaseUrl(pref.remoteUrl || state.url))
-    return
-  }
+export function cancelPendingApproval(): void {
+  block(null)
+}
 
-  // Both remaining paths target the local backend. Aim the store — and the
-  // recovery poll they fall back to — at local, never the stale persisted base
-  // URL, which could be a remote the user connected to but bailed on.
-  const localUrl = normalizeBaseUrl(localBaseUrl())
+export function forgetBackend(url: string): void {
+  if (normalizeBaseUrl(url) === state.url) disconnectBackend()
+  removeKnownBackend(url)
+  const preference = connectionPreference()
+  if (preference?.mode === 'remote' && preference.remoteUrl === normalizeBaseUrl(url)) clearConnectionPreference()
+}
 
-  if (pref?.mode === 'local') {
-    setState({ status: 'checking', url: localUrl, error: null })
-    // startLocal() flips the store to connected on success; only a genuine
-    // failure (or a non-desktop runtime) falls through to the choice screen.
-    const error = await startLocal()
-    if (error) {
-      setState({ status: 'disconnected', error })
-      schedulePoll()
+export function rememberConnection(): string | null {
+  if (!ownsConnection || state.status !== 'connected' || isLocalBackendUrl(state.url)) return 'Connect to a remote server first'
+  const value = attempt
+  const token = cachedApiAuthToken(state.url)
+  try {
+    rememberApiAuthToken(state.url, () => {
+      if (!value || !current(value)) return false
+      const active = bridge?.read()
+      return !active || (active.document === desktop?.document && active.owner && active.snapshot.revision === value.revision)
+    })
+    if (!value || !current(value) || token !== cachedApiAuthToken(state.url)) return 'Connection changed'
+    if (bridge && desktop) {
+      authoritative = bridge.update({ operation: 'commit', document: desktop.document, revision: value.revision,
+        session: { url: state.url, token, deviceId: authoritative?.session?.deviceId || '', remembered: true } })
+      value.revision = authoritative.revision
     }
-    return
+    savePreference({ mode: 'remote', remoteUrl: state.url })
+    return null
+  } catch {
+    return 'Connected for this session. Could not remember this connection.'
   }
-
-  // First launch, no saved preference. Adopt local if it already answers,
-  // otherwise present the welcome choice with NO error — nothing to disappoint
-  // yet.
-  const error = await verifyBackend(localUrl)
-  if (error.ok) {
-    markConnected(localUrl)
-    return
-  }
-  setState({ status: 'disconnected', url: localUrl, error: null })
-  schedulePoll()
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('focus', resumePolling)
-  window.addEventListener('online', resumePolling)
-  window.addEventListener('pageshow', resumePolling)
-  document.addEventListener('visibilitychange', resumePolling)
+export async function checkHealth(url: string): Promise<boolean> {
+  return (await readHealth(url)).ok
 }
 
-void init().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : 'Could not open the saved connection'
-  setState({ status: 'disconnected', pairing: null, error: message })
+async function hydrate(snapshot: SessionSnapshot): Promise<void> {
+  if (authoritative && snapshot.revision < authoritative.revision) return
+  if (snapshot.phase === 'connected' && snapshot.session && state.status === 'connected' &&
+    snapshot.url === state.url && snapshot.session.token === cachedApiAuthToken(state.url) && attempt) {
+    authoritative = snapshot
+    attempt.revision = snapshot.revision
+    return
+  }
+  authoritative = snapshot
+  invalidate()
+  if (snapshot.phase === 'connected' && snapshot.session) {
+    const value = begin(snapshot.url, false)
+    if (snapshot.session.token) await verify(value, snapshot.session)
+    else activate(value, snapshot.session)
+  } else if (ownsConnection && snapshot.phase === 'pending' && snapshot.localPending) await startLocal()
+  else {
+    if (ownsConnection && snapshot.phase === 'blocked') clearConnectionPreference()
+    setState({ status: snapshot.phase === 'pending' || snapshot.phase === 'initial' ? 'checking' : 'disconnected', url: snapshot.url || state.url, pairing: null, error: snapshot.error })
+  }
+}
+
+async function init(): Promise<void> {
+  if (desktop && desktop.snapshot.phase !== 'initial') {
+    await hydrate(desktop.snapshot)
+    return
+  }
+  if (!ownsConnection) return
+  const startup = consumeStartupConnectUrl()
+  if (startup) {
+    await connectRemote(startup)
+    return
+  }
+  const preference = connectionPreference()
+  if (preference?.mode === 'local') {
+    await startLocal()
+    return
+  }
+  if (preference?.mode === 'remote' && preference.remoteUrl) {
+    await restore(preference.remoteUrl)
+    return
+  }
+  const url = normalizeBaseUrl(localBaseUrl())
+  const value = begin(url)
+  const health = await readHealth(url, value.controller.signal)
+  if (!current(value)) return
+  if (health.ok && !health.authRequired) activate(value, { url, token: '', deviceId: '', remembered: false })
+  else block(null)
+}
+
+async function restore(url: string): Promise<void> {
+  const value = begin(url)
+  let token: string | undefined
+  const retry = async (): Promise<void> => {
+    const health = await readHealth(url, value.controller.signal)
+    if (!current(value)) return
+    if (!health.ok) {
+      if (health.recoverable) {
+        setState({ status: 'disconnected', error: health.error })
+        pollTimer = setTimeout(() => void retry(), 5000)
+      } else block(health.error)
+      return
+    }
+    if (!health.authRequired) {
+      activate(value, { url, token: '', deviceId: '', remembered: false })
+      return
+    }
+    try {
+      token ??= restoreApiAuthToken(url)
+    } catch {
+      block('Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.')
+      return
+    }
+    if (!token) {
+      block('Connect again with an authorized link or request approval')
+      return
+    }
+    const access = await readAccess(url, token, value.controller.signal)
+    if (!current(value)) return
+    if (!access.ok) {
+      if (access.recoverable) pollTimer = setTimeout(() => void retry(), 5000)
+      else block(access.error)
+      return
+    }
+    if (access.kind !== 'device') {
+      block('A saved device credential is required')
+      return
+    }
+    activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered: true })
+  }
+  await retry()
+}
+
+bridge?.subscribe((snapshot) => {
+  void hydrate(snapshot)
 })
+onApiAuthRejected(() => block('Backend device access was rejected'))
+void init().catch((error: unknown) => block(error instanceof Error ? error.message : 'Could not open the connection'))
