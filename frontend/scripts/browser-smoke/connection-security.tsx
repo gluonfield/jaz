@@ -2,10 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { DevicesSettings } from '@/components/settings/DevicesSettings'
 import { MCPSettings } from '@/components/settings/MCPSettings'
-import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
+import { apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import { clientRuntime } from '@/lib/clientRuntime'
 
 export async function exerciseConnectionSecurity(): Promise<void> {
+  await exerciseAuthenticatedWebSocket()
   const originalFetch = window.fetch
   const originalStart = clientRuntime.startLocalBackend
   const originalURL = apiBaseUrl()
@@ -107,6 +108,38 @@ export async function exerciseConnectionSecurity(): Promise<void> {
     clientRuntime.startLocalBackend = originalStart
     setApiBaseUrl(originalURL)
     await window.smoke.resize(originalSize.width, originalSize.height)
+  }
+}
+
+async function exerciseAuthenticatedWebSocket(): Promise<void> {
+  const originalURL = apiBaseUrl()
+  const backend = await window.smoke.backend()
+  setApiBaseUrl(backend)
+  setApiAuthToken(backend, 'fixture-device-credential')
+  const socket = apiWebSocket('/v1/sessions/browser-fixture/browser')
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Authenticated browser socket timed out')), 5000)
+      socket.onopen = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      socket.onerror = () => {
+        clearTimeout(timer)
+        reject(new Error('Authenticated browser socket handshake failed'))
+      }
+    })
+    if (socket.protocol !== 'jaz') {
+      throw new Error('Socket must negotiate jaz without echoing the credential')
+    }
+    const response = await fetch(`${backend}/v1/sessions/browser-fixture/browser`, { method: 'POST', body: JSON.stringify({ action: 'status' }) })
+    if (!response.ok || (await response.json()).status !== 'ok') {
+      throw new Error('Authenticated browser connection was not registered')
+    }
+  } finally {
+    socket.close()
+    setApiAuthToken(backend, null)
+    setApiBaseUrl(originalURL)
   }
 }
 
