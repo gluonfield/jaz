@@ -40,7 +40,7 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
 }
 
 export function taskStateLabel(task: Pick<BotOwed, 'status'>): string {
-  return task.status === 'waiting_for_user' ? 'Blocked by Human' : 'Active'
+  return task.status === 'waiting_for_user' ? 'Blocked by Human' : ''
 }
 
 // What a bot's identity files are called on screen.
