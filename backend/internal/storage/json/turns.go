@@ -94,14 +94,25 @@ func (s *Store) SetTurnPromptState(id, agentSessionID string, startedAt time.Tim
 func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if current, err := s.loadSessionByID(session.ID); err == nil && current.Status == storage.StatusRunning {
+	current, err := s.loadSessionByID(session.ID)
+	if err != nil {
+		return err
+	}
+	if current.Status == storage.StatusRunning {
 		return storage.ErrThreadRunning
 	}
-	session.Status = storage.StatusRunning
-	session.Error = ""
-	session.Turn = prompt.Turn(time.Now().UTC())
-	storage.MarkSessionAttention(&session, session.Turn.StartedAt)
-	return s.saveSession(session)
+	prompt, current.QueuedMessages, err = storage.TakeQueuedMessage(current.QueuedMessages, prompt)
+	if err != nil {
+		return err
+	}
+	if current.Title == "" {
+		current.Title = session.Title
+	}
+	current.Status = storage.StatusRunning
+	current.Error = ""
+	current.Turn = prompt.Turn(time.Now().UTC())
+	storage.MarkSessionAttention(&current, current.Turn.StartedAt)
+	return s.saveSession(current)
 }
 
 func (s *Store) UpdateTurn(id string, update storage.TurnUpdate, messages ...storage.Message) error {

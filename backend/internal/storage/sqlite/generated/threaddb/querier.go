@@ -49,6 +49,7 @@ type Querier interface {
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
 	SetBackgroundWork(ctx context.Context, arg SetBackgroundWorkParams) error
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
+	SetQueuedMessages(ctx context.Context, arg SetQueuedMessagesParams) error
 	SetRunningTurn(ctx context.Context, arg SetRunningTurnParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error

@@ -375,65 +375,71 @@ func (s *Server) claimNextTurn(sessionID string) (storage.Session, *storage.Queu
 	unlock := s.lockSession(sessionID)
 	defer unlock()
 
-	session, err := s.Store.LoadSession(sessionID)
-	if err != nil {
-		return storage.Session{}, nil, false, err
-	}
-	if session.Runtime == "" {
-		session.Runtime = storage.RuntimeACP
-	}
-	if err := s.Store.CheckTaskAdmission(session.ID); err != nil {
-		if errors.Is(err, storage.ErrTaskStopped) {
+	for {
+		session, err := s.Store.LoadSession(sessionID)
+		if err != nil {
+			return storage.Session{}, nil, false, err
+		}
+		if session.Runtime == "" {
+			session.Runtime = storage.RuntimeACP
+		}
+		if err := s.Store.CheckTaskAdmission(session.ID); err != nil {
+			if errors.Is(err, storage.ErrTaskStopped) {
+				return session, nil, false, nil
+			}
+			return storage.Session{}, nil, false, err
+		}
+		if s.sessionRuntimeRunning(session) || !takesQueuedTurns(session.Status) {
 			return session, nil, false, nil
 		}
-		return storage.Session{}, nil, false, err
-	}
-	if s.sessionRuntimeRunning(session) || !takesQueuedTurns(session.Status) {
-		return session, nil, false, nil
-	}
-	prompts := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
-	if len(prompts) == 0 {
-		// Empty queue still yields work when a goal is live; otherwise drop any
-		// stale (non-canonical) entries and report nothing to run. A goal goes
-		// on only after a turn that ended well, so a failing one stops.
-		if session.Status == storage.StatusIdle && goal.Continuable(session.Goal) && session.Runtime == storage.RuntimeACP && s.ACP != nil {
-			session.QueuedMessages = nil
-			markSessionRunning(&session)
-			if err := s.Store.SaveSession(session); err != nil {
-				return storage.Session{}, nil, false, err
+		prompts := s.assignQueuedMessageIDs(storage.CanonicalQueuedMessages(session.QueuedMessages))
+		if len(prompts) == 0 {
+			// Empty queue still yields work when a goal is live; otherwise drop any
+			// stale (non-canonical) entries and report nothing to run. A goal goes
+			// on only after a turn that ended well, so a failing one stops.
+			if session.Status == storage.StatusIdle && goal.Continuable(session.Goal) && session.Runtime == storage.RuntimeACP && s.ACP != nil {
+				session.QueuedMessages = nil
+				markSessionRunning(&session)
+				if err := s.Store.SaveSession(session); err != nil {
+					return storage.Session{}, nil, false, err
+				}
+				return session, nil, true, nil
 			}
-			return session, nil, true, nil
-		}
-		if len(session.QueuedMessages) > 0 {
-			session.QueuedMessages = nil
-			if err := s.Store.SaveSession(session); err != nil {
-				return storage.Session{}, nil, false, err
+			if len(session.QueuedMessages) > 0 {
+				session.QueuedMessages = nil
+				if err := s.Store.SaveSession(session); err != nil {
+					return storage.Session{}, nil, false, err
+				}
 			}
+			return session, nil, false, nil
 		}
-		return session, nil, false, nil
-	}
 
-	index := nextQueuedPromptIndex(prompts)
-	prompt := prompts[index]
-	if err := s.validateQueuedMessage(session, prompt); err != nil {
-		return storage.Session{}, nil, false, err
+		index := nextQueuedPromptIndex(prompts)
+		prompt := prompts[index]
+		if err := s.validateQueuedMessage(session, prompt); err != nil {
+			return storage.Session{}, nil, false, err
+		}
+		if session.Title == "" && !prompt.IsInternal() && !prompt.IsAction() {
+			session.Title = titleFromMessage(prompt.Text)
+		}
+		// A run the agent began on its own may hold the thread since it was read;
+		// the prompt then waits in the queue until that run's turn ends.
+		if err := s.Store.ClaimQueuedTurn(session, prompt); errors.Is(err, storage.ErrQueueChanged) {
+			continue
+		} else if errors.Is(err, storage.ErrThreadRunning) || errors.Is(err, storage.ErrTaskStopped) {
+			return session, nil, false, nil
+		} else if err != nil {
+			return storage.Session{}, nil, false, err
+		}
+		session, err = s.Store.LoadSession(session.ID)
+		if err != nil {
+			return storage.Session{}, nil, false, err
+		}
+		if !prompt.IsInternal() && !prompt.IsAction() {
+			s.TitleThread(session, prompt.Text)
+		}
+		return session, &prompt, true, nil
 	}
-	session.QueuedMessages = s.assignQueuedMessageIDs(removeQueuedPrompt(prompts, index))
-	markSessionRunning(&session)
-	if session.Title == "" && !prompt.IsInternal() && !prompt.IsAction() {
-		session.Title = titleFromMessage(prompt.Text)
-	}
-	// A run the agent began on its own may hold the thread since it was read;
-	// the prompt then waits in the queue until that run's turn ends.
-	if err := s.Store.ClaimQueuedTurn(session, prompt); errors.Is(err, storage.ErrThreadRunning) || errors.Is(err, storage.ErrTaskStopped) || errors.Is(err, storage.ErrNothingStalled) {
-		return session, nil, false, nil
-	} else if err != nil {
-		return storage.Session{}, nil, false, err
-	}
-	if !prompt.IsInternal() && !prompt.IsAction() {
-		s.TitleThread(session, prompt.Text)
-	}
-	return session, &prompt, true, nil
 }
 
 // takesQueuedTurns reports whether a thread in status can start its next

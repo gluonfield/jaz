@@ -174,7 +174,9 @@ func (message QueuedMessage) IsAction() bool {
 
 func (message QueuedMessage) AsInternal() QueuedMessage {
 	message.Action = ""
-	message.Kind = QueuedMessageKindInternal
+	if !message.IsInternal() {
+		message.Kind = QueuedMessageKindInternal
+	}
 	return message
 }
 
@@ -253,6 +255,27 @@ func MarshalQueuedMessage(message *QueuedMessage) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+func TakeQueuedMessage(queue []QueuedMessage, selected QueuedMessage) (QueuedMessage, []QueuedMessage, error) {
+	wanted, err := MarshalQueuedMessage(&selected)
+	if err != nil {
+		return QueuedMessage{}, nil, err
+	}
+	for i, message := range queue {
+		if selected.ID == "" || message.ID != selected.ID {
+			continue
+		}
+		actual, err := MarshalQueuedMessage(&message)
+		if err != nil {
+			return QueuedMessage{}, nil, err
+		}
+		if actual != wanted {
+			break
+		}
+		return message, append(queue[:i:i], queue[i+1:]...), nil
+	}
+	return QueuedMessage{}, nil, ErrQueueChanged
 }
 
 func UnmarshalQueuedMessages(raw string) ([]QueuedMessage, error) {

@@ -363,7 +363,7 @@ func TestStoppedTaskRetiresItsOwedWakeWithoutLosingUnrelatedQueuedOrRunningWork(
 	}
 	staleWake := before.QueuedMessages[0]
 	before.QueuedMessages = before.QueuedMessages[:2]
-	if err := s.ClaimQueuedTurn(before, staleWake); !errors.Is(err, storage.ErrNothingStalled) {
+	if err := s.ClaimQueuedTurn(before, staleWake); !errors.Is(err, storage.ErrQueueChanged) {
 		t.Fatalf("stale wake admitted = %v", err)
 	}
 	user := after.QueuedMessages[1]

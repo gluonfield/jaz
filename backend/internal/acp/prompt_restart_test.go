@@ -146,6 +146,14 @@ func TestPromptRestartProcess(t *testing.T) {
 		if kind == "result" {
 			prompt = storage.QueuedMessage{Text: "Original result to deliver", Kind: storage.QueuedMessageKindInternal, Output: &storage.TurnOutput{ReplyTo: "asker", Hops: 2}}
 		}
+		if err := store.QueueTurn(storage.TurnDelivery{SessionID: session.ID, Message: prompt}); err != nil {
+			t.Fatal(err)
+		}
+		session, err = store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		prompt = session.QueuedMessages[0]
 		if err := boundary.ClaimQueuedTurn(session, prompt); err != nil {
 			t.Fatal(err)
 		}

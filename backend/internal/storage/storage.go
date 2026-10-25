@@ -18,6 +18,8 @@ var ErrPromptUnconfirmed = errors.New("Jaz restarted before the agent confirmed 
 // thread, such as one its agent began on its own.
 var ErrThreadRunning = errors.New("a turn holds the thread")
 
+var ErrQueueChanged = errors.New("queued selection changed")
+
 const (
 	RuntimeACP = "acp"
 )

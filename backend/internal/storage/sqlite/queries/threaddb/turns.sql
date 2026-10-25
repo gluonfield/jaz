@@ -107,3 +107,6 @@ SET status = 'running', error = NULL, turn = sqlc.arg(turn),
     queued_messages = sqlc.arg(queued_messages), title = sqlc.narg(title),
     updated_at_ms = sqlc.arg(started_at_ms), last_attention_at_ms = sqlc.arg(started_at_ms)
 WHERE id = sqlc.arg(id) AND status <> 'running';
+
+-- name: SetQueuedMessages :exec
+UPDATE threads SET queued_messages = sqlc.arg(queued_messages) WHERE id = sqlc.arg(id);

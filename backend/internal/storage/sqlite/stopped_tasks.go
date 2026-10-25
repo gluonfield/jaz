@@ -158,12 +158,22 @@ func retireTaskQueue(ctx context.Context, tx *sql.Tx, taskID int64, id, botID st
 	if len(retired) == 0 && pending == nil && turn == nil {
 		return nil
 	}
-	raw, err := json.Marshal(struct {
-		Task     int64                   `json:"task"`
-		Messages []storage.QueuedMessage `json:"messages"`
-		Pending  *storage.QueuedMessage  `json:"pending,omitempty"`
-		Turn     *storage.Turn           `json:"turn,omitempty"`
-	}{taskID, retired, pending, turn})
+	if err := recordRetiredQueue(ctx, tx, id, retiredQueue{Task: taskID, Messages: retired, Pending: pending, Turn: turn}); err != nil {
+		return err
+	}
+	session.QueuedMessages = kept
+	return insertSession(tx, session)
+}
+
+type retiredQueue struct {
+	Task     int64                   `json:"task,omitempty"`
+	Messages []storage.QueuedMessage `json:"messages,omitempty"`
+	Pending  *storage.QueuedMessage  `json:"pending,omitempty"`
+	Turn     *storage.Turn           `json:"turn,omitempty"`
+}
+
+func recordRetiredQueue(ctx context.Context, tx *sql.Tx, id string, evidence retiredQueue) error {
+	raw, err := json.Marshal(evidence)
 	if err != nil {
 		return err
 	}
@@ -172,9 +182,5 @@ func retireTaskQueue(ctx context.Context, tx *sql.Tx, taskID int64, id, botID st
 	if err != nil {
 		return err
 	}
-	if err := insertSessionEvent(ctx, eventq, sessionevents.Event{SessionID: id, Seq: seq, Type: "task_queue_retired", Content: string(raw), At: time.Now().UTC()}, ""); err != nil {
-		return err
-	}
-	session.QueuedMessages = kept
-	return insertSession(tx, session)
+	return insertSessionEvent(ctx, eventq, sessionevents.Event{SessionID: id, Seq: seq, Type: "task_queue_retired", Content: string(raw), At: time.Now().UTC()}, "")
 }

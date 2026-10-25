@@ -209,31 +209,51 @@ func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMe
 		return err
 	}
 	defer tx.Rollback()
+	q := threaddb.New(tx)
+	row, err := q.GetSession(ctx, session.ID)
+	if err != nil {
+		return err
+	}
+	current, err := sessionFromDB(row)
+	if err != nil {
+		return err
+	}
+	if current.Status == storage.StatusRunning {
+		return storage.ErrThreadRunning
+	}
 	tasks := botdb.New(tx)
-	if err := taskAdmission(ctx, tasks, session.ID); err != nil {
+	if err := taskAdmission(ctx, tasks, current.ID); err != nil {
 		return err
 	}
-	if err := queuedTaskAdmission(ctx, tasks, session.ID, prompt); err != nil {
+	prompt, kept, err := storage.TakeQueuedMessage(current.QueuedMessages, prompt)
+	if err != nil {
 		return err
-	}
-	kept := session.QueuedMessages[:0]
-	for _, message := range session.QueuedMessages {
-		err := queuedTaskAdmission(ctx, tasks, session.ID, message)
-		if errors.Is(err, storage.ErrTaskStopped) || errors.Is(err, storage.ErrNothingStalled) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		kept = append(kept, message)
 	}
 	queue, err := storage.MarshalQueuedMessages(kept)
 	if err != nil {
 		return err
 	}
+	if err := queuedTaskAdmission(ctx, tasks, current.ID, prompt); err != nil {
+		if !errors.Is(err, storage.ErrTaskStopped) && !errors.Is(err, storage.ErrNothingStalled) {
+			return err
+		}
+		if err := recordRetiredQueue(ctx, tx, current.ID, retiredQueue{Messages: []storage.QueuedMessage{prompt}}); err != nil {
+			return err
+		}
+		if err := q.SetQueuedMessages(ctx, threaddb.SetQueuedMessagesParams{ID: current.ID, QueuedMessages: queue}); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return storage.ErrQueueChanged
+	}
+	if current.Title == "" {
+		current.Title = session.Title
+	}
 	now := time.Now().UTC()
-	claimed, err := threaddb.New(tx).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
-		ID: session.ID, QueuedMessages: queue, Title: nullDBString(session.Title),
+	claimed, err := q.ClaimQueuedTurn(ctx, threaddb.ClaimQueuedTurnParams{
+		ID: current.ID, QueuedMessages: queue, Title: nullDBString(current.Title),
 		Turn: sessionTurnJSON(prompt.Turn(now)), StartedAtMs: timeToMs(now),
 	})
 	if err == nil && claimed == 0 {

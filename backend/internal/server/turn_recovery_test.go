@@ -19,7 +19,14 @@ func TestInterruptedQueueActionResumesAsAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.ClaimQueuedTurn(session, storage.QueuedMessage{ID: "archive", Action: storage.QueuedActionArchive}); err != nil {
+	if err := store.QueueTurn(storage.TurnDelivery{SessionID: session.ID, Message: storage.QueuedMessage{ID: "archive", Action: storage.QueuedActionArchive}}); err != nil {
+		t.Fatal(err)
+	}
+	session, err = store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ClaimQueuedTurn(session, session.QueuedMessages[0]); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.UpdateSessionStatus(session.ID, storage.StatusInterrupted, "", time.Time{}); err != nil {
