@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import type { IntegrationPlugin } from '@/lib/api/types'
 import {
-  accountsSummary,
+  accountDetails,
   pluginActionLabel,
   pluginCanConnect,
 } from '@/components/settings/connectionFormatting'
@@ -30,7 +30,7 @@ export function ConnectionSection({
 }
 
 export function ConnectedPluginTile({ plugin, onOpen }: { plugin: IntegrationPlugin; onOpen: () => void }) {
-  const summary = accountsSummary(plugin) || 'Connected'
+  const details = accountDetails(plugin)
 
   return (
     <button
@@ -39,14 +39,16 @@ export function ConnectedPluginTile({ plugin, onOpen }: { plugin: IntegrationPlu
       className="flex min-w-0 cursor-pointer items-center gap-3 rounded-card bg-surface px-3 py-2 text-left transition-colors duration-150 hover:bg-surface-2"
     >
       <PluginIcon plugin={plugin} compact />
-      <span className="min-w-0">
+      <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-medium text-ink">{plugin.name}</span>
-        <span className="flex min-w-0 items-center gap-1.5 text-[12px] leading-5 text-ink-2">
-          <span className="size-1.5 shrink-0 rounded-full bg-ok" aria-hidden />
-          <span className="truncate" title={summary}>
-            {summary}
+        {(details.length ? details : ['Connected']).map((detail, index) => (
+          <span key={index} className="flex min-w-0 items-center gap-1.5 text-[12px] leading-5 text-ink-2">
+            <span className="size-1.5 shrink-0 rounded-full bg-ok" aria-hidden />
+            <span className="truncate" title={detail}>
+              {detail}
+            </span>
           </span>
-        </span>
+        ))}
       </span>
     </button>
   )
