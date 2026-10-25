@@ -84,6 +84,8 @@ export async function exerciseBrowserVisibility(): Promise<void> {
     }
     await Promise.allSettled(element.getAnimations({ subtree: true }).filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished))
     await window.smoke.capture('agent-browser-reveals-panel')
+    panel!.close()
+    await until(() => !panel!.open)
     await router.navigate({ to: '/$id', params: { id: 'browser-background' } })
     await until(() => element.querySelector<HTMLElement>('[data-visibility-chat]')?.dataset.visibilityChat === 'browser-background' && !panel!.open)
     await action('tabs', { action: 'state' })
