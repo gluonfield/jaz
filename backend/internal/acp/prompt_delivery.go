@@ -60,12 +60,13 @@ func (m *Manager) setPromptStateLocked(job *jobState, state storage.PromptState)
 	if turn == nil || turn.promptObserved || state == storage.PromptConfirmed && !turn.promptSending {
 		return nil
 	}
-	if state == storage.PromptConfirmed {
+	if err := m.store.SetTurnPromptState(job.ID, job.ACPSession, turn.startedAt, state); err != nil {
+		return err
+	}
+	if state == storage.PromptSending {
+		turn.promptSending = true
+	} else if state == storage.PromptConfirmed {
 		turn.promptObserved = true
 	}
-	err := m.store.SetTurnPromptState(job.ID, job.ACPSession, turn.startedAt, state)
-	if err == nil && state == storage.PromptSending {
-		turn.promptSending = true
-	}
-	return err
+	return nil
 }
