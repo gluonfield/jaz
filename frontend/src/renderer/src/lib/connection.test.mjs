@@ -279,21 +279,31 @@ test('a failed local launch reports its error before touching saved credentials'
   expect(unlocks).toBe(0)
 })
 
-test('an optional notification credential cannot tear down an unauthenticated connection', async () => {
+test.each([false, true])('notifications use only credentials resolved by connection verification (auth_required: %j)', async (authRequired) => {
   const target = 'https://jaz.example'
+  let unlocks = 0
+  let authChecks = 0
   const { connection, configured, stored } = await fixture({
     notifications: true,
     storedValues: [
       ['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: target })],
       ['jaz.backendAuth.' + target, 'enc:v1:sealed-credential'],
     ],
-    health: () => Response.json({ ok: true, auth_required: false }),
+    health: () => Response.json({ ok: true, auth_required: authRequired }),
     decryptCredential() {
-      throw new Error('Keychain denied')
+      unlocks += 1
+      return 'device-token'
+    },
+    auth() {
+      authChecks += 1
+      return Response.json({ ok: true, auth_kind: 'device' })
     },
   })
-  expect(() => connection.ThreadNotifications()).not.toThrow()
   expect(connection.useConnection().status).toBe('connected')
-  expect(configured).toEqual([{ enabled: false }])
+  expect(unlocks).toBe(authRequired ? 1 : 0)
+  connection.ThreadNotifications()
+  expect(unlocks).toBe(authRequired ? 1 : 0)
+  expect(authChecks).toBe(authRequired ? 1 : 0)
+  expect(configured).toEqual([{ enabled: true, baseUrl: target, token: authRequired ? 'device-token' : '' }])
   expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
 })
