@@ -35,6 +35,7 @@ import { exerciseCanvas } from './canvas'
 import { exerciseImages } from './images'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
+import { exerciseClaudeVoice } from './claude-voice'
 import { exerciseConnectionSecurity } from './connection-security'
 
 declare global {
@@ -43,6 +44,10 @@ declare global {
       openedURLs(): Promise<string[]>
       popupURLs(): Promise<string[]>
       tabURLs(): Promise<string[]>
+      claudeFixture(delay?: boolean): Promise<{ active: number; opened: number; results: number }>
+      claudeOwner(): Promise<boolean>
+      claudeNavigation(): Promise<boolean>
+      claudeWindows(): Promise<{ visible: boolean; focused: boolean; privilegedPage: boolean }[]>
       backend(): Promise<string>
       browserExists(id: number): Promise<boolean>
       navigationProbe(enabled?: boolean): Promise<{ url: string; webContentsId: number }[]>
@@ -89,6 +94,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'claude-voice') {
+        progress('Claude browser authentication, signaling, cancellation and voice settings')
+        await exerciseClaudeVoice()
+        if (suite === 'claude-voice') {
+          window.smoke.result({ ok: true, checks: ['Claude cookie-context HTTP/WebSocket signaling, tool results, host-context isolation, cancellation, hidden broker and desktop/phone provider settings'] })
+          return
+        }
+      }
       if (!suite || suite === 'connection-security') {
         progress('host device administration and saved MCP credentials')
         await exerciseConnectionSecurity()

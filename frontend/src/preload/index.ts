@@ -1,3 +1,6 @@
+import { claudeVoice } from '@preload/claudeVoiceAPI'
+import { CLAUDE_VOICE_ARGUMENT } from '@shared/claudeVoice'
+import { installClaudeVoice } from '@preload/claudeVoice'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { COMPUTER_CHANNEL, type ComputerAPI } from '@shared/computerControl'
 import {
@@ -28,10 +31,13 @@ const apiBaseUrl = process.env['JAZ_API_URL'] ?? 'http://127.0.0.1:5299'
 const windowKind = SECONDARY_WINDOW_KINDS.find((kind) => process.argv.includes(`--jaz-${kind}-window`)) ?? 'main'
 let previewURLTargetSubscriptions = 0
 
-if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
+if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
+  installClaudeVoice()
+} else if (process.argv.includes(BROWSER_PRELOAD_ARGUMENT)) {
   installBrowserPasswordCapture()
 } else {
   contextBridge.exposeInMainWorld('jaz', {
+    claudeVoice,
     browserPasswords,
     browserDownloads,
     computer: {

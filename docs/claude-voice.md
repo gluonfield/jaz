@@ -7,9 +7,11 @@ Request, 25 October 2026: inspect Claude Desktop's voice implementation and add 
 - [x] Check the existing Claude Code sign-in without generating a completion.
 - [x] Reproduce, repair and review authenticated desktop WebSocket negotiation.
 - [x] Activate the reviewed connection correction with a coordinated backend restart.
-- [ ] Verify the signed-in Claude voice handshake and actual model identity.
-- [ ] Implement and verify the Claude provider, including delegation and interruption.
-- [ ] Review and commit the verified implementation.
+- [x] Verify signed-in WebSocket/WebRTC signaling and detect the model-ID mismatch.
+- [ ] Verify the native Opus voice mapping and real audio/delegation.
+- [x] Implement the Claude provider and verify signaling, delegation and cancellation against real protocol fixtures.
+- [x] Review and commit the locally verified implementation.
+- [ ] Activate the provider and complete the live Opus/audio/handoff check.
 
 ## Evidence
 
@@ -67,3 +69,25 @@ Augustinas authorized the shared restart. The correction was merged into local m
 Claude in the Jaz side browser shows its sign-in page; the installed Desktop session is separate. Requested sign-in there to verify the real voice authorization and model contract. No Claude credentials were extracted, copied or stored. Restart receipt: main checkout `runs/claude-voice/restart-receipt.json`. The replacement backend was started detached using the prior environment; its PID is registered in the existing Electron orphan-cleanup PID file.
 
 Official feature documentation: [Use voice mode](https://support.claude.com/en/articles/11101966-use-voice-mode).
+
+## Signed-in Probe and Implementation
+
+After Augustinas signed in, the browser returned organizations HTTP 200 and created a temporary test conversation (201). A WebRTC voice socket initialized protocol 2.1, accepted an SDP offer and connected ICE/media. A synthetic silent track avoided capturing Augustinas's microphone. The text-only request "Reply with the single word Ready." returned "Ready.".
+
+The request used the text ID `claude-opus-5-5`, but `message_start` reported `claude-sonnet-5`. The live native voice catalog instead lists Opus as `claude-opus-5`, matching the installed client's explicit text-to-voice mapping. Requested clarification before generating with that voice-specific ID, because Augustinas's standing Anthropic model rule names Opus 5.5. No further completion was sent. A valid-conversation native Code OAuth upgrade still returned 403 on both hosts. Sanitized evidence: `runs/claude-voice/live-probe.json`.
+
+The provider implementation keeps browser authentication on the local desktop in the existing browser partition. A sandboxed hidden broker performs same-origin HTTP/WebSocket requests and exposes no privileged API to the remote page. Jaz's server stores the provider/voice/model choice and supplies existing companion context; it receives no Claude browser credential. The client uses Claude's live model catalog and requires an explicit selection. Separate OpenAI and Claude signaling adapters share the existing media, transcript, admission and agent-stream flow. A returned model mismatch stops the call.
+
+The code passes the checks below and is ready for integration. No Claude provider changes are active in main yet. Native Opus, real microphone/playback and live Jaz handoff remain unverified. The previously activated WebSocket fix remains separate. The side browser disconnected again after another runtime replacement; Augustinas need not repeat the already-completed sign-in.
+
+## Verification and Review
+
+- Go 1.26.3 voice/live and HTTP voice tests; repository-wide Go vet.
+- 378 frontend tests, both type checks, lint and the desktop bundle.
+- Normal hidden Chromium suite (`test-browser --claude-voice`): same-origin cookie HTTP/WebSocket auth, live catalog filtering, client-tool result shape, observation isolation, startup cancellation, owner reload cleanup, cross-window denial, and desktop/phone settings selection. The broker stays hidden/unfocused and exposes neither Jaz IPC nor Node APIs to the remote page. Final evidence: `runs/claude-voice/broker-smoke.log`, captures in `runs/browser-smoke-VLU3jh/`.
+- Thermo-nuclear self-review: fixed concurrent status-request disposal, owner-reload cleanup, unknown-call delivery failure and invalid-input allocation. Kept microphone activation at the user action and shared media/admission rather than duplicating it. No remaining structural findings. Native agent metadata, prompts, tools, compaction and authentication are unchanged.
+- A broadened full-backend test run was interrupted when its native turn was cancelled; it supplies no full-suite pass claim. The focused affected packages and complete vet finished successfully.
+
+## Use
+
+On Jaz Desktop, choose Settings → Voice → Provider → Claude, sign in to Claude in the side browser if needed, then explicitly choose a model from Claude's live voice catalog. The selected coding agent continues to handle work through Jaz's existing admission stream. Browser-only clients show that this provider requires Desktop. The current OpenAI selection is preserved until changed explicitly.

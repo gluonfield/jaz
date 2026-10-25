@@ -1,10 +1,12 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { claudeVoice } from '@preload/claudeVoiceAPI'
 import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
 import { BROWSER_COMMAND_CHANNEL } from '@shared/browserControl'
 import { BROWSER_PROFILE_CHANNELS, type BrowserProfileAPI } from '@shared/browserProfile'
 
 contextBridge.exposeInMainWorld('jaz', {
+  claudeVoice,
   browserPasswords,
   browserDownloads,
   browserProfiles: {
@@ -29,6 +31,10 @@ contextBridge.exposeInMainWorld('jaz', {
   browserCommand: (request: unknown) => ipcRenderer.invoke(BROWSER_COMMAND_CHANNEL, request),
 })
 contextBridge.exposeInMainWorld('smoke', {
+  claudeFixture: (delay?: boolean) => ipcRenderer.invoke('smoke:claude-fixture', delay),
+  claudeOwner: () => ipcRenderer.invoke('smoke:claude-owner'),
+  claudeNavigation: () => ipcRenderer.invoke('smoke:claude-navigation'),
+  claudeWindows: () => ipcRenderer.invoke('smoke:claude-windows'),
   backend: () => ipcRenderer.invoke('smoke:backend'),
   browserExists: (id: number) => ipcRenderer.invoke('smoke:browser-exists', id),
   navigationProbe: (enabled?: boolean) => ipcRenderer.invoke('smoke:navigation-probe', enabled),

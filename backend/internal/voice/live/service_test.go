@@ -233,3 +233,33 @@ func TestVoiceSelectionPersistsAndRejectsAnotherProvidersCatalog(t *testing.T) {
 		t.Fatalf("provider switch default: %#v %v", status, err)
 	}
 }
+
+func TestClaudeVoiceUsesClientAuthenticationAndSuppliedModel(t *testing.T) {
+	store := &settingsStore{}
+	service := NewService(store, func(provider string) (Credential, error) {
+		if provider == ProviderClaude {
+			t.Fatal("Claude browser authentication must stay on the client")
+		}
+		return Credential{}, errors.New("unavailable")
+	})
+	status, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude, Model: "account-voice-model"})
+	if err != nil || status.Voice != "buttery" || status.Model != "account-voice-model" {
+		t.Fatalf("Claude selection: %#v %v", status, err)
+	}
+	connection, err := service.Connect(context.Background(), "v=0\r\noffer", "Current thread: inspect the supplied drawing.", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connection.Provider != ProviderClaude || connection.Model != status.Model || connection.SDP != "" || !strings.Contains(connection.Instructions, "inspect the supplied drawing") {
+		t.Fatalf("client connection configuration: %#v", connection)
+	}
+	if _, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude, Voice: "cove", Model: status.Model}); !errors.Is(err, ErrInput) {
+		t.Fatalf("Claude accepted an OpenAI voice: %v", err)
+	}
+	if _, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Connect(context.Background(), "v=0\r\noffer", "", ""); !errors.Is(err, ErrInput) {
+		t.Fatalf("Claude guessed an unspecified voice model: %v", err)
+	}
+}

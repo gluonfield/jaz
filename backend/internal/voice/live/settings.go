@@ -11,11 +11,13 @@ import (
 
 const ProviderOAuth = "openai"
 const ProviderAPI = "openai-api-key"
+const ProviderClaude = "claude"
 
 type Settings struct {
 	Agent    string `json:"agent"`
 	Provider string `json:"provider"`
 	Voice    string `json:"voice"`
+	Model    string `json:"model,omitempty"`
 }
 
 type Provider struct {
@@ -35,8 +37,12 @@ func (s *Service) Settings() (Status, error) {
 	providers := []Provider{
 		{ID: ProviderOAuth, Label: "OpenAI OAuth"},
 		{ID: ProviderAPI, Label: "OpenAI API"},
+		{ID: ProviderClaude, Label: "Claude", Reason: "Claude voice requires Jaz Desktop."},
 	}
 	for i := range providers {
+		if providers[i].ID == ProviderClaude {
+			continue
+		}
 		_, err := s.credentials(providers[i].ID)
 		providers[i].Available = err == nil
 		if err != nil {
@@ -80,8 +86,12 @@ func (s *Service) SaveSettings(settings Settings) (Status, error) {
 }
 
 func (s Settings) validate() error {
-	if s.Agent != "openai" || (s.Provider != ProviderOAuth && s.Provider != ProviderAPI) {
-		return fmt.Errorf("%w: choose OpenAI voice with an OpenAI OAuth or OpenAI API provider", ErrInput)
+	if s.Provider == ProviderClaude {
+		if s.Agent != "claude" || len(s.Model) > 128 {
+			return fmt.Errorf("%w: choose a Claude voice model", ErrInput)
+		}
+	} else if s.Agent != "openai" || (s.Provider != ProviderOAuth && s.Provider != ProviderAPI) || s.Model != "" {
+		return fmt.Errorf("%w: choose a supported voice provider", ErrInput)
 	}
 	if !slices.Contains(voices(s.Provider), s.Voice) {
 		return fmt.Errorf("%w: choose a voice supported by the selected provider", ErrInput)
@@ -94,12 +104,17 @@ func (s Settings) withDefaultVoice() Settings {
 		s.Voice = "marin"
 		if s.Provider == ProviderOAuth {
 			s.Voice = "cove"
+		} else if s.Provider == ProviderClaude {
+			s.Voice = "buttery"
 		}
 	}
 	return s
 }
 
 func voices(provider string) []string {
+	if provider == ProviderClaude {
+		return []string{"buttery", "airy", "mellow", "glassy", "rounded"}
+	}
 	if provider == ProviderOAuth {
 		// Codex thread/realtime/listVoices: V3 uses the V1 catalog.
 		return []string{"arbor", "breeze", "cove", "ember", "juniper", "maple", "sol", "spruce", "vale"}

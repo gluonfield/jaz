@@ -1,25 +1,18 @@
-import { connectVoice, type VoiceProvider } from '@/lib/api/liveVoice'
-import { decodeVoiceEvent, voiceContextEvents, type VoiceEvent } from '@/lib/voice/protocol'
+import { getVoiceSettings } from '@/lib/api/liveVoice'
+import type { VoiceEvent } from '@/lib/voice/protocol'
+import { OpenAIVoiceSignaling } from '@/lib/voice/openaiSignaling'
+import { ClaudeVoiceSignaling } from '@/lib/voice/claudeSignaling'
 import { requestMicrophone } from '@/lib/voice/microphone'
 import type { VoiceTrace } from '@/lib/voice/diagnostics'
-
-type ContextAppend = {
-  event: ReturnType<typeof voiceContextEvents>[number]
-  sourceSeq?: number
-  timer?: ReturnType<typeof setTimeout>
-}
+import type { VoiceSignaling } from '@/lib/voice/signaling'
 
 export class VoiceConnection {
   private peer = new RTCPeerConnection()
-  private channel = this.peer.createDataChannel('oai-events')
+  private signaling?: VoiceSignaling
   private abort = new AbortController()
   private microphone?: MediaStream
   private audio = new Audio()
   private context = new AudioContext()
-  private provider?: VoiceProvider
-  // OAuth acknowledgments identify the delegation, so each delegation has one append in flight.
-  private appends = new Map<string, ContextAppend[]>()
-  private ready = false
   private ending = false
   private closed = false
   private timer?: ReturnType<typeof setTimeout>
@@ -33,47 +26,6 @@ export class VoiceConnection {
     }
     this.analyser.fftSize = 256
     this.outputAnalyser.fftSize = 256
-    this.channel.onmessage = ({ data }: MessageEvent<string>) => {
-      if (this.closed) return
-      try {
-        const raw = JSON.parse(data)
-        if (['delegation.context.appended', 'session.context.appended', 'session.thinking.appended', 'session.commentary.appended'].includes(raw.type)) {
-          const key = this.provider === 'openai' ? raw.delegation_item_id ?? '' : raw.client_event_id
-          const queue = this.appends.get(key)
-          const sent = queue?.shift()
-          clearTimeout(sent?.timer)
-          this.trace('append_ack', { event_id: sent?.event.event_id, source_seq: sent?.sourceSeq, request_id: raw.delegation_item_id ?? raw.delegation_id, provider_start_ms: raw.start_ms, provider_end_ms: raw.end_ms, detail: sent ? raw.type : `Unmatched ${raw.type}` })
-          if (queue?.length) {
-            this.sendContext(key)
-          } else {
-            this.appends.delete(key)
-          }
-        }
-        if (raw.type === 'turn.created' || raw.type === 'turn.done') {
-          this.trace(raw.type, { user_turn_id: raw.turn?.id, provider_start_ms: raw.turn?.start_ms, provider_end_ms: raw.turn?.end_ms, detail: raw.turn?.role })
-        }
-        const event = decodeVoiceEvent(data)
-        if (!event || this.closed) return
-        if (event.type === 'error') {
-          this.trace('provider_error', { detail: event.message.slice(0, 512) })
-        }
-        if (event.type === 'ready') {
-          this.ready = true
-          clearTimeout(this.timer)
-        }
-        if (event.type === 'closed') this.dispose()
-        this.onEvent(event)
-      } catch {
-        this.fail('The voice provider sent an invalid event.')
-      }
-    }
-    this.channel.onclose = () => {
-      if (this.closed) return
-      if (this.ending) {
-        this.dispose()
-        this.onEvent({ type: 'closed' })
-      } else this.fail('Voice disconnected. Start voice again to reconnect.')
-    }
     this.peer.onconnectionstatechange = () => {
       if (this.peer.connectionState === 'failed') this.fail('Voice disconnected. Start voice again to reconnect.')
     }
@@ -88,14 +40,44 @@ export class VoiceConnection {
 
   async start(sessionId: string, loadContext: () => Promise<string>) {
     this.timer = setTimeout(() => this.fail('Connecting voice timed out. Please try again.'), 45_000)
-    const [chatContext] = await Promise.all([loadContext(), this.prepareMicrophone()])
-    if (this.closed || this.ending) return
+    const [settings, chatContext] = await Promise.all([getVoiceSettings(), loadContext(), this.prepareMicrophone()])
+    if (this.closed || this.ending) {
+      return
+    }
+    if (settings.provider === 'claude') {
+      const provider = settings.providers.find((provider) => provider.id === 'claude')
+      if (!provider?.available || !settings.models?.some((model) => model.id === settings.model)) {
+        throw new Error(provider?.reason ?? 'Choose an available Claude voice model in Settings → Voice.')
+      }
+    }
+    const event = (event: VoiceEvent) => {
+      if (this.closed) {
+        return
+      }
+      if (event.type === 'ready') {
+        clearTimeout(this.timer)
+      }
+      if (event.type === 'closed' || event.type === 'error') {
+        this.dispose()
+      }
+      this.onEvent(event)
+    }
+    this.signaling = settings.provider === 'claude'
+      ? new ClaudeVoiceSignaling(this.peer, event, this.trace, settings.voice)
+      : new OpenAIVoiceSignaling(this.peer, event, this.trace)
+    if (this.closed || this.ending) {
+      return
+    }
+    await this.peer.setLocalDescription(await this.peer.createOffer())
+    await this.gatherICE()
+    if (this.closed || this.ending) {
+      return
+    }
     const sdp = this.peer.localDescription?.sdp
-    if (!sdp) throw new Error('Could not prepare the microphone connection.')
-    const result = await connectVoice(sessionId, sdp, chatContext, this.abort.signal)
-    if (this.closed || this.ending) return
-    this.provider = result.provider
-    await this.peer.setRemoteDescription({ type: 'answer', sdp: result.sdp })
+    if (!sdp) {
+      throw new Error('Could not prepare the microphone connection.')
+    }
+    await this.signaling.start(sessionId, sdp, chatContext)
   }
 
   private async prepareMicrophone() {
@@ -112,44 +94,10 @@ export class VoiceConnection {
       track.onended = () => this.fail('Microphone disconnected. Start voice again to reconnect.')
     }
     this.context.createMediaStreamSource(microphone).connect(this.analyser)
-    await this.peer.setLocalDescription(await this.peer.createOffer())
-    await this.gatherICE()
-    if (this.closed || this.ending) return
   }
 
-  append(text: string, speak = false, delegationId?: string, sourceSeq?: number) {
-    if (this.ending || this.closed) return
-    if (!this.ready || !this.provider || this.channel.readyState !== 'open') {
-      this.trace('context_failed', { request_id: delegationId, source_seq: sourceSeq })
-      this.fail('Voice could not receive the agent result. It remains available in the chat.')
-      return
-    }
-    if (sourceSeq !== undefined) {
-      this.trace('result_available', { request_id: delegationId, source_seq: sourceSeq })
-    }
-    for (const event of voiceContextEvents(this.provider, text, speak, delegationId)) {
-      if (this.closed) return
-      const key = this.provider === 'openai' ? delegationId ?? '' : event.event_id
-      const queue = this.appends.get(key) ?? []
-      queue.push({ event, sourceSeq })
-      this.appends.set(key, queue)
-      if (queue.length === 1) {
-        this.sendContext(key)
-      }
-    }
-  }
-
-  private sendContext(key: string) {
-    const next = this.appends.get(key)?.[0]
-    if (!next) return
-    const { event, sourceSeq } = next
-    try {
-      this.channel.send(JSON.stringify(event))
-      this.trace('context_sent', { event_id: event.event_id, request_id: 'delegation_item_id' in event ? event.delegation_item_id : event.delegation_id ?? undefined, source_seq: sourceSeq, detail: event.type })
-      next.timer = setTimeout(() => this.fail('Voice did not acknowledge the agent update. It remains available in the chat.'), 15000)
-    } catch {
-      this.fail('Voice could not receive the agent result. It remains available in the chat.')
-    }
+  append(text: string, speak = false, delegationId?: string, sourceSeq?: number): void {
+    this.signaling?.append(text, speak, delegationId, sourceSeq)
   }
 
   mute(muted: boolean) {
@@ -166,12 +114,8 @@ export class VoiceConnection {
     this.mute(true)
     this.audio.muted = true
     clearTimeout(this.timer)
-    if (this.ready && this.channel.readyState === 'open') {
-      this.channel.send(JSON.stringify({ type: 'session.close' }))
-      this.timer = setTimeout(() => {
-        this.dispose()
-        this.onEvent({ type: 'closed' })
-      }, 3000)
+    if (this.signaling) {
+      this.signaling.end()
     } else {
       this.dispose()
       this.onEvent({ type: 'closed' })
@@ -182,15 +126,11 @@ export class VoiceConnection {
     if (this.closed) return
     this.closed = true
     clearTimeout(this.timer)
-    for (const queue of this.appends.values()) {
-      clearTimeout(queue[0]?.timer)
-    }
-    this.appends.clear()
     this.abort.abort()
     this.microphone?.getTracks().forEach((track) => track.stop())
     this.audio.pause()
     this.audio.srcObject = null
-    this.channel.close()
+    this.signaling?.dispose()
     this.peer.close()
     void this.context.close()
   }

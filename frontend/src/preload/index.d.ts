@@ -1,3 +1,5 @@
+import type { ClaudeVoiceAPI } from '@shared/claudeVoice'
+
 export {}
 
 import type { ComputerAPI } from '@shared/computerControl'
@@ -17,6 +19,7 @@ import type { VoiceOverlayAPI } from '@shared/voice'
 declare global {
   interface Window {
     jaz?: {
+      claudeVoice: ClaudeVoiceAPI
       computer: ComputerAPI
       systemPermissions: SystemPermissionsAPI
       permissionGuide: PermissionGuideAPI
