@@ -7,18 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wins/jaz/backend/internal/browsercontrol"
-	jazsettings "github.com/wins/jaz/backend/internal/settings"
+	"github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
-
-type extensionStatusStub struct {
-	status browsercontrol.ExtensionStatus
-}
-
-func (s extensionStatusStub) Status() browsercontrol.ExtensionStatus {
-	return s.status
-}
 
 func TestSettingsEndpoint(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
@@ -26,95 +17,36 @@ func TestSettingsEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	changed := false
-	handler := NewSettingsHandler(store, extensionStatusStub{status: browsercontrol.ExtensionStatus{
-		Connected:   true,
-		ExtensionID: "ext-1",
-		Protocol:    browsercontrol.ExtensionProtocol,
-		BridgeURL:   "ws://127.0.0.1:5299/v1/browser/extension",
-		Actions:     []string{"status", "snapshot"},
-	}}, func() { changed = true })
-
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/v1/browser", nil))
-	if res.Code != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	changes := 0
+	handler := NewSettingsHandler(store, func() { changes++ })
+	for _, enabled := range []bool{true, false} {
+		body, err := json.Marshal(settings.BrowserSettings{Enabled: enabled})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(string(body))))
+		if response.Code != http.StatusOK {
+			t.Fatalf("update status=%d body=%s", response.Code, response.Body.String())
+		}
+		response = httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/browser", nil))
+		var status map[string]any
+		if err := json.Unmarshal(response.Body.Bytes(), &status); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != http.StatusOK || len(status) != 1 || status["enabled"] != enabled {
+			t.Fatalf("browser status=%d body=%s", response.Code, response.Body.String())
+		}
 	}
-	var status StatusResponse
-	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
-		t.Fatal(err)
+	if changes != 2 {
+		t.Fatalf("change notifications=%d", changes)
 	}
-	if status.Enabled || status.Mode != jazsettings.BrowserModeExtension {
-		t.Fatalf("default browser status = %#v", status)
-	}
-	if !status.Extension.Connected || status.Extension.ExtensionID != "ext-1" || len(status.Extension.Actions) != 2 {
-		t.Fatalf("extension status = %#v", status.Extension)
-	}
-
-	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true}`)))
-	if res.Code != http.StatusOK {
-		t.Fatalf("enable browser = %d, body = %s", res.Code, res.Body.String())
-	}
-	if !changed {
-		t.Fatal("settings update did not notify dependencies")
-	}
-	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
-		t.Fatal(err)
-	}
-	if !status.Enabled || status.Mode != jazsettings.BrowserModeExtension {
-		t.Fatalf("browser status = %#v", status)
-	}
-
-	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":false}`)))
-	if res.Code != http.StatusOK {
-		t.Fatalf("disable browser = %d, body = %s", res.Code, res.Body.String())
-	}
-	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
-		t.Fatal(err)
-	}
-	if status.Enabled {
-		t.Fatalf("browser should be disabled, got %#v", status)
-	}
-}
-
-func TestSettingsEndpointOffersOnlyDesktopAndExtension(t *testing.T) {
-	store, err := sqlitestore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = store.Close() })
-	handler := NewSettingsHandler(store, extensionStatusStub{}, nil)
-
-	res := httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"mode":"managed"}`)))
-	if res.Code != http.StatusBadRequest {
-		t.Fatalf("removed mode status = %d", res.Code)
-	}
-
-	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"enabled":true,"mode":"desktop"}`)))
-	if res.Code != http.StatusOK {
-		t.Fatalf("set desktop browser = %d, body = %s", res.Code, res.Body.String())
-	}
-	var status StatusResponse
-	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
-		t.Fatal(err)
-	}
-	if !status.Enabled || status.Mode != jazsettings.BrowserModeDesktop {
-		t.Fatalf("browser status = %#v", status)
-	}
-
-	res = httptest.NewRecorder()
-	handler.ServeHTTP(res, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"mode":"extension"}`)))
-	if res.Code != http.StatusOK {
-		t.Fatalf("extension mode without extension should still save = %d, body = %s", res.Code, res.Body.String())
-	}
-	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
-		t.Fatal(err)
-	}
-	if status.Mode != jazsettings.BrowserModeExtension {
-		t.Fatalf("browser status = %#v", status)
+	for _, mode := range []string{"extension", "managed", "desktop"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodPut, "/v1/browser", strings.NewReader(`{"mode":"`+mode+`"}`)))
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("obsolete mode %q status=%d", mode, response.Code)
+		}
 	}
 }

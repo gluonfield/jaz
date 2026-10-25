@@ -9,13 +9,12 @@ import (
 )
 
 type ConfiguredBackend struct {
-	*ExtensionBridge
-	Desktop *DesktopBackend
-	store   storage.SettingsStorage
+	*DesktopBackend
+	store storage.SettingsStorage
 }
 
 func NewConfiguredBackend(store storage.SettingsStorage) *ConfiguredBackend {
-	return &ConfiguredBackend{ExtensionBridge: NewExtensionBridge(), Desktop: NewDesktopBackend(), store: store}
+	return &ConfiguredBackend{DesktopBackend: NewDesktopBackend(), store: store}
 }
 
 func (b *ConfiguredBackend) Call(ctx context.Context, input ActionInput) (ActionOutput, error) {
@@ -26,12 +25,5 @@ func (b *ConfiguredBackend) Call(ctx context.Context, input ActionInput) (Action
 	if !config.Enabled {
 		return ActionOutput{}, errors.New("browser tools are disabled in Browser settings")
 	}
-	if config.Mode == settings.BrowserModeDesktop {
-		return b.Desktop.Call(ctx, input)
-	}
-	return b.ExtensionBridge.Call(ctx, input)
-}
-
-func (b *ConfiguredBackend) Close() error {
-	return errors.Join(b.Desktop.Close(), b.ExtensionBridge.Close())
+	return b.DesktopBackend.Call(ctx, input)
 }

@@ -65,11 +65,11 @@ func (b *DesktopBackend) Call(ctx context.Context, input ActionInput) (ActionOut
 	case ActionAXState:
 		return page.accessibilityState(ctx, input.DisableDiffing)
 	case ActionScript:
-		var result extensionWireOutput
+		var result scriptOutput
 		if err := page.conn.call(ctx, "Jaz.run", map[string]any{"code": input.Text}, &result); err != nil {
 			return ActionOutput{}, err
 		}
-		return actionOutput(result)
+		return result.output()
 	case ActionStatus:
 		return ActionOutput{Status: "ok", Text: "Jaz side browser is connected to this conversation."}, nil
 	case ActionNavigate:
@@ -97,8 +97,6 @@ func (b *DesktopBackend) Call(ctx context.Context, input ActionInput) (ActionOut
 		}
 		data, err := json.Marshal(TabsOutput{Tabs: tabs})
 		return ActionOutput{Status: "ok", Data: data}, err
-	case ActionClaimTab:
-		return ActionOutput{}, errors.New("the side browser belongs to this conversation; use browser_navigate to open a page")
 	}
 	return page.call(ctx, input)
 }

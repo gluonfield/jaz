@@ -1,17 +1,15 @@
-# Aurora Browser Connection
+# Side Browser Only
 
-- [x] Diagnose thread `20261025T132858-17787445` from native results and hidden Chromium.
-- [x] Fix authenticated browser, Computer Use and Terminal WebSocket negotiation.
-- [x] Remove Background Chromium from settings, API and launcher.
-- [x] Verify and review the implementation.
-- [x] Integrate locally (verified code `fca29e75`).
+- [x] Diagnose and fix Aurora’s authenticated browser connection.
+- [x] Remove Background Chromium and Extension from UI and backend.
+- [x] Remove backend-mode fields, extension route and external-tab claiming.
+- [x] Verify agent activity reveals its owning browser.
+- [ ] Integrate the final correction locally.
 
-The client now offers `jaz` alongside its credential. Shared upgrade policy selects only `jaz`, keeping credentials out of responses. Chromium accepts the connection and the browser registers under its conversation. The previous credential-only/no-selected-protocol handshake was rejected by Chromium; Gorilla's Go client had accepted it.
+Jaz has one browser per conversation. Agent navigation, page reads and scripts reveal that conversation’s side panel. Activity in another conversation leaves the current chat alone and reveals the retained browser when its owner is opened.
 
-Background Chromium and its fallback routing are deleted. Saved `managed` selections resolve to the side browser; new requests for that mode are rejected. Current choices are Jaz side browser and Extension. Local main contains both changes; restarting the running server remains necessary for activation.
+Browser settings contain only enablement and profile import. The backend stores/returns only enablement; old mode fields are ignored when loading saved records and rejected in new API updates. The extension bridge, route, origin exception, tab-claim tool and obsolete documentation are deleted. Shared script-result decoding remains with the desktop transport.
 
-Verification: Go 1.26.3 full tests/vet; 376 frontend tests, typecheck/lint; hidden Electron authenticated MCP navigation/reading/trusted input and invalid-credential rejection; desktop/phone settings switching and visual inspection. Removing protocol negotiation through a Go overlay makes the real Electron regression fail. Direct strict review removed the obsolete launcher and redundant constructor, retaining shared page actions.
+Verification: Go 1.26.3 tests/vet, 376 frontend tests, typecheck/lint; hidden Electron authenticated MCP reading/input; desktop/phone settings toggles; first navigation, reopening after reads/scripts, and background activity on return. The focused visibility test runs through production BrowserWorkspace, panel and browser components in the normal browser smoke path.
 
-Evidence: `runs/aurora-browser/`, with final renders in `runs/browser-smoke-djNUh3/`. No provider metadata, prompts, native auth or runtime versions changed. No live restart or release.
-
-A broader side-panel smoke stops at the untouched tab-layout assertion before browser work (`side-panel.log`); relevant production panel/control sources equal main. The focused authenticated MCP/Chromium and settings test passes (`merged-electron.log`). Integration retains main’s independently merged shared HTTP upgrader/public `jaz` protocol.
+Evidence: `runs/aurora-browser/side-only-*` and `visibility-complete.log`; screenshots in `runs/browser-smoke-OOYwpz/` and `runs/browser-smoke-hJhu1z/`. The older broad panel suite retains its unrelated layout failure; its assertions and product layout were preserved. Direct strict review kept one settings gate and removed mode routing and wrappers. No live server restart, push or release.

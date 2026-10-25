@@ -17,8 +17,8 @@ type BrowserSettingsHandler struct {
 	http.Handler
 }
 
-func NewBrowserSettingsHandler(store *sqlitestore.Store, jaz *jaztools.Service, mcp *mcpruntime.Manager, backend *browsercontrol.ConfiguredBackend) *BrowserSettingsHandler {
-	return &BrowserSettingsHandler{Handler: browserapi.NewSettingsHandler(store, backend, func() {
+func NewBrowserSettingsHandler(store *sqlitestore.Store, jaz *jaztools.Service, mcp *mcpruntime.Manager) *BrowserSettingsHandler {
+	return &BrowserSettingsHandler{Handler: browserapi.NewSettingsHandler(store, func() {
 		jaz.Sync()
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

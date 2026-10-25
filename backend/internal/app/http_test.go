@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
-	"github.com/wins/jaz/backend/internal/browsercontrol"
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	previewapi "github.com/wins/jaz/backend/internal/httpapi/preview"
@@ -226,20 +225,6 @@ func TestNewRoutesDisablePairingGatesPairingRoutes(t *testing.T) {
 	if pairing, register := mounted(true); pairing || !register {
 		t.Fatalf("disabled: pairing=%v register=%v, want only register", pairing, register)
 	}
-}
-
-func TestNewRoutesIncludesBrowserExtensionRoute(t *testing.T) {
-	routes := NewRoutes(routeDeps{
-		Usage:   usagecore.NewService(fakeUsageStore{}),
-		Browser: &browsercontrol.ConfiguredBackend{ExtensionBridge: browsercontrol.NewExtensionBridge()},
-		Preview: testPreviewHandler(t),
-	})
-	for _, route := range routes {
-		if route.Pattern == "GET /v1/browser/extension" && route.Handler != nil {
-			return
-		}
-	}
-	t.Fatalf("missing browser extension route: %#v", routes)
 }
 
 func TestNewRoutesIncludesBrowserSettingsRoutes(t *testing.T) {

@@ -1,6 +1,6 @@
 # Jaz side browser
 
-Enable browser tools in **Settings → Browser** and select **Jaz side browser**.
+Enable browser tools in **Settings → Browser**.
 Keep the desktop app running while the agent works. Once a conversation has
 connected, browser activity in the current conversation opens the right side
 panel and selects the agent's browser tab. This includes commands against an

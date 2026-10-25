@@ -3,7 +3,6 @@ package settings
 import (
 	"encoding/json"
 	"errors"
-	"strings"
 
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -11,23 +10,16 @@ import (
 const (
 	BrowserSettingsNamespace = "browser"
 	BrowserSettingsKey       = "settings"
-	BrowserModeExtension     = "extension"
-	BrowserModeDesktop       = "desktop"
 )
 
 type BrowserSettings struct {
-	Enabled bool   `json:"enabled"`
-	Mode    string `json:"mode,omitempty"`
-}
-
-func DefaultBrowserSettings() BrowserSettings {
-	return BrowserSettings{Mode: BrowserModeExtension}
+	Enabled bool `json:"enabled"`
 }
 
 func LoadBrowserSettings(store storage.SettingsStorage) (BrowserSettings, error) {
 	setting, err := store.LoadSetting(BrowserSettingsNamespace, BrowserSettingsKey)
 	if errors.Is(err, storage.ErrSettingNotFound) {
-		return DefaultBrowserSettings(), nil
+		return BrowserSettings{}, nil
 	}
 	if err != nil {
 		return BrowserSettings{}, err
@@ -36,20 +28,11 @@ func LoadBrowserSettings(store storage.SettingsStorage) (BrowserSettings, error)
 	if err := json.Unmarshal(setting.Value, &settings); err != nil {
 		return BrowserSettings{}, err
 	}
-	if settings.Mode == "managed" {
-		settings.Mode = BrowserModeDesktop
-	}
-	settings.Mode = BrowserMode(settings)
 	return settings, nil
 }
 
 func SaveBrowserSettings(store storage.SettingsStorage, settings BrowserSettings) (BrowserSettings, error) {
-	settings.Mode = BrowserMode(settings)
-	encoded := settings
-	if encoded.Mode == BrowserModeExtension {
-		encoded.Mode = ""
-	}
-	data, err := json.Marshal(encoded)
+	data, err := json.Marshal(settings)
 	if err != nil {
 		return BrowserSettings{}, err
 	}
@@ -65,22 +48,4 @@ func BrowserEnabled(store storage.SettingsStorage) bool {
 		return false
 	}
 	return settings.Enabled
-}
-
-func BrowserMode(settings BrowserSettings) string {
-	if mode := NormalizeBrowserMode(settings.Mode); mode != "" {
-		return mode
-	}
-	return BrowserModeExtension
-}
-
-func NormalizeBrowserMode(mode string) string {
-	switch strings.TrimSpace(mode) {
-	case "", BrowserModeExtension:
-		return BrowserModeExtension
-	case BrowserModeDesktop:
-		return BrowserModeDesktop
-	default:
-		return ""
-	}
 }
