@@ -197,17 +197,24 @@ export async function exerciseBotPanel(): Promise<void> {
   const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:last-child')].map((node) => node.textContent)
   const selected = () => document.querySelector('[role="tablist"][aria-label="Bot details"] [aria-selected="true"]')
   const tabpanel = () => document.getElementById(selected()!.getAttribute('aria-controls')!)!
-  // Every tab shows its whole name inside the card.
-  const tabsFit = (where: string) => {
+  // Named, equal icon targets with no text, selected or not, in a capsule that
+  // hugs them inside the card. Returns the layout to compare across changes.
+  const iconTabs = (where: string) => {
     const tablist = selected()!.parentElement!
+    const list = tablist.getBoundingClientRect()
     const card = tablist.parentElement!.getBoundingClientRect()
-    for (const tab of tablist.children) {
-      const box = tab.getBoundingClientRect()
-      const label = tab.firstElementChild!.getBoundingClientRect()
-      if (!label.width || label.left < box.left || label.right > box.right || box.left < card.left || box.right > card.right) {
-        throw new Error(`Bot panel: the ${tab.textContent} tab does not fit ${where}`)
-      }
+    const tabs = [...tablist.children]
+    const boxes = tabs.map((tab) => tab.getBoundingClientRect())
+    const { width, height } = boxes[0]
+    if (
+      tabs.map((tab) => tab.getAttribute('aria-label')).join() !== 'Activity,Routines,Identity,Agent' ||
+      tabs.some((tab) => tab.textContent || !tab.querySelector('svg')) ||
+      boxes.some((box) => box.width !== width || box.height !== height) ||
+      width < 40 || height < 40 || list.width > boxes.length * width + 8 || list.left < card.left || list.right > card.right
+    ) {
+      throw new Error(`Bot panel: the tabs are not equal named icon targets ${where}`)
     }
+    return JSON.stringify([list.width, list.height, ...boxes.map((box) => box.left - list.left)])
   }
 
   try {
@@ -232,10 +239,10 @@ export async function exerciseBotPanel(): Promise<void> {
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     dark(false)
     await until('Activity did not open with tasks and history', () => selected() === find('Activity') && text().includes('Open Tasks 7') && text().includes('Learned something new'))
-    if (find('Tasks') || !find('Activity')?.textContent?.includes('Activity')) {
+    if (find('Tasks')) {
       throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
-    tabsFit('the desktop panel')
+    const tabLayout = iconTabs('on the desktop panel')
     const states = taskStates()
     if (states.length !== 7 || states.filter((state) => state === 'Active').length !== 6 || states.filter((state) => state === 'Blocked by Human').length !== 1) {
       throw new Error(`Bot panel: tasks should have two visible states, got ${states}`)
@@ -250,6 +257,9 @@ export async function exerciseBotPanel(): Promise<void> {
     dark(false)
     await window.smoke.resize(390, 844)
     await capture('bot-panel-tasks-phone')
+    dark(true)
+    await capture('bot-panel-tasks-phone-dark')
+    dark(false)
     const tasks = document.querySelector<HTMLElement>('section[aria-label="Tasks"]')!
     for (const task of owed) {
       const row = find(task.request)!
@@ -263,13 +273,9 @@ export async function exerciseBotPanel(): Promise<void> {
     if ([tasks, ...tasks.querySelectorAll('button')].some((node) => node.getBoundingClientRect().right > innerWidth || node.getBoundingClientRect().left < 0)) {
       throw new Error('Bot panel: tasks overflow on a phone')
     }
-    for (const label of ['Activity', 'Routines', 'Identity', 'Agent']) {
-      const bounds = find(label)!.getBoundingClientRect()
-      if (bounds.width < 40 || bounds.height < 40) {
-        throw new Error(`Bot panel: ${label} has a small click target (${bounds.width} × ${bounds.height})`)
-      }
+    if (iconTabs('on a phone') !== tabLayout) {
+      throw new Error('Bot panel: the tabs change size on a phone')
     }
-    tabsFit('a phone')
     await window.smoke.resize(1200, 900)
     await click(owed[0].request)
     await until('a task with one worker did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: check its report') ?? false)
@@ -359,6 +365,9 @@ export async function exerciseBotPanel(): Promise<void> {
     await window.smoke.key('End')
     await until('End did not open the Agent settings', () => selected() === find('Agent') && document.activeElement === selected() && Boolean(tabpanel().querySelector('[aria-label="Agent"]')) && tabpanel().textContent!.includes('Model'))
     await capture('bot-panel-agent')
+    if (iconTabs('with Agent selected') !== tabLayout) {
+      throw new Error('Bot panel: the tabs move or resize when the selection changes')
+    }
     await window.smoke.key('Right')
     await until('ArrowRight did not wrap to Activity', () => selected() === find('Activity') && document.activeElement === selected() && tabpanel().textContent!.includes('Open Tasks 7'))
     await window.smoke.key('Left')
