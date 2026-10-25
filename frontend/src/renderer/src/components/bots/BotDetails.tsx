@@ -39,7 +39,7 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
       <div
         role="tablist"
         aria-label="Bot details"
-        className="flex h-11 items-center self-center rounded-full bg-bg p-0.5"
+        className="flex self-center rounded-full bg-bg p-0.5"
         onKeyDown={(event) => {
           const index = NAMES.indexOf(tab)
           const next = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: -1 }[event.key]
@@ -64,7 +64,7 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
               tabIndex={name === tab ? 0 : -1}
               onClick={() => setTab(name)}
               whileTap={{ scale: 0.96 }}
-              className="relative flex h-10 w-12 cursor-pointer items-center justify-center rounded-full text-ink-2 transition-colors duration-150 hover:text-ink aria-selected:text-ink"
+              className="relative flex h-8 w-10 cursor-pointer items-center justify-center rounded-full text-ink-2 transition-colors duration-150 before:absolute before:inset-x-0 before:-inset-y-1 hover:text-ink aria-selected:text-ink"
             >
               {name === tab ? (
                 <motion.span
