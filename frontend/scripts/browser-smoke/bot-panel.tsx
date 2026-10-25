@@ -194,7 +194,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const wasDark = document.documentElement.classList.contains('dark')
   const dark = (on: boolean) => document.documentElement.classList.toggle('dark', on)
   const editor = () => document.querySelector<HTMLElement>('[role="dialog"] .ProseMirror')
-  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:last-child')].map((node) => node.textContent)
+  const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:nth-child(2)')].map((node) => node.textContent)
   const selected = () => document.querySelector('[role="tablist"][aria-label="Bot details"] [aria-selected="true"]')
   const tabpanel = () => document.getElementById(selected()!.getAttribute('aria-controls')!)!
   // Named, equal icon targets with no text, selected or not, each the only
@@ -241,14 +241,14 @@ export async function exerciseBotPanel(): Promise<void> {
     client.setQueryData(botsQuery.queryKey, listed)
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     dark(false)
-    await until('Activity did not open with tasks and history', () => selected() === find('Activity') && text().includes('Open Tasks 7') && text().includes('Learned something new'))
+    await until('Activity did not open with tasks and history', () => selected() === find('Activity') && text().includes('Tasks 7') && text().includes('Learned something new'))
     if (find('Tasks')) {
       throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
     const tabLayout = iconTabs('on the desktop panel')
     const states = taskStates()
-    if (states.length !== 7 || states.filter((state) => state === 'Active').length !== 6 || states.filter((state) => state === 'Blocked by Human').length !== 1) {
-      throw new Error(`Bot panel: tasks should have two visible states, got ${states}`)
+    if (document.querySelectorAll('section[aria-label="Tasks"] button').length !== 7 || states.join() !== 'Blocked by Human') {
+      throw new Error(`Bot panel: only the blocked task should have a visible state, got ${states}`)
     }
     const title = find(owed[0].request)?.querySelector('span.truncate')
     if (!title || title.getBoundingClientRect().height > parseFloat(getComputedStyle(title).lineHeight) + 1 || !title.classList.contains('truncate')) {
@@ -266,7 +266,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const tasks = document.querySelector<HTMLElement>('section[aria-label="Tasks"]')!
     for (const task of owed) {
       const row = find(task.request)!
-      if (row.textContent !== task.request + (task.status === 'waiting_for_user' ? 'Blocked by Human' : 'Active') || row.getBoundingClientRect().height > 42) {
+      if (row.textContent !== task.request + (task.status === 'waiting_for_user' ? 'Blocked by Human' : '') || row.getBoundingClientRect().height > 42) {
         throw new Error('Bot panel: a task row shows a subtitle or body instead of one compact title')
       }
     }
@@ -282,6 +282,9 @@ export async function exerciseBotPanel(): Promise<void> {
     await window.smoke.resize(1200, 900)
     await click(owed[0].request)
     await until('a task with one worker did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: check its report') ?? false)
+    if (document.querySelector('[role="dialog"]')?.textContent?.includes('Active')) {
+      throw new Error('Bot panel: task details repeat the active state')
+    }
     const link = (thread: string) => document.querySelector<HTMLElement>(`a[href$="/sessions/${thread}"]`)
     const follows = (row: string, nested: string) => link(row)?.nextElementSibling?.contains(link(nested)) ?? false
     if (!follows('side-a', 'review-a2') || !link('review-a2')?.textContent?.endsWith('Running for 4m')) {
@@ -300,9 +303,16 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Commitments design review')
     await until('a task worker did not open', () => router.state.location.pathname === '/sessions/review-a1')
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
-    await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes('Open Tasks 7'))
+    await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes('Tasks 7'))
     await click('Pause prompt suggestions on hidden turns')
     await until('a commitment without a thread did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: wait for his OK') ?? false)
+    if (!document.querySelector('[role="dialog"]')?.textContent?.includes('Blocked by Human')) {
+      throw new Error('Bot panel: task details lost the human block')
+    }
+    await click('Close')
+    await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
+    await click('Overnight stress run')
+    await until('task details lost the prerequisite reason', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Prerequisites: #1') ?? false)
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Capacity test with 20 threads')
@@ -311,7 +321,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Run the login suites')
-    await until('a thread working in the background did not show as working', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Login suitesWorking in the background|Login fixFinished' && (document.querySelector('[role="dialog"]')?.textContent?.includes('For you · Active') ?? false))
+    await until('a thread working in the background did not show as working', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Login suitesWorking in the background|Login fixFinished' && (document.querySelector('[role="dialog"]')?.textContent?.includes('For you · since') ?? false))
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Activity')
@@ -372,7 +382,7 @@ export async function exerciseBotPanel(): Promise<void> {
       throw new Error('Bot panel: the tabs move or resize when the selection changes')
     }
     await window.smoke.key('Right')
-    await until('ArrowRight did not wrap to Activity', () => selected() === find('Activity') && document.activeElement === selected() && tabpanel().textContent!.includes('Open Tasks 7'))
+    await until('ArrowRight did not wrap to Activity', () => selected() === find('Activity') && document.activeElement === selected() && tabpanel().textContent!.includes('Tasks 7'))
     await window.smoke.key('Left')
     await until('ArrowLeft did not wrap to Agent', () => selected() === find('Agent') && document.activeElement === selected())
     await window.smoke.key('Home')
@@ -466,7 +476,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Activity')
     const completed = owed.splice(0)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await until('completed tasks did not leave the open list', () => text().includes('No open tasks') && !text().includes(completed[0].request))
+    await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].request) && text().includes('Learned something new'))
     owed.push(...completed)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await until('new tasks did not appear', () => text().includes(completed[0].request))
@@ -480,7 +490,7 @@ export async function exerciseBotPanel(): Promise<void> {
     for (const motion of [{ threads: [{ id: 'background-worker', title: 'Report worker', state: 'background' as const }] }, { moving: true }]) {
       owed.splice(0, owed.length, { id: 8, request: 'Deliver the report', status: 'in_progress', opened_at: minutes(1), next: 'Check the report', ...motion })
       await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-      await until('the moving task did not appear', () => taskStates().includes('Active'))
+      await until('the moving task did not appear', () => find('Deliver the report')?.textContent === 'Deliver the report' && taskStates().length === 0)
       owed[0].status = 'waiting_for_user'
       await until('a moving task waited longer than the active polling interval to refresh', () => taskStates().includes('Blocked by Human'))
     }

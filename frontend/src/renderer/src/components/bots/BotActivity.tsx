@@ -62,19 +62,18 @@ export function BotActivity({
   }
   return (
     <div className="flex flex-col gap-5">
-      <section aria-label="Tasks" className="flex flex-col gap-0.5">
-        <h3 className="mb-1 text-[13px] font-semibold text-ink">Open Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
-        {!owed.length ? <p className="text-[13px] text-ink-3">No open tasks</p> : null}
+      {owed.length ? <section aria-label="Tasks" className="flex flex-col gap-0.5">
+        <h3 className="mb-1 text-[13px] font-semibold text-ink">Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
         {owed.map((task) => {
           const state = taskStateLabel(task)
           return (
             <button key={task.id} type="button" onClick={() => setShown(task.id)} className="-mx-2 flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 text-left transition-colors duration-150 hover:bg-list-hover">
               <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{task.request}</span>
-              <span className="shrink-0 text-[11px] text-ink-3">{state}</span>
+              {state ? <span className="shrink-0 text-[11px] text-ink-3">{state}</span> : null}
             </button>
           )
         })}
-      </section>
+      </section> : null}
       {running.length ? (
         <Group title="Now">
           {running.map((item) => (
