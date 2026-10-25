@@ -1,6 +1,6 @@
 # Restart continuation: evidence and repair design
 
-2026-10-25. Original investigation based on v193 `f297e93b`. Independent design review accepted F2/F4's bounded lineage/finalizer corrections and F3's confirmation-write liveness correction. The local implementation is documented in `restart-agent-continuation-implementation.md` and awaits independent after-review before integration. Automatic ambiguous-continuation recovery remains open.
+2026-10-25. Original investigation based on v193 `f297e93b`. Independent design review accepted F2/F4's bounded lineage/finalizer corrections and F3's confirmation-write liveness correction. Independent after-review approved frozen `6a4e2a8f` with no blockers. The local implementation and final integration gate are documented in `restart-agent-continuation-implementation.md`. Automatic ambiguous-continuation recovery remains unresolved; task111 stays open.
 
 ## Finding
 

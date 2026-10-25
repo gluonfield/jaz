@@ -1,6 +1,6 @@
 # Bounded restart repair
 
-Implemented F2/F3/F4 from the independent design review on `jaz/restart-agent-continuation`, based on v193 `f297e93b` and diagnostic commit `e6d03f37`. Frozen for the existing independent after-review before integration. **The automatic ambiguous-continuation recovery requirement stays open.**
+Implemented F2/F3/F4 from the independent design review on `jaz/restart-agent-continuation`, based on v193 `f297e93b` and diagnostic commit `e6d03f37`. Independent `AFTER-REVIEW.md` approves frozen `6a4e2a8f` with no blockers; coordinator audit is complete. Local-main integration follows the final Go 1.26.3 backend/vet gate, with its exact tested/merged tree receipt under `runs/restart-agent-continuation/integration/`. **Automatic ambiguous-continuation recovery remains unresolved; task111 stays open.**
 
 ## Result
 
@@ -14,7 +14,7 @@ Production changes are confined to five existing files: 23 lines added, 7 remove
 
 Sending/unconfirmed original prompts and continuations still receive **no automatic replay**. Root lineage provides diagnosis and never grants recovery permission. Active lineage is cleared by normal terminal completion; this patch preserves the accurate terminal reason and does not add a permanent lineage archive. Stopped ownership continues to gate recovery, dispatch and storage.
 
-The separately audited `runs/restart-agent-continuation/CAPABILITY-ASSESSMENT.md` remains separate work. Native correlation and conditional Codex recovery do not establish safe replay through the current ACP contract. No capability investigation was duplicated here. No integration, push, release, live probe, app restart or production-state edit occurred. Release-time native parity verification remains outstanding.
+The separately audited `runs/restart-agent-continuation/CAPABILITY-ASSESSMENT.md` remains separate work. Native correlation and conditional Codex recovery do not establish safe replay through the current ACP contract. No capability investigation was duplicated here. This authorizes local integration only: no push, tag, release, install, live probe, app restart or production-state edit. Release-time native parity verification remains outstanding.
 
 ## Verification
 
@@ -41,4 +41,4 @@ The original 12 diagnostic evidence files still match `evidence-sha256.json`; th
 
 ## Review handoff
 
-Applied `/Users/wins/.jaz/skills/thermo-nuclear-code-quality-review/SKILL.md`; the self-review is `runs/restart-agent-continuation/THERMO-SELF-REVIEW.md`. No remaining self-review blocker for this bounded change. This is not independent approval. Exact commit/tree, file hashes and evidence bindings are in `runs/restart-agent-continuation/implementation-freeze.json`. The existing independent after-review must complete before integration.
+Applied `/Users/wins/.jaz/skills/thermo-nuclear-code-quality-review/SKILL.md`; the self-review is `runs/restart-agent-continuation/THERMO-SELF-REVIEW.md`. Exact approved commit/tree, file hashes and evidence bindings are in `runs/restart-agent-continuation/implementation-freeze.json`; independent approval is in `AFTER-REVIEW.md`. Main `1d2b89fe` integrated without conflicts or changes to the reviewed backend/test files. The integration delta review, full backend/vet results and merge receipt are under `runs/restart-agent-continuation/integration/`.
