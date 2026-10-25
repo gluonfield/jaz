@@ -1,9 +1,8 @@
-import { Fingerprint, List, Pencil, Repeat, SlidersHorizontal } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { Pencil } from 'lucide-react'
+import { useId, useState } from 'react'
 import { SidePanelShell } from '@/components/session/SidePanelShell'
 import type { ThreadDetailsView } from '@/components/session/ThreadView'
 import { Popover } from '@/components/ui/Popover'
-import { Segmented } from '@/components/ui/Segmented'
 import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
 import { BOT_COLORS, BOT_SHAPES, botMood } from '@/lib/bots'
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
@@ -17,17 +16,11 @@ import { BotRoutineModal } from './BotRoutineModal'
 import { BotRoutines } from './BotRoutines'
 import { useUpdateBot } from './useUpdateBot'
 
-type Tab = 'activity' | 'routines' | 'identity' | 'agent'
-
-const TABS: { value: Tab; label: string; icon: ReactNode }[] = [
-  { value: 'activity', label: 'Activity', icon: <List size={16} /> },
-  { value: 'routines', label: 'Routines', icon: <Repeat size={16} /> },
-  { value: 'identity', label: 'Identity', icon: <Fingerprint size={16} /> },
-  { value: 'agent', label: 'Agent', icon: <SlidersHorizontal size={16} /> },
-]
+const TABS = ['Activity', 'Routines', 'Identity', 'Agent'] as const
 
 export function BotDetails({ bot, focusName, agentSession, working, subagents }: { bot: Bot; focusName: boolean } & ThreadDetailsView) {
-  const [tab, setTab] = useState<Tab>('activity')
+  const [tab, setTab] = useState<(typeof TABS)[number]>('Activity')
+  const id = useId()
   const [routine, setRoutine] = useState<string | null>(null)
   const [file, setFile] = useState<BotFileName | null>(null)
   return (
@@ -41,18 +34,47 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
           className="mt-2 w-full rounded-md px-1 text-center text-[16px] font-semibold hover:bg-list-hover focus:bg-list-hover"
         />
       </header>
-      <div className="flex justify-center [&>div]:h-11 [&_button]:h-10 [&_button]:min-w-10 [&_button]:px-1.5">
-        <Segmented value={tab} options={TABS} onChange={setTab} layoutId={`bot-details-${bot.id}`} compact />
+      <div
+        role="tablist"
+        aria-label="Bot details"
+        className="-mt-3 flex justify-between border-b border-border"
+        onKeyDown={(event) => {
+          const index = TABS.indexOf(tab)
+          const next = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: -1 }[event.key]
+          if (next === undefined) return
+          event.preventDefault()
+          const name = TABS[(next + TABS.length) % TABS.length]
+          setTab(name)
+          document.getElementById(id + name)?.focus()
+        }}
+      >
+        {TABS.map((name) => (
+          <button
+            key={name}
+            id={id + name}
+            type="button"
+            role="tab"
+            aria-selected={name === tab}
+            aria-controls={id}
+            tabIndex={name === tab ? 0 : -1}
+            onClick={() => setTab(name)}
+            className="group -mx-2.5 h-10 cursor-pointer rounded-lg px-2.5 text-[13px] font-medium text-ink-2 transition-colors duration-150 hover:text-ink aria-selected:text-ink"
+          >
+            <span className="relative flex h-full items-center after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full group-aria-selected:after:bg-ink">{name}</span>
+          </button>
+        ))}
       </div>
-      {tab === 'activity' ? (
-        <BotActivity bot={bot} subagents={subagents} onOpenRoutine={setRoutine} onOpenFile={setFile} />
-      ) : tab === 'routines' ? (
-        <BotRoutines bot={bot} onOpen={setRoutine} />
-      ) : tab === 'identity' ? (
-        <BotIdentity bot={bot} onOpen={setFile} />
-      ) : (
-        <BotAgentSettings bot={bot} agentSession={agentSession} working={working} />
-      )}
+      <div role="tabpanel" id={id} aria-labelledby={id + tab}>
+        {tab === 'Activity' ? (
+          <BotActivity bot={bot} subagents={subagents} onOpenRoutine={setRoutine} onOpenFile={setFile} />
+        ) : tab === 'Routines' ? (
+          <BotRoutines bot={bot} onOpen={setRoutine} />
+        ) : tab === 'Identity' ? (
+          <BotIdentity bot={bot} onOpen={setFile} />
+        ) : (
+          <BotAgentSettings bot={bot} agentSession={agentSession} working={working} />
+        )}
+      </div>
       {routine ? <BotRoutineModal bot={bot} loopId={routine} onClose={() => setRoutine(null)} /> : null}
       {file ? <BotFileEditor bot={bot} name={file} onClose={() => setFile(null)} /> : null}
     </SidePanelShell>

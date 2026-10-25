@@ -6,6 +6,7 @@ import { BotDetails } from '@/components/bots/BotDetails'
 import { BotsPanel } from '@/components/bots/BotsPanel'
 import { getAppearance, setAppearance } from '@/lib/appearance'
 import { botsQuery } from '@/lib/api/bots'
+import { installKeyboardFocus } from '@/lib/dom/keyboardFocus'
 import { Route as botsIndexRoute } from '@/routes/bots.index'
 import type { Bot, BotActivity, BotFile, BotOwed, BotStartedThread, Loop, LoopRun } from '@/lib/api/types'
 
@@ -194,6 +195,20 @@ export async function exerciseBotPanel(): Promise<void> {
   const dark = (on: boolean) => document.documentElement.classList.toggle('dark', on)
   const editor = () => document.querySelector<HTMLElement>('[role="dialog"] .ProseMirror')
   const taskStates = () => [...document.querySelectorAll('section[aria-label="Tasks"] button > span:last-child')].map((node) => node.textContent)
+  const selected = () => document.querySelector('[role="tablist"][aria-label="Bot details"] [aria-selected="true"]')
+  const tabpanel = () => document.getElementById(selected()!.getAttribute('aria-controls')!)!
+  // Every tab shows its whole name inside the card.
+  const tabsFit = (where: string) => {
+    const tablist = selected()!.parentElement!
+    const card = tablist.parentElement!.getBoundingClientRect()
+    for (const tab of tablist.children) {
+      const box = tab.getBoundingClientRect()
+      const label = tab.firstElementChild!.getBoundingClientRect()
+      if (!label.width || label.left < box.left || label.right > box.right || box.left < card.left || box.right > card.right) {
+        throw new Error(`Bot panel: the ${tab.textContent} tab does not fit ${where}`)
+      }
+    }
+  }
 
   try {
     await until('a fresh Bots page did not focus its first bot', () => router.state.location.pathname === '/bots/busy' && element.querySelector('a[href="/bots/busy"]')?.getAttribute('aria-current') === 'page')
@@ -216,10 +231,11 @@ export async function exerciseBotPanel(): Promise<void> {
     client.setQueryData(botsQuery.queryKey, listed)
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     dark(false)
-    await until('Activity did not open with tasks and history', () => find('Activity')?.getAttribute('aria-pressed') === 'true' && text().includes('Open Tasks 7') && text().includes('Learned something new'))
+    await until('Activity did not open with tasks and history', () => selected() === find('Activity') && text().includes('Open Tasks 7') && text().includes('Learned something new'))
     if (find('Tasks') || !find('Activity')?.textContent?.includes('Activity')) {
       throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
+    tabsFit('the desktop panel')
     const states = taskStates()
     if (states.length !== 7 || states.filter((state) => state === 'Active').length !== 6 || states.filter((state) => state === 'Blocked by Human').length !== 1) {
       throw new Error(`Bot panel: tasks should have two visible states, got ${states}`)
@@ -253,6 +269,7 @@ export async function exerciseBotPanel(): Promise<void> {
         throw new Error(`Bot panel: ${label} has a small click target (${bounds.width} × ${bounds.height})`)
       }
     }
+    tabsFit('a phone')
     await window.smoke.resize(1200, 900)
     await click(owed[0].request)
     await until('a task with one worker did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: check its report') ?? false)
@@ -274,7 +291,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Commitments design review')
     await until('a task worker did not open', () => router.state.location.pathname === '/sessions/review-a1')
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
-    await until('the panel did not return to Activity', () => find('Activity')?.getAttribute('aria-pressed') === 'true' && text().includes('Open Tasks 7'))
+    await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes('Open Tasks 7'))
     await click('Pause prompt suggestions on hidden turns')
     await until('a commitment without a thread did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: wait for his OK') ?? false)
     await click('Close')
@@ -334,6 +351,28 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('Pause did not pause and offer Resume', () => requests.some((request) => request.method === 'PATCH' && request.body?.status === 'paused') && Boolean(find('Resume')))
     await click('Delete')
     await until('Delete did not delete and close the routine', () => requests.some((request) => request.method === 'DELETE') && !document.querySelector('[role="dialog"]'))
+
+    installKeyboardFocus()
+    await click('Routines')
+    await window.smoke.key('Right')
+    await until('ArrowRight did not select and focus Identity', () => selected() === find('Identity') && document.activeElement === selected() && tabpanel().textContent!.includes('Who it is'))
+    await window.smoke.key('End')
+    await until('End did not open the Agent settings', () => selected() === find('Agent') && document.activeElement === selected() && Boolean(tabpanel().querySelector('[aria-label="Agent"]')) && tabpanel().textContent!.includes('Model'))
+    await capture('bot-panel-agent')
+    await window.smoke.key('Right')
+    await until('ArrowRight did not wrap to Activity', () => selected() === find('Activity') && document.activeElement === selected() && tabpanel().textContent!.includes('Open Tasks 7'))
+    await window.smoke.key('Left')
+    await until('ArrowLeft did not wrap to Agent', () => selected() === find('Agent') && document.activeElement === selected())
+    await window.smoke.key('Home')
+    await until('Home did not return to Activity', () => selected() === find('Activity') && document.activeElement === selected())
+    await window.smoke.key('Tab')
+    await until('Tab did not leave the tabs for the open panel', () => tabpanel().contains(document.activeElement))
+    await window.smoke.key('Tab', ['shift'])
+    await until('Shift+Tab did not return to the selected tab with a focus ring', () => document.activeElement === find('Activity') && getComputedStyle(document.activeElement!).outlineStyle !== 'none')
+    await capture('bot-panel-tabs-keyboard')
+    dark(true)
+    await capture('bot-panel-tabs-keyboard-dark')
+    dark(false)
 
     await click('Identity')
     const cards = () => [...document.querySelectorAll<HTMLElement>('button')].filter((card) => /Who it is|What it knows/.test(card.textContent ?? ''))
