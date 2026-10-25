@@ -215,6 +215,20 @@ func (q *Queries) ResetTurnHops(ctx context.Context, id string) error {
 	return err
 }
 
+const setQueuedMessages = `-- name: SetQueuedMessages :exec
+UPDATE threads SET queued_messages = ?1 WHERE id = ?2
+`
+
+type SetQueuedMessagesParams struct {
+	QueuedMessages string `json:"queued_messages"`
+	ID             string `json:"id"`
+}
+
+func (q *Queries) SetQueuedMessages(ctx context.Context, arg SetQueuedMessagesParams) error {
+	_, err := q.db.ExecContext(ctx, setQueuedMessages, arg.QueuedMessages, arg.ID)
+	return err
+}
+
 const setRunningTurn = `-- name: SetRunningTurn :exec
 UPDATE threads SET turn = ?1 WHERE id = ?2 AND status = 'running' AND turn <> ''
 `

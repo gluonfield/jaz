@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -25,12 +26,14 @@ func TestFinishedBotWorkArchivesOnlyAfterClosureAndInactivity(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		mutate      func(*storage.Session)
+		stopped     bool
 		closed      bool
 		recentClose bool
 		want        bool
 	}{
 		{name: "finished", closed: true, want: true},
 		{name: "open"},
+		{name: "stopped", stopped: true},
 		{name: "recent closure", closed: true, recentClose: true},
 		{name: "pinned", closed: true, mutate: func(s *storage.Session) {
 			s.Pinned = true
@@ -102,6 +105,11 @@ func TestFinishedBotWorkArchivesOnlyAfterClosureAndInactivity(t *testing.T) {
 			}
 			if err := store.saveSessionLocked(child, false); err != nil {
 				t.Fatal(err)
+			}
+			if tc.stopped {
+				if _, err := store.TransitionCommitment(storage.Commitment{ID: commitment.ID, BotID: bot.ID, Status: storage.CommitmentStopped}, sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage, RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Both available routes failed; no useful retry condition is known."}}); err != nil {
+					t.Fatal(err)
+				}
 			}
 			if err := store.ArchiveFinishedBotWork(t.Context(), before, worktreeRoot); err != nil {
 				t.Fatal(err)

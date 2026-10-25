@@ -66,6 +66,11 @@ func (s *Store) insertNewSessionLocked(session storage.Session, commitment int64
 	if err := insertSession(tx, session); err != nil {
 		return err
 	}
+	if session.SourceType == storage.SourceBotWorker {
+		if err := taskAdmission(ctx, botdb.New(tx), session.ID); err != nil {
+			return err
+		}
+	}
 	if commitment != 0 {
 		linked, err := botdb.New(tx).LinkCommitmentThread(ctx, botdb.LinkCommitmentThreadParams{ThreadID: session.ID, CommitmentID: commitment, BotID: session.SourceID})
 		if err != nil {

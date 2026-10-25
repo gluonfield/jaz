@@ -2,6 +2,7 @@ package acp
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -19,7 +20,12 @@ func (m *Manager) Start(ctx context.Context, req SpawnRequest, first storage.Que
 	if first.ParentOutput, err = m.answering(first.From); err != nil {
 		return Job{}, err
 	}
-	created, err := m.createSession(ctx, req, []storage.QueuedMessage{first})
+	queue := storage.CanonicalQueuedMessages([]storage.QueuedMessage{first})
+	if len(queue) == 0 {
+		return Job{}, errors.New("initial message is required")
+	}
+	first = queue[0]
+	created, err := m.createSession(ctx, req, queue)
 	if err != nil {
 		return Job{}, err
 	}

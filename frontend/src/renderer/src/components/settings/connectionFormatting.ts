@@ -19,11 +19,14 @@ export function accountDetail(plugin: IntegrationPlugin, account: IntegrationCon
   return plugin.auth[0]?.kind === 'mcp_connection' ? '' : accountAddress(account)
 }
 
-export function accountsSummary(plugin: IntegrationPlugin): string {
+export function accountDetails(plugin: IntegrationPlugin): string[] {
   return (plugin.connection?.accounts ?? [])
     .map((account) => accountDetail(plugin, account))
     .filter(Boolean)
-    .join(', ')
+}
+
+export function accountsSummary(plugin: IntegrationPlugin): string {
+  return accountDetails(plugin).join(', ')
 }
 
 export function accountSyncLabel(account: IntegrationConnectionAccount): string {

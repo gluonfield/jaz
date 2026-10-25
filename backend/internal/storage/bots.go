@@ -39,6 +39,7 @@ const (
 	CommitmentPending        = "pending"
 	CommitmentInProgress     = "in_progress"
 	CommitmentWaitingForUser = "waiting_for_user"
+	CommitmentStopped        = "stopped"
 	CommitmentDone           = "completed"
 	CommitmentDropped        = "cancelled"
 )
@@ -53,6 +54,8 @@ var ErrCommitmentWorking = errors.New("a thread serving it is still working")
 // ErrCommitmentStaged refuses dropping a commitment that the answer of its
 // bot's running turn delivers.
 var ErrCommitmentStaged = errors.New("this turn's answer delivers it")
+
+var ErrTaskStopped = errors.New("task is stopped; explicitly resume it with a justified message first")
 
 // ErrNothingStalled refuses a wake when no unfinished task needs recovery.
 var ErrNothingStalled = errors.New("nothing stalls")
@@ -86,7 +89,7 @@ type Commitment struct {
 }
 
 func (c Commitment) IsOpen() bool {
-	return c.Status == CommitmentPending || c.Status == CommitmentInProgress || c.Status == CommitmentWaitingForUser
+	return c.Status == CommitmentPending || c.Status == CommitmentInProgress || c.Status == CommitmentWaitingForUser || c.Status == CommitmentStopped
 }
 
 // CommitmentThread is a thread serving a commitment and how far it has got:

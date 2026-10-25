@@ -41,7 +41,7 @@ SELECT EXISTS (
 -- name: CloseCommitment :execrows
 UPDATE bot_commitments
 SET status = sqlc.arg(status), note = COALESCE(sqlc.narg(note), note), closed_at_ms = sqlc.arg(closed_at_ms)
-WHERE id = sqlc.arg(id) AND status IN ('pending', 'in_progress', 'waiting_for_user');
+WHERE id = sqlc.arg(id) AND (status IN ('pending', 'in_progress', 'waiting_for_user') OR (status = 'stopped' AND sqlc.arg(status) = 'cancelled'));
 
 -- name: DropDeliveredResults :exec
 -- The results a commitment's threads queued for its bot before it closed as
@@ -52,12 +52,12 @@ SET queued_messages = (
     SELECT m.value FROM json_each(threads.queued_messages) m
     WHERE json_extract(m.value, '$.kind') IS NOT 'internal'
        OR COALESCE(json_extract(m.value, '$.from'), '') NOT IN (
-         SELECT thread_id FROM bot_commitment_threads WHERE commitment_id = sqlc.arg(id))
+         SELECT thread_id FROM bot_commitment_workers WHERE commitment_id = sqlc.arg(id))
     ORDER BY m.key) kept)
 WHERE id = (SELECT bot_id FROM bot_commitments WHERE id = sqlc.arg(id)) AND queued_messages <> '';
 
 -- name: ListOpenCommitments :many
-SELECT * FROM bot_commitments WHERE bot_id = sqlc.arg(bot_id) AND status IN ('pending', 'in_progress', 'waiting_for_user') ORDER BY id;
+SELECT * FROM bot_commitments WHERE bot_id = sqlc.arg(bot_id) AND status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped') ORDER BY id;
 
 -- name: ListClosedCommitments :many
 SELECT * FROM bot_commitments
@@ -73,7 +73,7 @@ SELECT sqlc.arg(thread_id), c.id FROM bot_commitments c
 WHERE c.id = sqlc.arg(commitment_id) AND c.bot_id = sqlc.arg(bot_id) AND c.status IN ('pending', 'in_progress')
   AND NOT EXISTS (
     SELECT 1 FROM bot_commitment_dependencies d JOIN bot_commitments p ON p.id = d.prerequisite_id
-    WHERE d.commitment_id = c.id AND p.status IN ('pending', 'in_progress', 'waiting_for_user')
+    WHERE d.commitment_id = c.id AND p.status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped')
   );
 
 -- name: StartCommitment :exec
@@ -81,7 +81,7 @@ UPDATE bot_commitments SET status = 'in_progress' WHERE id = ?;
 
 -- name: ListCommitmentMotion :many
 SELECT c.id, CAST(p.moving AS INTEGER) AS moving, CAST(p.blocked AS INTEGER) AS blocked,
-  CAST(c.status <> 'waiting_for_user' AND NOT p.moving AND NOT p.blocked AND c.wake_attempts > 0 AS INTEGER) AS stalled
+  CAST(c.status IN ('pending', 'in_progress') AND NOT p.moving AND NOT p.blocked AND c.wake_attempts > 0 AS INTEGER) AS stalled
 FROM bot_commitments c
 JOIN bot_commitment_progress p ON p.commitment_id = c.id
 WHERE c.id IN (sqlc.slice(ids));
@@ -129,3 +129,33 @@ SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state FROM bot_commitmen
 JOIN bot_commitment_threads l ON l.id = s.linked AND l.thread_id = s.thread_id
 WHERE s.commitment_id IN (sqlc.slice(ids))
 ORDER BY s.linked;
+
+-- name: StoppedTaskOwner :one
+SELECT EXISTS (
+  SELECT 1 FROM bot_commitment_workers w JOIN bot_commitments c ON c.id = w.commitment_id
+  JOIN threads t ON t.id = w.thread_id
+  WHERE (t.id = sqlc.arg(thread_id) OR t.slug = sqlc.arg(thread_id)) AND c.status = 'stopped'
+);
+
+-- name: CommitmentLive :one
+SELECT EXISTS (
+  SELECT 1 FROM bot_commitment_workers w JOIN threads t ON t.id = w.thread_id
+  WHERE w.commitment_id = sqlc.arg(id) AND (t.status IN ('running', 'interrupted') OR t.background_work <> 0)
+);
+
+-- name: TransitionCommitment :execrows
+UPDATE bot_commitments SET status = sqlc.arg(status), note = sqlc.arg(note),
+  question_seq = 0, reply_seq = 0, check_at_ms = 0, wake_at_ms = 0, wake_attempts = 0, wake_progress = ''
+WHERE id = sqlc.arg(id) AND bot_id = sqlc.arg(bot_id)
+  AND ((sqlc.arg(status) = 'stopped' AND status IN ('pending', 'in_progress', 'waiting_for_user'))
+    OR (sqlc.arg(status) = 'pending' AND status = 'stopped'));
+
+-- name: CommitmentWorkerIDs :many
+SELECT DISTINCT thread_id FROM bot_commitment_workers WHERE commitment_id = ?;
+
+-- name: HasOwedTasks :one
+SELECT EXISTS (
+  SELECT 1 FROM bot_commitments c JOIN bot_commitment_progress p ON p.commitment_id = c.id
+  WHERE c.bot_id = sqlc.arg(bot_id) AND c.status IN ('pending', 'in_progress')
+    AND NOT p.moving AND NOT p.blocked AND c.check_at_ms <= sqlc.arg(now_ms)
+);

@@ -201,21 +201,68 @@ func (s *Store) SetTurnRetries(id string, retries int) error {
 }
 
 func (s *Store) ClaimQueuedTurn(session storage.Session, prompt storage.QueuedMessage) error {
-	queue, err := storage.MarshalQueuedMessages(session.QueuedMessages)
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	ctx := context.Background()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
+	q := threaddb.New(tx)
+	row, err := q.GetSession(ctx, session.ID)
+	if err != nil {
+		return err
+	}
+	current, err := sessionFromDB(row)
+	if err != nil {
+		return err
+	}
+	if current.Status == storage.StatusRunning {
+		return storage.ErrThreadRunning
+	}
+	tasks := botdb.New(tx)
+	if err := taskAdmission(ctx, tasks, current.ID); err != nil {
+		return err
+	}
+	prompt, kept, err := storage.TakeQueuedMessage(current.QueuedMessages, prompt)
+	if err != nil {
+		return err
+	}
+	queue, err := storage.MarshalQueuedMessages(kept)
+	if err != nil {
+		return err
+	}
+	if err := queuedTaskAdmission(ctx, tasks, current.ID, prompt); err != nil {
+		if !errors.Is(err, storage.ErrTaskStopped) && !errors.Is(err, storage.ErrNothingStalled) {
+			return err
+		}
+		if err := recordRetiredQueue(ctx, tx, current.ID, retiredQueue{Messages: []storage.QueuedMessage{prompt}}); err != nil {
+			return err
+		}
+		if err := q.SetQueuedMessages(ctx, threaddb.SetQueuedMessagesParams{ID: current.ID, QueuedMessages: queue}); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		return storage.ErrQueueChanged
+	}
+	if current.Title == "" {
+		current.Title = session.Title
+	}
 	now := time.Now().UTC()
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	claimed, err := threaddb.New(s.db).ClaimQueuedTurn(context.Background(), threaddb.ClaimQueuedTurnParams{
-		ID: session.ID, QueuedMessages: queue, Title: nullDBString(session.Title),
+	claimed, err := q.ClaimQueuedTurn(ctx, threaddb.ClaimQueuedTurnParams{
+		ID: current.ID, QueuedMessages: queue, Title: nullDBString(current.Title),
 		Turn: sessionTurnJSON(prompt.Turn(now)), StartedAtMs: timeToMs(now),
 	})
 	if err == nil && claimed == 0 {
 		return storage.ErrThreadRunning
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) FinishSessionTurn(id, status, errorMessage string, at time.Time, deliveries []storage.TurnDelivery) error {
@@ -255,12 +302,23 @@ func (s *Store) finishSessionTurn(id, status, errorMessage string, at time.Time,
 		if delivery.Wake {
 			return fmt.Errorf("a finished turn's delivery cannot wake a bot")
 		}
-		queued, err := s.queueMessage(ctx, q, delivery.SessionID, delivery.Message)
+		dormant := false
+		for _, id := range delivery.Closes {
+			task, err := botdb.New(tx).GetCommitment(ctx, id)
+			if err != nil {
+				return err
+			}
+			dormant = dormant || task.Status == storage.CommitmentStopped
+		}
+		if dormant {
+			continue
+		}
+		queued, err := s.queueMessage(ctx, tx, delivery.SessionID, delivery.Message)
 		if err != nil {
 			return err
 		}
 		if !queued && delivery.Fallback != nil {
-			if _, err := s.queueMessage(ctx, q, id, *delivery.Fallback); err != nil {
+			if _, err := s.queueMessage(ctx, tx, id, *delivery.Fallback); err != nil {
 				return err
 			}
 		}
@@ -297,8 +355,9 @@ func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
 			if len(woken) == 0 {
 				return storage.ErrNothingStalled
 			}
+			delivery.Message.Kind = storage.QueuedMessageKindTaskWake
 		}
-		queued, err := s.queueMessage(ctx, threaddb.New(tx), delivery.SessionID, delivery.Message)
+		queued, err := s.queueMessage(ctx, tx, delivery.SessionID, delivery.Message)
 		if err != nil {
 			return err
 		}
@@ -321,13 +380,19 @@ func (s *Store) QueueTurn(delivery storage.TurnDelivery) error {
 
 // queueMessage queues message in thread unless the thread is archived or
 // gone.
-func (s *Store) queueMessage(ctx context.Context, q *threaddb.Queries, thread string, message storage.QueuedMessage) (bool, error) {
+func (s *Store) queueMessage(ctx context.Context, db threaddb.DBTX, thread string, message storage.QueuedMessage) (bool, error) {
+	if err := queuedTaskAdmission(ctx, botdb.New(db), thread, message); err != nil {
+		if errors.Is(err, storage.ErrTaskStopped) || errors.Is(err, storage.ErrNothingStalled) {
+			return true, nil
+		}
+		return false, err
+	}
 	message.ID = s.NewSessionID()
 	raw, err := storage.MarshalQueuedMessage(&message)
 	if err != nil {
 		return false, err
 	}
-	updated, err := q.AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: thread, Message: raw})
+	updated, err := threaddb.New(db).AppendQueuedTurn(ctx, threaddb.AppendQueuedTurnParams{ID: thread, Message: raw})
 	return updated > 0, err
 }
 

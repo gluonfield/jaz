@@ -13,6 +13,7 @@ type SessionStore interface {
 	CreateSession(input CreateSession) (Session, error)
 	EnsureSession(id string) error
 	LoadSession(ref string) (Session, error)
+	CheckTaskAdmission(id string) error
 	SaveSession(session Session) error
 	UpdateSessionModel(id, model, effort string) error
 	ReplaceRuntimeSessionID(id, oldID, newID string) (bool, error)

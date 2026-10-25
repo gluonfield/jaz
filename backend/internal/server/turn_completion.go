@@ -208,6 +208,9 @@ func (s *Server) FailInterruptedTurn(_ context.Context, id string, cause error) 
 }
 
 func (s *Server) ResumeInterruptedTurn(ctx context.Context, id string) error {
+	if err := s.Store.CheckTaskAdmission(id); err != nil {
+		return err
+	}
 	session, err := s.Store.LoadSession(id)
 	if err != nil {
 		return err
