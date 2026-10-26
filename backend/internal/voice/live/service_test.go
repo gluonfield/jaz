@@ -234,7 +234,7 @@ func TestVoiceSelectionPersistsAndRejectsAnotherProvidersCatalog(t *testing.T) {
 	}
 }
 
-func TestClaudeVoiceUsesClientAuthenticationAndSuppliedModel(t *testing.T) {
+func TestClaudeVoiceUsesClientAuthenticationAndModelSelection(t *testing.T) {
 	store := &settingsStore{}
 	service := NewService(store, func(provider string) (Credential, error) {
 		if provider == ProviderClaude {
@@ -242,24 +242,19 @@ func TestClaudeVoiceUsesClientAuthenticationAndSuppliedModel(t *testing.T) {
 		}
 		return Credential{}, errors.New("unavailable")
 	})
-	status, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude, Model: "account-voice-model"})
-	if err != nil || status.Voice != "buttery" || status.Model != "account-voice-model" {
+	status, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude})
+	if err != nil || status.Voice != "buttery" {
 		t.Fatalf("Claude selection: %#v %v", status, err)
 	}
+	store.value = json.RawMessage(`{"agent":"claude","provider":"claude","voice":"buttery","model":"old-selection"}`)
 	connection, err := service.Connect(context.Background(), "v=0\r\noffer", "Current thread: inspect the supplied drawing.", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if connection.Provider != ProviderClaude || connection.Model != status.Model || connection.SDP != "" || !strings.Contains(connection.Instructions, "inspect the supplied drawing") {
+	if connection.Provider != ProviderClaude || connection.Model != "" || connection.SDP != "" || !strings.Contains(connection.Instructions, "inspect the supplied drawing") {
 		t.Fatalf("client connection configuration: %#v", connection)
 	}
-	if _, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude, Voice: "cove", Model: status.Model}); !errors.Is(err, ErrInput) {
+	if _, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude, Voice: "cove"}); !errors.Is(err, ErrInput) {
 		t.Fatalf("Claude accepted an OpenAI voice: %v", err)
-	}
-	if _, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.Connect(context.Background(), "v=0\r\noffer", "", ""); !errors.Is(err, ErrInput) {
-		t.Fatalf("Claude guessed an unspecified voice model: %v", err)
 	}
 }

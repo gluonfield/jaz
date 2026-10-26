@@ -22,7 +22,7 @@ export function installClaudeVoice(): void {
     return response
   }
 
-  async function account(signal?: AbortSignal): Promise<{ organization: string; status: ClaudeVoiceStatus }> {
+  async function account(signal?: AbortSignal): Promise<{ organization: string; model?: string; status: ClaudeVoiceStatus }> {
     const organizations = await (await request('organizations', undefined, signal)).json() as { uuid: string }[]
     const active = document.cookie.split('; ').find((entry) => entry.startsWith('lastActiveOrg='))?.slice('lastActiveOrg='.length)
     const organization = organizations.find((entry) => entry.uuid === active)?.uuid ?? (organizations.length === 1 ? organizations[0].uuid : '')
@@ -30,9 +30,9 @@ export function installClaudeVoice(): void {
       throw new Error('Choose your Claude account in the Jaz side browser, then reopen Voice settings.')
     }
     const catalog = await (await request('organizations/' + organization + '/model_selector/voice', undefined, signal)).json() as ModelCatalog
-    const models = catalog.model_selector_config.find((entry) => entry.id === 'voice')?.models
-      .filter((model) => !model.disabled).map((model) => ({ id: model.id, label: model.name })) ?? []
-    return { organization, status: { available: models.length > 0, models, ...(models.length ? {} : { reason: 'Claude has no voice models available for this account.' }) } }
+    const model = catalog.model_selector_config.find((entry) => entry.id === 'voice')?.models
+      .find((model) => model.name === 'Opus' && !model.disabled)?.id
+    return { organization, model, status: { available: Boolean(model), ...(model ? {} : { reason: 'Opus voice is unavailable for this Claude account.' }) } }
   }
 
   function close(id: string): void {
@@ -56,15 +56,15 @@ export function installClaudeVoice(): void {
         try {
           return (await account()).status
         } catch (error) {
-          return { available: false, models: [], reason: (error as Error).message }
+          return { available: false, reason: (error as Error).message }
         }
       case 'start': {
         close(command.id)
         const abort = new AbortController()
         starting.set(command.id, abort)
-        const { organization, status: catalog } = await account(abort.signal)
-        if (!catalog.models.some((model) => model.id === command.options.model)) {
-          throw new Error('Choose a model currently available in Claude voice.')
+        const { organization, model, status } = await account(abort.signal)
+        if (!model) {
+          throw new Error(status.reason)
         }
         const conversation = crypto.randomUUID()
         await request('organizations/' + organization + '/chat_conversations', {
@@ -79,7 +79,7 @@ export function installClaudeVoice(): void {
           language: 'en', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, tts_speed: '1.00',
           server_interrupt_enabled: 'true', client_aec: 'true', client_platform: 'web_claude_ai',
           entry_source: 'chat_button', connect_reason: 'initial', capabilities: 'webrtc_media,client_tools,text_output',
-          is_temporary: 'true', chat_memory_mode: 'disabled', model: command.options.model, voice: command.options.voice,
+          is_temporary: 'true', chat_memory_mode: 'disabled', model, voice: command.options.voice,
         })
         const socket = new WebSocket(location.origin.replace(/^http/, 'ws') + '/api/ws/voice/webrtc/organizations/' + organization + '/chat_conversations/' + conversation + '?' + query)
         const call: Call = { socket, organization, conversation, keepAlive: setInterval(() => {

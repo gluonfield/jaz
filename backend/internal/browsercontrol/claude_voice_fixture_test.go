@@ -41,7 +41,7 @@ func mountClaudeVoiceFixture(mux *http.ServeMux) {
 		case r.URL.Path == "/api/organizations":
 			w.Write([]byte(`[{"uuid":"fixture-org"}]`))
 		case r.URL.Path == "/api/organizations/fixture-org/model_selector/voice":
-			w.Write([]byte(`{"model_selector_config":[{"id":"voice","models":[{"id":"fixture-opus","name":"Opus"},{"id":"retired","name":"Retired","disabled":true}]}]}`))
+			w.Write([]byte(`{"model_selector_config":[{"id":"voice","models":[{"id":"fixture-sonnet","name":"Sonnet"},{"id":"retired","name":"Opus","disabled":true},{"id":"fixture-opus","name":"Opus"}]}]}`))
 		case r.URL.Path == "/api/organizations/fixture-org/chat_conversations":
 			var input struct {
 				UUID      string `json:"uuid"`

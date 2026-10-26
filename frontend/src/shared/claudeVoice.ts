@@ -3,13 +3,11 @@ export const CLAUDE_VOICE_ARGUMENT = '--jaz-claude-voice'
 
 export type ClaudeVoiceStatus = {
   available: boolean
-  models: { id: string; label: string }[]
   reason?: string
 }
 
 export type ClaudeVoiceStart = {
   sdp: string
-  model: string
   voice: string
   context: string
 }

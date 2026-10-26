@@ -2,17 +2,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { VoiceSettings } from '@/components/settings/VoiceSettings'
 import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
+import { getVoiceSettings, voiceAvailableQuery } from '@/lib/api/liveVoice'
 import type { VoiceSettings as Settings } from '@/lib/api/liveVoice'
 
 export async function exerciseClaudeVoice(): Promise<void> {
   const native = window.jaz!.claudeVoice
   const status = await native.status()
-  if (!status.available || status.models.length !== 1 || status.models[0].id !== 'fixture-opus') {
-    throw new Error('Claude catalog did not use the signed-in browser session or remove retired models')
+  if (!status.available) {
+    throw new Error('Claude Opus is unavailable in the signed-in browser session')
   }
   const events: { type: string; data?: { sender?: string } }[] = []
   const unsubscribe = native.onEvent((_id, data) => events.push(JSON.parse(data)))
-  const options = { sdp: 'v=0\r\nfixture-offer', context: 'Thread context', model: 'fixture-opus', voice: 'buttery' }
+  const options = { sdp: 'v=0\r\nfixture-offer', context: 'Thread context', voice: 'buttery' }
   try {
     const answer = await native.start('voice-fixture', options)
     if (answer !== 'v=0\r\nfixture-answer') {
@@ -67,7 +68,7 @@ export async function exerciseClaudeVoice(): Promise<void> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   let settings: Settings = {
     agent: 'openai', provider: 'openai', voice: 'cove', voices: ['cove'],
-    providers: [{ id: 'openai', label: 'OpenAI OAuth', available: true }, { id: 'claude', label: 'Claude', available: false, reason: 'Claude voice requires Jaz Desktop.' }],
+    providers: [{ id: 'openai', label: 'OpenAI OAuth', available: true }, { id: 'claude', label: 'Claude Account', available: false, reason: 'Claude voice requires Jaz Desktop.' }],
   }
   window.fetch = async (input, init) => {
     const path = new URL(String(input), location.origin).pathname
@@ -91,15 +92,12 @@ export async function exerciseClaudeVoice(): Promise<void> {
     await click(panel.querySelector('[aria-label="Voice provider"]')!)
     await until(() => Boolean([...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('Claude'))))
     await click([...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('Claude'))!)
-    await until(() => Boolean(panel.querySelector('[aria-label="Claude voice model"]'))).catch((error: Error) => {
-      throw new Error(error.message + ' UI: ' + panel.textContent + ' saved: ' + JSON.stringify(settings))
-    })
-    await click(panel.querySelector('[aria-label="Claude voice model"]')!)
-    await until(() => Boolean([...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Opus')))
-    await click([...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Opus')!)
-    await until(() => settings.model === 'fixture-opus' && Boolean(button('Opus')))
-    if (settings.agent !== 'claude' || settings.voice !== 'buttery') {
-      throw new Error('Claude selection did not preserve its provider, native model and voice')
+    await until(() => Boolean(button('Claude Account')) && settings.provider === 'claude')
+    if (settings.agent !== 'claude' || settings.voice !== 'buttery' || !voiceAvailableQuery.select!(await getVoiceSettings())) {
+      throw new Error('Claude voice did not become available directly after provider selection')
+    }
+    if (panel.querySelector('[aria-label="Claude voice model"]')) {
+      throw new Error('Claude voice must select native Opus without a model picker')
     }
     for (const [width, name] of [[1280, 'desktop'], [390, 'phone']] as const) {
       await window.smoke.resize(width, 900)

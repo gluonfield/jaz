@@ -123,7 +123,7 @@ export function installClaudeVoice(options?: { origin: string; preload: string }
     if (command.type === 'start') {
       const options = command.options
       if (!options || typeof options.sdp !== 'string' || !options.sdp.startsWith('v=0') || options.sdp.length > 65536 ||
-        typeof options.context !== 'string' || options.context.length > 131072 || typeof options.model !== 'string' || options.model.length > 128 ||
+        typeof options.context !== 'string' || options.context.length > 131072 ||
         typeof options.voice !== 'string' || options.voice.length > 128) {
         throw new Error('Invalid Claude voice connection.')
       }

@@ -45,34 +45,21 @@ export function VoiceSettings() {
             onChange={(id) => {
               const provider = query.data.providers.find((provider) => provider.id === id)
               if (provider) {
-                save.mutate({ provider: provider.id, voice: '', model: provider.id === 'claude' ? '' : undefined })
+                save.mutate({ provider: provider.id, voice: '' })
               }
             }}
           />
         </div>
-        {query.data.provider === 'claude' ? (
-          query.data.models?.length ? (
-            <div className="flex min-h-16 items-center justify-between gap-4 py-3">
-              <p className="text-[13px] font-medium text-ink">Model</p>
-              <Select
-                aria-label="Claude voice model"
-                value={query.data.model ?? ''}
-                disabled={save.isPending}
-                options={[{ value: '', label: 'Choose a model' }, ...query.data.models.map((model) => ({ value: model.id, label: model.label }))]}
-                onChange={(model) => save.mutate({ provider: query.data.provider, voice: query.data.voice, model })}
-              />
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-4 py-3 text-[12px] text-ink-2">
-              <p>{query.data.providers.find((provider) => provider.id === 'claude')?.reason}</p>
-              {window.jaz?.claudeVoice ? (
-                <div className="flex shrink-0 items-center gap-2">
-                  <a href="https://claude.ai/login" target="_blank" rel="noreferrer" className="text-ink underline">Sign in</a>
-                  <Button size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>Refresh</Button>
-                </div>
-              ) : null}
-            </div>
-          )
+        {query.data.provider === 'claude' && !query.data.providers.find((provider) => provider.id === 'claude')?.available ? (
+          <div className="flex items-center justify-between gap-4 py-3 text-[12px] text-ink-2">
+            <p>{query.data.providers.find((provider) => provider.id === 'claude')?.reason}</p>
+            {window.jaz?.claudeVoice ? (
+              <div className="flex shrink-0 items-center gap-2">
+                <a href="https://claude.ai/login" target="_blank" rel="noreferrer" className="text-ink underline">Sign in</a>
+                <Button size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>Refresh</Button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
         <div className="flex min-h-16 items-center justify-between gap-4 py-3">
           <div>
@@ -84,7 +71,7 @@ export function VoiceSettings() {
             value={query.data.voice}
             options={query.data.voices.map((voice) => ({ value: voice, label: voice.charAt(0).toUpperCase() + voice.slice(1) }))}
             disabled={save.isPending}
-            onChange={(voice) => save.mutate({ provider: query.data.provider, voice, model: query.data.model })}
+            onChange={(voice) => save.mutate({ provider: query.data.provider, voice })}
           />
         </div>
         {save.isError ? <p role="alert" className="py-3 text-[12px] text-danger">{save.error.message}</p> : null}
