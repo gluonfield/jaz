@@ -68,7 +68,7 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 	messageHasEarlier := false
 	if request.HistoryRevision == 0 || request.BeforeMessageSeq > 0 {
 		boundaries, loadErr := messages.ListUserMessageBoundaries(ctx, messagedb.ListUserMessageBoundariesParams{
-			ThreadID: id, BeforeSeq: request.BeforeMessageSeq, LimitCount: int64(request.Turns + 1),
+			ThreadID: id, BeforeSeq: request.BeforeMessageSeq, ChatOnly: request.ChatOnly, LimitCount: int64(request.Turns + 1),
 		})
 		if loadErr != nil {
 			return storage.TranscriptPage{}, loadErr
@@ -86,7 +86,7 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 			return storage.TranscriptPage{}, loadErr
 		}
 		eventOwner := int64(0)
-		if len(eventRows) > 0 {
+		if !request.ChatOnly && len(eventRows) > 0 {
 			owner, ownerErr := messages.LatestUserMessageBeforeEvent(ctx, messagedb.LatestUserMessageBeforeEventParams{
 				ThreadID: id, CreatedAtMs: eventRows[len(eventRows)-1].CreatedAtMs,
 			})
@@ -254,14 +254,11 @@ func loadTranscriptMessages(ctx context.Context, messages *messagedb.Queries, id
 	}
 	page.Messages = make([]storage.Message, 0, len(rows))
 	for _, row := range rows {
-		blocks, decodeErr := unmarshalBlocks(row.Blocks)
+		record, decodeErr := messageFromDB(row)
 		if decodeErr != nil {
 			return decodeErr
 		}
-		page.Messages = append(page.Messages, storage.Message{
-			ThreadID: row.ThreadID, Seq: row.Seq, Role: row.Role, Content: row.Content,
-			Reasoning: row.Reasoning.String, Blocks: blocks, CreatedAt: msToTime(row.CreatedAtMs),
-		})
+		page.Messages = append(page.Messages, record)
 	}
 	return nil
 }

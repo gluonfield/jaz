@@ -64,7 +64,7 @@ await build({
   build: {
     outDir: output,
     emptyOutDir: false,
-    lib: { entry: resolve('scripts/browser-smoke/renderer.tsx'), formats: ['es'], fileName: () => 'renderer.js', cssFileName: 'style' },
+    lib: { entry: resolve(process.argv.includes('--chat-history') ? 'scripts/browser-smoke/chat-history-renderer.ts' : 'scripts/browser-smoke/renderer.tsx'), formats: ['es'], fileName: () => 'renderer.js', cssFileName: 'style' },
   },
 })
 await writeFile(join(output, 'index.html'), `<!doctype html><html><head><link rel="stylesheet" href="/style.css"><style>
@@ -90,7 +90,7 @@ const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './in
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
     JAZ_BROWSER_SMOKE_TIMEOUT_MS: '180000',
-    JAZ_BROWSER_SMOKE_SUITE: ['claude-voice', 'connection-security', 'browser-visibility', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images'].find(suite => process.argv.includes(`--${suite}`)) || '',
+    JAZ_BROWSER_SMOKE_SUITE: ['claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images'].find(suite => process.argv.includes(`--${suite}`)) || '',
   },
   stdout: 'inherit',
   stderr: 'inherit',

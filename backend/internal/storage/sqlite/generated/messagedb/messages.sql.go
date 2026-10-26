@@ -133,7 +133,7 @@ FROM messages
 WHERE thread_id = ?1
   AND seq >= ?2
   AND seq < CASE WHEN ?3 = 0 THEN 9223372036854775807 ELSE ?3 END
-  AND (NOT ?4 OR role = 'user')
+  AND (NOT ?4 OR (role = 'user' AND from_user = 1))
 ORDER BY seq DESC
 `
 
@@ -245,7 +245,7 @@ FROM messages
 WHERE thread_id = ?1
   AND seq >= ?2
   AND seq < CASE WHEN ?3 = 0 THEN 9223372036854775807 ELSE ?3 END
-  AND (NOT ?4 OR role = 'user')
+  AND (NOT ?4 OR (role = 'user' AND from_user = 1))
 ORDER BY seq
 `
 
@@ -298,13 +298,15 @@ SELECT seq, created_at_ms
 FROM messages
 WHERE thread_id = ?1
   AND role = 'user'
-  AND seq < CASE WHEN ?2 = 0 THEN 9223372036854775807 ELSE ?2 END
+  AND (NOT ?2 OR from_user = 1)
+  AND seq < CASE WHEN ?3 = 0 THEN 9223372036854775807 ELSE ?3 END
 ORDER BY seq DESC
-LIMIT ?3
+LIMIT ?4
 `
 
 type ListUserMessageBoundariesParams struct {
 	ThreadID   string      `json:"thread_id"`
+	ChatOnly   interface{} `json:"chat_only"`
 	BeforeSeq  interface{} `json:"before_seq"`
 	LimitCount int64       `json:"limit_count"`
 }
@@ -315,7 +317,12 @@ type ListUserMessageBoundariesRow struct {
 }
 
 func (q *Queries) ListUserMessageBoundaries(ctx context.Context, arg ListUserMessageBoundariesParams) ([]ListUserMessageBoundariesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listUserMessageBoundaries, arg.ThreadID, arg.BeforeSeq, arg.LimitCount)
+	rows, err := q.db.QueryContext(ctx, listUserMessageBoundaries,
+		arg.ThreadID,
+		arg.ChatOnly,
+		arg.BeforeSeq,
+		arg.LimitCount,
+	)
 	if err != nil {
 		return nil, err
 	}

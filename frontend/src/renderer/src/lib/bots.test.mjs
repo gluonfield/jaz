@@ -5,7 +5,7 @@ import { optimisticTranscriptMessages } from './optimisticUserMessage'
 describe('bot chat log', () => {
   const self = { id: 'gimli', name: 'Gimli' }
   const at = (minute) => `2026-09-30T21:${String(minute).padStart(2, '0')}:00Z`
-  const user = (seq, minute, text) => ({ seq, role: 'user', content: text, blocks: [], created_at: at(minute) })
+  const user = (seq, minute, text) => ({ seq, role: 'user', from_user: true, content: text, blocks: [], created_at: at(minute) })
   let seq = 0
   const event = (minute, fields) => ({ session_id: 'gimli', seq: ++seq, at: at(minute), ...fields })
   const said = (minute, text) => event(minute, { type: 'room_message', room_message: { speaker: 'bot', bot_id: 'gimli', name: 'Gimli', text } })
@@ -25,10 +25,22 @@ describe('bot chat log', () => {
     expect(shape(entries)).toEqual(['user: move linkin park to in progress', 'bot: Moved it.'])
   })
 
+  test('authorship governs visibility, including identical human and internal text', () => {
+    const text = 'Task status: keep  spaces, a\ttab and\na line break.'
+    const human = user(1, 1, text)
+    const internal = { ...user(2, 2, text), from_user: false }
+    const unknown = { ...user(3, 3, text), from_user: undefined }
+    const events = [said(4, 'A deliberate public delivery.'), woke(5, 'message_received', 'Worker'), event(6, { type: 'room_message', room_message: { speaker: 'user', text } })]
+    expect(shape(botChat([human, internal, unknown], events, self, []).entries)).toEqual([
+      `user: ${text}`, 'bot: A deliberate public delivery.', `user: ${text}`,
+    ])
+    expect(botChat([human, internal], [], self, []).work.doing).toBeUndefined()
+  })
+
   test('private narration stays private when the bot sent no answer', () => {
     const messages = [user(1, 1, 'hi')]
     const events = [wrote(2, 'Checking.'), woke(3, 'message_sent', 'Pip'), tool(4), wrote(5, 'Hi! What should we work on?')]
-    expect(shape(botChat(messages, events, self, []).entries)).toEqual(['user: hi', '· message_sent'])
+    expect(shape(botChat(messages, events, self, []).entries)).toEqual(['user: hi'])
   })
 
   test('an app the bot opens for the user shows and stands in for a reply, while its lookups stay private', () => {
@@ -45,8 +57,8 @@ describe('bot chat log', () => {
     const tasks = { server_id: 'tasks', tool: 'show_issues', presented: true, arguments: {}, result: { content: [{ type: 'resource_link', uri: 'ui://tasks/issue', name: 'Tasks', mimeType: 'text/html;profile=mcp-app' }] } }
     const events = [said(2, 'Hey.'), woke(3, 'group', 'Team'), event(4, { type: 'mcp_app', mcp_app: app }), woke(4, 'message_received', 'Pip'), event(4, { type: 'mcp_app', mcp_app: app }), woke(5, 'routine', 'Digest'), event(6, { type: 'mcp_app', mcp_app: tasks }), wrote(6, 'Private completion.'), event(8, { type: 'mcp_app', mcp_app: tasks }), wrote(9, 'Repeated task list.')]
     const { entries } = botChat([user(1, 1, 'hi'), user(2, 7, 'show me deals')], events, self, opens)
-    expect(entries.map((entry) => entry.kind)).toEqual(['user', 'bot', 'activity', 'app', 'user', 'app'])
-    expect(entries[3].app).toBe(tasks)
+    expect(entries.map((entry) => entry.kind)).toEqual(['user', 'bot', 'app', 'user', 'app'])
+    expect(entries[2].app).toBe(tasks)
     expect(entries.at(-1).at).toBe(at(8))
   })
 
@@ -63,7 +75,7 @@ describe('bot chat log', () => {
       self,
       [],
     )
-    expect(shape(entries)).toEqual(['user: hi', 'bot: Hey.', '· message_sent', '· agent_switch'])
+    expect(shape(entries)).toEqual(['user: hi', 'bot: Hey.', '· agent_switch'])
   })
 
   test('a group shows when a member could not be reached', () => {
@@ -84,9 +96,9 @@ describe('bot chat log', () => {
 // throughout, so the chat neither remounts it nor plays its arrival again.
 test('a sent message keeps its place in the chat from send to save', () => {
   const self = { id: 'gimli', name: 'Gimli' }
-  const earlier = { seq: 7, role: 'user', content: 'check the inbox', blocks: [], created_at: '2026-10-18T19:00:00Z' }
-  const typed = { baselineMessageSeq: 7, message: { role: 'user', content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.100Z' } }
-  const saved = { seq: 8, role: 'user', content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.450Z' }
+  const earlier = { seq: 7, role: 'user', from_user: true, content: 'check the inbox', blocks: [], created_at: '2026-10-18T19:00:00Z' }
+  const typed = { baselineMessageSeq: 7, message: { role: 'user', from_user: true, content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.100Z' } }
+  const saved = { seq: 8, role: 'user', from_user: true, content: 'and the calendar', blocks: [], created_at: '2026-10-18T19:01:00.450Z' }
   const keys = (messages) => botChat(messages, [], self, []).entries.map((entry) => entry.key)
   const sending = keys(optimisticTranscriptMessages([earlier], typed))
   const accepted = keys(optimisticTranscriptMessages([earlier, saved], typed))
@@ -98,7 +110,7 @@ test('a sent message keeps its place in the chat from send to save', () => {
 test('a question the bot asks shows in its chat, carries its answer and stands in for a written reply', () => {
   const at = (minute) => `2026-09-30T21:${String(minute).padStart(2, '0')}:00Z`
   const asked = (minute, type, extra = {}) => ({ session_id: 'gimli', seq: minute, at: at(minute), type, permission: { id: 'q1', title: 'Which account?', questions: [{ id: 'a', question: 'Which account?' }], ...extra } })
-  const messages = [{ seq: 1, role: 'user', content: 'post it', blocks: [], created_at: at(1) }]
+  const messages = [{ seq: 1, role: 'user', from_user: true, content: 'post it', blocks: [], created_at: at(1) }]
   const events = [
     { session_id: 'gimli', seq: 2, at: at(2), type: 'acp_message', content: 'Checking accounts.', acp: { id: 'gimli' } },
     asked(3, 'permission_request'),

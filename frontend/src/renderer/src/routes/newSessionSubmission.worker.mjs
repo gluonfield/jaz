@@ -83,7 +83,7 @@ globalThis.onmessage = async (event) => {
       beforeHistory,
       pendingOptimisticUserMessage(beforeHistory, initialPrompt),
     ).map((message) => message.content)
-    const afterHistory = [{ ...initialPrompt.message, seq: 1, content: 'server copy' }]
+    const afterHistory = [{ ...initialPrompt.message, seq: 1, from_user: true, content: 'server copy' }]
     const projectedAfterHistory = optimisticTranscriptMessages(
       afterHistory,
       pendingOptimisticUserMessage(afterHistory, initialPrompt),

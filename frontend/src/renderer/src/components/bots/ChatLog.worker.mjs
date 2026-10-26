@@ -31,6 +31,7 @@ const html = ['', 'Read these'].map((text) => {
   const messages = [{
     seq: 1,
     role: 'user',
+    from_user: true,
     content: text,
     created_at: '2026-10-06T09:00:00Z',
     blocks: [{ type: 'text', text }, ...attachments],

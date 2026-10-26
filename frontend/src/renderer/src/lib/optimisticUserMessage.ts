@@ -11,7 +11,7 @@ export function materializeOptimisticUserMessage(
   optimistic: OptimisticUserMessage,
   seq = 0,
 ): ChatMessage {
-  return { ...optimistic.message, seq }
+  return { ...optimistic.message, seq, from_user: true }
 }
 
 export function pendingOptimisticUserMessage(
@@ -20,7 +20,7 @@ export function pendingOptimisticUserMessage(
 ): OptimisticUserMessage | null {
   if (!optimistic) return null
   const persisted = messages.some(
-    (message) => message.seq > optimistic.baselineMessageSeq && message.role === 'user',
+    (message) => message.seq > optimistic.baselineMessageSeq && message.role === 'user' && message.from_user === true,
   )
   return persisted ? null : optimistic
 }
@@ -32,7 +32,7 @@ export function optimisticTranscriptMessages(
   if (!optimistic) return messages
 
   const currentIndex = messages.findIndex(
-    (message) => message.seq > optimistic.baselineMessageSeq && message.role === 'user',
+    (message) => message.seq > optimistic.baselineMessageSeq && message.role === 'user' && message.from_user === true,
   )
   if (currentIndex === -1) {
     return [
@@ -40,7 +40,7 @@ export function optimisticTranscriptMessages(
       materializeOptimisticUserMessage(optimistic, (messages.at(-1)?.seq ?? 0) + 1_000_000),
     ]
   }
-  if (messages.slice(currentIndex + 1).some((message) => message.role === 'user')) return messages
+  if (messages.slice(currentIndex + 1).some((message) => message.role === 'user' && message.from_user === true)) return messages
 
   const out = messages.slice()
   out[currentIndex] = materializeOptimisticUserMessage(optimistic, messages[currentIndex].seq)

@@ -114,6 +114,9 @@ globalThis.EventSource = class {
 globalThis.fetch = async (url, init) => {
   assert.equal(new URL(url).origin, origin, 'HTTP must stay on the fixture server')
   const path = new URL(url).pathname
+  if (path === '/v1/settings/voice') {
+    return Response.json({ agent: 'openai', provider: 'openai', voice: 'alloy', voices: ['alloy'], providers: [{ id: 'openai', label: 'OpenAI OAuth', available: true }] })
+  }
   if (path.endsWith('/connect')) {
     return Response.json({ provider: 'openai', sdp: 'local-answer' })
   }

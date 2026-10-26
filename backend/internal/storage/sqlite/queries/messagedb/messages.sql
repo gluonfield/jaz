@@ -17,6 +17,7 @@ SELECT seq, created_at_ms
 FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
   AND role = 'user'
+  AND (NOT sqlc.arg(chat_only) OR from_user = 1)
   AND seq < CASE WHEN sqlc.arg(before_seq) = 0 THEN 9223372036854775807 ELSE sqlc.arg(before_seq) END
 ORDER BY seq DESC
 LIMIT sqlc.arg(limit_count);
@@ -63,7 +64,7 @@ FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
   AND seq >= sqlc.arg(start_seq)
   AND seq < CASE WHEN sqlc.arg(before_seq) = 0 THEN 9223372036854775807 ELSE sqlc.arg(before_seq) END
-  AND (NOT sqlc.arg(chat_only) OR role = 'user')
+  AND (NOT sqlc.arg(chat_only) OR (role = 'user' AND from_user = 1))
 ORDER BY seq;
 
 -- name: ListMessageRangeSizes :many
@@ -78,7 +79,7 @@ FROM messages
 WHERE thread_id = sqlc.arg(thread_id)
   AND seq >= sqlc.arg(start_seq)
   AND seq < CASE WHEN sqlc.arg(before_seq) = 0 THEN 9223372036854775807 ELSE sqlc.arg(before_seq) END
-  AND (NOT sqlc.arg(chat_only) OR role = 'user')
+  AND (NOT sqlc.arg(chat_only) OR (role = 'user' AND from_user = 1))
 ORDER BY seq DESC;
 
 -- name: DeleteMessagesByThread :exec
