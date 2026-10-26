@@ -106,6 +106,7 @@ const TRANSCRIPT_DOCK_GAP_PX = 20
 const EMPTY_OVERVIEW: SessionOverview = { threads: [], subagents: [] }
 
 export interface ThreadChatView {
+  empty: boolean
   messages: ChatMessage[]
   events: SessionEvent[]
   scrollRef: RefObject<HTMLDivElement | null>
@@ -542,7 +543,7 @@ export function ThreadView({
               >
                 {chat ? (
                   <>
-                    {chat({ messages: transcriptMessages, events: displayEvents, scrollRef, paging, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails })}
+                    {chat({ empty: empty && !paging.hasEarlier && detail.data.latest_event_seq === 0, messages: transcriptMessages, events: displayEvents, scrollRef, paging, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails })}
                     {errorNotice}
                   </>
                 ) : empty ? (

@@ -13,7 +13,7 @@ const TYPING_MS = 900
 // A bot's thread read as its chat, rebuilt only when the thread changes rather
 // than on every render of the thread view around it. The chat opens with the
 // bot's hello, as old as the bot; a bot you just created types it first.
-export const BotChat = memo(function BotChat({ bot, bots, newBot, messages, events, scrollRef, paging, working, threads, send, showDetails }: ThreadChatView & { bot: Bot; bots: Bot[]; newBot: boolean }) {
+export const BotChat = memo(function BotChat({ bot, bots, newBot, empty, messages, events, scrollRef, paging, working, threads, send, showDetails }: ThreadChatView & { bot: Bot; bots: Bot[]; newBot: boolean }) {
   const entrypoints = useQuery(mcpEntrypointsQuery).data ?? NO_ENTRYPOINTS
   const chat = useMemo(() => botChat(messages, events, bot, entrypoints), [messages, events, bot, entrypoints])
   const [helloAt, setHelloAt] = useState(newBot ? '' : bot.created_at ?? bot.updated_at)
@@ -31,7 +31,7 @@ export const BotChat = memo(function BotChat({ bot, bots, newBot, messages, even
   return (
     <>
       <ChatLog entries={entries} bots={bots} named={false} working={busy} onOpenRoutines={showDetails} scrollRef={scrollRef} paging={paging} />
-      {helloAt && !chat.entries.some((entry) => entry.kind === 'user') ? <BotStarters arriving={newBot} onPick={send} /> : null}
+      {helloAt && empty ? <BotStarters arriving={newBot} onPick={send} /> : null}
     </>
   )
 })

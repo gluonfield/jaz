@@ -5,10 +5,11 @@ import { createRoot } from 'react-dom/client'
 import { BotChat } from '@/components/bots/BotChat'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
 import type { Bot, ChatMessage, SessionEvent } from '@/lib/api/types'
+import { exerciseBotStarterHistory } from './bot-starter-history'
 
 // A bot's chat opens with its hello. A just-created bot types it first; any
-// other bot has said it already. Starters sit under it until the person says
-// something, and the hello stays once they have.
+// other bot has said it already. Starters sit under it while history is empty,
+// and the hello stays after the first message.
 export async function exerciseBotWelcome(): Promise<void> {
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;overflow:auto;background:var(--color-bg);padding:24px'
@@ -30,6 +31,7 @@ export async function exerciseBotWelcome(): Promise<void> {
           bot={bot}
           bots={[bot]}
           newBot={newBot}
+          empty={messages.length === 0 && events.length === 0}
           messages={messages}
           events={events}
           scrollRef={createRef()}
@@ -110,4 +112,5 @@ export async function exerciseBotWelcome(): Promise<void> {
     root.unmount()
     element.remove()
   }
+  await exerciseBotStarterHistory()
 }
