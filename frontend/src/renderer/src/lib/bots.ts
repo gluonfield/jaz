@@ -154,7 +154,7 @@ export function botChat(
 ): { entries: ChatEntry[]; work: BotWork; waiting: boolean } {
   const items = [
     ...messages.flatMap((message) =>
-      message.role === 'user' ? [{ at: message.created_at, message, event: undefined }] : [],
+      message.role === 'user' && message.from_user ? [{ at: message.created_at, message, event: undefined }] : [],
     ),
     ...events.map((event) => ({ at: event.at, message: undefined, event })),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
@@ -189,7 +189,7 @@ export function botChat(
       if (room.speaker === 'user') entries.push({ kind: 'user', key, at, text: room.text, attachments: room.attachments, attachmentSessionId: self.id })
       else entries.push({ kind: 'bot', key, at, botId: room.bot_id, name: room.name, text: room.text })
     } else if (activity) {
-      if (activity.kind === 'message_sent' || activity.kind === 'message_received' || activity.kind === 'unreachable') entries.push({ kind: 'activity', key, at, event })
+      if (activity.kind === 'unreachable') entries.push({ kind: 'activity', key, at, event })
     } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })
     } else if (event.type === 'permission_request' && event.permission && hasPermissionSurface(event.permission)) {

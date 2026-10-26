@@ -11,6 +11,7 @@ import (
 )
 
 func TestThreadFollowUpUsesNativeSteeringWithoutStoppingWorker(t *testing.T) {
+	const followUp = "Use the latest hierarchy correction: keep  two spaces, a\ttab and\na line break."
 	for _, method := range []string{"JAZ_FAKE_ACP_NATIVE_STEERING", "JAZ_FAKE_ACP_PROMPT_QUEUEING", "unsupported"} {
 		t.Run(method, func(t *testing.T) {
 			store, root := newTestStore(t)
@@ -33,7 +34,7 @@ func TestThreadFollowUpUsesNativeSteeringWithoutStoppingWorker(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = tools.Send(jaz.ctx, callAs(bot.ID), acp.MCPSendInput{ThreadID: worker.ThreadID, Prompt: "Use the latest hierarchy correction"})
+			_, _, err = tools.Send(jaz.ctx, callAs(bot.ID), acp.MCPSendInput{ThreadID: worker.ThreadID, Prompt: followUp})
 			if method == "unsupported" {
 				if err == nil || !strings.Contains(err.Error(), "steering unsupported") {
 					t.Fatalf("unsupported steering = %v", err)
@@ -57,7 +58,7 @@ func TestThreadFollowUpUsesNativeSteeringWithoutStoppingWorker(t *testing.T) {
 						users = append(users, record)
 					}
 				}
-				if err != nil || len(users) != 2 || users[1].Content != "Use the latest hierarchy correction" || users[1].FromUser {
+				if err != nil || len(users) != 2 || users[1].Content != followUp || users[1].FromUser {
 					t.Fatalf("worker follow-up transcript = %+v, %v", records, err)
 				}
 			}

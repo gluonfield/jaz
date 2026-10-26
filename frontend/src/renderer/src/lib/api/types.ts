@@ -577,6 +577,7 @@ export interface Attachment {
 }
 
 export interface ChatMessage {
+  from_user?: boolean
   seq: number
   role: 'system' | 'developer' | 'user' | 'assistant'
   content: string

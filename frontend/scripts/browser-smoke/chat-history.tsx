@@ -112,7 +112,7 @@ async function exercisePagedHistory() {
       })
       return Response.json({ ...page, events: Array.from({ length: 24 }, (_, index) => event(index + 1)), has_earlier: false, before_event_seq: 0 })
     }
-    return Response.json({ ...page, messages: saved ? [{ seq: 1, role: 'user', content: 'Keep going', blocks: [], created_at: new Date().toISOString() }] : [], events: arrived ? [...page.events, event(39, new Date().toISOString())] : page.events, latest_event_seq: arrived ? 39 : 38 })
+    return Response.json({ ...page, messages: saved ? [{ seq: 1, role: 'user', from_user: true, content: 'Keep going', blocks: [], created_at: new Date().toISOString() }] : [], events: arrived ? [...page.events, event(39, new Date().toISOString())] : page.events, latest_event_seq: arrived ? 39 : 38 })
   }
   function Chat() {
     const scrollRef = useRef<HTMLDivElement>(null)

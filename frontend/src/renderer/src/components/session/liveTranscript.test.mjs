@@ -5,6 +5,7 @@ import { liveOptimisticUserMessage } from './liveTranscript'
 const message = (seq, role, content) => ({
   seq,
   role,
+  from_user: role === 'user',
   content,
   blocks: [{ type: 'text', text: content }],
   created_at: new Date(seq * 1000).toISOString(),
@@ -47,6 +48,18 @@ describe('live transcript projection', () => {
 
     expect(result.map((item) => item.content)).toEqual(['ready', 'hi', 'hello'])
     expect(result[1].created_at).toBe(new Date(1500).toISOString())
+  })
+
+  test('an internal coordination arrival cannot acknowledge or replace a pending human send', () => {
+    const internal = { ...message(2, 'user', 'Internal coordination'), from_user: false }
+    const result = projected([internal], live('Keep working', 1))
+    expect(result.map((item) => item.content)).toEqual(['Internal coordination', 'Keep working'])
+    expect(result[1].from_user).toBe(true)
+    const saved = message(3, 'user', 'Keep working')
+    const accepted = projected([internal, saved], live('Keep working', 1))
+    expect(accepted.map((item) => item.content)).toEqual(['Internal coordination', 'Keep working'])
+    expect(accepted[0]).toBe(internal)
+    expect(accepted[1].from_user).toBe(true)
   })
 
   test('drops a stale optimistic message after a steered successor is persisted', () => {

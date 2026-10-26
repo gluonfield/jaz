@@ -121,8 +121,9 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			}
 			at := time.Now().UTC()
 			if err := store.AppendMessageRecords(thread.ID,
-				storage.Message{Role: "user", Content: "Show my work", CreatedAt: at},
+				storage.Message{Role: "user", Content: "Show my work", FromUser: true, CreatedAt: at},
 				storage.Message{Role: "assistant", Content: "Private narration", CreatedAt: at.Add(time.Millisecond)},
+				storage.Message{Role: "user", Content: "Show my work", CreatedAt: at.Add(time.Millisecond)},
 			); err != nil {
 				t.Fatal(err)
 			}
@@ -155,12 +156,15 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			if err := json.Unmarshal(res.Body.Bytes(), &page); err != nil {
 				t.Fatal(err)
 			}
-			wantMessages, wantEvents := 2, 9
+			wantMessages, wantEvents := 3, 9
 			if source == storage.SourceBot {
 				wantMessages, wantEvents = 1, 8
 			}
 			if len(page.Messages) != wantMessages || len(page.Events) != wantEvents {
 				t.Fatalf("messages=%d events=%d, want %d/%d", len(page.Messages), len(page.Events), wantMessages, wantEvents)
+			}
+			if !page.Messages[0].FromUser || page.Messages[0].Content != "Show my work" || source != storage.SourceBot && page.Messages[2].FromUser {
+				t.Fatal("history lost typed human authorship")
 			}
 			if !slices.EqualFunc(page.Events, events[:wantEvents], func(a, b sessionevents.Event) bool {
 				return a.Type == b.Type
