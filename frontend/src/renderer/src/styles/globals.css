@@ -446,6 +446,17 @@
   transform: translateY(0.1em);
   pointer-events: none;
 }
+.chat-prose-link[role="link"] {
+  position: relative;
+  padding-inline-start: 1.06em;
+}
+.chat-prose-link[role="link"] > .chat-prose-link-icon {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0.2em;
+  margin-right: 0;
+  transform: none;
+}
 img.chat-prose-link-icon {
   width: 1em;
   height: 1em;
