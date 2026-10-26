@@ -2,6 +2,8 @@
 
 Request, 25 October 2026: inspect Claude Desktop's voice implementation and add Claude voice to Jaz.
 
+Current status, 26 October: implemented and active in the local development app. Choose Settings → Voice → Provider → Claude, then select a model from Claude's native catalog. Jaz follows official Claude voice routing; the existing saved provider choice is preserved. No release or push was performed.
+
 - [x] Inspect installed Claude Desktop and its cached first-party web client.
 - [x] Trace Jaz's current provider, connection and transcript boundaries.
 - [x] Check the existing Claude Code sign-in without generating a completion.
@@ -13,7 +15,7 @@ Request, 25 October 2026: inspect Claude Desktop's voice implementation and add 
 - [x] Implement the Claude provider and verify signaling, delegation and cancellation against real protocol fixtures.
 - [x] Review and commit the locally verified implementation.
 - [x] Resolve the requested merge from current main and verify the combined branch.
-- [ ] Activate the provider and complete the live Opus/audio/handoff check.
+- [x] Activate the provider locally and complete the live native-voice audio/client-tool check.
 
 ## Evidence
 
@@ -115,3 +117,9 @@ Augustinas explicitly approved using whatever official Claude uses for voice on 
 Live cookie-session verification passed on 26 October: synthetic speech was transcribed as “Please say the words Violet 7. And nothing else.” and answered “Violet 7.” WebRTC decoded audio reached a muted consumer (peak 0.823, 348 RTP packets); no microphone was captured or speaker output played. A real `jaz_agent` wire call returned through the native tool-result endpoint (HTTP 200), followed by a spoken acknowledgement. The tool's result was supplied by the protocol test; no additional coding-agent session was launched. The temporary conversation was deleted (204) and media/socket/timers closed. Evidence: `runs/claude-voice/native-parity/live-result.json`.
 
 403 frontend tests, type checks, lint, bundle, Go 1.26.3 voice/HTTP tests and the normal hidden production-broker/settings smoke pass. Thermo-nuclear self-review confirms that deleting the invented alias invariant preserves native selection and reduces state without new branches, dependencies or native-agent changes. Activation remains the next step.
+
+## Activation
+
+Verified candidate `3741f3f8` was fast-forwarded into actual local main; the tested and integrated tree is `f59ce2677847fd28967fa7884168120bb0d5463f`. The Go 1.26.3 backend replaced the old process gracefully, reusing all 68 original environment entries. The dev watcher exited during the intended reload, so the first activation receipt accurately records its desktop timeout. Restarting the desktop watcher with Go 1.26.3 restored the app against the same healthy backend, without a second backend restart. The normal backend cleanup PID is registered. The original auth file predates this activation and was not edited.
+
+The healthy desktop receipt is `runs/claude-voice/native-parity/desktop-reload-receipt.json`; the preserved initial attempt is `activation-receipt.json`. Main-source dev bundles built and the actual app logged backend adoption and a loaded window. The current conversation's browser/computer tools have not reattached after the reload, so no additional real-window settings check is claimed. Desktop/phone settings and the production broker were verified in the hidden normal suite; the live upstream audio/tool protocol was verified separately. Physical microphone capture and audible speaker playback were deliberately excluded from automated checks.
