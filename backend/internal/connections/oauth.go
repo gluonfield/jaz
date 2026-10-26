@@ -105,11 +105,10 @@ func (s *OAuthService) Start(ctx context.Context, pluginID, localCallbackURL str
 
 	redirectURL, state := localCallbackURL, nonce
 	if provider.usesBroker() && s.broker.URL != "" {
-		brokerState, err := s.broker.MintState(ctx, localCallbackURL)
+		redirectURL, state, err = s.broker.Relay(ctx, localCallbackURL)
 		if err != nil {
 			return OAuthStart{}, err
 		}
-		redirectURL, state = s.broker.URL, brokerState
 	}
 
 	authURL, err := provider.authCodeURL(redirectURL, state, verifier)

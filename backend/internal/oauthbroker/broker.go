@@ -27,35 +27,36 @@ func (b Broker) ClientMetadataURL() string {
 	return b.sibling("/oauth/client-metadata.json")
 }
 
-// MintState asks the broker to sign a state that returns the redirect to returnURL.
-func (b Broker) MintState(ctx context.Context, returnURL string) (string, error) {
+// Relay returns the redirect URI and broker-signed state with which the
+// authorization response reaches returnURL.
+func (b Broker) Relay(ctx context.Context, returnURL string) (redirectURL, state string, err error) {
 	body, err := json.Marshal(map[string]string{"return_url": returnURL})
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.sibling("/oauth/start"), bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("oauth broker unreachable: %w", err)
+		return "", "", fmt.Errorf("oauth broker unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("oauth broker rejected start: %s", resp.Status)
+		return "", "", fmt.Errorf("oauth broker rejected start: %s", resp.Status)
 	}
 	var out struct {
 		State string `json:"state"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("decode oauth broker response: %w", err)
+		return "", "", fmt.Errorf("decode oauth broker response: %w", err)
 	}
 	if out.State == "" {
-		return "", errors.New("oauth broker returned no state")
+		return "", "", errors.New("oauth broker returned no state")
 	}
-	return out.State, nil
+	return b.URL, out.State, nil
 }
 
 func (b Broker) sibling(path string) string {

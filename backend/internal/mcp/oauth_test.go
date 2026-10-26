@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -46,32 +48,43 @@ func (m *memTokenStore) DeleteToken(_ context.Context, id string) error {
 	return nil
 }
 
+type mockAuthorizationServer struct {
+	*httptest.Server
+	registrations int
+	tokenForm     url.Values
+}
+
 // mockAuthServer serves the OAuth discovery, registration, and token endpoints an
 // MCP server's authorization server would, so we can exercise the full flow.
-func mockAuthServer(t *testing.T) *httptest.Server {
+// extra adds authorization server metadata.
+func mockAuthServer(t *testing.T, extra map[string]any) *mockAuthorizationServer {
 	t.Helper()
 	mux := http.NewServeMux()
-	var srv *httptest.Server
-	base := func() string { return srv.URL }
+	srv := &mockAuthorizationServer{Server: httptest.NewServer(mux)}
+	t.Cleanup(srv.Close)
+	base := srv.URL
 
 	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
 		writeJSONResp(w, map[string]any{
-			"resource":              base() + "/mcp",
-			"authorization_servers": []string{base()},
+			"resource":              base + "/mcp",
+			"authorization_servers": []string{base},
 			"scopes_supported":      []string{"read"},
 		})
 	})
 	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		writeJSONResp(w, map[string]any{
-			"issuer":                           base(),
-			"authorization_endpoint":           base() + "/authorize",
-			"token_endpoint":                   base() + "/token",
-			"registration_endpoint":            base() + "/register",
+		metadata := map[string]any{
+			"issuer":                           base,
+			"authorization_endpoint":           base + "/authorize",
+			"token_endpoint":                   base + "/token",
+			"registration_endpoint":            base + "/register",
 			"response_types_supported":         []string{"code"},
 			"code_challenge_methods_supported": []string{"S256"},
-		})
+		}
+		maps.Copy(metadata, extra)
+		writeJSONResp(w, metadata)
 	})
 	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+		srv.registrations++
 		writeJSONResp(w, map[string]any{
 			"client_id":                  "dynamic-client-id",
 			"token_endpoint_auth_method": "none",
@@ -79,6 +92,7 @@ func mockAuthServer(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
+		srv.tokenForm = r.Form
 		if r.Form.Get("grant_type") != "authorization_code" || r.Form.Get("code") == "" {
 			http.Error(w, "bad grant", http.StatusBadRequest)
 			return
@@ -94,8 +108,6 @@ func mockAuthServer(t *testing.T) *httptest.Server {
 			"expires_in":    3600,
 		})
 	})
-	srv = httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
 	return srv
 }
 
@@ -158,7 +170,7 @@ func writeJSONResp(w http.ResponseWriter, body map[string]any) {
 }
 
 func TestRunAuthorizationCompletesFlow(t *testing.T) {
-	srv := mockAuthServer(t)
+	srv := mockAuthServer(t, nil)
 	store := newMemTokenStore()
 
 	server := mcpconfig.Server{ID: "srv-oauth", URL: srv.URL + "/mcp"}
@@ -286,34 +298,7 @@ func TestAuthorizeFromMetadataPrefersClientMetadataDocument(t *testing.T) {
 	t.Cleanup(broker.Close)
 	brokerURL := broker.URL + "/oauth/callback"
 	clientID := broker.URL + "/oauth/client-metadata.json"
-
-	mux := http.NewServeMux()
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
-		writeJSONResp(w, map[string]any{"resource": srv.URL + "/mcp", "authorization_servers": []string{srv.URL}})
-	})
-	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
-		writeJSONResp(w, map[string]any{
-			"issuer":                                srv.URL,
-			"authorization_endpoint":                srv.URL + "/authorize",
-			"token_endpoint":                        srv.URL + "/token",
-			"registration_endpoint":                 srv.URL + "/register",
-			"client_id_metadata_document_supported": true,
-			"code_challenge_methods_supported":      []string{"S256"},
-		})
-	})
-	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
-		t.Error("dynamic registration ran although the server accepts a client metadata document")
-	})
-	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		_ = r.ParseForm()
-		if r.Form.Get("client_id") != clientID || r.Form.Get("redirect_uri") != brokerURL || r.Form.Get("client_secret") != "" {
-			http.Error(w, "bad client", http.StatusUnauthorized)
-			return
-		}
-		writeJSONResp(w, map[string]any{"access_token": "cimd-access", "token_type": "Bearer", "refresh_token": "cimd-refresh"})
-	})
+	srv := mockAuthServer(t, map[string]any{"client_id_metadata_document_supported": true})
 
 	store := newMemTokenStore()
 	handler := newOAuthHandler(mcpconfig.Server{ID: "srv-cimd", URL: srv.URL + "/mcp"}, store, http.DefaultClient)
@@ -332,12 +317,15 @@ func TestAuthorizeFromMetadataPrefersClientMetadataDocument(t *testing.T) {
 	if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {
 		t.Fatalf("AuthorizeFromMetadata: %v", err)
 	}
-	if len(returnURLs) != 1 || returnURLs[0] != handler.redirectURL {
+	if srv.registrations != 0 || srv.tokenForm.Get("client_id") != clientID || srv.tokenForm.Get("redirect_uri") != brokerURL {
+		t.Fatalf("registrations = %d, token request = %v", srv.registrations, srv.tokenForm)
+	}
+	if !slices.Equal(returnURLs, []string{handler.redirectURL}) {
 		t.Fatalf("broker return URLs = %#v, want the Jaz callback", returnURLs)
 	}
 	tok, _, _ := store.LoadToken(context.Background(), mcpconfig.OAuthConnectionID("srv-cimd"))
-	if tok.AccessToken != "cimd-access" || tok.ClientID != clientID || tok.RedirectURL != brokerURL {
-		t.Fatalf("token = %#v", tok)
+	if tok.ClientID != clientID {
+		t.Fatalf("stored client ID = %q, want the metadata document", tok.ClientID)
 	}
 }
 

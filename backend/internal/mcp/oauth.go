@@ -302,8 +302,7 @@ func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauth
 
 func (h *oauthHandler) authorizationRedirect(ctx context.Context, client oauthClientConfig) (string, string, error) {
 	if client.metadataDocument {
-		state, err := h.broker.MintState(ctx, h.redirectURL)
-		return h.broker.URL, state, err
+		return h.broker.Relay(ctx, h.redirectURL)
 	}
 	state, err := randomState()
 	return h.redirectURL, state, err

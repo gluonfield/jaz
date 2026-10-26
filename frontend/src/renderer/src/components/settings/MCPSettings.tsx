@@ -353,6 +353,7 @@ function MCPServerRow({
   const oauthConfigured = Boolean(server.oauth?.client_id || server.oauth?.issuer)
   const canAuthorize = needsAuth || (oauthConfigured && server.status !== 'connected')
   const showTools = server.status === 'connected' || server.tool_count > 0
+  const statusText = authorizing ? 'Waiting for sign-in…' : mcpStatusText(server)
   return (
     <div className="flex items-center gap-3 rounded-card px-3 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
       <span className="flex w-4 shrink-0 justify-center">
@@ -381,8 +382,8 @@ function MCPServerRow({
             {mcpToolCountLabel(server.tool_count)}
           </button>
         ) : (
-          <p className="truncate text-[12px] text-ink-3" title={mcpStatusText(server)}>
-            {authorizing ? 'Waiting for sign-in…' : mcpStatusText(server)}
+          <p className="truncate text-[12px] text-ink-3" title={statusText}>
+            {statusText}
           </p>
         )}
       </div>
