@@ -271,7 +271,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     const owner = new BrowserWindow({ show: false, focusable: false })
     const bridge = new ClaudeVoiceBridge(owner, () => {}, { origin: claudeOrigin, preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js') })
     try {
-      await bridge.request({ type: 'start', id: 'reload-fixture', options: { sdp: 'v=0\r\nfixture-offer', context: 'Thread context', model: 'fixture-opus', voice: 'buttery' } })
+      await bridge.request({ type: 'start', id: 'reload-fixture', options: { sdp: 'v=0\r\nfixture-offer', context: 'Thread context', voice: 'buttery' } })
       await owner.loadURL('about:blank')
       return bridge.window.isDestroyed()
     } finally {

@@ -46,8 +46,8 @@ export class VoiceConnection {
     }
     if (settings.provider === 'claude') {
       const provider = settings.providers.find((provider) => provider.id === 'claude')
-      if (!provider?.available || !settings.models?.some((model) => model.id === settings.model)) {
-        throw new Error(provider?.reason ?? 'Choose an available Claude voice model in Settings → Voice.')
+      if (!provider?.available) {
+        throw new Error(provider?.reason ?? 'Sign in to Claude in the Jaz side browser.')
       }
     }
     const event = (event: VoiceEvent) => {

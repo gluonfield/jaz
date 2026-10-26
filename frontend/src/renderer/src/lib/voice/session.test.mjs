@@ -55,7 +55,7 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
   }
   let nativeListener
   const native = {
-    status: async () => ({ available: true, models: [{ id: 'fixture-opus', label: 'Opus' }] }),
+    status: async () => ({ available: true }),
     start: async (id, options) => {
       const listener = nativeListener
       nativeListener = (data) => listener(id, data)
@@ -130,11 +130,11 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
     if (path === '/v1/auth/check') {
       value = { ok: true }
     } else if (path.endsWith('/settings/voice')) {
-      value = { agent: provider, provider, model: provider === 'claude' ? 'fixture-opus' : undefined, voice: provider === 'claude' ? 'buttery' : 'cove', providers: [{ id: provider, available: provider !== 'claude' }], voices: [provider === 'claude' ? 'buttery' : 'cove'] }
+      value = { agent: provider, provider, voice: provider === 'claude' ? 'buttery' : 'cove', providers: [{ id: provider, available: provider !== 'claude' }], voices: [provider === 'claude' ? 'buttery' : 'cove'] }
     } else if (path.endsWith('/messages')) {
       value = structuredClone(snapshot)
     } else if (path.endsWith('/connect')) {
-      value = provider === 'claude' ? { provider, model: 'fixture-opus', instructions: 'Thread context: ' + body.context } : { provider, sdp: 'v=0\r\nanswer' }
+      value = provider === 'claude' ? { provider, instructions: 'Thread context: ' + body.context } : { provider, sdp: 'v=0\r\nanswer' }
     } else if (path.endsWith('/agent/input')) {
       if (rejectedInput) {
         rejectedInput = false
@@ -451,7 +451,6 @@ test('Claude voice accepts native model resolution, delegates once and reads the
   tool()
   await delay(10)
   expect(inputs(f)).toHaveLength(1)
-  expect(f.wire.find((event) => event.type === 'native_start').options.model).toBe('fixture-opus')
   expect(inputs(f)[0].body.message).toBe('Find the green file')
   expect(f.states.at(-1).transcript.filter((line) => line.role === 'user').map((line) => line.text)).toEqual(['Find the green file'])
   expect(f.wire.filter((event) => event.type === 'tool_result')).toHaveLength(1)

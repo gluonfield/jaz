@@ -55,10 +55,10 @@ export class ClaudeVoiceSignaling implements VoiceSignaling {
     if (this.closed) {
       return
     }
-    if (result.provider !== 'claude' || !result.model || !result.instructions) {
+    if (result.provider !== 'claude' || !result.instructions) {
       throw new Error('Voice provider changed. Start voice again.')
     }
-    const answer = await this.api.start(this.id, { sdp, model: result.model, voice: this.voice, context: result.instructions })
+    const answer = await this.api.start(this.id, { sdp, voice: this.voice, context: result.instructions })
     if (this.closed) {
       return
     }

@@ -17,7 +17,6 @@ type Settings struct {
 	Agent    string `json:"agent"`
 	Provider string `json:"provider"`
 	Voice    string `json:"voice"`
-	Model    string `json:"model,omitempty"`
 }
 
 type Provider struct {
@@ -37,7 +36,7 @@ func (s *Service) Settings() (Status, error) {
 	providers := []Provider{
 		{ID: ProviderOAuth, Label: "OpenAI OAuth"},
 		{ID: ProviderAPI, Label: "OpenAI API"},
-		{ID: ProviderClaude, Label: "Claude", Reason: "Claude voice requires Jaz Desktop."},
+		{ID: ProviderClaude, Label: "Claude Account", Reason: "Claude voice requires Jaz Desktop."},
 	}
 	for i := range providers {
 		if providers[i].ID == ProviderClaude {
@@ -87,10 +86,10 @@ func (s *Service) SaveSettings(settings Settings) (Status, error) {
 
 func (s Settings) validate() error {
 	if s.Provider == ProviderClaude {
-		if s.Agent != "claude" || len(s.Model) > 128 {
-			return fmt.Errorf("%w: choose a Claude voice model", ErrInput)
+		if s.Agent != "claude" {
+			return fmt.Errorf("%w: choose the Claude voice provider", ErrInput)
 		}
-	} else if s.Agent != "openai" || (s.Provider != ProviderOAuth && s.Provider != ProviderAPI) || s.Model != "" {
+	} else if s.Agent != "openai" || (s.Provider != ProviderOAuth && s.Provider != ProviderAPI) {
 		return fmt.Errorf("%w: choose a supported voice provider", ErrInput)
 	}
 	if !slices.Contains(voices(s.Provider), s.Voice) {

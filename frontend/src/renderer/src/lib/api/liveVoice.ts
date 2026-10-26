@@ -9,8 +9,6 @@ export type VoiceProvider = 'openai' | 'openai-api-key' | 'claude'
 
 export interface VoiceSettings {
   agent: 'openai' | 'claude'
-  model?: string
-  models?: { id: string; label: string }[]
   provider: VoiceProvider
   voice: string
   voices: string[]
@@ -22,10 +20,9 @@ export async function getVoiceSettings(): Promise<VoiceSettings> {
   if (settings.provider !== 'claude' || !window.jaz?.claudeVoice) {
     return settings
   }
-  const local = await window.jaz.claudeVoice.status().catch((error: Error) => ({ available: false, models: [], reason: error.message }))
+  const local = await window.jaz.claudeVoice.status().catch((error: Error) => ({ available: false, reason: error.message }))
   return {
     ...settings,
-    models: local.models,
     providers: settings.providers.map((provider) => provider.id === 'claude'
       ? { ...provider, available: local.available, reason: local.reason }
       : provider),
@@ -39,15 +36,15 @@ export const voiceSettingsQuery = queryOptions({
 
 export const voiceAvailableQuery = queryOptions({
   ...voiceSettingsQuery,
-  select: (settings) => settings.providers.some((provider) => provider.id === settings.provider && provider.available) && (settings.provider !== 'claude' || Boolean(settings.model && settings.models?.some((model) => model.id === settings.model))),
+  select: (settings) => settings.providers.some((provider) => provider.id === settings.provider && provider.available),
 })
 
-export function updateVoiceSettings(settings: Pick<VoiceSettings, 'provider' | 'voice' | 'model'>): Promise<VoiceSettings> {
+export function updateVoiceSettings(settings: Pick<VoiceSettings, 'provider' | 'voice'>): Promise<VoiceSettings> {
   return put('/v1/settings/voice', { agent: settings.provider === 'claude' ? 'claude' : 'openai', ...settings }).then(() => getVoiceSettings())
 }
 
 export function connectVoice(sessionId: string, sdp: string, context: string, signal: AbortSignal): Promise<
-  | { provider: 'claude'; model: string; instructions: string }
+  | { provider: 'claude'; instructions: string }
   | { provider: 'openai' | 'openai-api-key'; model: string; sdp: string }
 > {
   return post('/v1/voice/connect', { session_id: sessionId, sdp, context }, signal)

@@ -2,7 +2,7 @@
 
 Request, 25 October 2026: inspect Claude Desktop's voice implementation and add Claude voice to Jaz.
 
-Current status, 26 October: implemented and active in the local development app. Choose Settings → Voice → Provider → Claude, then select a model from Claude's native catalog. Jaz follows official Claude voice routing; the existing saved provider choice is preserved. No release or push was performed.
+Current status, 26 October: implemented in the local development app. Choose Settings → Voice → Provider → Claude Account; native Opus is selected automatically. Jaz follows official Claude voice routing; the existing saved provider choice is preserved. No release or push was performed.
 
 - [x] Inspect installed Claude Desktop and its cached first-party web client.
 - [x] Trace Jaz's current provider, connection and transcript boundaries.
@@ -16,6 +16,7 @@ Current status, 26 October: implemented and active in the local development app.
 - [x] Review and commit the locally verified implementation.
 - [x] Resolve the requested merge from current main and verify the combined branch.
 - [x] Activate the provider locally and complete the live native-voice audio/client-tool check.
+- [x] Remove the voice model picker, default to native Opus and clarify account authentication.
 
 ## Evidence
 
@@ -94,7 +95,7 @@ The code passes the checks below and is ready for integration. No Claude provide
 
 ## Use
 
-On Jaz Desktop, choose Settings → Voice → Provider → Claude, sign in to Claude in the side browser if needed, then explicitly choose a model from Claude's live voice catalog. The selected coding agent continues to handle work through Jaz's existing admission stream. Browser-only clients show that this provider requires Desktop. The current OpenAI selection is preserved until changed explicitly.
+On Jaz Desktop, choose Settings → Voice → Provider → Claude Account and sign in to Claude in the side browser if needed. Native Opus is selected automatically from Claude's live voice catalog. The selected coding agent continues to handle work through Jaz's existing admission stream. Browser-only clients show that this provider requires Desktop. The current OpenAI selection is preserved until changed explicitly.
 
 ## Main Merge Repair
 
@@ -123,3 +124,9 @@ Live cookie-session verification passed on 26 October: synthetic speech was tran
 Verified candidate `3741f3f8` was fast-forwarded into actual local main; the tested and integrated tree is `f59ce2677847fd28967fa7884168120bb0d5463f`. The Go 1.26.3 backend replaced the old process gracefully, reusing all 68 original environment entries. The dev watcher exited during the intended reload, so the first activation receipt accurately records its desktop timeout. Restarting the desktop watcher with Go 1.26.3 restored the app against the same healthy backend, without a second backend restart. The normal backend cleanup PID is registered. The original auth file predates this activation and was not edited.
 
 The healthy desktop receipt is `runs/claude-voice/native-parity/desktop-reload-receipt.json`; the preserved initial attempt is `activation-receipt.json`. Main-source dev bundles built and the actual app logged backend adoption and a loaded window. The current conversation's browser/computer tools have not reattached after the reload, so no additional real-window settings check is claimed. Desktop/phone settings and the production broker were verified in the hidden normal suite; the live upstream audio/tool protocol was verified separately. Physical microphone capture and audible speaker playback were deliberately excluded from automated checks.
+
+## Automatic Opus Follow-up
+
+Augustinas requested no model picker and an Opus default, then asked whether the provider is OAuth-only. The label is now Claude Account: this transport uses Claude's signed-in website session, and neither an API key alone nor the separately tested Claude Code OAuth token authorized the voice endpoint. The native desktop bridge selects the enabled Opus entry from the live catalog at connection time and reports unavailable if that account has no Opus voice access. Model catalogs, settings and selected-model state were removed from the renderer/server boundary; obsolete persisted model fields are ignored without a data migration.
+
+Focused voice-session and Go 1.26.3 voice/HTTP tests, type checks, lint, bundle and the normal hidden broker/settings journey pass. The upstream fixture puts Sonnet before Opus and a retired Opus before the enabled entry, proving automatic selection rather than a first-model fallback. Desktop and phone captures were visually checked: Provider and Voice are the only controls. Evidence: `runs/claude-voice/opus-default/`, captures `runs/browser-smoke-DOD9wF/`. This follow-up is verified and awaiting activation.
