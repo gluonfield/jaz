@@ -435,13 +435,13 @@ test('a disconnected result channel reports delivery failure once and keeps the 
   expect(f.snapshot.events.at(-1).room_message.text).toBe('Only memory_search was called.')
 })
 
-test('Claude voice delegates once, preserves corrected speech and reads the real agent result', async () => {
+test('Claude voice accepts native model resolution, delegates once and reads the real agent result', async () => {
   const f = await fixture({ provider: 'claude' })
   f.emit({ type: 'transcript_interim', text: 'Find the blue file' })
   f.emit({ type: 'transcript_interim', text: 'Find the green file' })
   f.emit({ type: 'message_complete', data: { sender: 'human', message_uuid: 'human-1', content: [{ type: 'text', text: 'Find the green file' }] } })
   const tool = () => {
-    f.emit({ type: 'message_sse', event: { type: 'message_start', data: { message: { uuid: 'assistant-1', parent_uuid: 'human-1', model: 'fixture-opus' } } } })
+    f.emit({ type: 'message_sse', event: { type: 'message_start', data: { message: { uuid: 'assistant-1', parent_uuid: 'human-1', model: 'fixture-opus-resolved' } } } })
     f.emit({ type: 'message_sse', event: { type: 'content_block_start', data: { index: 0, content_block: { type: 'tool_use', id: 'tool-1', name: 'jaz_agent', input: {} } } } })
     f.emit({ type: 'message_sse', event: { type: 'content_block_delta', data: { index: 0, delta: { partial_json: '{"request":"Find the green file"}' } } } })
     f.emit({ type: 'message_sse', event: { type: 'content_block_stop', data: { index: 0 } } })
@@ -451,6 +451,7 @@ test('Claude voice delegates once, preserves corrected speech and reads the real
   tool()
   await delay(10)
   expect(inputs(f)).toHaveLength(1)
+  expect(f.wire.find((event) => event.type === 'native_start').options.model).toBe('fixture-opus')
   expect(inputs(f)[0].body.message).toBe('Find the green file')
   expect(f.states.at(-1).transcript.filter((line) => line.role === 'user').map((line) => line.text)).toEqual(['Find the green file'])
   expect(f.wire.filter((event) => event.type === 'tool_result')).toHaveLength(1)
@@ -458,14 +459,4 @@ test('Claude voice delegates once, preserves corrected speech and reads the real
   f.agent({ type: 'acp', acp: { id: 'thread', state: 'idle', stop_reason: 'end_turn' } })
   await delay(30)
   expect(f.wire.some((event) => event.type === 'user_message' && event.data.kind === 'observation' && event.data.respond && event.data.text.includes('notes/green.md'))).toBe(true)
-})
-
-test('Claude voice stops if the service silently substitutes the selected model', async () => {
-  const f = await fixture({ provider: 'claude' })
-  f.emit({ type: 'message_sse', event: { type: 'message_start', data: { message: { model: 'another-model' } } } })
-  await delay(10)
-  expect(f.states.at(-1).phase).toBe('error')
-  expect(f.states.at(-1).error).toContain('instead of fixture-opus')
-  expect(inputs(f)).toHaveLength(0)
-  expect(f.wire.some((event) => event.type === 'native_close')).toBe(true)
 })

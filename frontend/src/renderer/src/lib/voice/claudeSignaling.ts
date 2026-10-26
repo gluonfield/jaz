@@ -25,7 +25,6 @@ export class ClaudeVoiceSignaling implements VoiceSignaling {
   private api: ClaudeVoiceAPI
   private abort = new AbortController()
   private unsubscribe: () => void
-  private model = ''
   private closed = false
   private assistantId?: string
   private humanId?: string
@@ -59,7 +58,6 @@ export class ClaudeVoiceSignaling implements VoiceSignaling {
     if (result.provider !== 'claude' || !result.model || !result.instructions) {
       throw new Error('Voice provider changed. Start voice again.')
     }
-    this.model = result.model
     const answer = await this.api.start(this.id, { sdp, model: result.model, voice: this.voice, context: result.instructions })
     if (this.closed) {
       return
@@ -99,10 +97,6 @@ export class ClaudeVoiceSignaling implements VoiceSignaling {
     switch (sse?.type) {
       case 'message_start': {
         const message = data?.message
-        if (message?.model && message.model !== this.model) {
-          this.fail('Claude returned voice model ' + message.model + ' instead of ' + this.model + '.')
-          return
-        }
         this.trace('voice_model', { detail: message?.model ?? 'unknown' })
         this.assistantId = message?.uuid ?? message?.id
         this.humanId = message?.parent_uuid

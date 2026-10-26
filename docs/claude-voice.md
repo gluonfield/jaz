@@ -9,7 +9,7 @@ Request, 25 October 2026: inspect Claude Desktop's voice implementation and add 
 - [x] Activate the reviewed connection correction with a coordinated backend restart.
 - [x] Verify signed-in WebSocket/WebRTC signaling and detect the model-ID mismatch.
 - [x] Verify the current native Opus voice mapping and inspect the reported live model.
-- [ ] Resolve the live model identity mismatch and verify real audio/delegation.
+- [x] Follow the official voice routing approved by Augustinas and verify live speech/audio and the client-tool callback.
 - [x] Implement the Claude provider and verify signaling, delegation and cancellation against real protocol fixtures.
 - [x] Review and commit the locally verified implementation.
 - [x] Resolve the requested merge from current main and verify the combined branch.
@@ -107,3 +107,11 @@ At 22:03 UTC, the signed-in native `/model_selector/chat` metadata explicitly ma
 The advertised native voice ID and the returned model ID differ, so the current model guard rejects this live response. Native Opus 5.5 identity, real audio and live Jaz delegation remain unverified. Asked Augustinas whether native Opus voice may handle speech despite its reported model, while the selected coding agent handles work. This is an explicit exception to his Opus 5.5-only Anthropic instruction; no answer is assumed. Main and the running app remain unchanged.
 
 26 October clarification: the inspected official client uses the same `model` query and WebRTC endpoint. Anthropic's current voice documentation says the picker selects a model family without a generation. No official-app response has yet independently confirmed the exact `claude-opus-4-8` field, and that backend identifier alone does not establish a public model downgrade. The earlier exception request was premature: first verify native returned-model semantics before treating alias inequality as a policy violation. [Official voice documentation](https://support.claude.com/en/articles/11101966-use-voice-mode).
+
+## Official Voice Routing
+
+Augustinas explicitly approved using whatever official Claude uses for voice on 26 October. Removed the Jaz-only model-ID equality check and its duplicate stored state. The selected native catalog ID is sent unchanged; Claude owns its resolution, and its reported model remains in diagnostics. Coding-agent model and authentication rules are unchanged. The existing delegation regression now exercises a resolved model ID distinct from the selected alias; the obsolete rejection test was removed.
+
+Live cookie-session verification passed on 26 October: synthetic speech was transcribed as “Please say the words Violet 7. And nothing else.” and answered “Violet 7.” WebRTC decoded audio reached a muted consumer (peak 0.823, 348 RTP packets); no microphone was captured or speaker output played. A real `jaz_agent` wire call returned through the native tool-result endpoint (HTTP 200), followed by a spoken acknowledgement. The tool's result was supplied by the protocol test; no additional coding-agent session was launched. The temporary conversation was deleted (204) and media/socket/timers closed. Evidence: `runs/claude-voice/native-parity/live-result.json`.
+
+403 frontend tests, type checks, lint, bundle, Go 1.26.3 voice/HTTP tests and the normal hidden production-broker/settings smoke pass. Thermo-nuclear self-review confirms that deleting the invented alias invariant preserves native selection and reduces state without new branches, dependencies or native-agent changes. Activation remains the next step.
