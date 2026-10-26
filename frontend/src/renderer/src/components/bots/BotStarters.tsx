@@ -2,8 +2,8 @@ import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import { ARRIVE } from './ChatLog'
 
 // Things a new bot can start on, for someone who does not know yet what to
-// ask. They sit under the bot's hello until the user says anything; picking
-// one sends it as their first message.
+// ask. They sit under the bot's hello while its history is empty; picking one
+// sends it as their first message.
 const STARTERS = [
   'Every morning, go through my inbox and tell me what needs me',
   'Before each meeting, brief me on who I am meeting',
