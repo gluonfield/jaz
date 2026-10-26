@@ -20,7 +20,7 @@ export class VoiceRecorder {
       id: previous?.id ?? crypto.randomUUID(),
       call_id: this.callId,
       role: event.role,
-      text: event.type === 'transcript_done' ? event.text : (previous?.text ?? '') + event.text,
+      text: event.type === 'transcript_done' || event.replace ? event.text : (previous?.text ?? '') + event.text,
       at: previous?.at ?? new Date().toISOString(),
     }
     if (event.type === 'transcript_done') {
@@ -34,6 +34,9 @@ export class VoiceRecorder {
       this.delivered.delete(message.id)
     } else {
       this.active.set(event.role, message)
+      if (event.replace) {
+        this.pending = this.pending.filter((turn) => turn.id !== message.id)
+      }
       this.pending.push({ id: message.id, role: event.role, text: event.text, at: event.at })
     }
     if (!message.text.trim()) {

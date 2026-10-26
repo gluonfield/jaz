@@ -38,9 +38,10 @@ type Service struct {
 }
 
 type Connection struct {
-	SDP      string `json:"sdp"`
-	Provider string `json:"provider"`
-	Model    string `json:"model"`
+	SDP          string `json:"sdp,omitempty"`
+	Instructions string `json:"instructions,omitempty"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
 }
 
 func NewService(store Store, credentials Credentials) *Service {
@@ -89,6 +90,16 @@ func (s *Service) Connect(ctx context.Context, sdp, chatContext, sessionID strin
 	status, err := s.Settings()
 	if err != nil {
 		return Connection{}, err
+	}
+	if status.Provider == ProviderClaude {
+		if status.Model == "" {
+			return Connection{}, fmt.Errorf("%w: choose a Claude voice model in Settings → Voice", ErrInput)
+		}
+		return Connection{
+			Provider:     status.Provider,
+			Model:        status.Model,
+			Instructions: fmt.Sprintf(instructions, name) + "\nVoice model: " + status.Model + "\n\n" + chatContext,
+		}, nil
 	}
 	credential, err := s.credentials(status.Provider)
 	if err != nil {

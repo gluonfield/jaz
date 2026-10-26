@@ -3,7 +3,7 @@ import type { VoiceProvider } from '@/lib/api/liveVoice'
 export type VoiceEvent =
   | { type: 'ready' | 'closed' }
   | { type: 'turn_started'; role: 'user' | 'assistant'; userTurnId: string }
-  | { type: 'transcript'; role: 'user' | 'assistant'; text: string; userTurnId?: string; at?: number; turnBased?: boolean }
+  | { type: 'transcript'; role: 'user' | 'assistant'; text: string; userTurnId?: string; at?: number; turnBased?: boolean; replace?: boolean }
   | { type: 'transcript_done'; role: 'user' | 'assistant'; text: string; userTurnId?: string }
   | { type: 'delegation'; id: string; userTurnId?: string; text?: string; at?: number; turnBased?: boolean }
   | { type: 'error'; message: string }
@@ -57,7 +57,7 @@ export function decodeVoiceEvent(data: string): VoiceEvent | undefined {
   }
 }
 
-export function voiceContextEvents(provider: VoiceProvider, text: string, speak: boolean, delegationId?: string) {
+export function voiceContextEvents(provider: Exclude<VoiceProvider, 'claude'>, text: string, speak: boolean, delegationId?: string) {
   return utf8Chunks(text, 480).map((chunk) => provider === 'openai' ? {
     type: delegationId ? 'delegation.context.append' : 'session.context.append',
     ...(delegationId ? { delegation_item_id: delegationId } : {}),

@@ -31,7 +31,7 @@ afterEach(async () => {
   originals.clear()
 })
 
-async function fixture({ autoAck = true, history, lostResponse = false, rejectedInput = false } = {}) {
+async function fixture({ autoAck = true, history, lostResponse = false, rejectedInput = false, provider = 'openai' } = {}) {
   const requests = []
   const wire = []
   const states = []
@@ -53,7 +53,26 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
     },
     close() {},
   }
-  replace('window', { location: { origin: 'http://voice.invalid' } })
+  let nativeListener
+  const native = {
+    status: async () => ({ available: true, models: [{ id: 'fixture-opus', label: 'Opus' }] }),
+    start: async (id, options) => {
+      const listener = nativeListener
+      nativeListener = (data) => listener(id, data)
+      wire.push({ type: 'native_start', options })
+      return 'v=0\r\nanswer'
+    },
+    send: async (_id, data) => wire.push(JSON.parse(data)),
+    result: async (_id, toolUseId, text, isError) => wire.push({ type: 'tool_result', toolUseId, text, isError }),
+    close: async () => wire.push({ type: 'native_close' }),
+    onEvent: (listener) => {
+      nativeListener = listener
+      return () => {
+        nativeListener = undefined
+      }
+    },
+  }
+  replace('window', { location: { origin: 'http://voice.invalid' }, ...(provider === 'claude' ? { jaz: { claudeVoice: native, apiBaseUrl: 'https://voice.invalid' } } : {}) })
   replace('localStorage', { getItem: () => null })
   replace('navigator', { platform: 'MacIntel', mediaDevices: { getUserMedia: async () => media } })
   replace('Audio', class extends EventTarget {
@@ -75,6 +94,9 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
   replace('RTCPeerConnection', class {
     iceGatheringState = 'complete'
     createDataChannel() {
+      if (provider === 'claude') {
+        throw new Error('Claude must use its own signaling transport')
+      }
       return channel
     }
     addTrack() {}
@@ -85,7 +107,9 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
       this.localDescription = offer
     }
     async setRemoteDescription() {
-      queueMicrotask(() => channel.onmessage({ data: JSON.stringify({ type: 'session.started' }) }))
+      if (provider !== 'claude') {
+        queueMicrotask(() => channel.onmessage({ data: JSON.stringify({ type: 'session.started' }) }))
+      }
     }
     close() {}
   })
@@ -105,10 +129,12 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
     let value = {}
     if (path === '/v1/auth/check') {
       value = { ok: true }
+    } else if (path.endsWith('/settings/voice')) {
+      value = { agent: provider, provider, model: provider === 'claude' ? 'fixture-opus' : undefined, voice: provider === 'claude' ? 'buttery' : 'cove', providers: [{ id: provider, available: provider !== 'claude' }], voices: [provider === 'claude' ? 'buttery' : 'cove'] }
     } else if (path.endsWith('/messages')) {
       value = structuredClone(snapshot)
     } else if (path.endsWith('/connect')) {
-      value = { provider: 'openai', sdp: 'v=0\r\nanswer' }
+      value = provider === 'claude' ? { provider, model: 'fixture-opus', instructions: 'Thread context: ' + body.context } : { provider, sdp: 'v=0\r\nanswer' }
     } else if (path.endsWith('/agent/input')) {
       if (rejectedInput) {
         rejectedInput = false
@@ -133,8 +159,8 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
   session = new VoiceSession('thread', (state) => states.push(state), () => {})
   session.start()
   await delay(10)
-  expect(states.at(-1).phase).toBe('listening')
-  const emit = (event) => channel.onmessage({ data: JSON.stringify(event) })
+  expect(states.at(-1)).toMatchObject({ phase: 'listening', error: '' })
+  const emit = (event) => provider === 'claude' ? nativeListener?.(JSON.stringify(event)) : channel.onmessage({ data: JSON.stringify(event) })
   const speak = (text, id = `turn-${++turn}`) => {
     userTurnId = id
     emit({ type: 'turn.created', turn: { id, role: 'user' } })
@@ -407,4 +433,30 @@ test('a disconnected result channel reports delivery failure once and keeps the 
   expect(f.states.filter((state) => state.phase === 'error')).toHaveLength(1)
   expect(f.states.at(-1).error).toContain('remains available in the chat')
   expect(f.snapshot.events.at(-1).room_message.text).toBe('Only memory_search was called.')
+})
+
+test('Claude voice accepts native model resolution, delegates once and reads the real agent result', async () => {
+  const f = await fixture({ provider: 'claude' })
+  f.emit({ type: 'transcript_interim', text: 'Find the blue file' })
+  f.emit({ type: 'transcript_interim', text: 'Find the green file' })
+  f.emit({ type: 'message_complete', data: { sender: 'human', message_uuid: 'human-1', content: [{ type: 'text', text: 'Find the green file' }] } })
+  const tool = () => {
+    f.emit({ type: 'message_sse', event: { type: 'message_start', data: { message: { uuid: 'assistant-1', parent_uuid: 'human-1', model: 'fixture-opus-resolved' } } } })
+    f.emit({ type: 'message_sse', event: { type: 'content_block_start', data: { index: 0, content_block: { type: 'tool_use', id: 'tool-1', name: 'jaz_agent', input: {} } } } })
+    f.emit({ type: 'message_sse', event: { type: 'content_block_delta', data: { index: 0, delta: { partial_json: '{"request":"Find the green file"}' } } } })
+    f.emit({ type: 'message_sse', event: { type: 'content_block_stop', data: { index: 0 } } })
+  }
+  tool()
+  await delay(30)
+  tool()
+  await delay(10)
+  expect(inputs(f)).toHaveLength(1)
+  expect(f.wire.find((event) => event.type === 'native_start').options.model).toBe('fixture-opus')
+  expect(inputs(f)[0].body.message).toBe('Find the green file')
+  expect(f.states.at(-1).transcript.filter((line) => line.role === 'user').map((line) => line.text)).toEqual(['Find the green file'])
+  expect(f.wire.filter((event) => event.type === 'tool_result')).toHaveLength(1)
+  f.agent({ type: 'room_message', room_message: { speaker: 'bot', bot_id: 'thread', text: 'The file is notes/green.md.' } })
+  f.agent({ type: 'acp', acp: { id: 'thread', state: 'idle', stop_reason: 'end_turn' } })
+  await delay(30)
+  expect(f.wire.some((event) => event.type === 'user_message' && event.data.kind === 'observation' && event.data.respond && event.data.text.includes('notes/green.md'))).toBe(true)
 })

@@ -24,6 +24,7 @@ import { registerDictation } from './dictation'
 import { configureAppPermissions } from './permissions'
 import { createThreadNotificationMonitor } from './notifications'
 import { attachPreviewFindShortcuts } from './previewFind'
+import { installClaudeVoice } from '@main/claudeVoice'
 import { installComputerControl } from '@main/computerControl'
 import { installSystemPermissions } from '@main/systemPermissions'
 import { installBrowserControl } from '@main/browserControl'
@@ -47,6 +48,7 @@ app.setAppUserModelId('dev.wins.jaz')
 installMainDiagnostics()
 installBrowserControl()
 installComputerControl()
+installClaudeVoice()
 if (process.platform === 'darwin') {
   installSystemPermissions()
 }

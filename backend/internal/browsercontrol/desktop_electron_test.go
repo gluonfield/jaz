@@ -52,6 +52,7 @@ func TestDesktopElectron(t *testing.T) {
 	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "browsercontrol", Version: "test"}, nil)
 	browsercontrol.AddMCPTools(mcpServer, backend)
 	mux := http.NewServeMux()
+	mountClaudeVoiceFixture(mux)
 	previews, err := previewapi.NewHandler(serverconfig.Config{})
 	if err != nil {
 		t.Fatal(err)

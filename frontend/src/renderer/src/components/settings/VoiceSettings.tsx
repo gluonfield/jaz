@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { updateVoiceSettings, voiceSettingsQuery } from '@/lib/api/liveVoice'
@@ -29,21 +30,14 @@ export function VoiceSettings() {
       <SettingsCard className="mt-4 divide-y divide-border px-4">
         <div className="flex min-h-16 items-center justify-between gap-4 py-3">
           <div>
-            <p className="text-[13px] font-medium text-ink">Voice agent</p>
-            <p className="mt-0.5 text-[12px] text-ink-2">Handles listening and speaking.</p>
-          </div>
-          <span className="rounded-full bg-surface-2 px-3 py-1.5 text-[13px] text-ink">OpenAI</span>
-        </div>
-        <div className="flex min-h-16 items-center justify-between gap-4 py-3">
-          <div>
             <p className="text-[13px] font-medium text-ink">Provider</p>
-            <p className="mt-0.5 text-[12px] text-ink-2">How you connect to OpenAI.</p>
+            <p className="mt-0.5 text-[12px] text-ink-2">Handles listening and speaking.</p>
           </div>
           <Select
             aria-label="Voice provider"
             value={query.data.provider}
             disabled={save.isPending}
-            options={query.data.providers.filter((provider) => provider.available || provider.id === query.data.provider).map((provider) => ({
+            options={query.data.providers.filter((provider) => provider.available || provider.id === 'claude' || provider.id === query.data.provider).map((provider) => ({
               value: provider.id,
               label: provider.label,
               description: provider.reason,
@@ -51,11 +45,35 @@ export function VoiceSettings() {
             onChange={(id) => {
               const provider = query.data.providers.find((provider) => provider.id === id)
               if (provider) {
-                save.mutate({ provider: provider.id, voice: '' })
+                save.mutate({ provider: provider.id, voice: '', model: provider.id === 'claude' ? '' : undefined })
               }
             }}
           />
         </div>
+        {query.data.provider === 'claude' ? (
+          query.data.models?.length ? (
+            <div className="flex min-h-16 items-center justify-between gap-4 py-3">
+              <p className="text-[13px] font-medium text-ink">Model</p>
+              <Select
+                aria-label="Claude voice model"
+                value={query.data.model ?? ''}
+                disabled={save.isPending}
+                options={[{ value: '', label: 'Choose a model' }, ...query.data.models.map((model) => ({ value: model.id, label: model.label }))]}
+                onChange={(model) => save.mutate({ provider: query.data.provider, voice: query.data.voice, model })}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-4 py-3 text-[12px] text-ink-2">
+              <p>{query.data.providers.find((provider) => provider.id === 'claude')?.reason}</p>
+              {window.jaz?.claudeVoice ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <a href="https://claude.ai/login" target="_blank" rel="noreferrer" className="text-ink underline">Sign in</a>
+                  <Button size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>Refresh</Button>
+                </div>
+              ) : null}
+            </div>
+          )
+        ) : null}
         <div className="flex min-h-16 items-center justify-between gap-4 py-3">
           <div>
             <p className="text-[13px] font-medium text-ink">Voice</p>
@@ -66,7 +84,7 @@ export function VoiceSettings() {
             value={query.data.voice}
             options={query.data.voices.map((voice) => ({ value: voice, label: voice.charAt(0).toUpperCase() + voice.slice(1) }))}
             disabled={save.isPending}
-            onChange={(voice) => save.mutate({ provider: query.data.provider, voice })}
+            onChange={(voice) => save.mutate({ provider: query.data.provider, voice, model: query.data.model })}
           />
         </div>
         {save.isError ? <p role="alert" className="py-3 text-[12px] text-danger">{save.error.message}</p> : null}

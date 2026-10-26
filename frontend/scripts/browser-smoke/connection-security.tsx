@@ -3,12 +3,12 @@ import { createRoot } from 'react-dom/client'
 import { DevicesSettings } from '@/components/settings/DevicesSettings'
 import { MCPSettings } from '@/components/settings/MCPSettings'
 import { BrowserSettings } from '@/components/settings/BrowserSettings'
-import { apiAuthToken, apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
+import { cachedApiAuthToken, apiBaseUrl, apiWebSocket, setApiAuthToken, setApiBaseUrl } from '@/lib/api/client'
 import { clientRuntime } from '@/lib/clientRuntime'
 
 export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocket) => void): Promise<void> {
   const backend = await window.smoke.backend()
-  const originalToken = apiAuthToken(backend)
+  const originalToken = cachedApiAuthToken(backend)
   const originalFetch = window.fetch
   const originalStart = clientRuntime.startLocalBackend
   const originalURL = apiBaseUrl()

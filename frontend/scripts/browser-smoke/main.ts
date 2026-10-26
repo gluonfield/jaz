@@ -4,6 +4,7 @@ import { createServer as createSecureServer } from 'node:https'
 import { X509Certificate } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { ClaudeVoiceBridge, installClaudeVoice } from '@main/claudeVoice'
 import { installBrowserControl } from '@main/browserControl'
 import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachPreviewWebviews, configurePreviewSession } from '@main/previewSession'
@@ -85,6 +86,11 @@ const server = createServer(async (request, response) => {
   if (request.url?.startsWith('/clipboard')) {
     response.setHeader('Content-Type', 'text/html')
     response.end(clipboardFixture(new URL(request.url, `http://${request.headers.host}`)))
+    return
+  }
+  if (request.url === '/claude-owner') {
+    response.setHeader('Content-Type', 'text/html')
+    response.end('<!doctype html><title>Trusted voice owner</title>')
     return
   }
   if (request.url === '/health') {
@@ -245,6 +251,39 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
   }
   passwordOrigin = `https://localhost:${secureAddress.port}`
   await prepareProfileFixture(app.getPath('userData'), passwordOrigin)
+  const claudeOrigin = process.env.JAZ_BROWSER_SMOKE_BACKEND!
+  installClaudeVoice({ origin: claudeOrigin, preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js') })
+  await session.fromPartition(PREVIEW_PARTITION).cookies.set({ url: claudeOrigin, name: 'voice-fixture-session', value: 'signed-in', httpOnly: true })
+  ipcMain.handle('smoke:claude-fixture', async (_event, delay?: boolean) => {
+    const response = await fetch(claudeOrigin + '/fixture/claude', delay ? { method: 'POST' } : {})
+    return response.json()
+  })
+  ipcMain.handle('smoke:claude-owner', async () => {
+    const owner = new BrowserWindow({ show: false, focusable: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js') } })
+    try {
+      await owner.loadURL(process.env.ELECTRON_RENDERER_URL + '/claude-owner')
+      return await owner.webContents.executeJavaScript('window.jaz.claudeVoice.send("voice-fixture", JSON.stringify({type:"interrupt"})).then(() => false, () => true)')
+    } finally {
+      owner.destroy()
+    }
+  })
+  ipcMain.handle('smoke:claude-navigation', async () => {
+    const owner = new BrowserWindow({ show: false, focusable: false })
+    const bridge = new ClaudeVoiceBridge(owner, () => {}, { origin: claudeOrigin, preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js') })
+    try {
+      await bridge.request({ type: 'start', id: 'reload-fixture', options: { sdp: 'v=0\r\nfixture-offer', context: 'Thread context', model: 'fixture-opus', voice: 'buttery' } })
+      await owner.loadURL('about:blank')
+      return bridge.window.isDestroyed()
+    } finally {
+      bridge.dispose()
+      owner.destroy()
+    }
+  })
+  ipcMain.handle('smoke:claude-windows', () => Promise.all(BrowserWindow.getAllWindows().filter((window) => window.webContents.getURL().startsWith(claudeOrigin)).map(async (window) => ({
+    visible: window.isVisible(),
+    focused: window.isFocused(),
+    privilegedPage: await window.webContents.executeJavaScript('Boolean(window.jaz) || typeof require !== "undefined"'),
+  }))))
   const window = new BrowserWindow({
     width: 1050,
     height: 850,
