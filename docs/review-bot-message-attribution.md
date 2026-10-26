@@ -1,6 +1,6 @@
 # Bot Coordination Visibility and Whitespace
 
-Task126, 26 October 2026. Reviewed and verified on `jaz/bot-message-attribution`; local merge remains pending this report. Live inspection used SQLite `mode=ro`; production data was never edited.
+Task126, 26 October 2026. Pre-merge review of `jaz/bot-message-attribution`, approved by the coordinator at `b10e28a9`. Live inspection used SQLite `mode=ro`; production data was never edited.
 
 ## Cause and Exact Provenance
 
@@ -39,6 +39,14 @@ Spacing regressions cover MCP steering, SQLite persistence/reopen, history proje
 - Exact live-record replay retains human message 283 and deliberate room deliveries 13715, 13718 and 13723; internal records 284–287 are absent. Evidence: `runs/bot-message-attribution/replay/cas-soft-history-{desktop,mobile}.png` and `exact-replay.log`.
 - Thermo-nuclear self-review: no remaining actionable findings. The repair reuses the existing typed contract and canonical decoder, with no new origin schema, provider mutation, prose classifier or historical rewrite. All changed implementation files remain below 1,000 lines. Review also caught and fixed a blank screenshot fixture before accepting visual evidence.
 
-Provider execution, metadata, authentication, prompts, context windows and compaction are untouched. Native model runs were unnecessary for this display/storage projection change; existing MCP steering and routing regressions pass. A focused smoke entrypoint avoids unrelated stale authentication imports in the older aggregate browser renderer. No dependency versions changed.
+Provider execution, metadata, authentication, prompts, context windows and compaction are untouched. Native model runs were unnecessary for this display/storage projection change; existing MCP steering and routing regressions pass. A focused smoke entrypoint isolates bot history from the larger browser suite. No dependency versions changed.
 
 Logs and private replay inputs are under ignored `runs/bot-message-attribution/`. No push, release, restart or live history write was performed.
+
+## Final Integration
+
+Current main was integrated with one selector-list conflict, resolved by retaining both `claude-voice` and `chat-history`. The inline-link change `5522d632` and later native Claude voice defaults `791df21f` are preserved. Every reviewed bot feature and regression-test blob remains identical to `b10e28a9`; only the smoke runner combines the two selectors. The prior 404-test frontend evidence is reused.
+
+The full Go 1.26.3 suite ran once. It exposed two stale voice-client tests, whose scripted boundary lacked the newly required voice-settings response, and a skill-install test that assumed umask-independent permissions. Test-only corrections supply the settings contract and compare installed modes against native file creation under the inherited umask, without changing production behavior or the process umask. All failing voice scenarios, the skills package and the later voice-default package pass focused reruns. Full vet passed; touched-package vet and final hidden rendering are recorded with the integration receipt. The broad suite was not repeated.
+
+Combined desktop/phone bot-history rendering passed after the inline-link integration. The final verification and local `--no-ff` merge/tree-equality receipt live under `runs/bot-message-attribution/integration/`. The single full-run failure log remains available alongside the successful focused corrections. No push, release or restart is part of this integration.

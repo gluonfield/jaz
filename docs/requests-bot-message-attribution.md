@@ -11,4 +11,4 @@
 
 Live SQLite reads use `mode=ro`. No live history writes, provider prompts, or agent launches are needed for this projection repair.
 
-Cause, fix, exact provenance, whitespace findings, verification and review: [review-bot-message-attribution.md](review-bot-message-attribution.md). Local merge remains pending the pre-merge report.
+Cause, fix, exact provenance, whitespace findings, verification and review: [review-bot-message-attribution.md](review-bot-message-attribution.md). Coordinator approved the pre-merge report at `b10e28a9`. Final integration, focused corrections and merge/tree provenance are recorded under `runs/bot-message-attribution/integration/`.

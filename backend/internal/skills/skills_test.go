@@ -202,8 +202,17 @@ func TestInstallRemoteArchivePreservesRootFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
-		t.Fatalf("installed script mode = %v", info.Mode().Perm())
+	// File creation applies the process umask to archive permissions.
+	probe := filepath.Join(root, "mode-probe")
+	if err := os.WriteFile(probe, nil, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := os.Stat(probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm() != expected.Mode().Perm() {
+		t.Fatalf("installed script mode = %v, want %v", info.Mode().Perm(), expected.Mode().Perm())
 	}
 	entries, err := os.ReadDir(UserRoot(root))
 	if err != nil || len(entries) != 1 || entries[0].Name() != "alpha" {
