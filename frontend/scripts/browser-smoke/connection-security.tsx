@@ -45,7 +45,8 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
         }
         return Response.json({ ...server, bearer_token_set: tokenSet })
       }
-      return Response.json({ servers: [server] })
+      const failing = { ...server, id: 'vehicle-history', name: 'Vehicle history', url: 'https://mcp.example.com/v1/organizations/acme/mcp', enabled: true, status: 'error', error: 'calling "initialize": sending "initialize": rejected by transport: Post "https://mcp.example.com/v1/organizations/acme/mcp": tls: failed to verify certificate: x509: certificate is valid for ingress.local, not mcp.example.com' }
+      return Response.json({ servers: [server, failing] })
     }
     return originalFetch(input, init)
   }
@@ -115,6 +116,11 @@ export async function exerciseConnectionSecurity(serveBrowser: (socket: WebSocke
       tokenSet = true
       render('mcp', `mcp-${name}`)
       await until(() => Boolean(document.querySelector('[aria-label="Edit MCP server"]')))
+      const failingName = element.querySelector('[title="Vehicle history"]')!
+      if (failingName.scrollWidth > failingName.clientWidth || element.scrollWidth > element.clientWidth) {
+        throw new Error('A long MCP connection error hides the server name')
+      }
+      await window.smoke.capture(`mcp-servers-${name}`)
       await click(document.querySelector('[aria-label="Edit MCP server"]')!)
       await until(() => Boolean(document.querySelector('input[placeholder="Saved token"]')))
       const savedInput = document.querySelector<HTMLInputElement>('input[placeholder="Saved token"]')!

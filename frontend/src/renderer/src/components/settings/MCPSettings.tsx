@@ -355,7 +355,9 @@ function MCPServerRow({
   const showTools = server.status === 'connected' || server.tool_count > 0
   return (
     <div className="flex items-center gap-3 rounded-card px-3 py-2 text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface">
-      <StatusIcon server={server} authorizing={authorizing} />
+      <span className="flex w-4 shrink-0 justify-center">
+        <StatusIcon server={server} authorizing={authorizing} />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate font-medium text-ink" title={server.name}>
@@ -367,7 +369,7 @@ function MCPServerRow({
           {server.url}
         </p>
       </div>
-      <div className="hidden shrink-0 sm:block">
+      <div className="hidden min-w-0 max-w-[40%] sm:block">
         {showTools && !authorizing ? (
           <button
             type="button"
@@ -379,9 +381,9 @@ function MCPServerRow({
             {mcpToolCountLabel(server.tool_count)}
           </button>
         ) : (
-          <span className="text-[12px] text-ink-3">
+          <p className="truncate text-[12px] text-ink-3" title={mcpStatusText(server)}>
             {authorizing ? 'Waiting for sign-in…' : mcpStatusText(server)}
-          </span>
+          </p>
         )}
       </div>
       {canAuthorize ? (
