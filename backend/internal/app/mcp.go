@@ -9,6 +9,7 @@ import (
 	"github.com/wins/jaz/backend/internal/jaztools"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -41,11 +42,12 @@ func DeclareMCPServers(cfg Config, store *sqlitestore.Store) error {
 	return mcpconfig.Declare(store, cfg.MCPServers)
 }
 
-func NewMCPManager(store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, logger *log.Logger) *mcpruntime.Manager {
+func NewMCPManager(store *sqlitestore.Store, catalog *connections.Catalog, registry *tools.Registry, jaz *jaztools.Service, events *sessionevents.Bus, broker oauthbroker.Broker, logger *log.Logger) *mcpruntime.Manager {
 	reader := connectionMCPServerReader{store: store, catalog: catalog}
 	return mcpruntime.NewManager(reader, store, registry, logger,
 		mcpruntime.WithBuiltinServerProvider(jaztools.ServerConfig(jaz.URL()), jaz.Server),
-		mcpruntime.WithSessionEvents(store, events))
+		mcpruntime.WithSessionEvents(store, events),
+		mcpruntime.WithOAuthBroker(broker))
 }
 
 type connectionTokenStore interface {

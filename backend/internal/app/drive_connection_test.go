@@ -20,6 +20,7 @@ import (
 	connectionsapi "github.com/wins/jaz/backend/internal/httpapi/connections"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/tools"
 )
@@ -88,7 +89,7 @@ func TestDriveConnectionSignInRefreshAndDisconnect(t *testing.T) {
 	catalog := connections.NewCatalog()
 	oauth := NewConnectionOAuthService(store, Config{Connections: ConnectionsConfig{
 		Drive: GoogleConnectionConfig{OAuthClientID: "drive-client", OAuthClientSecret: "drive-secret"},
-	}})
+	}}, oauthbroker.Broker{})
 	connect := connections.NewConnectService(catalog, oauth, nil, nil, nil)
 	registry := tools.NewRegistry()
 	manager := mcpruntime.NewManager(connectionMCPServerReader{store: store, catalog: catalog}, store, registry, log.New(io.Discard))

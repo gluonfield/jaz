@@ -117,7 +117,8 @@ type ConnectionsConfig struct {
 	Slack    SlackConnectionConfig
 	Chat     ChatConnectionConfig
 	// OAuthRedirectBrokerURL overrides the hosted broker for providers that
-	// reject loopback redirects; defaults to connections.DefaultOAuthRedirectBroker.
+	// reject loopback redirects and for MCP client metadata documents; defaults
+	// to oauthbroker.DefaultURL.
 	OAuthRedirectBrokerURL string
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"golang.org/x/oauth2"
 )
@@ -41,6 +42,7 @@ type oauthHandler struct {
 	httpClient *http.Client
 
 	redirectURL string
+	broker      oauthbroker.Broker
 	fetch       codeFetcher
 
 	mu    sync.Mutex
@@ -64,6 +66,9 @@ type oauthClientConfig struct {
 	clientSecret string
 	authStyle    oauth2.AuthStyle
 	static       bool
+	// metadataDocument clients redirect through the broker, the only redirect
+	// URI their document lists.
+	metadataDocument bool
 }
 
 type oauthMode int
@@ -167,7 +172,7 @@ func (h *oauthHandler) markAuthorizationRequired() {
 
 // runAuthorization performs the OAuth 2.0 authorization-code flow with PKCE.
 // It uses configured client credentials when present and otherwise follows MCP
-// dynamic client registration.
+// client registration: a client ID metadata document, then dynamic registration.
 func (h *oauthHandler) runAuthorization(ctx context.Context, resp *http.Response) (integrationoauth.Token, error) {
 	var zero integrationoauth.Token
 	challenges, err := oauthex.ParseWWWAuthenticate(resp.Header[http.CanonicalHeaderKey("WWW-Authenticate")])
@@ -209,6 +214,10 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 	if err != nil {
 		return zero, err
 	}
+	redirectURL, state, err := h.authorizationRedirect(ctx, clientConfig)
+	if err != nil {
+		return zero, err
+	}
 
 	cfg := &oauth2.Config{
 		ClientID:     clientConfig.clientID,
@@ -218,15 +227,11 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 			TokenURL:  asm.TokenEndpoint,
 			AuthStyle: clientConfig.authStyle,
 		},
-		RedirectURL: h.redirectURL,
+		RedirectURL: redirectURL,
 		Scopes:      scopes,
 	}
 
 	verifier := oauth2.GenerateVerifier()
-	state, err := randomState()
-	if err != nil {
-		return zero, err
-	}
 	authURL := cfg.AuthCodeURL(state,
 		oauth2.S256ChallengeOption(verifier),
 		oauth2.SetAuthURLParam("resource", prm.Resource),
@@ -258,7 +263,7 @@ func (h *oauthHandler) runAuthorizationWithChallenges(ctx context.Context, chall
 		AuthURL:      asm.AuthorizationEndpoint,
 		TokenURL:     asm.TokenEndpoint,
 		AuthStyle:    int(clientConfig.authStyle),
-		RedirectURL:  h.redirectURL,
+		RedirectURL:  redirectURL,
 		Scopes:       scopes,
 		Resource:     prm.Resource,
 	}, nil
@@ -276,6 +281,9 @@ func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauth
 		}
 		return oauthClientConfig{clientID: h.oauth.ClientID, clientSecret: clientSecret, authStyle: authStyle, static: true}, nil
 	}
+	if asm.ClientIDMetadataDocumentSupported && h.broker.URL != "" {
+		return oauthClientConfig{clientID: h.broker.ClientMetadataURL(), authStyle: oauth2.AuthStyleInParams, metadataDocument: true}, nil
+	}
 	if asm.RegistrationEndpoint == "" {
 		return oauthClientConfig{}, errors.New("authorization server does not support dynamic client registration; configure an OAuth client ID")
 	}
@@ -290,6 +298,15 @@ func (h *oauthHandler) authorizationClientConfig(ctx context.Context, asm *oauth
 		return oauthClientConfig{}, fmt.Errorf("register client: %w", err)
 	}
 	return oauthClientConfig{clientID: reg.ClientID, clientSecret: reg.ClientSecret, authStyle: oauth2.AuthStyleInParams}, nil
+}
+
+func (h *oauthHandler) authorizationRedirect(ctx context.Context, client oauthClientConfig) (string, string, error) {
+	if client.metadataDocument {
+		state, err := h.broker.MintState(ctx, h.redirectURL)
+		return h.broker.URL, state, err
+	}
+	state, err := randomState()
+	return h.redirectURL, state, err
 }
 
 func (h *oauthHandler) refreshClientConfig(ctx context.Context, token integrationoauth.Token) (integrationoauth.ClientConfig, error) {

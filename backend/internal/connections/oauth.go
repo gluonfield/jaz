@@ -1,21 +1,19 @@
 package connections
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
 
 	googleconnector "github.com/wins/jaz/backend/internal/connectors/google"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 	"golang.org/x/oauth2"
@@ -30,14 +28,12 @@ type OAuthStore interface {
 	SaveOAuthConnection(context.Context, integrationoauth.Token, integrations.Connection) error
 }
 
-const DefaultOAuthRedirectBroker = "https://jaz.chat/oauth/callback"
-
 type OAuthConfig struct {
-	Calendar          googleconnector.OAuthClientConfig
-	Drive             googleconnector.OAuthClientConfig
-	Gmail             googleconnector.OAuthClientConfig
-	Slack             slackconnector.OAuthClientConfig
-	RedirectBrokerURL string
+	Calendar googleconnector.OAuthClientConfig
+	Drive    googleconnector.OAuthClientConfig
+	Gmail    googleconnector.OAuthClientConfig
+	Slack    slackconnector.OAuthClientConfig
+	Broker   oauthbroker.Broker
 }
 
 // oauthProvider adapts a connector's OAuth primitives to the generic flow. The
@@ -61,7 +57,7 @@ type oauthIdentity struct {
 type OAuthService struct {
 	store      OAuthStore
 	providers  map[string]oauthProvider
-	brokerURL  string
+	broker     oauthbroker.Broker
 	httpClient *http.Client
 	mu         sync.Mutex
 	states     map[string]oauthState
@@ -87,7 +83,7 @@ func NewOAuthService(store OAuthStore, config OAuthConfig) *OAuthService {
 	return &OAuthService{
 		store:      store,
 		providers:  providers,
-		brokerURL:  strings.TrimRight(strings.TrimSpace(config.RedirectBrokerURL), "/"),
+		broker:     config.Broker,
 		httpClient: http.DefaultClient,
 		states:     map[string]oauthState{},
 	}
@@ -108,12 +104,12 @@ func (s *OAuthService) Start(ctx context.Context, pluginID, localCallbackURL str
 	verifier := oauth2.GenerateVerifier()
 
 	redirectURL, state := localCallbackURL, nonce
-	if provider.usesBroker() && s.brokerURL != "" {
-		brokerState, err := s.mintBrokerState(ctx, localCallbackURL)
+	if provider.usesBroker() && s.broker.URL != "" {
+		brokerState, err := s.broker.MintState(ctx, localCallbackURL)
 		if err != nil {
 			return OAuthStart{}, err
 		}
-		redirectURL, state = s.brokerURL, brokerState
+		redirectURL, state = s.broker.URL, brokerState
 	}
 
 	authURL, err := provider.authCodeURL(redirectURL, state, verifier)
@@ -211,49 +207,4 @@ func randomOAuthState() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b[:]), nil
-}
-
-type brokerStartRequest struct {
-	ReturnURL string `json:"return_url"`
-}
-
-type brokerStartResponse struct {
-	State string `json:"state"`
-}
-
-func (s *OAuthService) mintBrokerState(ctx context.Context, returnURL string) (string, error) {
-	body, err := json.Marshal(brokerStartRequest{ReturnURL: returnURL})
-	if err != nil {
-		return "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, brokerStartURL(s.brokerURL), bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("oauth broker unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("oauth broker rejected start: %s", resp.Status)
-	}
-	var out brokerStartResponse
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("decode oauth broker response: %w", err)
-	}
-	if out.State == "" {
-		return "", errors.New("oauth broker returned no state")
-	}
-	return out.State, nil
-}
-
-func brokerStartURL(brokerCallbackURL string) string {
-	u, err := url.Parse(brokerCallbackURL)
-	if err != nil || u.Host == "" {
-		return brokerCallbackURL
-	}
-	u.Path, u.RawQuery, u.Fragment = "/oauth/start", "", ""
-	return u.String()
 }

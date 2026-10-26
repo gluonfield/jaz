@@ -82,6 +82,7 @@ func (m *Manager) runAuthorize(ctx context.Context, server mcpconfig.Server, red
 	handler := newOAuthHandler(server, m.tokens, http.DefaultClient)
 	handler.mode = oauthModeInteractive
 	handler.redirectURL = redirectURL
+	handler.broker = m.broker
 	handler.fetch = fetch
 
 	sessionCtx, cancel := context.WithTimeout(ctx, 3*time.Minute)

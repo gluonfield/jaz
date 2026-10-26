@@ -16,6 +16,7 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	"github.com/wins/jaz/backend/internal/tools"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -71,6 +72,7 @@ type Manager struct {
 
 	authMu     sync.Mutex
 	authStates map[string]*authorizationPending
+	broker     oauthbroker.Broker
 
 	// Optional: agents' calls to tools linked to an MCP App show it in their
 	// thread (WithSessionEvents).
@@ -86,6 +88,14 @@ type tokenStore interface {
 }
 
 type Option func(*Manager)
+
+// WithOAuthBroker lets sign-in use the broker's client metadata document with
+// authorization servers that support one.
+func WithOAuthBroker(broker oauthbroker.Broker) Option {
+	return func(m *Manager) {
+		m.broker = broker
+	}
+}
 
 type localServer struct {
 	server   mcpconfig.Server

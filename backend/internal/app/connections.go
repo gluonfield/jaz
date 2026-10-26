@@ -9,14 +9,19 @@ import (
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	mcpruntime "github.com/wins/jaz/backend/internal/mcp"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connections.OAuthService {
-	brokerURL := strings.TrimSpace(cfg.Connections.OAuthRedirectBrokerURL)
+func NewOAuthBroker(cfg Config) oauthbroker.Broker {
+	brokerURL := strings.TrimRight(strings.TrimSpace(cfg.Connections.OAuthRedirectBrokerURL), "/")
 	if brokerURL == "" {
-		brokerURL = connections.DefaultOAuthRedirectBroker
+		brokerURL = oauthbroker.DefaultURL
 	}
+	return oauthbroker.Broker{URL: brokerURL}
+}
+
+func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config, broker oauthbroker.Broker) *connections.OAuthService {
 	return connections.NewOAuthService(store, connections.OAuthConfig{
 		Calendar: googleconnector.OAuthClientConfig{
 			ClientID:     cfg.Connections.Calendar.OAuthClientID,
@@ -33,7 +38,7 @@ func NewConnectionOAuthService(store *sqlitestore.Store, cfg Config) *connection
 		Slack: slackconnector.OAuthClientConfig{
 			ClientID: cfg.Connections.Slack.OAuthClientID,
 		},
-		RedirectBrokerURL: brokerURL,
+		Broker: broker,
 	})
 }
 

@@ -14,6 +14,7 @@ import (
 	gmailconnector "github.com/wins/jaz/backend/internal/connectors/gmail"
 	googleconnector "github.com/wins/jaz/backend/internal/connectors/google"
 	slackconnector "github.com/wins/jaz/backend/internal/connectors/slack"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	"github.com/wins/jaz/backend/pkg/integrations"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
@@ -174,10 +175,12 @@ func newFakeBroker(t *testing.T, mintState string) *fakeBroker {
 	fb := &fakeBroker{mintState: mintState}
 	fb.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fb.startPath = r.URL.Path
-		var req brokerStartRequest
+		var req struct {
+			ReturnURL string `json:"return_url"`
+		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		fb.gotReturns = append(fb.gotReturns, req.ReturnURL)
-		_ = json.NewEncoder(w).Encode(brokerStartResponse{State: fb.mintState})
+		_ = json.NewEncoder(w).Encode(map[string]string{"state": fb.mintState})
 	}))
 	t.Cleanup(fb.server.Close)
 	return fb
@@ -202,7 +205,7 @@ func slackRedirectAndState(t *testing.T, cfg OAuthConfig, localCallback string) 
 func TestSlackStartMintsBrokerState(t *testing.T) {
 	local := "https://jaz.example.com/v1/connections/oauth/callback"
 	broker := newFakeBroker(t, "broker-minted-state")
-	redirect, state := slackRedirectAndState(t, OAuthConfig{RedirectBrokerURL: broker.callbackURL()}, local)
+	redirect, state := slackRedirectAndState(t, OAuthConfig{Broker: oauthbroker.Broker{URL: broker.callbackURL()}}, local)
 	if redirect != broker.callbackURL() {
 		t.Fatalf("redirect_uri = %q, want broker callback", redirect)
 	}
@@ -220,7 +223,7 @@ func TestSlackStartMintsBrokerState(t *testing.T) {
 func TestSlackStartFailsWhenBrokerUnavailable(t *testing.T) {
 	broker := newFakeBroker(t, "unused")
 	broker.server.Close()
-	_, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{RedirectBrokerURL: broker.callbackURL()}).
+	_, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{Broker: oauthbroker.Broker{URL: broker.callbackURL()}}).
 		Start(context.Background(), slackconnector.ProviderID, "https://jaz.example.com/cb")
 	if err == nil {
 		t.Fatal("expected an error when the broker is unreachable")
@@ -229,7 +232,7 @@ func TestSlackStartFailsWhenBrokerUnavailable(t *testing.T) {
 
 func TestSlackStartStaysDirectWithoutBroker(t *testing.T) {
 	local := "http://127.0.0.1:5299/v1/connections/oauth/callback"
-	redirect, state := slackRedirectAndState(t, OAuthConfig{RedirectBrokerURL: ""}, local)
+	redirect, state := slackRedirectAndState(t, OAuthConfig{}, local)
 	if redirect != local {
 		t.Fatalf("redirect_uri = %q, want the direct callback", redirect)
 	}
@@ -241,7 +244,7 @@ func TestSlackStartStaysDirectWithoutBroker(t *testing.T) {
 func TestGmailStartIgnoresBroker(t *testing.T) {
 	local := "http://127.0.0.1:5299/v1/connections/oauth/callback"
 	broker := newFakeBroker(t, "should-not-be-used")
-	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{RedirectBrokerURL: broker.callbackURL()}).
+	start, err := NewOAuthService(memoryOAuthStore{}, OAuthConfig{Broker: oauthbroker.Broker{URL: broker.callbackURL()}}).
 		Start(context.Background(), gmailconnector.ProviderID, local)
 	if err != nil {
 		t.Fatal(err)
@@ -252,19 +255,6 @@ func TestGmailStartIgnoresBroker(t *testing.T) {
 	}
 	if len(broker.gotReturns) != 0 {
 		t.Fatalf("broker should not be called for gmail, got %#v", broker.gotReturns)
-	}
-}
-
-func TestBrokerStartURLDerivesMintEndpoint(t *testing.T) {
-	cases := map[string]string{
-		"https://jaz.chat/oauth/callback":      "https://jaz.chat/oauth/start",
-		"https://jaz.chat/oauth/callback/":     "https://jaz.chat/oauth/start",
-		"https://broker.example.com/oauth/cbk": "https://broker.example.com/oauth/start",
-	}
-	for in, want := range cases {
-		if got := brokerStartURL(in); got != want {
-			t.Errorf("brokerStartURL(%q) = %q, want %q", in, got, want)
-		}
 	}
 }
 

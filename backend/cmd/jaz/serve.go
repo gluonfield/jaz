@@ -93,6 +93,7 @@ func serveOptions(args []string) []fx.Option {
 			app.NewConnectionRemoteMCPConnector,
 			app.NewConnectionMCPConnector,
 			app.NewConnectionService,
+			app.NewOAuthBroker,
 			app.NewConnectionOAuthService,
 			app.NewIntegrationRawWriter,
 			app.NewMemorySourceQueue,

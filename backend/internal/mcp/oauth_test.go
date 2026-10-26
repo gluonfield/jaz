@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/oauthbroker"
 	integrationoauth "github.com/wins/jaz/backend/pkg/integrations/oauth"
 )
 
@@ -269,6 +270,74 @@ func TestAuthorizeFromMetadataRequiresStaticClientWhenNoDCR(t *testing.T) {
 	err := handler.AuthorizeFromMetadata(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "configure an OAuth client ID") {
 		t.Fatalf("err = %v, want configure client id", err)
+	}
+}
+
+func TestAuthorizeFromMetadataPrefersClientMetadataDocument(t *testing.T) {
+	var returnURLs []string
+	broker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ReturnURL string `json:"return_url"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		returnURLs = append(returnURLs, req.ReturnURL)
+		writeJSONResp(w, map[string]any{"state": "broker-state"})
+	}))
+	t.Cleanup(broker.Close)
+	brokerURL := broker.URL + "/oauth/callback"
+	clientID := broker.URL + "/oauth/client-metadata.json"
+
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	mux.HandleFunc("/.well-known/oauth-protected-resource/mcp", func(w http.ResponseWriter, r *http.Request) {
+		writeJSONResp(w, map[string]any{"resource": srv.URL + "/mcp", "authorization_servers": []string{srv.URL}})
+	})
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		writeJSONResp(w, map[string]any{
+			"issuer":                                srv.URL,
+			"authorization_endpoint":                srv.URL + "/authorize",
+			"token_endpoint":                        srv.URL + "/token",
+			"registration_endpoint":                 srv.URL + "/register",
+			"client_id_metadata_document_supported": true,
+			"code_challenge_methods_supported":      []string{"S256"},
+		})
+	})
+	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
+		t.Error("dynamic registration ran although the server accepts a client metadata document")
+	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.Form.Get("client_id") != clientID || r.Form.Get("redirect_uri") != brokerURL || r.Form.Get("client_secret") != "" {
+			http.Error(w, "bad client", http.StatusUnauthorized)
+			return
+		}
+		writeJSONResp(w, map[string]any{"access_token": "cimd-access", "token_type": "Bearer", "refresh_token": "cimd-refresh"})
+	})
+
+	store := newMemTokenStore()
+	handler := newOAuthHandler(mcpconfig.Server{ID: "srv-cimd", URL: srv.URL + "/mcp"}, store, http.DefaultClient)
+	handler.mode = oauthModeInteractive
+	handler.redirectURL = "http://127.0.0.1:5599/callback"
+	handler.broker = oauthbroker.Broker{URL: brokerURL}
+	handler.fetch = func(_ context.Context, authURL string) (string, string, error) {
+		u, _ := url.Parse(authURL)
+		q := u.Query()
+		if q.Get("client_id") != clientID || q.Get("redirect_uri") != brokerURL || q.Get("state") != "broker-state" {
+			t.Errorf("authorization URL = %s", authURL)
+		}
+		return "the-auth-code", q.Get("state"), nil
+	}
+
+	if err := handler.AuthorizeFromMetadata(context.Background()); err != nil {
+		t.Fatalf("AuthorizeFromMetadata: %v", err)
+	}
+	if len(returnURLs) != 1 || returnURLs[0] != handler.redirectURL {
+		t.Fatalf("broker return URLs = %#v, want the Jaz callback", returnURLs)
+	}
+	tok, _, _ := store.LoadToken(context.Background(), mcpconfig.OAuthConnectionID("srv-cimd"))
+	if tok.AccessToken != "cimd-access" || tok.ClientID != clientID || tok.RedirectURL != brokerURL {
+		t.Fatalf("token = %#v", tok)
 	}
 }
 
