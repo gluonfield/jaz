@@ -512,7 +512,6 @@ export function ThreadView({
           {isMobile && sidePanel.open ? (
             <div className="fixed inset-0 z-scrim" aria-hidden onClick={sidePanel.close} />
           ) : null}
-          {sidePanel.resizing || canvasChat.resizing ? <div className="fixed inset-0 z-modal cursor-col-resize" aria-hidden /> : null}
 
           {/* A canvas thread's chat floats over the board's left edge as its own
               card, 8px in, as Figma's panels do. Hiding it sinks the transcript

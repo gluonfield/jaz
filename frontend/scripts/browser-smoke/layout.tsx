@@ -14,7 +14,7 @@ import { setThemePref } from '@/lib/theme'
 
 export async function exerciseBrowserLayout(): Promise<void> {
   const element = document.createElement('div')
-  element.style.cssText = 'position:fixed;inset:0;z-index:100;background:var(--color-bg)'
+  element.style.cssText = 'position:fixed;inset:0;background:var(--color-bg)'
   document.body.append(element)
   const root = createRoot(element)
   const queryClient = new QueryClient()
@@ -36,7 +36,7 @@ export async function exerciseBrowserLayout(): Promise<void> {
         </div>
         <SidePanelDrawer panel={panel} isMobile={false}>
           {panel.mode === 'tabs'
-            ? <BrowserPanelSlot sessionId="layout" visible={panel.open} onClose={panel.close} />
+            ? <BrowserPanelSlot sessionId="layout" visible={panel.open} onClose={panel.close} embedded />
             : <div className="h-full bg-bg p-6" style={{ width: panel.width }}>Overview</div>}
         </SidePanelDrawer>
       </div>
@@ -49,7 +49,7 @@ export async function exerciseBrowserLayout(): Promise<void> {
       setNavigationWidth = setSidebarWidth
     }, [])
     return <QueryClientProvider client={queryClient}><BrowserWorkspace><SidePanelStateProvider><SidebarVisibility.Provider value={setSidebar}>
-      <div className="flex h-full">
+      <div className="app-chrome flex h-full">
         <motion.div className="shrink-0 overflow-hidden" initial={false} animate={drawerSlide({ isMobile: false, open: sidebar, side: 'left', width: sidebarWidth })} transition={{ type: 'spring', stiffness: 400, damping: 36 }}>
           <nav style={{ width: sidebarWidth }} className="h-full bg-surface p-6 text-ink" aria-hidden={!sidebar} aria-label="Main navigation">Jaz</nav>
         </motion.div>
@@ -136,9 +136,14 @@ export async function exerciseBrowserLayout(): Promise<void> {
     }
     const x = Math.round(grip.x + grip.width / 2)
     const y = Math.round(grip.y + grip.height / 2)
+    if (!divider.contains(document.elementFromPoint(x, y))) {
+      throw new Error('The browser covers the resize handle')
+    }
     await window.smoke.pointer('mouseMove', x, y)
     await until(() => getComputedStyle(divider.lastElementChild!).backgroundColor !== 'rgba(0, 0, 0, 0)')
     await window.smoke.pointer('mouseDown', x, y)
+    await window.smoke.pointer('mouseMove', x + 64, y)
+    await until(() => browserWidth() === 800)
     await window.smoke.pointer('mouseMove', x - 100, y)
     await window.smoke.pointer('mouseUp', x - 100, y)
     await until(() => browserWidth() === 964)
@@ -194,10 +199,12 @@ export async function exerciseBrowserLayout(): Promise<void> {
     }
     const sidebarColumn = element.querySelector('nav')!.parentElement!
     const drawer = element.querySelector('[role="separator"]')!.parentElement!
+    const panelCard = drawer.lastElementChild!.firstElementChild!
     const browserHost = element.querySelector<HTMLElement>('[data-browser-session="layout"]')!
-    const frames: { sidebar: number; drawer: number; expected: number; browserRight: number; browserLeft: number; drawerLeft: number }[] = []
+    const frames: { sidebar: number; drawer: number; expected: number; browserRight: number; browserLeft: number; cardRight: number; cardLeft: number }[] = []
     const record = () => {
       const column = drawer.getBoundingClientRect()
+      const card = panelCard.getBoundingClientRect()
       const browser = browserHost.getBoundingClientRect()
       frames.push({
         sidebar: sidebarColumn.getBoundingClientRect().width,
@@ -205,7 +212,8 @@ export async function exerciseBrowserLayout(): Promise<void> {
         expected: Math.round(drawer.parentElement!.getBoundingClientRect().width) - 360,
         browserRight: browser.right,
         browserLeft: browser.left,
-        drawerLeft: column.left,
+        cardRight: card.right,
+        cardLeft: card.left,
       })
     }
     const observer = new ResizeObserver(record)
@@ -228,7 +236,7 @@ export async function exerciseBrowserLayout(): Promise<void> {
     }
     const movingFrames = frames.filter((frame) => frame.sidebar > 1 && frame.sidebar < 263)
     const lag = Math.max(...frames.map((frame) => Math.abs(frame.drawer - frame.expected)))
-    const edgeGap = Math.max(...frames.flatMap((frame) => [Math.abs(frame.browserRight - window.innerWidth), Math.abs(frame.browserLeft - frame.drawerLeft)]))
+    const edgeGap = Math.max(...frames.flatMap((frame) => [Math.abs(frame.browserRight - frame.cardRight), Math.abs(frame.browserLeft - frame.cardLeft)]))
     if (movingFrames.length < 8 || lag > 1 || edgeGap > 1) {
       throw new Error(`Browser resize was not synchronized: ${movingFrames.length} moving frames, ${lag}px width lag, ${edgeGap}px edge gap`)
     }
