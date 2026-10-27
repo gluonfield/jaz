@@ -40,6 +40,10 @@ export function HorizontalResizeHandle({
     const pointerId = event.pointerId
     const previousCursor = document.body.style.cursor
     const previousUserSelect = document.body.style.userSelect
+    const overlay = document.createElement('div')
+    overlay.className = 'fixed inset-0 z-modal cursor-col-resize'
+    overlay.setAttribute('aria-hidden', 'true')
+    document.body.append(overlay)
     let stopped = false
 
     const move = (moveEvent: PointerEvent) => {
@@ -52,6 +56,7 @@ export function HorizontalResizeHandle({
         return
       }
       stopped = true
+      overlay.remove()
       document.body.style.cursor = previousCursor
       document.body.style.userSelect = previousUserSelect
       window.removeEventListener('pointermove', move)
@@ -102,7 +107,7 @@ export function HorizontalResizeHandle({
       title="Drag left or right to resize · Arrow keys adjust width"
       onPointerDown={startResize}
       onKeyDown={resizeByKeyboard}
-      className={`group absolute inset-y-0 ${side === 'right' ? 'right-0' : 'left-0'} z-shell hidden w-2 cursor-col-resize touch-none items-center justify-center outline-none! sm:flex`}
+      className={`group absolute inset-y-0 ${side === 'right' ? 'right-0' : '-left-2'} z-shell hidden w-2 cursor-col-resize touch-none items-center justify-center outline-none! sm:flex`}
     >
       <span className={`absolute inset-y-0 ${side === 'right' ? 'right-0' : 'left-0'} w-px bg-transparent transition-colors duration-150 group-hover:bg-primary/50 group-focus-visible:bg-primary`} />
     </div>

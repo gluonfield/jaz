@@ -111,6 +111,12 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (suite === 'layout') {
+        progress('browser layout and divider dragging')
+        await exerciseBrowserLayout()
+        window.smoke.result({ ok: true, checks: ['browser divider dragging, keyboard resizing, retained width and navigation layout'] })
+        return
+      }
       if (!suite || suite === 'claude-voice') {
         progress('Claude browser authentication, signaling, cancellation and voice settings')
         await exerciseClaudeVoice()
