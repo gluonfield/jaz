@@ -32,6 +32,7 @@ func warmedModelCatalog(t *testing.T) *modelcatalog.Service {
 		_, _ = w.Write([]byte(`{"data":[
 			{"id":"openai/gpt-6-astra","name":"OpenAI: GPT-6 Astra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-6.1-sol","name":"OpenAI: GPT-6.1 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low"],"default_effort":"medium"}},
+			{"id":"openai/gpt-6.1-terra","name":"OpenAI: GPT-6.1 Terra","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-6-sol","name":"OpenAI: GPT-6 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-6-luna","name":"OpenAI: GPT-6 Luna","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
 			{"id":"openai/gpt-5.6-sol","name":"OpenAI: GPT-5.6 Sol","reasoning":{"supported_efforts":["max","xhigh","high","medium","low","none"],"default_effort":"medium"}},
@@ -251,9 +252,10 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if !hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT6Astra, "none,low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT61Sol, "low,medium,high,xhigh,max,ultra") ||
+		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT61Terra, "none,low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, provider.OpenAIModelGPT6Sol, "none,low,medium,high,xhigh,max,ultra") ||
 		!hasModelReasoningEfforts(got.ACPOptions["codex"].Models, "gpt-6-luna", "none,low,medium,high,xhigh,max") ||
-		len(got.ACPOptions["codex"].Models) != 4 {
+		len(got.ACPOptions["codex"].Models) != 5 {
 		t.Fatalf("codex model options missing current OpenAI models %#v", got.ACPOptions["codex"].Models)
 	}
 	if got.ACPOptions["codex"].AuthProviderID != provider.ProviderOpenAI ||
