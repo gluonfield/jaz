@@ -2,9 +2,8 @@ export const SYSTEM_PERMISSIONS = ['accessibility', 'screenRecording', 'micropho
 
 export type SystemPermission = (typeof SYSTEM_PERMISSIONS)[number]
 
-// granted: allowed. needed: undecided, or unknown until Jaz tries; Allow asks.
-// off: refused; Allow opens System Settings. unavailable: this build cannot
-// hold it (macOS refuses notifications from ad-hoc signed development builds).
+// Notifications record the last delivery attempt, not an OS grant query.
+// unavailable: macOS refuses notifications from ad-hoc signed development builds.
 export type PermissionState = 'granted' | 'needed' | 'off' | 'unavailable'
 
 export type SystemPermissionStatus = Record<SystemPermission, PermissionState>

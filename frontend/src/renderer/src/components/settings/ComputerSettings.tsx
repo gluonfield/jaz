@@ -48,7 +48,10 @@ export function ComputerSettings() {
           {status.data?.permissions ? (
             <SystemPermissionRows permissions={['accessibility', 'screenRecording']} />
           ) : (
-            <p className="px-4 py-3 text-[13px] text-ink-2">{status.error?.message || status.data?.reason || (status.isPending ? 'Checking availability…' : 'Ready')}</p>
+            <div className="px-4 py-3 text-[13px] text-ink-2">
+              <p>{status.isError ? 'Couldn’t check computer tools. Try again.' : status.data?.reason || (status.isPending ? 'Checking availability…' : 'Ready')}</p>
+              {(status.isError || status.data?.available === false) && <button type="button" className="mt-2 text-primary" onClick={() => void status.refetch()}>Try again</button>}
+            </div>
           )}
           {status.data?.owner && <p className="px-4 py-3 text-[13px] text-ink-2">An agent is controlling this computer.</p>}
         </SettingsCard>
