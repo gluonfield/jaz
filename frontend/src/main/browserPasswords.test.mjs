@@ -5,13 +5,13 @@ import { EventEmitter } from 'node:events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve, join } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
+import { Database } from 'bun:sqlite'
 
 const result = await build({
   entrypoints: ['password-fixture'],
   target: 'node',
   format: 'cjs',
-  external: ['electron'],
+  external: ['electron', 'node:sqlite'],
   plugins: [{
     name: 'password-fixture',
     setup(builder) {
@@ -30,6 +30,18 @@ if (!result.success) {
 }
 const evaluate = new Function('require', 'module', 'exports', await result.outputs[0].text())
 const require = createRequire(import.meta.url)
+class DatabaseSync extends Database {
+  constructor(file, options) {
+    super(file, { readonly: options?.readOnly ?? false })
+  }
+
+  prepare(sql) {
+    const statement = super.prepare(sql)
+    statement.setReadBigInts = (enabled) => statement.safeIntegers(enabled)
+    return statement
+  }
+}
+
 const directories = []
 afterEach(() => {
   for (const directory of directories.splice(0)) {
@@ -96,7 +108,7 @@ function fixture() {
     },
   }
   const module = { exports: {} }
-  evaluate((name) => name === 'electron' ? electron : require(name), module, module.exports)
+  evaluate((name) => name === 'electron' ? electron : name === 'node:sqlite' ? { DatabaseSync } : require(name), module, module.exports)
   const { installBrowserPasswords, BrowserPasswordStore, getBrowserPasswordStore, BrowserProfileImporter } = module.exports
   installBrowserPasswords()
   const store = getBrowserPasswordStore()
