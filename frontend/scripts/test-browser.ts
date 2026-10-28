@@ -29,6 +29,7 @@ if (codex === null) {
   throw new Error('Install and sign in to the Codex CLI before running this check')
 }
 await copyFile(resolve('out/preload/index.js'), join(output, 'index.js'))
+await copyFile(resolve('out/preload/chrome.js'), join(output, 'chrome.js'))
 const navigationApp = await Bun.build({ entrypoints: [resolve('scripts/browser-smoke/navigation-app.ts')], target: 'browser', format: 'esm' })
 if (!navigationApp.success) throw new Error(navigationApp.logs.join('\n'))
 await writeFile(join(output, 'navigation-app.html'), `<html><body><script type="module">${await navigationApp.outputs[0].text()}</script></body></html>`)

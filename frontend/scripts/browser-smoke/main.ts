@@ -200,7 +200,7 @@ server.listen(0, '127.0.0.1', async () => {
     throw new Error('Missing test server address')
   }
   await app.whenReady()
-  configurePreviewSession()
+  configurePreviewSession(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'chrome.js'))
   ipcMain.handle('smoke:navigation-probe', (_event, enabled?: boolean) => {
     if (enabled !== undefined) {
       probingNavigation = enabled

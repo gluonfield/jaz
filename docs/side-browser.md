@@ -128,17 +128,12 @@ subsequently use the signed-in side browser and observe its pages.
 
 ### Google sign-in
 
-Google can reject the side browser with “This browser or app may not be secure.”
-Its [supported-browser policy](https://support.google.com/accounts/answer/7675428)
-restricts embedded and automated browsers. Chromium compatibility and saved
-passwords do not establish support for signing in to Google inside Electron.
-
-Sign in to the destination site in Chrome first, then use **Import cookies and passwords**
-with that Chrome profile and **Cookies** enabled. Open the destination URL again in Jaz, such as
-`https://console.firebase.google.com/`; reloading Google's `/signin/rejected`
-page can leave the rejection screen displayed. This attempts to reuse the
-existing session; Google may still require authentication in a supported browser.
-Signing in externally alone does not update Jaz's separate cookie partition.
+Google rejects Chromium pages that lack Chrome's `chrome.app` API with “This browser
+or app may not be secure.” Jaz restores that API in side-browser tabs and popups,
+so Google sign-in, including “Sign in with Google” popups, continues to Google's
+password or passkey step. Google's [supported-browser policy](https://support.google.com/accounts/answer/7675428)
+can still change; if it rejects again, sign in with Chrome and use
+**Import cookies and passwords** with **Cookies** enabled.
 
 ### LinkedIn
 
@@ -157,7 +152,8 @@ The app's own session keeps its identity. Chromium continues to generate client
 hints, language, fetch metadata, cookies and other request headers itself; page
 and worker JavaScript observe the same User-Agent as network requests.
 This uses [Electron's session API](https://www.electronjs.org/docs/latest/api/session#sessetuseragentuseragent-acceptlanguages)
-without per-request identity rewriting or browser-property patches.
+without per-request identity rewriting. A session preload adds Chrome's `chrome.app`
+API to every page's main world, as Chrome does; it is the only browser-property change.
 
 This improves browser compatibility. A browser identity does not establish that
 a person performed an action, and cannot guarantee that a site allows automation

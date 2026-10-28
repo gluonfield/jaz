@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => ({
   },
   preload: {
     resolve: { alias: { '@shared': resolve('src/shared'), '@preload': resolve('src/preload') } },
+    build: { lib: { entry: { index: resolve('src/preload/index.ts'), chrome: resolve('src/preload/chrome.ts') } } },
   },
   renderer: {
     define: defineTelemetryEnv(mode),

@@ -12,7 +12,8 @@ export async function exerciseBrowserIdentity(evaluate: (expression: string) => 
       }
     })
     return { ...network, userAgent: navigator.userAgent, language: navigator.language,
-      workerUserAgent, webdriver: navigator.webdriver, hints: navigator.userAgentData.toJSON() }
+      workerUserAgent, webdriver: navigator.webdriver, hints: navigator.userAgentData.toJSON(),
+      chromeApp: chrome.app.runningState() }
   })()`) as {
     firstNavigation: Record<string, string>
     request: Record<string, string>
@@ -21,6 +22,7 @@ export async function exerciseBrowserIdentity(evaluate: (expression: string) => 
     userAgent: string
     workerUserAgent: string
     webdriver: boolean
+    chromeApp: string
     language: string
     hints: { brands: { brand: string; version: string }[]; platform: string; mobile: boolean }
   }
@@ -39,6 +41,9 @@ export async function exerciseBrowserIdentity(evaluate: (expression: string) => 
     || request['sec-ch-ua-mobile'] !== (hints.mobile ? '?1' : '?0')
     || request['sec-ch-ua'] !== hints.brands.map(({ brand, version }) => `${JSON.stringify(brand)};v=${JSON.stringify(version)}`).join(', ')) {
     throw new Error('Native Chromium client hints disagree with browser headers')
+  }
+  if (observed.chromeApp !== 'cannot_run') {
+    throw new Error('Side-browser pages must expose Chrome\'s chrome.app API for Google sign-in')
   }
   if (request['accept-language'].split(',')[0].split(';')[0] !== observed.language || observed.webdriver) {
     throw new Error('The normal browser language or driver state changed')
