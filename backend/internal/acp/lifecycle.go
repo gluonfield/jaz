@@ -2,6 +2,9 @@ package acp
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -215,6 +218,9 @@ func (m *Manager) recordServeErr(id string, process *agentProcess, err error) er
 		err = process.serveErr
 		m.mu.Unlock()
 		return err
+	}
+	if errors.Is(err, io.EOF) || jsonrpc.IsClosed(err) {
+		err = fmt.Errorf("Agent connection closed unexpectedly. Continue to resume the conversation. (%w)", err)
 	}
 	process.serveErr = err
 	close(process.serveDone)
