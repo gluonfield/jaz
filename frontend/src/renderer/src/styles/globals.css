@@ -443,7 +443,6 @@
   height: 0.82em;
   margin-right: 0.24em;
   opacity: 0.66;
-  transform: translateY(0.1em);
   pointer-events: none;
 }
 .chat-prose-link[role="link"] {
@@ -455,7 +454,6 @@
   inset-inline-start: 0;
   top: 0.2em;
   margin-right: 0;
-  transform: none;
 }
 img.chat-prose-link-icon {
   width: 1em;
