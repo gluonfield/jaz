@@ -197,6 +197,7 @@ export interface RepoInfo {
   // main checkout is on — the handoff destination.
   is_worktree?: boolean
   main_branch?: string
+  ahead?: number
   // Commits on main_branch the worktree's branch doesn't have yet — what
   // "Update from main" would pull in (omitted/0 when up to date).
   behind?: number
