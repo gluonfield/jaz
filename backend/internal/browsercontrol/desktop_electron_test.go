@@ -129,6 +129,10 @@ func TestDesktopElectron(t *testing.T) {
 		Routes: serverapi.Routes{{Pattern: "GET /v1/sessions/{session}/browser", Handler: handler}},
 	}).Handler())
 	mux.Handle("POST /v1/sessions/{session}/browser", handler)
+	mux.Handle("GET /v1/browser/desktop", (&serverapi.Server{
+		Store: store, AuthKey: "browser-smoke-credential",
+		Routes: serverapi.Routes{{Pattern: "GET /v1/browser/desktop", Handler: handler}},
+	}).Handler())
 	mux.Handle("/mcp", mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpServer }, nil))
 	var client *mcp.ClientSession
 	mux.HandleFunc("/exercise", func(w http.ResponseWriter, r *http.Request) {

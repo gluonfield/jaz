@@ -1,8 +1,8 @@
 # Jaz side browser
 
 Enable browser tools in **Settings → Browser**.
-Keep the desktop app running while the agent works. Once a conversation has
-connected, browser activity in the current conversation opens the right side
+Keep the desktop app running while the agent works. Conversations connect on
+demand, including those not opened since restarting Jaz. Browser activity in the current conversation opens the right side
 panel and selects the agent's browser tab. This includes commands against an
 existing page and commands continuing inside a script after the panel is hidden.
 Commands wait for the desktop panel's opening animation before observing or acting.

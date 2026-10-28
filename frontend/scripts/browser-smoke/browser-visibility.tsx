@@ -13,6 +13,8 @@ import { keys } from '@/lib/query/keys'
 
 export async function exerciseBrowserVisibility(): Promise<void> {
   const backend = await window.smoke.backend()
+  const primary = (await (await fetch(`${backend}/v1/sessions/tabs`)).json()).id as string
+  const background = (await (await fetch(`${backend}/v1/sessions/browser-background`)).json()).id as string
   const originalURL = apiBaseUrl()
   const originalToken = cachedApiAuthToken(backend)
   setApiBaseUrl(backend)
@@ -23,7 +25,7 @@ export async function exerciseBrowserVisibility(): Promise<void> {
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;background:var(--color-bg)'
   document.body.append(element)
-  const root = createRoot(element)
+  let root = createRoot(element)
   const noop = async () => {}
   let panel: ReturnType<typeof useSidePanelState>
   function Chat({ id }: { id: string }) {
@@ -51,7 +53,7 @@ export async function exerciseBrowserVisibility(): Promise<void> {
       return <Chat key={id} id={id} />
     },
   })
-  const router = createRouter({ routeTree: rootRoute.addChildren([chatRoute]), history: createMemoryHistory({ initialEntries: ['/tabs'] }) })
+  const router = createRouter({ routeTree: rootRoute.addChildren([chatRoute]), history: createMemoryHistory({ initialEntries: ['/' + primary] }) })
   const action = async (id: string, input: { action: string; url?: string; code?: string }) => {
     const endpoint = input.action === 'script' ? `/exercise-script/${id}` : `/v1/sessions/${id}/browser`
     const response = await fetch(backend + endpoint, { method: 'POST', body: JSON.stringify(input) })
@@ -67,19 +69,40 @@ export async function exerciseBrowserVisibility(): Promise<void> {
   const view = (id: string) => document.querySelector<PreviewWebviewElement>(`[data-browser-session="${id}"] webview`)
   try {
     root.render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
-    await until(async () => (await fetch(`${backend}/v1/sessions/tabs/browser`, { method: 'POST', body: '{"action":"status"}' })).ok)
-    if (panel!.open || view('tabs')) {
+    await until(async () => (await fetch(`${backend}/v1/sessions/${primary}/browser`, { method: 'POST', body: '{"action":"status"}' })).ok)
+    if (panel!.open || view(primary)) {
       throw new Error('Browser fixture did not start closed')
     }
-    await action('tabs', { action: 'navigate', url: `${location.origin}/target?visibility` })
-    await until(() => Boolean(shown('tabs') && view('tabs')))
-    const first = view('tabs')!.getWebContentsId()
+    await action(background, { action: 'navigate', url: `${location.origin}/target?unvisited` })
+    if (panel!.open || !view(background)) {
+      throw new Error('An unvisited conversation could not open its own browser in the background')
+    }
+    root.unmount()
+    root = createRoot(element)
+    root.render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
+    await until(() => Boolean(element.querySelector('[data-visibility-chat]')))
+    await until(async () => {
+      try {
+        await action(background, { action: 'tabs' })
+        return true
+      } catch {
+        return false
+      }
+    })
+    await action(background, { action: 'navigate', url: `${location.origin}/target?after-restart` })
+    if (panel!.open || !view(background)) {
+      throw new Error('Restarting the desktop left the background browser disconnected')
+    }
+    const backgroundPage = view(background)!.getWebContentsId()
+    await action(primary, { action: 'navigate', url: `${location.origin}/target?visibility` })
+    await until(() => Boolean(shown(primary) && view(primary)))
+    const first = view(primary)!.getWebContentsId()
     for (const input of [{ action: 'state' }, { action: 'script', code: 'await tab.getAXState()' }]) {
       panel!.close()
       await until(() => !panel!.open)
-      await action('tabs', input)
-      await until(() => Boolean(shown('tabs')))
-      if (view('tabs')!.getWebContentsId() !== first) {
+      await action(primary, input)
+      await until(() => Boolean(shown(primary)))
+      if (view(primary)!.getWebContentsId() !== first) {
         throw new Error('Revealing a browser replaced the page')
       }
     }
@@ -87,15 +110,20 @@ export async function exerciseBrowserVisibility(): Promise<void> {
     await window.smoke.capture('agent-browser-reveals-panel')
     panel!.close()
     await until(() => !panel!.open)
-    await router.navigate({ to: '/$id', params: { id: 'browser-background' } })
-    await until(() => element.querySelector<HTMLElement>('[data-visibility-chat]')?.dataset.visibilityChat === 'browser-background' && !panel!.open)
-    await action('tabs', { action: 'state' })
+    await router.navigate({ to: '/$id', params: { id: background } })
+    await until(() => Boolean(shown(background)))
+    if (view(background)!.getWebContentsId() !== backgroundPage) {
+      throw new Error('Visiting the background conversation replaced its browser')
+    }
+    panel!.close()
+    await until(() => !panel!.open)
+    await action(primary, { action: 'state' })
     if (panel!.open) {
       throw new Error('Background browsing opened a different conversation’s panel')
     }
-    await router.navigate({ to: '/$id', params: { id: 'tabs' } })
-    await until(() => Boolean(shown('tabs')))
-    if (view('tabs')!.getWebContentsId() !== first) {
+    await router.navigate({ to: '/$id', params: { id: primary } })
+    await until(() => Boolean(shown(primary)))
+    if (view(primary)!.getWebContentsId() !== first) {
       throw new Error('Returning to the owning conversation replaced the page')
     }
     await Promise.allSettled(element.getAnimations({ subtree: true }).filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished))

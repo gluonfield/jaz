@@ -30,14 +30,17 @@ func (h DesktopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "enable browser tools in Browser settings", http.StatusForbidden)
 		return
 	}
-	session, err := h.Store.LoadSession(r.PathValue("session"))
-	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, storage.ErrSessionNotFound) {
-			status = http.StatusNotFound
+	var session storage.Session
+	if id := r.PathValue("session"); id != "" {
+		session, err = h.Store.LoadSession(id)
+		if err != nil {
+			status := http.StatusInternalServerError
+			if errors.Is(err, storage.ErrSessionNotFound) {
+				status = http.StatusNotFound
+			}
+			httpapi.WriteError(w, status, err)
+			return
 		}
-		httpapi.WriteError(w, status, err)
-		return
 	}
 	if r.Method == http.MethodPost {
 		var input browsercontrol.ActionInput
@@ -71,5 +74,9 @@ func (h DesktopHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = conn.Close()
 	})
 	defer stop()
-	h.Backend.Connect(r.Context(), session.ID, conn)
+	if session.ID == "" {
+		h.Backend.ConnectHost(r.Context(), conn)
+	} else {
+		h.Backend.Connect(r.Context(), session.ID, conn)
+	}
 }
