@@ -39,6 +39,7 @@ import { exerciseClaudeVoice } from './claude-voice'
 import { exerciseConnectionSecurity } from './connection-security'
 import { exerciseBrowserVisibility } from './browser-visibility'
 import { exerciseRepoStatus } from './repo-status'
+import { exerciseBrowserStartup } from './browser-startup'
 import { apiBaseUrl, apiWebSocketProtocols, setApiAuthToken } from '@/lib/api/client'
 
 declare global {
@@ -112,6 +113,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'browser-startup') {
+        progress('authenticated desktop browser startup')
+        await exerciseBrowserStartup()
+        if (suite === 'browser-startup') {
+          window.smoke.result({ ok: true, checks: ['authenticated production App startup connects an unvisited browser while the desktop is in the background'] })
+          return
+        }
+      }
       if (!suite || suite === 'repo-status') {
         progress('repo merge status and error recovery')
         await exerciseRepoStatus()

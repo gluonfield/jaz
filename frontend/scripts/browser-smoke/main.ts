@@ -95,7 +95,7 @@ const server = createServer(async (request, response) => {
   }
   if (request.url === '/health') {
     response.setHeader('Content-Type', 'application/json')
-    response.end('{"ok":true}')
+    response.end('{"ok":true,"auth_required":false}')
     return
   }
   if (request.url === '/appearance') {
