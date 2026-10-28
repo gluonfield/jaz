@@ -68,7 +68,7 @@ export async function exerciseClaudeVoice(): Promise<void> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   let settings: Settings = {
     agent: 'openai', provider: 'openai', voice: 'cove', voices: ['cove'],
-    providers: [{ id: 'openai', label: 'OpenAI OAuth', available: true }, { id: 'claude', label: 'Claude Account', available: false, reason: 'Claude voice requires Jaz Desktop.' }],
+    providers: [{ id: 'openai', label: 'OpenAI Account', available: true }, { id: 'claude', label: 'Claude Account', available: false, reason: 'Claude voice requires Jaz Desktop.' }],
   }
   window.fetch = async (input, init) => {
     const path = new URL(String(input), location.origin).pathname
@@ -89,6 +89,7 @@ export async function exerciseClaudeVoice(): Promise<void> {
   try {
     root.render(<QueryClientProvider client={client}><VoiceSettings /></QueryClientProvider>)
     await until(() => Boolean(panel.querySelector('[aria-label="Voice provider"]')))
+    await window.smoke.capture('openai-account-provider')
     await click(panel.querySelector('[aria-label="Voice provider"]')!)
     await until(() => Boolean([...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('Claude'))))
     await click([...document.querySelectorAll('button')].find((button) => button.textContent?.trim().startsWith('Claude'))!)

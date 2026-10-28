@@ -34,7 +34,7 @@ type Status struct {
 
 func (s *Service) Settings() (Status, error) {
 	providers := []Provider{
-		{ID: ProviderOAuth, Label: "OpenAI OAuth"},
+		{ID: ProviderOAuth, Label: "OpenAI Account"},
 		{ID: ProviderAPI, Label: "OpenAI API"},
 		{ID: ProviderClaude, Label: "Claude Account", Reason: "Claude voice requires Jaz Desktop."},
 	}

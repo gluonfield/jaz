@@ -158,7 +158,7 @@ func (s *Service) Connect(ctx context.Context, sdp, chatContext, sessionID strin
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		label := "OpenAI API"
 		if status.Provider == ProviderOAuth {
-			label = "OpenAI OAuth"
+			label = "OpenAI"
 		}
 		switch response.StatusCode {
 		case http.StatusUnauthorized:

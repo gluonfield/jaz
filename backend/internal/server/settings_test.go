@@ -60,7 +60,7 @@ func TestCodexModelProvidersGateOpenAIAPIKeyByResponsesCapability(t *testing.T) 
 	}
 	openAI.Capabilities = []string{provider.CapabilityChatCompletions}
 	providers := codexModelProviders([]settingsModelProvider{{ModelProvider: openAI}})
-	if len(providers) != 1 || providers[0].ID != provider.ProviderOpenAI || providers[0].Label != "OpenAI OAuth" {
+	if len(providers) != 1 || providers[0].ID != provider.ProviderOpenAI || providers[0].Label != "OpenAI Account" {
 		t.Fatalf("Codex providers = %#v", providers)
 	}
 }
@@ -264,7 +264,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 		t.Fatalf("retired Qwen agent was exposed: %#v", got.ACP["qwen"])
 	}
 	if len(got.ACPOptions["codex"].ModelProviders) < 2 ||
-		got.ACPOptions["codex"].ModelProviders[0].Label != "OpenAI OAuth" ||
+		got.ACPOptions["codex"].ModelProviders[0].Label != "OpenAI Account" ||
 		got.ACPOptions["codex"].ModelProviders[0].DefaultModel != acp.CodexOpenAIDefaultModel ||
 		got.ACPOptions["codex"].ModelProviders[1].ID != acp.CodexProviderOpenAIAPIKey ||
 		got.ACPOptions["codex"].ModelProviders[1].Label != "OpenAI API key" ||

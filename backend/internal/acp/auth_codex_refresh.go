@@ -28,7 +28,7 @@ func (m *Manager) RefreshCodexOAuth(ctx context.Context, cfg AgentConfig, home s
 		var err error
 		executable, err = resolveLoginExecutable(loginBinDirs(cfg), "codex")
 		if err != nil {
-			return fmt.Errorf("Codex CLI is required to refresh OpenAI OAuth")
+			return fmt.Errorf("Codex CLI is required to refresh your OpenAI account sign-in")
 		}
 	}
 	command := exec.CommandContext(ctx, executable, "app-server")
@@ -73,7 +73,7 @@ func (m *Manager) RefreshCodexOAuth(ctx context.Context, cfg AgentConfig, home s
 				continue
 			}
 			if len(reply.Error) != 0 && string(reply.Error) != "null" {
-				return fmt.Errorf("Codex could not refresh OpenAI OAuth; sign in again in Agents → Codex")
+				return fmt.Errorf("Codex could not refresh your OpenAI account sign-in; sign in again in Agents → Codex")
 			}
 			return nil
 		}

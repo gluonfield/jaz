@@ -44,7 +44,7 @@ func NewVoiceCredentials(store *sqlitestore.Store, catalog acp.AgentCatalog, pro
 		cfg.ModelProvider = provider.ProviderOpenAI
 		auth := acp.ProbeAgentAuth(acp.AgentCodex, cfg, layout.Root, nil)
 		if !auth.Authenticated || auth.AuthKind != acp.AuthKindOAuth {
-			return live.Credential{}, fmt.Errorf("sign in to OpenAI OAuth in Agents → Codex")
+			return live.Credential{}, fmt.Errorf("sign in to your OpenAI account in Agents → Codex")
 		}
 		credential, err := readVoiceOAuth(auth.StoragePath)
 		if err != nil {
@@ -78,7 +78,7 @@ func readVoiceOAuth(path string) (live.Credential, error) {
 		} `json:"tokens"`
 	}
 	if json.Unmarshal(data, &stored) != nil || stored.Tokens.AccessToken == "" || stored.Tokens.AccountID == "" {
-		return live.Credential{}, fmt.Errorf("refresh your OpenAI OAuth sign-in in Agents → Codex")
+		return live.Credential{}, fmt.Errorf("refresh your OpenAI account sign-in in Agents → Codex")
 	}
 	return live.Credential{Token: stored.Tokens.AccessToken, AccountID: stored.Tokens.AccountID}, nil
 }
