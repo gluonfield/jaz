@@ -176,6 +176,10 @@ func TestAThreadARoutineChildStartsReportsToTheBotAfterTheRunAndARestart(t *test
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, <-worker)
+	jaz.eventually("the routine prompt confirmed before restart", func() bool {
+		thread, err := store.LoadSession(jaz.run(run.ID).ThreadID)
+		return err == nil && thread.Turn.Prompt.State == storage.PromptConfirmed
+	})
 
 	jaz.manager.Close()
 	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
