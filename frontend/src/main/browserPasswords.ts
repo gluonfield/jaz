@@ -5,13 +5,12 @@ import {
   type BrowserPasswordAction, type BrowserPasswordState,
 } from '@shared/browserPasswords'
 import { PREVIEW_PARTITION } from '@shared/preview'
-import { BrowserPasswordStore, type BrowserPassword } from '@main/browserPasswordStore'
+import { getBrowserPasswordStore, type BrowserPassword } from '@main/browserPasswordStore'
 import { isTrustedRendererURL } from '@main/permissions'
 
 type PendingPassword = BrowserPassword & { id: string }
 
-export function installBrowserPasswords(): void {
-  const store = new BrowserPasswordStore()
+export function installBrowserPasswords(store = getBrowserPasswordStore()): void {
   const pending = new WeakMap<WebContents, PendingPassword>()
   const errors = new WeakMap<WebContents, string>()
   const watching = new Set<WebContents>()
@@ -40,27 +39,19 @@ export function installBrowserPasswords(): void {
   const state = (target: WebContents): BrowserPasswordState => {
     const origin = passwordOrigin(target.getURL())
     if (!origin) {
-      return { origin: '', usernames: [], error: 'Password saving is available on HTTPS pages.' }
+      return { origin: '', usernames: [], locked: false, error: 'Password saving is available on HTTPS pages.' }
     }
     const candidate = pending.get(target)
-    const result: BrowserPasswordState = {
+    const records = store.cached?.filter((entry) => entry.origin === origin) ?? []
+    return {
       origin,
-      usernames: [],
+      usernames: records.map((entry) => entry.username),
+      locked: !store.cached,
       ...(candidate?.origin === origin ? {
-        pending: { id: candidate.id, username: candidate.username, update: false },
+        pending: { id: candidate.id, username: candidate.username, update: records.some((entry) => entry.username === candidate.username) },
       } : {}),
       ...(errors.has(target) ? { error: errors.get(target) } : {}),
     }
-    try {
-      const records = store.read().filter((entry) => entry.origin === origin)
-      result.usernames = records.map((entry) => entry.username)
-      if (result.pending) {
-        result.pending.update = records.some((entry) => entry.username === candidate?.username)
-      }
-    } catch (error) {
-      result.error = (error as Error).message
-    }
-    return result
   }
 
   const owned = (event: IpcMainInvokeEvent, id: number): WebContents => {
@@ -83,6 +74,9 @@ export function installBrowserPasswords(): void {
         }
         errors.delete(target)
         switch (action.kind) {
+          case 'unlock':
+            store.read()
+            break
           case 'capture':
             target.mainFrame.send(PASSWORD_CAPTURE_CHANNEL)
             break
@@ -144,15 +138,11 @@ export function installBrowserPasswords(): void {
     watch(target)
     const username = value.username.trim()
     pending.set(target, { id: randomUUID(), origin, username, password: value.password })
-    try {
-      const existing = store.read().find((entry) => entry.origin === origin && entry.username === username)
-      if (existing?.password === value.password) {
-        pending.delete(target)
-      }
-      errors.delete(target)
-    } catch (error) {
-      errors.set(target, (error as Error).message)
+    const existing = store.cached?.find((entry) => entry.origin === origin && entry.username === username)
+    if (existing?.password === value.password) {
+      pending.delete(target)
     }
+    errors.delete(target)
     changed(target)
   })
 
