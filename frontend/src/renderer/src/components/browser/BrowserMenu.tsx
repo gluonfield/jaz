@@ -9,7 +9,7 @@ import type { BrowserPasswordAction, BrowserPasswordState } from '@shared/browse
 
 export function BrowserMenu({ webContentsId, visible }: { webContentsId: number | null; visible: boolean }) {
   const api = window.jaz?.browserPasswords
-  const [state, setState] = useState<BrowserPasswordState>({ origin: '', usernames: [] })
+  const [state, setState] = useState<BrowserPasswordState>({ origin: '', usernames: [], locked: true })
   const [view, setView] = useState<'menu' | 'passwords' | 'downloads' | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -64,7 +64,7 @@ export function BrowserMenu({ webContentsId, visible }: { webContentsId: number 
         return
       }
       setState(next)
-      if (!next.error && action.kind !== 'remove' && action.kind !== 'capture') {
+      if (!next.error && (action.kind === 'save' || action.kind === 'dismiss' || action.kind === 'fill')) {
         close()
       }
     } catch {
@@ -111,13 +111,16 @@ export function BrowserMenu({ webContentsId, visible }: { webContentsId: number 
       {error || state.error ? <p role="alert" className="mt-2 text-[12px] text-danger">{error || state.error}</p> : null}
       {pending ? <>
         <p className="mt-3 break-all text-[13px] text-ink">{pending.username || 'No username'}</p>
-        <p className="mt-1 text-[12px] text-ink-2">Encrypted on this computer.</p>
+        <p className="mt-1 text-[12px] text-ink-2">Save encrypts this login on your computer. Your system may ask to unlock “Jaz Safe Storage”.</p>
         <div className="mt-4 flex justify-end gap-2">
           <Button size="sm" variant="ghost" disabled={busy} className="min-h-10" onClick={() => void act({ kind: 'dismiss', id: pending.id })}>Not now</Button>
           <Button size="sm" variant="primary" disabled={busy} className="min-h-10" onClick={() => void act({ kind: 'save', id: pending.id })}>{pending.update ? 'Update' : 'Save'}</Button>
         </div>
       </> : <>
-        {state.usernames.length ? <div className="mt-3 max-h-60 overflow-y-auto">
+        {state.locked ? <>
+          <p className="mt-3 text-[13px] text-ink-2">Unlock to view and fill saved logins for this site. Your system may ask for access to “Jaz Safe Storage”.</p>
+          <Button size="sm" variant="primary" className="mt-3 min-h-10 w-full" disabled={busy} onClick={() => void act({ kind: 'unlock' })}>Unlock saved passwords</Button>
+        </> : state.usernames.length ? <div className="mt-3 max-h-60 overflow-y-auto">
           {state.usernames.map((username) => <div key={username} className="flex items-center gap-1">
             <button type="button" disabled={busy} className="min-h-10 min-w-0 flex-1 rounded-lg px-2 py-2 text-left text-[13px] text-ink hover:bg-surface-2" onClick={() => void act({ kind: 'fill', origin: state.origin, username })} title="Fill this login">
               <span className="block truncate">{username || 'No username'}</span>

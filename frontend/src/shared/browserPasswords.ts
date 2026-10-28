@@ -7,6 +7,7 @@ export const PASSWORD_CHANGED_CHANNEL = 'jaz:browser-passwords:changed'
 export type BrowserPasswordState = {
   origin: string
   usernames: string[]
+  locked: boolean
   pending?: { id: string; username: string; update: boolean }
   error?: string
 }
@@ -14,7 +15,7 @@ export type BrowserPasswordState = {
 export type BrowserPasswordAction =
   | { kind: 'save' | 'dismiss'; id: string }
   | { kind: 'fill' | 'remove'; origin: string; username: string }
-  | { kind: 'capture' }
+  | { kind: 'capture' | 'unlock' }
 
 export type BrowserPasswordAPI = {
   state: (webContentsId: number) => Promise<BrowserPasswordState>

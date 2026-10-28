@@ -5,15 +5,24 @@ import { join } from 'node:path'
 export type BrowserPassword = { origin: string; username: string; password: string }
 
 export class BrowserPasswordStore {
+  private records?: readonly BrowserPassword[]
+
   constructor(private readonly file = join(app.getPath('userData'), 'browser-passwords.enc')) {}
 
-  read(): BrowserPassword[] {
+  get cached(): readonly BrowserPassword[] | undefined {
+    return this.records
+  }
+
+  read(): readonly BrowserPassword[] {
+    if (this.records) {
+      return this.records
+    }
     let encrypted: Buffer
     try {
       encrypted = readFileSync(this.file)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return []
+        return this.records = []
       }
       throw new Error('Saved passwords could not be read.', { cause: error })
     }
@@ -25,7 +34,7 @@ export class BrowserPasswordStore {
         typeof entry.username !== 'string' || typeof entry.password !== 'string')) {
         throw new Error('Invalid password file')
       }
-      return records
+      return this.records = records
     } catch {
       throw new Error('Saved passwords could not be unlocked. Check access to your system keychain.')
     }
@@ -37,7 +46,7 @@ export class BrowserPasswordStore {
   }
 
   import(passwords: BrowserPassword[]): number {
-    const records = this.read()
+    const records = [...this.read()]
     const identities = new Set(records.map((entry) => JSON.stringify([entry.origin, entry.username])))
     const initial = records.length
     for (const password of passwords) {
@@ -63,6 +72,7 @@ export class BrowserPasswordStore {
       const encrypted = safeStorage.encryptString(JSON.stringify(records))
       writeFileSync(this.file + '.tmp', encrypted, { mode: 0o600 })
       renameSync(this.file + '.tmp', this.file)
+      this.records = records
     } catch {
       throw new Error('The password change could not be saved.')
     }
@@ -70,7 +80,13 @@ export class BrowserPasswordStore {
 
   private requireEncryption(): void {
     if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) {
-      throw new Error('Password saving needs an available system keychain.')
+      throw new Error('Saved passwords require an available system keychain.')
     }
   }
+}
+
+let sharedStore: BrowserPasswordStore | undefined
+
+export function getBrowserPasswordStore(): BrowserPasswordStore {
+  return sharedStore ??= new BrowserPasswordStore()
 }

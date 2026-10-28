@@ -5,7 +5,7 @@ import { PASSWORD_CHANGED_CHANNEL } from '@shared/browserPasswords'
 import { discoverBrowserProfiles } from '@main/browserProfiles'
 import { importProfileCookies } from '@main/browserCookies'
 import { importProfilePasswords } from '@main/browserPasswordImport'
-import { BrowserPasswordStore } from '@main/browserPasswordStore'
+import { getBrowserPasswordStore } from '@main/browserPasswordStore'
 import { readKeychainPassword } from '@main/browserSafeStorage'
 import { isTrustedRendererURL } from '@main/permissions'
 
@@ -15,7 +15,7 @@ export class BrowserProfileImporter implements BrowserProfileAPI {
   constructor(
     private readonly discover = discoverBrowserProfiles,
     private readonly password = readKeychainPassword,
-    private readonly store = new BrowserPasswordStore(),
+    private readonly store = getBrowserPasswordStore(),
   ) {}
 
   async list() {
