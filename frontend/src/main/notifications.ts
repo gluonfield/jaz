@@ -4,6 +4,7 @@ import { BrowserWindow, Notification, shell } from 'electron'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
 import { threadNotificationPath, type ThreadCompletion } from '../shared/notifications'
 import { createThreadCompletionMonitor } from './notificationMonitor'
+import { logMain } from '@main/diagnostics'
 
 export function createThreadNotificationMonitor(openInMain: (path: string) => void) {
   return createThreadCompletionMonitor((completion: ThreadCompletion) => {
@@ -36,8 +37,17 @@ export async function sendTestNotification(attempts: number): Promise<boolean> {
 function showTestNotification(): Promise<boolean> {
   return new Promise((resolve) => {
     const notification = new Notification({ title: 'Jaz', body: 'Notifications are on.' })
-    notification.once('show', () => resolve(true))
-    notification.once('failed', () => resolve(false))
+    const finish = (shown: boolean) => {
+      clearTimeout(timeout)
+      notification.removeAllListeners()
+      resolve(shown)
+    }
+    const timeout = setTimeout(() => finish(false), 2000)
+    notification.once('show', () => finish(true))
+    notification.once('failed', (_event, error) => {
+      logMain('Test notification failed', error)
+      finish(false)
+    })
     notification.show()
   })
 }

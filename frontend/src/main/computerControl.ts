@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import { COMPUTER_CHANNEL, type ComputerAction, type ComputerStatus } from '@shared/computerControl'
 import { ComputerRuntime } from '@main/computerRuntime'
 import { trustedWindow } from '@main/permissions'
-
-const loadDriver = () => import('@trycua/cua-driver')
+import { loadComputerDriver } from '@main/computerDriver'
+import { logMain } from '@main/diagnostics'
 
 async function availability(): Promise<ComputerStatus> {
   const status: ComputerStatus = { available: false, platform: process.platform }
@@ -13,7 +13,7 @@ async function availability(): Promise<ComputerStatus> {
     return { ...status, reason: 'Computer use is available on macOS and Windows.' }
   }
   try {
-    const sdk = await loadDriver()
+    const sdk = await loadComputerDriver()
     status.driverVersion = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')).dependencies['@trycua/cua-driver']
     if (process.platform === 'darwin') {
       status.permissions = sdk.currentMacOsPermissionStatus()
@@ -23,12 +23,13 @@ async function availability(): Promise<ComputerStatus> {
     }
     return { ...status, available: true }
   } catch (error) {
-    return { ...status, reason: 'Computer driver unavailable: ' + (error instanceof Error ? error.message : String(error)) }
+    logMain('Computer driver unavailable', error)
+    return { ...status, reason: 'Computer tools couldn’t start. Update or reinstall Jaz, then try again.' }
   }
 }
 
 export function installComputerControl(): void {
-  const runtime = new ComputerRuntime(async () => (await loadDriver()).CuaDriver.create(undefined), availability)
+  const runtime = new ComputerRuntime(async () => (await loadComputerDriver()).CuaDriver.create(undefined), availability)
   const watching = new WeakSet<WebContents>()
   ipcMain.handle(COMPUTER_CHANNEL + 'status', (event) => {
     trustedWindow(event)

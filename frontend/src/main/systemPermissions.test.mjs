@@ -9,22 +9,33 @@ if (process.env.JAZ_SYSTEM_PERMISSIONS_TEST_CHILD === '1') {
   const opened = []
   const app = { isPackaged: true }
   let tests = 0
+  let microphone = 'denied'
+  let screen = 'denied'
+  let accessibility = true
+  let shown = false
+  const guided = []
   mock.module('electron', () => ({
     app,
     ipcMain: { handle: (name, handler) => handlers.set(name, handler) },
     shell: { openExternal: async (url) => opened.push(url) },
     systemPreferences: {
-      getMediaAccessStatus: () => 'denied',
+      isTrustedAccessibilityClient: (prompt) => {
+        expect(prompt).toBe(false)
+        return accessibility
+      },
+      getMediaAccessStatus: (type) => type === 'microphone' ? microphone : screen,
       askForMediaAccess: async () => {
-        throw new Error('A refused microphone must not prompt again')
+        expect(microphone).toBe('not-determined')
+        microphone = 'granted'
+        return true
       },
     },
   }))
   mock.module('@trycua/cua-driver', () => ({
-    currentMacOsPermissionStatus: () => ({ accessibility: true, screenRecording: false }),
+    currentMacOsPermissionStatus: () => { throw new Error('dlopen inside app.asar') },
   }))
-  mock.module('@main/notifications', () => ({ sendTestNotification: async () => (tests++, false), openNotificationSettings: async () => opened.push('notifications') }))
-  mock.module('@main/permissionGuide', () => ({ guidePermission: async () => {} }))
+  mock.module('@main/notifications', () => ({ sendTestNotification: async () => (tests++, shown), openNotificationSettings: async () => opened.push('notifications') }))
+  mock.module('@main/permissionGuide', () => ({ guidePermission: async (permission, url, granted) => guided.push({ permission, url, granted }) }))
   const { installSystemPermissions } = await import('./systemPermissions')
   installSystemPermissions()
   afterAll(() => mock.restore())
@@ -56,6 +67,30 @@ if (process.env.JAZ_SYSTEM_PERMISSIONS_TEST_CHILD === '1') {
     expect(opened).not.toContain('notifications')
     await invoke('allow', event(), 'notifications')
     expect(opened).toContain('notifications')
+    shown = true
+    await invoke('allow', event(), 'notifications')
+    expect((await invoke('status', event())).notifications).toBe('granted')
+  })
+
+  test('microphone prompting and status refresh work without the computer driver', async () => {
+    microphone = 'not-determined'
+    await invoke('allow', event(), 'microphone')
+    expect((await invoke('status', event())).microphone).toBe('granted')
+    microphone = 'restricted'
+    expect((await invoke('status', event())).microphone).toBe('off')
+  })
+
+  test('computer settings guidance observes OS changes without loading the driver or requesting grants', async () => {
+    await invoke('allow', event(), 'accessibility')
+    await invoke('allow', event(), 'screenRecording')
+    expect(guided.map(({ permission, url }) => [permission, url])).toEqual([
+      ['accessibility', 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'],
+      ['screenRecording', 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'],
+    ])
+    accessibility = false
+    screen = 'granted'
+    expect(guided.map(({ granted }) => granted())).toEqual([false, true])
+    expect(await invoke('status', event())).toMatchObject({ accessibility: 'needed', screenRecording: 'granted' })
   })
 
   test('a development build reports notifications unavailable and never tries one', async () => {

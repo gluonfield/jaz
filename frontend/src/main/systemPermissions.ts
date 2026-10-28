@@ -9,20 +9,18 @@ import {
 import { openNotificationSettings, sendTestNotification } from '@main/notifications'
 import { guidePermission } from '@main/permissionGuide'
 import { trustedWindow } from '@main/permissions'
+import { logMain } from '@main/diagnostics'
 
 const PRIVACY = 'x-apple.systempreferences:com.apple.preference.security?'
-const loadDriver = () => import('@trycua/cua-driver')
 
-// macOS reports notification permission only by showing or refusing a
-// notification, so this is what Jaz last observed in this process.
+// Electron exposes delivery events, not the current macOS notification grant.
 let notifications: PermissionState = 'needed'
 
 async function status(): Promise<SystemPermissionStatus> {
-  const computer = (await loadDriver()).currentMacOsPermissionStatus()
   const microphone = systemPreferences.getMediaAccessStatus('microphone')
   return {
-    accessibility: computer.accessibility ? 'granted' : 'needed',
-    screenRecording: computer.screenRecording ? 'granted' : 'needed',
+    accessibility: systemPreferences.isTrustedAccessibilityClient(false) ? 'granted' : 'needed',
+    screenRecording: systemPreferences.getMediaAccessStatus('screen') === 'granted' ? 'granted' : 'needed',
     microphone: microphone === 'granted' ? 'granted' : microphone === 'denied' || microphone === 'restricted' ? 'off' : 'needed',
     notifications: app.isPackaged ? notifications : 'unavailable',
   }
@@ -30,12 +28,14 @@ async function status(): Promise<SystemPermissionStatus> {
 
 async function allow(permission: SystemPermission): Promise<void> {
   if (permission === 'accessibility' || permission === 'screenRecording') {
-    const sdk = await loadDriver()
     const pane = permission === 'accessibility' ? 'Privacy_Accessibility' : 'Privacy_ScreenCapture'
-    return guidePermission(permission, PRIVACY + pane, () => sdk.currentMacOsPermissionStatus()[permission])
+    return guidePermission(permission, PRIVACY + pane, () => permission === 'accessibility'
+      ? systemPreferences.isTrustedAccessibilityClient(false)
+      : systemPreferences.getMediaAccessStatus('screen') === 'granted')
   }
   if (permission === 'microphone') {
-    if ((await status()).microphone === 'off') {
+    const microphone = systemPreferences.getMediaAccessStatus('microphone')
+    if (microphone === 'denied' || microphone === 'restricted') {
       return shell.openExternal(PRIVACY + 'Privacy_Microphone')
     }
     await systemPreferences.askForMediaAccess('microphone')
@@ -44,12 +44,12 @@ async function allow(permission: SystemPermission): Promise<void> {
   if (!app.isPackaged) {
     return
   }
+  if (notifications === 'off') {
+    await openNotificationSettings()
+  }
   // An undecided permission is being asked for right now: give the user a
   // moment to answer the prompt.
   const shown = await sendTestNotification(notifications === 'needed' ? 8 : 1)
-  if (!shown && notifications === 'off') {
-    await openNotificationSettings()
-  }
   notifications = shown ? 'granted' : 'off'
 }
 
@@ -63,6 +63,9 @@ export function installSystemPermissions(): void {
     if (!SYSTEM_PERMISSIONS.includes(permission)) {
       throw new Error('Invalid system permission')
     }
-    return allow(permission)
+    return allow(permission).catch((error) => {
+      logMain(`System permission action failed: ${permission}`, error)
+      throw new Error('Couldn’t change this permission. Open System Settings → Privacy & Security, or Notifications, and select Jaz.')
+    })
   })
 }
