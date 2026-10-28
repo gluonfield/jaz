@@ -148,7 +148,7 @@ func TestARoutineMovesToAChildWhenItsBotsThreadIsFull(t *testing.T) {
 
 func TestAThreadARoutineChildStartsReportsToTheBotAfterTheRunAndARestart(t *testing.T) {
 	store, root := newTestStore(t)
-	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{"JAZ_FAKE_ACP_UNIQUE_SESSION": "1"})
 	bot := jaz.newBot("Gimli")
 	routine := jaz.routine(loops.CreateLoop{Name: "Audit", Prompt: "start the audit until released", BotID: bot.ID})
 	worker := make(chan string, 1)
@@ -182,7 +182,7 @@ func TestAThreadARoutineChildStartsReportsToTheBotAfterTheRunAndARestart(t *test
 	})
 
 	jaz.manager.Close()
-	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
+	jaz = startJaz(t, jaz.ctx, store, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_UNIQUE_SESSION": "1"})
 	jaz.server.ACP = act(jaz)
 	jaz.recover()
 	jaz.waitRun(run.ID, loops.RunStatusOK)
