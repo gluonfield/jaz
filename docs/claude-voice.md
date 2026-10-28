@@ -17,6 +17,7 @@ Current status, 26 October: implemented in the local development app. Choose Set
 - [x] Resolve the requested merge from current main and verify the combined branch.
 - [x] Activate the provider locally and complete the live native-voice audio/client-tool check.
 - [x] Remove the voice model picker, default to native Opus and clarify account authentication.
+- [x] Rename OpenAI OAuth to OpenAI Account in visible provider labels and matching sign-in messages.
 
 ## Evidence
 
@@ -132,3 +133,7 @@ Augustinas requested no model picker and an Opus default, then asked whether the
 Focused voice-session and Go 1.26.3 voice/HTTP tests, type checks, lint, bundle and the normal hidden broker/settings journey pass. The upstream fixture puts Sonnet before Opus and a retired Opus before the enabled entry, proving automatic selection rather than a first-model fallback. Desktop and phone captures were visually checked: Provider and Voice are the only controls. Evidence: `runs/claude-voice/opus-default/`, captures `runs/browser-smoke-DOD9wF/`.
 
 Activated implementation `fcca348f` through integrated local main `791df21f`, preserving the intervening inline-file CSS changes; the integrated bundle passes and tree is `77e7780720d84143131cf72699413759d92a6cac`. Backend 14473 runs Go 1.26.3 with the original 68 environment entries and unchanged auth file. The original dev watcher exited during activation; restoring the desktop watcher loaded the new main/preload and adopted the same healthy backend without another backend restart. Final desktop receipt is healthy at `runs/claude-voice/opus-default/desktop-reload-receipt.json`; the initial failure receipt is preserved. Saved provider choice and browser cookies were not changed. No push/release.
+
+## OpenAI Account Label
+
+28 October: Augustinas requested OpenAI Account in place of OpenAI OAuth. Updated Voice and Codex provider display labels and matching sign-in/error copy; provider IDs and authentication behavior are unchanged. Existing provider/settings and voice/HTTP tests pass under Go 1.26.3, and the hidden production settings check passes. Visually inspected `runs/browser-smoke-QM2k8i/openai-account-provider.png`. The UI integrated the implementation as main `83c5dddf` during verification. Activation evidence belongs in `runs/claude-voice/openai-account/`.
