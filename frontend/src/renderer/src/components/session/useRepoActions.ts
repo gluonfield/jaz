@@ -104,8 +104,8 @@ export function useRepoActions(session: Session) {
       if (result.moved) void queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
       toast(
         result.moved
-          ? `Handed off to ${info?.main_branch} — the session now works in the main checkout`
-          : `Handed off to ${info?.main_branch} — the agent keeps working in the worktree`,
+          ? `Merged into local ${info?.main_branch}. The session now works there. Push and release are separate.`
+          : `Merged into local ${info?.main_branch}. Push and release are separate.`,
       )
     })
   const update = () =>
@@ -122,6 +122,7 @@ export function useRepoActions(session: Session) {
   return {
     cwd,
     info,
+    error: repo.error,
     refetch: () => void repo.refetch(),
     busy,
     web,

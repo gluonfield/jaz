@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -44,6 +43,7 @@ type Info struct {
 	// destination.
 	IsWorktree bool   `json:"is_worktree,omitempty"`
 	MainBranch string `json:"main_branch,omitempty"`
+	Ahead      *int   `json:"ahead,omitempty"`
 	// Behind counts commits on MainBranch the worktree's branch doesn't
 	// have yet — what an update would pull in (0 when up to date).
 	Behind int `json:"behind,omitempty"`
@@ -77,8 +77,11 @@ func Inspect(ctx context.Context, dir string) Info {
 		info.IsWorktree = true
 		info.MainBranch = branch
 		if branch != "" {
-			if count, err := git(ctx, dir, "rev-list", "--count", "HEAD..refs/heads/"+branch); err == nil {
-				info.Behind, _ = strconv.Atoi(count)
+			if counts, err := git(ctx, dir, "rev-list", "--left-right", "--count", "HEAD...refs/heads/"+branch); err == nil {
+				var ahead int
+				if _, err := fmt.Sscanf(counts, "%d %d", &ahead, &info.Behind); err == nil {
+					info.Ahead = &ahead
+				}
 			}
 		}
 	}

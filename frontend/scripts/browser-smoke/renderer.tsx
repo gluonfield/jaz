@@ -38,6 +38,7 @@ import { exerciseAddressBar } from './address-bar'
 import { exerciseClaudeVoice } from './claude-voice'
 import { exerciseConnectionSecurity } from './connection-security'
 import { exerciseBrowserVisibility } from './browser-visibility'
+import { exerciseRepoStatus } from './repo-status'
 import { apiBaseUrl, apiWebSocketProtocols, setApiAuthToken } from '@/lib/api/client'
 
 declare global {
@@ -111,6 +112,14 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (!suite || suite === 'repo-status') {
+        progress('repo merge status and error recovery')
+        await exerciseRepoStatus()
+        if (suite === 'repo-status') {
+          window.smoke.result({ ok: true, checks: ['branch commits versus actual merge target, local merge versus publication, unknown status and error recovery; desktop and phone'] })
+          return
+        }
+      }
       if (suite === 'layout') {
         progress('browser layout and divider dragging')
         await exerciseBrowserLayout()

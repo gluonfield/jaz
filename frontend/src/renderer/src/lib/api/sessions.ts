@@ -253,20 +253,11 @@ export const workspaceFilesQuery = (path: string) =>
     staleTime: 30_000,
   })
 
-// Git/forge state of the session's working directory. Resilient: any failure
-// (older backend without the route) reads as "not a repo" so repo actions
-// simply don't render. Polled while mounted — the branch and upstream change
-// as agents work.
+// Polled while mounted — the branch and upstream change as agents work.
 export const sessionRepoQuery = (id: string) =>
   queryOptions({
     queryKey: keys.sessionRepo(id),
-    queryFn: async (): Promise<RepoInfo> => {
-      try {
-        return await get<RepoInfo>(`/v1/sessions/${id}/repo`)
-      } catch {
-        return { git: false }
-      }
-    },
+    queryFn: () => get<RepoInfo>(`/v1/sessions/${id}/repo`),
     staleTime: 15_000,
     refetchInterval: 30_000,
   })

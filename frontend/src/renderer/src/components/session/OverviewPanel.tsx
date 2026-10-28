@@ -14,6 +14,7 @@ import {
   type LucideIcon,
   LoaderCircle,
   Minimize2,
+  RefreshCw,
 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
@@ -58,7 +59,7 @@ export function OverviewPanel({
   onQueueAction: (action: QueuedAction, label: string) => Promise<void>
 }) {
   const repo = useRepoActions(session)
-  const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing))
+  const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing || repo.error))
   return (
     <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-4">
       <OverviewRuns threads={spawnedThreads} subagents={subagents} />
@@ -340,13 +341,13 @@ function canCompactSession(session: Session): boolean {
   return Boolean(session.actions?.compact)
 }
 
-function canHandoffToMain(info: RepoInfo | undefined): boolean {
-  return Boolean(info?.is_worktree && info.main_branch && (info.dirty || !info.no_commits))
+function canMergeIntoMain(info: RepoInfo | undefined): boolean {
+  return Boolean(info?.is_worktree && info.main_branch && (info.dirty || info.ahead !== 0))
 }
 
 function canReviewSession(info: RepoInfo | undefined): boolean {
   if (!info?.git || info.worktree_missing) return false
-  return Boolean(info.dirty || info.needs_push || canHandoffToMain(info) || branchHasCommits(info))
+  return Boolean(info.dirty || info.needs_push || canMergeIntoMain(info) || branchHasCommits(info))
 }
 
 function branchHasCommits(info: RepoInfo): boolean {
@@ -383,6 +384,13 @@ function GitSection({
     if (copiedTimer.current) clearTimeout(copiedTimer.current)
   }, [])
 
+  if (repo.error) return (
+    <section className="flex flex-col gap-1">
+      <SectionHeader>Git</SectionHeader>
+      <p className="px-2.5 text-[12px] leading-snug text-danger">Git status unavailable. Merge and push status could not be checked.</p>
+      <ActionRow icon={RefreshCw} onClick={repo.refetch}>Retry Git status</ActionRow>
+    </section>
+  )
   if (!info) return null
   if (info.worktree_missing) {
     return (
@@ -423,7 +431,7 @@ function GitSection({
     ? { color: 'bg-running', label: 'Uncommitted changes' }
     : info.needs_push
       ? { color: 'bg-primary', label: 'Unpushed commits' }
-      : { color: 'bg-ok', label: 'Working tree clean' }
+      : { color: 'bg-ink-3', label: 'No uncommitted changes' }
   return (
     <>
       <section className="flex flex-col gap-0.5">
@@ -467,6 +475,17 @@ function GitSection({
           <span className={`size-[9px] shrink-0 rounded-full ${changes.color} mx-0.5`} aria-hidden />
           <span className="min-w-0 flex-1 truncate">{changes.label}</span>
         </div>
+        {info.is_worktree && info.main_branch ? (
+          <p className={`px-2.5 py-1 text-[12px] leading-snug ${info.dirty || (info.ahead ?? 0) > 0 ? 'text-running' : 'text-ink-3'}`}>
+            {info.dirty
+              ? `Uncommitted changes are not in ${info.main_branch}.`
+              : info.ahead === undefined
+                ? `Merge status against ${info.main_branch} is unknown.`
+                : info.ahead > 0
+                  ? `${info.ahead} ${info.ahead === 1 ? 'commit is' : 'commits are'} not in ${info.main_branch}.`
+                  : `No commits to merge from this branch into ${info.main_branch}.`}
+          </p>
+        ) : null}
         {info.dirty ? (
           <ActionRow
             icon={busy === 'commit' ? LoaderCircle : Check}
@@ -509,19 +528,22 @@ function GitSection({
             {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
           </ActionRow>
         ) : null}
-        {canHandoffToMain(info) ? (
+        {info.is_worktree && info.main_branch ? (
           <ActionRow
             icon={busy === 'merge' ? LoaderCircle : GitMerge}
             spin={busy === 'merge'}
-            disabled={busy !== null}
-            hint={`Commits this session's work and hands its branch off to ${info.main_branch}`}
+            disabled={busy !== null || !canMergeIntoMain(info)}
+            hint={canMergeIntoMain(info) ? `Commits this branch's changes and merges into local ${info.main_branch}. Does not push or release.` : `No changes to merge from this branch. Other worktrees are not included.`}
             onClick={() => void repo.merge()}
-            onQueue={() => queueAction('repo/merge', `Hand off to ${info.main_branch}`)}
-            queueDisabled={busy !== null}
-            queueHint={`Queue Hand off to ${info.main_branch}`}
+            onQueue={() => queueAction('repo/merge', `Merge into ${info.main_branch}`)}
+            queueDisabled={busy !== null || !canMergeIntoMain(info)}
+            queueHint={`Queue Merge into ${info.main_branch}`}
           >
-            {busy === 'merge' ? 'Handing off…' : `Hand off to ${info.main_branch}`}
+            {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
           </ActionRow>
+        ) : null}
+        {info.is_worktree && info.main_branch ? (
+          <p className="px-2.5 py-1 text-[12px] leading-snug text-ink-3">This menu checks this thread’s branch. Merging, pushing and releasing are separate steps.</p>
         ) : null}
       </section>
 

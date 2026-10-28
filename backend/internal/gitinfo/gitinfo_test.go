@@ -430,6 +430,9 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AddWorktree: %v", err)
 	}
+	if info := Inspect(ctx, worktree); info.Ahead == nil || *info.Ahead != 0 {
+		t.Fatalf("new worktree merge status = %+v, want known zero commits", info)
+	}
 
 	// Nothing to merge is an error, not a silent success.
 	if _, err := MergeIntoMain(ctx, worktree, "noop"); err == nil || !strings.Contains(err.Error(), "nothing to merge") {
@@ -471,6 +474,9 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(main, "index.html")); string(got) != "orange\n" {
 		t.Errorf("main index.html = %q, want merged content", got)
+	}
+	if info := Inspect(ctx, worktree); info.Ahead == nil || *info.Ahead != 0 {
+		t.Fatalf("merged worktree status = %+v, want known zero commits", info)
 	}
 	if _, err := os.Stat(filepath.Join(main, "new.txt")); err != nil {
 		t.Error("untracked new.txt did not arrive in main")
