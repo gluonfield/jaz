@@ -88,8 +88,8 @@ export function BrowserProfileImportDialog({ api, onClose }: {
       <p className="mt-3 text-[12px] leading-relaxed text-ink-2">
         {profile?.passwords ? 'Imports HTTPS logins. Existing Jaz passwords are kept.' : 'Password import is available from Chrome and Edge on macOS.'}
       </p>
+      {profile ? <p className="mt-3 text-[12px] text-ink-2">Import may ask to unlock {profile.browser}’s saved data{selection.passwords ? ' and “Jaz Safe Storage” to encrypt passwords in Jaz' : ''}.</p> : null}
       {!loading && !profiles.length && !error ? <p className="mt-3 text-[13px] text-ink-2">Use Chrome or Edge on macOS, or Firefox for cookies.</p> : null}
-      {importing ? <p role="status" className="mt-3 text-[12px] text-ink-2">Your computer may ask for access to the selected browser’s saved data.</p> : null}
       {result ? <div role="status" className="mt-4 space-y-1 text-[13px] text-ink">
         {(['passwords', 'cookies'] as const).map((kind) => {
           const count = result[kind]
