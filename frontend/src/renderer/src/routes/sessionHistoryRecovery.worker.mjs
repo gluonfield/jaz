@@ -28,7 +28,10 @@ globalThis.document = {
 globalThis.fetch = async () => new globalThis.Response(null, { status: 503 })
 const reactDOM = await import('react-dom')
 mock.module('react-dom', () => ({ ...reactDOM, createPortal: (children) => children }))
-mock.module('@/lib/connection', () => ({ useBackendChange: () => {} }))
+mock.module('@/lib/connection', () => ({
+  useBackendChange: () => {},
+  useConnection: () => ({ status: 'disconnected', url: 'http://localhost', pairing: null, error: null }),
+}))
 const browserSessionsModule = await import('@/lib/browserSessions')
 mock.module('@/lib/browserSessions', () => ({
   ...browserSessionsModule,
