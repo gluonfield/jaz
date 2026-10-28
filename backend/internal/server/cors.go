@@ -6,7 +6,7 @@ import (
 )
 
 func allowedOrigin(origin string, trusted ...string) bool {
-	if origin == "null" {
+	if origin == "null" || origin == "file://" {
 		return true
 	}
 	u, err := url.Parse(origin)
