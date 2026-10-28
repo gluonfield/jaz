@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -187,7 +188,7 @@ func (s *Store) HasAgentTranscript(id string) (bool, error) {
 		}
 	}
 	for _, event := range events[start:] {
-		if event.Type != sessionevents.TypeAgentSession && event.Type != sessionevents.TypeVoiceMessage {
+		if !slices.Contains(sessionevents.OutsideAgentTranscript, event.Type) {
 			return true, nil
 		}
 	}

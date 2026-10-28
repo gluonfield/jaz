@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
@@ -114,7 +115,9 @@ func (s *Store) SaveSession(session storage.Session) error {
 }
 
 func (s *Store) HasAgentTranscript(id string) (bool, error) {
-	hasTranscript, err := threaddb.New(s.db).HasAgentTranscript(context.Background(), id)
+	hasTranscript, err := threaddb.New(s.db).HasAgentTranscript(context.Background(), threaddb.HasAgentTranscriptParams{
+		ID: id, OutsideTypes: sessionevents.OutsideAgentTranscript,
+	})
 	return hasTranscript != 0, err
 }
 

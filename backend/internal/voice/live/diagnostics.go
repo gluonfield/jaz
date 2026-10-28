@@ -40,8 +40,8 @@ func (s *Transcript) Record(sessionID string, records []Diagnostic) error {
 			return fmt.Errorf("%w: %v", ErrInput, err)
 		}
 		events = append(events, sessionevents.Event{
-			SessionID: sessionID, Type: "voice_diagnostic", Content: string(data),
-			ProjectionKey: "voice_diagnostic:" + record.CallID + ":" + record.ID,
+			SessionID: sessionID, Type: sessionevents.TypeVoiceDiagnostic, Content: string(data),
+			ProjectionKey: sessionevents.TypeVoiceDiagnostic + ":" + record.CallID + ":" + record.ID,
 			ProjectionOp:  sessionevents.ProjectionReplace,
 		})
 	}

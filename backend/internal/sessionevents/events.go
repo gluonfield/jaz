@@ -14,6 +14,7 @@ import (
 
 const (
 	TypeVoiceMessage     = "voice_message"
+	TypeVoiceDiagnostic  = "voice_diagnostic"
 	TypeAgentSession     = "agent_session"
 	TypeAgentTask        = "agent_task"
 	TypeArtifact         = "artifact"
@@ -31,6 +32,9 @@ const (
 	TypeACPMessage       = "acp_message"
 	TypeACPThought       = "acp_thought"
 )
+
+// OutsideAgentTranscript are events Jaz records beside an agent; they never reach its native session.
+var OutsideAgentTranscript = []string{TypeAgentSession, TypeVoiceMessage, TypeVoiceDiagnostic, TypeAgentSwitch, TypeBotActivity}
 
 type VoiceMessage struct {
 	ID     string    `json:"id"`

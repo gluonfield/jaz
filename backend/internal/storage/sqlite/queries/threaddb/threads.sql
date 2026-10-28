@@ -280,7 +280,6 @@ WHERE id = sqlc.arg(id)
 -- name: HasAgentTranscript :one
 -- After an agent switch only the new agent's events count: its native session
 -- starts fresh at the switch, and a prompt it received always leaves events.
--- Bot activity is Jaz's note beside the agent's work, never the agent's own.
 WITH switched AS (
   SELECT MAX(seq) AS seq
   FROM session_events
@@ -288,7 +287,7 @@ WITH switched AS (
 )
 SELECT CAST(
   ((SELECT seq FROM switched) IS NULL AND EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = sqlc.arg(id)))
-  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id) AND session_events.type NOT IN ('agent_session', 'voice_message', 'voice_diagnostic', 'agent_switch', 'bot_activity') AND session_events.seq > COALESCE((SELECT seq FROM switched), 0))
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id) AND session_events.type NOT IN (sqlc.slice('outside_types')) AND session_events.seq > COALESCE((SELECT seq FROM switched), 0))
 AS INTEGER)
 FROM threads
 WHERE threads.id = sqlc.arg(id);

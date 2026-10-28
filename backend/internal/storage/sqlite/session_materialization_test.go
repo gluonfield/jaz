@@ -42,7 +42,7 @@ func TestRuntimeSessionMaterializationState(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
-		SessionID: session.ID, Type: "voice_diagnostic", Content: `{"id":"connected","call_id":"call"}`,
+		SessionID: session.ID, Type: sessionevents.TypeVoiceDiagnostic, Content: `{"id":"connected","call_id":"call"}`,
 	}); err != nil {
 		t.Fatal(err)
 	}

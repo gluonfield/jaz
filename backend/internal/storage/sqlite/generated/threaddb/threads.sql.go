@@ -212,17 +212,32 @@ WITH switched AS (
 )
 SELECT CAST(
   ((SELECT seq FROM switched) IS NULL AND EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = ?1))
-  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1 AND session_events.type NOT IN ('agent_session', 'voice_message', 'voice_diagnostic', 'agent_switch', 'bot_activity') AND session_events.seq > COALESCE((SELECT seq FROM switched), 0))
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = ?1 AND session_events.type NOT IN (/*SLICE:outside_types*/?) AND session_events.seq > COALESCE((SELECT seq FROM switched), 0))
 AS INTEGER)
 FROM threads
 WHERE threads.id = ?1
 `
 
+type HasAgentTranscriptParams struct {
+	ID           string   `json:"id"`
+	OutsideTypes []string `json:"outside_types"`
+}
+
 // After an agent switch only the new agent's events count: its native session
 // starts fresh at the switch, and a prompt it received always leaves events.
-// Bot activity is Jaz's note beside the agent's work, never the agent's own.
-func (q *Queries) HasAgentTranscript(ctx context.Context, id string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, hasAgentTranscript, id)
+func (q *Queries) HasAgentTranscript(ctx context.Context, arg HasAgentTranscriptParams) (int64, error) {
+	query := hasAgentTranscript
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.ID)
+	if len(arg.OutsideTypes) > 0 {
+		for _, v := range arg.OutsideTypes {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:outside_types*/?", strings.Repeat(",?", len(arg.OutsideTypes))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:outside_types*/?", "NULL", 1)
+	}
+	row := q.db.QueryRowContext(ctx, query, queryParams...)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err

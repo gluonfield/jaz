@@ -10,7 +10,7 @@ const authTokens = new Map<string, string>()
 const resourceTickets = new Map<string, ResourceTicket>()
 let credentialRevision = 0
 const sessionListeners = new Set<() => void>()
-const requests = new Set<AbortController>()
+let sessionRequests = new AbortController()
 const rejectionListeners = new Set<() => void>()
 // The port the local backend always runs on; a loopback host on this port is
 // "this machine", any other loopback port is a tunnel to a remote backend.
@@ -234,10 +234,8 @@ export function onApiAuthRejected(handler: () => void): () => void {
 
 function notifySessionChange(): void {
   credentialRevision += 1
-  for (const request of requests) {
-    request.abort()
-  }
-  requests.clear()
+  sessionRequests.abort()
+  sessionRequests = new AbortController()
   for (const handler of sessionListeners) {
     handler()
   }
@@ -273,9 +271,7 @@ function appendAuthQuery(rawUrl: string, url = apiBaseUrl()): string {
 
 export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): Promise<Response> {
   assertBackendRelativePath(path, 'apiFetch')
-  const controller = new AbortController()
-  requests.add(controller)
-  const signal = init?.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal
+  const signal = init?.signal ? AbortSignal.any([init.signal, sessionRequests.signal]) : sessionRequests.signal
   const revision = credentialRevision
   const options = withAPIHeaders({ ...init, signal }, url)
   const bearer = new Headers(options.headers).get('Authorization')
@@ -289,40 +285,7 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
         }
       }
     }
-    if (!response.body || [204, 205, 304].includes(response.status)) {
-      requests.delete(controller)
-      return response
-    }
-    const reader = response.body.getReader()
-    const body = new ReadableStream({
-      async pull(stream) {
-        try {
-          const chunk = await reader.read()
-          if (chunk.done) {
-            requests.delete(controller)
-            stream.close()
-          } else {
-            stream.enqueue(chunk.value)
-          }
-        } catch (error) {
-          requests.delete(controller)
-          stream.error(error)
-        }
-      },
-      cancel(reason) {
-        requests.delete(controller)
-        controller.abort(reason)
-        return reader.cancel(reason)
-      },
-    })
-    const result = new Response(body, response)
-    Object.defineProperties(result, {
-      url: { value: response.url }, redirected: { value: response.redirected }, type: { value: response.type },
-    })
-    return result
-  }).catch((error: unknown) => {
-    requests.delete(controller)
-    throw error
+    return response
   })
 }
 
