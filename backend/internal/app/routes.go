@@ -230,6 +230,7 @@ func appendBrowserRoutes(routes server.Routes, settings *BrowserSettingsHandler,
 	}
 	if backend != nil {
 		routes = append(routes,
+			server.Route{Pattern: "GET /v1/browser/desktop", Handler: browserapi.DesktopHandler{Backend: backend.DesktopBackend, Store: store}},
 			server.Route{Pattern: "GET /v1/sessions/{session}/browser", Handler: browserapi.DesktopHandler{Backend: backend.DesktopBackend, Store: store}},
 			server.Route{Pattern: "POST /v1/sessions/{session}/browser", Handler: browserapi.DesktopHandler{Backend: backend.DesktopBackend, Store: store}},
 		)

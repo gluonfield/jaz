@@ -11,12 +11,14 @@ import (
 )
 
 type DesktopBackend struct {
-	mu    sync.Mutex
-	pages map[string]*browserPage
+	mu      sync.Mutex
+	pages   map[string]*browserPage
+	host    *cdpConn
+	changed chan struct{}
 }
 
 func NewDesktopBackend() *DesktopBackend {
-	return &DesktopBackend{pages: map[string]*browserPage{}}
+	return &DesktopBackend{pages: map[string]*browserPage{}, changed: make(chan struct{})}
 }
 
 func (b *DesktopBackend) Connect(ctx context.Context, session string, ws *websocket.Conn) {
@@ -28,6 +30,8 @@ func (b *DesktopBackend) Connect(ctx context.Context, session string, ws *websoc
 		return
 	}
 	b.pages[session] = page
+	close(b.changed)
+	b.changed = make(chan struct{})
 	b.mu.Unlock()
 	defer func() {
 		b.mu.Lock()
@@ -42,15 +46,10 @@ func (b *DesktopBackend) Connect(ctx context.Context, session string, ws *websoc
 }
 
 func (b *DesktopBackend) Call(ctx context.Context, input ActionInput) (ActionOutput, error) {
-	b.mu.Lock()
-	page := b.pages[input.Session]
-	b.mu.Unlock()
-	if page == nil {
-		return ActionOutput{}, errors.New("open this conversation in the Jaz desktop app to connect its side browser")
-	}
 	ctx, cancel := context.WithTimeout(ctx, 70*time.Second)
 	defer cancel()
-	if err := ctx.Err(); err != nil {
+	page, err := b.page(ctx, input.Session)
+	if err != nil {
 		return ActionOutput{}, err
 	}
 	if input.Action != ActionScript {
@@ -106,6 +105,9 @@ func (b *DesktopBackend) Close() error {
 	defer b.mu.Unlock()
 	for _, page := range b.pages {
 		page.close()
+	}
+	if b.host != nil {
+		return b.host.Close()
 	}
 	return nil
 }

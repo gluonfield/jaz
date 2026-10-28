@@ -5,9 +5,11 @@ import { clientRuntime } from '@/lib/clientRuntime'
 import { useBackendChange } from '@/lib/connection'
 import { useSideBrowser } from '@/lib/hooks/useSideBrowser'
 import { BROWSER_IDLE_MS } from '@/lib/browserRetention'
+import { useBrowserHost } from '@/lib/hooks/useBrowserHost'
 
 export function BrowserWorkspace({ children, idleMs = BROWSER_IDLE_MS }: { children: ReactNode; idleMs?: number }) {
   const [sessions] = useState(() => new BrowserSessions())
+  useBrowserHost(sessions)
   const entries = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot)
   useBackendChange(() => sessions.clear())
   return (

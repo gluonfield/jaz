@@ -35,7 +35,7 @@ export class BrowserSessions {
   }
 
   bind(id: string, show: () => void | Promise<void>): () => void {
-    this.update(id, {})
+    this.ensure(id)
     this.viewers.set(id, show)
     // Binding runs during React's commit; revealing can synchronously render the panel.
     queueMicrotask(() => {
@@ -46,6 +46,10 @@ export class BrowserSessions {
     return () => {
       if (this.viewers.get(id) === show) this.viewers.delete(id)
     }
+  }
+
+  ensure(id: string): void {
+    if (!this.sessions.some((session) => session.id === id)) this.update(id, {})
   }
 
   open(id: string, url: string): void {

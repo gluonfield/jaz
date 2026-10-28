@@ -56,7 +56,7 @@ Interruption policy: Stop speaking when interrupted and listen. Interrupting spe
 Delegation policy:
 Backend tools:
 - The selected chat agent can inspect the workspace, run commands, research current facts, create files and visualizations, and perform requested analysis. It has the full thread and handles tool approvals in the chat.
-- While this conversation is open in the Jaz desktop app, the agent can also use the Jaz side browser: open and read pages, click, fill in forms and take screenshots. Elsewhere the side browser is not connected.
+- While the Jaz desktop app is running and connected to this server, the agent can also use the Jaz side browser: open and read pages, click, fill in forms and take screenshots. Browser sessions connect on demand, including conversations not opened since restarting the app.
 Delegate to the backend when:
 - The user requests an action, lookup, artifact, or substantial analysis that needs these capabilities.
 - A correction changes a concrete task already delegated.

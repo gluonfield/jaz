@@ -1,12 +1,13 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ApiError, apiWebSocket, post } from '@/lib/api/client'
+import { ApiError, post } from '@/lib/api/client'
 import { getSession } from '@/lib/api/sessions'
 import { browserSettingsQuery } from '@/lib/api/settings'
 import type { BrowserCommand } from '@shared/browserControl'
 import { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserRetention } from '@/lib/browserRetention'
+import { connectBrowser } from '@/lib/browserConnection'
 
 export function useSideBrowser({ sessionId, open, show, visible, url, idleMs, controlled = true }: {
   sessionId: string
@@ -59,47 +60,9 @@ export function useSideBrowser({ sessionId, open, show, visible, url, idleMs, co
     if (!browser || !enabled) {
       return
     }
-    let stopped = false
-    let socket: WebSocket
-    let retry: ReturnType<typeof setTimeout>
-    const connect = () => {
-      socket = apiWebSocket(`/v1/sessions/${encodeURIComponent(sessionId)}/browser`)
-      const current = socket
-      current.onmessage = async (event) => {
-        if (stopped) {
-          return
-        }
-        let request: BrowserCommand & { id: number }
-        try {
-          request = JSON.parse(event.data)
-        } catch {
-          current.close()
-          return
-        }
-        try {
-          const result = await execute(browser, request)
-          if (current.readyState === WebSocket.OPEN) {
-            current.send(JSON.stringify({ id: request.id, result }))
-          }
-        } catch (error) {
-          if (current.readyState === WebSocket.OPEN) {
-            current.send(JSON.stringify({ id: request.id, error: { code: -32000, message: error instanceof Error ? error.message : String(error) } }))
-          }
-        }
-      }
-      current.onclose = () => {
-        if (stopped) {
-          return
-        }
-        browser.cancel()
-        retry = setTimeout(connect, 2000)
-      }
-    }
-    connect()
+    const disconnect = connectBrowser(`/v1/sessions/${encodeURIComponent(sessionId)}/browser`, (request) => execute(browser, request), () => browser.cancel())
     return () => {
-      stopped = true
-      clearTimeout(retry)
-      socket.close()
+      disconnect()
       browser.dispose()
     }
   }, [browser, enabled, sessionId])
