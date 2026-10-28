@@ -1,8 +1,9 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { Download, RefreshCw, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { UpdateStatus } from '../../../../shared/update'
+import type { UpdateStatus } from '@shared/update'
 import { Button } from '@/components/ui/Button'
+import { IconButton } from '@/components/ui/IconButton'
 import { clientRuntime } from '@/lib/clientRuntime'
 
 type VisibleUpdateStatus = Exclude<UpdateStatus, { state: 'idle' }>
@@ -26,7 +27,6 @@ function updateText(status: VisibleUpdateStatus) {
     case 'downloading':
       return {
         title: 'Downloading update',
-        detail: `${Math.round(status.percent)}% downloaded`,
       }
     case 'downloaded':
       return {
@@ -49,9 +49,8 @@ function UpdateNotice({
   onDismiss: () => void
 }) {
   const text = updateText(status)
-  const percent = status.state === 'downloading' ? Math.round(status.percent) : 0
-  const iconTone =
-    status.state === 'error' ? 'bg-danger-soft text-danger' : 'bg-primary-soft text-primary'
+  const percent = status.state === 'downloading' ? Math.max(0, Math.min(100, Math.round(status.percent))) : 0
+  const Icon = status.state === 'error' ? X : status.state === 'checking' || status.state === 'downloaded' ? RefreshCw : Download
 
   return (
     <motion.section
@@ -62,41 +61,36 @@ function UpdateNotice({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 3 }}
       transition={{ type: 'spring', duration: 0.24, bounce: 0 }}
-      className="overflow-hidden rounded-card bg-bg/70 p-2.5 text-[13px] text-ink ring-1 ring-border/70"
+      className="px-2.5 py-2 text-[13px] text-ink"
     >
       <div className="flex items-start gap-2">
-        <div className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${iconTone}`}>
-          {status.state === 'error' ? (
-            <X size={14} />
-          ) : status.state === 'checking' || status.state === 'downloaded' ? (
-            <RefreshCw size={14} />
-          ) : (
-            <Download size={14} />
-          )}
+        <div aria-hidden className={`mt-0.5 grid size-[18px] shrink-0 place-items-center ${status.state === 'error' ? 'text-danger' : 'text-ink-2'}`}>
+          <Icon size={16} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium text-ink">{text.title}</div>
-          <div className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-2">{text.detail}</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 font-medium">{text.title}</div>
+            {status.state === 'downloading' ? <span className="shrink-0 text-[12px] tabular-nums text-ink-2">{percent}%</span> : null}
+          </div>
+          {status.state === 'downloading' ? (
+            <div role="progressbar" aria-label={text.title} aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} className="mt-2 h-0.5 overflow-hidden rounded-full bg-border">
+              <div
+                className="h-full origin-left rounded-full bg-primary transition-transform duration-300 motion-reduce:transition-none"
+                style={{ transform: `scaleX(${percent / 100})` }}
+              />
+            </div>
+          ) : <div className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-2">{text.detail}</div>}
         </div>
-        <button
-          type="button"
+        <IconButton
+          size="xs"
           aria-label="Dismiss update"
           title="Dismiss"
           onClick={onDismiss}
-          className="-mt-1 -mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-full text-ink-3 transition-[background-color,color,transform] duration-150 hover:bg-surface-2 hover:text-ink active:scale-[0.96]"
+          className="-mt-0.5 -mr-1"
         >
-          <X size={14} />
-        </button>
+          <X size={13} />
+        </IconButton>
       </div>
-
-      {status.state === 'downloading' ? (
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
-          <div
-            className="h-full origin-left rounded-full bg-primary transition-transform duration-300"
-            style={{ transform: `scaleX(${Math.max(0, Math.min(100, percent)) / 100})` }}
-          />
-        </div>
-      ) : null}
 
       {status.state === 'downloaded' ? (
         <div className="mt-2 flex justify-end gap-1">
