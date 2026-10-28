@@ -214,3 +214,9 @@ test('session clear aborts an authenticated response body after its headers arri
   api.clearApiSession()
   expect(await body).toBeInstanceOf(Error)
 })
+
+test('write acknowledgements keep their null-body status when Chromium exposes an empty body', async () => {
+  const { api } = fixture()
+  replace('fetch', async () => Object.defineProperty(new Response(null, { status: 204 }), 'body', { value: new ReadableStream() }))
+  expect(await api.post('/v1/sessions/thread/voice/transcript', [])).toBeUndefined()
+})

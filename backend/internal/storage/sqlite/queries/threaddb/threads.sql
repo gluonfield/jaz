@@ -288,7 +288,7 @@ WITH switched AS (
 )
 SELECT CAST(
   ((SELECT seq FROM switched) IS NULL AND EXISTS(SELECT 1 FROM messages WHERE messages.thread_id = sqlc.arg(id)))
-  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id) AND session_events.type NOT IN ('agent_session', 'voice_message', 'agent_switch', 'bot_activity') AND session_events.seq > COALESCE((SELECT seq FROM switched), 0))
+  OR EXISTS(SELECT 1 FROM session_events WHERE session_events.thread_id = sqlc.arg(id) AND session_events.type NOT IN ('agent_session', 'voice_message', 'voice_diagnostic', 'agent_switch', 'bot_activity') AND session_events.seq > COALESCE((SELECT seq FROM switched), 0))
 AS INTEGER)
 FROM threads
 WHERE threads.id = sqlc.arg(id);

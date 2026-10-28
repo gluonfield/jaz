@@ -289,7 +289,7 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
         }
       }
     }
-    if (!response.body) {
+    if (!response.body || [204, 205, 304].includes(response.status)) {
       requests.delete(controller)
       return response
     }

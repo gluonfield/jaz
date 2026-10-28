@@ -41,6 +41,11 @@ func TestRuntimeSessionMaterializationState(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.AppendSessionEvents(session.ID, sessionevents.Event{
+		SessionID: session.ID, Type: "voice_diagnostic", Content: `{"id":"connected","call_id":"call"}`,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if hasTranscript, err := store.HasAgentTranscript(session.ID); err != nil || hasTranscript {
 		t.Fatalf("voice-only agent transcript = %t, %v", hasTranscript, err)
 	}
