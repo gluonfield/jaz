@@ -354,7 +354,7 @@ function openBoardWindow(boardId: string): void {
 }
 
 app.whenReady().then(() => {
-  configurePreviewSession()
+  configurePreviewSession(join(__dirname, '../preload/chrome.js'))
   installBrowserDownloads()
   installApplicationMenu()
   registerDictation()

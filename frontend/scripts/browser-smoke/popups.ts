@@ -87,7 +87,7 @@ export async function exerciseBrowserPopups(preload: string, openedURLs: string[
       assert.equal(preferences.webSecurity, true)
       assert.equal(preferences.allowRunningInsecureContent, false)
       assert.equal(preferences.webviewTag, false)
-      assert.deepEqual(await popup.webContents.executeJavaScript('[typeof require, typeof process, typeof window.jaz]'), ['undefined', 'undefined', 'undefined'])
+      assert.deepEqual(await popup.webContents.executeJavaScript('[typeof require, typeof process, typeof window.jaz, chrome.app.runningState()]'), ['undefined', 'undefined', 'undefined', 'cannot_run'])
       return popup
     }
     const callback = await open(parent, childOrigin + '/redirect', 'width=520,height=600,nodeIntegration=yes,contextIsolation=no,webviewTag=yes,frame=no')
