@@ -1,9 +1,9 @@
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { build } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 
-const output = resolve('../runs/onboarding-permissions')
+const output = resolve(process.env.JAZ_PERMISSION_EVIDENCE || '../runs/onboarding-permissions')
 const fixtures = resolve('out/permissions')
 try {
   await mkdir(join(fixtures, 'renderer'), { recursive: true })
@@ -71,25 +71,50 @@ try {
   ], { stdout: Bun.file(join(output, 'package.log')), stderr: 'inherit', env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false' } })
   if (await packed.exited !== 0) throw new Error('Packaging failed')
   const bundle = join(output, 'package/mac-arm64/Jaz.app/Contents')
-  for (const broken of [false, true]) {
-    const dylib = join(bundle, 'Resources/app.asar.unpacked/node_modules/@trycua/cua-driver-darwin-arm64/libcua_driver_sdk.dylib')
-    if (broken) await rename(dylib, dylib + '.held')
-    try {
-      const log = join(output, broken ? 'broken.log' : 'packaged.log')
-      await writeFile(log, '')
-      const check = Bun.spawn([join(bundle, 'MacOS/Jaz')], {
-        env: { ...process.env, JAZ_PERMISSION_EVIDENCE: output, JAZ_PERMISSION_BROKEN: broken ? '1' : '' },
-        stdout: Bun.file(log),
-        stderr: 'inherit',
-      })
-      const deadline = setTimeout(() => check.kill('SIGKILL'), 60000)
-      const exitCode = await check.exited
-      clearTimeout(deadline)
-      if (exitCode !== 0) throw new Error(`Packaged check failed (missing library: ${broken})`)
-    } finally {
-      if (broken) await rename(dylib + '.held', dylib)
+  const sampler = join(output, 'visibility-sampler')
+  const compile = Bun.spawn(['xcrun', 'swiftc', 'scripts/fixtures/onboarding-visibility.swift', '-o', sampler], { stdout: 'inherit', stderr: 'inherit' })
+  if (await compile.exited !== 0) throw new Error('Visibility sampler compilation failed')
+  const stopFile = join(output, 'visibility.stop')
+  const visibilityFile = join(output, 'visibility.json')
+  const pidFile = join(output, 'visibility-pids.txt')
+  await writeFile(pidFile, '')
+  await rm(stopFile, { force: true })
+  const monitor = Bun.spawn([sampler, resolve(bundle, '..'), stopFile, visibilityFile, pidFile], { stdout: 'pipe', stderr: 'inherit' })
+  const reader = monitor.stdout.getReader()
+  const ready = await reader.read()
+  reader.releaseLock()
+  if (!new TextDecoder().decode(ready.value).includes('ready')) throw new Error('Visibility sampler did not start')
+  const checkedPids: number[] = []
+  let monitorExit: number | null
+  try {
+    for (const broken of [false, true]) {
+      const dylib = join(bundle, 'Resources/app.asar.unpacked/node_modules/@trycua/cua-driver-darwin-arm64/libcua_driver_sdk.dylib')
+      if (broken) await rename(dylib, dylib + '.held')
+      try {
+        const log = join(output, broken ? 'broken.log' : 'packaged.log')
+        await writeFile(log, '')
+        const check = Bun.spawn([join(bundle, 'MacOS/Jaz')], {
+          env: { ...process.env, JAZ_PERMISSION_EVIDENCE: output, JAZ_PERMISSION_BROKEN: broken ? '1' : '' },
+          stdout: Bun.file(log),
+          stderr: 'inherit',
+        })
+        checkedPids.push(check.pid)
+        await writeFile(pidFile, checkedPids.join('\n'))
+        const deadline = setTimeout(() => check.kill('SIGKILL'), 60000)
+        const exitCode = await check.exited
+        clearTimeout(deadline)
+        if (exitCode !== 0) throw new Error(`Packaged check failed (missing library: ${broken})`)
+      } finally {
+        if (broken) await rename(dylib + '.held', dylib)
+      }
     }
+  } finally {
+    await writeFile(stopFile, '')
+    monitorExit = await monitor.exited
   }
+  if (monitorExit !== 0) throw new Error('Packaged probe appeared on screen or took foreground focus; inspect visibility.json')
+  const visibility = JSON.parse(await readFile(visibilityFile, 'utf8'))
+  if (!checkedPids.every(pid => visibility.seen_target_pids.includes(pid))) throw new Error('Visibility sampling missed a packaged process')
   console.log(`Packaged onboarding evidence: ${output}`)
 } finally {
   await rm(fixtures, { recursive: true, force: true })
