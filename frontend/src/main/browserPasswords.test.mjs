@@ -32,7 +32,7 @@ const evaluate = new Function('require', 'module', 'exports', await result.outpu
 const require = createRequire(import.meta.url)
 class DatabaseSync extends Database {
   constructor(file, options) {
-    super(file, { readonly: options?.readOnly ?? false })
+    super(file, options?.readOnly ? { readonly: true } : { readwrite: true, create: true })
   }
 
   prepare(sql) {
