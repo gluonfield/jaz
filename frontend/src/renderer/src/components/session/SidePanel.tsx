@@ -93,7 +93,7 @@ export function SidePanel({
               ) : tab.kind === 'terminal' ? (
                 <TerminalPanel session={session} visible={visible} />
               ) : tab.kind === 'file' ? (
-                <FileReaderPanel sessionId={session.id} fileRef={tab.file} visible={visible} onOpenFile={panel.openFile} />
+                <FileReaderPanel sessionId={session.id} fileRef={tab.file} visible={visible} onOpenFile={panel.openFile} onClose={panel.close} />
               ) : tab.kind === 'diff' ? (
                 <CodeDiffPanel sessionId={session.id} visible={visible} />
               ) : tab.kind === 'app' ? (

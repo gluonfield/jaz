@@ -268,7 +268,7 @@ test('standalone Markdown paths and links render document cards with formatted c
         ),
       ))
       expect(html).toContain('class="markdown-document-card"')
-      expect(html).toContain('<h1>Manufacturing report</h1>')
+      expect(html).toContain('<h1 id="manufacturing-report">Manufacturing report</h1>')
       expect(html).toContain('<strong>short</strong>')
       expect(html).toContain('<li>Press</li>')
       expect(html).toContain('<td>£1</td>')

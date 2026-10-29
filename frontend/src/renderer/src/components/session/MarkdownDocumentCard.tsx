@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowUpRight, FileText } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { sessionFileQuery } from '@/lib/api/sessions'
+import { markdownDocumentTitle } from '@/lib/markdownDocuments'
 import type { FileReference } from '@shared/fileReader'
 
 export function MarkdownDocumentCard({ sessionId, file, label, onOpen, renderContent }: {
@@ -14,7 +15,7 @@ export function MarkdownDocumentCard({ sessionId, file, label, onOpen, renderCon
   const query = useQuery(sessionFileQuery(sessionId, file.path))
   const name = file.path.split(/[\\/]/).at(-1) ?? file.path
   const content = query.data?.binary ? '' : query.data?.content ?? ''
-  const title = content.match(/^#\s+(.+)$/m)?.[1] ?? (label || name)
+  const title = markdownDocumentTitle(content, file.path, label)
   return (
     <div className="markdown-document-card">
       <div className="markdown-document-preview" aria-hidden inert>
@@ -34,7 +35,7 @@ export function MarkdownDocumentCard({ sessionId, file, label, onOpen, renderCon
         </div>
         <ArrowUpRight size={15} className="shrink-0 text-ink-3" aria-hidden />
       </div>
-      <button type="button" aria-label={`Open ${title}`} title={file.path} className="absolute inset-0 rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onOpen(file)} />
+      <button type="button" aria-label={`Open ${title}`} className="absolute inset-0 rounded-[inherit] outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onOpen(file)} />
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { AppIcon } from '@/components/apps/AppIcon'
 import { IconButton } from '@/components/ui/IconButton'
 import { ContextMenu, MenuRow, Popover } from '@/components/ui/Popover'
 import { Favicon } from '@/components/ui/Favicon'
-import { isSpreadsheetPath } from '@shared/fileReader'
+import { isMarkdownPath, isSpreadsheetPath } from '@shared/fileReader'
 import { entrypointKey, mcpEntrypointsQuery } from '@/lib/api/mcp'
 import { useBrowserSessions } from '@/lib/browserSessions'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
@@ -113,7 +113,7 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
         {tabs.map((tab, index) => {
           const label = tab.kind === 'app' ? tab.file?.name ?? tab.app.title : TAB_TYPES[tab.kind].label
           const target = browsers.find((browser) => browser.id === tab.id)?.target
-          const title = tab.kind === 'file' ? tab.file?.path.split('/').pop() || label : target?.title || target?.displayUrl || label
+          const title = tab.kind === 'file' ? tab.file?.path.split(/[\\/]/).pop() || label : target?.title || target?.displayUrl || label
           const active = activeId === tab.id
           return (
             <Reorder.Item as="div" value={tab.id} key={tab.id} data-tab-id={tab.id} {...menuTriggers} layout="position" transition={{ layout: { duration: 0 } }} dragMomentum={false} className={`group relative flex h-7 min-w-0 max-w-full shrink-0 select-none items-center rounded-lg pointer-coarse:h-10 ${active ? 'bg-surface text-ink' : 'text-ink-2 hover:bg-surface-2'}`}>
@@ -125,7 +125,7 @@ export function SidePanelTabs({ tabs, activeId, sideChatAvailable, onSelect, onR
                 aria-controls={`panel-body-${tab.id}`}
                 aria-keyshortcuts="Alt+ArrowLeft Alt+ArrowRight"
                 tabIndex={active ? 0 : -1}
-                title={tab.kind === 'file' ? tab.file?.path || title : target?.displayUrl || title}
+                title={tab.kind === 'file' ? tab.file && isMarkdownPath(tab.file.path) ? title : tab.file?.path || title : target?.displayUrl || title}
                 onTap={() => onSelect(tab.id)}
                 onKeyDown={(event) => {
                   if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {

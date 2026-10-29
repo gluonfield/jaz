@@ -19,7 +19,7 @@ import { Favicon } from '@/components/ui/Favicon'
 import { MarkdownImage, MarkdownImageLinkContext } from '@/components/session/MarkdownImage'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { markdownImageSource } from '@/lib/markdownImages'
-import { remarkMarkdownDocuments } from '@/lib/markdownDocuments'
+import { remarkHeadingAnchors, remarkMarkdownDocuments } from '@/lib/markdownDocuments'
 import { MarkdownDocumentCard } from '@/components/session/MarkdownDocumentCard'
 import { findFileReferences, parseFileReference, resolveFileLink, type FileReference } from '@shared/fileReader'
 import { CodeBlock } from './CodeBlock'
@@ -277,7 +277,7 @@ const MarkdownTable: ComponentType<ComponentProps<'table'> & ExtraProps> = ({ no
   </div>
 )
 
-const REMARK_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences] satisfies Options['remarkPlugins']
+const REMARK_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences, remarkHeadingAnchors] satisfies Options['remarkPlugins']
 const CHAT_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkConnectCards]
 const USER_REMARK_PLUGINS = [...CHAT_REMARK_PLUGINS, remarkLineBreaks]
 
@@ -312,7 +312,7 @@ function BaseMarkdown({
   const prepared = useMemo(() => normalizeMath(text), [text])
   const components = useMemo<Components>(() => ({ a: Link, img: MarkdownFileImage, pre: CodeBlock, table: MarkdownTable, 'connect-card': ConnectCard, 'markdown-document': MarkdownDocument }), [Link])
   return (
-    <div className={className}>
+    <div className={className} data-markdown-root>
       <Markdown
         remarkPlugins={plugins}
         rehypePlugins={[rehypeKatex]}
@@ -353,6 +353,21 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   const files = useContext(MarkdownFileContext)
   const localFile = localFileFromLink(href, children, files?.documentPath)
   const linkedChildren = <MarkdownImageLinkContext value={true}>{children}</MarkdownImageLinkContext>
+  if (href?.startsWith('#')) {
+    return <a {...props} href={href} className="chat-prose-link" onClick={(event) => {
+      if (!shouldPreviewLink(event)) return
+      event.preventDefault()
+      let id: string
+      try {
+        id = decodeURIComponent(href.slice(1))
+      } catch {
+        return
+      }
+      const root = event.currentTarget.closest('[data-markdown-root]')
+      const target = [...(root?.querySelectorAll<HTMLElement>('[id]') ?? [])].find((node) => node.id === id)
+      target?.scrollIntoView({ block: 'start' })
+    }}>{children}</a>
+  }
   if (localFile && openFile) {
     // An inline link role rather than a button, so the text around it flows on.
     return (

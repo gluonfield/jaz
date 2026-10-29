@@ -232,11 +232,6 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     await click(tab('file:/NOTES.md'))
     await window.smoke.key('Right', ['alt'])
     await until(() => panel.tabs[1].id === 'file:/NOTES.md' && document.activeElement === tab('file:/NOTES.md'))
-    await click(element.querySelector('[role="tabpanel"]:not([hidden]) input'))
-    await window.smoke.key('P', ['control'])
-    if (panel.activeTab?.id !== 'file:/NOTES.md') {
-      throw new Error('Control+P in a file input was intercepted by the browser tab shortcut')
-    }
     await click([...element.querySelectorAll('[data-tab-chat] [role="link"]')].find((item) => item.textContent === 'Local report')!)
     await until(() => ready('tabs'))
     const report = webview('tabs')

@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText, LoaderCircle } from 'lucide-react'
+import { FileText, LoaderCircle, X } from 'lucide-react'
 import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
+import { IconButton } from '@/components/ui/IconButton'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { ApiError } from '@/lib/api/client'
 import { healthQuery, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
 import type { HealthResponse } from '@/lib/api/types'
+import { markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { isMarkdownPath, isSpreadsheetPath, parseFileReference, type FileReference } from '@shared/fileReader'
 
 const SpreadsheetFileView = lazy(() => import('@/components/session/SpreadsheetFileView'))
@@ -17,15 +19,18 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   fileRef,
   visible,
   onOpenFile,
+  onClose,
 }: {
   sessionId: string
   fileRef: FileReference | null
   visible: boolean
   onOpenFile: (file: FileReference) => void
+  onClose: () => void
 }) {
   const filePath = fileRef?.path ?? ''
   const pdf = isPDFPath(filePath)
   const spreadsheet = isSpreadsheetPath(filePath)
+  const markdown = isMarkdownPath(filePath)
   const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !spreadsheet })
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
   const [draft, setDraft] = useState(filePath)
@@ -48,7 +53,13 @@ export const FileReaderPanel = memo(function FileReaderPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <form
+      {markdown ? (
+        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+          <FileText size={15} className="shrink-0 text-ink-3" aria-hidden />
+          <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{markdownDocumentTitle(file.data?.content ?? '', filePath)}</p>
+          <IconButton size="sm" aria-label="Close document" onClick={onClose}><X size={16} /></IconButton>
+        </header>
+      ) : <form
         onSubmit={(event) => {
           event.preventDefault()
           submit()
@@ -63,7 +74,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           spellCheck={false}
           className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-ink outline-none placeholder:text-ink-3"
         />
-      </form>
+      </form>}
       {inputError ? (
         <p className="shrink-0 border-b border-border px-3 py-2 text-[12px] text-danger">
           {inputError}
@@ -95,7 +106,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
             </p>
           ) : (
             <p className="px-3 py-4 text-[12px] text-danger">
-              Couldn&apos;t open the file: {(file.error as Error).message}
+              {markdown ? 'Couldn’t open this document. Try opening it again.' : <>Couldn&apos;t open the file: {(file.error as Error).message}</>}
             </p>
           )
         ) : pdf ? (

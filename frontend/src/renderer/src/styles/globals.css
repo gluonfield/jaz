@@ -346,6 +346,9 @@
   font-size: 1.75em;
   line-height: 1.25;
 }
+.file-prose :is(h1, h2, h3, h4, h5, h6) {
+  scroll-margin-top: 1rem;
+}
 .file-prose h2 {
   font-size: 1.35em;
 }
