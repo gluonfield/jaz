@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createHashHistory, createRoute, createRouter, RouterProvider } from '@tanstack/react-router'
+import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Route as rootRoute } from '@/routes/__root'
 import { Route as appRoute } from '@/routes/apps.$serverId.$tool'
 import { Route as newRoute } from '@/routes/new'
+import { Route as launcherRoute } from '@/routes/launcher'
+import { clientRuntime } from '@/lib/clientRuntime'
 import type { AgentSettings } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { NEW_SESSION_AGENT_KEY, NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
@@ -34,6 +37,10 @@ export async function exerciseAppNavigation() {
   let workspaceError = false
   let heldCheck: ReturnType<typeof Promise.withResolvers<void>> | undefined
   let checkingWorkspace = false
+  const launcherOpens: string[] = []
+  const launcherPrompts: string[] = []
+  let showLauncher: (() => void) | undefined
+  const originalLauncher = { openInMain: clientRuntime.openInMain, hideLauncher: clientRuntime.hideLauncher, onLauncherShown: clientRuntime.onLauncherShown }
   const prompts: { message: { text: string } }[] = []
   const originalAgent = localStorage.getItem(NEW_SESSION_AGENT_KEY)
   const originalDirectory = localStorage.getItem(NEW_SESSION_DIRECTORY_KEY)
@@ -62,6 +69,10 @@ export async function exerciseAppNavigation() {
     if (url.endsWith('/v1/sessions') && init?.method === 'POST') {
       sessions.push(JSON.parse(String(init.body)))
       return Response.json({ id: 'thread-smoke' })
+    }
+    if (url.endsWith('/v1/sessions/thread-smoke/messages:stream')) {
+      launcherPrompts.push(JSON.parse(String(init?.body)).message)
+      return new Response('event: done\ndata: {}\n\n', { headers: { 'Content-Type': 'text/event-stream' } })
     }
     if (url.endsWith('/v1/sessions/thread-smoke/queue')) {
       prompts.push(JSON.parse(String(init?.body)))
@@ -280,11 +291,64 @@ export async function exerciseAppNavigation() {
     await until(() => sessions.length === 5 && router.state.location.pathname === '/sessions/thread-smoke')
     if (sessions[4]?.directory !== '/fixture/plain' || sessions[4]?.worktree !== false) throw new Error('A non-Git directory requested a worktree')
 
+    localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, '/fixture/repo')
+    clientRuntime.openInMain = (path) => launcherOpens.push(path)
+    clientRuntime.hideLauncher = () => {}
+    clientRuntime.onLauncherShown = (handler) => {
+      showLauncher = handler
+      return () => { showLauncher = undefined }
+    }
+    const renderLauncher = (key: string) => root.render(<QueryClientProvider client={client}>{createElement(launcherRoute.options.component!, { key })}</QueryClientProvider>)
+    const launcherInput = () => element.querySelector<HTMLTextAreaElement>('textarea')!
+    const launcherSend = () => element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!
+    const fillLauncher = (text: string) => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(launcherInput(), text)
+      launcherInput().dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    const sendLauncher = async (text: string) => {
+      const count = sessions.length
+      fillLauncher(text)
+      await until(() => !launcherSend().disabled)
+      launcherSend().click()
+      await until(() => sessions.length === count + 1 && launcherPrompts.at(-1) === text && !launcherInput().value)
+      if (launcherOpens.length !== launcherPrompts.length) throw new Error('Launcher direct send did not open the created session exactly once')
+    }
+    renderLauncher('known')
+    await until(() => workspace()?.value === 'worktree' && Boolean(showLauncher) && opaque(workspace()) && settled())
+    await window.smoke.capture('launcher-worktree')
+    await sendLauncher('Launcher isolated task')
+    if (sessions[5]?.directory !== '/fixture/repo' || sessions[5]?.worktree !== true) throw new Error('Launcher Git task bypassed the managed workspace')
+    workspace()!.value = 'local'
+    workspace()!.dispatchEvent(new Event('change', { bubbles: true }))
+    await until(() => workspace()?.value === 'local')
+    workspaceError = true
+    await client.invalidateQueries({ queryKey: keys.filesystemDirs('/fixture/repo') })
+    await sendLauncher('Launcher explicit local')
+    if (sessions[6]?.worktree !== false) throw new Error('Launcher explicit Local was blocked or changed by metadata failure')
+    renderLauncher('unknown')
+    await until(() => Boolean(launcherInput()) && workspace()?.value === 'worktree')
+    fillLauncher('Launcher recovered worktree')
+    await until(() => launcherInput().value === 'Launcher recovered worktree')
+    if (!launcherSend().disabled || sessions.length !== 7) throw new Error('Launcher guessed a workspace while the Git check was unknown')
+    workspaceError = false
+    const retryLauncher = [...element.querySelectorAll('button')].find((button) => button.textContent === 'Retry project check')!
+    retryLauncher.click()
+    await until(() => !launcherSend().disabled)
+    launcherSend().click()
+    await until(() => sessions.length === 8 && launcherPrompts.at(-1) === 'Launcher recovered worktree')
+    if (sessions[7]?.worktree !== true) throw new Error('Launcher recovery lost the default worktree choice')
+    localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, '')
+    showLauncher!()
+    await until(() => !workspace())
+    await sendLauncher('Launcher without project')
+    if (sessions[8]?.directory !== '' || sessions[8]?.worktree !== false) throw new Error('Projectless launcher requested a worktree')
+
   } catch (error) {
     await window.smoke.capture('app-navigation-failure')
     throw error
   } finally {
     root.unmount()
+    Object.assign(clientRuntime, originalLauncher)
     client.clear()
     history.destroy()
     window.history.replaceState(window.history.state, '', sourceURL)

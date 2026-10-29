@@ -8,7 +8,9 @@ export function TaskWorkspaceControl({ worktree, revision, directory, disabled, 
   disabled: boolean
   onChange: (worktree: boolean) => void
 }) {
-  const source = [revision?.branch || 'HEAD', revision?.head?.slice(0, 7)].filter(Boolean).join(' · ')
+  const source = revision?.branch || revision?.head
+    ? [revision.branch || 'HEAD', revision.head?.slice(0, 7)].filter(Boolean).join(' · ')
+    : 'source unknown'
   return (
     <div className="flex min-w-0 items-center gap-2 px-2 text-[12px] text-ink-2">
       <GitBranch size={14} className="shrink-0 text-ink-3" aria-hidden />

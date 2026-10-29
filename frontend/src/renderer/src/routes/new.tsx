@@ -11,14 +11,14 @@ import { TaskWorkspaceControl } from '@/components/session/TaskWorkspaceControl'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
-import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
+import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentLabel } from '@/lib/agentLabel'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
+import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { modelSuggestionLabel } from '@/lib/models'
 import { NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
-import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useGlobalVoice } from '@/lib/voice/VoiceProvider'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -61,21 +61,13 @@ function NewSessionPage() {
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
   )
-  const [useWorktree, setUseWorktree] = useState(true)
   // Canvas threads show a board instead of a transcript; fixed at creation.
   const [canvas, setCanvas] = useState(false)
   const projects = useQuery(projectsQuery)
   const project = projects.data?.find((item) => item.path === directory)
-  const directoryInfo = useQuery({
-    queryKey: keys.filesystemDirs(directory),
-    queryFn: () => listFilesystemDirs(directory),
-    enabled: directory !== '',
-    staleTime: 30_000,
-    retry: false,
-  })
-  const directoryIsGit = directoryInfo.data?.git ?? project?.git ?? false
-  const workspaceReady = !directory || !useWorktree || directoryInfo.isSuccess
-  const worktree = directoryIsGit && useWorktree
+  const workspace = useTaskWorkspace(directory)
+  const { source: directoryInfo, ready: workspaceReady, worktree } = workspace
+  const directoryIsGit = directoryInfo.data?.git === true
 
   useEffect(() => {
     if (search.project === undefined) return
@@ -204,8 +196,8 @@ function NewSessionPage() {
           onChange={setDirectory}
         />
       ) : null}
-      {directoryIsGit ? (
-        <TaskWorkspaceControl worktree={worktree} revision={directoryInfo.data?.revision} directory={directory} disabled={creating} onChange={setUseWorktree} />
+      {directoryIsGit || directoryInfo.isError ? (
+        <TaskWorkspaceControl worktree={workspace.choice} revision={directoryInfo.data?.revision} directory={directory} disabled={creating} onChange={workspace.setChoice} />
       ) : null}
       {directoryInfo.isError ? (
         <button type="button" onClick={() => void directoryInfo.refetch()} className="px-2 text-[12px] text-danger">Retry project check</button>
