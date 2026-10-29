@@ -21,6 +21,8 @@ func TestCheckoutEvidenceKeepsCommitsAndDirtyStateSeparate(t *testing.T) {
 		}
 	}
 	run(workspace, "init", "-q", "-b", "integration", main)
+	run(main, "config", "user.email", "t@t")
+	run(main, "config", "user.name", "t")
 	run(main, "commit", "--allow-empty", "-qm", "base")
 	run(workspace, "init", "--bare", "-q", remote)
 	run(main, "remote", "add", "origin", remote)
