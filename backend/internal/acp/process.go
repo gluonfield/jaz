@@ -28,11 +28,12 @@ type processStderrTail struct {
 	mu      sync.Mutex
 	text    string
 	waitErr error
+	exited  chan struct{}
 	done    chan struct{}
 }
 
 func newProcessStderrTail() *processStderrTail {
-	return &processStderrTail{done: make(chan struct{})}
+	return &processStderrTail{exited: make(chan struct{}), done: make(chan struct{})}
 }
 
 func (t *processStderrTail) Write(p []byte) (int, error) {
@@ -45,10 +46,15 @@ func (t *processStderrTail) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (t *processStderrTail) close(waitErr error) {
+func (t *processStderrTail) recordExit(waitErr error) {
 	t.mu.Lock()
 	t.waitErr = waitErr
 	t.mu.Unlock()
+	close(t.exited)
+}
+
+func (t *processStderrTail) close(waitErr error) {
+	t.recordExit(waitErr)
 	close(t.done)
 }
 
@@ -64,7 +70,7 @@ func (t *processStderrTail) snapshot() (string, error) {
 func withProcessStderr(err error, stderr *processStderrTail) error {
 	if stderr != nil {
 		select {
-		case <-stderr.done:
+		case <-stderr.exited:
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
@@ -165,9 +171,10 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 	conn := stdio.New(stdout, stdin)
 	go func() {
 		waitErr := cmd.Wait()
+		stderr.recordExit(waitErr)
 		_ = process.Terminate()
 		cleanup()
-		stderr.close(waitErr)
+		close(stderr.done)
 		_ = conn.Close()
 	}()
 	return conn, stderr, nil
