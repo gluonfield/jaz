@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, FolderGit2, LoaderCircle } from 'lucide-react'
+import { ChevronDown, FolderGit2, LoaderCircle, RefreshCw } from 'lucide-react'
 import { memo, useEffect, useMemo, useState } from 'react'
 import { sessionRepoChangesQuery, sessionRepoFileDiffQuery, sessionRepoQuery } from '@/lib/api/sessions'
 import { fileKey, type RepoFileChange } from '@/lib/api/types'
@@ -14,7 +14,7 @@ export const CodeDiffPanel = memo(function CodeDiffPanel({
 }) {
   const changes = useQuery({ ...sessionRepoChangesQuery(sessionId), enabled: visible })
   const repo = useQuery({ ...sessionRepoQuery(sessionId), enabled: visible })
-  const data = changes.data
+  const data = changes.isError ? undefined : changes.data
   const firstKey = data?.files[0] ? fileKey(data.files[0]) : ''
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
@@ -29,24 +29,28 @@ export const CodeDiffPanel = memo(function CodeDiffPanel({
     const files = `${data.files.length} ${data.files.length === 1 ? 'file' : 'files'}`
     return `${files} · +${data.total_added} −${data.total_deleted}`
   }, [data])
-  const base = shortRef(repo.data?.main_branch || repo.data?.default_branch || data?.base || 'main')
+  const base = data?.base_kind === 'head' ? `HEAD ${shortRef(data.base || '')}`
+    : data?.base_kind === 'fork' ? `Merge base ${shortRef(data.base || '')}`
+      : data?.base_kind === 'empty' ? 'Empty tree'
+        : data?.base ? `Base ${shortRef(data.base)}` : 'Base unknown'
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
+      <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2">
         <FolderGit2 size={15} className="shrink-0 text-ink-3" aria-hidden />
-        <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span className="min-w-0 truncate font-mono text-[13px] text-ink-2">{base}</span>
-          <span className="text-[13px] text-ink-3" aria-hidden>
-            →
-          </span>
-          <span className="shrink-0 text-[13px] text-ink-2">working tree</span>
-          <span className="ml-1 hidden shrink-0 font-mono text-[11px] text-ink-3 tabular-nums sm:inline">
-            {summary}
-          </span>
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <p className="truncate text-[12px] text-ink-2">{repo.data?.is_worktree ? 'Worktree' : repo.data?.git ? 'Local checkout' : 'Checkout'}{repo.data?.branch ? ` · ${repo.data.branch}` : ''}</p>
+          <p className="truncate text-[11px] text-ink-3" title={data?.base}>{base} → working tree</p>
         </div>
+        <span className="hidden shrink-0 font-mono text-[11px] text-ink-3 tabular-nums sm:inline">{summary}</span>
       </div>
       <div className="scrollbar-quiet min-h-0 flex-1 overflow-y-auto">
+        {changes.isError ? (
+          <div className="space-y-2 px-3 py-4 text-[12px] text-danger">
+            <p>Couldn’t check code changes: {changes.error.message}</p>
+            <button type="button" onClick={() => void changes.refetch()} className="inline-flex cursor-pointer items-center gap-1.5 hover:underline"><RefreshCw size={12} aria-hidden />Retry code changes</button>
+          </div>
+        ) : null}
         {changes.isPending ? (
           <div className="flex items-center gap-2 px-3 py-4 text-[12px] text-ink-3">
             <LoaderCircle size={13} className="animate-spin" aria-hidden />
@@ -54,7 +58,7 @@ export const CodeDiffPanel = memo(function CodeDiffPanel({
           </div>
         ) : null}
         {data && data.files.length === 0 ? (
-          <div className="px-3 py-4 text-[12px] text-ink-3">No code changes to show.</div>
+          <div className="px-3 py-4 text-[12px] text-ink-3">{data.base_kind === 'head' ? 'No uncommitted changes in this checkout.' : 'No changes against this base in this checkout.'}</div>
         ) : null}
         {data?.files.length
           ? data.files.map((file) => {

@@ -16,6 +16,7 @@ import {
   type RepoFileChange,
   type RepoFilePatch,
   type RepoInfo,
+  type RepoRevision,
   type SessionFileRead,
   type Session,
   type SessionEvent,
@@ -204,16 +205,18 @@ export function reorderProjects(paths: string[]): Promise<Project[]> {
 
 export function listFilesystemDirs(
   path: string,
-): Promise<{ path: string; parent: string; git: boolean; dirs: FilesystemDir[] }> {
+): Promise<{ path: string; parent: string; git: boolean; revision?: RepoRevision; dirs: FilesystemDir[] }> {
   return get<{
     path: string
     parent?: string
     git?: boolean
+    revision?: RepoRevision
     dirs: FilesystemDir[] | null
   }>(`/v1/filesystem/dirs?path=${encodeURIComponent(path)}`).then((data) => ({
     path: data.path,
     parent: data.parent ?? '',
     git: data.git ?? false,
+    revision: data.revision,
     dirs: data.dirs ?? [],
   }))
 }
@@ -265,18 +268,11 @@ export const sessionRepoQuery = (id: string) =>
 // What the session changed: per-file +/− line counts vs the session's diff
 // base. Deliberately not polled — computing it walks the whole tree, so it
 // refreshes via invalidation at turn boundaries and after repo actions, and
-// runs only while a surface showing it is mounted. Failures (older backend)
-// read as "no changes" so the section simply doesn't render.
+// runs only while a surface showing it is mounted.
 export const sessionRepoChangesQuery = (id: string) =>
   queryOptions({
     queryKey: keys.sessionRepoChanges(id),
-    queryFn: async (): Promise<RepoChanges> => {
-      try {
-        return await get<RepoChanges>(`/v1/sessions/${id}/repo/changes`)
-      } catch {
-        return { files: [], total_added: 0, total_deleted: 0 }
-      }
-    },
+    queryFn: () => get<RepoChanges>(`/v1/sessions/${id}/repo/changes`),
     staleTime: 30_000,
   })
 

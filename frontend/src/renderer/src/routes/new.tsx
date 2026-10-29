@@ -1,5 +1,4 @@
 import { createFileRoute, useLocation, useNavigate } from '@tanstack/react-router'
-import { GitBranch } from 'lucide-react'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { NewSessionHome } from '@/components/home/NewSessionHome'
 import { NewThreadOptions } from '@/components/home/NewThreadOptions'
@@ -8,18 +7,18 @@ import { deleteAttachmentDraft } from '@/components/session/composerAttachmentDr
 import { ProjectPicker } from '@/components/session/NewThreadControls'
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
 import { FastModeOption } from '@/components/session/NativeModelOptions'
-import { Switch } from '@/components/ui/Switch'
+import { TaskWorkspaceControl } from '@/components/session/TaskWorkspaceControl'
 import { useToast } from '@/components/ui/toast'
 import { ApiError } from '@/lib/api/client'
 import { voiceAvailableQuery } from '@/lib/api/liveVoice'
-import { createSession, listFilesystemDirs, projectsQuery } from '@/lib/api/sessions'
+import { createSession, projectsQuery } from '@/lib/api/sessions'
 import { agentLabel } from '@/lib/agentLabel'
 import { acpAgentSupportsGoal } from '@/lib/agentRuntimes'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
+import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { modelSuggestionLabel } from '@/lib/models'
 import { NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
-import { keys } from '@/lib/query/keys'
 import type { SendMessageOptions } from '@/lib/sendMessage'
 import { useGlobalVoice } from '@/lib/voice/VoiceProvider'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -62,35 +61,22 @@ function NewSessionPage() {
   const [directory, setDirectory] = useState(
     () => search.project ?? storedString(NEW_SESSION_DIRECTORY_KEY),
   )
-  // Worktree runs the session on a disposable git worktree (any agent);
-  // only offered when the chosen directory is a git repository.
-  const [worktree, setWorktree] = useState(false)
   // Canvas threads show a board instead of a transcript; fixed at creation.
   const [canvas, setCanvas] = useState(false)
   const projects = useQuery(projectsQuery)
   const project = projects.data?.find((item) => item.path === directory)
-  const directoryInfo = useQuery({
-    queryKey: keys.filesystemDirs(directory),
-    queryFn: () => listFilesystemDirs(directory),
-    enabled: directory !== '' && project === undefined,
-    staleTime: 30_000,
-    retry: false,
-  })
-  const directoryIsGit = project?.git ?? directoryInfo.data?.git ?? false
+  const workspace = useTaskWorkspace(directory)
+  const { source: directoryInfo, ready: workspaceReady, worktree } = workspace
+  const directoryIsGit = directoryInfo.data?.git === true
 
   useEffect(() => {
     if (search.project === undefined) return
     setDirectory(search.project)
-    setWorktree(false)
   }, [search.project])
 
   useEffect(() => {
     localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, directory)
   }, [directory])
-
-  useEffect(() => {
-    if (!directoryIsGit) setWorktree(false)
-  }, [directoryIsGit])
 
   // A directory from another backend won't exist here; drop it on a 4xx reject.
   useEffect(() => {
@@ -107,6 +93,10 @@ function NewSessionPage() {
     }
     if (!runtimeAvailable) {
       toast('Connect an agent in Settings before starting a session.', 'danger')
+      return
+    }
+    if (!workspaceReady) {
+      toast('Check the project workspace before starting a chat.', 'danger')
       return
     }
     if (controls.reasoningBlocked) {
@@ -167,10 +157,10 @@ function NewSessionPage() {
     void handleStart(prompt, {}, true)
   })
   useEffect(() => {
-    if (appPrompt && controls.ready) {
+    if (appPrompt && controls.ready && workspaceReady && (search.project === undefined || search.project === directory)) {
       startAppPrompt(appPrompt)
     }
-  }, [appPrompt, controls.ready])
+  }, [appPrompt, controls.ready, workspaceReady, search.project, directory])
 
   // Phone: the controls live in a header dropdown, which sits above the
   // composer, so their own popovers open downward.
@@ -203,18 +193,14 @@ function NewSessionPage() {
           value={directory}
           placement={controlPlacement}
           disabled={creating}
-          onChange={(path, git) => {
-            setDirectory(path)
-            if (!git) setWorktree(false)
-          }}
+          onChange={setDirectory}
         />
       ) : null}
-      {directoryIsGit ? (
-        <div className="flex h-8 items-center gap-2 px-2 text-[13px] text-ink-2">
-          <GitBranch size={15} className="text-ink-3" />
-          Worktree
-          <Switch checked={worktree} onChange={setWorktree} disabled={creating} aria-label="Run on a git worktree" />
-        </div>
+      {directoryIsGit || directoryInfo.isError ? (
+        <TaskWorkspaceControl worktree={workspace.choice} revision={directoryInfo.data?.revision} directory={directory} disabled={creating} onChange={workspace.setChoice} />
+      ) : null}
+      {directoryInfo.isError ? (
+        <button type="button" onClick={() => void directoryInfo.refetch()} className="px-2 text-[12px] text-danger">Retry project check</button>
       ) : null}
       <span className="flex-1" />
       <ThreadModeSwitch canvas={canvas} onChange={setCanvas} disabled={creating} />
@@ -231,7 +217,7 @@ function NewSessionPage() {
       ) : null}
       <NewSessionHome
         creating={creating}
-        disabled={!runtimeAvailable}
+        disabled={!runtimeAvailable || !workspaceReady}
         goalAvailable={acpAgentSupportsGoal(runtime)}
         leftSlot={isMobile ? null : agentControls}
         shelf={isMobile ? null : setupControls}

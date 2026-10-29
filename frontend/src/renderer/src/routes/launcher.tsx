@@ -1,12 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { ArrowUp, LoaderCircle, Sparkles, X } from 'lucide-react'
-import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { AgentModelControls, useNewThreadControls } from '@/components/session/useNewThreadControls'
+import { TaskWorkspaceControl } from '@/components/session/TaskWorkspaceControl'
 import { dataURLToFile } from '@/components/ui/fileTransfer'
 import { IconButton } from '@/components/ui/IconButton'
 import { createSession, uploadSessionAttachment } from '@/lib/api/sessions'
 import { streamSessionMessage } from '@/lib/api/stream'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { useTaskWorkspace } from '@/lib/hooks/useTaskWorkspace'
 import { NEW_SESSION_DIRECTORY_KEY } from '@/lib/newSessionConfig'
 
 export const Route = createFileRoute('/launcher')({
@@ -29,6 +31,8 @@ const DRAG_THRESHOLD = 6
 
 function LauncherPage() {
   const controls = useNewThreadControls()
+  const [directory, setDirectory] = useState(() => localStorage.getItem(NEW_SESSION_DIRECTORY_KEY) ?? '')
+  const workspace = useTaskWorkspace(directory)
 
   const [value, setValue] = useState('')
   const [shots, setShots] = useState<Shot[]>([])
@@ -48,13 +52,17 @@ function LauncherPage() {
     if (inputRef.current) inputRef.current.style.height = 'auto'
   }, [])
 
+  const shown = useEffectEvent(() => {
+    reset()
+    const next = localStorage.getItem(NEW_SESSION_DIRECTORY_KEY) ?? ''
+    setDirectory(next)
+    if (next && next === directory) void workspace.source.refetch()
+    focusInput()
+  })
   useEffect(() => {
     focusInput()
-    return clientRuntime.onLauncherShown?.(() => {
-      reset()
-      focusInput()
-    })
-  }, [reset])
+    return clientRuntime.onLauncherShown?.(() => shown())
+  }, [])
 
   const removeShot = (id: string) => setShots((prev) => prev.filter((shot) => shot.id !== id))
 
@@ -115,6 +123,10 @@ function LauncherPage() {
       setError('Connect an agent in Settings before starting a session.')
       return
     }
+    if (!workspace.ready) {
+      setError('Check the project workspace before starting a chat.')
+      return
+    }
     if (controls.reasoningBlocked) {
       setError(controls.reasoningStatus === 'error'
         ? 'Model capabilities are unavailable. Try again in a moment.'
@@ -124,8 +136,7 @@ function LauncherPage() {
     setSending(true)
     setError('')
     try {
-      const directory = localStorage.getItem(NEW_SESSION_DIRECTORY_KEY) ?? ''
-      const session = await createSession(controls.sessionConfig({ directory, worktree: false }, text))
+      const session = await createSession(controls.sessionConfig({ directory, worktree: workspace.worktree }, text))
       const uploaded = await Promise.all(
         shots.map(async (shot) =>
           uploadSessionAttachment(session.id, await dataURLToFile(shot.dataUrl, 'screenshot.png')),
@@ -193,7 +204,7 @@ function LauncherPage() {
               size="lg"
               aria-label="Send message"
               title="Send message"
-              disabled={value.trim() === '' || sending}
+              disabled={value.trim() === '' || sending || !workspace.ready}
               onClick={() => void submit()}
             >
               {sending ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowUp size={18} />}
@@ -228,7 +239,14 @@ function LauncherPage() {
             </p>
           ) : null}
 
-          <div className="flex items-center gap-1.5 border-t border-border/40 px-3 py-2">
+          {workspace.source.data?.git || workspace.source.isError ? (
+            <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 px-3 py-1">
+              <span className="max-w-32 truncate text-[12px] text-ink-3" title={directory}>{directory.split(/[\\/]+/).filter(Boolean).at(-1) || directory}</span>
+              <TaskWorkspaceControl worktree={workspace.choice} revision={workspace.source.data?.revision} directory={directory} disabled={sending} onChange={workspace.setChoice} />
+              {workspace.source.isError ? <button type="button" onClick={() => void workspace.source.refetch()} className="px-2 text-[12px] text-danger">Retry project check</button> : null}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-border/40 px-3 py-2">
             <AgentModelControls controls={controls} placement="above" disabled={sending} />
             <span className="ml-auto pr-1 text-[12px] text-ink-3">drag to screenshot · ↩ send · esc dismiss</span>
           </div>

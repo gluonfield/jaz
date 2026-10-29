@@ -178,9 +178,13 @@ export type QueuedAction =
 
 // Git/forge state of a session's working directory (GET /v1/sessions/:id/repo).
 // git=false means "no cwd or not a git repo".
-export interface RepoInfo {
-  git: boolean
+export interface RepoRevision {
   branch?: string
+  head?: string
+}
+
+export interface RepoInfo extends RepoRevision {
+  git: boolean
   default_branch?: string
   remote_url?: string
   web_url?: string
@@ -188,6 +192,8 @@ export interface RepoInfo {
   owner?: string
   repo?: string
   has_upstream?: boolean
+  upstream?: string
+  push_ahead?: number
   // Confirmed zero commits on top of the default branch (a PR would be empty).
   no_commits?: boolean
   // Commits exist that the remote doesn't have.
@@ -229,6 +235,7 @@ export function fileKey(file: RepoFileChange): string {
 // which files changed and by how many lines, no patch text.
 export interface RepoChanges {
   base?: string
+  base_kind?: 'head' | 'fork' | 'empty'
   files: RepoFileChange[]
   total_added: number
   total_deleted: number

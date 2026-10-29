@@ -49,7 +49,7 @@ func (s *Server) handleSessionRepoChanges(w http.ResponseWriter, r *http.Request
 	defer cancel()
 	summary, err := gitinfo.DiffSummary(ctx, cwd)
 	if err != nil {
-		writeJSON(w, http.StatusOK, empty)
+		writeError(w, http.StatusBadGateway, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, summary)
@@ -287,7 +287,7 @@ func (s *Server) missingWorktreeInfo(ctx context.Context, session storage.Sessio
 		worktree = owner
 	}
 	info := gitinfo.Info{
-		Branch:          worktree.Branch,
+		Revision:        gitinfo.Revision{Branch: worktree.Branch},
 		WorktreeMissing: true,
 		WorktreeBranch:  worktree.Branch,
 	}

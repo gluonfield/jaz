@@ -85,6 +85,15 @@ func TestSessionRepoChangesAndDiff(t *testing.T) {
 		t.Fatal("changes summary did not report its base")
 	}
 
+	var source struct {
+		Git      bool             `json:"git"`
+		Revision gitinfo.Revision `json:"revision"`
+	}
+	getJSON("/v1/filesystem/dirs?path="+url.QueryEscape(dir), http.StatusOK, &source)
+	if !source.Git || source.Revision.Branch != "main" || source.Revision.Head != base {
+		t.Fatalf("new-task source = %+v, want main at %s", source, base)
+	}
+
 	// No cwd degrades to an empty summary rather than an error.
 	getJSON("/v1/sessions/"+noCwd.ID+"/repo/changes", http.StatusOK, &changes)
 	if len(changes.Files) != 0 {
@@ -122,6 +131,10 @@ func TestSessionRepoChangesAndDiff(t *testing.T) {
 	}
 	// Diffs need a working directory, unlike the degrading changes summary.
 	getJSON("/v1/sessions/"+noCwd.ID+"/repo/diff?path=file.txt", http.StatusBadRequest, nil)
+	if err := os.WriteFile(filepath.Join(dir, ".git", "index"), []byte("invalid index"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	getJSON("/v1/sessions/"+session.ID+"/repo/changes", http.StatusBadGateway, nil)
 }
 
 func TestArchivePrunesAndRestoresManagedWorktree(t *testing.T) {

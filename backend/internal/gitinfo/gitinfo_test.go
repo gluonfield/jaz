@@ -718,7 +718,7 @@ func TestDiffSummaryAndFileDiff(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := DiffSummary(ctx, t.TempDir()); err == nil {
-		t.Fatal("DiffSummary(non-repo) should error so the handler can degrade to empty")
+		t.Fatal("DiffSummary(non-repo) should error")
 	}
 
 	workspace, err := filepath.EvalSymlinks(t.TempDir())

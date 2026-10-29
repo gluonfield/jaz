@@ -1,10 +1,14 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createHashHistory, createRoute, createRouter, RouterProvider } from '@tanstack/react-router'
+import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Route as rootRoute } from '@/routes/__root'
 import { Route as appRoute } from '@/routes/apps.$serverId.$tool'
 import { Route as newRoute } from '@/routes/new'
+import { Route as launcherRoute } from '@/routes/launcher'
+import { clientRuntime } from '@/lib/clientRuntime'
 import type { AgentSettings } from '@/lib/api/types'
+import { keys } from '@/lib/query/keys'
 import { NEW_SESSION_AGENT_KEY, NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
 
 export async function exerciseAppNavigation() {
@@ -28,7 +32,15 @@ export async function exerciseAppNavigation() {
     acp: { codex: { enabled: true, model: 'gpt', reasoning_effort: 'medium' } },
     acp_options: { codex: { local: true, supports_auth: false, reasoning_efforts: [], models: [{ value: 'gpt', label: 'GPT', reasoning: { status: 'ready', efforts: ['medium'], default_effort: 'medium' } }] } },
   }
-  const sessions: unknown[] = []
+  const sessions: { directory: string; worktree: boolean }[] = []
+  let workspaceChecks = false
+  let workspaceError = false
+  let heldCheck: ReturnType<typeof Promise.withResolvers<void>> | undefined
+  let checkingWorkspace = false
+  const launcherOpens: string[] = []
+  const launcherPrompts: string[] = []
+  let showLauncher: (() => void) | undefined
+  const originalLauncher = { openInMain: clientRuntime.openInMain, hideLauncher: clientRuntime.hideLauncher, onLauncherShown: clientRuntime.onLauncherShown }
   const prompts: { message: { text: string } }[] = []
   const originalAgent = localStorage.getItem(NEW_SESSION_AGENT_KEY)
   const originalDirectory = localStorage.getItem(NEW_SESSION_DIRECTORY_KEY)
@@ -38,6 +50,16 @@ export async function exerciseAppNavigation() {
   window.addEventListener('message', observe)
   window.fetch = async (input, init) => {
     const url = String(input)
+    if (workspaceChecks && url.endsWith('/v1/projects')) return Response.json({ projects: [{ name: 'Repo', path: '/fixture/repo', git: true }, { name: 'Plain', path: '/fixture/plain', git: false }] })
+    if (workspaceChecks && url.includes('/v1/filesystem/dirs?')) {
+      if (heldCheck) {
+        checkingWorkspace = true
+        await heldCheck.promise
+      }
+      if (workspaceError) return Response.json({ error: 'Git check unavailable' }, { status: 503 })
+      const path = new URL(url).searchParams.get('path')
+      return Response.json({ path, git: path === '/fixture/repo', revision: path === '/fixture/repo' ? { branch: 'feature/current', head: 'abcdef1234567890' } : undefined, dirs: [] })
+    }
     if (url.endsWith('/v1/mcp/apps')) return Response.json({ entrypoints: ['crm', 'tasks'].map((id) => ({ server_id: id, tool: 'show', title: id, type: 'global' })) })
     if (url.includes('/resource?tool=')) return Response.json({ html })
     if (url.endsWith('/tools/call')) return Response.json({ content: [] })
@@ -47,6 +69,10 @@ export async function exerciseAppNavigation() {
     if (url.endsWith('/v1/sessions') && init?.method === 'POST') {
       sessions.push(JSON.parse(String(init.body)))
       return Response.json({ id: 'thread-smoke' })
+    }
+    if (url.endsWith('/v1/sessions/thread-smoke/messages:stream')) {
+      launcherPrompts.push(JSON.parse(String(init?.body)).message)
+      return new Response('event: done\ndata: {}\n\n', { headers: { 'Content-Type': 'text/event-stream' } })
     }
     if (url.endsWith('/v1/sessions/thread-smoke/queue')) {
       prompts.push(JSON.parse(String(init?.body)))
@@ -75,6 +101,16 @@ export async function exerciseAppNavigation() {
       await new Promise((resolve) => setTimeout(resolve, 20))
     }
   }
+  const opaque = (target: Element | null) => {
+    if (!target) return false
+    for (let node: Element | null = target; node; node = node.parentElement) {
+      if (Number(getComputedStyle(node).opacity) < 0.99) return false
+    }
+    return true
+  }
+  const settled = () => element.getAnimations({ subtree: true }).every((animation) =>
+    animation.playState !== 'running' || animation.effect?.getComputedTiming().iterations === Infinity,
+  )
   const frame = (id: string) => element.querySelector<HTMLIFrameElement>(`iframe[title="${id}"]`)!
   const path = () => router.state.location.search as { path?: string; input?: object }
   const at = (id: string, destination: string) =>
@@ -197,11 +233,122 @@ export async function exerciseAppNavigation() {
     if (newChat()) {
       throw new Error('Bots offered a new chat in the titlebar')
     }
+    workspaceChecks = true
+    await client.invalidateQueries({ queryKey: keys.projects })
+    await router.navigate({ to: '/new', search: { project: '/fixture/repo' } })
+    const workspace = () => document.querySelector<HTMLSelectElement>('select[aria-label="Task workspace"]')
+    await until(() => workspace()?.value === 'worktree' && Boolean(element.textContent?.includes('From feature/current · abcdef1')))
+    await until(() => opaque(workspace()) && settled())
+    await window.smoke.capture('new-task-worktree')
+    await router.navigate({ to: '/new', search: { project: '/fixture/repo' }, state: { appPrompt: 'Isolated task' } })
+    await until(() => sessions.length === 2 && router.state.location.pathname === '/sessions/thread-smoke')
+    if (sessions[1]?.directory !== '/fixture/repo' || sessions[1]?.worktree !== true) throw new Error('A Git task bypassed managed worktree creation')
+    await router.navigate({ to: '/new', search: { project: '/fixture/repo' } })
+    await until(() => workspace()?.value === 'worktree')
+    workspace()!.value = 'local'
+    workspace()!.dispatchEvent(new Event('change', { bubbles: true }))
+    await until(() => workspace()?.value === 'local')
+    heldCheck = Promise.withResolvers<void>()
+    const refreshingWorkspace = client.invalidateQueries({ queryKey: keys.filesystemDirs('/fixture/repo') })
+    await until(() => checkingWorkspace)
+    if (workspace()!.disabled || !element.querySelector('textarea:not(:disabled)')) throw new Error('A known-metadata refresh blocked an already usable draft')
+    heldCheck.resolve()
+    await refreshingWorkspace
+    heldCheck = undefined
+    if (workspace()?.value !== 'local') throw new Error('Refreshing project metadata overwrote the explicit workspace choice')
+    await router.navigate({ to: '/new', search: { project: '/fixture/plain' } })
+    await until(() => !workspace())
+    await router.navigate({ to: '/new', search: { project: '/fixture/repo' } })
+    await until(() => workspace()?.value === 'local')
+    await window.smoke.resize(390, 844)
+    const phoneOptions = () => [...element.querySelectorAll<HTMLButtonElement>('button[aria-haspopup="dialog"]')].find((button) => button.textContent?.startsWith('GPT'))
+    await until(() => Boolean(phoneOptions()))
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    phoneOptions()!.click()
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    await until(() => Boolean(document.querySelector('[role="dialog"][aria-label="Thread settings"] select[aria-label="Task workspace"]')))
+    await until(() => opaque(document.querySelector('[role="dialog"][aria-label="Thread settings"]')) && settled())
+    await window.smoke.capture('new-task-local-phone')
+    if (document.documentElement.scrollWidth > innerWidth) throw new Error('Workspace choice overflows the phone viewport')
+    await window.smoke.resize(1050, 850)
+    workspaceError = true
+    await client.invalidateQueries({ queryKey: keys.filesystemDirs('/fixture/repo') })
+    await until(() => Boolean([...element.querySelectorAll('button')].find((button) => button.textContent === 'Retry project check')))
+    await router.navigate({ to: '/new', search: { project: '/fixture/repo' }, state: { appPrompt: 'Explicit local task' } })
+    await until(() => sessions.length === 3 && router.state.location.pathname === '/sessions/thread-smoke')
+    if (sessions[2]?.worktree !== false) throw new Error('Explicit Local checkout was blocked by Git metadata or changed workspace')
+    await router.navigate({ to: '/new', search: { project: '/fixture/repo' } })
+    await until(() => Boolean([...element.querySelectorAll('button')].find((button) => button.textContent === 'Retry project check')))
+    await router.navigate({ to: '/new', search: { project: '/fixture/repo' }, state: { appPrompt: 'Unknown default workspace' } })
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    if (sessions.length !== 3) throw new Error('Unknown Git state silently launched a default-workspace task')
+    workspaceError = false
+    const retryProject = [...element.querySelectorAll('button')].find((button) => button.textContent === 'Retry project check')!
+    retryProject.click()
+    await until(() => sessions.length === 4 && router.state.location.pathname === '/sessions/thread-smoke')
+    if (sessions[3]?.worktree !== true) throw new Error('Default worktree choice was lost during Git-check recovery')
+    await router.navigate({ to: '/new', search: { project: '/fixture/plain' }, state: { appPrompt: 'Plain directory task' } })
+    await until(() => sessions.length === 5 && router.state.location.pathname === '/sessions/thread-smoke')
+    if (sessions[4]?.directory !== '/fixture/plain' || sessions[4]?.worktree !== false) throw new Error('A non-Git directory requested a worktree')
+
+    localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, '/fixture/repo')
+    clientRuntime.openInMain = (path) => launcherOpens.push(path)
+    clientRuntime.hideLauncher = () => {}
+    clientRuntime.onLauncherShown = (handler) => {
+      showLauncher = handler
+      return () => { showLauncher = undefined }
+    }
+    const renderLauncher = (key: string) => root.render(<QueryClientProvider client={client}>{createElement(launcherRoute.options.component!, { key })}</QueryClientProvider>)
+    const launcherInput = () => element.querySelector<HTMLTextAreaElement>('textarea')!
+    const launcherSend = () => element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!
+    const fillLauncher = (text: string) => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(launcherInput(), text)
+      launcherInput().dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    const sendLauncher = async (text: string) => {
+      const count = sessions.length
+      fillLauncher(text)
+      await until(() => !launcherSend().disabled)
+      launcherSend().click()
+      await until(() => sessions.length === count + 1 && launcherPrompts.at(-1) === text && !launcherInput().value)
+      if (launcherOpens.length !== launcherPrompts.length) throw new Error('Launcher direct send did not open the created session exactly once')
+    }
+    renderLauncher('known')
+    await until(() => workspace()?.value === 'worktree' && Boolean(showLauncher) && opaque(workspace()) && settled())
+    await window.smoke.capture('launcher-worktree')
+    await sendLauncher('Launcher isolated task')
+    if (sessions[5]?.directory !== '/fixture/repo' || sessions[5]?.worktree !== true) throw new Error('Launcher Git task bypassed the managed workspace')
+    workspace()!.value = 'local'
+    workspace()!.dispatchEvent(new Event('change', { bubbles: true }))
+    await until(() => workspace()?.value === 'local')
+    workspaceError = true
+    await client.invalidateQueries({ queryKey: keys.filesystemDirs('/fixture/repo') })
+    await sendLauncher('Launcher explicit local')
+    if (sessions[6]?.worktree !== false) throw new Error('Launcher explicit Local was blocked or changed by metadata failure')
+    renderLauncher('unknown')
+    await until(() => Boolean(launcherInput()) && workspace()?.value === 'worktree')
+    fillLauncher('Launcher recovered worktree')
+    await until(() => launcherInput().value === 'Launcher recovered worktree')
+    if (!launcherSend().disabled || sessions.length !== 7) throw new Error('Launcher guessed a workspace while the Git check was unknown')
+    workspaceError = false
+    const retryLauncher = [...element.querySelectorAll('button')].find((button) => button.textContent === 'Retry project check')!
+    retryLauncher.click()
+    await until(() => !launcherSend().disabled)
+    launcherSend().click()
+    await until(() => sessions.length === 8 && launcherPrompts.at(-1) === 'Launcher recovered worktree')
+    if (sessions[7]?.worktree !== true) throw new Error('Launcher recovery lost the default worktree choice')
+    localStorage.setItem(NEW_SESSION_DIRECTORY_KEY, '')
+    showLauncher!()
+    await until(() => !workspace())
+    await sendLauncher('Launcher without project')
+    if (sessions[8]?.directory !== '' || sessions[8]?.worktree !== false) throw new Error('Projectless launcher requested a worktree')
+
   } catch (error) {
     await window.smoke.capture('app-navigation-failure')
     throw error
   } finally {
     root.unmount()
+    Object.assign(clientRuntime, originalLauncher)
     client.clear()
     history.destroy()
     window.history.replaceState(window.history.state, '', sourceURL)
