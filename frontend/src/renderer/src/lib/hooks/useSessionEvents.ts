@@ -1,8 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { getSession } from '@/lib/api/sessions'
 import { openSessionEvents } from '@/lib/api/sse'
-import type { SessionEvent, SessionMessages } from '@/lib/api/types'
+import type { SessionEvent } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { mergeSessionEvent } from '@/lib/sessionEvents'
 
@@ -27,15 +26,6 @@ export function useSessionEvents(
 
   useEffect(() => {
     if (afterSeq === undefined) return
-    const refreshSession = () => {
-      void getSession(sessionId)
-        .then((session) => {
-          queryClient.setQueryData<SessionMessages>(keys.sessionMessages(sessionId), (prev) =>
-            prev ? { ...prev, session } : prev,
-          )
-        })
-        .catch(() => undefined)
-    }
     const refetchMessages = () => {
       queryClient.invalidateQueries({ queryKey: keys.usage })
       queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
@@ -72,7 +62,7 @@ export function useSessionEvents(
       if (event.type === 'assistant') {
         refetchMessages()
       } else if (event.type === 'session') {
-        refreshSession()
+        queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
       } else {
         pending.push(event)
         flushTimer ??= setTimeout(flush, 50)
