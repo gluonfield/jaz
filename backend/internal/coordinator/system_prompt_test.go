@@ -107,7 +107,7 @@ func TestSystemPromptEndToEnd(t *testing.T) {
 		}
 	}
 	if !strings.Contains(acp, "prefer an inline artifact over plain text") ||
-		!strings.Contains(acp, "any reusable code snippet over 20 lines") ||
+		!strings.Contains(acp, "Use Markdown documents for prose and code references") ||
 		!strings.Contains(acp, "plain lists, plain tables, enumerated content") ||
 		!strings.Contains(acp, "visualise_show_widget") ||
 		!strings.Contains(acp, "Never pass raw JSX, TSX, or an unbundled app to the visualise tool") {

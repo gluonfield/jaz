@@ -284,8 +284,31 @@
   max-width: var(--prose-max);
 }
 .file-prose {
-  max-width: 88ch;
-  padding: 1rem 1.25rem 2rem;
+  max-width: 76ch;
+  margin-inline: auto;
+  padding: clamp(1.25rem, 4vw, 3rem);
+}
+.markdown-document-card {
+  position: relative;
+  width: min(100%, 32rem);
+  margin-block: 0.75rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+.markdown-document-card:hover {
+  border-color: var(--color-ink-3);
+}
+.markdown-document-preview {
+  height: 15rem;
+  overflow: hidden;
+  mask-image: linear-gradient(#000 75%, transparent);
+}
+.markdown-document-preview .file-prose {
+  padding: 1.5rem;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 :root.jaz-wide-layout {
@@ -318,6 +341,16 @@
 :where(.chat-prose, .file-prose) h3,
 :where(.chat-prose, .file-prose) h4 {
   font-size: 0.9375rem;
+}
+.file-prose h1 {
+  font-size: 1.75em;
+  line-height: 1.25;
+}
+.file-prose h2 {
+  font-size: 1.35em;
+}
+.file-prose h3 {
+  font-size: 1.1em;
 }
 :where(.chat-prose, .file-prose) ul,
 :where(.chat-prose, .file-prose) ol {

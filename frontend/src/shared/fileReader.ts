@@ -17,6 +17,10 @@ export function isSpreadsheetPath(path: string): boolean {
   return /\.(csv|tsv|xlsx|xls|xlsm|xlsb|ods)(?:[?#].*)?$/i.test(path)
 }
 
+export function isMarkdownPath(path: string): boolean {
+  return /\.(md|markdown)$/i.test(path)
+}
+
 export function resolveFileLink(value: string, documentPath?: string): FileReference | null {
   const absolute = parseFileReference(value)
   if (absolute) {

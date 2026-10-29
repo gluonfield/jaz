@@ -19,6 +19,8 @@ import { Favicon } from '@/components/ui/Favicon'
 import { MarkdownImage, MarkdownImageLinkContext } from '@/components/session/MarkdownImage'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { markdownImageSource } from '@/lib/markdownImages'
+import { remarkMarkdownDocuments } from '@/lib/markdownDocuments'
+import { MarkdownDocumentCard } from '@/components/session/MarkdownDocumentCard'
 import { findFileReferences, parseFileReference, resolveFileLink, type FileReference } from '@shared/fileReader'
 import { CodeBlock } from './CodeBlock'
 import { ConnectCard } from './ConnectCard'
@@ -291,18 +293,24 @@ function BaseMarkdown({
   Link,
   mentions,
   remarkPlugins = REMARK_PLUGINS,
+  documentCards = false,
 }: {
   text: string
   className: string
   Link: AnchorComponent
   mentions?: ReadonlyMap<string, string>
   remarkPlugins?: NonNullable<Options['remarkPlugins']>
+  documentCards?: boolean
 }) {
-  const plugins = useMemo(() => mentions?.size
-    ? [...remarkPlugins, [remarkMentions, mentions]] satisfies Options['remarkPlugins']
-    : remarkPlugins, [mentions, remarkPlugins])
+  const files = useContext(MarkdownFileContext)
+  const plugins = useMemo<NonNullable<Options['remarkPlugins']>>(() => {
+    const plugins = [...remarkPlugins]
+    if (documentCards && files) plugins.unshift([remarkMarkdownDocuments, { documentPath: files.documentPath }])
+    if (mentions?.size) plugins.push([remarkMentions, mentions])
+    return plugins
+  }, [documentCards, files, mentions, remarkPlugins])
   const prepared = useMemo(() => normalizeMath(text), [text])
-  const components = useMemo<Components>(() => ({ a: Link, img: MarkdownFileImage, pre: CodeBlock, table: MarkdownTable, 'connect-card': ConnectCard }), [Link])
+  const components = useMemo<Components>(() => ({ a: Link, img: MarkdownFileImage, pre: CodeBlock, table: MarkdownTable, 'connect-card': ConnectCard, 'markdown-document': MarkdownDocument }), [Link])
   return (
     <div className={className}>
       <Markdown
@@ -317,6 +325,17 @@ function BaseMarkdown({
       </Markdown>
     </div>
   )
+}
+
+function MarkdownDocument({ path, label }: { path: string; label: string }) {
+  const files = useContext(MarkdownFileContext)!
+  const openFile = useContext(FileReaderLinkContext)!
+  return <MarkdownDocumentCard sessionId={files.sessionId} file={{ path }} label={label} onOpen={openFile}
+    renderContent={(content, documentPath) => (
+      <FileReaderLinkProvider sessionId={files.sessionId} documentPath={documentPath} onOpen={openFile}>
+        <RenderedMarkdown text={content} className="file-prose" />
+      </FileReaderLinkProvider>
+    )} />
 }
 
 const MessageMarkdownLink: AnchorComponent = ({ children, href, ...props }) => {
@@ -400,7 +419,7 @@ export const UserMessageMarkdown = memo(function UserMessageMarkdown({
   text: string
   mentions?: ReadonlyMap<string, string>
 }) {
-  return <BaseMarkdown text={text} mentions={mentions} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={USER_REMARK_PLUGINS} />
+  return <BaseMarkdown text={text} mentions={mentions} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={USER_REMARK_PLUGINS} documentCards />
 })
 
 // Shared renderer for assistant prose: GitHub-flavored Markdown + LaTeX via KaTeX.
@@ -409,7 +428,7 @@ export const UserMessageMarkdown = memo(function UserMessageMarkdown({
 export const MessageMarkdown = memo(function MessageMarkdown({ text }: { text: string }) {
   const skills = useQuery(skillsQuery())
   const prepared = useMemo(() => linkifyKnownSkills(text, skills.data ?? []), [text, skills.data])
-  return <BaseMarkdown text={prepared} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={CHAT_REMARK_PLUGINS} />
+  return <BaseMarkdown text={prepared} className="chat-prose" Link={MessageMarkdownLink} remarkPlugins={CHAT_REMARK_PLUGINS} documentCards />
 })
 
 const TEXT_REMARK_PLUGINS = [remarkGfm]

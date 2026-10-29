@@ -6,7 +6,7 @@ import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/M
 import { ApiError } from '@/lib/api/client'
 import { healthQuery, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
 import type { HealthResponse } from '@/lib/api/types'
-import { isSpreadsheetPath, parseFileReference, type FileReference } from '@shared/fileReader'
+import { isMarkdownPath, isSpreadsheetPath, parseFileReference, type FileReference } from '@shared/fileReader'
 
 const SpreadsheetFileView = lazy(() => import('@/components/session/SpreadsheetFileView'))
 
@@ -192,11 +192,6 @@ function PDFFileView({ url }: { url: string }) {
 
 function isPDFPath(path: string): boolean {
   return path.toLowerCase().replace(/[?#].*$/, '').endsWith('.pdf')
-}
-
-function isMarkdownPath(path: string): boolean {
-  const lower = path.toLowerCase()
-  return lower.endsWith('.md') || lower.endsWith('.markdown')
 }
 
 function parseDraftReference(value: string): FileReference | null {

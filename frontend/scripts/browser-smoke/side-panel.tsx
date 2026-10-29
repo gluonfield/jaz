@@ -8,7 +8,7 @@ import { SidePanel } from '@/components/session/SidePanel'
 import { SessionTitlebar } from '@/components/session/SessionTitlebar'
 import { SidePanelDrawer } from '@/components/session/SidePanelDrawer'
 import { useSidePanelState } from '@/components/session/SidePanelState'
-import { FileReaderLinkProvider, PreviewLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
+import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { isPreviewWebviewPending, type PreviewWebviewElement } from '@/components/session/previewWebview'
 import type { Session } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
@@ -34,7 +34,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
   const diffKey = keys.sessionRepoDiff('tabs', 'modified:change.ts', '', '')
   queryClient.setQueryData(diffKey, { path: 'change.ts', patch: '@@ -1 +1 @@\n-before\n+after' })
   for (const path of ['/ANALYSIS.md', '/NOTES.md']) {
-    queryClient.setQueryData(keys.sessionFile('tabs', path), { path, content: `# ${path.slice(1)}\n\nRetained document content.\n\n[Open notes](/NOTES.md)` })
+    queryClient.setQueryData(keys.sessionFile('tabs', path), { path, content: `# ${path.slice(1)}\n\nRetained document content.\n\n## Routes\n\n| Route | Cost |\n| --- | --- |\n| Press | £1 |\n\n[Open notes](/NOTES.md)` })
   }
   const session: Session = {
     id: 'tabs', slug: 'tabs', title: 'Manufacturing research', runtime: 'acp', status: 'idle',
@@ -99,6 +99,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
           <FileReaderLinkProvider sessionId={sessionId} onOpen={state.openFile}>
             <PreviewLinkProvider onOpen={state.openPreview}>
               <RenderedMarkdown text={`# Product research\n\nReview the [analysis](/ANALYSIS.md) and compare it with the [supplier website](${location.origin}/target?tabs=one).\n\n[Local report](${fixture.path})`} />
+              <MessageMarkdown text="/ANALYSIS.md" />
             </PreviewLinkProvider>
           </FileReaderLinkProvider>
         </div>
@@ -195,7 +196,8 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     setThemePref('dark')
     root.render(<QueryClientProvider client={queryClient}><App router={router} /></QueryClientProvider>)
     await until(() => Boolean(button('Side Panel')))
-    await click(element.querySelector('[data-tab-chat] [role="link"]'))
+    await until(() => Boolean(element.querySelector('.markdown-document-card table')))
+    await click(element.querySelector('.markdown-document-card button'))
     await until(() => panel?.activeTab?.kind === 'file' && Boolean(element.querySelector('[role="tabpanel"] h1')))
     if (button('Overview')?.getAttribute('aria-pressed') !== 'false' || button('Side Panel')?.getAttribute('aria-pressed') !== 'true') {
       throw new Error('File links did not select the tabbed panel exclusively')

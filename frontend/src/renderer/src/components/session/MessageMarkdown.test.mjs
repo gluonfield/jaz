@@ -250,3 +250,83 @@ test('file references stay plain text where no file reader can open them', async
   expect(html).not.toContain('role="link"')
   expect(html).not.toContain('lucide-file-text')
 })
+
+test('standalone Markdown paths and links render document cards with formatted content in chat', async () => {
+  const { FileReaderLinkProvider, UserMessageMarkdown, MessageMarkdown } = await import('./MessageMarkdown')
+  const { sessionFileQuery } = await import('@/lib/api/sessions')
+  const client = new QueryClient()
+  const path = '/work/docs/My report.md'
+  client.setQueryData(sessionFileQuery('documents', path).queryKey, {
+    path, size: 100,
+    content: '# Manufacturing report\n\nA **short** answer.\n\n## Routes\n\n- Press\n- Laser\n\n| Route | Cost |\n| --- | --- |\n| Press | £1 |\n\n![Drawing](drawing.svg)',
+  })
+  for (const component of [MessageMarkdown, UserMessageMarkdown]) {
+    for (const text of [path, '[Report](</work/docs/My report.md>)', '[Report](<docs/My report.md>)', 'docs/My report.md', 'docs/My%20report.md']) {
+      const html = renderToStaticMarkup(createElement(QueryClientProvider, { client },
+        createElement(FileReaderLinkProvider, { sessionId: 'documents', documentPath: '/work/', onOpen: () => {} },
+          createElement(component, { text }),
+        ),
+      ))
+      expect(html).toContain('class="markdown-document-card"')
+      expect(html).toContain('<h1>Manufacturing report</h1>')
+      expect(html).toContain('<strong>short</strong>')
+      expect(html).toContain('<li>Press</li>')
+      expect(html).toContain('<td>£1</td>')
+      expect(html).toContain('aria-label="Open Manufacturing report"')
+      const source = new URL(html.match(/<img[^>]+src="([^"]+)"/)[1].replaceAll('&amp;', '&'))
+      expect(source.pathname).toBe('/v1/sessions/documents/file')
+      expect(source.searchParams.get('path')).toBe('/work/docs/drawing.svg')
+    }
+  }
+  client.clear()
+})
+
+test('bare filenames show cards and unavailable previews keep an open action', async () => {
+  const { FileReaderLinkProvider, UserMessageMarkdown } = await import('./MessageMarkdown')
+  const { sessionFileQuery } = await import('@/lib/api/sessions')
+  for (const state of ['loading', 'binary', 'empty', 'error']) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false } } })
+    const options = sessionFileQuery('documents', 'report.md')
+    if (state === 'binary' || state === 'empty') client.setQueryData(options.queryKey, { path: '/work/report.md', binary: state === 'binary', content: '', size: 0 })
+    if (state === 'error') client.getQueryCache().build(client, options).setState({ status: 'error', error: new Error('File missing') })
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client },
+      createElement(FileReaderLinkProvider, { sessionId: 'documents', onOpen: () => {} },
+        createElement(UserMessageMarkdown, { text: 'report.md' }),
+      ),
+    ))
+    expect(html).toContain('aria-label="Open report.md"')
+    expect(html).toContain(state === 'loading' ? 'Loading document' : state === 'empty' ? 'Empty document' : 'Preview unavailable')
+    client.clear()
+  }
+  const noContext = renderToStaticMarkup(createElement(UserMessageMarkdown, { text: 'report.md' }))
+  expect(noContext).toContain('<p>report.md</p>')
+  expect(noContext).not.toContain('markdown-document-card')
+})
+
+test('Markdown cards leave prose, code, mentions and document-body links unchanged', async () => {
+  const { FileReaderLinkProvider, UserMessageMarkdown, RenderedMarkdown } = await import('./MessageMarkdown')
+  const client = new QueryClient()
+  for (const text of [
+    'Read [the report](/work/report.md).',
+    'Read report.md',
+    '`/work/report.md`',
+    '```text\n/work/report.md\n```',
+    '[$notes](/work/SKILL.md)',
+    '[Website](https://example.com/report.md)',
+    '/work/report.md:12',
+    '/work/app.tsx',
+  ]) {
+    const html = renderToStaticMarkup(createElement(QueryClientProvider, { client },
+      createElement(FileReaderLinkProvider, { sessionId: 'documents', onOpen: () => {} },
+        createElement(UserMessageMarkdown, { text }),
+      ),
+    ))
+    expect(html).not.toContain('markdown-document-card')
+  }
+  const body = renderToStaticMarkup(createElement(FileReaderLinkProvider, { sessionId: 'documents', documentPath: '/work/docs/report.md', onOpen: () => {} },
+    createElement(RenderedMarkdown, { text: '[Appendix](appendix.md)' }),
+  ))
+  expect(body).toContain('role="link"')
+  expect(body).not.toContain('markdown-document-card')
+  client.clear()
+})
