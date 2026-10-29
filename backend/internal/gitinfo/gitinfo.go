@@ -17,8 +17,8 @@ import (
 // Info is the JSON shape served to the frontend; the zero value means "not a
 // git repository".
 type Info struct {
+	Revision
 	Git           bool   `json:"git"`
-	Branch        string `json:"branch,omitempty"`
 	DefaultBranch string `json:"default_branch,omitempty"`
 	RemoteURL     string `json:"remote_url,omitempty"`
 	// WebURL is the https page of the origin remote (no trailing slash),
@@ -29,7 +29,9 @@ type Info struct {
 	Repo   string `json:"repo,omitempty"`
 	// HasUpstream reports whether the current branch tracks a remote branch,
 	// i.e. it has been pushed somewhere a pull request could start from.
-	HasUpstream bool `json:"has_upstream,omitempty"`
+	HasUpstream bool   `json:"has_upstream,omitempty"`
+	Upstream    string `json:"upstream,omitempty"`
+	PushAhead   *int   `json:"push_ahead,omitempty"`
 	// NoCommits is set when the branch is confirmed to have zero commits on
 	// top of the default branch — a PR opened from it would be empty.
 	NoCommits bool `json:"no_commits,omitempty"`
@@ -37,7 +39,7 @@ type Info struct {
 	// with its own commits, or an upstream the branch is ahead of.
 	NeedsPush bool `json:"needs_push,omitempty"`
 	// Dirty reports uncommitted changes in the working tree.
-	Dirty bool `json:"dirty,omitempty"`
+	Dirty *bool `json:"dirty,omitempty"`
 	// IsWorktree marks a linked worktree (not the repository's main checkout);
 	// MainBranch is the branch checked out in the main checkout, the handoff
 	// destination.
@@ -61,17 +63,16 @@ func Inspect(ctx context.Context, dir string) Info {
 	if _, err := git(ctx, dir, "rev-parse", "--is-inside-work-tree"); err != nil {
 		return Info{}
 	}
-	info := Info{Git: true}
-	// symbolic-ref works on an unborn branch (fresh repo, no commits) where
-	// rev-parse HEAD does not; it errors when HEAD is detached, leaving "".
-	info.Branch, _ = git(ctx, dir, "symbolic-ref", "--short", "-q", "HEAD")
-	if _, err := git(ctx, dir, "rev-parse", "--abbrev-ref", "@{upstream}"); err == nil {
+	info := Info{Git: true, Revision: CurrentRevision(ctx, dir)}
+	if upstream, err := git(ctx, dir, "rev-parse", "--abbrev-ref", "@{upstream}"); err == nil {
 		info.HasUpstream = true
+		info.Upstream = upstream
 	}
 	// Local state first — it must survive the no-remote return below, since
 	// commit and handoff don't need a remote.
-	if out, err := git(ctx, dir, "status", "--porcelain"); err == nil && out != "" {
-		info.Dirty = true
+	if out, err := git(ctx, dir, "status", "--porcelain"); err == nil {
+		dirty := out != ""
+		info.Dirty = &dirty
 	}
 	if _, branch, ok := mainCheckout(ctx, dir); ok {
 		info.IsWorktree = true
@@ -111,8 +112,12 @@ func Inspect(ctx context.Context, dir string) Info {
 	}
 	if info.Branch != "" {
 		if info.HasUpstream {
-			if count, err := git(ctx, dir, "rev-list", "--count", "@{upstream}..HEAD"); err == nil && count != "0" {
-				info.NeedsPush = true
+			if count, err := git(ctx, dir, "rev-list", "--count", "@{upstream}..HEAD"); err == nil {
+				var ahead int
+				if _, err := fmt.Sscanf(count, "%d", &ahead); err == nil {
+					info.PushAhead = &ahead
+					info.NeedsPush = ahead > 0
+				}
 			}
 		} else if !info.NoCommits {
 			// Unpushed branch: publishable once it has commits of its own.

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/wins/jaz/backend/internal/gitinfo"
 	"github.com/wins/jaz/backend/internal/pathsafe"
 	"github.com/wins/jaz/backend/internal/storage"
 )
@@ -169,11 +172,20 @@ func (s *Server) handleListFilesystemDirs(w http.ResponseWriter, r *http.Request
 	if parent == abs {
 		parent = ""
 	}
+	var revision *gitinfo.Revision
+	isGit := pathsafe.IsGitRepo(abs)
+	if isGit {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		current := gitinfo.CurrentRevision(ctx, abs)
+		revision = &current
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"path":   abs,
-		"parent": parent,
-		"git":    pathsafe.IsGitRepo(abs),
-		"dirs":   out,
+		"path":     abs,
+		"parent":   parent,
+		"git":      isGit,
+		"revision": revision,
+		"dirs":     out,
 	})
 }
 

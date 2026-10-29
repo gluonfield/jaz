@@ -31,6 +31,7 @@ type FileChange struct {
 // changed and by how many lines, without any patch text.
 type ChangeSummary struct {
 	Base         string       `json:"base,omitempty"` // resolved base commit
+	BaseKind     string       `json:"base_kind,omitempty"`
 	Files        []FileChange `json:"files"`
 	TotalAdded   int          `json:"total_added"`
 	TotalDeleted int          `json:"total_deleted"`
@@ -72,30 +73,32 @@ const maxCountBytes = 1 << 20
 // worktree that is where its branch forked off the main checkout's branch —
 // committed and uncommitted session work both show, and the base stays put as
 // main moves on. In a shared checkout only uncommitted work is attributable
-// to the session, so HEAD. An unborn HEAD falls back to the empty tree
-// (everything shows as added); "" means dir is not a repository.
-func diffBase(ctx context.Context, dir string) string {
-	if _, branch, ok := mainCheckout(ctx, dir); ok && branch != "" {
-		if base, err := git(ctx, dir, "merge-base", "HEAD", branch); err == nil {
-			return base
+// to the session, so HEAD. An unborn HEAD uses the empty tree.
+func diffBase(ctx context.Context, dir string) (string, string, error) {
+	if _, err := git(ctx, dir, "rev-parse", "--is-inside-work-tree"); err != nil {
+		return "", "", err
+	}
+	if _, branch, ok := mainCheckout(ctx, dir); ok {
+		if branch == "" {
+			return "", "", fmt.Errorf("the main checkout has no branch to compare against")
 		}
+		base, err := git(ctx, dir, "merge-base", "HEAD", "refs/heads/"+branch)
+		return base, "fork", err
 	}
 	if head, err := git(ctx, dir, "rev-parse", "--verify", "--quiet", "HEAD"); err == nil {
-		return head
+		return head, "head", nil
 	}
-	if empty, err := git(ctx, dir, "hash-object", "-t", "tree", os.DevNull); err == nil {
-		return empty
-	}
-	return ""
+	empty, err := git(ctx, dir, "hash-object", "-t", "tree", os.DevNull)
+	return empty, "empty", err
 }
 
 // DiffSummary lists everything the session changed relative to diffBase:
 // tracked changes via numstat, plus untracked files counted in-process —
 // `git diff` cannot see those, and `git add -N` would mutate the index.
 func DiffSummary(ctx context.Context, dir string) (ChangeSummary, error) {
-	base := diffBase(ctx, dir)
-	if base == "" {
-		return ChangeSummary{}, fmt.Errorf("not a git repository: %s", dir)
+	base, kind, err := diffBase(ctx, dir)
+	if err != nil {
+		return ChangeSummary{}, err
 	}
 	numstat, err := git(ctx, dir, "diff", "--numstat", "-z", "-M", base)
 	if err != nil {
@@ -105,7 +108,7 @@ func DiffSummary(ctx context.Context, dir string) (ChangeSummary, error) {
 	if err != nil {
 		return ChangeSummary{}, err
 	}
-	summary := ChangeSummary{Base: base, Files: parseNumstat(numstat, parseNameStatus(nameStatus))}
+	summary := ChangeSummary{Base: base, BaseKind: kind, Files: parseNumstat(numstat, parseNameStatus(nameStatus))}
 	untracked, err := git(ctx, dir, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return ChangeSummary{}, err
@@ -145,10 +148,10 @@ func FileDiff(ctx context.Context, dir string, spec FileDiffSpec) (FilePatch, er
 	} else {
 		base := spec.Base
 		if base == "" {
-			base = diffBase(ctx, dir)
-		}
-		if base == "" {
-			return FilePatch{}, fmt.Errorf("not a git repository: %s", dir)
+			base, _, err = diffBase(ctx, dir)
+			if err != nil {
+				return FilePatch{}, err
+			}
 		}
 		args := []string{"diff", "-M", base, "--", spec.Path}
 		if spec.OldPath != "" {

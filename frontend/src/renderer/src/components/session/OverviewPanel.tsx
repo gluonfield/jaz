@@ -36,6 +36,7 @@ import { encodeMention } from './mentionCodec'
 import { OverviewDisclosureSection, OverviewRuns, SectionHeader } from './OverviewRuns'
 import { TaskStepIcon } from './TaskStepIcon'
 import { useRepoActions } from './useRepoActions'
+import { RepoStatus } from './RepoStatus'
 
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
 
@@ -427,11 +428,6 @@ function GitSection({
     setCopied(true)
     copiedTimer.current = setTimeout(() => setCopied(false), 1500)
   }
-  const changes = info.dirty
-    ? { color: 'bg-running', label: 'Uncommitted changes' }
-    : info.needs_push
-      ? { color: 'bg-primary', label: 'Unpushed commits' }
-      : { color: 'bg-ink-3', label: 'No uncommitted changes' }
   return (
     <>
       <section className="flex flex-col gap-0.5">
@@ -471,21 +467,7 @@ function GitSection({
             </AnimatePresence>
           </span>
         </button>
-        <div className="flex h-7 items-center gap-2 px-2.5 text-[13px] text-ink-2">
-          <span className={`size-[9px] shrink-0 rounded-full ${changes.color} mx-0.5`} aria-hidden />
-          <span className="min-w-0 flex-1 truncate">{changes.label}</span>
-        </div>
-        {info.is_worktree && info.main_branch ? (
-          <p className={`px-2.5 py-1 text-[12px] leading-snug ${info.dirty || (info.ahead ?? 0) > 0 ? 'text-running' : 'text-ink-3'}`}>
-            {info.dirty
-              ? `Uncommitted changes are not in ${info.main_branch}.`
-              : info.ahead === undefined
-                ? `Merge status against ${info.main_branch} is unknown.`
-                : info.ahead > 0
-                  ? `${info.ahead} ${info.ahead === 1 ? 'commit is' : 'commits are'} not in ${info.main_branch}.`
-                  : `No commits to merge from this branch into ${info.main_branch}.`}
-          </p>
-        ) : null}
+        <RepoStatus info={info} cwd={repo.cwd} />
         {info.dirty ? (
           <ActionRow
             icon={busy === 'commit' ? LoaderCircle : Check}
@@ -501,7 +483,7 @@ function GitSection({
           </ActionRow>
         ) : null}
         {/* One step at a time: commit first, then push what was committed. */}
-        {!info.dirty && info.needs_push ? (
+        {info.dirty === false && info.needs_push ? (
           <ActionRow
             icon={busy === 'push' ? LoaderCircle : ArrowUpFromLine}
             spin={busy === 'push'}
@@ -541,9 +523,6 @@ function GitSection({
           >
             {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
           </ActionRow>
-        ) : null}
-        {info.is_worktree && info.main_branch ? (
-          <p className="px-2.5 py-1 text-[12px] leading-snug text-ink-3">This menu checks this thread’s branch. Merging, pushing and releasing are separate steps.</p>
         ) : null}
       </section>
 
