@@ -262,3 +262,39 @@ func assertGmailPart(t *testing.T, parts []gmailMIMELeaf, filename string, data 
 	t.Fatalf("missing attachment %q", filename)
 	return gmailMIMELeaf{}
 }
+
+func TestGmailMCPUpdateRejectsUndownloadableAttachmentContainers(t *testing.T) {
+	for _, header := range []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}{
+		{Name: "Content-Disposition", Value: "attachment"},
+		{Name: "Content-ID", Value: "<attached-container>"},
+	} {
+		t.Run(header.Name, func(t *testing.T) {
+			reads := 0
+			writes := 0
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/gmail/v1/users/me/drafts/draft" {
+					writes++
+					http.Error(w, "unexpected mutation", http.StatusBadRequest)
+					return
+				}
+				reads++
+				encoded, _ := json.Marshal(header)
+				_, _ = io.WriteString(w, `{"id":"draft","message":{"id":"current","payload":{"mimeType":"multipart/mixed","headers":[{"name":"To","value":"recipient@example.com"}],"parts":[{"mimeType":"text/plain","body":{"data":"Ym9keQ"}},{"mimeType":"multipart/mixed","headers":[`+string(encoded)+`],"parts":[{"mimeType":"text/plain","body":{"data":"YXR0YWNoZWQ"}}]}]}}}`)
+			}))
+			defer upstream.Close()
+			tools := newTestGmailMCPTools(t, &testConnectionStore{
+				tokens:      map[string]integrationoauth.Token{"gmail:work": {AccessToken: "access", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}},
+				connections: []integrations.Connection{{ID: "gmail:work", Provider: gmailconnector.ProviderID, AccountID: "work@example.com", Alias: "work"}},
+			})
+			tools.apiBaseURL = upstream.URL
+			subject := "Keep attachments"
+			_, _, err := tools.UpdateDraft(context.Background(), nil, GmailUpdateDraftInput{Account: "work", ID: "draft", Subject: &subject})
+			if err == nil || !strings.Contains(err.Error(), "attachment container without downloadable content") || writes != 0 || reads != 1 {
+				t.Fatalf("update: err=%v reads=%d writes=%d", err, reads, writes)
+			}
+		})
+	}
+}

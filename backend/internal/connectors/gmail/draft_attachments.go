@@ -8,17 +8,21 @@ import (
 	"strings"
 )
 
-func isBodyPart(part messagePart) bool {
+func isAttachmentPart(part messagePart) bool {
 	headers := headersByName(part.Headers)
 	disposition, _, _ := mime.ParseMediaType(headers["content-disposition"])
-	return part.Filename == "" && disposition != "attachment" && headers["content-id"] == "" && (strings.EqualFold(part.MIMEType, "text/plain") || strings.EqualFold(part.MIMEType, "text/html"))
+	return part.Filename != "" || disposition == "attachment" || headers["content-id"] != ""
+}
+
+func isBodyPart(part messagePart) bool {
+	return !isAttachmentPart(part) && (strings.EqualFold(part.MIMEType, "text/plain") || strings.EqualFold(part.MIMEType, "text/html"))
 }
 
 func (c APIClient) draftAttachments(ctx context.Context, messageID string, part *messagePart) ([]AttachmentContent, error) {
 	var attachments []AttachmentContent
 	if len(part.Parts) > 0 && part.Body.AttachmentID == "" && part.Body.Data == "" {
-		if part.Filename != "" {
-			return nil, fmt.Errorf("cannot preserve nested attachment %q without downloadable content", part.Filename)
+		if isAttachmentPart(*part) {
+			return nil, fmt.Errorf("cannot preserve %s attachment container without downloadable content", part.MIMEType)
 		}
 		for i := range part.Parts {
 			children, err := c.draftAttachments(ctx, messageID, &part.Parts[i])
