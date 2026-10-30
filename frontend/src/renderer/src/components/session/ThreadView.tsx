@@ -16,6 +16,7 @@ import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
 import { CanvasChatToggle, useCanvasChat } from '@/components/canvas/CanvasChat'
 import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
+import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
 import { SessionErrorNotice, type SessionErrorAction } from '@/components/session/SessionErrorNotice'
 import { SessionLivenessIndicator } from '@/components/session/SessionLivenessIndicator'
 import { GoalStatusBar } from '@/components/session/GoalStatusBar'
@@ -242,6 +243,7 @@ export function ThreadView({
     pinToBottom()
     return sendMessage(text, options)
   }, [pinToBottom, sendMessage])
+  const markdownArtifacts = useMemo(() => ({ mode: 'source' as const, onSendPrompt: handleSend }), [handleSend])
   const threadFind = useThreadFind(sessionId, scrollRef, pauseFollowing)
   const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()
   const jumpedMessageRef = useRef(0)
@@ -491,6 +493,7 @@ export function ThreadView({
   )
 
   return (
+    <MarkdownArtifactContext value={markdownArtifacts}>
     <FileReaderLinkProvider sessionId={session.id} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
         {/* Phone: the closed side panel slides off to the right (translateX 100%);
@@ -712,5 +715,6 @@ export function ThreadView({
         </FileDropScope>
       </PreviewLinkProvider>
     </FileReaderLinkProvider>
+    </MarkdownArtifactContext>
   )
 }
