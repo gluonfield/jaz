@@ -32,7 +32,6 @@ type Querier interface {
 	LinkCommitmentDependency(ctx context.Context, arg LinkCommitmentDependencyParams) (int64, error)
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
 	ListBots(ctx context.Context) ([]Bot, error)
-	ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error)
 	ListCommitmentDependencies(ctx context.Context, ids []int64) ([]BotCommitmentDependency, error)
 	ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error)
 	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)

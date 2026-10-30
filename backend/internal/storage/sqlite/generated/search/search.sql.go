@@ -14,17 +14,17 @@ WITH hits AS (
   SELECT d.thread_id, d.seq,
     snippet(message_search_fts, 0, char(31), char(30), '...', 18) AS snippet,
     bm25(message_search_fts) AS score
-  FROM message_search_fts(CAST(?3 AS TEXT))
+  FROM message_search_fts(CAST(?4 AS TEXT))
   JOIN message_search_docs d ON d.id = message_search_fts.rowid
   UNION ALL
   SELECT d.thread_id, 0 AS seq,
     snippet(event_search_fts, 0, char(31), char(30), '...', 18) AS snippet,
     bm25(event_search_fts) AS score
-  FROM event_search_fts(CAST(?3 AS TEXT))
+  FROM event_search_fts(CAST(?4 AS TEXT))
   JOIN event_search_docs d ON d.id = event_search_fts.rowid
   JOIN session_events e ON e.thread_id = d.thread_id AND e.seq = d.seq
   WHERE NOT EXISTS (
-    SELECT 1 FROM json_each(CAST(?4 AS TEXT)) p
+    SELECT 1 FROM json_each(CAST(?5 AS TEXT)) p
     WHERE substr(e.content, 1, length(p.value)) = p.value
   )
 )
@@ -45,13 +45,14 @@ SELECT
 FROM hits
 JOIN threads t ON t.id = hits.thread_id
 WHERE (CAST(?1 AS INTEGER) = 1 OR t.archived = 0)
-  AND coalesce(t.source_type, '') = ''
+  AND (CAST(?2 AS INTEGER) = 1 OR coalesce(t.source_type, '') = '')
 ORDER BY hits.score
-LIMIT ?2
+LIMIT ?3
 `
 
 type SearchThreadMessagesParams struct {
 	IncludeArchived int64  `json:"include_archived"`
+	IncludeSourced  int64  `json:"include_sourced"`
 	Limit           int64  `json:"limit"`
 	Match           string `json:"match"`
 	HiddenPrefixes  string `json:"hidden_prefixes"`
@@ -76,6 +77,7 @@ type SearchThreadMessagesRow struct {
 func (q *Queries) SearchThreadMessages(ctx context.Context, arg SearchThreadMessagesParams) ([]SearchThreadMessagesRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchThreadMessages,
 		arg.IncludeArchived,
+		arg.IncludeSourced,
 		arg.Limit,
 		arg.Match,
 		arg.HiddenPrefixes,
@@ -134,15 +136,15 @@ FROM thread_search_fts(CAST(?1 AS TEXT))
 JOIN thread_search_docs d ON d.id = thread_search_fts.rowid
 JOIN threads t ON t.id = d.thread_id
 WHERE (CAST(?2 AS INTEGER) = 1 OR t.archived = 0)
-  -- Exclude loop-run / sourced threads, matching the default thread list.
-  AND coalesce(t.source_type, '') = ''
+  AND (CAST(?3 AS INTEGER) = 1 OR coalesce(t.source_type, '') = '')
 ORDER BY bm25(thread_search_fts, 3.0, 2.0, 1.0)
-LIMIT ?3
+LIMIT ?4
 `
 
 type SearchThreadMetadataParams struct {
 	Match           string `json:"match"`
 	IncludeArchived int64  `json:"include_archived"`
+	IncludeSourced  int64  `json:"include_sourced"`
 	Limit           int64  `json:"limit"`
 }
 
@@ -163,7 +165,12 @@ type SearchThreadMetadataRow struct {
 }
 
 func (q *Queries) SearchThreadMetadata(ctx context.Context, arg SearchThreadMetadataParams) ([]SearchThreadMetadataRow, error) {
-	rows, err := q.db.QueryContext(ctx, searchThreadMetadata, arg.Match, arg.IncludeArchived, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, searchThreadMetadata,
+		arg.Match,
+		arg.IncludeArchived,
+		arg.IncludeSourced,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
