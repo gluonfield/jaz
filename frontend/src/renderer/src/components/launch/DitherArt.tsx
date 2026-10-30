@@ -1,5 +1,6 @@
 import { useReducedMotion } from 'motion/react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { dunes, sun } from '@/components/launch/desert'
 import { useEffectsEnabled } from '@/lib/appearance'
 import { useColorTheme } from '@/lib/appearanceScheme'
 import { useTheme } from '@/lib/theme'
@@ -154,6 +155,13 @@ export const ditherSize = (cols: number, rows: number, dot = 3, gap = 1) => ({
 // without this, every handoff replays the build and the boot visibly blinks.
 const BUILT_KEYS = new Set<string>()
 
+// Boot art on screen, as the launch splash needs it to land grains on its dots.
+export type Landing = { canvas: HTMLCanvasElement; key: string; width: number; pitch: number; dot: number; dots: Dot[] }
+
+// While the launch splash is up it owns the boot reveal: boot art paints built
+// at once, underneath, and lists itself so the splash can fly onto it.
+export const boot = { splash: false, landings: new Set<Landing>() }
+
 export function DitherArt({
   draw,
   cols,
@@ -202,7 +210,8 @@ export function DitherArt({
     let cancelled = false
     let raf = 0
     let grainTimer = 0
-    const alreadyBuilt = buildKey ? BUILT_KEYS.has(buildKey) : false
+    let landing: Landing | undefined
+    const built = buildKey ? BUILT_KEYS.has(buildKey) : false
 
     const start = () => {
       if (cancelled) return
@@ -210,6 +219,10 @@ export function DitherArt({
       const dots = sample(draw, cols, rows, palette)
       const previous = shown.current
       shown.current = { draw, dots }
+      if (buildKey) {
+        landing = { canvas, key: buildKey, width, pitch, dot, dots }
+        boot.landings.add(landing)
+      }
 
       const paintDot = (d: Dot, color: string, alpha: number) => {
         ctx.clearRect(d.x * pitch, d.y * pitch, dot, dot)
@@ -279,7 +292,7 @@ export function DitherArt({
           ctx.clearRect(0, 0, width, height)
           return step(t)
         })
-      } else if (alreadyBuilt) {
+      } else if (built || (buildKey && boot.splash)) {
         paint(dots)
         settle()
       } else {
@@ -296,7 +309,7 @@ export function DitherArt({
 
     // Once built, fonts are certainly loaded — start synchronously so the
     // repaint happens inside this layout effect, not a microtask later.
-    if (waitForFonts && !alreadyBuilt) {
+    if (waitForFonts && !built) {
       void document.fonts.ready.then(() => start())
     } else {
       start()
@@ -305,6 +318,7 @@ export function DitherArt({
       cancelled = true
       cancelAnimationFrame(raf)
       window.clearInterval(grainTimer)
+      if (landing) boot.landings.delete(landing)
     }
   }, [animate, draw, enter, cols, rows, dot, gap, pitch, width, height, delay, waitForFonts, buildKey, resolved, color])
 
@@ -360,86 +374,39 @@ export function DitherWordmark({ text = 'jaz', delay = 0, maxWidth = Infinity }:
   )
 }
 
-const TERRAIN_SEED = 77
-
-// Procedural ridgelines: layered absolute-sine ridges, back range sparse and
-// tall, front range dense. Deterministic, so the brandscape is the same on
-// every boot.
-const drawTerrain: Silhouette = (g, w, h) => {
-  const ridge = (u: number, s1: number, s2: number, s3: number) =>
-    0.55 * (1 - Math.abs(Math.sin(u * 2.1 + s1))) +
-    0.3 * (1 - Math.abs(Math.sin(u * 5.3 + s2))) +
-    0.15 * (1 - Math.abs(Math.sin(u * 12.7 + s3)))
-  const layer = (seed: number, lift: number, alpha: number) => {
-    const s1 = (hash(seed) % 628) / 100
-    const s2 = (hash(seed + 1) % 628) / 100
-    const s3 = (hash(seed + 2) % 628) / 100
-    g.globalAlpha = alpha
-    g.beginPath()
-    g.moveTo(0, h)
-    for (let x = 0; x <= w; x++) {
-      const r = ridge(x / (h * 4), s1, s2, s3)
-      g.lineTo(x, h * (1 - lift * (0.2 + 0.8 * r)))
-    }
-    g.lineTo(w, h)
-    g.closePath()
-    g.fill()
-  }
-  layer(TERRAIN_SEED, 0.95, 0.4)
-  layer(TERRAIN_SEED + 9, 0.55, 1)
-  g.globalAlpha = 1
-}
-
 const TERRAIN_ROWS = 44
 const SKY_ROWS = 26
 type Sky = 'sun' | 'moon'
 
-// Theme-keyed sky over the ridgelines, in cell units: a dithered sun by day, a
-// crescent with stars by night. Anchored right of center, above the front range.
-const drawSky =
-  (sky: Sky): Silhouette =>
-  (g, w, h) => {
-    const cx = Math.round(w * 0.82)
-    const cy = 18
-    const r = 10
-    const disc = (x: number, y: number, radius: number) => {
-      g.beginPath()
-      g.arc(x, y, radius, 0, Math.PI * 2)
-      g.fill()
-    }
-    if (sky === 'sun') {
-      g.globalAlpha = 0.85
-      disc(cx, cy, r)
-      g.lineWidth = 2
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2
-        g.beginPath()
-        g.moveTo(cx + Math.cos(a) * (r + 3), cy + Math.sin(a) * (r + 3))
-        g.lineTo(cx + Math.cos(a) * (r + 7), cy + Math.sin(a) * (r + 7))
-        g.stroke()
-      }
-      g.globalAlpha = 1
-      return
-    }
-    disc(cx, cy, r)
-    g.globalCompositeOperation = 'destination-out'
-    disc(cx + 5, cy - 3, r - 1)
-    g.globalCompositeOperation = 'source-over'
-    for (let i = 0; i < 24; i++) {
-      const x = hash(i * 131 + 3) % w
-      const y = hash(i * 197 + 5) % h
-      if (Math.hypot(x - cx, y - cy) < r + 4) continue
-      const size = i % 6 === 0 ? 2 : 1
-      g.fillRect(x, y, size, size)
-    }
-  }
+const cell = (g: OffscreenCanvasRenderingContext2D, x: number, y: number, coverage: number) => {
+  g.globalAlpha = Math.min(1, Math.max(0, coverage))
+  g.fillRect(x, y, 1, 1)
+}
 
+const drawTerrain: Silhouette = (g, w, h) => {
+  dunes(w, h, (x, y, coverage) => cell(g, x, y, coverage))
+  g.globalAlpha = 1
+}
+
+// The dunes under a theme-keyed sky, in cell units: a banded sun by day, a moon
+// and stars by night, right of centre and behind the far crests.
 const drawScene =
   (sky: Sky): Silhouette =>
   (g, w, h) => {
-    drawSky(sky)(g, w, SKY_ROWS)
-    g.translate(0, h - TERRAIN_ROWS)
-    drawTerrain(g, w, TERRAIN_ROWS)
+    const ground = h - TERRAIN_ROWS
+    const horizon = dunes(w, TERRAIN_ROWS, (x, y, coverage) => cell(g, x, ground + y, coverage))
+    const open = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < ground + horizon[x]
+    const cx = Math.round(w * 0.82)
+    sun(cx, 18, 10, sky === 'moon', (x, y, coverage) => open(x, y) && cell(g, x, y, coverage))
+    if (sky === 'moon') {
+      for (let i = 0; i < 24; i++) {
+        const x = hash(i * 131 + 3) % w
+        const y = hash(i * 197 + 5) % SKY_ROWS
+        if (Math.hypot(x - cx, y - 18) < 16 || !open(x, y)) continue
+        cell(g, x, y, 1)
+      }
+    }
+    g.globalAlpha = 1
   }
 
 const SCENES: Record<Sky, Silhouette> = { sun: drawScene('sun'), moon: drawScene('moon') }
