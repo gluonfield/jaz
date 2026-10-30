@@ -51,10 +51,13 @@ export async function exerciseRepoStatus(): Promise<void> {
   }
   const refresh = () => client.invalidateQueries({ queryKey: keys.sessionRepo(session.id), exact: true })
   try {
-    root.render(<QueryClientProvider client={client}><ToastProvider><OverviewPanel session={session} subagents={[]} spawnedThreads={[]} working={false} onSend={noop} onQueuePrompt={noop} onQueueAction={noop} /></ToastProvider></QueryClientProvider>)
+    root.render(<QueryClientProvider client={client}><ToastProvider><div style={{ width: 256 }}><OverviewPanel session={session} subagents={[]} spawnedThreads={[]} working={false} onSend={noop} onQueuePrompt={noop} onQueueAction={noop} /></div></ToastProvider></QueryClientProvider>)
     await until(() => Boolean(button('Merge into main')))
     if (button('Merge into main')!.disabled || !element.textContent?.includes('1 commit outside') || element.textContent.includes('Working tree clean')) {
       throw new Error('A pushed branch was presented as merged or its merge action was hidden')
+    }
+    for (const value of element.querySelectorAll('dt, dd, dd span')) {
+      if (value.scrollWidth > value.clientWidth) throw new Error('Git status is truncated at sidebar width: ' + value.textContent)
     }
     await window.smoke.capture('repo-unmerged-branch')
     info = { ...info, dirty: true }
@@ -86,13 +89,14 @@ export async function exerciseRepoStatus(): Promise<void> {
     await new Promise(requestAnimationFrame)
     if (element.scrollWidth > element.clientWidth) throw new Error('Repo status overflows the phone viewport')
     await window.smoke.capture('repo-unmerged-branch-phone')
-    info = { git: true, branch: 'main', head: 'feedface12345678', dirty: false }
+    info = { git: true, branch: 'main', head: 'feedface12345678', dirty: false, upstream: 'origin/main', push_ahead: 0 }
     await refresh()
-    await until(() => Boolean(element.textContent?.includes('Local checkout · feedfac')))
+    await until(() => Boolean(element.textContent?.includes('WorkspaceLocal checkout')))
     if (button('Merge into main') || element.textContent?.includes('Commits included')) throw new Error('Clean local main implied task inclusion')
+    await window.smoke.capture('repo-local-checkout-sidebar')
     info = { ...info, dirty: undefined }
     await refresh()
-    await until(() => Boolean(element.textContent?.includes('UncommittedUnknown')))
+    await until(() => Boolean(element.textContent?.includes('ChangesUnknown')))
     await window.smoke.resize(size.width, size.height)
     info = { git: true, branch: 'jaz/feature', is_worktree: true, main_branch: 'main', dirty: true }
     await refresh()
