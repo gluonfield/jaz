@@ -26,13 +26,12 @@ export function attachPreviewWebviews(host: WebContents, preload: string): void 
   })
 }
 
-export function configurePreviewSession(chromePreload: string): void {
-  const browser = session.fromPartition(PREVIEW_PARTITION)
+export function configureBrowserSessions(chromePreload: string): void {
   const appProduct = `${app.getName().replaceAll(' ', '')}/${app.getVersion()}`
-  const userAgent = browser.getUserAgent()
+  app.userAgentFallback = app.userAgentFallback
     .replace(` ${appProduct}`, '')
     .replace(` Electron/${process.versions.electron}`, '')
-  browser.setUserAgent(userAgent)
+  const browser = session.fromPartition(PREVIEW_PARTITION)
   browser.registerPreloadScript({ type: 'frame', filePath: chromePreload })
   browser.webRequest.onHeadersReceived({ urls: ['https://linkedin.com/*', 'https://www.linkedin.com/*'] }, (details, callback) => {
     const url = new URL(details.url)

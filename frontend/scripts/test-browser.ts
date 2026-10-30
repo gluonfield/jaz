@@ -1,4 +1,4 @@
-import { copyFile, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { build } from 'vite'
 import { createRequire } from 'node:module'
@@ -68,9 +68,13 @@ await build({
     lib: { entry: resolve(process.argv.includes('--chat-history') ? 'scripts/browser-smoke/chat-history-renderer.ts' : 'scripts/browser-smoke/renderer.tsx'), formats: ['es'], fileName: () => 'renderer.js', cssFileName: 'style' },
   },
 })
-await writeFile(join(output, 'index.html'), `<!doctype html><html><head><link rel="stylesheet" href="/style.css"><style>
+for (const name of ['jaz-defaults.js', 'favicon.png', 'icon-1024.png', 'manifest.webmanifest']) {
+  await copyFile(resolve('src/renderer/public', name), join(output, name))
+}
+const appDocument = await readFile(resolve('src/renderer/index.html'), 'utf8')
+await writeFile(join(output, 'index.html'), appDocument.replace('/src/main.tsx', '/renderer.js').replace('</head>', `<link rel="stylesheet" href="/style.css"><style>
 body{margin:0}#root{height:100vh;display:flex;justify-content:flex-end}
-</style></head><body><div id="root"></div><script type="module" src="/renderer.js"></script></body></html>`)
+</style></head>`))
 await writeFile(join(output, 'target.html'), `<!doctype html><html><head><title>Jaz browser control</title><style>
 body{font:16px system-ui;background:#faf9f6;color:#242424;padding:42px;min-height:1600px}h1{font-size:36px;letter-spacing:-1px}button{margin:220px 0 0 260px;padding:16px 24px;border:0;border-radius:12px;background:#e6e3dd;font:inherit;white-space:nowrap}button:hover{background:#c5e7ca}output{display:block;margin-top:22px;color:#286c36}
 </style></head><body><h1>Browser control</h1><p>The agent moves its cursor, then clicks the button.</p><button>Run this step</button><output>Ready</output><script>
@@ -91,7 +95,7 @@ const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './in
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
     JAZ_BROWSER_SMOKE_TIMEOUT_MS: '180000',
-    JAZ_BROWSER_SMOKE_SUITE: ['browser-startup', 'repo-status', 'claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images', 'markdown-documents', 'layout'].find(suite => process.argv.includes(`--${suite}`)) || '',
+    JAZ_BROWSER_SMOKE_SUITE: ['browser-identity', 'browser-startup', 'repo-status', 'claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images', 'markdown-documents', 'layout'].find(suite => process.argv.includes(`--${suite}`)) || '',
   },
   stdout: 'inherit',
   stderr: 'inherit',

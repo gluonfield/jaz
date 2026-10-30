@@ -145,15 +145,23 @@ original behavior.
 
 ## Browser identity
 
-Before creating a side-browser tab, Jaz configures that preview session's native
-User-Agent to omit the Jaz and Electron product tokens. The actual Chromium
+Before creating a window, Jaz configures the app and preview sessions' native
+User-Agents to omit the Jaz and Electron product tokens, including requests for
+remote images, favicons and canvas link frames. The actual Chromium
 version and platform remain intact and follow the installed Electron version.
-The app's own session keeps its identity. Chromium continues to generate client
-hints, language, fetch metadata, cookies and other request headers itself; page
+Chromium continues to generate client hints, language, fetch metadata, cookies
+and other request headers itself; page
 and worker JavaScript observe the same User-Agent as network requests.
-This uses [Electron's session API](https://www.electronjs.org/docs/latest/api/session#sessetuseragentuseragent-acceptlanguages)
-without per-request identity rewriting. A session preload adds Chrome's `chrome.app`
-API to every page's main world, as Chrome does; it is the only browser-property change.
+This uses [Electron's native app default](https://www.electronjs.org/docs/latest/api/app#appuseragentfallback)
+without per-request identity rewriting. A preview-session preload adds Chrome's
+`chrome.app` API to each side-browser page's main world, as Chrome does; it is the
+only browser-property change.
+
+Side-browser navigation, remote images, favicons and canvas link frames omit the app referrer. The app's
+privileged bridge stays out of side-browser pages and popups; agent control state
+runs in an isolated world. User-triggered annotations add visible DOM and a neutral
+cancellation hook without Jaz branding. These boundaries do not hide the network
+address, signed-in cookies, browser/device characteristics or user-submitted data.
 
 This improves browser compatibility. A browser identity does not establish that
 a person performed an action, and cannot guarantee that a site allows automation
