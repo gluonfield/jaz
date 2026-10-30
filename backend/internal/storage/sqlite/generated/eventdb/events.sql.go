@@ -586,7 +586,7 @@ FROM session_events
 WHERE session_events.thread_id = ?2
   AND session_events.seq < ?3
   AND ?4
-  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
+  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'artifact', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
 LIMIT ?1
 `
@@ -672,7 +672,7 @@ FROM session_events
 WHERE session_events.thread_id = ?2
   AND session_events.seq < ?3
   AND ?4
-  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
+  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'artifact', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
 LIMIT ?1
 `

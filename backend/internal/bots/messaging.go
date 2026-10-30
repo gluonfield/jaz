@@ -18,7 +18,7 @@ import (
 // them private.
 func (s *Service) AppVisible(threadID string) bool {
 	session, err := s.store.LoadSession(threadID)
-	return err == nil && session.SourceType != storage.SourceBotMember && (session.Turn == nil || session.Turn.Output == nil || session.Turn.Output.ReplyTo == "")
+	return err == nil && session.PresentsToUser()
 }
 
 // Message sends text from a thread to a bot or a group, named by id, mention

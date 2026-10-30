@@ -130,6 +130,7 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			events := []sessionevents.Event{
 				{Type: "bot_activity", BotActivity: &sessionevents.BotActivityEvent{Kind: "message_received", Label: "Planner"}},
 				{Type: "room_message", RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Name: "Bot", Text: "Ready"}},
+				{Type: "artifact", Artifact: &sessionevents.ArtifactEvent{Title: "Map", WidgetCode: "<svg></svg>"}},
 				{Type: "mcp_app", MCPApp: &sessionevents.MCPAppEvent{ServerID: "tasks", Tool: "show", Presented: true, Result: json.RawMessage(`{"content":[]}`)}},
 				{Type: "permission_request", Permission: &sessionevents.ACPPermission{ID: "question", Title: "Which project?", Questions: []sessionevents.ACPQuestion{{ID: "project", Question: "Which project?"}}}},
 				{Type: "permission_response", Permission: &sessionevents.ACPPermission{ID: "question", Answers: map[string][]string{"project": {"Prototype"}}}},
@@ -156,9 +157,9 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			if err := json.Unmarshal(res.Body.Bytes(), &page); err != nil {
 				t.Fatal(err)
 			}
-			wantMessages, wantEvents := 3, 9
+			wantMessages, wantEvents := 3, 10
 			if source == storage.SourceBot {
-				wantMessages, wantEvents = 1, 8
+				wantMessages, wantEvents = 1, 9
 			}
 			if len(page.Messages) != wantMessages || len(page.Events) != wantEvents {
 				t.Fatalf("messages=%d events=%d, want %d/%d", len(page.Messages), len(page.Events), wantMessages, wantEvents)
@@ -169,9 +170,92 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			if !slices.EqualFunc(page.Events, events[:wantEvents], func(a, b sessionevents.Event) bool {
 				return a.Type == b.Type
 			}) ||
-				page.Events[2].MCPApp.Tool != "show" || page.Events[3].Permission.Questions[0].Question != "Which project?" ||
-				page.Events[4].Permission.Answers["project"][0] != "Prototype" || page.Events[5].LoopCreated.LoopID != "review" || page.Events[7].ACP.SuggestedPrompt != "Review the plan" {
+				page.Events[2].Artifact.WidgetCode != "<svg></svg>" || page.Events[3].MCPApp.Tool != "show" || page.Events[4].Permission.Questions[0].Question != "Which project?" ||
+				page.Events[5].Permission.Answers["project"][0] != "Prototype" || page.Events[6].LoopCreated.LoopID != "review" || page.Events[8].ACP.SuggestedPrompt != "Review the plan" {
 				t.Fatal("chat surfaces lost their content")
+			}
+		})
+	}
+}
+
+func TestHistoricalArtifactVisibilityIsIndependentOfItsHistoryPage(t *testing.T) {
+	for _, test := range []struct {
+		kind    string
+		human   bool
+		visible bool
+		tied    bool
+	}{
+		{kind: "message_received", human: true},
+		{kind: "group", human: true},
+		{kind: "routine", visible: true},
+		{kind: "file_changed", human: true, visible: true},
+		{kind: "unknown"},
+		{kind: "routine", tied: true},
+	} {
+		t.Run(fmt.Sprintf("%s-tied-%v", test.kind, test.tied), func(t *testing.T) {
+			store, err := sqlitestore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = store.Close() })
+			bot, err := store.CreateSession(storage.CreateSession{SourceType: storage.SourceBot})
+			if err != nil {
+				t.Fatal(err)
+			}
+			at := time.Date(2026, 10, 30, 13, 0, 0, 0, time.UTC)
+			var messages []storage.Message
+			if test.human {
+				messages = append(messages, storage.Message{Role: "user", Content: "Earlier human turn", FromUser: true, CreatedAt: at})
+			}
+			if test.kind != "file_changed" {
+				messages = append(messages, storage.Message{Role: "user", Content: "Internal turn", CreatedAt: at.Add(time.Second)})
+			}
+			if err := store.AppendMessageRecords(bot.ID, messages...); err != nil {
+				t.Fatal(err)
+			}
+			boundaryAt := at.Add(2 * time.Second)
+			if test.tied {
+				boundaryAt = at.Add(time.Second)
+			}
+			events := []sessionevents.Event{{Type: sessionevents.TypeBotActivity, At: boundaryAt, BotActivity: &sessionevents.BotActivityEvent{Kind: test.kind}}}
+			for i := range 13 {
+				events = append(events, sessionevents.Event{Type: "acp", At: at.Add(time.Duration(i+3) * time.Second), ACP: &sessionevents.ACPEvent{ID: fmt.Sprintf("%s-child-%d", bot.ID, i), ParentID: bot.ID, State: "running"}})
+			}
+			events = append(events, sessionevents.Event{Type: sessionevents.TypeArtifact, At: at.Add(16 * time.Second), Artifact: &sessionevents.ArtifactEvent{Title: "Historical map", WidgetCode: "<svg></svg>"}})
+			if err := store.AppendSessionEvents(bot.ID, events...); err != nil {
+				t.Fatal(err)
+			}
+			handler := sessionMessagesHandler(store, store, nil)
+			type page struct {
+				Events          []sessionevents.Event `json:"events"`
+				BeforeEventSeq  int64                 `json:"before_event_seq"`
+				HistoryRevision int64                 `json:"history_revision"`
+			}
+			read := func(query string) page {
+				t.Helper()
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, httptest.NewRequest("GET", "/v1/sessions/"+bot.ID+"/messages"+query, nil))
+				var result page
+				if response.Code != 200 || json.Unmarshal(response.Body.Bytes(), &result) != nil {
+					t.Fatalf("history response: %d %s", response.Code, response.Body.String())
+				}
+				return result
+			}
+			latest := read("")
+			if len(latest.Events) != 14 || latest.Events[0].Seq != 2 || latest.Events[13].Artifact == nil || latest.Events[13].Artifact.Presented != test.visible {
+				t.Fatalf("visibility with clipped boundary: %+v", latest)
+			}
+			earlier := read(fmt.Sprintf("?before_event_seq=%d&history_revision=%d", latest.BeforeEventSeq, latest.HistoryRevision))
+			full := read("?turns=24")
+			merged := append(earlier.Events, latest.Events...)
+			if len(merged) != 15 || !slices.EqualFunc(merged, full.Events, func(a, b sessionevents.Event) bool {
+				return a.SessionID == b.SessionID && a.Seq == b.Seq && a.StorageContent() == b.StorageContent()
+			}) {
+				t.Fatal("merging earlier history changed artifact provenance")
+			}
+			raw, err := store.LoadSessionEvents(bot.ID)
+			if err != nil || raw[14].Artifact.Presented || raw[14].Artifact.WidgetCode != "<svg></svg>" {
+				t.Fatalf("history projection changed stored content: %+v, %v", raw, err)
 			}
 		})
 	}

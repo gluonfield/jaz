@@ -136,6 +136,8 @@ func (s ProviderSubagentStatus) Ended() bool {
 }
 
 type ArtifactEvent struct {
+	// Presented records host acceptance for the user's chat, not a client render acknowledgement.
+	Presented       bool     `json:"presented,omitempty"`
 	Title           string   `json:"title"`
 	WidgetCode      string   `json:"widget_code"`
 	LoadingMessages []string `json:"loading_messages,omitempty"`
@@ -313,9 +315,9 @@ func (e *Event) NormalizePayload() {
 }
 
 // Delivers reports whether e shows the user something its thread's turn
-// produced: a bot's chat message or an app view Jaz presented.
+// produced: a bot's chat message or a view Jaz accepted for presentation.
 func (e Event) Delivers() bool {
-	return e.RoomMessage != nil && e.RoomMessage.Speaker == "bot" || e.MCPApp != nil && e.MCPApp.Presented
+	return e.RoomMessage != nil && e.RoomMessage.Speaker == "bot" || e.MCPApp != nil && e.MCPApp.Presented || e.Artifact != nil && e.Artifact.Presented
 }
 
 func (e Event) StorageContent() string {

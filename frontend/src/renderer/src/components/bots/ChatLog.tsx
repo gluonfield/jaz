@@ -1,5 +1,6 @@
 import { memo, useMemo, useState, type RefObject } from 'react'
 import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
+import { ArtifactBlock } from '@/components/session/ArtifactBlock'
 import { MessageActions } from '@/components/session/MessageActions'
 import { MessageAttachments } from '@/components/session/MessageAttachments'
 import { PermissionCard } from '@/components/session/TranscriptPermissions'
@@ -31,6 +32,7 @@ export function ChatLog({
   named,
   working,
   onOpenRoutines,
+  onSendPrompt,
   scrollRef,
   paging,
 }: {
@@ -41,6 +43,7 @@ export function ChatLog({
   working: ({ bot: Bot } & BotWork)[]
   // Opens the routines a "Created routine" line names.
   onOpenRoutines?: () => void
+  onSendPrompt?: (text: string) => void
   scrollRef: RefObject<HTMLDivElement | null>
   paging: HistoryPaging
 }) {
@@ -92,6 +95,8 @@ export function ChatLog({
               <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />
             ) : entry.kind === 'app' ? (
               <MCPAppFrame app={entry.app} call={entry.app} active />
+            ) : entry.kind === 'artifact' ? (
+              <ArtifactBlock artifact={entry.event.artifact} onSendPrompt={onSendPrompt} />
             ) : entry.kind === 'question' ? (
               <PermissionCard event={entry.event} resolution={entry.answer} />
             ) : (

@@ -124,6 +124,7 @@ export type ChatEntry =
   | { kind: 'bot'; key: string; at: string; botId?: string; name: string; text: string }
   | { kind: 'activity'; key: string; at: string; event: SessionEvent }
   | { kind: 'app'; key: string; at: string; app: MCPAppEvent }
+  | { kind: 'artifact'; key: string; at: string; event: SessionEvent }
   | { kind: 'question'; key: string; at: string; event: SessionEvent; answer?: ACPPermission }
 
 type ChatTurn = {
@@ -192,6 +193,8 @@ export function botChat(
       if (activity.kind === 'unreachable') entries.push({ kind: 'activity', key, at, event })
     } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })
+    } else if (event.type === 'artifact' && event.artifact?.presented) {
+      entries.push({ kind: 'artifact', key, at, event })
     } else if (event.type === 'permission_request' && event.permission && hasPermissionSurface(event.permission)) {
       // A question asked again replaces its card; the latest one is answered.
       const asked = questions.get(event.permission.id)
