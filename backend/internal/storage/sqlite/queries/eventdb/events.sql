@@ -146,7 +146,7 @@ FROM session_events
 WHERE session_events.thread_id = sqlc.arg(thread_id)
   AND session_events.seq < sqlc.arg(before_seq)
   AND sqlc.arg(chat_only)
-  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
+  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'artifact', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
 LIMIT sqlc.arg(limit_count);
 
@@ -172,7 +172,7 @@ FROM session_events
 WHERE session_events.thread_id = sqlc.arg(thread_id)
   AND session_events.seq < sqlc.arg(before_seq)
   AND sqlc.arg(chat_only)
-  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
+  AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'artifact', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
 LIMIT sqlc.arg(limit_count);
 

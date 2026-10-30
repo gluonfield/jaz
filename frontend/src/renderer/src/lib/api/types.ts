@@ -721,6 +721,7 @@ export interface GoalState {
 export type GoalEvent = GoalState
 
 export interface ArtifactEvent {
+  presented?: boolean
   title: string
   widget_code: string
   loading_messages?: string[]

@@ -68,6 +68,19 @@ describe('bot chat log', () => {
     expect(botChat([], events, self, opens).entries.map((entry) => entry.kind)).toEqual(['app'])
   })
 
+  test('artifacts retain their source event and public deliveries survive pages without turn context', () => {
+    const legacy = event(2, { type: 'artifact', artifact: { title: 'Original map', widget_code: '<svg></svg>' } })
+    const privateMap = event(4, { type: 'artifact', artifact: { title: 'Private map', widget_code: '<svg></svg>' } })
+    const delivered = event(6, { type: 'artifact', artifact: { title: 'Routine map', widget_code: '<svg></svg>', presented: true } })
+    const entries = botChat([user(1, 1, 'Draw the chain')], [legacy, woke(3, 'message_received', 'Peer'), privateMap, woke(5, 'routine', 'Digest'), delivered], self, []).entries
+    expect(entries.map((entry) => entry.kind)).toEqual(['user', 'artifact', 'artifact'])
+    expect(entries[1].event).toBe(legacy)
+    expect(entries[1].key).toBe(`${legacy.session_id}:${legacy.seq}`)
+    expect(entries[2].event).toBe(delivered)
+    expect(botChat([], [delivered], self, []).entries[0].event).toBe(delivered)
+    expect(botChat([], [privateMap], self, []).entries).toEqual([])
+  })
+
   test('group turns and routine runs stay out of the chat unless the bot speaks', () => {
     const { entries } = botChat(
       [user(1, 1, 'hi')],

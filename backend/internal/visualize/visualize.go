@@ -9,6 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/templates/visualizeguide"
 )
 
@@ -37,8 +38,9 @@ func NormalizeSurface(surface string) Surface {
 }
 
 const (
-	RenderedMessage  = "Content rendered and shown to the user. Please do not duplicate the shown content in text because it's already visually represented."
-	RenderedReminder = "[This tool call rendered an interactive widget in the chat. The user can already see the result — do not repeat it in text or with another visualisation tool.]"
+	SavedMessage    = "Artifact saved in this conversation for display. Client rendering has not been confirmed."
+	PreparedMessage = "Artifact prepared for display in the transcript. Client rendering has not been confirmed."
+	DisplayReminder = "Do not duplicate the artifact in text or with another visualisation tool. Do not claim the user has already seen it."
 )
 
 type SessionEventAppender interface {
@@ -47,6 +49,10 @@ type SessionEventAppender interface {
 
 type SessionEventPublisher interface {
 	Publish(event sessionevents.Event)
+}
+
+type SessionSource interface {
+	LoadSession(id string) (storage.Session, error)
 }
 
 type ReadMeInput struct {
@@ -67,12 +73,13 @@ type ShowWidgetOutput struct {
 }
 
 type MCPTools struct {
-	Store  SessionEventAppender
-	Events SessionEventPublisher
+	Store    SessionEventAppender
+	Sessions SessionSource
+	Events   SessionEventPublisher
 }
 
-func NewMCPTools(store SessionEventAppender, events SessionEventPublisher) *MCPTools {
-	return &MCPTools{Store: store, Events: events}
+func NewMCPTools(store SessionEventAppender, sessions SessionSource, events SessionEventPublisher) *MCPTools {
+	return &MCPTools{Store: store, Sessions: sessions, Events: events}
 }
 
 func (t *MCPTools) AddTo(server *mcp.Server) {
@@ -102,27 +109,31 @@ func (t *MCPTools) ReadMe(_ context.Context, _ *mcp.CallToolRequest, input ReadM
 	return textResult(BuildReadMeGuide(input.Modules, input.Platform))
 }
 
-// The rendered artifact reaches the UI via the event bus below, not the return.
 func (t *MCPTools) ShowWidget(_ context.Context, req *mcp.CallToolRequest, input ShowWidgetInput) (*mcp.CallToolResult, any, error) {
 	_, artifact, err := BuildArtifact(input)
 	if err != nil {
 		return nil, nil, err
 	}
-	if sessionID := mcpsession.SessionID(req); sessionID != "" && t.Store != nil {
-		event := sessionevents.Event{
-			SessionID: sessionID,
-			Type:      sessionevents.TypeArtifact,
-			Artifact:  artifact,
-		}
-		events := []sessionevents.Event{event}
-		if err := t.Store.AppendSessionEvents(sessionID, events...); err != nil {
-			return nil, nil, err
-		}
-		if t.Events != nil {
-			t.Events.Publish(events[0])
-		}
+	sessionID := mcpsession.SessionID(req)
+	if sessionID == "" {
+		return nil, nil, errors.New("artifact delivery requires a session")
 	}
-	return textResult(RenderedMessage, RenderedReminder)
+	session, err := t.Sessions.LoadSession(sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !session.PresentsToUser() {
+		return textResult("Artifact not displayed in the user's chat: this turn answers a bot or group. Use this turn's delivery channel to report the result.")
+	}
+	artifact.Presented = true
+	events := []sessionevents.Event{{SessionID: sessionID, Type: sessionevents.TypeArtifact, Artifact: artifact}}
+	if err := t.Store.AppendSessionEvents(sessionID, events...); err != nil {
+		return nil, nil, err
+	}
+	if t.Events != nil {
+		t.Events.Publish(events[0])
+	}
+	return textResult(SavedMessage, DisplayReminder)
 }
 
 // textResult builds a text-only MCP result with a deliberately nil structured

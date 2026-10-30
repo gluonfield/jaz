@@ -130,6 +130,7 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			events := []sessionevents.Event{
 				{Type: "bot_activity", BotActivity: &sessionevents.BotActivityEvent{Kind: "message_received", Label: "Planner"}},
 				{Type: "room_message", RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Name: "Bot", Text: "Ready"}},
+				{Type: "artifact", Artifact: &sessionevents.ArtifactEvent{Title: "Map", WidgetCode: "<svg></svg>"}},
 				{Type: "mcp_app", MCPApp: &sessionevents.MCPAppEvent{ServerID: "tasks", Tool: "show", Presented: true, Result: json.RawMessage(`{"content":[]}`)}},
 				{Type: "permission_request", Permission: &sessionevents.ACPPermission{ID: "question", Title: "Which project?", Questions: []sessionevents.ACPQuestion{{ID: "project", Question: "Which project?"}}}},
 				{Type: "permission_response", Permission: &sessionevents.ACPPermission{ID: "question", Answers: map[string][]string{"project": {"Prototype"}}}},
@@ -156,9 +157,9 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			if err := json.Unmarshal(res.Body.Bytes(), &page); err != nil {
 				t.Fatal(err)
 			}
-			wantMessages, wantEvents := 3, 9
+			wantMessages, wantEvents := 3, 10
 			if source == storage.SourceBot {
-				wantMessages, wantEvents = 1, 8
+				wantMessages, wantEvents = 1, 9
 			}
 			if len(page.Messages) != wantMessages || len(page.Events) != wantEvents {
 				t.Fatalf("messages=%d events=%d, want %d/%d", len(page.Messages), len(page.Events), wantMessages, wantEvents)
@@ -169,8 +170,8 @@ func TestBotHistoryKeepsChatSurfacesAndWorkerTranscripts(t *testing.T) {
 			if !slices.EqualFunc(page.Events, events[:wantEvents], func(a, b sessionevents.Event) bool {
 				return a.Type == b.Type
 			}) ||
-				page.Events[2].MCPApp.Tool != "show" || page.Events[3].Permission.Questions[0].Question != "Which project?" ||
-				page.Events[4].Permission.Answers["project"][0] != "Prototype" || page.Events[5].LoopCreated.LoopID != "review" || page.Events[7].ACP.SuggestedPrompt != "Review the plan" {
+				page.Events[2].Artifact.WidgetCode != "<svg></svg>" || page.Events[3].MCPApp.Tool != "show" || page.Events[4].Permission.Questions[0].Question != "Which project?" ||
+				page.Events[5].Permission.Answers["project"][0] != "Prototype" || page.Events[6].LoopCreated.LoopID != "review" || page.Events[8].ACP.SuggestedPrompt != "Review the plan" {
 				t.Fatal("chat surfaces lost their content")
 			}
 		})

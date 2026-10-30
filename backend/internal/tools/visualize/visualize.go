@@ -64,7 +64,7 @@ func (ShowWidgetTool) Execute(_ context.Context, inputs map[string]any) (tools.R
 		return tools.Result{}, err
 	}
 	return tools.Result{
-		Content: visualizesvc.RenderedMessage + "\n\n" + visualizesvc.RenderedReminder,
+		Content: visualizesvc.PreparedMessage + "\n\n" + visualizesvc.DisplayReminder,
 		Metadata: map[string]any{
 			"status":        output.Status,
 			"title":         output.Title,
