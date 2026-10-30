@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { botChat, dragSections, placePin } from './bots'
 import { optimisticTranscriptMessages } from './optimisticUserMessage'
+import { mergeEarlierHistory } from './sessionHistory'
 
 describe('bot chat log', () => {
   const self = { id: 'gimli', name: 'Gimli' }
@@ -69,7 +70,7 @@ describe('bot chat log', () => {
   })
 
   test('artifacts retain their source event and public deliveries survive pages without turn context', () => {
-    const legacy = event(2, { type: 'artifact', artifact: { title: 'Original map', widget_code: '<svg></svg>' } })
+    const legacy = event(2, { type: 'artifact', artifact: { title: 'Original map', widget_code: '<svg></svg>', presented: true } })
     const privateMap = event(4, { type: 'artifact', artifact: { title: 'Private map', widget_code: '<svg></svg>' } })
     const delivered = event(6, { type: 'artifact', artifact: { title: 'Routine map', widget_code: '<svg></svg>', presented: true } })
     const entries = botChat([user(1, 1, 'Draw the chain')], [legacy, woke(3, 'message_received', 'Peer'), privateMap, woke(5, 'routine', 'Digest'), delivered], self, []).entries
@@ -79,6 +80,20 @@ describe('bot chat log', () => {
     expect(entries[2].event).toBe(delivered)
     expect(botChat([], [delivered], self, []).entries[0].event).toBe(delivered)
     expect(botChat([], [privateMap], self, []).entries).toEqual([])
+    expect(botChat([user(1, 1, 'An earlier public turn')], [privateMap], self, []).entries.map((entry) => entry.kind)).toEqual(['user'])
+    expect(botChat([], [woke(3, 'routine', 'A loaded routine'), privateMap], self, []).entries).toEqual([])
+  })
+
+  test('merging clipped private and routine boundaries cannot change resolved artifact visibility', () => {
+    for (const kind of ['message_received', 'group', 'routine']) {
+      const boundary = woke(2, kind, 'Source turn')
+      const artifact = event(4, { type: 'artifact', artifact: { title: 'Historical map', widget_code: '<svg></svg>', presented: kind === 'routine' } })
+      const latest = { session: { id: self.id, source_type: 'bot' }, messages: kind === 'routine' ? [] : [user(1, 1, 'An unrelated earlier turn')], events: [artifact] }
+      const merged = mergeEarlierHistory(latest, { ...latest, messages: [], events: [boundary] })
+      const visible = (page) => botChat(page.messages, page.events, self, []).entries.filter((entry) => entry.kind === 'artifact').map((entry) => entry.key)
+      expect(visible(latest)).toEqual(kind === 'routine' ? [`${artifact.session_id}:${artifact.seq}`] : [])
+      expect(visible(merged)).toEqual(visible(latest))
+    }
   })
 
   test('group turns and routine runs stay out of the chat unless the bot speaks', () => {

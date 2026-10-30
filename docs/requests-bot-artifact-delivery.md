@@ -6,7 +6,7 @@ Bot chat now renders saved artifact events using the existing sandboxed `Artifac
 
 - History retains artifact events alongside the existing chat surfaces. Chat entries keep the source session, sequence and payload; replay uses the existing event coalescer.
 - New artifact events record host acceptance for presentation. This marks turn delivery atomically with the saved event and keeps it visible on pages without turn context. It is not a client rendering acknowledgement.
-- Historical events without that marker use the existing public user/routine turn context. No history migration or live transcript rewrite is needed.
+- History resolves unmarked historical artifacts from bounded persisted message/activity predecessors in the same read transaction. The UI never infers visibility from a partial page. Unknown or conflicting same-millisecond provenance stays hidden; no migration or live transcript rewrite is needed.
 - Artifact tools reuse the same session visibility rule as app presentations. Turns answering a peer bot or a group do not present into the user's bot chat.
 - The MCP tool reports a saved artifact only after persistence succeeds. Missing sessions and failed writes cannot return success. The native tool reports preparation only. Neither claims the user has seen the result.
 - Artifact prompt interactions return through the bot chat's existing send function.
