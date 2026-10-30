@@ -23,6 +23,6 @@ This change adds no cross-conversation transport, gallery, artifact registry, ne
 
 ## Verification
 
-Go 1.26 tests exercise real SQLite persistence, public/private presentation, failed-save behavior, delivery accounting and HTTP history. Frontend tests cover historical events and standalone presentation pages. The normal hidden Electron history suite checks live delivery, replay without duplication, reload, the sandbox prompt bridge, visible bounds and rendering errors. A private replay of the original saved map uses unchanged source content through the production chat projection and renderer.
+Go 1.26 tests exercise real SQLite persistence, public/private presentation, failed-save behavior, delivery accounting and HTTP history. Frontend tests cover historical events and standalone presentation pages. The normal hidden Electron history suite runs in explicit development mode, asserts StrictMode double mounting, and checks live delivery, replay without duplication, reload, the sandbox prompt bridge, visible bounds and rendering errors. A private replay of the original saved map uses unchanged source content through the production chat projection and renderer.
 
-Private trace, screenshots, hashes, check logs and the strict code-quality review are under ignored `runs/bot-artifact-delivery/`.
+An external OS sampler verifies the hidden run does not show test windows or take foreground focus. Private trace, screenshots, hashes, check logs and the strict code-quality review are under ignored `runs/bot-artifact-delivery/`.

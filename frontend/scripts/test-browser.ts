@@ -6,6 +6,8 @@ import { execFileSync } from 'node:child_process'
 import tailwindcss from '@tailwindcss/vite'
 import { utils, write } from 'xlsx'
 
+process.env.NODE_ENV = 'development'
+
 await mkdir(resolve('../runs'), { recursive: true })
 const output = await mkdtemp(resolve('../runs/browser-smoke-'))
 await mkdir(join(output, 'renderer'))
@@ -57,6 +59,7 @@ for (const entry of ['scripts/browser-smoke/main.ts', 'scripts/browser-smoke/pre
 }
 await build({
   configFile: false,
+  mode: 'development',
   plugins: [tailwindcss()],
   resolve: { alias: { '@': resolve('src/renderer/src'), '@shared': resolve('src/shared') } },
   // A development build, like the app in development, so StrictMode mounts

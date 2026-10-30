@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ChatLog } from '@/components/bots/ChatLog'
 import type { SessionEvent } from '@/lib/api/types'
@@ -29,6 +29,7 @@ setTimeout(() => {
   }
   let update: (events: SessionEvent[]) => void = () => {}
   let ready = 0
+  let mounts = 0
   const prompts: string[] = []
   const receive = (message: MessageEvent) => {
     if (message.source === element.querySelector('iframe')?.contentWindow && message.data?.type === 'map-ready') ready += 1
@@ -38,6 +39,9 @@ setTimeout(() => {
     const [events, setEvents] = useState(initial)
     update = setEvents
     const scrollRef = useRef<HTMLDivElement>(null)
+    useEffect(() => {
+      mounts += 1
+    }, [])
     const { entries } = botChat([], coalesceSessionEvents(events), { id: event.session_id, name: 'Manufacturing Bot' }, [])
     return <div ref={scrollRef}>
       <ChatLog entries={entries} bots={[]} named={false} working={[]} scrollRef={scrollRef}
@@ -53,11 +57,11 @@ setTimeout(() => {
     }
   }
   const render = (key: string, initial?: SessionEvent[]) => root.render(
-    <QueryClientProvider client={client}><Chat key={key} initial={initial} /></QueryClientProvider>,
+    <StrictMode><QueryClientProvider client={client}><Chat key={key} initial={initial} /></QueryClientProvider></StrictMode>,
   )
   try {
     render('live')
-    await until(() => Boolean(element.firstElementChild))
+    await until(() => mounts === 2)
     update([event])
     await until(() => ready === 1 && prompts.length === 1)
     const frame = element.querySelector('iframe')!
@@ -70,7 +74,7 @@ setTimeout(() => {
       throw new Error('History replay duplicated or remounted the live artifact')
     }
     render('reloaded', [JSON.parse(JSON.stringify(event))])
-    await until(() => ready === 2 && prompts.length === 2)
+    await until(() => mounts === 4 && ready === 2 && prompts.length === 2)
     if (prompts.some((text) => text !== 'Explain service centres')) throw new Error('Artifact prompt bridge lost its message')
     const reloaded = element.querySelector('iframe')!
     const rect = reloaded.getBoundingClientRect()
