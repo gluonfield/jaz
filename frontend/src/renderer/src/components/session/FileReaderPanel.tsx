@@ -120,6 +120,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
             content={file.data.content ?? ''}
             highlightLine={fileRef?.line}
             onOpenFile={onOpenFile}
+            active={visible}
           />
         )}
       </div>
@@ -133,17 +134,19 @@ function FilePreview({
   content,
   highlightLine,
   onOpenFile,
+  active,
 }: {
   sessionId: string
   path: string
   content: string
   highlightLine?: number
   onOpenFile: (file: FileReference) => void
+  active: boolean
 }) {
   if (isMarkdownPath(path)) {
     return (
       <FileReaderLinkProvider sessionId={sessionId} documentPath={path} onOpen={onOpenFile}>
-        <RenderedMarkdown text={content} className="file-prose" />
+        <RenderedMarkdown text={content} className="file-prose" artifactPreview={!active} />
       </FileReaderLinkProvider>
     )
   }

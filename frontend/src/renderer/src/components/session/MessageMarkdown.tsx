@@ -19,9 +19,11 @@ import { Favicon } from '@/components/ui/Favicon'
 import { MarkdownImage, MarkdownImageLinkContext } from '@/components/session/MarkdownImage'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { markdownImageSource } from '@/lib/markdownImages'
+import { remarkMathDelimiters } from '@/lib/markdownMath'
 import { remarkHeadingAnchors, remarkMarkdownDocuments } from '@/lib/markdownDocuments'
 import { MarkdownDocumentCard } from '@/components/session/MarkdownDocumentCard'
-import { findFileReferences, parseFileReference, resolveFileLink, type FileReference } from '@shared/fileReader'
+import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
+import { findFileReferences, isMarkdownPath, parseFileReference, resolveFileLink, type FileReference } from '@shared/fileReader'
 import { CodeBlock } from './CodeBlock'
 import { ConnectCard } from './ConnectCard'
 import { encodeMention } from './mentionCodec'
@@ -66,21 +68,6 @@ export function FileReaderLinkProvider({
       <MarkdownFileContext value={fileContext}>{children}</MarkdownFileContext>
     </FileReaderLinkContext.Provider>
   )
-}
-
-// Models often emit \[...\] / \(...\) math delimiters; remark-math only
-// parses dollar-style math. Convert outside of code spans/fences.
-function normalizeMath(text: string): string {
-  return text
-    .split(/(```[\s\S]*?```|`[^`]*`)/g)
-    .map((part, i) =>
-      i % 2 === 1
-        ? part
-        : part
-            .replace(/\\\[([\s\S]*?)\\\]/g, (_, expr: string) => `\n$$\n${expr}\n$$\n`)
-            .replace(/\\\(([\s\S]*?)\\\)/g, (_, expr: string) => `$$${expr}$$`),
-    )
-    .join('')
 }
 
 function textFromChildren(children: unknown): string {
@@ -277,7 +264,7 @@ const MarkdownTable: ComponentType<ComponentProps<'table'> & ExtraProps> = ({ no
   </div>
 )
 
-const REMARK_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkFileReferences, remarkHeadingAnchors] satisfies Options['remarkPlugins']
+const REMARK_PLUGINS = [remarkGfm, [remarkMath, { singleDollarTextMath: false }], remarkMathDelimiters, remarkFileReferences, remarkHeadingAnchors] satisfies Options['remarkPlugins']
 const CHAT_REMARK_PLUGINS = [...REMARK_PLUGINS, remarkConnectCards]
 const USER_REMARK_PLUGINS = [...CHAT_REMARK_PLUGINS, remarkLineBreaks]
 
@@ -309,7 +296,6 @@ function BaseMarkdown({
     if (mentions?.size) plugins.push([remarkMentions, mentions])
     return plugins
   }, [documentCards, files, mentions, remarkPlugins])
-  const prepared = useMemo(() => normalizeMath(text), [text])
   const components = useMemo<Components>(() => ({ a: Link, img: MarkdownFileImage, pre: CodeBlock, table: MarkdownTable, 'connect-card': ConnectCard, 'markdown-document': MarkdownDocument }), [Link])
   return (
     <div className={className} data-markdown-root>
@@ -321,7 +307,7 @@ function BaseMarkdown({
           ? url
           : parseFileReference(url) || botIdFromTarget(url) ? url : defaultUrlTransform(url)}
       >
-        {prepared}
+        {text}
       </Markdown>
     </div>
   )
@@ -333,7 +319,7 @@ function MarkdownDocument({ path, label }: { path: string; label: string }) {
   return <MarkdownDocumentCard sessionId={files.sessionId} file={{ path }} label={label} onOpen={openFile}
     renderContent={(content, documentPath) => (
       <FileReaderLinkProvider sessionId={files.sessionId} documentPath={documentPath} onOpen={openFile}>
-        <RenderedMarkdown text={content} className="file-prose" />
+        <RenderedMarkdown text={content} className="file-prose" artifactPreview />
       </FileReaderLinkProvider>
     )} />
 }
@@ -417,11 +403,19 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
 export const RenderedMarkdown = memo(function RenderedMarkdown({
   text,
   className = 'chat-prose',
+  artifactPreview = false,
 }: {
   text: string
   className?: string
+  artifactPreview?: boolean
 }) {
-  return <BaseMarkdown text={text} className={className} Link={PlainMarkdownLink} />
+  const files = useContext(MarkdownFileContext)
+  const artifacts = useContext(MarkdownArtifactContext)
+  const scope = useMemo(() => ({
+    mode: files?.documentPath && isMarkdownPath(files.documentPath) ? artifactPreview ? 'preview' as const : 'live' as const : 'source' as const,
+    onSendPrompt: artifacts.onSendPrompt,
+  }), [artifactPreview, artifacts.onSendPrompt, files?.documentPath])
+  return <MarkdownArtifactContext value={scope}><BaseMarkdown text={text} className={className} Link={PlainMarkdownLink} /></MarkdownArtifactContext>
 })
 
 // User messages already carry mentions as Markdown links, so they use the same

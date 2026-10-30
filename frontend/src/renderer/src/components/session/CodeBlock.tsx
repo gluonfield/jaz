@@ -1,9 +1,10 @@
 import type { Element, ElementContent } from 'hast'
-import { Fragment, type ComponentProps } from 'react'
+import { Fragment, useContext, type ComponentProps } from 'react'
 import type { ExtraProps } from 'react-markdown'
 import { CopyToggleIcon } from '@/components/ui/CopyToggleIcon'
 import { useCopyAction } from '@/lib/useCopyAction'
 import { MermaidDiagram } from '@/components/session/MermaidDiagram'
+import { MarkdownArtifact, MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
 import { HighlightedCodeLine, type HighlightedCodeTokens, useHighlightedCode } from './HighlightedCode'
 
 const LANGUAGE_LABELS: Record<string, string> = {
@@ -105,9 +106,12 @@ export function CodeBlock({ node, children }: ComponentProps<'pre'> & ExtraProps
   const language = languageFromClass(code?.properties?.className)
   const text = nodeText(code).replace(/\n$/, '')
   const isMermaid = language.toLowerCase() === 'mermaid'
-  const highlighted = useHighlightedCode(isMermaid ? '' : language, text)
+  const artifacts = useContext(MarkdownArtifactContext)
+  const isArtifact = language.toLowerCase() === 'jaz-artifact' && artifacts.mode !== 'source'
+  const highlighted = useHighlightedCode(isMermaid || isArtifact ? '' : language, text)
 
   if (!code) return <pre>{children}</pre>
+  if (isArtifact) return <MarkdownArtifact {...artifacts} code={text} title={typeof code.data?.meta === 'string' ? code.data.meta.trim() || 'Interactive artifact' : 'Interactive artifact'} />
 
   const lines = text.split('\n')
   const source = (

@@ -34,6 +34,7 @@ import { exerciseAppNavigation } from './app-navigation'
 import { exerciseCanvas } from './canvas'
 import { exerciseImages } from './images'
 import { exerciseMarkdownDocuments } from './markdown-documents'
+import { exerciseMarkdownArtifacts } from './markdown-artifacts'
 import { exerciseBrowserAppearance } from './appearance'
 import { exerciseAddressBar } from './address-bar'
 import { exerciseClaudeVoice } from './claude-voice'
@@ -127,6 +128,7 @@ function Fixture() {
       if (!suite || suite === 'markdown-documents') {
         progress('Markdown contents navigation and reader controls')
         await exerciseMarkdownDocuments()
+        await exerciseMarkdownArtifacts()
         if (suite === 'markdown-documents') {
           window.smoke.result({ ok: true, checks: ['document cards and title-only reader; scoped authored contents links, duplicate and Unicode headings, stable thread URL; X closes reader and preserves chat; desktop and phone'] })
           return
