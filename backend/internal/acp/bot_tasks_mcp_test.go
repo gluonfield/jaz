@@ -162,8 +162,11 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 		t.Fatalf("closed tasks leaked into working context: %+v", tasks.Tasks)
 	}
 	view, err := jaz.bots.Activity(bot.ID)
-	if err != nil || len(view.Items) != 0 || len(view.Owed) != 0 {
-		t.Fatalf("closed tasks leaked into Activity: %+v, %v", view, err)
+	if err != nil || len(view.Items) != 1 || len(view.Owed) != 0 {
+		t.Fatalf("closed task worker missing from history: %+v, %v", view, err)
+	}
+	if item := view.Items[0]; item.Kind != "side_chat" || item.ThreadID != worker.ThreadID || item.Status != storage.StatusIdle || item.Running {
+		t.Fatalf("closed task history = %+v", item)
 	}
 	for range 101 {
 		if _, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Unfinished work"}); err != nil {

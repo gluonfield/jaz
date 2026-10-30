@@ -402,6 +402,7 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		"routine:Morning brief:Gmail sign-in expired:error",
 		"side_chat:Errand for the team::idle",
 		"side_chat:Legacy notes::running:running",
+		"side_chat:Old idea::idle",
 		"side_chat:Rerun::running:running",
 	}
 	if !slices.Equal(got, want) {
@@ -418,6 +419,21 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 		fmt.Sprintf("#%d Queue fixes: %s Queue fixes working", commitments["Queue fixes"], working),
 	}; !slices.Equal(lines, want) {
 		t.Fatalf("owed =\n%s\nwant\n%s", strings.Join(lines, "\n"), strings.Join(want, "\n"))
+	}
+	if _, err := service.Commit(research.ID, Commit{ID: commitments["Plan review"], Status: storage.CommitmentDone, Message: "Review delivered"}); err != nil {
+		t.Fatal(err)
+	}
+	delivered, err := service.Activity(research.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(delivered.Owed, func(task Owed) bool { return task.ID == commitments["Plan review"] }) || !slices.ContainsFunc(delivered.Items, func(item Activity) bool {
+		return item.ThreadID == finished && item.Status == storage.StatusIdle && !item.Running
+	}) {
+		t.Fatalf("delivered work disappeared instead of moving from tasks to history: %+v", delivered)
+	}
+	if len(delivered.Started[finished]) != 2 || len(delivered.Started[diff]) != 1 {
+		t.Fatalf("delivered work lost its nested threads: %+v", delivered.Started)
 	}
 	// What runs stays listed however much happened since it started.
 	for range activityShown {

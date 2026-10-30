@@ -21,6 +21,7 @@ const (
 type SearchQuery struct {
 	Query           string
 	IncludeArchived bool
+	IncludeSourced  bool
 	Limit           int
 }
 
@@ -69,6 +70,7 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 	metadataRows, err := s.store.SearchThreadMetadata(ctx, search.SearchThreadMetadataParams{
 		Match:           match,
 		IncludeArchived: boolInt(query.IncludeArchived),
+		IncludeSourced:  boolInt(query.IncludeSourced),
 		Limit:           int64(candidateLimit),
 	})
 	if err != nil {
@@ -85,6 +87,7 @@ func (s *Service) Search(ctx context.Context, query SearchQuery) ([]SearchResult
 		Match:           match,
 		HiddenPrefixes:  string(hiddenPrefixes),
 		IncludeArchived: boolInt(query.IncludeArchived),
+		IncludeSourced:  boolInt(query.IncludeSourced),
 		Limit:           int64(candidateLimit),
 	})
 	if err != nil {

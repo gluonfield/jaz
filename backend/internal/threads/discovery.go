@@ -34,7 +34,7 @@ func (s *Service) ListMCP(ctx context.Context, _ *mcp.CallToolRequest, input Lis
 		return nil, DiscoveryResponse{}, err
 	}
 	sessions, err := s.context.ListSessions(storage.SessionFilter{
-		IncludeChildren: true, Archived: input.Archived, Limit: clampSearchLimit(input.Limit),
+		IncludeChildren: true, IncludeSourced: true, Archived: input.Archived, Limit: clampSearchLimit(input.Limit),
 	})
 	out := DiscoveryResponse{Threads: make([]ThreadSummary, 0, len(sessions))}
 	for _, session := range sessions {
@@ -60,7 +60,7 @@ func (s *Service) SearchMCP(ctx context.Context, _ *mcp.CallToolRequest, input S
 	if strings.TrimSpace(input.Query) == "" {
 		return nil, DiscoveryResponse{}, fmt.Errorf("query is required")
 	}
-	results, err := s.Search(ctx, SearchQuery{Query: input.Query, IncludeArchived: input.IncludeArchived, Limit: input.Limit})
+	results, err := s.Search(ctx, SearchQuery{Query: input.Query, IncludeArchived: input.IncludeArchived, IncludeSourced: true, Limit: input.Limit})
 	out := DiscoveryResponse{Threads: make([]ThreadSummary, 0, len(results))}
 	for _, result := range results {
 		out.Threads = append(out.Threads, ThreadSummary{

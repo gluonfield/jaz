@@ -289,55 +289,6 @@ func (q *Queries) LinkCommitmentThread(ctx context.Context, arg LinkCommitmentTh
 	return result.RowsAffected()
 }
 
-const listClosedCommitments = `-- name: ListClosedCommitments :many
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms FROM bot_commitments
-WHERE bot_id = ?1 AND status IN ('completed', 'cancelled') AND closed_at_ms >= ?2
-ORDER BY id
-`
-
-type ListClosedCommitmentsParams struct {
-	BotID   string        `json:"bot_id"`
-	SinceMs sql.NullInt64 `json:"since_ms"`
-}
-
-func (q *Queries) ListClosedCommitments(ctx context.Context, arg ListClosedCommitmentsParams) ([]BotCommitment, error) {
-	rows, err := q.db.QueryContext(ctx, listClosedCommitments, arg.BotID, arg.SinceMs)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []BotCommitment{}
-	for rows.Next() {
-		var i BotCommitment
-		if err := rows.Scan(
-			&i.ID,
-			&i.BotID,
-			&i.Requester,
-			&i.Request,
-			&i.Note,
-			&i.Status,
-			&i.OpenedAtMs,
-			&i.ClosedAtMs,
-			&i.QuestionSeq,
-			&i.WakeProgress,
-			&i.WakeAttempts,
-			&i.WakeAtMs,
-			&i.ReplySeq,
-			&i.CheckAtMs,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listCommitmentDependencies = `-- name: ListCommitmentDependencies :many
 SELECT commitment_id, prerequisite_id FROM bot_commitment_dependencies
 WHERE commitment_id IN (/*SLICE:ids*/?) ORDER BY prerequisite_id
