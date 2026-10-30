@@ -9,6 +9,7 @@ import {
   app,
   ipcMain,
   nativeTheme,
+  screen,
   session,
   shell,
 } from 'electron'
@@ -238,10 +239,14 @@ app.on('web-contents-created', (_event, contents) => {
 
 function createWindow(): void {
   const mac = process.platform === 'darwin'
+  // Opens filling the screen the pointer is on, under the boot splash.
+  const { x, y, width, height } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea
   const win = new BrowserWindow({
     title: APP_NAME,
-    width: 1280,
-    height: 832,
+    x,
+    y,
+    width,
+    height,
     minWidth: 940,
     minHeight: 600,
     show: false,

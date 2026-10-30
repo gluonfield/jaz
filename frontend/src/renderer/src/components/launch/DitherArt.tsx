@@ -17,7 +17,7 @@ import { useTheme } from '@/lib/theme'
 export type Silhouette = (g: OffscreenCanvasRenderingContext2D, w: number, h: number) => void
 
 // prettier-ignore
-const BAYER8 = [
+export const BAYER8 = [
   0, 32, 8, 40, 2, 34, 10, 42,
   48, 16, 56, 24, 50, 18, 58, 26,
   12, 44, 4, 36, 14, 46, 6, 38,
@@ -28,7 +28,7 @@ const BAYER8 = [
   63, 31, 55, 23, 61, 29, 53, 21,
 ]
 
-function hash(n: number): number {
+export function hash(n: number): number {
   let x = (n + 0x9e3779b9) | 0
   x = Math.imul(x ^ (x >>> 16), 0x21f0aaad)
   x = Math.imul(x ^ (x >>> 15), 0x735a2d97)
@@ -39,7 +39,7 @@ type Dot = { x: number; y: number; color: string; alpha: number; seed: number; a
 
 type Palette = { primary: string; strong: string; ink: string; rainbow: string[] }
 
-function readPalette(): Palette {
+export function readPalette(): Palette {
   const style = getComputedStyle(document.documentElement)
   const read = (name: string) => style.getPropertyValue(name).trim()
   return {
@@ -50,7 +50,7 @@ function readPalette(): Palette {
   }
 }
 
-function toneFor(seed: number, ambient: boolean, palette: Palette): string {
+export function toneFor(seed: number, ambient: boolean, palette: Palette): string {
   const r = seed % 1000
   if (ambient) return r < 300 ? palette.ink : palette.primary
   if (r < 30) return palette.rainbow[seed % 5]
@@ -58,6 +58,10 @@ function toneFor(seed: number, ambient: boolean, palette: Palette): string {
   if (r < 340) return palette.strong
   return palette.primary
 }
+
+// The ordered-dither cut: a cell whose coverage reaches it becomes a dot.
+export const threshold = (x: number, y: number, seed: number) =>
+  0.92 * (0.7 * ((BAYER8[(y % 8) * 8 + (x % 8)] + 0.5) / 64) + 0.3 * ((seed % 4096) / 4096))
 
 function sample(draw: Silhouette, cols: number, rows: number, palette: Palette): Dot[] {
   const off = new OffscreenCanvas(cols, rows)
@@ -76,8 +80,7 @@ function sample(draw: Silhouette, cols: number, rows: number, palette: Palette):
       const appear = 0.18 * (x / cols) + (((seed >>> 12) % 1024) / 1024) * 0.95
       const shade = ((seed >>> 4) % 256) / 256
       if (coverage > 0.05) {
-        const threshold = 0.92 * (0.7 * ((BAYER8[(y % 8) * 8 + (x % 8)] + 0.5) / 64) + 0.3 * noise)
-        if (coverage < threshold) continue
+        if (coverage < threshold(x, y, seed)) continue
         const base = coverage < 0.6 ? 0.55 + 0.25 * shade : 0.82 + 0.18 * shade
         dots.push({ x, y, color: toneFor(seed, false, palette), alpha: base, seed, appear, ambient: false })
       } else if (noise < 0.012) {
@@ -107,10 +110,10 @@ const MORPH_SPREAD = 0.35
 const MORPH_FLIGHT = 0.4
 export const MORPH_SECONDS = MORPH_GATHER + MORPH_SPREAD + MORPH_FLIGHT
 
-const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
+export const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2)
 const overshoot = (t: number) => 1 + 2.4 * (t - 1) ** 3 + 1.4 * (t - 1) ** 2
 
-const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
+export const clamp01 = (t: number) => Math.min(1, Math.max(0, t))
 
 type Place = (d: Dot, x: number, y: number, alpha: number) => void
 
@@ -316,10 +319,10 @@ export function DitherArt({
   )
 }
 
-const WORDMARK_FONT = "600 100px 'Inter Variable', 'Inter', sans-serif"
+export const WORDMARK_FONT = "600 100px 'Inter Variable', 'Inter', sans-serif"
 const WORDMARK_ROWS = 48
 
-const drawText =
+export const drawText =
   (text: string): Silhouette =>
   (g, w, h) => {
     g.font = WORDMARK_FONT

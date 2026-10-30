@@ -1,6 +1,7 @@
 import { RouterProvider, type AnyRouter } from '@tanstack/react-router'
 import { BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
 import { BackendTransition } from '@/components/connection/BackendTransition'
+import { DesertEntrance } from '@/components/launch/DesertEntrance'
 import { LaunchScreen, ReconnectingBanner } from '@/components/launch/LaunchScreen'
 import { OnboardingGate } from '@/components/onboarding/OnboardingGate'
 import { SidePanelStateProvider } from '@/components/session/SidePanelState'
@@ -33,6 +34,8 @@ export function App({ router }: { router: AnyRouter }) {
     <>
       {/* plays over everything whenever the backend changes */}
       <BackendTransition />
+      {/* the boot splash lifts once the first connection attempt settles */}
+      <DesertEntrance ready={status !== 'checking'} />
       <BrowserWorkspace>
         <SidePanelStateProvider>
           {connected ? (
