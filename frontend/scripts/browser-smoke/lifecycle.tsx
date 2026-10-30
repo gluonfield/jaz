@@ -189,7 +189,7 @@ await tab.getAXState()`)
       throw new Error('A background chat could not open and control its browser independently')
     }
     panel('browser-fixture').querySelector<HTMLButtonElement>('[aria-label="Annotate preview"]')!.click()
-    await waitFor(async () => await evaluate(firstView, 'typeof window.__jazAnnotationCancel') === 'function')
+    await waitFor(async () => await evaluate(firstView, 'typeof window.__browserAnnotationCancel') === 'function')
     showPanel!(false)
     await waitFor(() => panel('browser-fixture').inert)
     await script('browser-fixture', 'await tab.click(target)\nawait tab.getAXState()')

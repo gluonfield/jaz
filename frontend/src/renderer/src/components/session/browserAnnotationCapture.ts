@@ -35,24 +35,24 @@ export async function captureBrowserAnnotation(
 }
 
 export async function clearBrowserAnnotationCapture(webview: PreviewWebviewElement): Promise<void> {
-  await webview.executeJavaScript('window.__jazAnnotationCancel?.()', true).catch(() => undefined)
+  await webview.executeJavaScript('window.__browserAnnotationCancel?.()', true).catch(() => undefined)
 }
 
 export function isBrowserAnnotationCancelled(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
-  return message.includes('JAZ_ANNOTATION_CANCELLED')
+  return message.includes('BROWSER_ANNOTATION_CANCELLED')
 }
 
 const BROWSER_ANNOTATION_CAPTURE_SCRIPT = String.raw`
 (() => new Promise((resolve, reject) => {
-  window.__jazAnnotationCancel?.();
+  window.__browserAnnotationCancel?.();
   const doc = document;
   const root = doc.documentElement;
   const cssEscape = (value) => window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
   let target = null;
 
   const host = doc.createElement('div');
-  host.setAttribute('data-jaz-annotation-ui', 'true');
+  host.setAttribute('data-browser-annotation-ui', 'true');
   Object.assign(host.style, { all: 'initial', display: 'contents' });
   const shadow = host.attachShadow({ mode: 'open' });
   const highlight = doc.createElement('div');
@@ -143,7 +143,7 @@ const BROWSER_ANNOTATION_CAPTURE_SCRIPT = String.raw`
     doc.removeEventListener('pointermove', onMove, true);
     doc.removeEventListener('click', onClick, true);
     doc.removeEventListener('keydown', onKey, true);
-    delete window.__jazAnnotationCancel;
+    delete window.__browserAnnotationCancel;
   };
 
   const rejectCancelled = () => {
@@ -153,13 +153,13 @@ const BROWSER_ANNOTATION_CAPTURE_SCRIPT = String.raw`
     }
     settled = true;
     cleanup();
-    reject(new Error('JAZ_ANNOTATION_CANCELLED'));
+    reject(new Error('BROWSER_ANNOTATION_CANCELLED'));
   };
-  window.__jazAnnotationCancel = rejectCancelled;
+  window.__browserAnnotationCancel = rejectCancelled;
 
   function targetAt(event) {
     const el = doc.elementFromPoint(event.clientX, event.clientY);
-    if (!el || el.closest('[data-jaz-annotation-ui="true"]')) return null;
+    if (!el || el.closest('[data-browser-annotation-ui="true"]')) return null;
     return el;
   }
 
@@ -185,7 +185,7 @@ const BROWSER_ANNOTATION_CAPTURE_SCRIPT = String.raw`
   }
 
   function onClick(event) {
-    if (event.target?.closest?.('[data-jaz-annotation-ui="true"]')) return;
+    if (event.target?.closest?.('[data-browser-annotation-ui="true"]')) return;
     const el = targetAt(event);
     if (!el) return;
     event.preventDefault();

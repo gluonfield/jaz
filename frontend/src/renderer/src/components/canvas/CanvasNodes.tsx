@@ -90,7 +90,7 @@ export function LinkNode({ id, data, selected }: NodeProps<BoardNode>) {
       <ItemLabel badge="WEB" name={host} />
       <div className={`canvas-card${connectSource === id ? ' canvas-connect-source' : ''}`}>
         <ViewerFrame id={id} focusable>
-          <iframe className="canvas-frame" title={host} src={url} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" referrerPolicy="strict-origin-when-cross-origin" />
+          <iframe className="canvas-frame" title={host} src={url} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" />
         </ViewerFrame>
         <Flash id={id} />
       </div>
