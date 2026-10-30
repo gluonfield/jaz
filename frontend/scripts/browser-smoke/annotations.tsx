@@ -54,7 +54,10 @@ export async function exerciseAnnotations(): Promise<void> {
       throw new Error('Updating the renderer disabled annotation on an already loaded page')
     }
     await click(annotate())
-    await until(async () => await evaluate('typeof window.__jazAnnotationCancel') === 'function')
+    await until(async () => await evaluate('typeof window.__browserAnnotationCancel') === 'function')
+    if (await evaluate(`Object.getOwnPropertyNames(window).some(name => /jaz/i.test(name)) || Boolean(document.querySelector('[data-jaz-annotation-ui]'))`)) {
+      throw new Error('Annotation exposed Jaz branding to the visited page')
+    }
     const point = await evaluate(`(() => {
       const r = document.querySelector('h1').getBoundingClientRect()
       return { x: r.x + 20, y: r.y + 20 }
@@ -65,7 +68,7 @@ export async function exerciseAnnotations(): Promise<void> {
     await evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
     await new Promise((resolve) => setTimeout(resolve, 100))
     const editorFits = await evaluate(`(() => {
-      const form = document.querySelector('[data-jaz-annotation-ui]').shadowRoot.querySelector('form')
+      const form = document.querySelector('[data-browser-annotation-ui]').shadowRoot.querySelector('form')
       const rect = form.getBoundingClientRect()
       return rect.width <= 350 && rect.height <= 180 && [...form.querySelectorAll('button')].every(button => {
         const buttonRect = button.getBoundingClientRect()
@@ -77,7 +80,7 @@ export async function exerciseAnnotations(): Promise<void> {
     }
     await window.smoke.capture('browser-annotation')
     const submitPoint = await evaluate(`(() => {
-      const r = document.querySelector('[data-jaz-annotation-ui]').shadowRoot.querySelector('[type="submit"]').getBoundingClientRect()
+      const r = document.querySelector('[data-browser-annotation-ui]').shadowRoot.querySelector('[type="submit"]').getBoundingClientRect()
       return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
     })()`) as { x: number; y: number }
     await command('Input.dispatchMouseEvent', { type: 'mousePressed', ...submitPoint, button: 'left', clickCount: 1 })
@@ -87,7 +90,7 @@ export async function exerciseAnnotations(): Promise<void> {
     if (contexts.length !== 1 || contexts[0].browser_annotation.target !== 'Browser control') {
       throw new Error('Annotation did not reach the composer with its selected page element')
     }
-    await until(async () => await evaluate('typeof window.__jazAnnotationCancel') === 'undefined')
+    await until(async () => await evaluate('typeof window.__browserAnnotationCancel') === 'undefined')
     await click(annotate())
     await until(() => Boolean(element.querySelector('[aria-label="Stop annotation"]')))
     await click(element.querySelector<HTMLElement>('[aria-label="Stop annotation"]')!)

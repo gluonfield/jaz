@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { ClaudeVoiceBridge, installClaudeVoice } from '@main/claudeVoice'
 import { installBrowserControl } from '@main/browserControl'
 import { attachWindowOpenHandler } from '@main/browserPopups'
-import { attachPreviewWebviews, configurePreviewSession } from '@main/previewSession'
+import { attachPreviewWebviews, configureBrowserSessions } from '@main/previewSession'
 import { installBrowserPasswords } from '@main/browserPasswords'
 import { installBrowserDownloads } from '@main/browserDownloads'
 import { BrowserPasswordStore } from '@main/browserPasswordStore'
@@ -81,6 +81,7 @@ ipcMain.handle('smoke:tab-urls', () => tabURLs)
 let pendingProxy: { response: ServerResponse; url: string } | undefined
 let proxyWaiter: ServerResponse | undefined
 let firstNavigation: IncomingHttpHeaders | undefined
+const resourceRequests: Record<string, IncomingHttpHeaders> = {}
 let passwordOrigin = ''
 const server = createServer(async (request, response) => {
   if (request.url?.startsWith('/clipboard')) {
@@ -148,7 +149,23 @@ const server = createServer(async (request, response) => {
   }
   if (request.url === '/browser-identity') {
     response.setHeader('Content-Type', 'application/json')
-    response.end(JSON.stringify({ firstNavigation, request: request.headers, chromeVersion: process.versions.chrome, shellUserAgent: session.defaultSession.getUserAgent() }))
+    response.end(JSON.stringify({ firstNavigation, request: request.headers, chromeVersion: process.versions.chrome, appUserAgent: session.defaultSession.getUserAgent() }))
+    return
+  }
+  if (request.url === '/resource-identities') {
+    response.setHeader('Content-Type', 'application/json')
+    response.end(JSON.stringify(resourceRequests))
+    return
+  }
+  if (request.url === '/remote-chart.svg' || request.url === '/favicon.ico') {
+    resourceRequests[request.url] = request.headers
+    response.setHeader('Content-Type', 'image/svg+xml')
+    response.end('<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><rect width="12" height="12" fill="blue"/></svg>')
+    return
+  }
+  if (request.url === '/canvas-link') {
+    response.setHeader('Content-Type', 'text/html')
+    response.end(`<script>parent.postMessage({ type: 'fixture:canvas-link', request: ${JSON.stringify(request.headers)}, referrer: document.referrer, userAgent: navigator.userAgent }, '*')</script>`)
     return
   }
   if (request.url === '/profile-session') {
@@ -190,8 +207,8 @@ const server = createServer(async (request, response) => {
     return
   }
   const pathname = new URL(request.url!, 'http://localhost').pathname
-  const name = pathname === '/target' ? 'target.html' : pathname === '/navigation-app.html' ? 'navigation-app.html' : /\.(m?js|wasm|css|woff2?)$/.test(pathname) ? pathname.slice(1) : 'index.html'
-  response.setHeader('Content-Type', /\.m?js$/.test(name) ? 'text/javascript' : name.endsWith('.wasm') ? 'application/wasm' : name.endsWith('.css') ? 'text/css' : name.endsWith('.woff2') ? 'font/woff2' : 'text/html')
+  const name = pathname === '/target' ? 'target.html' : pathname === '/navigation-app.html' ? 'navigation-app.html' : /\.(m?js|wasm|css|woff2?|png|webmanifest)$/.test(pathname) ? pathname.slice(1) : 'index.html'
+  response.setHeader('Content-Type', /\.m?js$/.test(name) ? 'text/javascript' : name.endsWith('.wasm') ? 'application/wasm' : name.endsWith('.css') ? 'text/css' : name.endsWith('.woff2') ? 'font/woff2' : name.endsWith('.png') ? 'image/png' : name.endsWith('.webmanifest') ? 'application/manifest+json' : 'text/html')
   response.end(await readFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, name)))
 })
 server.listen(0, '127.0.0.1', async () => {
@@ -200,7 +217,7 @@ server.listen(0, '127.0.0.1', async () => {
     throw new Error('Missing test server address')
   }
   await app.whenReady()
-  configurePreviewSession(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'chrome.js'))
+  configureBrowserSessions(join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'chrome.js'))
   ipcMain.handle('smoke:navigation-probe', (_event, enabled?: boolean) => {
     if (enabled !== undefined) {
       probingNavigation = enabled

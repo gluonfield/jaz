@@ -114,6 +114,16 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (suite === 'browser-identity') {
+        progress('browser identity, annotations and canvas referrers')
+        await exerciseAnnotations()
+        await exerciseCanvas()
+        await exerciseImages()
+        await browser.call({ method: 'Jaz.open', params: { url: `${location.origin}/target` } })
+        await exerciseBrowserIdentity(evaluate)
+        window.smoke.result({ ok: true, checks: ['native Chromium identity for app resources, side-browser navigation, fetch, page, worker and client hints; no app referrer or page globals; annotation submission/cancellation without Jaz branding; external canvas links omit referrers'] })
+        return
+      }
       if (!suite || suite === 'markdown-documents') {
         progress('Markdown contents navigation and reader controls')
         await exerciseMarkdownDocuments()

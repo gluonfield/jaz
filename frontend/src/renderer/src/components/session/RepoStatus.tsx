@@ -1,32 +1,20 @@
 import type { RepoInfo } from '@/lib/api/types'
 
-export function RepoStatus({ info, cwd }: { info: RepoInfo; cwd?: string }) {
+export function RepoStatus({ info }: { info: RepoInfo }) {
+  const mergePending = info.is_worktree && (!info.main_branch || info.ahead !== 0)
+  if (info.dirty === false && !mergePending) return null
+
   return (
-    <dl className="space-y-1 px-2.5 py-1 text-[12px] leading-snug text-ink-3">
-      <div className="flex items-baseline justify-between gap-3" title={[cwd, info.head].filter(Boolean).join('\n')}>
-        <dt className="shrink-0">Workspace</dt>
-        <dd className="min-w-0 truncate text-ink-2">{info.is_worktree ? 'Worktree' : 'Local checkout'}</dd>
-      </div>
-      <div className="flex items-baseline justify-between gap-3">
-        <dt>Changes</dt>
-        <dd className={info.dirty ? 'text-running' : ''}>{info.dirty === undefined ? 'Unknown' : info.dirty ? 'Uncommitted' : 'None'}</dd>
-      </div>
-      {info.is_worktree ? (
-        <div className="flex items-baseline justify-between gap-3">
-          <dt className="min-w-0 truncate" title={info.main_branch}>Local {info.main_branch || 'target'}</dt>
-          <dd className={`shrink-0 ${(info.ahead ?? 0) > 0 ? 'text-running' : ''}`}>
-            {!info.main_branch || info.ahead === undefined ? 'Unknown'
-              : info.ahead > 0 ? `${info.ahead} ${info.ahead === 1 ? 'commit' : 'commits'} outside`
-                : 'Commits included'}
-          </dd>
-        </div>
+    <div className="space-y-1 px-2.5 py-1 text-[12px] leading-snug break-words text-ink-3">
+      {info.dirty !== false ? (
+        <p className={info.dirty ? 'text-running' : ''}>{info.dirty ? 'Uncommitted changes' : 'Change status unavailable'}</p>
       ) : null}
-      <div className="flex items-baseline justify-between gap-3" title="Compared with locally recorded tracking refs; this check does not fetch.">
-        <dt className="shrink-0">Upstream</dt>
-        <dd className="flex min-w-0 items-baseline gap-1.5">
-          {info.upstream ? <><span className="min-w-0 truncate" title={info.upstream}>{info.upstream}</span><span className="shrink-0">{info.push_ahead === undefined ? 'unknown' : `${info.push_ahead} ahead`}</span></> : 'Unknown'}
-        </dd>
-      </div>
-    </dl>
+      {mergePending ? (
+        <p className={(info.ahead ?? 0) > 0 ? 'text-running' : ''}>
+          {!info.main_branch || info.ahead === undefined ? 'Merge status unavailable'
+            : `${info.ahead} ${info.ahead === 1 ? 'commit' : 'commits'} to merge into ${info.main_branch}`}
+        </p>
+      ) : null}
+    </div>
   )
 }

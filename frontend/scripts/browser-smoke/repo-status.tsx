@@ -53,25 +53,26 @@ export async function exerciseRepoStatus(): Promise<void> {
   try {
     root.render(<QueryClientProvider client={client}><ToastProvider><div style={{ width: 256 }}><OverviewPanel session={session} subagents={[]} spawnedThreads={[]} working={false} onSend={noop} onQueuePrompt={noop} onQueueAction={noop} /></div></ToastProvider></QueryClientProvider>)
     await until(() => Boolean(button('Merge into main')))
-    if (button('Merge into main')!.disabled || !element.textContent?.includes('1 commit outside') || element.textContent.includes('Working tree clean')) {
+    if (button('Merge into main')!.disabled || !element.textContent?.includes('1 commit to merge into main') || element.textContent.includes('Working tree clean')) {
       throw new Error('A pushed branch was presented as merged or its merge action was hidden')
-    }
-    for (const value of element.querySelectorAll('dt, dd, dd span')) {
-      if (value.scrollWidth > value.clientWidth) throw new Error('Git status is truncated at sidebar width: ' + value.textContent)
     }
     await window.smoke.capture('repo-unmerged-branch')
     info = { ...info, dirty: true }
     await refresh()
     await until(() => Boolean(button('Commit changes')))
-    if (!element.textContent?.includes('1 commit outside')) throw new Error('Dirty edits hid outstanding commits')
+    if (!element.textContent?.includes('1 commit to merge into main') || !element.textContent.includes('Uncommitted changes')) throw new Error('Dirty edits or outstanding commits were hidden')
     button('Merge into main')!.click()
-    await until(() => Boolean(merges === 1 && button('Merge into main')?.disabled))
-    if (!element.textContent?.includes('Commits included') || !document.body.textContent?.includes('Push and release are separate.')) {
-      throw new Error('A local merge hid the remaining publication steps')
+    await until(() => merges === 1 && !button('Merge into main'))
+    if (element.textContent?.includes('commit to merge') || element.textContent?.includes('Uncommitted changes') || !document.body.textContent?.includes('Push and release are separate.')) {
+      throw new Error('A local merge left stale status or hid the remaining publication steps')
     }
+    await window.smoke.capture('repo-clean-worktree-sidebar')
+    info = { ...info, needs_push: true }
+    await refresh()
+    await until(() => Boolean(button('Push branch')))
     info = { ...info, ahead: undefined }
     await refresh()
-    await until(() => Boolean(element.textContent?.includes('Local mainUnknown')))
+    await until(() => Boolean(element.textContent?.includes('Merge status unavailable')))
     if (button('Merge into main')!.disabled) throw new Error('An unknown merge status was treated as zero commits')
     failed = true
     await refresh()
@@ -82,7 +83,7 @@ export async function exerciseRepoStatus(): Promise<void> {
     failed = false
     info = { ...info, ahead: 2 }
     button('Retry Git status')!.click()
-    await until(() => Boolean(element.textContent?.includes('2 commits outside')))
+    await until(() => Boolean(element.textContent?.includes('2 commits to merge into main')))
     for (const dismiss of document.querySelectorAll<HTMLButtonElement>('button[aria-label="Dismiss notification"]')) dismiss.click()
     await until(() => !document.querySelector('button[aria-label="Dismiss notification"]'))
     await window.smoke.resize(390, 844)
@@ -91,12 +92,13 @@ export async function exerciseRepoStatus(): Promise<void> {
     await window.smoke.capture('repo-unmerged-branch-phone')
     info = { git: true, branch: 'main', head: 'feedface12345678', dirty: false, upstream: 'origin/main', push_ahead: 0 }
     await refresh()
-    await until(() => Boolean(element.textContent?.includes('WorkspaceLocal checkout')))
-    if (button('Merge into main') || element.textContent?.includes('Commits included')) throw new Error('Clean local main implied task inclusion')
+    await until(() => Boolean(element.querySelector('button[aria-label="Copy branch name main"]')))
+    const gitSection = element.querySelector('button[aria-label="Copy branch name main"]')!.closest('section')!
+    if (gitSection.textContent !== 'Gitmain') throw new Error('Clean local main showed unnecessary Git status')
     await window.smoke.capture('repo-local-checkout-sidebar')
     info = { ...info, dirty: undefined }
     await refresh()
-    await until(() => Boolean(element.textContent?.includes('ChangesUnknown')))
+    await until(() => Boolean(element.textContent?.includes('Change status unavailable')))
     await window.smoke.resize(size.width, size.height)
     info = { git: true, branch: 'jaz/feature', is_worktree: true, main_branch: 'main', dirty: true }
     await refresh()

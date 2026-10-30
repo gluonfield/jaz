@@ -8,13 +8,15 @@ import { keys } from '@/lib/query/keys'
 
 export async function exerciseCanvas(): Promise<void> {
   const sessionId = 'canvas-smoke'
+  const linkURL = new URL('/canvas-link', location.origin)
+  linkURL.hostname = 'localhost'
   const paragraphs = Array.from({ length: 8 }, (_, i) => `Paragraph ${i + 1}: This entire document fits inside its canvas item.`).join('\n\n')
   let view: CanvasView = {
     version: '1', dir: '/fixture', edges: [], components: {},
     nodes: [
       { id: 'report', type: 'file', file: 'report.md', x: 0, y: 0, width: 320, height: 260 },
       { id: 'table', type: 'file', file: 'costs.csv', x: 480, y: 0, width: 320, height: 260 },
-      { id: 'page', type: 'link', url: 'about:blank', x: 0, y: 440, width: 180, height: 160 },
+      { id: 'page', type: 'link', url: linkURL.href, x: 0, y: 440, width: 180, height: 160 },
       { id: 'sticky', type: 'text', text: paragraphs, color: '3', x: 360, y: 440, width: 200, height: 160 },
       { id: 'text', type: 'text', text: paragraphs, x: 600, y: 440, width: 200, height: 160 },
       { id: 'cad', type: 'file', file: 'broken.stl', x: 480, y: 300, width: 320, height: 100 },
@@ -46,9 +48,13 @@ document.querySelector('button').onclick = () => {
 }
 </script>` })
   let artifactLayout: { clicks: number; bottom: number; height: number; button: { x: number; y: number; width: number; height: number } } | undefined
+  let linkIdentity: { request: Record<string, string>; referrer: string; userAgent: string } | undefined
   const onArtifactMessage = (event: MessageEvent) => {
     if (event.source === node('artifact')?.querySelector('iframe')?.contentWindow && event.data?.type === 'fixture:layout') {
       artifactLayout = event.data
+    }
+    if (event.source === node('page')?.querySelector('iframe')?.contentWindow && event.data?.type === 'fixture:canvas-link') {
+      linkIdentity = event.data
     }
   }
   const originalFetch = window.fetch
@@ -108,6 +114,11 @@ document.querySelector('button').onclick = () => {
     window.addEventListener('message', onArtifactMessage)
     root.render(<QueryClientProvider client={client}><Fixture /></QueryClientProvider>)
     await until(() => Boolean(node('report')?.querySelector('p')))
+    await until(() => Boolean(linkIdentity), 'The external canvas link did not load')
+    if (linkIdentity!.referrer || linkIdentity!.request.referer || /jaz|electron/i.test(linkIdentity!.userAgent)
+      || linkIdentity!.request['user-agent'] !== linkIdentity!.userAgent) {
+      throw new Error('The external canvas link received app identity or referrer metadata: ' + JSON.stringify(linkIdentity))
+    }
     await new Promise((resolve) => setTimeout(resolve, 100))
     await until(() => Boolean(node('cad')?.textContent?.includes('Could not open STL')))
     const status = node('cad').querySelector<HTMLElement>('.canvas-viewer-toolbar')!

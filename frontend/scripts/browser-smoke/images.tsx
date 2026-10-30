@@ -5,6 +5,8 @@ import { FileReaderLinkProvider, MessageMarkdown } from '@/components/session/Me
 import { apiBaseUrl, setApiBaseUrl } from '@/lib/api/client'
 
 export async function exerciseImages() {
+  const remoteURL = new URL('/remote-chart.svg', location.origin)
+  remoteURL.hostname = 'localhost'
   const host = document.createElement('div')
   host.style.cssText = 'position:fixed;inset:0;background:var(--color-bg);z-index:9999'
   document.body.append(host)
@@ -16,6 +18,7 @@ export async function exerciseImages() {
     <StrictMode>
       <QueryClientProvider client={client}>
         <FileReaderLinkProvider sessionId="tabs" onOpen={() => {}}>
+          <MessageMarkdown text={`![Remote chart](${remoteURL.href})\n\n[Remote page](${remoteURL.origin}/)`} />
           {Array.from({ length: count }, (_, index) => (
             <MessageMarkdown key={index} text={`![Chart](cache-chart.svg)${suffix}`} />
           ))}
@@ -36,6 +39,13 @@ export async function exerciseImages() {
   try {
     render(1)
     await until(() => images()[0]?.naturalWidth === 12)
+    await until(() => [...host.querySelectorAll<HTMLImageElement>('img')].every(image => image.complete && image.naturalWidth > 0))
+    const requests = await fetch('/resource-identities').then(response => response.json()) as Record<string, Record<string, string>>
+    for (const path of ['/remote-chart.svg', '/favicon.ico']) {
+      if (!requests[path] || requests[path].referer || /jaz|electron/i.test(requests[path]['user-agent'])) {
+        throw new Error('A remote image or favicon received app identity or referrer metadata: ' + JSON.stringify(requests))
+      }
+    }
     const originalSource = images()[0].src
     const response = await fetch('/image-fixture', { method: 'POST' })
     if (!response.ok) {
