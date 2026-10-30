@@ -23,22 +23,24 @@ type GmailReadThreadInput struct {
 }
 
 type GmailCreateDraftInput struct {
-	Account  string   `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
-	To       []string `json:"to" jsonschema:"recipient email addresses"`
-	Cc       []string `json:"cc,omitempty" jsonschema:"CC recipient email addresses"`
-	Bcc      []string `json:"bcc,omitempty" jsonschema:"BCC recipient email addresses"`
-	Subject  string   `json:"subject,omitempty" jsonschema:"email subject"`
-	BodyText string   `json:"body_text" jsonschema:"plain text email body"`
+	Account         string   `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
+	To              []string `json:"to" jsonschema:"recipient email addresses"`
+	Cc              []string `json:"cc,omitempty" jsonschema:"CC recipient email addresses"`
+	Bcc             []string `json:"bcc,omitempty" jsonschema:"BCC recipient email addresses"`
+	Subject         string   `json:"subject,omitempty" jsonschema:"email subject"`
+	BodyText        string   `json:"body_text" jsonschema:"plain text email body"`
+	AttachmentPaths []string `json:"attachment_paths,omitempty" jsonschema:"absolute paths or file URLs accessible to the Jaz backend, including file_path from gmail_read_attachment; client-only paths are unavailable; up to 25 MiB total"`
 }
 
 type GmailCreateReplyDraftInput struct {
-	Account   string   `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
-	ID        string   `json:"id" jsonschema:"Gmail message id or thread id to reply to"`
-	IDType    string   `json:"id_type,omitempty" jsonschema:"message or thread; defaults to message"`
-	ReplyMode string   `json:"reply_mode,omitempty" jsonschema:"reply or reply_all; defaults to reply"`
-	BodyText  string   `json:"body_text" jsonschema:"plain text reply body"`
-	CcAdd     []string `json:"cc_add,omitempty" jsonschema:"extra CC recipient email addresses to add to the reply draft"`
-	BccAdd    []string `json:"bcc_add,omitempty" jsonschema:"BCC recipient email addresses to add to the reply draft"`
+	Account         string   `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
+	ID              string   `json:"id" jsonschema:"Gmail message id or thread id to reply to"`
+	IDType          string   `json:"id_type,omitempty" jsonschema:"message or thread; defaults to message"`
+	ReplyMode       string   `json:"reply_mode,omitempty" jsonschema:"reply or reply_all; defaults to reply"`
+	BodyText        string   `json:"body_text" jsonschema:"plain text reply body"`
+	CcAdd           []string `json:"cc_add,omitempty" jsonschema:"extra CC recipient email addresses to add to the reply draft"`
+	BccAdd          []string `json:"bcc_add,omitempty" jsonschema:"BCC recipient email addresses to add to the reply draft"`
+	AttachmentPaths []string `json:"attachment_paths,omitempty" jsonschema:"absolute paths or file URLs accessible to the Jaz backend, including file_path from gmail_read_attachment; client-only paths are unavailable; up to 25 MiB total"`
 }
 
 type GmailSendDraftInput struct {
@@ -47,13 +49,14 @@ type GmailSendDraftInput struct {
 }
 
 type GmailUpdateDraftInput struct {
-	Account  string   `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
-	ID       string   `json:"id" jsonschema:"Gmail draft id"`
-	To       []string `json:"to,omitempty" jsonschema:"replacement recipient email addresses; omit to preserve"`
-	Cc       []string `json:"cc,omitempty" jsonschema:"replacement CC recipient email addresses; omit to preserve"`
-	Bcc      []string `json:"bcc,omitempty" jsonschema:"replacement BCC recipient email addresses; omit to preserve"`
-	Subject  *string  `json:"subject,omitempty" jsonschema:"replacement email subject; omit to preserve"`
-	BodyText *string  `json:"body_text,omitempty" jsonschema:"replacement plain text email body; omit to preserve"`
+	Account         string   `json:"account,omitempty" jsonschema:"Gmail account alias, email address, or connection id; omit only when one Gmail account is connected"`
+	ID              string   `json:"id" jsonschema:"Gmail draft id"`
+	To              []string `json:"to,omitempty" jsonschema:"replacement recipient email addresses; omit to preserve"`
+	Cc              []string `json:"cc,omitempty" jsonschema:"replacement CC recipient email addresses; omit to preserve"`
+	Bcc             []string `json:"bcc,omitempty" jsonschema:"replacement BCC recipient email addresses; omit to preserve"`
+	Subject         *string  `json:"subject,omitempty" jsonschema:"replacement email subject; omit to preserve"`
+	BodyText        *string  `json:"body_text,omitempty" jsonschema:"replacement plain text email body; omit to preserve"`
+	AttachmentPaths []string `json:"attachment_paths,omitempty" jsonschema:"files to append as absolute paths or file URLs accessible to the Jaz backend; existing attachments are always preserved; up to 25 MiB total including existing files"`
 }
 
 type GmailListDraftsInput struct {

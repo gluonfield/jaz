@@ -257,6 +257,9 @@ func messageBodies(part messagePart) (string, string) {
 	var htmlParts []string
 	var walk func(messagePart)
 	walk = func(part messagePart) {
+		if !isBodyPart(part) && len(part.Parts) == 0 {
+			return
+		}
 		switch strings.ToLower(strings.TrimSpace(part.MIMEType)) {
 		case "text/plain":
 			if text := decodeBody(part.Body.Data); text != "" {
