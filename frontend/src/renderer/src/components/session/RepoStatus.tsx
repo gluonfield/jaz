@@ -3,13 +3,13 @@ import type { RepoInfo } from '@/lib/api/types'
 export function RepoStatus({ info, cwd }: { info: RepoInfo; cwd?: string }) {
   return (
     <dl className="space-y-1 px-2.5 py-1 text-[12px] leading-snug text-ink-3">
-      <div className="flex items-baseline justify-between gap-3" title={cwd}>
-        <dt className="shrink-0">This workspace</dt>
-        <dd className="min-w-0 truncate text-ink-2">{info.is_worktree ? 'Worktree' : 'Local checkout'}{info.head ? ` · ${info.head.slice(0, 7)}` : ''}</dd>
+      <div className="flex items-baseline justify-between gap-3" title={[cwd, info.head].filter(Boolean).join('\n')}>
+        <dt className="shrink-0">Workspace</dt>
+        <dd className="min-w-0 truncate text-ink-2">{info.is_worktree ? 'Worktree' : 'Local checkout'}</dd>
       </div>
       <div className="flex items-baseline justify-between gap-3">
-        <dt>Uncommitted</dt>
-        <dd className={info.dirty ? 'text-running' : ''}>{info.dirty === undefined ? 'Unknown' : info.dirty ? 'Changes' : 'None'}</dd>
+        <dt>Changes</dt>
+        <dd className={info.dirty ? 'text-running' : ''}>{info.dirty === undefined ? 'Unknown' : info.dirty ? 'Uncommitted' : 'None'}</dd>
       </div>
       {info.is_worktree ? (
         <div className="flex items-baseline justify-between gap-3">
@@ -22,7 +22,7 @@ export function RepoStatus({ info, cwd }: { info: RepoInfo; cwd?: string }) {
         </div>
       ) : null}
       <div className="flex items-baseline justify-between gap-3" title="Compared with locally recorded tracking refs; this check does not fetch.">
-        <dt className="shrink-0">Cached upstream</dt>
+        <dt className="shrink-0">Upstream</dt>
         <dd className="flex min-w-0 items-baseline gap-1.5">
           {info.upstream ? <><span className="min-w-0 truncate" title={info.upstream}>{info.upstream}</span><span className="shrink-0">{info.push_ahead === undefined ? 'unknown' : `${info.push_ahead} ahead`}</span></> : 'Unknown'}
         </dd>
