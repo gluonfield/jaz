@@ -40,12 +40,12 @@ func (t *GmailMCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolCreateDraft,
 		Title:       "Create Gmail draft",
-		Description: "Create a new plain text Gmail draft from one connected account. Use this for new outbound email.",
+		Description: "Create a new plain text Gmail draft with optional file attachments from one connected account. Use this for new outbound email.",
 	}, t.CreateDraft)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolCreateReply,
 		Title:       "Create Gmail reply draft",
-		Description: "Create a reply or reply-all draft for an existing Gmail message or thread. Use this for normal replies; it infers recipients, subject, and Gmail threading.",
+		Description: "Create a reply or reply-all draft for an existing Gmail message or thread. Use this for normal replies; it infers recipients, subject, and Gmail threading. Supports optional file attachments.",
 	}, t.CreateReplyDraft)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolSendDraft,
@@ -55,7 +55,7 @@ func (t *GmailMCPTools) AddTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolUpdateDraft,
 		Title:       "Update Gmail draft",
-		Description: "Update an existing Gmail draft while preserving omitted fields.",
+		Description: "Update an existing Gmail draft while preserving omitted fields and existing attachments. Optional file attachments are appended.",
 	}, t.UpdateDraft)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        gmailconnector.ToolListDrafts,
@@ -216,6 +216,10 @@ func (t *GmailMCPTools) CreateDraft(ctx context.Context, _ *mcp.CallToolRequest,
 		}
 		return textResult("Gmail is not connected. Connect Gmail in Settings > Connections."), out, nil
 	}
+	request.Attachments, err = gmailFileAttachments(input.AttachmentPaths)
+	if err != nil {
+		return nil, GmailDraftOutput{}, err
+	}
 	draft, err := session.api.CreateDraft(ctx, request)
 	if err != nil {
 		return nil, GmailDraftOutput{}, err
@@ -263,6 +267,10 @@ func (t *GmailMCPTools) CreateReplyDraft(ctx context.Context, _ *mcp.CallToolReq
 		return nil, GmailDraftOutput{}, err
 	}
 	request, err := gmailReplyDraftRequest(input, thread, session.connection.AccountID)
+	if err != nil {
+		return nil, GmailDraftOutput{}, err
+	}
+	request.Attachments, err = gmailFileAttachments(input.AttachmentPaths)
 	if err != nil {
 		return nil, GmailDraftOutput{}, err
 	}
@@ -342,6 +350,11 @@ func (t *GmailMCPTools) UpdateDraft(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, GmailDraftOutput{}, err
 	}
+	attachments, err := gmailFileAttachments(input.AttachmentPaths)
+	if err != nil {
+		return nil, GmailDraftOutput{}, err
+	}
+	request.Attachments = append(request.Attachments, attachments...)
 	draft, err := session.api.UpdateDraft(ctx, id, request)
 	if err != nil {
 		return nil, GmailDraftOutput{}, err

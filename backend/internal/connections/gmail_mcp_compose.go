@@ -21,14 +21,16 @@ func gmailCreateDraftRequest(input GmailCreateDraftInput) (gmailconnector.Compos
 
 func gmailUpdateDraftRequest(input GmailUpdateDraftInput, current gmailconnector.DraftContent) (gmailconnector.ComposeMessageRequest, error) {
 	request := gmailconnector.ComposeMessageRequest{
-		ThreadID:   current.Draft.Message.ThreadID,
-		To:         addressValues(current.Draft.Message.To),
-		Cc:         addressValues(current.Draft.Message.Cc),
-		Bcc:        addressValues(current.Draft.Message.Bcc),
-		Subject:    current.Draft.Message.Subject,
-		BodyText:   current.BodyText,
-		InReplyTo:  current.Draft.Message.InReplyTo,
-		References: current.Draft.Message.References,
+		ThreadID:    current.Draft.Message.ThreadID,
+		To:          addressValues(current.Draft.Message.To),
+		Cc:          addressValues(current.Draft.Message.Cc),
+		Bcc:         addressValues(current.Draft.Message.Bcc),
+		Subject:     current.Draft.Message.Subject,
+		BodyText:    current.BodyText,
+		BodyHTML:    current.BodyHTML,
+		Attachments: current.Attachments,
+		InReplyTo:   current.Draft.Message.InReplyTo,
+		References:  current.Draft.Message.References,
 	}
 	if input.To != nil {
 		request.To = cleanGmailAddressList(input.To)
@@ -44,6 +46,7 @@ func gmailUpdateDraftRequest(input GmailUpdateDraftInput, current gmailconnector
 	}
 	if input.BodyText != nil {
 		request.BodyText = *input.BodyText
+		request.BodyHTML = ""
 	}
 	return gmailValidateCompose(request)
 }
@@ -76,7 +79,7 @@ func gmailValidateCompose(request gmailconnector.ComposeMessageRequest) (gmailco
 	if len(request.To) == 0 {
 		return gmailconnector.ComposeMessageRequest{}, errors.New("to is required")
 	}
-	if strings.TrimSpace(request.BodyText) == "" {
+	if strings.TrimSpace(request.BodyText) == "" && request.BodyHTML == "" {
 		return gmailconnector.ComposeMessageRequest{}, errors.New("body_text is required")
 	}
 	return request, nil

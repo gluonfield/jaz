@@ -49,20 +49,23 @@ type MessageContent struct {
 }
 
 type ComposeMessageRequest struct {
-	ThreadID   string
-	To         []string
-	Cc         []string
-	Bcc        []string
-	Subject    string
-	BodyText   string
-	InReplyTo  string
-	References string
+	ThreadID    string
+	To          []string
+	Cc          []string
+	Bcc         []string
+	Subject     string
+	BodyText    string
+	BodyHTML    string
+	Attachments []AttachmentContent
+	InReplyTo   string
+	References  string
 }
 
 type DraftContent struct {
-	Draft    Draft  `json:"draft"`
-	BodyText string `json:"body_text,omitempty"`
-	BodyHTML string `json:"body_html,omitempty"`
+	Draft       Draft               `json:"draft"`
+	BodyText    string              `json:"body_text,omitempty"`
+	BodyHTML    string              `json:"body_html,omitempty"`
+	Attachments []AttachmentContent `json:"-"`
 }
 
 type ListDraftsRequest struct {
@@ -80,4 +83,5 @@ type AttachmentContent struct {
 	Attachment Attachment `json:"attachment"`
 	Data       []byte     `json:"-"`
 	Size       int64      `json:"size,omitempty"`
+	ContentID  string     `json:"-"`
 }

@@ -129,11 +129,16 @@ func (c APIClient) GetDraft(ctx context.Context, id string) (DraftContent, error
 	if err != nil {
 		return DraftContent{}, err
 	}
+	attachments, err := c.draftAttachments(ctx, raw.Message.ID, &raw.Message.Payload)
+	if err != nil {
+		return DraftContent{}, err
+	}
 	text, html := messageBodies(raw.Message.Payload)
 	return DraftContent{
-		Draft:    draftFromAPI(raw),
-		BodyText: text,
-		BodyHTML: html,
+		Draft:       draftFromAPI(raw),
+		BodyText:    text,
+		BodyHTML:    html,
+		Attachments: attachments,
 	}, nil
 }
 

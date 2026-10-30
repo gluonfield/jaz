@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/mail"
+	"net/textproto"
 	"os"
 	"strings"
 	"testing"
@@ -385,6 +387,15 @@ func TestGmailMCPToolsReadAttachmentStoresFileAndReturnsPreviewOnly(t *testing.T
 			t.Fatalf("authorization = %q", r.Header.Get("Authorization"))
 		}
 		switch r.URL.Path {
+		case "/gmail/v1/users/me/drafts":
+			message, err := mail.ReadMessage(strings.NewReader(decodedGmailDraftMessage(t, r)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts := readGmailMIME(t, textproto.MIMEHeader(message.Header), message.Body)
+			assertGmailPart(t, parts, "note.txt", []byte("Attachment text https://example.com/report?utm_source=email"))
+			assertGmailPart(t, parts, "file.pdf", []byte{0, 1, 2, 3})
+			_, _ = w.Write([]byte(`{"id":"reattached","message":{"id":"saved"}}`))
 		case "/gmail/v1/users/me/messages/m1":
 			if r.URL.Query().Get("format") != "full" {
 				t.Fatalf("message format = %s", r.URL.Query().Get("format"))
@@ -495,6 +506,15 @@ func TestGmailMCPToolsReadAttachmentStoresFileAndReturnsPreviewOnly(t *testing.T
 	if string(binaryData) != string([]byte{0, 1, 2, 3}) {
 		t.Fatalf("binary attachment bytes = %#v", binaryData)
 	}
+	_, draft, err := tools.CreateDraft(context.Background(), nil, GmailCreateDraftInput{
+		To:              []string{"recipient@example.com"},
+		BodyText:        "Reattached original files",
+		AttachmentPaths: []string{textAttachment.FilePath, binaryAttachment.FilePath},
+	})
+	if err != nil || draft.Draft.ID != "reattached" {
+		t.Fatalf("reattach downloaded files: %+v, %v", draft, err)
+	}
+
 }
 
 func TestGmailMCPToolsRequireAccountWhenMultipleAccountsConnected(t *testing.T) {
