@@ -442,7 +442,7 @@ function GitSection({
         <button
           type="button"
           aria-label={copied ? `Copied branch name ${branchLabel}` : `Copy branch name ${branchLabel}`}
-          title={copied ? 'Copied' : 'Copy branch name'}
+          title={[copied ? 'Copied' : 'Copy branch name', repo.cwd, info.head].filter(Boolean).join('\n')}
           onClick={() => void copyBranch()}
           className="group flex h-7 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-left text-[13px] text-ink-2 transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
         >
@@ -467,7 +467,7 @@ function GitSection({
             </AnimatePresence>
           </span>
         </button>
-        <RepoStatus info={info} cwd={repo.cwd} />
+        <RepoStatus info={info} />
         {info.dirty ? (
           <ActionRow
             icon={busy === 'commit' ? LoaderCircle : Check}
@@ -510,15 +510,15 @@ function GitSection({
             {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
           </ActionRow>
         ) : null}
-        {info.is_worktree && info.main_branch ? (
+        {canMergeIntoMain(info) ? (
           <ActionRow
             icon={busy === 'merge' ? LoaderCircle : GitMerge}
             spin={busy === 'merge'}
-            disabled={busy !== null || !canMergeIntoMain(info)}
-            hint={canMergeIntoMain(info) ? `Commits this branch's changes and merges into local ${info.main_branch}. Does not push or release.` : `No changes to merge from this branch. Other worktrees are not included.`}
+            disabled={busy !== null}
+            hint={`Commits this branch's changes and merges into local ${info.main_branch}. Does not push or release.`}
             onClick={() => void repo.merge()}
             onQueue={() => queueAction('repo/merge', `Merge into ${info.main_branch}`)}
-            queueDisabled={busy !== null || !canMergeIntoMain(info)}
+            queueDisabled={busy !== null}
             queueHint={`Queue Merge into ${info.main_branch}`}
           >
             {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
