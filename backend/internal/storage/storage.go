@@ -185,6 +185,10 @@ func (s Session) Owner() string {
 	return s.ID
 }
 
+func (s Session) PresentsToUser() bool {
+	return s.SourceType != SourceBotMember && (s.Turn == nil || s.Turn.Output == nil || s.Turn.Output.ReplyTo == "")
+}
+
 type Turn struct {
 	StartedAt       time.Time      `json:"started_at,omitzero"`
 	ContinuationOf  time.Time      `json:"continuation_of,omitzero"`
@@ -302,8 +306,7 @@ type TurnOutput struct {
 	// User records that the turn began with a message shown as the user's
 	// that no agent sent.
 	User bool `json:"user,omitempty"`
-	// Shown records that the turn sent a message or presented an app in its
-	// own chat.
+	// Shown records that the turn sent a message or saved a view for its own chat.
 	Shown bool `json:"shown,omitempty"`
 	// Done are the commitments the replies deliver; they close as the replies
 	// reach ReplyTo.

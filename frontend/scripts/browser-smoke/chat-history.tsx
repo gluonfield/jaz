@@ -10,6 +10,7 @@ import { botChat, type ChatEntry } from '@/lib/bots'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { keys } from '@/lib/query/keys'
 import { exerciseSessionRefresh } from './session-refresh'
+import { exerciseBotArtifactDelivery } from './bot-artifact-delivery'
 
 export async function exerciseChatHistory(): Promise<void> {
   const bot = { id: 'bot-1', name: 'Sync Bot', avatar: { shape: 'circle', color: 'blue' }, kind: 'bot' } as never
@@ -74,6 +75,7 @@ export async function exerciseChatHistory(): Promise<void> {
     element.remove()
   }
   await exercisePagedHistory()
+  await exerciseBotArtifactDelivery()
   await exerciseSessionRefresh()
 }
 

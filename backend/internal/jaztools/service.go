@@ -144,7 +144,7 @@ func New(
 		gmailTools:      gmailTools,
 		whatsAppTools:   whatsAppTools,
 		telegramTools:   telegramTools,
-		visualizeTools:  visualize.NewMCPTools(sessionEvents, events),
+		visualizeTools:  visualize.NewMCPTools(sessionEvents, sessions, events),
 		goalTools:       newGoalTools(events, sessions, usage),
 		widgetPublisher: widgetPublisher,
 		sessions:        sessions,

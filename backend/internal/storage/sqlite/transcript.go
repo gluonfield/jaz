@@ -133,6 +133,13 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 		if decodeErr != nil {
 			return storage.TranscriptPage{}, decodeErr
 		}
+		if request.ChatOnly && event.Artifact != nil && !event.Artifact.Presented {
+			visible, err := events.ArtifactChatVisibility(ctx, eventdb.ArtifactChatVisibilityParams{ThreadID: id, Seq: event.Seq})
+			if err != nil {
+				return storage.TranscriptPage{}, err
+			}
+			event.Artifact.Presented = visible != 0
+		}
 		page.Events = append(page.Events, event)
 	}
 	if eventsMore && len(page.Events) > 0 {

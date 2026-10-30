@@ -30,7 +30,7 @@ export const BotChat = memo(function BotChat({ bot, bots, newBot, empty, message
   const busy = doing ? [{ bot, doing }] : []
   return (
     <>
-      <ChatLog entries={entries} bots={bots} named={false} working={busy} onOpenRoutines={showDetails} scrollRef={scrollRef} paging={paging} />
+      <ChatLog entries={entries} bots={bots} named={false} working={busy} onOpenRoutines={showDetails} onSendPrompt={send} scrollRef={scrollRef} paging={paging} />
       {helloAt && empty ? <BotStarters arriving={newBot} onPick={send} /> : null}
     </>
   )

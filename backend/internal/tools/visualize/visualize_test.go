@@ -84,7 +84,7 @@ func TestShowWidgetAutoDetectsSVG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result.Content, visualizesvc.RenderedMessage) {
+	if !strings.Contains(result.Content, "Artifact prepared for display in the transcript.") || !strings.Contains(result.Content, "Client rendering has not been confirmed.") {
 		t.Fatalf("result = %s", result.Content)
 	}
 	if result.Metadata["artifact_type"] != "svg" {

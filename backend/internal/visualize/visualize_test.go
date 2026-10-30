@@ -1,66 +1,134 @@
-package visualize
+package visualize_test
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
+	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
+	"github.com/wins/jaz/backend/internal/visualize"
 )
 
-type fakeEventStore struct {
-	events []sessionevents.Event
-}
-
-func (f *fakeEventStore) AppendSessionEvents(_ string, events ...sessionevents.Event) error {
-	f.events = append(f.events, events...)
-	return nil
-}
-
-func TestShowWidgetPublishesArtifactEventFromMCPHeader(t *testing.T) {
-	store := &fakeEventStore{}
-	tools := NewMCPTools(store, nil)
-	result, structured, err := tools.ShowWidget(context.Background(), &mcp.CallToolRequest{
-		Extra: &mcp.RequestExtra{Header: mcpsession.Header("thread-1")},
-	}, ShowWidgetInput{
-		LoadingMessages: []string{"Rendering"},
-		Title:           "System map",
-		WidgetCode:      `<svg width="100%" viewBox="0 0 680 120" role="img"><title>Map</title><desc>System map</desc></svg>`,
-	})
+func TestShowWidgetSavesAndPublishesTheSameDelivery(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if structured != nil {
-		t.Fatalf("structured = %#v, want nil so the reminder text is not shadowed by structuredContent", structured)
+	t.Cleanup(func() { _ = store.Close() })
+	session, err := store.CreateSession(storage.CreateSession{SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(result.Content) != 2 {
-		t.Fatalf("content = %d, want 2", len(result.Content))
+	if err := store.StartSessionTurn(session.ID, storage.Turn{Output: &storage.TurnOutput{User: true}}); err != nil {
+		t.Fatal(err)
 	}
-	first, ok := result.Content[0].(*mcp.TextContent)
-	if !ok || first.Text != RenderedMessage {
-		t.Fatalf("first content = %#v", result.Content[0])
+	bus := sessionevents.New()
+	events := bus.Subscribe(t.Context(), session.ID)
+	tools := visualize.NewMCPTools(store, store, bus)
+	result, structured, err := tools.ShowWidget(t.Context(), &mcp.CallToolRequest{
+		Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)},
+	}, widgetInput())
+	if err != nil {
+		t.Fatal(err)
 	}
-	second, ok := result.Content[1].(*mcp.TextContent)
-	if !ok || second.Text != RenderedReminder {
-		t.Fatalf("second content = %#v", result.Content[1])
+	if structured != nil || len(result.Content) != 2 || result.Content[0].(*mcp.TextContent).Text != "Artifact saved in this conversation for display. Client rendering has not been confirmed." || !strings.Contains(result.Content[1].(*mcp.TextContent).Text, "Do not claim the user has already seen it.") {
+		t.Fatalf("delivery receipt = %#v, %#v", result, structured)
 	}
-	if len(store.events) != 1 {
-		t.Fatalf("events = %d, want 1", len(store.events))
+	page, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{Turns: 14, ChatOnly: true})
+	if err != nil || len(page.Events) != 1 {
+		t.Fatalf("chat history = %+v, %v", page, err)
 	}
-	event := store.events[0]
-	if event.SessionID != "thread-1" || event.Type != sessionevents.TypeArtifact {
-		t.Fatalf("event = %#v", event)
+	saved := page.Events[0]
+	if saved.Seq == 0 || saved.SessionID != session.ID || saved.Artifact == nil || saved.Artifact.Title != "System map" || saved.Artifact.WidgetCode != widgetInput().WidgetCode || !saved.Artifact.Presented {
+		t.Fatalf("saved artifact = %+v", saved)
 	}
-	if event.Artifact == nil || event.Artifact.Title != "System map" || event.Artifact.ArtifactType != "svg" {
-		t.Fatalf("artifact = %#v", event.Artifact)
+	select {
+	case live := <-events:
+		if live.Seq != saved.Seq || live.SessionID != saved.SessionID || live.At.UnixMilli() != saved.At.UnixMilli() || !reflect.DeepEqual(live.Artifact, saved.Artifact) {
+			t.Fatalf("live and history differ: %+v, %+v", live, saved)
+		}
+	default:
+		t.Fatal("saved artifact was not published")
+	}
+	loaded, err := store.LoadSession(session.ID)
+	if err != nil || !loaded.Turn.Output.Shown {
+		t.Fatalf("artifact left the turn undelivered: %+v, %v", loaded.Turn, err)
+	}
+	tools.Store = rejectedEvents{}
+	result, _, err = tools.ShowWidget(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)}}, widgetInput())
+	if err == nil || result != nil {
+		t.Fatalf("failed save got a success receipt: %+v, %v", result, err)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("failed save published an artifact: %+v", event)
+	default:
+	}
+}
+
+type rejectedEvents struct{}
+
+func (rejectedEvents) AppendSessionEvents(string, ...sessionevents.Event) error {
+	return errors.New("write failed")
+}
+
+func TestShowWidgetDoesNotClaimDeliveryWithoutASessionOrForPrivateTurns(t *testing.T) {
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	tools := visualize.NewMCPTools(store, store, sessionevents.New())
+	for _, id := range []string{"", "missing"} {
+		result, _, err := tools.ShowWidget(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(id)}}, widgetInput())
+		if err == nil || result != nil {
+			t.Fatalf("session %q got a success receipt: %+v, %v", id, result, err)
+		}
+	}
+	for _, source := range []string{storage.SourceBot, storage.SourceBotMember} {
+		session, err := store.CreateSession(storage.CreateSession{SourceType: source})
+		if err != nil {
+			t.Fatal(err)
+		}
+		turn := storage.Turn{Output: &storage.TurnOutput{ReplyTo: "another-bot"}}
+		if source == storage.SourceBotMember {
+			turn.Output.ReplyTo = ""
+		}
+		if err := store.StartSessionTurn(session.ID, turn); err != nil {
+			t.Fatal(err)
+		}
+		result, _, err := tools.ShowWidget(t.Context(), &mcp.CallToolRequest{Extra: &mcp.RequestExtra{Header: mcpsession.Header(session.ID)}}, widgetInput())
+		if err != nil || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "not displayed") {
+			t.Fatalf("private receipt = %+v, %v", result, err)
+		}
+		page, err := store.LoadTranscriptPage(t.Context(), session.ID, storage.TranscriptPageRequest{Turns: 14, ChatOnly: true})
+		if err != nil || len(page.Events) != 0 {
+			t.Fatalf("private artifact leaked into chat: %+v, %v", page, err)
+		}
+		loaded, err := store.LoadSession(session.ID)
+		if err != nil || loaded.Turn.Output.Shown {
+			t.Fatalf("private artifact counted as delivery: %+v, %v", loaded.Turn, err)
+		}
+	}
+}
+
+func widgetInput() visualize.ShowWidgetInput {
+	return visualize.ShowWidgetInput{
+		LoadingMessages: []string{"Rendering"},
+		Title:           "System map",
+		WidgetCode:      `<svg width="100%" viewBox="0 0 680 120" role="img"><title>Map</title><desc>System map</desc></svg>`,
 	}
 }
 
 func TestReadMeFiltersToRequestedModules(t *testing.T) {
-	tools := NewMCPTools(nil, nil)
-	result, structured, err := tools.ReadMe(context.Background(), &mcp.CallToolRequest{}, ReadMeInput{Modules: []string{"chart"}})
+	tools := visualize.NewMCPTools(nil, nil, nil)
+	result, structured, err := tools.ReadMe(context.Background(), &mcp.CallToolRequest{}, visualize.ReadMeInput{Modules: []string{"chart"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +161,7 @@ func TestReadMeFiltersToRequestedModules(t *testing.T) {
 }
 
 func TestBuildReadMeGuideByModule(t *testing.T) {
-	diagram := BuildReadMeGuide([]string{"diagram"}, "")
+	diagram := visualize.BuildReadMeGuide([]string{"diagram"}, "")
 	if !strings.Contains(diagram, "## SVG setup") || !strings.Contains(diagram, "## Diagram types") {
 		t.Fatal("diagram guide must include SVG setup and Diagram types")
 	}
@@ -101,7 +169,7 @@ func TestBuildReadMeGuideByModule(t *testing.T) {
 		t.Fatal("diagram guide must exclude chart sections")
 	}
 
-	core := BuildReadMeGuide(nil, "")
+	core := visualize.BuildReadMeGuide(nil, "")
 	if !strings.Contains(core, "## Modules") || !strings.Contains(core, "## Core Design System") {
 		t.Fatal("empty-modules guide must keep the index and design-system core")
 	}
@@ -111,15 +179,15 @@ func TestBuildReadMeGuideByModule(t *testing.T) {
 		}
 	}
 
-	multi := BuildReadMeGuide([]string{"chart", "diagram"}, "")
+	multi := visualize.BuildReadMeGuide([]string{"chart", "diagram"}, "")
 	if !strings.Contains(multi, "## Charts (Chart.js)") || !strings.Contains(multi, "## Diagram types") {
 		t.Fatal("multi-module guide must union the requested modules' sections")
 	}
 }
 
 func TestReadMeGuideUsesMobileLayoutGuidance(t *testing.T) {
-	desktop := BuildReadMeGuide([]string{"chart"}, "desktop")
-	mobile := BuildReadMeGuide([]string{"chart"}, "mobile")
+	desktop := visualize.BuildReadMeGuide([]string{"chart"}, "desktop")
+	mobile := visualize.BuildReadMeGuide([]string{"chart"}, "mobile")
 	if !strings.Contains(desktop, "The widget container is 680px wide.") {
 		t.Fatalf("desktop guide missing 680px width:\n%s", desktop)
 	}
@@ -139,7 +207,7 @@ func TestReadMeGuideUsesMobileLayoutGuidance(t *testing.T) {
 }
 
 func TestReadMePlatformSchemaIsPlainString(t *testing.T) {
-	properties := readMeInputSchema()["properties"].(map[string]any)
+	properties := visualize.ReadMeInputSchema()["properties"].(map[string]any)
 	platform := properties["platform"].(map[string]any)
 	if platform["type"] != "string" {
 		t.Fatalf("platform schema = %#v, want string", platform)

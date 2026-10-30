@@ -126,10 +126,13 @@ func TestWhatATurnShowsInItsChatMarksItsOutputShown(t *testing.T) {
 	message := func(speaker string) sessionevents.Event {
 		return sessionevents.Event{Type: sessionevents.TypeRoomMessage, RoomMessage: &sessionevents.RoomMessageEvent{Speaker: speaker, Name: speaker, Text: "hi"}}
 	}
-	if shown(app(false), message("user")) {
+	artifact := func(presented bool) sessionevents.Event {
+		return sessionevents.Event{Type: sessionevents.TypeArtifact, Artifact: &sessionevents.ArtifactEvent{Title: "Map", WidgetCode: "<svg></svg>", Presented: presented}}
+	}
+	if shown(app(false), artifact(false), message("user")) {
 		t.Fatal("an app result Jaz did not present, or the user's message, marked the turn shown")
 	}
-	if !shown(app(true)) || !shown(message("bot")) {
+	if !shown(app(true)) || !shown(artifact(true)) || !shown(message("bot")) {
 		t.Fatal("a presented app or the bot's message left the turn unshown")
 	}
 	if err := store.StartSessionTurn(session.ID, storage.Turn{}); err != nil {
