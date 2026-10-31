@@ -96,9 +96,9 @@ export function useRepoActions(session: Session) {
       setRepoData(await pushSessionRepoBranch(session.id))
       toast('Branch pushed')
     })
-  const merge = () =>
+  const merge = (sourceBranch?: string) =>
     run('merge', async () => {
-      const result = await mergeSessionRepo(session.id)
+      const result = await mergeSessionRepo(session.id, sourceBranch)
       setRepoData(result.info)
       // A moved cwd changes the session row; refetch it.
       if (result.moved) void queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
@@ -121,6 +121,7 @@ export function useRepoActions(session: Session) {
 
   return {
     cwd,
+    sessionId: session.id,
     info,
     error: repo.error,
     refetch: () => void repo.refetch(),

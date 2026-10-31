@@ -16,6 +16,7 @@ import {
   type RepoFileChange,
   type RepoFilePatch,
   type RepoInfo,
+  type RepoMergeBranch,
   type RepoRevision,
   type SessionFileRead,
   type Session,
@@ -325,8 +326,13 @@ export function commitSessionRepo(id: string, message?: string): Promise<RepoInf
 // errors; the main checkout is never left mid-merge.
 export function mergeSessionRepo(
   id: string,
+  branch?: string,
 ): Promise<{ cwd: string; moved: boolean; info: RepoInfo }> {
-  return post<{ cwd: string; moved: boolean; info: RepoInfo }>(`/v1/sessions/${id}/repo/merge`)
+  return post<{ cwd: string; moved: boolean; info: RepoInfo }>(`/v1/sessions/${id}/repo/merge`, branch ? { branch } : undefined)
+}
+
+export function sessionRepoMergeBranches(id: string): Promise<RepoMergeBranch[]> {
+  return get<RepoMergeBranch[]>(`/v1/sessions/${id}/repo/merge-branches`)
 }
 
 export function mergeFromMainSessionRepo(id: string): Promise<RepoInfo> {

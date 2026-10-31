@@ -13,6 +13,8 @@ export async function exerciseRepoStatus(): Promise<void> {
   let info: RepoInfo = { git: true, owner: 'example', repo: 'repo', branch: 'jaz/feature', default_branch: 'develop', main_branch: 'main', is_worktree: true, ahead: 1, dirty: false, head: '1234567890abcdef', upstream: 'origin/jaz/feature', push_ahead: 0, no_commits: true, has_upstream: true, web_url: 'https://github.com/example/repo' }
   let failed = false
   let merges = 0
+  let branchListFailed = false
+  let mergeBranches = [{ branch: 'jaz/worker', ahead: 3 }, { branch: 'jaz/other-task', ahead: 1 }]
   let diffFailed = false
   let changes: RepoChanges = { base: 'abcdef1234567890abcdef1234567890abcdef12', base_kind: 'fork', files: [{ path: 'feature.txt', status: 'modified', added: 1, deleted: 0 }, { path: 'dirty.txt', status: 'untracked', added: 1, deleted: 0 }], total_added: 2, total_deleted: 0 }
   window.fetch = async (input, init) => {
@@ -25,9 +27,16 @@ export async function exerciseRepoStatus(): Promise<void> {
     }
     if (url.endsWith('/v1/sessions/repo-status/repo/merge')) {
       if (init?.method !== 'POST') throw new Error('Merge did not use the repo action')
+      if (merges === 1) {
+        if (JSON.parse(String(init.body)).branch !== 'jaz/worker') throw new Error('The explicitly selected source branch was not sent')
+        mergeBranches = mergeBranches.filter(({ branch }) => branch !== 'jaz/worker')
+      }
       merges += 1
       info = { ...info, ahead: 0, dirty: false }
       return Response.json({ cwd: '/fixture/repo', info })
+    }
+    if (url.endsWith('/v1/sessions/repo-status/repo/merge-branches')) {
+      return branchListFailed ? Response.json({ error: 'Branch status failed' }, { status: 502 }) : Response.json(mergeBranches)
     }
     if (url.endsWith('/v1/sessions/repo-status/repo')) {
       return failed ? Response.json({ error: 'Git status failed' }, { status: 500 }) : Response.json(info)
@@ -62,11 +71,46 @@ export async function exerciseRepoStatus(): Promise<void> {
     await until(() => Boolean(button('Commit changes')))
     if (!element.textContent?.includes('1 commit to merge into main') || !element.textContent.includes('Uncommitted changes')) throw new Error('Dirty edits or outstanding commits were hidden')
     button('Merge into main')!.click()
-    await until(() => merges === 1 && !button('Merge into main'))
+    await until(() => merges === 1 && !element.textContent?.includes('commit to merge'))
     if (element.textContent?.includes('commit to merge') || element.textContent?.includes('Uncommitted changes') || !document.body.textContent?.includes('Push and release are separate.')) {
       throw new Error('A local merge left stale status or hid the remaining publication steps')
     }
     await window.smoke.capture('repo-clean-worktree-sidebar')
+    if (!button('Merge into main') || button('Merge into main')!.disabled) throw new Error('A clean parent branch hid access to separately committed work')
+    button('Merge into main')!.click()
+    await until(() => Boolean(document.querySelector('[role="dialog"] input[value="jaz/worker"]')))
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    const mergeButton = () => [...dialog.querySelectorAll('button')].find((item) => item.textContent?.trim() === 'Merge into main')!
+    if (!mergeButton().disabled || !dialog.textContent?.includes('Only committed changes')) throw new Error('An alternate branch was silently selected or dirty-work semantics were hidden')
+    await until(() => Number(getComputedStyle(dialog).opacity) > 0.99 && Number(getComputedStyle(dialog.parentElement!.parentElement!).opacity) > 0.99)
+    await window.smoke.capture('repo-clean-parent-worktree-selection')
+    await window.smoke.resize(390, 844)
+    await new Promise(requestAnimationFrame)
+    if (dialog.scrollWidth > dialog.clientWidth) throw new Error('Worktree branch selection overflows the phone viewport')
+    await window.smoke.capture('repo-clean-parent-worktree-selection-phone')
+    await window.smoke.resize(size.width, size.height)
+    branchListFailed = true
+    await client.invalidateQueries({ queryKey: keys.sessionRepo(session.id) })
+    await until(() => Boolean(dialog.textContent?.includes('Could not check worktree branches.')))
+    if (!mergeButton().disabled) throw new Error('Failed branch lookup left merge enabled')
+    branchListFailed = false
+    ;[...dialog.querySelectorAll('button')].find((item) => item.textContent === 'Retry branches')!.click()
+    await until(() => Boolean(dialog.querySelector('input[value="jaz/worker"]')))
+    dialog.querySelector<HTMLInputElement>('input[value="jaz/worker"]')!.click()
+    await until(() => !mergeButton().disabled)
+    const filterBranches = (value: string) => {
+      const input = dialog.querySelector<HTMLInputElement>('input[aria-label="Filter worktree branches"]')!
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+    filterBranches('other-task')
+    await until(() => !dialog.querySelector('input[value="jaz/worker"]'))
+    if (!mergeButton().disabled) throw new Error('A branch hidden by the filter remained mergeable')
+    filterBranches('worker')
+    await until(() => !mergeButton().disabled)
+    mergeButton().click()
+    await until(() => merges === 2 && !document.querySelector('[role="dialog"]'))
+    if (!button('Merge into main') || element.textContent?.includes('commit to merge')) throw new Error('Merging another worktree confused the parent branch state')
     info = { ...info, needs_push: true }
     await refresh()
     await until(() => Boolean(button('Push branch')))

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -144,13 +145,27 @@ func (s *Server) handleSessionRepoCommit(w http.ResponseWriter, r *http.Request,
 // handleSessionRepoMerge commits the worktree's outstanding work on its
 // branch and merges that branch into the repo's main checkout.
 func (s *Server) handleSessionRepoMerge(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	var req repoCommitRequest
+	var req struct {
+		repoCommitRequest
+		Branch *string `json:"branch"`
+	}
 	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	root, info, err := s.mergeSessionRepo(ctx, session, req.Message)
+	var root string
+	var info gitinfo.Info
+	var err error
+	if req.Branch != nil {
+		root, err = gitinfo.MergeBranchIntoMain(ctx, optionalCwd(session), strings.TrimSpace(*req.Branch))
+		info = gitinfo.Inspect(ctx, optionalCwd(session))
+	} else {
+		root, info, err = s.mergeSessionRepo(ctx, session, req.Message)
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

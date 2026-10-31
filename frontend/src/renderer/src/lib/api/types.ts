@@ -212,6 +212,11 @@ export interface RepoInfo extends RepoRevision {
   worktree_branch?: string
 }
 
+export interface RepoMergeBranch {
+  branch: string
+  ahead: number
+}
+
 // One changed file in a session's working tree relative to its diff base —
 // the worktree's fork point from main, or HEAD in a shared checkout.
 export interface RepoFileChange {

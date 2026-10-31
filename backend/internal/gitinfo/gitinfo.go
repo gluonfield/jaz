@@ -220,10 +220,15 @@ func MergeIntoMain(ctx context.Context, dir, message string) (string, error) {
 	if err := CommitAll(ctx, dir, message); err != nil {
 		return "", err
 	}
-	if count, err := git(ctx, root, "rev-list", "--count", branch+".."+worktreeBranch); err == nil && count == "0" {
+	return mergeBranch(ctx, root, branch, worktreeBranch)
+}
+
+func mergeBranch(ctx context.Context, root, branch, worktreeBranch string) (string, error) {
+	source := "refs/heads/" + worktreeBranch
+	if count, err := git(ctx, root, "rev-list", "--count", "refs/heads/"+branch+".."+source); err == nil && count == "0" {
 		return "", fmt.Errorf("nothing to merge — %s already has everything from %s", branch, worktreeBranch)
 	}
-	if _, err := git(ctx, root, "merge", "--no-edit", worktreeBranch); err != nil {
+	if _, err := git(ctx, root, "merge", "--no-edit", source); err != nil {
 		// A conflicted merge leaves MERGE_HEAD state behind; abort it so the
 		// main checkout stays pristine. (Refusals — e.g. local changes would
 		// be overwritten — never start a merge; the abort then is a no-op.)

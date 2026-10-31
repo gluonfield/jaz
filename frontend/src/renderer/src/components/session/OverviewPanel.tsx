@@ -37,6 +37,7 @@ import { OverviewDisclosureSection, OverviewRuns, SectionHeader } from './Overvi
 import { TaskStepIcon } from './TaskStepIcon'
 import { useRepoActions } from './useRepoActions'
 import { RepoStatus } from './RepoStatus'
+import { MergeBranchDialog } from '@/components/session/MergeBranchDialog'
 
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
 
@@ -371,6 +372,7 @@ function GitSection({
   const { info, busy, web, branch, branchPath } = repo
   const branchLabel = branch || 'detached'
   const [copied, setCopied] = useState(false)
+  const [choosingBranch, setChoosingBranch] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reduceMotion = useReducedMotion()
   const queueAction = (action: QueuedAction, label: string) => {
@@ -510,19 +512,31 @@ function GitSection({
             {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
           </ActionRow>
         ) : null}
-        {canMergeIntoMain(info) ? (
+        {info.is_worktree && info.main_branch ? (
           <ActionRow
             icon={busy === 'merge' ? LoaderCircle : GitMerge}
             spin={busy === 'merge'}
             disabled={busy !== null}
-            hint={`Commits this branch's changes and merges into local ${info.main_branch}. Does not push or release.`}
-            onClick={() => void repo.merge()}
-            onQueue={() => queueAction('repo/merge', `Merge into ${info.main_branch}`)}
+            hint={canMergeIntoMain(info) ? `Commits this branch's changes and merges into local ${info.main_branch}. Does not push or release.` : 'Choose committed work from another worktree branch'}
+            onClick={() => {
+              if (canMergeIntoMain(info)) void repo.merge()
+              else setChoosingBranch(true)
+            }}
+            onQueue={canMergeIntoMain(info) ? () => queueAction('repo/merge', `Merge into ${info.main_branch}`) : undefined}
             queueDisabled={busy !== null}
             queueHint={`Queue Merge into ${info.main_branch}`}
           >
             {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
           </ActionRow>
+        ) : null}
+        {choosingBranch && info.main_branch ? (
+          <MergeBranchDialog
+            sessionId={repo.sessionId}
+            target={info.main_branch}
+            busy={busy !== null}
+            onClose={() => setChoosingBranch(false)}
+            onMerge={repo.merge}
+          />
         ) : null}
       </section>
 
