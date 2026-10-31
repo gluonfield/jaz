@@ -54,6 +54,7 @@ func TestDesktopElectron(t *testing.T) {
 	mux := http.NewServeMux()
 	mountBrowserStartupFixture(t, mux, store, backend)
 	mountClaudeVoiceFixture(mux)
+	mountCanvasFixture(t, mux, store)
 	previews, err := previewapi.NewHandler(serverconfig.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -345,7 +346,7 @@ nodeRepl.write('Accessibility checks completed')`, r.URL.Query().Get("url"), r.U
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

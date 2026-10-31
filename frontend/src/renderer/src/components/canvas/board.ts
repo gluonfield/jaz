@@ -1,5 +1,5 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
-import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import type { CanvasBoard, CanvasDocument, CanvasItem, CanvasPagePatch, CanvasPatch, CanvasView } from '@/lib/api/canvas'
 
 export type Side = 'top' | 'right' | 'bottom' | 'left'
 export type Rect = { x: number; y: number; width: number; height: number }
@@ -81,7 +81,7 @@ export function sidesBetween(a: Rect, b: Rect): [Side, Side] {
 // The client's optimistic copy of a patch, with the server's semantics: fields
 // set to null are removed, unknown ids are added, and removing a node drops
 // the edges that touch it.
-export function applyPatch(view: CanvasView, change: CanvasPatch): CanvasView {
+export function applyPatch<T extends CanvasBoard>(view: T, change: CanvasPatch): T {
   const removed = new Set(change.remove)
   const merge = (items: CanvasItem[], changes: Partial<CanvasItem>[] = []) => {
     const out = items.filter((item) => !removed.has(item.id))
@@ -103,9 +103,13 @@ export function applyPatch(view: CanvasView, change: CanvasPatch): CanvasView {
   return { ...view, nodes, edges }
 }
 
+export function applyPagePatch(document: CanvasDocument, change: CanvasPagePatch): CanvasDocument {
+  return { ...document, pages: document.pages.map((page) => page.id === change.page ? { ...applyPatch(page, change), name: change.name ?? page.name } : page) }
+}
+
 // The patch that undoes `change` on `view`: changed fields get their old
 // values back, removed items return with their connectors, added ones go.
-export function invertPatch(view: CanvasView, change: CanvasPatch): CanvasPatch {
+export function invertPatch(view: CanvasBoard, change: CanvasPatch): CanvasPatch {
   const after = applyPatch(view, change)
   const restore = (before: CanvasItem[], now: CanvasItem[], changes: Partial<CanvasItem>[] = []) => {
     const present = new Set(now.map((item) => item.id))

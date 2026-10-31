@@ -24,8 +24,9 @@ export async function exerciseCanvas(): Promise<void> {
     ],
     files: { report: { path: 'report.md', version: '1' }, table: { path: 'costs.csv', version: '1' }, cad: { path: 'broken.stl', version: '1' }, artifact: { path: 'card.html', version: '1' } },
   }
+  const snapshot = () => ({ version: view.version, dir: view.dir, pages: [{ id: 'page-1', name: 'Page 1', nodes: view.nodes, edges: view.edges, files: view.files, components: view.components }] })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  client.setQueryData(keys.sessionCanvas(sessionId), view)
+  client.setQueryData(keys.sessionCanvas(sessionId), snapshot())
   client.setQueryData([...keys.sessionFile(sessionId, 'report.md'), '1'], { content: paragraphs })
   const csv = Array.from({ length: 40 }, (_, i) => Array.from({ length: 12 }, (_, column) => `Part-${i}-${column}`).join(',')).join('\n')
   const header = Array.from({ length: 12 }, (_, column) => `Column-${column}`).join(',')
@@ -67,14 +68,16 @@ document.querySelector('button').onclick = () => {
       return originalFetch(input, init)
     }
     if (init?.method === 'PATCH') {
-      view = { ...applyPatch(view, JSON.parse(String(init.body))), version: String(Number(view.version) + 1) }
+      const change = JSON.parse(String(init.body))
+      if (change.page !== 'page-1') throw new Error('Canvas write omitted its page')
+      view = { ...applyPatch(view, change), version: String(Number(view.version) + 1) }
       return Response.json({ version: view.version })
     }
-    return Response.json(view)
+    return Response.json(snapshot())
   }
   function Fixture({ inset = 0 }: { inset?: number }) {
-    const { selection, onSelect } = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} })
-    return <ThreadCanvas sessionId={sessionId} inset={inset} working={false} selection={selection} onSelect={onSelect} onPrompt={() => {}} />
+    const { bindSelection, onSelect, onPage } = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} })
+    return <ThreadCanvas sessionId={sessionId} inset={inset} working={false} bindSelection={bindSelection} onSelect={onSelect} onPage={onPage} onPrompt={() => {}} />
   }
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;background:var(--color-bg)'

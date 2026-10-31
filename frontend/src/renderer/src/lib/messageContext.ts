@@ -33,11 +33,12 @@ export type ComposerContext =
       screenshotAttachment?: ContextAttachment
     }
   | {
-      // A selected canvas item; it lives in the board's selection, never in a
-      // stored draft.
+      // The active canvas page, optionally with a selected item; never stored
+      // in a draft.
       id: string
       type: 'canvas'
-      node: string
+      page: string
+      node?: string
       label: string
     }
 
@@ -45,7 +46,11 @@ export type MessageContextInput =
   | { type: 'voice'; id: string; request_id: string; text: string }
   | { type: 'selection'; text: string; comment?: string }
   | { type: 'browser_annotation'; browser_annotation: BrowserAnnotation }
-  | { type: 'canvas'; id: string; text: string }
+  | { type: 'canvas'; page: string; id?: string; text: string }
+
+export function hasMessageContextContent(contexts: MessageContextInput[]): boolean {
+  return contexts.some((context) => context.type !== 'canvas' || Boolean(context.id))
+}
 
 export function contextInputs(contexts: ComposerContext[] = []): MessageContextInput[] {
   return contexts.flatMap<MessageContextInput>((context) => {
@@ -54,7 +59,7 @@ export function contextInputs(contexts: ComposerContext[] = []): MessageContextI
       if (!text) return []
       return [{ type: 'selection' as const, text, comment: context.comment?.trim() || undefined }]
     }
-    if (context.type === 'canvas') return [{ type: 'canvas' as const, id: context.node, text: context.label }]
+    if (context.type === 'canvas') return [{ type: 'canvas' as const, page: context.page, id: context.node, text: context.label }]
     const annotation = normalizeBrowserAnnotation(context.browser_annotation)
     if (!annotation) return []
     const screenshotAttachmentID = context.screenshotAttachment?.id ?? annotation.screenshot_attachment_id

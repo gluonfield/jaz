@@ -793,3 +793,52 @@
     animation-duration: 0.01s;
   }
 }
+
+.canvas-pages {
+  position: absolute;
+  top: 16px;
+  left: min(calc(var(--canvas-inset) + 16px), max(16px, calc(100% - 248px)));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 32px);
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--color-bg);
+  box-shadow: var(--canvas-float);
+}
+
+.canvas-pages > button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--color-ink-2);
+}
+
+.canvas-pages > button:hover {
+  background: var(--color-surface-2);
+}
+
+.canvas-pages > button:disabled {
+  opacity: 0.4;
+}
+
+.canvas-pages input {
+  width: 160px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--color-surface);
+  font-size: 12px;
+  outline-color: var(--canvas-accent);
+}
+
+.canvas-pages > button[aria-haspopup] {
+  display: flex;
+  width: auto;
+  min-width: 80px;
+  max-width: 200px;
+}

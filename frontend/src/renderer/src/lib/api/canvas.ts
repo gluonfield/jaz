@@ -19,13 +19,27 @@ export interface CanvasComponent {
   error?: string
 }
 
-export interface CanvasView {
-  version: string
-  dir: string
+export interface CanvasBoard {
   nodes: CanvasItem[]
   edges: CanvasItem[]
   files: Record<string, CanvasFile>
   components: Record<string, CanvasComponent>
+}
+
+export interface CanvasPage extends CanvasBoard {
+  id: string
+  name: string
+}
+
+export interface CanvasDocument {
+  version: string
+  dir: string
+  pages: CanvasPage[]
+}
+
+export interface CanvasView extends CanvasBoard {
+  version: string
+  dir: string
 }
 
 // Fields set to null are removed; unknown ids are added.
@@ -35,17 +49,23 @@ export interface CanvasPatch {
   remove?: string[]
 }
 
+export interface CanvasPagePatch extends CanvasPatch {
+  page: string
+  create?: boolean
+  name?: string
+}
+
 function canvasPath(sessionId: string): string {
   return `/v1/sessions/${encodeURIComponent(sessionId)}/canvas`
 }
 
 // The server answers 204 while the board still matches `current`.
-export async function getCanvas(sessionId: string, current?: CanvasView): Promise<CanvasView> {
+export async function getCanvas(sessionId: string, current?: CanvasDocument): Promise<CanvasDocument> {
   const query = current ? `?version=${encodeURIComponent(current.version)}` : ''
-  const view = await get<CanvasView | undefined>(`${canvasPath(sessionId)}${query}`)
+  const view = await get<CanvasDocument | undefined>(`${canvasPath(sessionId)}${query}`)
   return view ?? current!
 }
 
-export function patchCanvas(sessionId: string, change: CanvasPatch): Promise<{ version: string }> {
+export function patchCanvas(sessionId: string, change: CanvasPagePatch): Promise<{ version: string }> {
   return patch<{ version: string }>(canvasPath(sessionId), change)
 }

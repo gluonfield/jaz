@@ -9,6 +9,7 @@ import { composerPasteFiles } from '@/components/session/composerPasteFiles'
 import { subscribeComposerDraft } from '@/components/session/composerDraftChanges'
 import { apiBaseUrl, isLocalBackendUrl } from '@/lib/api/client'
 import type { AgentSessionCommand, Attachment, QueuedMessage } from '@/lib/api/types'
+import { contextInputs, hasMessageContextContent } from '@/lib/messageContext'
 import type { ComposerContext, SendMessageHandler } from '@/lib/sendMessage'
 import { Popover } from '@/components/ui/Popover'
 import { useDictation } from '@/lib/hooks/useDictation'
@@ -142,7 +143,7 @@ export function ComposerCard({
   const canSendWhileStreaming = streaming && sendWhileStreaming
   const attachmentBusy = attachmentDraft.busy
   const hasNonTextDraftContent =
-    attachmentDraft.files.length > 0 || attachmentDraft.uploaded.length > 0 || contexts.length > 0
+    attachmentDraft.files.length > 0 || attachmentDraft.uploaded.length > 0 || hasMessageContextContent(contextInputs(contexts))
   const hasSendableDraft = (messageEmpty: boolean) => !messageEmpty || hasNonTextDraftContent
   const hasDraftContent = hasSendableDraft(mention.isEmpty)
   const showVoiceButton = !hasDraftContent && Boolean(onVoice)

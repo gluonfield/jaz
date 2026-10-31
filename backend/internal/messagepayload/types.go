@@ -1,18 +1,21 @@
 package messagepayload
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 const (
 	ContextTypeSelection         = "selection"
 	ContextTypeVoice             = "voice"
 	ContextTypeBrowserAnnotation = "browser_annotation"
-	// ContextTypeCanvas names a selected canvas item: ID is its node id, Text
-	// its label.
+	// ContextTypeCanvas names the active Page and optionally a selected item ID.
 	ContextTypeCanvas = "canvas"
 )
 
 type MessageContext struct {
 	ID                string             `json:"id,omitempty"`
+	Page              string             `json:"page,omitempty"`
 	RequestID         string             `json:"request_id,omitempty"`
 	Type              string             `json:"type"`
 	Text              string             `json:"text,omitempty"`
@@ -53,7 +56,9 @@ type Attachment struct {
 }
 
 func HasMessageContent(message string, contexts []MessageContext, attachments []Attachment) bool {
-	return strings.TrimSpace(message) != "" || len(NormalizeMessageContexts(contexts)) > 0 || len(attachments) > 0
+	return strings.TrimSpace(message) != "" || len(attachments) > 0 || slices.ContainsFunc(NormalizeMessageContexts(contexts), func(context MessageContext) bool {
+		return context.Type != ContextTypeCanvas || context.ID != ""
+	})
 }
 
 func SelectionContexts(selections []string) []MessageContext {
@@ -89,8 +94,13 @@ func NormalizeMessageContexts(contexts []MessageContext) []MessageContext {
 				out = append(out, MessageContext{Type: ContextTypeSelection, Text: text, Comment: strings.TrimSpace(context.Comment)})
 			}
 		case ContextTypeCanvas:
-			if id := strings.TrimSpace(context.ID); id != "" {
-				out = append(out, MessageContext{Type: ContextTypeCanvas, ID: id, Text: strings.TrimSpace(context.Text)})
+			id := strings.TrimSpace(context.ID)
+			page := strings.TrimSpace(context.Page)
+			if id != "" || page != "" {
+				if page == "" {
+					page = "page-1"
+				}
+				out = append(out, MessageContext{Type: ContextTypeCanvas, Page: page, ID: id, Text: strings.TrimSpace(context.Text)})
 			}
 		case ContextTypeBrowserAnnotation:
 			annotation := NormalizeBrowserAnnotation(context.BrowserAnnotation)

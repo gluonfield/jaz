@@ -133,6 +133,9 @@ export interface ThreadDetailsView {
 export function ThreadView({
   sessionId,
   message,
+  page,
+  item,
+  navigationKey,
   initialPrompt,
   header,
   details,
@@ -142,6 +145,9 @@ export function ThreadView({
 }: {
   sessionId: string
   message?: number
+  page?: string
+  item?: string
+  navigationKey?: string
   initialPrompt?: OptimisticUserMessage
   header?: ReactNode
   details?: (view: ThreadDetailsView) => ReactNode
@@ -239,10 +245,16 @@ export function ThreadView({
     onSend: sendLiveMessage,
   })
   const sendMessage = queue.onSend
+  const composerContexts = useComposerContexts({
+    storageKey: `${SESSION_DRAFT_KEY_PREFIX}${sessionId}`,
+    storage: 'local',
+  })
+  const canvasContexts = useCanvasContexts(composerContexts)
+  const canvas = detail.data?.session.runtime_ref?.artifact_surface === 'canvas'
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     pinToBottom()
-    return sendMessage(text, options)
-  }, [pinToBottom, sendMessage])
+    return sendMessage(text, { ...options, contexts: options.contexts ?? (canvas ? canvasContexts.contexts : undefined) })
+  }, [pinToBottom, sendMessage, canvas, canvasContexts.contexts])
   const markdownArtifacts = useMemo(() => ({ mode: 'source' as const, onSendPrompt: handleSend }), [handleSend])
   const threadFind = useThreadFind(sessionId, scrollRef, pauseFollowing)
   const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()
@@ -354,12 +366,7 @@ export function ThreadView({
     await queryClient.refetchQueries({ queryKey: keys.sessionMessages(sessionId) })
   }, [queryClient, sessionId])
 
-  const composerContexts = useComposerContexts({
-    storageKey: `${SESSION_DRAFT_KEY_PREFIX}${sessionId}`,
-    storage: 'local',
-  })
-  const canvasContexts = useCanvasContexts(composerContexts)
-  const canvas = detail.data?.session.runtime_ref?.artifact_surface === 'canvas'
+
 
   useEffect(() => {
     if (seenRequestedRef.current) return
@@ -706,7 +713,7 @@ export function ThreadView({
           <div ref={canvas && !floatPanel ? sidePanel.containerRef : undefined} className={canvas ? 'flex h-full min-w-0 flex-1' : 'contents'}>
             {canvas ? (
               <div ref={canvasChat.containerRef} className={`relative h-full min-w-0 flex-1${canvasChat.resizing ? ' canvas-chat-resizing' : ''}`}>
-                <ThreadCanvas sessionId={session.id} inset={canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} selection={canvasContexts.selection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
+                <ThreadCanvas page={page} item={item} navigationKey={navigationKey} onPage={canvasContexts.onPage} sessionId={session.id} inset={canvasChat.shown ? canvasChat.width + 8 : 0} working={sessionRunning} bindSelection={canvasContexts.bindSelection} onSelect={canvasContexts.onSelect} onPrompt={handleSend} />
               </div>
             ) : null}
 

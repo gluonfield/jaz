@@ -1,5 +1,5 @@
 import type { QueuedAction, QueuedMessage, QueuedMessageInput } from '@/lib/api/types'
-import { normalizeBrowserAnnotation } from '@/lib/messageContext'
+import { hasMessageContextContent, normalizeBrowserAnnotation } from '@/lib/messageContext'
 
 export function normalizeQueuedMessagesForDisplay(prompts: QueuedMessage[]): QueuedMessage[] {
   return prompts.flatMap((prompt, index) => {
@@ -20,7 +20,7 @@ export function normalizeQueuedMessageInput(prompt: QueuedMessageInput): QueuedM
   const contexts = normalizeContexts(prompt.contexts)
   const legacyQuotes = (prompt.quotes ?? []).map((quote) => quote.trim()).filter(Boolean)
   const attachmentIds = (prompt.attachment_ids ?? []).map((id) => id.trim()).filter(Boolean)
-  if (!text && contexts.length === 0 && legacyQuotes.length === 0 && attachmentIds.length === 0) {
+  if (!text && !hasMessageContextContent(contexts) && legacyQuotes.length === 0 && attachmentIds.length === 0) {
     return null
   }
   return {
@@ -46,7 +46,11 @@ function normalizeContexts(contexts: QueuedMessageInput['contexts'] = []): NonNu
       if (!text) return []
       return [{ type: 'selection' as const, text, comment: context.comment?.trim() || undefined }]
     }
-    if (context.type === 'canvas') return context.id ? [{ type: 'canvas' as const, id: context.id, text: context.text }] : []
+    if (context.type === 'canvas') {
+      const id = context.id?.trim()
+      const page = context.page?.trim() || (id ? 'page-1' : undefined)
+      return page ? [{ type: 'canvas' as const, page, id, text: context.text }] : []
+    }
     if (context.type !== 'browser_annotation' || !context.browser_annotation) return []
     const annotation = normalizeBrowserAnnotation(context.browser_annotation)
     return annotation ? [{ type: 'browser_annotation' as const, browser_annotation: annotation }] : []

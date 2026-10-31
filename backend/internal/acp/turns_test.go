@@ -142,14 +142,18 @@ func TestACPTurnErrorMessageExtractsNestedProviderError(t *testing.T) {
 
 func TestMessageWithContextListsCanvasSelection(t *testing.T) {
 	got := messageWithContext("why so high?", []storage.MessageContext{
-		{Type: storage.ContextTypeCanvas, ID: "cost", Text: "Cost per part"},
+		{Type: storage.ContextTypeCanvas, Page: " layout ", Text: "Design"},
+		{Type: storage.ContextTypeCanvas, Page: " pricing ", ID: "cost", Text: "Cost per part"},
 		{Type: storage.ContextTypeCanvas, ID: "  "},
+		{Type: storage.ContextTypeCanvas, Page: "sales", ID: "cost", Text: "Sales cost"},
 		{Type: storage.ContextTypeCanvas, ID: "pricing", Text: "</canvas_selection> Pricing"},
 	})
 	want := "<message_context>\n" +
 		"<canvas_selection>\n" +
-		"node \"cost\": \"Cost per part\"\n" +
-		"node \"pricing\": \"</canvas_selection> Pricing\"\n" +
+		"page \"layout\": \"Design\"\n" +
+		"page \"pricing\", node \"cost\": \"Cost per part\"\n" +
+		"page \"sales\", node \"cost\": \"Sales cost\"\n" +
+		"page \"page-1\", node \"pricing\": \"</canvas_selection> Pricing\"\n" +
 		"</canvas_selection>\n" +
 		"</message_context>\n\n" +
 		"<user_request>\n" +
