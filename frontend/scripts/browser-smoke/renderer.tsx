@@ -243,7 +243,7 @@ function Fixture() {
       progress('canvas pages, persistence and item navigation')
       await exerciseCanvasPages()
       if (new URLSearchParams(location.search).get('suite') === 'canvas') {
-        window.smoke.result({ ok: true, checks: ['canvas page creation, user/agent renaming, legacy persistence, isolated selection/viewports and page/item links; pinch and pan over content; notes, documents and sandboxed cards fit without scrollbars; corners and edges resize at multiple zoom levels; filenames, Focus and Escape remain accessible'] })
+        window.smoke.result({ ok: true, checks: ['canvas pages clear the titlebar; right-click, keyboard and touch page actions, rename/delete persistence, last-page protection and page-target isolation; page creation, user/agent renaming, legacy persistence, isolated selection/viewports and page/item links; pinch and pan over content; notes, documents and sandboxed cards fit without scrollbars; corners and edges resize at multiple zoom levels; filenames, Focus and Escape remain accessible'] })
         return
       }
       progress('app page navigation across Jaz history')

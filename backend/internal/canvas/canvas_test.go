@@ -269,6 +269,8 @@ func TestInvalidPageWritesLeaveDocumentUntouched(t *testing.T) {
 		{Page: "page-1 ", Nodes: []Item{{"id": "wrong"}}},
 		{Page: "unknown", Nodes: []Item{{"id": "wrong"}}},
 		{Page: "page-1", Create: true},
+		{Page: "page-1", Delete: true},
+		{Page: "unknown", Delete: true},
 		{Page: "page-1", Name: &blank},
 		{Page: "new", Create: true, Nodes: []Item{{"id": "a"}}, Edges: []Item{{"id": "a"}}},
 	} {
@@ -278,6 +280,43 @@ func TestInvalidPageWritesLeaveDocumentUntouched(t *testing.T) {
 		if after, _ := os.ReadFile(path); string(after) != string(before) {
 			t.Fatalf("invalid patch changed document: %s", after)
 		}
+	}
+}
+
+func TestPageDeletionPreservesOtherPages(t *testing.T) {
+	service := newTestService(t)
+	writeCanvas(t, service, "s1", `{"pages":[
+		{"id":"kept","name":"Kept","nodes":[{"id":"same","text":"Keep","custom":42}],"edges":[]},
+		{"id":"deleted","name":"Deleted","nodes":[{"id":"same","text":"Remove"}],"edges":[]}
+	]}`)
+	path := filepath.Join(service.Dir("s1"), FileName)
+	before, _ := os.ReadFile(path)
+	name := "Name"
+	for _, change := range []Patch{
+		{Page: "deleted", Delete: true, Create: true},
+		{Page: "deleted", Delete: true, Name: &name},
+		{Page: "deleted", Delete: true, Nodes: []Item{{"id": "new"}}},
+		{Page: "deleted", Delete: true, Edges: []Item{{"id": "new"}}},
+		{Page: "deleted", Delete: true, Remove: []string{"same"}},
+	} {
+		if _, err := service.Patch("s1", change); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("mixed deletion %#v error = %v", change, err)
+		}
+		if after, _ := os.ReadFile(path); string(after) != string(before) {
+			t.Fatalf("rejected deletion changed the document: %s", after)
+		}
+	}
+	version, err := service.Patch("s1", Patch{Page: "deleted", Delete: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := service.Load("s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pages := snapshot.View().Pages
+	if snapshot.Version != version || len(pages) != 1 || pages[0].ID != "kept" || pages[0].Name != "Kept" || pages[0].Nodes[0]["text"] != "Keep" || pages[0].Nodes[0]["custom"] != 42.0 {
+		t.Fatalf("deletion lost a remaining page or returned a stale version: %#v", snapshot.View())
 	}
 }
 

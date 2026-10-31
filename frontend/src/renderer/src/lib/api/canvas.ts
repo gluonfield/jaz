@@ -52,6 +52,7 @@ export interface CanvasPatch {
 export interface CanvasPagePatch extends CanvasPatch {
   page: string
   create?: boolean
+  delete?: boolean
   name?: string
 }
 

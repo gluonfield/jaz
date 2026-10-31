@@ -42,6 +42,7 @@ type View struct {
 type Patch struct {
 	Page   string   `json:"page"`
 	Create bool     `json:"create,omitempty"`
+	Delete bool     `json:"delete,omitempty"`
 	Name   *string  `json:"name,omitempty"`
 	Nodes  []Item   `json:"nodes,omitempty"`
 	Edges  []Item   `json:"edges,omitempty"`
@@ -121,6 +122,9 @@ func (s *Service) Patch(sessionID string, patch Patch) (string, error) {
 	if !validPageID(patch.Page) {
 		return "", fmt.Errorf("%w: page is required and must not have surrounding whitespace", ErrInvalid)
 	}
+	if patch.Delete && (patch.Create || patch.Name != nil || len(patch.Nodes)+len(patch.Edges)+len(patch.Remove) > 0) {
+		return "", fmt.Errorf("%w: page deletion cannot include other changes", ErrInvalid)
+	}
 	dir := s.Dir(sessionID)
 	_, document, err := readDocument(dir)
 	if err != nil {
@@ -138,22 +142,29 @@ func (s *Service) Patch(sessionID string, patch Patch) (string, error) {
 	if at < 0 {
 		return "", fmt.Errorf("%w: page %q does not exist", ErrInvalid, patch.Page)
 	}
-	page := &document.Pages[at]
-	if patch.Name != nil {
-		page.Name = strings.TrimSpace(*patch.Name)
-		if page.Name == "" {
-			return "", fmt.Errorf("%w: page name is required", ErrInvalid)
+	if patch.Delete {
+		if len(document.Pages) == 1 {
+			return "", fmt.Errorf("%w: keep at least one page", ErrInvalid)
 		}
-	}
-	if page.Nodes, err = upsert(page.Nodes, patch.Nodes); err != nil {
-		return "", err
-	}
-	if page.Edges, err = upsert(page.Edges, patch.Edges); err != nil {
-		return "", err
-	}
-	removeItems(&page.Board, patch.Remove)
-	if err := validateBoard(page.Board); err != nil {
-		return "", err
+		document.Pages = slices.Delete(document.Pages, at, at+1)
+	} else {
+		page := &document.Pages[at]
+		if patch.Name != nil {
+			page.Name = strings.TrimSpace(*patch.Name)
+			if page.Name == "" {
+				return "", fmt.Errorf("%w: page name is required", ErrInvalid)
+			}
+		}
+		if page.Nodes, err = upsert(page.Nodes, patch.Nodes); err != nil {
+			return "", err
+		}
+		if page.Edges, err = upsert(page.Edges, patch.Edges); err != nil {
+			return "", err
+		}
+		removeItems(&page.Board, patch.Remove)
+		if err := validateBoard(page.Board); err != nil {
+			return "", err
+		}
 	}
 	if err := writeDocument(dir, document); err != nil {
 		return "", err

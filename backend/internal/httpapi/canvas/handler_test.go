@@ -82,6 +82,7 @@ func TestCanvasPageCreationRenameAndInvalidTargets(t *testing.T) {
 		`{"nodes":[{"id":"ambiguous"}]}`,
 		`{"page":"unknown","nodes":[{"id":"misplaced"}]}`,
 		`{"page":"page-1","create":true}`,
+		`{"page":"page-1","delete":true}`,
 		`{"page":"page-1","name":"  "}`,
 		`{"page":" padded","create":true}`,
 		`{"page":"padded ","create":true}`,
@@ -106,6 +107,13 @@ func TestCanvasPageCreationRenameAndInvalidTargets(t *testing.T) {
 	}
 	if len(view.Pages) != 2 || view.Pages[0].Nodes[0]["text"] != "First" || view.Pages[1].ID != "cost plan" || view.Pages[1].Name != "Forecast" || view.Pages[1].Nodes[0]["text"] != "Second" {
 		t.Fatalf("pages = %#v", view.Pages)
+	}
+	if res := serve(mux, http.MethodPatch, path, `{"page":"cost plan","delete":true}`); res.Code != http.StatusOK {
+		t.Fatalf("page deletion status = %d, body = %s", res.Code, res.Body.String())
+	}
+	res = serve(mux, http.MethodGet, path, "")
+	if err := json.Unmarshal(res.Body.Bytes(), &view); err != nil || res.Code != http.StatusOK || len(view.Pages) != 1 || view.Pages[0].Nodes[0]["text"] != "First" {
+		t.Fatalf("deletion response = %s, err = %v", res.Body.String(), err)
 	}
 }
 
