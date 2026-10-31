@@ -1,5 +1,5 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { useState, type SyntheticEvent } from 'react'
+import { useRef, useState, type SyntheticEvent } from 'react'
 import { ContextMenu, MenuRow } from '@/components/ui/Popover'
 import { Select } from '@/components/ui/Select'
 import { useToast } from '@/components/ui/toast'
@@ -15,6 +15,8 @@ export function CanvasPages({ pages, page, onPage, onCreate, onRename, onDelete 
   onDelete: () => Promise<void>
 }) {
   const toast = useToast()
+  const controls = useRef<HTMLDivElement>(null)
+  const focusSelector = () => controls.current?.querySelector<HTMLButtonElement>('[aria-haspopup]')?.focus()
   const [name, setName] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const { onClick: suppressClick, ...menuTriggers } = useContextMenuTrigger(setMenu)
@@ -41,6 +43,7 @@ export function CanvasPages({ pages, page, onPage, onCreate, onRename, onDelete 
   return (
     <>
       <div
+        ref={controls}
         className="canvas-pages canvas-overlay"
         aria-label="Canvas pages"
         {...(name === null ? menuTriggers : {})}
@@ -64,6 +67,7 @@ export function CanvasPages({ pages, page, onPage, onCreate, onRename, onDelete 
             onKeyDown={(event) => {
               if (event.key === 'Enter') rename()
               if (event.key === 'Escape') setName(null)
+              if (event.key === 'Enter' || event.key === 'Escape') requestAnimationFrame(focusSelector)
               event.stopPropagation()
             }}
           />
@@ -71,12 +75,23 @@ export function CanvasPages({ pages, page, onPage, onCreate, onRename, onDelete 
         <button type="button" aria-label="Add page" title="Add page" disabled={saving} onClick={() => void save(onCreate)}><Plus size={16} /></button>
       </div>
       {menu ? <ContextMenu point={menu} onClose={() => setMenu(null)}>
-        <div role="menu" aria-label={`${page.name} actions`}>
-          <MenuRow disabled={saving} onClick={() => {
+        <div role="menu" aria-label={`${page.name} actions`} onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            setMenu(null)
+            focusSelector()
+            event.stopPropagation()
+          }
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+          event.preventDefault()
+          const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
+          const index = rows.indexOf(document.activeElement as HTMLButtonElement)
+          rows[(index + (event.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length]?.focus()
+        }}>
+          <MenuRow autoFocus role="menuitem" disabled={saving} onClick={() => {
             setMenu(null)
             setName(page.name)
           }}><span className="flex items-center gap-2"><Pencil size={13} />Rename page</span></MenuRow>
-          <MenuRow disabled={saving || pages.length === 1} onClick={() => void save(onDelete)}><span className="flex items-center gap-2 text-danger"><Trash2 size={13} />Delete page</span></MenuRow>
+          <MenuRow role="menuitem" disabled={saving || pages.length === 1} onClick={() => void save(onDelete)}><span className="flex items-center gap-2 text-danger"><Trash2 size={13} />Delete page</span></MenuRow>
           {pages.length === 1 ? <p className="px-2.5 py-1 text-xs text-ink-3">Keep at least one page.</p> : null}
         </div>
       </ContextMenu> : null}
