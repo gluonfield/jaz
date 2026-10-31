@@ -52,7 +52,11 @@ func canvasContext(contexts []storage.MessageContext) string {
 	nodes := ""
 	for _, context := range contexts {
 		if context.Type == storage.ContextTypeCanvas {
-			nodes += fmt.Sprintf("node %q: %q\n", context.ID, context.Text)
+			nodes += fmt.Sprintf("page %q", context.Page)
+			if context.ID != "" {
+				nodes += fmt.Sprintf(", node %q", context.ID)
+			}
+			nodes += fmt.Sprintf(": %q\n", context.Text)
 		}
 	}
 	if nodes == "" {

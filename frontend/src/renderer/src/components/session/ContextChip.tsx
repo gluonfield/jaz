@@ -6,20 +6,22 @@ export function ContextChip({
   index,
   context,
   align = 'left',
-  onRemove,
+  onRemove: removeContext,
 }: {
   index: number
   context: ComposerContext
   align?: 'left' | 'right'
   onRemove?: () => void
 }) {
+  const onRemove = context.type === 'canvas' && !context.node ? undefined : removeContext
+  const canRemove = Boolean(onRemove) && (context.type !== 'canvas' || Boolean(context.node))
   const label = contextLabel(context)
   const text = contextPreviewText(context)
   const Icon = context.type === 'selection' ? MessageSquareQuote : context.type === 'canvas' ? Shapes : SlidersHorizontal
   return (
     <div
       className={`group relative flex items-center gap-1.5 rounded-full bg-bg py-1.5 pl-3 text-xs text-ink-2 transition-colors hover:bg-surface-2 ${
-        onRemove ? 'pr-1.5' : 'pr-3'
+        canRemove ? 'pr-1.5' : 'pr-3'
       }`}
     >
       <Icon size={13} className="shrink-0 text-ink-3" />

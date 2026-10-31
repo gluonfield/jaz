@@ -12,8 +12,8 @@ const ARROWS: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRigh
 // the rest of the page.
 export type Bindings = Record<string, () => boolean | void>
 
-function pick(item: CanvasItem): CanvasPick {
-  return { node: item.id, label: itemLabel(item) }
+function pick(page: string, item: CanvasItem): CanvasPick {
+  return { page, node: item.id, label: itemLabel(item) }
 }
 
 // Letters go by key position, so shortcuts survive other keyboard layouts.
@@ -26,7 +26,8 @@ function chord(event: KeyboardEvent): string {
 // copy, cut and paste, plus the caller's own keys. They act while the board
 // holds the user's attention: focus inside it, or a last click on it with
 // nothing focused.
-export function useCanvasInput({ local, commit, replay, onSelect, container, keys }: {
+export function useCanvasInput({ page, local, commit, replay, onSelect, container, keys }: {
+  page: string
   local: CanvasView
   commit: (change: CanvasPatch) => void
   replay: (from: 'undo' | 'redo') => void
@@ -59,7 +60,7 @@ export function useCanvasInput({ local, commit, replay, onSelect, container, key
   const place = (clip: Clip, dx: number, dy: number) => {
     const copy = cloneItems(clip, dx, dy)
     commit(copy)
-    onSelect(copy.nodes.map(pick))
+    onSelect(copy.nodes.map((item) => pick(page, item)))
   }
 
   const withSelection = (act: (clip: Clip) => void) => () => {
@@ -87,7 +88,7 @@ export function useCanvasInput({ local, commit, replay, onSelect, container, key
     'Mod+Z': () => replay('undo'),
     'Mod+Shift+Z': () => replay('redo'),
     'Mod+Y': () => replay('redo'),
-    'Mod+A': () => onSelect(local.nodes.map(pick)),
+    'Mod+A': () => onSelect(local.nodes.map((item) => pick(page, item))),
     'Mod+D': withSelection((clip) => place(clip, OFFSET, OFFSET)),
     'Mod+Backspace': dissolve,
     'Mod+Delete': dissolve,

@@ -1,35 +1,19 @@
-// Package canvas owns a canvas thread's board: a JSON Canvas 1.0 document
-// (jsoncanvas.org) that the agent edits with its own file tools and the client
-// reads and patches over HTTP.
+// Package canvas owns a canvas thread's pages. Each page is a JSON Canvas 1.0
+// board that the agent edits with file tools and the client patches over HTTP.
 package canvas
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 )
-
-const FileName = "canvas.json"
-
-var ErrInvalid = errors.New("invalid canvas")
-
-// Item is one JSON Canvas node or edge. It stays a loose map so fields the
-// agent adds survive a client patch untouched.
-type Item map[string]any
-
-type Board struct {
-	Nodes []Item `json:"nodes"`
-	Edges []Item `json:"edges"`
-}
 
 type File struct {
 	Path    string `json:"path"`
@@ -41,18 +25,24 @@ type Component struct {
 	Error string `json:"error,omitempty"`
 }
 
-type View struct {
-	Board
-	Version    string               `json:"version"`
-	Dir        string               `json:"dir"`
+type PageView struct {
+	Page
 	Files      map[string]File      `json:"files"`
 	Components map[string]Component `json:"components"`
 }
 
-// Patch merges items into the board by id: a field set to null is removed,
-// an unknown id is appended. Remove deletes nodes and edges, along with the
-// edges that touch a removed node.
+type View struct {
+	Version string     `json:"version"`
+	Dir     string     `json:"dir"`
+	Pages   []PageView `json:"pages"`
+}
+
+// Patch targets one page. Item fields set to null are removed; unknown item
+// ids are appended. New pages require Create; an unknown target is an error.
 type Patch struct {
+	Page   string   `json:"page"`
+	Create bool     `json:"create,omitempty"`
+	Name   *string  `json:"name,omitempty"`
 	Nodes  []Item   `json:"nodes,omitempty"`
 	Edges  []Item   `json:"edges,omitempty"`
 	Remove []string `json:"remove,omitempty"`
@@ -61,8 +51,7 @@ type Patch struct {
 type Snapshot struct {
 	Version string
 	dir     string
-	board   Board
-	files   map[string]File
+	pages   []PageView
 }
 
 type Service struct {
@@ -84,87 +73,93 @@ func Dir(canvasesRoot, sessionID string) string {
 
 func (s *Service) Load(sessionID string) (Snapshot, error) {
 	dir := s.Dir(sessionID)
-	raw, board, err := readBoard(dir)
+	raw, document, err := readDocument(dir)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	hash := sha256.New()
+	hash.Write([]byte("pages\x00"))
 	hash.Write(raw)
-	files := map[string]File{}
-	for _, node := range board.Nodes {
-		id, _ := node["id"].(string)
-		path, _ := node["file"].(string)
-		if node["type"] != "file" || id == "" || path == "" {
-			continue
+	pages := make([]PageView, len(document.Pages))
+	for i, page := range document.Pages {
+		files := map[string]File{}
+		for _, node := range page.Nodes {
+			id, _ := node["id"].(string)
+			path, _ := node["file"].(string)
+			if node["type"] != "file" || path == "" {
+				continue
+			}
+			file := File{Path: resolve(dir, path)}
+			if info, err := os.Stat(file.Path); err == nil {
+				file.Version = fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size())
+			}
+			files[id] = file
+			fmt.Fprintf(hash, "\x00%s\x00%s\x00%s\x00%s", page.ID, id, file.Path, file.Version)
 		}
-		file := File{Path: resolve(dir, path)}
-		if info, err := os.Stat(file.Path); err == nil {
-			file.Version = fmt.Sprintf("%d-%d", info.ModTime().UnixNano(), info.Size())
-		}
-		files[id] = file
-		fmt.Fprintf(hash, "\x00%s\x00%s\x00%s", id, file.Path, file.Version)
+		pages[i] = PageView{Page: page, Files: files}
 	}
-	return Snapshot{Version: hex.EncodeToString(hash.Sum(nil))[:24], dir: dir, board: board, files: files}, nil
+	return Snapshot{Version: hex.EncodeToString(hash.Sum(nil))[:24], dir: dir, pages: pages}, nil
 }
 
 func (s Snapshot) View() View {
-	components := map[string]Component{}
-	for id, file := range s.files {
-		if file.Version != "" && IsComponent(file.Path) {
-			components[id] = compile(file.Path)
+	pages := make([]PageView, len(s.pages))
+	for i, page := range s.pages {
+		page.Components = map[string]Component{}
+		for id, file := range page.Files {
+			if file.Version != "" && IsComponent(file.Path) {
+				page.Components[id] = compile(file.Path)
+			}
 		}
+		pages[i] = page
 	}
-	return View{Board: s.board, Version: s.Version, Dir: s.dir, Files: s.files, Components: components}
+	return View{Version: s.Version, Dir: s.dir, Pages: pages}
 }
 
 func (s *Service) Patch(sessionID string, patch Patch) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !validPageID(patch.Page) {
+		return "", fmt.Errorf("%w: page is required and must not have surrounding whitespace", ErrInvalid)
+	}
 	dir := s.Dir(sessionID)
-	_, board, err := readBoard(dir)
+	_, document, err := readDocument(dir)
 	if err != nil {
 		return "", err
 	}
-	if board.Nodes, err = upsert(board.Nodes, patch.Nodes); err != nil {
+	at := slices.IndexFunc(document.Pages, func(page Page) bool { return page.ID == patch.Page })
+	if patch.Create {
+		if at >= 0 {
+			return "", fmt.Errorf("%w: page %q already exists", ErrInvalid, patch.Page)
+		}
+		name := nextPageName(document.Pages)
+		document.Pages = append(document.Pages, Page{ID: patch.Page, Name: name, Board: Board{Nodes: []Item{}, Edges: []Item{}}})
+		at = len(document.Pages) - 1
+	}
+	if at < 0 {
+		return "", fmt.Errorf("%w: page %q does not exist", ErrInvalid, patch.Page)
+	}
+	page := &document.Pages[at]
+	if patch.Name != nil {
+		page.Name = strings.TrimSpace(*patch.Name)
+		if page.Name == "" {
+			return "", fmt.Errorf("%w: page name is required", ErrInvalid)
+		}
+	}
+	if page.Nodes, err = upsert(page.Nodes, patch.Nodes); err != nil {
 		return "", err
 	}
-	if board.Edges, err = upsert(board.Edges, patch.Edges); err != nil {
+	if page.Edges, err = upsert(page.Edges, patch.Edges); err != nil {
 		return "", err
 	}
-	removeItems(&board, patch.Remove)
-	if err := writeBoard(dir, board); err != nil {
+	removeItems(&page.Board, patch.Remove)
+	if err := validateBoard(page.Board); err != nil {
+		return "", err
+	}
+	if err := writeDocument(dir, document); err != nil {
 		return "", err
 	}
 	snapshot, err := s.Load(sessionID)
 	return snapshot.Version, err
-}
-
-func readBoard(dir string) ([]byte, Board, error) {
-	raw, err := os.ReadFile(filepath.Join(dir, FileName))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, Board{Nodes: []Item{}, Edges: []Item{}}, nil
-	}
-	if err != nil {
-		return nil, Board{}, err
-	}
-	var board Board
-	if err := json.Unmarshal(raw, &board); err != nil {
-		return nil, Board{}, fmt.Errorf("%w: %s: %v", ErrInvalid, FileName, err)
-	}
-	for _, items := range [][]Item{board.Nodes, board.Edges} {
-		for _, item := range items {
-			if id, _ := item["id"].(string); id == "" {
-				return nil, Board{}, fmt.Errorf("%w: every node and edge needs a string id", ErrInvalid)
-			}
-		}
-	}
-	if board.Nodes == nil {
-		board.Nodes = []Item{}
-	}
-	if board.Edges == nil {
-		board.Edges = []Item{}
-	}
-	return raw, board, nil
 }
 
 func resolve(dir, path string) string {
@@ -209,55 +204,4 @@ func removeItems(board *Board, ids []string) {
 		to, _ := edge["toNode"].(string)
 		return gone(edge) || slices.Contains(ids, from) || slices.Contains(ids, to)
 	})
-}
-
-// writeBoard keeps one item per line so the agent's line-based edits and the
-// client's patches touch disjoint lines.
-func writeBoard(dir string, board Board) error {
-	var out bytes.Buffer
-	out.WriteString("{\n  \"nodes\": [")
-	if err := writeItems(&out, board.Nodes); err != nil {
-		return err
-	}
-	out.WriteString("],\n  \"edges\": [")
-	if err := writeItems(&out, board.Edges); err != nil {
-		return err
-	}
-	out.WriteString("]\n}\n")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	temp, err := os.CreateTemp(dir, ".canvas-*.json")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(temp.Name())
-	if _, err := temp.Write(out.Bytes()); err != nil {
-		temp.Close()
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(temp.Name(), filepath.Join(dir, FileName))
-}
-
-// Markdown in text nodes stays readable: no HTML escaping of < > &.
-func writeItems(out *bytes.Buffer, items []Item) error {
-	encoder := json.NewEncoder(out)
-	encoder.SetEscapeHTML(false)
-	for i, item := range items {
-		if i > 0 {
-			out.WriteString(",")
-		}
-		out.WriteString("\n    ")
-		if err := encoder.Encode(item); err != nil {
-			return err
-		}
-		out.Truncate(out.Len() - 1)
-	}
-	if len(items) > 0 {
-		out.WriteString("\n  ")
-	}
-	return nil
 }

@@ -47,9 +47,9 @@ export async function exerciseSessionConfig(): Promise<void> {
       return Response.json(session)
     }
     if (url.includes('/v1/sessions/config-smoke/canvas')) {
-      return Response.json({ version: 'canvas-fixture', dir: '/workspace', nodes: [
+      return Response.json({ version: 'canvas-fixture', dir: '/workspace', pages: [{ id: 'page-1', name: 'Page 1', nodes: [
         { id: 'notes', type: 'text', x: 0, y: 0, width: 240, height: 120, text: 'Canvas Notes' },
-      ], edges: [], files: {}, components: {} })
+      ], edges: [], files: {}, components: {} }] })
     }
     if (url.includes('/v1/sessions/config-smoke/overview')) {
       if (saving) {

@@ -12,11 +12,12 @@ import {
   useViewport,
   type Connection,
   type OnSelectionChangeParams,
+  type Viewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/base.css'
 import './canvas.css'
 import { Minus, Plus } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
 import {
@@ -47,6 +48,7 @@ import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
 import { ConnectorEdge, FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
+import { CanvasPages } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
 import { useCanvasInput, type Bindings } from './useCanvasInput'
 import { useCanvasSync } from './useCanvasSync'
@@ -57,7 +59,11 @@ interface Props {
   // Width of the board's left edge that the chat covers.
   inset: number
   working: boolean
-  selection: string[]
+  bindSelection: (select: (picks: CanvasPick[]) => void) => () => void
+  page?: string
+  item?: string
+  navigationKey?: string
+  onPage: (page: { id: string; name: string }) => void
   onSelect: (picks: CanvasPick[]) => void
   onPrompt: (text: string) => void
 }
@@ -68,18 +74,82 @@ const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T
 const HINTS: Record<string, string> = { link: 'Use the page', cad: 'Drag to rotate, scroll to zoom', dxf: 'Drag to pan, scroll to zoom', pdf: 'Scroll and use the page controls' }
 
 export function ThreadCanvas(props: Props) {
+  const { onPage } = props
   const sync = useCanvasSync(props.sessionId, props.working)
-  if (!sync.view || !sync.local) {
+  const [selected, setSelected] = useState(props.page ?? '')
+  const [jump, setJump] = useState<{ page: string; item: string } | null>(null)
+  const [navigationError, setNavigationError] = useState('')
+  const visited = useRef('')
+  const viewports = useRef(new Map<string, Viewport>())
+  const page = sync.local?.pages.find((page) => page.id === selected) ?? sync.local?.pages[0]
+  useEffect(() => {
+    if (page) {
+      setSelected(page.id)
+      onPage({ id: page.id, name: page.name })
+    }
+  }, [page, onPage])
+  const choosePage = (id: string) => {
+    setSelected(id)
+    setJump(null)
+    setNavigationError('')
+  }
+  useEffect(() => {
+    if (!sync.local || (!props.page && !props.item)) return
+    const key = JSON.stringify([props.navigationKey, props.page, props.item])
+    if (visited.current === key) return
+    visited.current = key
+    setJump(null)
+    const target = sync.local.pages.find((page) => page.id === props.page)
+    if (!target) {
+      setNavigationError(props.page ? `Page “${props.page}” was not found.` : 'An item link must specify its page.')
+      return
+    }
+    if (props.item && !target.nodes.some((item) => item.id === props.item)) {
+      setNavigationError(`Item “${props.item}” was not found on ${target.name}.`)
+      return
+    }
+    setSelected(target.id)
+    setJump(props.item ? { page: target.id, item: props.item } : null)
+    setNavigationError('')
+  }, [props.navigationKey, props.page, props.item, sync.local])
+  if (!sync.view || !sync.local || !page) {
     return <div className="canvas">{sync.error ? <div className="canvas-overlay canvas-banner danger">{sync.error.message}</div> : null}</div>
   }
+  const local = { ...page, version: sync.local.version, dir: sync.local.dir }
+  const view = { ...(sync.view.pages.find((entry) => entry.id === page.id) ?? page), version: sync.view.version, dir: sync.view.dir }
   return (
-    <ReactFlowProvider>
-      <Board {...props} {...sync} view={sync.view} local={sync.local} />
+    <ReactFlowProvider key={page.id}>
+      <Board
+        {...props}
+        pageId={page.id}
+        view={view}
+        local={local}
+        commit={(change) => sync.commit(page.id, change)}
+        replay={(from) => sync.replay(page.id, from)}
+        error={sync.error}
+        initialViewport={viewports.current.get(page.id)}
+        onViewport={(viewport) => { viewports.current.set(page.id, viewport) }}
+        targetItem={jump?.page === page.id ? jump.item : undefined}
+        onJump={() => setJump((current) => current?.page === page.id && current.item === jump?.item ? null : current)}
+      >
+        <CanvasPages key={page.id} pages={sync.local.pages} page={page} onPage={choosePage} onCreate={async () => {
+          const id = newId('page')
+          await sync.createPage(id)
+          choosePage(id)
+        }} onRename={(name) => sync.renamePage(page.id, name)} />
+        {navigationError ? <div className="canvas-overlay canvas-banner danger" role="alert">{navigationError}</div> : null}
+      </Board>
     </ReactFlowProvider>
   )
 }
 
 interface BoardProps extends Props {
+  pageId: string
+  initialViewport?: Viewport
+  onViewport: (viewport: Viewport) => void
+  targetItem?: string
+  onJump: () => void
+  children: ReactNode
   view: CanvasView
   local: CanvasView
   commit: (change: CanvasPatch) => void
@@ -87,26 +157,31 @@ interface BoardProps extends Props {
   error: Error | null
 }
 
-function Board({ sessionId, inset, selection, onSelect, onPrompt, view, local, commit, replay, error }: BoardProps) {
+function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, view, local, commit, replay, error, initialViewport, onViewport, targetItem, onJump, children }: BoardProps) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
   const container = useRef<HTMLDivElement>(null)
-  const { flash, news, show, touch } = useAgentFollow(view, local, container, inset)
+  const { flash, news, show, touch } = useAgentFollow(view, local, container, inset, !initialViewport && !targetItem)
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
   // Nothing from the server lands mid-drag; the drag's own result merges after.
   useEffect(() => {
     if (!dragging) {
-      setNodes((current) => mergeNodes(current, toFlowNodes(local), new Set(selection)))
+      setNodes((current) => mergeNodes(current, toFlowNodes(local), new Set(current.filter((node) => node.selected).map((node) => node.id))))
     }
-  }, [local, selection, dragging, setNodes])
+  }, [local, dragging, setNodes])
   useEffect(() => {
     if (!dragging) {
       setEdges((current) => mergeEdges(current, toFlowEdges(local)))
     }
   }, [local, dragging, setEdges])
+
+  const select = useCallback((picks: CanvasPick[]) => {
+    setNodes((current) => current.map((node) => ({ ...node, selected: picks.some((pick) => pick.page === pageId && pick.node === node.id) })))
+  }, [pageId, setNodes])
+  useEffect(() => bindSelection(select), [bindSelection, select])
 
   const [tool, setTool] = useState<Tool>('select')
   const [editing, setEditing] = useState<string | null>(null)
@@ -116,8 +191,8 @@ function Board({ sessionId, inset, selection, onSelect, onPrompt, view, local, c
   const [draft, setDraft] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
 
   const onSelectionChange = useCallback(({ nodes: picked }: OnSelectionChangeParams<BoardNode, BoardEdge>) => {
-    onSelect(picked.map((node) => ({ node: node.id, label: itemLabel(node.data.item) })))
-  }, [onSelect])
+    onSelect(picked.map((node) => ({ page: pageId, node: node.id, label: itemLabel(node.data.item) })))
+  }, [onSelect, pageId])
 
   // A new item dropped inside a section grows the section around it.
   const sectionFor = (rect: Rect): Partial<CanvasItem>[] => {
@@ -203,7 +278,14 @@ function Board({ sessionId, inset, selection, onSelect, onPrompt, view, local, c
       addSection(padded(bounds(picked.map(rectOfNode))))
     },
   }
-  useCanvasInput({ local, commit, replay, onSelect, container, keys })
+  useCanvasInput({ page: pageId, local, commit, replay, onSelect: select, container, keys })
+
+  useEffect(() => {
+    if (!targetItem || !nodes.some((node) => node.id === targetItem)) return
+    setNodes((current) => current.map((node) => ({ ...node, selected: node.id === targetItem })))
+    requestAnimationFrame(() => void flow.fitView({ nodes: [{ id: targetItem }], duration: 300, maxZoom: 1, ...fitPadding(inset) }))
+    onJump()
+  }, [targetItem, nodes, setNodes, flow, inset, onJump])
 
   const board = useMemo<CanvasBoard>(() => ({
     sessionId,
@@ -262,7 +344,10 @@ function Board({ sessionId, inset, selection, onSelect, onPrompt, view, local, c
           onPaneClick={() => setFocused(null)}
           onSelectionChange={onSelectionChange}
           onMoveStart={(event) => event && setBusy(true)}
-          onMoveEnd={() => setBusy(false)}
+          onMoveEnd={(_event, viewport) => {
+            setBusy(false)
+            onViewport(viewport)
+          }}
           onSelectionStart={() => setBusy(true)}
           onSelectionEnd={() => setBusy(false)}
           connectionMode={ConnectionMode.Loose}
@@ -278,6 +363,7 @@ function Board({ sessionId, inset, selection, onSelect, onPrompt, view, local, c
           nodeDragThreshold={3}
           deleteKeyCode={['Backspace', 'Delete']}
           multiSelectionKeyCode={['Meta', 'Shift']}
+          defaultViewport={initialViewport}
           minZoom={0.1}
           maxZoom={4}
           proOptions={{ hideAttribution: true }}
@@ -324,6 +410,7 @@ function Board({ sessionId, inset, selection, onSelect, onPrompt, view, local, c
         </div>
       ) : null}
 
+      {children}
       <CanvasDock tool={tool} onTool={chooseTool} />
 
       {focusedItem ? (

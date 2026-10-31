@@ -1,3 +1,5 @@
+import { Link } from '@tanstack/react-router'
+import { canvasLink } from '@/lib/canvasNavigation'
 import { useQuery } from '@tanstack/react-query'
 import { FileText } from 'lucide-react'
 import {
@@ -337,8 +339,10 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   const openPreview = usePreviewLink()
   const openFile = useContext(FileReaderLinkContext)
   const files = useContext(MarkdownFileContext)
+  const canvas = canvasLink(href, files?.sessionId)
   const localFile = localFileFromLink(href, children, files?.documentPath)
   const linkedChildren = <MarkdownImageLinkContext value={true}>{children}</MarkdownImageLinkContext>
+  if (canvas) return <Link {...props} className="chat-prose-link" to="/sessions/$sessionId" params={{ sessionId: canvas.sessionId }} search={{ page: canvas.page, item: canvas.item }} state={() => ({ canvasNavigation: crypto.randomUUID() })}>{children}</Link>
   if (href?.startsWith('#')) {
     return <a {...props} href={href} className="chat-prose-link" onClick={(event) => {
       if (!shouldPreviewLink(event)) return

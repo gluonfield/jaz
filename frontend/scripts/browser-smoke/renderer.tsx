@@ -32,6 +32,7 @@ import { exerciseConnectCard } from './connect-card'
 import { exerciseAccentText } from './accent-text'
 import { exerciseAppNavigation } from './app-navigation'
 import { exerciseCanvas } from './canvas'
+import { exerciseCanvasPages } from './canvas-pages'
 import { exerciseImages } from './images'
 import { exerciseMarkdownDocuments } from './markdown-documents'
 import { exerciseMarkdownArtifacts } from './markdown-artifacts'
@@ -239,8 +240,10 @@ function Fixture() {
       }
       progress('canvas resizing, scrolling and viewer controls')
       await exerciseCanvas()
+      progress('canvas pages, persistence and item navigation')
+      await exerciseCanvasPages()
       if (new URLSearchParams(location.search).get('suite') === 'canvas') {
-        window.smoke.result({ ok: true, checks: ['canvas pinch and pan over content; notes, documents and sandboxed cards fit without scrollbars; corners and edges resize at multiple zoom levels; filenames, Focus and Escape remain accessible'] })
+        window.smoke.result({ ok: true, checks: ['canvas page creation, user/agent renaming, legacy persistence, isolated selection/viewports and page/item links; pinch and pan over content; notes, documents and sandboxed cards fit without scrollbars; corners and edges resize at multiple zoom levels; filenames, Focus and Escape remain accessible'] })
         return
       }
       progress('app page navigation across Jaz history')
