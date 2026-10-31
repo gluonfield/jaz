@@ -30,13 +30,13 @@ func TestDefaultWorkerAgentPriority(t *testing.T) {
 	}
 }
 
-func TestWorkerAgentReasoningEffortUsesAgentDefault(t *testing.T) {
+func TestWorkerAgentReasoningEffortUsesWorkerDefault(t *testing.T) {
 	defaults := AgentDefaults{ACP: map[string]ACPAgentDefaults{
 		acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter},
 	}}
 	for _, agent := range []string{acp.AgentCodex, acp.AgentClaude, acp.AgentOpenCode} {
-		if got := WorkerAgentReasoningEffort(agent, defaults); got != "xhigh" {
-			t.Fatalf("%s effort = %q, want xhigh", agent, got)
+		if got := WorkerAgentReasoningEffort(agent, defaults); got != "low" {
+			t.Fatalf("%s effort = %q, want low", agent, got)
 		}
 	}
 	for _, agent := range []string{acp.AgentKimi, acp.AgentGrok, acp.AgentAntigravity} {
@@ -67,15 +67,15 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 		{
 			name:    "codex",
 			agent:   acp.AgentCodex,
-			model:   acp.CodexOpenAIDefaultModel,
-			effort:  "xhigh",
+			model:   provider.DefaultOpenAIModel,
+			effort:  "low",
 			allowed: []string{"low", "medium", "high", "xhigh"},
 		},
 		{
 			name:    "claude",
 			agent:   acp.AgentClaude,
 			model:   "default",
-			effort:  "xhigh",
+			effort:  "low",
 			allowed: []string{"low", "medium", "high", "xhigh", "max", "ultracode"},
 		},
 		{
@@ -91,7 +91,7 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			agent:    acp.AgentOpenCode,
 			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter}}},
 			model:    "z-ai/glm-5.2",
-			effort:   "xhigh",
+			effort:   "low",
 			allowed:  []string{"low", "medium", "high", "xhigh", "max"},
 		},
 		{
@@ -99,7 +99,7 @@ func TestWorkerAgentDefaultsCompatibleWithSupportedModels(t *testing.T) {
 			agent:    acp.AgentOpenCode,
 			defaults: AgentDefaults{ACP: map[string]ACPAgentDefaults{acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenAI}}},
 			model:    provider.DefaultOpenAIModel,
-			effort:   "xhigh",
+			effort:   "low",
 			allowed:  []string{"low", "medium", "high", "xhigh", "max"},
 		},
 		{
@@ -148,8 +148,8 @@ func TestMemorySettingsWorkerOverrides(t *testing.T) {
 	if got := settings.WorkerModel(defaults); got != "default" {
 		t.Fatalf("default model = %q, want default", got)
 	}
-	if got := settings.WorkerReasoningEffort(defaults); got != "xhigh" {
-		t.Fatalf("default effort = %q, want xhigh", got)
+	if got := settings.WorkerReasoningEffort(defaults); got != "low" {
+		t.Fatalf("default effort = %q, want low", got)
 	}
 	settings.Model = "haiku"
 	settings.ReasoningEffort = "low"

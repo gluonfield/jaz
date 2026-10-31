@@ -10,6 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/settings"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -97,7 +98,7 @@ func TestSearchUsesMemoryModelSettings(t *testing.T) {
 		model  string
 		effort string
 	}{
-		{settings.MemorySettings{Enabled: true, Agent: acp.AgentCodex}, acp.CodexOpenAIDefaultModel, acp.DefaultAgentReasoningEffort(acp.AgentCodex)},
+		{settings.MemorySettings{Enabled: true, Agent: acp.AgentCodex}, provider.DefaultOpenAIModel, "low"},
 		{settings.MemorySettings{Enabled: true, Agent: acp.AgentClaude, Model: "chosen-model", ReasoningEffort: "high"}, "chosen-model", "high"},
 	} {
 		runner, manager := newTestRunner(t)

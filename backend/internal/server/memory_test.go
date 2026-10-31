@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/integrationingest"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/memoryservice"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/serverconfig"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	jazsettings "github.com/wins/jaz/backend/internal/settings"
@@ -179,7 +180,7 @@ func TestMemoryAgentSetting(t *testing.T) {
 	if status.Agent != "codex" || !status.Enabled {
 		t.Fatalf("unexpected memory agent status %#v", status)
 	}
-	if status.Model != "" || status.DefaultModel != acp.CodexOpenAIDefaultModel || status.DefaultReasoningEffort != "xhigh" {
+	if status.Model != "" || status.DefaultModel != provider.DefaultOpenAIModel || status.DefaultReasoningEffort != "low" {
 		t.Fatalf("unexpected memory worker defaults %#v", status)
 	}
 
@@ -210,7 +211,7 @@ func TestMemoryAgentSetting(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Agent != "claude" || status.Model != "" || status.ReasoningEffort != "" || status.DefaultModel != "default" || status.DefaultReasoningEffort != "xhigh" {
+	if status.Agent != "claude" || status.Model != "" || status.ReasoningEffort != "" || status.DefaultModel != "default" || status.DefaultReasoningEffort != "low" {
 		t.Fatalf("switching agents should reset overrides, got %#v", status)
 	}
 
