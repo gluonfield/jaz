@@ -468,9 +468,9 @@ export function ThreadView({
     />
   ) : null
 
+  const overviewLabel = details ? 'Details' : undefined
   // Docked, never overlapping: the chat pane flexes and stays centered
   // between the sidebar and this panel.
-  const overviewLabel = details ? 'Details' : undefined
   const sidePanelDrawer = (
     <SidePanelDrawer panel={sidePanel} isMobile={isMobile}>
       <SidePanel

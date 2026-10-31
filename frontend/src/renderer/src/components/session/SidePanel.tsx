@@ -42,8 +42,8 @@ export function SidePanel({
   const isMobile = useIsMobile()
   return (
     <div className={`flex h-full min-h-0 flex-col ${panel.mode === 'tabs' ? 'bg-surface' : ''}`} data-thread-find-shortcuts="off">
-      {/* Desktop: the panel's own header carries its tabs and the controls that
-          close it; phones keep both in the titlebar. */}
+      {/* Desktop: the open panel's own header carries its tabs and the controls
+          that close it; phones keep both in the titlebar. */}
       {!isMobile ? (
         <div className="flex h-10 shrink-0 items-center justify-end gap-1 px-1.5">
           {panel.mode === 'tabs' ? <SidePanelTabs
@@ -56,21 +56,25 @@ export function SidePanel({
             onAdd={panel.addTab}
             onDuplicate={panel.duplicateTab}
           /> : null}
-          <SidePanelControl open={panel.open} mode={panel.mode} overviewLabel={overviewLabel} onToggle={panel.toggleMode} />
+          {panel.open ? <SidePanelControl open mode={panel.mode} overviewLabel={overviewLabel} onToggle={panel.toggleMode} /> : null}
         </div>
       ) : null}
-      {panel.open && panel.mode === 'overview' ? <div className="min-h-0 flex-1">{overview ?? (
-        <OverviewPanel
-          session={session}
-          progress={progress}
-          subagents={subagents}
-          spawnedThreads={spawnedThreads}
-          working={working}
-          onSend={onSend}
-          onQueuePrompt={onQueuePrompt}
-          onQueueAction={onQueueAction}
-        />
-      )}</div> : null}
+      {panel.open && panel.mode === 'overview' ? (
+        <div className="min-h-0 flex-1">
+          {overview ?? (
+            <OverviewPanel
+              session={session}
+              progress={progress}
+              subagents={subagents}
+              spawnedThreads={spawnedThreads}
+              working={working}
+              onSend={onSend}
+              onQueuePrompt={onQueuePrompt}
+              onQueueAction={onQueueAction}
+            />
+          )}
+        </div>
+      ) : null}
       <div hidden={panel.mode !== 'tabs'} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {!panel.tabs.length ? <SidePanelTabMenu empty sideChatAvailable={sideChatAvailable} onAdd={panel.addTab} /> : null}
         {panel.tabs.map((tab) => {

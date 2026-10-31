@@ -189,7 +189,7 @@ export async function exerciseSessionConfig(): Promise<void> {
       throw new Error('Hiding and showing the chat lost its resized width')
     }
     // Desktop moves the controls into the open panel's header; phones keep them in the titlebar.
-    const panelButton = () => [...element.querySelectorAll<HTMLButtonElement>('button[aria-label="Side Panel"]')].find((button) => !button.closest('[inert]'))!
+    const panelButton = () => element.querySelector<HTMLButtonElement>('button[aria-label="Side Panel"]')!
     if (!panelButton() || !element.querySelector('button[aria-label="Overview"]')) {
       throw new Error('Canvas mode hides the side panel controls')
     }
