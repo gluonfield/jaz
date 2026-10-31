@@ -20,7 +20,7 @@ import { useUpdateBot } from './useUpdateBot'
 const TABS = { Activity: List, Routines: Repeat, Identity: Fingerprint, Agent: SlidersHorizontal }
 const NAMES = Object.keys(TABS) as (keyof typeof TABS)[]
 
-export function BotDetails({ bot, focusName, agentSession, working, subagents }: { bot: Bot; focusName: boolean } & ThreadDetailsView) {
+export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot; focusName: boolean } & ThreadDetailsView) {
   const [tab, setTab] = useState<keyof typeof TABS>('Activity')
   const id = useId()
   const [routine, setRoutine] = useState<string | null>(null)
@@ -80,7 +80,7 @@ export function BotDetails({ bot, focusName, agentSession, working, subagents }:
       </div>
       <div role="tabpanel" id={id} aria-labelledby={id + tab}>
         {tab === 'Activity' ? (
-          <BotActivity bot={bot} subagents={subagents} onOpenRoutine={setRoutine} onOpenFile={setFile} />
+          <BotActivity bot={bot} onOpenRoutine={setRoutine} onOpenFile={setFile} />
         ) : tab === 'Routines' ? (
           <BotRoutines bot={bot} onOpen={setRoutine} />
         ) : tab === 'Identity' ? (
