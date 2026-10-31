@@ -516,6 +516,23 @@ func TestCommitAllAndMergeIntoMain(t *testing.T) {
 	if got, _ := os.ReadFile(filepath.Join(main, "index.html")); string(got) != "purple\n" {
 		t.Errorf("main index.html = %q after aborted merge, want purple", got)
 	}
+	if err := exec.Command("git", "-C", main, "merge", "--no-edit", "refs/heads/jaz/wt").Run(); err == nil {
+		t.Fatal("fixture did not create an existing conflict")
+	}
+	mergeHead := git(main, "rev-parse", "--verify", "MERGE_HEAD")
+	conflicted, err := os.ReadFile(filepath.Join(main, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := MergeIntoMain(ctx, worktree, "preserve existing merge"); err == nil {
+		t.Fatal("merge accepted an existing destination merge")
+	}
+	if after := git(main, "rev-parse", "--verify", "MERGE_HEAD"); after != mergeHead {
+		t.Fatalf("existing merge changed: %s -> %s", mergeHead, after)
+	}
+	if after, err := os.ReadFile(filepath.Join(main, "index.html")); err != nil || string(after) != string(conflicted) {
+		t.Fatalf("existing conflict contents changed: %q, %v", after, err)
+	}
 }
 
 func TestMergeFromMain(t *testing.T) {

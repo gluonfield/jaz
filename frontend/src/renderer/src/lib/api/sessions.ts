@@ -16,6 +16,8 @@ import {
   type RepoFileChange,
   type RepoFilePatch,
   type RepoInfo,
+  type RepoMergeBranches,
+  type RepoMergeSelection,
   type RepoRevision,
   type SessionFileRead,
   type Session,
@@ -327,6 +329,14 @@ export function mergeSessionRepo(
   id: string,
 ): Promise<{ cwd: string; moved: boolean; info: RepoInfo }> {
   return post<{ cwd: string; moved: boolean; info: RepoInfo }>(`/v1/sessions/${id}/repo/merge`)
+}
+
+export function sessionRepoMergeBranches(id: string): Promise<RepoMergeBranches> {
+  return get<RepoMergeBranches>(`/v1/sessions/${id}/repo/merge-branches`)
+}
+
+export function mergeSessionRepoBranch(id: string, selection: RepoMergeSelection): Promise<RepoInfo> {
+  return post<RepoInfo>(`/v1/sessions/${id}/repo/merge-branches`, selection)
 }
 
 export function mergeFromMainSessionRepo(id: string): Promise<RepoInfo> {

@@ -17,6 +17,7 @@ import (
 	"github.com/wins/jaz/backend/internal/coordinator"
 	"github.com/wins/jaz/backend/internal/deviceauth"
 	"github.com/wins/jaz/backend/internal/gitinfo"
+	repoapi "github.com/wins/jaz/backend/internal/httpapi/repo"
 	"github.com/wins/jaz/backend/internal/jaztools"
 	"github.com/wins/jaz/backend/internal/loops"
 	"github.com/wins/jaz/backend/internal/managedtool"
@@ -273,6 +274,8 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request) {
 		s.writeSessionTranscript(w, r, session)
 	case "repo":
 		s.handleSessionRepo(w, r, session)
+	case "repo/merge-branches":
+		repoapi.MergeBranches(w, r, optionalCwd(session))
 	case "repo/changes":
 		s.handleSessionRepoChanges(w, r, session)
 	case "repo/diff":
@@ -391,6 +394,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	if action == "repo/merge" {
 		s.handleSessionRepoMerge(w, r, session)
+		return
+	}
+	if action == "repo/merge-branches" {
+		repoapi.MergeBranches(w, r, optionalCwd(session))
 		return
 	}
 	if action == "repo/merge-from-main" {
