@@ -53,6 +53,7 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     onopen: (() => void) | null = null
     onmessage: ((event: { data: string }) => void) | null = null
     onclose: (() => void) | null = null
+    closeListeners: (() => void)[] = []
     constructor() {
       terminalConnections += 1
       setTimeout(() => {
@@ -67,10 +68,16 @@ export async function exerciseSidePanelTabs(): Promise<void> {
         terminalInput.push(message.data)
       }
     }
+    addEventListener(type: string, listener: () => void) {
+      if (type === 'close') {
+        this.closeListeners.push(listener)
+      }
+    }
     close() {
       terminalCloses += 1
       this.readyState = NativeSocket.CLOSED
       this.onclose?.()
+      this.closeListeners.forEach((listener) => listener())
     }
   }
   window.WebSocket = new Proxy(NativeSocket, {
@@ -606,7 +613,7 @@ await tab.cdp.send('Runtime.evaluate', { expression: 'window.visibilityProbe += 
     }
     await navigate('tabs')
     await until(shown)
-    await until(() => Math.abs(document.querySelector<HTMLElement>('[data-browser-session="tabs"]')!.getBoundingClientRect().width - panel.width) < 1)
+    await until(() => Math.abs(document.querySelector<HTMLElement>('[data-browser-session="tabs"]')!.getBoundingClientRect().width - document.getElementById('panel-body-tabs')!.getBoundingClientRect().width) < 1)
     if (webview('tabs').getWebContentsId() !== agentID) {
       throw new Error('Revealing background browser activity replaced its webview')
     }

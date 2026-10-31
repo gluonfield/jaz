@@ -12,6 +12,7 @@ import { FileReaderPanel } from '@/components/session/FileReaderPanel'
 import { OverviewPanel } from '@/components/session/OverviewPanel'
 import { SideChatPanel } from '@/components/session/SideChatPanel'
 import { TerminalPanel } from '@/components/session/TerminalPanel'
+import { SidePanelControl } from '@/components/session/SidePanelControl'
 import { SidePanelTabMenu, SidePanelTabs } from '@/components/session/SidePanelTabs'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import type { useSidePanelState } from '@/components/session/SidePanelState'
@@ -19,7 +20,7 @@ import type { useSidePanelState } from '@/components/session/SidePanelState'
 export function SidePanel({
   session, panel, progress, subagents, spawnedThreads, working,
   sideChatAvailable, sideChatEvents, onAddBrowserAnnotation, onUploadAttachment,
-  onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview,
+  onSend, onQueuePrompt, onQueueAction, onSendSideChat, overview, overviewLabel,
 }: {
   session: Session
   panel: ReturnType<typeof useSidePanelState>
@@ -36,11 +37,29 @@ export function SidePanel({
   onQueueAction: (action: QueuedAction, label: string) => Promise<void>
   onSendSideChat: (sideChatID: string, message: string, options?: SendMessageOptions) => Promise<void>
   overview?: ReactNode
+  overviewLabel?: string
 }) {
   const isMobile = useIsMobile()
   return (
-    <>
-      {panel.open && panel.mode === 'overview' ? overview ?? (
+    <div className={`flex h-full min-h-0 flex-col ${panel.mode === 'tabs' ? 'bg-surface' : ''}`} data-thread-find-shortcuts="off">
+      {/* Desktop: the panel's own header carries its tabs and the controls that
+          close it; phones keep both in the titlebar. */}
+      {!isMobile ? (
+        <div className="flex h-10 shrink-0 items-center justify-end gap-1 px-1.5">
+          {panel.mode === 'tabs' ? <SidePanelTabs
+            tabs={panel.tabs}
+            activeId={panel.activeTab?.id}
+            sideChatAvailable={sideChatAvailable}
+            onSelect={panel.selectTab}
+            onReorder={panel.reorderTabs}
+            onClose={panel.closeTab}
+            onAdd={panel.addTab}
+            onDuplicate={panel.duplicateTab}
+          /> : null}
+          <SidePanelControl open={panel.open} mode={panel.mode} overviewLabel={overviewLabel} onToggle={panel.toggleMode} />
+        </div>
+      ) : null}
+      {panel.open && panel.mode === 'overview' ? <div className="min-h-0 flex-1">{overview ?? (
         <OverviewPanel
           session={session}
           progress={progress}
@@ -51,23 +70,8 @@ export function SidePanel({
           onQueuePrompt={onQueuePrompt}
           onQueueAction={onQueueAction}
         />
-      ) : null}
-      <div hidden={panel.mode !== 'tabs'} className="relative flex h-full min-h-0 flex-col overflow-hidden bg-surface" data-thread-find-shortcuts="off">
-        {/* Desktop: the tabs head the panel's own card; phones keep them in the titlebar. */}
-        {!isMobile ? (
-          <div className="flex h-10 shrink-0 items-center px-1.5">
-            <SidePanelTabs
-              tabs={panel.tabs}
-              activeId={panel.activeTab?.id}
-              sideChatAvailable={sideChatAvailable}
-              onSelect={panel.selectTab}
-              onReorder={panel.reorderTabs}
-              onClose={panel.closeTab}
-              onAdd={panel.addTab}
-              onDuplicate={panel.duplicateTab}
-            />
-          </div>
-        ) : null}
+      )}</div> : null}
+      <div hidden={panel.mode !== 'tabs'} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {!panel.tabs.length ? <SidePanelTabMenu empty sideChatAvailable={sideChatAvailable} onAdd={panel.addTab} /> : null}
         {panel.tabs.map((tab) => {
           const active = panel.activeTab?.id === tab.id
@@ -112,6 +116,6 @@ export function SidePanel({
           )
         })}
       </div>
-    </>
+    </div>
   )
 }

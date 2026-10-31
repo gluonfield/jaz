@@ -188,12 +188,13 @@ export async function exerciseSessionConfig(): Promise<void> {
     if (chatWidth() !== 500) {
       throw new Error('Hiding and showing the chat lost its resized width')
     }
-    const panelButton = element.querySelector<HTMLButtonElement>('button[aria-label="Side Panel"]')
-    if (!panelButton || !element.querySelector('button[aria-label="Overview"]')) {
+    // Desktop moves the controls into the open panel's header; phones keep them in the titlebar.
+    const panelButton = () => [...element.querySelectorAll<HTMLButtonElement>('button[aria-label="Side Panel"]')].find((button) => !button.closest('[inert]'))!
+    if (!panelButton() || !element.querySelector('button[aria-label="Overview"]')) {
       throw new Error('Canvas mode hides the side panel controls')
     }
-    panelButton.click()
-    await until(() => panelButton.getAttribute('aria-pressed') === 'true')
+    panelButton().click()
+    await until(() => panelButton().getAttribute('aria-pressed') === 'true')
     element.querySelector<HTMLButtonElement>('button[aria-label="New tab"]')!.click()
     await until(() => [...document.querySelectorAll<HTMLButtonElement>('button')].some((button) => button.textContent?.trim() === 'Browser'))
     const browserOption = [...document.querySelectorAll<HTMLButtonElement>('button')].find((button) => button.textContent?.trim() === 'Browser')!
@@ -215,10 +216,10 @@ export async function exerciseSessionConfig(): Promise<void> {
       }
     })
     const drawer = element.querySelector<HTMLElement>('[style*="--side-panel-width"]')!
-    panelButton.click()
-    await until(() => panelButton.getAttribute('aria-pressed') === 'false' && drawer.getBoundingClientRect().width < 1)
-    panelButton.click()
-    await until(() => panelButton.getAttribute('aria-pressed') === 'true' && webview.getBoundingClientRect().width > 200)
+    panelButton().click()
+    await until(() => panelButton().getAttribute('aria-pressed') === 'false' && drawer.getBoundingClientRect().width < 1)
+    panelButton().click()
+    await until(() => panelButton().getAttribute('aria-pressed') === 'true' && webview.getBoundingClientRect().width > 200)
     let lastWidth = 0
     let stableFrames = 0
     await until(() => {
@@ -236,15 +237,15 @@ export async function exerciseSessionConfig(): Promise<void> {
     if (resizeHandle() || chatWidth() > 390) {
       throw new Error('Desktop chat resizing leaked into the phone layout')
     }
-    const controlBounds = panelButton.getBoundingClientRect()
+    const controlBounds = panelButton().getBoundingClientRect()
     const x = Math.round(controlBounds.x + controlBounds.width / 2)
     const y = Math.round(controlBounds.y + controlBounds.height / 2)
     await window.smoke.pointer('mouseDown', x, y)
     await window.smoke.pointer('mouseUp', x, y)
-    await until(() => panelButton.getAttribute('aria-pressed') === 'false' && drawer.getBoundingClientRect().left >= 389)
+    await until(() => panelButton().getAttribute('aria-pressed') === 'false' && drawer.getBoundingClientRect().left >= 389)
     await window.smoke.pointer('mouseDown', x, y)
     await window.smoke.pointer('mouseUp', x, y)
-    await until(() => panelButton.getAttribute('aria-pressed') === 'true' && Math.abs(drawer.getBoundingClientRect().left) < 1)
+    await until(() => panelButton().getAttribute('aria-pressed') === 'true' && Math.abs(drawer.getBoundingClientRect().left) < 1)
     await window.smoke.capture('canvas-side-panel-mobile')
   } finally {
     save.resolve()

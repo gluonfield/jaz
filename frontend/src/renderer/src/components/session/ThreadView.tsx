@@ -470,6 +470,7 @@ export function ThreadView({
 
   // Docked, never overlapping: the chat pane flexes and stays centered
   // between the sidebar and this panel.
+  const overviewLabel = details ? 'Details' : undefined
   const sidePanelDrawer = (
     <SidePanelDrawer panel={sidePanel} isMobile={isMobile}>
       <SidePanel
@@ -482,6 +483,7 @@ export function ThreadView({
         sideChatAvailable={sideChatAvailable}
         sideChatEvents={sideChatEvents}
         overview={details?.({ agentSession: derived.agentSession, working: sessionRunning, threads: spawnedThreads, subagents: providerSubagents })}
+        overviewLabel={overviewLabel}
         onAddBrowserAnnotation={composerContexts.addBrowserAnnotation}
         onUploadAttachment={(file) => uploadSessionAttachment(session.id, file)}
         onSend={handleSend}
@@ -507,7 +509,7 @@ export function ThreadView({
             panel={sidePanel}
             sideChatAvailable={sideChatAvailable}
             header={header}
-            overviewLabel={details ? 'Details' : undefined}
+            overviewLabel={overviewLabel}
           />
           {/* Phone: the open panel covers the chat full-width, so the only
               non-panel area left is the title bar. This catches taps on its empty

@@ -22,22 +22,28 @@ export function SessionTitlebar({ session, isMobile, panel, sideChatAvailable, h
     <TokenStats session={session} />
   </>, [header, session])
   useTitlebarSlot(slot)
-  const actions = useMemo(() => (
-    <div className="flex min-w-0 items-center gap-1" style={{ width: isMobile && open && mode === 'tabs' ? '100%' : undefined }}>
-      {/* On desktop the tabs head the side panel's own card instead. */}
-      {isMobile && open && mode === 'tabs' ? <SidePanelTabs
-        tabs={tabs}
-        activeId={activeId}
-        sideChatAvailable={sideChatAvailable}
-        onSelect={selectTab}
-        onReorder={reorderTabs}
-        onClose={closeTab}
-        onAdd={addTab}
-        onDuplicate={duplicateTab}
-      /> : null}
-      <SidePanelControl open={open} mode={mode} overviewLabel={overviewLabel} onToggle={toggleMode} />
-    </div>
-  ), [open, mode, isMobile, tabs, activeId, sideChatAvailable, overviewLabel, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode])
+  // On desktop the open panel's own header carries its tabs and controls.
+  const actions = useMemo(() => {
+    const control = <SidePanelControl open={open} mode={mode} overviewLabel={overviewLabel} onToggle={toggleMode} />
+    if (!isMobile) {
+      return open ? null : control
+    }
+    return (
+      <div className="flex min-w-0 items-center gap-1" style={{ width: open && mode === 'tabs' ? '100%' : undefined }}>
+        {open && mode === 'tabs' ? <SidePanelTabs
+          tabs={tabs}
+          activeId={activeId}
+          sideChatAvailable={sideChatAvailable}
+          onSelect={selectTab}
+          onReorder={reorderTabs}
+          onClose={closeTab}
+          onAdd={addTab}
+          onDuplicate={duplicateTab}
+        /> : null}
+        {control}
+      </div>
+    )
+  }, [open, mode, isMobile, tabs, activeId, sideChatAvailable, overviewLabel, selectTab, reorderTabs, closeTab, addTab, duplicateTab, toggleMode])
   useTitlebarActions(actions)
   return null
 }
