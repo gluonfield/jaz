@@ -181,12 +181,16 @@ export function ContextMenu({
 }
 
 export function MenuRow({
+  autoFocus,
+  role,
   selected,
   disabled,
   trailing,
   onClick,
   children,
 }: {
+  autoFocus?: boolean
+  role?: 'menuitem'
   selected?: boolean
   disabled?: boolean
   trailing?: ReactNode
@@ -196,6 +200,8 @@ export function MenuRow({
   return (
     <button
       type="button"
+      autoFocus={autoFocus}
+      role={role}
       disabled={disabled}
       onClick={onClick}
       className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${

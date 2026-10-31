@@ -136,7 +136,7 @@ export function ThreadCanvas(props: Props) {
           const id = newId('page')
           await sync.createPage(id)
           choosePage(id)
-        }} onRename={(name) => sync.renamePage(page.id, name)} />
+        }} onRename={(name) => sync.renamePage(page.id, name)} onDelete={() => sync.deletePage(page.id)} />
         {navigationError ? <div className="canvas-overlay canvas-banner danger" role="alert">{navigationError}</div> : null}
       </Board>
     </ReactFlowProvider>

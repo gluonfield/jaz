@@ -796,7 +796,7 @@
 
 .canvas-pages {
   position: absolute;
-  top: 16px;
+  top: calc(var(--titlebar-height, 0px) + 16px);
   left: min(calc(var(--canvas-inset) + 16px), max(16px, calc(100% - 248px)));
   display: flex;
   align-items: center;

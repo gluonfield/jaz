@@ -112,6 +112,7 @@ export function Select({
         aria-controls={open ? listboxId : undefined}
         aria-label={ariaLabel}
         data-escape-surface={open ? '' : undefined}
+        onContextMenu={() => closeMenu(false)}
         onClick={() => {
           if (open) {
             closeMenu(false)

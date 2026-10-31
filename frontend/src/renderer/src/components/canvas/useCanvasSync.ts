@@ -65,5 +65,10 @@ export function useCanvasSync(sessionId: string, working: boolean) {
   const renamePage = useCallback((page: string, name: string) => {
     send({ page, name })
   }, [send])
-  return { view, local, commit, replay, createPage, renamePage, error: canvas.error }
+  const deletePage = useCallback(async (page: string) => {
+    await patchCanvas(sessionId, { page, delete: true })
+    history.current.delete(page)
+    await refetch()
+  }, [sessionId, refetch])
+  return { view, local, commit, replay, createPage, renamePage, deletePage, error: canvas.error }
 }

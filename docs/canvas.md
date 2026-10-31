@@ -11,11 +11,13 @@ A canvas thread stores `canvas.json` in its canvas directory. Pages have stable 
 }
 ```
 
-The page selector switches pages. The adjacent controls add a page or rename the current page. New pages default to `Page N`; renaming keeps the page ID. Page selection, viewport and editing state belong to the client, so an agent editing another page does not switch the user's page.
+The page selector switches pages; the adjacent plus adds a page. Right-click or press and hold the selector for Rename page and Delete page. Keyboard users can press Shift+F10 on the selector. At least one page must remain. New pages default to `Page N`; renaming keeps the page ID. Page selection, viewport and editing state belong to the client, so an agent editing another page does not switch the user's page.
 
 Existing root-level `nodes` and `edges` load as `page-1`, named `Page 1`. Reading leaves the file unchanged; the next successful patch writes the pages schema while preserving the original items. Invalid documents are reported rather than overwritten.
 
 `GET /v1/sessions/{session}/canvas` returns `version`, `dir` and `pages`. Each page includes its own `files` and compiled `components`, keyed by its item IDs. `PATCH` requires a `page` ID and accepts the existing `nodes`, `edges` and `remove` item changes plus an optional `name`. Creating a page explicitly requires `create:true`; a missing or unknown target otherwise fails. Blank rename requests fail.
+
+Deleting a page uses `{"page":"costs","delete":true}` without other changes. Deleting the final page fails without changing the document. The client selects the first remaining page when its current page is deleted.
 
 ```json
 {"page":"costs","create":true,"name":"Costs"}

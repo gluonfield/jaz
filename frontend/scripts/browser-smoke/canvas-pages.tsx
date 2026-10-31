@@ -39,6 +39,7 @@ export async function exerciseCanvasPages(): Promise<void> {
     setLinkPage = changeLinkPage
     setInset = changeInset
     return <>
+      <header data-canvas-titlebar style={{ position: 'absolute', inset: '0 0 auto', height: 'var(--titlebar-height)', zIndex: 20, background: 'var(--color-bg)' }}><button type="button" aria-label="Canvas fixture navigation" style={{ width: 200, height: '100%' }}>Back · Forward</button></header>
       <ThreadCanvas sessionId={sessionId} inset={inset} working={false} bindSelection={picks.bindSelection} onSelect={picks.onSelect} onPage={picks.onPage} navigationKey={navigationKey} onPrompt={() => {}} page={search.page} item={search.item} />
       <div data-canvas-fixture-controls style={{ position: 'absolute', right: 16, top: 70, zIndex: 10, maxWidth: 220 }}>
         <FileReaderLinkProvider sessionId={sessionId} onOpen={() => {}}>
@@ -50,7 +51,7 @@ export async function exerciseCanvasPages(): Promise<void> {
     </>
   }
   const element = document.createElement('div')
-  element.style.cssText = 'position:fixed;inset:0;z-index:2;background:var(--color-bg)'
+  element.style.cssText = 'position:fixed;inset:0;z-index:2;background:var(--color-bg);--titlebar-height:40px'
   document.body.append(element)
   const root = createRoot(element)
   const until = async (check: () => boolean | Promise<boolean>, message: string | (() => string)) => {
@@ -62,6 +63,18 @@ export async function exerciseCanvasPages(): Promise<void> {
   }
   const node = () => element.querySelector<HTMLElement>('.react-flow__node[data-id="same"]')
   const control = () => element.querySelector<HTMLButtonElement>('[aria-label="Canvas page"]')!
+  const action = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find((button) => button.textContent === name)!
+  const openActions = async () => {
+    const rect = control().getBoundingClientRect()
+    await window.smoke.pointer('mouseDown', rect.x + rect.width / 2, rect.y + rect.height / 2, 'right')
+    await window.smoke.pointer('mouseUp', rect.x + rect.width / 2, rect.y + rect.height / 2, 'right')
+    await until(() => Boolean(action('Rename page') && action('Delete page')), 'Right-click did not open page actions')
+  }
+  const checkControls = () => {
+    const box = control().getBoundingClientRect()
+    const titlebar = element.querySelector('[data-canvas-titlebar]')!.getBoundingClientRect()
+    if (box.top < titlebar.bottom || !control().contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))) throw new Error(`Canvas pages: titlebar covers the page selector (titlebar bottom ${titlebar.bottom}, selector top ${box.top})`)
+  }
   const inView = () => {
     const box = node()?.getBoundingClientRect()
     const inset = Number.parseFloat(getComputedStyle(element.querySelector('.canvas')!).getPropertyValue('--canvas-inset'))
@@ -87,6 +100,11 @@ export async function exerciseCanvasPages(): Promise<void> {
     await router.load()
     root.render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
     await until(() => Boolean(node()?.textContent?.includes('Legacy page')), 'Legacy content is not visible on Page 1')
+    checkControls()
+    if (element.querySelector('[aria-label="Rename page"]')) throw new Error('Canvas pages: persistent edit button is still present')
+    await openActions()
+    if (!action('Delete page').disabled || !document.querySelector('[role="menu"]')?.textContent?.includes('Keep at least one page')) throw new Error('Canvas pages: final-page deletion is not visibly disabled')
+    await window.smoke.key('Escape')
     if (control().textContent !== 'Page 1' || JSON.parse(await raw()).pages) throw new Error('Legacy read changed disk schema or page name')
     await until(() => {
       const contexts = JSON.parse(element.querySelector('[data-selection]')!.textContent!)
@@ -105,8 +123,8 @@ export async function exerciseCanvasPages(): Promise<void> {
     element.querySelector<HTMLButtonElement>('[aria-label="Add page"]')!.click()
     await until(() => control().textContent === 'Page 2', 'Adding Page 2 did not select it')
     if (node()) throw new Error('Page 1 item leaked onto Page 2')
-    const document = await getCanvas(sessionId)
-    const second = document.pages[1].id
+    const created = await getCanvas(sessionId)
+    const second = created.pages[1].id
     setLinkPage!(second)
     await until(() => {
       const contexts = JSON.parse(element.querySelector('[data-selection]')!.textContent!)
@@ -115,7 +133,8 @@ export async function exerciseCanvasPages(): Promise<void> {
     if (preparedSendMessage(submitted[0]).contexts[0].page !== 'page-1') throw new Error('Page switching changed a submitted context snapshot')
     const stored = JSON.parse(await raw())
     if (stored.pages[0].nodes[0].text !== 'Legacy page' || stored.pages.length !== 2) throw new Error('Creating a page lost legacy content')
-    element.querySelector<HTMLButtonElement>('[aria-label="Rename page"]')!.click()
+    await openActions()
+    action('Rename page').click()
     await until(() => Boolean(element.querySelector('[aria-label="Page name"]')), 'Rename field did not open')
     const input = element.querySelector<HTMLInputElement>('[aria-label="Page name"]')!
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Costs')
@@ -218,17 +237,75 @@ export async function exerciseCanvasPages(): Promise<void> {
     await until(inView, 'The navigated page did not retain its viewport')
     element.querySelector<HTMLElement>('[data-canvas-fixture-controls]')!.hidden = true
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    checkControls()
     await window.smoke.capture('canvas-pages-desktop')
+    control().click()
+    await until(() => Boolean(document.querySelector('[role="listbox"]')), 'Page list did not open before actions')
+    await openActions()
+    await until(() => !document.querySelector('[role="listbox"]'), 'Page list stayed open beneath page actions')
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await window.smoke.capture('canvas-pages-actions')
+    await choose('Overview')
+    if (document.querySelector('[role="menu"]')) throw new Error('Canvas pages: switching pages retained actions for the old page')
+    control().click()
+    await until(() => Boolean(document.querySelector('[role="option"]')), 'Page list did not open for context boundary check')
+    const other = [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent === 'Agent plan')!
+    other.dispatchEvent(new MouseEvent('contextmenu', { clientX: 100, clientY: 100, bubbles: true, cancelable: true }))
+    if (document.querySelector('[role="menu"]')) throw new Error('Canvas pages: right-clicking a different page opened actions for the current page')
+    await window.smoke.key('Escape')
+    control().focus()
+    await window.smoke.key('F10', ['shift'])
+    await until(() => document.activeElement === action('Rename page'), 'Keyboard actions did not focus Rename page')
+    await window.smoke.key('Enter')
+    await until(() => document.activeElement === element.querySelector('[aria-label="Page name"]'), 'Keyboard Rename did not focus the name field')
+    const keyboardName = element.querySelector<HTMLInputElement>('[aria-label="Page name"]')!
+    keyboardName.select()
+    for (const key of 'Keyboard overview') await window.smoke.key(key)
+    await window.smoke.key('Enter')
+    await until(async () => JSON.parse(await raw()).pages[0].name === 'Keyboard overview' && document.activeElement === control(), () => `Keyboard Rename did not persist or restore focus (selector ${control()?.textContent}, focus ${document.activeElement?.outerHTML})`)
+    await write(originalDocument)
+    await until(() => control().textContent === 'Overview', 'Restoring the original page name did not finish')
+    await window.smoke.key('F10', ['shift'])
+    await until(() => document.activeElement === action('Rename page'), 'Keyboard rename actions did not reopen')
+    await window.smoke.key('Enter')
+    await until(() => document.activeElement === element.querySelector('[aria-label="Page name"]'), 'Keyboard Rename did not reopen')
+    await window.smoke.key('Escape')
+    await until(() => document.activeElement === control(), 'Cancelling Rename did not restore the selector focus')
+    await window.smoke.key('F10', ['shift'])
+    await until(() => document.activeElement === action('Rename page'), 'Keyboard actions did not reopen')
+    await window.smoke.key('Escape')
+    await until(() => document.activeElement === control() && !document.querySelector('[role="menu"]'), 'Closing actions did not restore the selector focus')
+    await choose('Agent plan')
+    control().focus()
+    await window.smoke.key('F10', ['shift'])
+    await until(() => document.activeElement === action('Rename page'), 'Keyboard deletion actions did not open')
+    await window.smoke.key('Down')
+    await until(() => document.activeElement === action('Delete page'), 'Keyboard actions did not focus Delete page')
+    await window.smoke.key('Enter')
+    await until(async () => !JSON.parse(await raw()).pages.some((page: { id: string }) => page.id === second) && control().textContent === 'Overview', 'Deleting the active page did not persist or select its fallback')
+    if (node()?.textContent?.includes('Later agent edit')) throw new Error('Canvas pages: deleted page content leaked into its fallback')
+    await write(originalDocument)
+    await choose('Agent plan')
     await window.smoke.resize(430, 860)
     setInset!(340)
     await until(() => window.innerWidth === 430, 'Narrow canvas resize did not settle')
     const controls = element.querySelector<HTMLElement>('.canvas-pages')!.getBoundingClientRect()
     if (controls.left < 0 || controls.right > window.innerWidth) throw new Error('Page controls overflow the narrow canvas')
+    checkControls()
     setInset!(0)
     await until(() => element.querySelector<HTMLElement>('.canvas')!.style.getPropertyValue('--canvas-inset') === '0px', 'Narrow inset did not settle')
     element.querySelector<HTMLButtonElement>('button[title="Fit everything"]')!.click()
     await until(inView, 'Narrow page target is outside the viewport')
     await window.smoke.capture('canvas-pages-narrow')
+    const box = control().getBoundingClientRect()
+    const finger = new Touch({ identifier: 1, target: control(), clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 })
+    control().dispatchEvent(new TouchEvent('touchstart', { touches: [finger], changedTouches: [finger], bubbles: true, cancelable: true }))
+    await until(() => Boolean(action('Delete page')), 'Touch long-press did not open page actions')
+    control().dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [finger], bubbles: true, cancelable: true }))
+    control().click()
+    if (document.querySelector('[role="listbox"]')) throw new Error('Canvas pages: long-press opened the page list on release')
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await window.smoke.capture('canvas-pages-touch-actions')
   } finally {
     await window.smoke.resize(1050, 850)
     root.unmount()
