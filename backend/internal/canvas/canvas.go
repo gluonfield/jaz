@@ -118,8 +118,8 @@ func (s Snapshot) View() View {
 func (s *Service) Patch(sessionID string, patch Patch) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if strings.TrimSpace(patch.Page) == "" {
-		return "", fmt.Errorf("%w: page is required", ErrInvalid)
+	if !validPageID(patch.Page) {
+		return "", fmt.Errorf("%w: page is required and must not have surrounding whitespace", ErrInvalid)
 	}
 	dir := s.Dir(sessionID)
 	_, document, err := readDocument(dir)

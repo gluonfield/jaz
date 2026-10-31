@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 const FileName = "canvas.json"
@@ -63,8 +64,8 @@ func readDocument(dir string) ([]byte, Document, error) {
 	ids := map[string]bool{}
 	for i := range document.Pages {
 		page := &document.Pages[i]
-		if strings.TrimSpace(page.ID) == "" || ids[page.ID] {
-			return nil, Document{}, fmt.Errorf("%w: every page needs a unique string id", ErrInvalid)
+		if !validPageID(page.ID) || ids[page.ID] {
+			return nil, Document{}, fmt.Errorf("%w: every page needs a unique nonempty id without surrounding whitespace", ErrInvalid)
 		}
 		ids[page.ID] = true
 		page.Name = strings.TrimSpace(page.Name)
@@ -82,6 +83,12 @@ func readDocument(dir string) ([]byte, Document, error) {
 		}
 	}
 	return raw, document, nil
+}
+
+func validPageID(id string) bool {
+	return id != "" && id == strings.TrimFunc(id, func(r rune) bool {
+		return unicode.IsSpace(r) || r == '\ufeff'
+	})
 }
 
 func validateBoard(board Board) error {

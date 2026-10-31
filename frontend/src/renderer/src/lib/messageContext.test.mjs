@@ -4,14 +4,14 @@ import { normalizeQueuedMessageInput } from '@/lib/sessionQueue'
 
 test('sending and queueing canvas selections keeps identical node ids on different pages distinct', () => {
   const contexts = [
-    { id: 'pricing-cost', type: 'canvas', page: 'pricing', node: 'cost', label: 'Price per part' },
-    { id: 'sales-cost', type: 'canvas', page: 'sales', node: 'cost', label: 'Sales cost' },
+    { id: 'pricing-cost', type: 'canvas', page: 'pricing plan', node: 'cost', label: 'Price per part' },
+    { id: 'sales-cost', type: 'canvas', page: 'sales plan', node: 'cost', label: 'Sales cost' },
   ]
   const prepared = preparedSendMessage({ contexts })
   const queued = normalizeQueuedMessageInput(JSON.parse(JSON.stringify({ text: 'Compare these', contexts: prepared.contexts })))
   expect(queued.contexts).toEqual([
-    { type: 'canvas', page: 'pricing', id: 'cost', text: 'Price per part' },
-    { type: 'canvas', page: 'sales', id: 'cost', text: 'Sales cost' },
+    { type: 'canvas', page: 'pricing plan', id: 'cost', text: 'Price per part' },
+    { type: 'canvas', page: 'sales plan', id: 'cost', text: 'Sales cost' },
   ])
 })
 

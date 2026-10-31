@@ -83,6 +83,8 @@ func TestCanvasPageCreationRenameAndInvalidTargets(t *testing.T) {
 		`{"page":"unknown","nodes":[{"id":"misplaced"}]}`,
 		`{"page":"page-1","create":true}`,
 		`{"page":"page-1","name":"  "}`,
+		`{"page":" padded","create":true}`,
+		`{"page":"padded ","create":true}`,
 	} {
 		if res := serve(mux, http.MethodPatch, path, body); res.Code != http.StatusUnprocessableEntity {
 			t.Fatalf("invalid page target status = %d, body = %s", res.Code, res.Body.String())
@@ -90,8 +92,8 @@ func TestCanvasPageCreationRenameAndInvalidTargets(t *testing.T) {
 	}
 	for _, body := range []string{
 		`{"page":"page-1","nodes":[{"id":"same","text":"First"}]}`,
-		`{"page":"other","create":true,"nodes":[{"id":"same","text":"Second"}]}`,
-		`{"page":"other","name":"  Forecast  "}`,
+		`{"page":"cost plan","create":true,"nodes":[{"id":"same","text":"Second"}]}`,
+		`{"page":"cost plan","name":"  Forecast  "}`,
 	} {
 		if res := serve(mux, http.MethodPatch, path, body); res.Code != http.StatusOK {
 			t.Fatalf("page patch status = %d, body = %s", res.Code, res.Body.String())
@@ -102,7 +104,7 @@ func TestCanvasPageCreationRenameAndInvalidTargets(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &view); err != nil || res.Code != http.StatusOK {
 		t.Fatalf("get status = %d, err = %v", res.Code, err)
 	}
-	if len(view.Pages) != 2 || view.Pages[0].Nodes[0]["text"] != "First" || view.Pages[1].Name != "Forecast" || view.Pages[1].Nodes[0]["text"] != "Second" {
+	if len(view.Pages) != 2 || view.Pages[0].Nodes[0]["text"] != "First" || view.Pages[1].ID != "cost plan" || view.Pages[1].Name != "Forecast" || view.Pages[1].Nodes[0]["text"] != "Second" {
 		t.Fatalf("pages = %#v", view.Pages)
 	}
 }

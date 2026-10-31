@@ -216,7 +216,7 @@ func TestPagesPersistNamesAndIsolateItemEdits(t *testing.T) {
 	}
 	for _, change := range []Patch{
 		{Page: "page-1", Nodes: []Item{{"id": "a", "text": "Original"}, {"id": "b"}}, Edges: []Item{{"id": "edge", "fromNode": "a", "toNode": "b"}}},
-		{Page: "second", Create: true, Nodes: []Item{{"id": "a", "text": "Second"}, {"id": "b"}}, Edges: []Item{{"id": "edge", "fromNode": "a", "toNode": "b"}}},
+		{Page: "second page", Create: true, Nodes: []Item{{"id": "a", "text": "Second"}, {"id": "b"}}, Edges: []Item{{"id": "edge", "fromNode": "a", "toNode": "b"}}},
 	} {
 		if _, err := service.Patch("s1", change); err != nil {
 			t.Fatal(err)
@@ -226,11 +226,11 @@ func TestPagesPersistNamesAndIsolateItemEdits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page := snapshot.View().Pages[1]; page.Name != "Page 2" {
+	if page := snapshot.View().Pages[1]; page.ID != "second page" || page.Name != "Page 2" {
 		t.Fatalf("new page = %#v", page)
 	}
 	name := "  Page 3  "
-	if _, err := service.Patch("s1", Patch{Page: "second", Name: &name, Remove: []string{"a"}}); err != nil {
+	if _, err := service.Patch("s1", Patch{Page: "second page", Name: &name, Remove: []string{"a"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.Patch("s1", Patch{Page: "third", Create: true}); err != nil {
@@ -241,7 +241,7 @@ func TestPagesPersistNamesAndIsolateItemEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	pages := snapshot.View().Pages
-	if len(pages) != 3 || pages[1].Name != "Page 3" || pages[2].Name != "Page 4" {
+	if len(pages) != 3 || pages[1].ID != "second page" || pages[1].Name != "Page 3" || pages[2].Name != "Page 4" {
 		t.Fatalf("page names = %#v", pages)
 	}
 	if len(pages[0].Nodes) != 2 || len(pages[0].Edges) != 1 || pages[0].Nodes[0]["text"] != "Original" {
@@ -263,6 +263,10 @@ func TestInvalidPageWritesLeaveDocumentUntouched(t *testing.T) {
 	for _, patch := range []Patch{
 		{Nodes: []Item{{"id": "wrong"}}},
 		{Page: "   "},
+		{Page: " padded", Create: true},
+		{Page: "padded ", Create: true},
+		{Page: "\ufeffpadded", Create: true},
+		{Page: "page-1 ", Nodes: []Item{{"id": "wrong"}}},
 		{Page: "unknown", Nodes: []Item{{"id": "wrong"}}},
 		{Page: "page-1", Create: true},
 		{Page: "page-1", Name: &blank},
@@ -283,6 +287,9 @@ func TestInvalidPageDocumentsAreNotOverwritten(t *testing.T) {
 		`{"pages":[]}`,
 		`{"pages":null}`,
 		`{"pages":[{"id":""}]}`,
+		`{"pages":[{"id":" p"}]}`,
+		`{"pages":[{"id":"p\u00a0"}]}`,
+		`{"pages":[{"id":"\ufeffp"}]}`,
 		`{"pages":[{"id":"same"},{"id":"same"}]}`,
 		`{"pages":[{"id":"p","nodes":[{"id":"a"},{"id":"a"}]}]}`,
 		`{"pages":[{"id":"p"}],"nodes":[{"id":"lost"}]}`,

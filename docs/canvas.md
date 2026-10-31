@@ -1,6 +1,6 @@
 # Canvas pages
 
-A canvas thread stores `canvas.json` in its canvas directory. Pages have stable IDs and editable names; each page contains a JSON Canvas 1.0 board. Item IDs belong to their page, so different pages may use the same item ID.
+A canvas thread stores `canvas.json` in its canvas directory. Pages have stable IDs and editable names; each page contains a JSON Canvas 1.0 board. Page IDs are nonempty and have no surrounding whitespace; internal spaces are allowed. Item IDs belong to their page, so different pages may use the same item ID.
 
 ```json
 {
