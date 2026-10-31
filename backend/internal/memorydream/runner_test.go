@@ -80,15 +80,15 @@ func TestRunDreamSpawnsCompatibleWorkerModelAndEffort(t *testing.T) {
 		model    string
 		effort   string
 	}{
-		{name: "codex", agent: acp.AgentCodex, model: acp.CodexOpenAIDefaultModel, effort: "xhigh"},
-		{name: "claude", agent: acp.AgentClaude, model: "default", effort: "xhigh"},
+		{name: "codex", agent: acp.AgentCodex, model: provider.DefaultOpenAIModel, effort: "low"},
+		{name: "claude", agent: acp.AgentClaude, model: "default", effort: "low"},
 		{name: "grok", agent: acp.AgentGrok},
 		{name: "opencode-openrouter-style", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenRouter},
-		}}, model: "z-ai/glm-5.2", effort: "xhigh"},
+		}}, model: "z-ai/glm-5.2", effort: "low"},
 		{name: "opencode-openai", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOpenAI},
-		}}, model: provider.DefaultOpenAIModel, effort: "xhigh"},
+		}}, model: provider.DefaultOpenAIModel, effort: "low"},
 		{name: "opencode-ollama", agent: acp.AgentOpenCode, defaults: jazsettings.AgentDefaults{ACP: map[string]jazsettings.ACPAgentDefaults{
 			acp.AgentOpenCode: {ModelProvider: provider.ProviderOllama},
 		}}},

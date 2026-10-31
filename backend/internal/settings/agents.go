@@ -136,10 +136,13 @@ func DefaultWorkerAgent(defaults AgentDefaults) string {
 func WorkerAgentModel(agent string, defaults AgentDefaults) string {
 	switch acp.CanonicalAgentName(agent) {
 	case acp.AgentCodex:
-		if strings.TrimSpace(defaults.ACP[acp.AgentCodex].ModelProvider) == provider.ProviderOpenRouter {
+		switch strings.TrimSpace(defaults.ACP[acp.AgentCodex].ModelProvider) {
+		case "", acp.AgentCodex, provider.ProviderOpenAI, acp.CodexProviderOpenAIAPIKey:
+			return provider.DefaultOpenAIModel
+		case provider.ProviderOpenRouter:
 			return provider.DefaultOpenRouterModel
 		}
-		return acp.CodexOpenAIDefaultModel
+		return ""
 	case acp.AgentClaude:
 		return "default"
 	case acp.AgentOpenCode:
@@ -157,17 +160,10 @@ func WorkerAgentModel(agent string, defaults AgentDefaults) string {
 }
 
 func WorkerAgentReasoningEffort(agent string, defaults AgentDefaults) string {
-	switch acp.CanonicalAgentName(agent) {
-	case acp.AgentOpenCode:
-		switch strings.TrimSpace(defaults.ACP[acp.AgentOpenCode].ModelProvider) {
-		case "", provider.ProviderOpenAI, provider.ProviderOpenRouter:
-			return acp.DefaultAgentReasoningEffort(agent)
-		default:
-			return ""
-		}
-	default:
-		return acp.DefaultAgentReasoningEffort(agent)
+	if WorkerAgentModel(agent, defaults) != "" {
+		return "low"
 	}
+	return ""
 }
 
 func storedAgentDefaultsEqual(store storage.SettingsStorage, defaults AgentDefaults) bool {

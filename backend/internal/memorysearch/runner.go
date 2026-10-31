@@ -59,7 +59,6 @@ func (r *Runner) SearchMemory(ctx context.Context, req memoryservice.SearchReque
 		Title:           "Memory Search",
 		Directory:       ".jaz-runtime/memory-search",
 		Model:           config.WorkerModel(defaults),
-		StoredModel:     true,
 		ReasoningEffort: config.WorkerReasoningEffort(defaults),
 		SourceType:      storage.SourceMemorySearch,
 		SourceID:        id,
