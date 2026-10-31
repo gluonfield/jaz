@@ -74,9 +74,9 @@ func Inspect(ctx context.Context, dir string) Info {
 		dirty := out != ""
 		info.Dirty = &dirty
 	}
-	if _, branch, ok := mainCheckout(ctx, dir); ok {
-		info.IsWorktree = true
-		info.MainBranch = branch
+	_, info.MainBranch, info.IsWorktree = mainCheckout(ctx, dir)
+	if info.IsWorktree {
+		branch := info.MainBranch
 		if branch != "" {
 			if counts, err := git(ctx, dir, "rev-list", "--left-right", "--count", "HEAD...refs/heads/"+branch); err == nil {
 				var ahead int
@@ -129,9 +129,7 @@ func Inspect(ctx context.Context, dir string) Info {
 	return info
 }
 
-// mainCheckout resolves the repository's main checkout when dir is a linked
-// worktree: the common git dir lives at <main>/.git while the worktree's own
-// git dir is elsewhere. ok is false when dir is the main checkout itself.
+// mainCheckout returns the main checkout and whether dir is a linked worktree.
 func mainCheckout(ctx context.Context, dir string) (root, branch string, ok bool) {
 	gitDir, err := git(ctx, dir, "rev-parse", "--absolute-git-dir")
 	if err != nil {
@@ -153,12 +151,9 @@ func mainCheckout(ctx context.Context, dir string) (root, branch string, ok bool
 	if resolved, err := filepath.EvalSymlinks(gitDir); err == nil {
 		gitDir = resolved
 	}
-	if gitDir == common {
-		return "", "", false
-	}
 	root = filepath.Dir(common)
 	branch, _ = git(ctx, root, "symbolic-ref", "--short", "-q", "HEAD")
-	return root, branch, true
+	return root, branch, gitDir != common
 }
 
 // CommitAll stages everything in dir and commits it with message; a clean
@@ -220,20 +215,30 @@ func MergeIntoMain(ctx context.Context, dir, message string) (string, error) {
 	if err := CommitAll(ctx, dir, message); err != nil {
 		return "", err
 	}
-	return mergeBranch(ctx, root, branch, worktreeBranch)
+	return mergeBranch(ctx, root, branch, "refs/heads/"+worktreeBranch)
 }
 
-func mergeBranch(ctx context.Context, root, branch, worktreeBranch string) (string, error) {
-	source := "refs/heads/" + worktreeBranch
-	if count, err := git(ctx, root, "rev-list", "--count", "refs/heads/"+branch+".."+source); err == nil && count == "0" {
-		return "", fmt.Errorf("nothing to merge — %s already has everything from %s", branch, worktreeBranch)
+func mergeBranch(ctx context.Context, root, branch, source string) (string, error) {
+	if _, err := git(ctx, root, "rev-parse", "--verify", "--quiet", "MERGE_HEAD"); err == nil {
+		return "", fmt.Errorf("the destination already has an unfinished merge")
+	}
+	count, err := git(ctx, root, "rev-list", "--count", "refs/heads/"+branch+".."+source)
+	if err != nil {
+		return "", err
+	}
+	if count == "0" {
+		return "", fmt.Errorf("nothing to merge — %s already has everything from %s", branch, source)
+	}
+	current, err := git(ctx, root, "symbolic-ref", "--short", "-q", "HEAD")
+	if err != nil || current != branch {
+		return "", fmt.Errorf("merge destination changed or is unavailable")
 	}
 	if _, err := git(ctx, root, "merge", "--no-edit", source); err != nil {
 		// A conflicted merge leaves MERGE_HEAD state behind; abort it so the
 		// main checkout stays pristine. (Refusals — e.g. local changes would
 		// be overwritten — never start a merge; the abort then is a no-op.)
 		_, _ = git(ctx, root, "merge", "--abort")
-		return "", fmt.Errorf("merging %s into %s: %w", worktreeBranch, branch, err)
+		return "", fmt.Errorf("merging %s into %s: %w", source, branch, err)
 	}
 	return root, nil
 }

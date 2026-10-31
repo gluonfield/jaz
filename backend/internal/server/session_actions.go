@@ -18,6 +18,7 @@ func knownSessionAction(action string) bool {
 		"repo/push",
 		"repo/commit",
 		"repo/merge",
+		"repo/merge-branches",
 		"repo/merge-from-main",
 		"repo/restore-worktree":
 		return true

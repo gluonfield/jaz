@@ -344,7 +344,7 @@ function canCompactSession(session: Session): boolean {
 }
 
 function canMergeIntoMain(info: RepoInfo | undefined): boolean {
-  return Boolean(info?.is_worktree && info.main_branch && (info.dirty || info.ahead !== 0))
+  return Boolean(info?.is_worktree && info.main_branch && (info.dirty !== false || info.ahead !== 0))
 }
 
 function canReviewSession(info: RepoInfo | undefined): boolean {
@@ -512,7 +512,7 @@ function GitSection({
             {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
           </ActionRow>
         ) : null}
-        {info.is_worktree && info.main_branch ? (
+        {info.main_branch ? (
           <ActionRow
             icon={busy === 'merge' ? LoaderCircle : GitMerge}
             spin={busy === 'merge'}
@@ -529,13 +529,17 @@ function GitSection({
             {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
           </ActionRow>
         ) : null}
-        {choosingBranch && info.main_branch ? (
+        {canMergeIntoMain(info) ? (
+          <ActionRow icon={GitBranch} disabled={busy !== null} onClick={() => setChoosingBranch(true)}>
+            Merge another branch…
+          </ActionRow>
+        ) : null}
+        {choosingBranch ? (
           <MergeBranchDialog
             sessionId={repo.sessionId}
-            target={info.main_branch}
             busy={busy !== null}
             onClose={() => setChoosingBranch(false)}
-            onMerge={repo.merge}
+            onMerge={repo.mergeBranch}
           />
         ) : null}
       </section>

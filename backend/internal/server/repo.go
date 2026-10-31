@@ -145,27 +145,18 @@ func (s *Server) handleSessionRepoCommit(w http.ResponseWriter, r *http.Request,
 // handleSessionRepoMerge commits the worktree's outstanding work on its
 // branch and merges that branch into the repo's main checkout.
 func (s *Server) handleSessionRepoMerge(w http.ResponseWriter, r *http.Request, session storage.Session) {
-	var req struct {
-		repoCommitRequest
-		Branch *string `json:"branch"`
-	}
+	var req repoCommitRequest
 	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&req); err != nil && err != io.EOF {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	var root string
-	var info gitinfo.Info
-	var err error
-	if req.Branch != nil {
-		root, err = gitinfo.MergeBranchIntoMain(ctx, optionalCwd(session), strings.TrimSpace(*req.Branch))
-		info = gitinfo.Inspect(ctx, optionalCwd(session))
-	} else {
-		root, info, err = s.mergeSessionRepo(ctx, session, req.Message)
-	}
+	root, info, err := s.mergeSessionRepo(ctx, session, req.Message)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

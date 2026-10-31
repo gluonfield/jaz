@@ -396,6 +396,10 @@ func (s *Server) handleSessionAction(w http.ResponseWriter, r *http.Request) {
 		s.handleSessionRepoMerge(w, r, session)
 		return
 	}
+	if action == "repo/merge-branches" {
+		repoapi.MergeBranches(w, r, optionalCwd(session))
+		return
+	}
 	if action == "repo/merge-from-main" {
 		s.handleSessionRepoMergeFromMain(w, r, session)
 		return

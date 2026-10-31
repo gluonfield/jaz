@@ -5,11 +5,12 @@ import {
   commitSessionRepo,
   mergeFromMainSessionRepo,
   mergeSessionRepo,
+  mergeSessionRepoBranch,
   pushSessionRepoBranch,
   restoreSessionWorktree,
   sessionRepoQuery,
 } from '@/lib/api/sessions'
-import type { RepoInfo, Session } from '@/lib/api/types'
+import type { RepoInfo, RepoMergeSelection, Session } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
 export type RepoBusy = 'pr' | 'commit' | 'push' | 'merge' | 'update' | 'restore' | null
@@ -66,7 +67,7 @@ export function useRepoActions(session: Session) {
     } catch (error) {
       toast((error as Error).message, 'danger')
       // The repo may have changed server-side even when the action failed.
-      void repo.refetch()
+      void queryClient.invalidateQueries({ queryKey: keys.sessionRepo(session.id) })
       return false
     } finally {
       setBusy(null)
@@ -96,9 +97,9 @@ export function useRepoActions(session: Session) {
       setRepoData(await pushSessionRepoBranch(session.id))
       toast('Branch pushed')
     })
-  const merge = (sourceBranch?: string) =>
+  const merge = () =>
     run('merge', async () => {
-      const result = await mergeSessionRepo(session.id, sourceBranch)
+      const result = await mergeSessionRepo(session.id)
       setRepoData(result.info)
       // A moved cwd changes the session row; refetch it.
       if (result.moved) void queryClient.invalidateQueries({ queryKey: keys.sessionMessages(session.id) })
@@ -107,6 +108,11 @@ export function useRepoActions(session: Session) {
           ? `Merged into local ${info?.main_branch}. The session now works there. Push and release are separate.`
           : `Merged into local ${info?.main_branch}. Push and release are separate.`,
       )
+    })
+  const mergeBranch = (selection: RepoMergeSelection) =>
+    run('merge', async () => {
+      setRepoData(await mergeSessionRepoBranch(session.id, selection))
+      toast(`Merged into local ${selection.target}. Push and release are separate.`)
     })
   const update = () =>
     run('update', async () => {
@@ -138,6 +144,7 @@ export function useRepoActions(session: Session) {
     commit,
     push,
     merge,
+    mergeBranch,
     update,
     restore,
   }

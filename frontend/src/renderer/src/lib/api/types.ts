@@ -199,8 +199,8 @@ export interface RepoInfo extends RepoRevision {
   // Commits exist that the remote doesn't have.
   needs_push?: boolean
   dirty?: boolean
-  // Linked worktree (not the main checkout); main_branch is the branch the
-  // main checkout is on — the handoff destination.
+  // main_branch names the local merge destination for both linked worktrees
+  // and the main checkout itself.
   is_worktree?: boolean
   main_branch?: string
   ahead?: number
@@ -212,9 +212,20 @@ export interface RepoInfo extends RepoRevision {
   worktree_branch?: string
 }
 
-export interface RepoMergeBranch {
+export interface RepoMergeBranch extends RepoRevision {
   branch: string
+  head: string
   ahead: number
+}
+
+export interface RepoMergeBranches {
+  target: string
+  branches: RepoMergeBranch[]
+}
+
+export interface RepoMergeSelection {
+  source: Pick<RepoMergeBranch, 'branch' | 'head'>
+  target: string
 }
 
 // One changed file in a session's working tree relative to its diff base —
