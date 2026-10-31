@@ -242,6 +242,9 @@ export async function exerciseBotPanel(): Promise<void> {
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     dark(false)
     await until('Activity did not open with tasks and history', () => selected() === find('Activity') && text().includes('Tasks 7') && text().includes('Learned something new'))
+    if ([...tabpanel().querySelectorAll('h3')].some((heading) => heading.textContent === 'Now') || tabpanel().textContent?.includes('Reviewer')) {
+      throw new Error('Bot panel: the separate Now helper block is still visible')
+    }
     if (find('Tasks')) {
       throw new Error('Bot panel: tasks have a separate tab instead of appearing in Activity')
     }
@@ -335,7 +338,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Activity')
-    await until('Activity never listed Now and today', () => text().includes('Now') && text().includes('Today') && text().includes('Learned something new'))
+    await until('Activity never listed today', () => text().includes('Today') && text().includes('Learned something new'))
     if (text().includes('Delivered to you') || text().includes('He chose option A instead') || text().includes('Calmer bot faces') || text().includes('Muse-style identity cards')) {
       throw new Error('Bot panel: completed or cancelled task history leaked into Activity')
     }
@@ -348,9 +351,13 @@ export async function exerciseBotPanel(): Promise<void> {
     if (!(indent('review-b3') > indent('review-b2') + 10) || !link('review-b2')?.textContent?.endsWith('Failed')) {
       throw new Error('Bot panel: worker nesting or failure state is missing')
     }
-    if (!text().includes('Reviewer')) {
-      throw new Error('Bot panel: the running helper is missing')
+    if (!link('side-c2')?.textContent?.endsWith('Running for 14m') || link('side-c2')?.parentElement?.querySelector('h3')?.textContent !== 'Today') {
+      throw new Error('Bot panel: dated activity lost the running side chat or its state')
     }
+    await click('Notes cleanup')
+    await until('the running side chat did not open', () => router.state.location.pathname === '/sessions/side-c2')
+    await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
+    await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes('Tasks 7'))
     // In the sidebar a bot waiting on the person always has a dot; a working
     // one has its face, and a dot only once effects are off and the face
     // holds still.

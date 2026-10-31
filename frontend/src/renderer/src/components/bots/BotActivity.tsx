@@ -7,7 +7,6 @@ import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread, BotStartedThread } from '@/lib/api/types'
 import { BOT_FILE_LABELS, taskStateLabel } from '@/lib/bots'
 import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/time'
-import { type ProviderSubagentView, subagentRunning } from '@/lib/providerSubagents'
 
 // A row says what happened and how to open it: a thread, a routine, a file, or
 // a message or commitment shown in full.
@@ -23,12 +22,10 @@ type Row = {
 
 export function BotActivity({
   bot,
-  subagents,
   onOpenRoutine,
   onOpenFile,
 }: {
   bot: Bot
-  subagents: ProviderSubagentView[]
   onOpenRoutine: (id: string) => void
   onOpenFile: (name: BotFileName) => void
 }) {
@@ -45,15 +42,7 @@ export function BotActivity({
   const { owed, started, items } = activity.data
   const selected = owed.find((task) => task.id === shown)
   const rows = items.map(row)
-  const helpers: Row[] = subagents.filter(subagentRunning).map((subagent) => ({
-    key: subagent.key,
-    title: subagent.name || subagent.task || 'Helper',
-    detail: 'Helper',
-    at: subagent.started_at_ms ? new Date(subagent.started_at_ms).toISOString() : '',
-    running: true,
-  }))
-  const running = [...rows.filter((item) => item.running), ...helpers]
-  const days = groupByDay(rows.filter((item) => !item.running), now)
+  const days = groupByDay(rows, now)
   const open = (target: Row['open']) => {
     if (!target) return
     if ('routine' in target) onOpenRoutine(target.routine)
@@ -74,13 +63,6 @@ export function BotActivity({
           )
         })}
       </section> : null}
-      {running.length ? (
-        <Group title="Now">
-          {running.map((item) => (
-            <ActivityRow key={item.key} item={item} started={started} now={now} onOpen={open} />
-          ))}
-        </Group>
-      ) : null}
       {days.map(([day, list]) => (
         <Group key={day} title={day}>
           {list.map((item) => (
