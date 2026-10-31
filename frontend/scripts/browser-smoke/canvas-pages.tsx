@@ -69,6 +69,11 @@ export async function exerciseCanvasPages(): Promise<void> {
   }
   const transform = () => element.querySelector<HTMLElement>('.react-flow__viewport')!.style.transform
   const raw = async () => (await (await fetch(backend + '/exercise-canvas')).json()).content as string
+  const write = async (document: unknown) => {
+    const response = await fetch(backend + '/exercise-canvas', { method: 'POST', body: JSON.stringify({ content: JSON.stringify(document) }) })
+    if (!response.ok) throw new Error(await response.text())
+    await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
+  }
   const choose = async (name: string) => {
     control().click()
     await until(() => Boolean(document.querySelector('[role="option"]')), 'Page menu did not open')
@@ -125,9 +130,7 @@ export async function exerciseCanvasPages(): Promise<void> {
     agentDocument.pages[0].name = 'Overview'
     agentDocument.pages[1].name = 'Agent plan'
     agentDocument.pages[0].nodes[0].text = 'Background update'
-    const edited = await fetch(backend + '/exercise-canvas', { method: 'POST', body: JSON.stringify({ content: JSON.stringify(agentDocument) }) })
-    if (!edited.ok) throw new Error(await edited.text())
-    await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
+    await write(agentDocument)
     await until(() => control().textContent === 'Agent plan', 'Agent rename did not reach the page controls')
     if (!node()?.textContent?.includes('Second page')) throw new Error('Agent edits switched the selected page')
     await choose('Overview')
@@ -158,9 +161,7 @@ export async function exerciseCanvasPages(): Promise<void> {
     const userViewport = transform()
     const later = JSON.parse(await raw())
     later.pages[1].nodes[0].text = 'Later agent edit'
-    const laterWrite = await fetch(backend + '/exercise-canvas', { method: 'POST', body: JSON.stringify({ content: JSON.stringify(later) }) })
-    if (!laterWrite.ok) throw new Error(await laterWrite.text())
-    await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
+    await write(later)
     if (control().textContent !== 'Overview' || transform() !== userViewport) throw new Error('A consumed item link overrode user page/viewport on an agent edit')
     link('Go to item').click()
     await until(() => control().textContent === 'Agent plan' && inView(), 'A repeated deliberate item link was ignored')
@@ -176,6 +177,45 @@ export async function exerciseCanvasPages(): Promise<void> {
     setInset!(0)
     link('Current thread item').click()
     await until(() => control().textContent === 'Agent plan' && Boolean(node()?.classList.contains('selected')) && inView(), 'Current-thread page/item link did not navigate')
+    for (const id of ['constructor', '__proto__']) {
+      await patchCanvas(sessionId, { page: id, create: true, name: id, nodes: [{ id: 'same', type: 'text', text: 'Reserved page', x: 900, y: 500, width: 240, height: 160 }] })
+      await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
+      await choose(id)
+      await until(() => node()?.textContent?.includes('Reserved page') === true && inView(), `Page ${id} did not fit its initial viewport`)
+      const viewport = transform()
+      const rect = node()!.getBoundingClientRect()
+      await window.smoke.pointer('mouseDown', rect.x + rect.width / 2, rect.y + rect.height / 2)
+      await window.smoke.pointer('mouseUp', rect.x + rect.width / 2, rect.y + rect.height / 2)
+      await until(() => Boolean(node()?.classList.contains('selected')), `Page ${id} item was not selected`)
+      await window.smoke.key('Right')
+      await until(async () => JSON.parse(await raw()).pages.find((page: { id: string }) => page.id === id).nodes[0].x === 901, `Page ${id} edit did not persist`)
+      await window.smoke.key('z', ['meta'])
+      await until(async () => JSON.parse(await raw()).pages.find((page: { id: string }) => page.id === id).nodes[0].x === 900, `Page ${id} undo did not restore its item`)
+      await choose('Overview')
+      await until(() => transform() === firstViewport, `Page ${id} changed the first page viewport`)
+      await choose(id)
+      await until(() => transform() === viewport, `Page ${id} did not retain its viewport`)
+    }
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
+    root.render(<QueryClientProvider key="reload" client={client}><RouterProvider router={router} /></QueryClientProvider>)
+    await until(() => control()?.textContent === 'Overview', 'Reload did not open the default page')
+    const originalDocument = JSON.parse(await raw())
+    const reordered = JSON.parse(JSON.stringify(originalDocument))
+    reordered.pages = [...reordered.pages.slice(2), ...reordered.pages.slice(0, 2)]
+    reordered.pages.find((page: { id: string }) => page.id === 'page-1').name = 'Pinned overview'
+    await write(reordered)
+    await until(() => control().textContent === 'Pinned overview', 'Reordering pages switched the default page')
+    reordered.pages = reordered.pages.filter((page: { id: string }) => page.id !== 'page-1')
+    reordered.pages[0].name = 'Fallback page'
+    await write(reordered)
+    await until(() => control().textContent === 'Fallback page', 'Deleting the active page did not choose a fallback')
+    reordered.pages[0].name = 'Retained fallback'
+    reordered.pages.unshift(originalDocument.pages[0])
+    await write(reordered)
+    await until(() => control().textContent === 'Retained fallback', 'Restoring a deleted page overrode the fallback choice')
+    await write(originalDocument)
+    await choose('Agent plan')
+    await until(inView, 'The navigated page did not retain its viewport')
     element.querySelector<HTMLElement>('[data-canvas-fixture-controls]')!.hidden = true
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
     await window.smoke.capture('canvas-pages-desktop')

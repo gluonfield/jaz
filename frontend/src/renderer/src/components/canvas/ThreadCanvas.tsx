@@ -74,16 +74,20 @@ const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T
 const HINTS: Record<string, string> = { link: 'Use the page', cad: 'Drag to rotate, scroll to zoom', dxf: 'Drag to pan, scroll to zoom', pdf: 'Scroll and use the page controls' }
 
 export function ThreadCanvas(props: Props) {
+  const { onPage } = props
   const sync = useCanvasSync(props.sessionId, props.working)
   const [selected, setSelected] = useState(props.page ?? '')
   const [jump, setJump] = useState<{ page: string; item: string } | null>(null)
   const [navigationError, setNavigationError] = useState('')
   const visited = useRef('')
-  const viewports = useRef<Record<string, Viewport>>({})
+  const viewports = useRef(new Map<string, Viewport>())
   const page = sync.local?.pages.find((page) => page.id === selected) ?? sync.local?.pages[0]
   useEffect(() => {
-    if (page) props.onPage({ id: page.id, name: page.name })
-  }, [page?.id, page?.name, props.onPage])
+    if (page) {
+      setSelected(page.id)
+      onPage({ id: page.id, name: page.name })
+    }
+  }, [page, onPage])
   const choosePage = (id: string) => {
     setSelected(id)
     setJump(null)
@@ -123,8 +127,8 @@ export function ThreadCanvas(props: Props) {
         commit={(change) => sync.commit(page.id, change)}
         replay={(from) => sync.replay(page.id, from)}
         error={sync.error}
-        initialViewport={viewports.current[page.id]}
-        onViewport={(viewport) => { viewports.current[page.id] = viewport }}
+        initialViewport={viewports.current.get(page.id)}
+        onViewport={(viewport) => { viewports.current.set(page.id, viewport) }}
         targetItem={jump?.page === page.id ? jump.item : undefined}
         onJump={() => setJump((current) => current?.page === page.id && current.item === jump?.item ? null : current)}
       >

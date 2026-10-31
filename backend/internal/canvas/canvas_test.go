@@ -172,7 +172,7 @@ func TestVersionChangesWhenAReferencedFileChanges(t *testing.T) {
 
 func TestLegacyBoardLoadsWithoutWritingAndMigratesOnPatch(t *testing.T) {
 	service := newTestService(t)
-	legacy := `{"nodes":[{"id":"a","type":"text","text":"Existing","custom":{"kept":true}}],"edges":[]}`
+	legacy := `{"nodes":[{"id":" ","type":"text","text":"Existing","custom":{"kept":true}}],"edges":[]}`
 	writeCanvas(t, service, "s1", legacy)
 	snapshot, err := service.Load("s1")
 	if err != nil {
@@ -186,7 +186,7 @@ func TestLegacyBoardLoadsWithoutWritingAndMigratesOnPatch(t *testing.T) {
 	if raw, _ := os.ReadFile(path); string(raw) != legacy {
 		t.Fatalf("loading rewrote legacy board: %s", raw)
 	}
-	if _, err := service.Patch("s1", Patch{Page: page.ID, Nodes: []Item{{"id": "a", "x": 42.0}}}); err != nil {
+	if _, err := service.Patch("s1", Patch{Page: page.ID, Nodes: []Item{{"id": " ", "x": 42.0}}}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(path)

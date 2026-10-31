@@ -96,7 +96,7 @@ func validateBoard(board Board) error {
 	for _, items := range [][]Item{board.Nodes, board.Edges} {
 		for _, item := range items {
 			id, _ := item["id"].(string)
-			if strings.TrimSpace(id) == "" || ids[id] {
+			if id == "" || ids[id] {
 				return fmt.Errorf("%w: every node and edge needs a unique string id within its page", ErrInvalid)
 			}
 			ids[id] = true

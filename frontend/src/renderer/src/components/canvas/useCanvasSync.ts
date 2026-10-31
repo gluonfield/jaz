@@ -31,7 +31,7 @@ export function useCanvasSync(sessionId: string, working: boolean) {
   useLayoutEffect(() => {
     latest.current = local
   }, [local])
-  const history = useRef<Record<string, Record<'undo' | 'redo', CanvasPatch[]>>>({})
+  const history = useRef(new Map<string, Record<'undo' | 'redo', CanvasPatch[]>>())
 
   const send = useCallback((change: CanvasPagePatch) => {
     const document = latest.current!
@@ -46,14 +46,15 @@ export function useCanvasSync(sessionId: string, working: boolean) {
     return inverse
   }, [sessionId, refetch, toast])
   const commit = useCallback((page: string, change: CanvasPatch) => {
-    const stack = history.current[page] ??= { undo: [], redo: [] }
+    const stack = history.current.get(page) ?? { undo: [], redo: [] }
     stack.undo.push(send({ ...change, page }))
     stack.redo = []
+    history.current.set(page, stack)
   }, [send])
   const replay = useCallback((page: string, from: 'undo' | 'redo') => {
-    const stack = history.current[page]
+    const stack = history.current.get(page)
     const change = stack?.[from].pop()
-    if (change) {
+    if (stack && change) {
       stack[from === 'undo' ? 'redo' : 'undo'].push(send({ ...change, page }))
     }
   }, [send])
