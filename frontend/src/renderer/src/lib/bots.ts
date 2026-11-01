@@ -39,8 +39,15 @@ export function botMood(bot: Pick<Bot, 'status' | 'waiting' | 'thinking' | 'work
   return bot.away ? 'away' : 'idle'
 }
 
-export function taskStateLabel(task: Pick<BotOwed, 'status'>): string {
-  return task.status === 'stopped' ? 'Stopped' : task.status === 'waiting_for_user' ? 'Blocked by Human' : ''
+export function taskStateLabel(task: Pick<BotOwed, 'status' | 'moving' | 'blocked' | 'stalled' | 'threads'>): string {
+  if (task.status === 'stopped') return 'Stopped'
+  if (task.status === 'waiting_for_user') return 'Waiting for you'
+  if (task.blocked) return 'Waiting on prerequisites'
+  if (task.moving) return 'Worker active'
+  const workerEnded = task.threads?.some((thread) => thread.state === 'finished' || thread.state === 'failed')
+  if (workerEnded) return 'Worker ended · outcome open'
+  if (task.stalled) return 'Needs follow-up'
+  return task.status === 'pending' ? 'Pending' : 'In progress'
 }
 
 // What a bot's identity files are called on screen.
