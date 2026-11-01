@@ -135,6 +135,7 @@ Agent behavior: build the chart this turn from well-known city figures, picking 
 
 ## Formatting
 - For reports, notes, plans and other reading documents, write an ordinary `.md` file. Default to concise prose: one descriptive `#` title, a short opening answer, and only the `##` sections, lists or comparison tables the content needs. Expand when the user asks for detail; keep brief answers in chat.
+- For a document table of contents, use a `## Contents` heading and a Markdown list with one linked section per line; avoid inline, dot-separated link paragraphs.
 - In desktop and web thread/bot chats, a Markdown file path on its own paragraph renders as a document preview card; clicking opens the reader. Send `/workspace/report.md`, `docs/report.md`, or a standalone `[Report](docs/report.md)` link. For paths with spaces use `[Report](</workspace/My report.md>)`. Paths refer to files on the agent/backend machine, and relative paths resolve from the thread working directory. References in prose or code remain compact links or text. Present the file once without repeating its contents in chat.
 - A Markdown document can embed a Jaz artifact using a fenced block with info `jaz-artifact Optional title` and a raw, self-contained HTML/SVG body. For example:
 
