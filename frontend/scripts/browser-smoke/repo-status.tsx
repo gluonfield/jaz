@@ -13,6 +13,7 @@ export async function exerciseRepoStatus(): Promise<void> {
   let info: RepoInfo = { git: true, owner: 'example', repo: 'repo', branch: 'jaz/feature', default_branch: 'develop', main_branch: 'main', is_worktree: true, ahead: 1, dirty: false, head: '1234567890abcdef', upstream: 'origin/jaz/feature', push_ahead: 0, no_commits: true, has_upstream: true, web_url: 'https://github.com/example/repo' }
   let failed = false
   let merges = 0
+  let releaseMerge: (() => void) | undefined
   let branchListFailed = false
   let mergeBranches = [{ branch: 'jaz/worker', head: 'a'.repeat(40), ahead: 3 }, { branch: 'jaz/other-task', head: 'b'.repeat(40), ahead: 1 }]
   let mergeTarget = 'main'
@@ -32,6 +33,7 @@ export async function exerciseRepoStatus(): Promise<void> {
     if (url.endsWith('/v1/sessions/repo-status/repo/merge')) {
       if (init?.method !== 'POST') throw new Error('Merge did not use the repo action')
       merges += 1
+      if (merges === 1) await new Promise<void>((resolve) => { releaseMerge = resolve })
       info = { ...info, ahead: 0, dirty: false }
       return Response.json({ cwd: '/fixture/repo', info })
     }
@@ -89,14 +91,22 @@ export async function exerciseRepoStatus(): Promise<void> {
     await refresh()
     await until(() => Boolean(button('Commit changes')))
     if (!element.textContent?.includes('1 commit to merge into main') || !element.textContent.includes('Uncommitted changes')) throw new Error('Dirty edits or outstanding commits were hidden')
+    info = { ...info, ahead: 0 }
+    await refresh()
+    await until(() => !element.textContent?.includes('commit to merge'))
+    if (!button('Merge into main')) throw new Error('Uncommitted work hid the current-thread merge action')
     button('Merge into main')!.click()
-    await until(() => merges === 1 && !element.textContent?.includes('commit to merge'))
+    await until(() => Boolean(releaseMerge && button('Merging…')))
+    if (!button('Merging…')!.disabled || !element.querySelector<HTMLButtonElement>('button[aria-label="Queue Merging…"]')?.disabled || !element.textContent?.includes('Uncommitted changes')) throw new Error('A pending merge lost its busy state or cleared changes before completion')
+    await window.smoke.capture('repo-merge-pending')
+    releaseMerge!()
+    await until(() => merges === 1 && !button('Merging…') && !button('Merge into main'))
     if (element.textContent?.includes('commit to merge') || element.textContent?.includes('Uncommitted changes') || !document.body.textContent?.includes('Push and release are separate.')) {
       throw new Error('A local merge left stale status or hid the remaining publication steps')
     }
     await window.smoke.capture('repo-clean-worktree-sidebar')
-    if (!button('Merge into main') || button('Merge into main')!.disabled) throw new Error('A clean parent branch hid access to separately committed work')
-    button('Merge into main')!.click()
+    if (button('Merge into main') || !button('Merge another branch…')) throw new Error('A clean branch offered a self-merge or hid separately committed work')
+    button('Merge another branch…')!.click()
     await until(() => Boolean(document.querySelector('[role="dialog"] input[value="jaz/worker"]')))
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
     const mergeButton = () => [...dialog.querySelectorAll('button')].find((item) => item.textContent?.trim() === `Merge into ${mergeTarget}`)!
@@ -154,7 +164,7 @@ export async function exerciseRepoStatus(): Promise<void> {
     await until(() => !mergeButton().disabled)
     mergeButton().click()
     await until(() => merges === 2 && !document.querySelector('[role="dialog"]'))
-    if (!button('Merge into main') || element.textContent?.includes('commit to merge')) throw new Error('Merging another worktree confused the parent branch state')
+    if (button('Merge into main') || !button('Merge another branch…') || element.textContent?.includes('commit to merge')) throw new Error('Merging another worktree confused the parent branch state')
     info = { ...info, dirty: undefined }
     await refresh()
     await until(() => Boolean(element.textContent?.includes('Change status unavailable')))
@@ -188,12 +198,18 @@ export async function exerciseRepoStatus(): Promise<void> {
     await refresh()
     await until(() => Boolean(element.querySelector('button[aria-label="Copy branch name main"]')))
     const gitSection = element.querySelector('button[aria-label="Copy branch name main"]')!.closest('section')!
-    if (gitSection.textContent !== 'GitmainMerge into main') throw new Error('Local checkout hid alternate merge recovery or showed unnecessary status')
+    if (button('Merge into main') || gitSection.textContent !== 'GitmainMerge another branch…') throw new Error('Local checkout offered a self-merge or hid alternate merge recovery')
     await window.smoke.capture('repo-local-checkout-sidebar')
     mergeTarget = 'main'
-    button('Merge into main')!.click()
+    button('Merge another branch…')!.click()
     await until(() => Boolean(document.querySelector('[role="dialog"] input[value="jaz/other-task"]')))
     if (merges !== 3) throw new Error('Local checkout attempted to merge its own branch')
+    ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((item) => item.textContent === 'Cancel')!.click()
+    await until(() => !document.querySelector('[role="dialog"]'))
+    mergeBranches = []
+    button('Merge another branch…')!.click()
+    await until(() => Boolean(document.querySelector('[role="dialog"]')?.textContent?.includes('No other worktree branches have commits')))
+    if (![...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((item) => item.textContent === 'Merge into main')!.disabled) throw new Error('An empty branch picker offered an active merge')
     ;[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find((item) => item.textContent === 'Cancel')!.click()
     await until(() => !document.querySelector('[role="dialog"]'))
     info = { ...info, dirty: undefined }
@@ -220,6 +236,7 @@ export async function exerciseRepoStatus(): Promise<void> {
     button('Retry code changes')!.click()
     await until(() => Boolean(element.textContent?.includes('No uncommitted changes in this checkout.')))
   } finally {
+    releaseMerge?.()
     root.unmount()
     client.clear()
     element.remove()

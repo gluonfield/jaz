@@ -510,24 +510,21 @@ function GitSection({
             {busy === 'update' ? 'Updating…' : `Update from ${info.main_branch}`}
           </ActionRow>
         ) : null}
-        {info.main_branch ? (
+        {canMergeIntoMain(info) ? (
           <ActionRow
             icon={busy === 'merge' ? LoaderCircle : GitMerge}
             spin={busy === 'merge'}
             disabled={busy !== null}
-            hint={canMergeIntoMain(info) ? `Commits this branch's changes and merges into local ${info.main_branch}. Does not push or release.` : 'Choose committed work from another worktree branch'}
-            onClick={() => {
-              if (canMergeIntoMain(info)) void repo.merge()
-              else setChoosingBranch(true)
-            }}
-            onQueue={canMergeIntoMain(info) ? () => queueAction('repo/merge', `Merge into ${info.main_branch}`) : undefined}
+            hint={`Commits this branch's changes and merges into local ${info.main_branch}. Does not push or release.`}
+            onClick={() => void repo.merge()}
+            onQueue={() => queueAction('repo/merge', `Merge into ${info.main_branch}`)}
             queueDisabled={busy !== null}
             queueHint={`Queue Merge into ${info.main_branch}`}
           >
             {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
           </ActionRow>
         ) : null}
-        {canMergeIntoMain(info) ? (
+        {info.main_branch ? (
           <ActionRow icon={GitBranch} disabled={busy !== null} onClick={() => setChoosingBranch(true)}>
             Merge another branch…
           </ActionRow>
