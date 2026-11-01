@@ -223,6 +223,7 @@ export function ThreadView({
   const { live, streaming, send: sendLiveMessage, abort: abortLiveMessage } = useLiveSessionSend({
     sessionId,
     onCriticalError: notifyCriticalError,
+    history: detail.data,
   })
   const [bottomDockHeight, setBottomDockHeight] = useState(0)
   const transcriptBottomPadding = Math.max(bottomDockHeight + TRANSCRIPT_DOCK_GAP_PX, 160)

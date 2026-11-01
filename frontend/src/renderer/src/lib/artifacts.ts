@@ -6,6 +6,12 @@ export interface ArtifactInput {
   loadingMessages: string[]
 }
 
+const RESIZE_OBSERVER_LAYOUT_WARNING = 'ResizeObserver loop completed with undelivered notifications.'
+
+export function artifactErrorForDisplay(message: string): string | undefined {
+  return message === RESIZE_OBSERVER_LAYOUT_WARNING ? undefined : message
+}
+
 const ARTIFACT_CSP =
   "default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com; style-src 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; font-src data: https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; img-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://fonts.gstatic.com https://fonts.googleapis.com; connect-src https://cdnjs.cloudflare.com https://esm.sh https://cdn.jsdelivr.net https://unpkg.com; media-src data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com; frame-src 'none'; base-uri 'none'; form-action 'none'"
 

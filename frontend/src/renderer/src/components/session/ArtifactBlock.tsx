@@ -2,6 +2,7 @@ import { LoaderCircle } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { ArtifactEvent } from '@/lib/api/types'
 import {
+  artifactErrorForDisplay,
   artifactInputFromEvent,
   buildArtifactDocument,
   parseArtifactToolArgs,
@@ -54,7 +55,7 @@ export const ArtifactBlock = memo(function ArtifactBlock({
   const frameRef = useRef<HTMLIFrameElement>(null)
   const [height, setHeight] = useState(280)
   const [error, setError] = useState('')
-  const executionError = toolError(result)
+  const executionError = artifactErrorForDisplay(toolError(result)) ?? ''
   const doc = useMemo(() => {
     if (!input || executionError) return ''
     return buildArtifactDocument(input, theme)
@@ -70,7 +71,10 @@ export const ArtifactBlock = memo(function ArtifactBlock({
       if (event.source !== frameRef.current?.contentWindow) return
       const message = event.data
       if (message?.type === 'jaz:artifact-height') setHeight(clampHeight(message.height ?? 0))
-      if (message?.type === 'jaz:artifact-error') setError(message.message ?? 'Artifact error')
+      if (message?.type === 'jaz:artifact-error') {
+        const error = artifactErrorForDisplay(message.message ?? 'Artifact error')
+        if (error) setError(error)
+      }
       if (message?.type === 'jaz:artifact-link' && message.href) window.open(message.href, '_blank', 'noopener,noreferrer')
       if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onSendPrompt?.(message.text.trim())
     }

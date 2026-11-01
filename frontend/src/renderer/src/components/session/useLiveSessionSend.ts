@@ -5,20 +5,27 @@ import { streamSessionMessage, type AgentStreamEvent } from '@/lib/api/stream'
 import type { SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { preparedSendMessage, type ComposerContext, type SendMessageOptions } from '@/lib/sendMessage'
-import type { LiveAttachment, LiveExchange } from './liveTranscript'
+import { hasCompletedLiveReply, type LiveAttachment, type LiveExchange } from './liveTranscript'
 import { isHiddenToolName } from './toolVisibility'
 
 export function useLiveSessionSend({
   sessionId,
   onCriticalError,
+  history,
 }: {
   sessionId: string
   onCriticalError: (message: string) => void
+  history?: SessionMessages
 }) {
   const queryClient = useQueryClient()
   const [live, setLive] = useState<LiveExchange | null>(null)
   const [streaming, setStreaming] = useState(false)
   const sendRef = useRef<{ controller: AbortController; accepted: Promise<void> } | null>(null)
+  const recovered = Boolean(live?.error && history && hasCompletedLiveReply(live, history))
+
+  useEffect(() => {
+    if (recovered) setLive((current) => (current === live ? null : current))
+  }, [history, live, recovered])
 
   useEffect(() => () => {
     const pending = sendRef.current
@@ -29,6 +36,7 @@ export function useLiveSessionSend({
 
   const send = useCallback((text: string, options: SendMessageOptions = {}): Promise<void> => {
     const controller = new AbortController()
+    const previous = queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))
     const files = options.files ?? []
     const draftAttachments = options.attachments ?? []
     const draftContexts = options.contexts ?? []
@@ -36,8 +44,8 @@ export function useLiveSessionSend({
     setLive({
       user: text,
       at: new Date().toISOString(),
-      baselineMessageSeq:
-        queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))?.messages.at(-1)?.seq ?? 0,
+      baselineMessageSeq: previous?.messages.at(-1)?.seq ?? 0,
+      baselineEventSeq: previous?.latest_event_seq ?? 0,
       planRequested: Boolean(options.planRequested),
       goalRequested: Boolean(options.goalRequested),
       contexts: draftContexts,
@@ -117,7 +125,7 @@ export function useLiveSessionSend({
     setLive(null)
   }, [])
 
-  return { live, streaming, send, abort }
+  return { live: recovered ? null : live, streaming, send, abort }
 }
 
 function liveContextAttachments(contexts: ComposerContext[]): LiveAttachment[] {
