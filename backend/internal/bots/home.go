@@ -14,15 +14,12 @@ import (
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
-// A bot's identity lives in two files in its home: AGENTS.md, who it is and
-// how it works, which agents load themselves when a session starts, and
-// MEMORY.md, what it knows, which the bot reads when it needs it.
 const (
-	agentsFile = "AGENTS.md"
-	memoryFile = "MEMORY.md"
+	instructionsFile = "BOTS.md"
+	memoryFile       = "MEMORY.md"
 )
 
-var homeFiles = []string{agentsFile, memoryFile}
+var homeFiles = []string{instructionsFile, memoryFile}
 
 // ErrFileChanged refuses a save made over a version of the file that is no
 // longer current.

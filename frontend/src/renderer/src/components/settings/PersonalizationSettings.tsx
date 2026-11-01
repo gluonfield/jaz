@@ -11,8 +11,9 @@ import type { AgentFile, AgentFilesResponse } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 
 const FILE_DESCRIPTIONS: Record<string, string> = {
-  'AGENTS.md': 'How your assistant works: roles, capabilities, and rules of engagement.',
+  'AGENTS.md': 'Your standing instructions shared by all threads and bots.',
   'SOUL.md': 'Who your assistant is: personality, voice, and values.',
+  'BOTS.md': 'Instructions for bot chats only, including coordination and delegation.',
 }
 
 export function PersonalizationSettings() {

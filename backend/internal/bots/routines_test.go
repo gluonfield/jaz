@@ -93,7 +93,7 @@ func TestABotsLoopToolsSeeOnlyItsOwnRoutines(t *testing.T) {
 	}
 }
 
-func TestARoutineRunOfItsOwnCarriesItsBotsSavedPrompt(t *testing.T) {
+func TestARoutineWorkerDoesNotInheritItsBotsCoordinationPolicy(t *testing.T) {
 	store, err := sqlite.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestARoutineRunOfItsOwnCarriesItsBotsSavedPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	routines := loops.NewService(store, nil, log.New(nil), loops.WithPromptExtras(RoutineInstructions(store)))
-	for owner, want := range map[string]bool{bot.ID: true, "": false} {
+	for _, owner := range []string{bot.ID, ""} {
 		loop, err := routines.Create(loops.CreateLoop{Prompt: "write the report", BotID: owner, Schedule: loops.Schedule{Kind: loops.ScheduleCron, Expr: "0 9 * * *", Timezone: "UTC"}})
 		if err != nil {
 			t.Fatal(err)
@@ -117,8 +117,8 @@ func TestARoutineRunOfItsOwnCarriesItsBotsSavedPrompt(t *testing.T) {
 			t.Fatal(err)
 		}
 		prompt := strings.Join(modules, "\n")
-		if strings.Contains(prompt, "Sign every report as Gimli.") != want {
-			t.Fatalf("routine of %q: system prompt = %q, want the bot's saved prompt %v", owner, prompt, want)
+		if strings.Contains(prompt, "Sign every report as Gimli.") {
+			t.Fatalf("routine worker inherited its bot's role: %q", prompt)
 		}
 	}
 }

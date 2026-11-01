@@ -29,7 +29,7 @@ func TestAgentFilesIgnoreHeartbeat(t *testing.T) {
 	if err := json.Unmarshal(listRes.Body.Bytes(), &listed); err != nil {
 		t.Fatal(err)
 	}
-	if len(listed.Files) != 2 || listed.Files[0].Name != "AGENTS.md" || listed.Files[1].Name != "SOUL.md" {
+	if len(listed.Files) != 3 || listed.Files[0].Name != "AGENTS.md" || listed.Files[1].Name != "SOUL.md" || listed.Files[2].Name != "BOTS.md" {
 		t.Fatalf("files = %#v, want only prompt files", listed.Files)
 	}
 
@@ -45,6 +45,15 @@ func TestAgentFilesIgnoreHeartbeat(t *testing.T) {
 	}
 	if string(data) != "heartbeat" {
 		t.Fatalf("HEARTBEAT.md was modified: %q", data)
+	}
+	botRes := httptest.NewRecorder()
+	handler.ServeHTTP(botRes, httptest.NewRequest(http.MethodPut, "/v1/agent/files/BOTS.md", strings.NewReader(`{"content":"Bot-only rules"}`)))
+	if botRes.Code != http.StatusOK {
+		t.Fatalf("save bot rules: %d, %s", botRes.Code, botRes.Body.String())
+	}
+	data, err = os.ReadFile(filepath.Join(root, "BOTS.md"))
+	if err != nil || string(data) != "Bot-only rules" {
+		t.Fatalf("saved bot rules = %q, %v", data, err)
 	}
 }
 

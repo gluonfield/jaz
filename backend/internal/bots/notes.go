@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/storage"
+	"github.com/wins/jaz/backend/internal/templates/jazplatform"
 )
 
 // NoteStore is what the note a bot's turn opens with is read from.
@@ -87,11 +89,8 @@ func SteerNote(store NoteStore) func(storage.Session) string {
 	}
 }
 
-// identityNote shows an agent that keeps the prompt its thread started with
-// the bot's identity again when it changed since the version it was last
-// shown, seen; version is the one the agent holds after the note. A thread
-// whose agent has not started its conversation yet starts with the current
-// identity.
+// identityNote refreshes instructions for agents that retain their start prompt.
+// Include role policy in the digest so edits reach existing conversations.
 func identityNote(store PromptStore, thread storage.Session, seen string) (note, version string) {
 	if !acp.KeepsStartPrompt(thread.RuntimeRef.Agent) {
 		return "", ""
@@ -100,7 +99,11 @@ func identityNote(store PromptStore, thread storage.Session, seen string) (note,
 	if err != nil || identity == nil {
 		return "", seen
 	}
-	text := identity.Text()
+	policy, err := jazplatform.RenderBotPolicy()
+	if err != nil {
+		return "", seen
+	}
+	text := promptmodule.New(policy, identity.Text()).Text()
 	version = digest([]byte(text))
 	if thread.RuntimeRef.SessionID == "" || seen == version {
 		return "", version

@@ -47,7 +47,7 @@ func write(t *testing.T, path, text string) {
 	}
 }
 
-func TestABotsThreadsAndRoutinesAreToldToReadItsHomeFiles(t *testing.T) {
+func TestBotChatsReceiveIdentityAndRoutineWorkersReceiveMemoryAccess(t *testing.T) {
 	service, store, manager := newHomeService(t)
 	bot, err := service.Create(t.Context(), CreateBot{Name: "Research", Prompt: "Follow robotics research."})
 	if err != nil {
@@ -86,18 +86,18 @@ func TestABotsThreadsAndRoutinesAreToldToReadItsHomeFiles(t *testing.T) {
 	}
 
 	write(t, filepath.Join(home, memoryFile), "The user's dog is Biscuit.\n")
-	write(t, filepath.Join(home, agentsFile), "Sign reports as Research.")
+	write(t, filepath.Join(home, instructionsFile), "Sign reports as Research.")
 	for _, id := range []string{bot.ID, seat.ID} {
 		modules := prompt(id)
-		if text := strings.Join(modules, "\n"); strings.Contains(text, "Biscuit") || strings.Contains(text, "Sign reports") || !strings.Contains(text, "Read it before your first answer") {
-			t.Fatalf("thread %s carries its home files instead of being told to read them: %q", id, modules)
+		if text := strings.Join(modules, "\n"); strings.Contains(text, "Biscuit") || !strings.Contains(text, "Sign reports") || !strings.Contains(text, "Read it before your first answer") {
+			t.Fatalf("thread %s must receive identity instructions and read memory on demand: %q", id, modules)
 		}
 	}
-	if text := routine(""); !strings.Contains(text, "Follow robotics research.") || !strings.Contains(text, "read MEMORY.md in your bot's home, "+home) || strings.Contains(text, "Biscuit") {
-		t.Fatalf("a routine run in the bot's home got %q, want its prompt and where its memory is", text)
+	if text := routine(""); strings.Contains(text, "Follow robotics research.") || !strings.Contains(text, "read MEMORY.md in your bot's home, "+home) || strings.Contains(text, "Biscuit") {
+		t.Fatalf("a routine run in the bot's home got %q, want memory access without bot policy", text)
 	}
-	if text := routine("/projects/site"); !strings.Contains(text, "read AGENTS.md and MEMORY.md in your bot's home, "+home) || strings.Contains(text, "Sign reports") {
-		t.Fatalf("a routine run outside the bot's home got %q, want where its AGENTS.md and memory are", text)
+	if text := routine("/projects/site"); !strings.Contains(text, "read MEMORY.md in your bot's home, "+home) || strings.Contains(text, "Sign reports") {
+		t.Fatalf("a routine run outside the bot's home got %q, want memory access without bot identity", text)
 	}
 }
 
@@ -146,14 +146,14 @@ func TestABotIsToldToRereadItsFilesUntilATurnSucceedsAfterTheyChange(t *testing.
 	}
 	memoryNote := "Your MEMORY.md changed since your last turn; read it again before you answer.\n\n"
 
-	agents := filepath.Join(home, agentsFile)
+	agents := filepath.Join(home, instructionsFile)
 	write(t, agents, "# Research\n")
 	old := time.Now().Add(-time.Hour)
 	if err := os.Chtimes(agents, old, old); err != nil {
 		t.Fatal(err)
 	}
 	if got := note(bot.ID); got != "" {
-		t.Fatalf("a new thread was told to reread an AGENTS.md older than it: %q", got)
+		t.Fatalf("a new thread was told to reread an BOTS.md older than it: %q", got)
 	}
 	turn(bot.ID, storage.StatusIdle)
 
@@ -180,13 +180,13 @@ func TestABotIsToldToRereadItsFilesUntilATurnSucceedsAfterTheyChange(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.SaveFile(bot.ID, agentsFile, "# Research\n\nAlways cite sources.\n", files[0].Version); err != nil {
+	if _, err := service.SaveFile(bot.ID, instructionsFile, "# Research\n\nAlways cite sources.\n", files[0].Version); err != nil {
 		t.Fatal(err)
 	}
-	if got := note(bot.ID); got != "Your AGENTS.md changed since your last turn; read it again before you answer.\n\n" {
-		t.Fatalf("after the user edited AGENTS.md the bot got %q", got)
+	if got := note(bot.ID); got != "Your BOTS.md changed since your last turn; read it again before you answer.\n\n" {
+		t.Fatalf("after the user edited BOTS.md the bot got %q", got)
 	}
-	if got := note(seat.ID); got != "Your AGENTS.md and MEMORY.md changed since your last turn; read them again before you answer.\n\n" {
+	if got := note(seat.ID); got != "Your BOTS.md and MEMORY.md changed since your last turn; read them again before you answer.\n\n" {
 		t.Fatalf("a group thread with no successful turn yet got %q", got)
 	}
 }
@@ -199,7 +199,7 @@ func TestSavingAnIdentityFileRefusesAStaleVersionAndKeepsOtherFilesOut(t *testin
 	}
 	home := homeOf(t, store, bot.ID)
 	files, err := service.Files(bot.ID)
-	if err != nil || len(files) != 2 || files[0].Name != agentsFile || files[1].Name != memoryFile || files[1].Version != "" {
+	if err != nil || len(files) != 2 || files[0].Name != instructionsFile || files[1].Name != memoryFile || files[1].Version != "" {
 		t.Fatalf("files of a new bot = %+v, %v", files, err)
 	}
 	saved, err := service.SaveFile(bot.ID, memoryFile, "Biscuit is a dog.\n", "")
@@ -229,7 +229,7 @@ func TestSavingAnIdentityFileRefusesAStaleVersionAndKeepsOtherFilesOut(t *testin
 	if _, err := service.SaveFile(bot.ID, memoryFile, "my edit\n", current.Version); err != ErrFileChanged {
 		t.Fatalf("a save over a same-sized rewrite with the same time = %v, want ErrFileChanged", err)
 	}
-	for _, name := range []string{"notes.md", "../AGENTS.md"} {
+	for _, name := range []string{"notes.md", "../BOTS.md"} {
 		if _, err := service.SaveFile(bot.ID, name, "x", ""); err == nil {
 			t.Fatalf("saved %q, which is not an identity file", name)
 		}
@@ -323,15 +323,15 @@ func TestActivityListsWhatABotDidAcrossItsThreads(t *testing.T) {
 	}
 	home := homeOf(t, store, research.ID)
 	write(t, filepath.Join(home, memoryFile), "Ship queue fixes first.\n")
-	// Changes to AGENTS.md, the bot's and the user's, are left out.
-	write(t, filepath.Join(home, agentsFile), "Cite sources.\n")
+	// Changes to BOTS.md, the bot's and the user's, are left out.
+	write(t, filepath.Join(home, instructionsFile), "Cite sources.\n")
 	service.NoteHomeChanges(running)
 	service.NoteHomeChanges(finished)
 	files, err := service.Files(research.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.SaveFile(research.ID, agentsFile, "Cite every source.\n", files[0].Version); err != nil {
+	if _, err := service.SaveFile(research.ID, instructionsFile, "Cite every source.\n", files[0].Version); err != nil {
 		t.Fatal(err)
 	}
 	// What a side chat started is listed under it, oldest first, and what

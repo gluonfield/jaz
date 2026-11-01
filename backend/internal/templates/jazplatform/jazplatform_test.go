@@ -11,12 +11,12 @@ import (
 // them stays byte-identical across turns and the provider's prompt cache holds.
 func TestTurnContextClosesThePrompt(t *testing.T) {
 	data := Data{Agents: "agents", Date: "June 16, 2026", Time: "12:34:56 BST", Timezone: "BST (UTC+01:00)", Weekday: "Tuesday", Human: "Tuesday, June 16, 2026 at 12:34:56 BST", Cwd: "/tmp/a", Skills: "skills-block"}
-	first, err := Render(data)
+	first, err := RenderThread(data)
 	if err != nil {
 		t.Fatal(err)
 	}
 	data.Date, data.Time, data.Weekday, data.Human, data.Cwd = "June 17, 2026", "08:00:00 BST", "Wednesday", "Wednesday, June 17, 2026 at 08:00:00 BST", "/tmp/b"
-	second, err := Render(data)
+	second, err := RenderThread(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestTurnContextClosesThePrompt(t *testing.T) {
 }
 
 func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
-	prompt, err := Render(Data{
+	prompt, err := RenderThread(Data{
 		Agents:     "agents",
 		AgentNames: []string{"codex", "claude"},
 		Date:       "June 16, 2026",
@@ -126,7 +126,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 	for _, want := range []string{
 		"these govern behavior on the Jaz platform",
 		"Launching background work is not delivery",
-		"none of these files waits for the user to ask for a write",
+		"Requests to build or change Jaz, a project, a generated document or its prompts belong in that project's files",
 		"revise it in place instead of appending a near-duplicate",
 		"`AGENTS.md` contains the user's standing rules. Write when the user states a durable instruction",
 		"`SOUL.md` is the assistant's identity file; Jaz has no separate `IDENTITY.md`",
@@ -179,7 +179,7 @@ func TestRenderNamesEverySurfaceExplicitly(t *testing.T) {
 }
 
 func TestRenderOmitsBrowserPolicyWhenDisabled(t *testing.T) {
-	prompt, err := Render(testData("agents", "soul"))
+	prompt, err := RenderThread(testData("agents", "soul"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestRenderOmitsBrowserPolicyWhenDisabled(t *testing.T) {
 }
 
 func TestRenderMemoryStates(t *testing.T) {
-	disabled, err := Render(testData("agents", "(empty)"))
+	disabled, err := RenderThread(testData("agents", "(empty)"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestRenderMemoryStates(t *testing.T) {
 
 	freshData := testData("(empty)", "(empty)")
 	freshData.Memory = &MemoryData{LongTerm: "(empty)", ShortTerm: "(empty)"}
-	fresh, err := Render(freshData)
+	fresh, err := RenderThread(freshData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestRenderStandaloneModules(t *testing.T) {
 func TestRenderWidgetSurfaceKeepsSharedVisualPolicy(t *testing.T) {
 	data := testData("agents", "soul")
 	data.ArtifactSurface = "widget"
-	prompt, err := Render(data)
+	prompt, err := RenderThread(data)
 	if err != nil {
 		t.Fatal(err)
 	}

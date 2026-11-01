@@ -841,7 +841,7 @@ export interface BotOwedThread {
   state: 'working' | 'background' | 'finished' | 'failed' | 'idle' | 'gone'
 }
 
-export type BotFileName = 'AGENTS.md' | 'MEMORY.md'
+export type BotFileName = 'BOTS.md' | 'MEMORY.md'
 
 // One of a bot's identity files; `version` is empty before it is first written.
 export interface BotFile {

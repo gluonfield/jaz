@@ -16,6 +16,7 @@ import (
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/sessionlock"
 	"github.com/wins/jaz/backend/internal/storage"
@@ -554,6 +555,7 @@ func (m *Manager) startSession(ctx context.Context, created createdSession, stat
 	session := created.Session
 	absCwd := session.RuntimeRef.Cwd
 	ctx = mcpsession.With(ctx, session.ID)
+	ctx = sessioncontext.WithSourceType(ctx, session.SourceType)
 	if cfg.Local {
 		return m.spawnLocalSession(session, req.ACPAgent, absCwd, req.SystemPromptExtensions, state)
 	}
