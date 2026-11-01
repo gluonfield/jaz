@@ -84,9 +84,6 @@ func (s *Server) finishTurn(job acp.Job) error {
 		if run := loopRun(session); run != "" && err == nil {
 			err = s.Loops.Finish(run, LoopRunStatus(job.State), job.Error, output != nil && (output.Shown || len(output.Replies) > 0))
 		}
-		if status == storage.StatusIdle && s.compactsWhenIdle(session) {
-			deliveries = append(deliveries, storage.TurnDelivery{SessionID: job.ID, Message: storage.QueuedMessage{Action: storage.QueuedActionCompact}})
-		}
 		if err == nil {
 			err = s.Store.FinishSessionTurn(job.ID, status, job.Error, time.Now().UTC(), deliveries)
 		}
@@ -127,23 +124,6 @@ func (s *Server) internalPrompt(prompt storage.QueuedMessage) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%s\n\nCurrent state of thread %s: %s. The result above describes a completed turn. Newer user instructions and current thread state take precedence over its earlier directions.", prompt.Text, source.Slug, source.Status), nil
-}
-
-// compactAt is how full, in percent, a bot's context may grow before its
-// thread compacts when a turn leaves it idle. Providers compact on their own
-// only at the edge of the window, in the middle of a turn.
-const compactAt = 80
-
-// compactsWhenIdle reports whether session, a bot's thread ending a turn with
-// nothing queued behind it, is full enough to run the compact its agent
-// offers. The end of a compact never queues another, so the thread compacts
-// at most once per turn of growth, and a fill its provider has not reported
-// never compacts it.
-func (s *Server) compactsWhenIdle(session storage.Session) bool {
-	usage := session.Usage
-	return session.SourceType == storage.SourceBot && session.Turn.ActiveOperation != acp.ActiveOperationCompact &&
-		len(session.QueuedMessages) == 0 && usage.ContextWindowTokens > 0 &&
-		usage.ContextTokens*100 >= usage.ContextWindowTokens*compactAt && s.ACP.CanCompact(session.ID)
 }
 
 // loopRun is the routine run a thread's current turn does: the one its turn
