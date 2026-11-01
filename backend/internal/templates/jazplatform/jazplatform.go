@@ -43,6 +43,7 @@ type RuntimePaths struct {
 }
 
 type Data struct {
+	BotChat         bool
 	Agents          string
 	AgentNames      []string
 	Date            string

@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/runtimefiles"
 	"github.com/wins/jaz/backend/internal/sessioncontext"
+	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/templates/jazagent"
 	"github.com/wins/jaz/backend/internal/templates/jazplatform"
 	"github.com/wins/jaz/backend/internal/visualize"
@@ -81,6 +82,7 @@ func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skill
 		canvasDir = canvas.Dir(runtimefiles.New(root).Canvases, sessionID)
 	}
 	return jazplatform.Render(jazplatform.Data{
+		BotChat:         sessioncontext.SourceType(ctx) == storage.SourceBot || sessioncontext.SourceType(ctx) == storage.SourceBotMember,
 		Agents:          orEmpty(agents),
 		AgentNames:      acp.SelectableAgentNames(agentNames),
 		Date:            now.Format("January 2, 2006"),

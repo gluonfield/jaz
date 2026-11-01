@@ -9,6 +9,16 @@ import (
 type sessionIDKey struct{}
 type cwdKey struct{}
 type clientPlatformKey struct{}
+type sourceTypeKey struct{}
+
+func WithSourceType(ctx context.Context, sourceType string) context.Context {
+	return context.WithValue(ctx, sourceTypeKey{}, sourceType)
+}
+
+func SourceType(ctx context.Context) string {
+	sourceType, _ := ctx.Value(sourceTypeKey{}).(string)
+	return sourceType
+}
 
 func WithSessionID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, sessionIDKey{}, id)

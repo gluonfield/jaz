@@ -53,6 +53,10 @@ Codex and Claude then launch through those managed binaries.
 Jaz exposes skills from `~/.jaz/skills` and workspace skill directories through
 the ACP prompt catalogue, with paths to the original files. Agent startup never
 copies Jaz skills into CLI profiles, including `~/.codex` and `~/.claude`.
+In Jaz-managed Codex and Claude profiles, startup moves old copies that exactly
+match their original files and permissions to `retired-jaz-skills` outside the
+native skill catalogue. Edited skills, existing backups and external CLI
+profiles stay in place.
 
 When developing an unmanaged ACP adapter, add a custom command-based agent in
 config and point it at the locally built binary:

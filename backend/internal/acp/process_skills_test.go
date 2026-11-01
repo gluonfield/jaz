@@ -45,6 +45,8 @@ func TestProcessEnvPreservesProfileSkills(t *testing.T) {
 				if mode == AuthModeJazProfile {
 					profile = filepath.Join(root, "acp", agent.jazDir)
 				}
+				writeACPTestSkill(t, root, "copied")
+				writeACPTestSkill(t, profile, "copied")
 				skill := filepath.Join(profile, "skills", "alpha", "SKILL.md")
 				if err := os.MkdirAll(filepath.Dir(skill), 0o755); err != nil {
 					t.Fatal(err)
@@ -83,6 +85,12 @@ func TestProcessEnvPreservesProfileSkills(t *testing.T) {
 				}
 				if _, err := os.Stat(filepath.Join(profile, "skills", "beta")); !os.IsNotExist(err) {
 					t.Fatalf("Jaz skill copied to profile: %v", err)
+				}
+				retired := mode == AuthModeJazProfile && agent.name != AgentKimi
+				_, activeErr := os.Stat(filepath.Join(profile, "skills", "copied", "SKILL.md"))
+				_, backupErr := os.Stat(filepath.Join(profile, "retired-jaz-skills", "copied", "SKILL.md"))
+				if retired && (!os.IsNotExist(activeErr) || backupErr != nil) || !retired && (activeErr != nil || !os.IsNotExist(backupErr)) {
+					t.Fatalf("profile %s: exact copy active=%v, backup=%v, want retired=%v", profile, activeErr, backupErr, retired)
 				}
 			})
 		}

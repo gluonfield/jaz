@@ -11,6 +11,7 @@ import (
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/promptmodule"
+	"github.com/wins/jaz/backend/internal/sessioncontext"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/worktrees"
@@ -62,6 +63,7 @@ func (m *Manager) resumeLocked(ctx context.Context, ref string) (_ *jobState, er
 		return nil, err
 	}
 	ctx = mcpsession.With(ctx, session.ID)
+	ctx = sessioncontext.WithSourceType(ctx, session.SourceType)
 	mcpServerPolicy := effectiveMCPServerPolicy(session)
 	agentName := CanonicalAgentName(session.RuntimeRef.Agent)
 	sessionChanged := false

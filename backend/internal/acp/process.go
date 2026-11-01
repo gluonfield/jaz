@@ -19,6 +19,7 @@ import (
 	"github.com/gluonfield/acp-transport/stdio"
 	"github.com/gluonfield/acp-transport/streamhttp"
 	"github.com/wins/jaz/backend/internal/processenv"
+	"github.com/wins/jaz/backend/internal/skills"
 	"github.com/wins/jaz/backend/internal/subprocess"
 )
 
@@ -305,6 +306,9 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 				if err := os.MkdirAll(codexHome, 0o700); err != nil {
 					prepareErr = firstError(prepareErr, fmt.Errorf("prepare codex profile %s: %w", codexHome, err))
 				}
+				if err := skills.QuarantineProfileCopies(root, codexHome); err != nil {
+					m.log.Warn("retire copied Codex skills", "error", err)
+				}
 			}
 		}
 		for key := range modelProviderSecretEnvNames(providers) {
@@ -346,6 +350,9 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			if prepare && auth.Config.Mode == AuthModeJazProfile {
 				if err := os.MkdirAll(env["CLAUDE_CONFIG_DIR"], 0o700); err != nil {
 					prepareErr = firstError(prepareErr, fmt.Errorf("prepare claude profile %s: %w", env["CLAUDE_CONFIG_DIR"], err))
+				}
+				if err := skills.QuarantineProfileCopies(root, env["CLAUDE_CONFIG_DIR"]); err != nil {
+					m.log.Warn("retire copied Claude skills", "error", err)
 				}
 			}
 		}

@@ -207,6 +207,7 @@ func BuildRequest(ctx context.Context, store Store, prompts PromptSource, req Re
 		if req.Session.RuntimeRef != nil && strings.TrimSpace(req.Session.RuntimeRef.Cwd) != "" {
 			workspace = req.Session.RuntimeRef.Cwd
 		}
+		ctx = sessioncontext.WithSourceType(ctx, req.Session.SourceType)
 		base, err := prompts.SystemPromptForContext(ctx, workspace, visualize.NormalizeSurface(req.ArtifactSurface))
 		if err != nil {
 			return TurnRequest{}, fmt.Errorf("build system prompt: %w", err)
