@@ -364,6 +364,9 @@
 :where(.chat-prose, .file-prose) ul {
   list-style: disc;
 }
+:where(.chat-prose, .file-prose) li.task-list-item {
+  list-style: none;
+}
 :where(.chat-prose, .file-prose) ol {
   list-style: decimal;
 }
