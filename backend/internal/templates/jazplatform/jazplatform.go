@@ -73,6 +73,10 @@ func RenderBot(data BotData) (string, error) {
 	return renderTemplate("bot.tmpl", data)
 }
 
+func RenderBotPolicy() (string, error) {
+	return renderPromptModule("bot_policy", nil)
+}
+
 func (data Data) normalized() Data {
 	data.Device = deviceLabel(data.Device)
 	data.ArtifactSurface = strings.TrimSpace(data.ArtifactSurface)

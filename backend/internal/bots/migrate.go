@@ -1,6 +1,7 @@
 package bots
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,12 +11,21 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-// MigrateHomes moves bot identities out of the project instructions native
-// agents automatically inherit. It runs before the ACP manager can start workers.
+const homeInstructionsMigration = "bot_home_instructions_v1"
+
+// MigrateHomes moves legacy bot identities once, before ACP starts workers.
+// Later AGENTS.md files are shared workspace instructions, not bot identities.
 func MigrateHomes(store interface {
 	ListBots() ([]storage.BotRecord, error)
 	LoadSession(string) (storage.Session, error)
+	LoadSetting(string, string) (storage.Setting, error)
+	SaveSetting(string, string, json.RawMessage) (storage.Setting, error)
 }) error {
+	if _, err := store.LoadSetting("migrations", homeInstructionsMigration); err == nil {
+		return nil
+	} else if !errors.Is(err, storage.ErrSettingNotFound) {
+		return err
+	}
 	records, err := store.ListBots()
 	if err != nil {
 		return err
@@ -47,5 +57,6 @@ func MigrateHomes(store interface {
 			return fmt.Errorf("migrate bot %s instructions: %w", bot.ID, err)
 		}
 	}
-	return nil
+	_, err = store.SaveSetting("migrations", homeInstructionsMigration, json.RawMessage("true"))
+	return err
 }

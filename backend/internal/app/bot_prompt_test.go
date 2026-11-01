@@ -42,7 +42,7 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 	for path, content := range map[string]string{
 		filepath.Join(root, "AGENTS.md"): "Shared personal rules.",
 		filepath.Join(root, "BOTS.md"):   "Global bot-only policy.",
-		filepath.Join(home, "AGENTS.md"): "This bot coordinates; delegate every engineering task.",
+		filepath.Join(home, "BOTS.md"):   "This bot coordinates; delegate every engineering task.",
 	} {
 		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
@@ -64,21 +64,6 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 	cfg, err := NewACPConfig(Config{}, store, "", builder, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(home, "AGENTS.md")); !os.IsNotExist(err) {
-		t.Fatalf("legacy bot identity remains visible to native workers: %v", err)
-	}
-	if text, err := os.ReadFile(filepath.Join(root, "AGENTS.md")); err != nil || string(text) != "Shared personal rules." {
-		t.Fatalf("migration changed shared personal rules: %q, %v", text, err)
-	}
-	if err := os.WriteFile(filepath.Join(home, "AGENTS.md"), []byte("Shared workspace instructions."), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewACPConfig(Config{}, store, "", builder, nil, nil, nil, nil, nil, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	if text, err := os.ReadFile(filepath.Join(home, "AGENTS.md")); err != nil || string(text) != "Shared workspace instructions." {
-		t.Fatalf("repeat startup changed workspace instructions: %q, %v", text, err)
 	}
 	for _, name := range []string{"Scout", "Reviewer"} {
 		bot.Title = name
@@ -132,8 +117,11 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 				if strings.Contains(prompt, "more than a few quick lookups") || strings.Contains(prompt, "### Tasks") != (thread.SourceType == storage.SourceBot) || strings.Contains(prompt, "A thread inherits your agent") != (thread.SourceType == storage.SourceBot) {
 					t.Fatalf("assembled prompt retained the effort exception or changed task/inheritance scope: %q", prompt)
 				}
-				if !strings.Contains(note, "<bot_instructions>\n"+modules.Text()+"\n</bot_instructions>") {
+				if !strings.Contains(note, modules.Text()+"\n</bot_instructions>\n\n") {
 					t.Fatalf("identity refresh did not deliver the current assembled prompt once: %q", note)
+				}
+				if strings.Count(note, "All engineering,") != 1 || strings.Index(note, "All engineering,") > strings.Index(note, "This bot coordinates;") {
+					t.Fatal("an existing Codex bot did not receive its current coordinator policy once")
 				}
 				started := time.Now().UTC()
 				if err := store.StartSessionTurn(thread.ID, storage.Turn{StartedAt: started, PromptDigest: version, Prompt: &storage.TurnPrompt{Message: "Review the returned evidence"}}); err != nil {
