@@ -26,64 +26,48 @@ func (p *jazProcess) compacts() int {
 	return p.promptsContaining(acp.CompactCommand)
 }
 
-func TestAFullBotCompactsOnceWhenATurnLeavesItIdle(t *testing.T) {
+func TestAFullBotCompactsOnlyWhenRequested(t *testing.T) {
 	store, root := newTestStore(t)
-	jaz := startJaz(t, testContext(t), store, root, map[string]string{"JAZ_FAKE_ACP_HOLD_TEXT": acp.CompactCommand})
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
 	bot := jaz.newBot("Gimli")
 
-	jaz.write(bot.ID, "offer compact, plan the week context 790/1000")
-	if got := jaz.compacts(); got != 0 {
-		t.Fatalf("compacts = %d below the threshold, want none", got)
+	for _, message := range []string{"offer compact, plan the week context 800/1000", "draft the reply context 990/1000"} {
+		jaz.write(bot.ID, message)
+		if got := jaz.compacts(); got != 0 {
+			t.Fatalf("compacts = %d after %q, want the provider to own automatic compaction", got, message)
+		}
 	}
-	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "draft the reply context 800/1000", Completion: acp.CompletionAsync}); err != nil {
-		t.Fatal(err)
-	}
-	// The user reads the reply while the thread compacts.
-	jaz.eventually("the compact working", func() bool { return jaz.compacts() == 1 })
 	res := httptest.NewRecorder()
 	jaz.server.Handler().ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/sessions/"+bot.ID+"/seen", nil))
 	if res.Code != http.StatusOK {
 		t.Fatalf("seen status = %d, body = %s", res.Code, res.Body.String())
 	}
-	jaz.release()
-	// The compact turn reports no new fill, so the thread still reads full
-	// after it; only an ordinary turn's end may queue a compact.
+	jaz.queueUser(bot.ID, `{"action":"compact"}`)
 	jaz.idle(bot.ID)
 	if got := jaz.compacts(); got != 1 {
-		t.Fatalf("compacts = %d, want one after the turn that filled the context", got)
+		t.Fatalf("compacts = %d, want one requested compact", got)
 	}
 	if prompts := jaz.prompts(); !strings.Contains(prompts[len(prompts)-1], acp.CompactCommand) {
-		t.Fatalf("prompts = %q, want the compact right after the full turn", prompts)
+		t.Fatalf("prompts = %q, want the requested compact after the full turn", prompts)
 	}
 	if session, err := store.LoadSession(bot.ID); err != nil || session.Unread {
 		t.Fatalf("bot = %+v, %v; want the read reply to stay read after the compact", session, err)
 	}
-	if bots, err := jaz.bots.List(); err != nil || len(bots) != 1 || bots[0].ContextTokens != 800 || bots[0].ContextWindowTokens != 1000 {
+	if bots, err := jaz.bots.List(); err != nil || len(bots) != 1 || bots[0].ContextTokens != 990 || bots[0].ContextWindowTokens != 1000 {
 		t.Fatalf("bots = %+v, %v; want the bot's fill", bots, err)
 	}
 }
 
-func TestNoCompactWithUnknownFillOrCommandOutsideABotOrWithWorkQueued(t *testing.T) {
+func TestARequestedCompactWaitsForQueuedWork(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})
-	jaz.write(jaz.newBot("Gimli").ID, "offer compact, plan the week context 990/0")
-	jaz.write(jaz.newBot("Gandalf").ID, "withdraw compact context 990/1000")
-	jaz.write(jaz.newBot("Aragorn").ID, "plan the week context 990/1000")
-	chat, err := jaz.manager.CreateSession(jaz.ctx, acp.SpawnRequest{Slug: "chat", Directory: root})
-	if err != nil {
-		t.Fatal(err)
-	}
-	jaz.write(chat.ID, "offer compact, plan the week context 990/1000")
-	if got := jaz.compacts(); got != 0 {
-		t.Fatalf("compacts = %d, want none for an unknown window, an agent that did not offer compact or a chat that is not a bot", got)
-	}
-
 	bot := jaz.newBot("Legolas")
 	if _, err := jaz.manager.Send(jaz.ctx, acp.SendRequest{Session: bot.ID, Message: "offer compact, work context 900/1000 until released", Completion: acp.CompletionAsync}); err != nil {
 		t.Fatal(err)
 	}
 	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
 	jaz.queueUser(bot.ID, `{"text":"and then this context 950/1000"}`)
+	jaz.queueUser(bot.ID, `{"action":"compact"}`)
 	jaz.release()
 	jaz.idle(bot.ID)
 	prompts := jaz.prompts()
