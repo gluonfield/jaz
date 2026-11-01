@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { botChat, dragSections, placePin } from './bots'
+import { botChat, dragSections, placePin, taskStateLabel } from './bots'
 import { optimisticTranscriptMessages } from './optimisticUserMessage'
 import { mergeEarlierHistory } from './sessionHistory'
 
@@ -169,4 +169,15 @@ test('a drag previews where the bot lands and keeps it, hidden, where the drag b
   expect(shape(dragSections(bots, ['a', 'b'], { id: 'b', pins: ['b', 'a'] }))).toEqual([['b', 'a'], ['c']])
   expect(shape(dragSections(bots, ['a', 'b'], { id: 'a', pins: ['b'] }))).toEqual([['b', 'a hidden'], ['a', 'c']])
   expect(shape(dragSections(bots, ['a', 'b'], { id: 'c', pins: ['a', 'c', 'b'] }))).toEqual([['a', 'c', 'b'], ['c hidden']])
+})
+
+test('a finished worker does not make an open task look complete', () => {
+  expect(taskStateLabel({ status: 'in_progress', threads: [{ state: 'finished' }] })).toBe('Worker ended · outcome open')
+})
+
+test('task state distinguishes active work and blockers from worker completion', () => {
+  expect(taskStateLabel({ status: 'in_progress', moving: true, threads: [{ state: 'working' }] })).toBe('Worker active')
+  expect(taskStateLabel({ status: 'pending', blocked: true })).toBe('Waiting on prerequisites')
+  expect(taskStateLabel({ status: 'waiting_for_user' })).toBe('Waiting for you')
+  expect(taskStateLabel({ status: 'stopped' })).toBe('Stopped')
 })

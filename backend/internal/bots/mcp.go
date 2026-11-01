@@ -48,13 +48,13 @@ func (t *MCPTools) AddBotTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bot_task_create",
 		Title:       "Create a task",
-		Description: "Record unfinished work the bot must complete beyond this turn. Create a task before delegating work or promising a later result. Returns its id; pass it to create_thread as task. The task is owed to whoever this turn answers.",
+		Description: "Record unfinished work the bot must complete beyond this turn. State the requested outcome and a concrete check for when it is done, not just a work label. Create a task before delegating work or promising a later result. Returns its id; pass it to create_thread as task. The task is owed to whoever this turn answers.",
 	}, t.CreateTask)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bot_task_update",
 		InputSchema: updateSchema,
 		Title:       "Update a task",
-		Description: "Update a task's progress, status or prerequisites. Use pending, in_progress, waiting_for_user, stopped, completed or cancelled. stopped requires message explaining attempts, the obstacle and what could justify retrying, or honestly no known retry condition. Stop known owned outside jobs through their owner first; cancelling a thread does not establish they stopped. Recorded foreground/background work must stop first. Resume stopped work only to pending with message justifying relevant new user direction or changed conditions. Unrelated messages and stale results never resume it. completed delivers message as the result and closes the task together; cancelled requires message explaining why. waiting_for_user delivers message as an actual question and records its reference. Resume only after a relevant user answer, setting pending or in_progress with answered_question equal to the current question_seq. Use check_at for a future check without repeated wakes. Dependencies stay pending until their prerequisites end.",
+		Description: "Update a task's progress, status or prerequisites. Use pending, in_progress, waiting_for_user, stopped, completed or cancelled. Before completed, check the result against the requested outcome and state how it meets the completion check in message; a finished worker/thread alone is not completion. If only partial, keep it in_progress and state what remains in next; use waiting_for_user for a missing answer or stopped when no useful path remains. stopped requires message explaining attempts, the obstacle and what could justify retrying, or honestly no known retry condition. Stop known owned outside jobs through their owner first; cancelling a thread does not establish they stopped. Recorded foreground/background work must stop first. Resume stopped work only to pending with message justifying relevant new user direction or changed conditions. Unrelated messages and stale results never resume it. completed delivers message as the result and closes the task together; cancelled requires message explaining why. waiting_for_user delivers message as an actual question and records its reference. Resume only after a relevant user answer, setting pending or in_progress with answered_question equal to the current question_seq. Use check_at for a future check without repeated wakes. Dependencies stay pending until their prerequisites end.",
 	}, t.UpdateTask)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bot_task_list",
@@ -91,7 +91,7 @@ func (t *MCPTools) List(context.Context, *mcp.CallToolRequest, MCPListInput) (*m
 type MCPMessageInput struct {
 	Bot     string  `json:"bot" jsonschema:"bot or group id, a bot:<id> mention target, or the exact name"`
 	Message string  `json:"message"`
-	Done    []int64 `json:"done,omitempty" jsonschema:"Your task ids whose results this message delivers to this bot; it goes to the thread that asked and the tasks close as it arrives."`
+	Done    []int64 `json:"done,omitempty" jsonschema:"Your task ids whose requested outcomes this message actually delivers to this bot; a finished worker alone is not enough. It goes to the thread that asked and the tasks close as it arrives."`
 }
 
 type MCPMessageOutput struct {
@@ -107,7 +107,7 @@ func (t *MCPTools) Message(_ context.Context, req *mcp.CallToolRequest, input MC
 
 type MCPSendInput struct {
 	Message string  `json:"message"`
-	Done    []int64 `json:"done,omitempty" jsonschema:"Your task ids whose results this message delivers; they close as it reaches whoever they are owed to. bot_task_update with status completed also delivers and closes a task."`
+	Done    []int64 `json:"done,omitempty" jsonschema:"Your task ids whose requested outcomes this message actually delivers; a finished worker alone is not enough. They close as it reaches whoever they are owed to. bot_task_update with status completed also delivers and closes a task."`
 }
 
 type MCPSendOutput struct {
@@ -122,16 +122,16 @@ func (t *MCPTools) Send(_ context.Context, req *mcp.CallToolRequest, input MCPSe
 }
 
 type MCPTaskCreateInput struct {
-	Request string `json:"request" jsonschema:"Short task title, ideally 3-8 words. Context belongs in the linked work threads."`
+	Request string `json:"request" jsonschema:"Requested outcome and concrete check for when it is done; include a short task label, but not just a vague work title. Context belongs in the linked work threads."`
 	Next    string `json:"next,omitempty" jsonschema:"The next step on this task."`
 }
 
 type MCPTaskUpdateInput struct {
 	ID               int64    `json:"id" jsonschema:"The open task's id."`
-	Request          string   `json:"request,omitempty" jsonschema:"Short task title, ideally 3-8 words. Context belongs in the linked work threads."`
+	Request          string   `json:"request,omitempty" jsonschema:"Requested outcome and concrete check for when it is done; change only if the requested outcome changes. Context belongs in the linked work threads."`
 	Next             string   `json:"next,omitempty" jsonschema:"Progress or the next step."`
 	Status           string   `json:"status,omitempty" jsonschema:"Task status; omit to preserve it."`
-	Message          string   `json:"message,omitempty" jsonschema:"For completed, the result to deliver; for waiting_for_user, the question to deliver; for stopped or cancelled, the reason; for stopped to pending, the justified resume decision. Stopping, resuming, completion or cancellation takes only id, status and message."`
+	Message          string   `json:"message,omitempty" jsonschema:"For completed, the result and how it meets the requested outcome; for waiting_for_user, the question to deliver; for stopped or cancelled, the reason; for stopped to pending, the justified resume decision. Stopping, resuming, completion or cancellation takes only id, status and message."`
 	AnsweredQuestion int64    `json:"answered_question,omitempty" jsonschema:"Current question_seq whose user reply answers this task; required to resume waiting_for_user."`
 	CheckAt          *string  `json:"check_at,omitempty" jsonschema:"Next check time in RFC3339 for active work. Omit to preserve; empty string clears it. Work stays Active and the watchdog waits until this time."`
 	DependsOn        *[]int64 `json:"depends_on,omitempty" jsonschema:"Ids of this bot's prerequisite tasks. Omit to preserve; send an empty list to clear. Keep dependent work pending until prerequisites end."`
