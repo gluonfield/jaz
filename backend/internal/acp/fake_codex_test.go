@@ -11,9 +11,10 @@ import (
 
 // fakeCodexLaunch is what Jaz's Codex launch configuration names.
 type fakeCodexLaunch struct {
-	Model    string          `json:"model"`
-	Effort   string          `json:"model_reasoning_effort"`
-	Features map[string]bool `json:"features"`
+	Model                 string          `json:"model"`
+	Effort                string          `json:"model_reasoning_effort"`
+	Features              map[string]bool `json:"features"`
+	DeveloperInstructions string          `json:"developer_instructions"`
 }
 
 func readFakeCodexLaunch(t *testing.T) (fakeCodexLaunch, bool) {
@@ -31,6 +32,11 @@ func readFakeCodexLaunch(t *testing.T) (fakeCodexLaunch, bool) {
 	var launch fakeCodexLaunch
 	if err := json.Unmarshal([]byte(raw), &launch); err != nil {
 		t.Fatalf("parse Codex config: %v", err)
+	}
+	if path := os.Getenv("JAZ_FAKE_ACP_CODEX_PROMPT_CAPTURE"); path != "" {
+		if err := os.WriteFile(path, []byte(launch.DeveloperInstructions), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return launch, true
 }
