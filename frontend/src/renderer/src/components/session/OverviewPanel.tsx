@@ -39,8 +39,6 @@ import { useRepoActions } from './useRepoActions'
 import { RepoStatus } from './RepoStatus'
 import { MergeBranchDialog } from '@/components/session/MergeBranchDialog'
 
-import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
-
 export function OverviewPanel({
   session,
   progress,
@@ -63,7 +61,7 @@ export function OverviewPanel({
   const repo = useRepoActions(session)
   const showGit = Boolean(repo.cwd && (repo.info?.git || repo.info?.worktree_missing || repo.error))
   return (
-    <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-4">
+    <SidePanelShell scroll className="gap-6 px-4 py-4">
       <OverviewRuns threads={spawnedThreads} subagents={subagents} />
       {progress ? <ProgressSection progress={progress} working={working} /> : null}
       {showGit ? <GitSection repo={repo} onQueueAction={onQueueAction} /> : null}

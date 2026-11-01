@@ -6,7 +6,6 @@ import { IconButton } from '@/components/ui/IconButton'
 import { MenuRow, Popover } from '@/components/ui/Popover'
 import type { Bot } from '@/lib/api/types'
 import { botAvatars } from '@/lib/bots'
-import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
 import { BotAvatar, BotIcon } from './BotAvatar'
 import { BotNameInput } from './BotNameInput'
 import { useUpdateBot } from './useUpdateBot'
@@ -19,7 +18,7 @@ export function GroupDetails({ group, bots }: { group: Bot; bots: Bot[] }) {
   const candidates = bots.filter((bot) => bot.kind === 'bot' && !ids.includes(bot.id))
 
   return (
-    <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-6 px-4 py-5">
+    <SidePanelShell scroll className="gap-6 px-4 py-5">
       <div className="flex flex-col items-center gap-2">
         <BotIcon avatars={botAvatars(group, bots)} size={72} />
         <BotNameInput

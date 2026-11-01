@@ -132,13 +132,15 @@ export async function exerciseBotPanel(): Promise<void> {
           <BotsPanel mobile={false} />
         </aside>
         <div className="min-w-0 flex-1" />
-        <BotDetails
-          bot={bot}
-          focusName={false}
-          working={false}
-          threads={[]}
-          subagents={[{ key: 'helper', seq: 1, id: 'helper', name: 'Reviewer', status: 'running', started_at_ms: Date.now() - 6 * 60_000, updated_at: minutes(1) }]}
-        />
+        <div className="w-[300px] shrink-0">
+          <BotDetails
+            bot={bot}
+            focusName={false}
+            working={false}
+            threads={[]}
+            subagents={[{ key: 'helper', seq: 1, id: 'helper', name: 'Reviewer', status: 'running', started_at_ms: Date.now() - 6 * 60_000, updated_at: minutes(1) }]}
+          />
+        </div>
       </>
     ),
   })

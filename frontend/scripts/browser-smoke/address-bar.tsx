@@ -9,7 +9,7 @@ function Fixture({ name }: { name: string }) {
     sourceUrl: `${location.origin}/target?address=${name}`,
   }))
   return <div data-address-browser={name}>
-    <PreviewPanel embedded target={target} onTargetChange={setTarget} />
+    <PreviewPanel target={target} onTargetChange={setTarget} />
   </div>
 }
 

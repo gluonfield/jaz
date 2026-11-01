@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { PreviewPanel } from '@/components/session/PreviewPanel'
+import { PreviewPanel, PREVIEW_PANEL_WIDTH } from '@/components/session/PreviewPanel'
 import { SideBrowser } from '@/lib/sideBrowser'
 import { BrowserProfileImport } from '@/components/browser/BrowserProfileImport'
 import { exerciseProfileImport } from './profiles-ui'
@@ -500,7 +500,7 @@ await tab.scroll('down', 0, targetRef)` } })
     }
     void run().catch((error) => window.smoke.result({ ok: false, error: error.message, stack: error.stack, stage, pending: [...pending.values()] })).finally(() => clearTimeout(timeout))
   }, [browser])
-  return <><div id="profile-settings" className="absolute left-4 top-4"><BrowserProfileImport /></div><PreviewPanel target={target} onTargetChange={setTarget} onClose={() => {}} browserControl={browser} /></>
+  return <><div id="profile-settings" className="absolute left-4 top-4"><BrowserProfileImport /></div><div className="h-full" style={{ width: PREVIEW_PANEL_WIDTH }}><PreviewPanel target={target} onTargetChange={setTarget} onClose={() => {}} browserControl={browser} /></div></>
 }
 
 createRoot(document.getElementById('root')!).render(<Fixture />)

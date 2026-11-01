@@ -6,7 +6,6 @@ import type { ThreadDetailsView } from '@/components/session/ThreadView'
 import { Popover } from '@/components/ui/Popover'
 import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
 import { BOT_COLORS, BOT_SHAPES, botMood } from '@/lib/bots'
-import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
 import { BotActivity } from '@/components/bots/BotActivity'
 import { BotAgentSettings } from './BotAgentSettings'
 import { BotAvatar } from './BotAvatar'
@@ -26,7 +25,7 @@ export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot
   const [routine, setRoutine] = useState<string | null>(null)
   const [file, setFile] = useState<BotFileName | null>(null)
   return (
-    <SidePanelShell width={OVERVIEW_PANEL_WIDTH} variant="hug" className="gap-5 px-4 pt-6 pb-4">
+    <SidePanelShell scroll className="gap-5 px-4 pt-6 pb-4">
       <header className="flex flex-col items-center gap-1 text-center">
         <AvatarEditor bot={bot} />
         <BotNameInput

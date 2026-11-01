@@ -57,7 +57,6 @@ function BrowserSessionPanel({ entry, idleMs }: { entry: BrowserSession; idleMs:
         opacity: visible ? 1 : 0,
         pointerEvents: 'none',
         overflow: 'hidden',
-        '--side-panel-width': '100%',
       } as CSSProperties}
     >
       {resident && <PreviewPanel
@@ -67,7 +66,6 @@ function BrowserSessionPanel({ entry, idleMs }: { entry: BrowserSession; idleMs:
         onTargetChange={update}
         visible={visible}
         onClose={entry.presentation?.onClose}
-        embedded={entry.embedded}
         onAddBrowserAnnotation={entry.presentation?.onAddBrowserAnnotation}
         onUploadAttachment={entry.presentation?.onUploadAttachment}
       />}
@@ -77,16 +75,16 @@ function BrowserSessionPanel({ entry, idleMs }: { entry: BrowserSession; idleMs:
 
 export function BrowserPanelSlot({ sessionId, visible, ...presentation }: BrowserPresentation & { sessionId: string; visible: boolean }) {
   const sessions = useBrowserSessions()
-  const { onClose, onAddBrowserAnnotation, onUploadAttachment, embedded } = presentation
+  const { onClose, onAddBrowserAnnotation, onUploadAttachment } = presentation
   const getEntry = useCallback(() => sessions.getSnapshot().find((entry) => entry.id === sessionId), [sessions, sessionId])
   const entry = useSyncExternalStore(sessions.subscribe, getEntry)
   const update = useCallback((target: PreviewTarget) => sessions.update(sessionId, { target }), [sessions, sessionId])
   useLayoutEffect(() => {
     if (!visible) return
-    return sessions.present(sessionId, { onClose, onAddBrowserAnnotation, onUploadAttachment, embedded })
-  }, [sessions, sessionId, visible, onClose, onAddBrowserAnnotation, onUploadAttachment, embedded])
+    return sessions.present(sessionId, { onClose, onAddBrowserAnnotation, onUploadAttachment })
+  }, [sessions, sessionId, visible, onClose, onAddBrowserAnnotation, onUploadAttachment])
   if (!clientRuntime.capabilities.previewWebview) {
     return entry ? <PreviewPanel {...presentation} visible={visible} target={entry.target} reloads={entry.reloads} onTargetChange={update} /> : null
   }
-  return <div className="h-full max-sm:w-full!" style={{ anchorName: '--jaz-browser-panel', width: `var(--side-panel-width, ${PREVIEW_PANEL_WIDTH}px)` }} />
+  return <div className="h-full" style={{ anchorName: '--jaz-browser-panel' }} />
 }

@@ -41,7 +41,7 @@ export function SidePanel({
 }) {
   const isMobile = useIsMobile()
   return (
-    <div className={`flex h-full min-h-0 flex-col ${panel.mode === 'tabs' ? 'bg-surface' : ''}`} data-thread-find-shortcuts="off">
+    <div className="flex h-full min-h-0 flex-col" data-thread-find-shortcuts="off">
       {/* Desktop: the open panel's own header carries its tabs and the controls
           that close it; phones keep both in the titlebar. */}
       {!isMobile ? (
@@ -94,7 +94,6 @@ export function SidePanel({
                 <BrowserPanelSlot
                   sessionId={tab.id}
                   visible={visible}
-                  embedded
                   onAddBrowserAnnotation={onAddBrowserAnnotation}
                   onUploadAttachment={onUploadAttachment}
                 />

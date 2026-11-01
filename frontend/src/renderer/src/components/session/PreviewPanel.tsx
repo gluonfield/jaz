@@ -46,7 +46,6 @@ export function PreviewPanel({
   onAddBrowserAnnotation,
   onUploadAttachment,
   onClose,
-  embedded = false,
 }: {
   visible?: boolean
   browserControl?: SideBrowser
@@ -56,7 +55,6 @@ export function PreviewPanel({
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
   onClose?: () => void
-  embedded?: boolean
 }) {
   const webviewRef = useRef<PreviewWebviewElement | null>(null)
   const cursorLayer = useRef<HTMLDivElement | null>(null)
@@ -297,7 +295,7 @@ export function PreviewPanel({
   const canAnnotate = canUseWebview && !!onAddBrowserAnnotation
 
   return (
-    <SidePanelShell width={PREVIEW_PANEL_WIDTH} embedded={embedded} className={visible ? 'pointer-events-auto' : 'pointer-events-none'} onKeyDownCapture={find.handleKeyDownCapture}>
+    <SidePanelShell className={visible ? 'pointer-events-auto' : 'pointer-events-none'} onKeyDownCapture={find.handleKeyDownCapture}>
       <form
         onSubmit={(event) => {
           event.preventDefault()

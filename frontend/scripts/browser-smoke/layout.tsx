@@ -36,7 +36,7 @@ export async function exerciseBrowserLayout(): Promise<void> {
         </div>
         <SidePanelDrawer panel={panel} isMobile={false}>
           {panel.mode === 'tabs'
-            ? <BrowserPanelSlot sessionId="layout" visible={panel.open} onClose={panel.close} embedded />
+            ? <BrowserPanelSlot sessionId="layout" visible={panel.open} onClose={panel.close} />
             : <div className="h-full bg-bg p-6" style={{ width: panel.width }}>Overview</div>}
         </SidePanelDrawer>
       </div>

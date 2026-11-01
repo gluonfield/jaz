@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { PreviewPanel } from '@/components/session/PreviewPanel'
+import { PreviewPanel, PREVIEW_PANEL_WIDTH } from '@/components/session/PreviewPanel'
 import type { PreviewWebviewElement } from '@/components/session/previewWebview'
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { ContextChip } from '@/components/session/ContextChip'
@@ -19,7 +19,9 @@ export async function exerciseAnnotations(): Promise<void> {
         <button type="button" onClick={() => setRevision(revision + 1)} data-refresh>Update renderer {revision}</button>
         {composer.contexts.map((context, index) => <ContextChip key={context.id} index={index} context={context} />)}
       </div>
-      <PreviewPanel target={target} onTargetChange={(next) => setTarget(next)} onAddBrowserAnnotation={composer.addBrowserAnnotation} onClose={() => {}} />
+      <div className="h-full" style={{ width: PREVIEW_PANEL_WIDTH }}>
+        <PreviewPanel target={target} onTargetChange={(next) => setTarget(next)} onAddBrowserAnnotation={composer.addBrowserAnnotation} onClose={() => {}} />
+      </div>
     </>
   }
   const until = async (check: () => boolean | Promise<boolean>) => {

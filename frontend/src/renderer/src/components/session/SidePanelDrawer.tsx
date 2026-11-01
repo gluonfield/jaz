@@ -15,7 +15,6 @@ export function SidePanelDrawer({ panel, isMobile, children }: {
   const reducedMotion = useReducedMotion()
   return <motion.div
     style={{
-      '--side-panel-width': '100%',
       width: isMobile ? undefined : panel.open ? panel.widthStyle : 0,
       transition: isMobile || panel.resizing || reducedMotion ? 'none' : widthTransition,
     } as CSSProperties}
@@ -36,14 +35,18 @@ export function SidePanelDrawer({ panel, isMobile, children }: {
       onResize={panel.resize}
       onResizeEnd={() => panel.setResizing(false)}
     /> : null}
-    {/* Desktop: the panel floats as its own card beside the content card; the
-        card clips its contents while the drawer's width animates. */}
-    {isMobile ? children : (
-      <div className="h-full pb-2 pr-2">
-        <div className={`h-full overflow-hidden rounded-[14px] bg-bg shadow-[var(--shadow-raised)] transition-opacity duration-200 ${panel.open ? '' : 'opacity-0'}`}>
-          {children}
-        </div>
-      </div>
-    )}
+    <SidePanelCard open={panel.open}>{children}</SidePanelCard>
   </motion.div>
+}
+
+// Desktop: a side panel floats as its own card beside the content card; the
+// card clips its contents while the panel's width animates.
+export function SidePanelCard({ open, children }: { open: boolean; children: ReactNode }) {
+  return (
+    <div className="h-full sm:pr-2 sm:pb-2">
+      <div className={`h-full overflow-hidden bg-surface transition-opacity duration-200 sm:rounded-[14px] sm:shadow-[var(--shadow-raised)] ${open ? '' : 'sm:opacity-0'}`}>
+        {children}
+      </div>
+    </div>
+  )
 }

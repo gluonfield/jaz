@@ -215,7 +215,7 @@ export async function exerciseSessionConfig(): Promise<void> {
         return false
       }
     })
-    const drawer = element.querySelector<HTMLElement>('[style*="--side-panel-width"]')!
+    const drawer = element.querySelector<HTMLElement>('[aria-label="Resize side panel"]')!.parentElement!
     panelButton().click()
     await until(() => panelButton().getAttribute('aria-pressed') === 'false' && drawer.getBoundingClientRect().width < 1)
     panelButton().click()

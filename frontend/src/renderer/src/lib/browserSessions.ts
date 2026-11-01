@@ -5,7 +5,6 @@ import type { BrowserAnnotation } from '@/lib/messageContext'
 export type PreviewTarget = { displayUrl: string; sourceUrl: string; title?: string; favicon?: string }
 export type BrowserPresentation = {
   onClose?: () => void
-  embedded?: boolean
   onAddBrowserAnnotation?: (annotation: BrowserAnnotation, screenshot?: Attachment) => void
   onUploadAttachment?: (file: File) => Promise<Attachment>
 }
@@ -14,7 +13,6 @@ export type BrowserSession = {
   ownerId?: string
   generation?: number
   reloads?: number
-  embedded?: boolean
   target: PreviewTarget
   presentation?: BrowserPresentation
 }
@@ -102,7 +100,7 @@ export class BrowserSessions {
   }
 
   present(id: string, presentation: BrowserPresentation): () => void {
-    this.update(id, { presentation, embedded: presentation.embedded })
+    this.update(id, { presentation })
     return () => {
       if (this.sessions.find((session) => session.id === id)?.presentation === presentation) {
         this.update(id, { presentation: undefined })

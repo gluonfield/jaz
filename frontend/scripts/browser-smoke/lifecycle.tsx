@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useCallback, useLayoutEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useLayoutEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { BrowserPanelSlot, BrowserWorkspace } from '@/components/browser/BrowserWorkspace'
@@ -45,7 +45,7 @@ export async function exerciseBrowserLifecycle(backend: string, onStage: (stage:
       selectBrowser = setBrowserId
       browserSessions = sessions
     }, [])
-    return <div style={{ position: 'absolute', top: 40, right: 0, width, bottom: 0, '--side-panel-width': `${width}px` } as CSSProperties}>
+    return <div style={{ position: 'absolute', top: 40, right: 0, width, bottom: 0 }}>
       <HorizontalResizeHandle label="Resize side panel" width={width} minWidth={640} maxWidth={800} disabled={!visible} onResize={setWidth} onResizeStart={() => {}} onResizeEnd={() => {}} />
       {visible ? <BrowserPanelSlot sessionId={browserId} visible onClose={close} onAddBrowserAnnotation={annotate} /> : <div>Another panel</div>}
     </div>

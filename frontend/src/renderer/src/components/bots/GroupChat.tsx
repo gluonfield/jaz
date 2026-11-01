@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, useReducedMotion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { ComposerCard } from '@/components/session/Composer'
 import { SidePanelControl } from '@/components/session/SidePanelControl'
-import { panelSpring } from '@/components/session/SidePanelDrawer'
+import { panelSpring, SidePanelCard } from '@/components/session/SidePanelDrawer'
 import { THREAD_COLUMN_CLASS } from '@/components/session/threadLayout'
 import { useThreadAutoScroll } from '@/components/session/useThreadAutoScroll'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -16,11 +17,13 @@ import type { Bot } from '@/lib/api/types'
 import { botAvatars, botChat } from '@/lib/bots'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
+import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
+import { SidePanelSlot } from '@/lib/sidePanelSlot'
 import { OVERVIEW_PANEL_WIDTH } from '@/lib/sidePanelTabs'
 import { useTitlebarActions, useTitlebarSlot } from '@/lib/titlebar'
 import { BotPill } from './BotAvatar'
@@ -49,6 +52,8 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
   const members = useMemo(() => bots.filter((bot) => group.members?.includes(bot.id)), [bots, group.members])
   const working = members.filter((bot) => group.working?.includes(bot.id))
   const reducedMotion = useReducedMotion()
+  const isMobile = useIsMobile()
+  const { slot } = useContext(SidePanelSlot)
 
   useEffect(() => {
     void markThreadSeen(group.id).finally(() => invalidateSessionLists(queryClient))
@@ -84,6 +89,20 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
     }
     pinToBottom()
   }
+
+  const details = (
+    <motion.div
+      initial={false}
+      animate={{ width: detailsOpen ? OVERVIEW_PANEL_WIDTH : 0 }}
+      transition={reducedMotion ? { duration: 0 } : { type: 'spring', ...panelSpring }}
+      inert={!detailsOpen}
+      className="h-full shrink-0 max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-shell max-sm:overflow-hidden"
+    >
+      <SidePanelCard open={detailsOpen}>
+        <GroupDetails group={group} bots={bots} />
+      </SidePanelCard>
+    </motion.div>
+  )
 
   return (
     <FileDropScope className="relative flex h-full">
@@ -121,15 +140,7 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
           />
         </div>
       </div>
-      <motion.div
-        initial={false}
-        animate={{ width: detailsOpen ? OVERVIEW_PANEL_WIDTH : 0 }}
-        transition={reducedMotion ? { duration: 0 } : { type: 'spring', ...panelSpring }}
-        inert={!detailsOpen}
-        className="h-full shrink-0 overflow-hidden max-sm:absolute max-sm:inset-y-0 max-sm:right-0 max-sm:z-shell"
-      >
-        <GroupDetails group={group} bots={bots} />
-      </motion.div>
+      {isMobile ? details : slot && createPortal(details, slot)}
     </FileDropScope>
   )
 }
