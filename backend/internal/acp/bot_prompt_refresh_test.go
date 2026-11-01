@@ -26,6 +26,7 @@ func TestRestoredClaudeBotRendersItsCurrentPrompt(t *testing.T) {
 		fresh  bool
 	}{
 		{storage.SourceBot, true},
+		{storage.SourceBotMember, true},
 		{storage.SourceBotWorker, false},
 		{"", false},
 	} {
@@ -50,7 +51,10 @@ func restoredClaudeSystemPrompt(t *testing.T, source string) map[string]any {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("## Bots\nBots must delegate engineering."), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("Shared personal instruction."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "BOTS.md"), []byte("Bots must delegate engineering."), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	requestLog := filepath.Join(root, "requests.jsonl")
@@ -67,7 +71,7 @@ func restoredClaudeSystemPrompt(t *testing.T, source string) map[string]any {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	first := newManager()
-	spawned, err := first.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentClaude, Slug: "claude-" + source, SourceType: source})
+	spawned, err := first.Spawn(ctx, acp.SpawnRequest{ACPAgent: acp.AgentClaude, Slug: "claude-" + source, SourceType: source, SourceID: "test-bot-owner"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,12 +94,16 @@ func restoredClaudeSystemPrompt(t *testing.T, source string) map[string]any {
 			t.Fatal(err)
 		}
 		role := "Session role: work thread."
-		if source == storage.SourceBot {
+		if source == storage.SourceBot || source == storage.SourceBotMember {
 			role = "Session role: bot chat."
 		}
 		appended, _ := params.Meta.SystemPrompt["append"].(string)
-		if strings.Count(appended, "Session role:") != 1 || !strings.Contains(appended, role) || !strings.Contains(appended, "Bots must delegate engineering.") {
+		if strings.Count(appended, "Session role:") != 1 || !strings.Contains(appended, role) || !strings.Contains(appended, "Shared personal instruction.") {
 			t.Fatalf("source %q: %s did not receive its role %q", source, request.Method, role)
+		}
+		isBot := source == storage.SourceBot || source == storage.SourceBotMember
+		if strings.Contains(appended, "Bots must delegate engineering.") != isBot || strings.Contains(appended, "All engineering,") != isBot || strings.Contains(appended, "Launching background work is not delivery") == isBot {
+			t.Fatalf("source %q: %s received contradictory role policy: %s", source, request.Method, appended)
 		}
 		if request.Method == "session/resume" {
 			restored = params.Meta.SystemPrompt

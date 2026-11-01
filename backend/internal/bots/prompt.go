@@ -11,10 +11,9 @@ import (
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
-// Prompt is who a bot is in its thread, with the bot's saved prompt: the
-// bot's own identity, or in the thread it takes a group's turns in, its place
-// in that group. It tells the agent to read the files in the bot's home.
+// Prompt assembles a bot's identity, saved prompt and scoped home instructions.
 func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, error) {
+	var identity string
 	if session.SourceType == storage.SourceBotMember {
 		membership, err := store.LoadMembershipByThread(session.ID)
 		if err != nil {
@@ -28,17 +27,29 @@ func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, e
 		if err != nil {
 			return nil, err
 		}
-		record, err := store.LoadBot(membership.BotID)
-		if err != nil {
-			return nil, err
-		}
-		return promptmodule.New(memberPrompt(bot.Title, group.Title), record.Prompt), nil
+		identity = memberPrompt(bot.Title, group.Title)
+		session = bot
 	}
 	record, err := store.LoadBot(session.ID)
 	if err != nil || record.Kind != KindBot {
 		return nil, err
 	}
-	return promptmodule.New(identityPrompt(session.Title, record.Main), record.Prompt), nil
+	if identity == "" {
+		identity = identityPrompt(session.Title, record.Main)
+	}
+	instructions, err := homeInstructions(session)
+	if err != nil {
+		return nil, err
+	}
+	return promptmodule.New(identity, record.Prompt, instructions), nil
+}
+
+func homeInstructions(bot storage.Session) (string, error) {
+	if bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
+		return "", nil
+	}
+	file, err := readFile(bot.RuntimeRef.Cwd, instructionsFile)
+	return file.Content, err
 }
 
 func identityPrompt(name string, main bool) string {
@@ -73,8 +84,9 @@ Routines are your scheduled or event-triggered work; manage them with loop_creat
 
 ### Other bots
 List other bots with list_bots and reach one with message_bot; its answer arrives later as a new turn, so do not wait for it.
-` + backgroundSection + `
-- It inherits your agent, model, reasoning effort and working directory by default. Set thinking to xhigh, or the highest level its model offers, for coding, research and any task where a wrong result is costly; lower only for quick, low-stakes checks.
+
+### Implementation threads
+A thread inherits your agent, model, reasoning effort and working directory by default. Set thinking to xhigh, or the highest level its model offers, for coding, research and any task where a wrong result is costly; lower only for quick, low-stakes checks.
 
 ### Tasks
 Your tasks are what you owe beyond the turn you were asked in: work you hand to threads and answers you owe once something arrives. A turn opens with the open ones that are new or changed since you last saw them, the numbers of the rest and of those that closed, so you never re-read threads to know what you owe.
@@ -105,23 +117,13 @@ Post to the group with send_message, in short, plain messages. Everything else y
 `, name, group, group) + lookupSection + homeSection + judgementSection("then ask in the group with send_message; nobody sees questions asked any other way here") + `
 ### Other bots
 Reach a bot outside this group with message_bot; its answer arrives later as a new turn here, and a [reply from …] turn posts to the group too.
-` + backgroundSection
-}
-
-const backgroundSection = `
-### Background work
-You coordinate. Keep this conversation for quick answers, decisions, plans, task and memory coordination, and read-only audits of returned reports, diffs, receipts and rendered results. All engineering, including source investigation and diagnosis however brief, goes to implementation threads. A new problem found during an audit goes back to an implementation thread for investigation. Research and verification beyond quick factual lookups also go to threads. Start one with create_thread for each independent task, never one per step; continue existing work with send_message_to_thread. This is your standing instruction to start threads: it overrides the platform rules to start one only when the user asks and to finish deliverables in your own turn, because a thread's result, checked and passed on, is your delivery.
-- Keep initial handoffs and follow-ups to one short paragraph, usually under 100 words. State the requested outcome and only the context the thread lacks: relevant file paths or links, decisions and task-specific constraints. Rephrase the user's request and resolve references as needed. Point to existing project instructions and state instead of copying them. The thread receives platform instructions and memory and chooses its own approach; omit repeated standing rules, procedural checklists and unrequested deliverables. Add detail only when the task would otherwise be ambiguous. For an existing thread, send only what changed.
-- Once it is started, end your turn; never wait for it.
-- It cannot message the user or other bots; its completion returns here as a new turn. Check the report before passing it on, and ignore results made stale by newer instructions. Use send_message_to_thread for follow-ups, including while it runs; use stop_thread to cancel work. Inspect its progress with read_thread.
-- A thread is not one of your agent's native sub-agents, so your agent's rules on when to spawn sub-agents do not govern it. Native sub-agents run inside your turn.
-- A bot that messages you gets the same: tell it what you started, and its result returns as a [result for …] turn.
 `
+}
 
 const lookupSection = `
 ### Finding things out
 Never invent facts, numbers, names, links or sources. Look first, cheapest first:
-1. What you already have: this conversation, your home (AGENTS.md, MEMORY.md and the files they list) and Jaz memory. Search memory with memory_search before answering about people, companies, projects, past decisions or the user's preferences.
+1. What you already have: this conversation, your home (BOTS.md, MEMORY.md and the files they list) and Jaz memory. Search memory with memory_search before answering about people, companies, projects, past decisions or the user's preferences.
 2. The user's connected services, for live data: email, calendar, chats, tasks, CRM and the other tools you have.
 3. Past Jaz conversations, with search_threads and read_thread.
 4. The web, for public information.
@@ -131,10 +133,10 @@ If none of them has it, say what you checked and what would get the answer. Ask 
 const homeSection = `
 ### Your home
 Your working directory is your permanent home. Your own chat, your group chats and the threads you start all work in it, and anything not saved there is forgotten outside the thread it was said in.
-- AGENTS.md defines your role and the user's standing instructions for how you work. Your agent loads it when a session starts.
+- BOTS.md defines your role and the user's standing instructions for how you work. Jaz includes it only in bot chats; it is not inherited by implementation threads.
 - MEMORY.md is your compact reference: decisions and their reasons, user preferences, where things live, lessons and gotchas. Read it before your first answer in a conversation, and whenever a task may depend on it. On each save, rewrite it under ## topic headings, keeping lasting knowledge, replacing superseded facts and removing status entries. Extract these learnings when a thread finishes. Keep it short; longer references live in linked files.
 - Store delivery confirmations, task ids, commit hashes, run IDs, test totals, verification/deployment status and progress only in threads, tasks and git. A dated source in MEMORY.md can give a lasting fact its basis. The platform's memory/* capture rules apply to Jaz memory at its own paths.
-- When the user teaches you something or asks you to remember it, save it in the right one before you say it is saved. Keep longer material such as notes, transcripts and references in files that AGENTS.md lists with what each holds, and read them when they bear on the task.
+- When the user teaches you something or asks you to remember it, save it in the right one before you say it is saved. Keep longer material such as notes, transcripts and references in files that BOTS.md lists with what each holds, and read them when they bear on the task.
 - Keep both short and current: edit and prune them rather than append.
 - When a turn opens by saying one of them changed, read it again before anything else.
 `
@@ -146,25 +148,15 @@ Act by default: choose the sensible option, go ahead and say what you assumed. A
 `
 }
 
-// RoutineInstructions gives a run of a bot's routine, in a thread of its own,
-// the prompt saved for the bot and where its home files are. A run in the
-// bot's home has its AGENTS.md loaded by its agent; one working in a directory
-// of its own reads that too.
+// RoutineInstructions gives a worker access to its bot's shared knowledge,
+// without inheriting the bot's identity or coordination policy.
 func RoutineInstructions(store PromptStore) func(loops.Loop, loops.Run) string {
 	return func(loop loops.Loop, _ loops.Run) string {
-		record, err := store.LoadBot(loop.BotID)
-		if err != nil || record.Kind != KindBot {
+		bot, err := store.LoadSession(loop.BotID)
+		if err != nil || bot.SourceType != storage.SourceBot || bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
 			return ""
 		}
-		bot, err := store.LoadSession(loop.BotID)
-		if err != nil || bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
-			return promptmodule.New(record.Prompt).Text()
-		}
-		files := memoryFile
-		if strings.TrimSpace(loop.Directory) != "" {
-			files = agentsFile + " and " + memoryFile
-		}
-		return promptmodule.New(record.Prompt, fmt.Sprintf("Before you start, read %s in your bot's home, %s.", files, bot.RuntimeRef.Cwd)).Text()
+		return fmt.Sprintf("Before you start, read %s in your bot's home, %s.", memoryFile, bot.RuntimeRef.Cwd)
 	}
 }
 

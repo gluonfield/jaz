@@ -1,22 +1,19 @@
-// Package jazplatform renders the Jaz extension shared by every agent on the
-// platform. Every injected surface is named explicitly in jazplatform.tmpl:
-// runtime context, AGENTS.md, SOUL.md, memory horizons, daily
-// pages, and skills.
+// Package jazplatform renders separate thread and bot prompt extensions.
 package jazplatform
 
 import (
 	"bytes"
-	_ "embed"
+	"embed"
 	"strings"
 	"text/template"
 
 	"github.com/wins/jaz/backend/internal/connections"
 )
 
-//go:embed jazplatform.tmpl
-var promptTemplate string
+//go:embed *.tmpl
+var promptTemplates embed.FS
 
-var tmpl = template.Must(template.New("jazplatform").Parse(promptTemplate))
+var tmpl = template.Must(template.New("jazplatform").ParseFS(promptTemplates, "*.tmpl"))
 
 // MemoryData carries the live jazmem horizons. LongTerm and ShortTerm always
 // render (callers pass "(empty)" placeholders when blank); today's daily page
@@ -43,7 +40,6 @@ type RuntimePaths struct {
 }
 
 type Data struct {
-	BotChat         bool
 	Agents          string
 	AgentNames      []string
 	Date            string
@@ -63,13 +59,27 @@ type Data struct {
 	Skills          string
 }
 
-func Render(data Data) (string, error) {
+type BotData struct {
+	Data
+	Instructions string
+}
+
+func RenderThread(data Data) (string, error) {
+	return renderTemplate("thread.tmpl", data.normalized())
+}
+
+func RenderBot(data BotData) (string, error) {
+	data.Data = data.Data.normalized()
+	return renderTemplate("bot.tmpl", data)
+}
+
+func (data Data) normalized() Data {
 	data.Device = deviceLabel(data.Device)
 	data.ArtifactSurface = strings.TrimSpace(data.ArtifactSurface)
 	if data.ArtifactSurface != "widget" && data.ArtifactSurface != "canvas" {
 		data.ArtifactSurface = "chat"
 	}
-	return renderTemplate("jazplatform", data)
+	return data
 }
 
 func RenderConnections(connections []connections.AgentConnection) (string, error) {

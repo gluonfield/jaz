@@ -20,17 +20,14 @@ import (
 	"github.com/wins/jaz/backend/internal/visualize"
 )
 
-// PromptFiles are the agent prompt files read from the jaz root directory,
-// in the order they are rendered into the coordinator system prompt.
-var PromptFiles = []string{"AGENTS.md", "SOUL.md"}
+// PromptFiles are editable personal files. BOTS.md is loaded only by bot chats.
+var PromptFiles = []string{"AGENTS.md", "SOUL.md", "BOTS.md"}
 
 func Prompt(root, workspace, memoryRoot, skillsPrompt string) (string, error) {
 	return prompt(context.Background(), root, workspace, memoryRoot, skillsPrompt, nil, nil, false, visualize.SurfaceChat, time.Now())
 }
 
-// prompt joins the two layers: the Jaz agent prompt (identity and operating
-// rules) and the platform prompt (runtime context, AGENTS.md, SOUL.md,
-// memory, skills) that every agent in Jaz shares.
+// prompt adds Jaz's native identity; ACP agents keep their provider's identity.
 func prompt(ctx context.Context, root, workspace, memoryRoot, skillsPrompt string, connections []connections.AgentConnection, agentNames []string, browserEnabled bool, surface visualize.Surface, now time.Time) (string, error) {
 	if strings.TrimSpace(workspace) == "" {
 		workspace = defaultWorkspace(root)
@@ -54,9 +51,7 @@ func defaultWorkspace(root string) string {
 	return filepath.Join(root, "workspaces", "default")
 }
 
-// platformPrompt renders the jaz extension shared by all agents: runtime
-// context, AGENTS.md, SOUL.md, connected-account paths, the memory
-// protocol with live horizons, and the skills catalog.
+// platformPrompt selects a role template and loads its scoped inputs.
 func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skillsPrompt string, connections []connections.AgentConnection, agentNames []string, browserEnabled bool, surface visualize.Surface, now time.Time) (string, error) {
 	// These prompt files always render — an empty section tells every agent the
 	// file exists and is editable, instead of silently vanishing.
@@ -81,8 +76,7 @@ func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skill
 		}
 		canvasDir = canvas.Dir(runtimefiles.New(root).Canvases, sessionID)
 	}
-	return jazplatform.Render(jazplatform.Data{
-		BotChat:         sessioncontext.SourceType(ctx) == storage.SourceBot || sessioncontext.SourceType(ctx) == storage.SourceBotMember,
+	data := jazplatform.Data{
 		Agents:          orEmpty(agents),
 		AgentNames:      acp.SelectableAgentNames(agentNames),
 		Date:            now.Format("January 2, 2006"),
@@ -100,7 +94,17 @@ func platformPrompt(ctx context.Context, root, cwd, workspace, memoryRoot, skill
 		Memory:          memory,
 		Connections:     connections,
 		Skills:          strings.TrimSpace(skillsPrompt),
-	})
+	}
+	switch sessioncontext.SourceType(ctx) {
+	case storage.SourceBot, storage.SourceBotMember:
+		instructions, err := ReadPromptFile(root, "BOTS.md")
+		if err != nil {
+			return "", err
+		}
+		return jazplatform.RenderBot(jazplatform.BotData{Data: data, Instructions: orEmpty(instructions)})
+	default:
+		return jazplatform.RenderThread(data)
+	}
 }
 
 func runtimePaths(root, workspace string) jazplatform.RuntimePaths {

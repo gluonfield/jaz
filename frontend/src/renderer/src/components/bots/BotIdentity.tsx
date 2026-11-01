@@ -7,7 +7,7 @@ import { hasTime, shortDate } from '@/lib/format/time'
 import { BotSilhouette } from './BotAvatar'
 
 const CARDS: { name: BotFileName; about: string; tilt: string }[] = [
-  { name: 'AGENTS.md', about: 'Who it is', tilt: 'rotate(-8deg)' },
+  { name: 'BOTS.md', about: 'Who it is', tilt: 'rotate(-8deg)' },
   { name: 'MEMORY.md', about: 'What it knows', tilt: 'scaleX(-1) rotate(-8deg)' },
 ]
 

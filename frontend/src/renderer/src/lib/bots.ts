@@ -44,7 +44,7 @@ export function taskStateLabel(task: Pick<BotOwed, 'status'>): string {
 }
 
 // What a bot's identity files are called on screen.
-export const BOT_FILE_LABELS: Record<BotFileName, string> = { 'AGENTS.md': 'Agents', 'MEMORY.md': 'Memory' }
+export const BOT_FILE_LABELS: Record<BotFileName, string> = { 'BOTS.md': 'Instructions', 'MEMORY.md': 'Memory' }
 
 // A bot's colour drawn as text or marks: mixed toward ink, so white and the
 // pale colours stay readable in either theme.
