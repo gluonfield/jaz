@@ -12,6 +12,7 @@ export function createThreadNotificationMonitor(openInMain: (path: string) => vo
     const notification = new Notification({
       title: completion.title || completion.slug || 'Untitled thread',
       body: 'Jaz finished this thread.',
+      sound: 'Blow',
       ...(process.platform === 'linux' ? { icon: appIcon } : {}),
     })
     notification.on('click', () => openInMain(threadNotificationPath(completion.id)))
@@ -36,7 +37,7 @@ export async function sendTestNotification(attempts: number): Promise<boolean> {
 
 function showTestNotification(): Promise<boolean> {
   return new Promise((resolve) => {
-    const notification = new Notification({ title: 'Jaz', body: 'Notifications are on.' })
+    const notification = new Notification({ title: 'Jaz', body: 'Notifications are on.', sound: 'Blow' })
     const finish = (shown: boolean) => {
       clearTimeout(timeout)
       notification.removeAllListeners()
