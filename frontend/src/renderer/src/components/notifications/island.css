@@ -1,0 +1,8 @@
+/* How far the notch island reaches left of its window's centre. Registered so
+ * it animates: the shape grows from the camera while its content, offset by
+ * the same value, stays still beside it. */
+@property --island-reach {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}

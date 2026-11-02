@@ -88,7 +88,8 @@ export function alertPath(alert: Pick<Alert, 'sessionId' | 'kind'>): string {
   return `/${alert.kind === 'chat' ? 'sessions' : 'bots'}/${encodeURIComponent(alert.sessionId)}`
 }
 
-export function alertLabel(alert: Pick<Alert, 'state' | 'kind'>): string {
+// The state in a word; a reply has none, since the alert arriving says it.
+export function alertLabel(alert: Pick<Alert, 'state'>): string {
   switch (alert.state) {
     case 'done':
       return 'Done'
@@ -97,7 +98,7 @@ export function alertLabel(alert: Pick<Alert, 'state' | 'kind'>): string {
     case 'stopped':
       return 'Stopped'
     case 'reply':
-      return alert.kind === 'chat' ? 'Reply ready' : 'New reply'
+      return ''
   }
 }
 
@@ -128,8 +129,9 @@ export interface IslandAPI {
   command: (command: IslandCommand) => void
 }
 
-// The island window's size in points. Beside a notch each ear is
-// ISLAND_EAR_WIDTH wide; without one the capsule is ISLAND_CAPSULE_WIDTH wide.
+// The island's size in points. Beside a notch it is two ISLAND_EAR_WIDTH ears
+// wide, and its window twice that so the title's ear can take what the other
+// leaves; without one the capsule is ISLAND_CAPSULE_WIDTH wide.
 export const ISLAND_EAR_WIDTH = 140
 export const ISLAND_CAPSULE_WIDTH = 420
 export const ISLAND_HEIGHT = 280
