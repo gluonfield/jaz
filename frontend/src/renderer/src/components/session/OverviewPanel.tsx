@@ -37,7 +37,6 @@ import { OverviewDisclosureSection, OverviewRuns, SectionHeader } from './Overvi
 import { TaskStepIcon } from './TaskStepIcon'
 import { useRepoActions } from './useRepoActions'
 import { RepoStatus } from './RepoStatus'
-import { MergeBranchDialog } from '@/components/session/MergeBranchDialog'
 
 export function OverviewPanel({
   session,
@@ -370,7 +369,6 @@ function GitSection({
   const { info, busy, web, branch, branchPath } = repo
   const branchLabel = branch || 'detached'
   const [copied, setCopied] = useState(false)
-  const [choosingBranch, setChoosingBranch] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reduceMotion = useReducedMotion()
   const queueAction = (action: QueuedAction, label: string) => {
@@ -523,19 +521,6 @@ function GitSection({
           >
             {busy === 'merge' ? 'Merging…' : `Merge into ${info.main_branch}`}
           </ActionRow>
-        ) : null}
-        {info.main_branch ? (
-          <ActionRow icon={GitBranch} disabled={busy !== null} onClick={() => setChoosingBranch(true)}>
-            Merge another branch…
-          </ActionRow>
-        ) : null}
-        {choosingBranch ? (
-          <MergeBranchDialog
-            sessionId={repo.sessionId}
-            busy={busy !== null}
-            onClose={() => setChoosingBranch(false)}
-            onMerge={repo.mergeBranch}
-          />
         ) : null}
       </section>
 
