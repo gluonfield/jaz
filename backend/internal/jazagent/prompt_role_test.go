@@ -59,6 +59,11 @@ func TestNativeRequestCarriesItsSessionRole(t *testing.T) {
 					}
 				}
 				isBot := source == storage.SourceBot || source == storage.SourceBotMember
+				for _, rule := range []string{"quick coordination plans", "substantive engineering planning and substantive product design", "Delegate that work even when the requested deliverable is a plan, visual or prototype.", "Artifact guidance does not move that work into this chat."} {
+					if strings.Contains(prompt, rule) != isBot {
+						t.Fatalf("source %q: %s native request has incorrectly scoped planning policy %q", source, phase, rule)
+					}
+				}
 				if strings.Contains(prompt, "Only bots delegate engineering.") != isBot || strings.Contains(prompt, "All engineering,") != isBot || strings.Contains(prompt, "Launching background work is not delivery") == isBot {
 					t.Fatalf("source %q received contradictory role instructions: %s", source, prompt)
 				}

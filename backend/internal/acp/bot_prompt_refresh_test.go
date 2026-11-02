@@ -103,6 +103,7 @@ func restoredClaudeSystemPrompt(t *testing.T, source string) map[string]any {
 			t.Fatalf("source %q: %s did not receive its role %q", source, request.Method, role)
 		}
 		isBot := source == storage.SourceBot || source == storage.SourceBotMember
+		assertBotPlanningPolicy(t, appended, isBot)
 		if strings.Contains(appended, "Bots must delegate engineering.") != isBot || strings.Contains(appended, "All engineering,") != isBot || strings.Contains(appended, "Launching background work is not delivery") == isBot {
 			t.Fatalf("source %q: %s received contradictory role policy: %s", source, request.Method, appended)
 		}
