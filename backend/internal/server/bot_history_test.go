@@ -218,10 +218,10 @@ func TestHistoricalArtifactVisibilityIsIndependentOfItsHistoryPage(t *testing.T)
 				boundaryAt = at.Add(time.Second)
 			}
 			events := []sessionevents.Event{{Type: sessionevents.TypeBotActivity, At: boundaryAt, BotActivity: &sessionevents.BotActivityEvent{Kind: test.kind}}}
-			for i := range 13 {
-				events = append(events, sessionevents.Event{Type: "acp", At: at.Add(time.Duration(i+3) * time.Second), ACP: &sessionevents.ACPEvent{ID: fmt.Sprintf("%s-child-%d", bot.ID, i), ParentID: bot.ID, State: "running"}})
+			for i := range 14 {
+				events = append(events, sessionevents.Event{Type: "room_message", At: at.Add(time.Duration(i+3) * time.Second), RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: fmt.Sprintf("Public reply %d", i)}})
 			}
-			events = append(events, sessionevents.Event{Type: sessionevents.TypeArtifact, At: at.Add(16 * time.Second), Artifact: &sessionevents.ArtifactEvent{Title: "Historical map", WidgetCode: "<svg></svg>"}})
+			events = append(events, sessionevents.Event{Type: sessionevents.TypeArtifact, At: at.Add(17 * time.Second), Artifact: &sessionevents.ArtifactEvent{Title: "Historical map", WidgetCode: "<svg></svg>"}})
 			if err := store.AppendSessionEvents(bot.ID, events...); err != nil {
 				t.Fatal(err)
 			}
@@ -242,19 +242,19 @@ func TestHistoricalArtifactVisibilityIsIndependentOfItsHistoryPage(t *testing.T)
 				return result
 			}
 			latest := read("")
-			if len(latest.Events) != 14 || latest.Events[0].Seq != 2 || latest.Events[13].Artifact == nil || latest.Events[13].Artifact.Presented != test.visible {
+			if len(latest.Events) != 14 || latest.Events[0].Seq != 3 || latest.Events[13].Artifact == nil || latest.Events[13].Artifact.Presented != test.visible {
 				t.Fatalf("visibility with clipped boundary: %+v", latest)
 			}
 			earlier := read(fmt.Sprintf("?before_event_seq=%d&history_revision=%d", latest.BeforeEventSeq, latest.HistoryRevision))
 			full := read("?turns=24")
 			merged := append(earlier.Events, latest.Events...)
-			if len(merged) != 15 || !slices.EqualFunc(merged, full.Events, func(a, b sessionevents.Event) bool {
+			if len(merged) != 16 || !slices.EqualFunc(merged, full.Events, func(a, b sessionevents.Event) bool {
 				return a.SessionID == b.SessionID && a.Seq == b.Seq && a.StorageContent() == b.StorageContent()
 			}) {
 				t.Fatal("merging earlier history changed artifact provenance")
 			}
 			raw, err := store.LoadSessionEvents(bot.ID)
-			if err != nil || raw[14].Artifact.Presented || raw[14].Artifact.WidgetCode != "<svg></svg>" {
+			if err != nil || raw[15].Artifact.Presented || raw[15].Artifact.WidgetCode != "<svg></svg>" {
 				t.Fatalf("history projection changed stored content: %+v, %v", raw, err)
 			}
 		})

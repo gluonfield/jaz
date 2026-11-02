@@ -616,6 +616,7 @@ export interface SessionMessages {
   before_event_seq?: number
   history_revision: number
   latest_event_seq: number
+  history_target_event_seq?: number
   acp_meta?: ACPMeta
   acp_state?: string
   acp_assistant?: string

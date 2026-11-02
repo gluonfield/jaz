@@ -19,13 +19,14 @@ const (
 )
 
 type TranscriptPage struct {
-	Messages         []Message
-	Events           []sessionevents.Event
-	HasEarlier       bool
-	BeforeMessageSeq int64
-	BeforeEventSeq   int64
-	HistoryRevision  int64
-	LatestEventSeq   int64
+	Messages              []Message
+	Events                []sessionevents.Event
+	HasEarlier            bool
+	BeforeMessageSeq      int64
+	BeforeEventSeq        int64
+	HistoryRevision       int64
+	LatestEventSeq        int64
+	HistoryTargetEventSeq int64
 }
 
 type TranscriptPageRequest struct {

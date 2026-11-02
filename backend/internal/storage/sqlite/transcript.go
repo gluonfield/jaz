@@ -50,6 +50,14 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 	messages := messagedb.New(tx)
 	page := storage.TranscriptPage{}
 	events := eventdb.New(tx)
+	if request.ChatOnly && request.HistoryRevision == 0 {
+		page.HistoryTargetEventSeq, err = events.BotChatPageTarget(ctx, eventdb.BotChatPageTargetParams{
+			ThreadID: id, Turns: int64(request.Turns),
+		})
+		if err != nil {
+			return storage.TranscriptPage{}, err
+		}
+	}
 	page.HistoryRevision, err = threaddb.New(tx).GetTranscriptRevision(ctx, id)
 	if err != nil {
 		return storage.TranscriptPage{}, err
@@ -166,19 +174,25 @@ func loadTranscriptEventRows(
 	if beforeSeq == 0 {
 		beforeSeq = math.MaxInt64
 	}
-	limit := transcriptEventPageRows
+	startSeq := int64(0)
 	if request.ChatOnly {
-		limit = request.Turns
+		var err error
+		startSeq, err = events.BotChatPageStart(ctx, eventdb.BotChatPageStartParams{
+			ThreadID: id, BeforeSeq: beforeSeq, Turns: int64(request.Turns),
+		})
+		if err != nil {
+			return nil, false, err
+		}
 	}
 	sizes, err := events.ListSessionEventPageSizes(ctx, eventdb.ListSessionEventPageSizesParams{
-		ThreadID: id, BeforeSeq: beforeSeq, LimitCount: int64(limit + 1), ChatOnly: request.ChatOnly,
+		ThreadID: id, BeforeSeq: beforeSeq, StartSeq: startSeq, LimitCount: int64(transcriptEventPageRows + 1), ChatOnly: request.ChatOnly,
 	})
 	if err != nil {
 		return nil, false, err
 	}
 	selected := 0
 	selectedBytes := int64(0)
-	for selected < len(sizes) && selected < limit {
+	for selected < len(sizes) && selected < transcriptEventPageRows {
 		if sizes[selected].Bytes > transcriptEventPageBytes {
 			return nil, false, fmt.Errorf("session event %d is %d bytes; limit is %d", sizes[selected].Seq, sizes[selected].Bytes, transcriptEventPageBytes)
 		}
@@ -189,9 +203,9 @@ func loadTranscriptEventRows(
 		selected++
 	}
 	rows, err := events.ListSessionEventPage(ctx, eventdb.ListSessionEventPageParams{
-		ThreadID: id, BeforeSeq: beforeSeq, LimitCount: int64(selected), ChatOnly: request.ChatOnly,
+		ThreadID: id, BeforeSeq: beforeSeq, StartSeq: startSeq, LimitCount: int64(selected), ChatOnly: request.ChatOnly,
 	})
-	return rows, len(sizes) > selected, err
+	return rows, startSeq > 0 || len(sizes) > selected, err
 }
 
 // ACP events replace assistant message rows for some turns. Return the earliest
