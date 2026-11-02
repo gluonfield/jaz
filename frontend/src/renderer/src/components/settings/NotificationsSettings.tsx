@@ -1,11 +1,13 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MessageSquareCheck } from 'lucide-react'
-import { useState } from 'react'
-import type { NotificationMode } from '@shared/notifications'
+import type { NotchAccess, NotificationMode } from '@shared/notifications'
+import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { SettingsCard } from '@/components/settings/SettingsCard'
 import { SystemPermissionRows } from '@/components/settings/SystemPermissionRows'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { useNotificationMode } from '@/lib/notificationSettings'
+import { keys } from '@/lib/query/keys'
 import { hasSystemPermissions } from '@/lib/systemPermissions'
 
 const MODES: { value: NotificationMode; label: string; description: string }[] = [
@@ -15,16 +17,28 @@ const MODES: { value: NotificationMode; label: string; description: string }[] =
   { value: 'notch_ears', label: 'Notch, ears only', description: 'Only who and what, for shared screens' },
 ]
 
+const NOTCH: Record<NotchAccess, string> = {
+  ready: 'Shown beside the notch only while no Focus is on; otherwise Notification Center.',
+  notifications: 'Allow notifications above to use the notch.',
+  ask: 'Share your Focus status so Jaz uses the notch only while no Focus is on.',
+  denied: 'Focus status isn’t shared, so Jaz uses Notification Center. Allow Jaz in System Settings → Privacy & Security → Focus.',
+  unavailable: 'Jaz can’t read your Focus status, so it uses Notification Center.',
+}
+
 export function NotificationsSettings() {
   const [mode, setMode] = useNotificationMode()
-  const [focus, setFocus] = useState<string | null>(null)
+  const notch = mode === 'notch' || mode === 'notch_ears'
+  const queryClient = useQueryClient()
+  const access = useQuery({ queryKey: keys.notchAccess, queryFn: () => clientRuntime.notchAccess!(), enabled: notch && hasSystemPermissions })
+  const share = useMutation({
+    mutationFn: () => clientRuntime.shareFocusStatus!(),
+    onSuccess: (value) => queryClient.setQueryData(keys.notchAccess, value),
+  })
   const choose = (value: string) => {
     const next = value as NotificationMode
     setMode(next)
-    if (next !== 'notch' && next !== 'notch_ears') return
-    void clientRuntime.shareFocusStatus?.().then(setFocus)
+    if (next === 'notch' || next === 'notch_ears') share.mutate()
   }
-  const notch = mode === 'notch' || mode === 'notch_ears'
   return (
     <section className="py-4">
       <h1 className="text-lg font-semibold text-ink">Notifications</h1>
@@ -36,14 +50,11 @@ export function NotificationsSettings() {
             <MessageSquareCheck size={18} className="shrink-0 text-ink-2" />
             <div className="min-w-0 flex-1">
               <p className="text-[13.5px] font-medium text-ink">Done, replies and questions</p>
-              <p className="text-[12px] text-ink-3">
-                {notch
-                  ? focus === 'unknown'
-                    ? "Jaz can't read your Focus status, so it uses Notification Center."
-                    : 'Shown beside the notch only while no Focus is on; otherwise Notification Center.'
-                  : "When Jaz isn't focused."}
-              </p>
+              <p className="text-[12px] text-ink-3">{notch ? NOTCH[access.data ?? 'ready'] : "When Jaz isn't focused."}</p>
             </div>
+            {notch && access.data === 'ask' && (
+              <Button disabled={share.isPending} onClick={() => share.mutate()}>Share Focus</Button>
+            )}
             <Select
               aria-label="How Jaz notifies"
               value={mode}

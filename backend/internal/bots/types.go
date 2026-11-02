@@ -88,7 +88,7 @@ type UpdateBot struct {
 // Threads is the agent runtime bot threads run on.
 type Threads interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
-	SteerInternal(ctx context.Context, session, message string) (acp.Job, error)
+	SteerInternal(ctx context.Context, session, message string, user bool) (acp.Job, error)
 	SwitchAgent(ctx context.Context, sessionID, agent string) error
 	SetModel(ctx context.Context, sessionID, model, effort string) error
 	AwaitsAnswer(sessionID string) bool

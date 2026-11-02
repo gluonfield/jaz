@@ -161,6 +161,11 @@ func (s *Store) UpdateTurn(id string, update storage.TurnUpdate, messages ...sto
 				return err
 			}
 		}
+		if update.User {
+			if err := q.SetTurnAnswersUser(ctx, id); err != nil {
+				return err
+			}
+		}
 		if update.Steer != nil {
 			raw, err := json.Marshal(update.Steer)
 			if err != nil {

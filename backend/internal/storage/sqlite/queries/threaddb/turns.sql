@@ -78,6 +78,11 @@ UPDATE threads
 SET turn = json_remove(turn, '$.output.hops')
 WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
+-- name: SetTurnAnswersUser :exec
+UPDATE threads
+SET turn = json_set(turn, '$.output.user', json('true'))
+WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
+
 -- name: FinishSessionTurn :execrows
 -- A compact brings the user nothing new to read. What a turn's agent was shown
 -- is kept only once the agent took the turn's prompt.

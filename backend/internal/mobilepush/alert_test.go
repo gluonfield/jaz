@@ -190,16 +190,84 @@ func TestGroupTellsAMembersReplyAsTheGroup(t *testing.T) {
 	if err := store.SaveMembership(storage.BotMembership{GroupID: group.ID, BotID: member.ID, ThreadID: thread.ID}); err != nil {
 		t.Fatal(err)
 	}
-	turn := time.Now().UTC()
-	post, err := store.DeliverMessage(sessionevents.Event{
+	var sent published
+	botService := bots.NewService(store, t.TempDir(), nil, nil, nil, nil, &sent, log.New(io.Discard))
+	// Another member's post started the turn; the person's post was then
+	// handed to it, and a later post landed before the turn ended.
+	if claimed, err := store.ClaimTurn(thread.ID, storage.Turn{}); err != nil || !claimed {
+		t.Fatalf("claim turn: %v %v", claimed, err)
+	}
+	if err := store.UpdateTurn(thread.ID, storage.TurnUpdate{User: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := botService.Say(thread.ID, "Shipped it. Notes follow."); err != nil {
+		t.Fatal(err)
+	}
+	later, err := store.DeliverMessage(sessionevents.Event{
 		SessionID: group.ID, Type: sessionevents.TypeRoomMessage,
-		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", BotID: member.ID, Text: "Shipped it. Notes follow.", Answers: turn},
+		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", BotID: "other", Text: "Nice."},
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	heard := told(t, service, post, ended(thread.ID, sessionevents.ACPEvent{State: "idle", StopReason: "end_turn", TurnStartedAt: turn}))
+	running, err := store.LoadSession(thread.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	heard := told(t, service, append(sent, later, ended(thread.ID, sessionevents.ACPEvent{State: "idle", StopReason: "end_turn", TurnStartedAt: running.Turn.StartedAt}))...)
 	if len(heard) != 1 || heard[0].SessionID != group.ID || heard[0].Kind != bots.KindGroup || heard[0].Name != "Team" || heard[0].State != "reply" || heard[0].Body != "Shipped it." || len(heard[0].Avatars) != 1 {
 		t.Fatalf("a member's reply was not told as its group's: %#v", heard)
+	}
+}
+
+func TestQuestionsFromThreadsWorkingForABotAskAsItWhereTheyAreAnswered(t *testing.T) {
+	service, store, _, bot := pushFixture(t, storage.SourceBot)
+	create := func(title, source, parent string) storage.Session {
+		t.Helper()
+		session, err := store.CreateSession(storage.CreateSession{Title: title, SourceType: source, SourceID: bot.ID, ParentID: parent, Runtime: storage.RuntimeACP})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return session
+	}
+	worker := create("Price the part", storage.SourceBotWorker, bot.ID)
+	below := create("Check the drawing", storage.SourceBotWorker, worker.ID)
+	member := create("Research in Team", storage.SourceBotMember, "")
+	group, err := store.CreateSession(storage.CreateSession{Title: "Team", SourceType: storage.SourceBot, Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBot(storage.BotRecord{ThreadID: group.ID, Kind: bots.KindGroup, Members: []string{bot.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveMembership(storage.BotMembership{GroupID: group.ID, BotID: bot.ID, ThreadID: member.ID}); err != nil {
+		t.Fatal(err)
+	}
+	background, err := store.CreateSession(storage.CreateSession{Title: "Dream", SourceType: storage.SourceMemoryDream, Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ask := func(at, asker string) sessionevents.Event {
+		return sessionevents.Event{SessionID: at, Type: "permission_request", Permission: &sessionevents.ACPPermission{
+			ID: "q-" + asker, SessionID: asker, Questions: []sessionevents.ACPQuestion{{ID: "q", Question: "Which supplier?"}},
+		}}
+	}
+	heard := told(t, service,
+		ask(worker.ID, worker.ID), ask(bot.ID, worker.ID),
+		ask(below.ID, below.ID), ask(worker.ID, below.ID),
+		ask(member.ID, member.ID),
+		ask(background.ID, background.ID),
+	)
+	want := []storage.Session{worker, below, member}
+	if len(heard) != len(want) {
+		t.Fatalf("heard %#v", heard)
+	}
+	for i, alert := range heard {
+		if alert.SessionID != want[i].ID || alert.Kind != "chat" || alert.Title != want[i].Title || alert.State != "needs_you" || alert.RequestID != "q-"+want[i].ID || alert.Body != "Which supplier?" {
+			t.Fatalf("question %d did not open where it is answered: %#v", i, alert)
+		}
+		if alert.Name != "Research" || len(alert.Avatars) != 1 || alert.Avatars[0] != (bots.Avatar{Shape: "circle", Color: "blue"}) {
+			t.Fatalf("question %d did not ask as its bot: %#v", i, alert)
+		}
 	}
 }

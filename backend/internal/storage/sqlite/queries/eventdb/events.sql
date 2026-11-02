@@ -77,6 +77,25 @@ WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq DESC
 LIMIT 1;
 
+-- name: LatestBotRoomMessage :one
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = sqlc.arg(thread_id)
+  AND type = 'room_message'
+  AND json_extract(content, '$.bot_id') = sqlc.arg(bot_id)
+ORDER BY seq DESC
+LIMIT 1;
+
 -- name: ListBotActivityEvents :many
 SELECT
   thread_id,

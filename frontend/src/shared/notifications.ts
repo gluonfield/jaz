@@ -10,7 +10,8 @@ export interface Alert {
   key: string
   state: AlertState
   kind: AlertKind
-  // The bot's or group's name; empty for a plain thread, which is Jaz's.
+  // The bot's or group's name, also on a question from a thread working for
+  // it; empty for a plain thread, which is Jaz's.
   name: string
   avatars: BotAvatar[]
   // The thread title or the completed task; empty for a bot's new reply.
@@ -22,8 +23,10 @@ export interface Alert {
 
 export type NotificationMode = 'off' | 'center' | 'notch' | 'notch_ears'
 
-// Focus counts as off only when macOS shares it; anything else is unknown.
-export type FocusState = 'on' | 'off' | 'unknown'
+// What the island still needs, read without asking macOS anything: nothing
+// (ready), notifications allowed, Focus shared once asked, Focus allowed after
+// a refusal, or Focus readable at all (unavailable).
+export type NotchAccess = 'ready' | 'notifications' | 'ask' | 'denied' | 'unavailable'
 
 export type NotificationConfig =
   | { mode: 'off' }
@@ -99,8 +102,8 @@ export function alertLabel(alert: Pick<Alert, 'state' | 'kind'>): string {
 }
 
 // Who the alert is from: the bot or group, or Jaz for a plain thread.
-export function alertSender(alert: Pick<Alert, 'name' | 'kind'>): string {
-  return alert.kind === 'chat' ? 'Jaz' : alert.name || 'Jaz'
+export function alertSender(alert: Pick<Alert, 'name'>): string {
+  return alert.name || 'Jaz'
 }
 
 // The island's state, sent from the main process to its window. `notch` is the

@@ -243,6 +243,17 @@ func (q *Queries) SetRunningTurn(ctx context.Context, arg SetRunningTurnParams) 
 	return err
 }
 
+const setTurnAnswersUser = `-- name: SetTurnAnswersUser :exec
+UPDATE threads
+SET turn = json_set(turn, '$.output.user', json('true'))
+WHERE id = ?1 AND status = 'running' AND turn <> ''
+`
+
+func (q *Queries) SetTurnAnswersUser(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, setTurnAnswersUser, id)
+	return err
+}
+
 const setTurnIntent = `-- name: SetTurnIntent :execrows
 UPDATE threads
 SET turn = json_set(turn,

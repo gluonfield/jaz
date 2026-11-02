@@ -183,6 +183,8 @@ type SendRequest struct {
 	// the result goes on to answer it.
 	ParentOutput *storage.TurnOutput
 	transcript   sendTranscriptMode
+	// user marks a hidden steer that hands the turn the user's words.
+	user bool
 }
 
 type CompactRequest struct {

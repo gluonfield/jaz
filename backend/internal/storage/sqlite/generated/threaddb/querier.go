@@ -52,6 +52,7 @@ type Querier interface {
 	SetRunningTurn(ctx context.Context, arg SetRunningTurnParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error
+	SetTurnAnswersUser(ctx context.Context, id string) error
 	SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (int64, error)
 	SetTurnPromptState(ctx context.Context, arg SetTurnPromptStateParams) (int64, error)
 	SetTurnRetries(ctx context.Context, arg SetTurnRetriesParams) (int64, error)

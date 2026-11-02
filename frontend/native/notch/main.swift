@@ -13,7 +13,7 @@ struct Notch {
             emit(await status())
         case "request-focus":
             _ = await INFocusStatusCenter.default.requestAuthorization()
-            emit(["focus": focus()])
+            emit(await status())
         case "announce" where arguments.count == 2:
             NSAccessibility.post(element: NSApplication.shared, notification: .announcementRequested, userInfo: [.announcement: arguments[1], .priority: NSAccessibilityPriorityLevel.high.rawValue])
             try? await Task.sleep(for: .seconds(1))
@@ -41,6 +41,7 @@ func status() async -> [String: Any] {
             ]
         },
         "focus": focus(),
+        "focus_access": focusAccess(),
         "previews": previews(settings?.showPreviewsSetting),
         "notifications": notifications(settings?.authorizationStatus),
     ]
@@ -67,6 +68,16 @@ func focus() -> String {
         return "unknown"
     }
     return focused ? "on" : "off"
+}
+
+func focusAccess() -> String {
+    switch INFocusStatusCenter.default.authorizationStatus {
+    case .authorized: "authorized"
+    case .denied: "denied"
+    case .restricted: "restricted"
+    case .notDetermined: "not_determined"
+    @unknown default: "unknown"
+    }
 }
 
 func previews(_ setting: UNShowPreviewsSetting?) -> String {

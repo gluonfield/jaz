@@ -7,7 +7,7 @@ import type { PermissionGuideAPI, SystemPermissionsAPI } from '@shared/systemPer
 import type { WindowKind } from '@shared/windowKind'
 
 import type { BrowserNavigationDirection } from '../shared/browserNavigation'
-import type { FocusState, IslandAPI, NotificationConfig } from '../shared/notifications'
+import type { IslandAPI, NotchAccess, NotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI } from '../shared/dictation'
 import type { BrowserCommandRequest } from '@shared/browserControl'
@@ -49,7 +49,8 @@ declare global {
         app_version: string
       }>
       configureNotifications: (config: NotificationConfig) => Promise<boolean>
-      shareFocusStatus: () => Promise<FocusState>
+      notchAccess: () => Promise<NotchAccess>
+      shareFocusStatus: () => Promise<NotchAccess>
       getUpdateStatus: () => Promise<UpdateStatus>
       installUpdate: () => Promise<{ ok: boolean; error?: string }>
       onUpdateStatus: (handler: (status: UpdateStatus) => void) => () => void

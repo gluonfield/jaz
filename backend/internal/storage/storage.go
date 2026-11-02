@@ -291,6 +291,9 @@ type TurnUpdate struct {
 	// EndExchange ends the bot-to-bot exchange the turn is part of, as the
 	// user writing into it does.
 	EndExchange bool
+	// User makes the turn answer the user, whose words it took in, as a turn
+	// their message started does.
+	User bool
 	// Steer joins the turn's Steers.
 	Steer *TurnPrompt
 }

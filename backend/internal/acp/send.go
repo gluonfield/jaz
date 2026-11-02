@@ -274,9 +274,10 @@ func (m *Manager) claimTurn(job *jobState, turn storage.Turn, completion Complet
 // SteerInternal hands a hidden message to the thread's running turn, as
 // StartInternalTurn starts a hidden turn. A user's steer supersedes the
 // questions the turn is waiting on; a hidden message must not, so it is
-// refused while one is pending.
-func (m *Manager) SteerInternal(ctx context.Context, session, message string) (Job, error) {
-	return m.Steer(ctx, SteerRequest{Session: session, Message: message, transcript: sendTranscriptHidden})
+// refused while one is pending. A message carrying the user's words, as
+// their group post does, makes the turn answer them.
+func (m *Manager) SteerInternal(ctx context.Context, session, message string, user bool) (Job, error) {
+	return m.Steer(ctx, SteerRequest{Session: session, Message: message, transcript: sendTranscriptHidden, user: user})
 }
 
 func (m *Manager) Steer(ctx context.Context, req SteerRequest) (Job, error) {
@@ -384,7 +385,8 @@ func (m *Manager) reserveSteer(job *jobState, req SteerRequest, contexts []stora
 	update := storage.TurnUpdate{
 		GoalRequested: session.Turn.GoalRequested || req.GoalRequested,
 		ParentVisible: session.Turn.ParentVisible || req.ParentVisible,
-		EndExchange:   req.FromUser,
+		EndExchange:   req.FromUser || req.user,
+		User:          req.user,
 	}
 	update.NotifyParent = update.ParentVisible && job.turn.completion.propagates() && !session.Turn.PlanRequested
 	queued := job.steerMethod == steerPromptQueueing
