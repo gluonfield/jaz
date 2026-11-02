@@ -74,10 +74,6 @@ type DevicesConfig struct {
 	DisablePairing bool
 }
 
-type Release struct {
-	Version string
-}
-
 type SkillsConfig struct {
 	DisableSync bool
 }
@@ -257,8 +253,8 @@ func (s managedToolAgentConfigSource) EnabledAgentNames() ([]string, error) {
 	return s.source.EnabledAgentNames()
 }
 
-func NewACPAdapterManager(layout runtimefiles.Layout, release Release) *acpadapter.Manager {
-	return acpadapter.New(layout.Root, release.Version)
+func NewACPAdapterManager(layout runtimefiles.Layout) *acpadapter.Manager {
+	return acpadapter.New(layout.Root)
 }
 
 func NewManagedToolManager(layout runtimefiles.Layout) *managedtool.Manager {

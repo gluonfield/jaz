@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -25,18 +26,7 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 		t.Skip(err)
 	}
 	body := testTarballMode(t, map[string]string{"bin/tool": "ok", "bin/claude": "sdk"}, 0o644)
-	sum := sha256.Sum256(body)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_, _ = fmt.Fprintf(w, `{"adapters":{"claude":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"bin/tool","env":{"CLAUDE_CODE_EXECUTABLE":"bin/claude"}}}}}}`, platform, serverURL(r, "/claude.tgz"), sum)
-		case "/claude.tgz":
-			_, _ = w.Write(body)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
+	server := archiveServer(t, "/claude.tgz", body)
 
 	root := t.TempDir()
 	incomplete := filepath.Join(root, "acp", "managed", "adapters", "claude", "1.2.3", platform, "bin", "tool")
@@ -46,7 +36,7 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	if err := os.WriteFile(incomplete, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewForTest(root, server.URL+"/manifest.json", server.Client())
+	manager := testManager(t, root, server, "claude", manifestAsset{URL: server.URL + "/claude.tgz", SHA256: sha256Hex(body), Binary: "bin/tool", Env: map[string]string{"CLAUDE_CODE_EXECUTABLE": "bin/claude"}})
 	launch, err := manager.ResolveAdapter(context.Background(), "claude")
 	if err != nil {
 		t.Fatal(err)
@@ -80,29 +70,14 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 }
 
 func TestResolveAdapterExtractsZipArchive(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
 	binary := "kimi"
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
 	body := testZip(t, map[string]string{binary: "ok"})
-	sum := sha256.Sum256(body)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_, _ = fmt.Fprintf(w, `{"adapters":{"kimi":{"version":"0.28.0","assets":{"%s":{"url":"%s","sha256":"%x","binary":"%s"}}}}}`, platform, serverURL(r, "/kimi.zip"), sum, binary)
-		case "/kimi.zip":
-			_, _ = w.Write(body)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	launch, err := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client()).ResolveAdapter(context.Background(), "kimi")
+	server := archiveServer(t, "/kimi.zip", body)
+	manager := testManager(t, t.TempDir(), server, "kimi", manifestAsset{URL: server.URL + "/kimi.zip", SHA256: sha256Hex(body), Binary: binary})
+	launch, err := manager.ResolveAdapter(context.Background(), "kimi")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,12 +90,7 @@ func TestResolveAdapterExtractsZipArchive(t *testing.T) {
 }
 
 func TestResolveAdapterReportsDownloadProgress(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
 	body := testTarball(t, map[string]string{"bin/tool": strings.Repeat("ok", 1024)})
-	sum := sha256.Sum256(body)
 	firstChunk := len(body) / 2
 	wroteFirst := make(chan struct{})
 	continueDownload := make(chan struct{})
@@ -133,8 +103,6 @@ func TestResolveAdapterReportsDownloadProgress(t *testing.T) {
 	defer releaseDownload()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/manifest.json":
-			_, _ = fmt.Fprintf(w, `{"adapters":{"claude":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"bin/tool"}}}}}`, platform, serverURL(r, "/claude.tgz"), sum)
 		case "/claude.tgz":
 			w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 			_, _ = w.Write(body[:firstChunk])
@@ -150,7 +118,7 @@ func TestResolveAdapterReportsDownloadProgress(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client())
+	manager := testManager(t, t.TempDir(), server, "claude", manifestAsset{URL: server.URL + "/claude.tgz", SHA256: sha256Hex(body), Binary: "bin/tool"})
 	done := make(chan error, 1)
 	go func() {
 		_, err := manager.ResolveAdapter(context.Background(), "claude")
@@ -190,91 +158,9 @@ func TestResolveAdapterReportsDownloadProgress(t *testing.T) {
 	}
 }
 
-func TestResolveAdapterPrefersLocalManifestInDev(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
-	body := testTarball(t, map[string]string{"bin/tool": "new"})
-	sum := sha256.Sum256(body)
-	remoteManifestHit := false
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/adapter.tgz":
-			_, _ = w.Write(body)
-		case "/manifest.json":
-			remoteManifestHit = true
-			_, _ = fmt.Fprintf(w, `{"adapters":{"claude":{"version":"0.9.0","assets":{"%s":{"url":"%s","sha256":"%064x","binary":"old"}}}}}`, platform, serverURL(r, "/old.tgz"), 1)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	root := t.TempDir()
-	manifestPath := filepath.Join(root, "dist", "acp-adapters.json")
-	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifestPath, []byte(fmt.Sprintf(`{"adapters":{"claude":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"bin/tool"}}}}}`, platform, server.URL+"/adapter.tgz", sum)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	manager := NewForTest(root, server.URL+"/manifest.json", server.Client())
-	manager.localManifestPath = manifestPath
-	launch, err := manager.ResolveAdapter(context.Background(), "claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if remoteManifestHit {
-		t.Fatal("remote latest manifest was fetched despite local dev manifest")
-	}
-	if !strings.Contains(launch.Command, "1.2.3") {
-		t.Fatalf("launch command = %q", launch.Command)
-	}
-}
-
-func TestFetchManifestRejectsStaleCacheWhenLocalManifestIsInvalid(t *testing.T) {
-	root := t.TempDir()
-	manifestPath := filepath.Join(root, "dist", "acp-adapters.json")
-	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifestPath, []byte(`{`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	manager := NewForTest(root, "", nil)
-	manager.localManifestPath = manifestPath
-	if err := manager.writeManifestCache(manifest{Adapters: map[string]manifestAdapter{
-		"claude": {Version: "cached", Assets: map[string]manifestAsset{}},
-	}}); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := manager.fetchManifest(context.Background()); err == nil {
-		t.Fatal("expected invalid local manifest to reject cache fallback")
-	}
-}
-
 func TestResolveAdapterRejectsBadChecksum(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
-	body := testTarball(t, map[string]string{"tool": "ok"})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_, _ = fmt.Fprintf(w, `{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%064x","binary":"tool"}}}}}`, platform, serverURL(r, "/codex.tgz"), 1)
-		case "/codex.tgz":
-			_, _ = w.Write(body)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	manager := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client())
+	server := archiveServer(t, "/codex.tgz", testTarball(t, map[string]string{"tool": "ok"}))
+	manager := testManager(t, t.TempDir(), server, "codex", manifestAsset{URL: server.URL + "/codex.tgz", SHA256: strings.Repeat("0", 64), Binary: "tool"})
 	if _, err := manager.ResolveAdapter(context.Background(), "codex"); err == nil {
 		t.Fatal("expected checksum error")
 	}
@@ -285,25 +171,9 @@ func TestResolveAdapterRejectsBadChecksum(t *testing.T) {
 }
 
 func TestResolveAdapterRejectsUnsafeArchivePath(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
 	body := testTarball(t, map[string]string{"../tool": "bad", "tool": "ok"})
-	sum := sha256.Sum256(body)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/manifest.json":
-			_, _ = fmt.Fprintf(w, `{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"tool"}}}}}`, platform, serverURL(r, "/codex.tgz"), sum)
-		case "/codex.tgz":
-			_, _ = w.Write(body)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	manager := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client())
+	server := archiveServer(t, "/codex.tgz", body)
+	manager := testManager(t, t.TempDir(), server, "codex", manifestAsset{URL: server.URL + "/codex.tgz", SHA256: sha256Hex(body), Binary: "tool"})
 	if _, err := manager.ResolveAdapter(context.Background(), "codex"); err == nil {
 		t.Fatal("expected unsafe path error")
 	}
@@ -318,102 +188,9 @@ func TestExtractZipRejectsUnsafeArchivePath(t *testing.T) {
 	}
 }
 
-func TestStatusReportsMissingBeforeManifestDownload(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
-	status := New(t.TempDir(), "dev").Status("codex")
-	if status.State != StateMissing || status.Platform != platform {
-		t.Fatalf("status = %#v", status)
-	}
-}
-
-func TestStatusReportsInstalledAdapterAfterRestart(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
-	manager := NewForTest(t.TempDir(), "", nil)
-	path := cacheCodexManifest(t, manager, platform)
-	if status := manager.Status("codex"); status.State != StateMissing {
-		t.Fatalf("status before install = %#v", status)
-	}
-	if err := os.WriteFile(path, []byte("ok"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	status := manager.Status("codex")
-	if status.State != StateReady || status.Path != path || status.Version != "1.2.3" {
-		t.Fatalf("status = %#v", status)
-	}
-}
-
-func TestResolveAdapterReadsPinnedManifestCacheWithoutNetwork(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("unexpected request %s", r.URL.Path)
-		http.Error(w, "offline", http.StatusInternalServerError)
-	}))
-	defer server.Close()
-	manager := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client())
-	manager.tag = "v9.9.9"
-	path := cacheCodexManifest(t, manager, platform)
-	if err := os.WriteFile(path, []byte("ok"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	launch, err := manager.ResolveAdapter(context.Background(), "codex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if launch.Command != path {
-		t.Fatalf("command = %q, want %q", launch.Command, path)
-	}
-}
-
-// cacheCodexManifest caches a codex 1.2.3 manifest and returns where its
-// executable installs.
-func cacheCodexManifest(t *testing.T, manager *Manager, platform string) string {
-	t.Helper()
-	cached := manifest{Adapters: map[string]manifestAdapter{"codex": {Version: "1.2.3", Assets: map[string]manifestAsset{
-		platform: {URL: "https://example.invalid/codex.tgz", SHA256: strings.Repeat("0", 64), Binary: "tool"},
-	}}}}
-	if err := manager.writeManifestCache(cached); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(manager.root, "acp", "managed", "adapters", "codex", "1.2.3", platform, "tool")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func TestNewPinsManifestToReleaseVersion(t *testing.T) {
-	tests := []struct {
-		version string
-		want    string
-		cache   string
-	}{
-		{version: "", want: releasesURL + "/latest/download/acp-adapters.json", cache: "manifest-latest.json"},
-		{version: "dev", want: releasesURL + "/latest/download/acp-adapters.json", cache: "manifest-latest.json"},
-		{version: "0.0.51", want: releasesURL + "/download/v0.0.51/acp-adapters.json", cache: "manifest-v0.0.51.json"},
-		{version: "v0.0.51", want: releasesURL + "/download/v0.0.51/acp-adapters.json", cache: "manifest-v0.0.51.json"},
-	}
-	for _, tt := range tests {
-		m := New(t.TempDir(), tt.version)
-		if m.manifestURL != tt.want || filepath.Base(m.manifestCachePath()) != tt.cache {
-			t.Fatalf("New(%q) manifest = %q cache %q, want %q cache %q", tt.version, m.manifestURL, filepath.Base(m.manifestCachePath()), tt.want, tt.cache)
-		}
-	}
-}
-
 func TestPrepareRecordsFailedDownload(t *testing.T) {
-	server := httptest.NewServer(http.NotFoundHandler())
-	defer server.Close()
-
-	manager := NewForTest(t.TempDir(), server.URL+"/manifest.json", server.Client())
+	server := archiveServer(t, "/codex.tgz", nil)
+	manager := testManager(t, t.TempDir(), server, "codex", manifestAsset{URL: server.URL + "/codex.tgz", SHA256: strings.Repeat("0", 64), Binary: "tool"})
 	if err := manager.Prepare(context.Background(), "codex"); err == nil {
 		t.Fatal("expected prepare error")
 	}
@@ -436,15 +213,8 @@ func TestResolveAdapterReusesInstalledBinary(t *testing.T) {
 	if err := os.WriteFile(path, []byte("ok"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/manifest.json" {
-			t.Fatalf("unexpected archive download %s", r.URL.Path)
-		}
-		_, _ = fmt.Fprintf(w, `{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%064x","binary":"tool"}}}}}`, platform, serverURL(r, "/codex.tgz"), 1)
-	}))
-	defer server.Close()
-
-	manager := NewForTest(root, server.URL+"/manifest.json", server.Client())
+	server := archiveServer(t, "/codex.tgz", nil)
+	manager := testManager(t, root, server, "codex", manifestAsset{URL: server.URL + "/codex.tgz", SHA256: strings.Repeat("0", 64), Binary: "tool"})
 	launch, err := manager.ResolveAdapter(context.Background(), "codex")
 	if err != nil {
 		t.Fatal(err)
@@ -454,45 +224,63 @@ func TestResolveAdapterReusesInstalledBinary(t *testing.T) {
 	}
 }
 
-func TestResolveAdapterUsesDiskManifestCacheWhenRemoteFails(t *testing.T) {
+func TestStatusReportsPinnedAdapterInstalledOnStart(t *testing.T) {
 	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		t.Skip(err)
 	}
-	body := testTarball(t, map[string]string{"tool": "ok"})
+	root := t.TempDir()
+	if status := New(root).Status("codex"); status.State != StateMissing || status.Platform != platform {
+		t.Fatalf("status before install = %#v", status)
+	}
+	spec, err := New(root).resolveSpec("codex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range spec.executables() {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("ok"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status := New(root).Status("codex")
+	if status.State != StateReady || status.Path != spec.Command || status.Version != spec.Version {
+		t.Fatalf("status = %#v", status)
+	}
+}
+
+func testManager(t *testing.T, root string, server *httptest.Server, name string, asset manifestAsset) *Manager {
+	t.Helper()
+	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Skip(err)
+	}
+	manager := New(root)
+	manager.client = server.Client()
+	manager.manifest = manifest{Adapters: map[string]manifestAdapter{
+		name: {Version: "1.2.3", Assets: map[string]manifestAsset{platform: asset}},
+	}}
+	return manager
+}
+
+func sha256Hex(body []byte) string {
 	sum := sha256.Sum256(body)
-	remoteFails := false
+	return hex.EncodeToString(sum[:])
+}
+
+func archiveServer(t *testing.T, path string, body []byte) *httptest.Server {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if remoteFails {
-			http.Error(w, "offline", http.StatusInternalServerError)
+		if r.URL.Path != path || body == nil {
+			http.NotFound(w, r)
 			return
 		}
-		switch r.URL.Path {
-		case "/manifest.json":
-			_, _ = fmt.Fprintf(w, `{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"tool"}}}}}`, platform, serverURL(r, "/codex.tgz"), sum)
-		case "/codex.tgz":
-			_, _ = w.Write(body)
-		default:
-			http.NotFound(w, r)
-		}
+		_, _ = w.Write(body)
 	}))
-	defer server.Close()
-
-	root := t.TempDir()
-	first := NewForTest(root, server.URL+"/manifest.json", server.Client())
-	launch, err := first.ResolveAdapter(context.Background(), "codex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	remoteFails = true
-	second := NewForTest(root, server.URL+"/manifest.json", server.Client())
-	cachedLaunch, err := second.ResolveAdapter(context.Background(), "codex")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cachedLaunch.Command != launch.Command {
-		t.Fatalf("cached command = %q, want %q", cachedLaunch.Command, launch.Command)
-	}
+	t.Cleanup(server.Close)
+	return server
 }
 
 func testTarball(t *testing.T, files map[string]string) []byte {
@@ -539,12 +327,4 @@ func testZip(t *testing.T, files map[string]string) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
-}
-
-func serverURL(r *http.Request, path string) string {
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	return scheme + "://" + r.Host + path
 }

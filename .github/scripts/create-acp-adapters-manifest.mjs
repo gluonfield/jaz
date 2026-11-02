@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-const out = process.argv[2] || "dist/acp-adapters.json";
+const out = process.argv[2] || "backend/internal/acpadapter/acp-adapters.json";
 const specPath = process.argv[3] || ".github/acp-adapter-assets.json";
 const spec = JSON.parse(readFileSync(specPath, "utf8"));
 

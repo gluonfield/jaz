@@ -26,7 +26,7 @@ func TestLiveArchives(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
 
-			manager := New(t.TempDir(), "dev")
+			manager := New(t.TempDir())
 			launch, err := manager.ResolveAdapter(ctx, test.agent)
 			if err != nil {
 				t.Fatal(err)

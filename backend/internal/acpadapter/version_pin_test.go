@@ -1,57 +1,41 @@
 package acpadapter
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
 )
 
-type adapterAssetSpec struct {
-	Adapters map[string]struct {
-		Tag    string `json:"tag"`
-		Assets map[string]struct {
-			Binary string            `json:"binary"`
-			Env    map[string]string `json:"env"`
-		} `json:"assets"`
-	} `json:"adapters"`
-}
-
 // .github/acp-adapter-assets.json is the single source of truth for managed
-// adapter versions: the backend carries no adapter version in code. These tests
-// keep it that way and ensure every built-in managed adapter has a complete pin.
+// adapter versions; the backend embeds the manifest generated from it. These
+// tests check that manifest: every built-in managed adapter has a complete,
+// safe pin.
 
 func TestBuiltinManagedAdaptersArePinned(t *testing.T) {
-	spec := loadAdapterAssetSpec(t)
+	pinned := parsePinnedManifest()
 	for name, cfg := range acp.BuiltinAgents() {
-		adapter := strings.TrimSpace(cfg.ManagedAdapter)
-		if adapter == "" {
+		if cfg.ManagedAdapter == "" {
 			continue
 		}
-		entry, ok := spec.Adapters[adapter]
-		if !ok {
-			t.Fatalf("agent %q uses managed adapter %q with no entry in acp-adapter-assets.json", name, adapter)
-		}
-		if entry.Tag == "" || len(entry.Assets) == 0 {
-			t.Fatalf("managed adapter %q is missing tag/assets in acp-adapter-assets.json", adapter)
+		if len(pinned.Adapters[cfg.ManagedAdapter].Assets) == 0 {
+			t.Errorf("agent %q uses managed adapter %q with no pinned assets", name, cfg.ManagedAdapter)
 		}
 	}
 }
 
-func TestAdapterAssetsAreComplete(t *testing.T) {
-	spec := loadAdapterAssetSpec(t)
-	for name, entry := range spec.Adapters {
-		for platform, asset := range entry.Assets {
-			if strings.TrimSpace(asset.Binary) == "" {
-				t.Errorf("adapter %q %s: missing binary name", name, platform)
+func TestPinnedAdapterAssetsAreComplete(t *testing.T) {
+	for name, adapter := range parsePinnedManifest().Adapters {
+		if !cleanRelative(adapter.Version) {
+			t.Errorf("adapter %q: invalid version %q", name, adapter.Version)
+		}
+		for platform, asset := range adapter.Assets {
+			if asset.URL == "" || len(asset.SHA256) != 64 || !cleanRelative(asset.Binary) {
+				t.Errorf("adapter %q %s: incomplete asset %#v", name, platform, asset)
 			}
 			for key, path := range asset.Env {
-				if strings.TrimSpace(key) == "" || strings.TrimSpace(path) == "" {
-					t.Errorf("adapter %q %s: incomplete environment path", name, platform)
+				if key == "" || !cleanRelative(path) {
+					t.Errorf("adapter %q %s: invalid environment path %q=%q", name, platform, key, path)
 				}
 			}
 		}
@@ -59,7 +43,7 @@ func TestAdapterAssetsAreComplete(t *testing.T) {
 }
 
 func TestCodexAssetsDeclareRuntime(t *testing.T) {
-	codex := loadAdapterAssetSpec(t).Adapters["codex"]
+	codex := parsePinnedManifest().Adapters["codex"]
 	for platform, asset := range codex.Assets {
 		triple := map[string]string{
 			"darwin-arm64": "aarch64-apple-darwin",
@@ -85,25 +69,4 @@ func TestCodexAssetsDeclareRuntime(t *testing.T) {
 			t.Errorf("codex %s host = %q, want %q", platform, got, want)
 		}
 	}
-}
-
-func loadAdapterAssetSpec(t *testing.T) adapterAssetSpec {
-	t.Helper()
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot locate test source file")
-	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", ".github", "acp-adapter-assets.json")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read adapter asset spec: %v", err)
-	}
-	var spec adapterAssetSpec
-	if err := json.Unmarshal(raw, &spec); err != nil {
-		t.Fatalf("parse adapter asset spec: %v", err)
-	}
-	if len(spec.Adapters) == 0 {
-		t.Fatal("adapter asset spec has no adapters")
-	}
-	return spec
 }

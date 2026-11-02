@@ -105,15 +105,12 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - name: Generate ACP adapter manifest
+      - name: Verify embedded ACP adapter manifest
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node .github/scripts/create-acp-adapters-manifest.mjs dist/acp-adapters.json
-
-      - name: Attach ACP adapter manifest
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$RELEASE_TAG" dist/acp-adapters.json --clobber
+        run: |
+          node .github/scripts/create-acp-adapters-manifest.mjs backend/internal/acpadapter/acp-adapters.json
+          git diff --exit-code backend/internal/acpadapter/acp-adapters.json
 
   macos:
     needs: prepare
