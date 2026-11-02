@@ -184,11 +184,7 @@ func snapshotAll(ctx context.Context, dir, message string) error {
 	if _, err := git(ctx, dir, "add", "-A"); err != nil {
 		return err
 	}
-	_, err = gitWithOptions(ctx, dir, []string{
-		"-c", "user.email=jaz@local",
-		"-c", "user.name=Jaz",
-		"-c", "commit.gpgsign=false",
-	}, "commit", "--no-verify", "-m", message)
+	_, err = git(ctx, dir, "commit", "--no-verify", "-m", message)
 	return err
 }
 
@@ -479,13 +475,7 @@ func splitNul(out string) []string {
 }
 
 func git(ctx context.Context, dir string, args ...string) (string, error) {
-	return gitWithOptions(ctx, dir, nil, args...)
-}
-
-func gitWithOptions(ctx context.Context, dir string, options []string, args ...string) (string, error) {
-	gitArgs := append([]string{"-C", dir}, options...)
-	gitArgs = append(gitArgs, args...)
-	cmd := exec.CommandContext(ctx, "git", gitArgs...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
