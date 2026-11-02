@@ -133,6 +133,15 @@ WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq
 LIMIT sqlc.arg(limit_count);
 
+-- name: BotChatPageStart :one
+SELECT CAST(COALESCE((
+  SELECT seq FROM session_events
+  WHERE thread_id = sqlc.arg(thread_id) AND seq < sqlc.arg(before_seq)
+    AND (type IN ('room_message', 'mcp_app', 'artifact', 'permission_request', 'loop_created', 'agent_switch')
+      OR (type = 'bot_activity' AND json_extract(CASE WHEN json_valid(content) THEN content END, '$.kind') = 'unreachable'))
+  ORDER BY seq DESC LIMIT 1 OFFSET sqlc.arg(turns)
+), 0) AS INTEGER) AS seq;
+
 -- name: ListSessionEventPage :many
 SELECT
   thread_id,
@@ -148,6 +157,7 @@ SELECT
 FROM session_events
 WHERE session_events.thread_id = sqlc.arg(thread_id)
   AND session_events.seq < sqlc.arg(before_seq)
+  AND session_events.seq > sqlc.arg(start_seq)
   AND NOT sqlc.arg(chat_only)
 UNION ALL
 SELECT
@@ -164,6 +174,7 @@ SELECT
 FROM session_events
 WHERE session_events.thread_id = sqlc.arg(thread_id)
   AND session_events.seq < sqlc.arg(before_seq)
+  AND session_events.seq > sqlc.arg(start_seq)
   AND sqlc.arg(chat_only)
   AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'artifact', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
@@ -179,6 +190,7 @@ SELECT
 FROM session_events
 WHERE session_events.thread_id = sqlc.arg(thread_id)
   AND session_events.seq < sqlc.arg(before_seq)
+  AND session_events.seq > sqlc.arg(start_seq)
   AND NOT sqlc.arg(chat_only)
 UNION ALL
 SELECT
@@ -190,6 +202,7 @@ SELECT
 FROM session_events
 WHERE session_events.thread_id = sqlc.arg(thread_id)
   AND session_events.seq < sqlc.arg(before_seq)
+  AND session_events.seq > sqlc.arg(start_seq)
   AND sqlc.arg(chat_only)
   AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'artifact', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC

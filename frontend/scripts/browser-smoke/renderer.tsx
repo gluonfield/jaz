@@ -24,6 +24,7 @@ import { exerciseComposerSendMenu } from './composer-send-menu'
 import { exerciseFolderDrop } from './folder-drop'
 import { exerciseChatHistory } from './chat-history'
 import { exerciseBotWelcome } from './bot-welcome'
+import { exerciseBotChat } from './bot-chat'
 import { exerciseBotPanel } from './bot-panel'
 import { exerciseLoops } from './loops'
 import { exerciseBotsLive } from './bots-live'
@@ -63,6 +64,7 @@ declare global {
       key(key: string, modifiers?: string[]): Promise<void>
       wheel(x: number, y: number, deltaY: number, control?: boolean): Promise<void>
       capture(name?: string): Promise<void>
+      paint(name: string, rect?: { x: number; y: number; width: number; height: number }): Promise<{ contrast: number; inkPixels: number; frames: number; paintedAt: number }>
       reducedMotion(reduce: boolean): Promise<void>
       resize(width: number, height: number): Promise<void>
       dropFolder(x: number, y: number): Promise<string>
@@ -116,6 +118,11 @@ function Fixture() {
         return result.result.value
       }
       const suite = new URLSearchParams(location.search).get('suite')
+      if (suite === 'bot-chat') {
+        await exerciseBotChat()
+        window.smoke.result({ ok: true, checks: ['real HTTP/SSE bot conversation visibly painted before scroll in development StrictMode; cold/warm history, authorship, stable reader and paging'] })
+        return
+      }
       if (suite === 'browser-identity') {
         progress('browser identity, annotations and canvas referrers')
         await exerciseAnnotations()

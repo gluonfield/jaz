@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('smoke', {
   pointer: (type: string, x: number, y: number, button?: 'left' | 'right') => ipcRenderer.invoke('smoke:pointer', type, x, y, button),
   key: (key: string, modifiers?: string[]) => ipcRenderer.invoke('smoke:key', key, modifiers),
   wheel: (x: number, y: number, deltaY: number, control?: boolean) => ipcRenderer.invoke('smoke:wheel', x, y, deltaY, control),
+  paint: (name: string, rect?: { x: number; y: number; width: number; height: number }) => ipcRenderer.invoke('smoke:paint', name, rect),
   capture: (name?: string) => ipcRenderer.invoke('smoke:capture', name),
   reducedMotion: (reduce: boolean) => ipcRenderer.invoke('smoke:reduced-motion', reduce),
   resize: (width: number, height: number) => ipcRenderer.invoke('smoke:resize', width, height),

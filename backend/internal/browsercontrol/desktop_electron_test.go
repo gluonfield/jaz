@@ -53,6 +53,9 @@ func TestDesktopElectron(t *testing.T) {
 	browsercontrol.AddMCPTools(mcpServer, backend)
 	mux := http.NewServeMux()
 	mountBrowserStartupFixture(t, mux, store, backend)
+	if os.Getenv("JAZ_BROWSER_SMOKE_SUITE") == "bot-chat" {
+		mountBotChatFixture(t, mux, store)
+	}
 	mountClaudeVoiceFixture(mux)
 	mountCanvasFixture(t, mux, store)
 	previews, err := previewapi.NewHandler(serverconfig.Config{})

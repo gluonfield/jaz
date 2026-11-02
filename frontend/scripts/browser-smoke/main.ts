@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session, webContents } from 'electron'
+import { app, BrowserWindow, ipcMain, session, webContents, type NativeImage } from 'electron'
 import { createServer, type IncomingHttpHeaders, type ServerResponse } from 'node:http'
 import { createServer as createSecureServer } from 'node:https'
 import { X509Certificate } from 'node:crypto'
@@ -71,7 +71,7 @@ installBrowserControl()
 installBrowserPasswords()
 process.on('unhandledRejection', (error) => {
   console.error(error)
-  app.exit(1)
+  process.exit(1)
 })
 ipcMain.handle('smoke:backend', () => process.env.JAZ_BROWSER_SMOKE_BACKEND)
 ipcMain.handle('smoke:browser-exists', (_event, id: number) => Boolean(webContents.fromId(id)))
@@ -308,11 +308,42 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     show: false,
     webPreferences: {
       webviewTag: true,
+      offscreen: process.env.JAZ_BROWSER_SMOKE_SUITE === 'bot-chat',
       backgroundThrottling: false,
       contextIsolation: true,
       sandbox: true,
       preload: join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'preload.js'),
     },
+  })
+  let painted: NativeImage | undefined
+  let paintFrames = 0
+  let paintedAt = 0
+  window.webContents.on('paint', (_event, _dirty, image) => {
+    painted = image
+    paintFrames++
+    paintedAt = Date.now()
+  })
+  if (process.env.JAZ_BROWSER_SMOKE_PID_FILE) await writeFile(process.env.JAZ_BROWSER_SMOKE_PID_FILE, String(process.pid))
+  ipcMain.handle('smoke:paint', async (_event, name: string, rect?: { x: number; y: number; width: number; height: number }) => {
+    if (!painted || !/^[a-z-]+$/.test(name)) throw new Error('Missing passive paint frame or invalid name')
+    const frame = painted
+    const frames = paintFrames
+    const at = paintedAt
+    await writeFile(join(process.env.JAZ_BROWSER_SMOKE_DIR!, name + '.png'), frame.toPNG())
+    const image = rect ? frame.crop({ x: Math.floor(rect.x), y: Math.floor(rect.y), width: Math.ceil(rect.width), height: Math.ceil(rect.height) }) : frame
+    const pixels = image.toBitmap()
+    let min = 255
+    let max = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      const value = (pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3
+      min = Math.min(min, value)
+      max = Math.max(max, value)
+    }
+    let high = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if ((pixels[index] + pixels[index + 1] + pixels[index + 2]) / 3 > (min + max) / 2) high++
+    }
+    return { contrast: max - min, inkPixels: Math.min(high, pixels.length / 4 - high), frames, paintedAt: at }
   })
   await exerciseClipboard(process.env.ELECTRON_RENDERER_URL)
   attachPreviewWebviews(window.webContents, join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'index.js'))
@@ -389,10 +420,10 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
     console.log(JSON.stringify(result))
     server.close()
     secureServer.close()
-    app.exit(result.ok ? 0 : 1)
+    process.exit(result.ok ? 0 : 1)
   })
   await window.loadURL(`http://127.0.0.1:${address.port}?timeout=${timeout}&suite=${encodeURIComponent(process.env.JAZ_BROWSER_SMOKE_SUITE || '')}`)
   window.webContents.debugger.attach('1.3')
   await window.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true })
 })
-setTimeout(() => app.exit(2), timeout + 10000)
+setTimeout(() => process.exit(2), timeout + 10000)

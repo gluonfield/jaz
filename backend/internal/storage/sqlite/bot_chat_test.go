@@ -1,6 +1,9 @@
 package sqlite
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,5 +77,108 @@ func TestBotChatPagesHumanMessagesWithoutInternalTurnBoundaries(t *testing.T) {
 		if message.Content != text || message.FromUser != records[i].FromUser {
 			t.Fatalf("transcript record %d changed: %+v", i, message)
 		}
+	}
+}
+
+func TestBotChatPageBudgetCountsConversationEvents(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	bot, err := store.CreateSession(storage.CreateSession{SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
+	var events []sessionevents.Event
+	for range 20 {
+		events = append(events, sessionevents.Event{Type: "room_message", At: at, RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Public reply"}})
+	}
+	for i := range 300 {
+		events = append(events,
+			sessionevents.Event{Type: "acp", At: at, ACP: &sessionevents.ACPEvent{ID: fmt.Sprint(i), ParentID: bot.ID, State: "idle"}},
+			sessionevents.Event{Type: "bot_activity", At: at, BotActivity: &sessionevents.BotActivityEvent{Kind: "message_received", Label: "Worker"}},
+		)
+	}
+	if err := store.AppendSessionEvents(bot.ID, events...); err != nil {
+		t.Fatal(err)
+	}
+	request := storage.TranscriptPageRequest{Turns: 14, ChatOnly: true}
+	page, err := store.LoadTranscriptPage(t.Context(), bot.ID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Events) != 614 || page.Events[0].Seq != 7 || !page.HasEarlier || page.BeforeEventSeq != 7 || page.LatestEventSeq != 620 {
+		t.Fatalf("metadata displaced conversation: events=%d first=%d earlier=%v cursor=%d latest=%d", len(page.Events), page.Events[0].Seq, page.HasEarlier, page.BeforeEventSeq, page.LatestEventSeq)
+	}
+	request.BeforeEventSeq = page.BeforeEventSeq
+	request.HistoryRevision = page.HistoryRevision
+	earlier, err := store.LoadTranscriptPage(t.Context(), bot.ID, request)
+	if err != nil || len(earlier.Events) != 6 || earlier.HasEarlier || earlier.Events[0].Seq != 1 || earlier.Events[5].Seq != 6 {
+		t.Fatalf("earlier conversation: %+v, %v", earlier, err)
+	}
+	stored, err := store.LoadSessionEvents(bot.ID)
+	if err != nil || len(stored) != len(events) {
+		t.Fatalf("stored transcript changed: events=%d, %v", len(stored), err)
+	}
+}
+
+func TestBotChatByteBudgetAdvancesThroughAuxiliaryHistory(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	bot, err := store.CreateSession(storage.CreateSession{SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []sessionevents.Event{{Type: "room_message", RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Older reply"}}}
+	for i := range 40 {
+		events = append(events, sessionevents.Event{Type: "acp", ACP: &sessionevents.ACPEvent{ID: fmt.Sprint(i), ParentID: bot.ID, State: "failed", Error: strings.Repeat("x", 512<<10)}})
+	}
+	if err := store.AppendSessionEvents(bot.ID, events...); err != nil {
+		t.Fatal(err)
+	}
+	request := storage.TranscriptPageRequest{Turns: 14, ChatOnly: true}
+	seen := make(map[int64]bool)
+	for {
+		page, err := store.LoadTranscriptPage(t.Context(), bot.ID, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Events) == 0 || page.HasEarlier && (page.BeforeEventSeq == 0 || request.BeforeEventSeq > 0 && page.BeforeEventSeq >= request.BeforeEventSeq) {
+			t.Fatal("byte-limited history did not advance")
+		}
+		bytes := 0
+		for _, event := range page.Events {
+			if seen[event.Seq] {
+				t.Fatal("byte-limited history duplicated a record")
+			}
+			seen[event.Seq] = true
+			bytes += len(event.StorageContent())
+			if event.ACP != nil {
+				if len(event.ACP.Error) != 512<<10 {
+					t.Fatal("auxiliary status payload changed")
+				}
+				raw, err := json.Marshal(event.ACP)
+				if err != nil {
+					t.Fatal(err)
+				}
+				bytes += len(raw)
+			}
+		}
+		if bytes > storage.MaxTranscriptEventBytes {
+			t.Fatal("bot history exceeded its byte budget")
+		}
+		if !page.HasEarlier {
+			break
+		}
+		request.BeforeEventSeq = page.BeforeEventSeq
+		request.HistoryRevision = page.HistoryRevision
+	}
+	if len(seen) != len(events) || !seen[1] {
+		t.Fatal("byte-limited history dropped records")
 	}
 }

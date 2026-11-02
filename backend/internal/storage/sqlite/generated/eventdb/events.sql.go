@@ -31,6 +31,29 @@ func (q *Queries) AdvanceSessionEventRevision(ctx context.Context, arg AdvanceSe
 	return err
 }
 
+const botChatPageStart = `-- name: BotChatPageStart :one
+SELECT CAST(COALESCE((
+  SELECT seq FROM session_events
+  WHERE thread_id = ?1 AND seq < ?2
+    AND (type IN ('room_message', 'mcp_app', 'artifact', 'permission_request', 'loop_created', 'agent_switch')
+      OR (type = 'bot_activity' AND json_extract(CASE WHEN json_valid(content) THEN content END, '$.kind') = 'unreachable'))
+  ORDER BY seq DESC LIMIT 1 OFFSET ?3
+), 0) AS INTEGER) AS seq
+`
+
+type BotChatPageStartParams struct {
+	ThreadID  string `json:"thread_id"`
+	BeforeSeq int64  `json:"before_seq"`
+	Turns     int64  `json:"turns"`
+}
+
+func (q *Queries) BotChatPageStart(ctx context.Context, arg BotChatPageStartParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, botChatPageStart, arg.ThreadID, arg.BeforeSeq, arg.Turns)
+	var seq int64
+	err := row.Scan(&seq)
+	return seq, err
+}
+
 const completeSessionEventCompaction = `-- name: CompleteSessionEventCompaction :execrows
 UPDATE threads
 SET event_compaction_version = 1
@@ -625,7 +648,8 @@ SELECT
 FROM session_events
 WHERE session_events.thread_id = ?2
   AND session_events.seq < ?3
-  AND NOT ?4
+  AND session_events.seq > ?4
+  AND NOT ?5
 UNION ALL
 SELECT
   thread_id,
@@ -641,7 +665,8 @@ SELECT
 FROM session_events
 WHERE session_events.thread_id = ?2
   AND session_events.seq < ?3
-  AND ?4
+  AND session_events.seq > ?4
+  AND ?5
   AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'artifact', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
 LIMIT ?1
@@ -651,6 +676,7 @@ type ListSessionEventPageParams struct {
 	LimitCount int64       `json:"limit_count"`
 	ThreadID   string      `json:"thread_id"`
 	BeforeSeq  int64       `json:"before_seq"`
+	StartSeq   int64       `json:"start_seq"`
 	ChatOnly   interface{} `json:"chat_only"`
 }
 
@@ -672,6 +698,7 @@ func (q *Queries) ListSessionEventPage(ctx context.Context, arg ListSessionEvent
 		arg.LimitCount,
 		arg.ThreadID,
 		arg.BeforeSeq,
+		arg.StartSeq,
 		arg.ChatOnly,
 	)
 	if err != nil {
@@ -716,7 +743,8 @@ SELECT
 FROM session_events
 WHERE session_events.thread_id = ?2
   AND session_events.seq < ?3
-  AND NOT ?4
+  AND session_events.seq > ?4
+  AND NOT ?5
 UNION ALL
 SELECT
   seq,
@@ -727,7 +755,8 @@ SELECT
 FROM session_events
 WHERE session_events.thread_id = ?2
   AND session_events.seq < ?3
-  AND ?4
+  AND session_events.seq > ?4
+  AND ?5
   AND session_events.type IN ('acp', 'room_message', 'bot_activity', 'mcp_app', 'artifact', 'permission_request', 'permission_response', 'loop_created', 'agent_switch')
 ORDER BY seq DESC
 LIMIT ?1
@@ -737,6 +766,7 @@ type ListSessionEventPageSizesParams struct {
 	LimitCount int64       `json:"limit_count"`
 	ThreadID   string      `json:"thread_id"`
 	BeforeSeq  int64       `json:"before_seq"`
+	StartSeq   int64       `json:"start_seq"`
 	ChatOnly   interface{} `json:"chat_only"`
 }
 
@@ -750,6 +780,7 @@ func (q *Queries) ListSessionEventPageSizes(ctx context.Context, arg ListSession
 		arg.LimitCount,
 		arg.ThreadID,
 		arg.BeforeSeq,
+		arg.StartSeq,
 		arg.ChatOnly,
 	)
 	if err != nil {
