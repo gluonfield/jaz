@@ -13,10 +13,23 @@ func snapshot() -> [[NSPasteboard.PasteboardType: Data]] {
         })
     }
 }
+let originalChange = board.changeCount
 let saved = snapshot()
+guard board.changeCount == originalChange else {
+    exit(1)
+}
+let expected = CommandLine.arguments.dropFirst().first
 print("saved")
 fflush(stdout)
 _ = readLine()
+let currentChange = board.changeCount
+guard currentChange != originalChange,
+      let expected,
+      board.string(forType: .string) == expected,
+      board.changeCount == currentChange else {
+    print("preserved")
+    exit(0)
+}
 let items = saved.map { values in
     let item = NSPasteboardItem()
     for (type, data) in values {

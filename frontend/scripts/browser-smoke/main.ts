@@ -25,6 +25,7 @@ let navigationRequests: { url: string; webContentsId: number }[] = []
 // visible windows (popups included). Input is injected; focus is emulated over CDP.
 if (process.platform === 'darwin') {
   app.setActivationPolicy('prohibited')
+  app.commandLine.appendSwitch('use-mock-keychain')
 }
 app.on('web-contents-created', (_event, contents) => {
   contents.on('did-start-navigation', ({ url, isMainFrame }) => {

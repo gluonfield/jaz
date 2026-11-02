@@ -7,6 +7,7 @@ import { keys } from '@/lib/query/keys'
 import type { FileReference } from '@shared/fileReader'
 
 export async function exerciseMarkdownDocuments() {
+  const size = { width: innerWidth, height: innerHeight }
   const path = '/workspace/reports/route-comparison.md'
   const content = '# Route comparison\n\n## Contents\n\n- [Résumé and costs](#résumé--costs)\n- [Next steps](#next-steps)\n- [More steps](#next-steps-1)\n\n' +
     'A short paragraph explaining the manufacturing options.\n\n'.repeat(12) +
@@ -84,5 +85,6 @@ export async function exerciseMarkdownDocuments() {
     root.unmount()
     host.remove()
     client.clear()
+    await window.smoke.resize(size.width, size.height)
   }
 }
