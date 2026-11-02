@@ -40,6 +40,10 @@ export function BotActivity({
     return <p role="alert" className="text-[13px] text-danger">Couldn’t load activity.</p>
   }
   const { owed, started, items } = activity.data
+  const taskGroups = [
+    { title: '', tasks: owed.filter((task) => task.status !== 'waiting_for_user') },
+    { title: 'Waiting for you', tasks: owed.filter((task) => task.status === 'waiting_for_user') },
+  ]
   const selected = owed.find((task) => task.id === shown)
   const rows = items.map(row)
   const days = groupByDay(rows, now)
@@ -53,15 +57,17 @@ export function BotActivity({
     <div className="flex flex-col gap-5">
       {owed.length ? <section aria-label="Tasks" className="flex flex-col gap-0.5">
         <h3 className="mb-1 text-[13px] font-semibold text-ink">Tasks <span className="ml-1 text-ink-3 tabular-nums">{owed.length}</span></h3>
-        {owed.map((task) => {
-          const state = taskStateLabel(task)
-          return (
-            <button key={task.id} type="button" onClick={() => setShown(task.id)} className="-mx-2 flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-lg px-2 text-left transition-colors duration-150 hover:bg-list-hover">
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{task.request}</span>
-              {state ? <span className="shrink-0 text-[11px] text-ink-3">{state}</span> : null}
-            </button>
-          )
-        })}
+        {taskGroups.map(({ title, tasks }) => tasks.length ? (
+          <div key={title} className="flex min-w-0 flex-col gap-0.5">
+            {title ? <h4 className="mt-3 mb-1 text-[11px] font-medium text-ink-3">{title} <span className="ml-1 tabular-nums">{tasks.length}</span></h4> : null}
+            {tasks.map((task) => (
+              <button key={task.id} type="button" onClick={() => setShown(task.id)} className="-mx-2 flex min-h-10 min-w-0 cursor-pointer flex-col justify-center rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-list-hover">
+                <span className="w-full text-[13px] leading-5 font-medium wrap-break-word text-ink">{task.request}</span>
+                {!title ? <span className="text-[11px] text-ink-3">{taskStateLabel(task)}</span> : null}
+              </button>
+            ))}
+          </div>
+        ) : null)}
       </section> : null}
       {days.map(([day, list]) => (
         <Group key={day} title={day}>
