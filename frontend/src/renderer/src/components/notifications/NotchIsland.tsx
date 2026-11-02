@@ -14,8 +14,7 @@ import { BotIcon } from '@/components/bots/BotAvatar'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 
 // The island is black like the camera housing in every theme, so its states
-// keep the dark theme's colours, which hold their contrast on black. A reply
-// reads quietly; the rest are earned.
+// keep the dark theme's colours, which hold their contrast on black.
 const TONE: Record<AlertState, string> = {
   done: 'oklch(0.74 0.15 150)',
   reply: 'rgb(255 255 255 / 0.7)',
@@ -121,7 +120,7 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
         {!ears && (
           <div ref={measure} className="absolute left-1/2 grid -translate-x-1/2 gap-2.5 px-[18px] pt-2.5 pb-4" style={{ top: band, width }}>
             {rows.map((row, index) => (
-              <Row key={row.key} row={index || top.name ? row : { ...row, title: '' }} compact={rows.length > 1} command={command} />
+              <Row key={row.key} row={index || row.name ? row : { ...row, title: '' }} compact={rows.length > 1} command={command} />
             ))}
             {more > 0 && (
               <button type="button" onClick={() => command({ type: 'more' })} className="justify-self-start text-[12.5px] text-white/60 hover:text-white">
