@@ -27,17 +27,18 @@ type MessagesHandler struct {
 
 type messagesResponse struct {
 	*acpStateResponse
-	Session          sessionview.Response           `json:"session"`
-	Messages         []storage.Message              `json:"messages"`
-	Events           []sessionview.EventResponse    `json:"events"`
-	HasEarlier       bool                           `json:"has_earlier"`
-	BeforeMessageSeq int64                          `json:"before_message_seq,omitempty"`
-	BeforeEventSeq   int64                          `json:"before_event_seq,omitempty"`
-	HistoryRevision  int64                          `json:"history_revision"`
-	LatestEventSeq   int64                          `json:"latest_event_seq"`
-	ACPMeta          map[string]transcript.Metadata `json:"acp_meta,omitempty"`
-	ACPChildren      []acp.Job                      `json:"acp_children,omitempty"`
-	ChildPermissions []sessionevents.ACPPermission  `json:"acp_child_permissions,omitempty"`
+	Session               sessionview.Response           `json:"session"`
+	Messages              []storage.Message              `json:"messages"`
+	Events                []sessionview.EventResponse    `json:"events"`
+	HasEarlier            bool                           `json:"has_earlier"`
+	BeforeMessageSeq      int64                          `json:"before_message_seq,omitempty"`
+	BeforeEventSeq        int64                          `json:"before_event_seq,omitempty"`
+	HistoryRevision       int64                          `json:"history_revision"`
+	LatestEventSeq        int64                          `json:"latest_event_seq"`
+	HistoryTargetEventSeq int64                          `json:"history_target_event_seq,omitempty"`
+	ACPMeta               map[string]transcript.Metadata `json:"acp_meta,omitempty"`
+	ACPChildren           []acp.Job                      `json:"acp_children,omitempty"`
+	ChildPermissions      []sessionevents.ACPPermission  `json:"acp_child_permissions,omitempty"`
 }
 
 type acpStateResponse struct {
@@ -83,7 +84,8 @@ func (h *MessagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Events: sessionview.Events(page.Events), HasEarlier: page.HasEarlier,
 		BeforeMessageSeq: page.BeforeMessageSeq, BeforeEventSeq: page.BeforeEventSeq,
 		HistoryRevision: page.HistoryRevision, LatestEventSeq: page.LatestEventSeq,
-		ACPMeta: view.Meta, ACPChildren: view.Children, ChildPermissions: view.ChildPermissions,
+		HistoryTargetEventSeq: page.HistoryTargetEventSeq,
+		ACPMeta:               view.Meta, ACPChildren: view.Children, ChildPermissions: view.ChildPermissions,
 	}
 	if view.Snapshot != nil {
 		response.acpStateResponse = stateResponse(*view.Snapshot)

@@ -116,6 +116,9 @@ func TestBotChatPageBudgetCountsConversationEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if request.HistoryRevision == 0 && page.HistoryTargetEventSeq != 7 {
+			t.Fatal("initial conversation target did not name the oldest of the newest14 replies")
+		}
 		if len(page.Events) == 0 || len(page.Events) > transcriptEventPageRows || page.LatestEventSeq != 620 {
 			t.Fatal("conversation page lost its row bound or replay cursor")
 		}
@@ -194,5 +197,28 @@ func TestBotChatByteBudgetAdvancesThroughAuxiliaryHistory(t *testing.T) {
 	}
 	if len(seen) != len(events) || !seen[1] {
 		t.Fatal("byte-limited history dropped records")
+	}
+}
+
+func TestBotChatWithoutConversationHasNoHydrationTarget(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	bot, err := store.CreateSession(storage.CreateSession{SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []sessionevents.Event
+	for i := range 1000 {
+		events = append(events, sessionevents.Event{Type: "acp", ACP: &sessionevents.ACPEvent{ID: fmt.Sprint(i), ParentID: bot.ID, State: "idle"}})
+	}
+	if err := store.AppendSessionEvents(bot.ID, events...); err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.LoadTranscriptPage(t.Context(), bot.ID, storage.TranscriptPageRequest{Turns: 14, ChatOnly: true})
+	if err != nil || page.HistoryTargetEventSeq != 0 || !page.HasEarlier || len(page.Events) != transcriptEventPageRows {
+		t.Fatalf("metadata-only initial page = target%d rows%d earlier%v, %v", page.HistoryTargetEventSeq, len(page.Events), page.HasEarlier, err)
 	}
 }

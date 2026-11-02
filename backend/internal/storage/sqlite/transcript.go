@@ -50,6 +50,14 @@ func (s *Store) LoadTranscriptPage(ctx context.Context, id string, request stora
 	messages := messagedb.New(tx)
 	page := storage.TranscriptPage{}
 	events := eventdb.New(tx)
+	if request.ChatOnly && request.HistoryRevision == 0 {
+		page.HistoryTargetEventSeq, err = events.BotChatPageTarget(ctx, eventdb.BotChatPageTargetParams{
+			ThreadID: id, Turns: int64(request.Turns),
+		})
+		if err != nil {
+			return storage.TranscriptPage{}, err
+		}
+	}
 	page.HistoryRevision, err = threaddb.New(tx).GetTranscriptRevision(ctx, id)
 	if err != nil {
 		return storage.TranscriptPage{}, err

@@ -54,6 +54,29 @@ func (q *Queries) BotChatPageStart(ctx context.Context, arg BotChatPageStartPara
 	return seq, err
 }
 
+const botChatPageTarget = `-- name: BotChatPageTarget :one
+SELECT CAST(COALESCE(MIN(seq), 0) AS INTEGER) AS seq
+FROM (
+  SELECT seq FROM session_events
+  WHERE thread_id = ?1
+    AND (type IN ('room_message', 'mcp_app', 'artifact', 'permission_request', 'loop_created', 'agent_switch')
+      OR (type = 'bot_activity' AND json_extract(CASE WHEN json_valid(content) THEN content END, '$.kind') = 'unreachable'))
+  ORDER BY seq DESC LIMIT ?2
+)
+`
+
+type BotChatPageTargetParams struct {
+	ThreadID string `json:"thread_id"`
+	Turns    int64  `json:"turns"`
+}
+
+func (q *Queries) BotChatPageTarget(ctx context.Context, arg BotChatPageTargetParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, botChatPageTarget, arg.ThreadID, arg.Turns)
+	var seq int64
+	err := row.Scan(&seq)
+	return seq, err
+}
+
 const completeSessionEventCompaction = `-- name: CompleteSessionEventCompaction :execrows
 UPDATE threads
 SET event_compaction_version = 1

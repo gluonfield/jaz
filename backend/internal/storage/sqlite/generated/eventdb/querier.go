@@ -13,6 +13,7 @@ type Querier interface {
 	// Millisecond ties are ambiguous; private or unknown provenance wins.
 	ArtifactChatVisibility(ctx context.Context, arg ArtifactChatVisibilityParams) (int64, error)
 	BotChatPageStart(ctx context.Context, arg BotChatPageStartParams) (int64, error)
+	BotChatPageTarget(ctx context.Context, arg BotChatPageTargetParams) (int64, error)
 	CompleteSessionEventCompaction(ctx context.Context, arg CompleteSessionEventCompactionParams) (int64, error)
 	DeleteSessionEvent(ctx context.Context, arg DeleteSessionEventParams) error
 	DeleteSessionEventByCoalesceKey(ctx context.Context, arg DeleteSessionEventByCoalesceKeyParams) (int64, error)

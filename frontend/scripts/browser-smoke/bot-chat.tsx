@@ -14,6 +14,7 @@ import type { Bot, SessionEvent, SessionMessages } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { TitlebarProvider } from '@/lib/titlebar'
 import { VoiceProvider } from '@/lib/voice/VoiceProvider'
+import { exerciseHistoryHydration } from './history-hydration'
 
 export async function exerciseBotChat() {
   const backend = await window.smoke.backend()
@@ -106,6 +107,7 @@ export async function exerciseBotChat() {
     }
     if (strictSetups !== 2 || strictCleanups !== 1) throw new Error('Bot chat fixture is not running development StrictMode')
     const initial = await painted('Bot response 19', 'bot-chat-initial')
+    const initialReads = await fetch(backend + '/exercise-bot-chat-reads').then((response) => response.json()) as number[]
     if (initial.paint.paintedAt < openedAt) throw new Error('Initial response used a stale painted frame')
     if (element.textContent?.includes('Private worker coordination')) throw new Error('Bot chat: internal authorship leaked')
     const history = bubbles()
@@ -126,10 +128,10 @@ export async function exerciseBotChat() {
     const readerAnchorDelta = anchor.getBoundingClientRect().bottom - anchorBottom
     viewport().scrollTop = 0
     await until('earlier history never started', () => Boolean(element.querySelector('[aria-busy="true"]')))
-    const first = [...element.querySelectorAll('p')].find((node) => node.textContent?.startsWith('Bot response'))!
+    const first = [...element.querySelectorAll<HTMLElement>('[class~="group/message"] p')].find((node) => node.getBoundingClientRect().bottom > viewport().getBoundingClientRect().top)!
     const bottom = first.getBoundingClientRect().bottom
     await fetch(backend + '/exercise-bot-chat-release', { method: 'POST' })
-    await until('earlier history did not load', () => page()!.messages.length === 20)
+    await until('earlier history did not load', () => !page()!.has_earlier)
     await sleep(100)
     if (!first.isConnected || Math.abs(first.getBoundingClientRect().bottom - bottom) > 1) {
       throw new Error('Bot chat: loading earlier history moved its anchor')
@@ -143,7 +145,8 @@ export async function exerciseBotChat() {
         throw new Error('Bot chat: history was duplicated or reclassified: ' + text)
       }
     }
-    const earlierAnchorDelta = first.getBoundingClientRect().bottom - bottom
+    const earlierAnchorAfter = first.getBoundingClientRect().bottom
+    const earlierAnchorDelta = earlierAnchorAfter - bottom
     flushSync(() => root.render(null))
     const reopenedAt = Date.now()
     mount()
@@ -151,11 +154,12 @@ export async function exerciseBotChat() {
     await sleep(450)
     const warm = await painted('New response while reading history', 'bot-chat-warm')
     if (warm.paint.frames <= live.paint.frames || warm.paint.paintedAt < reopenedAt) throw new Error('Warm remount used a stale painted frame')
-    console.warn(JSON.stringify({ botChatPaint: { strictSetups, strictCleanups, initial, live: { ...live, deliveredSeq: liveSeq.seq }, warm, readerScrollDelta, readerAnchorDelta, earlierAnchorDelta, historyMessages: page()!.messages.length, historyReplies: page()!.events.filter((event) => event.room_message).length, liveReplies: client.getQueryData<SessionEvent[]>(keys.sessionEvents(id))?.filter((event) => event.room_message).length } }))
+    console.warn(JSON.stringify({ botChatPaint: { strictSetups, strictCleanups, initialReads, initial, live: { ...live, deliveredSeq: liveSeq.seq }, warm, readerScrollDelta, readerAnchorDelta, earlierAnchorDelta, earlierAnchorBefore: bottom, earlierAnchorAfter, historyMessages: page()!.messages.length, historyReplies: page()!.events.filter((event) => event.room_message).length, liveReplies: client.getQueryData<SessionEvent[]>(keys.sessionEvents(id))?.filter((event) => event.room_message).length } }))
   } finally {
     root.unmount()
     client.clear()
     element.remove()
     setApiBaseUrl(previousBase)
   }
+  await exerciseHistoryHydration()
 }

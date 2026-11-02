@@ -133,6 +133,16 @@ WHERE thread_id = sqlc.arg(thread_id)
 ORDER BY seq
 LIMIT sqlc.arg(limit_count);
 
+-- name: BotChatPageTarget :one
+SELECT CAST(COALESCE(MIN(seq), 0) AS INTEGER) AS seq
+FROM (
+  SELECT seq FROM session_events
+  WHERE thread_id = sqlc.arg(thread_id)
+    AND (type IN ('room_message', 'mcp_app', 'artifact', 'permission_request', 'loop_created', 'agent_switch')
+      OR (type = 'bot_activity' AND json_extract(CASE WHEN json_valid(content) THEN content END, '$.kind') = 'unreachable'))
+  ORDER BY seq DESC LIMIT sqlc.arg(turns)
+);
+
 -- name: BotChatPageStart :one
 SELECT CAST(COALESCE((
   SELECT seq FROM session_events

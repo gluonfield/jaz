@@ -73,8 +73,14 @@ func TestBotChatPageBoundsMetadataReads(t *testing.T) {
 			if len(measured.headerPlans) != 1 || !strings.Contains(measured.headerPlans[0], "USING INDEX idx_session_events_chat ") {
 				t.Fatalf("size headers scanned unindexed history: %v", measured.headerPlans)
 			}
+			if len(measured.targetPlans) != 1 || !strings.Contains(measured.targetPlans[0], "USING INDEX idx_session_events_chat_entries ") {
+				t.Fatalf("initial target scanned unindexed history: %v", measured.targetPlans)
+			}
 			if len(measured.boundaryPlans) != 1 || !strings.Contains(measured.boundaryPlans[0], "USING INDEX idx_session_events_chat_entries ") {
 				t.Fatalf("conversation boundary scanned unindexed history: %v", measured.boundaryPlans)
+			}
+			if page.HistoryTargetEventSeq != 1 {
+				t.Fatal("initial conversation target did not find the existing reply")
 			}
 			if !page.HasEarlier || page.BeforeEventSeq != int64(count+2-len(page.Events)) || page.LatestEventSeq != int64(count+1) {
 				t.Fatal("bounded metadata page lost its continuation")
@@ -88,6 +94,7 @@ type metadataReadConnector struct {
 	headerRows    []*int
 	headerPlans   []string
 	boundaryPlans []string
+	targetPlans   []string
 }
 
 func (c *metadataReadConnector) Driver() driver.Driver { return &modernsqlite.Driver{} }
@@ -131,6 +138,9 @@ func (c *metadataReadConn) QueryContext(ctx context.Context, query string, args 
 		return nil, err
 	}
 	columns := rows.Columns()
+	if len(columns) == 1 && columns[0] == "seq" && len(args) == 2 {
+		c.reads.targetPlans = append(c.reads.targetPlans, strings.Join(details, "\n"))
+	}
 	if len(columns) == 1 && columns[0] == "seq" && len(args) == 3 {
 		c.reads.boundaryPlans = append(c.reads.boundaryPlans, strings.Join(details, "\n"))
 	}

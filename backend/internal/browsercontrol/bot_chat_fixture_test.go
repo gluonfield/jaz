@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func mountBotChatFixture(t *testing.T, mux *http.ServeMux, store *sqlitestore.St
 		)
 		events = append(events, sessionevents.Event{Type: "room_message", At: when.Add(time.Minute), RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Name: "Paint Bot", Text: fmt.Sprintf("Bot response %02d", i)}})
 	}
-	for i := range 40 {
+	for i := range 300 {
 		events = append(events,
 			sessionevents.Event{Type: "acp", At: at.Add(21 * time.Hour), ACP: &sessionevents.ACPEvent{ID: fmt.Sprint("child-", i), ParentID: bot.ID, State: "idle"}},
 			sessionevents.Event{Type: "bot_activity", At: at.Add(21 * time.Hour), BotActivity: &sessionevents.BotActivityEvent{Kind: "message_received", Label: "Worker"}},
@@ -51,11 +52,17 @@ func mountBotChatFixture(t *testing.T, mux *http.ServeMux, store *sqlitestore.St
 	if err := store.AppendSessionEvents(bot.ID, events...); err != nil {
 		t.Fatal(err)
 	}
+	var mu sync.Mutex
+	var reads []int64
 	handler := sessionsapi.NewMessagesHandler(transcript.NewService(store, botChatLive{}))
 	earlier := make(chan struct{})
 	var release sync.Once
 	mux.HandleFunc("GET /v1/sessions/{session}/messages", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Has("before_event_seq") {
+		before, _ := strconv.ParseInt(r.URL.Query().Get("before_event_seq"), 10, 64)
+		mu.Lock()
+		reads = append(reads, before)
+		mu.Unlock()
+		if before > 0 && before <= 7 {
 			select {
 			case <-earlier:
 			case <-r.Context().Done():
@@ -63,6 +70,11 @@ func mountBotChatFixture(t *testing.T, mux *http.ServeMux, store *sqlitestore.St
 			}
 		}
 		handler.ServeHTTP(w, r)
+	})
+	mux.HandleFunc("GET /exercise-bot-chat-reads", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		json.NewEncoder(w).Encode(reads)
 	})
 	mux.HandleFunc("POST /exercise-bot-chat-release", func(w http.ResponseWriter, r *http.Request) {
 		release.Do(func() { close(earlier) })
@@ -77,7 +89,6 @@ func mountBotChatFixture(t *testing.T, mux *http.ServeMux, store *sqlitestore.St
 	mux.HandleFunc("GET /v1/auth/check", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "{}")
 	})
-	var mu sync.Mutex
 	streams := make(map[chan sessionevents.Event]bool)
 	mux.HandleFunc("GET /v1/sessions/{session}/events", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { getSessionMessagesPage } from '@/lib/api/sessions'
 import { ApiError } from '@/lib/api/client'
 import type { SessionMessages } from '@/lib/api/types'
@@ -10,13 +10,14 @@ function fetchCompleteHistoryBatch(
   sessionId: string,
   current: SessionMessages,
   signal: AbortSignal,
+  turns = 24,
 ): Promise<SessionMessages> {
   return loadCompleteHistoryBatch(current, (cursor) =>
     getSessionMessagesPage(sessionId, {
       beforeMessageSeq: cursor.before_message_seq,
       beforeEventSeq: cursor.before_event_seq,
       historyRevision: cursor.history_revision,
-      turns: 24,
+      turns,
     }, signal),
   )
 }
@@ -57,7 +58,7 @@ export function useSessionHistory(sessionId: string, onLoadError: (message: stri
     }
   }, [sessionId])
 
-  const loadEarlierHistory = useCallback(async (): Promise<boolean> => {
+  const loadEarlierHistory = useCallback(async (turns = 24): Promise<boolean> => {
     let current = queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))
     if (!current?.has_earlier || request.current) return false
     const controller = new AbortController()
@@ -66,7 +67,7 @@ export function useSessionHistory(sessionId: string, onLoadError: (message: stri
     try {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          const batch = await fetchCompleteHistoryBatch(sessionId, current, controller.signal)
+          const batch = await fetchCompleteHistoryBatch(sessionId, current, controller.signal, turns)
           const cached = queryClient.getQueryData<SessionMessages>(keys.sessionMessages(sessionId))
           if (cached?.history_revision !== batch.history_revision) {
             if (cached?.has_earlier && attempt === 0) {
@@ -101,9 +102,15 @@ export function useSessionHistory(sessionId: string, onLoadError: (message: stri
     }
   }, [onLoadError, queryClient, refetch, sessionId])
 
+  const loadInitialHistory = useEffectEvent(() => loadEarlierHistory(14))
+  useEffect(() => {
+    const target = query.data?.history_target_event_seq
+    if (target && (query.data?.before_event_seq ?? 0) > target) void loadInitialHistory()
+  }, [query.data])
+
   const hasEarlier = query.data?.has_earlier ?? false
   const paging = useMemo<HistoryPaging>(
-    () => ({ hasEarlier, loading: loadingEarlierHistory, loadEarlier: loadEarlierHistory }),
+    () => ({ hasEarlier, loading: loadingEarlierHistory, loadEarlier: () => loadEarlierHistory() }),
     [hasEarlier, loadingEarlierHistory, loadEarlierHistory],
   )
   return { ...query, paging }
