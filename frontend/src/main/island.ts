@@ -9,6 +9,7 @@ import {
   ISLAND_EAR_WIDTH,
   ISLAND_HEIGHT,
   ISLAND_HOLD_MS,
+  ISLAND_RETRACT_MS,
   type Alert,
   type IslandCommand,
   type IslandState,
@@ -19,7 +20,6 @@ import { announce, notchStatus } from './notchHelper'
 type Placement = { display: Display; notch: { x: number; width: number; height: number } | null; ears: boolean }
 
 const ROWS = 3
-const RETRACT_MS = 260
 
 // The completion island beside the notch: one non-activating panel that
 // merges arrivals, holds for ten seconds (paused while hovered) and keeps
@@ -61,7 +61,7 @@ export function createIsland(open: (path: string) => void) {
       if (rows.length) return
       window?.hide()
       placement = null
-    }, RETRACT_MS)
+    }, ISLAND_RETRACT_MS)
   }
 
   function remove(sessionId: string): void {

@@ -136,3 +136,5 @@ export const ISLAND_EAR_WIDTH = 140
 export const ISLAND_CAPSULE_WIDTH = 420
 export const ISLAND_HEIGHT = 280
 export const ISLAND_HOLD_MS = 10_000
+// How long the island takes to close; its window hides once it has.
+export const ISLAND_RETRACT_MS = 360
