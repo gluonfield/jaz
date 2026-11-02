@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
+	"github.com/wins/jaz/backend/internal/app"
 	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/coordinator"
-	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
 
-func TestCodexConsentReachesLaunchAndRetainedBotRefresh(t *testing.T) {
+func TestCodexBotPoliciesReachLaunchAndRetainedRefresh(t *testing.T) {
 	for _, source := range []string{"", storage.SourceBot} {
 		t.Run(source, func(t *testing.T) {
 			root := t.TempDir()
@@ -27,18 +27,17 @@ func TestCodexConsentReachesLaunchAndRetainedBotRefresh(t *testing.T) {
 			t.Cleanup(func() { _ = store.Close() })
 			requestLog := filepath.Join(root, "requests.jsonl")
 			capture := filepath.Join(root, "launch-prompt")
+			wiring, err := app.NewACPConfig(app.Config{}, store, "", coordinator.NewBuilder(root, "", "", nil), nil, nil, nil, nil, nil, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
 			newManager := func() *acp.Manager {
 				return newFakeNamedAgentManagerWithOptions(t, store, root, acp.AgentCodex, map[string]string{
 					"JAZ_FAKE_ACP_RESUME": "1", "JAZ_FAKE_ACP_REQUEST_LOG": requestLog, "JAZ_FAKE_ACP_CODEX_PROMPT_CAPTURE": capture,
 				}, "", "", func(cfg *acp.Config) {
-					cfg.SystemPrompt = coordinator.NewBuilder(root, "", "", nil)
-					cfg.TurnNote = bots.TurnNote(store)
-					cfg.ResumePrompt = func(session storage.Session) (promptmodule.Modules, error) {
-						if session.SourceType == storage.SourceBot {
-							return bots.Prompt(store, session)
-						}
-						return nil, nil
-					}
+					cfg.SystemPrompt = wiring.SystemPrompt
+					cfg.TurnNote = wiring.TurnNote
+					cfg.ResumePrompt = wiring.ResumePrompt
 				})
 			}
 			first := newManager()
@@ -64,12 +63,13 @@ func TestCodexConsentReachesLaunchAndRetainedBotRefresh(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertActionConsent(t, string(launch))
+			assertBotPlanningPolicy(t, string(launch), source == storage.SourceBot)
 			first.Close()
 			session, err = store.LoadSession(session.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
-			session.PromptDigest = "pre-consent-policy"
+			session.PromptDigest = "pre-planning-policy"
 			if err := store.SaveSession(session); err != nil {
 				t.Fatal(err)
 			}
@@ -101,6 +101,7 @@ func TestCodexConsentReachesLaunchAndRetainedBotRefresh(t *testing.T) {
 			} else if prompts[1] != "Continue the approved work." {
 				t.Fatal("ordinary Codex resume injected an unsupported prompt refresh")
 			}
+			assertBotPlanningPolicy(t, prompts[1], source == storage.SourceBot)
 			records, err := store.LoadMessageRecords(session.ID)
 			if err != nil {
 				t.Fatal(err)
@@ -110,6 +111,24 @@ func TestCodexConsentReachesLaunchAndRetainedBotRefresh(t *testing.T) {
 			}
 			t.Logf("source=%q launch_bytes=%d resumed=true system_prompt_reattached=false bot_policy_refreshed=%v user_authorization_preserved=true", source, len(launch), source == storage.SourceBot)
 		})
+	}
+}
+
+func assertBotPlanningPolicy(t *testing.T, prompt string, isBot bool) {
+	t.Helper()
+	for _, rule := range []string{
+		"quick coordination plans",
+		"substantive engineering planning and substantive product design",
+		"Delegate that work even when the requested deliverable is a plan, visual or prototype.",
+		"Artifact guidance does not move that work into this chat.",
+	} {
+		want := 0
+		if isBot {
+			want = 1
+		}
+		if strings.Count(prompt, rule) != want {
+			t.Fatalf("bot=%v provider prompt must carry planning rule %d times: %q", isBot, want, rule)
+		}
 	}
 }
 

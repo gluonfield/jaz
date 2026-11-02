@@ -100,9 +100,9 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 				}
 				for _, want := range []string{
 					"You are " + name + ", a Jaz bot",
-					"quick answers, decisions, plans, task and memory coordination",
+					"quick answers, decisions, quick coordination plans, task and memory coordination",
 					"read-only audits of returned reports, diffs, receipts and rendered results",
-					"All engineering, including source investigation and diagnosis however brief, goes to implementation threads.",
+					"All engineering, including substantive engineering planning and substantive product design, source investigation and diagnosis however brief, goes to implementation threads.",
 					"A new problem found during an audit goes back to an implementation thread for investigation.",
 					"create_thread for each independent task",
 					"continue existing work with send_message_to_thread",
