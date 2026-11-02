@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -184,14 +183,16 @@ func TestAMessageAfterTheWorkFinishedOwesTheParentTheAgentsReport(t *testing.T) 
 func TestWorkThatFinishesDuringAnotherTurnIsOwedByThatTurn(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, workState())
-	parent, thread := startBackgroundWork(t, jaz, "start background work suite")
-	// A parent that Jaz's own agent runs hears through Done.
-	var done atomic.Int32
+	// A parent that Jaz's own agent runs hears through Done after each turn
+	// that owes it: the one that started the work and the one that reports it.
+	var mu sync.Mutex
+	var done []acp.Job
 	jaz.manager.Done = func(_ context.Context, job acp.Job) {
-		if job.ID == thread {
-			done.Add(1)
-		}
+		mu.Lock()
+		defer mu.Unlock()
+		done = append(done, job)
 	}
+	parent, thread := startBackgroundWork(t, jaz, "start background work suite")
 	// The user's turn runs when the work finishes; Claude Code reports the
 	// work in that turn.
 	jaz.chat(thread)
@@ -201,7 +202,16 @@ func TestWorkThatFinishesDuringAnotherTurnIsOwedByThatTurn(t *testing.T) {
 	if result := jaz.twoResults(parent, thread)[1]; !strings.Contains(result, "suite finished: all green.") {
 		t.Fatalf("result = %q; want the turn that reported the work", result)
 	}
-	jaz.eventually("Done for the turn", func() bool { return done.Load() == 1 })
+	owed := func() []acp.Job {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.DeleteFunc(slices.Clone(done), func(job acp.Job) bool { return job.ID != thread })
+	}
+	jaz.eventually("Done for both turns", func() bool { return len(owed()) >= 2 })
+	jaz.idle(thread)
+	if turns := owed(); len(turns) != 2 || !strings.Contains(turns[1].Result, "suite finished: all green.") {
+		t.Fatalf("Done = %+v; want the starting turn and then the turn that reported the work", turns)
+	}
 }
 
 // askers starts a lead thread that is busy until the test lets it go on with

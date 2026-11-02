@@ -77,10 +77,13 @@ globalThis.EventSource = class {
     assert.equal(new URL(url).origin, origin, 'SSE must stay on the fixture server')
     queueMicrotask(async () => {
       try {
-        const response = await nativeFetch(url, { signal: this.abort.signal })
+        // Inflate as EventSource does, yielding each event the server flushes;
+        // Bun 1.3's fetch decoding holds flushed gzip back until more arrives.
+        const response = await nativeFetch(url, { signal: this.abort.signal, decompress: false })
         this.onopen?.()
+        const body = response.headers.get('content-encoding') === 'gzip' ? response.body.pipeThrough(new DecompressionStream('gzip')) : response.body
         let buffer = ''
-        for await (const chunk of response.body) {
+        for await (const chunk of body) {
           buffer += new TextDecoder().decode(chunk)
           let index
           while ((index = buffer.indexOf('\n\n')) >= 0) {
