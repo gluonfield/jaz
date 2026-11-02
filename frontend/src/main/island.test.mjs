@@ -80,7 +80,7 @@ if (process.env.JAZ_ISLAND_TEST_CHILD === '1') {
       return shown
     }
     expect(await shows(ready)).toBe(true)
-    expect(windows[0].options).toMatchObject({ focusable: false, type: 'panel' })
+    expect(windows[0].options).toMatchObject({ focusable: false, type: 'panel', roundedCorners: false })
     expect({ shown: windows[0].shown, focused: windows[0].focused, bounds: windows[0].bounds }).toEqual({
       shown: 1, focused: 0, bounds: { x: 778, y: 0, width: 500, height: ISLAND_HEIGHT },
     })

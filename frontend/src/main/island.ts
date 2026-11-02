@@ -86,6 +86,9 @@ export function createIsland(open: (path: string) => void) {
       maximizable: false,
       skipTaskbar: true,
       hasShadow: false,
+      // The island's top edge is the screen's: macOS would round a frameless
+      // window's corners, clipping the island's square top and its flares.
+      roundedCorners: false,
       enableLargerThanScreen: true,
       backgroundColor: '#00000000',
       type: 'panel',

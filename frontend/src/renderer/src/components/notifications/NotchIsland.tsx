@@ -13,19 +13,14 @@ import {
 import { BotIcon } from '@/components/bots/BotAvatar'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 
-// The island is black like the camera housing in every theme, so its marks
-// keep the dark theme's colours, which hold their contrast on black.
+// The island is black like the camera housing in every theme, so its states
+// keep the dark theme's colours, which hold their contrast on black. A reply
+// reads quietly; the rest are earned.
 const TONE: Record<AlertState, string> = {
   done: 'oklch(0.74 0.15 150)',
-  reply: 'oklch(0.72 0.14 var(--hue))',
+  reply: 'rgb(255 255 255 / 0.7)',
   needs_you: 'oklch(0.74 0.14 55)',
   stopped: 'oklch(0.7 0.18 25)',
-}
-const GLYPH: Record<AlertState, string> = {
-  done: 'M5.2 8.3 7.1 10.2 10.9 6',
-  reply: '',
-  needs_you: 'M6.3 6.4a1.8 1.8 0 1 1 2.5 1.7c-.5.2-.8.6-.8 1.1v.3M8 11.4h0',
-  stopped: 'M8 4.8v3.9M8 11.2h0',
 }
 // The concave curve where the island leaves the top edge, and the inset that
 // keeps the capsule's shadow inside the window.
@@ -48,8 +43,9 @@ export function NotchIsland() {
 }
 
 // Who and what state sit in the ears beside the camera; what happened drops
-// beneath once the ears have grown. Without a notch the same shape floats as
-// a capsule.
+// beneath once the ears have grown. A bot is named beside its face; a plain
+// thread, which only Jaz runs, puts its title beside the Jaz icon instead.
+// Without a notch the same shape floats as a capsule.
 function Island({ state: { rows, more, ears, notch }, open }: { state: IslandState; open: boolean }) {
   const { command } = window.jaz!.island
   const reduced = useReducedEffectsMotion()
@@ -66,7 +62,7 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
   const label = alertLabel(top)
   const band = notch?.height ?? 32
   const gap = notch?.width ?? 0
-  const width = ears ? gap + 88 : (notch ? gap + 2 * ISLAND_EAR_WIDTH : ISLAND_CAPSULE_WIDTH) - 2 * FLARE
+  const width = (notch ? gap + 2 * ISLAND_EAR_WIDTH : ISLAND_CAPSULE_WIDTH) - 2 * FLARE
   const closed = notch ? gap - 2 * FLARE : band
   const dropped = !ears && (reduced || (open && grown))
   const radius = dropped ? 22 : notch ? 10 : band / 2
@@ -104,16 +100,11 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
         >
           <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden pr-2 pl-3">
             <Identity row={top} size={20} live completion={grown && top.state === 'done' ? top.key : undefined} />
-            {!ears && <span className="truncate font-medium">{sender}</span>}
+            {!ears && <span className="truncate font-medium">{top.name || top.title}</span>}
           </span>
           <span className="shrink-0" style={{ width: gap }} />
-          <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-hidden pr-3 pl-2 group-hover:invisible">
-            <Mark state={top.state} />
-            {!ears && (
-              <span className="truncate font-semibold text-white/70" style={top.state === 'reply' ? undefined : { color: TONE[top.state] }}>
-                {label}
-              </span>
-            )}
+          <span className="flex min-w-0 flex-1 items-center justify-end overflow-hidden pr-3 pl-2 group-hover:invisible">
+            <State row={top} />
           </span>
         </button>
         <button
@@ -129,8 +120,8 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
         </button>
         {!ears && (
           <div ref={measure} className="absolute left-1/2 grid -translate-x-1/2 gap-2.5 px-[18px] pt-2.5 pb-4" style={{ top: band, width }}>
-            {rows.map((row) => (
-              <Row key={row.key} row={row} compact={rows.length > 1} command={command} />
+            {rows.map((row, index) => (
+              <Row key={row.key} row={index || top.name ? row : { ...row, title: '' }} compact={rows.length > 1} command={command} />
             ))}
             {more > 0 && (
               <button type="button" onClick={() => command({ type: 'more' })} className="justify-self-start text-[12.5px] text-white/60 hover:text-white">
@@ -161,7 +152,7 @@ function Row({ row, compact, command }: { row: Alert; compact: boolean; command:
             {row.body}
           </span>
         </span>
-        {compact && row.state !== 'needs_you' && <Mark state={row.state} />}
+        {compact && row.state !== 'needs_you' && <State row={row} />}
       </button>
       {row.state === 'needs_you' && (
         <span className={`flex gap-2 ${compact ? '' : 'basis-full justify-end'}`}>
@@ -188,11 +179,10 @@ function Identity({ row, size, live, completion }: { row: Alert; size: number; l
   return <BotIcon avatars={row.avatars} size={size} mood={row.state === 'stopped' ? 'failed' : undefined} live={live} completion={completion} />
 }
 
-function Mark({ state }: { state: AlertState }) {
+function State({ row }: { row: Alert }) {
   return (
-    <svg aria-hidden viewBox="0 0 16 16" className="size-4 shrink-0">
-      <circle cx="8" cy="8" r={GLYPH[state] ? 8 : 4} style={{ fill: TONE[state] }} />
-      <path d={GLYPH[state]} fill="none" stroke="#111" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <span className="truncate text-[12px] leading-5 font-semibold" style={{ color: TONE[row.state] }}>
+      {alertLabel(row)}
+    </span>
   )
 }
