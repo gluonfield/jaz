@@ -166,7 +166,6 @@ func loadTranscriptEventRows(
 	if beforeSeq == 0 {
 		beforeSeq = math.MaxInt64
 	}
-	limit := int64(transcriptEventPageRows + 1)
 	startSeq := int64(0)
 	if request.ChatOnly {
 		var err error
@@ -176,17 +175,16 @@ func loadTranscriptEventRows(
 		if err != nil {
 			return nil, false, err
 		}
-		limit = -1
 	}
 	sizes, err := events.ListSessionEventPageSizes(ctx, eventdb.ListSessionEventPageSizesParams{
-		ThreadID: id, BeforeSeq: beforeSeq, StartSeq: startSeq, LimitCount: limit, ChatOnly: request.ChatOnly,
+		ThreadID: id, BeforeSeq: beforeSeq, StartSeq: startSeq, LimitCount: int64(transcriptEventPageRows + 1), ChatOnly: request.ChatOnly,
 	})
 	if err != nil {
 		return nil, false, err
 	}
 	selected := 0
 	selectedBytes := int64(0)
-	for selected < len(sizes) && (request.ChatOnly || selected < transcriptEventPageRows) {
+	for selected < len(sizes) && selected < transcriptEventPageRows {
 		if sizes[selected].Bytes > transcriptEventPageBytes {
 			return nil, false, fmt.Errorf("session event %d is %d bytes; limit is %d", sizes[selected].Seq, sizes[selected].Bytes, transcriptEventPageBytes)
 		}

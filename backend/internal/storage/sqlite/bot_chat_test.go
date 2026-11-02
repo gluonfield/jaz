@@ -3,6 +3,7 @@ package sqlite
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -104,23 +105,36 @@ func TestBotChatPageBudgetCountsConversationEvents(t *testing.T) {
 	if err := store.AppendSessionEvents(bot.ID, events...); err != nil {
 		t.Fatal(err)
 	}
-	request := storage.TranscriptPageRequest{Turns: 14, ChatOnly: true}
-	page, err := store.LoadTranscriptPage(t.Context(), bot.ID, request)
+	stored, err := store.LoadSessionEvents(bot.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Events) != 614 || page.Events[0].Seq != 7 || !page.HasEarlier || page.BeforeEventSeq != 7 || page.LatestEventSeq != 620 {
-		t.Fatalf("metadata displaced conversation: events=%d first=%d earlier=%v cursor=%d latest=%d", len(page.Events), page.Events[0].Seq, page.HasEarlier, page.BeforeEventSeq, page.LatestEventSeq)
+	request := storage.TranscriptPageRequest{Turns: 14, ChatOnly: true}
+	var merged []sessionevents.Event
+	for {
+		page, err := store.LoadTranscriptPage(t.Context(), bot.ID, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Events) == 0 || len(page.Events) > transcriptEventPageRows || page.LatestEventSeq != 620 {
+			t.Fatal("conversation page lost its row bound or replay cursor")
+		}
+		merged = append(page.Events, merged...)
+		if !page.HasEarlier {
+			break
+		}
+		if page.BeforeEventSeq == 0 || request.BeforeEventSeq > 0 && page.BeforeEventSeq >= request.BeforeEventSeq {
+			t.Fatal("conversation cursor did not advance")
+		}
+		request.BeforeEventSeq = page.BeforeEventSeq
+		request.HistoryRevision = page.HistoryRevision
 	}
-	request.BeforeEventSeq = page.BeforeEventSeq
-	request.HistoryRevision = page.HistoryRevision
-	earlier, err := store.LoadTranscriptPage(t.Context(), bot.ID, request)
-	if err != nil || len(earlier.Events) != 6 || earlier.HasEarlier || earlier.Events[0].Seq != 1 || earlier.Events[5].Seq != 6 {
-		t.Fatalf("earlier conversation: %+v, %v", earlier, err)
+	if !reflect.DeepEqual(merged, stored) {
+		t.Fatal("chunked conversation lost, duplicated, reordered or changed event context")
 	}
-	stored, err := store.LoadSessionEvents(bot.ID)
-	if err != nil || len(stored) != len(events) {
-		t.Fatalf("stored transcript changed: events=%d, %v", len(stored), err)
+	after, err := store.LoadSessionEvents(bot.ID)
+	if err != nil || !reflect.DeepEqual(after, stored) {
+		t.Fatal("reading conversation pages changed stored history")
 	}
 }
 
