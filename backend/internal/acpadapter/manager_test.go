@@ -7,7 +7,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +26,6 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 		t.Skip(err)
 	}
 	body := testTarballMode(t, map[string]string{"bin/tool": "ok", "bin/claude": "sdk"}, 0o644)
-	sum := sha256.Sum256(body)
 	server := archiveServer(t, "/claude.tgz", body)
 
 	root := t.TempDir()
@@ -37,7 +36,7 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 	if err := os.WriteFile(incomplete, []byte("old"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	manager := testManager(t, root, server, fmt.Sprintf(`{"adapters":{"claude":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"bin/tool","env":{"CLAUDE_CODE_EXECUTABLE":"bin/claude"}}}}}}`, platform, server.URL+"/claude.tgz", sum))
+	manager := testManager(t, root, server, "claude", manifestAsset{URL: server.URL + "/claude.tgz", SHA256: sha256Hex(body), Binary: "bin/tool", Env: map[string]string{"CLAUDE_CODE_EXECUTABLE": "bin/claude"}})
 	launch, err := manager.ResolveAdapter(context.Background(), "claude")
 	if err != nil {
 		t.Fatal(err)
@@ -71,18 +70,13 @@ func TestResolveAdapterDownloadsVerifiesAndExtractsManifestArchive(t *testing.T)
 }
 
 func TestResolveAdapterExtractsZipArchive(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
 	binary := "kimi"
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
 	body := testZip(t, map[string]string{binary: "ok"})
-	sum := sha256.Sum256(body)
 	server := archiveServer(t, "/kimi.zip", body)
-	manager := testManager(t, t.TempDir(), server, fmt.Sprintf(`{"adapters":{"kimi":{"version":"0.28.0","assets":{"%s":{"url":"%s","sha256":"%x","binary":"%s"}}}}}`, platform, server.URL+"/kimi.zip", sum, binary))
+	manager := testManager(t, t.TempDir(), server, "kimi", manifestAsset{URL: server.URL + "/kimi.zip", SHA256: sha256Hex(body), Binary: binary})
 	launch, err := manager.ResolveAdapter(context.Background(), "kimi")
 	if err != nil {
 		t.Fatal(err)
@@ -96,12 +90,7 @@ func TestResolveAdapterExtractsZipArchive(t *testing.T) {
 }
 
 func TestResolveAdapterReportsDownloadProgress(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
 	body := testTarball(t, map[string]string{"bin/tool": strings.Repeat("ok", 1024)})
-	sum := sha256.Sum256(body)
 	firstChunk := len(body) / 2
 	wroteFirst := make(chan struct{})
 	continueDownload := make(chan struct{})
@@ -129,7 +118,7 @@ func TestResolveAdapterReportsDownloadProgress(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := testManager(t, t.TempDir(), server, fmt.Sprintf(`{"adapters":{"claude":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"bin/tool"}}}}}`, platform, server.URL+"/claude.tgz", sum))
+	manager := testManager(t, t.TempDir(), server, "claude", manifestAsset{URL: server.URL + "/claude.tgz", SHA256: sha256Hex(body), Binary: "bin/tool"})
 	done := make(chan error, 1)
 	go func() {
 		_, err := manager.ResolveAdapter(context.Background(), "claude")
@@ -170,12 +159,8 @@ func TestResolveAdapterReportsDownloadProgress(t *testing.T) {
 }
 
 func TestResolveAdapterRejectsBadChecksum(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
 	server := archiveServer(t, "/codex.tgz", testTarball(t, map[string]string{"tool": "ok"}))
-	manager := testManager(t, t.TempDir(), server, fmt.Sprintf(`{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%064x","binary":"tool"}}}}}`, platform, server.URL+"/codex.tgz", 1))
+	manager := testManager(t, t.TempDir(), server, "codex", manifestAsset{URL: server.URL + "/codex.tgz", SHA256: strings.Repeat("0", 64), Binary: "tool"})
 	if _, err := manager.ResolveAdapter(context.Background(), "codex"); err == nil {
 		t.Fatal("expected checksum error")
 	}
@@ -186,14 +171,9 @@ func TestResolveAdapterRejectsBadChecksum(t *testing.T) {
 }
 
 func TestResolveAdapterRejectsUnsafeArchivePath(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
 	body := testTarball(t, map[string]string{"../tool": "bad", "tool": "ok"})
-	sum := sha256.Sum256(body)
 	server := archiveServer(t, "/codex.tgz", body)
-	manager := testManager(t, t.TempDir(), server, fmt.Sprintf(`{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%x","binary":"tool"}}}}}`, platform, server.URL+"/codex.tgz", sum))
+	manager := testManager(t, t.TempDir(), server, "codex", manifestAsset{URL: server.URL + "/codex.tgz", SHA256: sha256Hex(body), Binary: "tool"})
 	if _, err := manager.ResolveAdapter(context.Background(), "codex"); err == nil {
 		t.Fatal("expected unsafe path error")
 	}
@@ -209,12 +189,8 @@ func TestExtractZipRejectsUnsafeArchivePath(t *testing.T) {
 }
 
 func TestPrepareRecordsFailedDownload(t *testing.T) {
-	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Skip(err)
-	}
 	server := archiveServer(t, "/codex.tgz", nil)
-	manager := testManager(t, t.TempDir(), server, fmt.Sprintf(`{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%064x","binary":"tool"}}}}}`, platform, server.URL+"/codex.tgz", 1))
+	manager := testManager(t, t.TempDir(), server, "codex", manifestAsset{URL: server.URL + "/codex.tgz", SHA256: strings.Repeat("0", 64), Binary: "tool"})
 	if err := manager.Prepare(context.Background(), "codex"); err == nil {
 		t.Fatal("expected prepare error")
 	}
@@ -237,12 +213,8 @@ func TestResolveAdapterReusesInstalledBinary(t *testing.T) {
 	if err := os.WriteFile(path, []byte("ok"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Errorf("unexpected archive download %s", r.URL.Path)
-	}))
-	defer server.Close()
-
-	manager := testManager(t, root, server, fmt.Sprintf(`{"adapters":{"codex":{"version":"1.2.3","assets":{"%s":{"url":"%s","sha256":"%064x","binary":"tool"}}}}}`, platform, server.URL+"/codex.tgz", 1))
+	server := archiveServer(t, "/codex.tgz", nil)
+	manager := testManager(t, root, server, "codex", manifestAsset{URL: server.URL + "/codex.tgz", SHA256: strings.Repeat("0", 64), Binary: "tool"})
 	launch, err := manager.ResolveAdapter(context.Background(), "codex")
 	if err != nil {
 		t.Fatal(err)
@@ -279,15 +251,23 @@ func TestStatusReportsPinnedAdapterInstalledOnStart(t *testing.T) {
 	}
 }
 
-func testManager(t *testing.T, root string, server *httptest.Server, source string) *Manager {
+func testManager(t *testing.T, root string, server *httptest.Server, name string, asset manifestAsset) *Manager {
 	t.Helper()
+	platform, err := platformKey(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Skip(err)
+	}
 	manager := New(root)
 	manager.client = server.Client()
-	manager.manifest = manifest{}
-	if err := json.Unmarshal([]byte(source), &manager.manifest); err != nil {
-		t.Fatal(err)
-	}
+	manager.manifest = manifest{Adapters: map[string]manifestAdapter{
+		name: {Version: "1.2.3", Assets: map[string]manifestAsset{platform: asset}},
+	}}
 	return manager
+}
+
+func sha256Hex(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
 }
 
 func archiveServer(t *testing.T, path string, body []byte) *httptest.Server {

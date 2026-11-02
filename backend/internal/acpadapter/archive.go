@@ -212,3 +212,8 @@ func chmodLaunchFiles(tmpRoot string, spec adapterSpec) error {
 	}
 	return nil
 }
+
+func cleanRelative(value string) bool {
+	value = strings.TrimSpace(value)
+	return value != "" && value != "." && path.Clean(value) == value && !path.IsAbs(value) && !strings.HasPrefix(value, "../") && !strings.ContainsAny(value, `:\`)
+}

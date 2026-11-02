@@ -85,7 +85,7 @@ func (m *Manager) Status(name string) Status {
 	if status, ok := m.storedStatus(name); ok {
 		return status
 	}
-	if spec, err := m.specFromManifest(name, platform); err == nil && m.installed(spec) {
+	if spec, err := m.resolveSpec(name); err == nil && m.installed(spec) {
 		return readyStatus(spec)
 	}
 	return Status{
