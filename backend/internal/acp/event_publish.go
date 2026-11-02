@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
+	"github.com/wins/jaz/backend/internal/storage"
 )
 
 type eventProjection struct {
@@ -238,6 +239,19 @@ func (m *Manager) eventProjection(sessionID string) *eventProjection {
 
 func EventFromJob(job Job) *sessionevents.ACPEvent {
 	return eventFromView(eventViewFromJob(job))
+}
+
+// FinishedEvent describes a turn that ended: how, which turn, and the final
+// reply it leaves the person, which a compaction does not.
+func FinishedEvent(job Job, turn *storage.Turn) *sessionevents.ACPEvent {
+	event := EventFromJob(job)
+	if turn != nil {
+		event.TurnStartedAt = turn.StartedAt
+	}
+	if job.ActiveOperation != ActiveOperationCompact {
+		event.Assistant = job.Reply
+	}
+	return event
 }
 
 func eventFromView(job eventView) *sessionevents.ACPEvent {

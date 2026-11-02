@@ -83,7 +83,10 @@ type Commitment struct {
 	Stalled  bool
 	Status   string
 	OpenedAt time.Time
-	ClosedAt time.Time
+	// OpenedTurn is when the bot turn that opened it began; zero when it was
+	// opened outside a turn.
+	OpenedTurn time.Time
+	ClosedAt   time.Time
 	// Threads are the threads the bot started for it, oldest first.
 	Threads []CommitmentThread
 }

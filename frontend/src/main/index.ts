@@ -23,7 +23,8 @@ import { installCredentialEncryption } from './credentialEncryption'
 import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
 import { configureAppPermissions } from './permissions'
-import { createThreadNotificationMonitor } from './notifications'
+import { createNotifications } from './notifications'
+import { requestFocusStatus } from './notchHelper'
 import { attachPreviewFindShortcuts } from './previewFind'
 import { installClaudeVoice } from '@main/claudeVoice'
 import { installComputerControl } from '@main/computerControl'
@@ -59,12 +60,12 @@ installBrowserPasswords()
 let mainWindow: BrowserWindow | null = null
 const updates = createUpdateController(() => mainWindow)
 const previewURLTargets = new Set<number>()
-const threadNotifications = createThreadNotificationMonitor(openInMain)
+const notifications = createNotifications(openInMain)
 const connectionSession = createConnectionSession({
   rendererPath: join(__dirname, '../renderer/index.html'),
   startLocal: startLocalBackend,
   profile: () => ({ ...getDeviceIdentity(), ...getDeviceMetadata() }),
-  stopConsumers: () => threadNotifications.stop(),
+  stopConsumers: () => notifications.stop(),
 })
 
 function installApplicationMenu(): void {
@@ -392,13 +393,17 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('jaz:get-device-identity', () => getDeviceIdentity())
   ipcMain.handle('jaz:get-device-metadata', () => getDeviceMetadata())
-  ipcMain.handle('jaz:configure-thread-notifications', (event, config) => {
+  ipcMain.handle('jaz:configure-notifications', (event, config) => {
     connectionSession.authorizeOwner(event)
     const active = connectionSession.current()
-    if (config?.enabled && (active.phase !== 'connected' || config.baseUrl !== active.url || config.token !== active.session?.token)) {
+    if (config?.mode !== 'off' && (active.phase !== 'connected' || config?.baseUrl !== active.url || config?.token !== active.session?.token)) {
       return false
     }
-    return threadNotifications.configure(config)
+    return notifications.configure(config)
+  })
+  ipcMain.handle('jaz:notifications:share-focus', (event) => {
+    connectionSession.authorizeOwner(event)
+    return requestFocusStatus()
   })
   updates.registerIpc()
 
@@ -449,7 +454,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  threadNotifications.stop()
+  notifications.stop()
   teardownLauncher()
   stopLocalBackend('before_quit')
 })

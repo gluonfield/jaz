@@ -187,6 +187,18 @@ type RoomMessageEvent struct {
 	Name        string                      `json:"name"`
 	Text        string                      `json:"text"`
 	Attachments []messagepayload.Attachment `json:"attachments,omitempty"`
+	// Task is the change to the bot's tasks written with the message.
+	Task *TaskChange `json:"task,omitempty"`
+	// Answers is when the person-started turn the bot sent it in began.
+	Answers time.Time `json:"answers,omitzero"`
+}
+
+// TaskChange is what a bot's message did to its tasks: delivered those in
+// IDs as completed, asked the user about one (waiting_for_user), or stopped
+// one.
+type TaskChange struct {
+	IDs    []int64 `json:"ids"`
+	Status string  `json:"status"`
 }
 
 type LoopBoardRef struct {
@@ -403,6 +415,8 @@ type ACPEvent struct {
 	SuggestedPrompt string          `json:"suggested_prompt,omitempty"`
 	LastEventAt     time.Time       `json:"last_event_at,omitzero"`
 	LastToolAt      time.Time       `json:"last_tool_at,omitzero"`
+	// TurnStartedAt names the turn a turn_finished event ends.
+	TurnStartedAt time.Time `json:"turn_started_at,omitzero"`
 }
 
 // PlanCleared is the explicit-empty plan. A nil plan makes no statement (the

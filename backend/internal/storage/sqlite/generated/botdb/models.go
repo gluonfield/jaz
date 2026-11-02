@@ -34,6 +34,7 @@ type BotCommitment struct {
 	WakeAtMs     int64         `json:"wake_at_ms"`
 	ReplySeq     int64         `json:"reply_seq"`
 	CheckAtMs    int64         `json:"check_at_ms"`
+	OpenedTurnMs int64         `json:"opened_turn_ms"`
 }
 
 type BotCommitmentDependency struct {

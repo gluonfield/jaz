@@ -174,7 +174,7 @@ func (q *Queries) DropDeliveredResults(ctx context.Context, id int64) error {
 }
 
 const getCommitment = `-- name: GetCommitment :one
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms FROM bot_commitments WHERE id = ?
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms, opened_turn_ms FROM bot_commitments WHERE id = ?
 `
 
 func (q *Queries) GetCommitment(ctx context.Context, id int64) (BotCommitment, error) {
@@ -195,6 +195,7 @@ func (q *Queries) GetCommitment(ctx context.Context, id int64) (BotCommitment, e
 		&i.WakeAtMs,
 		&i.ReplySeq,
 		&i.CheckAtMs,
+		&i.OpenedTurnMs,
 	)
 	return i, err
 }
@@ -220,17 +221,18 @@ func (q *Queries) HasOwedTasks(ctx context.Context, arg HasOwedTasksParams) (boo
 }
 
 const insertCommitment = `-- name: InsertCommitment :one
-INSERT INTO bot_commitments (bot_id, requester, request, note, status, opened_at_ms)
-VALUES (?1, ?2, ?3, ?4, 'pending', ?5)
+INSERT INTO bot_commitments (bot_id, requester, request, note, status, opened_at_ms, opened_turn_ms)
+VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6)
 RETURNING id
 `
 
 type InsertCommitmentParams struct {
-	BotID      string `json:"bot_id"`
-	Requester  string `json:"requester"`
-	Request    string `json:"request"`
-	Note       string `json:"note"`
-	OpenedAtMs int64  `json:"opened_at_ms"`
+	BotID        string `json:"bot_id"`
+	Requester    string `json:"requester"`
+	Request      string `json:"request"`
+	Note         string `json:"note"`
+	OpenedAtMs   int64  `json:"opened_at_ms"`
+	OpenedTurnMs int64  `json:"opened_turn_ms"`
 }
 
 func (q *Queries) InsertCommitment(ctx context.Context, arg InsertCommitmentParams) (int64, error) {
@@ -240,6 +242,7 @@ func (q *Queries) InsertCommitment(ctx context.Context, arg InsertCommitmentPara
 		arg.Request,
 		arg.Note,
 		arg.OpenedAtMs,
+		arg.OpenedTurnMs,
 	)
 	var id int64
 	err := row.Scan(&id)
@@ -435,7 +438,7 @@ func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]Lis
 }
 
 const listOpenCommitments = `-- name: ListOpenCommitments :many
-SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms FROM bot_commitments WHERE bot_id = ?1 AND status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped') ORDER BY id
+SELECT id, bot_id, requester, request, note, status, opened_at_ms, closed_at_ms, question_seq, wake_progress, wake_attempts, wake_at_ms, reply_seq, check_at_ms, opened_turn_ms FROM bot_commitments WHERE bot_id = ?1 AND status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped') ORDER BY id
 `
 
 func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error) {
@@ -462,6 +465,7 @@ func (q *Queries) ListOpenCommitments(ctx context.Context, botID string) ([]BotC
 			&i.WakeAtMs,
 			&i.ReplySeq,
 			&i.CheckAtMs,
+			&i.OpenedTurnMs,
 		); err != nil {
 			return nil, err
 		}
@@ -503,6 +507,24 @@ func (q *Queries) ListWatchBots(ctx context.Context, nowMs int64) ([]string, err
 		return nil, err
 	}
 	return items, nil
+}
+
+const openedTask = `-- name: OpenedTask :one
+SELECT EXISTS (
+  SELECT 1 FROM bot_commitments WHERE bot_id = ?1 AND opened_turn_ms = ?2
+)
+`
+
+type OpenedTaskParams struct {
+	BotID  string `json:"bot_id"`
+	TurnMs int64  `json:"turn_ms"`
+}
+
+func (q *Queries) OpenedTask(ctx context.Context, arg OpenedTaskParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, openedTask, arg.BotID, arg.TurnMs)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const recordTaskReply = `-- name: RecordTaskReply :exec

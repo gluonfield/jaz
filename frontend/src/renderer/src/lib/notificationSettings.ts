@@ -1,22 +1,26 @@
 import { useSyncExternalStore } from 'react'
+import { isNotificationMode, type NotificationMode } from '@shared/notifications'
 
-const STORAGE_KEY = 'jaz.notifications.threadFinished'
-const CHANGE_EVENT = 'jaz:thread-notifications'
+const STORAGE_KEY = 'jaz.notifications.mode'
+const LEGACY_KEY = 'jaz.notifications.threadFinished'
+const CHANGE_EVENT = 'jaz:notification-mode'
 
-function threadNotificationsEnabled(): boolean {
-  if (typeof window === 'undefined') return true
+function notificationMode(): NotificationMode {
+  if (typeof window === 'undefined') return 'center'
   try {
-    return window.localStorage.getItem(STORAGE_KEY) !== 'false'
+    const stored = window.localStorage.getItem(STORAGE_KEY)
+    if (isNotificationMode(stored)) return stored
+    return window.localStorage.getItem(LEGACY_KEY) === 'false' ? 'off' : 'center'
   } catch {
-    return true
+    return 'center'
   }
 }
 
-export function setThreadNotificationsEnabled(value: boolean): void {
+export function setNotificationMode(value: NotificationMode): void {
   if (typeof window === 'undefined') return
   try {
-    if (value) window.localStorage.removeItem(STORAGE_KEY)
-    else window.localStorage.setItem(STORAGE_KEY, 'false')
+    window.localStorage.setItem(STORAGE_KEY, value)
+    window.localStorage.removeItem(LEGACY_KEY)
   } catch {
     return
   }
@@ -33,7 +37,7 @@ function subscribe(callback: () => void): () => void {
   }
 }
 
-export function useThreadNotificationsEnabled(): [boolean, (value: boolean) => void] {
-  const value = useSyncExternalStore(subscribe, threadNotificationsEnabled, () => true)
-  return [value, setThreadNotificationsEnabled]
+export function useNotificationMode(): [NotificationMode, (value: NotificationMode) => void] {
+  const value = useSyncExternalStore(subscribe, notificationMode, () => 'center' as const)
+  return [value, setNotificationMode]
 }

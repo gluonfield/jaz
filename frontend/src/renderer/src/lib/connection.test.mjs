@@ -15,7 +15,7 @@ const bundle = await build({
       builder.onResolve({ filter: /^connection-fixture$/ }, () => ({ path: 'entry', namespace: 'fixture' }))
       builder.onResolve({ filter: /^\//, namespace: 'fixture' }, (args) => ({ path: args.path, namespace: 'file' }))
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({
-        contents: `export * from ${JSON.stringify(new URL('./connection.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./api/client.ts', import.meta.url).pathname)}\nexport { ThreadNotifications } from ${JSON.stringify(new URL('../components/notifications/ThreadNotifications.tsx', import.meta.url).pathname)}`,
+        contents: `export * from ${JSON.stringify(new URL('./connection.ts', import.meta.url).pathname)}\nexport * from ${JSON.stringify(new URL('./api/client.ts', import.meta.url).pathname)}\nexport { DesktopNotifications } from ${JSON.stringify(new URL('../components/notifications/DesktopNotifications.tsx', import.meta.url).pathname)}`,
         loader: 'ts',
       }))
     },
@@ -90,7 +90,7 @@ async function fixture({ auth, pairing = false, storedValues = [], encryptCreden
       encryptCredential,
       decryptCredential,
       startLocalBackend,
-      ...(notifications ? { configureThreadNotifications: (config) => configured.push(config) } : {}),
+      ...(notifications ? { configureNotifications: (config) => configured.push(config) } : {}),
       getDeviceIdentity: async () => ({ device_id: 'identity', public_key: 'public' }),
       getDeviceMetadata: async () => ({ name: 'Test device' }),
     },
@@ -141,7 +141,7 @@ async function fixture({ auth, pairing = false, storedValues = [], encryptCreden
     : require(name), module, module.exports)
   connection = module.exports
   if (renderNotifications) {
-    connection.ThreadNotifications()
+    connection.DesktopNotifications()
   }
   await settle()
   return {
@@ -251,7 +251,7 @@ test('a locked credential store leaves startup in an actionable disconnected sta
   expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
 })
 
-test.each([false, true])('offline startup never unlocks a credential for notifications (enabled: %j)', async (enabled) => {
+test.each(['off', 'notch'])('offline startup never unlocks a credential for notifications (mode: %s)', async (mode) => {
   let unlocks = 0
   const { connection, configured } = await fixture({
     notifications: true,
@@ -259,7 +259,7 @@ test.each([false, true])('offline startup never unlocks a credential for notific
     storedValues: [
       ['jaz.backendUrl', 'https://jaz.example'],
       ['jaz.backendAuth.https://jaz.example', 'enc:v1:sealed-credential'],
-      ['jaz.notifications.threadFinished', String(enabled)],
+      ['jaz.notifications.mode', mode],
     ],
     decryptCredential() {
       unlocks += 1
@@ -268,7 +268,7 @@ test.each([false, true])('offline startup never unlocks a credential for notific
   })
   expect(connection.useConnection().status).toBe('disconnected')
   expect(unlocks).toBe(0)
-  expect(configured.every((value) => value.enabled === false)).toBe(true)
+  expect(configured.every((value) => value.mode === 'off')).toBe(true)
 })
 
 test('remote startup waits for health before unlocking, stops on denial, and recovers after restart', async () => {
@@ -304,7 +304,7 @@ test('remote startup waits for health before unlocking, stops on denial, and rec
   first.timers.delete(pending[0])
   await pending[1].callback()
   await settle()
-  first.connection.ThreadNotifications()
+  first.connection.DesktopNotifications()
   expect(events).toEqual(['health', 'health', 'unlock'])
   expect(first.connection.useConnection().error).toContain('restart Jaz')
   expect(first.timers.size).toBe(0)
@@ -313,9 +313,9 @@ test('remote startup waits for health before unlocking, stops on denial, and rec
   denied = false
   const restarted = await fixture(options)
   expect(restarted.connection.useConnection().status).toBe('connected')
-  restarted.connection.ThreadNotifications()
+  restarted.connection.DesktopNotifications()
   expect(events).toEqual(['health', 'health', 'unlock', 'health', 'unlock'])
-  expect(restarted.configured).toContainEqual({ enabled: true, baseUrl: target, token: 'jaz_device-token' })
+  expect(restarted.configured).toContainEqual({ mode: 'center', baseUrl: target, token: 'jaz_device-token' })
   expect(restarted.stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
 })
 
@@ -374,10 +374,10 @@ test.each([false, true])('notifications use only credentials resolved by connect
   })
   expect(connection.useConnection().status).toBe('connected')
   expect(unlocks).toBe(authRequired ? 1 : 0)
-  connection.ThreadNotifications()
+  connection.DesktopNotifications()
   expect(unlocks).toBe(authRequired ? 1 : 0)
   expect(authChecks).toBe(authRequired ? 1 : 0)
-  expect(configured).toEqual([{ enabled: true, baseUrl: target, token: authRequired ? 'jaz_device-token' : '' }])
+  expect(configured).toEqual([{ mode: 'center', baseUrl: target, token: authRequired ? 'jaz_device-token' : '' }])
 
   expect(stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
 })

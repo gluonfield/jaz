@@ -127,7 +127,7 @@ function block(error: string | null): void {
     if (bridge && desktop) {
       authoritative = bridge.update({ operation: 'clear', document: desktop.document, error })
     }
-    void clientRuntime.configureThreadNotifications?.({ enabled: false })
+    void clientRuntime.configureNotifications?.({ mode: 'off' })
   } else if (bridge && desktop && authoritative?.phase === 'connected') {
     authoritative = bridge.update({ operation: 'reject', document: desktop.document, revision: authoritative.revision })
   }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -312,7 +313,7 @@ func (t fakeThreads) drain(id string) {
 		}
 		message := session.QueuedMessages[0]
 		session.QueuedMessages = session.QueuedMessages[1:]
-		session.Turn = &storage.Turn{Output: message.Output}
+		session.Turn = &storage.Turn{StartedAt: time.Now().UTC(), Output: message.Output}
 		t.world.sessions[id] = session
 		t.world.prompts[id] = append(t.world.prompts[id], message.Text)
 		t.world.mu.Unlock()
@@ -576,6 +577,38 @@ func TestAMembersPostReachesTheOthersAfterTheirTurnsEnd(t *testing.T) {
 	}
 	if len(world.prompts[marketing]) != 1 {
 		t.Fatalf("Marketing took %d turns: %q", len(world.prompts[marketing]), world.prompts[marketing])
+	}
+}
+
+func TestMembersAnswerThePersonOnlyInTurnsTheirPostsStarted(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	service := newTestService(world)
+	group, research, marketing := newGroup(t, service)
+	world.replies[research] = []string{"Drafting it.", "Checked: they hold."}
+	world.replies[marketing] = []string{"@Research can you check the numbers?"}
+	release := make(chan struct{})
+	world.held[marketing] = release
+
+	if err := service.Post(group.ID, "where is the launch draft?", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, func() bool { return world.promptCount(research) == 1 && !world.running(research) })
+	close(release)
+	waitUntil(t, func() bool { return slices.Contains(world.roomMessages(group.ID), "Research: Checked: they hold.") })
+	world.settle(t)
+	world.mu.Lock()
+	defer world.mu.Unlock()
+	answers := map[string]bool{}
+	for _, event := range world.events[group.ID] {
+		if message := event.RoomMessage; message.Speaker == "bot" {
+			answers[message.Name+": "+message.Text] = !message.Answers.IsZero()
+		}
+	}
+	want := map[string]bool{"Research: Drafting it.": true, "Marketing: @Research can you check the numbers?": true, "Research: Checked: they hold.": false}
+	if !maps.Equal(answers, want) {
+		t.Fatalf("posts answering the person = %v; want %v", answers, want)
 	}
 }
 

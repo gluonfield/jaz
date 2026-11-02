@@ -7,10 +7,10 @@
   "author": "Augustinas Malinauskas",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "bun run build:dictation && electron-vite dev --watch",
+    "dev": "bun run build:native && electron-vite dev --watch",
     "build": "bun run build:app",
-    "build:bundle": "bun run build:dictation && electron-vite build",
-    "build:dictation": "bun scripts/build-dictation.ts",
+    "build:bundle": "bun run build:native && electron-vite build",
+    "build:native": "bun scripts/build-native.ts",
     "build:backend": "bun scripts/build-backend.ts",
     "build:app": "bun run build:backend && bun run build:bundle && electron-builder",
     "build:web": "vite build --config vite.web.config.ts",

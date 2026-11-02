@@ -20,9 +20,6 @@ func NewMobilePush(config Config, store *sqlitestore.Store, manager *acp.Manager
 }
 
 func StartMobilePush(lc fx.Lifecycle, service *mobilepush.Service, events *sessionevents.Bus, logger *log.Logger) {
-	if !service.Enabled() {
-		return
-	}
 	ctx, cancel := context.WithCancel(context.Background())
 	var done <-chan struct{}
 	lc.Append(fx.Hook{

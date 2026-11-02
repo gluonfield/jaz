@@ -18,9 +18,16 @@ func (s *Store) OpenCommitment(commitment storage.Commitment) (storage.Commitmen
 	defer s.writeMu.Unlock()
 	id, err := botdb.New(s.db).InsertCommitment(context.Background(), botdb.InsertCommitmentParams{
 		BotID: commitment.BotID, Requester: commitment.Requester, Request: commitment.Request, Note: commitment.Note, OpenedAtMs: timeToMs(commitment.OpenedAt),
+		OpenedTurnMs: loopTimeToMs(commitment.OpenedTurn),
 	})
 	commitment.ID = id
 	return commitment, err
+}
+
+// OpenedTask reports whether a bot opened any task in its turn that began at
+// turn.
+func (s *Store) OpenedTask(botID string, turn time.Time) (bool, error) {
+	return botdb.New(s.db).OpenedTask(context.Background(), botdb.OpenedTaskParams{BotID: botID, TurnMs: loopTimeToMs(turn)})
 }
 
 // Empty text/status and nil dependencies preserve their current values.
@@ -267,7 +274,7 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 		commitments = append(commitments, storage.Commitment{
 			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, ReplySeq: row.ReplySeq, CheckAt: checkAt, DependsOn: dependencies[row.ID],
 			Moving: motion[row.ID].Moving != 0, Blocked: motion[row.ID].Blocked != 0, Stalled: motion[row.ID].Stalled != 0, Status: row.Status,
-			OpenedAt: msToTime(row.OpenedAtMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
+			OpenedAt: msToTime(row.OpenedAtMs), OpenedTurn: msToTime(row.OpenedTurnMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
 		})
 	}
 	return commitments, nil

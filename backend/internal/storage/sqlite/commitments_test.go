@@ -60,6 +60,31 @@ func TestADeliveryAndADropOfOneCommitmentCannotBothHappen(t *testing.T) {
 	}
 }
 
+func TestATaskRemembersTheTurnThatOpenedIt(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := time.Now()
+	opened, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Price the part", OpenedTurn: turn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := store.LoadCommitment(opened.ID); err != nil || !loaded.OpenedTurn.Equal(turn.Truncate(time.Millisecond)) {
+		t.Fatalf("opening turn = %v, %v; want %v", loaded.OpenedTurn, err, turn)
+	}
+	for at, want := range map[time.Time]bool{turn: true, turn.Add(time.Second): false} {
+		if got, err := store.OpenedTask(bot.ID, at); err != nil || got != want {
+			t.Fatalf("OpenedTask(%v) = %v, %v; want %v", at, got, err, want)
+		}
+	}
+}
+
 func TestACommitmentListsItsThreadsInTheOrderTheyWereStarted(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

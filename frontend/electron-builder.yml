@@ -25,9 +25,13 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  extraFiles:
+    - from: resources/macos/jaz-notch
+      to: MacOS/jaz-notch
   extendInfo:
     NSScreenCaptureUsageDescription: Jaz uses screen capture to let your agents see and control desktop apps.
     NSMicrophoneUsageDescription: Jaz uses the microphone for voice input.
+    NSFocusStatusUsageDescription: Jaz checks whether a Focus is on before showing a completion beside the notch.
 win:
   icon: src/assets/jaz.ico
   target:

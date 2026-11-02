@@ -1,12 +1,12 @@
 package mobilepush
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/bots"
@@ -19,15 +19,17 @@ type contentState struct {
 	Detail string `json:"detail"`
 }
 
-type alert struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
+type apsAlert struct {
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle,omitempty"`
+	Body     string `json:"body"`
 }
 
 // process consumes stored conversation events, never provider reasoning or
-// streamed assistant fragments. Bot messages are delivered only by SendMessage.
+// streamed assistant fragments. Desktops listening get its alert; with Apple
+// push configured, paired iPhones get the alert and the progress.
 func (s *Service) process(ctx context.Context, event sessionevents.Event) error {
-	if !s.Enabled() {
+	if !s.Enabled() && !s.listening() {
 		return nil
 	}
 	event.NormalizePayload()
@@ -35,41 +37,51 @@ func (s *Service) process(ctx context.Context, event sessionevents.Event) error 
 		return nil
 	}
 	session, err := s.store.LoadSession(event.SessionID)
+	if err != nil || session.Archived {
+		return err
+	}
+	alert, err := s.classify(session, event)
 	if err != nil {
 		return err
 	}
-	if session.Archived {
+	if alert != nil {
+		s.broadcast(*alert)
+	}
+	if !s.Enabled() {
 		return nil
 	}
-	if session.SourceType == storage.SourceBotMember {
-		membership, err := s.store.LoadMembershipByThread(session.ID)
-		if err != nil {
-			return err
-		}
-		session, err = s.store.LoadSession(membership.GroupID)
-		if err != nil {
-			return err
-		}
-		event = sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession}
+	session, state, relevant, err := s.liveState(session, event)
+	if err != nil || alert == nil && !relevant {
+		return err
 	}
-	if session.SourceType == storage.SourceBot {
-		if record, err := s.store.LoadBot(session.ID); err == nil && record.Kind == bots.KindGroup {
+	return s.deliver(ctx, session, state, relevant, alert)
+}
+
+// liveState is the progress a Live Activity shows for the chat an event
+// belongs to: a member's thread reports as its group, which works while any
+// member does.
+func (s *Service) liveState(session storage.Session, event sessionevents.Event) (storage.Session, contentState, bool, error) {
+	room, _, err := s.room(session)
+	if err != nil {
+		return room, contentState{}, false, err
+	}
+	if room.ID != session.ID {
+		event = sessionevents.Event{SessionID: room.ID, Type: sessionevents.TypeSession}
+	}
+	if room.SourceType == storage.SourceBot {
+		if record, err := s.store.LoadBot(room.ID); err == nil && record.Kind == bots.KindGroup {
 			working, _ := bots.GroupState(s.store, record)
-			session.Status = storage.StatusIdle
+			room.Status = storage.StatusIdle
 			if len(working) > 0 {
-				session.Status = storage.StatusRunning
+				room.Status = storage.StatusRunning
 			}
 		}
 	}
-	state, relevant := progress(session, event)
-	if !relevant {
-		return nil
-	}
-	if state.Status == "working" && s.awaitsAnswer(session.ID) {
+	state, relevant := progress(room, event)
+	if state.Status == "working" && s.awaitsAnswer(room.ID) {
 		state = contentState{"waiting", "Needs your answer"}
 	}
-	notification, key := notificationFor(session, event)
-	return s.deliver(ctx, session, state, notification, key, event.Permission)
+	return room, state, relevant, nil
 }
 
 func progress(session storage.Session, event sessionevents.Event) (contentState, bool) {
@@ -125,56 +137,7 @@ func progress(session storage.Session, event sessionevents.Event) (contentState,
 	return contentState{}, false
 }
 
-func notificationFor(session storage.Session, event sessionevents.Event) (*alert, string) {
-	visible := session.SourceType == storage.SourceBot || session.SourceType == "" && session.ParentID == ""
-	if !visible {
-		return nil, ""
-	}
-	title := session.Title
-	if title == "" {
-		title = session.Slug
-	}
-	notification := &alert{Title: bounded(title, 100)}
-	key := fmt.Sprintf("%s:%d", event.Type, event.Seq)
-	switch event.Type {
-	case sessionevents.TypeRoomMessage:
-		notification.Body = bounded(event.RoomMessage.Text, 300)
-		if notification.Body == "" {
-			notification.Body = "New message"
-		}
-	case "permission_request":
-		if event.Permission == nil {
-			return nil, ""
-		}
-		key = "question:" + event.Permission.ID
-		notification.Body = "Your answer is needed"
-		for _, question := range event.Permission.Questions {
-			if !question.IsSecret {
-				notification.Body = bounded(question.Question, 300)
-				break
-			}
-		}
-	case sessionevents.TypeTurnFinished:
-		if event.ACP == nil {
-			return nil, ""
-		}
-		if event.ACP.State == "failed" {
-			key = "failed:" + session.UpdatedAt.UTC().Format(time.RFC3339Nano)
-			notification.Body = "Work stopped with an error. Open the conversation for details."
-			return notification, key
-		}
-		if session.SourceType != "" || event.ACP.State != "idle" || event.ACP.StopReason != "end_turn" || session.CompletedAt.IsZero() {
-			return nil, ""
-		}
-		key = "completed:" + session.CompletedAt.UTC().Format(time.RFC3339Nano)
-		notification.Body = "Your reply is ready"
-	default:
-		return nil, ""
-	}
-	return notification, key
-}
-
-func (s *Service) deliver(ctx context.Context, session storage.Session, state contentState, notification *alert, key string, permission *sessionevents.ACPPermission) error {
+func (s *Service) deliver(ctx context.Context, session storage.Session, state contentState, relevant bool, alert *Alert) error {
 	devices, err := s.store.ListDevices()
 	if err != nil {
 		return err
@@ -197,57 +160,67 @@ func (s *Service) deliver(ctx context.Context, session storage.Session, state co
 			failures = append(failures, err)
 			continue
 		}
-		if notification != nil && device.Token != "" {
-			if err := s.sendAlert(ctx, setting.Key, device.Registration, session, *notification, key, permission); err != nil {
-				failures = append(failures, err)
-			}
+		if alert != nil && device.Token != "" {
+			failures = append(failures, s.sendAlert(ctx, setting.Key, device.Registration, *alert))
 		}
-		for _, activity := range device.Activities {
-			if activity.SessionID != session.ID || !activity.ExpiresAt.After(time.Now()) {
-				continue
-			}
-			ended := state.Status == "finished" || state.Status == "error"
-			now := time.Now().Unix()
-			if !ended && activity.LastState == state && now-activity.LastTimestamp < 60 {
-				continue
-			}
-			timestamp := max(now, activity.LastTimestamp+1)
-			aps := map[string]any{
-				"timestamp":     timestamp,
-				"event":         "update",
-				"content-state": state,
-				"stale-date":    timestamp + 180,
-			}
-			if ended {
-				aps["event"] = "end"
-				aps["dismissal-date"] = time.Now().Add(time.Minute).Unix()
-			}
-			err := s.sender.Send(ctx, activity.Token, activity.Environment, "liveactivity", digest(activity.ID), map[string]any{"aps": aps})
-			if err != nil && !errors.Is(err, ErrInvalidToken) {
-				failures = append(failures, err)
-				continue
-			}
-			remove := ended || errors.Is(err, ErrInvalidToken)
-			failures = append(failures, s.update(setting.Key, func(device *deviceRegistration) {
-				next := device.Activities[:0]
-				for _, current := range device.Activities {
-					if current.ID == activity.ID && current.Token == activity.Token {
-						if remove {
-							continue
-						}
-						current.LastTimestamp = timestamp
-						current.LastState = state
-					}
-					next = append(next, current)
-				}
-				device.Activities = next
-			}))
+		if relevant {
+			failures = append(failures, s.track(ctx, setting.Key, device.Activities, session, state))
 		}
 	}
 	return errors.Join(failures...)
 }
 
+// track moves the Live Activities a device follows session with to state.
+func (s *Service) track(ctx context.Context, deviceID string, activities []Activity, session storage.Session, state contentState) error {
+	var failures []error
+	for _, activity := range activities {
+		if activity.SessionID != session.ID || !activity.ExpiresAt.After(time.Now()) {
+			continue
+		}
+		ended := state.Status == "finished" || state.Status == "error"
+		now := time.Now().Unix()
+		if !ended && activity.LastState == state && now-activity.LastTimestamp < 60 {
+			continue
+		}
+		timestamp := max(now, activity.LastTimestamp+1)
+		aps := map[string]any{
+			"timestamp":     timestamp,
+			"event":         "update",
+			"content-state": state,
+			"stale-date":    timestamp + 180,
+		}
+		if ended {
+			aps["event"] = "end"
+			aps["dismissal-date"] = time.Now().Add(time.Minute).Unix()
+		}
+		err := s.sender.Send(ctx, activity.Token, activity.Environment, "liveactivity", digest(activity.ID), map[string]any{"aps": aps})
+		if err != nil && !errors.Is(err, ErrInvalidToken) {
+			failures = append(failures, err)
+			continue
+		}
+		remove := ended || errors.Is(err, ErrInvalidToken)
+		failures = append(failures, s.update(deviceID, func(device *deviceRegistration) {
+			next := device.Activities[:0]
+			for _, current := range device.Activities {
+				if current.ID == activity.ID && current.Token == activity.Token {
+					if remove {
+						continue
+					}
+					current.LastTimestamp = timestamp
+					current.LastState = state
+				}
+				next = append(next, current)
+			}
+			device.Activities = next
+		}))
+	}
+	return errors.Join(failures...)
+}
+
 func (s *Service) refresh(ctx context.Context) error {
+	if !s.Enabled() {
+		return nil
+	}
 	settings, err := s.store.ListSettings(namespace)
 	if err != nil {
 		return err
@@ -271,9 +244,9 @@ func (s *Service) refresh(ctx context.Context) error {
 	return errors.Join(failures...)
 }
 
-func (s *Service) sendAlert(ctx context.Context, deviceID string, registration Registration, session storage.Session, notification alert, key string, permission *sessionevents.ACPPermission) error {
-	deliveryID := deviceID + ":" + session.ID
-	encodedKey, _ := json.Marshal(key)
+func (s *Service) sendAlert(ctx context.Context, deviceID string, registration Registration, alert Alert) error {
+	deliveryID := deviceID + ":" + alert.SessionID
+	encodedKey, _ := json.Marshal(alert.Key)
 	previous, err := s.store.LoadSetting("mobile_delivered", deliveryID)
 	if err == nil && string(previous.Value) == string(encodedKey) {
 		return nil
@@ -281,37 +254,29 @@ func (s *Service) sendAlert(ctx context.Context, deviceID string, registration R
 	if err != nil && !errors.Is(err, storage.ErrSettingNotFound) {
 		return err
 	}
-	kind := "chat"
-	if session.SourceType == storage.SourceBot {
-		kind = "bot"
-		if bot, err := s.store.LoadBot(session.ID); err == nil && bot.Kind == bots.KindGroup {
-			kind = "group"
-		}
-	}
 	category := "JAZ_REPLY"
-	if permission != nil {
-		for _, question := range permission.Questions {
-			if question.IsSecret {
-				category = "JAZ_OPEN"
-				break
-			}
-		}
+	if alert.secret {
+		category = "JAZ_OPEN"
+	}
+	shown := apsAlert{Title: cmp.Or(alert.Title, alert.Name), Body: alert.Body}
+	if alert.Title != "" {
+		shown.Subtitle = alert.Name
 	}
 	payload := map[string]any{
 		"aps": map[string]any{
-			"alert":     notification,
+			"alert":     shown,
 			"sound":     "default",
-			"thread-id": session.ID,
+			"thread-id": alert.SessionID,
 			"category":  category,
 		},
-		"session_id":      session.ID,
-		"kind":            kind,
+		"session_id":      alert.SessionID,
+		"kind":            alert.Kind,
 		"installation_id": registration.InstallationID,
 	}
-	if permission != nil {
-		payload["request_id"] = permission.ID
+	if alert.RequestID != "" {
+		payload["request_id"] = alert.RequestID
 	}
-	if err := s.sender.Send(ctx, registration.Token, registration.Environment, "alert", digest(session.ID+key), payload); err != nil {
+	if err := s.sender.Send(ctx, registration.Token, registration.Environment, "alert", digest(alert.SessionID+alert.Key), payload); err != nil {
 		if errors.Is(err, ErrInvalidToken) {
 			return s.update(deviceID, func(device *deviceRegistration) {
 				if device.Token == registration.Token {
