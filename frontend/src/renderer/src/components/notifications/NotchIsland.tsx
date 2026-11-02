@@ -1,5 +1,5 @@
 import { X } from 'lucide-react'
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import {
   alertLabel,
@@ -48,29 +48,27 @@ export function NotchIsland() {
 // Who sits in the left ear beside the camera and the state, if it needs a
 // word, in the right; what happened drops beneath as the ears grow. A
 // bot is named beside its face; a plain thread, which only Jaz runs, puts its
-// title beside the Jaz icon instead. The island stays centred on the camera
-// until the title needs room, then shifts to give it all the right ear's word
-// leaves, so the title is cut only once the island is full. Without a notch
-// the same shape floats as a capsule.
+// title beside the Jaz icon instead. Both ears grow evenly to fit the title,
+// so the island stays centred on the camera, and the card wraps to their
+// width rather than widening them. Without a notch the same shape floats as a
+// capsule.
 function Island({ state: { rows, more, ears, notch }, open }: { state: IslandState; open: boolean }) {
   const { command } = window.jaz!.island
   const reduced = useReducedEffectsMotion()
   const [grown, setGrown] = useState(false)
   const [drop, setDrop] = useState(0)
-  const [fit, setFit] = useState({ lead: 0, width: 0 })
-  const lead = useRef<HTMLSpanElement>(null)
+  const [fit, setFit] = useState(0)
   const measure = useCallback((node: HTMLDivElement | null) => {
     if (!node) return
     const observer = new ResizeObserver(() => setDrop(node.offsetHeight))
     observer.observe(node)
     return () => observer.disconnect()
   }, [])
-  // Applied before paint, so the band never shows off the camera.
+  // Applied before paint, so the shape never opens to a stale width.
   const measureBand = useCallback((node: HTMLButtonElement | null) => {
     if (!node) return
-    const observer = new ResizeObserver(() => flushSync(() => setFit({ lead: lead.current!.offsetWidth, width: node.offsetWidth })))
+    const observer = new ResizeObserver(() => flushSync(() => setFit(node.offsetWidth)))
     observer.observe(node)
-    observer.observe(lead.current!)
     return () => observer.disconnect()
   }, [])
   const top = rows[0]
@@ -81,10 +79,9 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
   const width = (notch ? gap + 2 * ISLAND_EAR_WIDTH : ISLAND_CAPSULE_WIDTH) - 2 * FLARE
   const closed = notch ? gap - 2 * FLARE : band
   const shown = open || reduced
-  // How far the open island reaches left of its window's centre, which is
-  // the camera's. Its content sits there while the shape grows around it.
-  const reach = notch ? gap / 2 + fit.lead : fit.width / 2
-  const anchor = `calc(var(--island-reach) - ${reach}px)`
+  // The ears match beside a camera, or when they hold all there is; a
+  // capsule's title takes what its state leaves.
+  const even = notch !== null || ears
   // How far the card hangs below the band; its rounder corners come only with
   // it, so the island leaves the camera in the notch's own shape.
   const card = !ears && shown ? drop : 0
@@ -100,20 +97,18 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
   const transition = reduced
     ? 'opacity 150ms'
     : open
-      ? `--island-reach 560ms ${SPRING}, width 560ms ${SPRING}, height 560ms ${SPRING} 80ms, border-radius 560ms ${SPRING} 80ms, --island-open 360ms ${SPRING} 120ms, opacity ${fade}ms`
-      : `--island-reach ${close}ms ${SPRING}, width ${close}ms ${SPRING}, height ${close - 80}ms ${SPRING}, border-radius ${close - 80}ms ${SPRING}, --island-open 120ms, opacity ${fade}ms ${close - fade}ms`
+      ? `width 560ms ${SPRING}, height 560ms ${SPRING} 80ms, border-radius 560ms ${SPRING} 80ms, --island-open 360ms ${SPRING} 120ms, opacity ${fade}ms`
+      : `width ${close}ms ${SPRING}, height ${close - 80}ms ${SPRING}, border-radius ${close - 80}ms ${SPRING}, --island-open 120ms, opacity ${fade}ms ${close - fade}ms`
   return (
     <div
       onPointerEnter={() => command({ type: 'hover', inside: true })}
       onPointerLeave={() => command({ type: 'hover', inside: false })}
       onTransitionEnd={(event) => event.propertyName === 'width' && setGrown(open)}
-      className={`group absolute top-0 w-(--width) text-white [--island-reach:var(--reach)] starting:w-(--closed) starting:opacity-0 starting:[--island-reach:calc(var(--closed)/2)] starting:[--island-open:0] ${reduced ? 'duration-150!' : ''} ${open ? '' : 'pointer-events-none opacity-0'} ${shown ? '[--island-open:1]' : ''}`}
+      className={`group absolute top-0 left-1/2 w-(--width) -translate-x-1/2 text-white starting:w-(--closed) starting:opacity-0 starting:[--island-open:0] ${reduced ? 'duration-150!' : ''} ${open ? '' : 'pointer-events-none opacity-0'} ${shown ? '[--island-open:1]' : ''}`}
       style={
         {
-          '--width': `${shown ? fit.width : closed}px`,
-          '--reach': `${shown ? reach : closed / 2}px`,
+          '--width': `${shown ? fit : closed}px`,
           '--closed': `${closed}px`,
-          left: 'calc(50% - var(--island-reach))',
           height: band + card,
           borderRadius: notch ? `0 0 ${radius}px ${radius}px` : radius,
           transition,
@@ -127,27 +122,36 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
         </>
       )}
       <div className="absolute inset-0 overflow-hidden rounded-[inherit] bg-black shadow-[0_12px_24px_-10px_rgb(0_0_0/calc(var(--island-open)*0.5))] *:opacity-(--island-open) *:blur-[calc((1-var(--island-open))*4px)]">
-        <button
-          ref={measureBand}
-          type="button"
-          aria-label={label ? `${sender}, ${label}` : sender}
-          onClick={() => command({ type: 'open', sessionId: top.sessionId })}
-          className="absolute top-0 grid text-[12px]"
-          style={{
-            left: anchor,
-            width: ears ? 'max-content' : width,
-            height: band,
-            gridTemplateColumns: ears ? `1fr ${gap}px 1fr` : `minmax(${(width - gap) / 2}px, max-content) ${gap}px minmax(max-content, 1fr)`,
-          }}
-        >
-          <span ref={lead} className="flex min-w-0 items-center gap-1.5 overflow-hidden pr-2 pl-3">
-            <Identity row={top} size={20} live completion={grown && top.state === 'done' ? top.key : undefined} />
-            {!ears && <span className="truncate font-medium">{top.name || top.title}</span>}
-          </span>
-          <span className="col-start-3 flex min-w-9 items-center justify-end pr-3 pl-2 group-hover:invisible">
-            <State row={top} />
-          </span>
-        </button>
+        <div className="absolute top-0 left-1/2 grid -translate-x-1/2" style={{ width: even ? 'max-content' : width, minWidth: ears ? 0 : width }}>
+          <button
+            ref={measureBand}
+            type="button"
+            aria-label={label ? `${sender}, ${label}` : sender}
+            onClick={() => command({ type: 'open', sessionId: top.sessionId })}
+            className="grid text-[12px]"
+            style={{ height: band, gridTemplateColumns: `1fr ${gap}px ${even ? '1fr' : 'max-content'}` }}
+          >
+            <span className="flex min-w-0 items-center gap-1.5 overflow-hidden pr-2 pl-3">
+              <Identity row={top} size={20} live completion={grown && top.state === 'done' ? top.key : undefined} />
+              {!ears && <span className={`truncate font-medium ${notch ? 'max-w-48' : ''}`}>{top.name || top.title}</span>}
+            </span>
+            <span className="col-start-3 flex min-w-9 items-center justify-end pr-3 pl-2 group-hover:invisible">
+              <State row={top} />
+            </span>
+          </button>
+          {!ears && (
+            <div ref={measure} className="grid gap-2.5 px-[18px] pt-2.5 pb-4 contain-inline-size">
+              {rows.map((row, index) => (
+                <Row key={row.key} row={index || row.name ? row : { ...row, title: '' }} compact={rows.length > 1} command={command} />
+              ))}
+              {more > 0 && (
+                <button type="button" onClick={() => command({ type: 'more' })} className="justify-self-start text-[12.5px] text-white/60 hover:text-white">
+                  +{more} more
+                </button>
+              )}
+            </div>
+          )}
+        </div>
         <button
           type="button"
           aria-label="Dismiss"
@@ -159,18 +163,6 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
             <X size={10} strokeWidth={2.5} />
           </span>
         </button>
-        {!ears && (
-          <div ref={measure} className="absolute grid gap-2.5 px-[18px] pt-2.5 pb-4" style={{ top: band, left: anchor, width }}>
-            {rows.map((row, index) => (
-              <Row key={row.key} row={index || row.name ? row : { ...row, title: '' }} compact={rows.length > 1} command={command} />
-            ))}
-            {more > 0 && (
-              <button type="button" onClick={() => command({ type: 'more' })} className="justify-self-start text-[12.5px] text-white/60 hover:text-white">
-                +{more} more
-              </button>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )
