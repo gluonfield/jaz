@@ -43,6 +43,29 @@ test('user bubbles render Markdown, LaTeX, and mentions', async () => {
   expect(html).toContain('<li>one</li>')
 })
 
+test('Markdown math renders matrices and blocks without inheriting trusted KaTeX options', async () => {
+  const { RenderedMarkdown } = await import('./MessageMarkdown')
+  Object.defineProperty(Object.prototype, 'trust', { value: true, writable: true, configurable: true })
+  try {
+    const html = renderToStaticMarkup(createElement(RenderedMarkdown, {
+      text: String.raw`Inline \(\begin{pmatrix}a & b \\ c & d\end{pmatrix}\).
+
+\[
+\int_0^1 x^2\,dx = \frac{1}{3}
+\]
+
+\(\href{https://untrusted.example/}{unsafe}\)`,
+    }))
+    expect(html).toContain('class="katex-display"')
+    expect(html).toContain('<mtable')
+    expect(html).toContain('<mfrac>')
+    expect(html).not.toContain('<a ')
+    expect(html).not.toContain('class="katex-error"')
+  } finally {
+    Reflect.deleteProperty(Object.prototype, 'trust')
+  }
+})
+
 test('user bubbles keep typed line breaks without preserving block whitespace', async () => {
   const { UserBubble } = await import('./Bubble')
   const html = renderToStaticMarkup(

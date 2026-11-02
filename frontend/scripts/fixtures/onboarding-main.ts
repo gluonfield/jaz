@@ -9,6 +9,7 @@ import { installComputerControl } from '@main/computerControl'
 import { installSystemPermissions } from '@main/systemPermissions'
 
 app.setActivationPolicy('prohibited')
+app.commandLine.appendSwitch('use-mock-keychain')
 app.on('window-all-closed', () => {})
 const output = process.env.JAZ_PERMISSION_EVIDENCE!
 app.setPath('userData', join(output, `profile-${process.pid}`))
