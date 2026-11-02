@@ -59,6 +59,7 @@ export async function exerciseClaudeVoice(): Promise<void> {
     unsubscribe()
   }
 
+  const size = { width: innerWidth, height: innerHeight }
   const originalFetch = window.fetch
   const originalBase = apiBaseUrl()
   const panel = document.createElement('div')
@@ -113,6 +114,7 @@ export async function exerciseClaudeVoice(): Promise<void> {
     client.clear()
     window.fetch = originalFetch
     setApiBaseUrl(originalBase)
+    await window.smoke.resize(size.width, size.height)
   }
 }
 

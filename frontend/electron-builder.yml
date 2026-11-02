@@ -11,6 +11,7 @@ extraResources:
   - from: resources/bin
     to: bin
 mac:
+  minimumSystemVersion: "13.0"
   # Needs Xcode 26+ actool. Before macOS 26 the light icon comes from Assets.car (up to 1024 px) if that system
   # reads this catalog, else from the generated icon.icns (16-256 px), which is also the DMG volume icon.
   icon: src/assets/jaz.icon

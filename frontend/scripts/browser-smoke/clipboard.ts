@@ -4,7 +4,8 @@ import { once } from 'node:events'
 import { writeFile } from 'node:fs/promises'
 import { createInterface } from 'node:readline'
 import { join } from 'node:path'
-import { BrowserWindow, clipboard, webContents, type WebContents, type WebFrameMain } from 'electron'
+import { isDeepStrictEqual } from 'node:util'
+import { BrowserWindow, ClipboardItem, clipboard, webContents, type WebContents, type WebFrameMain } from 'electron'
 import { PREVIEW_PARTITION } from '@shared/preview'
 
 export function clipboardFixture(url: URL): string {
@@ -52,38 +53,42 @@ addEventListener('message', event => {
   return `${document}<iframe style="position:absolute;left:220px;top:0;width:500px;height:400px;border:0" sandbox="${sandbox}" allow="${allow}" ${source}></iframe>`
 }
 
-async function preserveClipboard(): Promise<() => Promise<void>> {
+async function preserveClipboard(expected?: string): Promise<() => Promise<void>> {
   if (process.platform === 'darwin') {
-    const guard = spawn('/usr/bin/swift', [join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'clipboard-guard.swift')], { stdio: ['pipe', 'pipe', 'inherit'] })
+    const guard = spawn('/usr/bin/swift', [join(process.env.JAZ_BROWSER_SMOKE_DIR!, 'clipboard-guard.swift'), ...(expected ? [expected] : [])], { stdio: ['pipe', 'pipe', 'inherit'] })
     const lines = createInterface({ input: guard.stdout })[Symbol.asyncIterator]()
     const exited = once(guard, 'exit')
     assert.equal((await lines.next()).value, 'saved')
     return async () => {
       guard.stdin.end('\n')
-      assert.equal((await lines.next()).value, 'restored')
+      assert(['restored', 'preserved'].includes((await lines.next()).value ?? ''))
       assert.deepEqual(await exited, [0, null])
     }
   }
-  const formats = clipboard.availableFormats()
-  assert(formats.every(format => ['text/plain', 'text/html', 'text/rtf', 'image/png'].includes(format)), 'Cannot safely preserve this clipboard format')
-  const buffers = formats.map(format => [format, clipboard.readBuffer(format)] as const)
-  const saved = {
-    text: formats.includes('text/plain') ? clipboard.readText() : undefined,
-    html: formats.includes('text/html') ? clipboard.readHTML() : undefined,
-    rtf: formats.includes('text/rtf') ? clipboard.readRTF() : undefined,
-    image: formats.includes('image/png') ? clipboard.readImage() : undefined,
-  }
+  const saved = await Promise.all((await clipboard.read()).filter(item => item.types.length).map(async item => new ClipboardItem(
+    Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)]))),
+  )))
+  const snapshot = (item: ClipboardItem) => Promise.all(item.types.toSorted().map(async type => {
+    const value = await item.getType(type)
+    return [type, value instanceof Blob ? await value.arrayBuffer() : value]
+  }))
+  const before = await Promise.all(saved.map(snapshot))
   return async () => {
-    clipboard.clear()
-    if (formats.length) {
-      clipboard.write(saved)
+    if (!expected || await clipboard.readText() !== expected) {
+      return
     }
-    assert(buffers.every(([format, data]) => clipboard.readBuffer(format).equals(data)), 'Clipboard restoration must preserve every saved format')
+    if (saved.length) {
+      await clipboard.write(saved)
+    } else {
+      clipboard.clear()
+    }
+    assert(isDeepStrictEqual(await Promise.all((await clipboard.read()).filter(item => item.types.length).map(snapshot)), before), 'Clipboard restoration must preserve every saved format')
   }
 }
 
 async function click(contents: WebContents, frame: WebFrameMain, action: string, x = 0) {
-  const restore = await preserveClipboard()
+  const expected = action === 'copy-id' ? 'JAZ-123' : action === 'copy-link' ? 'https://tasks.jaz.chat/issue/JAZ-123' : undefined
+  const restore = await preserveClipboard(expected)
   try {
     await contents.executeJavaScript('window.clipboardResult = undefined')
     const point = await frame.executeJavaScript(`(() => {
@@ -100,8 +105,8 @@ async function click(contents: WebContents, frame: WebFrameMain, action: string,
       if (result) {
         assert.equal(result.action, action)
         assert.equal(result.activated, true, 'Clipboard action must come from a real activated click')
-        if (result.ok && action.startsWith('copy-')) {
-          assert(clipboard.readText() === (action === 'copy-id' ? 'JAZ-123' : 'https://tasks.jaz.chat/issue/JAZ-123'), 'Clipboard must contain the clicked value')
+        if (result.ok && expected) {
+          assert(await clipboard.readText() === expected, 'Clipboard must contain the clicked value')
         }
         return result
       }
