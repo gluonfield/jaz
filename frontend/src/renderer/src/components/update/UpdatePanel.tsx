@@ -30,8 +30,13 @@ function updateText(status: VisibleUpdateStatus) {
       }
     case 'downloaded':
       return {
-        title: 'Update ready',
-        detail: status.version ? `Jaz ${status.version} is ready.` : 'A Jaz update is ready.',
+        title: status.error ? 'Restart failed' : 'Update ready',
+        detail: status.error ?? (status.version ? `Jaz ${status.version} is ready.` : 'A Jaz update is ready.'),
+      }
+    case 'installing':
+      return {
+        title: 'Restarting Jaz',
+        detail: 'Preparing the update. Jaz will reopen automatically.',
       }
     case 'error':
       return {
@@ -44,17 +49,21 @@ function updateText(status: VisibleUpdateStatus) {
 function UpdateNotice({
   status,
   onDismiss,
+  onInstall,
 }: {
   status: VisibleUpdateStatus
   onDismiss: () => void
+  onInstall: () => void
 }) {
   const text = updateText(status)
   const percent = status.state === 'downloading' ? Math.max(0, Math.min(100, Math.round(status.percent))) : 0
-  const Icon = status.state === 'error' ? X : status.state === 'checking' || status.state === 'downloaded' ? RefreshCw : Download
+  const installing = status.state === 'installing'
+  const failed = status.state === 'error' || (status.state === 'downloaded' && !!status.error)
+  const Icon = failed ? X : status.state === 'checking' || status.state === 'downloaded' || installing ? RefreshCw : Download
 
   return (
     <motion.section
-      role={status.state === 'error' ? 'alert' : 'status'}
+      role={failed ? 'alert' : 'status'}
       aria-live="polite"
       layout
       initial={{ opacity: 0, y: 4 }}
@@ -64,8 +73,8 @@ function UpdateNotice({
       className="px-2.5 py-2 text-[13px] text-ink"
     >
       <div className="flex items-start gap-2">
-        <div aria-hidden className={`mt-0.5 grid size-[18px] shrink-0 place-items-center ${status.state === 'error' ? 'text-danger' : 'text-ink-2'}`}>
-          <Icon size={16} />
+        <div aria-hidden className={`mt-0.5 grid size-[18px] shrink-0 place-items-center ${failed ? 'text-danger' : 'text-ink-2'}`}>
+          <Icon size={16} className={installing ? 'animate-spin motion-reduce:animate-none' : undefined} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
@@ -81,7 +90,7 @@ function UpdateNotice({
             </div>
           ) : <div className="mt-0.5 line-clamp-2 text-[12px] leading-4 text-ink-2">{text.detail}</div>}
         </div>
-        <IconButton
+        {!installing ? <IconButton
           size="xs"
           aria-label="Dismiss update"
           title="Dismiss"
@@ -89,16 +98,16 @@ function UpdateNotice({
           className="-mt-0.5 -mr-1"
         >
           <X size={13} />
-        </IconButton>
+        </IconButton> : null}
       </div>
 
-      {status.state === 'downloaded' ? (
+      {status.state === 'downloaded' || installing ? (
         <div className="mt-2 flex justify-end gap-1">
-          <Button size="sm" variant="ghost" onClick={onDismiss}>
+          {!installing ? <Button size="sm" variant="ghost" onClick={onDismiss}>
             Later
-          </Button>
-          <Button size="sm" variant="primary" onClick={() => void clientRuntime.installUpdate?.()}>
-            Restart Jaz
+          </Button> : null}
+          <Button size="sm" variant="primary" disabled={installing} aria-busy={installing} onClick={onInstall}>
+            {installing ? 'Restarting…' : status.error ? 'Try again' : 'Restart Jaz'}
           </Button>
         </div>
       ) : null}
@@ -111,13 +120,29 @@ export function UpdatePanel() {
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
   const key = useMemo(() => updateKey(status), [status])
 
+  async function install(): Promise<void> {
+    if (status.state !== 'downloaded' || !clientRuntime.installUpdate) return
+    const ready = status
+    setStatus({ state: 'installing', version: ready.version })
+    try {
+      const result = await clientRuntime.installUpdate()
+      if (!result.ok) setStatus({ ...ready, error: result.error ?? 'Could not restart Jaz.' })
+    } catch (err) {
+      setStatus({ ...ready, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
   useEffect(() => {
     if (!clientRuntime.getUpdateStatus || !clientRuntime.onUpdateStatus) return
     let mounted = true
-    void clientRuntime.getUpdateStatus().then((next) => {
-      if (mounted) setStatus(next)
+    let received = false
+    const dispose = clientRuntime.onUpdateStatus((next) => {
+      received = true
+      setStatus(next)
     })
-    const dispose = clientRuntime.onUpdateStatus((next) => setStatus(next))
+    void clientRuntime.getUpdateStatus().then((next) => {
+      if (mounted && !received) setStatus(next)
+    })
     return () => {
       mounted = false
       dispose()
@@ -129,7 +154,7 @@ export function UpdatePanel() {
   return (
     <AnimatePresence initial={false}>
       {status.state !== 'idle' && dismissedKey !== key ? (
-        <UpdateNotice key={key} status={status} onDismiss={() => setDismissedKey(key)} />
+        <UpdateNotice status={status} onDismiss={() => setDismissedKey(key)} onInstall={() => void install()} />
       ) : null}
     </AnimatePresence>
   )
