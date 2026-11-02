@@ -79,6 +79,9 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
   const width = (notch ? gap + 2 * ISLAND_EAR_WIDTH : ISLAND_CAPSULE_WIDTH) - 2 * FLARE
   const closed = notch ? gap - 2 * FLARE : band
   const shown = open || reduced
+  // The ears match beside a camera, or when they hold all there is; a
+  // capsule's title takes what its state leaves.
+  const even = notch !== null || ears
   // How far the card hangs below the band; its rounder corners come only with
   // it, so the island leaves the camera in the notch's own shape.
   const card = !ears && shown ? drop : 0
@@ -119,14 +122,14 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
         </>
       )}
       <div className="absolute inset-0 overflow-hidden rounded-[inherit] bg-black shadow-[0_12px_24px_-10px_rgb(0_0_0/calc(var(--island-open)*0.5))] *:opacity-(--island-open) *:blur-[calc((1-var(--island-open))*4px)]">
-        <div className="absolute top-0 left-1/2 grid -translate-x-1/2" style={{ width: notch || ears ? 'max-content' : width, minWidth: ears ? 0 : width }}>
+        <div className="absolute top-0 left-1/2 grid -translate-x-1/2" style={{ width: even ? 'max-content' : width, minWidth: ears ? 0 : width }}>
           <button
             ref={measureBand}
             type="button"
             aria-label={label ? `${sender}, ${label}` : sender}
             onClick={() => command({ type: 'open', sessionId: top.sessionId })}
             className="grid text-[12px]"
-            style={{ height: band, gridTemplateColumns: notch || ears ? `1fr ${gap}px 1fr` : `minmax(${width / 2}px, max-content) 0 minmax(max-content, 1fr)` }}
+            style={{ height: band, gridTemplateColumns: `1fr ${gap}px ${even ? '1fr' : 'max-content'}` }}
           >
             <span className="flex min-w-0 items-center gap-1.5 overflow-hidden pr-2 pl-3">
               <Identity row={top} size={20} live completion={grown && top.state === 'done' ? top.key : undefined} />
