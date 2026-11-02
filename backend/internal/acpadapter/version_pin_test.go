@@ -22,7 +22,7 @@ type adapterAssetSpec struct {
 }
 
 // .github/acp-adapter-assets.json is the single source of truth for managed
-// adapter versions: the backend carries no adapter version in code. These tests
+// adapter versions: the backend embeds only the manifest generated from it. These tests
 // keep it that way and ensure every built-in managed adapter has a complete pin.
 
 func TestBuiltinManagedAdaptersArePinned(t *testing.T) {

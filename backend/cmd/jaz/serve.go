@@ -73,10 +73,7 @@ func serveOptions(args []string) []fx.Option {
 	return []fx.Option{
 		fx.StopTimeout(15 * time.Second),
 		fx.WithLogger(func() fxevent.Logger { return fxevent.NopLogger }),
-		fx.Supply(
-			serveArgs{Args: args},
-			app.Release{Version: version},
-		),
+		fx.Supply(serveArgs{Args: args}),
 		fx.Provide(
 			newLogger,
 			loadConfig,

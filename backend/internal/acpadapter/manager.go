@@ -33,45 +33,26 @@ type Status struct {
 }
 
 type Manager struct {
-	root              string
-	manifestURL       string
-	tag               string
-	localManifestPath string
-	client            *http.Client
-	installMu         sync.Mutex
-	mu                sync.Mutex
-	status            map[string]Status
+	root      string
+	manifest  manifest
+	client    *http.Client
+	installMu sync.Mutex
+	mu        sync.Mutex
+	status    map[string]Status
 }
 
-func New(root, releaseVersion string) *Manager {
-	m := &Manager{
-		root:   root,
-		tag:    releaseTag(releaseVersion),
-		client: &http.Client{Timeout: 10 * time.Minute},
-		status: map[string]Status{},
+func New(root string) *Manager {
+	return &Manager{
+		root:     root,
+		manifest: parsePinnedManifest(),
+		client:   &http.Client{Timeout: 10 * time.Minute},
+		status:   map[string]Status{},
 	}
-	if m.tag == "" {
-		m.manifestURL = releasesURL + "/latest/download/acp-adapters.json"
-		m.localManifestPath = findLocalManifestPath()
-	} else {
-		m.manifestURL = releasesURL + "/download/" + m.tag + "/acp-adapters.json"
-	}
-	return m
-}
-
-func NewForTest(root, manifestURL string, client *http.Client) *Manager {
-	m := New(root, "dev")
-	m.manifestURL = strings.TrimSpace(manifestURL)
-	m.localManifestPath = ""
-	if client != nil {
-		m.client = client
-	}
-	return m
 }
 
 func (m *Manager) ResolveAdapter(ctx context.Context, name string) (acp.AdapterLaunch, error) {
 	name = strings.TrimSpace(name)
-	spec, err := m.resolveSpec(ctx, name)
+	spec, err := m.resolveSpec(name)
 	if err != nil {
 		m.setResolveErrorStatus(name, err)
 		return acp.AdapterLaunch{}, err
@@ -104,10 +85,8 @@ func (m *Manager) Status(name string) Status {
 	if status, ok := m.storedStatus(name); ok {
 		return status
 	}
-	if manifest, ok := m.offlineManifest(); ok {
-		if spec, err := m.specFromManifest(manifest, name, platform); err == nil && m.installed(spec) {
-			return readyStatus(spec)
-		}
+	if spec, err := m.specFromManifest(name, platform); err == nil && m.installed(spec) {
+		return readyStatus(spec)
 	}
 	return Status{
 		Adapter:  name,

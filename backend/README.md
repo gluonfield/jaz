@@ -44,10 +44,10 @@ Settings controls whether each client is enabled, plus the model and reasoning
 effort copied into new threads where the agent supports those fields. Built-in
 managed agents such as Codex and Claude do not persist editable launch commands.
 
-On startup, the backend prepares managed ACP adapters from the current Jaz
-GitHub release manifest. Release builds fetch `acp-adapters.json` from their
-own release tag; local development falls back to the latest release manifest.
-The downloaded archives are checksum-verified and installed under `~/.jaz/acp`.
+Managed ACP adapter versions are pinned in `.github/acp-adapter-assets.json`;
+the generated `internal/acpadapter/acp-adapters.json` is embedded in the
+backend, so every build knows its adapters without the network. Archives are
+downloaded on first use, checksum-verified and installed under `~/.jaz/acp`.
 Codex and Claude then launch through those managed binaries.
 
 Jaz exposes skills from `~/.jaz/skills` and workspace skill directories through

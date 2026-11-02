@@ -212,8 +212,3 @@ func chmodLaunchFiles(tmpRoot string, spec adapterSpec) error {
 	}
 	return nil
 }
-
-func fileExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir()
-}

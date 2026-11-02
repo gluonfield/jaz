@@ -7,13 +7,13 @@ on:
       - .github/acp-adapter-assets.json
       - .github/scripts/create-acp-adapters-manifest.mjs
       - .github/workflows/acp-adapters-validate.yml
-      - dist/acp-adapters.json
+      - backend/internal/acpadapter/acp-adapters.json
   pull_request:
     paths:
       - .github/acp-adapter-assets.json
       - .github/scripts/create-acp-adapters-manifest.mjs
       - .github/workflows/acp-adapters-validate.yml
-      - dist/acp-adapters.json
+      - backend/internal/acpadapter/acp-adapters.json
   workflow_dispatch:
 
 permissions:
@@ -30,6 +30,6 @@ jobs:
       - name: Generate manifest from the pinned spec
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node .github/scripts/create-acp-adapters-manifest.mjs dist/acp-adapters.json
-      - name: Fail if tracked dist manifest drifted from the spec
-        run: git diff --exit-code dist/acp-adapters.json
+        run: node .github/scripts/create-acp-adapters-manifest.mjs backend/internal/acpadapter/acp-adapters.json
+      - name: Fail if the embedded manifest drifted from the spec
+        run: git diff --exit-code backend/internal/acpadapter/acp-adapters.json
