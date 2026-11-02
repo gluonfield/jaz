@@ -45,11 +45,6 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - uses: actions/checkout@v4
-        with:
-          repository: gluonfield/jazmem
-          path: _deps/jazmem
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
@@ -62,10 +57,6 @@ jobs:
       - name: Install production voice-client test dependencies
         working-directory: frontend
         run: bun install --frozen-lockfile --ignore-scripts
-
-      - name: Point backend at jazmem checkout
-        working-directory: backend
-        run: go mod edit "-replace=github.com/gluonfield/jazmem=../_deps/jazmem"
 
       - name: Test backend
         working-directory: backend
@@ -123,11 +114,6 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - uses: actions/checkout@v4
-        with:
-          repository: gluonfield/jazmem
-          path: _deps/jazmem
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
@@ -136,10 +122,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.5
-
-      - name: Point backend at jazmem checkout
-        working-directory: backend
-        run: go mod edit "-replace=github.com/gluonfield/jazmem=../_deps/jazmem"
 
       - name: Install dependencies
         working-directory: frontend
@@ -209,6 +191,7 @@ jobs:
           bun run build:backend
           bun run build:bundle
           bunx electron-builder --mac --arm64 --publish never
+          echo 'minimumSystemVersion: 22.0.0' >> dist/latest-mac.yml
 
       - name: Attach backend release assets
         env:
@@ -238,11 +221,6 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      - uses: actions/checkout@v4
-        with:
-          repository: gluonfield/jazmem
-          path: _deps/jazmem
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26'
@@ -251,10 +229,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.5
-
-      - name: Point backend at jazmem checkout
-        working-directory: backend
-        run: go mod edit "-replace=github.com/gluonfield/jazmem=../_deps/jazmem"
 
       - name: Install dependencies
         working-directory: frontend
