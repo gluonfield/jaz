@@ -65,7 +65,7 @@ async function preserveClipboard(expected?: string): Promise<() => Promise<void>
       assert.deepEqual(await exited, [0, null])
     }
   }
-  const saved = await Promise.all((await clipboard.read()).map(async item => new ClipboardItem(
+  const saved = await Promise.all((await clipboard.read()).filter(item => item.types.length).map(async item => new ClipboardItem(
     Object.fromEntries(await Promise.all(item.types.map(async type => [type, await item.getType(type)]))),
   )))
   const snapshot = (item: ClipboardItem) => Promise.all(item.types.toSorted().map(async type => {
@@ -77,11 +77,12 @@ async function preserveClipboard(expected?: string): Promise<() => Promise<void>
     if (!expected || await clipboard.readText() !== expected) {
       return
     }
-    await clipboard.clear()
     if (saved.length) {
       await clipboard.write(saved)
+    } else {
+      clipboard.clear()
     }
-    assert(isDeepStrictEqual(await Promise.all((await clipboard.read()).map(snapshot)), before), 'Clipboard restoration must preserve every saved format')
+    assert(isDeepStrictEqual(await Promise.all((await clipboard.read()).filter(item => item.types.length).map(snapshot)), before), 'Clipboard restoration must preserve every saved format')
   }
 }
 
