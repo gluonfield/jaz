@@ -288,11 +288,9 @@ type TurnPrompt struct {
 // TurnUpdate is what input reaching a running turn changes in it.
 type TurnUpdate struct {
 	GoalRequested, ParentVisible, NotifyParent bool
-	// EndExchange ends the bot-to-bot exchange the turn is part of, as the
-	// user writing into it does.
-	EndExchange bool
 	// User makes the turn answer the user, whose words it took in, as a turn
-	// their message started does.
+	// their message started does, ending the bot-to-bot exchange it was part
+	// of.
 	User bool
 	// Steer joins the turn's Steers.
 	Steer *TurnPrompt

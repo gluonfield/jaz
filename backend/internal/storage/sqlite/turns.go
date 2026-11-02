@@ -156,11 +156,6 @@ func (s *Store) UpdateTurn(id string, update storage.TurnUpdate, messages ...sto
 		if updated == 0 {
 			return fmt.Errorf("%s has no active turn", id)
 		}
-		if update.EndExchange {
-			if err := q.ResetTurnHops(ctx, id); err != nil {
-				return err
-			}
-		}
 		if update.User {
 			if err := q.SetTurnAnswersUser(ctx, id); err != nil {
 				return err

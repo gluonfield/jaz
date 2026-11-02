@@ -204,17 +204,6 @@ func (q *Queries) MarkTurnShown(ctx context.Context, id string) error {
 	return err
 }
 
-const resetTurnHops = `-- name: ResetTurnHops :exec
-UPDATE threads
-SET turn = json_remove(turn, '$.output.hops')
-WHERE id = ?1 AND status = 'running' AND turn <> ''
-`
-
-func (q *Queries) ResetTurnHops(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, resetTurnHops, id)
-	return err
-}
-
 const setQueuedMessages = `-- name: SetQueuedMessages :exec
 UPDATE threads SET queued_messages = ?1 WHERE id = ?2
 `
@@ -245,7 +234,7 @@ func (q *Queries) SetRunningTurn(ctx context.Context, arg SetRunningTurnParams) 
 
 const setTurnAnswersUser = `-- name: SetTurnAnswersUser :exec
 UPDATE threads
-SET turn = json_set(turn, '$.output.user', json('true'))
+SET turn = json_set(json_remove(turn, '$.output.hops'), '$.output.user', json('true'))
 WHERE id = ?1 AND status = 'running' AND turn <> ''
 `
 
