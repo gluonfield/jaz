@@ -81,9 +81,9 @@ func (s *Service) taskChanged(session storage.Session, event sessionevents.Event
 	return &alert, nil
 }
 
-// question asks the person in the thread holding it: a plain thread, a thread
-// started under one, or a bot's chat. Only questions and plan decisions reach
-// this; tool permissions are granted as they arrive.
+// question asks the person in the thread holding it, where they answer. Only
+// questions and plan decisions reach this; tool permissions are granted as
+// they arrive.
 func (s *Service) question(session storage.Session, event sessionevents.Event) (*Alert, error) {
 	permission := event.Permission
 	if permission == nil || permission.SessionID != session.ID {
@@ -91,7 +91,7 @@ func (s *Service) question(session storage.Session, event sessionevents.Event) (
 	}
 	alert, visible, err := s.from(session)
 	if err == nil && !visible {
-		visible, err = s.underPlainThread(session)
+		alert, visible, err = s.asker(session)
 	}
 	if err != nil || !visible {
 		return nil, err
@@ -145,19 +145,19 @@ func (s *Service) turnEnded(session storage.Session, event sessionevents.Event) 
 	return &alert, nil
 }
 
-// newReply is a bot's final message in a turn a person started that opened
-// no task: the newest message in its chat, sent by the bot in that turn and
+// newReply is a bot's final message in a turn that answered a person and
+// opened no task: the bot's newest message in its chat, sent in that turn and
 // changing no task, which told already.
 func (s *Service) newReply(alert Alert, room, bot string, turn time.Time) (*Alert, error) {
 	if turn.IsZero() {
 		return nil, nil
 	}
-	latest, ok, err := s.store.LoadLatestSessionEvent(room, sessionevents.TypeRoomMessage)
+	latest, ok, err := s.store.LoadLatestBotMessage(room, bot)
 	if err != nil || !ok {
 		return nil, err
 	}
 	message := latest.RoomMessage
-	if message == nil || message.BotID != bot || message.Task != nil || !message.Answers.Equal(turn) {
+	if message == nil || message.Task != nil || !message.Answers.Equal(turn) {
 		return nil, nil
 	}
 	opened, err := s.store.OpenedTask(bot, turn)
@@ -212,17 +212,22 @@ func (s *Service) room(session storage.Session) (storage.Session, string, error)
 	return group, membership.BotID, err
 }
 
-// underPlainThread reports whether a thread was started, however deep, under
-// a plain top-level thread.
-func (s *Service) underPlainThread(session storage.Session) (bool, error) {
-	for session.ParentID != "" {
-		parent, err := s.store.LoadSession(session.ParentID)
+// asker is who a thread that does not tell on its own asks as: the chat it was
+// started from however deep, a plain thread or the bot it works for, while the
+// person answers in the thread itself. A group member's thread works for its
+// bot.
+func (s *Service) asker(session storage.Session) (Alert, bool, error) {
+	root := session
+	for root.ParentID != "" || root.SourceType == storage.SourceBotMember {
+		next, err := s.store.LoadSession(cmp.Or(root.ParentID, root.SourceID))
 		if err != nil {
-			return false, err
+			return Alert{}, false, err
 		}
-		session = parent
+		root = next
 	}
-	return session.SourceType == "", nil
+	alert, visible, err := s.from(root)
+	alert.SessionID, alert.Kind, alert.Title = session.ID, "chat", bots.Preview(cmp.Or(session.Title, session.Slug))
+	return alert, visible, err
 }
 
 // outcome is a message's first sentence as plain text, cut like a bot

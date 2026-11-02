@@ -73,6 +73,19 @@ func (s *Store) LoadLatestSessionEvent(id, eventType string) (sessionevents.Even
 	return event, err == nil, err
 }
 
+// LoadLatestBotMessage returns the newest message botID posted in the thread.
+func (s *Store) LoadLatestBotMessage(threadID, botID string) (sessionevents.Event, bool, error) {
+	row, err := eventdb.New(s.db).LatestBotRoomMessage(context.Background(), eventdb.LatestBotRoomMessageParams{ThreadID: threadID, BotID: botID})
+	if errors.Is(err, sql.ErrNoRows) {
+		return sessionevents.Event{}, false, nil
+	}
+	if err != nil {
+		return sessionevents.Event{}, false, err
+	}
+	event, err := eventFromDBFields(row.ThreadID, row.Seq, row.ProjectionKey, row.ProjectionOp, row.Type, row.Content, row.Acp, row.Plan, row.Permission, row.CreatedAtMs)
+	return event, err == nil, err
+}
+
 func (s *Store) AppendSessionEvents(id string, events ...sessionevents.Event) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()

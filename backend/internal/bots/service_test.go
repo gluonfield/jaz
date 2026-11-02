@@ -346,17 +346,23 @@ func (t fakeThreads) CreateSession(_ context.Context, req acp.SpawnRequest) (sto
 }
 
 // SteerInternal hands a message to the thread's running turn, as the manager
-// does, failing when no turn runs or its agent cannot take it.
-func (t fakeThreads) SteerInternal(_ context.Context, session, message string) (acp.Job, error) {
+// does, failing when no turn runs or its agent cannot take it. The user's
+// words make the turn answer them.
+func (t fakeThreads) SteerInternal(_ context.Context, session, message string, user bool) (acp.Job, error) {
 	t.world.mu.Lock()
 	defer t.world.mu.Unlock()
-	if t.world.sessions[session].Turn == nil {
+	turn := t.world.sessions[session].Turn
+	if turn == nil {
 		return acp.Job{}, errors.New("turn ended")
 	}
 	if t.world.steerless {
 		return acp.Job{}, acp.ErrSteeringUnsupported
 	}
 	t.world.steered[session] = append(t.world.steered[session], message)
+	if user {
+		turn.Output = cmp.Or(turn.Output, &storage.TurnOutput{})
+		turn.Output.User = true
+	}
 	return acp.Job{ID: session}, nil
 }
 
@@ -668,6 +674,41 @@ func progressDuringTurn(t *testing.T, world *fakeWorld, service *Service, group 
 }
 
 var findings = []string{"first finding", "second finding", "third finding"}
+
+func TestAUsersPostHandedToAMembersTurnMakesItsRepliesAnswerThem(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	service := newTestService(world)
+	group, research, marketing := newGroup(t, service)
+	release := make(chan struct{})
+	world.held[marketing] = release
+	if err := service.Say(research, "first finding"); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, func() bool { return world.running(marketing) })
+	if err := service.Post(group.ID, "which one wins?", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, func() bool {
+		world.mu.Lock()
+		defer world.mu.Unlock()
+		return strings.Contains(strings.Join(world.steered[marketing], "\n"), "which one wins?")
+	})
+	if err := service.Say(marketing, "The second."); err != nil {
+		t.Fatal(err)
+	}
+	session, err := world.LoadSession(marketing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reply, ok, err := world.LoadLatestSessionEvent(group.ID, sessionevents.TypeRoomMessage)
+	if err != nil || !ok || reply.RoomMessage.BotID != "b" || reply.RoomMessage.Answers.IsZero() || !reply.RoomMessage.Answers.Equal(session.Turn.StartedAt) {
+		t.Fatalf("Marketing's reply to the user's post handed to its turn = %+v (turn began %v)", reply.RoomMessage, session.Turn.StartedAt)
+	}
+	close(release)
+	world.settle(t)
+}
 
 func TestPostsDuringAMembersTurnReachItBeforeTheTurnEnds(t *testing.T) {
 	world := newFakeWorld()

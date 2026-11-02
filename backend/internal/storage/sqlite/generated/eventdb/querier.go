@@ -19,6 +19,7 @@ type Querier interface {
 	GetSessionEventByCoalesceKey(ctx context.Context, arg GetSessionEventByCoalesceKeyParams) (GetSessionEventByCoalesceKeyRow, error)
 	GetSessionEventCompactionState(ctx context.Context, threadID string) (GetSessionEventCompactionStateRow, error)
 	HasPendingSessionEventCompaction(ctx context.Context, runningStatus string) (bool, error)
+	LatestBotRoomMessage(ctx context.Context, arg LatestBotRoomMessageParams) (LatestBotRoomMessageRow, error)
 	LatestSessionEventOfType(ctx context.Context, arg LatestSessionEventOfTypeParams) (LatestSessionEventOfTypeRow, error)
 	LatestSessionEventSeq(ctx context.Context, threadID string) (int64, error)
 	ListBotActivityEvents(ctx context.Context, arg ListBotActivityEventsParams) ([]ListBotActivityEventsRow, error)

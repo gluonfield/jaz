@@ -194,7 +194,7 @@ func TestTurnUpdatesApplyWholeAndKeepTheNewestSteers(t *testing.T) {
 		t.Fatal(err)
 	}
 	steer := func(text string) error {
-		return store.UpdateTurn(thread.ID, storage.TurnUpdate{GoalRequested: true, EndExchange: true, Steer: &storage.TurnPrompt{Message: text}}, storage.UserMessageRecord(text, nil, nil))
+		return store.UpdateTurn(thread.ID, storage.TurnUpdate{GoalRequested: true, User: true, Steer: &storage.TurnPrompt{Message: text}}, storage.UserMessageRecord(text, nil, nil))
 	}
 	if err := steer("late"); err == nil {
 		t.Fatal("updated a thread without a running turn")
@@ -213,7 +213,7 @@ func TestTurnUpdatesApplyWholeAndKeepTheNewestSteers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Turn.GoalRequested || stored.Turn.Output.Hops != 3 || len(stored.Turn.Steers) != 0 {
+	if stored.Turn.GoalRequested || stored.Turn.Output.User || stored.Turn.Output.Hops != 3 || len(stored.Turn.Steers) != 0 {
 		t.Fatalf("turn = %+v, want it untouched by the rejected update", stored.Turn)
 	}
 	for _, text := range []string{"first", "second", "third"} {
@@ -230,8 +230,8 @@ func TestTurnUpdatesApplyWholeAndKeepTheNewestSteers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !stored.Turn.GoalRequested || stored.Turn.Output.Hops != 0 || len(stored.Turn.Steers) != 1 || stored.Turn.Steers[0].Message != "third" {
-		t.Fatalf("turn = %+v, want the goal, no hops and only the third steer kept", stored.Turn)
+	if !stored.Turn.GoalRequested || !stored.Turn.Output.User || stored.Turn.Output.Hops != 0 || len(stored.Turn.Steers) != 1 || stored.Turn.Steers[0].Message != "third" {
+		t.Fatalf("turn = %+v, want the goal, the user answered, no hops and only the third steer kept", stored.Turn)
 	}
 	messages, err := store.LoadMessageRecords(thread.ID)
 	if err != nil || len(messages) != 3 || messages[0].Content != "first" || messages[2].Content != "third" {

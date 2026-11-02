@@ -39,6 +39,7 @@ export const keys = {
   computerSettings: ['computer', 'settings'] as const,
   computerStatus: ['computer', 'status'] as const,
   systemPermissions: ['system-permissions'] as const,
+  notchAccess: ['notch-access'] as const,
   browserSettings: ['browser', 'settings'] as const,
   mcp: ['mcp'] as const,
   mcpServers: ['mcp', 'servers'] as const,

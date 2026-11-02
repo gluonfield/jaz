@@ -3,6 +3,7 @@ package acp_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -204,7 +205,7 @@ func (p *jazProcess) awayFrom(name string) bots.Bot {
 func (p *jazProcess) back(bot string) bool {
 	p.t.Helper()
 	p.guard(time.Now())
-	return len(p.notices(bot)) == 2
+	return slices.ContainsFunc(p.notices(bot), func(notice string) bool { return strings.HasPrefix(notice, "Welcome back.") })
 }
 
 func TestAnAgentsMessageToATopLevelChatIsNotTheUserComingBack(t *testing.T) {

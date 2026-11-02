@@ -73,9 +73,9 @@ SET turn = json_set(turn, '$.output.shown', json('true'))
 WHERE id = sqlc.arg(id) AND status = 'running'
   AND json_type(NULLIF(turn, ''), '$.output') = 'object';
 
--- name: ResetTurnHops :exec
+-- name: SetTurnAnswersUser :exec
 UPDATE threads
-SET turn = json_remove(turn, '$.output.hops')
+SET turn = json_set(json_remove(turn, '$.output.hops'), '$.output.user', json('true'))
 WHERE id = sqlc.arg(id) AND status = 'running' AND turn <> '';
 
 -- name: FinishSessionTurn :execrows

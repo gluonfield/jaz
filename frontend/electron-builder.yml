@@ -25,6 +25,7 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+  sign: ./scripts/sign-mac.mjs
   extraFiles:
     - from: resources/macos/jaz-notch
       to: MacOS/jaz-notch

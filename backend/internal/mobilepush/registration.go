@@ -24,7 +24,7 @@ type Store interface {
 	LoadBot(string) (storage.BotRecord, error)
 	LoadMembership(string, string) (storage.BotMembership, error)
 	LoadMembershipByThread(string) (storage.BotMembership, error)
-	LoadLatestSessionEvent(id, eventType string) (sessionevents.Event, bool, error)
+	LoadLatestBotMessage(threadID, botID string) (sessionevents.Event, bool, error)
 	LoadCommitment(id int64) (storage.Commitment, error)
 	OpenedTask(botID string, turn time.Time) (bool, error)
 }

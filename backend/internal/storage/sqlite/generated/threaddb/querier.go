@@ -44,7 +44,6 @@ type Querier interface {
 	MarkTurnShown(ctx context.Context, id string) error
 	ReplaceRuntimeSessionID(ctx context.Context, arg ReplaceRuntimeSessionIDParams) (int64, error)
 	ResetRunningThreads(ctx context.Context, arg ResetRunningThreadsParams) error
-	ResetTurnHops(ctx context.Context, id string) error
 	SetArchived(ctx context.Context, arg SetArchivedParams) error
 	SetBackgroundWork(ctx context.Context, arg SetBackgroundWorkParams) error
 	SetPinned(ctx context.Context, arg SetPinnedParams) error
@@ -52,6 +51,7 @@ type Querier interface {
 	SetRunningTurn(ctx context.Context, arg SetRunningTurnParams) error
 	SetThreadError(ctx context.Context, arg SetThreadErrorParams) error
 	SetThreadUnread(ctx context.Context, arg SetThreadUnreadParams) error
+	SetTurnAnswersUser(ctx context.Context, id string) error
 	SetTurnIntent(ctx context.Context, arg SetTurnIntentParams) (int64, error)
 	SetTurnPromptState(ctx context.Context, arg SetTurnPromptStateParams) (int64, error)
 	SetTurnRetries(ctx context.Context, arg SetTurnRetriesParams) (int64, error)

@@ -1,5 +1,5 @@
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
-import type { FocusState, NotificationConfig } from '../../../shared/notifications'
+import type { NotchAccess, NotificationConfig } from '../../../shared/notifications'
 import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { WindowKind } from '@shared/windowKind'
@@ -37,7 +37,8 @@ export interface ClientRuntime {
     app_version: string
   }>
   configureNotifications?: (config: NotificationConfig) => Promise<boolean>
-  shareFocusStatus?: () => Promise<FocusState>
+  notchAccess?: () => Promise<NotchAccess>
+  shareFocusStatus?: () => Promise<NotchAccess>
   getUpdateStatus?: () => Promise<UpdateStatus>
   installUpdate?: () => Promise<{ ok: boolean; error?: string }>
   onUpdateStatus?: (handler: (status: UpdateStatus) => void) => () => void
@@ -85,6 +86,7 @@ function createRuntime(): ClientRuntime {
       decryptCredential: electron.decryptCredential,
       getDeviceMetadata: electron.getDeviceMetadata,
       configureNotifications: electron.configureNotifications,
+      notchAccess: electron.notchAccess,
       shareFocusStatus: electron.shareFocusStatus,
       getUpdateStatus: electron.getUpdateStatus,
       installUpdate: electron.installUpdate,

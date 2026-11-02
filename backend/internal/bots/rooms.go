@@ -119,9 +119,10 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 	if err != nil {
 		return err
 	}
+	user := slices.ContainsFunc(messages, func(posted sessionevents.RoomMessageEvent) bool { return posted.Speaker == "user" })
 	if thread.Turn != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), steerTimeout)
-		_, err := s.threads.SteerInternal(ctx, membership.ThreadID, groupUpdatePrompt(messages))
+		_, err := s.threads.SteerInternal(ctx, membership.ThreadID, groupUpdatePrompt(messages), user)
 		cancel()
 		if err == nil {
 			membership.Seen = seen
@@ -136,7 +137,7 @@ func (s *Service) deliverLocked(group storage.BotRecord, member string) error {
 		}
 	}
 	message := storage.NewInternalQueuedMessage(groupTurnPrompt(peers, messages))
-	if slices.ContainsFunc(messages, func(posted sessionevents.RoomMessageEvent) bool { return posted.Speaker == "user" }) {
+	if user {
 		message.Output = &storage.TurnOutput{User: true}
 	}
 	if err := s.queue.QueueInternalTurn(context.Background(), storage.TurnDelivery{SessionID: membership.ThreadID, Message: message}); err != nil {

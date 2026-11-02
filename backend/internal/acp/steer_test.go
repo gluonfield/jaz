@@ -103,7 +103,7 @@ func TestManagerSteerInternalReachesTheTurnWithoutAUserMessage(t *testing.T) {
 	if _, err := manager.StartInternalTurn(ctx, acp.InternalTurnRequest{Session: spawned.SessionID, Message: "block until cancelled"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.SteerInternal(ctx, spawned.SessionID, "Research: second finding"); err != nil {
+	if _, err := manager.SteerInternal(ctx, spawned.SessionID, "Research: second finding", false); err != nil {
 		t.Fatal(err)
 	}
 	job, err := manager.Wait(ctx, acp.WaitRequest{Session: spawned.SessionID, Timeout: 10 * time.Second})
@@ -154,7 +154,7 @@ func TestManagerSteerInternalLeavesAPendingQuestionToTheUser(t *testing.T) {
 	}
 	waitForSteerEventType(t, sub, "permission_request")
 
-	if _, err := manager.SteerInternal(ctx, spawned.SessionID, "Research: second finding"); err == nil {
+	if _, err := manager.SteerInternal(ctx, spawned.SessionID, "Research: second finding", false); err == nil {
 		t.Fatal("a hidden message was handed to a turn waiting on the user")
 	}
 	job, err := manager.Status(spawned.SessionID)

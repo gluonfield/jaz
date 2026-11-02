@@ -70,6 +70,41 @@ func TestABotShowsTheUserTheFinalReplyOfTheirTurnThatShowedThemNothing(t *testin
 	}
 }
 
+// The user writing to a bot while it answers another bot makes the turn
+// answer them too: its final reply is theirs, marked as answering them.
+func TestAUsersWordsDuringAnotherBotsAnswerMakeTheFinalReplyAnswerThem(t *testing.T) {
+	store, root := newTestStore(t)
+	jaz := startJaz(t, testContext(t), store, root, map[string]string{"JAZ_FAKE_ACP_NATIVE_STEERING": "1"})
+	bot := jaz.newBot("Gimli")
+	answer := storage.NewInternalQueuedMessage("[reply from Legolas] block until cancelled")
+	answer.Output = &storage.TurnOutput{Hops: 1}
+	if err := jaz.server.QueueInternalTurn(jaz.ctx, storage.TurnDelivery{SessionID: bot.ID, Message: answer}); err != nil {
+		t.Fatal(err)
+	}
+	waitForBlockingTool(t, jaz.ctx, jaz.manager, bot.ID)
+	answering, err := store.LoadSession(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jaz.manager.Input(jaz.ctx, acp.SteerRequest{Session: bot.ID, Message: "Any news?", FromUser: true}); err != nil {
+		t.Fatal(err)
+	}
+	jaz.idle(bot.ID)
+	events, err := store.LoadSessionEvents(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reply *sessionevents.RoomMessageEvent
+	for _, event := range events {
+		if event.RoomMessage != nil && event.RoomMessage.BotID == bot.ID {
+			reply = event.RoomMessage
+		}
+	}
+	if reply == nil || reply.Text != "hello from native steer" || !reply.Answers.Equal(answering.Turn.StartedAt) {
+		t.Fatalf("reply = %+v, turn started %v; want the final reply shown as answering the user", reply, answering.Turn.StartedAt)
+	}
+}
+
 func TestABotsFinalReplyReachesTheUserWhenTheirTurnResumesAfterARestart(t *testing.T) {
 	store, root := newTestStore(t)
 	jaz := startJaz(t, testContext(t), store, root, map[string]string{})

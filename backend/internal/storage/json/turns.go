@@ -1,6 +1,7 @@
 package jsonstore
 
 import (
+	"cmp"
 	"fmt"
 	"time"
 
@@ -131,8 +132,9 @@ func (s *Store) UpdateTurn(id string, update storage.TurnUpdate, messages ...sto
 	session.Turn.GoalRequested = update.GoalRequested
 	session.Turn.ParentVisible = update.ParentVisible
 	session.Turn.NotifyParent = update.NotifyParent
-	if update.EndExchange && session.Turn.Output != nil {
-		session.Turn.Output.Hops = 0
+	if update.User {
+		session.Turn.Output = cmp.Or(session.Turn.Output, &storage.TurnOutput{})
+		session.Turn.Output.User, session.Turn.Output.Hops = true, 0
 	}
 	if update.Steer != nil {
 		session.Turn.Steers = append(session.Turn.Steers, *update.Steer)

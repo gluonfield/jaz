@@ -200,6 +200,62 @@ func (q *Queries) HasPendingSessionEventCompaction(ctx context.Context, runningS
 	return exists, err
 }
 
+const latestBotRoomMessage = `-- name: LatestBotRoomMessage :one
+SELECT
+  thread_id,
+  seq,
+  projection_key,
+  projection_op,
+  type,
+  content,
+  acp,
+  plan,
+  permission,
+  created_at_ms
+FROM session_events
+WHERE thread_id = ?1
+  AND type = 'room_message'
+  AND json_extract(content, '$.bot_id') = ?2
+ORDER BY seq DESC
+LIMIT 1
+`
+
+type LatestBotRoomMessageParams struct {
+	ThreadID string `json:"thread_id"`
+	BotID    string `json:"bot_id"`
+}
+
+type LatestBotRoomMessageRow struct {
+	ThreadID      string         `json:"thread_id"`
+	Seq           int64          `json:"seq"`
+	ProjectionKey string         `json:"projection_key"`
+	ProjectionOp  string         `json:"projection_op"`
+	Type          string         `json:"type"`
+	Content       string         `json:"content"`
+	Acp           sql.NullString `json:"acp"`
+	Plan          sql.NullString `json:"plan"`
+	Permission    sql.NullString `json:"permission"`
+	CreatedAtMs   int64          `json:"created_at_ms"`
+}
+
+func (q *Queries) LatestBotRoomMessage(ctx context.Context, arg LatestBotRoomMessageParams) (LatestBotRoomMessageRow, error) {
+	row := q.db.QueryRowContext(ctx, latestBotRoomMessage, arg.ThreadID, arg.BotID)
+	var i LatestBotRoomMessageRow
+	err := row.Scan(
+		&i.ThreadID,
+		&i.Seq,
+		&i.ProjectionKey,
+		&i.ProjectionOp,
+		&i.Type,
+		&i.Content,
+		&i.Acp,
+		&i.Plan,
+		&i.Permission,
+		&i.CreatedAtMs,
+	)
+	return i, err
+}
+
 const latestSessionEventOfType = `-- name: LatestSessionEventOfType :one
 SELECT
   thread_id,

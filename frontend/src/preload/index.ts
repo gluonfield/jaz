@@ -21,7 +21,7 @@ import {
   type BrowserNavigationDirection,
 } from '../shared/browserNavigation'
 import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
-import { ISLAND_CHANNEL, type FocusState, type IslandAPI, type NotificationConfig } from '../shared/notifications'
+import { ISLAND_CHANNEL, type IslandAPI, type NotchAccess, type NotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI, DictationEvent } from '../shared/dictation'
 import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/voice'
@@ -161,7 +161,8 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
     }> => ipcRenderer.invoke('jaz:get-device-metadata'),
     configureNotifications: (config: NotificationConfig): Promise<boolean> =>
       ipcRenderer.invoke('jaz:configure-notifications', config),
-    shareFocusStatus: (): Promise<FocusState> => ipcRenderer.invoke('jaz:notifications:share-focus'),
+    notchAccess: (): Promise<NotchAccess> => ipcRenderer.invoke('jaz:notifications:notch-access'),
+    shareFocusStatus: (): Promise<NotchAccess> => ipcRenderer.invoke('jaz:notifications:share-focus'),
     getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('jaz:get-update-status'),
     installUpdate: (): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('jaz:install-update'),

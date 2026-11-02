@@ -24,7 +24,7 @@ import { getDeviceIdentity, getDeviceMetadata } from './deviceIdentity'
 import { registerDictation } from './dictation'
 import { configureAppPermissions } from './permissions'
 import { createNotifications } from './notifications'
-import { requestFocusStatus } from './notchHelper'
+import { notchAccess, shareFocus } from './notchHelper'
 import { attachPreviewFindShortcuts } from './previewFind'
 import { installClaudeVoice } from '@main/claudeVoice'
 import { installComputerControl } from '@main/computerControl'
@@ -401,9 +401,13 @@ app.whenReady().then(() => {
     }
     return notifications.configure(config)
   })
+  ipcMain.handle('jaz:notifications:notch-access', (event) => {
+    connectionSession.authorizeOwner(event)
+    return notchAccess()
+  })
   ipcMain.handle('jaz:notifications:share-focus', (event) => {
     connectionSession.authorizeOwner(event)
-    return requestFocusStatus()
+    return shareFocus()
   })
   updates.registerIpc()
 
