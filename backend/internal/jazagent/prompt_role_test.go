@@ -28,21 +28,44 @@ func TestNativeRequestCarriesItsSessionRole(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(root, "BOTS.md"), []byte("Only bots delegate engineering."), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			turn, err := BuildRequest(t.Context(), store, coordinator.NewBuilder(root, "", "", nil), Request{Session: session, Message: "work"})
-			if err != nil {
-				t.Fatal(err)
-			}
 			role := "Session role: work thread."
 			if source == storage.SourceBot || source == storage.SourceBotMember {
 				role = "Session role: bot chat."
 			}
-			prompt := provider.MessageContent(turn.Messages[0])
-			if strings.Count(prompt, "Session role:") != 1 || !strings.Contains(prompt, role) {
-				t.Fatalf("source %q: native request did not receive its role %q", source, role)
-			}
-			isBot := source == storage.SourceBot || source == storage.SourceBotMember
-			if strings.Contains(prompt, "Only bots delegate engineering.") != isBot || strings.Contains(prompt, "All engineering,") != isBot || strings.Contains(prompt, "Launching background work is not delivery") == isBot {
-				t.Fatalf("source %q received contradictory role instructions: %s", source, prompt)
+			approval := "I approve committing, pushing and releasing this verified correction."
+			for _, phase := range []string{"fresh", "resumed"} {
+				if phase == "resumed" {
+					if err := store.SaveMessages(session.ID, []provider.Message{provider.SystemMessage("obsolete system prompt"), provider.UserMessage(approval)}); err != nil {
+						t.Fatal(err)
+					}
+				}
+				turn, err := BuildRequest(t.Context(), store, coordinator.NewBuilder(root, "", "", nil), Request{Session: session, Message: "work"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				prompt := provider.MessageContent(turn.Messages[0])
+				if strings.Count(prompt, "Session role:") != 1 || !strings.Contains(prompt, role) {
+					t.Fatalf("source %q: %s native request did not receive its role %q", source, phase, role)
+				}
+				for _, rule := range []string{
+					"Never take an irreversible action, including sending email or messages, without the user's explicit consent for that specific action.",
+					"the exact message content, recipients and attachments. Wait for approval before acting.",
+					"Research, analysis, drafting, access to data and general task instructions are not consent.",
+					"Prior explicit authorization remains valid only within its approved scope; do not ask again while it still applies.",
+					"Changes to the action, message content, recipients or attachments require fresh approval.",
+				} {
+					if strings.Count(prompt, rule) != 1 {
+						t.Fatalf("source %q: %s native request must carry consent rule once: %q", source, phase, rule)
+					}
+				}
+				isBot := source == storage.SourceBot || source == storage.SourceBotMember
+				if strings.Contains(prompt, "Only bots delegate engineering.") != isBot || strings.Contains(prompt, "All engineering,") != isBot || strings.Contains(prompt, "Launching background work is not delivery") == isBot {
+					t.Fatalf("source %q received contradictory role instructions: %s", source, prompt)
+				}
+				if phase == "resumed" && (len(turn.Messages) != 3 || provider.MessageContent(turn.Messages[1]) != approval) {
+					t.Fatal("resumed request altered prior authorization or retained the obsolete prompt")
+				}
+				t.Logf("%s %q: role and consent once; %d system-prompt bytes; prior authorization preserved", phase, source, len(prompt))
 			}
 		})
 	}

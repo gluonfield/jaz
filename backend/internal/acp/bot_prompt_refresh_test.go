@@ -98,6 +98,7 @@ func restoredClaudeSystemPrompt(t *testing.T, source string) map[string]any {
 			role = "Session role: bot chat."
 		}
 		appended, _ := params.Meta.SystemPrompt["append"].(string)
+		assertActionConsent(t, appended)
 		if strings.Count(appended, "Session role:") != 1 || !strings.Contains(appended, role) || !strings.Contains(appended, "Shared personal instruction.") {
 			t.Fatalf("source %q: %s did not receive its role %q", source, request.Method, role)
 		}

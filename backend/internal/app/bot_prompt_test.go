@@ -123,6 +123,19 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 				if strings.Count(note, "All engineering,") != 1 || strings.Index(note, "All engineering,") > strings.Index(note, "This bot coordinates;") {
 					t.Fatal("an existing Codex bot did not receive its current coordinator policy once")
 				}
+				for _, rule := range []string{
+					"Never take an irreversible action, including sending email or messages, without the user's explicit consent for that specific action.",
+					"the exact message content, recipients and attachments. Wait for approval before acting.",
+					"Prior explicit authorization remains valid only within its approved scope; do not ask again while it still applies.",
+					"Changes to the action, message content, recipients or attachments require fresh approval.",
+				} {
+					if strings.Count(prompt, rule) != 1 || strings.Count(note, rule) != 1 {
+						t.Fatalf("assembled bot prompt and retained-session refresh must carry consent rule once: %q", rule)
+					}
+				}
+				if strings.Contains(prompt, "Ask first only before") || strings.Contains(note, "sending as the user") {
+					t.Fatal("assembled bot prompt or refresh retained the old consent exception")
+				}
 				started := time.Now().UTC()
 				if err := store.StartSessionTurn(thread.ID, storage.Turn{StartedAt: started, PromptDigest: version, Prompt: &storage.TurnPrompt{Message: "Review the returned evidence"}}); err != nil {
 					t.Fatal(err)
