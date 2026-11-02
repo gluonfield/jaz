@@ -6,6 +6,7 @@ import {
   alertSender,
   ISLAND_CAPSULE_WIDTH,
   ISLAND_EAR_WIDTH,
+  ISLAND_RETRACT_MS,
   type Alert,
   type AlertState,
   type IslandCommand,
@@ -25,7 +26,9 @@ const TONE: Record<Exclude<AlertState, 'reply'>, string> = {
 // The concave curve where the island leaves the top edge, and the inset that
 // keeps the capsule's shadow inside the window.
 const FLARE = 6
-const EASE = 'cubic-bezier(0.16, 1, 0.3, 1)'
+// A critically damped spring: the shape leaves the camera from rest and
+// settles without overshoot.
+const SPRING = 'cubic-bezier(0.2, 0.1, 0.25, 1)'
 
 // Keeps the last alerts while it retracts, so the shape closes over them.
 export function NotchIsland() {
@@ -43,7 +46,7 @@ export function NotchIsland() {
 }
 
 // Who sits in the left ear beside the camera and the state, if it needs a
-// word, in the right; what happened drops beneath once the ears have grown. A
+// word, in the right; what happened drops beneath as the ears grow. A
 // bot is named beside its face; a plain thread, which only Jaz runs, puts its
 // title beside the Jaz icon instead. The island stays centred on the camera
 // until the title needs room, then shifts to give it all the right ear's word
@@ -82,28 +85,36 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
   // the camera's. Its content sits there while the shape grows around it.
   const reach = notch ? gap / 2 + fit.lead : fit.width / 2
   const anchor = `calc(var(--island-reach) - ${reach}px)`
-  const dropped = !ears && (reduced || (open && grown))
-  const radius = dropped ? 22 : notch ? 10 : band / 2
-  // Reduced motion trades the morph for a crossfade, which `duration-150!`
-  // keeps through the app's rule that zeroes every transition.
+  // How far the card hangs below the band; its rounder corners come only with
+  // it, so the island leaves the camera in the notch's own shape.
+  const card = !ears && shown ? drop : 0
+  const radius = card ? 22 : notch ? 10 : band / 2
+  // One spring carries the shape, the card trailing the ears out and leading
+  // them back in; content and shadow fade in once it has left the camera.
+  // Beside a notch the shape stays opaque, as it is closed only under the
+  // camera housing; the floating capsule fades instead. Reduced motion trades
+  // the morph for a crossfade, which `duration-150!` keeps through the app's
+  // rule that zeroes every transition.
+  const fade = notch ? 0 : 150
+  const close = ISLAND_RETRACT_MS
   const transition = reduced
     ? 'opacity 150ms'
     : open
-      ? `--island-reach 240ms ${EASE}, width 240ms ${EASE}, height 280ms ${EASE}, border-radius 280ms ${EASE}, opacity 100ms`
-      : 'all 220ms ease-in, --island-reach 220ms ease-in, opacity 80ms ease-in 140ms'
+      ? `--island-reach 560ms ${SPRING}, width 560ms ${SPRING}, height 560ms ${SPRING} 80ms, border-radius 560ms ${SPRING} 80ms, --island-open 360ms ${SPRING} 120ms, opacity ${fade}ms`
+      : `--island-reach ${close}ms ${SPRING}, width ${close}ms ${SPRING}, height ${close - 80}ms ${SPRING}, border-radius ${close - 80}ms ${SPRING}, --island-open 120ms, opacity ${fade}ms ${close - fade}ms`
   return (
     <div
       onPointerEnter={() => command({ type: 'hover', inside: true })}
       onPointerLeave={() => command({ type: 'hover', inside: false })}
       onTransitionEnd={(event) => event.propertyName === 'width' && setGrown(open)}
-      className={`group absolute top-0 w-(--width) text-white [--island-reach:var(--reach)] starting:w-(--closed) starting:opacity-0 starting:[--island-reach:calc(var(--closed)/2)] ${reduced ? 'duration-150!' : ''} ${open ? '' : 'pointer-events-none opacity-0'}`}
+      className={`group absolute top-0 w-(--width) text-white [--island-reach:var(--reach)] starting:w-(--closed) starting:opacity-0 starting:[--island-reach:calc(var(--closed)/2)] starting:[--island-open:0] ${reduced ? 'duration-150!' : ''} ${open ? '' : 'pointer-events-none opacity-0'} ${shown ? '[--island-open:1]' : ''}`}
       style={
         {
           '--width': `${shown ? fit.width : closed}px`,
           '--reach': `${shown ? reach : closed / 2}px`,
           '--closed': `${closed}px`,
           left: 'calc(50% - var(--island-reach))',
-          height: band + (dropped ? drop : 0),
+          height: band + card,
           borderRadius: notch ? `0 0 ${radius}px ${radius}px` : radius,
           transition,
         } as CSSProperties
@@ -115,7 +126,7 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
           <span className="absolute top-0 left-full size-1.5 bg-[radial-gradient(circle_at_100%_100%,transparent_6px,#000_6.5px)]" />
         </>
       )}
-      <div className="absolute inset-0 overflow-hidden rounded-[inherit] bg-black shadow-[0_12px_24px_-10px_rgb(0_0_0/0.5)]">
+      <div className="absolute inset-0 overflow-hidden rounded-[inherit] bg-black shadow-[0_12px_24px_-10px_rgb(0_0_0/calc(var(--island-open)*0.5))] *:opacity-(--island-open) *:blur-[calc((1-var(--island-open))*4px)]">
         <button
           ref={measureBand}
           type="button"

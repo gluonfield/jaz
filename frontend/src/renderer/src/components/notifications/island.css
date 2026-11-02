@@ -6,3 +6,11 @@
   inherits: true;
   initial-value: 0px;
 }
+
+/* How present the island's content and shadow are, from 0 to 1. Registered so
+ * one transition fades both in once the shape has left the camera. */
+@property --island-open {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
