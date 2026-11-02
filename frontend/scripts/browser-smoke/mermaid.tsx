@@ -69,6 +69,14 @@ export async function exerciseMermaid() {
       return Boolean(diagram?.naturalWidth && style && style !== darkStyle)
     })
 
+    render(fence(String.raw`sequenceDiagram
+Alice->>Bob: $$E = mc^2$$
+Bob-->>Alice: $$\frac{1}{3}$$`))
+    await until(() => images().some(image => {
+      const svg = svgDocument(image)
+      return image.naturalWidth > 0 && Boolean(svg.querySelector('math msup') && svg.querySelector('math mfrac')) && !svg.documentElement.textContent?.includes('$$')
+    }))
+
     render(fence('flowchart LR\nA["unfinished'))
     await until(() => host.querySelector('pre')?.textContent?.includes('unfinished') === true)
     await new Promise((resolve) => setTimeout(resolve, 300))

@@ -130,6 +130,8 @@ function Fixture() {
         progress('Markdown contents navigation and reader controls')
         await exerciseMarkdownDocuments()
         await exerciseMarkdownArtifacts()
+        progress('Mermaid rendering, math, streaming, themes and source fallback')
+        await exerciseMermaid()
         if (suite === 'markdown-documents') {
           window.smoke.result({ ok: true, checks: ['document cards and title-only reader; scoped authored contents links, duplicate and Unicode headings, stable thread URL; X closes reader and preserves chat; desktop and phone'] })
           return
@@ -314,8 +316,6 @@ function Fixture() {
       } finally {
         waitingBrowser.dispose()
       }
-      progress('Mermaid rendering, streaming, themes and source fallback')
-      await exerciseMermaid()
       progress('browser layout, navigation collapse and resize grip')
       await exerciseBrowserLayout()
       progress('side panel tabs and retained resources')

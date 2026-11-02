@@ -138,7 +138,8 @@ export async function exerciseSessionConfig(): Promise<void> {
       await window.smoke.pointer('mouseDown', x, y)
       await window.smoke.pointer('mouseMove', next, y)
       const canvas = element.querySelector<HTMLElement>('.canvas')!
-      if (Math.abs(Number.parseFloat(getComputedStyle(canvas).getPropertyValue('--canvas-inset')) - chatWidth()) > 1) {
+      const covered = element.querySelector('.canvas-chat')!.parentElement!.getBoundingClientRect().right - canvas.getBoundingClientRect().left
+      if (Math.abs(Number.parseFloat(getComputedStyle(canvas).getPropertyValue('--canvas-inset')) - covered) > 1) {
         throw new Error('Canvas controls lag behind the chat during a drag')
       }
       await window.smoke.pointer('mouseUp', next, y)

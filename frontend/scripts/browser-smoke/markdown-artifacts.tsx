@@ -9,6 +9,7 @@ import { getThemePref, setThemePref } from '@/lib/theme'
 import type { FileReference } from '@shared/fileReader'
 
 export async function exerciseMarkdownArtifacts() {
+  const size = { width: innerWidth, height: innerHeight }
   const path = '/workspace/report.md'
   const code = `<!doctype html><html><head><style>body{margin:0;color:var(--color-ink);font-family:var(--font-sans)}#panel{height:160px;padding:12px}button{margin:4px;padding:12px;color:inherit;background:var(--color-surface);border:1px solid var(--color-border)}</style></head><body>
 <div id="panel"><button id="advance">Advance</button><output>0</output><button id="ask">Ask Jaz</button><button id="fail">Show error</button></div>
@@ -125,5 +126,6 @@ report();
     client.clear()
     window.removeEventListener('message', receive)
     setThemePref(theme)
+    await window.smoke.resize(size.width, size.height)
   }
 }
