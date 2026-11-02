@@ -37,8 +37,6 @@ type fakeFeedStore struct{}
 
 func (fakeFeedStore) LoadFeed() ([]storage.FeedItem, error) { return nil, nil }
 
-func (fakeFeedStore) LoadFeedCompletions() ([]storage.FeedCompletion, error) { return nil, nil }
-
 type fakeConnectionOAuthStore struct{}
 
 func (fakeConnectionOAuthStore) LoadToken(context.Context, string) (integrationoauth.Token, bool, error) {
@@ -88,7 +86,7 @@ func TestHTTPModuleProvidesRoute(t *testing.T) {
 	requireRoute(t, routes, "GET /v1/usage/models")
 	requireRoute(t, routes, "GET /v1/feed")
 	requireRoute(t, routes, "GET /v1/sessions")
-	requireRoute(t, routes, "GET /v1/feed/completions")
+	requireRoute(t, routes, "GET /v1/notifications/stream")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/messages")
 	requireRoute(t, routes, "GET /v1/sessions/{session}/overview")
 	requireRoute(t, routes, "DELETE /v1/sessions/{session}/goal")

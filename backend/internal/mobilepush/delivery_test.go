@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/bots"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
@@ -55,6 +56,11 @@ func pushFixture(t *testing.T, source string) (*Service, *sqlitestore.Store, *ca
 	if err != nil {
 		t.Fatal(err)
 	}
+	if source == storage.SourceBot {
+		if err := store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: bots.KindBot, Shape: "circle", Color: "blue"}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := store.SaveApprovedDevice(storage.SaveApprovedDevice{
 		ID: "phone", Name: "Phone", Kind: storage.DeviceKindMobile, TokenHash: "test-hash", CreatedAt: time.Now(), ApprovedAt: time.Now(),
 	}); err != nil {
@@ -70,8 +76,8 @@ func pushFixture(t *testing.T, source string) (*Service, *sqlitestore.Store, *ca
 	return service, store, sender, session
 }
 
-func TestBotDeliveryUsesExplicitMessageAndIsNotRepeated(t *testing.T) {
-	service, _, sender, session := pushFixture(t, storage.SourceBot)
+func TestBotTaskDoneReachesThePhoneOnce(t *testing.T) {
+	service, store, sender, session := pushFixture(t, storage.SourceBot)
 	ctx := context.Background()
 	for _, event := range []sessionevents.Event{
 		{SessionID: session.ID, Type: sessionevents.TypeACPMessage, Content: "private narration"},
@@ -85,9 +91,16 @@ func TestBotDeliveryUsesExplicitMessageAndIsNotRepeated(t *testing.T) {
 	if len(sender.pushes) != 0 {
 		t.Fatalf("private output produced notifications: %#v", sender.pushes)
 	}
-	message := sessionevents.Event{
-		SessionID: session.ID, Type: sessionevents.TypeRoomMessage, Seq: 13,
-		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Found three suppliers"},
+	task, err := store.OpenCommitment(storage.Commitment{BotID: session.ID, Request: "Find suppliers"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, err := store.DeliverMessage(sessionevents.Event{
+		SessionID: session.ID, Type: sessionevents.TypeRoomMessage,
+		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", BotID: session.ID, Text: "Found three suppliers. Details below.", Task: &sessionevents.TaskChange{IDs: []int64{task.ID}, Status: storage.CommitmentDone}},
+	}, []int64{task.ID})
+	if err != nil {
+		t.Fatal(err)
 	}
 	for range 2 {
 		if err := service.process(ctx, message); err != nil {
@@ -95,12 +108,14 @@ func TestBotDeliveryUsesExplicitMessageAndIsNotRepeated(t *testing.T) {
 		}
 	}
 	if len(sender.pushes) != 1 {
-		t.Fatalf("expected one explicit delivery, got %d", len(sender.pushes))
+		t.Fatalf("expected one delivery, got %d", len(sender.pushes))
 	}
 	payload := sender.pushes[0].payload
-	aps := payload["aps"].(map[string]any)
-	body := aps["alert"].(map[string]any)["body"]
-	if body != "Found three suppliers" || payload["kind"] != "bot" || payload["session_id"] != session.ID || payload["installation_id"] != "installation" {
+	alert := payload["aps"].(map[string]any)["alert"].(map[string]any)
+	if alert["title"] != "Find suppliers" || alert["subtitle"] != "Research" || alert["body"] != "Found three suppliers." {
+		t.Fatalf("notification did not name the task and its outcome: %#v", alert)
+	}
+	if payload["kind"] != "bot" || payload["session_id"] != session.ID || payload["installation_id"] != "installation" {
 		t.Fatalf("notification lost conversation identity: %#v", payload)
 	}
 }
@@ -116,7 +131,7 @@ func TestChatCompletionFollowsPersistedTurnAndUpdatesLiveActivity(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	idle := sessionevents.Event{SessionID: session.ID, Type: "acp", ACP: &sessionevents.ACPEvent{State: "idle", StopReason: "end_turn"}}
+	idle := sessionevents.Event{SessionID: session.ID, Type: "acp", ACP: &sessionevents.ACPEvent{State: "idle", StopReason: "end_turn", Assistant: "Done."}}
 	if err := service.process(context.Background(), idle); err != nil {
 		t.Fatal(err)
 	}
@@ -161,6 +176,7 @@ func TestQuestionsCarryReplyIdentityAndProtectSecretQuestions(t *testing.T) {
 			SessionID: session.ID, Type: "permission_request",
 			Permission: &sessionevents.ACPPermission{
 				ID:        []string{"question", "secret"}[index],
+				SessionID: session.ID,
 				Questions: []sessionevents.ACPQuestion{{ID: "q", Question: "Which supplier?", IsSecret: secret}},
 			},
 		}
@@ -211,8 +227,8 @@ func TestRevocationAndNotificationOptOutPreserveBoundary(t *testing.T) {
 }
 
 func TestFailedDeliveryCanRetry(t *testing.T) {
-	service, _, sender, session := pushFixture(t, storage.SourceBot)
-	event := sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeRoomMessage, Seq: 1, RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Hello"}}
+	service, _, sender, session := pushFixture(t, "")
+	event := sessionevents.Event{SessionID: session.ID, Type: "permission_request", Permission: &sessionevents.ACPPermission{ID: "question", SessionID: session.ID}}
 	sender.err = context.DeadlineExceeded
 	if err := service.process(context.Background(), event); err == nil {
 		t.Fatal("failed delivery was reported successful")

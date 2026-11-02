@@ -39,6 +39,7 @@ type Querier interface {
 	ListMemberships(ctx context.Context) ([]BotMembership, error)
 	ListOpenCommitments(ctx context.Context, botID string) ([]BotCommitment, error)
 	ListWatchBots(ctx context.Context, nowMs int64) ([]string, error)
+	OpenedTask(ctx context.Context, arg OpenedTaskParams) (bool, error)
 	PinBot(ctx context.Context, arg PinBotParams) error
 	RecordTaskReply(ctx context.Context, arg RecordTaskReplyParams) error
 	SaveMembership(ctx context.Context, arg SaveMembershipParams) error

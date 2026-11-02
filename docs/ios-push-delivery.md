@@ -1,6 +1,6 @@
 # iOS Push Delivery
 
-The paired Jaz server sends bot messages, chat completion alerts, questions and Live Activity updates directly to Apple. No relay service or new application dependency is required.
+The paired Jaz server sends conversation alerts and Live Activity updates directly to Apple. No relay service or new application dependency is required. Desktops receive the same alerts over a live stream.
 
 ## Configuration
 
@@ -19,7 +19,10 @@ Equivalent configuration fields are jaz.push.keyfile, keyid, teamid and bundleid
 - GET/PUT/DELETE /v1/mobile/push reports configuration, registers notifications or opts out. Opting out preserves Live Activities.
 - PUT/DELETE /v1/mobile/activities/{activity} registers or removes a conversation's ActivityKit token.
 - Notification payloads carry the conversation kind, session ID and per-server installation ID. Questions additionally carry their request ID. Secret questions open the app.
-- Bot notifications use explicit room messages; private narration is excluded. Chat completion follows saved turn bookkeeping. Group progress uses the same member-turn calculation as the bot API.
+- One classifier in `internal/mobilepush/alert.go` decides alerts for iPhones and desktops from typed state, never message wording: done (a bot message that delivered a task), reply (a plain thread's final reply, or a bot's final message in a person-started turn that opened no task), needs_you (a task question or an agent question) and stopped (a stopped task or a failed turn). Acknowledgements, progress, cancels, restarts, compactions and child turns are silent. A group member's reply alerts as its group.
+- Bots tag the messages that change tasks (`RoomMessageEvent.Task`) and the person-started turn they answer (`Answers`); a commitment records the turn that opened it. Private narration is excluded. Group progress uses the same member-turn calculation as the bot API.
+- Alerts show the thread or task title, with the bot or group name as subtitle, and the reply's first sentence as plain text.
+- GET /v1/notifications/stream sends alerts decided while a desktop listens as server-sent events, with a 25-second heartbeat. Nothing is replayed after a reconnect. The desktop shows each alert once, beside the notch or in Notification Center, and nothing while a Jaz window is focused.
 - Progress updates have increasing Apple timestamps, coalesce unchanged state and refresh once per minute. Expired tokens are removed; revoked devices receive no pushes. Apple transport failures retry with bounded timeouts.
 
 ## Verification and Review

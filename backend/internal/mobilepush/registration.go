@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -23,6 +24,9 @@ type Store interface {
 	LoadBot(string) (storage.BotRecord, error)
 	LoadMembership(string, string) (storage.BotMembership, error)
 	LoadMembershipByThread(string) (storage.BotMembership, error)
+	LoadLatestSessionEvent(id, eventType string) (sessionevents.Event, bool, error)
+	LoadCommitment(id int64) (storage.Commitment, error)
+	OpenedTask(botID string, turn time.Time) (bool, error)
 }
 
 type Registration struct {
@@ -51,10 +55,12 @@ type Service struct {
 	awaitsAnswer func(string) bool
 	changed      chan struct{}
 	mu           sync.Mutex
+	listenMu     sync.Mutex
+	listeners    map[chan Alert]struct{}
 }
 
 func NewService(store Store, sender Sender, awaitsAnswer func(string) bool) *Service {
-	return &Service{store: store, sender: sender, awaitsAnswer: awaitsAnswer, changed: make(chan struct{}, 1)}
+	return &Service{store: store, sender: sender, awaitsAnswer: awaitsAnswer, changed: make(chan struct{}, 1), listeners: map[chan Alert]struct{}{}}
 }
 
 func (s *Service) Enabled() bool {

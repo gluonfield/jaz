@@ -492,6 +492,11 @@ func (s *Service) preview(threadID string, group bool) string {
 	if group {
 		text = event.RoomMessage.Name + ": " + text
 	}
+	return Preview(text)
+}
+
+// Preview is text on one line, cut to 140 characters.
+func Preview(text string) string {
 	text = strings.Join(strings.Fields(text), " ")
 	if runes := []rune(text); len(runes) > 140 {
 		return string(runes[:140]) + "…"

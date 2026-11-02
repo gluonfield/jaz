@@ -99,7 +99,7 @@ func (s *Server) finishTurn(job acp.Job) error {
 	s.publishMessagesChanged(job.ID)
 	s.publishSessionChanged(job.ID)
 	if s.Events != nil {
-		s.Events.Publish(sessionevents.Event{SessionID: job.ID, Type: sessionevents.TypeTurnFinished, ACP: acp.EventFromJob(job)})
+		s.Events.Publish(sessionevents.Event{SessionID: job.ID, Type: sessionevents.TypeTurnFinished, ACP: acp.FinishedEvent(job, session.Turn)})
 	}
 	for _, delivery := range deliveries {
 		s.publishSessionChanged(delivery.SessionID)

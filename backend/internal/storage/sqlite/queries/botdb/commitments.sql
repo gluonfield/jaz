@@ -1,7 +1,12 @@
 -- name: InsertCommitment :one
-INSERT INTO bot_commitments (bot_id, requester, request, note, status, opened_at_ms)
-VALUES (sqlc.arg(bot_id), sqlc.arg(requester), sqlc.arg(request), sqlc.arg(note), 'pending', sqlc.arg(opened_at_ms))
+INSERT INTO bot_commitments (bot_id, requester, request, note, status, opened_at_ms, opened_turn_ms)
+VALUES (sqlc.arg(bot_id), sqlc.arg(requester), sqlc.arg(request), sqlc.arg(note), 'pending', sqlc.arg(opened_at_ms), sqlc.arg(opened_turn_ms))
 RETURNING id;
+
+-- name: OpenedTask :one
+SELECT EXISTS (
+  SELECT 1 FROM bot_commitments WHERE bot_id = sqlc.arg(bot_id) AND opened_turn_ms = sqlc.arg(turn_ms)
+);
 
 -- name: UpdateCommitment :execrows
 UPDATE bot_commitments

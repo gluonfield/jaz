@@ -95,6 +95,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "DELETE /v1/mobile/push", Handler: http.HandlerFunc(push.Unregister)},
 		server.Route{Pattern: "PUT /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.RegisterActivity)},
 		server.Route{Pattern: "DELETE /v1/mobile/activities/{activity}", Handler: http.HandlerFunc(push.Unregister)},
+		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
 	)
 	routes = append(routes, feedRoutes(deps.Feed)...)
 	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
@@ -144,10 +145,6 @@ func feedRoutes(feed feedcore.Service) server.Routes {
 		{
 			Pattern: "GET /v1/feed",
 			Handler: httpHandlerFunc(handler.List),
-		},
-		{
-			Pattern: "GET /v1/feed/completions",
-			Handler: httpHandlerFunc(handler.Completions),
 		},
 	}
 }

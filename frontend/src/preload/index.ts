@@ -21,7 +21,7 @@ import {
   type BrowserNavigationDirection,
 } from '../shared/browserNavigation'
 import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
-import type { ThreadNotificationConfig } from '../shared/notifications'
+import { ISLAND_CHANNEL, type FocusState, type IslandAPI, type NotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI, DictationEvent } from '../shared/dictation'
 import type { VoiceCommand, VoiceOverlayAPI, VoiceOverlayState } from '@shared/voice'
@@ -102,6 +102,15 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
         return () => ipcRenderer.removeListener('jaz:voice:command', listener)
       },
     } satisfies VoiceOverlayAPI,
+    island: {
+      onState: (listener) => {
+        const handler = (_event: unknown, state: Parameters<typeof listener>[0]) => listener(state)
+        ipcRenderer.on(`${ISLAND_CHANNEL}state`, handler)
+        ipcRenderer.send(`${ISLAND_CHANNEL}ready`)
+        return () => ipcRenderer.removeListener(`${ISLAND_CHANNEL}state`, handler)
+      },
+      command: (command) => ipcRenderer.send(`${ISLAND_CHANNEL}command`, command),
+    } satisfies IslandAPI,
     dictation: {
       availability: () => ipcRenderer.invoke('jaz:dictation:availability'),
       start: (id) => ipcRenderer.invoke('jaz:dictation:start', id),
@@ -150,8 +159,9 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       model_identifier: string
       app_version: string
     }> => ipcRenderer.invoke('jaz:get-device-metadata'),
-    configureThreadNotifications: (config: ThreadNotificationConfig): Promise<boolean> =>
-      ipcRenderer.invoke('jaz:configure-thread-notifications', config),
+    configureNotifications: (config: NotificationConfig): Promise<boolean> =>
+      ipcRenderer.invoke('jaz:configure-notifications', config),
+    shareFocusStatus: (): Promise<FocusState> => ipcRenderer.invoke('jaz:notifications:share-focus'),
     getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('jaz:get-update-status'),
     installUpdate: (): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke('jaz:install-update'),

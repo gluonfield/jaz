@@ -1,23 +1,73 @@
+import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BrowserWindow, Notification, shell } from 'electron'
+import { app, BrowserWindow, Notification, shell } from 'electron'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
-import { threadNotificationPath, type ThreadCompletion } from '../shared/notifications'
-import { createThreadCompletionMonitor } from './notificationMonitor'
+import {
+  alertPath,
+  alertSender,
+  ISLAND_HOLD_MS,
+  parseNotificationConfig,
+  type Alert,
+  type NotificationMode,
+} from '../shared/notifications'
+import { createIsland } from './island'
+import { createAlertStream } from './notificationStream'
 import { logMain } from '@main/diagnostics'
 
-export function createThreadNotificationMonitor(openInMain: (path: string) => void) {
-  return createThreadCompletionMonitor((completion: ThreadCompletion) => {
-    if (BrowserWindow.getFocusedWindow() || !Notification.isSupported()) return
+// Routes classified alerts while Jaz is in the background: to the island when
+// it may appear, otherwise to Notification Center, never both.
+export function createNotifications(open: (path: string) => void) {
+  let mode: NotificationMode = 'off'
+  let queue = Promise.resolve()
+  const delivered = new Map<string, string>()
+  const shown = new Set<Notification>()
+  const island = createIsland(open)
+  const stream = createAlertStream((alert) => {
+    const received = Date.now()
+    queue = queue.then(() => deliver(alert, received)).catch((error) => logMain('Alert delivery failed', error))
+  })
+
+  async function deliver(alert: Alert, received: number): Promise<void> {
+    if (mode === 'off' || delivered.get(alert.sessionId) === alert.key || Date.now() - received > ISLAND_HOLD_MS) return
+    delivered.set(alert.sessionId, alert.key)
+    if (BrowserWindow.getFocusedWindow()) return
+    const needed = alert.state === 'needs_you'
+    if (mode !== 'center' && (await island.present(alert, mode === 'notch_ears'))) {
+      if (needed) spawn('afplay', ['/System/Library/Sounds/Blow.aiff'], { stdio: 'ignore' }).on('error', () => {})
+      return
+    }
+    if (!Notification.isSupported()) return
     const notification = new Notification({
-      title: completion.title || completion.slug || 'Untitled thread',
-      body: 'Jaz finished this thread.',
-      sound: 'Blow',
+      title: alert.title || alertSender(alert),
+      ...(alert.title ? { subtitle: alertSender(alert) } : {}),
+      body: alert.body,
+      groupId: alert.sessionId,
+      silent: !needed,
+      ...(needed ? { sound: 'Blow' } : {}),
       ...(process.platform === 'linux' ? { icon: appIcon } : {}),
     })
-    notification.on('click', () => openInMain(threadNotificationPath(completion.id)))
+    shown.add(notification)
+    notification.on('click', () => open(alertPath(alert)))
+    notification.on('close', () => shown.delete(notification))
     notification.show()
-  })
+  }
+
+  app.on('browser-window-focus', () => island.clear())
+
+  return {
+    configure(value: unknown): boolean {
+      const config = parseNotificationConfig(value)
+      mode = config?.mode ?? 'off'
+      stream.follow(config && config.mode !== 'off' ? config : null)
+      return config !== null
+    },
+    stop(): void {
+      mode = 'off'
+      stream.follow(null)
+      island.clear()
+    },
+  }
 }
 
 // Resolves whether macOS showed a test notification. Until the user answers

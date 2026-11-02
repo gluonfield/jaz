@@ -82,7 +82,6 @@ type UsageEventStore interface {
 
 type FeedStore interface {
 	LoadFeed() ([]FeedItem, error)
-	LoadFeedCompletions() ([]FeedCompletion, error)
 }
 
 type Store interface {

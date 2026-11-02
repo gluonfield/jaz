@@ -49,11 +49,14 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 		if request == "" {
 			return 0, errors.New("request is required to create a task")
 		}
-		requester := ""
-		if session.Turn != nil && session.Turn.Output != nil {
-			requester = session.Turn.Output.ReplyTo
+		task := storage.Commitment{BotID: threadID, Request: request, Note: next}
+		if session.Turn != nil {
+			task.OpenedTurn = session.Turn.StartedAt
 		}
-		commitment, err := s.store.OpenCommitment(storage.Commitment{BotID: threadID, Requester: requester, Request: request, Note: next})
+		if session.Turn != nil && session.Turn.Output != nil {
+			task.Requester = session.Turn.Output.ReplyTo
+		}
+		commitment, err := s.store.OpenCommitment(task)
 		return commitment.ID, err
 	}
 	commitment, err := s.open(threadID, change.ID)
@@ -66,10 +69,11 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 			return 0, errors.New("stopping requires status stopped and an explanation; resuming requires status pending and a justified message only")
 		}
 		commitment.Status = status
-		event, err := s.store.TransitionCommitment(commitment, sessionevents.Event{
-			SessionID: threadID, Type: sessionevents.TypeRoomMessage, At: time.Now().UTC(),
-			RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", BotID: threadID, Name: session.Title, Text: message},
-		})
+		var stopped *sessionevents.TaskChange
+		if status == storage.CommitmentStopped {
+			stopped = &sessionevents.TaskChange{IDs: []int64{commitment.ID}, Status: status}
+		}
+		event, err := s.store.TransitionCommitment(commitment, taskMessage(session, message, stopped))
 		if err == nil {
 			s.events.Publish(event)
 		}
@@ -104,10 +108,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	}
 	commitment.Status = change.Status
 	if status == storage.CommitmentWaitingForUser && message != "" {
-		event, err := s.store.AskCommitment(commitment, sessionevents.Event{
-			SessionID: threadID, Type: sessionevents.TypeRoomMessage, At: time.Now().UTC(),
-			RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", BotID: threadID, Name: session.Title, Text: message},
-		})
+		event, err := s.store.AskCommitment(commitment, taskMessage(session, message, &sessionevents.TaskChange{IDs: []int64{commitment.ID}, Status: status}))
 		if err == nil {
 			s.events.Publish(event)
 		}
@@ -117,6 +118,15 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 		return 0, errors.New("message is used with waiting_for_user, completed or cancelled")
 	}
 	return commitment.ID, s.store.UpdateCommitment(commitment)
+}
+
+// taskMessage is a bot's message in its own chat that changes its tasks as
+// change says; a task resuming changes nothing the person is told.
+func taskMessage(session storage.Session, text string, change *sessionevents.TaskChange) sessionevents.Event {
+	return sessionevents.Event{
+		SessionID: session.ID, Type: sessionevents.TypeRoomMessage, At: time.Now().UTC(),
+		RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", BotID: session.ID, Name: session.Title, Text: text, Task: change, Answers: answering(session)},
+	}
 }
 
 // delivers checks that a message from a bot's own thread reaching to, a

@@ -137,7 +137,10 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 	if err != nil || record.Kind != KindBot {
 		return errors.New("only a Jaz bot can send messages")
 	}
-	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: botSession.Title, Text: text}
+	message := sessionevents.RoomMessageEvent{Speaker: "bot", BotID: bot, Name: botSession.Title, Text: text, Answers: answering(session)}
+	if len(done) > 0 {
+		message.Task = &sessionevents.TaskChange{IDs: done, Status: storage.CommitmentDone}
+	}
 	if !inGroup {
 		stored, err := s.store.DeliverMessage(sessionevents.Event{SessionID: threadID, Type: sessionevents.TypeRoomMessage, RoomMessage: &message, At: time.Now().UTC()}, done)
 		if err != nil {
@@ -151,6 +154,15 @@ func (s *Service) Say(threadID, text string, done ...int64) error {
 		return err
 	}
 	return s.post(group, message, false)
+}
+
+// answering is when the person-started turn a thread is taking began; zero
+// outside one.
+func answering(session storage.Session) time.Time {
+	if session.Turn == nil || session.Turn.Output == nil || !session.Turn.Output.User {
+		return time.Time{}
+	}
+	return session.Turn.StartedAt
 }
 
 // TurnEnding delivers a silent person-started turn's final reply in the bot's

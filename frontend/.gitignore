@@ -3,5 +3,6 @@ out/
 dist/
 dist-web/
 resources/bin/
+resources/macos/
 *.local
 *.tsbuildinfo

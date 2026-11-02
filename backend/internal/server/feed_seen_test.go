@@ -32,38 +32,41 @@ func (s completionObservingStore) CompleteSession(id string, at time.Time) error
 	return s.Store.CompleteSession(id, at)
 }
 
-func TestACPTurnFinishedRecordsFeedCompletion(t *testing.T) {
+func TestACPTurnFinishedNamesItsTurnAndFinalReply(t *testing.T) {
 	store, err := sqlitestore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-
-	session, err := store.CreateSession(storage.CreateSession{Slug: "finished"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := store.UpdateSessionStatus(session.ID, storage.StatusRunning, "", session.LastAttentionAt); err != nil {
-		t.Fatal(err)
-	}
-
-	(&Server{Store: store}).HandleACPTurnFinished(context.Background(), acp.Job{
-		ID: session.ID, State: acp.StateIdle,
-	})
-
-	items, err := store.LoadFeedCompletions()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 || items[0].ID != session.ID || items[0].CompletedAt.IsZero() {
-		t.Fatalf("completions = %#v", items)
-	}
-	loaded, err := store.LoadSession(session.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.Status != storage.StatusIdle || !loaded.Unread {
-		t.Fatalf("completed session = %#v", loaded)
+	events := sessionevents.New()
+	finished := events.Subscribe(t.Context(), "", sessionevents.TypeTurnFinished)
+	server := &Server{Store: store, Events: events}
+	for operation, reply := range map[string]string{"": "Done.", acp.ActiveOperationCompact: ""} {
+		session, err := store.CreateSession(storage.CreateSession{Slug: "finished"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.StartSessionTurn(session.ID, storage.Turn{ActiveOperation: operation}); err != nil {
+			t.Fatal(err)
+		}
+		running, err := store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		server.HandleACPTurnFinished(context.Background(), acp.Job{
+			ID: session.ID, State: acp.StateIdle, StopReason: acp.StopReasonEndTurn, ActiveOperation: operation, Reply: "Done.",
+		})
+		event := <-finished
+		if event.ACP.Assistant != reply || !event.ACP.TurnStartedAt.Equal(running.Turn.StartedAt) {
+			t.Fatalf("operation %q finished as %#v", operation, event.ACP)
+		}
+		loaded, err := store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if loaded.Status != storage.StatusIdle || loaded.CompletedAt.IsZero() {
+			t.Fatalf("completed session = %#v", loaded)
+		}
 	}
 }
 

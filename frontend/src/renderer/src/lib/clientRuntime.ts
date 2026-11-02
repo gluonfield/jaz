@@ -1,5 +1,5 @@
 import type { BrowserNavigationDirection } from '../../../shared/browserNavigation'
-import type { ThreadNotificationConfig } from '../../../shared/notifications'
+import type { FocusState, NotificationConfig } from '../../../shared/notifications'
 import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { WindowKind } from '@shared/windowKind'
@@ -36,7 +36,8 @@ export interface ClientRuntime {
     model_identifier: string
     app_version: string
   }>
-  configureThreadNotifications?: (config: ThreadNotificationConfig) => Promise<boolean>
+  configureNotifications?: (config: NotificationConfig) => Promise<boolean>
+  shareFocusStatus?: () => Promise<FocusState>
   getUpdateStatus?: () => Promise<UpdateStatus>
   installUpdate?: () => Promise<{ ok: boolean; error?: string }>
   onUpdateStatus?: (handler: (status: UpdateStatus) => void) => () => void
@@ -83,7 +84,8 @@ function createRuntime(): ClientRuntime {
       encryptCredential: electron.encryptCredential,
       decryptCredential: electron.decryptCredential,
       getDeviceMetadata: electron.getDeviceMetadata,
-      configureThreadNotifications: electron.configureThreadNotifications,
+      configureNotifications: electron.configureNotifications,
+      shareFocusStatus: electron.shareFocusStatus,
       getUpdateStatus: electron.getUpdateStatus,
       installUpdate: electron.installUpdate,
       onUpdateStatus: electron.onUpdateStatus,
