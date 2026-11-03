@@ -70,5 +70,5 @@ export function useCanvasSync(sessionId: string, working: boolean) {
     history.current.delete(page)
     await refetch()
   }, [sessionId, refetch])
-  return { view, local, commit, replay, createPage, renamePage, deletePage, error: canvas.error }
+  return { view, local, commit, replay, createPage, renamePage, deletePage, refreshed: canvas.isFetchedAfterMount && !canvas.isError, error: canvas.error }
 }

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider, useRouterState } from '@tanstack/react-router'
-import { useState } from 'react'
+import { StrictMode, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Composer } from '@/components/session/Composer'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
@@ -98,13 +98,13 @@ export async function exerciseCanvasPages(): Promise<void> {
   }
   const remount = async (key: string, name: string) => {
     const canvas = element.querySelector('.canvas')
-    root.render(<QueryClientProvider key={key} client={client}><RouterProvider router={router} /></QueryClientProvider>)
+    root.render(<StrictMode><QueryClientProvider key={key} client={client}><RouterProvider router={router} /></QueryClientProvider></StrictMode>)
     await until(() => element.querySelector('.canvas') !== canvas && control()?.textContent === name, `Remount (${key}) did not restore ${name}`)
   }
   const link = (label: string) => [...element.querySelectorAll<HTMLAnchorElement>('a')].find((link) => link.textContent === label)!
   try {
     await router.load()
-    root.render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
+    root.render(<StrictMode><QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider></StrictMode>)
     await until(() => Boolean(node()?.textContent?.includes('Legacy page')), 'Legacy content is not visible on Page 1')
     checkControls()
     if (element.querySelector('[aria-label="Rename page"]')) throw new Error('Canvas pages: persistent edit button is still present')
@@ -226,9 +226,32 @@ export async function exerciseCanvasPages(): Promise<void> {
     await remount('reload', '__proto__')
     await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'canvas-pages-other' }, search: {} })
     await until(() => control()?.textContent === 'Page 1', 'Another thread inherited the previous thread page')
+    const outdated = await getCanvas(sessionId)
+    client.setQueryData(keys.sessionCanvas(sessionId), { ...outdated, version: 'outdated', pages: outdated.pages.filter((page) => page.id !== '__proto__') })
     await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
-    await until(() => control()?.textContent === '__proto__', 'Returning to the thread did not restore its page')
-    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: { page: 'page-1' } })
+    await until(() => control()?.textContent === '__proto__', 'A stale cached document lost the remembered page before refresh')
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'canvas-pages-other' }, search: {} })
+    await until(() => control()?.textContent === 'Page 1', 'The other thread did not reopen')
+    client.setQueryData(keys.sessionCanvas(sessionId), { ...outdated, version: 'outdated', pages: outdated.pages.filter((page) => page.id !== '__proto__') })
+    const originalFetch = window.fetch
+    window.fetch = (input, init) => new URL(String(input)).pathname === `/v1/sessions/${sessionId}/canvas`
+      ? Promise.resolve(new Response('Canvas temporarily unavailable', { status: 503 }))
+      : originalFetch(input, init)
+    try {
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
+      await until(() => client.getQueryState(keys.sessionCanvas(sessionId))?.status === 'error', 'The refresh failure did not reach the canvas query')
+      await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'canvas-pages-other' }, search: {} })
+      await until(() => control()?.textContent === 'Page 1', 'The failed refresh prevented leaving the thread')
+    } finally {
+      window.fetch = originalFetch
+    }
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
+    await until(() => control()?.textContent === '__proto__', 'A failed refresh erased the remembered page')
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'canvas-pages-other' }, search: {} })
+    await until(() => control()?.textContent === 'Page 1', 'The other thread did not reopen before the explicit link')
+    client.setQueryData(keys.sessionCanvas(sessionId), { ...outdated, version: 'outdated', pages: outdated.pages.filter((page) => page.id !== 'page-1') })
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: { page: 'page-1', item: 'same' } })
+    await until(() => control()?.textContent === 'Overview' && Boolean(node()?.classList.contains('selected')), 'A fresh item link to an uncached page was consumed before refresh')
     await remount('explicit-page', 'Overview')
     const originalDocument = JSON.parse(await raw())
     const reordered = JSON.parse(JSON.stringify(originalDocument))
@@ -320,6 +343,20 @@ export async function exerciseCanvasPages(): Promise<void> {
     if (document.querySelector('[role="listbox"]')) throw new Error('Canvas pages: long-press opened the page list on release')
     await new Promise((resolve) => setTimeout(resolve, 150))
     await window.smoke.capture('canvas-pages-touch-actions')
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
+    for (const method of ['setItem', 'getItem'] as const) {
+      const original = Storage.prototype[method]
+      Object.defineProperty(Storage.prototype, method, { configurable: true, writable: true, value: function (this: Storage, key: string, ...args: string[]) {
+        if (this === localStorage && key.startsWith('jaz.canvasPage.')) throw new DOMException('Storage unavailable', 'QuotaExceededError')
+        return Reflect.apply(original, this, [key, ...args])
+      } })
+      try {
+        await remount(`storage-${method}`, method === 'getItem' ? 'Overview' : 'Agent plan')
+        await choose(method === 'getItem' ? 'Agent plan' : 'Overview')
+      } finally {
+        Storage.prototype[method] = original
+      }
+    }
   } finally {
     await window.smoke.resize(1050, 850)
     root.unmount()
