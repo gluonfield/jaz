@@ -386,11 +386,7 @@ function ACPAgentRow({
                 className={rowControlClass}
               />
             </SettingsRow>
-            {current.model_provider === 'opencode-native' ? (
-              <div className="border-t border-border/70 px-3 py-2.5 text-[12px] text-ink-3">
-                Connect providers with <code>npx -y opencode-ai@1.19.4 auth login</code> in the Jaz backend environment.
-              </div>
-            ) : selectedProviderNativeAuth ? null : (
+            {selectedProviderNativeAuth ? null : (
               <div className="border-t border-border/70 px-3 py-2.5">
                 <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
               </div>

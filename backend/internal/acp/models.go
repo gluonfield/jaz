@@ -10,6 +10,7 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	"github.com/gluonfield/acp-transport/jsonrpc"
+	"github.com/wins/jaz/backend/internal/provider"
 )
 
 const agentMethodSessionSetModel = "session/set_model"
@@ -784,6 +785,11 @@ func AgentOptionsForConfig(name string, cfg AgentConfig, root string) AgentOptio
 	options.Local = cfg.Local
 	options.ProviderMode = strings.TrimSpace(cfg.ProviderMode)
 	options.AuthProviderID = strings.TrimSpace(cfg.AuthProviderID)
+	// OpenCode accounts carry their own credential store, so the agent's auth
+	// panel must appear the same way it does for providers with native auth.
+	if CanonicalAgentName(name) == AgentOpenCode && cfg.ModelProvider == provider.ProviderOpenCodeNative {
+		options.AuthProviderID = provider.ProviderOpenCodeNative
+	}
 	options.SupportsAuth = cfg.SupportsAuth()
 	if CanonicalAgentName(name) == AgentCodex && codexNativeOpenAIProvider(cfg.ModelProvider) {
 		options.FastModeModels = codexFastModeModels(cfg, root)
