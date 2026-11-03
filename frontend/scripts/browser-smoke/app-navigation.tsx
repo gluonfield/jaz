@@ -116,12 +116,15 @@ export async function exerciseAppNavigation() {
   const at = (id: string, destination: string) =>
     router.state.location.pathname === `/apps/${id}/show` && path().path === destination && locations.get(frame(id).contentWindow!)?.path === destination
   const click = async (target: Element) => {
+    let trusted = false
+    target.addEventListener('click', (event) => { trusted = event.isTrusted }, { once: true })
     const bounds = target.getBoundingClientRect()
     const x = Math.round(bounds.x + bounds.width / 2)
     const y = Math.round(bounds.y + bounds.height / 2)
     await window.smoke.pointer('mouseMove', x, y)
     await window.smoke.pointer('mouseDown', x, y)
     await window.smoke.pointer('mouseUp', x, y)
+    if (!trusted) throw new Error(`No trusted click reached ${target.getAttribute('aria-label')}`)
   }
   const visit = (id: string, search: { path?: string; input?: Record<string, unknown> } = {}) => router.navigate({ to: '/apps/$serverId/$tool', params: { serverId: id, tool: 'show' }, search })
   const step = async (direction: 'back' | 'forward') => {
@@ -233,6 +236,34 @@ export async function exerciseAppNavigation() {
     if (newChat()) {
       throw new Error('Bots offered a new chat in the titlebar')
     }
+    const sidebarWidth = () => element.querySelector('aside')!.parentElement!.parentElement!.getBoundingClientRect().width
+    for (const selected of [false, true]) {
+      for (const open of [false, true]) {
+        if (selected) await router.navigate({ to: '/bots' })
+        else await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'sidebar-return' } })
+        await until(() => Boolean(toggle()) && settled())
+        if ((toggle()!.getAttribute('aria-expanded') === 'true') !== open) await click(toggle()!)
+        await until(() => toggle()?.getAttribute('aria-expanded') === String(open) && settled())
+        if (open ? sidebarWidth() < 200 : sidebarWidth() !== 0) throw new Error('Sidebar did not reach its starting width')
+        await click(element.querySelector('a[aria-label="Bots"]')!)
+        await until(() => router.state.location.pathname === '/bots' && toggle()?.getAttribute('aria-expanded') === 'true' && settled())
+        if (sidebarWidth() < 200) throw new Error('Bots sidebar did not expand')
+        if (newChat()) throw new Error('Bots navigation offered a titlebar new chat')
+        console.warn(JSON.stringify({ check: 'Bots sidebar click', selected, open, path: router.state.location.pathname, width: sidebarWidth() }))
+        await click(element.querySelector('a[aria-label="Chat"]')!)
+        await until(() => router.state.location.pathname === '/sessions/sidebar-return' && toggle()?.getAttribute('aria-expanded') === 'true' && settled())
+      }
+    }
+    await click(toggle()!)
+    await until(() => sidebarWidth() === 0 && settled())
+    const crmPath = locations.get(frame('crm').contentWindow!)!.path
+    await click(element.querySelector('a[aria-label="crm"]')!)
+    await until(() => at('crm', crmPath))
+    if (toggle() || sidebarWidth() !== 0) throw new Error('An app navigation opened the sidebar')
+    await click(element.querySelector('a[aria-label="Chat"]')!)
+    await until(() => router.state.location.pathname === '/sessions/sidebar-return' && toggle()?.getAttribute('aria-expanded') === 'true' && settled())
+    if (sidebarWidth() < 200) throw new Error('Chat sidebar did not reopen')
+    await window.smoke.capture('rail-sidebar-open')
     workspaceChecks = true
     await client.invalidateQueries({ queryKey: keys.projects })
     await router.navigate({ to: '/new', search: { project: '/fixture/repo' } })

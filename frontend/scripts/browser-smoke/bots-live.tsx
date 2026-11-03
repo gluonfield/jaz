@@ -53,7 +53,7 @@ export async function exerciseBotsLive() {
       }
     }, [])
     return <ToastProvider>{subscribed && <Events />}<div style={{ display: 'flex', height: '100vh' }}>
-      <NavRail tab="/bots" onOpenChat={() => {}} onOpenSettings={() => {}} />
+      <NavRail tab="/bots" onOpenSidebar={() => {}} onOpenSettings={() => {}} />
       <div style={{ width: 280 }}><BotsPanel mobile={false} /></div>
       <output aria-label="Observed mood">{data[0] ? botMood(data[0]) : 'loading'}</output>
     </div></ToastProvider>

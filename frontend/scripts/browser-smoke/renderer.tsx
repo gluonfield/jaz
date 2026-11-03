@@ -258,7 +258,7 @@ function Fixture() {
       progress('app page navigation across Jaz history')
       await exerciseAppNavigation()
       if (new URLSearchParams(location.search).get('suite') === 'app-navigation') {
-        window.smoke.result({ ok: true, checks: ['sandboxed app page history, cross-app Back/Forward, remembered pages, tool-target entry, repeated opens, query restoration, focused keyboard shortcuts, threads started only by the app in use, and a titlebar New chat with the sidebar hidden everywhere except Bots'] })
+        window.smoke.result({ ok: true, checks: ['sandboxed app page history, cross-app Back/Forward, remembered pages, tool-target entry, repeated opens, query restoration, focused keyboard shortcuts, threads started only by the app in use, titlebar New chat except Bots; trusted Chat/Bots rail clicks expand collapsed sidebars, keep open sidebars open and return to the last chat, including an already selected Bots tab; app navigation keeps the sidebar hidden'] })
         return
       }
       progress('composer submission across chat navigation')
