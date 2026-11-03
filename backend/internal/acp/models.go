@@ -257,7 +257,7 @@ func (p agentPolicy) sessionConfigEffort(value string) string {
 }
 
 // mergeSessionMeta adds the agent options a session of sourceType starts with.
-// Sessions nobody writes to disable Claude's optional prompt prediction request.
+// Only ordinary user threads keep Claude's optional prompt prediction request.
 func (p agentPolicy) mergeSessionMeta(meta map[string]any, cfg AgentConfig, sourceType string) map[string]any {
 	if model := configuredSessionModel(cfg.ProviderQualifiedModel()); p.modelMetaKey != "" && model != "" {
 		if meta == nil {
@@ -265,7 +265,7 @@ func (p agentPolicy) mergeSessionMeta(meta map[string]any, cfg AgentConfig, sour
 		}
 		meta[p.modelMetaKey] = model
 	}
-	if p.promptSuggestions && !watchedSourceType(sourceType) {
+	if p.promptSuggestions && sourceType != "" {
 		if meta == nil {
 			meta = map[string]any{}
 		}

@@ -1,16 +1,17 @@
-# Unattended Claude Prompt Suggestions
+# Claude Prompt Suggestions in Bot and Background Sessions
 
-Claude sessions used for bot workers, group seats, routine runs and memory jobs
-start and resume with the native SDK option `promptSuggestions: false`. Ordinary
-user threads and a bot's main chat retain the provider default. This works with
-the existing Claude adapter and does not change prompts, tools or authentication.
+Claude sessions used for bot chats, bot workers, group seats, routine runs and
+memory jobs start and resume with the native SDK option `promptSuggestions: false`.
+Ordinary user threads retain the provider default. Human-started and hidden turns
+in a bot's chat share the same session policy. This works with the existing Claude
+adapter and does not change prompts, tools or authentication.
 
 The session's persisted source type determines the option on both initial launch
-and restart. A regression test covers eight source classes across a Manager/store
-restart. Four compiled negative controls catch incorrect source classification
-and omitted source information on launch or resume.
+and restart. Regression tests cover eight source classes and six other agents
+across a Manager restart, sending both human and hidden turns. The bot-chat case
+fails against the old policy on both initial launch and resume.
 
-## Measured Behavior
+## Historical Worker Measurement
 
 On 19 October 2026, four ordinary coding prompts using Opus 5.5 subscription OAuth
 and Claude Code 2.1.300 produced the following native prediction API requests:
@@ -24,10 +25,10 @@ Counts use native API-request records with `source=prompt_suggestion`.
 Native conversation and cache gates affect eligibility; the visible-session
 comparison confirms predictions remain available.
 
-Hidden turns inside a main bot chat remain unresolved. The native pause control
-was acknowledged but rollout-gated; changing the session flag settings did not
-update the running prediction state. Both experimental controls were removed
-after live checks. No new Claude adapter version is required by this change.
+The earlier attempt to pause individual hidden bot turns was rollout-gated.
+The current policy disables suggestions when opening the bot session instead;
+it does not use the experimental pause control. No new live Claude probe or
+adapter version is required by this change.
 
 ## Separate Codex Release Pin
 
