@@ -101,6 +101,9 @@ func newOAuthHandler(server mcpconfig.Server, store integrationoauth.Store, http
 // TokenSource is rebuilt per call: the SDK passes the current connection's
 // context, and a source cached across a redial would refresh on a closed one.
 func (h *oauthHandler) TokenSource(ctx context.Context) (oauth2.TokenSource, error) {
+	if h.mode == oauthModeInteractive && !h.didAuthorize() {
+		return nil, nil
+	}
 	src, err := (integrationoauth.Refresher{
 		Store:        h.store,
 		HTTPClient:   h.httpClient,
