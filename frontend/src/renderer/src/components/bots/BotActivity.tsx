@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { CornerDownRight } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
 import { RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread, BotStartedThread } from '@/lib/api/types'
-import { BOT_FILE_LABELS, taskStateLabel } from '@/lib/bots'
+import { BOT_FILE_LABELS, taskName, taskStateLabel } from '@/lib/bots'
 import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/time'
 
 // A row says what happened and how to open it: a thread, a routine, a file, or
@@ -63,7 +63,7 @@ export function BotActivity({
             {title ? <h4 className="mt-3 mb-1 text-[11px] font-medium text-ink-3">{title} <span className="ml-1 tabular-nums">{tasks.length}</span></h4> : null}
             {tasks.map((task) => (
               <button key={task.id} type="button" onClick={() => setShown(task.id)} className="-mx-2 flex min-h-10 min-w-0 cursor-pointer flex-col justify-center rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-list-hover">
-                <span className="w-full text-[13px] leading-5 font-medium wrap-break-word text-ink">{task.request}</span>
+                <span className="line-clamp-2 w-full text-[13px] leading-5 font-medium wrap-break-word text-ink">{taskName(task)}</span>
                 {!title ? <span className="text-[11px] text-ink-3">{taskStateLabel(task)}</span> : null}
               </button>
             ))}
@@ -90,27 +90,23 @@ export function BotActivity({
 const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', background: 'Working in the background', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
 
 function OwedModal({ botId, owed, started, now, onClose }: { botId: string; owed: BotOwed; started: Started; now: number; onClose: () => void }) {
+  const openMessage = (event: MouseEvent<HTMLAnchorElement>) => {
+    document.getElementById(event.currentTarget.hash.slice(1))?.scrollIntoView({ block: 'center' })
+    onClose()
+  }
   return (
-    <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, taskStateLabel(owed), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
+    <Modal open onClose={onClose} title={taskName(owed)} description={[`For ${owed.for ?? 'you'}`, taskStateLabel(owed), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm" className="[&_h2]:line-clamp-2">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
         {owed.check_at ? <p>Check: {messageTime(owed.check_at)}</p> : null}
-        {owed.next ? <p className="whitespace-pre-wrap wrap-break-word">{owed.status === 'stopped' ? 'Reason' : 'Next'}: {owed.next}</p> : null}
         {owed.blocked && owed.depends_on?.length ? <p>Prerequisites: {owed.depends_on.map((id) => `#${id}`).join(', ')}</p> : null}
-        {owed.question ? (
-          <section aria-label="Question for you" className="flex flex-col gap-1">
-            <h3 className="font-medium">Question for you</h3>
-            <RenderedMarkdown text={owed.question} />
-          </section>
-        ) : null}
-        <Link to="/bots/$botId" params={{ botId }} onClick={onClose} className="font-medium text-ink-2 hover:text-ink">Open bot chat</Link>
         {owed.threads?.length ? (
           <section aria-label="Related work">
-            <h3 className="font-medium">Related work</h3>
+            <h3 className="font-medium">Work & results</h3>
             <ul className="flex flex-col">
               {owed.threads.map((thread) => (
                 <li key={thread.id}>
                   <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} onClick={onClose} className="-mx-2 flex min-w-0 items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-list-hover">
-                    <span className="min-w-0 truncate font-medium">{thread.title}</span>
+                    <span className="min-w-0 flex-1 wrap-break-word font-medium">{thread.title}</span>
                     <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
                   </Link>
                   <StartedThreads started={started} by={thread.id} now={now} onOpen={onClose} />
@@ -119,6 +115,28 @@ function OwedModal({ botId, owed, started, now, onClose }: { botId: string; owed
             </ul>
           </section>
         ) : null}
+        <nav aria-label="Task context" className="flex flex-wrap gap-x-4 gap-y-2 font-medium text-ink-2">
+          {owed.opening_seq ? <Link to="/bots/$botId" params={{ botId }} search={{ message: owed.opening_seq }} hash={`message-${owed.opening_seq}`} onClick={openMessage} className="hover:text-ink">Opening context</Link> : null}
+          {owed.question && owed.question_seq ? <Link to="/bots/$botId" params={{ botId }} search={{ message: owed.question_seq }} hash={`message-${owed.question_seq}`} onClick={openMessage} className="hover:text-ink">Open question in chat</Link> : null}
+          <Link to="/bots/$botId" params={{ botId }} search={{}} onClick={onClose} className="hover:text-ink">Open bot chat</Link>
+        </nav>
+        {owed.question ? (
+          <section aria-label="Question for you" className="flex flex-col gap-1">
+            <h3 className="font-medium">Question for you</h3>
+            <RenderedMarkdown text={owed.question} />
+          </section>
+        ) : null}
+        {owed.next ? <section aria-label="Progress" className="flex flex-col gap-1">
+          <h3 className="font-medium">{owed.status === 'stopped' ? 'Reason' : 'Progress & next step'}</h3>
+          <p className="line-clamp-3 whitespace-pre-wrap wrap-break-word text-ink-2">{owed.next}</p>
+        </section> : null}
+        <details className="text-ink-2">
+          <summary tabIndex={0} className="cursor-pointer font-medium hover:text-ink">Task details</summary>
+          <div className="mt-2 flex flex-col gap-3 whitespace-pre-wrap wrap-break-word">
+            <p>{owed.request}</p>
+            {owed.next ? <p>{owed.status === 'stopped' ? 'Reason' : 'Next'}: {owed.next}</p> : null}
+          </div>
+        </details>
       </div>
     </Modal>
   )

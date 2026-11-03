@@ -122,12 +122,14 @@ func (t *MCPTools) Send(_ context.Context, req *mcp.CallToolRequest, input MCPSe
 }
 
 type MCPTaskCreateInput struct {
-	Request string `json:"request" jsonschema:"Requested outcome and concrete check for when it is done; include a short task label, but not just a vague work title. Context belongs in the linked work threads."`
+	Name    string `json:"name,omitempty" jsonschema:"Compact task name for headings and lists. Keep the full outcome and completion check in request."`
+	Request string `json:"request" jsonschema:"Requested outcome and concrete check for when it is done, not just a work label. Context belongs in the linked work threads."`
 	Next    string `json:"next,omitempty" jsonschema:"The next step on this task."`
 }
 
 type MCPTaskUpdateInput struct {
 	ID               int64    `json:"id" jsonschema:"The open task's id."`
+	Name             string   `json:"name,omitempty" jsonschema:"Compact task name for headings and lists; omit to preserve. Keep the full outcome and completion check in request."`
 	Request          string   `json:"request,omitempty" jsonschema:"Requested outcome and concrete check for when it is done; change only if the requested outcome changes. Context belongs in the linked work threads."`
 	Next             string   `json:"next,omitempty" jsonschema:"Progress or the next step."`
 	Status           string   `json:"status,omitempty" jsonschema:"Task status; omit to preserve it."`
@@ -142,7 +144,7 @@ type MCPTaskOutput struct {
 }
 
 func (t *MCPTools) CreateTask(_ context.Context, req *mcp.CallToolRequest, input MCPTaskCreateInput) (*mcp.CallToolResult, MCPTaskOutput, error) {
-	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{Request: input.Request, Next: input.Next})
+	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{Name: input.Name, Request: input.Request, Next: input.Next})
 	return nil, MCPTaskOutput{ID: id}, err
 }
 
@@ -162,7 +164,7 @@ func (t *MCPTools) UpdateTask(_ context.Context, req *mcp.CallToolRequest, input
 		}
 		checkAt = &at
 	}
-	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{ID: input.ID, Request: input.Request, Next: input.Next, Status: input.Status, Message: input.Message, DependsOn: input.DependsOn, AnsweredQuestion: input.AnsweredQuestion, CheckAt: checkAt})
+	id, err := t.service.Commit(mcpsession.SessionID(req), Commit{ID: input.ID, Name: input.Name, Request: input.Request, Next: input.Next, Status: input.Status, Message: input.Message, DependsOn: input.DependsOn, AnsweredQuestion: input.AnsweredQuestion, CheckAt: checkAt})
 	return nil, MCPTaskOutput{ID: id}, err
 }
 

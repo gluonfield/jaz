@@ -17,11 +17,16 @@ declare module '@tanstack/history' {
 }
 
 export const Route = createFileRoute('/bots/$botId')({
+  validateSearch: (search): { message?: number } => {
+    const message = Number(search.message)
+    return Number.isSafeInteger(message) && message > 0 ? { message } : {}
+  },
   component: BotRoute,
 })
 
 function BotRoute() {
   const { botId } = Route.useParams()
+  const { message } = Route.useSearch()
   const newBot = useLocation({ select: (location) => Boolean(location.state.newBot) })
   const bots = useQuery(botsQuery)
   const bot = bots.data?.find((item) => item.id === botId)
@@ -34,6 +39,7 @@ function BotRoute() {
     <ThreadView
       key={bot.id}
       sessionId={bot.id}
+      message={message}
       header={<BotPill avatars={[bot.avatar]} name={bot.name} />}
       details={(view) => <BotDetails bot={bot} focusName={newBot} {...view} />}
       openDetails={newBot}

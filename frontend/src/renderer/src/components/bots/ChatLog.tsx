@@ -35,6 +35,7 @@ export function ChatLog({
   onSendPrompt,
   scrollRef,
   paging,
+  revealSeq,
 }: {
   entries: ChatEntry[]
   bots: Bot[]
@@ -46,6 +47,7 @@ export function ChatLog({
   onSendPrompt?: (text: string) => void
   scrollRef: RefObject<HTMLDivElement | null>
   paging: HistoryPaging
+  revealSeq?: number
 }) {
   const avatar = (id?: string) => bots.find((bot) => bot.id === id)?.avatar ?? GONE
   const mentions = useMemo(() => {
@@ -62,6 +64,7 @@ export function ChatLog({
     batch: VISIBLE_ENTRY_BATCH,
     keyAt: (index) => entries[index]?.key,
     paging,
+    showAll: Boolean(revealSeq),
   })
   // Messages newer than the open chat arrive; the rest are simply there.
   const [openedAt] = useState(Date.now)
@@ -79,7 +82,7 @@ export function ChatLog({
         const opensRun = stamped || !sameSpeaker(previous)
         const closesRun = nextStamped || !sameSpeaker(next)
         return (
-          <div key={entry.key} className={`${opensRun ? 'mt-4 first:mt-0' : 'mt-1'} ${!reduced && Date.parse(entry.at) > openedAt ? ARRIVE : ''}`}>
+          <div key={entry.key} id={entry.seq ? `message-${entry.seq}` : undefined} data-message-seq={entry.seq} className={`${opensRun ? 'mt-4 first:mt-0' : 'mt-1'} ${!reduced && Date.parse(entry.at) > openedAt ? ARRIVE : ''}`}>
             {stamped ? <p className="pb-3 text-center text-[12px] text-ink-3">{messageTime(entry.at)}</p> : null}
             {entry.kind === 'user' ? (
               <>

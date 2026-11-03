@@ -19,10 +19,10 @@ export async function exerciseBotPanel(): Promise<void> {
   const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString()
   const bot: Bot = { id: 'panel', kind: 'bot', name: 'Jaz Self Improvement Bot', avatar: { shape: 'hex', color: 'amber' }, unread: false, status: 'idle', updated_at: minutes(0) }
   const owed: BotOwed[] = [
-    { id: 4, request: 'Keep bot tasks and their results visible across delegated work, restarts and follow-up conversations', status: 'in_progress', moving: true, next: 'check its report, then send it', opened_at: minutes(14), threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
+    { id: 4, name: 'Keep delegated work visible', request: 'Keep bot tasks and their results visible across delegated work, restarts and follow-up conversations', status: 'in_progress', moving: true, next: 'check its report, then send it', opened_at: minutes(14), threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
     { id: 3, request: 'Which fixes matter this week', status: 'in_progress', for: 'Priorities Bot', opened_at: minutes(95), threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
     { id: 6, request: 'Compare the supplier quotes', status: 'stopped', next: 'Checked both routes; neither supports this input. Retry after support is added.', opened_at: minutes(40), threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
-    { id: 5, request: 'Overnight stress run', status: 'pending', blocked: true, depends_on: [1], opened_at: minutes(70) },
+    { id: 5, request: 'Overnight stress run; done when all overnight checks pass and their results are reviewed', status: 'pending', blocked: true, depends_on: [1], opened_at: minutes(70) },
     { id: 2, request: 'Pause prompt suggestions on hidden turns', status: 'waiting_for_user', question_seq: 15, question: 'Keep suggestions enabled in bot chats, or disable them?', next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
     { id: 8, request: 'Choose public artifact sharing defaults', status: 'waiting_for_user', question_seq: 16, question: 'Approve the [exact sharing list](/fixture/sharing-list.tsv)?\n\n[Evidence and limits](/fixture/evidence.md)', opened_at: minutes(180), threads: [{ id: 'sharing-audit', title: 'Sharing audit', state: 'finished' }] },
     { id: 9, request: 'Choose the bot chat sync direction', status: 'waiting_for_user', question_seq: 17, opened_at: minutes(180) },
@@ -191,7 +191,7 @@ export async function exerciseBotPanel(): Promise<void> {
     }
   }
   const text = () => document.body.textContent ?? ''
-  const find = (label: string) => [...document.querySelectorAll<HTMLElement>('button, a, [role="link"]')].find((item) => (item.getAttribute('aria-label') === label || item.textContent?.trim().startsWith(label)) && item.getBoundingClientRect().height)
+  const find = (label: string) => [...document.querySelectorAll<HTMLElement>('button, a, summary, [role="link"]')].find((item) => (item.getAttribute('aria-label') === label || item.textContent?.trim().startsWith(label)) && item.getBoundingClientRect().height)
   const click = async (label: string) => {
     let target: HTMLElement | undefined
     await until(`no control "${label}"`, () => Boolean(target = find(label)))
@@ -281,7 +281,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const waiting = owed.filter((task) => task.status === 'waiting_for_user')
     const working = owed.filter((task) => task.status !== 'waiting_for_user')
     const titles = [...tasks.querySelectorAll('button > span:first-child')].map((node) => node.textContent)
-    if (titles.join() !== [...working, ...waiting].map((task) => task.request).join() || tasks.querySelectorAll('h4').length !== 1 || tasks.querySelector('h4')?.textContent !== `Waiting for you ${waiting.length}` || tasks.textContent?.split('Waiting for you').length !== 2) {
+    if (titles.join() !== [...working, ...waiting].map((task) => task.id === 5 ? 'Overnight stress run' : task.name || task.request).join() || tasks.querySelectorAll('h4').length !== 1 || tasks.querySelector('h4')?.textContent !== `Waiting for you ${waiting.length}` || tasks.textContent?.split('Waiting for you').length !== 2) {
       throw new Error('Bot panel: work must precede one counted waiting group without repeated labels')
     }
     if (states.join() !== 'Worker active,Worker ended · outcome open,Stopped,Waiting on prerequisites,Worker ended · outcome open,Worker active') {
@@ -294,8 +294,8 @@ export async function exerciseBotPanel(): Promise<void> {
         throw new Error('Bot panel: task titles must use the full row width above any state')
       }
     }
-    if (find(owed[0].request)!.firstElementChild!.getBoundingClientRect().height <= 20) {
-      throw new Error('Bot panel: a long task title is truncated instead of wrapping')
+    if (tasks.textContent?.includes(owed[0].request) || find(owed[0].name!)!.firstElementChild!.getBoundingClientRect().height > 40) {
+      throw new Error('Bot panel: a compact task name was replaced by its internal completion contract')
     }
     await capture('bot-panel-tasks')
     dark(true)
@@ -340,8 +340,16 @@ export async function exerciseBotPanel(): Promise<void> {
     client.setQueryData(activityKey, loaded)
     await until('the full task list did not return', () => text().includes(`Tasks ${owed.length}`))
     await window.smoke.resize(1200, 900)
-    await click(owed[0].request)
-    await until('a task with one worker did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: check its report') ?? false)
+    await click(owed[0].name!)
+    await until('a task with one worker did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('check its report') ?? false)
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!
+    if (dialog.querySelector('h2')?.textContent !== owed[0].name || dialog.querySelector('details')?.open || dialog.querySelector('[aria-label="Related work"]')!.getBoundingClientRect().bottom > innerHeight) {
+      throw new Error('Bot panel: compact task heading or immediate work navigation failed')
+    }
+    await click('Task details')
+    if (!dialog.querySelector('details')?.open || !dialog.querySelector('details')?.textContent?.includes(owed[0].request)) throw new Error('Bot panel: the full task contract was lost')
+    await click('Task details')
+    await capture('bot-panel-named-task')
     if (!document.querySelector('[role="dialog"]')?.textContent?.includes('Worker active')) {
       throw new Error('Bot panel: task details lost the active worker state')
     }
@@ -353,7 +361,7 @@ export async function exerciseBotPanel(): Promise<void> {
     activityFails = true
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
     await settle()
-    if (!document.querySelector('section[aria-label="Tasks"]') || !document.querySelector('[role="dialog"]')?.textContent?.includes('Next: check its report')) {
+    if (!document.querySelector('section[aria-label="Tasks"]') || !document.querySelector('[role="dialog"]')?.textContent?.includes('check its report')) {
       throw new Error('Bot panel: a failed background refresh hid the last loaded tasks or their open details')
     }
     activityFails = false
@@ -365,7 +373,7 @@ export async function exerciseBotPanel(): Promise<void> {
     await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
     await until('the panel did not return to Activity', () => selected() === find('Activity') && text().includes(`Tasks ${owed.length}`))
     await click('Pause prompt suggestions on hidden turns')
-    await until('a commitment without a thread did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Next: wait for his OK') ?? false)
+    await until('a commitment without a thread did not open its details', () => document.querySelector('[role="dialog"]')?.textContent?.includes('wait for his OK') ?? false)
     if (!document.querySelector('[role="dialog"]')?.textContent?.includes('Waiting for you')) {
       throw new Error('Bot panel: task details lost the human block')
     }
@@ -392,6 +400,11 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('the panel did not return after finished work', () => Boolean(find('Overnight stress run')))
     await click('Overnight stress run')
     await until('task details lost the prerequisite reason', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Prerequisites: #1') ?? false)
+    const legacy = document.querySelector<HTMLElement>('[role="dialog"]')!
+    if (legacy.querySelector('h2')?.textContent !== 'Overnight stress run') throw new Error('Bot panel: a legacy title still contains its completion specification')
+    await click('Task details')
+    if (!legacy.querySelector('details')?.open || legacy.querySelector('details p')?.textContent !== owed.find((task) => task.id === 5)!.request) throw new Error('Bot panel: a compact legacy title lost the full task specification')
+    await capture('bot-panel-legacy-title')
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Compare the supplier quotes')
@@ -569,10 +582,10 @@ export async function exerciseBotPanel(): Promise<void> {
     await click('Activity')
     const completed = owed.splice(0)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].request) && text().includes('Learned something new'))
+    await until('completed tasks did not leave the open list', () => !document.querySelector('section[aria-label="Tasks"]') && !text().includes(completed[0].name!) && text().includes('Learned something new'))
     owed.push(...completed)
     await client.invalidateQueries({ queryKey: ['bots', bot.id, 'activity'] })
-    await until('new tasks did not appear', () => text().includes(completed[0].request))
+    await until('new tasks did not appear', () => text().includes(completed[0].name!))
     element.style.setProperty('--side-panel-width', '420px')
     await capture('bot-panel-wide')
 

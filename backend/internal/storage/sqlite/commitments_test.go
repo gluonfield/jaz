@@ -71,12 +71,40 @@ func TestATaskRemembersTheTurnThatOpenedIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	turn := time.Now()
-	opened, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "Price the part", OpenedTurn: turn})
+	other, err := store.CreateSession(storage.CreateSession{Slug: "other-bot", SourceType: storage.SourceBot})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded, err := store.LoadCommitment(opened.ID); err != nil || !loaded.OpenedTurn.Equal(turn.Truncate(time.Millisecond)) {
-		t.Fatalf("opening turn = %v, %v; want %v", loaded.OpenedTurn, err, turn)
+	if err := store.AppendSessionEvents(other.ID, sessionevents.Event{Type: sessionevents.TypeRoomMessage, RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "Same turn stamp in another bot", Answers: turn}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range []sessionevents.RoomMessageEvent{
+		{Speaker: "bot", Text: "An older turn", Answers: turn.Add(-time.Second)},
+		{Speaker: "user", Text: "Not the bot's opening context", Answers: turn},
+		{Speaker: "bot", Text: "The audit result", Answers: turn},
+		{Speaker: "bot", Text: "Another message in this turn", Answers: turn},
+	} {
+		if err := store.AppendSessionEvents(bot.ID, sessionevents.Event{Type: sessionevents.TypeRoomMessage, RoomMessage: &message}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	events, err := store.LoadSessionEvents(bot.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Name: "Part price", Request: "Price the part", OpenedTurn: turn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := store.LoadCommitment(opened.ID); err != nil || !loaded.OpenedTurn.Equal(turn.Truncate(time.Millisecond)) || loaded.OpeningSeq != events[2].Seq || len(loaded.Threads) != 0 || loaded.Name != "Part price" || loaded.Request != "Price the part" {
+		t.Fatalf("opening context = %+v, %v; want turn %v and message %d without a worker", loaded, err, turn, events[2].Seq)
+	}
+	legacy, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "An older task with no recorded turn"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded, err := store.LoadCommitment(legacy.ID); err != nil || loaded.OpeningSeq != 0 || loaded.Name != "" {
+		t.Fatalf("unknown opening context or name was invented: %+v, %v", loaded, err)
 	}
 	for at, want := range map[time.Time]bool{turn: true, turn.Add(time.Second): false} {
 		if got, err := store.OpenedTask(bot.ID, at); err != nil || got != want {
