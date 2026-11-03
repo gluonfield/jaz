@@ -141,8 +141,7 @@ async function run() {
 
   ipcMain.removeHandler('jaz:install-update')
   await click('Try again')
-  await waitFor(retryDOM)
-  assert.ok(await evaluate(`document.body.textContent.includes('No handler registered')`))
+  await waitFor(`${retryDOM} && document.body.textContent.includes('No handler registered')`)
   ipcMain.removeHandler('jaz:get-update-status')
   controller.registerIpc()
   await click('Try again')
