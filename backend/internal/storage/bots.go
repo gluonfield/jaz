@@ -68,11 +68,13 @@ type Commitment struct {
 	// Requester is the thread its result goes to, where another bot asked;
 	// empty for the user.
 	Requester string
+	Name      string
 	Request   string
 	// Note is the bot's next step while it is open, or why it was dropped.
 	Note        string
 	QuestionSeq int64
 	Question    string
+	OpeningSeq  int64
 	ReplySeq    int64
 	CheckAt     *time.Time
 	DependsOn   []int64

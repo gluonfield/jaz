@@ -126,13 +126,14 @@ export function botAvatars(bot: Bot, bots: Bot[]): BotAvatar[] {
   return members.length ? members : [bot.avatar]
 }
 
-export type ChatEntry =
+export type ChatEntry = { seq?: number } & (
   | { kind: 'user'; key: string; at: string; text: string; attachments?: Attachment[]; attachmentSessionId?: string }
   | { kind: 'bot'; key: string; at: string; botId?: string; name: string; text: string }
   | { kind: 'activity'; key: string; at: string; event: SessionEvent }
   | { kind: 'app'; key: string; at: string; app: MCPAppEvent }
   | { kind: 'artifact'; key: string; at: string; event: SessionEvent }
   | { kind: 'question'; key: string; at: string; event: SessionEvent; answer?: ACPPermission }
+)
 
 type ChatTurn = {
   at: string
@@ -194,8 +195,8 @@ export function botChat(
       turn = activity ? { at, user: false, activity } : { at, user: true }
     }
     if (room) {
-      if (room.speaker === 'user') entries.push({ kind: 'user', key, at, text: room.text, attachments: room.attachments, attachmentSessionId: self.id })
-      else entries.push({ kind: 'bot', key, at, botId: room.bot_id, name: room.name, text: room.text })
+      if (room.speaker === 'user') entries.push({ kind: 'user', key, at, seq: event.seq, text: room.text, attachments: room.attachments, attachmentSessionId: self.id })
+      else entries.push({ kind: 'bot', key, at, seq: event.seq, botId: room.bot_id, name: room.name, text: room.text })
     } else if (activity) {
       if (activity.kind === 'unreachable') entries.push({ kind: 'activity', key, at, event })
     } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {

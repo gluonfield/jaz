@@ -28,6 +28,7 @@ type CommitmentStore interface {
 
 type Commit struct {
 	ID               int64
+	Name             string
 	Request          string
 	Next             string
 	Status           string
@@ -42,6 +43,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	if err != nil || record.Kind != KindBot {
 		return 0, errors.New("tasks are kept in a bot's own chat")
 	}
+	name := strings.TrimSpace(change.Name)
 	request := strings.TrimSpace(change.Request)
 	next := strings.TrimSpace(change.Next)
 	message := strings.TrimSpace(change.Message)
@@ -49,7 +51,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 		if request == "" {
 			return 0, errors.New("request is required to create a task")
 		}
-		task := storage.Commitment{BotID: threadID, Request: request, Note: next}
+		task := storage.Commitment{BotID: threadID, Name: name, Request: request, Note: next}
 		if session.Turn != nil {
 			task.OpenedTurn = session.Turn.StartedAt
 		}
@@ -65,7 +67,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 	}
 	status := cmp.Or(change.Status, commitment.Status)
 	if status == storage.CommitmentStopped || commitment.Status == storage.CommitmentStopped && status != storage.CommitmentDropped {
-		if message == "" || request != "" || next != "" || change.DependsOn != nil || change.CheckAt != nil || change.AnsweredQuestion != 0 || commitment.Status == storage.CommitmentStopped && status != storage.CommitmentPending {
+		if message == "" || name != "" || request != "" || next != "" || change.DependsOn != nil || change.CheckAt != nil || change.AnsweredQuestion != 0 || commitment.Status == storage.CommitmentStopped && status != storage.CommitmentPending {
 			return 0, errors.New("stopping requires status stopped and an explanation; resuming requires status pending and a justified message only")
 		}
 		commitment.Status = status
@@ -80,7 +82,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 		return commitment.ID, explain(err)
 	}
 	if status == storage.CommitmentDone || status == storage.CommitmentDropped {
-		if message == "" || request != "" || next != "" || change.DependsOn != nil || change.CheckAt != nil || change.AnsweredQuestion != 0 {
+		if message == "" || name != "" || request != "" || next != "" || change.DependsOn != nil || change.CheckAt != nil || change.AnsweredQuestion != 0 {
 			return 0, errors.New("completing or cancelling requires status and message only")
 		}
 		if status == storage.CommitmentDone {
@@ -100,6 +102,7 @@ func (s *Service) Commit(threadID string, change Commit) (int64, error) {
 		return 0, errors.New("check_at is for active tasks; waiting_for_user waits for the user's answer")
 	}
 	commitment.CheckAt = change.CheckAt
+	commitment.Name = name
 	commitment.Request = request
 	commitment.Note = next
 	commitment.DependsOn = nil

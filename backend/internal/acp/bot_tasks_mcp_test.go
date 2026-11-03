@@ -49,13 +49,16 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	}
 	create := func(request string) int64 {
 		t.Helper()
-		result := call("bot_task_create", map[string]any{"request": request, "next": "check the result"}, false)
+		result := call("bot_task_create", map[string]any{"name": "Delivery", "request": request, "next": "check the result"}, false)
 		var task bots.MCPTaskOutput
 		decodeMCPTaskResult(t, result, &task)
+		if stored := jaz.commitment(task.ID); stored.Name != "Delivery" || stored.Request != request {
+			t.Fatalf("name replaced the requested outcome: %+v", stored)
+		}
 		return task.ID
 	}
 
-	call("bot_task_update", map[string]any{"id": legacy, "next": "deliver the existing result", "status": "waiting_for_user", "message": "Which supplier should I use?"}, false)
+	call("bot_task_update", map[string]any{"id": legacy, "name": "Supplier decision", "next": "deliver the existing result", "status": "waiting_for_user", "message": "Which supplier should I use?"}, false)
 	if task := jaz.commitment(legacy); task.Note != "deliver the existing result" || task.Status != storage.CommitmentWaitingForUser || task.QuestionSeq == 0 {
 		t.Fatalf("existing task was not updated: %+v", task)
 	}
@@ -66,6 +69,11 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 		t.Fatalf("unfinished tasks = %+v", tasks.Tasks)
 	}
 	question := jaz.commitment(legacy).QuestionSeq
+	request := jaz.commitment(legacy).Request
+	call("bot_task_update", map[string]any{"id": legacy, "name": "Choose a supplier"}, false)
+	if task := jaz.commitment(legacy); task.Name != "Choose a supplier" || task.Request != request || task.QuestionSeq != question || task.Status != storage.CommitmentWaitingForUser {
+		t.Fatalf("renaming changed the task contract or human wait: %+v", task)
+	}
 	call("bot_task_update", map[string]any{"id": legacy, "status": "pending", "answered_question": question}, true)
 	otherWait := create("Book the courier")
 	call("bot_task_update", map[string]any{"id": otherWait, "status": "waiting_for_user", "message": "Which delivery address?"}, false)

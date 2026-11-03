@@ -17,7 +17,7 @@ func (s *Store) OpenCommitment(commitment storage.Commitment) (storage.Commitmen
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	id, err := botdb.New(s.db).InsertCommitment(context.Background(), botdb.InsertCommitmentParams{
-		BotID: commitment.BotID, Requester: commitment.Requester, Request: commitment.Request, Note: commitment.Note, OpenedAtMs: timeToMs(commitment.OpenedAt),
+		BotID: commitment.BotID, Requester: commitment.Requester, Name: commitment.Name, Request: commitment.Request, Note: commitment.Note, OpenedAtMs: timeToMs(commitment.OpenedAt),
 		OpenedTurnMs: loopTimeToMs(commitment.OpenedTurn),
 	})
 	commitment.ID = id
@@ -64,7 +64,7 @@ func updateCommitment(ctx context.Context, q *botdb.Queries, commitment storage.
 		}
 	}
 	updated, err := q.UpdateCommitment(ctx, botdb.UpdateCommitmentParams{
-		ID: commitment.ID, BotID: commitment.BotID, Request: nullDBString(commitment.Request), Note: nullDBString(commitment.Note),
+		ID: commitment.ID, BotID: commitment.BotID, Name: nullDBString(commitment.Name), Request: nullDBString(commitment.Request), Note: nullDBString(commitment.Note),
 		Status: nullDBString(commitment.Status), QuestionSeq: commitment.QuestionSeq, CheckAtMs: checkAt,
 	})
 	if err != nil {
@@ -272,6 +272,17 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	for _, row := range questions {
 		question[row.ID] = row.Question
 	}
+	opening, err := q.ListCommitmentOpeningMessages(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	openingSeq := map[int64]int64{}
+	for _, row := range opening {
+		at, err := time.Parse(time.RFC3339Nano, row.Answers)
+		if err == nil && at.UnixMilli() == row.OpenedTurnMs && openingSeq[row.ID] == 0 {
+			openingSeq[row.ID] = row.Seq
+		}
+	}
 	commitments := make([]storage.Commitment, 0, len(rows))
 	for _, row := range rows {
 		var checkAt *time.Time
@@ -280,7 +291,7 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 			checkAt = &at
 		}
 		commitments = append(commitments, storage.Commitment{
-			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, Question: question[row.ID], ReplySeq: row.ReplySeq, CheckAt: checkAt, DependsOn: dependencies[row.ID],
+			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Name: row.Name, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, Question: question[row.ID], OpeningSeq: openingSeq[row.ID], ReplySeq: row.ReplySeq, CheckAt: checkAt, DependsOn: dependencies[row.ID],
 			Moving: motion[row.ID].Moving != 0, Blocked: motion[row.ID].Blocked != 0, Stalled: motion[row.ID].Stalled != 0, Status: row.Status,
 			OpenedAt: msToTime(row.OpenedAtMs), OpenedTurn: msToTime(row.OpenedTurnMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
 		})

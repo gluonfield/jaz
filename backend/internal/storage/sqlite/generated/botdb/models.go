@@ -35,6 +35,7 @@ type BotCommitment struct {
 	ReplySeq     int64         `json:"reply_seq"`
 	CheckAtMs    int64         `json:"check_at_ms"`
 	OpenedTurnMs int64         `json:"opened_turn_ms"`
+	Name         string        `json:"name"`
 }
 
 type BotCommitmentDependency struct {

@@ -54,6 +54,7 @@ type Activity struct {
 // Owed is a commitment a bot has not closed yet.
 type Owed struct {
 	ID      int64  `json:"id"`
+	Name    string `json:"name,omitempty"`
 	Request string `json:"request"`
 	// For names the bot it is owed to; empty for the user.
 	For         string       `json:"for,omitempty"`
@@ -63,6 +64,7 @@ type Owed struct {
 	ReplySeq    int64        `json:"reply_seq,omitempty"`
 	QuestionSeq int64        `json:"question_seq,omitempty"`
 	Question    string       `json:"question,omitempty"`
+	OpeningSeq  int64        `json:"opening_seq,omitempty"`
 	DependsOn   []int64      `json:"depends_on,omitempty"`
 	Blocked     bool         `json:"blocked,omitempty"`
 	Moving      bool         `json:"moving,omitempty"`
@@ -212,8 +214,8 @@ func (s *Service) taskView(commitment storage.Commitment) (Owed, error) {
 	if err != nil {
 		return Owed{}, err
 	}
-	task := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note,
-		Status: commitment.Status, ReplySeq: commitment.ReplySeq, CheckAt: commitment.CheckAt, QuestionSeq: commitment.QuestionSeq, Question: commitment.Question, DependsOn: commitment.DependsOn,
+	task := Owed{ID: commitment.ID, Name: commitment.Name, Request: commitment.Request, For: name, Next: commitment.Note,
+		Status: commitment.Status, ReplySeq: commitment.ReplySeq, CheckAt: commitment.CheckAt, QuestionSeq: commitment.QuestionSeq, Question: commitment.Question, OpeningSeq: commitment.OpeningSeq, DependsOn: commitment.DependsOn,
 		Blocked: commitment.Blocked, Moving: commitment.Moving, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
 	for _, thread := range commitment.Threads {
 		task.Threads = append(task.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})

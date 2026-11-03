@@ -1,6 +1,6 @@
 -- name: InsertCommitment :one
-INSERT INTO bot_commitments (bot_id, requester, request, note, status, opened_at_ms, opened_turn_ms)
-VALUES (sqlc.arg(bot_id), sqlc.arg(requester), sqlc.arg(request), sqlc.arg(note), 'pending', sqlc.arg(opened_at_ms), sqlc.arg(opened_turn_ms))
+INSERT INTO bot_commitments (bot_id, requester, name, request, note, status, opened_at_ms, opened_turn_ms)
+VALUES (sqlc.arg(bot_id), sqlc.arg(requester), sqlc.arg(name), sqlc.arg(request), sqlc.arg(note), 'pending', sqlc.arg(opened_at_ms), sqlc.arg(opened_turn_ms))
 RETURNING id;
 
 -- name: OpenedTask :one
@@ -10,7 +10,7 @@ SELECT EXISTS (
 
 -- name: UpdateCommitment :execrows
 UPDATE bot_commitments
-SET request = coalesce(sqlc.narg(request), request), note = coalesce(sqlc.narg(note), note), status = coalesce(sqlc.narg(status), status),
+SET name = coalesce(sqlc.narg(name), name), request = coalesce(sqlc.narg(request), request), note = coalesce(sqlc.narg(note), note), status = coalesce(sqlc.narg(status), status),
   wake_at_ms = CASE WHEN status = 'waiting_for_user' AND sqlc.narg(status) IS NOT NULL AND sqlc.narg(status) <> 'waiting_for_user' THEN 0 ELSE wake_at_ms END,
   wake_attempts = CASE WHEN status = 'waiting_for_user' AND sqlc.narg(status) IS NOT NULL AND sqlc.narg(status) <> 'waiting_for_user' THEN 0 ELSE wake_attempts END,
   check_at_ms = coalesce(sqlc.narg(check_at_ms), check_at_ms),
@@ -135,6 +135,15 @@ SELECT c.id, CAST(coalesce(json_extract(e.content, '$.text'), '') AS TEXT) AS qu
 FROM bot_commitments c JOIN session_events e ON e.thread_id = c.bot_id AND e.seq = c.question_seq
 WHERE c.id IN (sqlc.slice(ids)) AND e.type = 'room_message'
   AND json_valid(e.content) AND json_extract(e.content, '$.speaker') = 'bot';
+
+-- name: ListCommitmentOpeningMessages :many
+SELECT c.id, c.opened_turn_ms, e.seq, CAST(json_extract(e.content, '$.answers') AS TEXT) AS answers
+FROM bot_commitments c JOIN session_events e ON e.thread_id = c.bot_id
+WHERE c.id IN (sqlc.slice(ids)) AND c.opened_turn_ms > 0
+  AND e.created_at_ms BETWEEN c.opened_turn_ms AND c.opened_at_ms
+  AND e.type = 'room_message' AND json_valid(e.content)
+  AND json_extract(e.content, '$.speaker') = 'bot' AND json_extract(e.content, '$.answers') IS NOT NULL
+ORDER BY e.seq;
 
 -- name: StoppedTaskOwner :one
 SELECT EXISTS (

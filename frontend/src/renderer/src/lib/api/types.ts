@@ -804,12 +804,14 @@ export type BotStartedThread = BotActivity & { thread_id: string }
 // were told it stalled, and the threads serving it.
 export interface BotOwed {
   id: number
+  name?: string
   request: string
   for?: string
   next?: string
   status: 'pending' | 'in_progress' | 'waiting_for_user' | 'stopped'
   question_seq?: number
   question?: string
+  opening_seq?: number
   reply_seq?: number
   check_at?: string
   depends_on?: number[]

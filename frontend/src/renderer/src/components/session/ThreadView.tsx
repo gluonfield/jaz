@@ -3,7 +3,7 @@ import { usePrefetchQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { ArrowDown, Play } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { type ReactNode, type RefObject, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomDock } from '@/components/session/BottomDock'
 import { UserBubble } from '@/components/session/Bubble'
@@ -107,6 +107,7 @@ const TRANSCRIPT_DOCK_GAP_PX = 20
 const EMPTY_OVERVIEW: SessionOverview = { threads: [], subagents: [] }
 
 export interface ThreadChatView {
+  revealSeq?: number
   empty: boolean
   messages: ChatMessage[]
   events: SessionEvent[]
@@ -263,15 +264,24 @@ export function ThreadView({
 
   // The one way into a message: deep links and the outline rail both land here.
   // A jump only reveals and scrolls — it never marks or focuses the target.
+  const scrollToMessage = useCallback((messageSeq: number) => {
+    scrollRef.current
+      ?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
+      ?.scrollIntoView({ block: 'center', inline: 'nearest' })
+  }, [scrollRef])
   const jumpToMessage = useCallback((messageSeq: number) => {
     pauseFollowing()
     setRevealedMessageSeq(messageSeq)
-    requestAnimationFrame(() => {
-      scrollRef.current
-        ?.querySelector<HTMLElement>(`[data-message-seq="${messageSeq}"]`)
-        ?.scrollIntoView({ block: 'center', inline: 'nearest' })
+    scrollToMessage(messageSeq)
+  }, [pauseFollowing, scrollToMessage])
+  useLayoutEffect(() => {
+    if (!revealedMessageSeq) return
+    const frame = requestAnimationFrame(() => {
+      pauseFollowing()
+      scrollToMessage(revealedMessageSeq)
     })
-  }, [pauseFollowing, scrollRef])
+    return () => cancelAnimationFrame(frame)
+  }, [revealedMessageSeq, pauseFollowing, scrollToMessage])
 
   const stopSession = useCallback(() => {
     // The turn runs detached server-side; clear local optimistic state now.
@@ -380,13 +390,14 @@ export function ThreadView({
   // navigated away from it.
   useEffect(() => {
     if (!detail.isSuccess || !message || jumpedMessageRef.current === message) return
-    if (!detail.data.messages.some((item) => item.seq === message)) {
+    const loaded = chat ? detail.data.events : detail.data.messages
+    if (!loaded.some((item) => item.seq === message)) {
       if (paging.hasEarlier && !paging.loading) void paging.loadEarlier()
       return
     }
     jumpedMessageRef.current = message
     jumpToMessage(message)
-  }, [detail.data, detail.isSuccess, jumpToMessage, paging, message])
+  }, [chat, detail.data, detail.isSuccess, jumpToMessage, paging, message])
 
   const data = detail.data
   const overviewData = overview.data ?? (overview.isError ? undefined : EMPTY_OVERVIEW)
@@ -555,7 +566,7 @@ export function ThreadView({
               >
                 {chat ? (
                   <>
-                    {chat({ empty: empty && !paging.hasEarlier && detail.data.latest_event_seq === 0, messages: transcriptMessages, events: displayEvents, scrollRef, paging, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails })}
+                    {chat({ empty: empty && !paging.hasEarlier && detail.data.latest_event_seq === 0, messages: transcriptMessages, events: displayEvents, scrollRef, paging, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails, revealSeq: revealedMessageSeq })}
                     {errorNotice}
                   </>
                 ) : empty ? (
