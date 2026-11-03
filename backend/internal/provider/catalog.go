@@ -49,6 +49,9 @@ type ModelProviderConfig struct {
 	APIKeyEnv    string
 	DefaultModel string
 	Capabilities []string
+	// Headers are sent with every request to this provider. Some inferences
+	// (e.g. OpenCode Go) require a custom header to route requests.
+	Headers map[string]string
 }
 
 func ModelProviders() []ModelProvider {

@@ -35,15 +35,16 @@ var reservedIDs = map[string]struct{}{
 // CustomProvider is a user-defined OpenAI-compatible model provider. The API key
 // lives in the runtime .env (keyed by APIKeyEnv), never in this record.
 type CustomProvider struct {
-	ID           string    `json:"id"`
-	Label        string    `json:"label"`
-	BaseURL      string    `json:"base_url"`
-	APIKeyEnv    string    `json:"api_key_env"`
-	DefaultModel string    `json:"default_model,omitempty"`
-	Capabilities []string  `json:"capabilities"`
-	Icon         string    `json:"icon,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           string            `json:"id"`
+	Label        string            `json:"label"`
+	BaseURL      string            `json:"base_url"`
+	APIKeyEnv    string            `json:"api_key_env"`
+	DefaultModel string            `json:"default_model,omitempty"`
+	Capabilities []string          `json:"capabilities"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	Icon         string            `json:"icon,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }
 
 // Config maps the record to the runtime provider config the Source overlays.
@@ -60,6 +61,7 @@ func (p CustomProvider) Config() provider.ModelProviderConfig {
 		APIKeyEnv:    keyEnv,
 		DefaultModel: p.DefaultModel,
 		Capabilities: append([]string(nil), p.Capabilities...),
+		Headers:      p.Headers,
 	}
 }
 
@@ -72,11 +74,12 @@ func (p CustomProvider) normalized() CustomProvider {
 // Input is the editable surface of a custom provider — everything but the id,
 // timestamps, and the derived APIKeyEnv.
 type Input struct {
-	Label        string   `json:"label"`
-	BaseURL      string   `json:"base_url"`
-	DefaultModel string   `json:"default_model"`
-	Capabilities []string `json:"capabilities"`
-	Icon         string   `json:"icon"`
+	Label        string            `json:"label"`
+	BaseURL      string            `json:"base_url"`
+	DefaultModel string            `json:"default_model"`
+	Capabilities []string          `json:"capabilities"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	Icon         string            `json:"icon"`
 }
 
 type customList struct {
@@ -122,6 +125,7 @@ func Create(store storage.SettingsStorage, in Input) (CustomProvider, error) {
 		APIKeyEnv:    apiKeyEnv(id),
 		DefaultModel: in.DefaultModel,
 		Capabilities: append([]string(nil), in.Capabilities...),
+		Headers:      in.Headers,
 		Icon:         in.Icon,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -151,6 +155,7 @@ func Update(store storage.SettingsStorage, id string, in Input) (CustomProvider,
 		list.Providers[i].APIKeyEnv = apiKeyEnv(list.Providers[i].ID)
 		list.Providers[i].DefaultModel = in.DefaultModel
 		list.Providers[i].Capabilities = append([]string(nil), in.Capabilities...)
+		list.Providers[i].Headers = in.Headers
 		list.Providers[i].Icon = in.Icon
 		list.Providers[i].UpdatedAt = time.Now().UTC()
 		updated := list.Providers[i]
