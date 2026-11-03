@@ -11,14 +11,24 @@ import type {
 // origin-collapsing normalize) — providers legitimately have paths like /openai/v1.
 function normalizeProviderInput(input: ProviderInput): ProviderInput {
   const apiKey = input.api_key?.trim()
+  const headers = input.headers && Object.keys(input.headers).length ? { ...input.headers } : undefined
+  const models = input.models?.length ? [...input.models] : undefined
+  const modelsUrl = input.models_url?.trim() || undefined
   return {
     label: input.label.trim(),
     base_url: input.base_url.trim().replace(/\/+$/, ''),
     capabilities: input.capabilities.length ? [...input.capabilities] : ['chat_completions'],
     default_model: input.default_model?.trim() || undefined,
+    headers,
+    models,
+    models_url: modelsUrl,
     icon: input.icon?.trim() || undefined,
     ...(apiKey ? { api_key: apiKey } : {}),
   }
+}
+
+export function fetchProviderModels(input: ProviderInput & { id?: string }): Promise<{ models: string[] }> {
+  return post<{ models: string[] }>('/v1/providers/fetch-models', normalizeProviderInput(input))
 }
 
 export function createProvider(input: ProviderInput): Promise<ModelProviderOption> {

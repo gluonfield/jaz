@@ -11,7 +11,7 @@ import { Modal } from '@/components/ui/Modal'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { useToast } from '@/components/ui/toast'
 import { modelProviderRequiresKey } from '@/lib/agentRuntimes'
-import { createProvider, deleteProvider, getProviderStatuses, updateProvider } from '@/lib/api/providers'
+import { createProvider, deleteProvider, fetchProviderModels, getProviderStatuses, updateProvider } from '@/lib/api/providers'
 import { agentSettingsQuery, updateAgentSettings } from '@/lib/api/settings'
 import type { AgentSettings as AgentSettingsData, ProviderInput } from '@/lib/api/types'
 import { isLocalBackendUrl, useConnection } from '@/lib/connection'
@@ -436,6 +436,8 @@ function ProviderEditorModal({
   const [headersText, setHeadersText] = useState(() => JSON.stringify(draft?.headers ?? {}, null, 0))
   const [headersValid, setHeadersValid] = useState(true)
   const [modelsText, setModelsText] = useState(() => (draft?.models ?? []).join('\n'))
+  const [loadingModels, setLoadingModels] = useState(false)
+  const [modelsLoadError, setModelsLoadError] = useState('')
   useEffect(() => {
     setHeadersText(JSON.stringify(draft?.headers ?? {}, null, 0))
     setHeadersValid(true)
@@ -564,7 +566,47 @@ function ProviderEditorModal({
               aria-label="Models list"
             />
           </ProviderField>
-          <ProviderField label="Icon">
+          <ProviderField
+            label="Models URL"
+            hint="Optional: fetch the catalog from this URL instead of base_url + /models."
+          >
+            <Input
+              value={draft.models_url ?? ''}
+              onChange={(event) => onChange({ ...draft, models_url: event.target.value || undefined })}
+              placeholder="https://example.com/v1/models"
+              autoComplete="off"
+              spellCheck={false}
+              className="font-mono text-[12px]"
+              aria-label="Models URL"
+            />
+          </ProviderField>
+          <ProviderField
+            label="Models"
+            hint="Loaded via Models URL when set, or filled manually — one per line."
+          >
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={disabled || loadingModels || !draft.base_url.trim()}
+                onClick={async () => {
+                  setLoadingModels(true)
+                  try {
+                    const { models } = await fetchProviderModels(draft)
+                    setModelsText(models.join('\n'))
+                    onChange({ ...draft, models, default_model: draft.default_model || models[0] || '' })
+                  } catch (error) {
+                    setModelsLoadError(error instanceof Error ? error.message : String(error))
+                  } finally {
+                    setLoadingModels(false)
+                  }
+                }}
+                className="self-start rounded-control border border-border px-2.5 py-1.5 text-[12px] text-ink hover:bg-surface-2 disabled:opacity-50"
+                aria-label="Load models"
+              >
+                {loadingModels ? 'Loading…' : 'Load models'}
+              </button>
+              {modelsLoadError ? <p className="text-[12px] text-danger" role="alert">{modelsLoadError}</p> : null}
+              <textarea
             <IconPicker value={draft.icon ?? ''} onChange={(icon) => onChange({ ...draft, icon })} />
           </ProviderField>
         </div>

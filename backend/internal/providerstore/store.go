@@ -42,6 +42,7 @@ type CustomProvider struct {
 	Capabilities []string          `json:"capabilities"`
 	Headers      map[string]string `json:"headers,omitempty"`
 	Models       []string          `json:"models,omitempty"`
+	ModelsURL    string            `json:"models_url,omitempty"`
 	Icon         string            `json:"icon,omitempty"`
 	CreatedAt    time.Time         `json:"created_at"`
 	UpdatedAt    time.Time         `json:"updated_at"`
@@ -63,6 +64,7 @@ func (p CustomProvider) Config() provider.ModelProviderConfig {
 		Capabilities: append([]string(nil), p.Capabilities...),
 		Headers:      p.Headers,
 		Models:       p.Models,
+		ModelsURL:    p.ModelsURL,
 	}
 }
 
@@ -81,6 +83,7 @@ type Input struct {
 	Capabilities []string          `json:"capabilities"`
 	Headers      map[string]string `json:"headers,omitempty"`
 	Models       []string          `json:"models,omitempty"`
+	ModelsURL    string            `json:"models_url,omitempty"`
 	Icon         string            `json:"icon"`
 }
 
@@ -129,6 +132,7 @@ func Create(store storage.SettingsStorage, in Input) (CustomProvider, error) {
 		Capabilities: append([]string(nil), in.Capabilities...),
 		Headers:      in.Headers,
 		Models:       in.Models,
+		ModelsURL:    in.ModelsURL,
 		Icon:         in.Icon,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -160,6 +164,7 @@ func Update(store storage.SettingsStorage, id string, in Input) (CustomProvider,
 		list.Providers[i].Capabilities = append([]string(nil), in.Capabilities...)
 		list.Providers[i].Headers = in.Headers
 		list.Providers[i].Models = in.Models
+		list.Providers[i].ModelsURL = in.ModelsURL
 		list.Providers[i].Icon = in.Icon
 		list.Providers[i].UpdatedAt = time.Now().UTC()
 		updated := list.Providers[i]

@@ -1310,6 +1310,8 @@ export interface ProviderInput {
   headers?: Record<string, string>
   /** explicit catalog for endpoints that do not expose /models */
   models?: string[]
+  /** where the model catalog is fetched from; defaults to base_url + /models */
+  models_url?: string
   icon?: string
   /** write-only secret; omit on edit to leave an existing key unchanged */
   api_key?: string

@@ -54,6 +54,9 @@ type ModelProviderConfig struct {
 	// Models is an explicit catalog for providers that do not expose /models
 	// (or expose it on a path the base URL cannot reach).
 	Models []string
+	// ModelsURL overrides where the catalog is fetched from; defaults to
+	// base URL + "/models".
+	ModelsURL string
 }
 
 func ModelProviders() []ModelProvider {

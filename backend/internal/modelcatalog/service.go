@@ -58,6 +58,17 @@ func (s *Service) Warm(ctx context.Context) error {
 	return nil
 }
 
+// catalogURL picks where the provider's model list lives. Some inferences
+// (e.g. OpenCode Go) serve /models on a sibling path, so a provider may
+// override the default base-url + "/models".
+func catalogURL(meta provider.ModelProvider, baseURL string, modelsURL string) string {
+	if u := strings.TrimSpace(modelsURL); u != "" {
+		return u
+	}
+	_ = meta
+	return ""
+}
+
 func (s *Service) ProviderModels(id string) ([]Model, error) {
 	resolved, ok := s.resolvedProvider(strings.ToLower(strings.TrimSpace(id)))
 	if !ok {
@@ -89,12 +100,13 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 			}
 			return models, nil
 		}
-		apiKey := resolved.Config.APIKey
+		cfg := resolved.Config
+		apiKey := cfg.APIKey
 		if strings.TrimSpace(apiKey) == "" && s.apiKeyLookup != nil && meta.APIKeyEnv != "" {
 			apiKey = s.apiKeyLookup(meta.APIKeyEnv)
 		}
 		if meta.OpenAICompatible && (!meta.RequiresAPIKey || apiKey != "") {
-			models, err := fetchOpenAICompatibleModels(context.Background(), meta.BaseURL, apiKey)
+			models, err := fetchOpenAICompatibleModels(context.Background(), catalogEndpoint(meta.BaseURL, cfg.ModelsURL, cfg.BaseURL), apiKey, cfg.Headers)
 			if err == nil && len(models) > 0 {
 				return models, nil
 			}
