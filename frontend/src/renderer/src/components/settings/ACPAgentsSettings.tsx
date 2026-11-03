@@ -510,9 +510,11 @@ function AgentAuthPanel({
           <CheckCircle2 size={16} className="shrink-0 text-primary" />
           {noKey
             ? 'No provider key required'
-            : viaKey
-              ? keyCopy.connected
-              : `Connected with your ${authProviderLabel(agent)} account`}
+            : agent === 'opencode' && status.auth_evidence === 'opencode_native'
+              ? 'Connected with OpenCode accounts'
+              : viaKey
+                ? keyCopy.connected
+                : `Connected with your ${authProviderLabel(agent)} account`}
         </span>
         {noKey ? null : (
           <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
@@ -545,7 +547,7 @@ function AgentAuthPanel({
         <div className="flex flex-col items-start gap-2">
           <Button variant="primary" size="md" disabled={disabled || running} onClick={onStartLogin}>
             {running ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
-            {running ? 'Waiting for sign-in…' : `Sign in with ${authProviderLabel(agent)}`}
+            {running ? 'Waiting for sign-in…' : agent === 'opencode' ? 'Sign in' : `Sign in with ${authProviderLabel(agent)}`}
           </Button>
           <div className="w-full">
             <AuthLoginStatus job={loginJob} running={running} />

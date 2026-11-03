@@ -533,6 +533,12 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 }
 
 func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root, storagePath string) error {
+	// The OpenCode auth store is shared with any local OpenCode install and may
+	// hold several plans; Jaz does not own it, so disconnecting only disables
+	// the agent and the store stays untouched.
+	if CanonicalAgentName(name) == AgentOpenCode && cfg.ModelProvider == modelprovider.ProviderOpenCodeNative {
+		return nil
+	}
 	if CanonicalAgentName(name) != AgentMuse {
 		return RemoveOwnedCredential(name, storagePath, root)
 	}
