@@ -9,6 +9,7 @@ import { SettingsSection, useAgentSettingsDraft } from '@/components/settings/ag
 import { Button } from '@/components/ui/Button'
 import { Collapse } from '@/components/ui/Collapse'
 import { Input } from '@/components/ui/Input'
+import { reloadProviderModels } from '@/lib/api/providers'
 import { ModelCombobox } from '@/components/ui/ModelCombobox'
 import { Segmented } from '@/components/ui/Segmented'
 import { Select } from '@/components/ui/Select'
@@ -580,9 +581,23 @@ function ProviderConnectionStrip({
   provider?: ModelProviderOption
   onOpenProviders: () => void
 }) {
+  const queryClient = useQueryClient()
+  const [reloadState, setReloadState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const connected = provider ? modelProviderConnected(provider) : false
   const needsKey = provider ? modelProviderRequiresKey(provider) : false
   const label = provider?.label ?? 'this provider'
+  const reloadModels = async () => {
+    if (!provider?.id) return
+    setReloadState('loading')
+    try {
+      const result = await reloadProviderModels(provider.id)
+      queryClient.invalidateQueries({ queryKey: ['model-providers', provider.id, 'models'] })
+      queryClient.invalidateQueries({ queryKey: ['model-providers', provider.id, 'status'] })
+      setReloadState(result.saved ? 'done' : 'error')
+    } catch {
+      setReloadState('error')
+    }
+  }
   return (
     <div className="flex flex-col gap-2 rounded-control bg-bg px-3 py-2.5">
       <div className="flex items-center justify-between gap-3">
@@ -600,9 +615,22 @@ function ProviderConnectionStrip({
                 : `${label} isn’t connected yet`}
           </span>
         </span>
-        <Button variant="ghost" size="sm" onClick={onOpenProviders}>
-          Model Providers
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {provider?.id && connected ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={reloadState === 'loading'}
+              onClick={() => void reloadModels()}
+              title="Re-fetch this provider's model catalog"
+            >
+              {reloadState === 'loading' ? 'Loading…' : reloadState === 'done' ? 'Models updated' : reloadState === 'error' ? 'Reload failed' : 'Reload models'}
+            </Button>
+          ) : null}
+          <Button variant="ghost" size="sm" onClick={onOpenProviders}>
+            Model Providers
+          </Button>
+        </div>
       </div>
       <p className="text-[12px] text-ink-3">
         {!provider

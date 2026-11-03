@@ -27,8 +27,25 @@ function normalizeProviderInput(input: ProviderInput): ProviderInput {
   }
 }
 
-export function fetchProviderModels(input: ProviderInput & { id?: string }): Promise<{ models: string[] }> {
-  return post<{ models: string[] }>('/v1/providers/fetch-models', normalizeProviderInput(input))
+export function fetchProviderModels(
+  input: ProviderInput & { id?: string; save?: boolean },
+): Promise<{ models: string[]; catalog_url?: string; saved?: boolean }> {
+  const normalized = normalizeProviderInput(input)
+  return post<{ models: string[]; catalog_url?: string; saved?: boolean }>('/v1/providers/fetch-models', {
+    id: input.id,
+    base_url: normalized.base_url,
+    models_url: normalized.models_url,
+    headers: normalized.headers,
+    save: input.save ?? false,
+  })
+}
+
+/** Refreshes a stored provider's model catalog and persists the result. */
+export function reloadProviderModels(id: string): Promise<{ models: string[]; catalog_url?: string; saved?: boolean }> {
+  return post<{ models: string[]; catalog_url?: string; saved?: boolean }>(
+    `/v1/providers/fetch-models`,
+    { id, save: true },
+  )
 }
 
 export function createProvider(input: ProviderInput): Promise<ModelProviderOption> {
