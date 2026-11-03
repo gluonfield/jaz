@@ -49,6 +49,9 @@ func (c ModelCapabilities) AgentModels(agent string) []AgentModel {
 }
 
 func (c ModelCapabilities) AgentModelsForProvider(agent, providerID string) ([]AgentModel, error) {
+	if CanonicalAgentName(agent) == AgentOpenCode && providerID == OpenCodeNativeProvider {
+		return []AgentModel{}, nil
+	}
 	if !usesCuratedModels(agent, providerID) {
 		return c.ProviderModels(agent, providerID)
 	}
@@ -74,6 +77,9 @@ func usesCuratedModels(agent, providerID string) bool {
 }
 
 func (c ModelCapabilities) ProviderModels(agent, providerID string) ([]AgentModel, error) {
+	if CanonicalAgentName(agent) == AgentOpenCode && providerID == OpenCodeNativeProvider {
+		return []AgentModel{}, nil
+	}
 	models, err := c.Catalog.ProviderModels(providerID)
 	if err != nil {
 		return nil, err
@@ -118,6 +124,9 @@ func addModelAlias(aliases []string, value, alias string) []string {
 // built-in catalog on its own backend and with an OpenAI API key.
 func agentOwnsModelMetadata(agent, providerID string) bool {
 	if strings.TrimSpace(providerID) == "" {
+		return true
+	}
+	if CanonicalAgentName(agent) == AgentOpenCode && providerID == OpenCodeNativeProvider {
 		return true
 	}
 	if CanonicalAgentName(agent) != AgentCodex {

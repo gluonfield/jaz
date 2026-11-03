@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/storage"
 )
 
@@ -236,5 +237,11 @@ func TestValidateInputRejectsBadInput(t *testing.T) {
 func TestDeleteNotFound(t *testing.T) {
 	if _, err := Delete(newMemStore(), "nope"); err == nil {
 		t.Fatal("expected not found error")
+	}
+}
+
+func TestNativeOpenCodeIDIsReserved(t *testing.T) {
+	if got := uniqueID("OpenCode Native", nil); got == provider.ProviderOpenCodeNative {
+		t.Fatalf("native OpenCode id was reused: %s", got)
 	}
 }

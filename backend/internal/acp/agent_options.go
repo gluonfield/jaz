@@ -164,6 +164,9 @@ func (m *Manager) agentModelProviderIDs(agent string, cfg AgentConfig) []string 
 		return codexModelProviderIDs(providers)
 	}
 	ids := []string{}
+	if CanonicalAgentName(agent) == AgentOpenCode {
+		ids = append(ids, OpenCodeNativeProvider)
+	}
 	for _, modelProvider := range providers {
 		if modelProvider.SupportsCapability(cfg.ModelProviderCapability) {
 			ids = append(ids, modelProvider.ID)

@@ -18,6 +18,7 @@ import (
 )
 
 const RefreshOwnerAgentCLI = "coding_agent_cli"
+const OpenCodeNativeProvider = modelprovider.ProviderOpenCodeNative
 
 // The agy CLI keeps its Google OAuth token in the OS keyring under this
 // entry, with ~/.gemini/antigravity-cli/antigravity-oauth-token as the
@@ -332,6 +333,30 @@ func resolveOpenCodeAuth(auth AgentAuthConfig, cfg AgentConfig, root string, env
 		Config:      AgentAuthConfig{Mode: AuthModeJazProfile, Path: layout.ACPOpenCodeConfig},
 		StoragePath: layout.ACPOpenCodeConfig,
 		Source:      AuthModeJazProfile,
+	}
+	if cfg.ModelProvider == OpenCodeNativeProvider {
+		path := filepath.Join(root, ".local", "share", "opencode", "auth.json")
+		status.StoragePath = path
+		var credentials map[string]struct {
+			Type    string `json:"type"`
+			Key     string `json:"key"`
+			Access  string `json:"access"`
+			Refresh string `json:"refresh"`
+		}
+		if data, err := os.ReadFile(path); err == nil && json.Unmarshal(data, &credentials) == nil {
+			for _, credential := range credentials {
+				if credential.Type == "api" && strings.TrimSpace(credential.Key) != "" {
+					status.markAuthenticated("opencode_native", AuthKindAPIKey)
+					return status
+				}
+				if credential.Type == "oauth" && (strings.TrimSpace(credential.Access) != "" || strings.TrimSpace(credential.Refresh) != "") {
+					status.markAuthenticated("opencode_native", AuthKindOAuth)
+					return status
+				}
+			}
+		}
+		status.Reason = "Connect a provider using OpenCode auth login on the Jaz host"
+		return status
 	}
 	providerID := openCodeProviderID(cfg.ProviderQualifiedModel())
 	provider := modelprovider.ResolveModelProvider(providerID, providers)

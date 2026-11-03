@@ -18,6 +18,7 @@ import (
 	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/runtimeenv"
 	"github.com/wins/jaz/backend/internal/serverconfig"
+	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 	"github.com/wins/jaz/backend/internal/testexec"
 )
@@ -1142,5 +1143,51 @@ func TestMCPServerSettingsRejectInvalidURL(t *testing.T) {
 	handler.ServeHTTP(res, req)
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("create status = %d, want 400, body = %s", res.Code, res.Body.String())
+	}
+}
+
+func TestOpenCodeNativeProviderOnlyAppearsForOpenCode(t *testing.T) {
+	for _, tc := range []struct {
+		agent, capability string
+		want              bool
+	}{
+		{acp.AgentOpenCode, provider.CapabilityChatCompletions, true},
+		{acp.AgentCodex, provider.CapabilityResponses, false},
+	} {
+		got := compatibleModelProviders(tc.agent, tc.capability, nil)
+		found := false
+		for _, item := range got {
+			if item.ID == acp.OpenCodeNativeProvider {
+				found = true
+			}
+		}
+		if found != tc.want {
+			t.Fatalf("%s: native provider present = %v", tc.agent, found)
+		}
+	}
+}
+
+func TestOpenCodeNativeSettingsRequireProfileAndCanEnable(t *testing.T) {
+	root := t.TempDir()
+	command := testexec.Write(t, filepath.Join(root, "opencode"), "exit 0", "")
+	s := &Server{Root: root, AgentCatalog: acp.AgentCatalog{acp.AgentOpenCode: {
+		Command: command, ProviderMode: acp.AgentProviderModeAgentDefaults,
+		ModelProvider: provider.ProviderOpenRouter, ModelProviderCapability: provider.CapabilityChatCompletions,
+	}}}
+	defaults := agentsettings.AgentDefaults{ACP: map[string]agentsettings.ACPAgentDefaults{
+		acp.AgentOpenCode: {Enabled: true, ModelProvider: acp.OpenCodeNativeProvider},
+	}}
+	if err := s.validateEnabledACPAgentAuth(defaults); err == nil {
+		t.Fatal("native agent enabled without profile")
+	}
+	profile := filepath.Join(root, ".local", "share", "opencode", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(profile), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(profile, []byte(`{"opencode-go":{"type":"api","key":"dummy"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.validateEnabledACPAgentAuth(defaults); err != nil {
+		t.Fatal(err)
 	}
 }

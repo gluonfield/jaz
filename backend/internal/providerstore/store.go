@@ -25,10 +25,11 @@ const (
 // reservedIDs are catalog provider ids a custom provider may never use, so the
 // built-ins can't be shadowed or removed.
 var reservedIDs = map[string]struct{}{
-	provider.ProviderOpenRouter: {},
-	provider.ProviderOpenAI:     {},
-	provider.ProviderOllama:     {},
-	provider.ProviderMock:       {},
+	provider.ProviderOpenCodeNative: {},
+	provider.ProviderOpenRouter:     {},
+	provider.ProviderOpenAI:         {},
+	provider.ProviderOllama:         {},
+	provider.ProviderMock:           {},
 }
 
 // CustomProvider is a user-defined OpenAI-compatible model provider. The API key

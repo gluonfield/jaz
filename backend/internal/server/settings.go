@@ -205,6 +205,11 @@ func compatibleModelProviders(agent, capability string, providers []settingsMode
 		return codexModelProviders(providers)
 	}
 	out := []settingsModelProvider{}
+	if acp.CanonicalAgentName(agent) == acp.AgentOpenCode {
+		out = append(out, settingsModelProvider{ModelProvider: provider.ModelProvider{
+			ID: acp.OpenCodeNativeProvider, Label: "OpenCode accounts", Implemented: true, RequiresAPIKey: true,
+		}})
+	}
 	for _, modelProvider := range providers {
 		if modelProvider.SupportsCapability(capability) {
 			out = append(out, modelProvider)

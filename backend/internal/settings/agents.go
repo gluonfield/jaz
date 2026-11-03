@@ -298,7 +298,7 @@ func mergeACPAgentDefaults(name string, stored, seed ACPAgentDefaults) ACPAgentD
 		}.NormalizeProviderModel(seed.ModelProvider)
 		stored.ModelProvider = cfg.ModelProvider
 		stored.Model = cfg.Model
-		if strings.TrimSpace(stored.Model) == "" {
+		if strings.TrimSpace(stored.Model) == "" && stored.ModelProvider != acp.OpenCodeNativeProvider {
 			stored.Model = seed.Model
 		}
 	}

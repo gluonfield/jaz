@@ -389,6 +389,9 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 			"NO_PROXY",
 		)
 		providers := m.providers()
+		if agent.ModelProvider == OpenCodeNativeProvider {
+			env["XDG_DATA_HOME"] = filepath.Join(root, ".local", "share")
+		}
 		auth := resolveAgentAuthWithProviders(name, agent, root, env, providers)
 		for key := range modelProviderSecretEnvNames(providers) {
 			delete(env, key)

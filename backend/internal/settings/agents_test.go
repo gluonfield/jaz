@@ -260,3 +260,12 @@ func TestMergeAgentDefaultsDropsRetiredQwenAgent(t *testing.T) {
 		t.Fatalf("retired Qwen agent survived settings merge: %#v", merged.ACP["qwen"])
 	}
 }
+
+func TestNativeOpenCodeDoesNotInheritSeedModel(t *testing.T) {
+	seed := ACPAgentDefaults{ModelProvider: "openrouter", Model: "z-ai/glm-5.2"}
+	stored := ACPAgentDefaults{ModelProvider: acp.OpenCodeNativeProvider}
+	got := mergeACPAgentDefaults(acp.AgentOpenCode, stored, seed)
+	if got.ModelProvider != acp.OpenCodeNativeProvider || got.Model != "" {
+		t.Fatalf("native defaults inherited provider model: %#v", got)
+	}
+}

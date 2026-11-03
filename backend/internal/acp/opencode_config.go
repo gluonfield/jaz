@@ -72,9 +72,11 @@ func (m *Manager) configureOpenCode(env map[string]string, agent AgentConfig, pr
 	auth := resolveAgentAuthWithProviders(AgentOpenCode, agent, root, env, m.providers())
 	keyEnv, _, _ := auth.APIKeyBinding()
 	model := agent.ProviderQualifiedModel()
-	if providerConfig, ok := m.openCodeProviderConfig(model); ok {
-		providerID := modelprovider.OpenCodeProviderIDFromModel(model)
-		content.Provider = map[string]openCodeProviderConfig{providerID: providerConfig}
+	if agent.ModelProvider != OpenCodeNativeProvider {
+		if providerConfig, ok := m.openCodeProviderConfig(model); ok {
+			providerID := modelprovider.OpenCodeProviderIDFromModel(model)
+			content.Provider = map[string]openCodeProviderConfig{providerID: providerConfig}
+		}
 	}
 	if model != "" {
 		content.Model = model

@@ -173,6 +173,9 @@ func (c AgentConfig) UsesProvider() bool {
 func (c AgentConfig) ProviderQualifiedModel() string {
 	modelProvider := strings.TrimSpace(c.ModelProvider)
 	model := strings.TrimSpace(c.Model)
+	if modelProvider == OpenCodeNativeProvider {
+		return model
+	}
 	if !c.UsesModelProvider() || modelProvider == "" || model == "" {
 		return model
 	}
@@ -188,6 +191,10 @@ func (c AgentConfig) ProviderNativeModel() string {
 
 func (c AgentConfig) NormalizeProviderModel(defaultProvider string) AgentConfig {
 	if !c.UsesModelProvider() {
+		return c
+	}
+	if c.ModelProvider == OpenCodeNativeProvider || c.ModelProvider == "" && defaultProvider == OpenCodeNativeProvider {
+		c.ModelProvider = OpenCodeNativeProvider
 		return c
 	}
 	modelProvider := strings.TrimSpace(c.ModelProvider)

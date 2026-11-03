@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	ProviderOpenRouter = "openrouter"
-	ProviderOpenAI     = "openai"
-	ProviderOllama     = "ollama"
-	ProviderMock       = "mock"
+	ProviderOpenRouter     = "openrouter"
+	ProviderOpenAI         = "openai"
+	ProviderOllama         = "ollama"
+	ProviderMock           = "mock"
+	ProviderOpenCodeNative = "opencode-native"
 
 	DefaultOpenRouterModel = "z-ai/glm-5.2"
 	DefaultOpenAIModel     = "gpt-6-luna"
