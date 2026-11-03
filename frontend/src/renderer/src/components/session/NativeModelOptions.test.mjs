@@ -35,3 +35,15 @@ test('Fast Mode waits for acknowledgement and disappears when the provider withd
   expect(withdrawn).not.toContain('Fast Mode')
   expect(withdrawn).not.toContain('role="switch"')
 })
+
+test('native model options are exposed only when explicitly enabled', () => {
+  const model = {
+    id: 'model', name: 'OpenCode model', category: 'model', current_value: 'opencode-go/glm',
+    options: [{ value: 'opencode-go/glm', name: 'OpenCode Go / GLM' }, { value: 'zai-coding-plan/glm', name: 'z.ai / GLM' }],
+  }
+  const props = { options: [model], running: false, pending: false, onChange() {} }
+  expect(NativeModelOptions(props)).toHaveLength(0)
+  const shown = NativeModelOptions({ ...props, showAgentModels: true })
+  expect(shown).toHaveLength(1)
+  expect(shown[0].key).toBe('model')
+})

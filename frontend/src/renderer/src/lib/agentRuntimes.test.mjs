@@ -39,3 +39,17 @@ describe('native agent readiness', () => {
     expect(acpAgentEnableable(settings, agent)).toBe(false)
   })
 })
+
+test('OpenCode native mode requires a ready native profile', () => {
+  const settings = {
+    agents: ['opencode'],
+    acp: { opencode: { enabled: false, model_provider: 'opencode-native' } },
+    acp_options: { opencode: { provider_mode: 'agent_defaults', model_providers: [{ id: 'opencode-native', requires_api_key: true }] } },
+    acp_auth: { opencode: { authenticated: true, ready: true, auth_evidence: 'api_key_env' } },
+  }
+  expect(acpAgentEnableable(settings, 'opencode')).toBe(false)
+  settings.acp_auth.opencode.auth_evidence = 'opencode_native'
+  expect(acpAgentEnableable(settings, 'opencode')).toBe(true)
+  settings.acp_auth.opencode.ready = false
+  expect(acpAgentEnableable(settings, 'opencode')).toBe(false)
+})

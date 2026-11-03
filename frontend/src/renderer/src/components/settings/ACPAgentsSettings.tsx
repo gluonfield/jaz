@@ -79,6 +79,7 @@ function hasInvalidACPProvider(settings: AgentSettingsData): boolean {
     if (!acpUsesModelProvider(settings, agent)) return false
     const current = settings.acp[agent]
     if (!acpAgentEnabled(settings, agent)) return false
+    if (agent === 'opencode' && current?.model_provider === 'opencode-native') return false
     return (current?.model ?? '').trim() === ''
   })
 }
@@ -235,6 +236,8 @@ function ACPAgentRow({
       ? installation.message || 'Installation required.'
       : authStatus?.authenticated && authStatus.ready === false
       ? (authStatus.reason ?? `Sign in with ${authProviderLabel(agent)} again.`)
+      : agent === 'opencode' && current.model_provider === 'opencode-native'
+        ? 'Connect a provider in OpenCode before enabling.'
       : selectedProviderNativeAuth || (supportsAuth && !usesModelProvider)
         ? `Connect ${authProviderLabel(agent)} or add an API key before enabling.`
         : usesModelProvider && selectedProvider
@@ -372,18 +375,22 @@ function ACPAgentRow({
                 disabled={disabled}
                 onChange={(model_provider) => {
                   const nextProvider = providerOptions.find((provider) => provider.id === model_provider)
-                  const model =
+                  const model = model_provider === 'opencode-native' ? '' :
                     (current.model ?? '').trim() === '' ||
                     current.model === selectedProvider?.default_model
                       ? (nextProvider?.default_model ?? '')
                       : current.model
-                  update({ model_provider, model })
+                  update({ model_provider, model, ...(model_provider === 'opencode-native' ? { reasoning_effort: '' } : {}) })
                 }}
                 aria-label={`${agentLabel(agent)} provider`}
                 className={rowControlClass}
               />
             </SettingsRow>
-            {selectedProviderNativeAuth ? null : (
+            {current.model_provider === 'opencode-native' ? (
+              <div className="border-t border-border/70 px-3 py-2.5 text-[12px] text-ink-3">
+                Connect providers with <code>npx -y opencode-ai@1.19.4 auth login</code> in the Jaz backend environment.
+              </div>
+            ) : selectedProviderNativeAuth ? null : (
               <div className="border-t border-border/70 px-3 py-2.5">
                 <ProviderConnectionStrip provider={selectedProvider} onOpenProviders={onOpenProviders} />
               </div>

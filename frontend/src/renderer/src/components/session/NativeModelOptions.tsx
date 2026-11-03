@@ -8,14 +8,15 @@ export function FastModeOption({ checked, disabled, onChange }: FastModeControl)
   return <SwitchRow icon={<Zap size={13} className="shrink-0" />} label="Fast Mode" checked={checked} disabled={disabled} onChange={onChange} />
 }
 
-export function NativeModelOptions({ options, running, pending, onChange }: {
+export function NativeModelOptions({ options, running, pending, onChange, showAgentModels = false }: {
   options?: AgentSessionConfigOption[] | null
   running: boolean
   pending: boolean
   onChange: (id: string, value: string) => void
+  showAgentModels?: boolean
 }) {
   const fastMode = fastModeOption(options)
-  return options?.filter((option) => option.category === 'model_config').map((option) => (
+  return options?.filter((option) => option.category === 'model_config' || (showAgentModels && option.category === 'model')).map((option) => (
     option === fastMode ? <FastModeOption
       key={option.id}
       checked={option.current_value === 'on'}

@@ -83,6 +83,9 @@ export function acpModelProviderReady(
   agent: string,
   provider: ModelProviderOption,
 ): boolean {
+  if (agent === 'opencode' && provider.id === 'opencode-native') {
+    return acpAgentAuthReady(settings, agent) && settings?.acp_auth?.[agent]?.auth_evidence === 'opencode_native'
+  }
   if (acpProviderUsesNativeAuth(settings, agent, provider.id)) {
     return acpAgentAuthReady(settings, agent)
   }
@@ -165,10 +168,11 @@ export function runtimeModelState(
   // wins. Model applies only on the agent's own provider; another provider keeps
   // its own default model.
   const deploy = agentDefault(runtime)
-  const defaultModel = onDefaultProvider
+  const nativeOpenCode = runtime === 'opencode' && provider === 'opencode-native'
+  const defaultModel = nativeOpenCode ? (settings?.acp[runtime]?.model || '') : onDefaultProvider
     ? deploy.model?.trim() || settings?.acp[runtime]?.model || ''
     : (selectedProvider?.default_model ?? '')
-  const defaultEffort = deploy.reasoningEffort?.trim() || settings?.acp[runtime]?.reasoning_effort || ''
+  const defaultEffort = nativeOpenCode ? '' : deploy.reasoningEffort?.trim() || settings?.acp[runtime]?.reasoning_effort || ''
   return {
     usesModelProvider,
     usesProvider,

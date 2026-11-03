@@ -680,7 +680,7 @@ export function ThreadView({
                     streaming={sessionRunning}
                     suggestedPrompt={derived.suggestedPrompt}
                     commands={derived.agentSession?.commands ?? undefined}
-                    optionsSlot={<NativeModelOptions options={derived.agentSession?.config_options} running={sessionRunning} pending={config.isPending} onChange={(id, value) => config.mutate({ id, value })} />}
+                    optionsSlot={<NativeModelOptions options={derived.agentSession?.config_options} running={sessionRunning} pending={config.isPending} showAgentModels={session.runtime_ref?.agent === 'opencode' && session.model_provider === 'opencode-native'} onChange={(id, value) => config.mutate({ id, value })} />}
                     chat={chat !== undefined}
                     planAvailable={planAvailable}
                     planModeActive={Boolean(live?.planRequested) || planActive}
