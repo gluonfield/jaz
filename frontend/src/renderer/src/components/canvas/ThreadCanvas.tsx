@@ -19,6 +19,7 @@ import './canvas.css'
 import { Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import { apiBaseUrl } from '@/lib/api/client'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
 import {
   bounds,
@@ -74,20 +75,26 @@ const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T
 const HINTS: Record<string, string> = { link: 'Use the page', cad: 'Drag to rotate, scroll to zoom', dxf: 'Drag to pan, scroll to zoom', pdf: 'Scroll and use the page controls' }
 
 export function ThreadCanvas(props: Props) {
+  const storageKey = `jaz.canvasPage.${apiBaseUrl()}/${props.sessionId}`
+  return <SessionCanvas key={storageKey} {...props} storageKey={storageKey} />
+}
+
+function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string }) {
   const { onPage } = props
   const sync = useCanvasSync(props.sessionId, props.working)
-  const [selected, setSelected] = useState(props.page ?? '')
+  const [selected, setSelected] = useState(() => localStorage.getItem(storageKey) ?? '')
   const [jump, setJump] = useState<{ page: string; item: string } | null>(null)
   const [navigationError, setNavigationError] = useState('')
-  const visited = useRef('')
+  const visited = useRef(localStorage.getItem(`${storageKey}.navigation`) ?? '')
   const viewports = useRef(new Map<string, Viewport>())
   const page = sync.local?.pages.find((page) => page.id === selected) ?? sync.local?.pages[0]
   useEffect(() => {
     if (page) {
       setSelected(page.id)
+      localStorage.setItem(storageKey, page.id)
       onPage({ id: page.id, name: page.name })
     }
-  }, [page, onPage])
+  }, [page, onPage, storageKey])
   const choosePage = (id: string) => {
     setSelected(id)
     setJump(null)
@@ -108,10 +115,11 @@ export function ThreadCanvas(props: Props) {
       setNavigationError(`Item “${props.item}” was not found on ${target.name}.`)
       return
     }
+    localStorage.setItem(`${storageKey}.navigation`, key)
     setSelected(target.id)
     setJump(props.item ? { page: target.id, item: props.item } : null)
     setNavigationError('')
-  }, [props.navigationKey, props.page, props.item, sync.local])
+  }, [props.navigationKey, props.page, props.item, sync.local, storageKey])
   if (!sync.view || !sync.local || !page) {
     return <div className="canvas">{sync.error ? <div className="canvas-overlay canvas-banner danger">{sync.error.message}</div> : null}</div>
   }

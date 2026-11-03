@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider, useLocation } from '@tanstack/react-router'
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider, useRouterState } from '@tanstack/react-router'
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Composer } from '@/components/session/Composer'
@@ -31,8 +31,9 @@ export async function exerciseCanvasPages(): Promise<void> {
   })
   const router = createRouter({ routeTree: rootRoute.addChildren([route]), history: createMemoryHistory({ initialEntries: ['/sessions/canvas-pages'] }) })
   function Fixture() {
+    const activeSessionId = route.useParams().sessionId
     const search = route.useSearch()
-    const navigationKey = useLocation({ select: (location) => location.state.__TSR_key })
+    const navigationKey = useRouterState({ select: (state) => state.resolvedLocation?.state.__TSR_key })
     const picks = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} })
     const [linkPage, changeLinkPage] = useState('')
     const [inset, changeInset] = useState(0)
@@ -40,7 +41,7 @@ export async function exerciseCanvasPages(): Promise<void> {
     setInset = changeInset
     return <>
       <header data-canvas-titlebar style={{ position: 'absolute', inset: '0 0 auto', height: 'var(--titlebar-height)', zIndex: 20, background: 'var(--color-bg)' }}><button type="button" aria-label="Canvas fixture navigation" style={{ width: 200, height: '100%' }}>Back · Forward</button></header>
-      <ThreadCanvas sessionId={sessionId} inset={inset} working={false} bindSelection={picks.bindSelection} onSelect={picks.onSelect} onPage={picks.onPage} navigationKey={navigationKey} onPrompt={() => {}} page={search.page} item={search.item} />
+      <ThreadCanvas sessionId={activeSessionId} inset={inset} working={false} bindSelection={picks.bindSelection} onSelect={picks.onSelect} onPage={picks.onPage} navigationKey={navigationKey} onPrompt={() => {}} page={search.page} item={search.item} />
       <div data-canvas-fixture-controls style={{ position: 'absolute', right: 16, top: 70, zIndex: 10, maxWidth: 220 }}>
         <FileReaderLinkProvider sessionId={sessionId} onOpen={() => {}}>
           <MessageMarkdown text={`[Go to item](/sessions/${sessionId}?page=${encodeURIComponent(linkPage)}&item=same)\n\n[Current thread item](?page=${encodeURIComponent(linkPage)}&item=same)\n\n[Missing page](/sessions/${sessionId}?item=same)\n\n[Unknown page](/sessions/${sessionId}?page=missing&item=same)\n\n[Unknown item](/sessions/${sessionId}?page=${encodeURIComponent(linkPage)}&item=missing)`} />
@@ -94,6 +95,11 @@ export async function exerciseCanvasPages(): Promise<void> {
     if (!option) throw new Error('Canvas pages: no option ' + name)
     option.click()
     await until(() => control().textContent === name, 'Page switch did not finish')
+  }
+  const remount = async (key: string, name: string) => {
+    const canvas = element.querySelector('.canvas')
+    root.render(<QueryClientProvider key={key} client={client}><RouterProvider router={router} /></QueryClientProvider>)
+    await until(() => element.querySelector('.canvas') !== canvas && control()?.textContent === name, `Remount (${key}) did not restore ${name}`)
   }
   const link = (label: string) => [...element.querySelectorAll<HTMLAnchorElement>('a')].find((link) => link.textContent === label)!
   try {
@@ -215,9 +221,15 @@ export async function exerciseCanvasPages(): Promise<void> {
       await choose(id)
       await until(() => transform() === viewport, `Page ${id} did not retain its viewport`)
     }
+    await remount('consumed-link', '__proto__')
     await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
-    root.render(<QueryClientProvider key="reload" client={client}><RouterProvider router={router} /></QueryClientProvider>)
-    await until(() => control()?.textContent === 'Overview', 'Reload did not open the default page')
+    await remount('reload', '__proto__')
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId: 'canvas-pages-other' }, search: {} })
+    await until(() => control()?.textContent === 'Page 1', 'Another thread inherited the previous thread page')
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
+    await until(() => control()?.textContent === '__proto__', 'Returning to the thread did not restore its page')
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: { page: 'page-1' } })
+    await remount('explicit-page', 'Overview')
     const originalDocument = JSON.parse(await raw())
     const reordered = JSON.parse(JSON.stringify(originalDocument))
     reordered.pages = [...reordered.pages.slice(2), ...reordered.pages.slice(0, 2)]
@@ -228,6 +240,8 @@ export async function exerciseCanvasPages(): Promise<void> {
     reordered.pages[0].name = 'Fallback page'
     await write(reordered)
     await until(() => control().textContent === 'Fallback page', 'Deleting the active page did not choose a fallback')
+    await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
+    await remount('deleted-page', 'Fallback page')
     reordered.pages[0].name = 'Retained fallback'
     reordered.pages.unshift(originalDocument.pages[0])
     await write(reordered)

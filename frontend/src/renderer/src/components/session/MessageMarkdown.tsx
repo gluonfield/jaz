@@ -261,7 +261,7 @@ type AnchorComponent = ComponentType<ComponentProps<'a'> & ExtraProps>
 // keeps the table inside its own horizontal scroll without stretching the chat,
 // on the same card as a code block.
 const MarkdownTable: ComponentType<ComponentProps<'table'> & ExtraProps> = ({ node: _node, ...props }) => (
-  <div className="my-3 max-w-full overflow-x-auto rounded-card bg-surface px-3.5 py-1 ring-1 ring-border/60">
+  <div className="markdown-table my-3 max-w-full overflow-x-auto rounded-card bg-surface px-3.5 py-1 ring-1 ring-border/60">
     <table {...props} />
   </div>
 )
