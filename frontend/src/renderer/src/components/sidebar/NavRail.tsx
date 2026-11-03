@@ -67,11 +67,11 @@ function TabLabel({ children, shortcut }: { children: string; shortcut?: number 
 
 export function NavRail({
   tab,
-  onOpenChat,
+  onOpenSidebar,
   onOpenSettings,
 }: {
   tab: RailTab
-  onOpenChat: () => void
+  onOpenSidebar: () => void
   onOpenSettings: (section?: SettingsSection) => void
 }) {
   const rail = useRef<HTMLElement>(null)
@@ -105,6 +105,7 @@ export function NavRail({
       {...section.link}
       data-rail-tab=""
       aria-label={section.path === '/bots' && botsUnread ? 'Bots (unread messages)' : section.label}
+      onClick={section.path === '/bots' ? onOpenSidebar : undefined}
       className={tabClass(tab === section.path)}
     >
       {section.icon}
@@ -122,7 +123,7 @@ export function NavRail({
         params={lastSession ? { sessionId: lastSession } : {}}
         data-rail-tab=""
         aria-label="Chat"
-        onClick={onOpenChat}
+        onClick={onOpenSidebar}
         className={tabClass(tab === 'chat')}
       >
         <MessageSquare aria-hidden />
