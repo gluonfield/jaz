@@ -110,6 +110,10 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 	case AgentMuse:
 		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, AgentConfig{LoginBinDir: binDir})
 		return museLoginInvocation(probeEnv)
+	case AgentOpenCode:
+		invocation := loginInvocation(nil, false, binDir, "opencode", "auth", "login")
+		invocation.UsePTY = runtime.GOOS != "windows"
+		return invocation
 	case AgentAntigravity:
 		logFile := filepath.Join(root, "acp", "agy-login-"+randomHex(4)+".log")
 		invocation := loginInvocation(nil, true, binDir, "agy",
