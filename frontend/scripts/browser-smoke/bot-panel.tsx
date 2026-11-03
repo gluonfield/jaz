@@ -22,7 +22,7 @@ export async function exerciseBotPanel(): Promise<void> {
     { id: 4, name: 'Keep delegated work visible', request: 'Keep bot tasks and their results visible across delegated work, restarts and follow-up conversations', status: 'in_progress', moving: true, next: 'check its report, then send it', opened_at: minutes(14), threads: [{ id: 'side-a', title: 'Commitments and lost results', state: 'working' }] },
     { id: 3, request: 'Which fixes matter this week', status: 'in_progress', for: 'Priorities Bot', opened_at: minutes(95), threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
     { id: 6, request: 'Compare the supplier quotes', status: 'stopped', next: 'Checked both routes; neither supports this input. Retry after support is added.', opened_at: minutes(40), threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
-    { id: 5, request: 'Overnight stress run', status: 'pending', blocked: true, depends_on: [1], opened_at: minutes(70) },
+    { id: 5, request: 'Overnight stress run; done when all overnight checks pass and their results are reviewed', status: 'pending', blocked: true, depends_on: [1], opened_at: minutes(70) },
     { id: 2, request: 'Pause prompt suggestions on hidden turns', status: 'waiting_for_user', question_seq: 15, question: 'Keep suggestions enabled in bot chats, or disable them?', next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
     { id: 8, request: 'Choose public artifact sharing defaults', status: 'waiting_for_user', question_seq: 16, question: 'Approve the [exact sharing list](/fixture/sharing-list.tsv)?\n\n[Evidence and limits](/fixture/evidence.md)', opened_at: minutes(180), threads: [{ id: 'sharing-audit', title: 'Sharing audit', state: 'finished' }] },
     { id: 9, request: 'Choose the bot chat sync direction', status: 'waiting_for_user', question_seq: 17, opened_at: minutes(180) },
@@ -281,7 +281,7 @@ export async function exerciseBotPanel(): Promise<void> {
     const waiting = owed.filter((task) => task.status === 'waiting_for_user')
     const working = owed.filter((task) => task.status !== 'waiting_for_user')
     const titles = [...tasks.querySelectorAll('button > span:first-child')].map((node) => node.textContent)
-    if (titles.join() !== [...working, ...waiting].map((task) => task.name || task.request).join() || tasks.querySelectorAll('h4').length !== 1 || tasks.querySelector('h4')?.textContent !== `Waiting for you ${waiting.length}` || tasks.textContent?.split('Waiting for you').length !== 2) {
+    if (titles.join() !== [...working, ...waiting].map((task) => task.id === 5 ? 'Overnight stress run' : task.name || task.request).join() || tasks.querySelectorAll('h4').length !== 1 || tasks.querySelector('h4')?.textContent !== `Waiting for you ${waiting.length}` || tasks.textContent?.split('Waiting for you').length !== 2) {
       throw new Error('Bot panel: work must precede one counted waiting group without repeated labels')
     }
     if (states.join() !== 'Worker active,Worker ended · outcome open,Stopped,Waiting on prerequisites,Worker ended · outcome open,Worker active') {
@@ -400,6 +400,11 @@ export async function exerciseBotPanel(): Promise<void> {
     await until('the panel did not return after finished work', () => Boolean(find('Overnight stress run')))
     await click('Overnight stress run')
     await until('task details lost the prerequisite reason', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Prerequisites: #1') ?? false)
+    const legacy = document.querySelector<HTMLElement>('[role="dialog"]')!
+    if (legacy.querySelector('h2')?.textContent !== 'Overnight stress run') throw new Error('Bot panel: a legacy title still contains its completion specification')
+    await click('Task details')
+    if (!legacy.querySelector('details')?.open || legacy.querySelector('details p')?.textContent !== owed.find((task) => task.id === 5)!.request) throw new Error('Bot panel: a compact legacy title lost the full task specification')
+    await capture('bot-panel-legacy-title')
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Compare the supplier quotes')

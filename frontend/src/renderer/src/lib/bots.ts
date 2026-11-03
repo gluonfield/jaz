@@ -50,6 +50,10 @@ export function taskStateLabel(task: Pick<BotOwed, 'status' | 'moving' | 'blocke
   return task.status === 'pending' ? 'Pending' : 'In progress'
 }
 
+export function taskName(task: Pick<BotOwed, 'name' | 'request'>): string {
+  return task.name || task.request.split(/;\s*done when\b/i, 1)[0] || task.request
+}
+
 // What a bot's identity files are called on screen.
 export const BOT_FILE_LABELS: Record<BotFileName, string> = { 'BOTS.md': 'Instructions', 'MEMORY.md': 'Memory' }
 

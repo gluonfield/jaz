@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread, BotStartedThread } from '@/lib/api/types'
-import { BOT_FILE_LABELS, taskStateLabel } from '@/lib/bots'
+import { BOT_FILE_LABELS, taskName, taskStateLabel } from '@/lib/bots'
 import { clockTime, formatDuration, messageTime, shortDate } from '@/lib/format/time'
 
 // A row says what happened and how to open it: a thread, a routine, a file, or
@@ -63,7 +63,7 @@ export function BotActivity({
             {title ? <h4 className="mt-3 mb-1 text-[11px] font-medium text-ink-3">{title} <span className="ml-1 tabular-nums">{tasks.length}</span></h4> : null}
             {tasks.map((task) => (
               <button key={task.id} type="button" onClick={() => setShown(task.id)} className="-mx-2 flex min-h-10 min-w-0 cursor-pointer flex-col justify-center rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-list-hover">
-                <span className="line-clamp-2 w-full text-[13px] leading-5 font-medium wrap-break-word text-ink">{task.name || task.request}</span>
+                <span className="line-clamp-2 w-full text-[13px] leading-5 font-medium wrap-break-word text-ink">{taskName(task)}</span>
                 {!title ? <span className="text-[11px] text-ink-3">{taskStateLabel(task)}</span> : null}
               </button>
             ))}
@@ -95,7 +95,7 @@ function OwedModal({ botId, owed, started, now, onClose }: { botId: string; owed
     onClose()
   }
   return (
-    <Modal open onClose={onClose} title={owed.name || owed.request} description={[`For ${owed.for ?? 'you'}`, taskStateLabel(owed), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm" className="[&_h2]:line-clamp-2">
+    <Modal open onClose={onClose} title={taskName(owed)} description={[`For ${owed.for ?? 'you'}`, taskStateLabel(owed), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm" className="[&_h2]:line-clamp-2">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
         {owed.check_at ? <p>Check: {messageTime(owed.check_at)}</p> : null}
         {owed.blocked && owed.depends_on?.length ? <p>Prerequisites: {owed.depends_on.map((id) => `#${id}`).join(', ')}</p> : null}
