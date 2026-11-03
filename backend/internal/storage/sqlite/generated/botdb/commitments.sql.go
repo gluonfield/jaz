@@ -383,6 +383,51 @@ func (q *Queries) ListCommitmentMotion(ctx context.Context, ids []int64) ([]List
 	return items, nil
 }
 
+const listCommitmentQuestions = `-- name: ListCommitmentQuestions :many
+SELECT c.id, CAST(coalesce(json_extract(e.content, '$.text'), '') AS TEXT) AS question
+FROM bot_commitments c JOIN session_events e ON e.thread_id = c.bot_id AND e.seq = c.question_seq
+WHERE c.id IN (/*SLICE:ids*/?) AND e.type = 'room_message'
+  AND json_valid(e.content) AND json_extract(e.content, '$.speaker') = 'bot'
+`
+
+type ListCommitmentQuestionsRow struct {
+	ID       int64  `json:"id"`
+	Question string `json:"question"`
+}
+
+func (q *Queries) ListCommitmentQuestions(ctx context.Context, ids []int64) ([]ListCommitmentQuestionsRow, error) {
+	query := listCommitmentQuestions
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCommitmentQuestionsRow{}
+	for rows.Next() {
+		var i ListCommitmentQuestionsRow
+		if err := rows.Scan(&i.ID, &i.Question); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCommitmentThreads = `-- name: ListCommitmentThreads :many
 SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state FROM bot_commitment_thread_states s
 JOIN bot_commitment_threads l ON l.id = s.linked AND l.thread_id = s.thread_id

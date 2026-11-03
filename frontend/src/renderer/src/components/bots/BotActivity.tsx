@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { CornerDownRight } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Modal } from '@/components/ui/Modal'
+import { RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { botActivityQuery } from '@/lib/api/bots'
 import type { Bot, BotActivity, BotFileName, BotOwed, BotOwedThread, BotStartedThread } from '@/lib/api/types'
 import { BOT_FILE_LABELS, taskStateLabel } from '@/lib/bots'
@@ -81,32 +82,42 @@ export function BotActivity({
           <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{message.text}</p>
         </Modal>
       ) : null}
-      {selected ? <OwedModal owed={selected} started={started} now={now} onClose={() => setShown(null)} /> : null}
+      {selected ? <OwedModal botId={bot.id} owed={selected} started={started} now={now} onClose={() => setShown(null)} /> : null}
     </div>
   )
 }
 
 const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', background: 'Working in the background', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
 
-function OwedModal({ owed, started, now, onClose }: { owed: BotOwed; started: Started; now: number; onClose: () => void }) {
+function OwedModal({ botId, owed, started, now, onClose }: { botId: string; owed: BotOwed; started: Started; now: number; onClose: () => void }) {
   return (
     <Modal open onClose={onClose} title={owed.request} description={[`For ${owed.for ?? 'you'}`, taskStateLabel(owed), `since ${messageTime(owed.opened_at)}`].filter(Boolean).join(' · ')} size="sm">
       <div className="flex flex-col gap-3 text-[13px] leading-relaxed text-ink">
         {owed.check_at ? <p>Check: {messageTime(owed.check_at)}</p> : null}
         {owed.next ? <p className="whitespace-pre-wrap wrap-break-word">{owed.status === 'stopped' ? 'Reason' : 'Next'}: {owed.next}</p> : null}
         {owed.blocked && owed.depends_on?.length ? <p>Prerequisites: {owed.depends_on.map((id) => `#${id}`).join(', ')}</p> : null}
+        {owed.question ? (
+          <section aria-label="Question for you" className="flex flex-col gap-1">
+            <h3 className="font-medium">Question for you</h3>
+            <RenderedMarkdown text={owed.question} />
+          </section>
+        ) : null}
+        <Link to="/bots/$botId" params={{ botId }} onClick={onClose} className="font-medium text-ink-2 hover:text-ink">Open bot chat</Link>
         {owed.threads?.length ? (
-          <ul className="flex flex-col">
-            {owed.threads.map((thread) => (
-              <li key={thread.id}>
-                <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} onClick={onClose} className="-mx-2 flex min-w-0 items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-list-hover">
-                  <span className="min-w-0 truncate font-medium">{thread.title}</span>
-                  <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
-                </Link>
-                <StartedThreads started={started} by={thread.id} now={now} onOpen={onClose} />
-              </li>
-            ))}
-          </ul>
+          <section aria-label="Related work">
+            <h3 className="font-medium">Related work</h3>
+            <ul className="flex flex-col">
+              {owed.threads.map((thread) => (
+                <li key={thread.id}>
+                  <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} onClick={onClose} className="-mx-2 flex min-w-0 items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-list-hover">
+                    <span className="min-w-0 truncate font-medium">{thread.title}</span>
+                    <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
+                  </Link>
+                  <StartedThreads started={started} by={thread.id} now={now} onOpen={onClose} />
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : null}
       </div>
     </Modal>

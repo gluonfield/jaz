@@ -130,6 +130,12 @@ JOIN bot_commitment_threads l ON l.id = s.linked AND l.thread_id = s.thread_id
 WHERE s.commitment_id IN (sqlc.slice(ids))
 ORDER BY s.linked;
 
+-- name: ListCommitmentQuestions :many
+SELECT c.id, CAST(coalesce(json_extract(e.content, '$.text'), '') AS TEXT) AS question
+FROM bot_commitments c JOIN session_events e ON e.thread_id = c.bot_id AND e.seq = c.question_seq
+WHERE c.id IN (sqlc.slice(ids)) AND e.type = 'room_message'
+  AND json_valid(e.content) AND json_extract(e.content, '$.speaker') = 'bot';
+
 -- name: StoppedTaskOwner :one
 SELECT EXISTS (
   SELECT 1 FROM bot_commitment_workers w JOIN bot_commitments c ON c.id = w.commitment_id

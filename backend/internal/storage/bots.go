@@ -72,6 +72,7 @@ type Commitment struct {
 	// Note is the bot's next step while it is open, or why it was dropped.
 	Note        string
 	QuestionSeq int64
+	Question    string
 	ReplySeq    int64
 	CheckAt     *time.Time
 	DependsOn   []int64

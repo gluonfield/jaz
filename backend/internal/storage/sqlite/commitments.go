@@ -264,6 +264,14 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	for _, link := range links {
 		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State})
 	}
+	questions, err := q.ListCommitmentQuestions(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	question := map[int64]string{}
+	for _, row := range questions {
+		question[row.ID] = row.Question
+	}
 	commitments := make([]storage.Commitment, 0, len(rows))
 	for _, row := range rows {
 		var checkAt *time.Time
@@ -272,7 +280,7 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 			checkAt = &at
 		}
 		commitments = append(commitments, storage.Commitment{
-			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, ReplySeq: row.ReplySeq, CheckAt: checkAt, DependsOn: dependencies[row.ID],
+			ID: row.ID, BotID: row.BotID, Requester: row.Requester, Request: row.Request, Note: row.Note, QuestionSeq: row.QuestionSeq, Question: question[row.ID], ReplySeq: row.ReplySeq, CheckAt: checkAt, DependsOn: dependencies[row.ID],
 			Moving: motion[row.ID].Moving != 0, Blocked: motion[row.ID].Blocked != 0, Stalled: motion[row.ID].Stalled != 0, Status: row.Status,
 			OpenedAt: msToTime(row.OpenedAtMs), OpenedTurn: msToTime(row.OpenedTurnMs), ClosedAt: msToTime(row.ClosedAtMs.Int64), Threads: threads[row.ID],
 		})

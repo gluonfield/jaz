@@ -85,6 +85,55 @@ func TestATaskRemembersTheTurnThatOpenedIt(t *testing.T) {
 	}
 }
 
+func TestTaskQuestionContextUsesOnlyItsBotAndSavedQuestion(t *testing.T) {
+	store, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	var expected []storage.Commitment
+	for _, text := range []string{"Approve the exact cleanup list?", "Keep suggestions enabled?"} {
+		bot, err := store.CreateSession(storage.CreateSession{Slug: text, SourceType: storage.SourceBot})
+		if err != nil {
+			t.Fatal(err)
+		}
+		task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		question, err := store.AskCommitment(task, sessionevents.Event{SessionID: bot.ID, Type: sessionevents.TypeRoomMessage,
+			RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: text}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.AppendSessionEvents(bot.ID,
+			sessionevents.Event{Type: sessionevents.TypeRoomMessage, RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "bot", Text: "An unrelated later message"}},
+			sessionevents.Event{Type: sessionevents.TypeRoomMessage, RoomMessage: &sessionevents.RoomMessageEvent{Speaker: "user", Text: "A user message is not the task question"}},
+			sessionevents.Event{Type: sessionevents.TypeBotActivity, BotActivity: &sessionevents.BotActivityEvent{Kind: "file_changed", Label: "MEMORY.md"}},
+		); err != nil {
+			t.Fatal(err)
+		}
+		task.QuestionSeq = question.Seq
+		task.Question = text
+		expected = append(expected, task)
+	}
+	for _, task := range expected {
+		tasks, err := store.ListOpenCommitments(task.BotID)
+		if err != nil || len(tasks) != 1 || tasks[0].Question != task.Question || tasks[0].QuestionSeq != task.QuestionSeq || tasks[0].Status != storage.CommitmentWaitingForUser {
+			t.Fatalf("saved question context = %+v, %v", tasks, err)
+		}
+		for _, seq := range []int64{task.QuestionSeq + 2, task.QuestionSeq + 3, 999} {
+			if _, err := store.db.Exec("UPDATE bot_commitments SET question_seq = ? WHERE id = ?", seq, task.ID); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := store.LoadCommitment(task.ID)
+			if err != nil || loaded.Question != "" || loaded.Status != storage.CommitmentWaitingForUser {
+				t.Fatalf("unavailable/non-question event %d fabricated context or changed the wait: %+v, %v", seq, loaded, err)
+			}
+		}
+	}
+}
+
 func TestACommitmentListsItsThreadsInTheOrderTheyWereStarted(t *testing.T) {
 	store, err := New(t.TempDir())
 	if err != nil {

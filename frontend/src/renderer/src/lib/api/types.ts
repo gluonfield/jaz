@@ -809,6 +809,7 @@ export interface BotOwed {
   next?: string
   status: 'pending' | 'in_progress' | 'waiting_for_user' | 'stopped'
   question_seq?: number
+  question?: string
   reply_seq?: number
   check_at?: string
   depends_on?: number[]
