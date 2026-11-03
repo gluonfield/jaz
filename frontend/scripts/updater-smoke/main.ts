@@ -10,6 +10,8 @@ import * as fixtureProcess from './process'
 
 const output = process.env.JAZ_UPDATER_SMOKE_DIR!
 Object.defineProperty(app, 'isPackaged', { value: true })
+type ClickDispatch = { point: { x: number; y: number }; target: string; hit: string | null }
+let lastClick: ClickDispatch | undefined
 let installs = 0
 let heartbeats = 0
 let paints = 0
@@ -69,12 +71,27 @@ async function run() {
     }
   }
   async function click(text: string): Promise<void> {
-    const point = await evaluate<{ x: number; y: number }>(`(() => {
+    lastClick = await evaluate<ClickDispatch>(`(() => {
       const button = [...document.querySelectorAll('button')].find(button => button.textContent === ${JSON.stringify(text)})
       if (!button) throw new Error('Button missing')
+      const describe = element => element instanceof Element
+        ? element.tagName.slice(0, 32) + '#' + element.id.slice(0, 64) + ': ' + element.textContent.slice(0, 120)
+        : null
+      if (!window.updaterSmokeInput) {
+        const received = window.updaterSmokeInput = []
+        for (const type of ['pointerdown', 'pointerup', 'click']) {
+          document.addEventListener(type, event => {
+            received.push({ type, x: event.clientX, y: event.clientY, target: describe(event.target), trusted: event.isTrusted, buttons: event.buttons })
+            if (received.length > 3) received.shift()
+          }, { capture: true, passive: true })
+        }
+      }
+      window.updaterSmokeInput.length = 0
       const bounds = button.getBoundingClientRect()
-      return {x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height / 2)}
+      const point = {x: Math.round(bounds.x + bounds.width / 2), y: Math.round(bounds.y + bounds.height / 2)}
+      return {point, target: describe(button), hit: describe(document.elementFromPoint(point.x, point.y))}
     })()`)
+    const { point } = lastClick
     window.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 })
     window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 })
   }
@@ -198,8 +215,40 @@ void run().then(() => {
   clearInterval(monitor)
   clearTimeout(timeout)
   app.exit(0)
-}).catch((error) => {
+}).catch(async (error) => {
   console.error(error)
+  const snapshot: { renderer?: unknown; updateStatus?: unknown } = {}
+  const capture = (async () => {
+    const window = BrowserWindow.getAllWindows()[0]
+    if (!window) throw new Error('Fixture window unavailable')
+    snapshot.renderer = await window.webContents.executeJavaScript(`({
+      received: window.updaterSmokeInput ?? [],
+      updateText: document.querySelector('[role="status"], [role="alert"]')?.textContent.slice(0, 240),
+      interaction: document.querySelector('#interaction')?.textContent.slice(0, 120),
+      focused: document.hasFocus(),
+    })`)
+    snapshot.updateStatus = await window.webContents.executeJavaScript(`window.jaz.getUpdateStatus().then(({state, version, error, message}) => ({
+      state, version: version?.slice(0, 64), error: error?.slice(0, 240), message: message?.slice(0, 240),
+    }))`)
+  })()
+  const captureError = await Promise.race([
+    capture.then(() => null, (error) => String(error).slice(0, 240)),
+    new Promise<string>((resolve) => setTimeout(() => resolve('Renderer/IPC snapshot timed out after 500ms'), 500)),
+  ])
+  console.error('Restart UI failure evidence:', JSON.stringify({
+    dispatch: lastClick,
+    ...snapshot,
+    captureError,
+    installs,
+    preparations,
+    heartbeats,
+    paints,
+    lastHeartbeatAgeMs: performance.now() - lastHeartbeat,
+    longestHeartbeatGapMs,
+    observations,
+    visibleWindows,
+    focusedWindows,
+  }))
   fixtureProcess.child?.kill('SIGKILL')
   clearInterval(monitor)
   clearTimeout(timeout)
