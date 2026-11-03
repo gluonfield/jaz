@@ -62,6 +62,7 @@ type Owed struct {
 	CheckAt     *time.Time   `json:"check_at,omitempty"`
 	ReplySeq    int64        `json:"reply_seq,omitempty"`
 	QuestionSeq int64        `json:"question_seq,omitempty"`
+	Question    string       `json:"question,omitempty"`
 	DependsOn   []int64      `json:"depends_on,omitempty"`
 	Blocked     bool         `json:"blocked,omitempty"`
 	Moving      bool         `json:"moving,omitempty"`
@@ -212,7 +213,7 @@ func (s *Service) taskView(commitment storage.Commitment) (Owed, error) {
 		return Owed{}, err
 	}
 	task := Owed{ID: commitment.ID, Request: commitment.Request, For: name, Next: commitment.Note,
-		Status: commitment.Status, ReplySeq: commitment.ReplySeq, CheckAt: commitment.CheckAt, QuestionSeq: commitment.QuestionSeq, DependsOn: commitment.DependsOn,
+		Status: commitment.Status, ReplySeq: commitment.ReplySeq, CheckAt: commitment.CheckAt, QuestionSeq: commitment.QuestionSeq, Question: commitment.Question, DependsOn: commitment.DependsOn,
 		Blocked: commitment.Blocked, Moving: commitment.Moving, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
 	for _, thread := range commitment.Threads {
 		task.Threads = append(task.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})

@@ -34,6 +34,7 @@ type Querier interface {
 	ListBots(ctx context.Context) ([]Bot, error)
 	ListCommitmentDependencies(ctx context.Context, ids []int64) ([]BotCommitmentDependency, error)
 	ListCommitmentMotion(ctx context.Context, ids []int64) ([]ListCommitmentMotionRow, error)
+	ListCommitmentQuestions(ctx context.Context, ids []int64) ([]ListCommitmentQuestionsRow, error)
 	ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error)
 	ListFinishedBotWork(ctx context.Context, beforeMs sql.NullInt64) ([]string, error)
 	ListMemberships(ctx context.Context) ([]BotMembership, error)

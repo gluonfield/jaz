@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { BotDetails } from '@/components/bots/BotDetails'
 import { BotsPanel } from '@/components/bots/BotsPanel'
 import { PermissionCard } from '@/components/session/TranscriptPermissions'
+import { FileReaderLinkProvider } from '@/components/session/MessageMarkdown'
 import { getAppearance, setAppearance } from '@/lib/appearance'
 import { botActivityQuery, botsQuery } from '@/lib/api/bots'
 import { installKeyboardFocus } from '@/lib/dom/keyboardFocus'
@@ -22,8 +23,8 @@ export async function exerciseBotPanel(): Promise<void> {
     { id: 3, request: 'Which fixes matter this week', status: 'in_progress', for: 'Priorities Bot', opened_at: minutes(95), threads: [{ id: 'side-e', title: 'Fixes triage', state: 'finished' }] },
     { id: 6, request: 'Compare the supplier quotes', status: 'stopped', next: 'Checked both routes; neither supports this input. Retry after support is added.', opened_at: minutes(40), threads: [{ id: 'side-h', title: 'Quote comparison', state: 'finished' }] },
     { id: 5, request: 'Overnight stress run', status: 'pending', blocked: true, depends_on: [1], opened_at: minutes(70) },
-    { id: 2, request: 'Pause prompt suggestions on hidden turns', status: 'waiting_for_user', question_seq: 15, next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
-    { id: 8, request: 'Choose public artifact sharing defaults', status: 'waiting_for_user', question_seq: 16, opened_at: minutes(180) },
+    { id: 2, request: 'Pause prompt suggestions on hidden turns', status: 'waiting_for_user', question_seq: 15, question: 'Keep suggestions enabled in bot chats, or disable them?', next: 'wait for his OK, then start the fork change', opened_at: minutes(60 * 3) },
+    { id: 8, request: 'Choose public artifact sharing defaults', status: 'waiting_for_user', question_seq: 16, question: 'Approve the [exact sharing list](/fixture/sharing-list.tsv)?\n\n[Evidence and limits](/fixture/evidence.md)', opened_at: minutes(180), threads: [{ id: 'sharing-audit', title: 'Sharing audit', state: 'finished' }] },
     { id: 9, request: 'Choose the bot chat sync direction', status: 'waiting_for_user', question_seq: 17, opened_at: minutes(180) },
     { id: 10, request: 'Resolve deferred bot identity changes', status: 'waiting_for_user', question_seq: 18, opened_at: minutes(180) },
     { id: 1, request: 'Capacity test with 20 threads', status: 'in_progress', opened_at: minutes(60 * 4), threads: [{ id: 'side-f', title: 'Capacity harness', state: 'finished' }, { id: 'side-g', title: 'Capacity run', state: 'failed' }] },
@@ -161,6 +162,7 @@ export async function exerciseBotPanel(): Promise<void> {
   const threadRoute = createRoute({ getParentRoute: () => rootRoute, path: '/sessions/$sessionId', component: () => <p>thread</p> })
   const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute, botRoute, threadRoute]), history: createMemoryHistory({ initialEntries: ['/bots'] }) })
   const root = createRoot(element)
+  let openedFile = ''
   let mounts = 0
   function MountProbe() {
     useEffect(() => { mounts += 1 }, [])
@@ -172,7 +174,9 @@ export async function exerciseBotPanel(): Promise<void> {
     <StrictMode>
       <QueryClientProvider client={client}>
         <MountProbe />
-        <RouterProvider router={router} />
+        <FileReaderLinkProvider sessionId={bot.id} onOpen={(file) => { openedFile = file.path }}>
+          <RouterProvider router={router} />
+        </FileReaderLinkProvider>
       </QueryClientProvider>
     </StrictMode>,
   )
@@ -187,7 +191,7 @@ export async function exerciseBotPanel(): Promise<void> {
     }
   }
   const text = () => document.body.textContent ?? ''
-  const find = (label: string) => [...document.querySelectorAll<HTMLElement>('button, a')].find((item) => (item.getAttribute('aria-label') === label || item.textContent?.trim().startsWith(label)) && item.getBoundingClientRect().height)
+  const find = (label: string) => [...document.querySelectorAll<HTMLElement>('button, a, [role="link"]')].find((item) => (item.getAttribute('aria-label') === label || item.textContent?.trim().startsWith(label)) && item.getBoundingClientRect().height)
   const click = async (label: string) => {
     let target: HTMLElement | undefined
     await until(`no control "${label}"`, () => Boolean(target = find(label)))
@@ -365,13 +369,27 @@ export async function exerciseBotPanel(): Promise<void> {
     if (!document.querySelector('[role="dialog"]')?.textContent?.includes('Waiting for you')) {
       throw new Error('Bot panel: task details lost the human block')
     }
-    await click('Close')
-    await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
+    if (document.querySelector('[aria-label="Question for you"]')?.textContent !== `Question for you${waiting[0].question}` || document.querySelector('[role="dialog"] [aria-label="Related work"]')) {
+      throw new Error('Bot panel: a human wait lost its actual question or gained an invented worker')
+    }
+    await capture('bot-panel-waiting-question')
+    await click('Open bot chat')
+    await until('the owning bot chat did not open and close the task', () => router.state.location.pathname === '/bots/panel' && !document.querySelector('[role="dialog"]'))
     find('Choose public artifact sharing defaults')!.focus()
     await window.smoke.key('Enter')
     await until('a waiting task did not open from the keyboard', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Choose public artifact sharing defaults') ?? false)
-    await click('Close')
-    await until('the waiting task did not close', () => !document.querySelector('[role="dialog"]'))
+    await click('Evidence and limits')
+    await until('the question document did not remain a usable file link', () => openedFile === '/fixture/evidence.md')
+    await click('exact sharing list')
+    await until('the question evidence did not open through the file reader', () => openedFile === '/fixture/sharing-list.tsv')
+    if (!document.querySelector('[aria-label="Related work"]')?.textContent?.includes('Sharing auditFinished')) {
+      throw new Error('Bot panel: a waiting task hid its finished worker')
+    }
+    await capture('bot-panel-waiting-related-work')
+    await click('Sharing audit')
+    await until('a finished worker did not open and close the task', () => router.state.location.pathname === '/sessions/sharing-audit' && !document.querySelector('[role="dialog"]'))
+    await router.navigate({ to: '/bots/$botId', params: { botId: 'panel' } })
+    await until('the panel did not return after finished work', () => Boolean(find('Overnight stress run')))
     await click('Overnight stress run')
     await until('task details lost the prerequisite reason', () => document.querySelector('[role="dialog"]')?.textContent?.includes('Prerequisites: #1') ?? false)
     await click('Close')
@@ -387,12 +405,12 @@ export async function exerciseBotPanel(): Promise<void> {
     await window.smoke.resize(1200, 900)
     await click('Close')
     await click('Capacity test with 20 threads')
-    await until('a commitment with several threads did not list them with what they started', () => /^Capacity harnessFinished\|Harness design review.+\|Capacity runFailed$/.test([...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|')))
+    await until('a commitment with several threads did not list them with what they started', () => /^Capacity harnessFinished\|Harness design review.+\|Capacity runFailed$/.test([...document.querySelectorAll('[aria-label="Related work"] a')].map((link) => link.textContent).join('|')))
     await capture('bot-panel-commitment')
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Run the login suites')
-    await until('a thread working in the background did not show as working', () => [...document.querySelectorAll('[role="dialog"] a')].map((link) => link.textContent).join('|') === 'Login suitesWorking in the background|Login fixFinished' && (document.querySelector('[role="dialog"]')?.textContent?.includes('For you · Worker active · since') ?? false))
+    await until('a thread working in the background did not show as working', () => [...document.querySelectorAll('[aria-label="Related work"] a')].map((link) => link.textContent).join('|') === 'Login suitesWorking in the background|Login fixFinished' && (document.querySelector('[role="dialog"]')?.textContent?.includes('For you · Worker active · since') ?? false))
     await click('Close')
     await until('the commitment did not close', () => !document.querySelector('[role="dialog"]'))
     await click('Activity')
