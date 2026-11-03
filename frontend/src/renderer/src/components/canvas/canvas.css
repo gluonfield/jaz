@@ -324,6 +324,16 @@
   overflow: visible;
 }
 
+.canvas-fit-content .markdown-table {
+  width: fit-content;
+  min-width: 100%;
+  max-width: none;
+}
+
+.canvas-fit-content .chat-prose {
+  max-width: none;
+}
+
 .canvas-csv {
   width: 100%;
   border-collapse: collapse;
@@ -534,11 +544,11 @@
 
 .canvas .react-flow__resize-control.handle.canvas-resize-handle {
   z-index: 3;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border: 1px solid var(--canvas-accent);
-  border-radius: 1px;
-  background: #fff;
+  border-radius: 2px;
+  background: var(--canvas-card);
 }
 
 .canvas-resize-handle::after {
@@ -572,33 +582,27 @@
 .canvas .react-flow__resize-control.line.canvas-resize-line.left,
 .canvas .react-flow__resize-control.line.canvas-resize-line.right {
   width: calc(12px / var(--canvas-zoom, 1));
-  background: linear-gradient(var(--canvas-accent), var(--canvas-accent)) center / 1px 100% no-repeat;
 }
 
 .canvas .react-flow__resize-control.line.canvas-resize-line.top,
 .canvas .react-flow__resize-control.line.canvas-resize-line.bottom {
   height: calc(12px / var(--canvas-zoom, 1));
-  background: linear-gradient(var(--canvas-accent), var(--canvas-accent)) center / 100% 1px no-repeat;
 }
 
 .canvas .canvas-resize-line.left {
   transform: translate(-100%, 0);
-  background-position: right;
 }
 
 .canvas .canvas-resize-line.right {
   transform: none;
-  background-position: left;
 }
 
 .canvas .canvas-resize-line.top {
   transform: translate(0, -100%);
-  background-position: bottom;
 }
 
 .canvas .canvas-resize-line.bottom {
   transform: none;
-  background-position: top;
 }
 
 .canvas .react-flow__selection,

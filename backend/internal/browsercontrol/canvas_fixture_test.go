@@ -22,6 +22,9 @@ func mountCanvasFixture(t *testing.T, mux *http.ServeMux, store *sqlitestore.Sto
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.CreateSession(storage.CreateSession{Slug: "canvas-pages-other", RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, ArtifactSurface: "canvas"}}); err != nil {
+		t.Fatal(err)
+	}
 	service := canvas.NewService(runtimefiles.New(t.TempDir()))
 	if err := os.MkdirAll(service.Dir(session.ID), 0o755); err != nil {
 		t.Fatal(err)

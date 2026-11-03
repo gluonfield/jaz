@@ -11,6 +11,7 @@ export async function exerciseCanvas(): Promise<void> {
   const linkURL = new URL('/canvas-link', location.origin)
   linkURL.hostname = 'localhost'
   const paragraphs = Array.from({ length: 8 }, (_, i) => `Paragraph ${i + 1}: This entire document fits inside its canvas item.`).join('\n\n')
+  const table = '| # | Capability | Importance | Closed source | Open source | CAS today | Build | Difficulty | Test against |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n| 1 | Mouldability | Critical | Mold Wizard | build123d | Draft analysis | Thickness | Medium | SOLIDWORKS |'
   let view: CanvasView = {
     version: '1', dir: '/fixture', edges: [], components: {},
     nodes: [
@@ -27,7 +28,7 @@ export async function exerciseCanvas(): Promise<void> {
   const snapshot = () => ({ version: view.version, dir: view.dir, pages: [{ id: 'page-1', name: 'Page 1', nodes: view.nodes, edges: view.edges, files: view.files, components: view.components }] })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(keys.sessionCanvas(sessionId), snapshot())
-  client.setQueryData([...keys.sessionFile(sessionId, 'report.md'), '1'], { content: paragraphs })
+  client.setQueryData([...keys.sessionFile(sessionId, 'report.md'), '1'], { content: paragraphs + '\n\n' + table })
   const csv = Array.from({ length: 40 }, (_, i) => Array.from({ length: 12 }, (_, column) => `Part-${i}-${column}`).join(',')).join('\n')
   const header = Array.from({ length: 12 }, (_, column) => `Column-${column}`).join(',')
   client.setQueryData([...keys.sessionFile(sessionId, 'costs.csv'), '1'], { content: header + '\n' + csv })
@@ -160,6 +161,13 @@ document.querySelector('button').onclick = () => {
     for (const id of ['report', 'table', 'sticky', 'text']) {
       await until(() => fits(id), `${id} content does not fit its card without scrolling`)
     }
+    const tableFits = () => {
+      const surface = node('report').querySelector<HTMLElement>('.markdown-table')!.getBoundingClientRect()
+      const cells = node('report').querySelectorAll('th, td')
+      const frame = node('report').getBoundingClientRect()
+      return surface.right <= frame.right + 1 && [...cells].every((cell) => cell.getBoundingClientRect().right <= surface.right + 1)
+    }
+    await until(tableFits, 'Wide Markdown table extends beyond its surface or canvas item')
     await until(() => Boolean(artifactLayout && artifactLayout.bottom <= artifactLayout.height + 1), 'The sandboxed card did not fit')
     await until(() => !element.querySelector('.canvas-busy'))
     await select('artifact')
@@ -236,7 +244,7 @@ document.querySelector('button').onclick = () => {
     }
     view = { ...applyPatch(view, { nodes: [{ id: 'report', width: 220, height: 170 }, { id: 'artifact', width: 220, height: 160 }] }), version: String(Number(view.version) + 1) }
     await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
-    await until(() => Number.parseFloat(node('report').style.height) === 170 && fits('report'), 'The resized document did not fit')
+    await until(() => Number.parseFloat(node('report').style.height) === 170 && fits('report') && tableFits(), 'The resized document and table did not fit')
     await until(() => Boolean(artifactLayout && artifactLayout.height === 160 && artifactLayout.bottom <= 161), 'The resized sandbox did not fit')
     await select('page')
     const focus = node('page').querySelector<HTMLButtonElement>('.canvas-focus')!

@@ -19,6 +19,7 @@ import './canvas.css'
 import { Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import { apiBaseUrl } from '@/lib/api/client'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
 import {
   bounds,
@@ -53,6 +54,7 @@ import type { CanvasPick } from './useCanvasContexts'
 import { useCanvasInput, type Bindings } from './useCanvasInput'
 import { useCanvasSync } from './useCanvasSync'
 import { useSectionDrag } from './useSectionDrag'
+import { readCanvasLocation, saveCanvasLocation } from '@/components/canvas/canvasLocation'
 
 interface Props {
   sessionId: string
@@ -74,22 +76,33 @@ const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T
 const HINTS: Record<string, string> = { link: 'Use the page', cad: 'Drag to rotate, scroll to zoom', dxf: 'Drag to pan, scroll to zoom', pdf: 'Scroll and use the page controls' }
 
 export function ThreadCanvas(props: Props) {
+  const storageKey = `jaz.canvasPage.${apiBaseUrl()}/${props.sessionId}`
+  return <SessionCanvas key={storageKey} {...props} storageKey={storageKey} />
+}
+
+function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string }) {
   const { onPage } = props
   const sync = useCanvasSync(props.sessionId, props.working)
-  const [selected, setSelected] = useState(props.page ?? '')
+  const [location, setLocation] = useState(() => readCanvasLocation(storageKey))
   const [jump, setJump] = useState<{ page: string; item: string } | null>(null)
   const [navigationError, setNavigationError] = useState('')
-  const visited = useRef('')
+  const visited = useRef(location.navigation)
   const viewports = useRef(new Map<string, Viewport>())
-  const page = sync.local?.pages.find((page) => page.id === selected) ?? sync.local?.pages[0]
+  const selectedPage = sync.local?.pages.find((page) => page.id === location.page)
+  const page = selectedPage ?? sync.local?.pages[0]
   useEffect(() => {
     if (page) {
-      setSelected(page.id)
+      if (selectedPage || sync.refreshed) {
+        setLocation((current) => current.page === page.id ? current : { ...current, page: page.id })
+      }
       onPage({ id: page.id, name: page.name })
     }
-  }, [page, onPage])
+  }, [page, selectedPage, sync.refreshed, onPage])
+  useEffect(() => {
+    if (location.page) saveCanvasLocation(storageKey, location)
+  }, [storageKey, location])
   const choosePage = (id: string) => {
-    setSelected(id)
+    setLocation((current) => ({ ...current, page: id }))
     setJump(null)
     setNavigationError('')
   }
@@ -97,21 +110,23 @@ export function ThreadCanvas(props: Props) {
     if (!sync.local || (!props.page && !props.item)) return
     const key = JSON.stringify([props.navigationKey, props.page, props.item])
     if (visited.current === key) return
+    const target = sync.local.pages.find((page) => page.id === props.page)
+    const missingItem = Boolean(target && props.item && !target.nodes.some((item) => item.id === props.item))
+    if ((!target || missingItem) && !sync.refreshed) return
     visited.current = key
     setJump(null)
-    const target = sync.local.pages.find((page) => page.id === props.page)
     if (!target) {
       setNavigationError(props.page ? `Page “${props.page}” was not found.` : 'An item link must specify its page.')
       return
     }
-    if (props.item && !target.nodes.some((item) => item.id === props.item)) {
+    if (missingItem) {
       setNavigationError(`Item “${props.item}” was not found on ${target.name}.`)
       return
     }
-    setSelected(target.id)
+    setLocation({ page: target.id, navigation: key })
     setJump(props.item ? { page: target.id, item: props.item } : null)
     setNavigationError('')
-  }, [props.navigationKey, props.page, props.item, sync.local])
+  }, [props.navigationKey, props.page, props.item, sync.local, sync.refreshed])
   if (!sync.view || !sync.local || !page) {
     return <div className="canvas">{sync.error ? <div className="canvas-overlay canvas-banner danger">{sync.error.message}</div> : null}</div>
   }

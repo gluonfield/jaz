@@ -1,4 +1,4 @@
-import { createFileRoute, useLocation } from '@tanstack/react-router'
+import { createFileRoute, useLocation, useRouterState } from '@tanstack/react-router'
 import { ThreadView } from '@/components/session/ThreadView'
 
 type SessionSearch = {
@@ -21,7 +21,7 @@ export const Route = createFileRoute('/sessions/$sessionId')({
 function SessionRoute() {
   const { sessionId } = Route.useParams()
   const { message, page, item } = Route.useSearch()
-  const navigationKey = useLocation({ select: (location) => location.state.__TSR_key })
+  const navigationKey = useRouterState({ select: (state) => state.resolvedLocation?.state.__TSR_key })
   const initialPrompt = useLocation({ select: (location) => location.state.initialSessionPrompt })
   return (
     <ThreadView
