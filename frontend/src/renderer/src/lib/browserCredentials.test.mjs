@@ -15,11 +15,11 @@ test('login restores, records are encrypted, key stays non-exportable', async ()
   const url = 'https://restore.example'
   await saveBrowserCredential(url, 'test-token', 'device-1', () => true)
   expect(await loadBrowserCredential(url)).toEqual({ token: 'test-token', deviceId: 'device-1' })
-  const db = await new Promise<IDBDatabase>((resolve) => {
+  const db = await new Promise((resolve) => {
     const r = indexedDB.open('jaz.browserCredentials', 1)
     r.onsuccess = () => resolve(r.result)
   })
-  const entries = await new Promise<any[]>((resolve) => {
+  const entries = await new Promise((resolve) => {
     const r = db.transaction('credentials').objectStore('credentials').getAll()
     r.onsuccess = () => resolve(r.result)
   })
