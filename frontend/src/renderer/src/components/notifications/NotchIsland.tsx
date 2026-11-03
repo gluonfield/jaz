@@ -5,7 +5,6 @@ import {
   alertLabel,
   alertSender,
   ISLAND_CAPSULE_WIDTH,
-  ISLAND_EAR_WIDTH,
   ISLAND_RETRACT_MS,
   type Alert,
   type AlertState,
@@ -76,7 +75,7 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
   const label = alertLabel(top)
   const band = notch?.height ?? 32
   const gap = notch?.width ?? 0
-  const width = (notch ? gap + 2 * ISLAND_EAR_WIDTH : ISLAND_CAPSULE_WIDTH) - 2 * FLARE
+  const width = ISLAND_CAPSULE_WIDTH - 2 * FLARE
   const closed = notch ? gap - 2 * FLARE : band
   const shown = open || reduced
   // The ears match beside a camera, or when they hold all there is; a
@@ -85,7 +84,7 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
   // How far the card hangs below the band; its rounder corners come only with
   // it, so the island leaves the camera in the notch's own shape.
   const card = !ears && shown ? drop : 0
-  const radius = card ? 22 : notch ? 10 : band / 2
+  const radius = card ? 16 : notch ? 10 : band / 2
   // One spring carries the shape, the card trailing the ears out and leading
   // them back in; content and shadow fade in once it has left the camera.
   // Beside a notch the shape stays opaque, as it is closed only under the
@@ -122,7 +121,7 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
         </>
       )}
       <div className="absolute inset-0 overflow-hidden rounded-[inherit] bg-black shadow-[0_12px_24px_-10px_rgb(0_0_0/calc(var(--island-open)*0.5))] *:opacity-(--island-open) *:blur-[calc((1-var(--island-open))*4px)]">
-        <div className="absolute top-0 left-1/2 grid -translate-x-1/2" style={{ width: even ? 'max-content' : width, minWidth: ears ? 0 : width }}>
+        <div className="absolute top-0 left-1/2 grid -translate-x-1/2" style={{ width: even ? 'max-content' : width }}>
           <button
             ref={measureBand}
             type="button"
@@ -131,16 +130,16 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
             className="grid text-[12px]"
             style={{ height: band, gridTemplateColumns: `1fr ${gap}px ${even ? '1fr' : 'max-content'}` }}
           >
-            <span className="flex min-w-0 items-center gap-1.5 overflow-hidden pr-2 pl-3">
-              <Identity row={top} size={20} live completion={grown && top.state === 'done' ? top.key : undefined} />
+            <span className="flex min-w-0 items-center gap-1 overflow-hidden pr-1.5 pl-2.5">
+              <Identity row={top} size={18} live completion={grown && top.state === 'done' ? top.key : undefined} />
               {!ears && <span className={`truncate font-medium ${notch ? 'max-w-48' : ''}`}>{top.name || top.title}</span>}
             </span>
-            <span className="col-start-3 flex min-w-9 items-center justify-end pr-3 pl-2 group-hover:invisible">
+            <span className="col-start-3 flex min-w-8 items-center justify-end pr-2.5 pl-1.5 group-hover:invisible">
               <State row={top} />
             </span>
           </button>
           {!ears && (
-            <div ref={measure} className="grid gap-2.5 px-[18px] pt-2.5 pb-4 contain-inline-size">
+            <div ref={measure} className="grid gap-2.5 px-3 pt-1 pb-2 contain-inline-size">
               {rows.map((row, index) => (
                 <Row key={row.key} row={index || row.name ? row : { ...row, title: '' }} compact={rows.length > 1} command={command} />
               ))}

@@ -129,9 +129,8 @@ export interface IslandAPI {
   command: (command: IslandCommand) => void
 }
 
-// The island's size in points. Beside a notch it is at least two
-// ISLAND_EAR_WIDTH ears wide, both growing evenly to fit a title within a
-// window twice that; without one the capsule is ISLAND_CAPSULE_WIDTH wide.
+// Window bounds in points. Each camera side reserves twice the ear width
+// for content-sized ears, including the renderer's 192 pt inline title.
 export const ISLAND_EAR_WIDTH = 140
 export const ISLAND_CAPSULE_WIDTH = 420
 export const ISLAND_HEIGHT = 280
