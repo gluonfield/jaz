@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, CheckCircle2, ChevronDown, Download, LoaderCircle, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
@@ -548,24 +548,7 @@ function ProviderEditorModal({
               aria-label="Extra headers JSON"
             />
           </ProviderField>
-          <ProviderField
-            label="Models"
-            hint="One model per line (or comma-separated) when the endpoint does not expose /models. The first entry becomes the default."
-          >
-            <textarea
-              value={modelsText}
-              onChange={(event) => {
-                setModelsText(event.target.value)
-                const list = event.target.value.split(/[\n,]+/).map((m) => m.trim()).filter(Boolean)
-                onChange({ ...draft, models: list.length ? list : undefined, default_model: draft.default_model || list[0] || '' })
-              }}
-              rows={3}
-              placeholder={'glm-5.3-flash\nglm-4.6'}
-              spellCheck={false}
-              className="w-full rounded-control border border-border bg-surface px-2.5 py-2 font-mono text-[12px] text-ink outline-none focus:border-primary"
-              aria-label="Models list"
-            />
-          </ProviderField>
+          
           <ProviderField
             label="Models URL"
             hint="Optional: fetch the catalog from this URL instead of base_url + /models."
@@ -580,18 +563,23 @@ function ProviderEditorModal({
               aria-label="Models URL"
             />
           </ProviderField>
-          <ProviderField
+<ProviderField
             label="Models"
-            hint="Loaded via Models URL when set, or filled manually — one per line."
+            hint={modelsLoadError
+              ? modelsLoadError
+              : 'Load from the provider, or fill manually — one per line.'}
           >
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                disabled={disabled || loadingModels || !draft.base_url.trim()}
+            <div className="flex flex-col items-start gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={loadingModels || !draft.base_url.trim()}
                 onClick={async () => {
                   setLoadingModels(true)
+                  setModelsLoadError('')
                   try {
                     const { models } = await fetchProviderModels(draft)
+                    if (!models.length) throw new Error('No models returned')
                     setModelsText(models.join('\n'))
                     onChange({ ...draft, models, default_model: draft.default_model || models[0] || '' })
                   } catch (error) {
@@ -600,15 +588,29 @@ function ProviderEditorModal({
                     setLoadingModels(false)
                   }
                 }}
-                className="self-start rounded-control border border-border px-2.5 py-1.5 text-[12px] text-ink hover:bg-surface-2 disabled:opacity-50"
-                aria-label="Load models"
               >
+                {loadingModels ? <LoaderCircle size={14} className="animate-spin" /> : <Download size={14} />}
                 {loadingModels ? 'Loading…' : 'Load models'}
-              </button>
-              {modelsLoadError ? <p className="text-[12px] text-danger" role="alert">{modelsLoadError}</p> : null}
+              </Button>
               <textarea
+                value={modelsText}
+                onChange={(event) => {
+                  setModelsText(event.target.value)
+                  const list = event.target.value.split(/[\n,]+/).map((m) => m.trim()).filter(Boolean)
+                  onChange({ ...draft, models: list.length ? list : undefined, default_model: draft.default_model || list[0] || '' })
+                }}
+                rows={4}
+                placeholder={'glm-5.3-flash\nglm-4.6'}
+                spellCheck={false}
+                className="w-full rounded-control border border-border bg-surface px-2.5 py-2 font-mono text-[12px] text-ink outline-none focus:border-primary"
+                aria-label="Models list"
+              />
+            </div>
+          </ProviderField>
+          <ProviderField label="Icon">
             <IconPicker value={draft.icon ?? ''} onChange={(icon) => onChange({ ...draft, icon })} />
           </ProviderField>
+          
         </div>
       ) : null}
     </Modal>
