@@ -186,7 +186,14 @@ func (s *Server) acpOptions(catalog acp.AgentCatalog, agentNames []string, provi
 	options := make(map[string]agentOptionResponse, len(agentNames))
 	for _, name := range agentNames {
 		cfg, _ := catalog.Agent(name)
-		cfg.Auth = defaults.ACP[name].Auth
+		userDefaults := defaults.ACP[name]
+		cfg.Auth = userDefaults.Auth
+		// Model provider is part of the user's saved defaults: agent options
+		// (auth provider, models) must reflect what the user runs, not the
+		// catalog seed.
+		if strings.TrimSpace(userDefaults.ModelProvider) != "" {
+			cfg.ModelProvider = userDefaults.ModelProvider
+		}
 		option := acp.AgentOptionsForConfig(name, cfg, s.runtimeRoot())
 		option.Models = (acp.ModelCapabilities{Catalog: s.ModelCatalog}).AgentModels(name)
 		if cfg.UsesModelProvider() {
