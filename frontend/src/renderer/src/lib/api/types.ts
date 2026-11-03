@@ -1308,6 +1308,8 @@ export interface ProviderInput {
   default_model?: string
   /** extra HTTP headers sent with every request to this provider */
   headers?: Record<string, string>
+  /** explicit catalog for endpoints that do not expose /models */
+  models?: string[]
   icon?: string
   /** write-only secret; omit on edit to leave an existing key unchanged */
   api_key?: string

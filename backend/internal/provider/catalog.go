@@ -51,6 +51,9 @@ type ModelProviderConfig struct {
 	// Headers are sent with every request to this provider. Some inferences
 	// (e.g. OpenCode Go) require a custom header to route requests.
 	Headers map[string]string
+	// Models is an explicit catalog for providers that do not expose /models
+	// (or expose it on a path the base URL cannot reach).
+	Models []string
 }
 
 func ModelProviders() []ModelProvider {

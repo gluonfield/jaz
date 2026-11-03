@@ -138,9 +138,18 @@ func (m *Manager) openCodeProviderConfig(model string) (openCodeProviderConfig, 
 	if len(provider.Config.Headers) > 0 {
 		result.Options = &openCodeProviderOptions{Headers: provider.Config.Headers}
 	}
+	models := map[string]openCodeModelConfig{}
 	if modelID != "" {
-		result.Models = map[string]openCodeModelConfig{modelID: {}}
+		models[modelID] = openCodeModelConfig{}
 	}
+	for _, name := range provider.Config.Models {
+		if _, id := modelprovider.SplitProviderModel(name); id != "" {
+			models[id] = openCodeModelConfig{}
+		} else if id = strings.TrimSpace(name); id != "" {
+			models[id] = openCodeModelConfig{}
+		}
+	}
+	result.Models = models
 	return result, true
 }
 

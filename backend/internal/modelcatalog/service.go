@@ -80,6 +80,15 @@ func (s *Service) ProviderModels(id string) ([]Model, error) {
 		}
 		return models, nil
 	default:
+		if len(resolved.Config.Models) > 0 {
+			models := make([]Model, 0, len(resolved.Config.Models))
+			for _, name := range resolved.Config.Models {
+				if name = strings.TrimSpace(name); name != "" {
+					models = append(models, completeModelMetadata(modelWithoutProviderReasoning(name, name, "")))
+				}
+			}
+			return models, nil
+		}
 		apiKey := resolved.Config.APIKey
 		if strings.TrimSpace(apiKey) == "" && s.apiKeyLookup != nil && meta.APIKeyEnv != "" {
 			apiKey = s.apiKeyLookup(meta.APIKeyEnv)

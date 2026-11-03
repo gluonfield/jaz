@@ -435,9 +435,11 @@ function ProviderEditorModal({
   const needsKey = !draft || endpointRequiresKey(draft.base_url)
   const [headersText, setHeadersText] = useState(() => JSON.stringify(draft?.headers ?? {}, null, 0))
   const [headersValid, setHeadersValid] = useState(true)
+  const [modelsText, setModelsText] = useState(() => (draft?.models ?? []).join('\n'))
   useEffect(() => {
     setHeadersText(JSON.stringify(draft?.headers ?? {}, null, 0))
     setHeadersValid(true)
+    setModelsText((draft?.models ?? []).join('\n'))
   }, [draft?.id])
   const headersInvalid = !headersValid && headersText.trim() !== ''
   if (draft) canSave = canSave && headersValid
@@ -542,6 +544,24 @@ function ProviderEditorModal({
               spellCheck={false}
               className="font-mono text-[12px]"
               aria-label="Extra headers JSON"
+            />
+          </ProviderField>
+          <ProviderField
+            label="Models"
+            hint="One model per line (or comma-separated) when the endpoint does not expose /models. The first entry becomes the default."
+          >
+            <textarea
+              value={modelsText}
+              onChange={(event) => {
+                setModelsText(event.target.value)
+                const list = event.target.value.split(/[\n,]+/).map((m) => m.trim()).filter(Boolean)
+                onChange({ ...draft, models: list.length ? list : undefined, default_model: draft.default_model || list[0] || '' })
+              }}
+              rows={3}
+              placeholder={'glm-5.3-flash\nglm-4.6'}
+              spellCheck={false}
+              className="w-full rounded-control border border-border bg-surface px-2.5 py-2 font-mono text-[12px] text-ink outline-none focus:border-primary"
+              aria-label="Models list"
             />
           </ProviderField>
           <ProviderField label="Icon">
