@@ -122,7 +122,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: bun install --frozen-lockfile
+        run: |
+          bun install --frozen-lockfile
+          bun node_modules/electron/install.js
 
       - name: Test frontend
         working-directory: frontend
