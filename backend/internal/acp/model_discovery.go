@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wins/jaz/backend/internal/modelcatalog"
+	"github.com/wins/jaz/backend/internal/provider"
 	"github.com/wins/jaz/backend/internal/musecli"
 )
 
@@ -36,6 +37,9 @@ func (m *Manager) DiscoverModels(ctx context.Context, agent string) (AgentModelC
 	}
 	if agent == AgentKimi {
 		return m.kimiModels(ctx, cfg)
+	}
+	if agent == AgentOpenCode && cfg.ModelProvider == provider.ProviderOpenCodeNative {
+		return m.opencodeNativeModels(ctx, cfg)
 	}
 	if agent != AgentMuse {
 		return AgentModelCatalog{Models: (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).AgentModels(agent), DefaultModel: cfg.Model}, nil

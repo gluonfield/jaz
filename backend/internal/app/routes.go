@@ -98,7 +98,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		server.Route{Pattern: "GET /v1/notifications/stream", Handler: http.HandlerFunc(push.Stream)},
 	)
 	routes = append(routes, feedRoutes(deps.Feed)...)
-	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog)...)
+	routes = append(routes, modelCapabilityRoutes(deps.ModelCatalog, deps.ACP)...)
 	routes = appendConnectionRoutes(routes, deps.Connections, deps.ConnectionStart, deps.ConnectionOAuth, deps.ConnectionQR, deps.MCP, deps.Config)
 	routes = appendDeviceRoutes(routes, deps.Devices, deps.Store, deps.Config, deps.Jaz.Devices.DisablePairing)
 	if deps.Computer != nil && deps.ComputerSettings != nil {
@@ -113,11 +113,14 @@ func NewRoutes(deps routeDeps) server.Routes {
 	return append(routes, server.Route{Pattern: "/v1/preview/", Handler: deps.Preview})
 }
 
-func modelCapabilityRoutes(catalog *modelcatalog.Service) server.Routes {
+func modelCapabilityRoutes(catalog *modelcatalog.Service, source modelcapabilitiesapi.AgentModelSource) server.Routes {
 	if catalog == nil {
 		return nil
 	}
 	handler := modelcapabilitiesapi.NewHandler(catalog)
+	if source != nil {
+		handler.NativeSource = source
+	}
 	return server.Routes{
 		{
 			Pattern: "GET /v1/model-providers/{provider}/models",
