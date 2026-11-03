@@ -26,8 +26,16 @@ type openCodeProviderConfig struct {
 	Name    string                         `json:"name,omitempty"`
 	Env     []string                       `json:"env,omitempty"`
 	NPM     string                         `json:"npm,omitempty"`
-	Options map[string]string              `json:"options,omitempty"`
+	Options *openCodeProviderOptions       `json:"options,omitempty"`
 	Models  map[string]openCodeModelConfig `json:"models,omitempty"`
+}
+
+// openCodeProviderOptions mirrors the subset of the AI SDK provider options
+// OpenCode forwards to the model package.
+type openCodeProviderOptions struct {
+	APIKey  string            `json:"apiKey,omitempty"`
+	BaseURL string            `json:"baseURL,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 type openCodeModelConfig struct {
@@ -87,7 +95,7 @@ func (m *Manager) configureOpenCode(env map[string]string, agent AgentConfig, pr
 		// but options.apiKey outranks both, so the key Jaz binds is the one used.
 		providerID := openCodeProviderID(model)
 		provider := content.Provider[providerID]
-		provider.Options = map[string]string{"apiKey": "{env:" + keyEnv + "}"}
+		provider.Options = &openCodeProviderOptions{APIKey: "{env:" + keyEnv + "}"}
 		if content.Provider == nil {
 			content.Provider = map[string]openCodeProviderConfig{}
 		}
@@ -127,9 +135,21 @@ func (m *Manager) openCodeProviderConfig(model string) (openCodeProviderConfig, 
 	if key != "" {
 		result.Env = []string{key}
 	}
-	if modelID != "" {
-		result.Models = map[string]openCodeModelConfig{modelID: {}}
+	if len(provider.Config.Headers) > 0 {
+		result.Options = &openCodeProviderOptions{Headers: provider.Config.Headers}
 	}
+	models := map[string]openCodeModelConfig{}
+	if modelID != "" {
+		models[modelID] = openCodeModelConfig{}
+	}
+	for _, name := range provider.Config.Models {
+		if _, id := modelprovider.SplitProviderModel(name); id != "" {
+			models[id] = openCodeModelConfig{}
+		} else if id = strings.TrimSpace(name); id != "" {
+			models[id] = openCodeModelConfig{}
+		}
+	}
+	result.Models = models
 	return result, true
 }
 
