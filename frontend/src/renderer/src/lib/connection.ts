@@ -7,6 +7,7 @@ import {
 } from '@/lib/api/client'
 import { rememberBackend, removeKnownBackend } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { loadBrowserCredential, saveBrowserCredential, forgetBrowserCredential } from '@/lib/browserCredentials'
 import { getDeviceProfile } from '@/lib/deviceIdentity'
 import { queryClient } from '@/lib/query/queryClient'
 import { readAccess, readHealth, readJSON } from '@/lib/connectionProbe'
@@ -174,6 +175,19 @@ async function verify(value: Attempt, candidate: Candidate): Promise<string | nu
     block(error)
     return error
   }
+  if (clientRuntime.kind === 'web' && !candidate.remembered) {
+    try {
+      await saveBrowserCredential(value.url, candidate.token, access.deviceId, () => current(value))
+      candidate = { ...candidate, remembered: true }
+    } catch (error) {
+      if (!current(value)) return null
+      activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
+      setState({ error: 'Could not save the login in this browser. Check site storage access.' })
+      console.error('Failed to save the Jaz connection', error)
+      return null
+    }
+  }
+  if (!current(value)) return null
   activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
   return null
 }
@@ -326,7 +340,7 @@ export async function connectRemote(input: string): Promise<string | null> {
     }
     let token = parsed.key || cached
     if (!token) {
-      token = restoreApiAuthToken(url)
+      token = clientRuntime.kind === 'web' ? (await loadBrowserCredential(url))?.token || '' : restoreApiAuthToken(url)
       remembered = Boolean(token)
     }
     if (!token) {
@@ -404,6 +418,7 @@ export function forgetBackend(url: string): void {
   if (normalizeBaseUrl(url) === state.url) {
     disconnectBackend()
   }
+  if (clientRuntime.kind === 'web') void forgetBrowserCredential(normalizeBaseUrl(url)).catch(console.error)
   removeKnownBackend(url)
   const preference = connectionPreference()
   if (preference?.mode === 'remote' && preference.remoteUrl === normalizeBaseUrl(url)) {
@@ -532,7 +547,7 @@ async function restore(url: string): Promise<void> {
       return
     }
     try {
-      token ??= restoreApiAuthToken(url)
+      token ??= clientRuntime.kind === 'web' ? (await loadBrowserCredential(url))?.token || '' : restoreApiAuthToken(url)
     } catch {
       block('Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.')
       return
