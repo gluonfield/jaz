@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from 'react'
-import { File as FileIcon, Image as ImageIcon, LoaderCircle } from 'lucide-react'
+import { File as FileIcon, Image as ImageIcon, LoaderCircle, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { sessionAttachmentUrl } from '@/lib/api/sessions'
 
@@ -64,7 +64,6 @@ export function AttachmentTile({
   const objectUrl = useObjectUrl(isImage ? attachment.file : undefined)
   const src = objectUrl || attachmentContentUrl(attachment, attachmentSessionId)
   const available = isImage && Boolean(src) && src !== failedSrc
-  const status = attachmentStatus(attachment)
   if (!available && variant === 'message') {
     return <FileAttachmentPill attachment={attachment} />
   }
@@ -97,12 +96,7 @@ export function AttachmentTile({
             </div>
           </div>
         )}
-        {status ? (
-          <span role="status" className={`absolute top-2 left-2 flex items-center gap-1 rounded-md bg-bg/95 px-1.5 py-1 text-[10px] ${attachment.error ? 'text-danger' : 'text-ink-2'}`}>
-            {attachment.uploading ? <LoaderCircle size={11} className="animate-spin" aria-hidden /> : null}
-            {status}
-          </span>
-        ) : null}
+        <AttachmentStatusBadge attachment={attachment} />
       </button>
       {available ? (
         <ImageAttachmentModal
@@ -114,6 +108,19 @@ export function AttachmentTile({
         />
       ) : null}
     </>
+  )
+}
+
+export function AttachmentStatusBadge({ attachment }: { attachment: MessageAttachment }) {
+  const status = attachmentStatus(attachment)
+  if (!status) {
+    return null
+  }
+  return (
+    <span role="status" className={`absolute top-2 left-2 flex items-center gap-1 rounded-md bg-bg/95 px-1.5 py-1 text-[10px] ${attachment.error ? 'text-danger' : 'text-ink-2'}`}>
+      {attachment.uploading ? <LoaderCircle size={11} className="animate-spin" aria-hidden /> : null}
+      {status}
+    </span>
   )
 }
 
@@ -164,18 +171,38 @@ function ImageAttachmentModal({
   )
 }
 
-function FileAttachmentPill({ attachment }: { attachment: MessageAttachment }) {
+export function FileAttachmentPill({
+  attachment,
+  autoFocus,
+  onRemove,
+}: {
+  attachment: MessageAttachment
+  autoFocus?: boolean
+  onRemove?: () => void
+}) {
   const Icon = isImageAttachment(attachment) ? ImageIcon : FileIcon
   const status = attachmentStatus(attachment)
   return (
     <span
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface px-2.5 py-1.5 text-sm text-ink-2 ring-1 ring-inset ring-border/70"
+      className={`inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface py-1.5 pl-2.5 text-sm text-ink-2 ring-1 ring-inset ring-border/70 ${onRemove ? 'pr-1.5' : 'pr-2.5'}`}
       title={attachmentTitle(attachment)}
     >
       <Icon size={13} className="shrink-0 text-ink-3" aria-hidden />
       <span className="min-w-0 truncate text-ink">{attachment.name}</span>
       {status ? (
         <span role="status" className={`shrink-0 ${attachment.error ? 'text-danger' : 'text-ink-3'}`}>{status}</span>
+      ) : null}
+      {onRemove ? (
+        <button
+          type="button"
+          autoFocus={autoFocus}
+          className="grid size-5 shrink-0 place-items-center rounded-full text-ink-3 transition-colors hover:bg-ink/10 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+          aria-label={`Remove ${attachment.name}`}
+          title={`Remove ${attachment.name}`}
+          onClick={onRemove}
+        >
+          <X size={12} />
+        </button>
       ) : null}
     </span>
   )
