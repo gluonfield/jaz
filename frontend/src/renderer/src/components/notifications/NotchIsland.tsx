@@ -46,12 +46,13 @@ export function NotchIsland() {
 
 // Whose face sits in the left ear beside the camera and the state, if it
 // needs a word, in the right; what happened drops beneath as the ears grow.
-// Both ears grow evenly, so the island stays centred on the camera, and the
-// card wraps to their width. A title in one ear would leave as much black in
-// the other, so matched ears leave it to the card, which heads each row with
-// its title or else its bot's name. Without a notch the same shape floats as
-// a capsule, whose band names a bot, or a plain thread, which only Jaz runs,
-// by its title, and whose top row leaves that out.
+// Both ears grow evenly, so the island stays centred on the camera, at least
+// to a readable line once the card drops, and the card wraps to their width.
+// A title in one ear would leave as much black in the other, so matched ears
+// leave it to the card, which heads each row with its title or else its bot's
+// name. Without a notch the same shape floats as a capsule, whose band names a
+// bot, or a plain thread, which only Jaz runs, by its title, and whose top row
+// leaves that out.
 function Island({ state: { rows, more, ears, notch }, open }: { state: IslandState; open: boolean }) {
   const { command } = window.jaz!.island
   const reduced = useReducedEffectsMotion()
@@ -122,7 +123,7 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
         </>
       )}
       <div className="absolute inset-0 overflow-hidden rounded-[inherit] bg-black shadow-[0_12px_24px_-10px_rgb(0_0_0/calc(var(--island-open)*0.5))] *:opacity-(--island-open) *:blur-[calc((1-var(--island-open))*4px)]">
-        <div className="absolute top-0 left-1/2 grid -translate-x-1/2" style={{ width: even ? 'max-content' : width }}>
+        <div className={`absolute top-0 left-1/2 grid -translate-x-1/2 ${ears ? '' : 'min-w-90'}`} style={{ width: even ? 'max-content' : width }}>
           <button
             ref={measureBand}
             type="button"
