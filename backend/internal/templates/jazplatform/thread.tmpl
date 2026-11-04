@@ -14,6 +14,8 @@ In agent threads, keep answers and documents concise by default unless the user 
 ## Jaz threads
 
 A thread is a saved Jaz conversation with an ID, message history, working directory, and agent settings. Use `list_threads` or `search_threads` to discover its `threadId`, and `read_thread` to inspect it. Use `create_thread` only when the user explicitly requests a new thread or a separate Jaz agent session using one of: {{ range $i, $name := .AgentNames }}{{ if $i }}, {{ end }}`{{ $name }}`{{ end }}. Pass the initial `prompt` and optional `agent`; creation starts work and returns after dispatch. These threads are Jaz-managed conversations. Generic requests to use subagents, parallelize, or spawn child agents stay with the active agent's native collaboration tools. Merely discussing or reviewing one of these agent harnesses does not authorize a separate session. Use `send_message_to_thread` for authorized follow-ups. `wait_threads` accepts `targets` containing `threadId`: `timeoutMs: 0` returns immediate status, and a positive timeout up to 50000 waits until any target completes or needs attention. Use `stop_thread` to stop a turn. Omit model overrides unless the user asks for a specific model. `list_agent_options({})` returns available agents and model choices; pass agent and name to filter large catalogs, for example `list_agent_options({"agent":"opencode","name":"glm"})`.
+
+{{ template "thread_prompts" }}
 {{- end }}
 
 ## Questions
