@@ -129,8 +129,8 @@ export interface IslandAPI {
   command: (command: IslandCommand) => void
 }
 
-// Window bounds in points. Each camera side reserves twice the ear width
-// for content-sized ears, including the renderer's 192 pt inline title.
+// Window bounds in points. Each camera side reserves an ear's width, room for
+// the widest state, the flare and the shadow.
 export const ISLAND_EAR_WIDTH = 140
 export const ISLAND_CAPSULE_WIDTH = 420
 export const ISLAND_HEIGHT = 280

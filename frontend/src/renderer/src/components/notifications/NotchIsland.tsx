@@ -44,13 +44,14 @@ export function NotchIsland() {
   return state && <Island state={state} open={open} />
 }
 
-// Who sits in the left ear beside the camera and the state, if it needs a
-// word, in the right; what happened drops beneath as the ears grow. A
-// bot is named beside its face; a plain thread, which only Jaz runs, puts its
-// title beside the Jaz icon instead. Both ears grow evenly to fit the title,
-// so the island stays centred on the camera, and the card wraps to their
-// width rather than widening them. Without a notch the same shape floats as a
-// capsule.
+// Whose face sits in the left ear beside the camera and the state, if it
+// needs a word, in the right; what happened drops beneath as the ears grow.
+// Both ears grow evenly, so the island stays centred on the camera, and the
+// card wraps to their width. A title in one ear would leave as much black in
+// the other, so matched ears leave it to the card, which heads each row with
+// its title or else its bot's name. Without a notch the same shape floats as
+// a capsule, whose band names a bot, or a plain thread, which only Jaz runs,
+// by its title, and whose top row leaves that out.
 function Island({ state: { rows, more, ears, notch }, open }: { state: IslandState; open: boolean }) {
   const { command } = window.jaz!.island
   const reduced = useReducedEffectsMotion()
@@ -132,16 +133,16 @@ function Island({ state: { rows, more, ears, notch }, open }: { state: IslandSta
           >
             <span className="flex min-w-0 items-center gap-1 overflow-hidden pr-1.5 pl-2.5">
               <Identity row={top} size={18} live completion={grown && top.state === 'done' ? top.key : undefined} />
-              {!ears && <span className={`truncate font-medium ${notch ? 'max-w-48' : ''}`}>{top.name || top.title}</span>}
+              {!even && <span className="truncate font-medium">{top.name || top.title}</span>}
             </span>
             <span className="col-start-3 flex min-w-8 items-center justify-end pr-2.5 pl-1.5 group-hover:invisible">
               <State row={top} />
             </span>
           </button>
           {!ears && (
-            <div ref={measure} className="grid gap-2.5 px-3 pt-1 pb-2 contain-inline-size">
+            <div ref={measure} className="grid gap-2.5 px-2.5 pt-1 pb-2 contain-inline-size">
               {rows.map((row, index) => (
-                <Row key={row.key} row={index || row.name ? row : { ...row, title: '' }} compact={rows.length > 1} command={command} />
+                <Row key={row.key} row={{ ...row, title: index || even ? row.title || row.name : row.name && row.title }} compact={rows.length > 1} command={command} />
               ))}
               {more > 0 && (
                 <button type="button" onClick={() => command({ type: 'more' })} className="justify-self-start text-[12.5px] text-white/60 hover:text-white">
