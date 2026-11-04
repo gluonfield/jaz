@@ -132,7 +132,7 @@ export function createIsland(open: (path: string) => void) {
 
   function bounds({ display, notch }: Placement) {
     if (notch) {
-      return { x: display.bounds.x + notch.x - 2 * ISLAND_EAR_WIDTH, y: display.bounds.y, width: notch.width + 4 * ISLAND_EAR_WIDTH, height: ISLAND_HEIGHT }
+      return { x: display.bounds.x + notch.x - ISLAND_EAR_WIDTH, y: display.bounds.y, width: notch.width + 2 * ISLAND_EAR_WIDTH, height: ISLAND_HEIGHT }
     }
     const { workArea } = display
     return { x: Math.round(workArea.x + (workArea.width - ISLAND_CAPSULE_WIDTH) / 2), y: workArea.y + 8, width: ISLAND_CAPSULE_WIDTH, height: ISLAND_HEIGHT }
