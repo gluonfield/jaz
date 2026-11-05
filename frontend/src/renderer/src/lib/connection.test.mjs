@@ -319,6 +319,35 @@ test('remote startup waits for health before unlocking, stops on denial, and rec
   expect(restarted.stored.get('jaz.backendAuth.' + target)).toBe('enc:v1:sealed-credential')
 })
 
+test('one missed health poll keeps the session; consecutive misses show reconnecting until the backend answers', async () => {
+  const target = 'https://jaz.example'
+  let online = true
+  const { connection, timers } = await fixture({
+    storedValues: [
+      ['jaz.connection', JSON.stringify({ mode: 'remote', remoteUrl: target })],
+      ['jaz.backendAuth.' + target, 'enc:v1:sealed-credential'],
+    ],
+    health: () => Response.json({ ok: online, auth_required: true }, { status: online ? 200 : 503 }),
+    decryptCredential: () => 'jaz_device-token',
+    auth: () => Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }),
+  })
+  const poll = async (up) => {
+    online = up
+    const [id, timer] = [...timers.entries()].find(([, entry]) => entry.delay === 5_000)
+    timers.delete(id)
+    await timer.callback()
+    await settle()
+    return connection.useConnection().status
+  }
+  expect(connection.useConnection().status).toBe('connected')
+  expect(await poll(false)).toBe('connected')
+  expect(await poll(true)).toBe('connected')
+  expect(await poll(false)).toBe('connected')
+  expect(await poll(false)).toBe('reconnecting')
+  expect(await poll(false)).toBe('reconnecting')
+  expect(await poll(true)).toBe('connected')
+})
+
 test('an unauthenticated health probe does not unlock saved credentials', async () => {
   let unlocks = 0
   const target = 'https://jaz.example'
