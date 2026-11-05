@@ -50,14 +50,18 @@ WHERE id = sqlc.arg(id) AND (status IN ('pending', 'in_progress', 'waiting_for_u
 
 -- name: DropDeliveredResults :exec
 -- The results a commitment's threads queued for its bot before it closed as
--- done: they had all finished, so the delivery answered them.
+-- done: they had all finished, so the delivery answered them. A thread still
+-- serving another open task keeps its results for that task.
 UPDATE threads
 SET queued_messages = (
   SELECT json_group_array(json(kept.value)) FROM (
     SELECT m.value FROM json_each(threads.queued_messages) m
     WHERE json_extract(m.value, '$.kind') IS NOT 'internal'
        OR COALESCE(json_extract(m.value, '$.from'), '') NOT IN (
-         SELECT thread_id FROM bot_commitment_workers WHERE commitment_id = sqlc.arg(id))
+         SELECT d.thread_id FROM bot_commitment_workers d WHERE d.commitment_id = sqlc.arg(id)
+         EXCEPT
+         SELECT w.thread_id FROM bot_commitment_workers w JOIN bot_commitments o ON o.id = w.commitment_id
+         WHERE o.id <> sqlc.arg(id) AND o.status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped'))
     ORDER BY m.key) kept)
 WHERE id = (SELECT bot_id FROM bot_commitments WHERE id = sqlc.arg(id)) AND queued_messages <> '';
 
@@ -68,13 +72,16 @@ SELECT * FROM bot_commitments WHERE bot_id = sqlc.arg(bot_id) AND status IN ('pe
 SELECT * FROM bot_commitments WHERE id = ?;
 
 -- name: LinkCommitmentThread :execrows
+-- A thread the bot started serves its open task, whether new or continued.
 INSERT INTO bot_commitment_threads (thread_id, commitment_id)
-SELECT sqlc.arg(thread_id), c.id FROM bot_commitments c
+SELECT t.id, c.id FROM bot_commitments c
+JOIN threads t ON t.id = sqlc.arg(thread_id) AND t.source_type = 'bot_worker' AND t.source_id = c.bot_id
 WHERE c.id = sqlc.arg(commitment_id) AND c.bot_id = sqlc.arg(bot_id) AND c.status IN ('pending', 'in_progress')
   AND NOT EXISTS (
     SELECT 1 FROM bot_commitment_dependencies d JOIN bot_commitments p ON p.id = d.prerequisite_id
     WHERE d.commitment_id = c.id AND p.status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped')
-  );
+  )
+ON CONFLICT (commitment_id, thread_id) DO UPDATE SET id = id;
 
 -- name: StartCommitment :exec
 UPDATE bot_commitments SET status = 'in_progress' WHERE id = ?;

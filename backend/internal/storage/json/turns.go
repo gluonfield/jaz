@@ -13,6 +13,10 @@ func (s *Store) CheckTaskAdmission(string) error {
 	return nil
 }
 
+func (s *Store) LinkCommitmentThread(string, string, int64) error {
+	return fmt.Errorf("JSON storage does not keep commitments")
+}
+
 func (s *Store) StartSessionTurn(id string, turn storage.Turn, messages ...storage.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

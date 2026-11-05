@@ -48,7 +48,7 @@ func (t *MCPTools) AddBotTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bot_task_create",
 		Title:       "Create a task",
-		Description: "Record unfinished work the bot must complete beyond this turn. State the requested outcome and a concrete check for when it is done, not just a work label. Create a task before delegating work or promising a later result. Returns its id; pass it to create_thread as task. The task is owed to whoever this turn answers.",
+		Description: "Record unfinished work the bot must complete beyond this turn. State the requested outcome and a concrete check for when it is done, not just a work label. Create a task before delegating work or promising a later result. Returns its id; pass it as task to create_thread, or to send_message_to_thread when continuing an existing thread for it. The task is owed to whoever this turn answers.",
 	}, t.CreateTask)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bot_task_update",

@@ -21,7 +21,8 @@ type Querier interface {
 	CommitmentWorking(ctx context.Context, id int64) (bool, error)
 	DeleteCommitmentDependencies(ctx context.Context, commitmentID int64) error
 	// The results a commitment's threads queued for its bot before it closed as
-	// done: they had all finished, so the delivery answered them.
+	// done: they had all finished, so the delivery answered them. A thread still
+	// serving another open task keeps its results for that task.
 	DropDeliveredResults(ctx context.Context, id int64) error
 	GetBot(ctx context.Context, threadID string) (Bot, error)
 	GetCommitment(ctx context.Context, id int64) (BotCommitment, error)
@@ -30,6 +31,7 @@ type Querier interface {
 	HasOwedTasks(ctx context.Context, arg HasOwedTasksParams) (bool, error)
 	InsertCommitment(ctx context.Context, arg InsertCommitmentParams) (int64, error)
 	LinkCommitmentDependency(ctx context.Context, arg LinkCommitmentDependencyParams) (int64, error)
+	// A thread the bot started serves its open task, whether new or continued.
 	LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error)
 	ListBots(ctx context.Context) ([]Bot, error)
 	ListCommitmentDependencies(ctx context.Context, ids []int64) ([]BotCommitmentDependency, error)

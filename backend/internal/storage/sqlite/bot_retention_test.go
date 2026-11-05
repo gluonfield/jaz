@@ -122,6 +122,22 @@ func TestFinishedBotWorkArchivesOnlyAfterClosureAndInactivity(t *testing.T) {
 			if want := tc.closed && !tc.recentClose; err != nil || got.Archived != want {
 				t.Fatalf("descendant archived = %v, want %v: %v", got.Archived, want, err)
 			}
+			if !tc.want {
+				return
+			}
+			next, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: tc.name + " follow-up"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := store.LinkCommitmentThread(bot.ID, worker.Slug, next.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.ArchiveFinishedBotWork(t.Context(), before, worktreeRoot); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := store.LoadSession(worker.ID); err != nil || got.Archived {
+				t.Fatalf("finished work continued for an open task stayed archived: %v", err)
+			}
 		})
 	}
 }

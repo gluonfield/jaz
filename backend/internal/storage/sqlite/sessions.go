@@ -73,14 +73,7 @@ func (s *Store) insertNewSessionLocked(session storage.Session, commitment int64
 		}
 	}
 	if commitment != 0 {
-		linked, err := botdb.New(tx).LinkCommitmentThread(ctx, botdb.LinkCommitmentThreadParams{ThreadID: session.ID, CommitmentID: commitment, BotID: session.SourceID})
-		if err != nil {
-			return err
-		}
-		if linked == 0 {
-			return fmt.Errorf("#%d: %w", commitment, storage.ErrCommitmentNotOpen)
-		}
-		if err := botdb.New(tx).StartCommitment(ctx, commitment); err != nil {
+		if err := linkCommitmentThread(ctx, botdb.New(tx), session.SourceID, session.ID, commitment); err != nil {
 			return err
 		}
 	}

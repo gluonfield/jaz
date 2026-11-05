@@ -150,6 +150,17 @@ func TestBotTaskToolsManageExistingWorkAndDeliverThroughMCP(t *testing.T) {
 	if !slices.Contains(jaz.notices(bot.ID), "The first quote is cheaper.") {
 		t.Fatal("tasks closed without delivering the result")
 	}
+	revision := create("Revise the cheaper quote")
+	call("send_message_to_thread", map[string]any{"threadId": worker.ThreadID, "prompt": "Revise the cheaper quote", "task": id}, true)
+	for range 2 {
+		call("send_message_to_thread", map[string]any{"threadId": worker.Slug, "prompt": "Revise the cheaper quote", "task": revision}, false)
+		jaz.idle(worker.ThreadID)
+	}
+	activity, err := jaz.bots.Activity(bot.ID)
+	if err != nil || len(activity.Owed) != 1 || activity.Owed[0].ID != revision || len(activity.Owed[0].Threads) != 1 || activity.Owed[0].Threads[0].ID != worker.ThreadID {
+		t.Fatalf("continued thread is not the revision's work: %+v, %v", activity.Owed, err)
+	}
+	call("bot_task_update", map[string]any{"id": revision, "status": "completed", "message": "The revised quote is ready."}, false)
 
 	cancelled := create("Draft the brochure")
 	call("bot_task_update", map[string]any{"id": cancelled, "status": "cancelled", "message": " "}, true)
