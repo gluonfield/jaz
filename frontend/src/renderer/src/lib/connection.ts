@@ -178,7 +178,8 @@ async function verify(value: Attempt, candidate: Candidate): Promise<string | nu
   return null
 }
 
-function schedulePoll(value: Attempt, candidate: Candidate): void {
+// A single missed probe is usually a busy client or backend, not an outage.
+function schedulePoll(value: Attempt, candidate: Candidate, missed = false): void {
   clearTimeout(pollTimer)
   pollTimer = setTimeout(async () => {
     if (!current(value)) {
@@ -197,11 +198,13 @@ function schedulePoll(value: Attempt, candidate: Candidate): void {
         block(access.error)
         return
       }
-      setState({ status: 'reconnecting', error: access.error })
+      if (missed) {
+        setState({ status: 'reconnecting', error: access.error })
+      }
     } else {
       setState({ status: 'connected', error: null })
     }
-    schedulePoll(value, candidate)
+    schedulePoll(value, candidate, !access.ok)
   }, 5000)
 }
 
