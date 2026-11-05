@@ -9,6 +9,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/storage"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/botdb"
+	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/threaddb"
 )
 
 func (s *Store) OpenCommitment(commitment storage.Commitment) (storage.Commitment, error) {
@@ -202,6 +203,46 @@ func closeCommitment(ctx context.Context, q *botdb.Queries, id int64, status, no
 		return err
 	}
 	return q.DropDeliveredResults(ctx, id)
+}
+
+// LinkCommitmentThread has a thread the bot started, which may already serve
+// other tasks, serve its open commitment too. Retention may have archived it
+// as finished work; serving an open commitment, it is work again.
+func (s *Store) LinkCommitmentThread(bot, thread string, commitment int64) error {
+	session, err := s.LoadSession(thread)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	q := botdb.New(tx)
+	if err := taskAdmission(ctx, q, session.ID); err != nil {
+		return err
+	}
+	if err := linkCommitmentThread(ctx, q, bot, session.ID, commitment); err != nil {
+		return err
+	}
+	if err := threaddb.New(tx).SetArchived(ctx, threaddb.SetArchivedParams{Archived: 0, Ids: []string{session.ID}}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func linkCommitmentThread(ctx context.Context, q *botdb.Queries, bot, thread string, commitment int64) error {
+	linked, err := q.LinkCommitmentThread(ctx, botdb.LinkCommitmentThreadParams{ThreadID: thread, CommitmentID: commitment, BotID: bot})
+	if err != nil {
+		return err
+	}
+	if linked == 0 {
+		return fmt.Errorf("#%d: %w for a thread this bot started", commitment, storage.ErrCommitmentNotOpen)
+	}
+	return q.StartCommitment(ctx, commitment)
 }
 
 func (s *Store) LoadCommitment(id int64) (storage.Commitment, error) {

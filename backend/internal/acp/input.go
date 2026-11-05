@@ -10,6 +10,11 @@ import (
 
 func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 	req.Completion = CompletionAsync
+	if req.Commitment != 0 {
+		if err := m.store.LinkCommitmentThread(req.From, req.Session, req.Commitment); err != nil {
+			return Job{}, err
+		}
+	}
 	for _, voice := range storage.NormalizeMessageContexts(req.Contexts) {
 		if voice.Type != storage.ContextTypeVoice || voice.ID == "" || voice.RequestID == "" {
 			continue

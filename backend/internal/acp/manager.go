@@ -53,6 +53,7 @@ type Store interface {
 	CreateSession(storage.CreateSession) (storage.Session, error)
 	LoadSession(string) (storage.Session, error)
 	CheckTaskAdmission(string) error
+	LinkCommitmentThread(bot, thread string, commitment int64) error
 	ListSessions(storage.SessionFilter) ([]storage.Session, error)
 	SaveSession(storage.Session) error
 	StartSessionTurn(string, storage.Turn, ...storage.Message) error
@@ -179,6 +180,9 @@ type SendRequest struct {
 	FromUser bool
 	// From is the thread whose agent sent Message, when known.
 	From string
+	// Commitment is the task of the bot From that Message continues the
+	// thread for.
+	Commitment int64
 	// ParentOutput is what the parent turn that sent Message was answering;
 	// the result goes on to answer it.
 	ParentOutput *storage.TurnOutput

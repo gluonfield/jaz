@@ -161,13 +161,17 @@ SET queued_messages = (
     SELECT m.value FROM json_each(threads.queued_messages) m
     WHERE json_extract(m.value, '$.kind') IS NOT 'internal'
        OR COALESCE(json_extract(m.value, '$.from'), '') NOT IN (
-         SELECT thread_id FROM bot_commitment_workers WHERE commitment_id = ?1)
+         SELECT d.thread_id FROM bot_commitment_workers d WHERE d.commitment_id = ?1
+         EXCEPT
+         SELECT w.thread_id FROM bot_commitment_workers w JOIN bot_commitments o ON o.id = w.commitment_id
+         WHERE o.id <> ?1 AND o.status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped'))
     ORDER BY m.key) kept)
 WHERE id = (SELECT bot_id FROM bot_commitments WHERE id = ?1) AND queued_messages <> ''
 `
 
 // The results a commitment's threads queued for its bot before it closed as
-// done: they had all finished, so the delivery answered them.
+// done: they had all finished, so the delivery answered them. A thread still
+// serving another open task keeps its results for that task.
 func (q *Queries) DropDeliveredResults(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, dropDeliveredResults, id)
 	return err
@@ -273,12 +277,14 @@ func (q *Queries) LinkCommitmentDependency(ctx context.Context, arg LinkCommitme
 
 const linkCommitmentThread = `-- name: LinkCommitmentThread :execrows
 INSERT INTO bot_commitment_threads (thread_id, commitment_id)
-SELECT ?1, c.id FROM bot_commitments c
+SELECT t.id, c.id FROM bot_commitments c
+JOIN threads t ON t.id = ?1 AND t.source_type = 'bot_worker' AND t.source_id = c.bot_id
 WHERE c.id = ?2 AND c.bot_id = ?3 AND c.status IN ('pending', 'in_progress')
   AND NOT EXISTS (
     SELECT 1 FROM bot_commitment_dependencies d JOIN bot_commitments p ON p.id = d.prerequisite_id
     WHERE d.commitment_id = c.id AND p.status IN ('pending', 'in_progress', 'waiting_for_user', 'stopped')
   )
+ON CONFLICT (commitment_id, thread_id) DO UPDATE SET id = id
 `
 
 type LinkCommitmentThreadParams struct {
@@ -287,6 +293,7 @@ type LinkCommitmentThreadParams struct {
 	BotID        string `json:"bot_id"`
 }
 
+// A thread the bot started serves its open task, whether new or continued.
 func (q *Queries) LinkCommitmentThread(ctx context.Context, arg LinkCommitmentThreadParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, linkCommitmentThread, arg.ThreadID, arg.CommitmentID, arg.BotID)
 	if err != nil {

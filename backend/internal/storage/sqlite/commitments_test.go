@@ -216,6 +216,10 @@ func TestDeliveringACommitmentDropsTheResultsItsThreadsQueuedForTheBot(t *testin
 	}
 	delivered, quotes := thread("quotes")
 	dropped, stock := thread("stock")
+	_, supplier := thread("supplier")
+	if err := store.LinkCommitmentThread(bot.ID, supplier, delivered); err != nil {
+		t.Fatal(err)
+	}
 	result := func(from, text string) storage.QueuedMessage {
 		message := storage.NewInternalQueuedMessage(text)
 		message.From = from
@@ -226,6 +230,7 @@ func TestDeliveringACommitmentDropsTheResultsItsThreadsQueuedForTheBot(t *testin
 		result(quotes, "quotes finished"),
 		{Text: "check the inbox", Kind: storage.QueuedMessageKindInternal, Output: &storage.TurnOutput{Run: "run-1"}},
 		result(stock, "stock finished"),
+		result(supplier, "supplier finished"),
 	} {
 		if err := store.QueueTurn(storage.TurnDelivery{SessionID: bot.ID, Message: message}); err != nil {
 			t.Fatal(err)
@@ -248,9 +253,9 @@ func TestDeliveringACommitmentDropsTheResultsItsThreadsQueuedForTheBot(t *testin
 	for _, message := range session.QueuedMessages {
 		texts = append(texts, message.Text)
 	}
-	want := []string{"How are the quotes going?", "check the inbox", "stock finished", "The quotes are in."}
+	want := []string{"How are the quotes going?", "check the inbox", "stock finished", "supplier finished", "The quotes are in."}
 	if !slices.Equal(texts, want) {
-		t.Fatalf("bot queue = %q, want %q: only the delivered commitment's result goes", texts, want)
+		t.Fatalf("bot queue = %q, want %q: only results of threads serving no other open commitment go", texts, want)
 	}
 }
 
@@ -464,6 +469,14 @@ func TestTaskDependenciesBlockExecutionAndRejectCyclesOrOtherBots(t *testing.T) 
 	loaded, err = store.LoadCommitment(dependent.ID)
 	if err != nil || loaded.Status != storage.CommitmentInProgress || len(loaded.Threads) != 1 || loaded.Threads[0].ID != worker.ID {
 		t.Fatalf("dependency-ready task did not start: %+v, %v", loaded, err)
+	}
+	for _, claim := range []struct {
+		bot, thread string
+		task        int64
+	}{{other.ID, worker.ID, foreign.ID}, {bot.ID, bot.ID, dependent.ID}} {
+		if err := store.LinkCommitmentThread(claim.bot, claim.thread, claim.task); !errors.Is(err, storage.ErrCommitmentNotOpen) {
+			t.Fatalf("%+v linked a thread its bot did not start: %v", claim, err)
+		}
 	}
 	if err := store.StartSessionTurn(worker.ID, storage.Turn{}); err != nil {
 		t.Fatal(err)

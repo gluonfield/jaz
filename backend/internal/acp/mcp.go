@@ -110,15 +110,16 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 }
 
 type MCPSendInput struct {
-	ThreadID string `json:"threadId" jsonschema:"Jaz thread ID or slug."`
-	Prompt   string `json:"prompt" jsonschema:"Follow-up user prompt."`
-	Plan     bool   `json:"plan,omitempty" jsonschema:"Request the agent's plan mode for this prompt."`
+	ThreadID   string `json:"threadId" jsonschema:"Jaz thread ID or slug."`
+	Prompt     string `json:"prompt" jsonschema:"Follow-up user prompt."`
+	Plan       bool   `json:"plan,omitempty" jsonschema:"Request the agent's plan mode for this prompt."`
+	Commitment int64  `json:"task,omitempty" jsonschema:"For a Jaz bot's own chat: the id of the open task this follow-up continues the thread for. The thread then serves it too."`
 }
 
 func (t *MCPTools) Send(ctx context.Context, req *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, ThreadSnapshot, error) {
 	job, err := t.Service.Input(ctx, SteerRequest{
 		Session: input.ThreadID, Message: input.Prompt, PlanRequested: input.Plan,
-		ParentVisible: true, From: mcpsession.SessionID(req),
+		ParentVisible: true, From: mcpsession.SessionID(req), Commitment: input.Commitment,
 	})
 	return nil, snapshotThread(job), err
 }
