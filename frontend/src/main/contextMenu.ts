@@ -4,11 +4,11 @@ import { isPreviewURL } from '@shared/preview'
 function imageCopyPath(value: string, backendOrigin: string): string {
   if (!value) return ''
   const source = new URL(value)
-  if (source.origin !== backendOrigin) return value
-  const path = /^\/v1\/sessions\/[^/]+\/file$/.test(source.pathname) ? source.searchParams.get('path') : null
-  if (path !== null) return path
+  const resource = /^\/v1\/sessions\/[^/]+\/(file|attachments\/[^/]+)$/.exec(source.pathname)
+  if (source.origin !== backendOrigin || !resource) return value
+  if (resource[1] === 'file') return source.searchParams.get('path') ?? ''
+  if (!source.searchParams.has('ticket')) return value
   source.searchParams.delete('ticket')
-  source.searchParams.delete('image')
   return source.href
 }
 
@@ -22,7 +22,6 @@ export function attachContextMenu(contents: WebContents, options: {
   contents.on('context-menu', (_event, params) => {
     const linkURL = params.linkURL.trim()
     const previewLinkURL = isPreviewURL(linkURL) ? linkURL : ''
-    const canOpenSideBrowser = previewLinkURL !== '' && options.canOpenPreviewURL(contents)
     const editable = params.isEditable
     const selection = params.selectionText.trim()
     const image = params.mediaType === 'image'
@@ -46,7 +45,7 @@ export function attachContextMenu(contents: WebContents, options: {
       if (previewLinkURL || editable || selection !== '') items.push({ type: 'separator' })
     }
     if (previewLinkURL) {
-      if (canOpenSideBrowser) {
+      if (options.canOpenPreviewURL(contents)) {
         items.push({
           label: 'Open in Side Browser',
           click: () => options.openPreviewURL(previewLinkURL, contents),
@@ -96,7 +95,7 @@ export function attachContextMenu(contents: WebContents, options: {
         { role: 'paste', enabled: params.editFlags.canPaste },
         { role: 'selectAll', enabled: params.editFlags.canSelectAll },
       )
-    } else if (selection !== '') {
+    } else if (!image || selection !== '') {
       items.push({ role: 'copy', enabled: params.editFlags.canCopy })
     }
     Menu.buildFromTemplate(items).popup({
