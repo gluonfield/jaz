@@ -14,7 +14,6 @@ import {
   shell,
 } from 'electron'
 import appIcon from '../assets/jaz-icon-1024.png?asset'
-import { isPreviewURL } from '../shared/preview'
 import { startLocalBackend, stopLocalBackend } from './backend'
 import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } from '@main/browserNavigation'
 import { attachWindowOpenHandler } from '@main/browserPopups'
@@ -38,6 +37,7 @@ import { setupLauncher, teardownLauncher } from './spotlight'
 import { attachVoiceOverlay } from './voiceOverlay'
 import { createUpdateController } from './updater'
 import { createConnectionSession } from '@main/connectionSession'
+import { attachContextMenu } from '@main/contextMenu'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
 // the renderer mounts so a dark launch doesn't flash white behind the content.
@@ -137,78 +137,6 @@ function openExternalURL(url: string): void {
   }
 }
 
-// Electron ships no default right-click menu; build the link and standard text
-// actions wherever the click lands on a link, editable field, or text selection.
-function attachContextMenu(contents: WebContents): void {
-  contents.on('context-menu', (_event, params) => {
-    const linkURL = params.linkURL.trim()
-    const previewLinkURL = isPreviewURL(linkURL) ? linkURL : ''
-    const canOpenSideBrowser = previewLinkURL !== '' && canOpenPreviewURL(contents)
-    const editable = params.isEditable
-    const selection = params.selectionText.trim()
-    if (!previewLinkURL && !editable && selection === '') return
-
-    const items: MenuItemConstructorOptions[] = []
-    if (previewLinkURL) {
-      if (canOpenSideBrowser) {
-        items.push({
-          label: 'Open in Side Browser',
-          click: () => openPreviewURL(previewLinkURL, contents),
-        })
-      }
-      items.push(
-        {
-          label: 'Open in Browser',
-          click: () => shell.openExternal(previewLinkURL),
-        },
-      )
-      if (editable || selection !== '') items.push({ type: 'separator' })
-    }
-    if (editable && params.misspelledWord) {
-      for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
-        items.push({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) })
-      }
-      items.push(
-        {
-          label: 'Add to Dictionary',
-          click: () => contents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
-        },
-        { type: 'separator' },
-      )
-    }
-    if (selection !== '') {
-      const preview = selection.length > 30 ? `${selection.slice(0, 30)}…` : selection
-      if (process.platform === 'darwin') {
-        items.push({
-          label: `Look Up “${preview}”`,
-          click: () => contents.showDefinitionForSelection(),
-        })
-      }
-      items.push(
-        {
-          label: `Search with Google “${preview}”`,
-          click: () =>
-            shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(selection)}`),
-        },
-        { type: 'separator' },
-      )
-    }
-    if (editable) {
-      items.push(
-        { role: 'cut', enabled: params.editFlags.canCut },
-        { role: 'copy', enabled: params.editFlags.canCopy },
-        { role: 'paste', enabled: params.editFlags.canPaste },
-        { role: 'selectAll', enabled: params.editFlags.canSelectAll },
-      )
-    } else {
-      items.push({ role: 'copy', enabled: params.editFlags.canCopy })
-    }
-    Menu.buildFromTemplate(items).popup({
-      window: BrowserWindow.fromWebContents(contents) ?? undefined,
-    })
-  })
-}
-
 function previewURLTarget(contents: WebContents): WebContents {
   return contents.hostWebContents ?? contents
 }
@@ -234,7 +162,7 @@ app.on('web-contents-created', (_event, contents) => {
   contents.once('destroyed', () => previewURLTargets.delete(contents.id))
   attachBrowserNavigationShortcuts(contents)
   attachPreviewFindShortcuts(contents)
-  attachContextMenu(contents)
+  attachContextMenu(contents, { canOpenPreviewURL, openPreviewURL, backendOrigin: () => connectionSession.current().url })
   attachWindowOpenHandler(contents, shell.openExternal, (url) => openPreviewURL(url, contents))
 })
 
