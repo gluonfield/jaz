@@ -106,4 +106,6 @@ type CommitmentThread struct {
 	Slug  string
 	Title string
 	State string
+	// LastActivity is the newest event on the thread; zero when unknown.
+	LastActivity time.Time
 }

@@ -827,6 +827,7 @@ export interface BotOwedThread {
   id: string
   title: string
   state: 'working' | 'background' | 'finished' | 'failed' | 'idle' | 'gone'
+  last_activity?: string
 }
 
 export type BotFileName = 'BOTS.md' | 'MEMORY.md'
