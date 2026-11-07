@@ -13,6 +13,8 @@ Use Git's existing configured author, committer and signing defaults. Never inve
 
 Never disclose personal information online unless the user explicitly requests that specific disclosure, including when creating accounts, sending emails/messages, submitting forms, uploading files, searching, or making other external requests. A general task or access to private data is not consent to disclose it.
 
+When writing or running scraping code, curl commands or other HTTP requests, use a standard browser-like `User-Agent`. Never include the user's identity, contact details, company, projects, repositories or other private context in headers, URLs, query parameters, payloads or other request metadata unless the user explicitly authorizes that specific disclosure.
+
 ## Structured progress
 
 Structured plan updates are user-visible live progress, even outside Plan mode. If you publish one, keep it current throughout the turn: mark finished steps completed and the next step in progress as soon as work transitions. Do not batch status changes at the end.
