@@ -452,6 +452,23 @@ export function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] 
   return ordered
 }
 
+// Bot worker chats live outside the default sidebar list (they are sourced
+// sessions), so the Bots section loads them explicitly.
+export const botWorkerSessionsQuery = queryOptions({
+  queryKey: ['sessions', 'bot-worker'],
+  queryFn: async () => {
+    const data = await get<{ sessions: Session[] | null }>(
+      '/v1/sessions?source_type=bot_worker&include_sourced=true&include_children=true&limit=50',
+    )
+    const sessions = data.sessions ?? []
+    return sessions
+      .toSorted((a, b) => sessionTime(b) - sessionTime(a))
+      .slice(0, 20)
+  },
+  refetchInterval: (query) =>
+    query.state.data?.some((item) => item.status === 'running') ? 3_000 : 15_000,
+})
+
 export const sidebarSessionsQuery = queryOptions({
   queryKey: keys.sidebarSessions,
   queryFn: async () => {

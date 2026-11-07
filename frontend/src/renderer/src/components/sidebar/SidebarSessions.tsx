@@ -10,6 +10,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import {
   projectsQuery,
   reorderProjects,
+  botWorkerSessionsQuery,
   sidebarSessionsQuery,
   type SessionListItem,
 } from '@/lib/api/sessions'
@@ -320,6 +321,56 @@ function RecentSessionList({
   )
 }
 
+// Bots section: worker chats the bot spawned for its tasks. They are sourced
+// sessions, so the default sidebar list hides them; this section is the only
+// place their history stays reachable.
+const COLLAPSED_BOTS_KEY = 'jaz.sidebar.collapsedBots'
+
+function storedCollapsedBots(): boolean {
+  try {
+    return JSON.parse(localStorage.getItem(COLLAPSED_BOTS_KEY) ?? 'false') === true
+  } catch {
+    return false
+  }
+}
+
+function BotWorkerSessions({ open }: { open: boolean }) {
+  const sessions = useQuery(botWorkerSessionsQuery)
+  const [collapsed, setCollapsed] = useState(storedCollapsedBots)
+  if (sessions.isPending || sessions.isError || !sessions.data?.length) return null
+  const items: SessionListItem[] = sessions.data.map((session) => ({ session, child: false }))
+  const running = sessions.data.filter((session) => session.status === 'running').length
+  const toggle = () => {
+    setCollapsed((current) => {
+      localStorage.setItem(COLLAPSED_BOTS_KEY, JSON.stringify(!current))
+      return !current
+    })
+  }
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        aria-label={`${collapsed ? 'Expand' : 'Collapse'} bot chats`}
+        className={`flex h-[30px] w-full items-center gap-2 rounded-lg px-2.5 text-left outline-none transition-colors duration-150 hover:bg-list-hover max-sm:h-11 ${SECTION_LABEL_CLASS}`}
+      >
+        <Collapse open={!collapsed}>
+          <span />
+        </Collapse>
+        <span className="min-w-0 truncate">
+          Bots
+          {running > 0 ? <span className="ml-1.5 text-primary">{running} active</span> : null}
+          <span className="ml-1.5 text-ink-3">{items.length}</span>
+        </span>
+      </button>
+      <Collapse open={!collapsed}>
+        <SessionRows items={items} shortcutByID={new Map()} shortcutMode={false} reserveIconSpace={false} />
+      </Collapse>
+    </div>
+  )
+}
+
 export function SidebarSessions({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
   const sessions = useQuery(sidebarSessionsQuery)
@@ -414,6 +465,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
           shortcutByID={shortcutByID}
           shortcutMode={shortcutMode}
         />
+        <BotWorkerSessions open={open} />
         <div>
           <SidebarOrganizationMenu organization={organization} onChange={changeOrganization} />
           {organization === 'project' ? (
