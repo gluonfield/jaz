@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router'
 import { Archive, CornerDownRight, Pencil, Pin } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { SessionHoverDetails } from '@/components/sidebar/SessionHoverDetails'
+import { ActiveRowHighlight } from '@/components/sidebar/SidebarScroll'
 import { Button } from '@/components/ui/Button'
 import { HoverCard } from '@/components/ui/HoverCard'
 import { Input } from '@/components/ui/Input'
@@ -83,39 +84,44 @@ export function SessionRow({
         <Link
           to="/sessions/$sessionId"
           params={{ sessionId: session.id }}
-          className="group flex h-[30px] select-none items-center gap-2 rounded-lg px-2.5 text-[13px] text-ink transition-colors duration-150 [-webkit-touch-callout:none] hover:bg-list-hover max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 max-sm:text-[15px]"
-          activeProps={{ className: 'bg-list-active!' }}
+          className="group relative flex h-[30px] select-none items-center gap-2 rounded-lg px-2.5 text-[13px] text-ink transition-colors duration-150 [-webkit-touch-callout:none] max-sm:h-11 max-sm:gap-2.5 max-sm:px-3 max-sm:text-[15px]"
+          inactiveProps={{ className: 'hover:bg-list-hover' }}
           {...menuTriggers}
         >
-          {!session.pinned && (reserveIconSpace || icon) && (
-            <span className="grid size-[18px] shrink-0 place-items-center">
-              {icon}
-            </span>
-          )}
-          {inlineEditing ? (
-            <RenameField session={session} onDone={() => setRename(null)} />
-          ) : (
-            <span className="min-w-0 flex-1 truncate-fade">
-              {title}
-            </span>
-          )}
-          {inlineEditing ? null : shortcut ? (
-            <span className="flex min-w-8 shrink-0 justify-end">
-              <KeyboardShortcut value={shortcut} />
-            </span>
-          ) : state ? (
-            <span
-              className={`flex min-w-8 shrink-0 items-center justify-end ${
-                shortcutMode ? '' : 'group-hover:hidden'
-              }`}
-            >
-              <span title={state.title} className={`size-1.5 shrink-0 rounded-full ${state.className}`} />
-            </span>
-          ) : null}
-          {shortcutMode || inlineEditing ? null : (
+          {({ isActive }) => (
             <>
-              <PinButton session={session} />
-              <ArchiveButton session={session} />
+              {isActive ? <ActiveRowHighlight layoutId="sidebar-session" /> : null}
+              {!session.pinned && (reserveIconSpace || icon) && (
+                <span className="grid size-[18px] shrink-0 place-items-center">
+                  {icon}
+                </span>
+              )}
+              {inlineEditing ? (
+                <RenameField session={session} onDone={() => setRename(null)} />
+              ) : (
+                <span className="min-w-0 flex-1 truncate-fade">
+                  {title}
+                </span>
+              )}
+              {inlineEditing ? null : shortcut ? (
+                <span className="flex min-w-8 shrink-0 justify-end">
+                  <KeyboardShortcut value={shortcut} />
+                </span>
+              ) : state ? (
+                <span
+                  className={`flex min-w-8 shrink-0 items-center justify-end ${
+                    shortcutMode ? '' : 'group-hover:hidden'
+                  }`}
+                >
+                  <span title={state.title} className={`size-1.5 shrink-0 rounded-full ${state.className}`} />
+                </span>
+              ) : null}
+              {shortcutMode || inlineEditing ? null : (
+                <>
+                  <PinButton session={session} />
+                  <ArchiveButton session={session} />
+                </>
+              )}
             </>
           )}
         </Link>

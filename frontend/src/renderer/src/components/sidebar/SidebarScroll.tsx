@@ -1,4 +1,5 @@
 import { Link } from '@tanstack/react-router'
+import { motion, useReducedMotion } from 'motion/react'
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useRailSections } from './NavRail'
 
@@ -7,6 +8,23 @@ export const NAV_LINK_CLASS =
 
 export const PANEL_ICON_BUTTON_CLASS =
   'grid size-[30px] shrink-0 place-items-center rounded-lg text-ink-3 transition-colors duration-150 hover:bg-list-hover hover:text-ink focus-visible:bg-list-hover focus-visible:ring-2 focus-visible:ring-primary/40 max-sm:size-11'
+
+const ACTIVE_ROW_SPRING = { type: 'spring', duration: 0.3, bounce: 0 } as const
+
+// The selected row's background, sliding over from the row selected before. It
+// sits behind the whole list (the scroller's `isolate`), so it passes under the
+// rows in between; its link must be `relative`.
+export function ActiveRowHighlight({ layoutId }: { layoutId: string }) {
+  const reducedMotion = useReducedMotion()
+  return (
+    <motion.span
+      layoutId={layoutId}
+      transition={reducedMotion ? { duration: 0 } : ACTIVE_ROW_SPRING}
+      style={{ borderRadius: 8 }}
+      className="absolute inset-0 -z-10 bg-list-active"
+    />
+  )
+}
 
 // The panel's top row: its title or primary action, then icon buttons.
 export function SidebarHeader({ children }: { children: ReactNode }) {
@@ -74,7 +92,7 @@ export function SidebarScroll({ mobile, tight = false, children }: { mobile: boo
       <nav
         ref={navRef}
         onScroll={updateNavEdge}
-        className={`scrollbar-quiet flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pl-1.5 pr-3 max-sm:gap-6 max-sm:px-4 ${tight ? 'pt-1' : 'pt-4'}`}
+        className={`scrollbar-quiet isolate flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto pl-1.5 pr-3 max-sm:gap-6 max-sm:px-4 ${tight ? 'pt-1' : 'pt-4'}`}
       >
         {/* Phones have no rail, so its tabs ride at the top of the drawer. */}
         {mobile && (

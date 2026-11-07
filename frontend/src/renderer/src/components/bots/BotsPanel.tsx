@@ -4,7 +4,7 @@ import { Repeat } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { type DragEvent, Fragment, type Ref, useMemo, useState } from 'react'
 import { stateDot } from '@/components/sidebar/SessionRow'
-import { PANEL_ICON_BUTTON_CLASS, SidebarHeader, SidebarScroll } from '@/components/sidebar/SidebarScroll'
+import { ActiveRowHighlight, PANEL_ICON_BUTTON_CLASS, SidebarHeader, SidebarScroll } from '@/components/sidebar/SidebarScroll'
 import { MarkdownText } from '@/components/session/MessageMarkdown'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import { botsQuery, type BotListEntry } from '@/lib/api/bots'
@@ -173,7 +173,7 @@ function BotEntry({ ref, bot, bots, tile = false, dragged, hidden, onDrag }: {
       <Link
         to="/bots/$botId"
         params={{ botId: bot.id }}
-        activeProps={{ className: 'bg-list-active!' }}
+        inactiveProps={{ className: 'hover:bg-list-hover' }}
         {...menuTriggers}
         onDragStart={(e) => {
           // The bot itself is dragged, not its link: no URL card, and nothing
@@ -184,27 +184,32 @@ function BotEntry({ ref, bot, bots, tile = false, dragged, hidden, onDrag }: {
           e.dataTransfer.effectAllowed = 'move'
           onDrag(bot.id)
         }}
-        className={`select-none rounded-lg text-ink transition-colors duration-150 [-webkit-touch-callout:none] hover:bg-list-hover ${
+        className={`relative select-none rounded-lg text-ink transition-colors duration-150 [-webkit-touch-callout:none] ${
           tile
             ? 'flex h-full min-w-0 flex-col items-center gap-1.5 px-1 pt-2.5 pb-2 text-[13px] max-sm:text-[14px]'
             : 'flex h-13 items-center gap-2.5 px-2.5 text-[13px] max-sm:h-16 max-sm:text-[15px]'
         }`}
       >
-        <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} mood={mood} completion={bot.celebrate} live badge={tile ? state : null} main={bot.main} />
-        {tile ? (
-          name
-        ) : (
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="flex items-center justify-between gap-2">
-              {name}
-              {dot}
-            </span>
-            {bot.preview ? (
-              <span className="truncate text-[12px] text-ink-3">
-                <MarkdownText text={bot.preview} />
+        {({ isActive }) => (
+          <>
+            {isActive && !hidden ? <ActiveRowHighlight layoutId="sidebar-bot" /> : null}
+            <BotIcon avatars={botAvatars(bot, bots)} size={tile ? 56 : 28} mood={mood} completion={bot.celebrate} live badge={tile ? state : null} main={bot.main} />
+            {tile ? (
+              name
+            ) : (
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="flex items-center justify-between gap-2">
+                  {name}
+                  {dot}
+                </span>
+                {bot.preview ? (
+                  <span className="truncate text-[12px] text-ink-3">
+                    <MarkdownText text={bot.preview} />
+                  </span>
+                ) : null}
               </span>
-            ) : null}
-          </span>
+            )}
+          </>
         )}
       </Link>
       {menu ? <BotMenu bot={bot} point={menu} onClose={() => setMenu(null)} onRename={() => setRenaming(true)} /> : null}
