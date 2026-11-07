@@ -10,6 +10,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton'
 import {
   projectsQuery,
   reorderProjects,
+  botWorkerSessionsQuery,
   sidebarSessionsQuery,
   type SessionListItem,
 } from '@/lib/api/sessions'
@@ -320,6 +321,23 @@ function RecentSessionList({
   )
 }
 
+// Bots section: worker chats the bot spawned for its tasks. They are sourced
+// sessions, so the default sidebar list hides them; this section is the only
+// place their history stays reachable.
+function BotWorkerSessions({ open }: { open: boolean }) {
+  const sessions = useQuery(botWorkerSessionsQuery)
+  if (sessions.isPending || sessions.isError || !sessions.data?.length) return null
+  const items: SessionListItem[] = sessions.data.map((session) => ({ session, child: false }))
+  return (
+    <div>
+      <p className={`flex h-[30px] items-center px-2.5 max-sm:h-11 max-sm:px-3 ${SECTION_LABEL_CLASS}`}>
+        Bots
+      </p>
+      <SessionRows items={items} shortcutByID={new Map()} shortcutMode={false} reserveIconSpace={false} />
+    </div>
+  )
+}
+
 export function SidebarSessions({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
   const sessions = useQuery(sidebarSessionsQuery)
@@ -414,6 +432,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
           shortcutByID={shortcutByID}
           shortcutMode={shortcutMode}
         />
+        <BotWorkerSessions open={open} />
         <div>
           <SidebarOrganizationMenu organization={organization} onChange={changeOrganization} />
           {organization === 'project' ? (
