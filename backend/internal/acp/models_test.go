@@ -1,6 +1,7 @@
 package acp
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -28,6 +29,19 @@ func TestParseEffortOptions(t *testing.T) {
 	}
 	if parseEffortOptions(json.RawMessage(`{"configOptions":[{"id":"mode","options":[]}]}`)) != nil {
 		t.Fatal("expected nil when no effort option is advertised")
+	}
+}
+
+func TestOpenCodeReasoningFailsWhenModelDoesNotAdvertiseEffort(t *testing.T) {
+	manager := &Manager{}
+	for _, advertisedModelOptions := range []bool{false, true} {
+		_, err := manager.applyConfiguredReasoningEffort(
+			context.Background(), nil, AgentOpenCode, "session", "deepseek-v4.1-flash", "high",
+			sessionConfigOptionsState{configOptionsPresent: advertisedModelOptions}, advertisedModelOptions,
+		)
+		if err == nil || !strings.Contains(err.Error(), "did not advertise reasoning variants") {
+			t.Fatalf("error = %v, want missing advertised reasoning variants", err)
+		}
 	}
 }
 
@@ -124,6 +138,9 @@ func TestNormalizeAgentReasoningEffort(t *testing.T) {
 		{AgentGrok, "ultra", "", true},
 		{AgentOpenCode, "medium", "medium", false},
 		{AgentOpenCode, "max", "max", false},
+		{AgentOpenCode, "DeepThinking", "DeepThinking", false},
+		{AgentOpenCode, "default", "default", false},
+		{AgentOpenCode, "none", "none", false},
 	}
 	for _, tc := range cases {
 		got, err := NormalizeAgentReasoningEffort(tc.agent, tc.value)

@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gluonfield/acp-transport/jsonrpc"
 	"github.com/gluonfield/acp-transport/stdio"
@@ -71,7 +72,14 @@ func TestBackgroundTaskUpdatesSurviveIdleTurnAndStorage(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := NewManager(store, Config{}, nil)
+	eventBus := sessionevents.New()
+	manager.Events = eventBus
+	activityCtx, cancelActivity := context.WithCancel(context.Background())
+	defer cancelActivity()
+	activity := eventBus.Subscribe(activityCtx, session.ID, sessionevents.TypeSession)
+	lastEvent := time.Date(2020, time.January, 1, 0, 0, 0, 0, time.UTC)
 	job := &jobState{Job: Job{ID: session.ID, Slug: session.Slug, ACPSession: "native", State: StateIdle}}
+	job.LastEventAt = lastEvent
 	manager.addJob(job, nil)
 	for _, raw := range []string{
 		`{"sessionUpdate":"async_task_spawned","asyncTaskId":"task-1","name":"Build","taskType":"local_bash","canStop":true,"showInTranscript":true}`,
@@ -79,6 +87,20 @@ func TestBackgroundTaskUpdatesSurviveIdleTurnAndStorage(t *testing.T) {
 		`{"sessionUpdate":"async_task_state_update","asyncTaskId":"task-1","state":"completed","summary":"Build succeeded"}`,
 	} {
 		manager.applyUpdate("native", json.RawMessage(raw))
+	}
+	if !job.LastEventAt.After(lastEvent) {
+		t.Fatalf("background-task progress did not refresh LastEventAt: %s", job.LastEventAt)
+	}
+	if !job.LastToolAt.IsZero() {
+		t.Fatalf("background-task progress falsely counted as an ACP tool call: %s", job.LastToolAt)
+	}
+	select {
+	case event := <-activity:
+		if event.Type != sessionevents.TypeSession || event.SessionID != session.ID {
+			t.Fatalf("progress invalidation = %#v", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("background-task progress did not invalidate the live session detail")
 	}
 	events, err := store.LoadSessionEvents(session.ID)
 	if err != nil {

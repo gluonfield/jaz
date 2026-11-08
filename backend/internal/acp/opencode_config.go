@@ -149,7 +149,7 @@ func (m *Manager) openCodeProviderConfig(model string) (openCodeProviderConfig, 
 
 func addOpenCodeReasoningVariant(content *openCodeConfigContent, model, effort string) {
 	providerID, modelID := modelprovider.SplitProviderModel(model)
-	effort, err := NormalizeAgentReasoningEffort(AgentOpenCode, effort)
+	effort, err := agentPolicyForAgent(AgentOpenCode).normalizeReasoningEffort(effort)
 	if err != nil || providerID != modelprovider.ProviderOpenRouter || modelID == "" || effort == "" {
 		return
 	}

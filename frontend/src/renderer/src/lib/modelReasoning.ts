@@ -1,17 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
-import type { AgentSettings, ModelProviderOption, ReasoningEffortOption } from './api/types'
+import type { AgentSessionConfigOption, AgentSettings, ModelProviderOption, ReasoningEffortOption } from '@/lib/api/types'
 import {
   acpAgentModelSuggestions,
   agentModelsQuery,
   modelProviderModelsQuery,
   modelSuggestionsForProvider,
   type ModelSuggestion,
-} from './models'
+} from '@/lib/models'
 import {
   modelReasoningSelection,
+  sessionReasoningEffortOptions,
   type ModelReasoningCatalog,
   type ModelReasoningSelection,
-} from './reasoningEfforts'
+} from '@/lib/reasoningEfforts'
 
 export interface ModelReasoningState {
   modelSuggestions: ModelSuggestion[]
@@ -35,6 +36,7 @@ export function useModelReasoningState({
   provider,
   selectedProvider,
   settingsMode = false,
+  sessionOptions,
 }: {
   settings: AgentSettings | undefined
   agent: string
@@ -44,6 +46,7 @@ export function useModelReasoningState({
   provider: string | undefined
   selectedProvider: ModelProviderOption | undefined
   settingsMode?: boolean
+  sessionOptions?: AgentSessionConfigOption[] | null
 }): ModelReasoningState {
   const providerModels = useQuery({
     ...modelProviderModelsQuery(provider, agent),
@@ -69,6 +72,7 @@ export function useModelReasoningState({
     requested: effort,
     settingsMode,
     catalog,
+    advertisedOptions: nextModel === model ? sessionReasoningEffortOptions(sessionOptions) : undefined,
   })
   const reasoning = reasoningForModel(model, reasoningEffort)
   return {

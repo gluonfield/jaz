@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { MentionSuggestions, MentionTextarea, useMentionInput } from '@/components/session/MentionInput'
 import { RuntimeSelect } from '@/components/session/NewThreadControls'
 import { ModelSelect } from '@/components/session/ModelSelect'
+import { ReasoningSelect } from '@/components/session/ReasoningSelect'
 import { boardsQuery } from '@/lib/api/boards'
 import { agentSettingsQuery } from '@/lib/api/settings'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
@@ -213,6 +214,7 @@ function LoopPromptCard({
     modelsLoading,
     reasoningOptions: effortOptions,
     effectiveReasoningEffort: reasoningEffort,
+    reasoningStatus,
   } = useModelReasoningState({
     settings: agentSettings,
     agent: draft.runtime,
@@ -270,7 +272,13 @@ function LoopPromptCard({
                   placement="below"
                   onChange={(next) => set({ model: next.model, reasoningEffort: next.effort })}
                   effort={reasoningEffort}
-                  effortOptions={pickerEffortOptions(effortOptions)}
+                />
+                <ReasoningSelect
+                  value={reasoningEffort}
+                  options={pickerEffortOptions(effortOptions)}
+                  status={draft.runtime === 'opencode' ? reasoningStatus : undefined}
+                  disabled={disabled}
+                  onChange={(reasoningEffort) => set({ model, reasoningEffort })}
                 />
               </>
             ) : null}

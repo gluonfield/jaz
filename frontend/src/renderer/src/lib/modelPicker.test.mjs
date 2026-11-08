@@ -3,22 +3,26 @@ import { pickerEffortOptions, parseModelSelections } from './modelPicker'
 
 const options = (values) => values.map((value) => ({ value, label: value }))
 
-test('picker exposes only five efforts in order without changing provider IDs', () => {
+test('picker exposes every supported effort in stable order without changing provider IDs', () => {
   const available = options(['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'])
-  expect(pickerEffortOptions(available).map(({ value }) => value)).toEqual(['low', 'medium', 'high', 'xhigh', 'ultracode'])
+  expect(pickerEffortOptions(available).map(({ value }) => value)).toEqual(['', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultracode'])
   expect(available).toHaveLength(9)
   expect(pickerEffortOptions(options(['ultra', 'max', 'xhigh', 'high', 'medium', 'low']))).toEqual([
     { value: 'low', label: 'low' },
     { value: 'medium', label: 'medium' },
     { value: 'high', label: 'high' },
-    { value: 'xhigh', label: 'Xhigh' },
-    { value: 'ultra', label: 'Ultracode' },
+    { value: 'xhigh', label: 'xhigh' },
+    { value: 'max', label: 'max' },
+    { value: 'ultra', label: 'ultra' },
   ])
-  expect(pickerEffortOptions(options(['ultra', 'ultracode']))).toEqual([{ value: 'ultracode', label: 'Ultracode' }])
+  expect(pickerEffortOptions(options(['ultra', 'ultracode']))).toEqual([
+    { value: 'ultra', label: 'ultra' },
+    { value: 'ultracode', label: 'ultracode' },
+  ])
 })
 
 test('picker only offers efforts the selected model supports', () => {
-  expect(pickerEffortOptions(options(['max', 'high', 'low'])).map(({ value }) => value)).toEqual(['low', 'high'])
+  expect(pickerEffortOptions(options(['max', 'high', 'low'])).map(({ value }) => value)).toEqual(['low', 'high', 'max'])
   expect(pickerEffortOptions([])).toEqual([])
 })
 

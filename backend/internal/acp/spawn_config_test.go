@@ -161,8 +161,12 @@ func TestSpawnConfigReasoningEffortNoneAndDefault(t *testing.T) {
 			if cfg.Model != wantModel {
 				t.Fatalf("model = %q, want %q", cfg.Model, wantModel)
 			}
-			if effort != "" || cfg.ReasoningEffort != "" {
-				t.Fatalf("effort = %q, cfg effort = %q; want no reasoning effort", effort, cfg.ReasoningEffort)
+			wantEffort := ""
+			if agent == AgentOpenCode {
+				wantEffort = "none"
+			}
+			if effort != wantEffort || cfg.ReasoningEffort != wantEffort {
+				t.Fatalf("effort = %q, cfg effort = %q; want %q", effort, cfg.ReasoningEffort, wantEffort)
 			}
 			_, cfg, effort, err = manager.spawnConfig(SpawnRequest{ACPAgent: agent})
 			if err != nil {

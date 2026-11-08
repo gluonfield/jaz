@@ -192,7 +192,7 @@ func resolveModelCapabilities(agent string, models []modelcatalog.Model, allowAg
 				resolved.Reasoning.Efforts = addReasoningEffort(resolved.Reasoning.Efforts, claudeReasoningEffortUltracode)
 			}
 		case modelcatalog.ReasoningUnavailable, modelcatalog.ReasoningPending:
-			if allowAgentCapabilities {
+			if allowAgentCapabilities && agent != AgentOpenCode {
 				resolved.Reasoning = agentReasoningCapabilities(supported)
 			}
 		}

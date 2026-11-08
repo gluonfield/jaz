@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { filterModelSuggestions, modelSuggestionLabel } from './modelSuggestion'
-import { effectiveReasoningEffort, modelReasoningSelection } from './reasoningEfforts'
+import { effectiveReasoningEffort, modelReasoningSelection, sessionReasoningEffortOptions } from './reasoningEfforts'
 
 const input = {
   settings: undefined,
@@ -37,6 +37,93 @@ describe('modelReasoningSelection', () => {
     expect(selection.supported).toBeFalse()
     expect(selection.status).toBe('ready')
     expect(selection.blocked).toBeFalse()
+  })
+
+  test('does not infer OpenCode model controls from the agent-wide effort list', () => {
+    const settings = {
+      acp_options: {
+        opencode: {
+          reasoning_efforts: [
+            { value: '', label: 'Default' },
+            { value: 'low', label: 'Low' },
+            { value: 'high', label: 'High' },
+            { value: 'max', label: 'Max' },
+          ],
+        },
+      },
+    }
+    const catalog = {
+      status: 'ready',
+      unknownModel: 'unavailable',
+      suggestions: [{ value: 'glm-5.3-flash', label: 'GLM Flash', reasoning: { status: 'unavailable' } }],
+    }
+    const selection = modelReasoningSelection({
+      ...input,
+      settings,
+      agent: 'opencode',
+      provider: 'opencode-native',
+      model: 'glm-5.3-flash',
+      catalog,
+    })
+
+    expect(selection.options).toEqual([])
+    expect(selection.supported).toBeFalse()
+    expect(selection.effectiveEffort).toBe('none')
+  })
+
+  test('does not infer OpenCode controls for automatic reasoning', () => {
+    const settings = {
+      acp_options: { opencode: { reasoning_efforts: [{ value: '', label: 'Default' }, { value: 'high', label: 'High' }] } },
+    }
+    const selection = modelReasoningSelection({
+      ...input,
+      settings,
+      agent: 'opencode',
+      provider: 'opencode-native',
+      model: 'glm-5.3-flash',
+      catalog: {
+        status: 'ready',
+        unknownModel: 'unavailable',
+        suggestions: [{ value: 'glm-5.3-flash', label: 'GLM Flash', reasoning: { status: 'ready', automatic: true } }],
+      },
+    })
+
+    expect(selection.options).toEqual([])
+    expect(selection.supported).toBeFalse()
+  })
+
+  test.each(['pending', 'error'])('keeps unavailable OpenCode catalog state as %s', (status) => {
+    expect(modelReasoningSelection({ ...input, agent: 'opencode', catalog: { status } })).toEqual({
+      options: [], effectiveEffort: 'high', supported: true, status, blocked: true,
+    })
+    expect(modelReasoningSelection({ ...input, agent: 'opencode', requested: 'none', catalog: { status } }).blocked).toBeFalse()
+  })
+
+  test('keeps an unreported OpenCode model unknown and never invents effort choices', () => {
+    const catalog = { status: 'ready', unknownModel: 'ready', suggestions: [] }
+    const selection = modelReasoningSelection({ ...input, agent: 'opencode', catalog })
+    expect(selection.status).toBe('unknown')
+    expect(selection.options).toEqual([])
+    expect(selection.effectiveEffort).toBe('high')
+    expect(selection.blocked).toBeFalse()
+    expect(modelReasoningSelection({ ...input, agent: 'opencode', requested: '', catalog }).blocked).toBeFalse()
+  })
+
+  test('uses the current session advertised choices even before catalog discovery', () => {
+    const advertisedOptions = sessionReasoningEffortOptions([{
+      id: 'variant', category: 'thought_level', current_value: 'none',
+      options: [{ value: 'default', name: 'Provider default' }, { value: 'none', name: 'Disabled' }, { value: 'deep', name: 'Deep' }],
+    }])
+    const selection = modelReasoningSelection({ ...input, agent: 'opencode', requested: 'deep', advertisedOptions, catalog: { status: 'pending' } })
+    expect(selection.options.map(({ value }) => value)).toEqual(['default', 'none', 'deep'])
+    expect(selection.effectiveEffort).toBe('deep')
+    expect(selection.status).toBe('ready')
+    expect(selection.blocked).toBeFalse()
+    for (const requested of ['none', 'default']) {
+      expect(modelReasoningSelection({ ...input, agent: 'opencode', requested, advertisedOptions, catalog: { status: 'error' } }).effectiveEffort).toBe(requested)
+    }
+    expect(modelReasoningSelection({ ...input, agent: 'opencode', requested: 'high', advertisedOptions, catalog: { status: 'pending' } }).supported).toBeFalse()
+    expect(sessionReasoningEffortOptions([])).toBeUndefined()
   })
 
   test('uses advertised model efforts when capabilities are ready', () => {

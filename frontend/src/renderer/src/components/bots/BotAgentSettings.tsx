@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { ModelSelect } from '@/components/session/ModelSelect'
+import { ReasoningSelect } from '@/components/session/ReasoningSelect'
 import { Select } from '@/components/ui/Select'
 import { agentLabel } from '@/lib/agentLabel'
 import { enabledACPAgents, runtimeModelState } from '@/lib/agentRuntimes'
@@ -30,6 +31,7 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
     usesProvider: runtime.usesProvider,
     provider: runtime.provider,
     selectedProvider: runtime.selectedProvider,
+    sessionOptions: agentSession?.config_options,
   })
   return (
     <div className="-mx-2.5 flex flex-col">
@@ -57,7 +59,6 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
             value={model}
             effort={reasoning.effectiveReasoningEffort}
             suggestions={reasoning.modelSuggestions}
-            effortOptions={pickerEffortOptions(reasoning.reasoningOptions)}
             loading={reasoning.modelsLoading}
             disabled={disabled}
             placement="below"
@@ -66,6 +67,20 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
           />
         </div>
       </Row>
+      {reasoning.reasoningOptions.length > 1 || agent === 'opencode' ? (
+        <Row label="Reasoning">
+          <div className="-mr-2.5 flex min-w-0 flex-1 justify-end">
+            <ReasoningSelect
+              labeled={false}
+              value={reasoning.effectiveReasoningEffort}
+              options={pickerEffortOptions(reasoning.reasoningOptions)}
+              status={agent === 'opencode' ? reasoning.reasoningStatus : undefined}
+              disabled={disabled || reasoning.modelsLoading}
+              onChange={(reasoning_effort) => update.mutate({ model, reasoning_effort })}
+            />
+          </div>
+        </Row>
+      ) : null}
     </div>
   )
 }
