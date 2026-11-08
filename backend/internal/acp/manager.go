@@ -140,6 +140,9 @@ type SpawnRequest struct {
 	// Home gives the session a permanent directory of its own instead: one
 	// under this root named after the session's id, created if missing.
 	Home string
+	// Workspaces are project directories linked to a persistent bot home. They
+	// are carried to its child threads as available working directories.
+	Workspaces []string
 	// Worktree runs the session on a disposable git worktree of Directory.
 	Worktree bool
 	// Branch selects the base branch/ref for Worktree. Empty means Directory's HEAD.
@@ -492,6 +495,10 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest, queue []s
 	if err != nil {
 		return createdSession{}, err
 	}
+	req.Workspaces, err = m.resolveBotWorkspaces(req.Workspaces)
+	if err != nil {
+		return createdSession{}, err
+	}
 	req, cfg, effort, err := m.spawnConfig(req)
 	if err != nil {
 		return createdSession{}, err
@@ -502,6 +509,13 @@ func (m *Manager) createSession(ctx context.Context, req SpawnRequest, queue []s
 	session, err := m.createStoredSession(req, cfg, effort)
 	if err != nil {
 		return createdSession{}, err
+	}
+	if req.SourceType == storage.SourceBotWorker && m.cfg.ResumePrompt != nil {
+		modules, err := m.cfg.ResumePrompt(session)
+		if err != nil {
+			return createdSession{}, m.abandonSession(session, err)
+		}
+		req.SystemPromptExtensions = req.SystemPromptExtensions.Append(modules...)
 	}
 	absCwd, projectPath, err := m.prepareSessionDir(ctx, req, cfg, session.Slug, session.ID)
 	if err != nil {

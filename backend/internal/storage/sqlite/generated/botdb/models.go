@@ -9,14 +9,15 @@ import (
 )
 
 type Bot struct {
-	ThreadID string `json:"thread_id"`
-	Kind     string `json:"kind"`
-	Shape    string `json:"shape"`
-	Color    string `json:"color"`
-	Members  string `json:"members"`
-	Pinned   int64  `json:"pinned"`
-	Prompt   string `json:"prompt"`
-	Main     int64  `json:"main"`
+	ThreadID   string `json:"thread_id"`
+	Kind       string `json:"kind"`
+	Shape      string `json:"shape"`
+	Color      string `json:"color"`
+	Members    string `json:"members"`
+	Pinned     int64  `json:"pinned"`
+	Prompt     string `json:"prompt"`
+	Main       int64  `json:"main"`
+	Workspaces string `json:"workspaces"`
 }
 
 type BotCommitment struct {

@@ -41,7 +41,40 @@ func Prompt(store PromptStore, session storage.Session) (promptmodule.Modules, e
 	if err != nil {
 		return nil, err
 	}
-	return promptmodule.New(identity, record.Prompt, instructions), nil
+	return promptmodule.New(identity, record.Prompt, instructions, workspaceInstructions(record.Workspaces)), nil
+}
+
+// WorkerPrompt attaches its owner's durable bot knowledge and linked projects
+// to each bot-created thread, including a thread restored after restart.
+func WorkerPrompt(store PromptStore, session storage.Session) (promptmodule.Modules, error) {
+	if session.SourceType != storage.SourceBotWorker || session.SourceID == "" {
+		return nil, nil
+	}
+	bot, err := store.LoadSession(session.SourceID)
+	if err != nil {
+		return nil, err
+	}
+	if bot.RuntimeRef == nil {
+		return nil, fmt.Errorf("bot %s has no runtime home", bot.ID)
+	}
+	record, err := store.LoadBot(bot.ID)
+	if err != nil {
+		return nil, err
+	}
+	identity := fmt.Sprintf("## Shared context from %s\n\nYou are a work thread for this persistent Jaz bot. Its private home is %s; read MEMORY.md there before starting so this task uses the bot's durable knowledge. The bot's coordination rules do not replace your task instructions. Keep task state in this thread and return the result to the bot that started you.\n", bot.Title, bot.RuntimeRef.Cwd)
+	return promptmodule.New(identity, workspaceInstructions(record.Workspaces)), nil
+}
+
+func workspaceInstructions(workspaces []string) string {
+	if len(workspaces) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## Linked project workspaces\n\nThese project folders are connected as tools for your work. Their files remain in their source folders; read each relevant AGENTS.md/SOUL.md before making changes. Select a listed folder as the working directory for a child thread. Your persistent bot memory remains in the bot home and is not copied into project files.\n")
+	for _, workspace := range workspaces {
+		fmt.Fprintf(&b, "- %s\n", workspace)
+	}
+	return b.String()
 }
 
 func homeInstructions(bot storage.Session) (string, error) {
@@ -156,7 +189,11 @@ func RoutineInstructions(store PromptStore) func(loops.Loop, loops.Run) string {
 		if err != nil || bot.SourceType != storage.SourceBot || bot.RuntimeRef == nil || bot.RuntimeRef.Cwd == "" {
 			return ""
 		}
-		return fmt.Sprintf("Before you start, read %s in your bot's home, %s.", memoryFile, bot.RuntimeRef.Cwd)
+		record, err := store.LoadBot(bot.ID)
+		if err != nil {
+			return fmt.Sprintf("Before you start, read %s in your bot's home, %s.", memoryFile, bot.RuntimeRef.Cwd)
+		}
+		return fmt.Sprintf("Before you start, read %s in your bot's home, %s.\n\n%s", memoryFile, bot.RuntimeRef.Cwd, workspaceInstructions(record.Workspaces))
 	}
 }
 

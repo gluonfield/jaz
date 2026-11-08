@@ -364,8 +364,12 @@ func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 		Agents:    map[string]AgentConfig{"alpha": fake, "fake": fake},
 	}, log.New(io.Discard))
 	ctx := context.Background()
-	bot, err := manager.CreateSession(ctx, SpawnRequest{ACPAgent: "fake", Slug: "scout", Model: "scout-model", ReasoningEffort: "low", Home: t.TempDir(), SourceType: storage.SourceBot})
+	project := t.TempDir()
+	bot, err := manager.CreateSession(ctx, SpawnRequest{ACPAgent: "fake", Slug: "scout", Model: "scout-model", ReasoningEffort: "low", Home: t.TempDir(), Workspaces: []string{project}, SourceType: storage.SourceBot})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveBot(storage.BotRecord{ThreadID: bot.ID, Kind: "bot", Workspaces: []string{project}}); err != nil {
 		t.Fatal(err)
 	}
 	plain, err := manager.CreateSession(ctx, SpawnRequest{Slug: "chat"})
@@ -384,8 +388,8 @@ func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if subtask.SourceType != storage.SourceBotWorker || subtask.SourceID != bot.ID || subtask.RuntimeRef.Cwd != bot.RuntimeRef.Cwd {
-		t.Fatalf("subtask = %+v, want a bot_worker of %s in %s", subtask, bot.ID, bot.RuntimeRef.Cwd)
+	if subtask.SourceType != storage.SourceBotWorker || subtask.SourceID != bot.ID || subtask.RuntimeRef.Cwd != project {
+		t.Fatalf("subtask = %+v, want bot workspace %s inherited by %s", subtask, project, bot.ID)
 	}
 	if subtask.RuntimeRef.Agent != "fake" || subtask.Model != bot.Model || subtask.ReasoningEffort != bot.ReasoningEffort {
 		t.Fatalf("subtask runs %s/%s/%s, want the bot's fake/%s/%s", subtask.RuntimeRef.Agent, subtask.Model, subtask.ReasoningEffort, bot.Model, bot.ReasoningEffort)
@@ -425,7 +429,7 @@ func TestThreadsABotStartsAreItsSubtasks(t *testing.T) {
 		if review.SourceType != storage.SourceBotWorker || review.SourceID != bot.ID || review.ParentID != parent.ID {
 			t.Fatalf("a thread %s started = %s/%s under %s, want the bot's work under it", parent.Slug, review.SourceType, review.SourceID, review.ParentID)
 		}
-		if review.RuntimeRef.Agent != "alpha" || review.RuntimeRef.Cwd == bot.RuntimeRef.Cwd {
+		if review.RuntimeRef.Agent != "alpha" || review.RuntimeRef.Cwd != project {
 			t.Fatalf("a thread %s started runs on %s in %s, want a child thread's defaults", parent.Slug, review.RuntimeRef.Agent, review.RuntimeRef.Cwd)
 		}
 	}

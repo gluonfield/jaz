@@ -369,6 +369,8 @@ func NewACPConfig(cfg Config, store *sqlitestore.Store, workspace Workspace, pro
 			return promptBuilder.ForRun(session.SourceID, time.Now().UTC())
 		case storage.SourceBot, storage.SourceBotMember:
 			return bots.Prompt(store, session)
+		case storage.SourceBotWorker:
+			return bots.WorkerPrompt(store, session)
 		default:
 			return nil, nil
 		}

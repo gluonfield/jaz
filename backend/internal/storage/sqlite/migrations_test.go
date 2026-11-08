@@ -13,6 +13,67 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestWorkspaceMigrationPreservesExistingBotAndConversation(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	bot, err := store.CreateSession(storage.CreateSession{Slug: "existing-bot", SourceType: storage.SourceBot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := storage.BotRecord{ThreadID: bot.ID, Kind: "bot", Prompt: "Maintain the project", Shape: "cloud", Color: "teal"}
+	if err := store.SaveBot(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendMessageRecords(bot.ID, storage.Message{Role: "user", Content: "Keep this conversation", FromUser: true}); err != nil {
+		t.Fatal(err)
+	}
+	migrations, err := fs.Sub(sqliteMigrations, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, store.db, migrations, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.DownTo(t.Context(), 85); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := store.LoadBot(bot.ID)
+	if err != nil || loaded.Prompt != record.Prompt || loaded.Shape != record.Shape || loaded.Color != record.Color || len(loaded.Workspaces) != 0 {
+		t.Fatalf("migrated bot = %+v, %v", loaded, err)
+	}
+	var text string
+	if err := store.db.QueryRow("SELECT content FROM messages WHERE thread_id = ?", bot.ID).Scan(&text); err != nil || text != "Keep this conversation" {
+		t.Fatalf("migrated message = %q, %v", text, err)
+	}
+	loaded.Workspaces = []string{t.TempDir()}
+	if err := store.SaveBot(loaded); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := store.LoadBot(bot.ID)
+	if err != nil || len(reloaded.Workspaces) != 1 || reloaded.Workspaces[0] != loaded.Workspaces[0] || reloaded.Prompt != record.Prompt {
+		t.Fatalf("reopened bot = %+v, %v", reloaded, err)
+	}
+}
+
 func TestBotTaskQuestionMigrationReleasesOnlyAnsweredQuestions(t *testing.T) {
 	root := t.TempDir()
 	store, err := New(root)
