@@ -17,6 +17,7 @@ type ThreadSnapshot struct {
 	Plan          []sessionevents.PlanEntry     `json:"plan,omitempty"`
 	Permissions   []sessionevents.ACPPermission `json:"permissions,omitempty"`
 	Error         string                        `json:"error,omitempty"`
+	Budget        *BudgetDecision               `json:"budget,omitempty"`
 }
 
 func snapshotThread(job Job) ThreadSnapshot {
