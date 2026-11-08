@@ -1,6 +1,6 @@
 import type { UsageWindow } from '@/lib/usageWindow'
 import { readAPIResponse } from '@/lib/api/response'
-import { queryOptions } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
 import { keys } from '../query/keys'
@@ -451,6 +451,22 @@ export function groupSessionsForDisplay(sessions: Session[]): SessionListItem[] 
   for (const session of [...sessions].sort(compareGroups)) append(session, false)
   return ordered
 }
+
+// Bot worker chats live outside the default sidebar list (they are sourced
+// sessions), so the Bots section loads them explicitly.
+export const botWorkerSessionsQuery = infiniteQueryOptions({
+  queryKey: ['sessions', 'bot-worker'],
+  initialPageParam: '',
+  queryFn: async ({ pageParam, signal }) => {
+    const params = new URLSearchParams({ source_type: 'bot_worker', include_sourced: 'true', include_children: 'true', limit: '50' })
+    if (pageParam) params.set('cursor', pageParam)
+    const data = await get<{ sessions: Session[] | null; next_cursor?: string }>(`/v1/sessions?${params}`, { signal })
+    return { sessions: data.sessions ?? [], nextCursor: data.next_cursor }
+  },
+  getNextPageParam: (page) => page.nextCursor || undefined,
+  refetchInterval: (query) =>
+    query.state.data?.pages.some((page) => page.sessions.some((item) => item.status === 'running')) ? 3_000 : 15_000,
+})
 
 export const sidebarSessionsQuery = queryOptions({
   queryKey: keys.sidebarSessions,

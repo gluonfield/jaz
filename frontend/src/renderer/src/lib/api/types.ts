@@ -69,6 +69,7 @@ export interface Session {
   slug: string
   title?: string
   parent_id?: string
+  source_id?: string
   // What started the thread, such as 'bot' for a bot's own thread or
   // 'bot_worker' for one it started; absent for an interactive chat.
   source_type?: string
@@ -830,6 +831,7 @@ export interface BotOwedThread {
   id: string
   title: string
   state: 'working' | 'background' | 'finished' | 'failed' | 'idle' | 'gone'
+  last_activity?: string
 }
 
 export type BotFileName = 'BOTS.md' | 'MEMORY.md'
