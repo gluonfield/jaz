@@ -8,7 +8,9 @@ import (
 
 	acpschema "github.com/gluonfield/acp-transport/acp"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/mcpdeferred"
 	"github.com/wins/jaz/backend/internal/mcpsession"
+	"github.com/wins/jaz/backend/internal/serverconfig"
 )
 
 const jaztoolsSurfaceQueryParam = "jaztools_surface"
@@ -20,7 +22,7 @@ type httpMCPServer struct {
 	Headers []mcpconfig.Header `json:"headers"`
 }
 
-func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy string) []json.RawMessage {
+func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessage, policy, agent string) []json.RawMessage {
 	var init struct {
 		AgentCapabilities acpschema.AgentCapabilities `json:"agentCapabilities"`
 	}
@@ -37,6 +39,23 @@ func (m *Manager) mcpServersForAgent(ctx context.Context, initRaw json.RawMessag
 	}
 	if servers == nil {
 		return []json.RawMessage{}
+	}
+	if CanonicalAgentName(agent) == AgentOpenCode && policy == MCPServerPolicyBot {
+		for i, raw := range servers {
+			var server httpMCPServer
+			if json.Unmarshal(raw, &server) != nil {
+				continue
+			}
+			u, err := url.Parse(server.URL)
+			if err != nil || (u.Path != serverconfig.JazToolsMCPPath && u.Path != serverconfig.MCPProxyPath) {
+				continue
+			}
+			query := u.Query()
+			query.Set(mcpdeferred.QueryParam, "1")
+			u.RawQuery = query.Encode()
+			server.URL = u.String()
+			servers[i], _ = json.Marshal(server)
+		}
 	}
 	return servers
 }
