@@ -17,6 +17,7 @@ import (
 
 const (
 	TransportStreamableHTTP = "streamable_http"
+	TransportStdio          = "stdio"
 	TransportInProcess      = "in_process"
 )
 
@@ -38,15 +39,18 @@ type OAuthConfig struct {
 }
 
 type Server struct {
-	ID                string      `json:"id"`
-	Name              string      `json:"name"`
-	Transport         string      `json:"transport"`
-	URL               string      `json:"url"`
-	Enabled           bool        `json:"enabled"`
-	BearerTokenEnvVar string      `json:"bearer_token_env_var,omitempty"`
-	BearerToken       string      `json:"bearer_token,omitempty"`
-	Headers           []Header    `json:"headers,omitempty"`
-	OAuth             OAuthConfig `json:"oauth,omitempty"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Transport         string            `json:"transport"`
+	URL               string            `json:"url"`
+	Command           string            `json:"command,omitempty"`
+	Args              []string          `json:"args,omitempty"`
+	Env               map[string]string `json:"env,omitempty"`
+	Enabled           bool              `json:"enabled"`
+	BearerTokenEnvVar string            `json:"bearer_token_env_var,omitempty"`
+	BearerToken       string            `json:"bearer_token,omitempty"`
+	Headers           []Header          `json:"headers,omitempty"`
+	OAuth             OAuthConfig       `json:"oauth,omitempty"`
 	// Connection-backed servers reuse the account's refreshable OAuth grant.
 	TokenConnectionID string         `json:"-"`
 	LocalServer       *mcpsdk.Server `json:"-"`
@@ -61,13 +65,17 @@ func (s Server) UsesBearer() bool {
 }
 
 type ServerInput struct {
-	Name              string      `json:"name"`
-	URL               string      `json:"url"`
-	Enabled           bool        `json:"enabled"`
-	BearerTokenEnvVar string      `json:"bearer_token_env_var,omitempty"`
-	BearerToken       string      `json:"bearer_token,omitempty"`
-	Headers           []Header    `json:"headers,omitempty"`
-	OAuth             OAuthConfig `json:"oauth,omitempty"`
+	Name              string            `json:"name"`
+	Transport         string            `json:"transport,omitempty"`
+	URL               string            `json:"url"`
+	Command           string            `json:"command,omitempty"`
+	Args              []string          `json:"args,omitempty"`
+	Env               map[string]string `json:"env,omitempty"`
+	Enabled           bool              `json:"enabled"`
+	BearerTokenEnvVar string            `json:"bearer_token_env_var,omitempty"`
+	BearerToken       string            `json:"bearer_token,omitempty"`
+	Headers           []Header          `json:"headers,omitempty"`
+	OAuth             OAuthConfig       `json:"oauth,omitempty"`
 }
 
 // Server is the server these settings describe.
@@ -75,8 +83,11 @@ func (in ServerInput) Server(id string, createdAt, updatedAt time.Time) Server {
 	return Server{
 		ID:                id,
 		Name:              in.Name,
-		Transport:         TransportStreamableHTTP,
+		Transport:         in.Transport,
 		URL:               in.URL,
+		Command:           in.Command,
+		Args:              in.Args,
+		Env:               in.Env,
 		Enabled:           in.Enabled,
 		BearerTokenEnvVar: in.BearerTokenEnvVar,
 		BearerToken:       in.BearerToken,
@@ -159,11 +170,28 @@ type Store interface {
 func ValidateInput(input ServerInput) (ServerInput, error) {
 	input.Name = strings.TrimSpace(input.Name)
 	input.URL = strings.TrimSpace(input.URL)
+	input.Command = strings.TrimSpace(input.Command)
+	input.Transport = strings.TrimSpace(input.Transport)
+	if input.Transport == "" {
+		input.Transport = TransportStreamableHTTP
+		if input.Command != "" {
+			input.Transport = TransportStdio
+		}
+	}
 	input.BearerTokenEnvVar = strings.TrimSpace(input.BearerTokenEnvVar)
 	input.BearerToken = strings.TrimSpace(input.BearerToken)
 	input.OAuth = normalizeOAuth(input.OAuth)
 	if input.Name == "" {
 		return input, errors.New("name is required")
+	}
+	if input.Transport == TransportStdio {
+		return validateStdio(input)
+	}
+	if input.Transport != TransportStreamableHTTP {
+		return input, errors.New("transport must be streamable_http or stdio")
+	}
+	if input.Command != "" || len(input.Args) != 0 || len(input.Env) != 0 {
+		return input, errors.New("command, args and env require stdio transport")
 	}
 	if input.URL == "" {
 		return input, errors.New("url is required")
@@ -211,6 +239,29 @@ func ValidateInput(input ServerInput) (ServerInput, error) {
 		return input, err
 	}
 	input.Headers = headers
+	return input, nil
+}
+
+func validateStdio(input ServerInput) (ServerInput, error) {
+	if input.Command == "" || strings.ContainsRune(input.Command, 0) {
+		return input, errors.New("a command without NUL characters is required")
+	}
+	if input.URL != "" || input.BearerToken != "" || input.BearerTokenEnvVar != "" || len(input.Headers) != 0 || input.OAuth != (OAuthConfig{}) {
+		return input, errors.New("stdio servers cannot use a URL, headers, bearer token or OAuth")
+	}
+	for _, arg := range input.Args {
+		if strings.ContainsRune(arg, 0) {
+			return input, errors.New("arguments must not contain NUL characters")
+		}
+	}
+	for name, value := range input.Env {
+		if !envVarPattern.MatchString(name) {
+			return input, fmt.Errorf("invalid environment variable name: %s", name)
+		}
+		if strings.ContainsRune(value, 0) {
+			return input, fmt.Errorf("environment variable %s must not contain NUL characters", name)
+		}
+	}
 	return input, nil
 }
 

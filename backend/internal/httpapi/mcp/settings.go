@@ -2,7 +2,9 @@ package mcp
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/mcpconfig"
@@ -12,9 +14,10 @@ import (
 // keeps the server's current state.
 type mcpServerInput struct {
 	mcpconfig.ServerInput
-	Enabled     *bool             `json:"enabled,omitempty"`
-	BearerToken *string           `json:"bearer_token,omitempty"`
-	Headers     *[]mcpHeaderInput `json:"headers,omitempty"`
+	Enabled     *bool              `json:"enabled,omitempty"`
+	BearerToken *string            `json:"bearer_token,omitempty"`
+	Headers     *[]mcpHeaderInput  `json:"headers,omitempty"`
+	Env         map[string]*string `json:"env,omitempty"`
 }
 
 type mcpHeaderInput struct {
@@ -37,6 +40,7 @@ type ServerView struct {
 	Error          string                 `json:"error,omitempty"`
 	BearerTokenSet bool                   `json:"bearer_token_set,omitempty"`
 	Headers        []mcpHeaderView        `json:"headers,omitempty"`
+	Env            map[string]*string     `json:"env,omitempty"`
 }
 
 func DecodeServerInput(r *http.Request, current *mcpconfig.Server) (mcpconfig.ServerInput, error) {
@@ -49,7 +53,7 @@ func DecodeServerInput(r *http.Request, current *mcpconfig.Server) (mcpconfig.Se
 	if req.Enabled != nil {
 		input.Enabled = *req.Enabled
 	}
-	sameEndpoint := current != nil && strings.TrimSpace(input.URL) == current.URL
+	sameEndpoint := current != nil && current.Transport != mcpconfig.TransportStdio && input.Transport != mcpconfig.TransportStdio && input.Command == "" && strings.TrimSpace(input.URL) == current.URL
 	if sameEndpoint {
 		input.BearerToken = current.BearerToken
 		input.Headers = current.Headers
@@ -74,6 +78,23 @@ func DecodeServerInput(r *http.Request, current *mcpconfig.Server) (mcpconfig.Se
 			input.Headers = append(input.Headers, mcpconfig.Header{Name: header.Name, Value: value, EnvVar: header.EnvVar})
 		}
 	}
+	if req.Env != nil {
+		input.Env = make(map[string]string, len(req.Env))
+		for name, value := range req.Env {
+			if value != nil {
+				input.Env[name] = *value
+				continue
+			}
+			if current == nil || current.Transport != mcpconfig.TransportStdio || strings.TrimSpace(input.Command) != current.Command || !slices.Equal(input.Args, current.Args) {
+				return input, fmt.Errorf("environment variable %s needs a value for the new command", name)
+			}
+			saved, ok := current.Env[name]
+			if !ok {
+				return input, fmt.Errorf("environment variable %s has no saved value", name)
+			}
+			input.Env[name] = saved
+		}
+	}
 	return mcpconfig.ValidateInput(input)
 }
 
@@ -81,6 +102,13 @@ func NewServerView(server mcpconfig.Server, status mcpconfig.ServerStatus) Serve
 	view := ServerView{Server: server, Status: status.Status, ToolCount: status.ToolCount, Tools: status.Tools, Error: status.Error, BearerTokenSet: server.BearerToken != ""}
 	view.Server.BearerToken = ""
 	view.Server.Headers = nil
+	view.Server.Env = nil
+	if len(server.Env) != 0 {
+		view.Env = make(map[string]*string, len(server.Env))
+		for name := range server.Env {
+			view.Env[name] = nil
+		}
+	}
 	for _, header := range server.Headers {
 		view.Headers = append(view.Headers, mcpHeaderView{Name: header.Name, EnvVar: header.EnvVar, ValueSet: header.Value != ""})
 	}

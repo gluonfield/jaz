@@ -36,40 +36,16 @@ import type {
   MCPHeader,
   MCPOAuthConfig,
   MCPServer,
-  MCPServerInput,
 } from '@/lib/api/types'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { keys } from '@/lib/query/keys'
-import { mcpStatusText, mcpToolCountLabel } from './MCPSettingsFormatting'
-import { MCPToolsModal } from './MCPToolsModal'
+import { mcpStatusText, mcpToolCountLabel } from '@/components/settings/MCPSettingsFormatting'
+import { MCPToolsModal } from '@/components/settings/MCPToolsModal'
+import { draftFromServer, emptyDraft, inputFromDraft, type Draft } from '@/components/settings/MCPServerDraft'
+import { MCPStdioFields } from '@/components/settings/MCPStdioFields'
+import { Select } from '@/components/ui/Select'
 
-type Draft = MCPServerInput & { id?: string; bearer_token_set?: boolean }
 type AuthorizeVariables = { id: string; authWindow: Window | null }
-
-function emptyDraft(): Draft {
-  return {
-    name: '',
-    url: '',
-    enabled: true,
-    bearer_token_env_var: '',
-    bearer_token: '',
-    headers: [],
-    oauth: {},
-  }
-}
-
-function draftFromServer(server: MCPServer): Draft {
-  return {
-    id: server.id,
-    name: server.name,
-    url: server.url,
-    enabled: server.enabled,
-    bearer_token_env_var: server.bearer_token_env_var ?? '',
-    bearer_token_set: server.bearer_token_set,
-    headers: server.headers ?? [],
-    oauth: server.oauth ?? {},
-  }
-}
 
 function prepareAuthWindow(): Window | null {
   if (clientRuntime.openExternalURL) return null
@@ -124,7 +100,7 @@ export function MCPSettings() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.mcp })
   const save = useMutation({
     mutationFn: (input: Draft) =>
-      input.id ? updateMCPServer(input.id, input) : createMCPServer(input),
+      input.id ? updateMCPServer(input.id, inputFromDraft(input)) : createMCPServer(inputFromDraft(input)),
     onSuccess: (server) => {
       toast(`Saved ${server.name}`)
       setDraft(null)
@@ -231,7 +207,18 @@ export function MCPSettings() {
 
   const busy = toggle.isPending || remove.isPending || test.isPending || authorize.isPending
   const isEdit = Boolean(draft?.id)
-  const canSave = draft != null && draft.name.trim() !== '' && draft.url.trim() !== ''
+  let draftError = ''
+  if (draft?.transport === 'stdio') {
+    try {
+      inputFromDraft(draft)
+    } catch (error) {
+      draftError = error instanceof Error ? error.message : 'Invalid local server configuration'
+    }
+  }
+  const canSave = draft != null &&
+    draft.name.trim() !== '' &&
+    !draftError &&
+    (draft.transport === 'stdio' ? Boolean(draft.command?.trim()) : draft.url.trim() !== '')
 
   return (
     <section className="py-4">
@@ -239,7 +226,7 @@ export function MCPSettings() {
         <div>
           <p className="text-sm font-medium text-ink">MCP servers</p>
           <p className="mt-0.5 text-[13px] text-ink-2">
-            Remote Streamable HTTP connections available to Jaz and capable ACP agents.
+            Remote and local MCP connections available to Jaz and capable agents.
           </p>
         </div>
         <Button variant="secondary" size="md" onClick={openAdd}>
@@ -256,7 +243,7 @@ export function MCPSettings() {
         ) : sortedServers.length === 0 ? (
           <DashedCta
             title="No MCP servers yet"
-            subtitle="Connect a remote Streamable HTTP MCP server to give Jaz and capable agents access to its tools."
+            subtitle="Connect an HTTP endpoint or a local stdio server to make its tools available to agents."
             onClick={openAdd}
           />
         ) : (
@@ -297,12 +284,12 @@ export function MCPSettings() {
         description={
           isEdit
             ? 'Update the connection details for this server.'
-            : 'Connect a remote Streamable HTTP MCP server.'
+            : 'Connect a remote endpoint or a local executable.'
         }
         footer={
           <>
             <p className="min-w-0 truncate text-[12px] text-danger" role="alert">
-              {save.isError ? save.error.message : ''}
+              {save.isError ? save.error.message : draftError}
             </p>
             <div className="flex shrink-0 items-center gap-1">
               <Button variant="ghost" size="md" onClick={close}>
@@ -364,10 +351,10 @@ function MCPServerRow({
           <span className="truncate font-medium text-ink" title={server.name}>
             {server.name}
           </span>
-          <span className="rounded-full bg-surface-2 px-1.5 py-[3px] text-[11px] leading-none text-ink-2">HTTP</span>
+          <span className="rounded-full bg-surface-2 px-1.5 py-[3px] text-[11px] leading-none text-ink-2">{server.transport === 'stdio' ? 'Local' : 'HTTP'}</span>
         </div>
-        <p className="mt-0.5 truncate text-[12px] text-ink-3" title={server.url}>
-          {server.url}
+        <p className="mt-0.5 truncate text-[12px] text-ink-3" title={server.transport === 'stdio' ? server.command : server.url}>
+          {server.transport === 'stdio' ? server.command : server.url}
         </p>
       </div>
       <div className="hidden min-w-0 max-w-[40%] sm:block">
@@ -478,57 +465,81 @@ function MCPServerForm({
         />
       </Field>
 
-      <Field label="Server URL" hint="The remote Streamable HTTP endpoint.">
-        <Input
-          placeholder="https://mcp.example.com/mcp"
-          value={draft.url}
-          onChange={(event) => onChange({ ...draft, url: event.target.value })}
+      <Field label="Connection">
+        <Select
+          aria-label="Connection"
+          value={draft.transport ?? 'streamable_http'}
+          options={[
+            { value: 'streamable_http', label: 'Remote HTTP' },
+            { value: 'stdio', label: 'Local stdio' },
+          ]}
+          onChange={(transport) => onChange({
+            ...emptyDraft(),
+            id: draft.id,
+            name: draft.name,
+            enabled: draft.enabled,
+            transport: transport === 'stdio' ? 'stdio' : 'streamable_http',
+          })}
         />
       </Field>
 
-      <Field label="Bearer token" hint="Optional — an API key, used instead of signing in.">
-        <Input
-          type="password"
-          autoComplete="off"
-          placeholder={draft.bearer_token_set ? 'Saved token' : 'Paste an API key'}
-          value={draft.bearer_token ?? ''}
-          onChange={(event) => onChange({ ...draft, bearer_token: event.target.value })}
-        />
-        {draft.bearer_token_set && draft.bearer_token === undefined ? (
-          <Button variant="ghost" size="sm" onClick={() => onChange({ ...draft, bearer_token: '', bearer_token_set: false })}>Remove saved token</Button>
-        ) : null}
-      </Field>
-
-      <div className="border-t border-border">
-        <button
-          type="button"
-          onClick={() => setAdvanced((open) => !open)}
-          className="flex w-full cursor-pointer items-center gap-1.5 py-2.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:text-ink"
-        >
-          <ChevronRight
-            size={13}
-            className={`transition-transform duration-200 ${advanced ? 'rotate-90' : ''}`}
-          />
-          Advanced
-          {advancedCount > 0 && !advanced ? (
-            <span className="font-normal text-ink-3">· {advancedCount} set</span>
-          ) : null}
-        </button>
-        <Collapse open={advanced} className="space-y-4 pb-1">
-          <Field label="Bearer token variable" hint="Or read the token from this environment variable on the Jaz server.">
+      {draft.transport === 'stdio' ? (
+        <MCPStdioFields draft={draft} onChange={onChange} />
+      ) : (
+        <>
+          <Field label="Server URL" hint="The remote Streamable HTTP endpoint.">
             <Input
-              placeholder="MCP_TOKEN"
-              value={draft.bearer_token_env_var ?? ''}
-              onChange={(event) => onChange({ ...draft, bearer_token_env_var: event.target.value })}
+              placeholder="https://mcp.example.com/mcp"
+              value={draft.url}
+              onChange={(event) => onChange({ ...draft, url: event.target.value })}
             />
           </Field>
-          <OAuthEditor value={draft.oauth ?? {}} onChange={(oauth) => onChange({ ...draft, oauth })} />
-          <HeaderEditor
-            headers={draft.headers ?? []}
-            onChange={(headers) => onChange({ ...draft, headers })}
-          />
-        </Collapse>
-      </div>
+
+          <Field label="Bearer token" hint="Optional — an API key, used instead of signing in.">
+            <Input
+              type="password"
+              autoComplete="off"
+              placeholder={draft.bearer_token_set ? 'Saved token' : 'Paste an API key'}
+              value={draft.bearer_token ?? ''}
+              onChange={(event) => onChange({ ...draft, bearer_token: event.target.value })}
+            />
+            {draft.bearer_token_set && draft.bearer_token === undefined ? (
+              <Button variant="ghost" size="sm" onClick={() => onChange({ ...draft, bearer_token: '', bearer_token_set: false })}>Remove saved token</Button>
+            ) : null}
+          </Field>
+
+          <div className="border-t border-border">
+            <button
+              type="button"
+              onClick={() => setAdvanced((open) => !open)}
+              className="flex w-full cursor-pointer items-center gap-1.5 py-2.5 text-[12px] font-medium text-ink-2 transition-colors duration-150 hover:text-ink"
+            >
+              <ChevronRight
+                size={13}
+                className={`transition-transform duration-200 ${advanced ? 'rotate-90' : ''}`}
+              />
+              Advanced
+              {advancedCount > 0 && !advanced ? (
+                <span className="font-normal text-ink-3">· {advancedCount} set</span>
+              ) : null}
+            </button>
+            <Collapse open={advanced} className="space-y-4 pb-1">
+              <Field label="Bearer token variable" hint="Or read the token from this environment variable on the Jaz server.">
+                <Input
+                  placeholder="MCP_TOKEN"
+                  value={draft.bearer_token_env_var ?? ''}
+                  onChange={(event) => onChange({ ...draft, bearer_token_env_var: event.target.value })}
+                />
+              </Field>
+              <OAuthEditor value={draft.oauth ?? {}} onChange={(oauth) => onChange({ ...draft, oauth })} />
+              <HeaderEditor
+                headers={draft.headers ?? []}
+                onChange={(headers) => onChange({ ...draft, headers })}
+              />
+            </Collapse>
+          </div>
+        </>
+      )}
 
       <div className="flex items-center gap-2.5 border-t border-border pt-4 text-[13px] text-ink-2">
         <Switch

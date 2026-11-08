@@ -5,11 +5,65 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/mcpconfig"
 	"github.com/wins/jaz/backend/internal/storage/sqlite/generated/mcpdb"
 )
+
+func TestStdioConfigurationSurvivesReopenAndTransportChanges(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := mcpconfig.ServerInput{Name: "Local", Command: "/path with spaces/server", Args: []string{"--mcp", " literal "}, Env: map[string]string{"TOKEN": "sensitive-local-environment"}, Enabled: true}
+	created, err := store.CreateMCPServer(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Args = append(input.Args, "another argument")
+	if _, err := store.UpdateMCPServer(created.ID, input); err != nil {
+		t.Fatal(err)
+	}
+	row, err := mcpdb.New(store.db).GetMCPServer(t.Context(), created.ID)
+	if err != nil || !strings.HasPrefix(row.StdioJson, secretPrefix) || strings.Contains(row.StdioJson, input.Env["TOKEN"]) {
+		t.Fatalf("stdio configuration is not encrypted: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "jaz.sqlite"))
+	if err != nil || bytes.Contains(data, []byte(input.Env["TOKEN"])) {
+		t.Fatal("environment secret leaked into SQLite", err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	servers, err := store.ListMCPServers()
+	if err != nil || len(servers) != 1 || servers[0].Transport != mcpconfig.TransportStdio || servers[0].Command != input.Command || !reflect.DeepEqual(servers[0].Args, input.Args) || !reflect.DeepEqual(servers[0].Env, input.Env) {
+		t.Fatalf("stdio configuration changed after reopen: %#v, %v", servers, err)
+	}
+	if _, err := store.SetMCPServerEnabled(created.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	disabled, err := store.LoadMCPServer(created.ID)
+	if err != nil || disabled.Enabled || disabled.Command != input.Command {
+		t.Fatalf("disable lost command configuration: %#v, %v", disabled, err)
+	}
+	remote, err := store.UpdateMCPServer(created.ID, mcpconfig.ServerInput{Name: "Remote", URL: "https://example.test/mcp", Enabled: true})
+	if err != nil || remote.Transport != mcpconfig.TransportStreamableHTTP {
+		t.Fatalf("switch to HTTP = %#v, %v", remote, err)
+	}
+	loaded, err := store.LoadMCPServer(created.ID)
+	if err != nil || loaded.Command != "" || len(loaded.Args) != 0 || len(loaded.Env) != 0 {
+		t.Fatalf("local credentials survived transport change: %#v, %v", loaded, err)
+	}
+}
 
 func TestManualMCPSecretsStayEncryptedThroughSaveAndReopen(t *testing.T) {
 	root := t.TempDir()

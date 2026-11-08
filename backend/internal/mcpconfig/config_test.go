@@ -1,6 +1,43 @@
 package mcpconfig
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
+
+func TestValidateStdioPreservesExecutableArgumentsAndEnvironment(t *testing.T) {
+	input, err := ValidateInput(ServerInput{
+		Name: " Local ", Command: " /path with spaces/server ",
+		Args: []string{"--mcp", "", " whitespace ", "$(literal); argument"},
+		Env:  map[string]string{"TOKEN": " secret with spaces "},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.Name != "Local" || input.Transport != TransportStdio || input.Command != "/path with spaces/server" || input.Env["TOKEN"] != " secret with spaces " || !reflect.DeepEqual(input.Args, []string{"--mcp", "", " whitespace ", "$(literal); argument"}) {
+		t.Fatalf("stdio input changed = %#v", input)
+	}
+}
+
+func TestValidateStdioRejectsInvalidOrMixedConfiguration(t *testing.T) {
+	for _, input := range []ServerInput{
+		{Name: "Local", Transport: TransportStdio},
+		{Name: "Local", Transport: "unknown", URL: "https://example.test"},
+		{Name: "Local", Command: "server", URL: "https://example.test"},
+		{Name: "Local", Transport: TransportStreamableHTTP, Command: "server", URL: "https://example.test"},
+		{Name: "Local", Command: "server", BearerToken: "token"},
+		{Name: "Local", Command: "server", OAuth: OAuthConfig{ClientID: "client"}},
+		{Name: "Local", Command: "server", Headers: []Header{{Name: "X-Key", Value: "value"}}},
+		{Name: "Local", Command: "server\x00"},
+		{Name: "Local", Command: "server", Args: []string{"arg\x00"}},
+		{Name: "Local", Command: "server", Env: map[string]string{"INVALID-NAME": "value"}},
+		{Name: "Local", Command: "server", Env: map[string]string{"KEY": "value\x00"}},
+	} {
+		if _, err := ValidateInput(input); err == nil {
+			t.Fatalf("invalid configuration accepted: %#v", input)
+		}
+	}
+}
 
 func TestValidateInputNormalizesHeadersAndURL(t *testing.T) {
 	input, err := ValidateInput(ServerInput{

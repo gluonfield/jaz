@@ -1188,8 +1188,11 @@ export interface MCPOAuthConfig {
 export interface MCPServer {
   id: string
   name: string
-  transport: 'streamable_http'
+  transport: 'streamable_http' | 'stdio'
   url: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string | null>
   enabled: boolean
   bearer_token_env_var?: string
   bearer_token?: string
@@ -1211,8 +1214,12 @@ export interface MCPTool {
 }
 
 export interface MCPServerInput {
+  transport?: 'streamable_http' | 'stdio'
   name: string
   url: string
+  command?: string
+  args?: string[]
+  env?: Record<string, string | null>
   enabled: boolean
   bearer_token_env_var?: string
   bearer_token?: string

@@ -185,7 +185,7 @@ func NewManager(store mcpconfig.ServerReader, tokens tokenStore, registry *tools
 // tokens (refreshing them when possible) but never opens a browser. Returns nil
 // when no token store is configured or the server uses a bearer token.
 func (m *Manager) backgroundHandler(server mcpconfig.Server) *oauthHandler {
-	if m.tokens == nil || server.UsesBearer() {
+	if m.tokens == nil || server.UsesBearer() || server.Transport == mcpconfig.TransportStdio {
 		return nil
 	}
 	return newOAuthHandler(server, m.tokens, http.DefaultClient)
@@ -513,6 +513,9 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 	}
 	if local := m.localServer(server.ID); local != nil {
 		return m.connectLocal(ctx, server, local)
+	}
+	if server.Transport == mcpconfig.TransportStdio {
+		return m.connectStdio(ctx, server)
 	}
 	headers, err := mcpconfig.ResolvedHeaders(server, true)
 	if err != nil {

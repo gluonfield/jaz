@@ -27,6 +27,9 @@ func (m *Manager) AuthorizeWithHook(ctx context.Context, server mcpconfig.Server
 }
 
 func (m *Manager) authorize(ctx context.Context, server mcpconfig.Server, opts mcpconfig.AuthorizeOptions, onAuthorized AuthorizationHook) mcpconfig.ServerStatus {
+	if server.Transport == mcpconfig.TransportStdio {
+		return mcpconfig.ServerStatus{Status: "error", Error: "Local stdio servers do not use OAuth sign-in", CheckedAt: time.Now().UTC()}
+	}
 	if m.tokens == nil {
 		return mcpconfig.ServerStatus{Status: "error", Error: "token store is not configured", CheckedAt: time.Now().UTC()}
 	}

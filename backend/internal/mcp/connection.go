@@ -125,7 +125,7 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 		return [32]byte{}, err
 	}
 	var token integrationoauth.Token
-	if m.tokens != nil && !m.hasLocalServer(server.ID) {
+	if m.tokens != nil && server.Transport != mcpconfig.TransportStdio && !m.hasLocalServer(server.ID) {
 		token, _, err = m.tokens.LoadToken(ctx, server.TokenID())
 		if err != nil {
 			return [32]byte{}, err
@@ -134,11 +134,14 @@ func (m *Manager) connectionKey(ctx context.Context, server mcpconfig.Server) ([
 	data, err := json.Marshal(struct {
 		Transport string
 		URL       string
+		Command   string
+		Args      []string
+		Env       map[string]string
 		Headers   []mcpconfig.Header
 		OAuth     mcpconfig.OAuthConfig
 		Token     integrationoauth.Token
 		TokenID   string
-	}{server.Transport, server.URL, headers, server.OAuth, token, server.TokenID()})
+	}{server.Transport, server.URL, server.Command, server.Args, server.Env, headers, server.OAuth, token, server.TokenID()})
 	return sha256.Sum256(data), err
 }
 

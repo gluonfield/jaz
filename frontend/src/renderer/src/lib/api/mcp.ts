@@ -17,6 +17,7 @@ function normalizeInput(input: MCPServerInput): MCPServerInput {
     ...input,
     name: input.name.trim(),
     url: input.url.trim(),
+    command: input.command?.trim(),
     bearer_token_env_var: input.bearer_token_env_var?.trim() || undefined,
     bearer_token: input.bearer_token?.trim(),
     oauth: normalizeOAuth(input.oauth),

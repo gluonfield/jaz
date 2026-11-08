@@ -47,7 +47,7 @@ func (s *Store) protectSecrets() error {
 			}
 		}
 		for _, row := range mcpRows {
-			if strings.HasPrefix(row.BearerToken.String, secretPrefix) || strings.HasPrefix(row.HeadersJson, secretPrefix) {
+			if strings.HasPrefix(row.BearerToken.String, secretPrefix) || strings.HasPrefix(row.HeadersJson, secretPrefix) || strings.HasPrefix(row.StdioJson, secretPrefix) {
 				return fmt.Errorf("MCP secrets require their original key file: %s", keyPath)
 			}
 		}

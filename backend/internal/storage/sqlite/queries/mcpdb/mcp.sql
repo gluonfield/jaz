@@ -10,6 +10,7 @@ SELECT
   headers_json,
   env_headers_json,
   oauth_json,
+  stdio_json,
   created_at_ms,
   updated_at_ms
 FROM mcp_servers
@@ -27,6 +28,7 @@ SELECT
   headers_json,
   env_headers_json,
   oauth_json,
+  stdio_json,
   created_at_ms,
   updated_at_ms
 FROM mcp_servers
@@ -45,6 +47,7 @@ INSERT INTO mcp_servers (
   headers_json,
   env_headers_json,
   oauth_json,
+  stdio_json,
   created_at_ms,
   updated_at_ms
 ) VALUES (
@@ -58,6 +61,7 @@ INSERT INTO mcp_servers (
   sqlc.arg(headers_json),
   sqlc.arg(env_headers_json),
   sqlc.arg(oauth_json),
+  sqlc.arg(stdio_json),
   sqlc.arg(created_at_ms),
   sqlc.arg(updated_at_ms)
 );
@@ -74,6 +78,7 @@ SET
   headers_json = sqlc.arg(headers_json),
   env_headers_json = sqlc.arg(env_headers_json),
   oauth_json = sqlc.arg(oauth_json),
+  stdio_json = sqlc.arg(stdio_json),
   updated_at_ms = sqlc.arg(updated_at_ms)
 WHERE id = sqlc.arg(id);
 

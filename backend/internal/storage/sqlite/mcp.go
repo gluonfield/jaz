@@ -46,7 +46,7 @@ func (s *Store) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, 
 		return mcpconfig.Server{}, err
 	}
 	id := newMCPServerID()
-	bearer, headers, oauth, err := s.encodeMCPConfig(id, input)
+	config, err := s.encodeMCPConfig(id, input)
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
@@ -60,10 +60,11 @@ func (s *Store) CreateMCPServer(input mcpconfig.ServerInput) (mcpconfig.Server, 
 		Url:               server.URL,
 		Enabled:           boolInt(server.Enabled),
 		BearerTokenEnvVar: nullDBString(server.BearerTokenEnvVar),
-		BearerToken:       nullDBString(bearer),
-		HeadersJson:       headers,
+		BearerToken:       nullDBString(config.bearer),
+		HeadersJson:       config.headers,
 		EnvHeadersJson:    emptyMCPEnvHeadersJSON,
-		OauthJson:         oauth,
+		OauthJson:         config.oauth,
+		StdioJson:         config.stdio,
 		CreatedAtMs:       timeToMs(server.CreatedAt),
 		UpdatedAtMs:       timeToMs(server.UpdatedAt),
 	})
@@ -79,7 +80,7 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
-	bearer, headers, oauth, err := s.encodeMCPConfig(id, input)
+	config, err := s.encodeMCPConfig(id, input)
 	if err != nil {
 		return mcpconfig.Server{}, err
 	}
@@ -102,14 +103,15 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 	}
 	changed, err := mcpq.UpdateMCPServer(context.Background(), mcpdb.UpdateMCPServerParams{
 		Name:              input.Name,
-		Transport:         mcpconfig.TransportStreamableHTTP,
+		Transport:         input.Transport,
 		Url:               input.URL,
 		Enabled:           boolInt(input.Enabled),
 		BearerTokenEnvVar: nullDBString(input.BearerTokenEnvVar),
-		BearerToken:       nullDBString(bearer),
-		HeadersJson:       headers,
+		BearerToken:       nullDBString(config.bearer),
+		HeadersJson:       config.headers,
 		EnvHeadersJson:    emptyMCPEnvHeadersJSON,
-		OauthJson:         oauth,
+		OauthJson:         config.oauth,
+		StdioJson:         config.stdio,
 		UpdatedAtMs:       timeToMs(now),
 		ID:                id,
 	})
@@ -119,7 +121,7 @@ func (s *Store) UpdateMCPServer(id string, input mcpconfig.ServerInput) (mcpconf
 	if changed == 0 {
 		return mcpconfig.Server{}, fmt.Errorf("mcp server not found: %s", id)
 	}
-	if current.Url != input.URL || current.OauthJson != oauth {
+	if current.Transport != input.Transport || current.Url != input.URL || current.OauthJson != config.oauth {
 		if err := oauthq.DeleteToken(context.Background(), mcpconfig.OAuthConnectionID(id)); err != nil {
 			return mcpconfig.Server{}, err
 		}
@@ -198,7 +200,26 @@ func (s *Store) decodeMCPServer(row mcpdb.GetMCPServerRow) (mcpconfig.Server, er
 	if err := json.Unmarshal([]byte(row.OauthJson), &server.OAuth); err != nil {
 		return mcpconfig.Server{}, err
 	}
+	if row.StdioJson != "" {
+		data, err := s.decryptSecret("mcp:"+row.ID+":stdio", row.StdioJson)
+		if err != nil {
+			return mcpconfig.Server{}, err
+		}
+		var config stdioConfig
+		if err := json.Unmarshal(data, &config); err != nil {
+			return mcpconfig.Server{}, err
+		}
+		server.Command = config.Command
+		server.Args = config.Args
+		server.Env = config.Env
+	}
 	return server, nil
+}
+
+type stdioConfig struct {
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 func mcpServerError(err error) error {
@@ -208,21 +229,43 @@ func mcpServerError(err error) error {
 	return err
 }
 
-func (s *Store) encodeMCPConfig(id string, input mcpconfig.ServerInput) (string, string, string, error) {
+type encodedMCPConfig struct {
+	bearer  string
+	headers string
+	oauth   string
+	stdio   string
+}
+
+func (s *Store) encodeMCPConfig(id string, input mcpconfig.ServerInput) (encodedMCPConfig, error) {
+	var config encodedMCPConfig
 	headers, err := json.Marshal(input.Headers)
 	if err != nil {
-		return "", "", "", err
+		return config, err
 	}
 	oauth, err := json.Marshal(input.OAuth)
 	if err != nil {
-		return "", "", "", err
+		return config, err
 	}
-	bearer, err := s.encryptSecret("mcp:"+id+":bearer", []byte(input.BearerToken))
+	config.bearer, err = s.encryptSecret("mcp:"+id+":bearer", []byte(input.BearerToken))
 	if err != nil {
-		return "", "", "", err
+		return config, err
 	}
-	sealedHeaders, err := s.encryptSecret("mcp:"+id+":headers", headers)
-	return bearer, sealedHeaders, string(oauth), err
+	config.headers, err = s.encryptSecret("mcp:"+id+":headers", headers)
+	if err != nil {
+		return config, err
+	}
+	config.oauth = string(oauth)
+	if input.Transport == mcpconfig.TransportStdio {
+		data, err := json.Marshal(stdioConfig{Command: input.Command, Args: input.Args, Env: input.Env})
+		if err != nil {
+			return config, err
+		}
+		config.stdio, err = s.encryptSecret("mcp:"+id+":stdio", data)
+		if err != nil {
+			return config, err
+		}
+	}
+	return config, nil
 }
 
 func newMCPServerID() string {
