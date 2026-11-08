@@ -1316,6 +1316,8 @@ export interface ProviderInput {
   base_url: string
   capabilities: string[]
   default_model?: string
+  /** extra HTTP headers sent with every request to this provider */
+  headers?: Record<string, string>
   icon?: string
   /** write-only secret; omit on edit to leave an existing key unchanged */
   api_key?: string

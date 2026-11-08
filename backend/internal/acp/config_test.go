@@ -838,6 +838,7 @@ func TestProcessEnvWritesQwenRegionalCustomProviderConfig(t *testing.T) {
 				Label:   "Qwen Cloud",
 				BaseURL: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
 				APIKey:  "qwen-key",
+				Headers: map[string]string{"X-Session": "routing-session"},
 			},
 			"unused": {
 				Type:      "openai-compatible",
@@ -869,6 +870,14 @@ func TestProcessEnvWritesQwenRegionalCustomProviderConfig(t *testing.T) {
 		t.Fatalf("config content = %q: %v", env["OPENCODE_CONFIG_CONTENT"], err)
 	}
 	qwen := content.Provider["qwen-cloud"]
+	var full openCodeConfigContent
+	if err := json.Unmarshal([]byte(env["OPENCODE_CONFIG_CONTENT"]), &full); err != nil {
+		t.Fatal(err)
+	}
+	options := full.Provider["qwen-cloud"].Options
+	if options == nil || options.Headers["X-Session"] != "routing-session" || options.APIKey != "{env:JAZ_PROVIDER_QWEN_CLOUD_API_KEY}" {
+		t.Fatalf("provider auth must preserve routing headers: %#v", options)
+	}
 	if qwen.API != "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1" || strings.Join(qwen.Env, ",") != "JAZ_PROVIDER_QWEN_CLOUD_API_KEY" {
 		t.Fatalf("Qwen provider config = %#v", qwen)
 	}
