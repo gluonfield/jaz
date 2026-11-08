@@ -12,10 +12,14 @@ export function useUpdateBot(id: string) {
   return useMutation({
     mutationFn: (input: BotPatch) => updateBot(id, input),
     onMutate: (input) => {
+      const optimistic = Object.fromEntries(Object.entries(input).filter(([key]) => ['name', 'avatar', 'members'].includes(key)))
       queryClient.setQueryData<Bot[]>(keys.bots, (bots) =>
-        bots?.map((bot) => (bot.id === id ? { ...bot, ...input } : bot)),
+        bots?.map((bot) => (bot.id === id ? { ...bot, ...optimistic } : bot)),
       )
     },
+    onSuccess: (updated) => queryClient.setQueryData<Bot[]>(keys.bots, (bots) =>
+      bots?.map((bot) => bot.id === id ? { ...bot, ...updated } : bot),
+    ),
     onError: (error) => toast(`Couldn't save: ${error.message}`, 'danger'),
     onSettled: () => queryClient.invalidateQueries({ queryKey: keys.bots }),
   })

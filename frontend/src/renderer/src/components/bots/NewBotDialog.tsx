@@ -5,18 +5,21 @@ import { Modal } from '@/components/ui/Modal'
 import { randomAvatar } from '@/lib/bots'
 import { useCreateBot } from './useCreateBot'
 import { BotWorkspacePicker } from './BotWorkspaceSettings'
+import { BotRoleField } from './BotRoleSettings'
 
 export function NewBotDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState('')
   const [workspaces, setWorkspaces] = useState<string[]>([])
+  const [prompt, setPrompt] = useState('')
   const create = useCreateBot()
   const close = () => {
     setName('')
     setWorkspaces([])
+    setPrompt('')
     onClose()
   }
   const submit = () => create.mutate(
-    { name: name.trim(), avatar: randomAvatar(), workspaces },
+    { name: name.trim(), avatar: randomAvatar(), workspaces, prompt: prompt.trim() },
     { onSuccess: close },
   )
 
@@ -34,6 +37,7 @@ export function NewBotDialog({ open, onClose }: { open: boolean; onClose: () => 
       }
     >
       <Input autoFocus value={name} placeholder="Name" onChange={(event) => setName(event.target.value)} />
+      <BotRoleField value={prompt} onChange={setPrompt} />
       {open ? <BotWorkspacePicker value={workspaces} onChange={setWorkspaces} /> : null}
     </Modal>
   )

@@ -17,6 +17,7 @@ export function BotWorkspacePicker({ value, onChange }: { value: string[]; onCha
     <div className="mt-4">
       <p className="text-[13px] font-medium text-ink">Project knowledge and tools</p>
       <p className="mt-1 text-[12px] text-ink-3">Choose folders on the backend. The bot and its workers read project instructions there; private bot memory stays in its own home.</p>
+      {choices.length > 0 && value.length === 0 ? <p className="mt-2 text-[12px] text-ink-3">No project selected. This bot will start with its own instructions and memory only.</p> : null}
       {projects.isPending ? <p className="mt-3 text-[13px] text-ink-3">Loading projects…</p> : null}
       {projects.isError ? <p className="mt-3 text-[13px] text-danger">Couldn't load projects: {projects.error.message}</p> : null}
       {choices.length === 0 && projects.isSuccess ? <p className="mt-3 text-[13px] text-ink-3">No projects registered. The bot will use its private home.</p> : null}
