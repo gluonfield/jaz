@@ -763,6 +763,7 @@ export interface Bot {
   completed_at?: string
   updated_at: string
   agent?: string
+  model_provider?: string
   model?: string
   reasoning_effort?: string
   members?: string[]

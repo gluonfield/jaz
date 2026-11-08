@@ -43,6 +43,7 @@ type Bot struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	Agent           string    `json:"agent,omitempty"`
+	ModelProvider   string    `json:"model_provider,omitempty"`
 	Model           string    `json:"model,omitempty"`
 	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 	Members         []string  `json:"members,omitempty"`
@@ -85,6 +86,7 @@ type UpdateBot struct {
 	// Model picks the model the bot's agent runs with, together with
 	// ReasoningEffort.
 	Model           *string `json:"model,omitempty"`
+	ModelProvider   string  `json:"model_provider,omitempty"`
 	ReasoningEffort string  `json:"reasoning_effort,omitempty"`
 }
 
@@ -93,7 +95,7 @@ type Threads interface {
 	CreateSession(context.Context, acp.SpawnRequest) (storage.Session, error)
 	SteerInternal(ctx context.Context, session, message string, fromUser bool) (acp.Job, error)
 	SwitchAgent(ctx context.Context, sessionID, agent string) error
-	SetModel(ctx context.Context, sessionID, model, effort string) error
+	SetModel(ctx context.Context, sessionID, model, modelProvider, effort string) error
 	AwaitsAnswer(sessionID string) bool
 	Thinking(sessionID string) bool
 }
