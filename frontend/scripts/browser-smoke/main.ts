@@ -8,6 +8,7 @@ import { ClaudeVoiceBridge, installClaudeVoice } from '@main/claudeVoice'
 import { installBrowserControl } from '@main/browserControl'
 import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachPreviewWebviews, configureBrowserSessions } from '@main/previewSession'
+import { attachBrowserCloseShortcut } from '@main/browserCloseShortcut'
 import { installBrowserPasswords } from '@main/browserPasswords'
 import { installBrowserDownloads } from '@main/browserDownloads'
 import { BrowserPasswordStore } from '@main/browserPasswordStore'
@@ -28,6 +29,7 @@ if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('use-mock-keychain')
 }
 app.on('web-contents-created', (_event, contents) => {
+  attachBrowserCloseShortcut(contents)
   contents.on('did-start-navigation', ({ url, isMainFrame }) => {
     if (probingNavigation && isMainFrame && contents.getType() === 'webview') {
       navigationRequests.push({ url, webContentsId: contents.id })
@@ -373,15 +375,16 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
       console.error(message)
     }
   })
-  ipcMain.handle('smoke:key', async (_event, keyCode: string, modifiers: string[] = []) => {
-    window.webContents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
+  ipcMain.handle('smoke:key', async (_event, keyCode: string, modifiers: string[] = [], contentsId?: number) => {
+    const target = contentsId ? webContents.fromId(contentsId)! : window.webContents
+    target.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
     if (keyCode.length === 1 && modifiers.length === 0) {
-      window.webContents.sendInputEvent({ type: 'char', keyCode })
+      target.sendInputEvent({ type: 'char', keyCode })
     }
     if (keyCode === 'Enter') {
-      window.webContents.sendInputEvent({ type: 'char', keyCode: '\r' })
+      target.sendInputEvent({ type: 'char', keyCode: '\r' })
     }
-    window.webContents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
+    if (!target.isDestroyed()) target.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
     await new Promise((resolve) => setTimeout(resolve, 20))
   })
   ipcMain.handle('smoke:wheel', async (_event, x: number, y: number, deltaY: number, control = false) => {

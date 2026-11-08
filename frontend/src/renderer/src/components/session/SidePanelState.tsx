@@ -149,6 +149,15 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false, 
   }, [browsers, openFile, openTab, sessionId])
   useEffect(() => clientRuntime.onOpenPreviewURL?.(openPreview), [openPreview])
 
+  const closeBrowserTab = useCallback(() => {
+    if (!open || mode !== 'tabs' || modalDialogOpen()) return false
+    if (activeTab?.kind === 'preview') closeTab(activeTab.id)
+    else if (!activeTab) close()
+    else return false
+    return true
+  }, [open, mode, activeTab, closeTab, close])
+  useEffect(() => clientRuntime.onBrowserCloseShortcut?.(closeBrowserTab), [closeBrowserTab])
+
   useWindowEvent('keydown', (event) => {
     if (!(event.metaKey || event.ctrlKey) || event.defaultPrevented || event.altKey || modalDialogOpen()) {
       return
@@ -166,6 +175,10 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false, 
       return
     }
     if (!event.metaKey || event.ctrlKey) {
+      return
+    }
+    if (key === 'w' && !event.repeat && closeBrowserTab()) {
+      event.preventDefault()
       return
     }
     if (key === 'o') {

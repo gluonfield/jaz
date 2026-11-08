@@ -51,6 +51,7 @@ export interface ClientRuntime {
   onOpenRoute?: (handler: (path: string) => void) => () => void
   onOpenPreviewURL?: (handler: (url: string) => void) => () => void
   onBrowserNavigation?: (handler: (direction: BrowserNavigationDirection) => void) => () => void
+  onBrowserCloseShortcut?: (handler: () => void) => () => void
   onPreviewFindShortcut?: (handler: () => void) => () => void
 }
 
@@ -100,6 +101,7 @@ function createRuntime(): ClientRuntime {
       onOpenRoute: electron.onOpenRoute,
       onOpenPreviewURL: electron.onOpenPreviewURL,
       onBrowserNavigation: electron.onBrowserNavigation,
+      onBrowserCloseShortcut: electron.onBrowserCloseShortcut,
       onPreviewFindShortcut: electron.onPreviewFindShortcut,
       voiceOverlay: electron.voiceOverlay,
     }
