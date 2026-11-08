@@ -54,7 +54,7 @@ import {
   sessionRepoQuery,
   uploadSessionAttachment,
 } from '@/lib/api/sessions'
-import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } from '@/lib/api/types'
+import type { ACPActivity, ACPPlanEntry, ACPToolCall, AgentSessionState, ChatMessage, SessionEvent, SessionOverview } from '@/lib/api/types'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
@@ -111,12 +111,18 @@ export interface ThreadChatView {
   empty: boolean
   messages: ChatMessage[]
   events: SessionEvent[]
+  taskEvents?: SessionEvent[]
   scrollRef: RefObject<HTMLDivElement | null>
   paging: HistoryPaging
   working: boolean
   threads: SpawnedThreadView[]
   send: (text: string) => void
   showDetails: () => void
+  activity?: ACPActivity
+  acpPlan?: ACPPlanEntry[]
+  acpToolCalls?: ACPToolCall[]
+  lastEventAt?: string
+  lastToolAt?: string
 }
 
 export interface ThreadDetailsView {
@@ -566,7 +572,7 @@ export function ThreadView({
               >
                 {chat ? (
                   <>
-                    {chat({ empty: empty && !paging.hasEarlier && detail.data.latest_event_seq === 0, messages: transcriptMessages, events: displayEvents, scrollRef, paging, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails, revealSeq: revealedMessageSeq })}
+                    {chat({ empty: empty && !paging.hasEarlier && detail.data.latest_event_seq === 0, messages: transcriptMessages, events: displayEvents, taskEvents: [...(overviewData?.agent_events ?? []), ...transcriptEvents].filter((event) => event.type === 'agent_task'), scrollRef, paging, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails, revealSeq: revealedMessageSeq, activity: detail.data?.acp_activity, acpPlan: detail.data?.acp_plan, acpToolCalls: detail.data?.acp_tool_progress ?? detail.data?.acp_tool_calls, lastEventAt: detail.data?.acp_last_event_at, lastToolAt: detail.data?.acp_last_tool_at })}
                     {errorNotice}
                   </>
                 ) : empty ? (

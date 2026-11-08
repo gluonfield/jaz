@@ -38,6 +38,9 @@ func (m *Manager) publishSessionChanged(sessionID string) {
 }
 
 func (m *Manager) publishACP(job eventView) error {
+	if live := m.jobByID(job.ID); live != nil {
+		m.publishActivityProgress(live)
+	}
 	acp := eventFromView(job)
 	events := make([]sessionevents.Event, 0, 2)
 	for _, sessionID := range childSessionIDs(job) {
@@ -60,6 +63,9 @@ func (m *Manager) publishACP(job eventView) error {
 }
 
 func (m *Manager) publishACPStatus(job eventView) {
+	if live := m.jobByID(job.ID); live != nil {
+		m.publishActivityProgress(live)
+	}
 	acp := eventFromView(job)
 	acp.Plan = nil
 	events := make([]sessionevents.Event, 0, len(surfaceSessionIDs(job)))

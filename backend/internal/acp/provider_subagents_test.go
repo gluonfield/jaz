@@ -294,10 +294,12 @@ func TestProviderSubagentMetadataDoesNotConsumeMessageChunk(t *testing.T) {
 
 	seenSubagent := false
 	seenMessage := false
-	for range 2 {
+	for !seenSubagent || !seenMessage {
 		select {
 		case event := <-sub:
 			switch event.Type {
+			case sessionevents.TypeSession:
+				// Activity invalidation may precede the content events.
 			case sessionevents.TypeProviderSubagent:
 				seenSubagent = event.ProviderSubagent != nil && event.ProviderSubagent.ID == "thread-1"
 			case "acp_message":

@@ -12,32 +12,34 @@ import (
 )
 
 type Job struct {
-	ID              string                        `json:"id"`
-	Slug            string                        `json:"slug"`
-	Title           string                        `json:"title,omitempty"`
-	ParentID        string                        `json:"parent_id,omitempty"`
-	ACPAgent        string                        `json:"acp_agent"`
-	ACPSession      string                        `json:"acp_session"`
-	Cwd             string                        `json:"cwd,omitempty"`
-	ModelProvider   string                        `json:"model_provider,omitempty"`
-	Model           string                        `json:"model,omitempty"`
-	ReasoningEffort string                        `json:"reasoning_effort,omitempty"`
-	State           string                        `json:"state"`
-	StopReason      string                        `json:"stop_reason,omitempty"`
-	Assistant       string                        `json:"assistant,omitempty"`
-	Thought         string                        `json:"thought,omitempty"`
-	Plan            []sessionevents.PlanEntry     `json:"plan,omitempty"`
-	ToolCalls       []sessionevents.ACPToolCall   `json:"tool_calls,omitempty"`
-	Permissions     []sessionevents.ACPPermission `json:"permissions,omitempty"`
-	Modes           ModeState                     `json:"modes,omitempty"`
-	Error           string                        `json:"error,omitempty"`
-	GoalRequested   bool                          `json:"goal_requested,omitempty"`
-	ActiveOperation string                        `json:"active_operation,omitempty"`
-	ParentVisible   bool                          `json:"parent_visible,omitempty"`
-	CreatedAt       time.Time                     `json:"created_at"`
-	UpdatedAt       time.Time                     `json:"updated_at"`
-	LastEventAt     time.Time                     `json:"last_event_at,omitzero"`
-	LastToolAt      time.Time                     `json:"last_tool_at,omitzero"`
+	Activity        sessionevents.ACPActivity       `json:"activity,omitzero"`
+	ID              string                          `json:"id"`
+	Slug            string                          `json:"slug"`
+	Title           string                          `json:"title,omitempty"`
+	ParentID        string                          `json:"parent_id,omitempty"`
+	ACPAgent        string                          `json:"acp_agent"`
+	ACPSession      string                          `json:"acp_session"`
+	Cwd             string                          `json:"cwd,omitempty"`
+	ModelProvider   string                          `json:"model_provider,omitempty"`
+	Model           string                          `json:"model,omitempty"`
+	ReasoningEffort string                          `json:"reasoning_effort,omitempty"`
+	State           string                          `json:"state"`
+	StopReason      string                          `json:"stop_reason,omitempty"`
+	Assistant       string                          `json:"assistant,omitempty"`
+	Thought         string                          `json:"thought,omitempty"`
+	Plan            []sessionevents.PlanEntry       `json:"plan,omitempty"`
+	ToolCalls       []sessionevents.ACPToolCall     `json:"tool_calls,omitempty"`
+	ToolProgress    []sessionevents.ACPToolProgress `json:"tool_progress,omitempty"`
+	Permissions     []sessionevents.ACPPermission   `json:"permissions,omitempty"`
+	Modes           ModeState                       `json:"modes,omitempty"`
+	Error           string                          `json:"error,omitempty"`
+	GoalRequested   bool                            `json:"goal_requested,omitempty"`
+	ActiveOperation string                          `json:"active_operation,omitempty"`
+	ParentVisible   bool                            `json:"parent_visible,omitempty"`
+	CreatedAt       time.Time                       `json:"created_at"`
+	UpdatedAt       time.Time                       `json:"updated_at"`
+	LastEventAt     time.Time                       `json:"last_event_at,omitzero"`
+	LastToolAt      time.Time                       `json:"last_tool_at,omitzero"`
 	// Reply is the last message without a later tool call or an interim phase.
 	Reply string `json:"-"`
 	// Result is what the turn wrote less the messages its provider marks as
@@ -46,6 +48,7 @@ type Job struct {
 }
 
 type HydrationView struct {
+	Activity        sessionevents.ACPActivity
 	ID              string
 	Slug            string
 	Title           string
@@ -59,6 +62,7 @@ type HydrationView struct {
 	State           string
 	StopReason      string
 	Plan            []sessionevents.PlanEntry
+	ToolProgress    []sessionevents.ACPToolProgress
 	Permissions     []sessionevents.ACPPermission
 	Modes           ModeState
 	Error           string
@@ -117,6 +121,8 @@ type jobState struct {
 	suggestedPrompt        string
 	backgroundTasks        map[string]sessionevents.AgentTask
 	backgroundWork         bool
+	activityPublished      sessionevents.ACPActivity
+	activityPublishedAt    time.Time
 	steerMethod            steerMethod
 	turn                   *activeTurn
 	finishing              chan struct{}
@@ -252,11 +258,12 @@ func (j *jobState) hydrationViewLocked() HydrationView {
 
 func HydrationViewFromJob(job Job) HydrationView {
 	return HydrationView{
-		ID: job.ID, Slug: job.Slug, Title: job.Title, ParentID: job.ParentID,
+		ID: job.ID, Slug: job.Slug, Title: job.Title, ParentID: job.ParentID, Activity: job.Activity,
 		ACPAgent: job.ACPAgent, ACPSession: job.ACPSession, Cwd: job.Cwd,
 		ModelProvider: job.ModelProvider, Model: job.Model, ReasoningEffort: job.ReasoningEffort,
 		State: job.State, StopReason: job.StopReason, Plan: clonePlanEntries(job.Plan),
-		Permissions: clonePermissions(job.Permissions), Modes: job.Modes.Clone(), Error: job.Error,
+		ToolProgress: compactToolProgress(job),
+		Permissions:  clonePermissions(job.Permissions), Modes: job.Modes.Clone(), Error: job.Error,
 		GoalRequested: job.GoalRequested, ActiveOperation: job.ActiveOperation, ParentVisible: job.ParentVisible,
 		CreatedAt: job.CreatedAt, UpdatedAt: job.UpdatedAt, LastEventAt: job.LastEventAt, LastToolAt: job.LastToolAt,
 	}
@@ -264,11 +271,12 @@ func HydrationViewFromJob(job Job) HydrationView {
 
 func (v HydrationView) Job() Job {
 	return Job{
-		ID: v.ID, Slug: v.Slug, Title: v.Title, ParentID: v.ParentID,
+		ID: v.ID, Slug: v.Slug, Title: v.Title, ParentID: v.ParentID, Activity: v.Activity,
 		ACPAgent: v.ACPAgent, ACPSession: v.ACPSession, Cwd: v.Cwd,
 		ModelProvider: v.ModelProvider, Model: v.Model, ReasoningEffort: v.ReasoningEffort,
 		State: v.State, StopReason: v.StopReason, Plan: clonePlanEntries(v.Plan), Permissions: clonePermissions(v.Permissions),
-		Modes: v.Modes.Clone(), Error: v.Error, GoalRequested: v.GoalRequested,
+		ToolProgress: append([]sessionevents.ACPToolProgress(nil), v.ToolProgress...),
+		Modes:        v.Modes.Clone(), Error: v.Error, GoalRequested: v.GoalRequested,
 		ActiveOperation: v.ActiveOperation, ParentVisible: v.ParentVisible,
 		CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt, LastEventAt: v.LastEventAt, LastToolAt: v.LastToolAt,
 	}
@@ -344,6 +352,7 @@ func (j *jobState) setState(state, stopReason, errMsg string) {
 	defer j.mu.Unlock()
 	now := time.Now().UTC()
 	j.State = state
+	j.recordStateActivityLocked(state, now)
 	j.StopReason = stopReason
 	j.Error = errMsg
 	if state != StateRunning && state != StateStarting {
@@ -369,6 +378,9 @@ func (j *jobState) beginTurnLocked(completion CompletionMode, stored storage.Tur
 		stored.StartedAt = now
 	}
 	j.State = StateRunning
+	j.Activity = sessionevents.ACPActivity{Phase: "starting", At: now, TurnStartedAt: stored.StartedAt}
+	j.activityPublished = sessionevents.ACPActivity{}
+	j.ToolProgress = nil
 	j.Assistant = ""
 	j.Thought = ""
 	j.assistantText.Reset()

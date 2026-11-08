@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
-import { botChat, dragSections, placePin, taskStateLabel } from './bots'
+import { botChat, botTaskState, botWorkDescription, dragSections, placePin, taskStateLabel } from './bots'
+import { deriveSessionView } from '@/components/session/sessionView'
+import { deriveBotProgress } from '@/lib/botProgress'
 import { optimisticTranscriptMessages } from './optimisticUserMessage'
 import { mergeEarlierHistory } from './sessionHistory'
 
@@ -116,6 +118,94 @@ describe('bot chat log', () => {
     expect(botChat([user(1, 1, 'hi')], events, self, []).work).toEqual({ doing: "working on Pip's message" })
     expect(botChat([user(1, 1, 'hi')], [...events, woke(5, 'routine', 'Say hi')], self, []).work).toEqual({ doing: 'running Say hi' })
     expect(botChat([user(1, 1, 'hi'), user(2, 6, 'still there?')], events, self, []).work.doing).toBeUndefined()
+  })
+})
+
+describe('bot background task progress', () => {
+  const at = (seq) => `2026-11-08T12:00:${String(seq).padStart(2, '0')}Z`
+  const self = { id: 'bot', name: 'Meshbot' }
+  const taskEvent = (seq, fields) => ({ session_id: 'thread', seq, at: at(seq), type: 'agent_task', agent_task: {
+    id: 'build', name: 'Build firmware', state: 'running', can_stop: true, show_in_transcript: true, ...fields,
+  } })
+  const chat = (events) => botChat([], events, self, [])
+
+  test('spawn, progress, completion replace one task card and end current activity', () => {
+    const spawn = taskEvent(1, { description: 'Starting compiler' })
+    const progress = taskEvent(2, { description: 'Linking firmware', last_tool_name: 'compiler' })
+    const completed = taskEvent(3, { state: 'completed', summary: 'Device image built' })
+    expect(chat([spawn]).entries[0].task.description).toBe('Starting compiler')
+    const running = chat([spawn, progress])
+    expect(running.entries).toHaveLength(1)
+    expect(running.entries[0].task.description).toBe('Linking firmware')
+    expect(running.entries[0].task.last_tool_name).toBe('compiler')
+    expect(botWorkDescription(undefined, running.tasks, [])).toBe('Running: Build firmware')
+    const finished = chat([spawn, progress, completed])
+    expect(finished.entries).toHaveLength(1)
+    expect(finished.entries[0].key).toBe(running.entries[0].key)
+    expect(finished.entries[0].task.summary).toBe('Device image built')
+    expect(botTaskState(finished.tasks[0])).toBe('Completed')
+    expect(botWorkDescription(undefined, finished.tasks, [])).toBeUndefined()
+  })
+
+  test('connection loss is reported without asserting completion and clears on a real reconnect update', () => {
+    const spawn = taskEvent(1, {})
+    const lost = taskEvent(2, { connection_lost: true })
+    expect(botWorkDescription(undefined, chat([spawn, lost]).tasks, [])).toBe('Connection lost: Build firmware')
+    const reconnect = taskEvent(3, { connection_lost: false, description: 'Compiler resumed' })
+    expect(botWorkDescription(undefined, chat([lost, reconnect]).tasks, [])).toBe('Running: Build firmware')
+    expect(chat([lost, reconnect]).entries[0].task.description).toBe('Compiler resumed')
+  })
+
+  test('failed, stopped and cancelled tasks stay as history, never current work', () => {
+    for (const state of ['failed', 'stopped', 'cancelled']) {
+      const result = chat([taskEvent(1, {}), taskEvent(2, { state, summary: 'Task ended' })])
+      expect(result.entries[0].task.state).toBe(state)
+      expect(botWorkDescription(undefined, result.tasks, [])).toBeUndefined()
+    }
+  })
+
+  test('out-of-order projected snapshots cannot resurrect a completed task', () => {
+    const completed = taskEvent(3, { state: 'completed' })
+    const stale = { ...taskEvent(2, {}), at: completed.at }
+    const result = chat([completed, stale])
+    expect(result.entries[0].task.state).toBe('completed')
+    expect(botWorkDescription(undefined, result.tasks, [])).toBeUndefined()
+  })
+
+  test('private tasks never enter the bot chat or current status', () => {
+    const result = chat([taskEvent(1, { show_in_transcript: false, description: 'Private task' })])
+    expect(result.entries).toEqual([])
+    expect(result.tasks).toEqual([])
+  })
+
+  test('parent ACP command, background work and active children remain visible together', () => {
+    const result = chat([taskEvent(1, {}), taskEvent(2, { id: 'old', name: 'Old task', state: 'completed' })])
+    const parent = deriveBotProgress({ running: true, now: Date.parse(at(4)), toolCalls: [
+      { id: 'current', kind: 'execute', status: 'in_progress', updated_at: at(4), raw_input: { command: 'git status' } },
+    ] })
+    const threads = [
+      { id: 'child', title: 'Inspect radio', state: 'running' },
+      { id: 'ended', title: 'Old worker', state: 'finished' },
+    ]
+    const description = botWorkDescription(parent, result.tasks, threads)
+    expect(description).toBe('Running a command · terminal · › git · no new event for 0s · Running: Build firmware · Thread: Inspect radio')
+    expect(description).not.toContain('Old')
+  })
+
+  test('concrete task or child activity replaces an unknown parent status', () => {
+    const parent = deriveBotProgress({ running: true, now: 1000 })
+    expect(botWorkDescription(parent, chat([taskEvent(1, {})]).tasks, [])).toBe('Running: Build firmware')
+    expect(botWorkDescription(parent, [], [{ id: 'child', title: 'Inspect radio', state: 'running' }])).toBe('Thread: Inspect radio')
+    expect(botWorkDescription(parent, [], [{ id: 'archived', title: 'Old worker', state: 'running', archived: true }])).toBe('Waiting for activity details')
+    expect(botWorkDescription(parent, [], [])).toBe('Waiting for activity details')
+  })
+
+  test('agent_task survives the session view bridge even though it is excluded from transcript display', () => {
+    const events = [taskEvent(1, { description: 'Downloading compiler' })]
+    const view = deriveSessionView({ session: { id: 'thread', runtime: 'acp', status: 'running', updated_at: at(1) }, messages: [], events }, [])
+    expect(view.displayEvents).toEqual([])
+    const result = botChat([], [...view.displayEvents, ...view.transcriptEvents.filter((event) => event.type === 'agent_task')], self, [])
+    expect(result.entries[0].task.description).toBe('Downloading compiler')
   })
 })
 

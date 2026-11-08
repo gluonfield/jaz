@@ -19,6 +19,7 @@ func TestABotThinksOnlyWhileItsAgentReasons(t *testing.T) {
 	hold := filepath.Join(root, "thinking")
 	env := failingProvider(root)
 	env["JAZ_FAKE_ACP_THINK_HOLD"] = hold
+	env["JAZ_FAKE_ACP_EMIT_HELD_THOUGHT"] = "1"
 	jaz := startJaz(t, testContext(t), store, root, env)
 	bot := jaz.newBot("Gimli")
 	thinking := func() bool {

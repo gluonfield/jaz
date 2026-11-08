@@ -42,18 +42,20 @@ type messagesResponse struct {
 }
 
 type acpStateResponse struct {
-	ACPState           string                        `json:"acp_state"`
-	ACPAssistant       string                        `json:"acp_assistant"`
-	ACPThought         string                        `json:"acp_thought"`
-	ACPModes           acp.ModeState                 `json:"acp_modes"`
-	ACPPlan            []sessionevents.PlanEntry     `json:"acp_plan"`
-	ACPToolCalls       []sessionevents.ACPToolCall   `json:"acp_tool_calls"`
-	ACPPermissions     []sessionevents.ACPPermission `json:"acp_permissions"`
-	ACPError           string                        `json:"acp_error"`
-	ACPGoalRequested   bool                          `json:"acp_goal_requested"`
-	ACPActiveOperation string                        `json:"acp_active_operation"`
-	ACPLastEventAt     time.Time                     `json:"acp_last_event_at"`
-	ACPLastToolAt      time.Time                     `json:"acp_last_tool_at"`
+	ACPActivity        sessionevents.ACPActivity       `json:"acp_activity,omitzero"`
+	ACPState           string                          `json:"acp_state"`
+	ACPAssistant       string                          `json:"acp_assistant"`
+	ACPThought         string                          `json:"acp_thought"`
+	ACPModes           acp.ModeState                   `json:"acp_modes"`
+	ACPPlan            []sessionevents.PlanEntry       `json:"acp_plan"`
+	ACPToolCalls       []sessionevents.ACPToolCall     `json:"acp_tool_calls"`
+	ACPToolProgress    []sessionevents.ACPToolProgress `json:"acp_tool_progress,omitempty"`
+	ACPPermissions     []sessionevents.ACPPermission   `json:"acp_permissions"`
+	ACPError           string                          `json:"acp_error"`
+	ACPGoalRequested   bool                            `json:"acp_goal_requested"`
+	ACPActiveOperation string                          `json:"acp_active_operation"`
+	ACPLastEventAt     time.Time                       `json:"acp_last_event_at"`
+	ACPLastToolAt      time.Time                       `json:"acp_last_tool_at"`
 }
 
 func NewMessagesHandler(service *transcript.Service) *MessagesHandler {
@@ -95,8 +97,8 @@ func (h *MessagesHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func stateResponse(job acp.Job) *acpStateResponse {
 	return &acpStateResponse{
-		ACPState: job.State, ACPAssistant: job.Assistant, ACPThought: job.Thought,
-		ACPModes: job.Modes, ACPPlan: job.Plan, ACPToolCalls: job.ToolCalls,
+		ACPActivity: job.Activity, ACPState: job.State, ACPAssistant: job.Assistant, ACPThought: job.Thought,
+		ACPModes: job.Modes, ACPPlan: job.Plan, ACPToolCalls: job.ToolCalls, ACPToolProgress: job.ToolProgress,
 		ACPPermissions: job.Permissions, ACPError: job.Error, ACPGoalRequested: job.GoalRequested,
 		ACPActiveOperation: job.ActiveOperation, ACPLastEventAt: job.LastEventAt, ACPLastToolAt: job.LastToolAt,
 	}

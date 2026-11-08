@@ -625,6 +625,8 @@ export interface SessionMessages {
   acp_modes?: ACPModeState
   acp_plan?: ACPPlanEntry[]
   acp_tool_calls?: ACPToolCall[]
+  acp_tool_progress?: (Pick<ACPToolCall, 'id' | 'kind' | 'status' | 'started_at' | 'updated_at'> & { program?: string })[]
+  acp_activity?: ACPActivity
   acp_permissions?: ACPPermission[]
   acp_error?: string
   acp_goal_requested?: boolean
@@ -645,7 +647,15 @@ export interface ACPToolContent {
   new_text?: string
 }
 
+export interface ACPActivity {
+  phase: 'starting' | 'reasoning' | 'responding' | 'tool' | 'waiting' | 'idle' | 'error'
+  at?: string
+  turn_started_at?: string
+  reason?: 'tool_finished' | 'provider_retry' | 'interrupted' | 'user_input' | 'provider_error'
+}
+
 export interface ACPToolCall {
+  program?: string
   id: string
   title?: string
   status?: string

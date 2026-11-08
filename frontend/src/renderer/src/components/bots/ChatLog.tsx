@@ -9,10 +9,11 @@ import { SystemEventRow } from '@/components/session/SystemEventRow'
 import { useHistoryWindow } from '@/components/session/useHistoryWindow'
 import type { HistoryPaging } from '@/lib/hooks/useSessionHistory'
 import type { Bot, BotAvatar as Avatar } from '@/lib/api/types'
-import { botInk, botTarget, type BotWork, type ChatEntry } from '@/lib/bots'
+import { botInk, botTarget, botTaskState, type BotWork, type ChatEntry } from '@/lib/bots'
 import { useReducedEffectsMotion } from '@/lib/effectsMotion'
 import { messageTime } from '@/lib/format/time'
 import { BotAvatar } from './BotAvatar'
+import { BotProgressPanel } from './BotProgressPanel'
 
 const GONE: Avatar = { shape: 'circle', color: 'gray' }
 const QUIET_GAP_MS = 30 * 60_000
@@ -102,6 +103,13 @@ export function ChatLog({
               <ArtifactBlock artifact={entry.event.artifact} onSendPrompt={onSendPrompt} />
             ) : entry.kind === 'question' ? (
               <PermissionCard event={entry.event} resolution={entry.answer} />
+            ) : entry.kind === 'task' ? (
+              <div className="rounded-xl border border-border px-3 py-2 text-sm text-ink-2">
+                <p className="font-medium text-ink">{entry.task.name || 'Фоновая задача'} · {botTaskState(entry.task)}</p>
+                {entry.task.description ? <p className="whitespace-pre-wrap break-words">{entry.task.description}</p> : null}
+                {entry.task.summary && entry.task.summary !== entry.task.description ? <p className="whitespace-pre-wrap break-words">{entry.task.summary}</p> : null}
+                {entry.task.last_tool_name ? <p className="text-xs text-ink-3">Последний инструмент: {entry.task.last_tool_name}</p> : null}
+              </div>
             ) : (
               <div className="flex items-end gap-2.5">
                 {named ? (
@@ -123,15 +131,15 @@ export function ChatLog({
           </div>
         )
       })}
-      {working.map(({ bot, doing = 'working' }) => (
+      {working.map(({ bot, doing = 'working', progress, activities }) => (
         <div key={bot.id} role="status" className="mt-4 flex items-start gap-2 text-sm text-ink-3 first:mt-0">
           <BotAvatar avatar={bot.avatar} size={22} mood="working" live />
           <div className="flex min-w-0 flex-col gap-0.5 pt-px">
-            <p>
-              <span className="live-shimmer">
-                {bot.name} is {doing}…
-              </span>
-            </p>
+            {progress || activities?.length ? (
+              <BotProgressPanel name={bot.name} progress={progress} activities={activities} />
+            ) : (
+              <p><span className="live-shimmer">{bot.name} is {doing}…</span></p>
+            )}
           </div>
         </div>
       ))}

@@ -185,20 +185,31 @@ func TestClaudePlanRequestedStreamsAssistantTextLive(t *testing.T) {
 
 func receiveEvent(t *testing.T, ch <-chan sessionevents.Event) sessionevents.Event {
 	t.Helper()
-	select {
-	case event := <-ch:
-		return event
-	case <-time.After(time.Second):
-		t.Fatal("no event published")
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case event := <-ch:
+			if event.Type != sessionevents.TypeSession {
+				return event
+			}
+		case <-timer.C:
+			t.Fatal("no event published")
+			return sessionevents.Event{}
+		}
 	}
-	return sessionevents.Event{}
 }
 
 func assertNoEvent(t *testing.T, ch <-chan sessionevents.Event) {
 	t.Helper()
-	select {
-	case event := <-ch:
-		t.Fatalf("unexpected event %#v", event)
-	default:
+	for {
+		select {
+		case event := <-ch:
+			if event.Type != sessionevents.TypeSession {
+				t.Fatalf("unexpected event %#v", event)
+			}
+		default:
+			return
+		}
 	}
 }

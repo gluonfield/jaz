@@ -518,6 +518,41 @@ type ACPToolCall struct {
 	UpdatedAt time.Time         `json:"updated_at,omitzero"`
 }
 
+type ACPToolProgress struct {
+	Program   string    `json:"program,omitempty"`
+	ID        string    `json:"id"`
+	Kind      string    `json:"kind,omitempty"`
+	Status    string    `json:"status,omitempty"`
+	StartedAt time.Time `json:"started_at,omitzero"`
+	UpdatedAt time.Time `json:"updated_at,omitzero"`
+}
+
+// ACPActivity exposes only which provider event was observed, never its text.
+type ACPActivityPhase string
+type ACPActivityReason string
+
+const (
+	ActivityStarting      ACPActivityPhase  = "starting"
+	ActivityReasoning     ACPActivityPhase  = "reasoning"
+	ActivityResponding    ACPActivityPhase  = "responding"
+	ActivityTool          ACPActivityPhase  = "tool"
+	ActivityWaiting       ACPActivityPhase  = "waiting"
+	ActivityIdle          ACPActivityPhase  = "idle"
+	ActivityError         ACPActivityPhase  = "error"
+	ActivityToolFinished  ACPActivityReason = "tool_finished"
+	ActivityProviderRetry ACPActivityReason = "provider_retry"
+	ActivityInterrupted   ACPActivityReason = "interrupted"
+	ActivityUserInput     ACPActivityReason = "user_input"
+	ActivityProviderError ACPActivityReason = "provider_error"
+)
+
+type ACPActivity struct {
+	Phase         ACPActivityPhase  `json:"phase"`
+	At            time.Time         `json:"at,omitzero"`
+	TurnStartedAt time.Time         `json:"turn_started_at,omitzero"`
+	Reason        ACPActivityReason `json:"reason,omitempty"`
+}
+
 type ACPToolLocation struct {
 	Path string `json:"path"`
 	Line int    `json:"line,omitempty"`
