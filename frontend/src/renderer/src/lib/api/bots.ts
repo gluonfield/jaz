@@ -11,7 +11,7 @@ export const botsQuery = queryOptions<BotListEntry[]>({
   staleTime: 10_000,
 })
 
-export function createBot(input: { name: string; avatar: BotAvatar }): Promise<Bot> {
+export function createBot(input: { name: string; avatar: BotAvatar; workspaces: string[] }): Promise<Bot> {
   return post<Bot>('/v1/bots', input)
 }
 
@@ -19,7 +19,7 @@ export function createGroup(input: { name: string; members: string[] }): Promise
   return post<Bot>('/v1/bots/groups', input)
 }
 
-export type BotPatch = Partial<Pick<Bot, 'name' | 'avatar' | 'members' | 'agent' | 'model' | 'reasoning_effort'>>
+export type BotPatch = Partial<Pick<Bot, 'name' | 'avatar' | 'members' | 'agent' | 'model' | 'reasoning_effort' | 'workspaces'>>
 
 export function updateBot(id: string, input: BotPatch): Promise<Bot> {
   return patch<Bot>(`/v1/bots/${id}`, input)

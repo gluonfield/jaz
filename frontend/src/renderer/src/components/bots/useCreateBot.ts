@@ -3,13 +3,11 @@ import { useNavigate } from '@tanstack/react-router'
 import { useToast } from '@/components/ui/toast'
 import { createBot, createGroup } from '@/lib/api/bots'
 import type { Bot } from '@/lib/api/types'
-import { randomAvatar } from '@/lib/bots'
 import { keys } from '@/lib/query/keys'
 
-// A bot exists as soon as it is created; it opens with its details showing so
-// the placeholder name gets replaced first.
+// A bot exists as soon as it is created; it opens with its details showing.
 export function useCreateBot() {
-  return useCreate<void>(() => createBot({ name: 'New bot', avatar: randomAvatar() }), 'a bot')
+  return useCreate(createBot, 'a bot')
 }
 
 export function useCreateGroup() {

@@ -747,6 +747,8 @@ export interface Bot {
   id: string
   kind: 'bot' | 'group'
   name: string
+  // Server paths of linked projects; the bot's own home remains separate.
+  workspaces?: string[]
   avatar: BotAvatar
   // The bot's place among the pins, from 1; absent when it is not pinned.
   pinned?: number

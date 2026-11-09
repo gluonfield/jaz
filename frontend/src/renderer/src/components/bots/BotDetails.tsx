@@ -8,6 +8,7 @@ import type { Bot, BotColor, BotFileName } from '@/lib/api/types'
 import { BOT_COLORS, BOT_SHAPES, botMood } from '@/lib/bots'
 import { BotActivity } from '@/components/bots/BotActivity'
 import { BotAgentSettings } from './BotAgentSettings'
+import { BotWorkspaceSettings } from './BotWorkspaceSettings'
 import { BotAvatar } from './BotAvatar'
 import { BotFileEditor } from './BotFileEditor'
 import { BotIdentity } from './BotIdentity'
@@ -34,6 +35,7 @@ export function BotDetails({ bot, focusName, agentSession, working }: { bot: Bot
           autoFocus={focusName}
           className="mt-2 w-full rounded-md px-1 text-center text-[16px] font-semibold hover:bg-list-hover focus:bg-list-hover"
         />
+        <BotWorkspaceSettings bot={bot} />
       </header>
       <div
         role="tablist"

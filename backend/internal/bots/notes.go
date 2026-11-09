@@ -56,12 +56,26 @@ func (s shown) held(thread storage.Session) map[int64]string {
 // every turn.
 func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string) {
 	return func(thread storage.Session) (string, string) {
+		if thread.SourceType == storage.SourceBotWorker && thread.RuntimeRef != nil {
+			modules, err := WorkerPrompt(store, thread)
+			if err != nil {
+				return fmt.Sprintf("Owner context unavailable: %v\n\n", err), thread.PromptDigest
+			}
+			text := modules.Text()
+			version := digest([]byte(text))
+			note := ""
+			if thread.RuntimeRef.SessionID != "" && thread.PromptDigest != version {
+				note = "Your owner's connected project context changed. Use these current links:\n\n" + text + "\n\n"
+			}
+			return note + workspaceFilesNote(store, thread), version
+		}
 		if thread.SourceType != storage.SourceBot && thread.SourceType != storage.SourceBotMember || thread.RuntimeRef == nil {
 			return "", ""
 		}
 		last := lastShown(thread.PromptDigest)
 		note, identity := identityNote(store, thread, last.Identity)
 		note += changedFilesNote(thread)
+		note += workspaceFilesNote(store, thread)
 		now := shown{Identity: identity, Session: thread.RuntimeRef.SessionID, Context: thread.Usage.ContextTokens}
 		if thread.SourceType == storage.SourceBot {
 			var tasks string
@@ -71,6 +85,41 @@ func TurnNote(store NoteStore) func(storage.Session) (note, promptDigest string)
 		recorded, _ := json.Marshal(now)
 		return note, string(recorded)
 	}
+}
+
+func workspaceFilesNote(store PromptStore, thread storage.Session) string {
+	id := thread.ID
+	if thread.SourceType == storage.SourceBotWorker {
+		id = thread.SourceID
+	}
+	if thread.SourceType == storage.SourceBotMember {
+		member, err := store.LoadMembershipByThread(thread.ID)
+		if err != nil {
+			return ""
+		}
+		id = member.BotID
+	}
+	record, err := store.LoadBot(id)
+	if err != nil {
+		return ""
+	}
+	since := thread.CompletedTurnStartedAt
+	if since.IsZero() {
+		since = thread.CreatedAt
+	}
+	var b strings.Builder
+	for _, workspace := range record.Workspaces {
+		for _, name := range []string{"AGENTS.md", "SOUL.md", "MEMORY.md"} {
+			path := filepath.Join(workspace, name)
+			if info, err := os.Stat(path); err == nil && info.ModTime().After(since) {
+				fmt.Fprintf(&b, "Project context file %q changed; read it before working on that project.\n", path)
+			}
+		}
+	}
+	if b.Len() == 0 {
+		return ""
+	}
+	return b.String() + "\n"
 }
 
 // SteerNote opens a message steering a turn in a bot's own thread with the

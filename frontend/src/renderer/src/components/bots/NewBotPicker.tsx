@@ -8,7 +8,7 @@ import type { Bot } from '@/lib/api/types'
 import { botAvatars } from '@/lib/bots'
 import { BotIcon } from './BotAvatar'
 import { NewGroupDialog } from './NewGroupDialog'
-import { useCreateBot } from './useCreateBot'
+import { NewBotDialog } from './NewBotDialog'
 
 type Row = { key: string; label: string; icon: ReactNode; run: () => void }
 
@@ -17,11 +17,11 @@ export function NewBotPicker({ bots }: { bots: Bot[] }) {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const [grouping, setGrouping] = useState(false)
+  const [creating, setCreating] = useState(false)
   const navigate = useNavigate()
-  const create = useCreateBot()
   const needle = query.trim().toLowerCase()
   const rows: Row[] = [
-    { key: 'bot', label: 'New bot', icon: <Plus size={15} />, run: () => create.mutate() },
+    { key: 'bot', label: 'New bot', icon: <Plus size={15} />, run: () => setCreating(true) },
     { key: 'group', label: 'New group chat', icon: <Users size={15} />, run: () => setGrouping(true) },
     ...bots
       .filter((bot) => bot.name.toLowerCase().includes(needle))
@@ -108,6 +108,7 @@ export function NewBotPicker({ bots }: { bots: Bot[] }) {
         </div>
       </Popover>
       <NewGroupDialog open={grouping} bots={bots} onClose={() => setGrouping(false)} />
+      <NewBotDialog open={creating} onClose={() => setCreating(false)} />
     </>
   )
 }

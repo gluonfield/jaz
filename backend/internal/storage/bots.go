@@ -11,14 +11,15 @@ var ErrBotNotFound = errors.New("bot not found")
 // and history; the record holds the prompt, avatar, pin position (1-based,
 // 0 unpinned), group members and whether it is the user's main bot.
 type BotRecord struct {
-	ThreadID string
-	Kind     string
-	Prompt   string
-	Shape    string
-	Color    string
-	Pinned   int
-	Members  []string
-	Main     bool
+	ThreadID   string
+	Kind       string
+	Prompt     string
+	Workspaces []string
+	Shape      string
+	Color      string
+	Pinned     int
+	Members    []string
+	Main       bool
 }
 
 // ErrMainBot refuses archiving the user's main bot, which stays.

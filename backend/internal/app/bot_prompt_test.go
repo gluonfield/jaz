@@ -93,8 +93,13 @@ func TestBotDelegationPromptsAndIdentityRefresh(t *testing.T) {
 					}
 				}
 				if thread.SourceType != storage.SourceBot && thread.SourceType != storage.SourceBotMember {
-					if len(modules) != 0 || note != "" || version != "" {
-						t.Fatalf("implementation or ordinary thread received bot instructions: %q, %q, %q", modules, note, version)
+					isWorker := thread.SourceType == storage.SourceBotWorker
+					if isWorker {
+						if !strings.Contains(modules.Text(), "read MEMORY.md") || !strings.Contains(note, modules.Text()) || version == "" || strings.Contains(note, "<bot_instructions>") {
+							t.Fatalf("worker must receive owner knowledge without coordinator policy: %q, %q, %q", modules, note, version)
+						}
+					} else if len(modules) != 0 || note != "" || version != "" {
+						t.Fatalf("ordinary thread received bot instructions: %q, %q, %q", modules, note, version)
 					}
 					return
 				}
