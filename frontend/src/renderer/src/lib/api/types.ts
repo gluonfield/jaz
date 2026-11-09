@@ -747,6 +747,7 @@ export interface Bot {
   id: string
   kind: 'bot' | 'group'
   name: string
+  prompt?: string
   // Server paths of linked projects; the bot's own home remains separate.
   workspaces?: string[]
   avatar: BotAvatar
