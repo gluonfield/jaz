@@ -27,7 +27,7 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
     settings,
     agent,
     model,
-    reasoningEffort: live('thought_level') || bot.reasoning_effort || runtime.defaultEffort,
+    reasoningEffort: bot.reasoning_effort || live('thought_level') || runtime.defaultEffort,
     usesProvider: runtime.usesProvider,
     provider: runtime.provider,
     selectedProvider: runtime.selectedProvider,
@@ -75,8 +75,8 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
               value={reasoning.effectiveReasoningEffort}
               options={agent === 'opencode' ? reasoning.reasoningOptions : pickerEffortOptions(reasoning.reasoningOptions)}
               status={agent === 'opencode' ? reasoning.reasoningStatus : undefined}
-              disabled={disabled || reasoning.modelsLoading}
-              onChange={(reasoning_effort) => update.mutate({ model, reasoning_effort })}
+              disabled={disabled}
+              onChange={(reasoning_effort) => update.mutate({ model: bot.model || model, reasoning_effort })}
             />
           </div>
         </Row>
