@@ -1,12 +1,12 @@
 import { expect, test } from 'bun:test'
 import * as Bun from 'bun'
 import { access, copyFile, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { build } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
+import { electron } from '../../scripts/test-electron.mjs'
 
 const frontend = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -54,14 +54,19 @@ test('hidden desktop restart paints progress, stays responsive and recovers thro
     },
   })
   await writeFile(join(output, 'index.html'), '<!doctype html><link rel="stylesheet" href="style.css"><div id="root"></div><script type="module" src="renderer.js"></script>')
-  const electron = createRequire(import.meta.url)('electron')
   await copyFile(join(frontend, 'scripts/updater-smoke/bootstrap.mjs'), join(output, 'bootstrap.mjs'))
   await symlink(join(frontend, 'node_modules'), join(output, 'node_modules'), 'dir')
   await access(join(output, 'main.js'))
   await access(join(output, 'index.js'))
   const preflight = spawnSync(electron, ['-e', `require.resolve('electron-updater')`], { cwd: output, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, encoding: 'utf8' })
   expect({ status: preflight.status, error: preflight.stderr }).toEqual({ status: 0, error: '' })
-  const observer = process.platform === 'darwin' ? Bun.spawn(['swift', '-module-cache-path', join(output, 'swift-cache'), join(frontend, 'scripts/updater-smoke/observe.swift'), output], {
+  if (process.platform === 'darwin') {
+    const compilation = spawnSync('swiftc', ['-module-cache-path', join(output, 'swift-cache'), join(frontend, 'scripts/updater-smoke/observe.swift'), '-o', join(output, 'observe')], {
+      env: { ...process.env, TMPDIR: output }, encoding: 'utf8', timeout: 45_000,
+    })
+    expect({ status: compilation.status, error: compilation.status ? compilation.stderr : '' }).toEqual({ status: 0, error: '' })
+  }
+  const observer = process.platform === 'darwin' ? Bun.spawn([join(output, 'observe'), output], {
     env: { ...process.env, TMPDIR: output },
     stdout: 'pipe',
     stderr: 'pipe',

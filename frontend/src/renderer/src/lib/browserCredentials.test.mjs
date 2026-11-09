@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test'
 import { build, resolveSync, spawn } from 'bun'
 import { copyFile, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { electron } from '../../../../scripts/test-electron.mjs'
 
 const frontend = fileURLToPath(new URL('../../../../', import.meta.url))
 
@@ -33,7 +33,7 @@ test('real browser storage encrypts and restores credentials without gating appr
   expect(result.success).toBe(true)
   await writeFile(join(output, 'renderer.js'), await result.outputs[0].text())
   await copyFile(join(frontend, 'scripts/browser-credentials-smoke.mjs'), join(output, 'main.mjs'))
-  const child = spawn([createRequire(import.meta.url)('electron'), join(output, 'main.mjs')], {
+  const child = spawn([electron, join(output, 'main.mjs')], {
     env: { ...process.env, JAZ_BROWSER_CREDENTIAL_TEST_DIR: output, TMPDIR: output },
     stdout: 'pipe',
     stderr: 'pipe',
