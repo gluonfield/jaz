@@ -103,7 +103,12 @@ describe('deriveBotProgress', () => {
     })
     expect(p?.detail).toBe('terminal')
   })
-  test.each(['pending', undefined, 'completed', 'failed', 'cancelled'])('does not call a tool active for status %s', (status) => {
+  test('shows a pending tool as active until it completes', () => {
+    const p = deriveBotProgress({ running: true, now: 1000, toolCalls: [{ id: '1', kind: 'execute', status: 'pending' }] })
+    expect(p?.kind).toBe('running_command')
+    expect(p?.detail).toBe('terminal')
+  })
+  test.each([undefined, 'completed', 'failed', 'cancelled'])('does not call a tool active for status %s', (status) => {
     const p = deriveBotProgress({ running: true, now: 1000, toolCalls: [{ id: '1', kind: 'execute', status }] })
     expect(p?.kind).toBe('waiting')
     expect(p?.detail).toBe('Last action: · terminal')

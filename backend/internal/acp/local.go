@@ -379,11 +379,7 @@ func (m *Manager) updateLocalTool(job *jobState, next sessionevents.ACPToolCall)
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.LastToolAt = now
-	if current.Status == "in_progress" || current.Status == "running" {
-		job.recordActivityLocked("tool", "", now)
-	} else {
-		job.recordActivityLocked("waiting", "tool_finished", now)
-	}
+	job.recordToolActivityLocked(current.Status, now)
 	job.mu.Unlock()
 	m.publishActivityProgress(job)
 	snapshot := job.eventView()

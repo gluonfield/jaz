@@ -80,6 +80,9 @@ func (m *Manager) applyBackgroundTask(job *jobState, raw json.RawMessage) bool {
 	// while the provider is reporting real async-task progress.
 	job.LastEventAt = time.Now().UTC()
 	job.UpdatedAt = job.LastEventAt
+	if job.Activity.Phase != "" {
+		job.Activity.At = job.LastEventAt
+	}
 	job.mu.Unlock()
 	m.noteBackgroundWork(job, task)
 	m.publishBackgroundTask(job, task)

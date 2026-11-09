@@ -70,7 +70,7 @@ function latestTool(toolCalls: ACPToolCall[] | undefined): ACPToolCall | undefin
 }
 
 function isActiveTool(call: ACPToolCall): boolean {
-  return call.status === 'in_progress' || call.status === 'running'
+  return call.status === 'pending' || call.status === 'in_progress' || call.status === 'running'
 }
 
 function categoryOf(call: ACPToolCall | undefined): BotProgressKind {

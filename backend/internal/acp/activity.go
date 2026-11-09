@@ -1,8 +1,9 @@
 package acp
 
 import (
-	"github.com/wins/jaz/backend/internal/sessionevents"
 	"time"
+
+	"github.com/wins/jaz/backend/internal/sessionevents"
 )
 
 func (j *jobState) recordActivityLocked(phase sessionevents.ACPActivityPhase, reason sessionevents.ACPActivityReason, at time.Time) {
@@ -40,5 +41,14 @@ func (j *jobState) recordStateActivityLocked(state string, now time.Time) {
 		j.recordActivityLocked("error", "provider_error", now)
 	case StateInterrupted:
 		j.recordActivityLocked("waiting", "interrupted", now)
+	}
+}
+
+func (j *jobState) recordToolActivityLocked(status string, now time.Time) {
+	switch status {
+	case "pending", "in_progress", "running":
+		j.recordActivityLocked("tool", "", now)
+	case "completed", "failed", "cancelled":
+		j.recordActivityLocked("waiting", "tool_finished", now)
 	}
 }

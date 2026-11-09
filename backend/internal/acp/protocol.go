@@ -239,11 +239,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 	case messageChunk != "" && warning == nil:
 		job.recordActivityLocked("responding", "", now)
 	case toolEvent != nil:
-		if toolEvent.Status == "in_progress" || toolEvent.Status == "running" {
-			job.recordActivityLocked("tool", "", now)
-		} else {
-			job.recordActivityLocked("waiting", "tool_finished", now)
-		}
+		job.recordToolActivityLocked(toolEvent.Status, now)
 	}
 	job.UpdatedAt = now
 	job.LastEventAt = now
