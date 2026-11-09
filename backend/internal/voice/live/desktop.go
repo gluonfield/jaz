@@ -38,6 +38,13 @@ func NewDesktopRelay() *DesktopRelay {
 }
 
 func (r *DesktopRelay) Connect(ctx context.Context, ws *websocket.Conn) {
+	r.mu.Lock()
+	if r.host != nil {
+		r.mu.Unlock()
+		_ = ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Another Jaz Desktop already provides Claude voice. Disconnect it before taking over."), time.Now().Add(5*time.Second))
+		_ = ws.Close()
+		return
+	}
 	host := &voiceHost{calls: map[string]*DesktopCall{}}
 	host.conn = desktopbridge.New(ws, 512*1024, func(message desktopbridge.Message) {
 		if message.Method != "Claude.voiceEvent" {
@@ -66,12 +73,6 @@ func (r *DesktopRelay) Connect(ctx context.Context, ws *websocket.Conn) {
 			}
 		}
 	})
-	r.mu.Lock()
-	if r.host != nil {
-		r.mu.Unlock()
-		_ = host.conn.Close()
-		return
-	}
 	r.host = host
 	r.mu.Unlock()
 	defer func() {

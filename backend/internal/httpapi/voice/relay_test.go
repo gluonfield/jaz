@@ -23,11 +23,12 @@ import (
 )
 
 type relayFixture struct {
-	server  *httptest.Server
-	devices *deviceauth.Service
-	desktop deviceauth.RegisterResult
-	phones  []deviceauth.RegisterResult
-	session string
+	server       *httptest.Server
+	devices      *deviceauth.Service
+	desktop      deviceauth.RegisterResult
+	otherDesktop deviceauth.RegisterResult
+	phones       []deviceauth.RegisterResult
+	session      string
 }
 
 type hostFrame struct {
@@ -67,7 +68,7 @@ func newRelayFixture(t *testing.T) *relayFixture {
 		}
 		return device
 	}
-	fixture := &relayFixture{devices: devices, desktop: register("desktop", 1), phones: []deviceauth.RegisterResult{register("mobile", 2), register("mobile", 3)}}
+	fixture := &relayFixture{devices: devices, desktop: register("desktop", 1), otherDesktop: register("desktop", 4), phones: []deviceauth.RegisterResult{register("mobile", 2), register("mobile", 3)}}
 	session, err := store.CreateSession(storage.CreateSession{Title: "Voice fixture"})
 	if err != nil {
 		t.Fatal(err)
@@ -305,5 +306,63 @@ func TestClaudeRelayDisconnectDuringSetupReleasesOnlyItsCall(t *testing.T) {
 				t.Fatalf("setup cleanup closed another call: %#v", frame)
 			}
 		})
+	}
+}
+
+func TestClaudeRelayKeepsFirstDesktopUntilItDisconnects(t *testing.T) {
+	f := newRelayFixture(t)
+	serveHost := func(host *websocket.Conn, answer string) <-chan hostFrame {
+		commands := make(chan hostFrame, 8)
+		go func() {
+			for {
+				var frame hostFrame
+				if host.ReadJSON(&frame) != nil {
+					return
+				}
+				commands <- frame
+				var result any
+				if frame.Params.Type == "start" {
+					result = answer
+				}
+				_ = host.WriteJSON(map[string]any{"id": frame.ID, "result": result})
+			}
+		}()
+		return commands
+	}
+	startPhone := func() *websocket.Conn {
+		t.Helper()
+		phone := f.dial(t, "/v1/sessions/"+f.session+"/voice/claude", f.phones[0].Token)
+		_ = phone.WriteJSON(map[string]any{"id": "start", "command": map[string]any{"type": "start", "options": map[string]string{"sdp": "v=0\r\noffer", "context": "Raw mobile context"}}})
+		return phone
+	}
+	first := f.dial(t, "/v1/voice/desktop", f.desktop.Token)
+	firstCommands := serveHost(first, "v=0\r\nfirst-desktop")
+	phone := startPhone()
+	waitHost(t, firstCommands, "start")
+	if frame := readPhone(t, phone); string(frame.Value) != `"v=0\r\nfirst-desktop"` {
+		t.Fatalf("first desktop did not own the call: %#v", frame)
+	}
+	second := f.dial(t, "/v1/voice/desktop", f.otherDesktop.Token)
+	_ = second.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err := second.ReadMessage()
+	var rejected *websocket.CloseError
+	if !errors.As(err, &rejected) || rejected.Code != websocket.ClosePolicyViolation || !strings.Contains(rejected.Text, "Another Jaz Desktop") {
+		t.Fatalf("second desktop was not explicitly rejected: %v", err)
+	}
+	_ = phone.WriteJSON(map[string]any{"id": "send", "command": map[string]any{"type": "send", "data": `{"type":"observation"}`}})
+	waitHost(t, firstCommands, "send")
+	if frame := readPhone(t, phone); frame.ID != "send" || frame.Error != "" {
+		t.Fatalf("rejected candidate disturbed the active call: %#v", frame)
+	}
+	first.Close()
+	if frame := readPhone(t, phone); !strings.Contains(frame.Data, "jaz_disconnected") {
+		t.Fatalf("first desktop disconnect did not end its call: %#v", frame)
+	}
+	replacement := f.dial(t, "/v1/voice/desktop", f.otherDesktop.Token)
+	replacementCommands := serveHost(replacement, "v=0\r\nreplacement-desktop")
+	replacementPhone := startPhone()
+	waitHost(t, replacementCommands, "start")
+	if frame := readPhone(t, replacementPhone); string(frame.Value) != `"v=0\r\nreplacement-desktop"` {
+		t.Fatalf("released desktop slot could not be adopted: %#v", frame)
 	}
 }

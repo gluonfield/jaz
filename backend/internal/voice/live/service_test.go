@@ -254,7 +254,17 @@ func TestClaudeVoiceUsesClientAuthenticationAndModelSelection(t *testing.T) {
 	if connection.Provider != ProviderClaude || connection.Model != "" || connection.SDP != "" || !strings.Contains(connection.Instructions, "inspect the supplied drawing") {
 		t.Fatalf("client connection configuration: %#v", connection)
 	}
+	setup, err := service.PrepareClaude("v=0\r\noffer", "Current thread: inspect the supplied drawing.", "")
+	if err != nil || setup.Context != connection.Instructions || setup.Voice != status.Voice {
+		t.Fatalf("mobile and desktop received different Claude policy or voice: %#v %v", setup, err)
+	}
 	if _, err := service.SaveSettings(Settings{Agent: "claude", Provider: ProviderClaude, Voice: "cove"}); !errors.Is(err, ErrInput) {
 		t.Fatalf("Claude accepted an OpenAI voice: %v", err)
+	}
+	if _, err := service.SaveSettings(Settings{Agent: "openai", Provider: ProviderOAuth}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PrepareClaude("v=0\r\noffer", "Raw mobile context", ""); !errors.Is(err, ErrInput) {
+		t.Fatalf("a provider change entered another provider's setup: %v", err)
 	}
 }

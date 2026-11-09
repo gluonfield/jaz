@@ -26,7 +26,7 @@ type ClaudeStatus struct {
 }
 
 func (s *Service) PrepareClaude(sdp, chatContext, sessionID string) (ClaudeStart, error) {
-	status, name, err := s.prepare(sdp, chatContext, sessionID)
+	status, prompt, err := s.prepare(sdp, chatContext, sessionID)
 	if err != nil {
 		return ClaudeStart{}, err
 	}
@@ -35,7 +35,7 @@ func (s *Service) PrepareClaude(sdp, chatContext, sessionID string) (ClaudeStart
 	}
 	return ClaudeStart{
 		SDP:     sdp,
-		Context: fmt.Sprintf(instructions, name) + "\n\n" + chatContext,
+		Context: prompt + "\n\n" + chatContext,
 		Voice:   status.Voice,
 	}, nil
 }
