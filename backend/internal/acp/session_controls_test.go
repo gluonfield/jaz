@@ -457,7 +457,7 @@ func TestOpenCodeReportedModelDoesNotAccumulateProviderPrefixes(t *testing.T) {
 	manager := NewManager(store, Config{}, nil)
 	model := "alpha/first"
 	for range 3 {
-		job := &jobState{Job: Job{ID: session.ID, ACPAgent: AgentOpenCode, ModelProvider: "alpha", Model: model}}
+		job := &jobState{Job: Job{ID: session.ID, ACPAgent: AgentOpenCode, ModelProvider: "alpha"}}
 		raw := json.RawMessage(`{"configOptions":[{"id":"model","category":"model","type":"select","currentValue":"alpha/` + model + `"}]}`)
 		if !manager.applySessionControls(job, raw) {
 			t.Fatal("model update was not handled")
@@ -466,9 +466,9 @@ func TestOpenCodeReportedModelDoesNotAccumulateProviderPrefixes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if job.Model != "alpha/first" || (saved.Model != "" && saved.Model != job.Model) {
+		if job.Model != "alpha/first" || saved.Model != job.Model {
 			t.Fatalf("model changed after ACP report: runtime=%q stored=%q", job.Model, saved.Model)
 		}
-		model = job.Model
+		model = saved.Model
 	}
 }

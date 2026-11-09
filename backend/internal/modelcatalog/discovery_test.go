@@ -37,6 +37,30 @@ func TestDiscoveryUsesStoredRoutingAndKeepsOpaqueIDsWhenSaving(t *testing.T) {
 	if err != nil || saved.ModelsURL != "" || len(saved.Models) != 2 || saved.Models[0] != "markoff/gpt-oss" || saved.Models[1] != "vendor/another/model" {
 		t.Fatalf("saved native IDs changed: %v, %v", saved.Models, err)
 	}
+	next := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" || r.Header.Get("Authorization") != "Bearer private-test-key" {
+			t.Errorf("unexpected reload request: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"next/model"}]}`))
+	}))
+	defer next.Close()
+	if _, err := providerstore.Update(store, record.ID, providerstore.Input{Label: record.Label, BaseURL: next.URL, ModelsURL: saved.ModelsURL}); err != nil {
+		t.Fatal(err)
+	}
+	result, err = discovery.Fetch(t.Context(), DiscoveryInput{ProviderID: record.ID, Save: true})
+	if err != nil || len(result.Models) != 1 || result.Models[0] != "next/model" {
+		t.Fatalf("reload did not follow the new base URL: %+v, %v", result, err)
+	}
+
+	if _, err := providerstore.Update(store, record.ID, providerstore.Input{Label: record.Label, BaseURL: next.URL, ModelsURL: server.URL + "/models", Headers: record.Headers}); err != nil {
+		t.Fatal(err)
+	}
+	result, err = discovery.Fetch(t.Context(), DiscoveryInput{ProviderID: record.ID, Save: true})
+	saved, _, loadErr := providerstore.Get(store, record.ID)
+	if err != nil || loadErr != nil || result.CatalogURL != server.URL+"/models" || saved.ModelsURL != result.CatalogURL {
+		t.Fatalf("explicit catalog override was not preserved: %+v, %v, %v", result, err, loadErr)
+	}
+
 	keyRead := false
 	discovery.LookupKey = func(string) string { keyRead = true; return "private-test-key" }
 	_, err = discovery.Fetch(t.Context(), DiscoveryInput{ProviderID: record.ID, ModelsURL: "https://unconfigured.example/models"})
