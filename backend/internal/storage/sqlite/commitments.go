@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/wins/jaz/backend/internal/storage"
@@ -302,10 +301,9 @@ func (s *Store) withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.
 	for _, row := range prerequisites {
 		dependencies[row.CommitmentID] = append(dependencies[row.CommitmentID], row.PrerequisiteID)
 	}
-	lastActivity := s.threadLastActivity(ctx, q, links)
 	threads := map[int64][]storage.CommitmentThread{}
 	for _, link := range links {
-		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State, LastActivity: lastActivity[link.ThreadID]})
+		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State, LastActivity: msToTime(link.LastActivityMs)})
 	}
 	questions, err := q.ListCommitmentQuestions(ctx, ids)
 	if err != nil {
@@ -340,44 +338,4 @@ func (s *Store) withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.
 		})
 	}
 	return commitments, nil
-}
-
-// threadLastActivity maps each thread to its newest event time, so task
-// views can show how recently a worker actually did anything.
-func (s *Store) threadLastActivity(ctx context.Context, q *botdb.Queries, links []botdb.ListCommitmentThreadsRow) map[string]time.Time {
-	out := map[string]time.Time{}
-	ids := make([]string, 0, len(links))
-	seen := map[string]bool{}
-	for _, link := range links {
-		if !seen[link.ThreadID] {
-			seen[link.ThreadID] = true
-			ids = append(ids, link.ThreadID)
-		}
-	}
-	if len(ids) == 0 {
-		return out
-	}
-	placeholders := make([]string, 0, len(ids))
-	args := make([]any, 0, len(ids))
-	for _, id := range ids {
-		placeholders = append(placeholders, "?")
-		args = append(args, id)
-	}
-	query := "SELECT thread_id, MAX(created_at_ms) FROM session_events WHERE thread_id IN (" + strings.Join(placeholders, ",") + ") GROUP BY thread_id"
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return out
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var threadID string
-		var atMs int64
-		if err := rows.Scan(&threadID, &atMs); err != nil {
-			continue
-		}
-		if atMs > 0 {
-			out[threadID] = time.UnixMilli(atMs)
-		}
-	}
-	return out
 }
