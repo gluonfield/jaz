@@ -1,5 +1,6 @@
 # Engineering Rules
 
+- See [Jaz REST API](docs/api.md) for device enrollment and HTTP requests that manage projects and bots.
 - Use Go 1.26.
 - Keep code and JSON minimal. Each line of code should fight for its existence; every field and line must earn its place.
 - Prefer implementations that reduce total code over ones that add more. Adding lines is a cost to justify; a good fix often deletes code, collapses branches, or moves an invariant to the layer that already owns it.
