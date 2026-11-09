@@ -101,7 +101,7 @@ func (s Discovery) Fetch(ctx context.Context, input DiscoveryInput) (DiscoveryRe
 		_, err := providerstore.Update(s.Store, id, providerstore.Input{
 			Label: record.Label, BaseURL: record.BaseURL, DefaultModel: record.DefaultModel,
 			Capabilities: record.Capabilities, Headers: record.Headers, Icon: record.Icon,
-			Models: result.Models, ModelsURL: result.CatalogURL,
+			Models: result.Models, ModelsURL: record.ModelsURL,
 		})
 		if err != nil {
 			return result, err

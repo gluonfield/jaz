@@ -34,7 +34,7 @@ func TestDiscoveryUsesStoredRoutingAndKeepsOpaqueIDsWhenSaving(t *testing.T) {
 		t.Fatalf("discovery result: %+v, %v", result, err)
 	}
 	saved, _, err := providerstore.Get(store, record.ID)
-	if err != nil || len(saved.Models) != 2 || saved.Models[0] != "markoff/gpt-oss" || saved.Models[1] != "vendor/another/model" {
+	if err != nil || saved.ModelsURL != "" || len(saved.Models) != 2 || saved.Models[0] != "markoff/gpt-oss" || saved.Models[1] != "vendor/another/model" {
 		t.Fatalf("saved native IDs changed: %v, %v", saved.Models, err)
 	}
 	keyRead := false
