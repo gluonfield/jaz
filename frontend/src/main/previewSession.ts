@@ -27,6 +27,13 @@ export function attachPreviewWebviews(host: WebContents, preload: string): void 
 }
 
 export function configureBrowserSessions(chromePreload: string): void {
+  const browserApp = app as typeof app & {
+    isWebAuthnBrowserAuthenticatorAvailable?: () => boolean
+    configureWebAuthn(options: { browserPasskeys: boolean }): void
+  }
+  if (browserApp.isWebAuthnBrowserAuthenticatorAvailable?.()) {
+    browserApp.configureWebAuthn({ browserPasskeys: true })
+  }
   const appProduct = `${app.getName().replaceAll(' ', '')}/${app.getVersion()}`
   app.userAgentFallback = app.userAgentFallback
     .replace(` ${appProduct}`, '')
