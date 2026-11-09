@@ -90,7 +90,8 @@ document.querySelector('button').addEventListener('click', (event) => {
 </script></body></html>`)
 const electron = process.env.JAZ_ELECTRON_BINARY || createRequire(import.meta.url)('electron') as string
 console.log(`Browser smoke artifacts: ${output}`)
-const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './internal/browsercontrol', './internal/acp', '-p=1', '-run=TestDesktopElectron|TestBotListElectron', '-count=1', '-v'], {
+const tests = process.argv.includes('--browser-close') ? 'TestDesktopElectron' : 'TestDesktopElectron|TestBotListElectron'
+const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './internal/browsercontrol', './internal/acp', '-p=1', `-run=${tests}`, '-count=1', '-v'], {
   cwd: resolve('../backend'),
   env: {
     ...process.env,
@@ -98,7 +99,7 @@ const processHandle = Bun.spawn(['go', 'test', '-tags=browserintegration', './in
     JAZ_ELECTRON_BINARY: electron,
     JAZ_BROWSER_CODEX_BINARY: codex,
     JAZ_BROWSER_SMOKE_TIMEOUT_MS: '180000',
-    JAZ_BROWSER_SMOKE_SUITE: ['browser-identity', 'browser-startup', 'repo-status', 'claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'bot-chat', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images', 'markdown-documents', 'layout'].find(suite => process.argv.includes(`--${suite}`)) || '',
+    JAZ_BROWSER_SMOKE_SUITE: ['browser-close', 'browser-identity', 'browser-startup', 'repo-status', 'claude-voice', 'connection-security', 'browser-visibility', 'chat-history', 'bot-chat', 'appearance', 'welcome', 'bots-live', 'bot-panel', 'model-picker', 'session-config', 'side-panel', 'address-bar', 'linkedin', 'composer', 'app-navigation', 'canvas', 'images', 'markdown-documents', 'layout'].find(suite => process.argv.includes(`--${suite}`)) || '',
   },
   stdout: 'inherit',
   stderr: 'inherit',

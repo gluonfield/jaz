@@ -21,6 +21,7 @@ import {
   type BrowserNavigationDirection,
 } from '../shared/browserNavigation'
 import { PREVIEW_FIND_SHORTCUT_CHANNEL } from '../shared/previewFind'
+import { BROWSER_CLOSE_SHORTCUT_CHANNEL } from '@shared/browserCloseShortcut'
 import { ISLAND_CHANNEL, type IslandAPI, type NotchAccess, type NotificationConfig } from '../shared/notifications'
 import type { UpdateStatus } from '../shared/update'
 import type { DictationAPI, DictationEvent } from '../shared/dictation'
@@ -227,6 +228,11 @@ if (process.argv.includes(CLAUDE_VOICE_ARGUMENT)) {
       }
       ipcRenderer.on(BROWSER_NAVIGATION_CHANNEL, listener)
       return () => ipcRenderer.removeListener(BROWSER_NAVIGATION_CHANNEL, listener)
+    },
+    onBrowserCloseShortcut: (handler: () => void): (() => void) => {
+      const listener = () => handler()
+      ipcRenderer.on(BROWSER_CLOSE_SHORTCUT_CHANNEL, listener)
+      return () => ipcRenderer.removeListener(BROWSER_CLOSE_SHORTCUT_CHANNEL, listener)
     },
     onPreviewFindShortcut: (handler: () => void): (() => void) => {
       const listener = (): void => handler()
