@@ -20,6 +20,7 @@ const deadline = setTimeout(() => {
 async function run() {
   const script = await readFile(join(output, 'renderer.js'))
   stage = 'listen'
+  let approvedChecks = 0
   const server = createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json')
     if (request.url === '/health') return response.end(JSON.stringify({ ok: true, auth_required: true }))
@@ -28,6 +29,7 @@ async function run() {
         response.statusCode = 401
         return response.end(JSON.stringify({ code: 'unauthorized' }))
       }
+      approvedChecks += 1
       return response.end(JSON.stringify({ ok: true, auth_kind: 'device', device_id: 'device' }))
     }
     if (request.url === '/fixture.js') {
@@ -107,6 +109,23 @@ async function run() {
   assert.equal(await evaluate('credentials.loadBrowserCredential(location.origin)'), undefined)
   assert.equal(await evaluate('connection.connectionPreference()'), null)
   assert.equal(await evaluate('Boolean(api.cachedApiAuthToken())'), false)
+  stage = 'save an approved connection'
+  await evaluate(`(async () => {
+    await connection.connectRemote(location.origin + '#key=jaz_fixture')
+    while (connection.connectionPreference()?.remoteUrl !== location.origin) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+  })()`)
+  const checksBeforeReload = approvedChecks
+  stage = 'restore and revalidate the approved connection'
+  await window.loadURL(origin + '/reopen')
+  assert.equal(await evaluate(`(async () => {
+    while (!api.cachedApiAuthToken(location.origin)) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    return api.cachedApiAuthToken(location.origin)
+  })()`), 'jaz_fixture')
+  assert.ok(approvedChecks > checksBeforeReload)
   assert.equal(window.isVisible(), false)
   assert.equal(window.isFocused(), false)
   await writeFile(join(output, 'report.json'), JSON.stringify({ visibleWindows, focusedWindows }))
