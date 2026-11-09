@@ -3,8 +3,9 @@ import { memo, useEffect, useMemo, useState } from 'react'
 import type { ThreadChatView } from '@/components/session/ThreadView'
 import { mcpEntrypointsQuery } from '@/lib/api/mcp'
 import type { Bot, MCPEntrypoint } from '@/lib/api/types'
-import { botChat, botWorkActivities, botWorkDescription, type ChatEntry } from '@/lib/bots'
+import { botChat, botTaskActivities, botWorkDescription, type ChatEntry } from '@/lib/bots'
 import { deriveBotProgress } from '@/lib/botProgress'
+import { threadRunning } from '@/lib/spawnedThreads'
 import { BotStarters } from './BotStarters'
 import { ChatLog } from './ChatLog'
 
@@ -27,9 +28,11 @@ export const BotChat = memo(function BotChat({ bot, bots, newBot, empty, message
     () => (helloAt && !paging.hasEarlier ? [hello(bot, helloAt), ...chat.entries] : chat.entries),
     [helloAt, paging.hasEarlier, bot, chat.entries],
   )
-  const activities = botWorkActivities(chat.tasks, threads)
+  const activities = botTaskActivities(chat.tasks)
+  const workers = threads.filter((thread) => !thread.archived && threadRunning(thread))
   const [now, setNow] = useState(Date.now)
-  const active = working || activities.length > 0
+  const delegated = activities.length > 0 || workers.length > 0
+  const active = working || delegated
   useEffect(() => {
     if (!active) return
     const timer = setInterval(() => setNow(Date.now()), 1000)
@@ -44,8 +47,21 @@ export const BotChat = memo(function BotChat({ bot, bots, newBot, empty, message
       ? progress ?? chat.work.doing ?? 'working'
       : undefined
   const doing = botWorkDescription(parentDoing, chat.tasks, threads)
-  const visibleProgress = (progress?.kind === 'processing' || activity?.phase === 'idle') && activities.length ? undefined : progress
-  const busy = doing ? [{ bot, doing, progress: visibleProgress, activities }] : []
+  const visibleProgress = (progress?.kind === 'processing' || activity?.phase === 'idle') && delegated ? undefined : progress
+  const workerProgress = workers.map((thread) => {
+    const snapshot = thread.workerActivity
+    return {
+      id: thread.id,
+      title: thread.title || thread.slug,
+      message: snapshot?.message_preview,
+      progress: deriveBotProgress({
+        running: true, now, plan: snapshot?.plan,
+        activity: snapshot?.activity ?? (thread.state === 'starting' ? { phase: 'starting' } : undefined),
+        toolCalls: snapshot?.tool_progress, lastEventAt: snapshot?.last_event_at, lastToolAt: snapshot?.last_tool_at,
+      }),
+    }
+  })
+  const busy = doing ? [{ bot, doing, progress: visibleProgress, activities, workers: workerProgress }] : []
   return (
     <>
       <ChatLog entries={entries} bots={bots} named={false} working={busy} onOpenRoutines={showDetails} onSendPrompt={send} scrollRef={scrollRef} paging={paging} revealSeq={revealSeq} />

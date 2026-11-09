@@ -9,7 +9,7 @@ import type {
   SessionOverview,
 } from '@/lib/api/types'
 import { applyProviderToolTitleFallbacks, providerSubagentsFromSources } from '@/lib/providerSubagents'
-import { spawnedThreadsFromSources } from '@/lib/spawnedThreads'
+import { spawnedThreadsFromSources, withBotWorkerSnapshots } from '@/lib/spawnedThreads'
 import {
   approvalPlanSurfaceFromEvent,
   hasProgressSignal,
@@ -210,6 +210,7 @@ export function deriveSessionView(
     acp_last_event_at: acpLastEventAt,
     acp_last_tool_at: acpLastToolAt,
     acp_children: acpChildren,
+    bot_workers: botWorkers,
     acp_child_permissions: acpChildPermissions,
     events: persistedEvents = [],
   } = data
@@ -334,6 +335,7 @@ export function deriveSessionView(
   // What the server said, without the snapshot events this page builds.
   const serverEvents = coalesceSessionEvents([...(overview?.agent_events ?? []), ...persistedEvents, ...liveEvents])
   const agentSession = serverEvents.findLast((event) => event.session_id === session.id && (event.agent_session || event.type === 'agent_switch'))?.agent_session
+  const spawnedThreads = spawnedThreadsFromSources(overview?.threads ?? acpChildren, [...persistedEvents, ...liveEvents])
   return {
     agentSession,
     // The latest own envelope states the predicted next prompt; a turn start clears it.
@@ -356,9 +358,7 @@ export function deriveSessionView(
     planDecisionIsCurrent: !Number.isNaN(planDecisionAt) && planDecisionAt >= latestUserAt,
     panelProgress: panelProgressEvent ? progressSurfaceFromEvent(panelProgressEvent) : undefined,
     providerSubagents: providerSubagentsFromSources(overview?.subagents, settledTranscriptEvents),
-    spawnedThreads: spawnedThreadsFromSources(
-      overview?.threads ?? acpChildren,
-      [...persistedEvents, ...liveEvents],
-    ),
+    spawnedThreads,
+    botThreads: withBotWorkerSnapshots(spawnedThreads, botWorkers),
   }
 }

@@ -1,4 +1,4 @@
-import type { ACPEvent, ACPJobSnapshot, SessionEvent } from '@/lib/api/types'
+import type { ACPEvent, ACPJobSnapshot, BotWorkerSnapshot, SessionEvent } from '@/lib/api/types'
 import { isParentChildACPEvent } from '@/lib/sessionEvents'
 
 type SpawnedThreadSource = Pick<
@@ -6,7 +6,10 @@ type SpawnedThreadSource = Pick<
   'id' | 'slug' | 'title' | 'acp_agent' | 'state' | 'model' | 'reasoning_effort' | 'last_event_at' | 'updated_at'
 > & { archived?: boolean }
 
+type WorkerActivity = Pick<BotWorkerSnapshot, 'activity' | 'message_preview' | 'plan' | 'tool_progress' | 'last_event_at' | 'last_tool_at'>
+
 export interface SpawnedThreadView {
+  workerActivity?: WorkerActivity
   key: string
   id: string
   slug: string
@@ -39,6 +42,22 @@ export function spawnedThreadsFromSources(
     if (active) return active
     return eventTime(b.updated_at) - eventTime(a.updated_at)
   })
+}
+
+export function withBotWorkerSnapshots(threads: SpawnedThreadView[], workers?: BotWorkerSnapshot[]): SpawnedThreadView[] {
+  if (!workers?.length) return threads
+  const byID = new Map(threads.map((thread) => [thread.id, thread]))
+  for (const snapshot of workers) {
+    const previous = byID.get(snapshot.id)
+    const fromSnapshot = threadViewFromSnapshot(snapshot)
+    const thread = previous ? mergeSpawnedThread(fromSnapshot, previous) : fromSnapshot
+    if (threadRunning(thread) && threadRunning(snapshot)) {
+      const { activity, message_preview, plan, tool_progress, last_event_at, last_tool_at } = snapshot
+      thread.workerActivity = { activity, message_preview, plan, tool_progress, last_event_at, last_tool_at }
+    }
+    byID.set(thread.id, thread)
+  }
+  return [...byID.values()]
 }
 
 function threadViewFromSnapshot(child: SpawnedThreadSource): SpawnedThreadView {
@@ -87,7 +106,7 @@ function mergeSpawnedThread(prev: SpawnedThreadView, next: SpawnedThreadView): S
   }
 }
 
-export function threadRunning(thread: SpawnedThreadView): boolean {
+export function threadRunning(thread: Pick<SpawnedThreadView, 'state'>): boolean {
   const state = thread.state.toLowerCase()
   return !state || state === 'running' || state === 'starting'
 }

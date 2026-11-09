@@ -9,8 +9,8 @@ export function ThinkingBlock({ text, pending = false, findActive = false }: {
   pending?: boolean
   findActive?: boolean
 }) {
-  const [open, setOpen] = useState(false)
-  const effectiveOpen = open || findActive
+  const [open, setOpen] = useState<boolean>()
+  const effectiveOpen = (open ?? pending) || findActive
   const trimmed = text.trim()
   if (!trimmed) return null
 
@@ -24,7 +24,7 @@ export function ThinkingBlock({ text, pending = false, findActive = false }: {
           </span>
         )}
         open={effectiveOpen}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!effectiveOpen)}
       />
 
       <Collapse open={effectiveOpen} className="w-full">

@@ -119,7 +119,7 @@ function commandPreview(call: ACPToolCall | undefined): string | undefined {
   return typeof executable === 'string' && PREVIEW_EXECUTABLES.has(executable) ? executable : undefined
 }
 
-export function deriveBotProgress(input: {
+export type AgentProgressInput = {
   running: boolean
   activity?: ACPActivity
   lastEventAt?: string
@@ -127,7 +127,11 @@ export function deriveBotProgress(input: {
   toolCalls?: ACPToolCall[]
   plan?: ACPPlanEntry[]
   now: number
-}): BotProgress | undefined {
+}
+
+export function deriveBotProgress(input: AgentProgressInput & { running: true }): BotProgress
+export function deriveBotProgress(input: AgentProgressInput): BotProgress | undefined
+export function deriveBotProgress(input: AgentProgressInput): BotProgress | undefined {
   if (!input.running && input.activity?.phase !== 'error') return undefined
   const activity = input.activity
   const turnAt = eventTime(activity?.turn_started_at)
@@ -150,7 +154,7 @@ export function deriveBotProgress(input: {
   const toolDescription = [actionPrefix, toolDetail(tool), command ? `› ${command}` : undefined].filter(Boolean).join(' · ') || undefined
   const planStep = activePlanStep(input.plan)
   const detail = [toolDescription, planStep].filter(Boolean).join(' · ') || undefined
-  const at = activity ? Math.max(phaseAt, toolAt) : Math.max(eventTime(input.lastEventAt), eventTime(input.lastToolAt), toolAt)
+  const at = Math.max(phaseAt, eventTime(input.lastEventAt), eventTime(input.lastToolAt), toolAt)
   const ageMs = at ? Math.max(0, input.now - at) : undefined
   const reason = activity?.reason
   const waitReason = reason === 'provider_error' ? 'The agent reported an error'

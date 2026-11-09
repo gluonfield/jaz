@@ -147,7 +147,8 @@ type ChatTurn = {
   activity?: BotActivityEvent
 }
 
-export type BotWork = { doing?: string; progress?: BotProgress; activities?: string[] }
+export type BotWorker = { id: string; title: string; progress: BotProgress; message?: string }
+export type BotWork = { doing?: string; progress?: BotProgress; activities?: string[]; workers?: BotWorker[] }
 
 // A bot's chat, read from its thread in one pass: what people typed, what bots
 // sent with send_message, presented apps, questions with their answers, and
@@ -159,7 +160,7 @@ export function opensBotTurn(event: SessionEvent): boolean {
   return event.room_message?.speaker === 'user' || (!!event.bot_activity && !QUIET_ACTIVITY.has(event.bot_activity.kind))
 }
 
-const QUIET_ACTIVITY = new Set<BotActivityEvent['kind']>(['message_sent', 'file_changed', 'file_edited'])
+const QUIET_ACTIVITY = new Set<BotActivityEvent['kind']>(['message_sent', 'file_changed', 'file_edited', 'group_progress'])
 
 export function botChat(
   messages: ChatMessage[],
@@ -211,7 +212,7 @@ export function botChat(
       if (room.speaker === 'user') entries.push({ kind: 'user', key, at, seq: event.seq, text: room.text, attachments: room.attachments, attachmentSessionId: self.id })
       else entries.push({ kind: 'bot', key, at, seq: event.seq, botId: room.bot_id, name: room.name, text: room.text })
     } else if (activity) {
-      if (activity.kind === 'unreachable') entries.push({ kind: 'activity', key, at, event })
+      if (activity.kind === 'unreachable' || activity.kind === 'group_progress') entries.push({ kind: 'activity', key, at, event })
     } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })
     } else if (event.type === 'artifact' && event.artifact?.presented) {
@@ -254,15 +255,14 @@ export function botTaskState(task: AgentTask): string {
   }
 }
 
-export function botWorkActivities(tasks: AgentTask[], threads: SpawnedThreadView[]): string[] {
-  const background = tasks.filter((task) => task.state === 'running' || task.state === 'paused')
+export function botTaskActivities(tasks: AgentTask[]): string[] {
+  return tasks.filter((task) => task.state === 'running' || task.state === 'paused')
     .map((task) => `${botTaskState(task)}: ${task.name || 'Background task'}`)
-  const children = threads.filter((thread) => !thread.archived && threadRunning(thread)).map((thread) => `Thread: ${thread.title || thread.slug}`)
-  return [...background, ...children]
 }
 
 export function botWorkDescription(parent: BotProgress | string | undefined, tasks: AgentTask[], threads: SpawnedThreadView[]): string | undefined {
-  const delegated = botWorkActivities(tasks, threads)
+  const children = threads.filter((thread) => !thread.archived && threadRunning(thread)).map((thread) => `Thread: ${thread.title || thread.slug}`)
+  const delegated = [...botTaskActivities(tasks), ...children]
   const ownFacts = typeof parent === 'string' || parent?.detail || (parent && parent.kind !== 'processing' && parent.kind !== 'waiting')
   const description = typeof parent === 'string' ? parent : parent && (ownFacts || !delegated.length)
     ? [parent.label, parent.detail, parent.ageMs != null ? `no new event for ${Math.round(parent.ageMs / 1000)}s` : undefined].filter(Boolean).join(' · ')

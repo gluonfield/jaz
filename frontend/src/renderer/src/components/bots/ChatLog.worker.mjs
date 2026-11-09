@@ -84,5 +84,17 @@ await router.load()
 const mentions = renderToStaticMarkup(createElement(QueryClientProvider, { client },
   createElement(RouterProvider, { router }),
 ))
+const groupEntries = botChat([], [
+  { session_id: 'group', type: 'bot_activity', seq: 1, at: '2026-10-06T09:00:00Z',
+    bot_activity: { kind: 'group_progress', label: 'Planner', text: 'The rollback check passed.' } },
+  { session_id: 'group', type: 'acp_thought', seq: 2, at: '2026-10-06T09:00:01Z',
+    acp: { id: 'member', thought: 'Private notes' } },
+], { id: 'group', name: 'Launch' }, []).entries
+const groupProgress = renderToStaticMarkup(createElement(QueryClientProvider, { client },
+  createElement(ChatLog, {
+    entries: groupEntries, bots, named: true, ...history,
+    working: [{ bot: bots[1], progress: { label: 'Running a command', toolDetail: 'terminal · › go' } }],
+  }),
+))
 client.clear()
-globalThis.postMessage({ attachments: html, mentions })
+globalThis.postMessage({ attachments: html, mentions, groupProgress })

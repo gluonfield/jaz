@@ -16,7 +16,7 @@ func TestActivityInvalidationIsSafeAndThrottledWithinPhase(t *testing.T) {
 	manager.Events = sessionevents.New()
 	events := manager.Events.Subscribe(t.Context(), "bot", sessionevents.TypeSession)
 	now := time.Now().UTC()
-	job := &jobState{Job: Job{ID: "bot"}}
+	job := &jobState{Job: Job{ID: "worker", ParentID: "bot", ParentVisible: true}}
 	assertEvent := func() {
 		t.Helper()
 		select {
@@ -31,6 +31,7 @@ func TestActivityInvalidationIsSafeAndThrottledWithinPhase(t *testing.T) {
 	job.recordActivityLocked("reasoning", "", now)
 	manager.publishActivityProgress(job)
 	assertEvent()
+	job.activityPublishedAt = time.Now().Add(-2900 * time.Millisecond)
 	job.recordActivityLocked("reasoning", "", now.Add(time.Millisecond))
 	manager.publishActivityProgress(job)
 	select {
@@ -38,11 +39,8 @@ func TestActivityInvalidationIsSafeAndThrottledWithinPhase(t *testing.T) {
 		t.Fatal("token chunk bypassed activity throttle")
 	default:
 	}
-	job.recordActivityLocked("responding", "", now.Add(2*time.Millisecond))
-	manager.publishActivityProgress(job)
 	assertEvent()
-	job.activityPublishedAt = now.Add(-4 * time.Second)
-	job.recordActivityLocked("responding", "", now.Add(3*time.Millisecond))
+	job.recordActivityLocked("responding", "", now.Add(2*time.Millisecond))
 	manager.publishActivityProgress(job)
 	assertEvent()
 }

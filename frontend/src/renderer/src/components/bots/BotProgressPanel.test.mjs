@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { createElement } from 'react'
+import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterContextProvider } from '@tanstack/react-router'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { BotProgressPanel } from './BotProgressPanel'
 import { deriveBotProgress } from '@/lib/botProgress'
@@ -39,4 +40,28 @@ test('failed activity stays visible after the running flag ends', () => {
   expect(html).toContain('Agent error')
   expect(html).toContain('The agent reported an error')
   expect(html).not.toContain('Waiting for a new agent event')
+})
+
+test('an active worker shows its latest message next to its progress and opens the worker thread', async () => {
+  const root = createRootRoute()
+  const routeTree = root.addChildren([createRoute({ getParentRoute: () => root, path: '/sessions/$sessionId' })])
+  const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: ['/sessions/bot'] }) })
+  await router.load()
+  const progress = deriveBotProgress({
+    running: true,
+    now: 150000,
+    activity: { phase: 'reasoning', at: new Date(1000).toISOString() },
+    lastEventAt: new Date(145000).toISOString(),
+    plan: [{ status: 'in_progress', content: 'Verify rollback' }],
+  })
+  const panel = createElement(BotProgressPanel, {
+    name: 'jaz bot',
+    workers: [{ id: 'child', title: 'Release verification', message: 'The rollback check passed.', progress }],
+  })
+  const html = renderToStaticMarkup(createElement(RouterContextProvider, { router }, panel))
+  expect(html).toContain('href="/sessions/child"')
+  expect(html).toContain('Latest agent message')
+  expect(html).toContain('The rollback check passed.')
+  expect(html).toContain('Plan: Verify rollback')
+  expect(html).toContain('Last event: 5s ago')
 })

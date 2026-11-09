@@ -202,3 +202,32 @@ test('goal clear disarms a running turn without requiring a cancelled status', (
   expect(view.goalActive).toBe(false)
   expect(view.transcriptEvents.find((item) => item.seq === 2).acp.state).toBe('running')
 })
+
+test('worker previews enrich overview threads while keeping child text out of the parent transcript', () => {
+  const worker = { id: 'child', slug: 'worker', acp_agent: 'codex', state: 'running', updated_at: at(4) }
+  const overview = { threads: [], subagents: [] }
+  const parent = {
+    ...data(),
+    bot_workers: [{
+      ...worker, updated_at: at(5), last_event_at: at(5),
+      activity: { phase: 'tool', at: at(5) },
+      message_preview: 'First I will check rollback.',
+      thought: 'private reasoning',
+    }],
+  }
+  const live = event(4, 'acp_message', {
+    content: 'Full worker message',
+    acp: { id: 'child', parent_id: 'thread', state: 'running' },
+  })
+  const view = deriveSessionView(parent, [live], overview)
+  expect(view.botThreads[0].workerActivity).toMatchObject({
+    activity: { phase: 'tool' },
+    message_preview: 'First I will check rollback.',
+    last_event_at: at(5),
+  })
+  expect(view.botThreads[0].workerActivity).not.toHaveProperty('thought')
+  expect(view.displayEvents).toEqual([])
+  expect(view.spawnedThreads).toEqual([])
+  const finished = event(6, 'acp', { acp: { id: 'child', parent_id: 'thread', state: 'idle' } })
+  expect(deriveSessionView(parent, [finished], overview).botThreads[0].workerActivity).toBeUndefined()
+})

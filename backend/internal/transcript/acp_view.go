@@ -3,6 +3,7 @@ package transcript
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -60,6 +61,50 @@ func childSnapshots(parentID string, events []sessionevents.Event, children []st
 	sort.Slice(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
 	sort.Slice(permissions, func(i, j int) bool { return permissions[i].ID < permissions[j].ID })
 	return out, permissions
+}
+
+type BotWorker struct {
+	ID             string                          `json:"id"`
+	Slug           string                          `json:"slug"`
+	Title          string                          `json:"title,omitempty"`
+	ACPAgent       string                          `json:"acp_agent"`
+	State          string                          `json:"state"`
+	UpdatedAt      time.Time                       `json:"updated_at"`
+	LastEventAt    time.Time                       `json:"last_event_at,omitzero"`
+	LastToolAt     time.Time                       `json:"last_tool_at,omitzero"`
+	Activity       sessionevents.ACPActivity       `json:"activity,omitzero"`
+	MessagePreview string                          `json:"message_preview,omitempty"`
+	Plan           []sessionevents.PlanEntry       `json:"plan,omitempty"`
+	ToolProgress   []sessionevents.ACPToolProgress `json:"tool_progress,omitempty"`
+}
+
+func botWorkerSnapshots(workers []storage.TranscriptSession, active map[string]acp.HydrationView) []BotWorker {
+	var out []BotWorker
+	for _, worker := range workers {
+		live := active[worker.ID]
+		state := BotWorker{
+			ID: worker.ID, Slug: worker.Slug, Title: worker.Title, ACPAgent: worker.ACPAgent,
+			State: acp.StateStarting, UpdatedAt: worker.UpdatedAt,
+		}
+		if live.ID != "" {
+			if live.State != acp.StateRunning && live.State != acp.StateStarting {
+				continue
+			}
+			state.State = live.State
+			state.Activity = live.Activity
+			state.LastEventAt, state.LastToolAt = live.LastEventAt, live.LastToolAt
+			state.ToolProgress = live.ToolProgress
+			state.MessagePreview = live.MessagePreview
+			for _, step := range live.Plan {
+				if step.Status == "in_progress" {
+					state.Plan = []sessionevents.PlanEntry{step}
+					break
+				}
+			}
+		}
+		out = append(out, state)
+	}
+	return out
 }
 
 func jobFromSession(session storage.Session) acp.Job {

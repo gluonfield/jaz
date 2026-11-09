@@ -136,7 +136,7 @@ test('the production transcript gives each agent action its own row between regu
   expect(html).not.toContain('Used tools')
 })
 
-test('the live production transcript separates collapsed thoughts from visible commentary and tools', () => {
+test('the live production transcript opens current reasoning while keeping earlier work and commentary separate', () => {
   const at = (seconds) => new Date(seconds * 1000).toISOString()
   const acp = (id, fields) => ({
     session_id: 'thread',
@@ -186,7 +186,7 @@ test('the live production transcript separates collapsed thoughts from visible c
   expect(ordered).toEqual([...ordered].sort((a, b) => a - b))
   expect(html).not.toContain('Read contract')
   expect(html).not.toContain('reasoning-one')
-  expect(html).not.toContain('reasoning-two')
+  expect(html).toContain('reasoning-two')
   expect(html.match(/live-shimmer/g)).toHaveLength(1)
   expect(html).not.toContain('Thought process')
 })
@@ -400,4 +400,18 @@ test('cancelled and older answered events remain distinguishable from skipped an
   expect(old).toContain('Answered')
   expect(old).not.toContain('Skipped')
   expect(old).not.toContain('<input')
+})
+
+test('a running shell command shows its command and output without enabling inline shell history', () => {
+  const render = (status) => renderToStaticMarkup(createElement(ActivityBlock, {
+    active: true,
+    entries: [tool({
+      id: 'running-command', kind: 'execute', status,
+      raw_input: { command: 'go test ./internal/bots', description: 'Run backend tests' },
+      runtime: { terminal_output: 'Running backend tests' },
+    })],
+  }))
+  expect(render('in_progress')).toContain('go test ./internal/bots')
+  expect(render('in_progress')).toContain('Running backend tests')
+  expect(render('completed')).not.toContain('go test ./internal/bots')
 })

@@ -2,6 +2,7 @@ import { CircleAlert } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { agentLabel } from '@/lib/agentLabel'
+import { deriveBotProgress, type AgentProgressInput } from '@/lib/botProgress'
 import { formatDuration } from '@/lib/format/time'
 import {
   deriveSessionRunSignal,
@@ -27,6 +28,7 @@ export function SessionLivenessIndicator({
   activeOperation,
   updatedAt,
   lastActivityAt,
+  observedProgress,
 }: {
   agent?: string
   running: boolean
@@ -35,6 +37,7 @@ export function SessionLivenessIndicator({
   activeOperation?: string
   updatedAt: string
   lastActivityAt?: string
+  observedProgress?: Omit<AgentProgressInput, 'now' | 'running'>
 }) {
   const [, setTick] = useState(0)
   const { signal, ageMs } = deriveSessionRunSignal({
@@ -53,7 +56,11 @@ export function SessionLivenessIndicator({
   const stale = signal === 'stale'
   const alert = stale || Boolean(retrying)
   const detail = detailFor(signal, ageMs, Boolean(retrying))
-  const label = retrying || livenessLabel(agent, activeOperation, stale, activity)
+  const progress = observedProgress && observedProgress.activity?.phase !== 'idle'
+    ? deriveBotProgress({ ...observedProgress, running, now: Date.now() })
+    : undefined
+  const label = retrying || (!stale && activeOperation !== 'compact' && progress?.kind !== 'processing' && progress?.label) ||
+    livenessLabel(agent, activeOperation, stale, activity)
 
   return (
     <AnimatePresence initial={false}>

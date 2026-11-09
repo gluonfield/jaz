@@ -408,6 +408,8 @@ func (fakeThreads) AwaitsAnswer(string) bool {
 	return false
 }
 
+func (fakeThreads) HydrationJobs([]string) map[string]acp.HydrationView { return nil }
+
 func (fakeThreads) Thinking(string) bool {
 	return false
 }
@@ -1039,5 +1041,47 @@ func TestRoutinesFromAGroupThreadBelongToItsBot(t *testing.T) {
 	_, research, _ := newGroup(t, service)
 	if owner, err := service.RoutineOwner(research, loops.CreateLoop{Name: "Watch prices"}); err != nil || owner != "a" {
 		t.Fatalf("owner = %q, %v", owner, err)
+	}
+}
+
+func TestGroupProgressShowsWorkWithoutSendingAnotherTurn(t *testing.T) {
+	world := newFakeWorld()
+	world.addBot("a", "Research")
+	world.addBot("b", "Marketing")
+	service := newTestService(world)
+	group, research, marketing := newGroup(t, service)
+	if err := service.shareGroupProgress(research, "Check the rollback"); err == nil {
+		t.Fatal("an inactive membership sent a progress update")
+	}
+
+	hold := make(chan struct{})
+	world.held[research] = hold
+	t.Cleanup(func() { close(hold) })
+	if err := service.Post(group.ID, "Please check [@Research]", nil); err != nil {
+		t.Fatal(err)
+	}
+	waitUntil(t, func() bool { return world.running(research) })
+	if err := service.shareGroupProgress(research, "The rollback check passed."); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := service.Load(group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(loaded.Working, []string{"a"}) || loaded.GroupProgress["a"].Activity.Phase != sessionevents.ActivityStarting {
+		t.Fatalf("group work = %#v, %#v", loaded.Working, loaded.GroupProgress)
+	}
+	if messages := world.roomMessages(group.ID); len(messages) != 1 {
+		t.Fatalf("progress entered member conversation: %v", messages)
+	}
+	events, err := world.LoadSessionEvents(group.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(events, func(event sessionevents.Event) bool {
+		return event.BotActivity != nil && event.BotActivity.Kind == "group_progress" &&
+			event.BotActivity.Label == "Research" && event.BotActivity.Text == "The rollback check passed."
+	}) || world.promptCount(marketing) != 0 {
+		t.Fatalf("group progress = %#v; Marketing prompts = %d", events, world.promptCount(marketing))
 	}
 }

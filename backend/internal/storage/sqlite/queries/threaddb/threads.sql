@@ -67,13 +67,21 @@ SELECT
     AND archived = 0
     AND runtime = 'acp'
     AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
-  ) AS INTEGER) AS direct_child
+  ) AS INTEGER) AS direct_child,
+  CAST((
+    COALESCE(parent_id, '') = sqlc.arg(parent_id)
+    AND archived = 0
+    AND runtime = 'acp'
+    AND COALESCE(source_type, '') = 'bot_worker'
+    AND COALESCE(source_id, '') = parent_id
+    AND status = 'running'
+  ) AS INTEGER) AS active_bot_worker
 FROM threads
 WHERE (
     parent_id = sqlc.arg(parent_id)
     AND archived = 0
     AND runtime = 'acp'
-    AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
+    AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND (source_id <> parent_id OR status = 'running')))
   )
   OR id IN (sqlc.slice('ids'))
 ORDER BY last_attention_at_ms DESC, id;

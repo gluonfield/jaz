@@ -633,6 +633,7 @@ export interface SessionMessages {
   acp_active_operation?: string
   acp_last_event_at?: string
   acp_last_tool_at?: string
+  bot_workers?: BotWorkerSnapshot[]
   acp_children?: ACPJobSnapshot[]
   acp_child_permissions?: ACPPermission[]
 }
@@ -779,6 +780,11 @@ export interface Bot {
   members?: string[]
   // The members taking a turn in a group.
   working?: string[]
+  group_progress?: Record<string, {
+    activity?: ACPActivity
+    last_event_at?: string
+    tools?: SessionMessages['acp_tool_progress']
+  }>
   // Set while the bot's thread holds a question or plan decision for the
   // person.
   waiting?: boolean
@@ -789,9 +795,8 @@ export interface Bot {
 }
 
 export interface BotActivityEvent {
-  kind: 'routine' | 'message_sent' | 'message_received' | 'group' | 'unreachable' | 'file_changed' | 'file_edited'
+  kind: 'routine' | 'message_sent' | 'message_received' | 'group' | 'unreachable' | 'file_changed' | 'file_edited' | 'group_progress'
   label: string
-  // What a message between bots said.
   text?: string
 }
 
@@ -996,6 +1001,13 @@ export interface ACPEvent {
   suggested_prompt?: string
   last_event_at?: string
   last_tool_at?: string
+}
+
+export interface BotWorkerSnapshot extends Pick<ACPJobSnapshot,
+  'id' | 'slug' | 'title' | 'acp_agent' | 'state' | 'updated_at' | 'last_event_at' | 'last_tool_at' | 'plan'> {
+  activity?: ACPActivity
+  message_preview?: string
+  tool_progress?: SessionMessages['acp_tool_progress']
 }
 
 export interface ACPJobSnapshot {

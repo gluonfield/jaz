@@ -237,6 +237,7 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 	case thoughtChunk != "":
 		job.recordActivityLocked("reasoning", "", now)
 	case messageChunk != "" && warning == nil:
+		job.appendMessagePreviewLocked(messageID, messageChunk)
 		job.recordActivityLocked("responding", "", now)
 	case toolEvent != nil:
 		job.recordToolActivityLocked(toolEvent.Status, now)

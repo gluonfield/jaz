@@ -572,7 +572,7 @@ export function ThreadView({
               >
                 {chat ? (
                   <>
-                    {chat({ empty: empty && !paging.hasEarlier && detail.data.latest_event_seq === 0, messages: transcriptMessages, events: displayEvents, taskEvents: [...(overviewData?.agent_events ?? []), ...transcriptEvents].filter((event) => event.type === 'agent_task'), scrollRef, paging, working: sessionRunning, threads: spawnedThreads, send: handleSend, showDetails, revealSeq: revealedMessageSeq, activity: detail.data?.acp_activity, acpPlan: detail.data?.acp_plan, acpToolCalls: detail.data?.acp_tool_progress ?? detail.data?.acp_tool_calls, lastEventAt: detail.data?.acp_last_event_at, lastToolAt: detail.data?.acp_last_tool_at })}
+                    {chat({ empty: empty && !paging.hasEarlier && detail.data.latest_event_seq === 0, messages: transcriptMessages, events: displayEvents, taskEvents: [...(overviewData?.agent_events ?? []), ...transcriptEvents].filter((event) => event.type === 'agent_task'), scrollRef, paging, working: sessionRunning, threads: derived.botThreads, send: handleSend, showDetails, revealSeq: revealedMessageSeq, activity: detail.data?.acp_activity, acpPlan: detail.data?.acp_plan, acpToolCalls: detail.data?.acp_tool_progress ?? detail.data?.acp_tool_calls, lastEventAt: detail.data?.acp_last_event_at, lastToolAt: detail.data?.acp_last_tool_at })}
                     {errorNotice}
                   </>
                 ) : empty ? (
@@ -605,7 +605,11 @@ export function ThreadView({
                               retrying={retrying}
                               activeOperation={detail.data?.acp_active_operation}
                               updatedAt={session.updated_at}
-                              lastActivityAt={latestEventTimeISO(lastSessionEventAt, live?.at)}
+                              lastActivityAt={latestEventTimeISO(latestEventTimeISO(lastSessionEventAt, live?.at), detail.data.acp_last_event_at)}
+                              observedProgress={{
+                                activity: detail.data.acp_activity,
+                                toolCalls: detail.data.acp_tool_progress ?? detail.data.acp_tool_calls,
+                              }}
                             />
                           </>
                         ) : live ? (

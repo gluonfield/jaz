@@ -124,7 +124,7 @@ export const ActivityBlock = memo(function ActivityBlock({
       rows.push({ kind: 'diff', entry })
       continue
     }
-    if (inlineShell && hasInlineShellCommand(entry.call)) {
+    if (hasInlineShellCommand(entry.call) && (inlineShell || (active && isRunningToolStatus(entry.call.status)))) {
       flushTools()
       rows.push({ kind: 'shell', entry })
       continue

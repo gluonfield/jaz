@@ -67,4 +67,11 @@ func TestContentChunksWithoutMessageIDPersist(t *testing.T) {
 	if got := manager.jobsByID[session.ID].Assistant; got != "hello" {
 		t.Fatalf("assistant = %q, want hello", got)
 	}
+	if got := manager.HydrationJobs([]string{session.ID})[session.ID].MessagePreview; got != "hello" {
+		t.Fatalf("visible message preview = %q, want hello", got)
+	}
+	job.startTurn(CompletionInline, false, false)
+	if got := manager.HydrationJobs([]string{session.ID})[session.ID].MessagePreview; got != "" {
+		t.Fatalf("new turn retained preview %q", got)
+	}
 }

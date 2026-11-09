@@ -43,7 +43,7 @@ func (t *MCPTools) AddBotTo(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "send_message",
 		Title:       "Send a chat message",
-		Description: "Send a text message as yourself. In a group chat turn it posts to the group, when answering a bot it goes to that bot, and otherwise it reaches the user in your chat. App presentation tools can also deliver a visible answer; do not repeat a result the host has already presented.",
+		Description: "Send a text message as yourself. In a group chat turn it posts to the group, when answering a bot it goes to that bot, and otherwise it reaches the user in your chat. In a group turn, progress=true shows a work update to the user without starting other members' turns. App presentation tools can also deliver a visible answer; do not repeat a result the host has already presented.",
 	}, t.Send)
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "bot_task_create",
@@ -106,8 +106,9 @@ func (t *MCPTools) Message(_ context.Context, req *mcp.CallToolRequest, input MC
 }
 
 type MCPSendInput struct {
-	Message string  `json:"message"`
-	Done    []int64 `json:"done,omitempty" jsonschema:"Your task ids whose requested outcomes this message actually delivers; a finished worker alone is not enough. They close as it reaches whoever they are owed to. bot_task_update with status completed also delivers and closes a task."`
+	Message  string  `json:"message"`
+	Progress bool    `json:"progress,omitempty" jsonschema:"In a group turn, show a brief update about your plan or findings to the user without starting another member's turn. Omit done."`
+	Done     []int64 `json:"done,omitempty" jsonschema:"Your task ids whose requested outcomes this message actually delivers; a finished worker alone is not enough. They close as it reaches whoever they are owed to. bot_task_update with status completed also delivers and closes a task."`
 }
 
 type MCPSendOutput struct {
@@ -115,10 +116,16 @@ type MCPSendOutput struct {
 }
 
 func (t *MCPTools) Send(_ context.Context, req *mcp.CallToolRequest, input MCPSendInput) (*mcp.CallToolResult, MCPSendOutput, error) {
-	if err := t.service.Say(mcpsession.SessionID(req), input.Message, input.Done...); err != nil {
-		return nil, MCPSendOutput{}, err
+	threadID := mcpsession.SessionID(req)
+	if input.Progress {
+		if len(input.Done) > 0 {
+			return nil, MCPSendOutput{}, errors.New("a progress update cannot close tasks")
+		}
+		err := t.service.shareGroupProgress(threadID, input.Message)
+		return nil, MCPSendOutput{Sent: err == nil}, err
 	}
-	return nil, MCPSendOutput{Sent: true}, nil
+	err := t.service.Say(threadID, input.Message, input.Done...)
+	return nil, MCPSendOutput{Sent: err == nil}, err
 }
 
 type MCPTaskCreateInput struct {

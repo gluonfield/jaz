@@ -318,6 +318,9 @@ func (s *Store) LoadTranscriptSessions(ctx context.Context, parentID string, ids
 		if row.DirectChild != 0 {
 			related.Children = append(related.Children, session)
 		}
+		if row.ActiveBotWorker != 0 {
+			related.BotWorkers = append(related.BotWorkers, session)
+		}
 		if _, ok := wanted[session.ID]; ok {
 			related.References = append(related.References, session)
 		}

@@ -20,7 +20,19 @@ func (m *Manager) publishActivityProgress(job *jobState) {
 	now := time.Now().UTC()
 	activity, sent := job.Activity, job.activityPublished
 	changed := activity.Phase != sent.Phase || activity.Reason != sent.Reason || !activity.TurnStartedAt.Equal(sent.TurnStartedAt)
-	if activity.Phase == "" || activity.At.Equal(sent.At) || (!changed && now.Sub(job.activityPublishedAt) < 3*time.Second) {
+	if activity.Phase == "" || activity.At.Equal(sent.At) {
+		job.mu.Unlock()
+		return
+	}
+	if delay := 3*time.Second - now.Sub(job.activityPublishedAt); !changed && delay > 0 {
+		if job.activityPublishTimer == nil {
+			job.activityPublishTimer = time.AfterFunc(delay, func() {
+				job.mu.Lock()
+				job.activityPublishTimer = nil
+				job.mu.Unlock()
+				m.publishActivityProgress(job)
+			})
+		}
 		job.mu.Unlock()
 		return
 	}

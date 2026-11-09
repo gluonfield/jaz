@@ -296,6 +296,7 @@ func (m *Manager) applyLocalMessage(job *jobState, chunk string) {
 	job.mu.Lock()
 	now := time.Now().UTC()
 	job.appendAssistantLocked(chunk)
+	job.appendMessagePreviewLocked("", chunk)
 	job.recordActivityLocked("responding", "", now)
 	job.UpdatedAt = now
 	job.LastEventAt = now

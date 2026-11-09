@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/wins/jaz/backend/internal/promptmodule"
 	"github.com/wins/jaz/backend/internal/sessionevents"
@@ -48,6 +49,7 @@ type Job struct {
 }
 
 type HydrationView struct {
+	MessagePreview  string
 	Activity        sessionevents.ACPActivity
 	ID              string
 	Slug            string
@@ -123,6 +125,7 @@ type jobState struct {
 	backgroundWork         bool
 	activityPublished      sessionevents.ACPActivity
 	activityPublishedAt    time.Time
+	activityPublishTimer   *time.Timer
 	steerMethod            steerMethod
 	turn                   *activeTurn
 	finishing              chan struct{}
@@ -134,6 +137,8 @@ type jobState struct {
 	usage                  usageAccumulator
 	turnResultDiscarded    bool
 	systemPromptExtensions promptmodule.Modules
+	messagePreview         string
+	previewMessageID       string
 	assistantText          strings.Builder
 	thoughtText            strings.Builder
 	replyText              strings.Builder
@@ -252,6 +257,7 @@ func (j *jobState) hydrationView() HydrationView {
 
 func (j *jobState) hydrationViewLocked() HydrationView {
 	view := HydrationViewFromJob(j.Job)
+	view.MessagePreview = j.messagePreview
 	view.GoalRequested = j.turn != nil && j.turn.goalRequested && (j.State == StateRunning || j.State == StateStarting)
 	return view
 }
@@ -383,6 +389,8 @@ func (j *jobState) beginTurnLocked(completion CompletionMode, stored storage.Tur
 	j.ToolProgress = nil
 	j.Assistant = ""
 	j.Thought = ""
+	j.messagePreview = ""
+	j.previewMessageID = ""
 	j.assistantText.Reset()
 	j.thoughtText.Reset()
 	j.resultText.Reset()
@@ -440,6 +448,8 @@ func (j *jobState) discardTurnResult() {
 	}
 	j.Assistant = ""
 	j.Thought = ""
+	j.messagePreview = ""
+	j.previewMessageID = ""
 	j.Plan = nil
 	j.ToolCalls = nil
 	j.Permissions = nil
@@ -466,6 +476,26 @@ func (j *jobState) appendAssistantLocked(chunk string) {
 	}
 	j.assistantText.WriteString(chunk)
 	j.Assistant = j.assistantText.String()
+}
+
+func (j *jobState) appendMessagePreviewLocked(id, chunk string) {
+	if id != j.previewMessageID || (id == "" && j.Activity.Phase != sessionevents.ActivityResponding) {
+		j.messagePreview = ""
+		j.previewMessageID = id
+	}
+	const limit = 1200
+	if len(j.messagePreview) >= limit {
+		return
+	}
+	text := j.messagePreview + chunk
+	if len(text) > limit {
+		end := limit
+		for !utf8.RuneStart(text[end]) {
+			end--
+		}
+		text = text[:end] + "…"
+	}
+	j.messagePreview = text
 }
 
 // replyLocked adds a chunk of message id to the turn's final reply, which

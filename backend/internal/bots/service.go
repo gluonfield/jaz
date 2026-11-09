@@ -480,7 +480,25 @@ func (s *Service) view(record storage.BotRecord, session storage.Session, held m
 		Preview:     s.preview(session.ID, record.Kind == KindGroup),
 	}
 	if record.Kind == KindGroup {
-		bot.Working, bot.CompletedAt = GroupState(s.store, record)
+		turns, completed := groupTurns(s.store, record)
+		bot.CompletedAt = completed
+		if len(turns) > 0 {
+			ids := make([]string, len(turns))
+			for i, turn := range turns {
+				ids[i] = turn.threadID
+				bot.Working = append(bot.Working, turn.botID)
+			}
+			jobs := s.threads.HydrationJobs(ids)
+			bot.GroupProgress = make(map[string]GroupMemberProgress, len(turns))
+			for _, turn := range turns {
+				job := jobs[turn.threadID]
+				progress := GroupMemberProgress{Activity: sessionevents.ACPActivity{Phase: sessionevents.ActivityStarting}}
+				if job.State == acp.StateRunning || job.State == acp.StateStarting {
+					progress = GroupMemberProgress{Activity: job.Activity, LastEventAt: job.LastEventAt, Tools: job.ToolProgress}
+				}
+				bot.GroupProgress[turn.botID] = progress
+			}
+		}
 		return bot
 	}
 	bot.Waiting = s.threads.AwaitsAnswer(session.ID)
@@ -503,6 +521,19 @@ type GroupStateStore interface {
 
 // GroupState follows the turns its members take in this group.
 func GroupState(store GroupStateStore, group storage.BotRecord) (working []string, completed time.Time) {
+	turns, completed := groupTurns(store, group)
+	for _, turn := range turns {
+		working = append(working, turn.botID)
+	}
+	return working, completed
+}
+
+type groupTurn struct {
+	botID    string
+	threadID string
+}
+
+func groupTurns(store GroupStateStore, group storage.BotRecord) (active []groupTurn, completed time.Time) {
 	for _, member := range group.Members {
 		membership, err := store.LoadMembership(group.ThreadID, member)
 		if err != nil {
@@ -510,14 +541,14 @@ func GroupState(store GroupStateStore, group storage.BotRecord) (working []strin
 		}
 		if thread, err := store.LoadSession(membership.ThreadID); err == nil {
 			if thread.Turn != nil {
-				working = append(working, member)
+				active = append(active, groupTurn{botID: member, threadID: membership.ThreadID})
 			}
 			if thread.CompletedAt.After(completed) {
 				completed = thread.CompletedAt
 			}
 		}
 	}
-	return working, completed
+	return active, completed
 }
 
 // preview is the newest chat message in a bot's or group's thread; a group's

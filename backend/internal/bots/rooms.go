@@ -46,6 +46,34 @@ func (s *Service) Post(groupID, text string, attachmentIDs []string) error {
 	return s.post(record, sessionevents.RoomMessageEvent{Speaker: "user", Name: "You", Text: text, Attachments: attachments}, false)
 }
 
+func (s *Service) shareGroupProgress(threadID, text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" || len(text) > 2000 {
+		return errors.New("a group progress update requires a brief message (up to 2000 bytes)")
+	}
+	membership, err := s.store.LoadMembershipByThread(threadID)
+	if err != nil {
+		return errors.New("progress updates require a group turn")
+	}
+	thread, err := s.store.LoadSession(threadID)
+	if err != nil {
+		return err
+	}
+	if thread.Turn == nil {
+		return errors.New("progress updates require an active group turn")
+	}
+	group, err := s.store.LoadBot(membership.GroupID)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(group.Members, membership.BotID) {
+		return errors.New("the bot is no longer a member of this group")
+	}
+	return Announce(s.store, s.events, group.ThreadID, sessionevents.BotActivityEvent{
+		Kind: "group_progress", Label: s.name(membership.BotID), Text: text,
+	})
+}
+
 // post records a message in a group and hands it to the other members it
 // mentions or, when it mentions none, to every other member, which decides for
 // itself whether to answer. The rest see it with the next post that reaches

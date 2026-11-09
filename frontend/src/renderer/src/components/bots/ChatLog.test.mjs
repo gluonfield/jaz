@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 
-test('bot chat renders saved attachments and resolves bot mentions without linking code or ambiguous names', async () => {
+test('bot chat renders attachments, mentions, and public group activity', async () => {
   const worker = new globalThis.Worker(new globalThis.URL('./ChatLog.worker.mjs', import.meta.url).href)
   try {
     const result = await new Promise((resolve, reject) => {
@@ -23,6 +23,11 @@ test('bot chat renders saved attachments and resolves bot mentions without linki
     expect(result.mentions).toContain('[@Shared name] [@Missing] remain text.')
     expect(result.mentions).toContain('<code>[@Business Opportunist]</code>')
     expect(result.mentions).toContain('<code>[@Business Opportunist](bot:b)</code>')
+    expect(result.groupProgress).toContain('Planner · Progress update')
+    expect(result.groupProgress).toContain('The rollback check passed.')
+    expect(result.groupProgress).toContain('Running a command')
+    expect(result.groupProgress).toContain('terminal · › go')
+    expect(result.groupProgress).not.toContain('Private notes')
   } finally {
     worker.terminate()
   }
