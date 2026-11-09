@@ -1,4 +1,5 @@
 import type { VoiceHost } from '@/lib/voice/host'
+import { voiceProvider } from '@/lib/voice/provider'
 import type { VoiceEvent } from '@/lib/voice/protocol'
 import { OpenAIVoiceSignaling } from '@/lib/voice/openaiSignaling'
 import { ClaudeVoiceSignaling } from '@/lib/voice/claudeSignaling'
@@ -43,7 +44,8 @@ export class VoiceConnection {
     if (this.closed || this.ending) {
       return
     }
-    if (settings.provider === 'claude') {
+    const provider = voiceProvider(settings?.provider)
+    if (provider === 'claude') {
       const provider = settings.providers.find((provider) => provider.id === 'claude')
       if (!provider?.available) {
         throw new Error(provider?.reason ?? 'Sign in to Claude in the Jaz side browser.')
@@ -61,9 +63,9 @@ export class VoiceConnection {
       }
       this.onEvent(event)
     }
-    this.signaling = settings.provider === 'claude'
+    this.signaling = provider === 'claude'
       ? new ClaudeVoiceSignaling(this.peer, event, this.trace, settings.voice, this.host)
-      : new OpenAIVoiceSignaling(this.peer, event, this.trace, this.host)
+      : new OpenAIVoiceSignaling(this.peer, event, this.trace, this.host, provider)
     if (this.closed || this.ending) {
       return
     }

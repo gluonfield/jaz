@@ -1,6 +1,6 @@
 import { BrowserWindow, ipcMain, type WebContents } from 'electron'
 import { join } from 'node:path'
-import { CLAUDE_VOICE_ARGUMENT, CLAUDE_VOICE_CHANNEL, type ClaudeVoiceCommand, type ClaudeVoiceReply } from '@shared/claudeVoice'
+import { CLAUDE_VOICE_ARGUMENT, CLAUDE_VOICE_CHANNEL, parseClaudeVoiceCommand, type ClaudeVoiceCommand, type ClaudeVoiceReply } from '@shared/claudeVoice'
 import { PREVIEW_PARTITION } from '@shared/preview'
 import { trustedWindow } from '@main/permissions'
 
@@ -112,28 +112,9 @@ export class ClaudeVoiceBridge {
 
 export function installClaudeVoice(options?: { origin: string; preload: string }): void {
   const bridges = new Map<number, { bridge: ClaudeVoiceBridge; calls: Set<string>; requests: number }>()
-  ipcMain.handle(CLAUDE_VOICE_CHANNEL, async (event, command: ClaudeVoiceCommand) => {
+  ipcMain.handle(CLAUDE_VOICE_CHANNEL, async (event, input: unknown) => {
     const owner = trustedWindow(event)
-    if (!command || !['status', 'start', 'send', 'result', 'close'].includes(command.type) || JSON.stringify(command).length > 262144) {
-      throw new Error('Invalid Claude voice command.')
-    }
-    if (command.type !== 'status' && (typeof command.id !== 'string' || !/^[a-zA-Z0-9-]{1,128}$/.test(command.id))) {
-      throw new Error('Invalid Claude voice call.')
-    }
-    if (command.type === 'start') {
-      const options = command.options
-      if (!options || typeof options.sdp !== 'string' || !options.sdp.startsWith('v=0') || options.sdp.length > 65536 ||
-        typeof options.context !== 'string' || options.context.length > 131072 ||
-        typeof options.voice !== 'string' || options.voice.length > 128) {
-        throw new Error('Invalid Claude voice connection.')
-      }
-    }
-    if (command.type === 'send' && typeof command.data !== 'string') {
-      throw new Error('Invalid Claude voice message.')
-    }
-    if (command.type === 'result' && (typeof command.toolUseId !== 'string' || typeof command.text !== 'string' || typeof command.isError !== 'boolean')) {
-      throw new Error('Invalid Claude voice result.')
-    }
+    const command = parseClaudeVoiceCommand(input)
     let entry = bridges.get(owner)
     if (command.type !== 'status' && command.type !== 'start' && (!entry || entry.bridge.window.isDestroyed() || !entry.calls.has(command.id))) {
       if (command.type === 'close') {

@@ -1,5 +1,5 @@
 import { connectBrowser } from '@/lib/browserConnection'
-import type { ClaudeVoiceAPI, ClaudeVoiceCommand } from '@shared/claudeVoice'
+import { parseClaudeVoiceCommand, type ClaudeVoiceAPI } from '@shared/claudeVoice'
 
 export function connectClaudeVoiceHost(api: ClaudeVoiceAPI): () => void {
   const calls = new Set<string>()
@@ -19,21 +19,19 @@ export function connectClaudeVoiceHost(api: ClaudeVoiceAPI): () => void {
     if (request.method !== 'Claude.voice' || !request.params) {
       throw new Error('Invalid Claude voice relay request.')
     }
-    const command = request.params as ClaudeVoiceCommand
+    const command = parseClaudeVoiceCommand(request.params)
     emit = send
     if (command.type === 'status') {
       return api.status()
-    }
-    if (typeof command.id !== 'string' || !command.id) {
-      throw new Error('Invalid Claude voice call.')
     }
     if (command.type === 'start') {
       calls.add(command.id)
       try {
         return await api.start(command.id, command.options)
       } catch (error) {
-        calls.delete(command.id)
-        void api.close(command.id).catch(() => {})
+        if (calls.delete(command.id)) {
+          void api.close(command.id).catch(() => {})
+        }
         throw error
       }
     }

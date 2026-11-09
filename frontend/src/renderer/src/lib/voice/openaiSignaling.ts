@@ -1,4 +1,4 @@
-import type { VoiceProvider } from '@/lib/api/liveVoice'
+import { voiceProvider, type VoiceProvider } from '@/lib/voice/provider'
 import type { VoiceHost } from '@/lib/voice/host'
 import { decodeVoiceEvent, voiceContextEvents, type VoiceEvent } from '@/lib/voice/protocol'
 import type { VoiceTrace } from '@/lib/voice/diagnostics'
@@ -13,14 +13,13 @@ type ContextAppend = {
 export class OpenAIVoiceSignaling implements VoiceSignaling {
   private channel: RTCDataChannel
   private abort = new AbortController()
-  private provider?: Exclude<VoiceProvider, 'claude'>
   private appends = new Map<string, ContextAppend[]>()
   private ready = false
   private ending = false
   private closed = false
   private timer?: ReturnType<typeof setTimeout>
 
-  constructor(private peer: RTCPeerConnection, private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace, private host: VoiceHost) {
+  constructor(private peer: RTCPeerConnection, private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace, private host: VoiceHost, private provider: Exclude<VoiceProvider, 'claude'>) {
     this.channel = peer.createDataChannel('oai-events')
     this.channel.onmessage = ({ data }: MessageEvent<string>) => {
       if (this.closed) return
@@ -67,10 +66,9 @@ export class OpenAIVoiceSignaling implements VoiceSignaling {
 
   async start(sessionId: string, sdp: string, context: string): Promise<void> {
     const result = await this.host.connect(sessionId, sdp, context, this.abort.signal)
-    if (result.provider !== 'openai' && result.provider !== 'openai-api-key') {
+    if (voiceProvider(result?.provider) !== this.provider || result.provider === 'claude') {
       throw new Error('Voice provider changed. Start voice again.')
     }
-    this.provider = result.provider
     if (!this.closed) {
       await this.peer.setRemoteDescription({ type: 'answer', sdp: voiceAnswerSDP(result.sdp) })
     }
@@ -78,7 +76,7 @@ export class OpenAIVoiceSignaling implements VoiceSignaling {
 
   append(text: string, speak = false, delegationId?: string, sourceSeq?: number) {
     if (this.ending || this.closed) return
-    if (!this.ready || !this.provider || this.channel.readyState !== 'open') {
+    if (!this.ready || this.channel.readyState !== 'open') {
       this.trace('context_failed', { request_id: delegationId, source_seq: sourceSeq })
       this.fail('Voice could not receive the agent result. It remains available in the chat.')
       return

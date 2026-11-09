@@ -28,7 +28,7 @@ afterEach(async () => {
   originals.clear()
 })
 
-function fixture(provider, nativeSink = true, answer = 'v=0\r\nanswer') {
+function fixture(provider, nativeSink = true, answer = 'v=0\r\nanswer', { settingsProvider = provider, responseProvider = provider } = {}) {
   const states = []
   const transcripts = []
   const batches = []
@@ -81,10 +81,10 @@ function fixture(provider, nativeSink = true, answer = 'v=0\r\nanswer') {
     close() {}
   })
   const host = {
-    getSettings: async () => ({ agent: provider === 'claude' ? 'claude' : 'openai', provider, voice: 'fixture', voices: ['fixture'], providers: [{ id: provider, available: true }] }),
+    getSettings: async () => ({ agent: provider === 'claude' ? 'claude' : 'openai', provider: settingsProvider, voice: 'fixture', voices: ['fixture'], providers: [{ id: provider, available: true }] }),
     connect: async (sessionId, sdp, context, signal) => {
       connections.push({ sessionId, sdp, context, signal })
-      return provider === 'claude' ? { provider, instructions: 'Canonical provider instructions' } : { provider, model: 'fixture', sdp: answer }
+      return provider === 'claude' ? { provider: responseProvider, instructions: 'Canonical provider instructions' } : { provider: responseProvider, model: 'fixture', sdp: answer }
     },
     readSession: async () => structuredClone(snapshot),
     subscribeSession: () => () => {},
@@ -171,6 +171,37 @@ test.each(['openai', 'claude'])('shared %s adapter rejects malformed SDP before 
   session.start()
   await delay(10)
   expect(f.states.at(-1)).toMatchObject({ phase: 'error', error: 'The voice provider returned an invalid connection answer. Please try again.' })
+  expect(f.descriptions).toEqual([])
+  expect(f.track.stopped).toBe(true)
+})
+
+
+test.each([null, {}, 'unexpected'])('shared engine rejects runtime provider %j before selecting a transport', async (settingsProvider) => {
+  const f = fixture('openai', true, 'v=0\r\nanswer', { settingsProvider })
+  session.start()
+  await delay(10)
+  expect(f.states.at(-1)).toMatchObject({ phase: 'error', error: 'Unsupported voice provider. Choose a provider in Voice settings.' })
+  expect(f.connections).toEqual([])
+  expect(f.descriptions).toEqual([])
+  expect(f.track.stopped).toBe(true)
+})
+
+test.each(['openai', 'claude'])('shared %s adapter rejects unknown response providers at the canonical boundary', async (provider) => {
+  const f = fixture(provider, true, 'v=0\r\nanswer', { responseProvider: 'unknown' })
+  session.start()
+  await delay(10)
+  expect(f.states.at(-1)).toMatchObject({ phase: 'error', error: 'Unsupported voice provider. Choose a provider in Voice settings.' })
+  expect(f.starts).toEqual([])
+  expect(f.descriptions).toEqual([])
+  expect(f.track.stopped).toBe(true)
+})
+
+test.each(['openai', 'openai-api-key'])('shared %s adapter rejects a switch between account and API connections', async (provider) => {
+  const responseProvider = provider === 'openai' ? 'openai-api-key' : 'openai'
+  const f = fixture(provider, true, 'v=0\r\nanswer', { responseProvider })
+  session.start()
+  await delay(10)
+  expect(f.states.at(-1)).toMatchObject({ phase: 'error', error: 'Voice provider changed. Start voice again.' })
   expect(f.descriptions).toEqual([])
   expect(f.track.stopped).toBe(true)
 })

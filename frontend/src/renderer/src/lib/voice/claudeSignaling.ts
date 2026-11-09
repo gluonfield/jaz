@@ -1,4 +1,5 @@
 import type { ClaudeVoicePort, VoiceHost } from '@/lib/voice/host'
+import { voiceProvider } from '@/lib/voice/provider'
 import type { VoiceEvent } from '@/lib/voice/protocol'
 import type { VoiceTrace } from '@/lib/voice/diagnostics'
 import { voiceAnswerSDP, type VoiceSignaling } from '@/lib/voice/signaling'
@@ -54,6 +55,7 @@ export class ClaudeVoiceSignaling implements VoiceSignaling {
     if (this.closed) {
       return
     }
+    voiceProvider(result?.provider)
     if (result.provider !== 'claude' || typeof result.instructions !== 'string' || !result.instructions) {
       throw new Error('Voice provider changed. Start voice again.')
     }

@@ -1,4 +1,4 @@
-import type { VoiceProvider } from '@/lib/api/liveVoice'
+import type { VoiceProvider } from '@/lib/voice/provider'
 
 export type VoiceEvent =
   | { type: 'ready' | 'closed' }

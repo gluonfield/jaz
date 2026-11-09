@@ -82,7 +82,7 @@ function fixture() {
   stop = module.exports.connectClaudeVoiceHost(api)
   const command = async (socket, id, value) => socket.onmessage({ data: JSON.stringify({ id, method: 'Claude.voice', params: value }) })
   const start = (socket, id) => command(socket, id, { type: 'start', id, options: { sdp: 'v=0\r\noffer', context: 'Canonical instructions', voice: 'buttery' } })
-  return { sockets, active, closed, results, command, start, emit: (id, data) => listener?.(id, data) }
+  return { api, sockets, active, closed, results, command, start, emit: (id, data) => listener?.(id, data) }
 }
 
 test('desktop host routes two remote calls while preserving unrelated desktop-local voice', async () => {
@@ -123,5 +123,36 @@ test('reconnecting desktop cannot address calls from an earlier relay connection
   await f.command(next, 2, { type: 'send', id: 'previous-mobile-call', data: '{"type":"observation"}' })
   expect(next.sent.at(-1).error.message).toContain('not owned')
   expect(f.results).toEqual([])
+  expect(f.active).toEqual(new Set(['desktop-local-call']))
+})
+
+
+test.each([
+  { type: 'start', id: 'remote', options: { sdp: 'not SDP', context: 'context', voice: 'buttery' } },
+  { type: 'send', id: 'remote', data: 123 },
+  { type: 'result', id: 'remote', toolUseId: 'tool', text: 'Missing error flag' },
+  { type: 'unknown', id: 'remote' },
+])('desktop relay decodes invalid commands before invoking the native port: %j', async (command) => {
+  const f = fixture()
+  await f.command(f.sockets[0], 1, command)
+  expect(f.sockets[0].sent.at(-1).error.message).toContain('Invalid Claude voice')
+  expect(f.active).toEqual(new Set(['desktop-local-call']))
+  expect(f.results).toEqual([])
+})
+
+
+test('disconnect while Claude setup is pending closes its owned call once', async () => {
+  const f = fixture()
+  let reject
+  const pending = new Promise((_resolve, fail) => { reject = fail })
+  f.api.start = async (id) => {
+    f.active.add(id)
+    await pending
+  }
+  const request = f.start(f.sockets[0], 'pending-mobile-call')
+  f.sockets[0].close()
+  reject(new Error('Setup cancelled'))
+  await request
+  expect(f.closed).toEqual(['pending-mobile-call'])
   expect(f.active).toEqual(new Set(['desktop-local-call']))
 })

@@ -1,3 +1,4 @@
+import type { VoiceProvider } from '@/lib/voice/provider'
 import { queryOptions } from '@tanstack/react-query'
 import type { VoiceMessage } from '@/lib/api/types'
 import type { MessageContextInput } from '@/lib/messageContext'
@@ -5,7 +6,7 @@ import type { VoiceDiagnostic } from '@/lib/voice/diagnostics'
 import { get, post, put } from '@/lib/api/client'
 import { keys } from '@/lib/query/keys'
 
-export type VoiceProvider = 'openai' | 'openai-api-key' | 'claude'
+export type { VoiceProvider } from '@/lib/voice/provider'
 
 export interface VoiceSettings {
   agent: 'openai' | 'claude'
