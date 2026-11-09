@@ -233,7 +233,7 @@ https://web.jaz.chat/#server=https%3A%2F%2Fjaz.example.com&key=...
 ```
 
 
-After a successful connection, the browser stores the backend URL and device token in that browser origin's `localStorage`, keyed by backend URL. Refreshing the page reconnects to the same backend; switching from `web.jaz.chat` to a self-hosted copy starts with separate browser storage.
+After a successful connection, the browser saves the backend URL in `localStorage` and the device credential encrypted in IndexedDB with a non-exportable AES-GCM key, bound to the backend origin. Refreshing the page revalidates the saved device with the server before reconnecting. Switching from `web.jaz.chat` to a self-hosted copy starts with separate browser storage. Forget removes the saved login; if site storage is unavailable, access lasts for the current page session.
 
 Trusted browser origins may call a private or loopback backend, for example `http://localhost:5299`, as long as the browser allows the request. Jaz answers normal CORS preflights and Chrome Private Network Access preflights with `Access-Control-Allow-Private-Network: true`.
 

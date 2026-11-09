@@ -7,6 +7,7 @@ import {
 } from '@/lib/api/client'
 import { rememberBackend, removeKnownBackend } from '@/lib/backends'
 import { clientRuntime } from '@/lib/clientRuntime'
+import { loadBrowserCredential, saveBrowserCredential, forgetBrowserCredential } from '@/lib/browserCredentials'
 import { getDeviceProfile } from '@/lib/deviceIdentity'
 import { queryClient } from '@/lib/query/queryClient'
 import { readAccess, readHealth, readJSON } from '@/lib/connectionProbe'
@@ -20,6 +21,7 @@ export type ConnectionMode = 'local' | 'remote'
 type ConnectionPreference = { mode: ConnectionMode; remoteUrl?: string }
 type Attempt = { url: string; revision: number; controller: AbortController }
 type Candidate = VerifiedSession & { ticket?: ResourceTicket }
+type SavedCredential = { token: string; deviceId?: string }
 const LOCAL_URL = 'http://127.0.0.1:5299'
 const PREFERENCE_KEY = 'jaz.connection'
 const bridge = ['main', 'board', 'launcher'].includes(clientRuntime.windowKind) ? clientRuntime.connectionSession : undefined
@@ -134,9 +136,19 @@ function block(error: string | null): void {
   setState({ status: 'disconnected', pairing: null, error })
 }
 
-function activate(value: Attempt, candidate: Candidate): void {
+async function activate(value: Attempt, candidate: Candidate): Promise<void> {
   if (!current(value)) {
     return
+  }
+  let error: string | null = null
+  if (clientRuntime.kind === 'web' && candidate.token && !candidate.remembered) {
+    try {
+      await saveBrowserCredential(candidate.url, candidate.token, candidate.deviceId, () => current(value))
+      candidate = { ...candidate, remembered: true }
+    } catch {
+      error = 'Connected for this session. Could not save the login in this browser. Check site storage access.'
+    }
+    if (!current(value)) return
   }
   if (ownsConnection && bridge && desktop) {
     authoritative = bridge.update({ operation: 'commit', document: desktop.document, revision: value.revision,
@@ -144,7 +156,7 @@ function activate(value: Attempt, candidate: Candidate): void {
     value.revision = authoritative.revision
   }
   setApiAuthToken(candidate.url, candidate.token, candidate.ticket)
-  setState({ status: 'connected', url: candidate.url, pairing: null, error: null })
+  setState({ status: 'connected', url: candidate.url, pairing: null, error })
   if (ownsConnection) {
     if (candidate.url === LOCAL_URL && clientRuntime.kind === 'electron') {
       savePreference({ mode: 'local' })
@@ -174,7 +186,7 @@ async function verify(value: Attempt, candidate: Candidate): Promise<string | nu
     block(error)
     return error
   }
-  activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
+  await activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
   return null
 }
 
@@ -212,6 +224,13 @@ async function serialized<T>(value: Attempt, issue: () => Promise<T>): Promise<T
   const next = issuance.catch(() => {}).then(() => current(value) ? issue() : undefined)
   issuance = next
   return next
+}
+
+async function savedCredential(url: string): Promise<SavedCredential> {
+  if (clientRuntime.kind === 'web') {
+    return await loadBrowserCredential(url) || { token: '' }
+  }
+  return { token: restoreApiAuthToken(url) }
 }
 
 async function register(value: Attempt, credential: string): Promise<string | null> {
@@ -324,18 +343,22 @@ export async function connectRemote(input: string): Promise<string | null> {
       return health.error
     }
     if (!health.authRequired) {
-      activate(value, { url, token: '', deviceId: '', remembered: false })
+      await activate(value, { url, token: '', deviceId: '', remembered: false })
       return null
     }
     let token = parsed.key || cached
+    let deviceId: string | undefined
     if (!token) {
-      token = restoreApiAuthToken(url)
+      const saved = await savedCredential(url)
+      token = saved.token
+      deviceId = saved.deviceId
       remembered = Boolean(token)
     }
+    if (!current(value)) return null
     if (!token) {
       return await pair(value)
     }
-    const access = await readAccess(url, token, value.controller.signal)
+    const access = await readAccess(url, token, value.controller.signal, deviceId)
     if (!current(value)) {
       return null
     }
@@ -349,7 +372,7 @@ export async function connectRemote(input: string): Promise<string | null> {
       block(access.error)
       return access.error
     }
-    activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered })
+    await activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered })
     return null
   } catch (error) {
     if (!current(value)) {
@@ -383,7 +406,7 @@ export async function startLocal(): Promise<string | null> {
     if (!current(value)) {
       return null
     }
-    activate(value, candidate)
+    await activate(value, candidate)
     return null
   } catch (error) {
     if (!current(value)) {
@@ -406,6 +429,9 @@ export function cancelPendingApproval(): void {
 export function forgetBackend(url: string): void {
   if (normalizeBaseUrl(url) === state.url) {
     disconnectBackend()
+  }
+  if (clientRuntime.kind === 'web') {
+    void forgetBrowserCredential(normalizeBaseUrl(url)).catch(() => setState({ error: 'Could not remove the saved browser login. Check site storage access.' }))
   }
   removeKnownBackend(url)
   const preference = connectionPreference()
@@ -464,7 +490,7 @@ async function hydrate(snapshot: SessionSnapshot): Promise<void> {
     if (snapshot.session.token) {
       await verify(value, snapshot.session)
     } else {
-      activate(value, snapshot.session)
+      await activate(value, snapshot.session)
     }
   } else if (ownsConnection && snapshot.phase === 'pending' && snapshot.localPending) {
     await startLocal()
@@ -506,7 +532,7 @@ async function init(): Promise<void> {
     return
   }
   if (health.ok && !health.authRequired) {
-    activate(value, { url, token: '', deviceId: '', remembered: false })
+    await activate(value, { url, token: '', deviceId: '', remembered: false })
   }
   else {
     block(null)
@@ -516,6 +542,7 @@ async function init(): Promise<void> {
 async function restore(url: string): Promise<void> {
   const value = begin(url)
   let token: string | undefined
+  let deviceId: string | undefined
   const retry = async (): Promise<void> => {
     const health = await readHealth(url, value.controller.signal)
     if (!current(value)) {
@@ -531,20 +558,28 @@ async function restore(url: string): Promise<void> {
       return
     }
     if (!health.authRequired) {
-      activate(value, { url, token: '', deviceId: '', remembered: false })
+      await activate(value, { url, token: '', deviceId: '', remembered: false })
       return
     }
     try {
-      token ??= restoreApiAuthToken(url)
+      if (token === undefined) {
+        const saved = await savedCredential(url)
+        token = saved.token
+        deviceId = saved.deviceId
+      }
     } catch {
-      block('Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.')
+      if (!current(value)) return
+      block(clientRuntime.kind === 'web'
+        ? 'Could not restore the saved browser login. Check site storage access, then connect again.'
+        : 'Could not unlock the saved connection. Allow Jaz access to your system keychain, then restart Jaz.')
       return
     }
+    if (!current(value)) return
     if (!token) {
       block('Connect again with an authorized link or request approval')
       return
     }
-    const access = await readAccess(url, token, value.controller.signal)
+    const access = await readAccess(url, token, value.controller.signal, deviceId)
     if (!current(value)) {
       return
     }
@@ -561,7 +596,7 @@ async function restore(url: string): Promise<void> {
       block('A saved device credential is required')
       return
     }
-    activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered: true })
+    await activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered: true })
   }
   await retry()
 }
