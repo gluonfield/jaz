@@ -136,19 +136,9 @@ function block(error: string | null): void {
   setState({ status: 'disconnected', pairing: null, error })
 }
 
-async function activate(value: Attempt, candidate: Candidate): Promise<void> {
+function activate(value: Attempt, candidate: Candidate): void {
   if (!current(value)) {
     return
-  }
-  let error: string | null = null
-  if (clientRuntime.kind === 'web' && candidate.token && !candidate.remembered) {
-    try {
-      await saveBrowserCredential(candidate.url, candidate.token, candidate.deviceId, () => current(value))
-      candidate = { ...candidate, remembered: true }
-    } catch {
-      error = 'Connected for this session. Could not save the login in this browser. Check site storage access.'
-    }
-    if (!current(value)) return
   }
   if (ownsConnection && bridge && desktop) {
     authoritative = bridge.update({ operation: 'commit', document: desktop.document, revision: value.revision,
@@ -156,7 +146,7 @@ async function activate(value: Attempt, candidate: Candidate): Promise<void> {
     value.revision = authoritative.revision
   }
   setApiAuthToken(candidate.url, candidate.token, candidate.ticket)
-  setState({ status: 'connected', url: candidate.url, pairing: null, error })
+  setState({ status: 'connected', url: candidate.url, pairing: null, error: null })
   if (ownsConnection) {
     if (candidate.url === LOCAL_URL && clientRuntime.kind === 'electron') {
       savePreference({ mode: 'local' })
@@ -165,6 +155,12 @@ async function activate(value: Attempt, candidate: Candidate): Promise<void> {
       rememberBackend(candidate.url, new Date().toISOString())
       if (candidate.remembered) {
         savePreference({ mode: 'remote', remoteUrl: candidate.url })
+      } else if (clientRuntime.kind === 'web' && candidate.token) {
+        void saveBrowserCredential(candidate.url, candidate.token, candidate.deviceId, () => current(value)).then(() => {
+          if (current(value)) savePreference({ mode: 'remote', remoteUrl: candidate.url })
+        }, () => {
+          if (current(value)) setState({ error: 'Connected for this session. Could not save the login in this browser. Check site storage access.' })
+        })
       }
     }
     schedulePoll(value, candidate)
@@ -186,7 +182,7 @@ async function verify(value: Attempt, candidate: Candidate): Promise<string | nu
     block(error)
     return error
   }
-  await activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
+  activate(value, { ...candidate, deviceId: access.deviceId, ticket: access.ticket })
   return null
 }
 
@@ -343,13 +339,16 @@ export async function connectRemote(input: string): Promise<string | null> {
       return health.error
     }
     if (!health.authRequired) {
-      await activate(value, { url, token: '', deviceId: '', remembered: false })
+      activate(value, { url, token: '', deviceId: '', remembered: false })
       return null
     }
     let token = parsed.key || cached
     let deviceId: string | undefined
     if (!token) {
-      const saved = await savedCredential(url)
+      const saved = await savedCredential(url).catch((error): SavedCredential => {
+        if (clientRuntime.kind !== 'web') throw error
+        return { token: '' }
+      })
       token = saved.token
       deviceId = saved.deviceId
       remembered = Boolean(token)
@@ -372,7 +371,7 @@ export async function connectRemote(input: string): Promise<string | null> {
       block(access.error)
       return access.error
     }
-    await activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered })
+    activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered })
     return null
   } catch (error) {
     if (!current(value)) {
@@ -406,7 +405,7 @@ export async function startLocal(): Promise<string | null> {
     if (!current(value)) {
       return null
     }
-    await activate(value, candidate)
+    activate(value, candidate)
     return null
   } catch (error) {
     if (!current(value)) {
@@ -490,7 +489,7 @@ async function hydrate(snapshot: SessionSnapshot): Promise<void> {
     if (snapshot.session.token) {
       await verify(value, snapshot.session)
     } else {
-      await activate(value, snapshot.session)
+      activate(value, snapshot.session)
     }
   } else if (ownsConnection && snapshot.phase === 'pending' && snapshot.localPending) {
     await startLocal()
@@ -532,7 +531,7 @@ async function init(): Promise<void> {
     return
   }
   if (health.ok && !health.authRequired) {
-    await activate(value, { url, token: '', deviceId: '', remembered: false })
+    activate(value, { url, token: '', deviceId: '', remembered: false })
   }
   else {
     block(null)
@@ -558,7 +557,7 @@ async function restore(url: string): Promise<void> {
       return
     }
     if (!health.authRequired) {
-      await activate(value, { url, token: '', deviceId: '', remembered: false })
+      activate(value, { url, token: '', deviceId: '', remembered: false })
       return
     }
     try {
@@ -596,7 +595,7 @@ async function restore(url: string): Promise<void> {
       block('A saved device credential is required')
       return
     }
-    await activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered: true })
+    activate(value, { url, token, deviceId: access.deviceId, ticket: access.ticket, remembered: true })
   }
   await retry()
 }

@@ -622,6 +622,21 @@ test('browser storage failure preserves the verified session without saving laun
   expect(browserCredentials.size).toBe(0)
 })
 
+test('explicit browser connection can request session-only approval when site storage is unavailable', async () => {
+  const { connection, pollPairing } = await fixture({
+    web: true, pairing: true,
+    loadBrowserCredential: async () => { throw new Error('Storage denied') },
+    saveBrowserCredential: async () => { throw new Error('Storage denied') },
+    auth: () => Response.json({ ok: true, auth_kind: 'device', device_id: 'identity' }),
+  })
+  expect(await connection.connectRemote('https://jaz.example')).toBeNull()
+  expect(connection.useConnection().status).toBe('pending_approval')
+  await pollPairing()
+  expect(connection.useConnection().status).toBe('connected')
+  expect(connection.connectionPreference()).toBeNull()
+  expect(connection.useConnection().error).toContain('Could not save the login in this browser')
+})
+
 test.each([
   () => Response.json({ error: 'Revoked', code: 'unauthorized' }, { status: 401 }),
   () => Response.json({ ok: true, auth_kind: 'device', device_id: 'another-device' }),

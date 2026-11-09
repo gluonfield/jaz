@@ -19,7 +19,6 @@ async function transaction<T>(mode: IDBTransactionMode, action: (store: IDBObjec
       const request = action(tx.objectStore(STORE))
       tx.oncomplete = () => resolve(request.result)
       tx.onabort = () => reject(tx.error)
-      tx.onerror = () => reject(tx.error)
     })
   } finally {
     db.close()
