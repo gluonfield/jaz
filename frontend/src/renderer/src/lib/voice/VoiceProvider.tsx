@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useBackendChange } from '@/lib/connection'
+import { useBackendChange, useConnection } from '@/lib/connection'
+import { clientRuntime } from '@/lib/clientRuntime'
+import { connectClaudeVoiceHost } from '@/lib/voice/desktopHost'
 import type { Bot } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { useVoiceBot, voiceHome } from '@/lib/voice/bot'
@@ -12,6 +14,15 @@ const VoiceContext = createContext<VoiceContextValue | null>(null)
 
 export function VoiceProvider({ children }: { children: ReactNode }) {
   const client = useQueryClient()
+  const { status, url } = useConnection()
+  const connected = status === 'connected' || status === 'reconnecting'
+  useEffect(() => {
+    const api = window.jaz?.claudeVoice
+    if (!api || clientRuntime.windowKind !== 'main' || !connected) {
+      return
+    }
+    return connectClaudeVoiceHost(api)
+  }, [connected, url])
   const current = useRef<VoiceSession | null>(null)
   const [state, setState] = useState(initialVoiceState)
   const [sessionId, setSessionId] = useState<string | null>(null)

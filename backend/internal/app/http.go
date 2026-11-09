@@ -27,6 +27,8 @@ func HTTPModule() fx.Option {
 		fx.Annotate(live.NewService, fx.From(new(*sqlitestore.Store))),
 		fx.Annotate(live.NewTranscript, fx.From(new(*sqlitestore.Store))),
 		voiceapi.NewHandler,
+		live.NewDesktopRelay,
+		fx.Annotate(voiceapi.NewRelayHandler, fx.From(new(*sqlitestore.Store))),
 		previewapi.NewHandler,
 		fx.Annotate(
 			transcript.NewService,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -138,17 +139,15 @@ func TestDesktopScreenshotTimeoutPreservesConnection(t *testing.T) {
 
 func TestDesktopInvalidNavigationDoesNotSendCommands(t *testing.T) {
 	backend := NewDesktopBackend()
-	desktopPeer(t, backend, "thread-1")
+	peer := desktopPeer(t, backend, "thread-1")
 	if _, err := backend.Call(context.Background(), ActionInput{Session: "thread-1", Action: ActionNavigate, URL: "file:///secret"}); err == nil {
 		t.Fatal("file navigation accepted")
 	}
-	backend.mu.Lock()
-	page := backend.pages["thread-1"]
-	backend.mu.Unlock()
-	page.conn.mu.Lock()
-	defer page.conn.mu.Unlock()
-	if page.conn.nextID != 0 {
-		t.Fatal("invalid navigation reached the desktop")
+	_ = peer.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
+	_, _, err := peer.ReadMessage()
+	var timeout net.Error
+	if !errors.As(err, &timeout) || !timeout.Timeout() {
+		t.Fatalf("invalid navigation changed the desktop connection: %v", err)
 	}
 }
 

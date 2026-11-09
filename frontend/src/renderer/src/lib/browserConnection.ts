@@ -1,7 +1,7 @@
 import { apiWebSocket } from '@/lib/api/client'
 import type { BrowserCommand } from '@shared/browserControl'
 
-export function connectBrowser(path: string, execute: (request: BrowserCommand) => unknown, cancel: () => void = () => {}): () => void {
+export function connectBrowser(path: string, execute: (request: BrowserCommand, emit: (message: unknown) => void) => unknown, cancel: () => void = () => {}): () => void {
   let stopped = false
   let socket: WebSocket
   let retry: ReturnType<typeof setTimeout>
@@ -18,7 +18,11 @@ export function connectBrowser(path: string, execute: (request: BrowserCommand) 
         return
       }
       try {
-        const result = await execute(request)
+        const result = await execute(request, (message) => {
+          if (!stopped && current.readyState === WebSocket.OPEN) {
+            current.send(JSON.stringify(message))
+          }
+        })
         if (current.readyState === WebSocket.OPEN) {
           current.send(JSON.stringify({ id: request.id, result }))
         }

@@ -65,6 +65,7 @@ type routeDeps struct {
 	Canvas           *canvasapi.Handler
 	AgentSession     *agentsessionsapi.Handler
 	Voice            *voiceapi.Handler
+	VoiceRelay       *voiceapi.RelayHandler
 	Push             *mobilepush.Service
 }
 
@@ -84,6 +85,9 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "GET /v1/settings/voice", Handler: http.HandlerFunc(deps.Voice.Settings)},
 		{Pattern: "PUT /v1/settings/voice", Handler: http.HandlerFunc(deps.Voice.Settings)},
 		{Pattern: "POST /v1/voice/connect", Handler: http.HandlerFunc(deps.Voice.Connect)},
+		{Pattern: "GET /v1/voice/desktop", Handler: http.HandlerFunc(deps.VoiceRelay.Desktop)},
+		{Pattern: "GET /v1/voice/claude/status", Handler: http.HandlerFunc(deps.VoiceRelay.Status)},
+		{Pattern: "GET /v1/sessions/{session}/voice/claude", Handler: http.HandlerFunc(deps.VoiceRelay.Call)},
 		{Pattern: "POST /v1/sessions/{session}/voice/transcript", Handler: http.HandlerFunc(deps.Voice.Transcript)},
 		{Pattern: "POST /v1/sessions/{session}/voice/diagnostics", Handler: http.HandlerFunc(deps.Voice.Diagnostics)},
 	}
