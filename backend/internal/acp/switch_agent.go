@@ -141,6 +141,10 @@ func (m *Manager) setConfigCategory(ctx context.Context, job *jobState, category
 		option = job.agentSession.ConfigOptions[i]
 	}
 	job.mu.RUnlock()
+	if category == "thought_level" && value == "none" && CanonicalAgentName(job.ACPAgent) == AgentOpenCode &&
+		(i < 0 || !slices.ContainsFunc(option.Options, func(item sessionevents.AgentConfigValue) bool { return item.Value == value })) {
+		return nil
+	}
 	if i < 0 {
 		return fmt.Errorf("agent %q offers no %s option", CanonicalAgentName(job.ACPAgent), category)
 	}

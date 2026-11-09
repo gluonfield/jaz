@@ -275,7 +275,7 @@ function LoopPromptCard({
                 />
                 <ReasoningSelect
                   value={reasoningEffort}
-                  options={pickerEffortOptions(effortOptions)}
+                  options={draft.runtime === 'opencode' ? effortOptions : pickerEffortOptions(effortOptions)}
                   status={draft.runtime === 'opencode' ? reasoningStatus : undefined}
                   disabled={disabled}
                   onChange={(reasoningEffort) => set({ model, reasoningEffort })}

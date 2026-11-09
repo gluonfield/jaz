@@ -73,7 +73,7 @@ export function BotAgentSettings({ bot, agentSession, working }: { bot: Bot; age
             <ReasoningSelect
               labeled={false}
               value={reasoning.effectiveReasoningEffort}
-              options={pickerEffortOptions(reasoning.reasoningOptions)}
+              options={agent === 'opencode' ? reasoning.reasoningOptions : pickerEffortOptions(reasoning.reasoningOptions)}
               status={agent === 'opencode' ? reasoning.reasoningStatus : undefined}
               disabled={disabled || reasoning.modelsLoading}
               onChange={(reasoning_effort) => update.mutate({ model, reasoning_effort })}

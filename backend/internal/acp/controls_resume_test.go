@@ -75,3 +75,31 @@ func TestRestartPreservesEffortOwnership(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenCodeTurnUsesAdvertisedReasoning(t *testing.T) {
+	for _, effort := range []string{"none", "high"} {
+		t.Run(effort, func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			turnLog := filepath.Join(t.TempDir(), "turns")
+			env := map[string]string{
+				"JAZ_FAKE_ACP_SESSION_OPTIONS":  `[{"id":"thinking","category":"thought_level","type":"select","currentValue":"low","options":[{"value":"none"},{"value":"low"},{"value":"high"}]}]`,
+				"JAZ_FAKE_ACP_EXPECT_CONFIG_ID": "thinking",
+				"JAZ_FAKE_ACP_SET_CONFIG":       "1",
+				"JAZ_FAKE_ACP_TURN_LOG":         turnLog,
+			}
+			manager := newFakeNamedAgentManagerWithOptions(t, store, t.TempDir(), acp.AgentOpenCode, env, "", "")
+			t.Cleanup(manager.Close)
+			session, err := manager.CreateSession(t.Context(), acp.SpawnRequest{ACPAgent: acp.AgentOpenCode, Slug: "reasoning-bot", ReasoningEffort: effort})
+			if err != nil {
+				t.Fatal(err)
+			}
+			sendAndWait(t, t.Context(), manager, session.ID, "reasoning check")
+			if turns := readFakeTurns(t, turnLog); len(turns) != 1 || turns[0].Effort != effort {
+				t.Fatalf("turns = %v, want effort %q", turns, effort)
+			}
+		})
+	}
+}

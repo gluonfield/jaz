@@ -479,6 +479,9 @@ func (m *Manager) applyConfiguredReasoningEffort(
 	if effort == "" {
 		return nil, nil
 	}
+	if CanonicalAgentName(agentName) == AgentOpenCode && effort == "none" && !configOptionValueAvailable(options.effortOptions, effort) {
+		return nil, nil
+	}
 	if !agentPolicyForAgent(agentName).usesReasoningEffortConfigOption() && options.effortConfigID == "" {
 		return nil, fmt.Errorf("acp agent %q model %q did not advertise reasoning controls", agentName, model)
 	}

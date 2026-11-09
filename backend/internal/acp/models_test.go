@@ -45,6 +45,21 @@ func TestOpenCodeReasoningFailsWhenModelDoesNotAdvertiseEffort(t *testing.T) {
 	}
 }
 
+func TestOpenCodeStartsWithNoneWithoutAnAdvertisedControl(t *testing.T) {
+	manager := &Manager{}
+	for _, options := range []sessionConfigOptionsState{
+		{},
+		{effortConfigPresent: true, effortOptions: []string{"low", "high"}},
+	} {
+		_, err := manager.applyConfiguredReasoningEffort(
+			t.Context(), nil, AgentOpenCode, "session", "deepseek-v4.1-flash", "none", options, true,
+		)
+		if err != nil {
+			t.Fatalf("no preference blocked session startup: %v", err)
+		}
+	}
+}
+
 func TestParseSessionConfigOptions(t *testing.T) {
 	state := parseSessionConfigOptions(json.RawMessage(sonnetConfigResponse))
 	if !state.configOptionsPresent {

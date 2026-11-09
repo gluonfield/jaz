@@ -155,7 +155,7 @@ export function AgentModelControls({
           />
           <ReasoningSelect
             value={controls.effort}
-            options={pickerEffortOptions(controls.effortOptions)}
+            options={controls.runtime === 'opencode' ? controls.effortOptions : pickerEffortOptions(controls.effortOptions)}
             status={controls.runtime === 'opencode' ? controls.reasoningStatus : undefined}
             disabled={disabled}
             onChange={(effort) => controls.setSelection({ model: controls.model, effort })}

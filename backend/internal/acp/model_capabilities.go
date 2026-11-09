@@ -140,7 +140,7 @@ func (c ModelCapabilities) reasoningCapabilityModels(agent, providerID string) (
 
 func (c ModelCapabilities) ValidateReasoningEffort(agent, providerID, model, effort string) error {
 	effort = strings.ToLower(strings.TrimSpace(effort))
-	if effort == "" {
+	if effort == "" || (effort == "none" && CanonicalAgentName(agent) == AgentOpenCode) {
 		return nil
 	}
 	models, err := c.reasoningCapabilityModels(agent, providerID)
