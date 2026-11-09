@@ -1,7 +1,5 @@
-import { getSessionMessagesPage } from '@/lib/api/sessions'
-import { saveVoiceDiagnostics, saveVoiceTranscript, sendVoiceTask } from '@/lib/api/liveVoice'
+import type { VoiceHost } from '@/lib/voice/host'
 import { VoiceConnection } from '@/lib/voice/connection'
-import { openSessionEvents } from '@/lib/api/sse'
 import { VoiceAdmission } from '@/lib/voice/admission'
 import { VoiceTaskStream } from '@/lib/voice/taskStream'
 import { VoiceRecorder } from '@/lib/voice/recorder'
@@ -20,27 +18,31 @@ export class VoiceSession {
   private state = initialVoiceState
   private connection?: VoiceConnection
   private stop = () => {}
-  private writer: VoiceTranscriptWriter
+  private writer?: VoiceTranscriptWriter
   private diagnostics: VoiceTranscriptWriter<VoiceDiagnostic>
+  sendText: (text: string) => boolean = () => false
 
   get phase() {
     return this.state.phase
   }
 
-  constructor(private sessionId: string, private onState: (state: VoiceState) => void, private refresh: () => void) {
-    this.diagnostics = new VoiceTranscriptWriter((records) => saveVoiceDiagnostics(sessionId, records), () => {})
-    this.writer = new VoiceTranscriptWriter(
-      (messages) => saveVoiceTranscript(sessionId, messages),
-      () => {
-        this.update({})
-        this.refresh()
-      },
-    )
+  constructor(private sessionId: string, private onState: (state: VoiceState) => void, private refresh: () => void, private host: VoiceHost) {
+    this.diagnostics = new VoiceTranscriptWriter((records) => host.saveDiagnostics(sessionId, records), () => {})
+    if (!host.transcript) {
+      const save = host.saveTranscript
+      this.writer = new VoiceTranscriptWriter(
+        (messages) => save(sessionId, messages),
+        () => {
+          this.update({})
+          this.refresh()
+        },
+      )
+    }
   }
 
   private update(change: Partial<VoiceState>) {
     this.state = { ...this.state, ...change }
-    this.onState({ ...this.state, error: [this.state.error, this.writer.error].filter(Boolean).join(' ') })
+    this.onState({ ...this.state, error: [this.state.error, this.writer?.error].filter(Boolean).join(' ') })
   }
 
   start = () => {
@@ -55,14 +57,14 @@ export class VoiceSession {
     let submit = Promise.resolve()
     let followError = ''
     const stream = new VoiceTaskStream({
-      read: () => getSessionMessagesPage(this.sessionId, { turns: 32 }, abort.signal),
-      subscribe: (after, onEvent, onConnection) => openSessionEvents(this.sessionId, after, onEvent, onConnection),
+      read: () => this.host.readSession(this.sessionId, abort.signal),
+      subscribe: (after, onEvent, onConnection) => this.host.subscribeSession(this.sessionId, after, onEvent, onConnection),
     }, recorder.callId, (text, speak, id, sourceSeq) => connection.append(text, speak, id, sourceSeq), (activity, error) => {
       this.update({ activity, ...(error || this.state.error === followError ? { error } : {}) })
       followError = error
     })
     this.stop = () => {
-      void this.writer.flush()
+      void this.writer?.flush()
       void this.diagnostics.flush()
       abort.abort()
       stream.stop()
@@ -78,7 +80,7 @@ export class VoiceSession {
         const contexts = [{ type: 'voice' as const, id: task.callId, request_id: task.id, text: context }]
         for (let attempt = 0; ; attempt++) {
           try {
-            await sendVoiceTask(this.sessionId, text, contexts, abort.signal)
+            await this.host.sendTask(this.sessionId, text, contexts, abort.signal)
             break
           } catch (error) {
             if (attempt || abort.signal.aborted || (error instanceof Error && 'status' in error && Number(error.status) < 500)) {
@@ -103,6 +105,21 @@ export class VoiceSession {
         this.update({ error: error.message })
       })
     })
+
+    this.sendText = (text) => {
+      if (abort.signal.aborted || this.state.phase !== 'listening' || !text.trim()) {
+        return false
+      }
+      const message = recorder.acceptText(text.trim())
+      this.host.transcript?.(message, true)
+      this.writer?.append(message, true)
+      this.update({ transcript: recorder.lines })
+      const id = crypto.randomUUID()
+      admission.begin(id)
+      admission.transcript({ type: 'transcript_done', role: 'user', text: message.text, userTurnId: id }, message.id)
+      admission.delegate({ type: 'delegation', id, userTurnId: id, text: message.text }, false)
+      return true
+    }
 
     let connection: VoiceConnection
     try {
@@ -129,7 +146,8 @@ export class VoiceSession {
               trace('transcript_final', { event_id: message.id, detail: message.role })
             }
             admission.transcript(event, message.id)
-            this.writer.append(message, event.type === 'transcript_done')
+            this.host.transcript?.(message, event.type === 'transcript_done')
+            this.writer?.append(message, event.type === 'transcript_done')
             this.update({ transcript: recorder.lines })
           }
         }
@@ -151,7 +169,7 @@ export class VoiceSession {
             admission.delegate(event)
             break
         }
-      }, trace)
+      }, trace, this.host)
       this.connection = connection
       void connection.start(this.sessionId, () => stream.context()).catch((error: Error) => {
         if (abort.signal.aborted) {

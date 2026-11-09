@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useBackendChange, useConnection } from '@/lib/connection'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { connectClaudeVoiceHost } from '@/lib/voice/desktopHost'
+import { createDesktopVoiceHost } from '@/lib/voice/desktop'
 import type { Bot } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { useVoiceBot, voiceHome } from '@/lib/voice/bot'
@@ -39,7 +40,7 @@ export function VoiceProvider({ children }: { children: ReactNode }) {
     }, () => {
       void client.invalidateQueries({ queryKey: keys.sessionMessages(id) })
       void client.invalidateQueries({ queryKey: keys.sidebarSessions })
-    })
+    }, createDesktopVoiceHost())
     current.current = voice
     setSessionId(id)
     voice.start()

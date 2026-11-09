@@ -1,7 +1,8 @@
-import { connectVoice, type VoiceProvider } from '@/lib/api/liveVoice'
+import type { VoiceProvider } from '@/lib/api/liveVoice'
+import type { VoiceHost } from '@/lib/voice/host'
 import { decodeVoiceEvent, voiceContextEvents, type VoiceEvent } from '@/lib/voice/protocol'
 import type { VoiceTrace } from '@/lib/voice/diagnostics'
-import type { VoiceSignaling } from '@/lib/voice/signaling'
+import { voiceAnswerSDP, type VoiceSignaling } from '@/lib/voice/signaling'
 
 type ContextAppend = {
   event: ReturnType<typeof voiceContextEvents>[number]
@@ -19,7 +20,7 @@ export class OpenAIVoiceSignaling implements VoiceSignaling {
   private closed = false
   private timer?: ReturnType<typeof setTimeout>
 
-  constructor(private peer: RTCPeerConnection, private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace) {
+  constructor(private peer: RTCPeerConnection, private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace, private host: VoiceHost) {
     this.channel = peer.createDataChannel('oai-events')
     this.channel.onmessage = ({ data }: MessageEvent<string>) => {
       if (this.closed) return
@@ -65,13 +66,13 @@ export class OpenAIVoiceSignaling implements VoiceSignaling {
   }
 
   async start(sessionId: string, sdp: string, context: string): Promise<void> {
-    const result = await connectVoice(sessionId, sdp, context, this.abort.signal)
-    if (result.provider === 'claude') {
+    const result = await this.host.connect(sessionId, sdp, context, this.abort.signal)
+    if (result.provider !== 'openai' && result.provider !== 'openai-api-key') {
       throw new Error('Voice provider changed. Start voice again.')
     }
     this.provider = result.provider
     if (!this.closed) {
-      await this.peer.setRemoteDescription({ type: 'answer', sdp: result.sdp })
+      await this.peer.setRemoteDescription({ type: 'answer', sdp: voiceAnswerSDP(result.sdp) })
     }
   }
 

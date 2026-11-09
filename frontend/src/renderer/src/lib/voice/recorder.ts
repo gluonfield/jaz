@@ -10,6 +10,13 @@ export class VoiceRecorder {
   private pending: { id: string; role: 'user' | 'assistant'; text: string; at?: number }[] = []
   private delivered = new Set<string>()
 
+  acceptText(text: string): VoiceMessage {
+    const message: VoiceMessage = { id: crypto.randomUUID(), call_id: this.callId, role: 'user', text, at: new Date().toISOString() }
+    this.pending.push({ id: message.id, role: message.role, text })
+    this.lines = [...this.lines, message].slice(-20)
+    return message
+  }
+
   accept(event: Extract<VoiceEvent, { type: 'transcript' | 'transcript_done' }>): VoiceMessage | undefined {
     if (event.type === 'transcript' && !event.turnBased && this.lastRole !== event.role) {
       this.active.delete(event.role)
@@ -52,14 +59,14 @@ export class VoiceRecorder {
     if (!delegation.text && !included.some((turn) => turn.role === 'user' && turn.text.trim())) {
       return
     }
-    const lines: { role: 'user' | 'assistant'; text: string }[] = []
+    const lines: { id: string; role: 'user' | 'assistant'; text: string }[] = []
     for (const turn of included) {
       const previous = lines.at(-1)
-      if (previous?.role === turn.role) {
+      if (previous?.role === turn.role && previous.id === turn.id) {
         previous.text += turn.text
       }
       else {
-        lines.push({ role: turn.role, text: turn.text })
+        lines.push({ id: turn.id, role: turn.role, text: turn.text })
       }
     }
     for (const turn of included) {

@@ -43,10 +43,11 @@ export function updateVoiceSettings(settings: Pick<VoiceSettings, 'provider' | '
   return put('/v1/settings/voice', { agent: settings.provider === 'claude' ? 'claude' : 'openai', ...settings }).then(() => getVoiceSettings())
 }
 
-export function connectVoice(sessionId: string, sdp: string, context: string, signal: AbortSignal): Promise<
+export type VoiceConnectionResult =
   | { provider: 'claude'; instructions: string }
   | { provider: 'openai' | 'openai-api-key'; model: string; sdp: string }
-> {
+
+export function connectVoice(sessionId: string, sdp: string, context: string, signal: AbortSignal): Promise<VoiceConnectionResult> {
   return post('/v1/voice/connect', { session_id: sessionId, sdp, context }, signal)
 }
 

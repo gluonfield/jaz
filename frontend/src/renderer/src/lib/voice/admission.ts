@@ -52,9 +52,11 @@ export class VoiceAdmission {
     }
   }
 
-  delegate(event: Extract<VoiceEvent, { type: 'delegation' }>) {
+  delegate(event: Extract<VoiceEvent, { type: 'delegation' }>, providerDelegation = true) {
     const turn = this.capture(event.userTurnId ?? event.id)
-    turn.task.delegationId ??= event.id
+    if (providerDelegation) {
+      turn.task.delegationId ??= event.id
+    }
     turn.delegation = event
     this.admit(turn)
   }

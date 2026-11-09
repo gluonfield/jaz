@@ -1,8 +1,7 @@
-import { getVoiceSettings } from '@/lib/api/liveVoice'
+import type { VoiceHost } from '@/lib/voice/host'
 import type { VoiceEvent } from '@/lib/voice/protocol'
 import { OpenAIVoiceSignaling } from '@/lib/voice/openaiSignaling'
 import { ClaudeVoiceSignaling } from '@/lib/voice/claudeSignaling'
-import { requestMicrophone } from '@/lib/voice/microphone'
 import type { VoiceTrace } from '@/lib/voice/diagnostics'
 import type { VoiceSignaling } from '@/lib/voice/signaling'
 
@@ -19,7 +18,7 @@ export class VoiceConnection {
   readonly analyser = this.context.createAnalyser()
   readonly outputAnalyser = this.context.createAnalyser()
 
-  constructor(private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace) {
+  constructor(private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace, private host: VoiceHost) {
     this.audio.autoplay = true
     for (const type of ['playing', 'waiting', 'pause', 'ended']) {
       this.audio.addEventListener(type, () => this.trace(`playback_${type}`, { detail: this.audio.muted ? 'muted media element' : 'media element' }))
@@ -40,7 +39,7 @@ export class VoiceConnection {
 
   async start(sessionId: string, loadContext: () => Promise<string>) {
     this.timer = setTimeout(() => this.fail('Connecting voice timed out. Please try again.'), 45_000)
-    const [settings, chatContext] = await Promise.all([getVoiceSettings(), loadContext(), this.prepareMicrophone()])
+    const [settings, chatContext] = await Promise.all([this.host.getSettings(this.abort.signal), loadContext(), this.prepareMicrophone()])
     if (this.closed || this.ending) {
       return
     }
@@ -63,8 +62,8 @@ export class VoiceConnection {
       this.onEvent(event)
     }
     this.signaling = settings.provider === 'claude'
-      ? new ClaudeVoiceSignaling(this.peer, event, this.trace, settings.voice)
-      : new OpenAIVoiceSignaling(this.peer, event, this.trace)
+      ? new ClaudeVoiceSignaling(this.peer, event, this.trace, settings.voice, this.host)
+      : new OpenAIVoiceSignaling(this.peer, event, this.trace, this.host)
     if (this.closed || this.ending) {
       return
     }
@@ -83,7 +82,7 @@ export class VoiceConnection {
   private async prepareMicrophone() {
     await this.context.resume()
     if (this.closed || this.ending) return
-    const microphone = await requestMicrophone()
+    const microphone = await this.host.requestMicrophone()
     if (this.closed || this.ending) {
       microphone.getTracks().forEach((track) => track.stop())
       return

@@ -4,3 +4,10 @@ export interface VoiceSignaling {
   end(): void
   dispose(): void
 }
+
+export function voiceAnswerSDP(value: unknown): string {
+  if (typeof value !== 'string' || !/^v=0\r?\n/.test(value)) {
+    throw new Error('The voice provider returned an invalid connection answer. Please try again.')
+  }
+  return value
+}

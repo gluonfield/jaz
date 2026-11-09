@@ -9,6 +9,8 @@ const text = process.env.JAZ_VOICE_TEST_REPLY
 assert.ok(origin?.startsWith('http://127.0.0.1:'))
 const bundle = await build({ entrypoints: [new URL('../session.ts', import.meta.url).pathname], target: 'browser', format: 'cjs', define: { 'import.meta.env': '{"VITE_JAZ_API_URL":"origin"}' } })
 assert.equal(bundle.success, true)
+const desktopBundle = await build({ entrypoints: [new URL('../desktop.ts', import.meta.url).pathname], target: 'browser', format: 'cjs', define: { 'import.meta.env': '{"VITE_JAZ_API_URL":"origin"}' } })
+assert.equal(desktopBundle.success, true)
 globalThis.window = { location: { origin } }
 globalThis.localStorage = { getItem: () => null }
 const module = { exports: {} }
@@ -58,7 +60,7 @@ globalThis.RTCPeerConnection = class {
   }
   addTrack() {}
   async createOffer() {
-    return { type: 'offer', sdp: 'local-offer' }
+    return { type: 'offer', sdp: 'v=0\r\nlocal-offer' }
   }
   async setLocalDescription(value) {
     this.localDescription = value
@@ -121,7 +123,7 @@ globalThis.fetch = async (url, init) => {
     return Response.json({ agent: 'openai', provider: 'openai', voice: 'alloy', voices: ['alloy'], providers: [{ id: 'openai', label: 'OpenAI Account', available: true }] })
   }
   if (path.endsWith('/connect')) {
-    return Response.json({ provider: 'openai', sdp: 'local-answer' })
+    return Response.json({ provider: 'openai', sdp: 'v=0\r\nlocal-answer' })
   }
   if (path.endsWith('/voice/transcript') || path.endsWith('/voice/diagnostics')) {
     return new Response(null, { status: 204 })
@@ -147,7 +149,9 @@ async function waitFor(check, label) {
 }
 async function start() {
   let state
-  const session = new VoiceSession(sessionId, (value) => { state = value }, () => {})
+  const desktop = { exports: {} }
+  new Function('module', 'exports', await desktopBundle.outputs[0].text())(desktop, desktop.exports)
+  const session = new VoiceSession(sessionId, (value) => { state = value }, () => {}, desktop.exports.createDesktopVoiceHost())
   session.start()
   await waitFor(() => {
     if (state?.error) {

@@ -1,8 +1,7 @@
-import { connectVoice } from '@/lib/api/liveVoice'
-import type { ClaudeVoiceAPI } from '@shared/claudeVoice'
+import type { ClaudeVoicePort, VoiceHost } from '@/lib/voice/host'
 import type { VoiceEvent } from '@/lib/voice/protocol'
 import type { VoiceTrace } from '@/lib/voice/diagnostics'
-import type { VoiceSignaling } from '@/lib/voice/signaling'
+import { voiceAnswerSDP, type VoiceSignaling } from '@/lib/voice/signaling'
 
 type Block = { type: string; text?: string; id?: string; name?: string; input?: { request?: string } }
 type WireEvent = {
@@ -22,7 +21,7 @@ type WireEvent = {
 
 export class ClaudeVoiceSignaling implements VoiceSignaling {
   private id = crypto.randomUUID()
-  private api: ClaudeVoiceAPI
+  private api: ClaudeVoicePort
   private abort = new AbortController()
   private unsubscribe: () => void
   private closed = false
@@ -32,10 +31,10 @@ export class ClaudeVoiceSignaling implements VoiceSignaling {
   private tools = new Map<string, 'pending' | 'answered'>()
   private updates = Promise.resolve()
 
-  constructor(private peer: RTCPeerConnection, private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace, private voice: string) {
-    const api = window.jaz?.claudeVoice
+  constructor(private peer: RTCPeerConnection, private onEvent: (event: VoiceEvent) => void, private trace: VoiceTrace, private voice: string, private host: VoiceHost) {
+    const api = host.claude
     if (!api) {
-      throw new Error('Claude voice requires Jaz Desktop.')
+      throw new Error('Claude voice is unavailable on this device.')
     }
     this.api = api
     this.unsubscribe = api.onEvent((id, data) => {
@@ -51,18 +50,18 @@ export class ClaudeVoiceSignaling implements VoiceSignaling {
   }
 
   async start(sessionId: string, sdp: string, context: string): Promise<void> {
-    const result = await connectVoice(sessionId, sdp, context, this.abort.signal)
+    const result = await this.host.connect(sessionId, sdp, context, this.abort.signal)
     if (this.closed) {
       return
     }
-    if (result.provider !== 'claude' || !result.instructions) {
+    if (result.provider !== 'claude' || typeof result.instructions !== 'string' || !result.instructions) {
       throw new Error('Voice provider changed. Start voice again.')
     }
-    const answer = await this.api.start(this.id, { sdp, voice: this.voice, context: result.instructions })
+    const answer = await this.api.start(this.id, { sdp, voice: this.voice, context: result.instructions }, { sessionId, context, signal: this.abort.signal })
     if (this.closed) {
       return
     }
-    await this.peer.setRemoteDescription({ type: 'answer', sdp: answer })
+    await this.peer.setRemoteDescription({ type: 'answer', sdp: voiceAnswerSDP(answer) })
     this.onEvent({ type: 'ready' })
   }
 

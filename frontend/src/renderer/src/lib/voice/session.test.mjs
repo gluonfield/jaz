@@ -8,6 +8,11 @@ if (!bundle.success) {
   throw new AggregateError(bundle.logs)
 }
 const compiled = new Function('module', 'exports', await bundle.outputs[0].text())
+const desktopBundle = await build({ entrypoints: [new URL('./desktop.ts', import.meta.url).pathname], target: 'browser', format: 'cjs', define: { 'import.meta.env': '{}' } })
+if (!desktopBundle.success) {
+  throw new AggregateError(desktopBundle.logs)
+}
+const compiledDesktop = new Function('module', 'exports', await desktopBundle.outputs[0].text())
 const originals = new Map()
 let session
 
@@ -156,7 +161,9 @@ async function fixture({ autoAck = true, history, lostResponse = false, rejected
   const module = { exports: {} }
   compiled(module, module.exports)
   const { VoiceSession } = module.exports
-  session = new VoiceSession('thread', (state) => states.push(state), () => {})
+  const desktop = { exports: {} }
+  compiledDesktop(desktop, desktop.exports)
+  session = new VoiceSession('thread', (state) => states.push(state), () => {}, desktop.exports.createDesktopVoiceHost())
   session.start()
   await delay(10)
   expect(states.at(-1)).toMatchObject({ phase: 'listening', error: '' })
