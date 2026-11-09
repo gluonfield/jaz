@@ -2,7 +2,7 @@
 
 This opt-in Electron 45.2.1 patch uses Chromium 156.0.8078.75's existing macOS browser authenticator. Chromium owns request validation, origins, credential discovery, extensions and native authentication. Electron's existing app-specific `platformPasskeys` mode remains separate.
 
-`app.isWebAuthnBrowserAuthenticatorAvailable()` exposes Chromium's OS and signed-entitlement check. `app.configureWebAuthn({ browserPasskeys: true })` opts in, rejects unsupported processes and cannot be combined with `platformPasskeys`. Jaz enables it only when that native capability exists and returns true. Stock and unapproved builds retain their existing behavior.
+`app.enableWebAuthnBrowserAuthenticator()` opts in through Chromium's OS and signed-entitlement check, returning false without changing configuration when unsupported. App and browser passkeys share one native mode; explicit `configureWebAuthn({ platformPasskeys: true })` selects app mode and `false` disables either mode. Stock and unapproved builds retain their existing behavior.
 
 ## Build
 

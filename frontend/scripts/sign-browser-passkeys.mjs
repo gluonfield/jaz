@@ -16,8 +16,9 @@ export function browserPasskeySigning(options, packager, execute = execFileSync)
   }
   const team = entitlement?.['com.apple.developer.team-identifier']
   const identifier = entitlement?.['com.apple.application-identifier']
+  const separator = typeof identifier === 'string' ? identifier.indexOf('.') : -1
   if (entitlement?.['com.apple.developer.web-browser.public-key-credential'] !== true ||
-    typeof team !== 'string' || identifier !== `${team}.${packager.appInfo.id}` ||
+    typeof team !== 'string' || separator < 1 || identifier.slice(separator + 1) !== packager.appInfo.id ||
     !(Date.parse(expiration.trim()) > Date.now())) {
     throw new Error('Browser passkeys require an unexpired Apple-approved profile matching this app')
   }

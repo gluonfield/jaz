@@ -8,13 +8,9 @@ app.setPath('userData', process.env.JAZ_BROWSER_PASSKEYS_CHECK_DIR)
 app.whenReady().then(() => {
   try {
     assert.equal(process.versions.electron, '45.2.1', 'Expected the patched Electron 45.2.1 runtime')
-    assert.equal(typeof app.isWebAuthnBrowserAuthenticatorAvailable, 'function', 'Runtime lacks the native browser passkey patch')
-    if (app.isWebAuthnBrowserAuthenticatorAvailable()) {
-      app.configureWebAuthn({ browserPasskeys: true })
-    } else {
-      assert.throws(() => app.configureWebAuthn({ browserPasskeys: true }), /approved browser passkey entitlement/)
-    }
-    app.configureWebAuthn({ browserPasskeys: false })
+    assert.equal(typeof app.enableWebAuthnBrowserAuthenticator, 'function', 'Runtime lacks the native browser passkey patch')
+    assert.equal(typeof app.enableWebAuthnBrowserAuthenticator(), 'boolean')
+    app.configureWebAuthn({ platformPasskeys: false })
     app.exit(0)
   } catch (error) {
     console.error(error.message)

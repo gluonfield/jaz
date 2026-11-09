@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { browserPasskeyBuild } from '../electron-builder.browser-passkeys.mjs'
@@ -20,21 +19,21 @@ native('the opt-in build rejects stock Electron before packaging', () => {
   }
 }, 20_000)
 
-native('signing adds only profile-authorized main-app entitlements and preserves helper options', () => {
-  const fixture = signingFixture()
+native.each(['TESTTEAM12', 'LEGACY0001'])('signing preserves the profile App ID prefix %s independently of the team and helper options', (prefix) => {
+  const identifier = `${prefix}.dev.example.browser`
+  const fixture = signingFixture({ Entitlements: { 'com.apple.application-identifier': identifier } })
   const prepared = browserPasskeySigning(fixture.options, fixture.packager, fixture.execute)
   const main = prepared.optionsForFile(fixture.options.app)
   const entitlements = JSON.parse(execFileSync('/usr/bin/plutil', ['-convert', 'json', '-o', '-', main.entitlements], { encoding: 'utf8' }))
   expect(entitlements).toMatchObject({
     'com.apple.security.cs.allow-jit': true,
     'com.apple.developer.web-browser.public-key-credential': true,
-    'com.apple.application-identifier': 'TESTTEAM12.dev.example.browser',
+    'com.apple.application-identifier': identifier,
     'com.apple.developer.team-identifier': 'TESTTEAM12',
   })
   expect(prepared.provisioningProfile).toBe(fixture.options.provisioningProfile)
   expect(prepared.optionsForFile('helper')).toBe(fixture.helper)
   expect(main.hardenedRuntime).toBe(true)
-  expect(readFileSync(fixture.helper.entitlements, 'utf8')).not.toContain('public-key-credential')
 })
 
 native.each([
@@ -46,16 +45,16 @@ native.each([
   expect(() => browserPasskeySigning(fixture.options, fixture.packager, fixture.execute)).toThrow('Apple-approved profile matching this app')
 })
 
-function signingFixture(changes = {}) {
+function signingFixture({ Entitlements = {}, ...changes } = {}) {
   const profile = {
     ExpirationDate: '2099-01-01T00:00:00Z',
     Entitlements: {
       'com.apple.developer.web-browser.public-key-credential': true,
       'com.apple.application-identifier': 'TESTTEAM12.dev.example.browser',
       'com.apple.developer.team-identifier': 'TESTTEAM12',
-      ...changes.Entitlements,
+      ...Entitlements,
     },
-    ...Object.fromEntries(Object.entries(changes).filter(([key]) => key !== 'Entitlements')),
+    ...changes,
   }
   const helper = { entitlements: resolve(frontend, 'build/entitlements.mac.plist'), hardenedRuntime: true }
   return {

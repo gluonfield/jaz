@@ -6,7 +6,7 @@ import process from 'node:process'
 
 const frontend = dirname(fileURLToPath(import.meta.url))
 
-export function browserPasskeyBuild(environment = process.env, execute = execFileSync) {
+export function browserPasskeyBuild(environment = process.env) {
   const runtime = environment.JAZ_ELECTRON_DIST?.trim()
   const profile = environment.JAZ_MAC_PROVISIONING_PROFILE?.trim()
   if (process.platform !== 'darwin' || !runtime || !profile) {
@@ -15,7 +15,7 @@ export function browserPasskeyBuild(environment = process.env, execute = execFil
   const runs = resolve(frontend, '../runs/mac-passkeys/build')
   mkdirSync(runs, { recursive: true })
   const output = mkdtempSync(join(runs, 'runtime-'))
-  execute(join(resolve(runtime), 'Electron.app/Contents/MacOS/Electron'), [join(frontend, 'scripts/verify-browser-passkeys.mjs')], {
+  execFileSync(join(resolve(runtime), 'Electron.app/Contents/MacOS/Electron'), [join(frontend, 'scripts/verify-browser-passkeys.mjs')], {
     env: { ...environment, JAZ_BROWSER_PASSKEYS_CHECK_DIR: output },
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 15_000,
