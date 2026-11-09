@@ -207,7 +207,8 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 		publishACP = job.Modes.CurrentModeID != string(event.CurrentModeID)
 		job.Modes.CurrentModeID = string(event.CurrentModeID)
 	case acpschema.SessionInfoSessionUpdate:
-		if nextTitle := strings.TrimSpace(event.Title); nextTitle != "" {
+		// Agents name threads from their prompts, and this one carries Jaz's context.
+		if nextTitle := strings.TrimSpace(event.Title); nextTitle != "" && !job.promptWrapped {
 			currentTitle = job.Title
 			title = nextTitle
 		}

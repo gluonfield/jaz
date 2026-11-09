@@ -12,6 +12,7 @@ import (
 
 	"github.com/wins/jaz/backend/internal/acp"
 	"github.com/wins/jaz/backend/internal/httpapi/agentsessions"
+	"github.com/wins/jaz/backend/internal/server"
 	"github.com/wins/jaz/backend/internal/sessionevents"
 	"github.com/wins/jaz/backend/internal/storage"
 	jsonstore "github.com/wins/jaz/backend/internal/storage/json"
@@ -74,6 +75,68 @@ func TestManagerInputStartsFreshAgentAfterVoiceConversation(t *testing.T) {
 				t.Fatalf("stored voice context = %+v, want %+v", block, want)
 			}
 		})
+	}
+}
+
+func voiceTitleFixture(t *testing.T) (*sqlitestore.Store, *acp.Manager, storage.Session, acp.SteerRequest) {
+	t.Helper()
+	store, err := sqlitestore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cwd := t.TempDir()
+	session, err := store.CreateSession(storage.CreateSession{
+		Slug: "voice-title", Runtime: storage.RuntimeACP,
+		RuntimeRef: &storage.RuntimeRef{Type: storage.RuntimeACP, Agent: acp.AgentCodex, Cwd: cwd},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newFakeNamedAgentManagerWithOptions(t, store, cwd, acp.AgentCodex, map[string]string{"JAZ_FAKE_ACP_ECHO_PROMPT_TITLE": "1"}, "", "")
+	t.Cleanup(manager.Close)
+	return store, manager, session, acp.SteerRequest{Session: session.ID, Message: "Check disk space", Contexts: []storage.MessageContext{
+		{Type: storage.ContextTypeVoice, ID: "call", RequestID: "handoff", Text: "User: Hola"},
+	}}
+}
+
+func TestVoiceInputTitlesANewThreadFromTheSpokenRequest(t *testing.T) {
+	store, manager, session, request := voiceTitleFixture(t)
+	manager.ThreadStarted = (&server.Server{Store: store, ACP: manager}).TitleThread
+	if _, err := manager.Input(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		stored, err := store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stored.TitleLocked && stored.Title == "hello from fake agent" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("title = %q locked=%v, want generated title", stored.Title, stored.TitleLocked)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestAgentTitleEchoingAVoicePromptDoesNotNameTheThread(t *testing.T) {
+	store, manager, session, request := voiceTitleFixture(t)
+	if _, err := manager.Input(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	job, err := manager.Wait(t.Context(), acp.WaitRequest{Session: session.ID, Timeout: 10 * time.Second})
+	if err != nil || job.State != acp.StateIdle {
+		t.Fatalf("voice turn = %+v, %v", job, err)
+	}
+	stored, err := store.LoadSession(session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stored.Title, "message_context") {
+		t.Fatalf("title = %q", stored.Title)
 	}
 }
 

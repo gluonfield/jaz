@@ -44,6 +44,13 @@ func (m *Manager) Input(ctx context.Context, req SteerRequest) (Job, error) {
 		}
 		break
 	}
+	if m.ThreadStarted != nil {
+		session, err := m.store.LoadSession(req.Session)
+		if err != nil {
+			return Job{}, err
+		}
+		m.ThreadStarted(session, req.Message)
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return Job{}, err

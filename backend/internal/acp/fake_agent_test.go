@@ -610,6 +610,12 @@ func TestFakeACPAgentProcess(t *testing.T) {
 				})
 			}
 			reportFakeTasks(conn, msg.Params)
+			if os.Getenv("JAZ_FAKE_ACP_ECHO_PROMPT_TITLE") != "" {
+				notify(conn, "session/update", map[string]any{
+					"sessionId": fakeSessionID,
+					"update":    map[string]any{"sessionUpdate": "session_info_update", "title": "<message_context> echoed prompt"},
+				})
+			}
 			if _, ok := fakeSideChatMeta(promptReq.Meta); ok {
 				notify(conn, "session/update", map[string]any{
 					"sessionId": fakeSessionID,

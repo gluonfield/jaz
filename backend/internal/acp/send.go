@@ -196,6 +196,9 @@ func (m *Manager) sendOnce(ctx context.Context, req SendRequest, opts sendOption
 	}
 	defer release()
 	promptMessage, contexts := promptMessageAndContexts(req.Message, req.Contexts)
+	job.mu.Lock()
+	job.promptWrapped = len(contexts) > 0
+	job.mu.Unlock()
 	pending := &storage.TurnPrompt{Message: promptMessage, Attachments: req.Attachments}
 	var promptDigest string
 	if m.cfg.TurnNote != nil && opts.activeOperation != ActiveOperationCompact {
