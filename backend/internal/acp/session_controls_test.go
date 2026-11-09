@@ -444,3 +444,31 @@ func TestRestoredChoicesStartOverAtAnAgentSwitch(t *testing.T) {
 		t.Fatalf("a pick made after the switch was lost: %+v", cfg)
 	}
 }
+
+func TestOpenCodeReportedModelDoesNotAccumulateProviderPrefixes(t *testing.T) {
+	store, err := jsonstore.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := store.CreateSession(storage.CreateSession{Slug: "model-controls", Runtime: storage.RuntimeACP})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(store, Config{}, nil)
+	model := "alpha/first"
+	for range 3 {
+		job := &jobState{Job: Job{ID: session.ID, ACPAgent: AgentOpenCode, ModelProvider: "alpha", Model: model}}
+		raw := json.RawMessage(`{"configOptions":[{"id":"model","category":"model","type":"select","currentValue":"alpha/` + model + `"}]}`)
+		if !manager.applySessionControls(job, raw) {
+			t.Fatal("model update was not handled")
+		}
+		saved, err := store.LoadSession(session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Model != "alpha/first" || (saved.Model != "" && saved.Model != job.Model) {
+			t.Fatalf("model changed after ACP report: runtime=%q stored=%q", job.Model, saved.Model)
+		}
+		model = job.Model
+	}
+}
