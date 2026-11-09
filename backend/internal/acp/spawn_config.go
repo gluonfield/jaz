@@ -3,6 +3,7 @@ package acp
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/wins/jaz/backend/internal/promptmodule"
@@ -125,16 +126,28 @@ func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 	if err != nil {
 		return req, err
 	}
+	nested := false
 	// The parent works for a bot rather than being one.
 	if owner := bot.Owner(); req.SourceType == "" && owner != "" && owner != bot.ID {
 		if req.Commitment != 0 {
 			return req, errors.New("only a bot's own chat starts threads for its tasks; leave task out")
 		}
 		req.SourceType, req.SourceID = storage.SourceBotWorker, owner
-		return req, nil
+		nested = true
+		bot, err = m.store.LoadSession(owner)
+		if err != nil {
+			return req, err
+		}
 	}
 	if bot.SourceType != storage.SourceBot || bot.RuntimeRef == nil {
 		return req, nil
+	}
+	if store, ok := m.store.(interface {
+		LoadBot(string) (storage.BotRecord, error)
+	}); ok {
+		if record, err := store.LoadBot(bot.ID); err == nil {
+			req.Workspaces = slices.Clone(record.Workspaces)
+		}
 	}
 	if req.SourceType == "" {
 		if req.Commitment == 0 {
@@ -144,6 +157,12 @@ func (m *Manager) botThread(req SpawnRequest) (SpawnRequest, error) {
 	}
 	if req.Directory == "" && req.Home == "" && !req.Worktree {
 		req.Directory = bot.RuntimeRef.Cwd
+		if len(req.Workspaces) > 0 {
+			req.Directory = req.Workspaces[0]
+		}
+	}
+	if nested {
+		return req, nil
 	}
 	if req.ACPAgent != "" && CanonicalAgentName(req.ACPAgent) != bot.RuntimeRef.Agent {
 		return req, nil

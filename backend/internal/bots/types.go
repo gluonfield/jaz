@@ -32,6 +32,7 @@ type Bot struct {
 	Kind            string    `json:"kind"`
 	Name            string    `json:"name"`
 	Prompt          string    `json:"prompt,omitempty"`
+	Workspaces      []string  `json:"workspaces,omitempty"`
 	Avatar          Avatar    `json:"avatar"`
 	Pinned          int       `json:"pinned,omitempty"`
 	Main            bool      `json:"main,omitempty"`
@@ -62,21 +63,23 @@ type Bot struct {
 }
 
 type CreateBot struct {
-	Name   string  `json:"name"`
-	Prompt string  `json:"prompt,omitempty"`
-	Avatar *Avatar `json:"avatar,omitempty"`
-	Agent  string  `json:"agent,omitempty"`
-	Model  string  `json:"model,omitempty"`
+	Name       string   `json:"name"`
+	Prompt     string   `json:"prompt,omitempty"`
+	Workspaces []string `json:"workspaces,omitempty"`
+	Avatar     *Avatar  `json:"avatar,omitempty"`
+	Agent      string   `json:"agent,omitempty"`
+	Model      string   `json:"model,omitempty"`
 	// StoredModel marks Model as saved earlier, as an adopted routine's is.
 	StoredModel bool `json:"-"`
 	Main        bool `json:"-"`
 }
 
 type UpdateBot struct {
-	Name    *string   `json:"name,omitempty"`
-	Prompt  *string   `json:"prompt,omitempty"`
-	Avatar  *Avatar   `json:"avatar,omitempty"`
-	Members *[]string `json:"members,omitempty"`
+	Workspaces *[]string `json:"workspaces,omitempty"`
+	Name       *string   `json:"name,omitempty"`
+	Prompt     *string   `json:"prompt,omitempty"`
+	Avatar     *Avatar   `json:"avatar,omitempty"`
+	Members    *[]string `json:"members,omitempty"`
 	// Agent moves the bot to another agent, which starts a fresh native session.
 	Agent *string `json:"agent,omitempty"`
 	// Model picks the model the bot's agent runs with, together with

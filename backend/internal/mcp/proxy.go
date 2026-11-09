@@ -8,18 +8,19 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/mcpdeferred"
 	"github.com/wins/jaz/backend/internal/tools"
 )
 
 func (m *Manager) Handler() http.Handler {
 	m.handlerOnce.Do(func() {
-		m.handler = mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
+		m.handler = mcpdeferred.Wrap(mcpsdk.NewStreamableHTTPHandler(func(req *http.Request) *mcpsdk.Server {
 			m.ensureProxyReady(req.Context())
 			return m.proxy
 		}, &mcpsdk.StreamableHTTPOptions{
 			JSONResponse:   true,
 			SessionTimeout: 30 * time.Minute,
-		})
+		}))
 	})
 	return m.handler
 }

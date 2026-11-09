@@ -16,6 +16,7 @@ import {
 import appIcon from '../assets/jaz-icon-1024.png?asset'
 import { startLocalBackend, stopLocalBackend } from './backend'
 import { attachBrowserNavigationCommands, attachBrowserNavigationShortcuts } from '@main/browserNavigation'
+import { attachBrowserCloseShortcut } from '@main/browserCloseShortcut'
 import { attachWindowOpenHandler } from '@main/browserPopups'
 import { attachWindowLifecycle, installMainDiagnostics } from './diagnostics'
 import { installCredentialEncryption } from './credentialEncryption'
@@ -161,6 +162,7 @@ function openPreviewURL(url: string, contents: WebContents): boolean {
 app.on('web-contents-created', (_event, contents) => {
   contents.once('destroyed', () => previewURLTargets.delete(contents.id))
   attachBrowserNavigationShortcuts(contents)
+  attachBrowserCloseShortcut(contents)
   attachPreviewFindShortcuts(contents)
   attachContextMenu(contents, { canOpenPreviewURL, openPreviewURL, backendOrigin: () => connectionSession.current().url })
   attachWindowOpenHandler(contents, shell.openExternal, (url) => openPreviewURL(url, contents))

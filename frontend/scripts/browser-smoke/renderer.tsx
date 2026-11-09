@@ -62,7 +62,7 @@ declare global {
       navigationProbe(enabled?: boolean): Promise<{ url: string; webContentsId: number }[]>
       passwordStore(): Promise<{ count: number; plaintext: boolean }>
       pointer(type: string, x: number, y: number, button?: 'left' | 'right'): Promise<void>
-      key(key: string, modifiers?: string[]): Promise<void>
+      key(key: string, modifiers?: string[], contentsId?: number): Promise<void>
       wheel(x: number, y: number, deltaY: number, control?: boolean): Promise<void>
       capture(name?: string): Promise<void>
       paint(name: string, rect?: { x: number; y: number; width: number; height: number }): Promise<{ contrast: number; inkPixels: number; frames: number; paintedAt: number }>
@@ -240,6 +240,12 @@ function Fixture() {
         progress('session settings and canvas side panel')
         await exerciseSessionConfig()
         window.smoke.result({ ok: true, checks: ['existing composer setting changes across menu closure; Canvas panel controls, real browser navigation, retained board and close/reopen'] })
+        return
+      }
+      if (new URLSearchParams(location.search).get('suite') === 'browser-close') {
+        progress('Command-W from browser and host')
+        await exerciseSidePanelTabs(true)
+        window.smoke.result({ ok: true, checks: ['Command-W closes the active webview, retains the last empty panel until the next press, ignores file tabs, modal dialogs and Command-Shift-W'] })
         return
       }
       if (new URLSearchParams(location.search).get('suite') === 'side-panel') {

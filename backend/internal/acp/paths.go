@@ -101,6 +101,31 @@ func (m *Manager) resolveCwd(configured string) (string, error) {
 	return abs, nil
 }
 
+func (m *Manager) resolveBotWorkspaces(workspaces []string) ([]string, error) {
+	resolved := make([]string, 0, len(workspaces))
+	for _, workspace := range workspaces {
+		var path string
+		var err error
+		if filepath.IsAbs(workspace) {
+			path = filepath.Clean(workspace)
+		} else {
+			path, err = m.resolveCwd(workspace)
+		}
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("bot workspace %q: %w", workspace, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("bot workspace %q is not a directory", workspace)
+		}
+		resolved = append(resolved, path)
+	}
+	return resolved, nil
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

@@ -3,6 +3,7 @@ import { claudeVoice } from '@preload/claudeVoiceAPI'
 import { browserPasswords } from '@preload/browserPasswords'
 import { browserDownloads } from '@preload/browserDownloads'
 import { BROWSER_COMMAND_CHANNEL } from '@shared/browserControl'
+import { BROWSER_CLOSE_SHORTCUT_CHANNEL } from '@shared/browserCloseShortcut'
 import { BROWSER_PROFILE_CHANNELS, type BrowserProfileAPI } from '@shared/browserProfile'
 
 contextBridge.exposeInMainWorld('jaz', {
@@ -25,6 +26,11 @@ contextBridge.exposeInMainWorld('jaz', {
       ipcRenderer.send('jaz:set-preview-url-target-active', false)
     }
   },
+  onBrowserCloseShortcut: (handler: () => void) => {
+    const listener = () => handler()
+    ipcRenderer.on(BROWSER_CLOSE_SHORTCUT_CHANNEL, listener)
+    return () => ipcRenderer.removeListener(BROWSER_CLOSE_SHORTCUT_CHANNEL, listener)
+  },
   get apiBaseUrl() {
     return location.origin
   },
@@ -43,7 +49,7 @@ contextBridge.exposeInMainWorld('smoke', {
   tabURLs: () => ipcRenderer.invoke('smoke:tab-urls'),
   passwordStore: () => ipcRenderer.invoke('smoke:password-store'),
   pointer: (type: string, x: number, y: number, button?: 'left' | 'right') => ipcRenderer.invoke('smoke:pointer', type, x, y, button),
-  key: (key: string, modifiers?: string[]) => ipcRenderer.invoke('smoke:key', key, modifiers),
+  key: (key: string, modifiers?: string[], contentsId?: number) => ipcRenderer.invoke('smoke:key', key, modifiers, contentsId),
   wheel: (x: number, y: number, deltaY: number, control?: boolean) => ipcRenderer.invoke('smoke:wheel', x, y, deltaY, control),
   paint: (name: string, rect?: { x: number; y: number; width: number; height: number }) => ipcRenderer.invoke('smoke:paint', name, rect),
   capture: (name?: string) => ipcRenderer.invoke('smoke:capture', name),

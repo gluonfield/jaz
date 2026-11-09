@@ -284,6 +284,9 @@ func TestJazDyingAsItClaimsANewThreadsPromptLeavesThePromptForTheRestart(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := store.SaveBot(storage.BotRecord{ThreadID: bot.ID, Kind: "bot"}); err != nil {
+		t.Fatal(err)
+	}
 	owed := owe(t, store, bot.ID)
 	dying := newFakeNamedAgentManagerWithOptions(t, diesAtClaim{store}, root, acp.AgentCodex, map[string]string{}, "", "")
 	if _, _, err := acp.NewMCPTools(dying).Create(testContext(t), callAs(bot.ID), acp.MCPCreateInput{Slug: "stock", Prompt: "Count the stock", Directory: t.TempDir(), Commitment: owed}); err == nil {
@@ -299,7 +302,13 @@ func TestJazDyingAsItClaimsANewThreadsPromptLeavesThePromptForTheRestart(t *test
 	jaz := startJaz(t, testContext(t), reopened, root, map[string]string{"JAZ_FAKE_ACP_RESUME": "1"})
 	jaz.recover()
 	jaz.eventually("the result reaching the bot", func() bool { return jaz.told(bot.ID, "ACP session stock") == 1 })
-	if jaz.promptsContaining(`"text":"Count the stock"`) != 1 {
+	var taskPrompts int
+	for _, prompt := range jaz.prompts() {
+		if strings.Contains(prompt, "Count the stock") && !strings.Contains(prompt, "display title") {
+			taskPrompts++
+		}
+	}
+	if taskPrompts != 1 {
 		t.Fatalf("prompts = %q; want the thread's first prompt run once", jaz.prompts())
 	}
 	if threads := jaz.commitment(owed).Threads; len(threads) != 1 {

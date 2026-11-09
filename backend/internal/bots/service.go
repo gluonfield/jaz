@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -100,11 +102,16 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 		}
 		avatar = *input.Avatar
 	}
+	workspaces, err := checkedWorkspaces(input.Workspaces)
+	if err != nil {
+		return Bot{}, err
+	}
 	session, err := s.threads.CreateSession(ctx, acp.SpawnRequest{
 		ACPAgent:    strings.TrimSpace(input.Agent),
 		Slug:        "bot " + name,
 		Title:       name,
 		Home:        s.homes,
+		Workspaces:  workspaces,
 		Model:       strings.TrimSpace(input.Model),
 		StoredModel: input.StoredModel,
 		SourceType:  storage.SourceBot,
@@ -115,7 +122,7 @@ func (s *Service) Create(ctx context.Context, input CreateBot) (Bot, error) {
 	if err := s.store.UpdateSessionTitle(session.ID, name); err != nil {
 		return Bot{}, err
 	}
-	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Shape: avatar.Shape, Color: avatar.Color, Main: input.Main}); err != nil {
+	if err := s.store.SaveBot(storage.BotRecord{ThreadID: session.ID, Kind: KindBot, Prompt: strings.TrimSpace(input.Prompt), Workspaces: workspaces, Shape: avatar.Shape, Color: avatar.Color, Main: input.Main}); err != nil {
 		return Bot{}, err
 	}
 	s.events.Publish(sessionevents.Event{SessionID: session.ID, Type: sessionevents.TypeSession})
@@ -187,6 +194,15 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateBot) (Bot, 
 	if err != nil {
 		return Bot{}, err
 	}
+	if input.Workspaces != nil {
+		if record.Kind != KindBot {
+			return Bot{}, errors.New("only a bot has workspaces")
+		}
+		record.Workspaces, err = checkedWorkspaces(*input.Workspaces)
+		if err != nil {
+			return Bot{}, err
+		}
+	}
 	if (input.Agent != nil || input.Model != nil) && record.Kind != KindBot {
 		return Bot{}, errors.New("only a bot has an agent")
 	}
@@ -247,6 +263,31 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateBot) (Bot, 
 	}
 	s.events.Publish(sessionevents.Event{SessionID: id, Type: sessionevents.TypeSession})
 	return s.Load(id)
+}
+
+func checkedWorkspaces(paths []string) ([]string, error) {
+	var result []string
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		if !filepath.IsAbs(path) {
+			return nil, errors.New("workspace must be an absolute server path")
+		}
+		path = filepath.Clean(path)
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("workspace %q: %w", path, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("workspace %q is not a directory", path)
+		}
+		if !slices.Contains(result, path) {
+			result = append(result, path)
+		}
+	}
+	return result, nil
 }
 
 // Pin pins exactly ids, in that order, and unpins every other bot and group.
@@ -426,6 +467,7 @@ func (s *Service) view(record storage.BotRecord, session storage.Session, held m
 		Kind:        record.Kind,
 		Name:        session.Title,
 		Prompt:      record.Prompt,
+		Workspaces:  slices.Clone(record.Workspaces),
 		Avatar:      Avatar{Shape: record.Shape, Color: record.Color},
 		Pinned:      record.Pinned,
 		Main:        record.Main,

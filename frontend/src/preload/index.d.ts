@@ -68,6 +68,7 @@ declare global {
       onOpenRoute: (handler: (path: string) => void) => () => void
       onOpenPreviewURL: (handler: (url: string) => void) => () => void
       onBrowserNavigation: (handler: (direction: BrowserNavigationDirection) => void) => () => void
+      onBrowserCloseShortcut: (handler: () => void) => () => void
       onPreviewFindShortcut: (handler: () => void) => () => void
     }
   }

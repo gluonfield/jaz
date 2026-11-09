@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, CheckCircle2, ChevronDown, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ProviderLogo } from '@/components/settings/ProviderLogo'
 import { SettingsCard } from '@/components/settings/SettingsCard'
@@ -431,8 +431,16 @@ function ProviderEditorModal({
   onSave: () => void
 }) {
   const isEdit = Boolean(draft?.id)
-  const canSave = Boolean(draft && draft.label.trim() && draft.base_url.trim())
+  let canSave = Boolean(draft && draft.label.trim() && draft.base_url.trim())
   const needsKey = !draft || endpointRequiresKey(draft.base_url)
+  const [headersText, setHeadersText] = useState(() => JSON.stringify(draft?.headers ?? {}, null, 0))
+  const [headersValid, setHeadersValid] = useState(true)
+  useEffect(() => {
+    setHeadersText(JSON.stringify(draft?.headers ?? {}, null, 0))
+    setHeadersValid(true)
+  }, [draft?.id])
+  const headersInvalid = !headersValid && headersText.trim() !== ''
+  if (draft) canSave = canSave && headersValid
   return (
     <Modal
       open={draft !== null}
@@ -509,6 +517,33 @@ function ProviderEditorModal({
               />
             </ProviderField>
           ) : null}
+          <ProviderField
+            label="Extra headers"
+            hint={headersInvalid
+              ? 'Must be a JSON object of string to string.'
+              : 'Optional JSON object sent with every request, e.g. {"x-opencode-session": "<stable id>"}'}
+          >
+            <Input
+              value={headersText}
+              onChange={(event) => {
+                setHeadersText(event.target.value)
+                try {
+                  const parsed = event.target.value.trim() ? JSON.parse(event.target.value) : {}
+                  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+                      Object.values(parsed).some((v) => typeof v !== 'string')) throw new Error('bad')
+                  setHeadersValid(true)
+                  onChange({ ...draft, headers: parsed })
+                } catch {
+                  setHeadersValid(false)
+                }
+              }}
+              placeholder='{"x-example": "value"}'
+              autoComplete="off"
+              spellCheck={false}
+              className="font-mono text-[12px]"
+              aria-label="Extra headers JSON"
+            />
+          </ProviderField>
           <ProviderField label="Icon">
             <IconPicker value={draft.icon ?? ''} onChange={(icon) => onChange({ ...draft, icon })} />
           </ProviderField>

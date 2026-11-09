@@ -14,6 +14,7 @@ import (
 	"github.com/wins/jaz/backend/internal/connections"
 	"github.com/wins/jaz/backend/internal/loops"
 	mcpconfig "github.com/wins/jaz/backend/internal/mcpconfig"
+	"github.com/wins/jaz/backend/internal/mcpdeferred"
 	"github.com/wins/jaz/backend/internal/mcpsession"
 	"github.com/wins/jaz/backend/internal/memoryservice"
 	"github.com/wins/jaz/backend/internal/serverconfig"
@@ -302,12 +303,12 @@ func (s *Service) Sync() {
 
 func (s *Service) Handler() http.Handler {
 	s.handlerOnce.Do(func() {
-		s.handler = mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		s.handler = mcpdeferred.Wrap(mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 			return s.server(s.surface(r))
 		}, &mcp.StreamableHTTPOptions{
 			JSONResponse:   true,
 			SessionTimeout: 30 * time.Minute,
-		})
+		}))
 	})
 	return s.handler
 }

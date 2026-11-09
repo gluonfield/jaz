@@ -15,19 +15,27 @@ func (s *Store) SaveBot(record storage.BotRecord) error {
 	if err != nil {
 		return err
 	}
+	workspaces, err := json.Marshal(record.Workspaces)
+	if err != nil {
+		return err
+	}
 	if record.Members == nil {
 		members = []byte("[]")
+	}
+	if record.Workspaces == nil {
+		workspaces = []byte("[]")
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return botdb.New(s.db).UpsertBot(context.Background(), botdb.UpsertBotParams{
-		ThreadID: record.ThreadID,
-		Kind:     record.Kind,
-		Prompt:   record.Prompt,
-		Shape:    record.Shape,
-		Color:    record.Color,
-		Members:  string(members),
-		Main:     boolInt(record.Main),
+		ThreadID:   record.ThreadID,
+		Kind:       record.Kind,
+		Prompt:     record.Prompt,
+		Shape:      record.Shape,
+		Color:      record.Color,
+		Members:    string(members),
+		Main:       boolInt(record.Main),
+		Workspaces: string(workspaces),
 	})
 }
 
@@ -79,8 +87,10 @@ func (s *Store) PinBots(ids []string) error {
 func botFromDB(row botdb.Bot) storage.BotRecord {
 	var members []string
 	_ = json.Unmarshal([]byte(row.Members), &members)
+	var workspaces []string
+	_ = json.Unmarshal([]byte(row.Workspaces), &workspaces)
 	return storage.BotRecord{
-		ThreadID: row.ThreadID, Kind: row.Kind, Prompt: row.Prompt, Shape: row.Shape, Color: row.Color, Pinned: int(row.Pinned), Members: members, Main: row.Main != 0,
+		ThreadID: row.ThreadID, Kind: row.Kind, Prompt: row.Prompt, Workspaces: workspaces, Shape: row.Shape, Color: row.Color, Pinned: int(row.Pinned), Members: members, Main: row.Main != 0,
 	}
 }
 

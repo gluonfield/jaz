@@ -101,6 +101,91 @@ func TestBotChatsReceiveIdentityAndRoutineWorkersReceiveMemoryAccess(t *testing.
 	}
 }
 
+func TestBotWorkersReceiveTheOwnersMemoryAndLinkedWorkspacePaths(t *testing.T) {
+	service, store, manager := newHomeService(t)
+	project := t.TempDir()
+	bot, err := service.Create(t.Context(), CreateBot{Name: "VPN", Prompt: "Maintain the VPN project.", Workspaces: []string{project}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bot.Workspaces) != 1 || bot.Workspaces[0] != project {
+		t.Fatalf("created bot workspaces = %v, want %s", bot.Workspaces, project)
+	}
+	write(t, filepath.Join(homeOf(t, store, bot.ID), memoryFile), "VPN uses the north tunnel.")
+	commitment, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "inspect tunnel health"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := manager.CreateSession(t.Context(), acp.SpawnRequest{ParentID: bot.ID, Slug: "inspect", Commitment: commitment.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	modules, err := WorkerPrompt(store, worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prompt := strings.Join(modules.Strings(), "\n")
+	for _, expected := range []string{"MEMORY.md", homeOf(t, store, bot.ID), project, "AGENTS.md/SOUL.md", "not copied"} {
+		if !strings.Contains(prompt, expected) {
+			t.Errorf("worker context omitted %q: %s", expected, prompt)
+		}
+	}
+	if strings.Contains(prompt, "Maintain the VPN project.") || strings.Contains(prompt, "BOTS.md") {
+		t.Fatalf("worker inherited bot coordination policy: %s", prompt)
+	}
+}
+
+func TestBotWorkspaceEditsReachExistingWorkersAndValidateServerPaths(t *testing.T) {
+	service, store, manager := newHomeService(t)
+	first, next := t.TempDir(), t.TempDir()
+	bot, err := service.Create(t.Context(), CreateBot{Name: "Projects", Workspaces: []string{first}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := store.OpenCommitment(storage.Commitment{BotID: bot.ID, Request: "inspect"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := manager.CreateSession(t.Context(), acp.SpawnRequest{ParentID: bot.ID, Slug: "inspect", Commitment: task.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{next, next}
+	updated, err := service.Update(t.Context(), bot.ID, UpdateBot{Workspaces: &paths})
+	if err != nil || !slices.Equal(updated.Workspaces, []string{next}) {
+		t.Fatalf("workspace edit: %+v, %v", updated.Workspaces, err)
+	}
+	worker.RuntimeRef.SessionID = "existing-native-session"
+	note, version := TurnNote(store)(worker)
+	if !strings.Contains(note, next) || strings.Contains(note, first) {
+		t.Fatalf("worker did not receive new links: %q", note)
+	}
+	worker.PromptDigest = version
+	if note, _ := TurnNote(store)(worker); note != "" {
+		t.Fatalf("unchanged context repeated: %q", note)
+	}
+	invalid := []string{"relative-client-path"}
+	if _, err := service.Update(t.Context(), bot.ID, UpdateBot{Workspaces: &invalid}); err == nil {
+		t.Fatal("relative client path accepted")
+	}
+	missing := []string{filepath.Join(next, "missing")}
+	if _, err := service.Update(t.Context(), bot.ID, UpdateBot{Workspaces: &missing}); err == nil {
+		t.Fatal("missing server path accepted")
+	}
+	record, err := store.LoadBot(bot.ID)
+	if err != nil || !slices.Equal(record.Workspaces, []string{next}) {
+		t.Fatalf("failed edit changed saved links: %v, %v", record.Workspaces, err)
+	}
+	paths = []string{}
+	if _, err := service.Update(t.Context(), bot.ID, UpdateBot{Workspaces: &paths}); err != nil {
+		t.Fatal(err)
+	}
+	modules, err := WorkerPrompt(store, worker)
+	if err != nil || strings.Contains(modules.Text(), next) {
+		t.Fatalf("removed project still connected: %v, %v", modules, err)
+	}
+}
+
 func TestABotIsToldToRereadItsFilesUntilATurnSucceedsAfterTheyChange(t *testing.T) {
 	service, store, manager := newHomeService(t)
 	bot, err := service.Create(t.Context(), CreateBot{Name: "Research"})

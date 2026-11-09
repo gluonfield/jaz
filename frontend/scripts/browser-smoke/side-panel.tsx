@@ -19,7 +19,7 @@ import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { setThemePref } from '@/lib/theme'
 import { TitlebarActionsOutlet, TitlebarProvider, TitlebarSlotOutlet } from '@/lib/titlebar'
 
-export async function exerciseSidePanelTabs(): Promise<void> {
+export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<void> {
   const fixture = await fetch('/file-fixture').then((response) => response.json()) as { path: string }
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;background:var(--color-bg);z-index:1'
@@ -531,6 +531,40 @@ export async function exerciseSidePanelTabs(): Promise<void> {
     await until(() => Math.abs(element.querySelector('[role="separator"]')!.parentElement!.getBoundingClientRect().width - panel.width) < 1)
     await window.smoke.capture('side-panel-restored-tabs')
 
+    await navigate('close-shortcut')
+    panel.openPreview(`${location.origin}/target?close-first`)
+    await until(() => ready('close-shortcut'))
+    panel.openPreview(`${location.origin}/target?close-second`)
+    await until(() => panel.tabs.length === 2 && Boolean(panel.activeTab))
+    const secondBrowser = panel.activeTab!.id
+    await until(() => ready(secondBrowser))
+    await window.smoke.key('W', ['meta'], webview(secondBrowser).getWebContentsId())
+    await until(() => panel.tabs.length === 1 && panel.activeTab?.id === 'close-shortcut')
+    await window.smoke.key('W', ['meta'])
+    await until(() => panel.open && panel.tabs.length === 0)
+    await window.smoke.key('W', ['meta'])
+    await until(() => !panel.open)
+    panel.addTab('file')
+    await until(() => panel.open && panel.activeTab?.kind === 'file')
+    await window.smoke.key('W', ['meta'])
+    if (!panel.open || panel.activeTab?.kind !== 'file') throw new Error('Command-W closed a non-browser tab')
+    panel.closeTab('file')
+    await until(() => panel.tabs.length === 0)
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog')
+    dialog.setAttribute('aria-modal', 'true')
+    element.append(dialog)
+    await window.smoke.key('W', ['meta'])
+    if (!panel.open) throw new Error('Command-W closed the panel behind a modal dialog')
+    dialog.remove()
+    await window.smoke.key('W', ['meta', 'shift'])
+    if (!panel.open) throw new Error('Command-Shift-W closed the panel')
+    await window.smoke.key('W', ['meta'])
+    await until(() => !panel.open)
+    await window.smoke.capture('command-w-verified')
+    console.log('COMMAND_W_SCENARIOS_PASSED')
+    if (closeShortcutOnly) return
+    await navigate('tabs')
     const backend = await window.smoke.backend()
     setApiBaseUrl(backend)
     setApiAuthToken(backend, 'browser-smoke-credential')
