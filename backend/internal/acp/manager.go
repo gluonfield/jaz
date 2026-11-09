@@ -96,6 +96,7 @@ type Manager struct {
 
 	mcpRevisionSource MCPRevisionSource
 	mu                sync.RWMutex
+	budgetMu          sync.Mutex
 	jobsByID          map[string]*jobState
 	jobsBySlug        map[string]*jobState
 	jobsByACP         map[string]*jobState

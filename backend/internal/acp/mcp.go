@@ -80,7 +80,7 @@ func (t *MCPTools) CreateDefinition() *mcp.Tool {
 	}
 	return &mcp.Tool{
 		Name:        ToolCreateThread,
-		Description: "Create a separate, saved Jaz conversation and start its initial prompt. A thread has an ID, message history, working directory, and agent settings, and appears in the user's sidebar. Use only when the user or your instructions ask for a separate thread or agent session. Returns after dispatch. Omit model unless the user requests one. Use list_agent_options for available agents and models.",
+		Description: "Create a separate, saved Jaz conversation and start its initial prompt. A thread has an ID, message history, working directory, and agent settings, and appears in the user's sidebar. Reuse existing work and honor the configured server admission policy. Do not bypass a rejected start by creating a duplicate session. Use only when the user or your instructions ask for a separate thread or agent session. Returns after dispatch. Omit model unless the user requests one. Use list_agent_options for available agents and models.",
 		InputSchema: schema,
 	}
 }
@@ -90,7 +90,7 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 		return nil, ThreadSnapshot{}, fmt.Errorf("prompt is required")
 	}
 	parent := mcpsession.SessionID(req)
-	job, err := t.Service.Start(ctx, SpawnRequest{
+	spawn := SpawnRequest{
 		ParentID:        parent,
 		ACPAgent:        input.Agent,
 		Slug:            input.Slug,
@@ -102,11 +102,26 @@ func (t *MCPTools) Create(ctx context.Context, req *mcp.CallToolRequest, input M
 		Model:           input.Model,
 		ReasoningEffort: input.Thinking,
 		Commitment:      input.Commitment,
-	}, storage.QueuedMessage{Text: input.Prompt, PlanRequested: input.Plan, From: parent})
+	}
+	first := storage.QueuedMessage{Text: input.Prompt, PlanRequested: input.Plan, From: parent}
+	var job Job
+	var err error
+	var budget *BudgetDecision
+	if service, ok := t.Service.(interface {
+		StartBudgeted(context.Context, SpawnRequest, storage.QueuedMessage) (Job, BudgetDecision, error)
+	}); ok {
+		decision := BudgetDecision{}
+		job, decision, err = service.StartBudgeted(ctx, spawn, first)
+		budget = &decision
+	} else {
+		job, err = t.Service.Start(ctx, spawn, first)
+	}
 	if err != nil {
 		return nil, ThreadSnapshot{}, err
 	}
-	return nil, snapshotThread(job), nil
+	snapshot := snapshotThread(job)
+	snapshot.Budget = budget
+	return nil, snapshot, nil
 }
 
 type MCPSendInput struct {

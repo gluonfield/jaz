@@ -101,6 +101,7 @@ func systemPromptMeta(agent, prompt string, fresh bool) map[string]any {
 }
 
 type Config struct {
+	Budget      *BudgetPolicy
 	Agents      map[string]AgentConfig
 	AgentSource AgentConfigSource
 	Adapters    AdapterResolver
