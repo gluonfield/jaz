@@ -1,0 +1,163 @@
+--- a/docs/api/app.md
++++ b/docs/api/app.md
+@@ -1517,6 +1517,26 @@
+ > Keychain. They are only available on Macs with a Secure Enclave (Apple
+ > silicon, or Intel Macs with a T2 chip).
+
++### `app.enableWebAuthnBrowserAuthenticator()` _macOS_
++
++Returns `boolean` - Enables Chromium's native browser passkey authenticator when
++supported by this process's macOS version and signed browser entitlement. Returns
++`false` without changing configuration when unavailable. Requires macOS 13.5 or
++later and Apple's managed `com.apple.developer.web-browser.public-key-credential`
++entitlement. This operation does not request access or enumerate credentials.
++
++Requests keep their original web origin and use Chromium's existing validation,
++extensions and native credential-provider UI. Browser and app-specific passkeys
++are modes of the same authenticator: enabling browser mode replaces app mode;
++explicitly setting `configureWebAuthn({ platformPasskeys: true })` selects app mode,
++and setting it to `false` disables either mode. Other omitted configuration stays
++unchanged, including Touch ID.
++
++When Touch ID is also configured, the existing `select-webauthn-authenticator`
++event identifies this authenticator as `platformPasskeys` and defaults to it when
++no listener is installed. Support does not imply that a matching credential exists
++or that the user will approve a request.
++
+ ### `app.disableHardwareAcceleration()`
+
+ Disables hardware acceleration for current app.
+--- a/shell/browser/api/electron_api_app.cc
++++ b/shell/browser/api/electron_api_app.cc
+@@ -2121,6 +2121,9 @@
+       .SetMethod("isInApplicationsFolder", &App::IsInApplicationsFolder)
+       .SetMethod("setActivationPolicy", &App::SetActivationPolicy)
+       .SetMethod("configureWebAuthn", &App::ConfigureWebAuthn)
++      .SetMethod("enableWebAuthnBrowserAuthenticator",
++                 base::BindRepeating(&ElectronWebAuthenticationDelegate::
++                                         EnableBrowserPasskeys))
+       .SetMethod("startAppShimServer", &App::StartAppShimServer)
+       .SetMethod("stopAppShimServer", &App::StopAppShimServer)
+ #endif
+--- a/shell/browser/webauthn/electron_authenticator_request_client_delegate.cc
++++ b/shell/browser/webauthn/electron_authenticator_request_client_delegate.cc
+@@ -34,6 +34,7 @@
+ #include "third_party/blink/public/mojom/devtools/console_message.mojom.h"
+
+ #if BUILDFLAG(IS_MAC)
++#include "device/fido/mac/icloud_keychain.h"
+ #include "shell/browser/webauthn/electron_authenticator_request_delegate.h"
+ #include "shell/browser/webauthn/electron_platform_passkeys_discovery.h"
+ #include "url/origin.h"
+@@ -316,7 +317,8 @@
+   // Only intercept dispatch when both Touch ID and platform passkeys are
+   // configured — that's the only scenario where dual prompts can appear.
+   // When only one is configured, Chromium's auto-dispatch is correct.
+-  if (!ElectronWebAuthenticationDelegate::IsPlatformPasskeysEnabled() ||
++  if ((!ElectronWebAuthenticationDelegate::IsPlatformPasskeysEnabled() &&
++       !ElectronWebAuthenticationDelegate::IsBrowserPasskeysEnabled()) ||
+       !ElectronWebAuthenticationDelegate::IsTouchIdConfigured()) {
+     return false;
+   }
+@@ -509,6 +511,18 @@
+   }
+ #endif
+ #if BUILDFLAG(IS_MAC)
++  if (ElectronWebAuthenticationDelegate::IsBrowserPasskeysEnabled()) {
++    auto* rfh = content::RenderFrameHost::FromID(render_frame_host_id_);
++    if (rfh && device::fido::icloud_keychain::IsSupported()) {
++      auto* contents = content::WebContents::FromRenderFrameHost(rfh);
++      auto window = contents->GetTopLevelNativeWindow();
++      if (window) {
++        discoveries.push_back(
++            device::fido::icloud_keychain::NewDiscovery(window));
++      }
++    }
++    return discoveries;
++  }
+   if (ElectronWebAuthenticationDelegate::IsPlatformPasskeysEnabled()) {
+     auto* rfh = content::RenderFrameHost::FromID(render_frame_host_id_);
+     if (rfh && IsSameOriginWithAncestors(rfh)) {
+--- a/shell/browser/webauthn/electron_authenticator_request_delegate.cc
++++ b/shell/browser/webauthn/electron_authenticator_request_delegate.cc
+@@ -13,6 +13,7 @@
+ #include "components/prefs/pref_service.h"
+ #include "content/public/browser/browser_thread.h"
+ #include "device/fido/mac/credential_metadata.h"
++#include "device/fido/mac/icloud_keychain.h"
+ #include "shell/browser/electron_browser_context.h"
+ #include "shell/browser/webauthn/electron_platform_passkeys_authenticator.h"
+ #include "shell/common/electron_constants.h"
+@@ -37,8 +38,9 @@
+ }
+
+ // static
+-bool& ElectronWebAuthenticationDelegate::platform_passkeys_enabled() {
+-  static bool value = false;
++ElectronWebAuthenticationDelegate::PlatformPasskeysMode&
++ElectronWebAuthenticationDelegate::platform_passkeys_mode() {
++  static auto value = PlatformPasskeysMode::kDisabled;
+   return value;
+ }
+
+@@ -58,12 +60,26 @@
+ void ElectronWebAuthenticationDelegate::SetPlatformPasskeysEnabled(
+     bool enabled) {
+   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+-  platform_passkeys_enabled() = enabled;
++  platform_passkeys_mode() = enabled ? PlatformPasskeysMode::kApp
++                                     : PlatformPasskeysMode::kDisabled;
+ }
+
+ // static
+ bool ElectronWebAuthenticationDelegate::IsPlatformPasskeysEnabled() {
+-  return platform_passkeys_enabled();
++  return platform_passkeys_mode() == PlatformPasskeysMode::kApp;
++}
++
++bool ElectronWebAuthenticationDelegate::EnableBrowserPasskeys() {
++  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
++  if (!device::fido::icloud_keychain::IsSupported()) {
++    return false;
++  }
++  platform_passkeys_mode() = PlatformPasskeysMode::kBrowser;
++  return true;
++}
++
++bool ElectronWebAuthenticationDelegate::IsBrowserPasskeysEnabled() {
++  return platform_passkeys_mode() == PlatformPasskeysMode::kBrowser;
+ }
+
+ std::optional<content::WebAuthenticationDelegate::TouchIdAuthenticatorConfig>
+@@ -98,6 +114,10 @@
+     IsUserVerifyingPlatformAuthenticatorAvailableOverride(
+         content::RenderFrameHost* render_frame_host,
+         base::OnceCallback<void(std::optional<bool>)> callback) {
++  if (IsBrowserPasskeysEnabled()) {
++    std::move(callback).Run(device::fido::icloud_keychain::IsSupported());
++    return;
++  }
+   // When platform passkeys are enabled and available, report `true` so that
+   // isUserVerifyingPlatformAuthenticatorAvailable() reflects the passkey
+   // authenticator, not just Touch ID. Otherwise defer to the default (nullopt).
+--- a/shell/browser/webauthn/electron_authenticator_request_delegate.h
++++ b/shell/browser/webauthn/electron_authenticator_request_delegate.h
+@@ -32,6 +32,8 @@
+   static bool IsTouchIdConfigured();
+   static void SetPlatformPasskeysEnabled(bool enabled);
+   static bool IsPlatformPasskeysEnabled();
++  static bool EnableBrowserPasskeys();
++  static bool IsBrowserPasskeysEnabled();
+ #endif
+
+   // content::WebAuthenticationDelegate
+@@ -61,7 +63,8 @@
+  private:
+ #if BUILDFLAG(IS_MAC)
+   static std::string& touch_id_keychain_access_group();
+-  static bool& platform_passkeys_enabled();
++  enum class PlatformPasskeysMode { kDisabled, kApp, kBrowser };
++  static PlatformPasskeysMode& platform_passkeys_mode();
+ #endif
+ };
+
