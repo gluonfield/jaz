@@ -255,7 +255,7 @@ func (s *Store) LoadCommitment(id int64) (storage.Commitment, error) {
 	if err != nil {
 		return storage.Commitment{}, err
 	}
-	commitments, err := withThreads(ctx, q, []botdb.BotCommitment{row})
+	commitments, err := s.withThreads(ctx, q, []botdb.BotCommitment{row})
 	if err != nil {
 		return storage.Commitment{}, err
 	}
@@ -270,10 +270,10 @@ func (s *Store) ListOpenCommitments(botID string) ([]storage.Commitment, error) 
 	if err != nil {
 		return nil, err
 	}
-	return withThreads(ctx, q, rows)
+	return s.withThreads(ctx, q, rows)
 }
 
-func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitment) ([]storage.Commitment, error) {
+func (s *Store) withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitment) ([]storage.Commitment, error) {
 	if len(rows) == 0 {
 		return nil, nil
 	}
@@ -303,7 +303,7 @@ func withThreads(ctx context.Context, q *botdb.Queries, rows []botdb.BotCommitme
 	}
 	threads := map[int64][]storage.CommitmentThread{}
 	for _, link := range links {
-		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State})
+		threads[link.CommitmentID] = append(threads[link.CommitmentID], storage.CommitmentThread{ID: link.ThreadID, Slug: link.Slug, Title: link.Title.String, State: link.State, LastActivity: msToTime(link.LastActivityMs)})
 	}
 	questions, err := q.ListCommitmentQuestions(ctx, ids)
 	if err != nil {

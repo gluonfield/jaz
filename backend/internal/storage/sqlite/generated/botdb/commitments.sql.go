@@ -494,18 +494,21 @@ func (q *Queries) ListCommitmentQuestions(ctx context.Context, ids []int64) ([]L
 }
 
 const listCommitmentThreads = `-- name: ListCommitmentThreads :many
-SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state FROM bot_commitment_thread_states s
+SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state,
+  CAST(COALESCE((SELECT MAX(e.created_at_ms) FROM session_events e WHERE e.thread_id = s.thread_id), 0) AS INTEGER) AS last_activity_ms
+FROM bot_commitment_thread_states s
 JOIN bot_commitment_threads l ON l.id = s.linked AND l.thread_id = s.thread_id
 WHERE s.commitment_id IN (/*SLICE:ids*/?)
 ORDER BY s.linked
 `
 
 type ListCommitmentThreadsRow struct {
-	CommitmentID int64          `json:"commitment_id"`
-	ThreadID     string         `json:"thread_id"`
-	Slug         string         `json:"slug"`
-	Title        sql.NullString `json:"title"`
-	State        string         `json:"state"`
+	CommitmentID   int64          `json:"commitment_id"`
+	ThreadID       string         `json:"thread_id"`
+	Slug           string         `json:"slug"`
+	Title          sql.NullString `json:"title"`
+	State          string         `json:"state"`
+	LastActivityMs int64          `json:"last_activity_ms"`
 }
 
 func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]ListCommitmentThreadsRow, error) {
@@ -533,6 +536,7 @@ func (q *Queries) ListCommitmentThreads(ctx context.Context, ids []int64) ([]Lis
 			&i.Slug,
 			&i.Title,
 			&i.State,
+			&i.LastActivityMs,
 		); err != nil {
 			return nil, err
 		}

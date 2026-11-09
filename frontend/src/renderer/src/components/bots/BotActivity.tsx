@@ -87,6 +87,15 @@ export function BotActivity({
   )
 }
 
+function threadAge(at: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 60000))
+  if (minutes < 1) return 'now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return `${Math.floor(hours / 24)}d ago`
+}
+
 const THREAD_STATES: Record<BotOwedThread['state'], string> = { working: 'Working', background: 'Working in the background', finished: 'Finished', failed: 'Failed', idle: 'Not started', gone: 'Archived' }
 
 function OwedModal({ botId, owed, started, now, onClose }: { botId: string; owed: BotOwed; started: Started; now: number; onClose: () => void }) {
@@ -107,7 +116,7 @@ function OwedModal({ botId, owed, started, now, onClose }: { botId: string; owed
                 <li key={thread.id}>
                   <Link to="/sessions/$sessionId" params={{ sessionId: thread.id }} onClick={onClose} className="-mx-2 flex min-w-0 items-baseline justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors duration-150 hover:bg-list-hover">
                     <span className="min-w-0 flex-1 wrap-break-word font-medium">{thread.title}</span>
-                    <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}</span>
+                    <span className={`shrink-0 text-[12px] ${thread.state === 'failed' ? 'text-danger' : thread.state === 'working' || thread.state === 'background' ? 'text-running' : 'text-ink-3'}`}>{THREAD_STATES[thread.state]}{thread.last_activity ? ` · ${threadAge(thread.last_activity)}` : ''}</span>
                   </Link>
                   <StartedThreads started={started} by={thread.id} now={now} onOpen={onClose} />
                 </li>

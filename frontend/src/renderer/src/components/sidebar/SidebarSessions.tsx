@@ -1,18 +1,23 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Folder, SquarePen } from 'lucide-react'
+import { ChevronDown, Folder, SquarePen } from 'lucide-react'
 import { motion, Reorder, type Transition, useDragControls } from 'motion/react'
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatedList, AnimatedListItem } from '@/components/ui/AnimatedList'
 import { Collapse } from '@/components/ui/Collapse'
 import { HoverCardGroup } from '@/components/ui/HoverCard'
+import { BotAvatar } from '@/components/bots/BotAvatar'
 import { SkeletonRows } from '@/components/ui/Skeleton'
+import { botsQuery } from '@/lib/api/bots'
 import {
   projectsQuery,
   reorderProjects,
+  botWorkerSessionsQuery,
   sidebarSessionsQuery,
   type SessionListItem,
 } from '@/lib/api/sessions'
+import { groupSessionsForDisplay } from '@/lib/api/sessions'
+import type { Bot, Session } from '@/lib/api/types'
 import { useShowModelIcons } from '@/lib/appearance'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useMetaHeld } from '@/lib/hooks/useMetaHeld'
@@ -320,6 +325,134 @@ function RecentSessionList({
   )
 }
 
+// Bots section: worker chats the bot spawned for its tasks. They are sourced
+// sessions, so the default sidebar list hides them; this section is the only
+// place their history stays reachable.
+const COLLAPSED_BOTS_KEY = 'jaz.sidebar.collapsedBots'
+const COLLAPSED_BOT_GROUPS_KEY = 'jaz.sidebar.collapsedBotGroups'
+
+function storedCollapsedBots(): boolean {
+  try {
+    return JSON.parse(localStorage.getItem(COLLAPSED_BOTS_KEY) ?? 'false') === true
+  } catch {
+    return false
+  }
+}
+
+function storedCollapsedBotGroups(): Set<string> {
+  try {
+    const ids: unknown = JSON.parse(localStorage.getItem(COLLAPSED_BOT_GROUPS_KEY) ?? '[]')
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function botWorkerGroups(sessions: Session[], bots: Bot[]) {
+  const byID = new Map(bots.map((bot) => [bot.id, bot]))
+  const groups = new Map<string, { bot?: Bot; items: Session[] }>()
+  for (const session of sessions) {
+    const botID = session.source_id || session.parent_id || 'unknown'
+    const group = groups.get(botID) ?? { bot: byID.get(botID), items: [] }
+    group.items.push(session)
+    groups.set(botID, group)
+  }
+  return [...groups.entries()].map(([id, group]) => ({
+    id,
+    bot: group.bot,
+    items: groupSessionsForDisplay(group.items),
+    running: group.items.filter((item) => item.status === 'running').length,
+    latest: Math.max(...group.items.map((item) => Date.parse(item.last_attention_at || item.updated_at) || 0)),
+  })).sort((a, b) => b.latest - a.latest || a.id.localeCompare(b.id))
+}
+
+function BotWorkerSessions({ open }: { open: boolean }) {
+  const sessions = useInfiniteQuery(botWorkerSessionsQuery)
+  const bots = useQuery(botsQuery)
+  const [collapsed, setCollapsed] = useState(storedCollapsedBots)
+  const [collapsedGroups, setCollapsedGroups] = useState(storedCollapsedBotGroups)
+  const loaded = [...new Map(sessions.data?.pages.flatMap((page) => page.sessions).map((session) => [session.id, session]) ?? []).values()]
+  if (sessions.isPending || (!loaded.length && !sessions.isError)) return null
+  const groups = botWorkerGroups(loaded, bots.data ?? [])
+  const items: SessionListItem[] = groups.flatMap((group) => group.items)
+  const running = loaded.filter((session) => session.status === 'running').length
+  const toggle = () => {
+    setCollapsed((current) => {
+      localStorage.setItem(COLLAPSED_BOTS_KEY, JSON.stringify(!current))
+      return !current
+    })
+  }
+  const toggleGroup = (id: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      localStorage.setItem(COLLAPSED_BOT_GROUPS_KEY, JSON.stringify([...next]))
+      return next
+    })
+  }
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={toggle}
+        aria-expanded={!collapsed}
+        aria-label={`${collapsed ? 'Expand' : 'Collapse'} bot chats`}
+        className={`flex h-[30px] w-full items-center gap-2 rounded-lg px-2.5 text-left outline-none transition-colors duration-150 hover:bg-list-hover max-sm:h-11 ${SECTION_LABEL_CLASS}`}
+      >
+        <Collapse open={!collapsed}>
+          <span />
+        </Collapse>
+        <span className="min-w-0 truncate">
+          Bots
+          {running > 0 ? <span className="ml-1.5 text-primary">{running} active</span> : null}
+          <span className="ml-1.5 text-ink-3">{items.length}</span>
+        </span>
+      </button>
+      <Collapse open={!collapsed}>
+        <div className="flex flex-col gap-1">
+          {groups.map((group) => {
+            const isCollapsed = collapsedGroups.has(group.id)
+            const name = group.bot?.name ?? (group.id === 'unknown' ? 'Other bot chats' : `Bot ${group.id.slice(0, 8)}`)
+            return (
+              <div key={group.id}>
+                <div className="flex h-[30px] items-center gap-2 rounded-lg px-2.5 pr-2 hover:bg-list-hover max-sm:h-11">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.id)}
+                    aria-expanded={!isCollapsed}
+                    aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${name} chats`}
+                    className="grid size-5 shrink-0 place-items-center rounded text-ink-3"
+                  >
+                    <ChevronDown size={13} className={`shrink-0 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+                  </button>
+                  {group.bot ? <BotAvatar avatar={group.bot.avatar} size={17} /> : null}
+                  {group.bot ? (
+                    <Link to="/bots/$botId" params={{ botId: group.bot.id }} className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-2 hover:text-ink">
+                      {name}
+                    </Link>
+                  ) : <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink-2">{name}</span>}
+                  {group.running > 0 ? <span className="shrink-0 text-[11px] text-primary">{group.running} active</span> : null}
+                  <span className="shrink-0 text-[11px] text-ink-3">{group.items.length}</span>
+                </div>
+                <Collapse open={!isCollapsed}>
+                  <SessionRows items={group.items} shortcutByID={new Map()} shortcutMode={false} reserveIconSpace={false} />
+                </Collapse>
+              </div>
+            )
+          })}
+          {sessions.isError ? <p className="px-2.5 text-xs text-danger">Couldn't load bot chats: {sessions.error.message}</p> : null}
+          {sessions.hasNextPage || sessions.isError ? (
+            <button type="button" className="px-2.5 py-2 text-left text-xs text-ink-3 hover:text-ink" disabled={sessions.isFetching} onClick={() => sessions.isError && !sessions.isFetchNextPageError ? void sessions.refetch() : void sessions.fetchNextPage()}>
+              {sessions.isFetching ? 'Loading…' : sessions.isError ? 'Retry loading chats' : 'Load older bot chats'}
+            </button>
+          ) : null}
+        </div>
+      </Collapse>
+    </div>
+  )
+}
+
 export function SidebarSessions({ open }: { open: boolean }) {
   const queryClient = useQueryClient()
   const sessions = useQuery(sidebarSessionsQuery)
@@ -414,6 +547,7 @@ export function SidebarSessions({ open }: { open: boolean }) {
           shortcutByID={shortcutByID}
           shortcutMode={shortcutMode}
         />
+        <BotWorkerSessions open={open} />
         <div>
           <SidebarOrganizationMenu organization={organization} onChange={changeOrganization} />
           {organization === 'project' ? (

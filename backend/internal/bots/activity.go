@@ -79,6 +79,8 @@ type OwedThread struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 	State string `json:"state"`
+	// LastActivity is when the worker thread last produced an event.
+	LastActivity *time.Time `json:"last_activity,omitempty"`
 }
 
 // ActivityView is what a bot owes, oldest first, and what it is doing and
@@ -218,7 +220,12 @@ func (s *Service) taskView(commitment storage.Commitment) (Owed, error) {
 		Status: commitment.Status, ReplySeq: commitment.ReplySeq, CheckAt: commitment.CheckAt, QuestionSeq: commitment.QuestionSeq, Question: commitment.Question, OpeningSeq: commitment.OpeningSeq, DependsOn: commitment.DependsOn,
 		Blocked: commitment.Blocked, Moving: commitment.Moving, Stalled: commitment.Stalled, OpenedAt: commitment.OpenedAt}
 	for _, thread := range commitment.Threads {
-		task.Threads = append(task.Threads, OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State})
+		chip := OwedThread{ID: thread.ID, Title: cmp.Or(thread.Title, thread.Slug), State: thread.State}
+		if !thread.LastActivity.IsZero() {
+			at := thread.LastActivity
+			chip.LastActivity = &at
+		}
+		task.Threads = append(task.Threads, chip)
 	}
 	return task, nil
 }
