@@ -105,10 +105,10 @@ export function ChatLog({
               <PermissionCard event={entry.event} resolution={entry.answer} />
             ) : entry.kind === 'task' ? (
               <div className="rounded-xl border border-border px-3 py-2 text-sm text-ink-2">
-                <p className="font-medium text-ink">{entry.task.name || 'Фоновая задача'} · {botTaskState(entry.task)}</p>
+                <p className="font-medium text-ink">{entry.task.name || 'Background task'} · {botTaskState(entry.task)}</p>
                 {entry.task.description ? <p className="whitespace-pre-wrap break-words">{entry.task.description}</p> : null}
                 {entry.task.summary && entry.task.summary !== entry.task.description ? <p className="whitespace-pre-wrap break-words">{entry.task.summary}</p> : null}
-                {entry.task.last_tool_name ? <p className="text-xs text-ink-3">Последний инструмент: {entry.task.last_tool_name}</p> : null}
+                {entry.task.last_tool_name ? <p className="text-xs text-ink-3">Last tool: {entry.task.last_tool_name}</p> : null}
               </div>
             ) : (
               <div className="flex items-end gap-2.5">
