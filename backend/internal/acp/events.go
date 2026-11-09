@@ -290,6 +290,7 @@ func (m *Manager) setJobPermission(job *jobState, permission sessionevents.ACPPe
 	job.mu.Lock()
 	defer job.mu.Unlock()
 	now := time.Now().UTC()
+	job.recordActivityLocked("waiting", "user_input", now)
 	for i, candidate := range job.Permissions {
 		if candidate.ID == permission.ID {
 			job.Permissions[i] = permission
@@ -307,6 +308,7 @@ func (m *Manager) removeJobPermission(job *jobState, requestID string) {
 	job.mu.Lock()
 	defer job.mu.Unlock()
 	now := time.Now().UTC()
+	job.recordActivityLocked("waiting", "", now)
 	for i, permission := range job.Permissions {
 		if permission.ID == requestID {
 			job.Permissions = append(job.Permissions[:i], job.Permissions[i+1:]...)

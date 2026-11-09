@@ -223,6 +223,11 @@ SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) AS seq
 FROM session_events
 WHERE thread_id = sqlc.arg(thread_id);
 
+-- name: LatestSessionEventTime :one
+SELECT CAST(COALESCE(MAX(created_at_ms), 0) AS INTEGER) AS created_at_ms
+FROM session_events
+WHERE thread_id = sqlc.arg(thread_id);
+
 -- name: ListSessionEventsAfter :many
 SELECT
   thread_id,

@@ -647,13 +647,21 @@ SELECT
     AND archived = 0
     AND runtime = 'acp'
     AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
-  ) AS INTEGER) AS direct_child
+  ) AS INTEGER) AS direct_child,
+  CAST((
+    COALESCE(parent_id, '') = ?1
+    AND archived = 0
+    AND runtime = 'acp'
+    AND COALESCE(source_type, '') = 'bot_worker'
+    AND COALESCE(source_id, '') = parent_id
+    AND status = 'running'
+  ) AS INTEGER) AS active_bot_worker
 FROM threads
 WHERE (
     parent_id = ?1
     AND archived = 0
     AND runtime = 'acp'
-    AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND source_id <> parent_id))
+    AND (COALESCE(source_type, '') = '' OR (source_type = 'bot_worker' AND (source_id <> parent_id OR status = 'running')))
   )
   OR id IN (/*SLICE:ids*/?)
 ORDER BY last_attention_at_ms DESC, id
@@ -680,6 +688,7 @@ type LoadTranscriptSessionsRow struct {
 	CreatedAtMs     int64          `json:"created_at_ms"`
 	UpdatedAtMs     int64          `json:"updated_at_ms"`
 	DirectChild     int64          `json:"direct_child"`
+	ActiveBotWorker int64          `json:"active_bot_worker"`
 }
 
 // A thread's own children are the threads it started: unsourced ones, or a
@@ -721,6 +730,7 @@ func (q *Queries) LoadTranscriptSessions(ctx context.Context, arg LoadTranscript
 			&i.CreatedAtMs,
 			&i.UpdatedAtMs,
 			&i.DirectChild,
+			&i.ActiveBotWorker,
 		); err != nil {
 			return nil, err
 		}

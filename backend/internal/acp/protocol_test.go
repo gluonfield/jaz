@@ -398,20 +398,16 @@ func TestToolCallUpdateCapturesLivenessInEvent(t *testing.T) {
 		t.Fatalf("response = %s", raw)
 	}
 
-	select {
-	case event := <-sub:
-		if event.Type != "acp_tool" || event.ACP == nil || len(event.ACP.ToolCalls) != 1 {
-			t.Fatalf("unexpected event %#v", event)
-		}
-		call := event.ACP.ToolCalls[0]
-		if call.Runtime.TerminalID != "exec-1" || call.Runtime.TerminalCwd != "/repo" {
-			t.Fatalf("runtime = %#v", call.Runtime)
-		}
-		if call.StartedAt.IsZero() || call.UpdatedAt.IsZero() || event.ACP.LastToolAt.IsZero() {
-			t.Fatalf("timestamps missing: call=%#v acp=%#v", call, event.ACP)
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
+	event := receiveEvent(t, sub)
+	if event.Type != "acp_tool" || event.ACP == nil || len(event.ACP.ToolCalls) != 1 {
+		t.Fatalf("unexpected event %#v", event)
+	}
+	call := event.ACP.ToolCalls[0]
+	if call.Runtime.TerminalID != "exec-1" || call.Runtime.TerminalCwd != "/repo" {
+		t.Fatalf("runtime = %#v", call.Runtime)
+	}
+	if call.StartedAt.IsZero() || call.UpdatedAt.IsZero() || event.ACP.LastToolAt.IsZero() {
+		t.Fatalf("timestamps missing: call=%#v acp=%#v", call, event.ACP)
 	}
 
 	storedEvents, err := store.LoadSessionEvents(session.ID)

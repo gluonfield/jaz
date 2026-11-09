@@ -490,7 +490,7 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			}
 			sendResult(conn, msg, steerResult)
 		case "session/prompt":
-			if answerDuringFakeRun(conn, msg) || startFakeBackgroundWork(conn, msg) || startFakeBackgroundAgent(conn, msg) {
+			if startFakeActivitySequence(conn, msg) || answerDuringFakeRun(conn, msg) || startFakeBackgroundWork(conn, msg) || startFakeBackgroundAgent(conn, msg) {
 				continue
 			}
 			fakeTurnRuns(conn)
@@ -525,8 +525,15 @@ func TestFakeACPAgentProcess(t *testing.T) {
 			if fakePromptBoundary(t, conn, msg) {
 				continue
 			}
-			// The agent reasons, calling no tool, while a hold file exists.
-			fakeHold(os.Getenv("JAZ_FAKE_ACP_THINK_HOLD"))
+			if hold := os.Getenv("JAZ_FAKE_ACP_THINK_HOLD"); hold != "" {
+				if _, err := os.Stat(hold); err == nil && os.Getenv("JAZ_FAKE_ACP_EMIT_HELD_THOUGHT") == "1" {
+					notify(conn, "session/update", map[string]any{
+						"sessionId": fakeSessionID,
+						"update":    map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "Considering the task"}},
+					})
+				}
+				fakeHold(hold)
+			}
 			path := os.Getenv("JAZ_FAKE_ACP_RELEASE_FILE")
 			if step := fakeStepHold.FindStringSubmatch(string(msg.Params)); step != nil && path != "" {
 				path += "-" + step[1]

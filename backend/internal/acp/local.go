@@ -296,9 +296,12 @@ func (m *Manager) applyLocalMessage(job *jobState, chunk string) {
 	job.mu.Lock()
 	now := time.Now().UTC()
 	job.appendAssistantLocked(chunk)
+	job.appendMessagePreviewLocked("", chunk)
+	job.recordActivityLocked("responding", "", now)
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.mu.Unlock()
+	m.publishActivityProgress(job)
 	m.queueACPMessage(job, chunk)
 }
 
@@ -309,9 +312,11 @@ func (m *Manager) applyLocalThought(job *jobState, chunk string) {
 	job.mu.Lock()
 	now := time.Now().UTC()
 	job.appendThoughtLocked(chunk)
+	job.recordActivityLocked("reasoning", "", now)
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.mu.Unlock()
+	m.publishActivityProgress(job)
 	m.queueACPThought(job, chunk)
 }
 
@@ -375,7 +380,9 @@ func (m *Manager) updateLocalTool(job *jobState, next sessionevents.ACPToolCall)
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	job.LastToolAt = now
+	job.recordToolActivityLocked(current.Status, now)
 	job.mu.Unlock()
+	m.publishActivityProgress(job)
 	snapshot := job.eventView()
 	return snapshot, current
 }

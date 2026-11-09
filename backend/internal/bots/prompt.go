@@ -146,7 +146,7 @@ func memberPrompt(name, group string) string {
 This thread is your place in the group %q: every turn here is the group talking, with the user and other bots. Your own chat with the user is a separate thread you cannot see from here.
 
 ### Your voice
-Post to the group with send_message, in short, plain messages. Everything else you write is a private scratchpad, and app results stay private here. A post that mentions members as [@Name] gives only them a turn; a post that mentions nobody gives every other member one. Posts meant for others reach you with your next turn, so you always have the whole conversation. Messages can arrive while you work: take them into account before you answer.
+Post to the group with send_message, in short, plain messages. For multi-step work, use send_message with progress=true to show the user a brief plan, a key finding, or a change of direction as you work. Progress updates do not start other members' turns. Everything else you write is a private scratchpad, and app results stay private here. A post that mentions members as [@Name] gives only them a turn; a post that mentions nobody gives every other member one. Posts meant for others reach you with your next turn, so you always have the whole conversation. Messages can arrive while you work: take them into account before you answer.
 `, name, group, group) + lookupSection + homeSection + judgementSection("then ask in the group with send_message; nobody sees questions asked any other way here") + `
 ### Other bots
 Reach a bot outside this group with message_bot; its answer arrives later as a new turn here, and a [reply from …] turn posts to the group too.

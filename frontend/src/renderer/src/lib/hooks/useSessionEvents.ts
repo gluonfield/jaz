@@ -66,6 +66,10 @@ export function useSessionEvents(
       } else {
         pending.push(event)
         flushTimer ??= setTimeout(flush, 50)
+        if ((event.type === 'acp' && event.acp?.parent_id === sessionId && event.acp.plan) ||
+            (event.permission?.session_id && event.permission.session_id !== sessionId)) {
+          queryClient.invalidateQueries({ queryKey: keys.sessionMessages(sessionId) })
+        }
         // turn finished: new rows were persisted
         const state = (event.acp?.state ?? '').toLowerCase()
         if (event.type === 'acp' && ['idle', 'failed', 'cancelled'].includes(state)) {

@@ -26,6 +26,7 @@ type View struct {
 	Page             storage.TranscriptPage
 	Snapshot         *acp.Job
 	Children         []acp.Job
+	BotWorkers       []BotWorker
 	ChildPermissions []sessionevents.ACPPermission
 	Meta             map[string]Metadata
 }
@@ -52,11 +53,12 @@ func (s *Service) Load(ctx context.Context, ref string, request storage.Transcri
 	if err != nil {
 		return View{}, err
 	}
-	active := s.activeJobs(session.ID, related.Children)
+	active := s.activeJobs(session.ID, related.Children, related.BotWorkers)
 	children, permissions := childSnapshots(session.ID, page.Events, related.Children, active)
 	view := View{
 		Session: session, Page: page, Children: children, ChildPermissions: permissions,
-		Meta: metadata(page.Events, session, children, related.References),
+		BotWorkers: botWorkerSnapshots(related.BotWorkers, active),
+		Meta:       metadata(page.Events, session, children, related.References),
 	}
 	if session.Runtime == storage.RuntimeACP {
 		snapshot := sessionSnapshot(session, active)
@@ -65,11 +67,14 @@ func (s *Service) Load(ctx context.Context, ref string, request storage.Transcri
 	return view, nil
 }
 
-func (s *Service) activeJobs(sessionID string, children []storage.TranscriptSession) map[string]acp.HydrationView {
-	ids := make([]string, 1, len(children)+1)
+func (s *Service) activeJobs(sessionID string, children, workers []storage.TranscriptSession) map[string]acp.HydrationView {
+	ids := make([]string, 1, 1+len(children)+len(workers))
 	ids[0] = sessionID
 	for _, child := range children {
 		ids = append(ids, child.ID)
+	}
+	for _, worker := range workers {
+		ids = append(ids, worker.ID)
 	}
 	return s.live.HydrationJobs(ids)
 }

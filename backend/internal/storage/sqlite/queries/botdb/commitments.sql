@@ -132,7 +132,9 @@ SELECT commitment_id, prerequisite_id FROM bot_commitment_dependencies
 WHERE commitment_id IN (sqlc.slice(ids)) ORDER BY prerequisite_id;
 
 -- name: ListCommitmentThreads :many
-SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state FROM bot_commitment_thread_states s
+SELECT s.commitment_id, s.thread_id, s.slug, s.title, s.state,
+  CAST(COALESCE((SELECT MAX(e.created_at_ms) FROM session_events e WHERE e.thread_id = s.thread_id), 0) AS INTEGER) AS last_activity_ms
+FROM bot_commitment_thread_states s
 JOIN bot_commitment_threads l ON l.id = s.linked AND l.thread_id = s.thread_id
 WHERE s.commitment_id IN (sqlc.slice(ids))
 ORDER BY s.linked;

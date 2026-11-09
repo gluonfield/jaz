@@ -69,6 +69,7 @@ export interface Session {
   slug: string
   title?: string
   parent_id?: string
+  source_id?: string
   // What started the thread, such as 'bot' for a bot's own thread or
   // 'bot_worker' for one it started; absent for an interactive chat.
   source_type?: string
@@ -624,12 +625,15 @@ export interface SessionMessages {
   acp_modes?: ACPModeState
   acp_plan?: ACPPlanEntry[]
   acp_tool_calls?: ACPToolCall[]
+  acp_tool_progress?: (Pick<ACPToolCall, 'id' | 'kind' | 'status' | 'started_at' | 'updated_at'> & { program?: string })[]
+  acp_activity?: ACPActivity
   acp_permissions?: ACPPermission[]
   acp_error?: string
   acp_goal_requested?: boolean
   acp_active_operation?: string
   acp_last_event_at?: string
   acp_last_tool_at?: string
+  bot_workers?: BotWorkerSnapshot[]
   acp_children?: ACPJobSnapshot[]
   acp_child_permissions?: ACPPermission[]
 }
@@ -644,7 +648,15 @@ export interface ACPToolContent {
   new_text?: string
 }
 
+export interface ACPActivity {
+  phase: 'starting' | 'reasoning' | 'responding' | 'tool' | 'waiting' | 'idle' | 'error'
+  at?: string
+  turn_started_at?: string
+  reason?: 'tool_finished' | 'provider_retry' | 'interrupted' | 'user_input' | 'provider_error'
+}
+
 export interface ACPToolCall {
+  program?: string
   id: string
   title?: string
   status?: string
@@ -768,6 +780,11 @@ export interface Bot {
   members?: string[]
   // The members taking a turn in a group.
   working?: string[]
+  group_progress?: Record<string, {
+    activity?: ACPActivity
+    last_event_at?: string
+    tools?: SessionMessages['acp_tool_progress']
+  }>
   // Set while the bot's thread holds a question or plan decision for the
   // person.
   waiting?: boolean
@@ -778,9 +795,8 @@ export interface Bot {
 }
 
 export interface BotActivityEvent {
-  kind: 'routine' | 'message_sent' | 'message_received' | 'group' | 'unreachable' | 'file_changed' | 'file_edited'
+  kind: 'routine' | 'message_sent' | 'message_received' | 'group' | 'unreachable' | 'file_changed' | 'file_edited' | 'group_progress'
   label: string
-  // What a message between bots said.
   text?: string
 }
 
@@ -830,6 +846,7 @@ export interface BotOwedThread {
   id: string
   title: string
   state: 'working' | 'background' | 'finished' | 'failed' | 'idle' | 'gone'
+  last_activity?: string
 }
 
 export type BotFileName = 'BOTS.md' | 'MEMORY.md'
@@ -984,6 +1001,13 @@ export interface ACPEvent {
   suggested_prompt?: string
   last_event_at?: string
   last_tool_at?: string
+}
+
+export interface BotWorkerSnapshot extends Pick<ACPJobSnapshot,
+  'id' | 'slug' | 'title' | 'acp_agent' | 'state' | 'updated_at' | 'last_event_at' | 'last_tool_at' | 'plan'> {
+  activity?: ACPActivity
+  message_preview?: string
+  tool_progress?: SessionMessages['acp_tool_progress']
 }
 
 export interface ACPJobSnapshot {

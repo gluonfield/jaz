@@ -1,8 +1,8 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, BookOpen, CalendarPlus, CircleAlert, Clock3, type LucideIcon, PenLine, Users } from 'lucide-react'
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, BookOpen, CalendarPlus, CircleAlert, Clock3, ListChecks, type LucideIcon, PenLine, Users } from 'lucide-react'
 import { agentLabel } from '@/lib/agentLabel'
 import type { BotActivityEvent, SessionEvent } from '@/lib/api/types'
 
-const ACTIVITY: Record<BotActivityEvent['kind'], [LucideIcon, (label: string) => string]> = {
+const ACTIVITY: Record<Exclude<BotActivityEvent['kind'], 'group_progress'>, [LucideIcon, (label: string) => string]> = {
   routine: [Clock3, (label) => label],
   message_sent: [ArrowUpRight, (label) => `Messaged ${label}`],
   message_received: [ArrowDownLeft, (label) => `Message from ${label}`],
@@ -15,6 +15,17 @@ const ACTIVITY: Record<BotActivityEvent['kind'], [LucideIcon, (label: string) =>
 // What woke a bot, or what it set up, as one quiet centered line; with `onOpen`
 // the line opens what it names.
 export function SystemEventRow({ event, onOpen }: { event: SessionEvent; onOpen?: () => void }) {
+  if (event.bot_activity?.kind === 'group_progress') {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm text-ink-2">
+        <ListChecks size={14} aria-hidden className="mt-0.5 shrink-0" />
+        <div className="min-w-0 break-words">
+          <p className="text-xs font-medium text-ink-3">{event.bot_activity.label} · Progress update</p>
+          <p className="whitespace-pre-wrap">{event.bot_activity.text}</p>
+        </div>
+      </div>
+    )
+  }
   const [Icon, text] = event.bot_activity
     ? ACTIVITY[event.bot_activity.kind]
     : event.type === 'agent_switch'

@@ -47,7 +47,8 @@ type Bot struct {
 	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 	Members         []string  `json:"members,omitempty"`
 	// Working lists the members taking a turn in a group.
-	Working []string `json:"working,omitempty"`
+	Working       []string                       `json:"working,omitempty"`
+	GroupProgress map[string]GroupMemberProgress `json:"group_progress,omitempty"`
 	// Waiting is set while the bot's thread holds a question or plan decision
 	// for the user.
 	Waiting bool `json:"waiting,omitempty"`
@@ -60,6 +61,12 @@ type Bot struct {
 	// unknown while either is zero.
 	ContextTokens       int64 `json:"context_tokens,omitempty"`
 	ContextWindowTokens int64 `json:"context_window_tokens,omitempty"`
+}
+
+type GroupMemberProgress struct {
+	Activity    sessionevents.ACPActivity       `json:"activity,omitzero"`
+	LastEventAt time.Time                       `json:"last_event_at,omitzero"`
+	Tools       []sessionevents.ACPToolProgress `json:"tools,omitempty"`
 }
 
 type CreateBot struct {
@@ -96,6 +103,7 @@ type Threads interface {
 	SetModel(ctx context.Context, sessionID, model, effort string) error
 	AwaitsAnswer(sessionID string) bool
 	Thinking(sessionID string) bool
+	HydrationJobs([]string) map[string]acp.HydrationView
 }
 
 type TurnQueue interface {

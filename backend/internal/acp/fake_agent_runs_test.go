@@ -1,6 +1,7 @@
 package acp_test
 
 import (
+	"context"
 	"os"
 	"regexp"
 	"slices"
@@ -270,4 +271,32 @@ func waitForFakeFile(path string) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func startFakeActivitySequence(conn jsonrpc.MessageConn, msg *jsonrpc.Message) bool {
+	prefix := os.Getenv("JAZ_FAKE_ACP_ACTIVITY_SEQUENCE")
+	if prefix == "" {
+		return false
+	}
+	go func() {
+		send := func(update map[string]any) {
+			notify(conn, "session/update", map[string]any{"sessionId": fakeSessionID, "update": update})
+		}
+		fakeHold(prefix + "-thought")
+		send(map[string]any{"sessionUpdate": "agent_thought_chunk", "content": map[string]any{"type": "text", "text": "PRIVATE_REASONING_NEVER_RETURN"}})
+		fakeHold(prefix + "-response")
+		send(map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "PRIVATE_NARRATION_NEVER_RETURN"}})
+		fakeHold(prefix + "-tool")
+		send(map[string]any{"sessionUpdate": "tool_call", "toolCallId": "phase-tool", "kind": "execute", "status": "in_progress", "rawInput": map[string]any{"command": "ssh user:SECRET_PASSWORD@host"}})
+		fakeHold(prefix + "-tool-end")
+		send(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "phase-tool", "status": "completed"})
+		fakeHold(prefix + "-finish")
+		if os.Getenv("JAZ_FAKE_ACP_ACTIVITY_ERROR") == "1" {
+			resp, _ := jsonrpc.NewErrorResponse(*msg.ID, jsonrpc.InternalError("SECRET_PROVIDER_ERROR", nil))
+			_ = conn.Send(context.Background(), resp)
+		} else {
+			sendResult(conn, msg, map[string]any{"stopReason": "end_turn"})
+		}
+	}()
+	return true
 }

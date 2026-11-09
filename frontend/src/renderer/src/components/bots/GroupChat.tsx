@@ -15,6 +15,7 @@ import { markThreadSeen } from '@/lib/api/feed'
 import { sessionEventsQuery, uploadSessionAttachment } from '@/lib/api/sessions'
 import type { Bot } from '@/lib/api/types'
 import { botAvatars, botChat } from '@/lib/bots'
+import { deriveBotProgress } from '@/lib/botProgress'
 import { modalDialogOpen } from '@/lib/dom/modal'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
@@ -50,7 +51,22 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
     [history.data?.events, live.data, group],
   )
   const members = useMemo(() => bots.filter((bot) => group.members?.includes(bot.id)), [bots, group.members])
-  const working = members.filter((bot) => group.working?.includes(bot.id))
+  const [now, setNow] = useState(Date.now)
+  const hasWorkingMembers = Boolean(group.working?.length)
+  useEffect(() => {
+    if (!hasWorkingMembers) return
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [hasWorkingMembers])
+  const working = members.filter((bot) => group.working?.includes(bot.id)).map((bot) => {
+    const progress = group.group_progress?.[bot.id]
+    return {
+      bot,
+      progress: progress && deriveBotProgress({
+        running: true, now, activity: progress.activity, toolCalls: progress.tools, lastEventAt: progress.last_event_at,
+      }),
+    }
+  })
   const reducedMotion = useReducedMotion()
   const isMobile = useIsMobile()
   const { slot } = useContext(SidePanelSlot)
@@ -111,7 +127,7 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
           <div className={`${THREAD_COLUMN_CLASS} py-6`}>
             {history.isError && !history.data ? (
               <EmptyState title="Couldn't load this chat" />
-            ) : history.data && !entries.length ? (
+            ) : history.data && !entries.length && !working.length ? (
               <EmptyState title="Say something to the group" />
             ) : (
               <ChatLog
@@ -119,7 +135,7 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
                 bots={bots}
                 mentionBots={members}
                 named
-                working={working.map((bot) => ({ bot }))}
+                working={working}
                 scrollRef={scrollRef}
                 paging={history.paging}
               />

@@ -1,8 +1,9 @@
-import type { ACPPermission, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotOwed, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
+import type { ACPPermission, AgentTask, Attachment, Bot, BotActivityEvent, BotAvatar, BotColor, BotFileName, BotOwed, BotShape, ChatMessage, MCPAppEvent, MCPEntrypoint, SessionEvent } from '@/lib/api/types'
 import { messageText } from '@/lib/messageText'
 import { isPresentedApp } from '@/lib/mcpApps'
 import { hasPermissionSurface } from '@/lib/sessionPermissions'
 import { type SpawnedThreadView, threadRunning } from '@/lib/spawnedThreads'
+import type { BotProgress } from '@/lib/botProgress'
 
 export const BOT_SHAPES: BotShape[] = ['circle', 'blob', 'squircle', 'pill', 'triangle', 'hex', 'cloud', 'drop']
 
@@ -137,6 +138,7 @@ export type ChatEntry = { seq?: number } & (
   | { kind: 'app'; key: string; at: string; app: MCPAppEvent }
   | { kind: 'artifact'; key: string; at: string; event: SessionEvent }
   | { kind: 'question'; key: string; at: string; event: SessionEvent; answer?: ACPPermission }
+  | { kind: 'task'; key: string; at: string; task: AgentTask }
 )
 
 type ChatTurn = {
@@ -145,7 +147,8 @@ type ChatTurn = {
   activity?: BotActivityEvent
 }
 
-export type BotWork = { doing?: string }
+export type BotWorker = { id: string; title: string; progress: BotProgress; message?: string }
+export type BotWork = { doing?: string; progress?: BotProgress; activities?: string[]; workers?: BotWorker[] }
 
 // A bot's chat, read from its thread in one pass: what people typed, what bots
 // sent with send_message, presented apps, questions with their answers, and
@@ -157,14 +160,14 @@ export function opensBotTurn(event: SessionEvent): boolean {
   return event.room_message?.speaker === 'user' || (!!event.bot_activity && !QUIET_ACTIVITY.has(event.bot_activity.kind))
 }
 
-const QUIET_ACTIVITY = new Set<BotActivityEvent['kind']>(['message_sent', 'file_changed', 'file_edited'])
+const QUIET_ACTIVITY = new Set<BotActivityEvent['kind']>(['message_sent', 'file_changed', 'file_edited', 'group_progress'])
 
 export function botChat(
   messages: ChatMessage[],
   events: SessionEvent[],
   self: { id: string; name: string },
   entrypoints: MCPEntrypoint[],
-): { entries: ChatEntry[]; work: BotWork; waiting: boolean } {
+): { entries: ChatEntry[]; work: BotWork; waiting: boolean; tasks: AgentTask[] } {
   const items = [
     ...messages.flatMap((message) =>
       message.role === 'user' && message.from_user ? [{ at: message.created_at, message, event: undefined }] : [],
@@ -174,6 +177,7 @@ export function botChat(
   const entries: ChatEntry[] = []
   const questions = new Map<string, Extract<ChatEntry, { kind: 'question' }>>()
   const answers = new Map<string, ACPPermission>()
+  const tasks = new Map<string, Extract<ChatEntry, { kind: 'task' }>>()
   let turn: ChatTurn | undefined
   // A sent message shows as typed, then saved under a number of its own, then
   // reloaded with the server's time; its text and how often the person sent
@@ -198,11 +202,17 @@ export function botChat(
     if (opensBotTurn(event)) {
       turn = activity ? { at, user: false, activity } : { at, user: true }
     }
-    if (room) {
+    if (event.type === 'agent_task' && event.agent_task) {
+      const key = `task:${event.session_id}:${event.agent_task.id}`
+      const previous = tasks.get(key)
+      if (!previous || Date.parse(at) > Date.parse(previous.at) || (Date.parse(at) === Date.parse(previous.at) && (event.seq ?? 0) >= (previous.seq ?? 0))) {
+        tasks.set(key, { kind: 'task', key, at, seq: event.seq, task: event.agent_task })
+      }
+    } else if (room) {
       if (room.speaker === 'user') entries.push({ kind: 'user', key, at, seq: event.seq, text: room.text, attachments: room.attachments, attachmentSessionId: self.id })
       else entries.push({ kind: 'bot', key, at, seq: event.seq, botId: room.bot_id, name: room.name, text: room.text })
     } else if (activity) {
-      if (activity.kind === 'unreachable') entries.push({ kind: 'activity', key, at, event })
+      if (activity.kind === 'unreachable' || activity.kind === 'group_progress') entries.push({ kind: 'activity', key, at, event })
     } else if (event.type === 'mcp_app' && event.mcp_app && (event.mcp_app.presented || turn?.user || turn?.activity?.kind === 'routine') && isPresentedApp(event.mcp_app, entrypoints)) {
       entries.push({ kind: 'app', key, at, app: event.mcp_app })
     } else if (event.type === 'artifact' && event.artifact?.presented) {
@@ -226,13 +236,44 @@ export function botChat(
   for (const [id, entry] of questions) entry.answer = answers.get(id)
   // A bot held on the user's answer to its question is waiting, not working.
   const waiting = [...questions.values()].some((entry) => !entry.answer)
-  return { entries, work: { doing: busyWith(turn?.activity) }, waiting }
+  const visibleTasks = [...tasks.values()].filter((entry) => entry.task.show_in_transcript)
+  entries.push(...visibleTasks)
+  entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+  return { entries, work: { doing: busyWith(turn?.activity) }, waiting, tasks: visibleTasks.map((entry) => entry.task) }
+}
+
+export function botTaskState(task: AgentTask): string {
+  if (task.connection_lost && (task.state === 'running' || task.state === 'paused')) return 'Connection lost'
+  switch (task.state) {
+    case 'running': return 'Running'
+    case 'paused': return 'Paused'
+    case 'completed': return 'Completed'
+    case 'failed': return 'Failed'
+    case 'cancelled': return 'Cancelled'
+    case 'stopped': return 'Stopped'
+    default: return 'State not reported'
+  }
+}
+
+export function botTaskActivities(tasks: AgentTask[]): string[] {
+  return tasks.filter((task) => task.state === 'running' || task.state === 'paused')
+    .map((task) => `${botTaskState(task)}: ${task.name || 'Background task'}`)
+}
+
+export function botWorkDescription(parent: BotProgress | string | undefined, tasks: AgentTask[], threads: SpawnedThreadView[]): string | undefined {
+  const children = threads.filter((thread) => !thread.archived && threadRunning(thread)).map((thread) => `Thread: ${thread.title || thread.slug}`)
+  const delegated = [...botTaskActivities(tasks), ...children]
+  const ownFacts = typeof parent === 'string' || parent?.detail || (parent && parent.kind !== 'processing' && parent.kind !== 'waiting')
+  const description = typeof parent === 'string' ? parent : parent && (ownFacts || !delegated.length)
+    ? [parent.label, parent.detail, parent.ageMs != null ? `no new event for ${Math.round(parent.ageMs / 1000)}s` : undefined].filter(Boolean).join(' · ')
+    : undefined
+  return [description, ...delegated].filter(Boolean).join(' · ') || undefined
 }
 
 // What a bot's running subtasks have it doing, said as one person doing
 // several things at once.
 export function subtasksDoing(threads: SpawnedThreadView[]): string | undefined {
-  const titles = threads.filter(threadRunning).map((thread) => thread.title || thread.slug)
+  const titles = threads.filter((thread) => !thread.archived && threadRunning(thread)).map((thread) => thread.title || thread.slug)
   return titles.length ? `working on ${titles.join(', ')}` : undefined
 }
 

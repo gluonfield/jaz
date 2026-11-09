@@ -186,9 +186,19 @@ func TestACommitmentListsItsThreadsInTheOrderTheyWereStarted(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	latest := time.Date(2026, 10, 19, 1, 2, 3, 0, time.UTC)
+	if err := store.AppendSessionEvents("20261019T000000-ffffffff",
+		sessionevents.Event{Type: sessionevents.TypeSession, At: latest.Add(-time.Minute)},
+		sessionevents.Event{Type: sessionevents.TypeSession, At: latest},
+	); err != nil {
+		t.Fatal(err)
+	}
 	loaded, err := store.LoadCommitment(commitment.ID)
 	if err != nil || len(loaded.Threads) != 2 || loaded.Threads[0].ID != "20261019T000000-ffffffff" {
 		t.Fatalf("threads = %+v, %v; want the first started first", loaded.Threads, err)
+	}
+	if !loaded.Threads[0].LastActivity.Equal(latest) || !loaded.Threads[1].LastActivity.IsZero() {
+		t.Fatalf("thread activity = %+v", loaded.Threads)
 	}
 }
 

@@ -133,6 +133,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		if delay, ok := turn.retryDelay(*failure); ok && job.ActiveOperation == "" && m.recordRetry(job, turn.retries+1) {
 			wait := turn.waitToRetry(delay)
 			job.Error = retryNotice(*failure, delay, turn.retries)
+			job.recordActivityLocked("waiting", "provider_retry", time.Now().UTC())
 			job.UpdatedAt = time.Now().UTC()
 			job.mu.Unlock()
 			m.log.Warn("acp turn failed; retrying", "session", job.ID, "failure", failure.Title, "delay", delay)
@@ -147,6 +148,7 @@ func (m *Manager) completePromptCall(done chan struct{}, job *jobState, stopReas
 		errMessage = "Agent ended the turn without producing a message, plan, or tool activity."
 	}
 	job.State = state
+	job.recordStateActivityLocked(state, time.Now().UTC())
 	job.StopReason = stopReason
 	job.Error = errMessage
 	job.UpdatedAt = time.Now().UTC()

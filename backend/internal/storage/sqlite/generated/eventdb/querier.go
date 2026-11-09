@@ -24,6 +24,7 @@ type Querier interface {
 	LatestBotRoomMessage(ctx context.Context, arg LatestBotRoomMessageParams) (LatestBotRoomMessageRow, error)
 	LatestSessionEventOfType(ctx context.Context, arg LatestSessionEventOfTypeParams) (LatestSessionEventOfTypeRow, error)
 	LatestSessionEventSeq(ctx context.Context, threadID string) (int64, error)
+	LatestSessionEventTime(ctx context.Context, threadID string) (int64, error)
 	ListBotActivityEvents(ctx context.Context, arg ListBotActivityEventsParams) ([]ListBotActivityEventsRow, error)
 	ListLatestACPTurn(ctx context.Context, threadID string) ([]ListLatestACPTurnRow, error)
 	ListOverviewEvents(ctx context.Context, threadID string) ([]ListOverviewEventsRow, error)

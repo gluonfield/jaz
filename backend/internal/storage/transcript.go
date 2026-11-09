@@ -44,6 +44,7 @@ type TranscriptPageReader interface {
 }
 
 type TranscriptSessions struct {
+	BotWorkers []TranscriptSession
 	Children   []TranscriptSession
 	References []TranscriptSession
 }

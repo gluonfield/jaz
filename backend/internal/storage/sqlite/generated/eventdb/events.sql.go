@@ -370,6 +370,19 @@ func (q *Queries) LatestSessionEventSeq(ctx context.Context, threadID string) (i
 	return seq, err
 }
 
+const latestSessionEventTime = `-- name: LatestSessionEventTime :one
+SELECT CAST(COALESCE(MAX(created_at_ms), 0) AS INTEGER) AS created_at_ms
+FROM session_events
+WHERE thread_id = ?1
+`
+
+func (q *Queries) LatestSessionEventTime(ctx context.Context, threadID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, latestSessionEventTime, threadID)
+	var createdAtMs int64
+	err := row.Scan(&createdAtMs)
+	return createdAtMs, err
+}
+
 const listBotActivityEvents = `-- name: ListBotActivityEvents :many
 SELECT
   thread_id,

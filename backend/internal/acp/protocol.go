@@ -232,10 +232,22 @@ func (m *Manager) applyJobUpdate(job *jobState, raw json.RawMessage) {
 			}
 		}
 	}
+	switch {
+	case warning != nil && !warning.notice():
+		job.recordActivityLocked("waiting", "provider_retry", now)
+	case thoughtChunk != "":
+		job.recordActivityLocked("reasoning", "", now)
+	case messageChunk != "" && warning == nil:
+		job.appendMessagePreviewLocked(messageID, messageChunk)
+		job.recordActivityLocked("responding", "", now)
+	case toolEvent != nil:
+		job.recordToolActivityLocked(toolEvent.Status, now)
+	}
 	job.UpdatedAt = now
 	job.LastEventAt = now
 	sessionID := job.ID
 	job.mu.Unlock()
+	m.publishActivityProgress(job)
 
 	if attention {
 		m.touchJobAttention(job)

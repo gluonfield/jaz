@@ -64,3 +64,14 @@ test('a provider retry replaces the stale warning with its own status', () => {
   expect(html).not.toContain('still marked running')
   expect(renderIndicator({ retrying: 'Reconnecting... 2/5', running: false })).toBe('')
 })
+
+test('the running indicator uses observed tool activity instead of a generic working label', () => {
+  const html = renderIndicator({
+    observedProgress: {
+      activity: { phase: 'tool', at: new Date().toISOString() },
+      toolCalls: [{ id: 'command', kind: 'execute', status: 'in_progress' }],
+    },
+  })
+  expect(html).toContain('Running a command')
+  expect(html).not.toContain('>Working<')
+})

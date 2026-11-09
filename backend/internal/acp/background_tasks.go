@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/wins/jaz/backend/internal/sessionevents"
 )
@@ -74,9 +75,23 @@ func (m *Manager) applyBackgroundTask(job *jobState, raw json.RawMessage) bool {
 		task.CanStop = false
 	}
 	job.backgroundTasks[task.ID] = task
+	// Background-task updates bypass the ordinary ACP sessionUpdate path. Keep
+	// the session activity clock current so clients do not mark a thread stale
+	// while the provider is reporting real async-task progress.
+	job.LastEventAt = time.Now().UTC()
+	job.UpdatedAt = job.LastEventAt
+	if job.Activity.Phase != "" {
+		job.Activity.At = job.LastEventAt
+	}
 	job.mu.Unlock()
 	m.noteBackgroundWork(job, task)
 	m.publishBackgroundTask(job, task)
+	// Browser/desktop clients use this lightweight invalidation to refresh the
+	// session detail snapshot (which carries LastEventAt). Agent-task events
+	// alone only invalidate the overview, not the bot chat's progress row.
+	for _, sessionID := range surfaceSessionIDs(job.eventView()) {
+		m.publishSessionChanged(sessionID)
+	}
 	m.saveBackgroundWork(job)
 	return true
 }
