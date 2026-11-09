@@ -15,7 +15,7 @@ func (p *browserPage) accessibilityFrames(ctx context.Context) ([]axFrame, error
 		SessionID string      `json:"sessionId"`
 		Tree      axFrameTree `json:"frameTree"`
 	}
-	if err := p.conn.call(ctx, "Jaz.frames", nil, &sessions); err != nil {
+	if err := p.conn.Call(ctx, "Jaz.frames", nil, &sessions); err != nil {
 		return nil, err
 	}
 	frames := map[string]axFrame{}
@@ -46,7 +46,7 @@ func (p *browserPage) accessibilityFrames(ctx context.Context) ([]axFrame, error
 			var owner struct {
 				BackendID int64 `json:"backendNodeId"`
 			}
-			if err := p.conn.callSession(ctx, parent.SessionID, "DOM.getFrameOwner", map[string]any{"frameId": id}, &owner); err != nil {
+			if err := p.conn.CallSession(ctx, parent.SessionID, "DOM.getFrameOwner", map[string]any{"frameId": id}, &owner); err != nil {
 				return nil, err
 			}
 			frame.OwnerID = owner.BackendID

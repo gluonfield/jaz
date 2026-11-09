@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/wins/jaz/backend/internal/desktopbridge"
 )
 
 type DesktopBackend struct {
 	mu      sync.Mutex
 	pages   map[string]*browserPage
-	host    *cdpConn
+	host    *desktopbridge.Conn
 	changed chan struct{}
 }
 
@@ -22,7 +23,7 @@ func NewDesktopBackend() *DesktopBackend {
 }
 
 func (b *DesktopBackend) Connect(ctx context.Context, session string, ws *websocket.Conn) {
-	page := &browserPage{conn: newCDPConn(ws)}
+	page := &browserPage{conn: desktopbridge.New(ws, browserWireReadLimit, nil)}
 	b.mu.Lock()
 	if b.pages[session] != nil {
 		b.mu.Unlock()
@@ -41,7 +42,7 @@ func (b *DesktopBackend) Connect(ctx context.Context, session string, ws *websoc
 	}()
 	select {
 	case <-ctx.Done():
-	case <-page.conn.done:
+	case <-page.conn.Done():
 	}
 }
 
@@ -65,7 +66,7 @@ func (b *DesktopBackend) Call(ctx context.Context, input ActionInput) (ActionOut
 		return page.accessibilityState(ctx, input.DisableDiffing)
 	case ActionScript:
 		var result scriptOutput
-		if err := page.conn.call(ctx, "Jaz.run", map[string]any{"code": input.Text}, &result); err != nil {
+		if err := page.conn.Call(ctx, "Jaz.run", map[string]any{"code": input.Text}, &result); err != nil {
 			return ActionOutput{}, err
 		}
 		return result.output()
@@ -76,7 +77,7 @@ func (b *DesktopBackend) Call(ctx context.Context, input ActionInput) (ActionOut
 		if err != nil {
 			return ActionOutput{}, err
 		}
-		if err := page.conn.call(ctx, "Jaz.open", map[string]any{"url": url}, nil); err != nil {
+		if err := page.conn.Call(ctx, "Jaz.open", map[string]any{"url": url}, nil); err != nil {
 			return ActionOutput{}, err
 		}
 		page.contextID = 0
@@ -86,7 +87,7 @@ func (b *DesktopBackend) Call(ctx context.Context, input ActionInput) (ActionOut
 		return page.semanticState(ctx)
 	case ActionTabs:
 		var tab BrowserTab
-		if err := page.conn.call(ctx, "Jaz.tab", nil, &tab); err != nil {
+		if err := page.conn.Call(ctx, "Jaz.tab", nil, &tab); err != nil {
 			return ActionOutput{}, err
 		}
 		tabs := []BrowserTab{}

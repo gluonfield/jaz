@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/wins/jaz/backend/internal/desktopbridge"
 )
 
 func (b *DesktopBackend) ConnectHost(ctx context.Context, ws *websocket.Conn) {
-	host := newCDPConn(ws)
+	host := desktopbridge.New(ws, browserWireReadLimit, nil)
 	b.mu.Lock()
 	if b.host != nil {
 		b.mu.Unlock()
@@ -26,7 +27,7 @@ func (b *DesktopBackend) ConnectHost(ctx context.Context, ws *websocket.Conn) {
 	}()
 	select {
 	case <-ctx.Done():
-	case <-host.done:
+	case <-host.Done():
 	}
 }
 
@@ -45,7 +46,7 @@ func (b *DesktopBackend) page(ctx context.Context, session string) (*browserPage
 	if host == nil {
 		return nil, errors.New("Jaz desktop side browser is not connected; open or reconnect the Jaz desktop app")
 	}
-	if err := host.call(ctx, "Jaz.connect", map[string]string{"session": session}, nil); err != nil {
+	if err := host.Call(ctx, "Jaz.connect", map[string]string{"session": session}, nil); err != nil {
 		return nil, err
 	}
 	for {
@@ -58,7 +59,7 @@ func (b *DesktopBackend) page(ctx context.Context, session string) (*browserPage
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-host.done:
+		case <-host.Done():
 			return nil, errors.New("Jaz desktop side browser disconnected")
 		case <-changed:
 		}

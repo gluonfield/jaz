@@ -180,6 +180,7 @@ func (h *RelayHandler) command(ctx context.Context, session string, call *live.D
 			return nil, errors.New("invalid Claude voice tool result")
 		}
 	case "close":
+		return nil, nil
 	default:
 		return nil, errors.New("unsupported Claude voice command")
 	}

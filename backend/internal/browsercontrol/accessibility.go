@@ -75,11 +75,11 @@ func (p *browserPage) accessibilityState(ctx context.Context, full bool) (Action
 	}
 	trees := make(map[string]*axTree, len(frames))
 	for _, frame := range frames {
-		if err := p.conn.callSession(ctx, frame.SessionID, "Accessibility.enable", nil, nil); err != nil {
+		if err := p.conn.CallSession(ctx, frame.SessionID, "Accessibility.enable", nil, nil); err != nil {
 			return ActionOutput{}, err
 		}
 		tree := &axTree{Frame: frame, Children: map[int64]*axTree{}}
-		if err := p.conn.callSession(ctx, frame.SessionID, "Accessibility.getFullAXTree", map[string]any{"frameId": frame.ID}, tree); err != nil {
+		if err := p.conn.CallSession(ctx, frame.SessionID, "Accessibility.getFullAXTree", map[string]any{"frameId": frame.ID}, tree); err != nil {
 			return ActionOutput{}, fmt.Errorf("read accessibility frame %s: %w", frame.ID, err)
 		}
 		trees[frame.ID] = tree

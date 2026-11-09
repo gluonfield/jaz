@@ -43,7 +43,7 @@ func (p *browserPage) screenshot(ctx context.Context) (ActionOutput, error) {
 	var out struct {
 		Data string `json:"data"`
 	}
-	if err := p.conn.call(ctx, "Page.captureScreenshot", map[string]any{
+	if err := p.conn.Call(ctx, "Page.captureScreenshot", map[string]any{
 		"format":      "png",
 		"fromSurface": true,
 	}, &out); err != nil {
@@ -110,10 +110,10 @@ func (p *browserPage) press(ctx context.Context, ref, key string) (ActionOutput,
 	down["type"] = "keyDown"
 	up := copyMap(event)
 	up["type"] = "keyUp"
-	if err := p.conn.call(ctx, "Input.dispatchKeyEvent", down, nil); err != nil {
+	if err := p.conn.Call(ctx, "Input.dispatchKeyEvent", down, nil); err != nil {
 		return ActionOutput{}, err
 	}
-	if err := p.conn.call(ctx, "Input.dispatchKeyEvent", up, nil); err != nil {
+	if err := p.conn.Call(ctx, "Input.dispatchKeyEvent", up, nil); err != nil {
 		return ActionOutput{}, err
 	}
 	return ActionOutput{Status: "ok", Text: "Pressed " + event["key"].(string) + "."}, nil
@@ -151,7 +151,7 @@ func (p *browserPage) scroll(ctx context.Context, ref, direction string, amount 
 		"deltaX": deltaX,
 		"deltaY": deltaY,
 	}
-	if err := p.conn.call(ctx, "Input.dispatchMouseEvent", params, nil); err != nil {
+	if err := p.conn.Call(ctx, "Input.dispatchMouseEvent", params, nil); err != nil {
 		return ActionOutput{}, err
 	}
 	return ActionOutput{Status: "ok", Text: fmt.Sprintf("Scrolled deltaX=%d deltaY=%d.", deltaX, deltaY)}, nil
@@ -263,7 +263,7 @@ type cdpEvaluation struct {
 
 func (p *browserPage) evalInSession(ctx context.Context, sessionID string, contextID int64, expression string, out any) error {
 	var result cdpEvaluation
-	err := p.conn.callSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
+	err := p.conn.CallSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    expression,
 		"returnByValue": true,
 		"awaitPromise":  true,
@@ -299,7 +299,7 @@ func (p *browserPage) isolatedContext(ctx context.Context) (int64, error) {
 	var out struct {
 		ExecutionContextID int64 `json:"executionContextId"`
 	}
-	if err := p.conn.call(ctx, "Page.createIsolatedWorld", map[string]any{
+	if err := p.conn.Call(ctx, "Page.createIsolatedWorld", map[string]any{
 		"frameId":   frame.ID,
 		"worldName": "jaz-browser-control",
 	}, &out); err != nil {
@@ -318,7 +318,7 @@ func (p *browserPage) topFrame(ctx context.Context) (cdpFrame, error) {
 			Frame cdpFrame `json:"frame"`
 		} `json:"frameTree"`
 	}
-	if err := p.conn.call(ctx, "Page.getFrameTree", map[string]any{}, &out); err != nil {
+	if err := p.conn.Call(ctx, "Page.getFrameTree", map[string]any{}, &out); err != nil {
 		return cdpFrame{}, err
 	}
 	if strings.TrimSpace(out.FrameTree.Frame.ID) == "" {
@@ -380,7 +380,7 @@ func (p *browserPage) mouse(ctx context.Context, eventType string, x, y float64,
 			params[key] = kv[i+1]
 		}
 	}
-	return p.conn.call(ctx, "Input.dispatchMouseEvent", params, nil)
+	return p.conn.Call(ctx, "Input.dispatchMouseEvent", params, nil)
 }
 
 func waitTimeout(ms int) time.Duration {

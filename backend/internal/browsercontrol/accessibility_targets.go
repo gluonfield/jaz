@@ -31,7 +31,7 @@ func (p *browserPage) evalRef(ctx context.Context, ref, expression string, out a
 	var world struct {
 		ID int64 `json:"executionContextId"`
 	}
-	if err := p.conn.callSession(ctx, current.SessionID, "Page.createIsolatedWorld", map[string]any{"frameId": current.ID, "worldName": "jaz-browser-control"}, &world); err != nil {
+	if err := p.conn.CallSession(ctx, current.SessionID, "Page.createIsolatedWorld", map[string]any{"frameId": current.ID, "worldName": "jaz-browser-control"}, &world); err != nil {
 		return err
 	}
 	var resolved struct {
@@ -39,12 +39,12 @@ func (p *browserPage) evalRef(ctx context.Context, ref, expression string, out a
 			ID string `json:"objectId"`
 		} `json:"object"`
 	}
-	if err := p.conn.callSession(ctx, current.SessionID, "DOM.resolveNode", map[string]any{"backendNodeId": target.BackendID, "executionContextId": world.ID}, &resolved); err != nil {
+	if err := p.conn.CallSession(ctx, current.SessionID, "DOM.resolveNode", map[string]any{"backendNodeId": target.BackendID, "executionContextId": world.ID}, &resolved); err != nil {
 		return fmt.Errorf("accessibility target is no longer available: %w", err)
 	}
-	defer p.conn.callSession(ctx, current.SessionID, "Runtime.releaseObject", map[string]any{"objectId": resolved.Object.ID}, nil)
+	defer p.conn.CallSession(ctx, current.SessionID, "Runtime.releaseObject", map[string]any{"objectId": resolved.Object.ID}, nil)
 	var result cdpEvaluation
-	if err := p.conn.callSession(ctx, current.SessionID, "Runtime.callFunctionOn", map[string]any{
+	if err := p.conn.CallSession(ctx, current.SessionID, "Runtime.callFunctionOn", map[string]any{
 		"objectId": resolved.Object.ID,
 		"functionDeclaration": `function(ref, expression) {
   const element = this.nodeType === 9 ? this.documentElement : this.nodeType === 1 ? this : this.parentElement
@@ -114,7 +114,7 @@ func (p *browserPage) framePoint(ctx context.Context, frame, parent axFrame, poi
 	var world struct {
 		ID int64 `json:"executionContextId"`
 	}
-	if err := p.conn.callSession(ctx, frame.SessionID, "Page.createIsolatedWorld", map[string]any{"frameId": frame.ID, "worldName": "jaz-browser-control"}, &world); err != nil {
+	if err := p.conn.CallSession(ctx, frame.SessionID, "Page.createIsolatedWorld", map[string]any{"frameId": frame.ID, "worldName": "jaz-browser-control"}, &world); err != nil {
 		return err
 	}
 	if err := p.evalInSession(ctx, frame.SessionID, world.ID, `({width: innerWidth, height: innerHeight})`, &viewport); err != nil {
@@ -134,7 +134,7 @@ func (p *browserPage) hitFrame(ctx context.Context, sessionID, frameID string, o
 		FrameID   string `json:"frameId"`
 		BackendID int64  `json:"backendNodeId"`
 	}
-	if err := p.conn.callSession(ctx, sessionID, "DOM.getNodeForLocation", map[string]any{
+	if err := p.conn.CallSession(ctx, sessionID, "DOM.getNodeForLocation", map[string]any{
 		"x":                         int(point.X),
 		"y":                         int(point.Y),
 		"includeUserAgentShadowDOM": true,
@@ -153,7 +153,7 @@ func (p *browserPage) contentQuad(ctx context.Context, sessionID string, backend
 			Content []float64 `json:"content"`
 		} `json:"model"`
 	}
-	if err := p.conn.callSession(ctx, sessionID, "DOM.getBoxModel", map[string]any{"backendNodeId": backendID}, &result); err != nil {
+	if err := p.conn.CallSession(ctx, sessionID, "DOM.getBoxModel", map[string]any{"backendNodeId": backendID}, &result); err != nil {
 		return nil, err
 	}
 	if len(result.Model.Content) != 8 {

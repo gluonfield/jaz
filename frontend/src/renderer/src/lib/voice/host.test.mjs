@@ -36,6 +36,7 @@ function fixture(provider, nativeSink = true, answer = 'v=0\r\nanswer', { settin
   const connections = []
   const starts = []
   const descriptions = []
+  const peers = []
   const closed = []
   const track = { enabled: true, stopped: false, stop() { this.stopped = true } }
   const snapshot = { session: { id: 'thread', title: 'Voice', status: 'running' }, messages: [], events: [], latest_event_seq: 0, acp_state: 'running' }
@@ -64,6 +65,10 @@ function fixture(provider, nativeSink = true, answer = 'v=0\r\nanswer', { settin
     async close() {}
   })
   replace('RTCPeerConnection', class {
+    constructor() {
+      this.closed = false
+      peers.push(this)
+    }
     iceGatheringState = 'complete'
     createDataChannel() {
       expect(provider).not.toBe('claude')
@@ -78,7 +83,7 @@ function fixture(provider, nativeSink = true, answer = 'v=0\r\nanswer', { settin
         queueMicrotask(() => channel.onmessage({ data: '{"type":"session.started"}' }))
       }
     }
-    close() {}
+    close() { this.closed = true }
   })
   const host = {
     getSettings: async () => ({ agent: provider === 'claude' ? 'claude' : 'openai', provider: settingsProvider, voice: 'fixture', voices: ['fixture'], providers: [{ id: provider, available: true }] }),
@@ -114,7 +119,7 @@ function fixture(provider, nativeSink = true, answer = 'v=0\r\nanswer', { settin
   compiled(module, module.exports)
   session = new module.exports.VoiceSession('thread', (state) => states.push(state), () => {}, host)
   const emit = (event) => provider === 'claude' ? listener(callId, JSON.stringify(event)) : channel.onmessage({ data: JSON.stringify(event) })
-  return { states, transcripts, batches, inputs, connections, starts, descriptions, closed, track, emit }
+  return { states, transcripts, batches, inputs, connections, starts, descriptions, peers, closed, track, emit }
 }
 
 test.each(['openai', 'claude'])('shared %s engine admits typed input with native transcript persistence and raw setup context', async (provider) => {
@@ -171,7 +176,11 @@ test.each(['openai', 'claude'])('shared %s adapter rejects malformed SDP before 
   session.start()
   await delay(10)
   expect(f.states.at(-1)).toMatchObject({ phase: 'error', error: 'The voice provider returned an invalid connection answer. Please try again.' })
+  expect(f.connections).toHaveLength(1)
+  expect(f.starts).toHaveLength(provider === 'claude' ? 1 : 0)
   expect(f.descriptions).toEqual([])
+  expect(f.peers).toHaveLength(1)
+  expect(f.peers[0].closed).toBe(true)
   expect(f.track.stopped).toBe(true)
 })
 
@@ -182,7 +191,10 @@ test.each([null, {}, 'unexpected'])('shared engine rejects runtime provider %j b
   await delay(10)
   expect(f.states.at(-1)).toMatchObject({ phase: 'error', error: 'Unsupported voice provider. Choose a provider in Voice settings.' })
   expect(f.connections).toEqual([])
+  expect(f.starts).toEqual([])
   expect(f.descriptions).toEqual([])
+  expect(f.peers).toHaveLength(1)
+  expect(f.peers[0].closed).toBe(true)
   expect(f.track.stopped).toBe(true)
 })
 
@@ -190,9 +202,12 @@ test.each(['openai', 'claude'])('shared %s adapter rejects unknown response prov
   const f = fixture(provider, true, 'v=0\r\nanswer', { responseProvider: 'unknown' })
   session.start()
   await delay(10)
+  expect(f.connections).toHaveLength(1)
   expect(f.states.at(-1)).toMatchObject({ phase: 'error', error: 'Unsupported voice provider. Choose a provider in Voice settings.' })
   expect(f.starts).toEqual([])
   expect(f.descriptions).toEqual([])
+  expect(f.peers).toHaveLength(1)
+  expect(f.peers[0].closed).toBe(true)
   expect(f.track.stopped).toBe(true)
 })
 
@@ -202,6 +217,10 @@ test.each(['openai', 'openai-api-key'])('shared %s adapter rejects a switch betw
   session.start()
   await delay(10)
   expect(f.states.at(-1)).toMatchObject({ phase: 'error', error: 'Voice provider changed. Start voice again.' })
+  expect(f.connections).toHaveLength(1)
+  expect(f.starts).toEqual([])
   expect(f.descriptions).toEqual([])
+  expect(f.peers).toHaveLength(1)
+  expect(f.peers[0].closed).toBe(true)
   expect(f.track.stopped).toBe(true)
 })

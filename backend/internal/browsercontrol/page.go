@@ -3,6 +3,7 @@ package browsercontrol
 import (
 	"context"
 	"fmt"
+	"github.com/wins/jaz/backend/internal/desktopbridge"
 	"sync"
 )
 
@@ -10,7 +11,7 @@ const defaultScrollAmount = 800
 
 type browserPage struct {
 	ax        axState
-	conn      *cdpConn
+	conn      *desktopbridge.Conn
 	opMu      sync.Mutex
 	contextID int64
 }

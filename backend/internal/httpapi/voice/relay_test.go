@@ -29,6 +29,7 @@ type relayFixture struct {
 	otherDesktop deviceauth.RegisterResult
 	phones       []deviceauth.RegisterResult
 	session      string
+	callEnded    chan struct{}
 }
 
 type hostFrame struct {
@@ -68,7 +69,7 @@ func newRelayFixture(t *testing.T) *relayFixture {
 		}
 		return device
 	}
-	fixture := &relayFixture{devices: devices, desktop: register("desktop", 1), otherDesktop: register("desktop", 4), phones: []deviceauth.RegisterResult{register("mobile", 2), register("mobile", 3)}}
+	fixture := &relayFixture{callEnded: make(chan struct{}, 16), devices: devices, desktop: register("desktop", 1), otherDesktop: register("desktop", 4), phones: []deviceauth.RegisterResult{register("mobile", 2), register("mobile", 3)}}
 	session, err := store.CreateSession(storage.CreateSession{Title: "Voice fixture"})
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +85,10 @@ func newRelayFixture(t *testing.T) *relayFixture {
 	fixture.server = httptest.NewServer((&server.Server{Store: store, Devices: devices, AuthKey: "fixture-owner", Routes: server.Routes{
 		{Pattern: "GET /v1/voice/desktop", Handler: http.HandlerFunc(handler.Desktop)},
 		{Pattern: "GET /v1/voice/claude/status", Handler: http.HandlerFunc(handler.Status)},
-		{Pattern: "GET /v1/sessions/{session}/voice/claude", Handler: http.HandlerFunc(handler.Call)},
+		{Pattern: "GET /v1/sessions/{session}/voice/claude", Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			handler.Call(w, r)
+			fixture.callEnded <- struct{}{}
+		})},
 	}}).Handler())
 	t.Cleanup(fixture.server.Close)
 	return fixture
@@ -365,4 +369,53 @@ func TestClaudeRelayKeepsFirstDesktopUntilItDisconnects(t *testing.T) {
 	if frame := readPhone(t, replacementPhone); string(frame.Value) != `"v=0\r\nreplacement-desktop"` {
 		t.Fatalf("released desktop slot could not be adopted: %#v", frame)
 	}
+}
+
+func TestClaudeRelayExplicitEndClosesProviderOnce(t *testing.T) {
+	f := newRelayFixture(t)
+	host := f.dial(t, "/v1/voice/desktop", f.desktop.Token)
+	commands := make(chan hostFrame, 8)
+	go func() {
+		for {
+			var frame hostFrame
+			if host.ReadJSON(&frame) != nil {
+				return
+			}
+			commands <- frame
+			var result any
+			switch frame.Params.Type {
+			case "start":
+				result = "v=0\r\nanswer"
+			case "status":
+				result = live.ClaudeStatus{Available: true}
+			}
+			_ = host.WriteJSON(map[string]any{"id": frame.ID, "result": result})
+		}
+	}()
+	phone := f.dial(t, "/v1/sessions/"+f.session+"/voice/claude", f.phones[0].Token)
+	_ = phone.WriteJSON(map[string]any{"id": "start", "command": map[string]any{"type": "start", "options": map[string]string{"sdp": "v=0\r\noffer", "context": "Raw context"}}})
+	start := waitHost(t, commands, "start")
+	if frame := readPhone(t, phone); frame.Error != "" {
+		t.Fatalf("start failed: %#v", frame)
+	}
+	_ = phone.WriteJSON(map[string]any{"id": "end", "command": map[string]string{"type": "close"}})
+	if frame := readPhone(t, phone); frame.ID != "end" || frame.Error != "" {
+		t.Fatalf("end was not acknowledged: %#v", frame)
+	}
+	select {
+	case <-f.callEnded:
+	case <-time.After(2 * time.Second):
+		t.Fatal("end did not release the request and provider call")
+	}
+	if close := waitHost(t, commands, "close"); close.Params.ID != start.Params.ID {
+		t.Fatalf("end released the wrong call: %#v", close)
+	}
+	request, _ := http.NewRequest(http.MethodGet, f.server.URL+"/v1/voice/claude/status", nil)
+	request.Header.Set("Authorization", "Bearer "+f.phones[0].Token)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	waitHost(t, commands, "status")
 }

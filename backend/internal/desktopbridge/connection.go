@@ -12,13 +12,12 @@ import (
 )
 
 type Conn struct {
-	ws      *websocket.Conn
-	writeMu sync.Mutex
+	ws     *websocket.Conn
+	writes chan struct{}
 
 	mu       sync.Mutex
 	nextID   int64
 	pending  map[int64]chan reply
-	closed   bool
 	closeErr error
 	done     chan struct{}
 	onEvent  func(Message)
@@ -28,7 +27,7 @@ type Message struct {
 	SessionID string          `json:"sessionId,omitempty"`
 	ID        int64           `json:"id,omitempty"`
 	Method    string          `json:"method,omitempty"`
-	Params    any             `json:"params,omitempty"`
+	Params    json.RawMessage `json:"params,omitempty"`
 	Result    json.RawMessage `json:"result,omitempty"`
 	Error     *Error          `json:"error,omitempty"`
 }
@@ -47,11 +46,11 @@ func New(ws *websocket.Conn, readLimit int64, onEvent func(Message)) *Conn {
 	ws.SetReadLimit(readLimit)
 	conn := &Conn{
 		ws:      ws,
+		writes:  make(chan struct{}, 1),
 		pending: map[int64]chan reply{},
 		done:    make(chan struct{}),
 		onEvent: onEvent,
 	}
-	KeepAlive(ws, conn.done)
 	go conn.readLoop()
 	return conn
 }
@@ -64,21 +63,36 @@ func (c *Conn) CallSession(ctx context.Context, sessionID, method string, params
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	var data json.RawMessage
+	if params != nil {
+		encoded, err := json.Marshal(params)
+		if err != nil {
+			return err
+		}
+		data = encoded
+	}
 	id, ch, err := c.reserve()
 	if err != nil {
 		return err
 	}
-	msg := Message{ID: id, Method: method, Params: params, SessionID: sessionID}
-	c.writeMu.Lock()
-	deadline := time.Now().Add(10 * time.Second)
-	if until, ok := ctx.Deadline(); ok && until.Before(deadline) {
-		deadline = until
-	}
-	_ = c.ws.SetWriteDeadline(deadline)
-	err = c.ws.WriteJSON(msg)
-	c.writeMu.Unlock()
-	if err != nil {
+	select {
+	case c.writes <- struct{}{}:
+	case <-ctx.Done():
 		c.drop(id)
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		<-c.writes
+		c.drop(id)
+		return err
+	}
+	deadline, _ := ctx.Deadline()
+	_ = c.ws.SetWriteDeadline(deadline)
+	err = c.ws.WriteJSON(Message{ID: id, Method: method, Params: data, SessionID: sessionID})
+	<-c.writes
+	if err != nil {
+		c.fail(err)
+		_ = c.ws.Close()
 		return err
 	}
 	select {
@@ -104,11 +118,8 @@ func (c *Conn) CallSession(ctx context.Context, sessionID, method string, params
 func (c *Conn) reserve() (int64, chan reply, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed {
-		if c.closeErr != nil {
-			return 0, nil, c.closeErr
-		}
-		return 0, nil, errors.New("desktop connection is closed")
+	if c.closeErr != nil {
+		return 0, nil, c.closeErr
 	}
 	c.nextID++
 	ch := make(chan reply, 1)
@@ -147,11 +158,10 @@ func (c *Conn) readLoop() {
 
 func (c *Conn) fail(err error) {
 	c.mu.Lock()
-	if c.closed {
+	if c.closeErr != nil {
 		c.mu.Unlock()
 		return
 	}
-	c.closed = true
 	close(c.done)
 	c.closeErr = err
 	pending := c.pending

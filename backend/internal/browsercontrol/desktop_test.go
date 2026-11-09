@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/wins/jaz/backend/internal/desktopbridge"
 )
 
 func desktopPeer(t *testing.T, backend *DesktopBackend, session string) *websocket.Conn {
@@ -54,9 +55,9 @@ func TestDesktopSessionIsolationAndTabs(t *testing.T) {
 		t.Fatal("claimed a foreign tab")
 	}
 	go func() {
-		var request cdpMessage
+		var request desktopbridge.Message
 		if peer.ReadJSON(&request) == nil {
-			_ = peer.WriteJSON(cdpMessage{ID: request.ID, Result: json.RawMessage(`{"id":"17","url":"https://example.com","title":"Example"}`)})
+			_ = peer.WriteJSON(desktopbridge.Message{ID: request.ID, Result: json.RawMessage(`{"id":"17","url":"https://example.com","title":"Example"}`)})
 		}
 	}()
 	out, err := backend.Call(context.Background(), ActionInput{Session: "thread-1", Action: ActionTabs})
@@ -82,7 +83,7 @@ func TestDesktopCancellationClosesPendingTransport(t *testing.T) {
 		_, err := backend.Call(ctx, ActionInput{Session: "thread-1", Action: ActionNavigate, URL: "https://example.com"})
 		result <- err
 	}()
-	var request cdpMessage
+	var request desktopbridge.Message
 	if err := peer.ReadJSON(&request); err != nil || request.Method != "Jaz.open" {
 		t.Fatalf("first command=%#v err=%v", request, err)
 	}
@@ -106,7 +107,7 @@ func TestDesktopScreenshotTimeoutPreservesConnection(t *testing.T) {
 		_, err := backend.Call(ctx, ActionInput{Session: "thread-1", Action: ActionScreenshot})
 		result <- err
 	}()
-	var request cdpMessage
+	var request desktopbridge.Message
 	if err := peer.ReadJSON(&request); err != nil || request.Method != "Page.captureScreenshot" {
 		t.Fatalf("screenshot command=%#v err=%v", request, err)
 	}
@@ -118,7 +119,7 @@ func TestDesktopScreenshotTimeoutPreservesConnection(t *testing.T) {
 	case <-time.After(6 * time.Second):
 		t.Fatal("stalled screenshot did not return before the script deadline")
 	}
-	if err := peer.WriteJSON(cdpMessage{ID: request.ID, Result: json.RawMessage(`{"data":"late"}`)}); err != nil {
+	if err := peer.WriteJSON(desktopbridge.Message{ID: request.ID, Result: json.RawMessage(`{"data":"late"}`)}); err != nil {
 		t.Fatal(err)
 	}
 	go func() {
@@ -129,7 +130,7 @@ func TestDesktopScreenshotTimeoutPreservesConnection(t *testing.T) {
 	if err := peer.ReadJSON(&request); err != nil || request.Method != "Jaz.tab" {
 		t.Fatalf("screenshot timeout broke the next command: %#v err=%v", request, err)
 	}
-	if err := peer.WriteJSON(cdpMessage{ID: request.ID, Result: json.RawMessage(`{"id":"17"}`)}); err != nil {
+	if err := peer.WriteJSON(desktopbridge.Message{ID: request.ID, Result: json.RawMessage(`{"id":"17"}`)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-result; err != nil {
@@ -159,7 +160,7 @@ func TestDesktopRejectsOverlapWithoutInterruptingActiveAction(t *testing.T) {
 		_, err := backend.Call(context.Background(), ActionInput{Session: "thread-1", Action: ActionTabs})
 		active <- err
 	}()
-	var request cdpMessage
+	var request desktopbridge.Message
 	if err := peer.ReadJSON(&request); err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +177,7 @@ func TestDesktopRejectsOverlapWithoutInterruptingActiveAction(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("overlapping action waited for the active browser action")
 	}
-	if err := peer.WriteJSON(cdpMessage{ID: request.ID, Result: json.RawMessage(`{"id":"17"}`)}); err != nil {
+	if err := peer.WriteJSON(desktopbridge.Message{ID: request.ID, Result: json.RawMessage(`{"id":"17"}`)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-active; err != nil {

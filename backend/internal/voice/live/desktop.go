@@ -20,6 +20,7 @@ type DesktopRelay struct {
 }
 
 type voiceHost struct {
+	ctx   context.Context
 	conn  *desktopbridge.Conn
 	calls map[string]*DesktopCall
 }
@@ -29,7 +30,8 @@ type DesktopCall struct {
 	host   *voiceHost
 	id     string
 	events chan string
-	done   chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
 	once   sync.Once
 }
 
@@ -45,20 +47,18 @@ func (r *DesktopRelay) Connect(ctx context.Context, ws *websocket.Conn) {
 		_ = ws.Close()
 		return
 	}
-	host := &voiceHost{calls: map[string]*DesktopCall{}}
+	hostCtx, cancel := context.WithCancel(ctx)
+	host := &voiceHost{ctx: hostCtx, calls: map[string]*DesktopCall{}}
+	desktopbridge.KeepAlive(ws, hostCtx.Done())
 	host.conn = desktopbridge.New(ws, 512*1024, func(message desktopbridge.Message) {
 		if message.Method != "Claude.voiceEvent" {
-			return
-		}
-		data, err := json.Marshal(message.Params)
-		if err != nil {
 			return
 		}
 		var event struct {
 			ID   string `json:"id"`
 			Data string `json:"data"`
 		}
-		if json.Unmarshal(data, &event) != nil || len(event.Data) > 512*1024 {
+		if json.Unmarshal(message.Params, &event) != nil || len(event.Data) > 512*1024 {
 			return
 		}
 		r.mu.Lock()
@@ -67,9 +67,9 @@ func (r *DesktopRelay) Connect(ctx context.Context, ws *websocket.Conn) {
 		if call != nil {
 			select {
 			case call.events <- event.Data:
-			case <-call.done:
+			case <-call.ctx.Done():
 			default:
-				call.stop()
+				call.cancel()
 			}
 		}
 	})
@@ -78,9 +78,7 @@ func (r *DesktopRelay) Connect(ctx context.Context, ws *websocket.Conn) {
 	defer func() {
 		r.mu.Lock()
 		r.host = nil
-		for _, call := range host.calls {
-			call.stop()
-		}
+		cancel()
 		r.mu.Unlock()
 		_ = host.conn.Close()
 	}()
@@ -94,7 +92,7 @@ func (r *DesktopRelay) Status(ctx context.Context) ClaudeStatus {
 	r.mu.Lock()
 	host := r.host
 	r.mu.Unlock()
-	if host == nil {
+	if host == nil || host.ctx.Err() != nil {
 		return ClaudeStatus{Reason: ErrDesktopDisconnected.Error()}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
@@ -109,28 +107,39 @@ func (r *DesktopRelay) Status(ctx context.Context) ClaudeStatus {
 func (r *DesktopRelay) Open() (*DesktopCall, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.host == nil {
+	if r.host == nil || r.host.ctx.Err() != nil {
 		return nil, ErrDesktopDisconnected
 	}
-	call := &DesktopCall{relay: r, host: r.host, id: uuid.NewString(), events: make(chan string, 16), done: make(chan struct{})}
+	ctx, cancel := context.WithCancel(r.host.ctx)
+	call := &DesktopCall{relay: r, host: r.host, id: uuid.NewString(), events: make(chan string, 16), ctx: ctx, cancel: cancel}
 	r.host.calls[call.id] = call
 	return call, nil
 }
 
 func (c *DesktopCall) Command(ctx context.Context, command ClaudeCommand) (json.RawMessage, error) {
+	if err := c.ctx.Err(); err != nil {
+		if c.host.ctx.Err() != nil {
+			return nil, ErrDesktopDisconnected
+		}
+		return nil, err
+	}
 	command.ID = c.id
 	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
 	defer cancel()
+	stop := context.AfterFunc(c.ctx, cancel)
+	defer stop()
 	var result json.RawMessage
 	err := c.host.conn.Call(ctx, "Claude.voice", command, &result)
-	if err != nil {
-		select {
-		case <-c.host.conn.Done():
-			return nil, ErrDesktopDisconnected
-		default:
-		}
+	if err == nil {
+		return result, nil
 	}
-	return result, err
+	select {
+	case <-c.host.conn.Done():
+	case <-c.host.ctx.Done():
+	default:
+		return result, err
+	}
+	return nil, ErrDesktopDisconnected
 }
 
 func (c *DesktopCall) Events() <-chan string {
@@ -138,19 +147,17 @@ func (c *DesktopCall) Events() <-chan string {
 }
 
 func (c *DesktopCall) Done() <-chan struct{} {
-	return c.done
-}
-
-func (c *DesktopCall) stop() {
-	c.once.Do(func() { close(c.done) })
+	return c.ctx.Done()
 }
 
 func (c *DesktopCall) Close() {
-	c.stop()
-	c.relay.mu.Lock()
-	delete(c.host.calls, c.id)
-	c.relay.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	_, _ = c.Command(ctx, ClaudeCommand{Type: "close"})
+	c.once.Do(func() {
+		c.relay.mu.Lock()
+		delete(c.host.calls, c.id)
+		c.cancel()
+		c.relay.mu.Unlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = c.host.conn.Call(ctx, "Claude.voice", ClaudeCommand{Type: "close", ID: c.id}, nil)
+	})
 }

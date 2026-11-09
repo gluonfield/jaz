@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/wins/jaz/backend/internal/desktopbridge"
 )
 
 func TestDesktopHostConnectsUnvisitedConversation(t *testing.T) {
@@ -48,7 +49,7 @@ func TestDesktopHostConnectsUnvisitedConversation(t *testing.T) {
 			_, err := backend.Call(ctx, ActionInput{Session: session, Action: ActionStatus})
 			result <- err
 		}()
-		var request cdpMessage
+		var request desktopbridge.Message
 		_ = host.SetReadDeadline(time.Now().Add(time.Second))
 		if err := host.ReadJSON(&request); err != nil {
 			cancel()
@@ -59,7 +60,7 @@ func TestDesktopHostConnectsUnvisitedConversation(t *testing.T) {
 			cancel()
 			t.Fatalf("unexpected connection request: %#v", request)
 		}
-		if err := host.WriteJSON(cdpMessage{ID: request.ID, Result: json.RawMessage(`{}`)}); err != nil {
+		if err := host.WriteJSON(desktopbridge.Message{ID: request.ID, Result: json.RawMessage(`{}`)}); err != nil {
 			cancel()
 			t.Fatal(err)
 		}
