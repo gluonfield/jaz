@@ -303,7 +303,7 @@ function BaseMarkdown({
     <div className={className} data-markdown-root>
       <Markdown
         remarkPlugins={plugins}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[[rehypeKatex, { trust: false }]]}
         components={components}
         urlTransform={(url, key, node) => key === 'src' && node.tagName === 'img'
           ? url
