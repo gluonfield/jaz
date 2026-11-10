@@ -242,6 +242,11 @@ function Fixture() {
         window.smoke.result({ ok: true, checks: ['existing composer setting changes across menu closure; Canvas panel controls, real browser navigation, retained board and close/reopen'] })
         return
       }
+      if (new URLSearchParams(location.search).get('suite') === 'model-picker') {
+        await exerciseModelPicker()
+        window.smoke.result({ ok: true, checks: ['Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence'] })
+        return
+      }
       if (new URLSearchParams(location.search).get('suite') === 'browser-close') {
         progress('Command-W from browser and host')
         await exerciseSidePanelTabs(true)
@@ -304,10 +309,6 @@ function Fixture() {
       await exerciseSessionConfig()
       progress('readable button text in every colour theme')
       await exerciseAccentText()
-      if (new URLSearchParams(location.search).get('suite') === 'model-picker') {
-        window.smoke.result({ ok: true, checks: ['Tab-only focus rings; Codex and Claude model selection, five efforts, animation, borderless focus, dragging, provider settings and persistence; existing composer pending settings survive menu closure and await refreshed state; every hue and graphite keep readable button text in both modes'] })
-        return
-      }
       progress('cancellation while opening the browser panel')
       let finishOpening!: () => void
       const opening = new Promise<void>((resolve) => {
