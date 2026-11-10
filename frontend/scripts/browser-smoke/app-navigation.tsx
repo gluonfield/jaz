@@ -90,6 +90,7 @@ export async function exerciseAppNavigation() {
       createRoute({ getParentRoute: () => rootRoute, path: '/new', component: newRoute.options.component, validateSearch: newRoute.options.validateSearch }),
       createRoute({ getParentRoute: () => rootRoute, path: '/sessions/$sessionId', component: () => <p>Thread</p> }),
       createRoute({ getParentRoute: () => rootRoute, path: '/bots', component: () => <p>Bots</p> }),
+      createRoute({ getParentRoute: () => rootRoute, path: '/boards', component: () => <p>Boards</p> }),
     ]),
     history,
   })
@@ -264,6 +265,43 @@ export async function exerciseAppNavigation() {
     await until(() => router.state.location.pathname === '/sessions/sidebar-return' && toggle()?.getAttribute('aria-expanded') === 'true' && settled())
     if (sidebarWidth() < 200) throw new Error('Chat sidebar did not reopen')
     await window.smoke.capture('rail-sidebar-open')
+    const originalSize = [window.innerWidth, window.innerHeight] as const
+    try {
+      for (const width of [390, 1100]) {
+        await window.smoke.resize(width, 844)
+        await until(() => window.innerWidth === width)
+        await router.navigate({ to: '/bots' })
+        await until(() => Boolean(toggle()) && settled())
+        if (toggle()!.getAttribute('aria-expanded') !== 'true') await click(toggle()!)
+        await until(() => toggle()?.getAttribute('aria-expanded') === 'true' && settled())
+        const link = (label: string) => [...element.querySelectorAll<HTMLAnchorElement>('aside a')].find(anchor => anchor.textContent === label)
+        const newTask = link('New task')
+        if (!newTask) throw new Error('Bots has no ordinary New task link')
+        if (width === 390 && !link('Chat')) throw new Error('The mobile drawer has no Chat exit')
+        await window.smoke.capture(`bots-task-navigation-${width === 390 ? 'mobile' : 'desktop'}`)
+        await click(newTask)
+        await until(() => router.state.location.pathname === '/new' && Boolean(element.querySelector('textarea')) && settled())
+        if (width === 390) {
+          if (toggle()?.getAttribute('aria-expanded') !== 'false') throw new Error('New task did not dismiss the mobile drawer')
+          await click(toggle()!)
+          await until(() => toggle()?.getAttribute('aria-expanded') === 'true' && settled())
+          await click(link('Boards')!)
+          await until(() => router.state.location.pathname === '/boards' && settled())
+          await click(toggle()!)
+          await until(() => toggle()?.getAttribute('aria-expanded') === 'true' && settled())
+          if (!link('New task') || !link('Chat')) throw new Error('Boards lost ordinary task navigation')
+          await window.smoke.capture('boards-task-navigation-mobile')
+          await click(link('Bots')!)
+          await until(() => router.state.location.pathname === '/bots' && settled())
+          await click(toggle()!)
+          await until(() => toggle()?.getAttribute('aria-expanded') === 'true' && settled())
+          await click(link('Chat')!)
+          await until(() => router.state.location.pathname === '/new' && toggle()?.getAttribute('aria-expanded') === 'false' && settled())
+        }
+      }
+    } finally {
+      await window.smoke.resize(...originalSize)
+    }
     workspaceChecks = true
     await client.invalidateQueries({ queryKey: keys.projects })
     await router.navigate({ to: '/new', search: { project: '/fixture/repo' } })

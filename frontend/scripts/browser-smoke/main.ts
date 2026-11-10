@@ -307,7 +307,7 @@ body{font:16px system-ui;padding:60px;background:#faf9f6;color:#242424}form{disp
   const window = new BrowserWindow({
     width: 1050,
     height: 850,
-    show: false,
+    show: process.env.JAZ_BROWSER_SMOKE_SHOW === '1',
     webPreferences: {
       webviewTag: true,
       offscreen: process.env.JAZ_BROWSER_SMOKE_SUITE === 'bot-chat',
