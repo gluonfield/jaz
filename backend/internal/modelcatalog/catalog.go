@@ -72,7 +72,7 @@ var (
 		"codex": openAIModels,
 		"claude": {
 			modelWithoutProviderReasoning("opus[1m]", "Opus 5.5", "Recommended"),
-			openRouterBackedModel("fable[1m]", "Fable 5.1", "Most capable for the hardest tasks", "anthropic/claude-fable-5.1"),
+			openRouterBackedModel("fable[1m]", "Fable 5.2", "Most capable for the hardest tasks", "anthropic/claude-fable-5.2"),
 			openRouterBackedModel("claude-fable-5[1m]", "Fable 5", "Previous Fable model", "anthropic/claude-fable-5"),
 			openRouterBackedModel("sonnet", "Sonnet 5.5", "Efficient for routine tasks", "anthropic/claude-sonnet-5.5"),
 			openRouterBackedModel("haiku", "Haiku 4.5", "Fastest for quick answers", "anthropic/claude-haiku-4.5"),

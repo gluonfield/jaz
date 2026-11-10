@@ -18,7 +18,7 @@ export async function exerciseModelPicker(): Promise<void> {
   ]
   const claude = [
     model('opus[1m]', 'Opus 5.5', [...efforts, 'ultracode']),
-    model('fable', 'Fable 5.1', efforts),
+    model('fable[1m]', 'Fable 5.2', efforts),
     model('fable-5', 'Fable 5', efforts),
     model('sonnet', 'Sonnet 5', efforts),
     model('sonnet[1m]', 'Sonnet 5 (1M context)', efforts),
@@ -206,7 +206,7 @@ export async function exerciseModelPicker(): Promise<void> {
     await openModels()
     await window.smoke.capture('claude-models')
     await window.smoke.key('Down')
-    await until(() => document.activeElement?.textContent === 'Fable 5.1')
+    await until(() => document.activeElement?.textContent === 'Fable 5.2')
     await window.smoke.key('Up')
     await until(() => document.activeElement?.textContent === 'Opus 5.5')
     await click(button('Opus 5.5'))
