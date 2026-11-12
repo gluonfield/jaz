@@ -15,6 +15,7 @@ const IDLE_MS = 3000
 export function useAgentFollow(view: CanvasView, local: CanvasView, container: RefObject<HTMLDivElement | null>, inset: number, initialFit = true) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const touched = useRef(0)
+  const settling = useRef(initialFit)
   const shown = useRef<{ view: CanvasView; local: CanvasView } | null>(null)
   const [flash, setFlash] = useState<Record<string, number>>({})
   const [news, setNews] = useState<string[]>([])
@@ -26,14 +27,10 @@ export function useAgentFollow(view: CanvasView, local: CanvasView, container: R
   useEffect(() => {
     const before = shown.current
     shown.current = { view, local }
-    if (!before) {
-      if (!initialFit) return
-      requestAnimationFrame(() => void flow.fitView({ maxZoom: 1, ...fitPadding(inset) }))
-      return
-    }
-    if (view === before.view) return
+    if (!before || view === before.view) return
     const changed = changedNodeIds(before.local, local)
     if (!changed.length) return
+    settling.current = false
     const now = Date.now()
     setFlash((current) => ({ ...current, ...Object.fromEntries(changed.map((id) => [id, now])) }))
     const box = container.current?.getBoundingClientRect()
@@ -47,10 +44,16 @@ export function useAgentFollow(view: CanvasView, local: CanvasView, container: R
     if (changed.every(visible)) return
     if (now - touched.current > IDLE_MS) show(changed)
     else setNews(changed)
-  }, [view, local, flow, show, container, inset, initialFit])
+  }, [view, local, flow, show, container, inset])
 
+  // Items take their size as their content loads, so the opening view fits
+  // them again each time, until the user or the agent moves on.
+  const settle = useCallback(() => {
+    if (settling.current) requestAnimationFrame(() => void flow.fitView({ maxZoom: 1, ...fitPadding(inset) }))
+  }, [flow, inset])
   const touch = useCallback(() => {
     touched.current = Date.now()
+    settling.current = false
   }, [])
-  return { flash, news, show, touch }
+  return { flash, news, show, touch, settle }
 }

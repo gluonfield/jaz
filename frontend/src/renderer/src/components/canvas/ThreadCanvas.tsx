@@ -177,7 +177,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
   const container = useRef<HTMLDivElement>(null)
-  const { flash, news, show, touch } = useAgentFollow(view, local, container, inset, !initialViewport && !targetItem)
+  const { flash, news, show, touch, settle } = useAgentFollow(view, local, container, inset, !initialViewport && !targetItem)
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
@@ -335,7 +335,10 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
           edges={edges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
-          onNodesChange={onNodesChange}
+          onNodesChange={(changes) => {
+            onNodesChange(changes)
+            if (changes.some((change) => change.type === 'dimensions')) settle()
+          }}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onReconnect={onReconnect}

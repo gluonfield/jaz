@@ -310,9 +310,29 @@
 }
 
 .canvas-fit {
+  display: flow-root;
   width: 100%;
   height: 100%;
+  min-height: 0;
   overflow: clip;
+}
+
+/* Text and documents are as tall as their content, up to the height their
+ * author reserved: React Flow measures the item instead of being told. While
+ * it is resized the item has a definite height, which these then fill. */
+.canvas-fitted :is(.canvas-card, .canvas-viewer, .canvas-viewer-body, .canvas-text) {
+  position: relative;
+  height: 100%;
+}
+
+.canvas-fitted :is(.canvas-text-file, .canvas-text) {
+  display: flex;
+  flex-direction: column;
+  max-height: var(--canvas-reserve);
+}
+
+.canvas-fitted .canvas-text:has(.canvas-text-editor) {
+  max-height: none;
 }
 
 .canvas-fit-content {
@@ -481,6 +501,7 @@
   border: 0;
   outline: 0;
   resize: none;
+  field-sizing: content;
   font: inherit;
   color: inherit;
   background: none;

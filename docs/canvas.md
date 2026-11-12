@@ -23,6 +23,8 @@ Deleting a page uses `{"page":"costs","delete":true}` without other changes. Del
 {"page":"costs","create":true,"name":"Costs"}
 ```
 
+Free text and Markdown or CSV files flow at their `width`: the board draws them as tall as their content and treats `height` as the most room they may take, scaling content that needs more. A missing `height` sets no limit. Every other item fills its `width` and `height` exactly.
+
 Agents may also edit the file directly. Re-read it before editing, change only the intended pages/items, and retain IDs. Missing names in agent-written pages default to their `Page N` position.
 
 Item links use `/sessions/{thread}?page={page-id}&item={item-id}`, URL-encoding both IDs. A current-thread link may use just `?page=...&item=...`. An item-only link or unknown page/item reports an error. The active page accompanies messages even without selected items; this location alone does not permit an empty message. Canvas selections carry both page and node IDs into the message and agent prompt; historical selections without a page refer to `page-1`.

@@ -29,6 +29,7 @@ function Handles() {
 
 function Resizer({ id, selected, minWidth = 120, minHeight = 60 }: { id: string; selected: boolean; minWidth?: number; minHeight?: number }) {
   const { commit } = useCanvas()
+  const start = useRef(0)
   return (
     <NodeResizer
       isVisible={selected}
@@ -36,7 +37,14 @@ function Resizer({ id, selected, minWidth = 120, minHeight = 60 }: { id: string;
       minHeight={minHeight}
       handleClassName="canvas-resize-handle"
       lineClassName="canvas-resize-line"
-      onResizeEnd={(_, params) => commit({ nodes: [{ id, ...rounded(params) }] })}
+      onResizeStart={(_, params) => {
+        start.current = params.height
+      }}
+      onResizeEnd={(_, params) => {
+        // A sideways resize keeps the height its item has reserved.
+        const { height, ...rect } = rounded(params)
+        commit({ nodes: [{ id, ...rect, ...(params.height === start.current ? {} : { height }) }] })
+      }}
     />
   )
 }
@@ -105,13 +113,16 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
   const text = typeof data.item.text === 'string' ? data.item.text : ''
   const color = typeof data.item.color === 'string' ? data.item.color : ''
   const sticky = color !== ''
+  const box = useRef<HTMLDivElement>(null)
+  // Text typed past the room it had takes the room it needs.
   const finish = (value: string) => {
+    const height = box.current!.offsetHeight
     setEditing(null)
     if (!value.trim() && !text) {
       commit({ remove: [id] })
       return
     }
-    if (value !== text) commit({ nodes: [{ id, text: value }] })
+    if (value !== text) commit({ nodes: [{ id, text: value, ...(height > Number(data.item.height) ? { height } : {}) }] })
   }
   const style = sticky && !STICKY_COLORS.has(color) ? { background: color } : undefined
   return (
@@ -119,6 +130,7 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
       <Resizer id={id} selected={selected && editing !== id} minWidth={sticky ? 120 : 40} minHeight={sticky ? 100 : 24} />
       <Handles />
       <div
+        ref={box}
         className={`${sticky ? `canvas-sticky canvas-sticky-${STICKY_COLORS.has(color) ? color : 'custom'}` : 'canvas-text'}${connectSource === id ? ' canvas-connect-source' : ''}`}
         style={style}
         onDoubleClick={() => setEditing(id)}

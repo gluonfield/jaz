@@ -1,4 +1,5 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
+import type { CSSProperties } from 'react'
 import type { CanvasBoard, CanvasDocument, CanvasItem, CanvasPagePatch, CanvasPatch, CanvasView } from '@/lib/api/canvas'
 
 export type Side = 'top' | 'right' | 'bottom' | 'left'
@@ -38,7 +39,10 @@ export function toFlowNodes(view: CanvasView): BoardNode[] {
     const kind = item.type as Kind
     if (!KINDS.includes(kind)) return []
     const rect = rectOfItem(item)
-    return [{ id: item.id, type: kind, position: { x: rect.x, y: rect.y }, width: rect.width, height: rect.height, data: { item } }]
+    const size = flows(item)
+      ? { className: 'canvas-fitted', style: { '--canvas-reserve': rect.height ? `${rect.height}px` : 'none' } as CSSProperties }
+      : { height: rect.height }
+    return [{ id: item.id, type: kind, position: { x: rect.x, y: rect.y }, width: rect.width, ...size, data: { item } }]
   })
   return [...nodes.filter((node) => node.type === 'group'), ...nodes.filter((node) => node.type !== 'group')]
 }
@@ -295,6 +299,13 @@ const VIEWERS: Record<string, Viewer> = {
 
 export function viewerFor(path: string): Viewer {
   return VIEWERS[extension(path)] ?? 'file'
+}
+
+// Text and documents flow at their width, so the board measures their height
+// from the content. The item's own `height` is the most room it may take.
+export function flows(item: CanvasItem): boolean {
+  if (item.type === 'text') return !item.color
+  return item.type === 'file' && ['markdown', 'csv'].includes(viewerFor(String(item.file)))
 }
 
 // Viewers that take the pointer for their own gestures; the user focuses them

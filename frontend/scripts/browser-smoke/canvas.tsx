@@ -22,13 +22,15 @@ export async function exerciseCanvas(): Promise<void> {
       { id: 'text', type: 'text', text: paragraphs, x: 600, y: 440, width: 200, height: 160 },
       { id: 'cad', type: 'file', file: 'broken.stl', x: 480, y: 300, width: 320, height: 100 },
       { id: 'artifact', type: 'file', file: 'card.html', x: 840, y: 0, width: 320, height: 260 },
+      { id: 'brief', type: 'file', file: 'brief.md', x: 840, y: 300, width: 320, height: 5000 },
     ],
-    files: { report: { path: 'report.md', version: '1' }, table: { path: 'costs.csv', version: '1' }, cad: { path: 'broken.stl', version: '1' }, artifact: { path: 'card.html', version: '1' } },
+    files: { report: { path: 'report.md', version: '1' }, table: { path: 'costs.csv', version: '1' }, cad: { path: 'broken.stl', version: '1' }, artifact: { path: 'card.html', version: '1' }, brief: { path: 'brief.md', version: '1' } },
   }
   const snapshot = () => ({ version: view.version, dir: view.dir, pages: [{ id: 'page-1', name: 'Page 1', nodes: view.nodes, edges: view.edges, files: view.files, components: view.components }] })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(keys.sessionCanvas(sessionId), snapshot())
   client.setQueryData([...keys.sessionFile(sessionId, 'report.md'), '1'], { content: paragraphs + '\n\n' + table })
+  client.setQueryData([...keys.sessionFile(sessionId, 'brief.md'), '1'], { content: 'A short brief.' })
   const csv = Array.from({ length: 40 }, (_, i) => Array.from({ length: 12 }, (_, column) => `Part-${i}-${column}`).join(',')).join('\n')
   const header = Array.from({ length: 12 }, (_, column) => `Column-${column}`).join(',')
   client.setQueryData([...keys.sessionFile(sessionId, 'costs.csv'), '1'], { content: header + '\n' + csv })
@@ -118,6 +120,12 @@ document.querySelector('button').onclick = () => {
     window.addEventListener('message', onArtifactMessage)
     root.render(<QueryClientProvider client={client}><Fixture /></QueryClientProvider>)
     await until(() => Boolean(node('report')?.querySelector('p')))
+    await until(() => node('brief').offsetHeight < 100, 'A short document kept the tall box reserved for it')
+    await until(() => {
+      const board = element.getBoundingClientRect()
+      const items = view.nodes.map((item) => node(item.id).getBoundingClientRect())
+      return zoom() > 0.5 && items.every((item) => item.left >= board.left + 50 && item.bottom <= board.bottom)
+    }, 'The opening view did not fit the items at the size of their content')
     await until(() => Boolean(linkIdentity), 'The external canvas link did not load')
     if (linkIdentity!.referrer || linkIdentity!.request.referer || /jaz|electron/i.test(linkIdentity!.userAgent)
       || linkIdentity!.request['user-agent'] !== linkIdentity!.userAgent) {
@@ -233,7 +241,7 @@ document.querySelector('button').onclick = () => {
           await drag(x, y, left ? -15 : 15, top ? -15 : 15)
           await until(() => {
             const updated = view.nodes.find((item) => item.id === id)!
-            return Number(updated.width) > width && Number(updated.height) > height
+            return Number(updated.width) > width && (id === 'report' || Number(updated.height) > height)
           }, `${id} ${corner} resize did not save (${width} × ${height}, zoomed out: ${zoomedOut})`)
         }
         const r = node(id).getBoundingClientRect()
@@ -244,7 +252,7 @@ document.querySelector('button').onclick = () => {
     }
     view = { ...applyPatch(view, { nodes: [{ id: 'report', width: 220, height: 170 }, { id: 'artifact', width: 220, height: 160 }] }), version: String(Number(view.version) + 1) }
     await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
-    await until(() => Number.parseFloat(node('report').style.height) === 170 && fits('report') && tableFits(), 'The resized document and table did not fit')
+    await until(() => node('report').offsetWidth === 220 && node('report').offsetHeight <= 170 && fits('report') && tableFits(), 'The resized document and table did not fit')
     await until(() => Boolean(artifactLayout && artifactLayout.height === 160 && artifactLayout.bottom <= 161), 'The resized sandbox did not fit')
     await select('page')
     const focus = node('page').querySelector<HTMLButtonElement>('.canvas-focus')!
@@ -271,6 +279,17 @@ document.querySelector('button').onclick = () => {
         throw new Error('An agent update highlight scrolled out of the note')
       }
     }
+    const pane = element.getBoundingClientRect()
+    const free = (x: number, y: number) => Boolean(document.elementFromPoint(x, y)?.classList.contains('react-flow__pane'))
+    const spot = Array.from({ length: 400 }, (_, i) => ({ x: pane.x + 40 + (i % 20) * 40, y: pane.y + 80 + Math.floor(i / 20) * 30 })).find(({ x, y }) => free(x, y) && free(x + 250, y + 150))!
+    element.querySelector<HTMLButtonElement>('[aria-label="Text"]')!.click()
+    await until(() => Boolean(element.querySelector('.tool-text')))
+    await drag(spot.x, spot.y, 0, 0)
+    await until(() => Boolean(document.activeElement?.classList.contains('canvas-text-editor')), 'A new text item did not open for typing')
+    for (const key of ['a', 'Enter', 'b', 'Enter', 'c', 'Escape']) {
+      await window.smoke.key(key)
+    }
+    await until(() => view.nodes.some((item) => item.text === 'a\nb\nc' && Number(item.height) > 48), 'Text typed past its box was not given the room it needs')
     await window.smoke.capture('canvas')
     root.render(<QueryClientProvider client={client}><Fixture inset={360} /></QueryClientProvider>)
     await until(() => element.querySelector<HTMLElement>('.canvas')!.style.getPropertyValue('--canvas-inset') === '360px')
