@@ -28,13 +28,14 @@ export async function exerciseBrowserVisibility(): Promise<void> {
   let root = createRoot(element)
   const noop = async () => {}
   let panel: ReturnType<typeof useSidePanelState>
-  function Chat({ id, followBrowser = true }: { id: string; followBrowser?: boolean }) {
-    const state = useSidePanelState(id, false, false, followBrowser)
+  let followBrowser = true
+  function Chat({ id }: { id: string }) {
+    const state = useSidePanelState(id, { followBrowser })
     useLayoutEffect(() => {
       panel = state
     })
     const session: Session = { id, slug: id, status: 'idle', runtime: 'acp', created_at: '', updated_at: '', last_attention_at: '' }
-    return <div ref={state.containerRef} data-visibility-chat={id} data-follows-browser={followBrowser} className="flex h-full flex-col">
+    return <div ref={state.containerRef} data-visibility-chat={id} className="flex h-full flex-col">
       <header className="h-[52px] shrink-0">{id}</header>
       <div className="relative flex min-h-0 flex-1">
         <div className="min-w-0 flex-1">Conversation</div>
@@ -53,15 +54,7 @@ export async function exerciseBrowserVisibility(): Promise<void> {
       return <Chat key={id} id={id} />
     },
   })
-  const canvasRoute = createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/canvas/$id',
-    component: () => {
-      const { id } = canvasRoute.useParams()
-      return <Chat key={id} id={id} followBrowser={false} />
-    },
-  })
-  const router = createRouter({ routeTree: rootRoute.addChildren([chatRoute, canvasRoute]), history: createMemoryHistory({ initialEntries: ['/' + primary] }) })
+  const router = createRouter({ routeTree: rootRoute.addChildren([chatRoute]), history: createMemoryHistory({ initialEntries: ['/' + primary] }) })
   const action = async (id: string, input: { action: string; url?: string; code?: string }) => {
     const endpoint = input.action === 'script' ? `/exercise-script/${id}` : `/v1/sessions/${id}/browser`
     const response = await fetch(backend + endpoint, { method: 'POST', body: JSON.stringify(input) })
@@ -138,11 +131,12 @@ export async function exerciseBrowserVisibility(): Promise<void> {
     await window.smoke.capture('agent-browser-reveals-on-return')
     panel!.close()
     await until(() => !panel!.open)
-    await router.navigate({ to: '/canvas/$id', params: { id: primary } })
-    await until(() => element.querySelector<HTMLElement>('[data-visibility-chat]')?.dataset.followsBrowser === 'false')
-    await action(primary, { action: 'navigate', url: `${location.origin}/target?canvas` })
-    await action(primary, { action: 'state' })
-    if (!view(primary)!.getURL().includes('canvas') || view(primary)!.getWebContentsId() !== first) {
+    followBrowser = false
+    await router.navigate({ to: '/$id', params: { id: background } })
+    await until(() => element.querySelector<HTMLElement>('[data-visibility-chat]')?.dataset.visibilityChat === background)
+    await action(background, { action: 'navigate', url: `${location.origin}/target?canvas` })
+    await action(background, { action: 'state' })
+    if (!view(background)!.getURL().includes('canvas') || view(background)!.getWebContentsId() !== backgroundPage) {
       throw new Error('The agent could not keep browsing while its canvas conversation hid the browser')
     }
     if (panel!.open) {

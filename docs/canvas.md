@@ -23,7 +23,7 @@ Deleting a page uses `{"page":"costs","delete":true}` without other changes. Del
 {"page":"costs","create":true,"name":"Costs"}
 ```
 
-Free text and Markdown or CSV files flow at their `width`: the board draws them as tall as their content and treats `height` as the most room they may take, scaling content that needs more. A missing `height` sets no limit. Every other item fills its `width` and `height` exactly.
+Free text and Markdown or CSV files flow at their `width`: the board draws them as tall as their content and treats `height` as the most room they may take, scaling content that needs more. A missing `height` sets no limit: text the user types has none, and resizing one of these items sets its width and removes its `height`. Every other item fills its `width` and `height` exactly.
 
 Agents may also edit the file directly. Re-read it before editing, change only the intended pages/items, and retain IDs. Missing names in agent-written pages default to their `Page N` position.
 

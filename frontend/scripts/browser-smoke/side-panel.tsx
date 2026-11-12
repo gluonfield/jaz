@@ -88,7 +88,7 @@ export async function exerciseSidePanelTabs(closeShortcutOnly = false): Promise<
   const noop = async () => {}
   function Chat({ sessionId }: { sessionId: string }) {
     chatRenders += 1
-    const state = useSidePanelState(sessionId, true)
+    const state = useSidePanelState(sessionId, { sideChatAvailable: true })
     const currentSession = { ...session, id: sessionId }
     const isMobile = useIsMobile()
     useLayoutEffect(() => {

@@ -223,7 +223,8 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     const rect = kind === 'sticky'
       ? { x: at.x - 100, y: at.y - 100, width: 200, height: 200 }
       : { x: at.x, y: at.y - 20, width: 240, height: 48 }
-    commit({ nodes: [{ id, type: 'text', text: '', ...(kind === 'sticky' ? { color: '3' } : {}), ...rounded(rect) }, ...sectionFor(rect)] })
+    // Typed text grows with what is written, so it starts without a height.
+    commit({ nodes: [{ id, type: 'text', text: '', ...rounded(rect), ...(kind === 'sticky' ? { color: '3' } : { height: null }) }, ...sectionFor(rect)] })
     setEditing(id)
     setTool('select')
   }

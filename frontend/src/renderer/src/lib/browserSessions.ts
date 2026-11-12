@@ -142,5 +142,5 @@ export function useBrowserSessions(): BrowserSessions {
 // while the conversation is closed.
 export function useSessionPreview(sessionId: string, show?: () => void | Promise<void>) {
   const sessions = useBrowserSessions()
-  useLayoutEffect(() => show ? sessions.bind(sessionId, show) : sessions.ensure(sessionId), [sessions, sessionId, show])
+  useLayoutEffect(() => show && sessions.bind(sessionId, show), [sessions, sessionId, show])
 }

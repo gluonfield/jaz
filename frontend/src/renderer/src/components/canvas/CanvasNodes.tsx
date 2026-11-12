@@ -2,6 +2,7 @@ import {
   BaseEdge,
   EdgeLabelRenderer,
   Handle,
+  NodeResizeControl,
   NodeResizer,
   Position,
   getBezierPath,
@@ -10,7 +11,8 @@ import {
 } from '@xyflow/react'
 import { useEffect, useRef, useState } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
-import { extension, itemLabel, rounded, viewerFor, type BoardEdge, type BoardNode } from './board'
+import type { CanvasItem } from '@/lib/api/canvas'
+import { extension, flows, itemLabel, rounded, viewerFor, type BoardEdge, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
@@ -27,24 +29,30 @@ function Handles() {
   return SIDES.map(([side, position]) => <Handle key={side} id={side} type="source" position={position} className="canvas-dot" />)
 }
 
-function Resizer({ id, selected, minWidth = 120, minHeight = 60 }: { id: string; selected: boolean; minWidth?: number; minHeight?: number }) {
+function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: CanvasItem; selected: boolean; minWidth?: number; minHeight?: number }) {
   const { commit } = useCanvas()
-  const start = useRef(0)
+  if (!selected) return null
+  // Text and documents are as tall as their content, so only their width is
+  // set by hand, which also lifts the height limit their author gave them.
+  if (flows(item)) {
+    return (['left', 'right'] as const).map((position) => (
+      <NodeResizeControl
+        key={position}
+        position={position}
+        resizeDirection="horizontal"
+        minWidth={minWidth}
+        className="canvas-resize-handle"
+        onResizeEnd={(_, { x, width }) => commit({ nodes: [{ id: item.id, x: Math.round(x), width: Math.round(width), height: null }] })}
+      />
+    ))
+  }
   return (
     <NodeResizer
-      isVisible={selected}
       minWidth={minWidth}
       minHeight={minHeight}
       handleClassName="canvas-resize-handle"
       lineClassName="canvas-resize-line"
-      onResizeStart={(_, params) => {
-        start.current = params.height
-      }}
-      onResizeEnd={(_, params) => {
-        // A sideways resize keeps the height its item has reserved.
-        const { height, ...rect } = rounded(params)
-        commit({ nodes: [{ id, ...rect, ...(params.height === start.current ? {} : { height }) }] })
-      }}
+      onResizeEnd={(_, params) => commit({ nodes: [{ id: item.id, ...rounded(params) }] })}
     />
   )
 }
@@ -75,7 +83,7 @@ export function FileNode({ id, data, selected }: NodeProps<BoardNode>) {
   const file = view.files[id] ?? { path }
   return (
     <>
-      <Resizer id={id} selected={selected} />
+      <Resizer item={data.item} selected={selected} />
       <Handles />
       <ItemLabel badge={extension(path).toUpperCase() || 'FILE'} name={itemLabel(data.item)} />
       <div className={`canvas-card${connectSource === id ? ' canvas-connect-source' : ''}`}>
@@ -93,7 +101,7 @@ export function LinkNode({ id, data, selected }: NodeProps<BoardNode>) {
   const host = URL.canParse(url) ? new URL(url).host : url
   return (
     <>
-      <Resizer id={id} selected={selected} />
+      <Resizer item={data.item} selected={selected} />
       <Handles />
       <ItemLabel badge="WEB" name={host} />
       <div className={`canvas-card${connectSource === id ? ' canvas-connect-source' : ''}`}>
@@ -113,24 +121,20 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
   const text = typeof data.item.text === 'string' ? data.item.text : ''
   const color = typeof data.item.color === 'string' ? data.item.color : ''
   const sticky = color !== ''
-  const box = useRef<HTMLDivElement>(null)
-  // Text typed past the room it had takes the room it needs.
   const finish = (value: string) => {
-    const height = box.current!.offsetHeight
     setEditing(null)
     if (!value.trim() && !text) {
       commit({ remove: [id] })
       return
     }
-    if (value !== text) commit({ nodes: [{ id, text: value, ...(height > Number(data.item.height) ? { height } : {}) }] })
+    if (value !== text) commit({ nodes: [{ id, text: value }] })
   }
   const style = sticky && !STICKY_COLORS.has(color) ? { background: color } : undefined
   return (
     <>
-      <Resizer id={id} selected={selected && editing !== id} minWidth={sticky ? 120 : 40} minHeight={sticky ? 100 : 24} />
+      <Resizer item={data.item} selected={selected && editing !== id} minWidth={sticky ? 120 : 40} minHeight={100} />
       <Handles />
       <div
-        ref={box}
         className={`${sticky ? `canvas-sticky canvas-sticky-${STICKY_COLORS.has(color) ? color : 'custom'}` : 'canvas-text'}${connectSource === id ? ' canvas-connect-source' : ''}`}
         style={style}
         onDoubleClick={() => setEditing(id)}
@@ -177,7 +181,7 @@ export function GroupNode({ id, data, selected }: NodeProps<BoardNode>) {
   const [renaming, setRenaming] = useState(false)
   return (
     <>
-      <Resizer id={id} selected={selected} minWidth={160} minHeight={120} />
+      <Resizer item={data.item} selected={selected} minWidth={160} minHeight={120} />
       <div
         className="canvas-section-label"
         onDoubleClick={(event) => {

@@ -40,7 +40,7 @@ export function toFlowNodes(view: CanvasView): BoardNode[] {
     if (!KINDS.includes(kind)) return []
     const rect = rectOfItem(item)
     const size = flows(item)
-      ? { className: 'canvas-fitted', style: { '--canvas-reserve': rect.height ? `${rect.height}px` : 'none' } as CSSProperties }
+      ? { className: 'canvas-flows', style: { '--canvas-reserve': rect.height ? `${rect.height}px` : 'none' } as CSSProperties }
       : { height: rect.height }
     return [{ id: item.id, type: kind, position: { x: rect.x, y: rect.y }, width: rect.width, ...size, data: { item } }]
   })

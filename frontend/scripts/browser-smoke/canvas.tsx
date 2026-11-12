@@ -224,12 +224,14 @@ document.querySelector('button').onclick = () => {
       }
       for (const id of ['report', 'page']) {
         await select(id)
-        for (const corner of ['top left', 'top right', 'bottom right', 'bottom left']) {
+        // A document is resized by its sides alone: its content sets its height.
+        const sides = id === 'report'
+        for (const corner of sides ? ['left', 'right'] : ['top left', 'top right', 'bottom right', 'bottom left']) {
           const r = node(id).getBoundingClientRect()
           const left = corner.includes('left')
           const top = corner.includes('top')
           const x = left ? r.left - 10 : r.right + 10
-          const y = top ? r.top - 10 : r.bottom + 10
+          const y = sides ? r.y + r.height / 2 : top ? r.top - 10 : r.bottom + 10
           const saved = view.nodes.find((item) => item.id === id)!
           const width = Number(saved.width)
           const height = Number(saved.height)
@@ -238,10 +240,10 @@ document.querySelector('button').onclick = () => {
             await window.smoke.capture('canvas-resize-miss')
             throw new Error(`${id} ${corner} at (${x}, ${y}) hit ${hit?.className}`)
           }
-          await drag(x, y, left ? -15 : 15, top ? -15 : 15)
+          await drag(x, y, left ? -15 : 15, sides ? 0 : top ? -15 : 15)
           await until(() => {
             const updated = view.nodes.find((item) => item.id === id)!
-            return Number(updated.width) > width && (id === 'report' || Number(updated.height) > height)
+            return Number(updated.width) > width && (sides ? updated.height === undefined : Number(updated.height) > height)
           }, `${id} ${corner} resize did not save (${width} × ${height}, zoomed out: ${zoomedOut})`)
         }
         const r = node(id).getBoundingClientRect()
@@ -289,7 +291,10 @@ document.querySelector('button').onclick = () => {
     for (const key of ['a', 'Enter', 'b', 'Enter', 'c', 'Escape']) {
       await window.smoke.key(key)
     }
-    await until(() => view.nodes.some((item) => item.text === 'a\nb\nc' && Number(item.height) > 48), 'Text typed past its box was not given the room it needs')
+    await until(() => {
+      const typed = view.nodes.find((item) => item.text === 'a\nb\nc')
+      return Boolean(typed) && node(typed!.id)?.querySelector<HTMLElement>('.canvas-fit-content')?.style.transform === 'scale(1)'
+    }, 'Typed text was scaled down to a fixed box')
     await window.smoke.capture('canvas')
     root.render(<QueryClientProvider client={client}><Fixture inset={360} /></QueryClientProvider>)
     await until(() => element.querySelector<HTMLElement>('.canvas')!.style.getPropertyValue('--canvas-inset') === '360px')

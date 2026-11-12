@@ -318,21 +318,15 @@
 }
 
 /* Text and documents are as tall as their content, up to the height their
- * author reserved: React Flow measures the item instead of being told. While
- * it is resized the item has a definite height, which these then fill. */
-.canvas-fitted :is(.canvas-card, .canvas-viewer, .canvas-viewer-body, .canvas-text) {
+ * author reserved: React Flow measures the item instead of being told. */
+.canvas-flows :is(.canvas-card, .canvas-viewer, .canvas-viewer-body, .canvas-text) {
   position: relative;
-  height: 100%;
 }
 
-.canvas-fitted :is(.canvas-text-file, .canvas-text) {
+.canvas-flows :is(.canvas-text-file, .canvas-text) {
   display: flex;
   flex-direction: column;
   max-height: var(--canvas-reserve);
-}
-
-.canvas-fitted .canvas-text:has(.canvas-text-editor) {
-  max-height: none;
 }
 
 .canvas-fit-content {

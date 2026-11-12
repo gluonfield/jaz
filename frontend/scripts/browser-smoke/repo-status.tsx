@@ -54,7 +54,7 @@ export async function exerciseRepoStatus(): Promise<void> {
   const session: Session = { id: 'repo-status', slug: 'repo-status', status: 'idle', runtime: 'acp', runtime_ref: { type: 'acp', cwd: '/fixture/worktree' }, created_at: '', updated_at: '', last_attention_at: '' }
   const noop = async () => {}
   function ThreadPanel() {
-    const panel = useSidePanelState(session.id, false, true)
+    const panel = useSidePanelState(session.id, { startOpen: true })
     return <SidePanel session={session} panel={panel} subagents={[]} spawnedThreads={[]} working={false} sideChatAvailable={false} sideChatEvents={[]} onSend={noop} onQueuePrompt={noop} onQueueAction={noop} onSendSideChat={noop} />
   }
   const button = (label: string) => [...element.querySelectorAll('button')].find((item) => item.textContent?.trim() === label)
