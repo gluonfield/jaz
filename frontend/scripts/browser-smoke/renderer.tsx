@@ -187,7 +187,7 @@ function Fixture() {
         progress('agent browser panel visibility')
         await exerciseBrowserVisibility()
         if (suite === 'browser-visibility') {
-          window.smoke.result({ ok: true, checks: ['agent navigation, reads and scripts reveal their owning browser; background activity reveals on return and preserves the page'] })
+          window.smoke.result({ ok: true, checks: ['agent navigation, reads and scripts reveal their owning browser; background activity reveals on return and preserves the page; canvas conversations keep agent browsing out of sight'] })
           return
         }
       }

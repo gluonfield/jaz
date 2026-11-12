@@ -26,8 +26,9 @@ export function SidePanelStateProvider({ children }: { children: ReactNode }) {
 }
 
 // A thread's panel starts closed unless its owner opens it with `startOpen`,
-// then keeps its own state while the app runs.
-export function useSidePanelState(sessionId: string, sideChatAvailable = false, startOpen = false) {
+// then keeps its own state while the app runs. The agent's browser activity
+// opens it only while `followBrowser` is set.
+export function useSidePanelState(sessionId: string, sideChatAvailable = false, startOpen = false, followBrowser = true) {
   const panels = useContext(PanelStates)
   if (!panels) {
     throw new Error('Side panel state requires SidePanelStateProvider')
@@ -109,7 +110,7 @@ export function useSidePanelState(sessionId: string, sideChatAvailable = false, 
       .filter((animation) => animation instanceof CSSTransition && animation.transitionProperty === 'width')
       .map((animation) => animation.finished) ?? [])
   }, [openTab, sessionId])
-  useSessionPreview(sessionId, showPreview)
+  useSessionPreview(sessionId, followBrowser ? showPreview : undefined)
 
   const addTab = useCallback((tab: NewSidePanelTab, after?: string) => {
     openTab(typeof tab === 'object' ? { id: `app:${entrypointKey(tab)}`, kind: 'app', app: tab }

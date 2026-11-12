@@ -138,7 +138,9 @@ export function useBrowserSessions(): BrowserSessions {
   return sessions
 }
 
-export function useSessionPreview(sessionId: string, show: () => void | Promise<void>) {
+// Without `show` the conversation's browser works out of sight, as it does
+// while the conversation is closed.
+export function useSessionPreview(sessionId: string, show?: () => void | Promise<void>) {
   const sessions = useBrowserSessions()
-  useLayoutEffect(() => sessions.bind(sessionId, show), [sessions, sessionId, show])
+  useLayoutEffect(() => show ? sessions.bind(sessionId, show) : sessions.ensure(sessionId), [sessions, sessionId, show])
 }

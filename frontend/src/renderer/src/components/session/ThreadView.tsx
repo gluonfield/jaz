@@ -205,7 +205,10 @@ export function ThreadView({
   const seenRequestedRef = useRef(false)
   const detailSession = detail.data?.session
   const sideChatAvailable = isCodexACPSession(detailSession)
-  const sidePanel = useSidePanelState(sessionId, sideChatAvailable, openDetails)
+  const canvas = detailSession?.runtime_ref?.artifact_surface === 'canvas'
+  // A canvas shows the agent's work on the board, so its browser stays out of
+  // sight until the user opens it. Other threads follow it once they are known.
+  const sidePanel = useSidePanelState(sessionId, sideChatAvailable, openDetails, Boolean(detailSession) && !canvas)
   const { open: panelOpen, mode: panelMode, toggleMode: togglePanel } = sidePanel
   const showDetails = useCallback(() => {
     if (!panelOpen || panelMode !== 'overview') togglePanel('overview')
@@ -252,7 +255,6 @@ export function ThreadView({
     storage: 'local',
   })
   const canvasContexts = useCanvasContexts(composerContexts)
-  const canvas = detail.data?.session.runtime_ref?.artifact_surface === 'canvas'
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     pinToBottom()
     return sendMessage(text, { ...options, contexts: options.contexts ?? (canvas ? canvasContexts.contexts : undefined) })

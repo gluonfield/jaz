@@ -6,7 +6,8 @@ demand, including those not opened since restarting Jaz. Browser activity in the
 panel and selects the agent's browser tab. This includes commands against an
 existing page and commands continuing inside a script after the panel is hidden.
 Commands wait for the desktop panel's opening animation before observing or acting.
-Status and tab-list checks leave the panel alone. Other conversations keep working
+Status and tab-list checks leave the panel alone. Canvas conversations keep the
+agent's browser out of sight, since its work appears on the board. Other conversations keep working
 in the background without changing the current chat's panel. Active conversations
 retain their own page, viewport and JavaScript bindings.
 An agent can also open its first page after you leave that conversation.
