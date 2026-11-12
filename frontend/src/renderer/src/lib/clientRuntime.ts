@@ -4,8 +4,9 @@ import type { UpdateStatus } from '../../../shared/update'
 import type { VoiceOverlayAPI } from '@shared/voice'
 import type { WindowKind } from '@shared/windowKind'
 import type { ConnectionSessionAPI } from '@shared/connectionSession'
+import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
-export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:5299'
+export { LOCAL_BACKEND_URL as DEFAULT_API_BASE_URL } from '@shared/localBackend'
 
 export type ClientRuntimeKind = 'electron' | 'web'
 export type ClientPlatform = 'desktop' | 'browser'
@@ -25,6 +26,7 @@ export interface ClientRuntime {
   encryptCredential?: (value: string) => string
   decryptCredential?: (value: string) => string
   defaultApiBaseUrl: () => string
+  localBackendTransport?: string
   setNativeTheme?: (source: 'light' | 'dark' | 'system') => void
   setWindowButtonsVisible?: (visible: boolean) => void
   startLocalBackend?: () => Promise<{ ok: boolean; url?: string; key?: string; error?: string }>
@@ -61,7 +63,7 @@ function webDefaultApiBaseUrl(): string {
   // behind a reverse proxy at any domain (app and API share an origin).
   if (configured === 'origin') return window.location.origin
   if (configured) return configured
-  return DEFAULT_API_BASE_URL
+  return LOCAL_BACKEND_URL
 }
 
 function createRuntime(): ClientRuntime {
@@ -79,6 +81,7 @@ function createRuntime(): ClientRuntime {
         previewWebview: true,
       },
       defaultApiBaseUrl: () => electron.apiBaseUrl,
+      localBackendTransport: electron.localBackendTransport,
       setNativeTheme: electron.setNativeTheme,
       setWindowButtonsVisible: electron.setWindowButtonsVisible,
       startLocalBackend: electron.startLocalBackend,

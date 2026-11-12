@@ -2,6 +2,7 @@ import { readAPIResponse } from '@/lib/api/response'
 import { DEFAULT_API_BASE_URL, clientRuntime } from '@/lib/clientRuntime'
 import { isPreviewProxyTargetHostname } from '@shared/preview'
 import type { ResourceTicket } from '@shared/connectionSession'
+import { backendFetch, backendTransportUrl } from '@/lib/backendTransport'
 
 export { ApiError } from '@/lib/api/response'
 
@@ -151,7 +152,7 @@ export function apiWebSocket(path: string): WebSocket {
 
 export function apiEmbeddedGetUrl(path: string): string {
   assertBackendRelativePath(path, 'apiEmbeddedGetUrl')
-  return appendAuthQuery(apiUrl(path))
+  return backendTransportUrl(appendAuthQuery(apiUrl(path)))
 }
 
 export function setApiBaseUrl(url: string): void {
@@ -275,7 +276,7 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
   const revision = credentialRevision
   const options = withAPIHeaders({ ...init, signal }, url)
   const bearer = new Headers(options.headers).get('Authorization')
-  return fetch(`${url}${path}`, options).then(async (response) => {
+  return backendFetch(`${url}${path}`, options).then(async (response) => {
     if ((response.status === 401 || response.status === 403) && bearer === `Bearer ${cachedApiAuthToken(url)}`) {
       const body = await response.clone().json().catch(() => null) as { code?: string } | null
       if (revision === credentialRevision && url === apiBaseUrl() &&
@@ -290,7 +291,7 @@ export function apiFetch(path: string, init?: RequestInit, url = apiBaseUrl()): 
 }
 
 export function apiEventSourceUrl(path: string): string {
-  return appendAuthQuery(apiUrl(path))
+  return backendTransportUrl(appendAuthQuery(apiUrl(path)))
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

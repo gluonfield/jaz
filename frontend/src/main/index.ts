@@ -39,6 +39,8 @@ import { attachVoiceOverlay } from './voiceOverlay'
 import { createUpdateController } from './updater'
 import { createConnectionSession } from '@main/connectionSession'
 import { attachContextMenu } from '@main/contextMenu'
+import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
+import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
 // Matches --color-bg under :root.dark; used as the window paint color before
 // the renderer mounts so a dark launch doesn't flash white behind the content.
@@ -48,6 +50,7 @@ const APP_NAME = 'Jaz'
 
 app.setName(APP_NAME)
 app.setAppUserModelId('dev.wins.jaz')
+registerLocalBackendTransport()
 installMainDiagnostics()
 installBrowserControl()
 installComputerControl()
@@ -359,6 +362,7 @@ app.whenReady().then(() => {
   })
 
   configureAppPermissions(session.defaultSession)
+  configureLocalBackendTransport(session.defaultSession, LOCAL_BACKEND_URL)
   if (process.platform === 'darwin') {
     // Development runs inside Electron.app, so it borrows the Jaz icon. Packaged builds keep the bundle icon,
     // which follows the system icon style.

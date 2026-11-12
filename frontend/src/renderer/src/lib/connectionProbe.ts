@@ -1,6 +1,7 @@
 import { CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER, secureBackendConnection } from '@/lib/api/client'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { deviceAccess, type ResourceTicket } from '@shared/connectionSession'
+import { backendFetch } from '@/lib/backendTransport'
 
 export type ProbeFailure = { ok: false; error: string; recoverable: boolean; code?: string }
 export type Access = { ok: true; kind: 'device' | 'root'; deviceId: string; ticket?: ResourceTicket } | ProbeFailure
@@ -28,7 +29,7 @@ export async function readHealth(url: string, signal?: AbortSignal): Promise<Hea
     return { ok: false, error: 'Remote connections require HTTPS', recoverable: false }
   }
   try {
-    const response = await fetch(url + '/health', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000) })
+    const response = await backendFetch(url + '/health', { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000) })
     if (loginResponse(url, response)) {
       return { ok: false, error: `Sign in through Teleport again to reach the backend at ${url}`, recoverable: false }
     }
@@ -47,7 +48,7 @@ export async function readAccess(url: string, token: string, signal?: AbortSigna
     return { ok: false, error: 'A secure device credential is required', recoverable: false }
   }
   try {
-    const response = await fetch(url + '/v1/auth/check', {
+    const response = await backendFetch(url + '/v1/auth/check', {
       headers: { Authorization: `Bearer ${token}`, [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
       redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000),
     })

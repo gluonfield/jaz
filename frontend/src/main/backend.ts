@@ -4,10 +4,8 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { app, powerSaveBlocker } from 'electron'
 import { logMain } from './diagnostics'
+import { LOCAL_BACKEND_URL } from '@shared/localBackend'
 
-// Single source of truth for where the spawned backend lives; returned to the
-// renderer through the IPC result so both sides always agree.
-const LOCAL_BACKEND_URL = 'http://127.0.0.1:5299'
 const LOCAL_HEALTH_URL = `${LOCAL_BACKEND_URL}/health`
 const START_TIMEOUT_MS = 30_000
 const LOGIN_ENV_KEYS = ['PATH', 'JAZ_BUNDLED_TELEGRAM_APP_ID', 'JAZ_BUNDLED_TELEGRAM_APP_HASH'] as const

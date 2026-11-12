@@ -35,6 +35,7 @@ declare global {
       encryptCredential: (value: string) => string
       decryptCredential: (value: string) => string
       apiBaseUrl: string
+      localBackendTransport?: string
       windowKind: WindowKind
       pathForFile: (file: File) => string
       setNativeTheme: (source: 'light' | 'dark' | 'system') => void

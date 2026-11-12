@@ -11,7 +11,9 @@ import { loadBrowserCredential, saveBrowserCredential, forgetBrowserCredential }
 import { getDeviceProfile } from '@/lib/deviceIdentity'
 import { queryClient } from '@/lib/query/queryClient'
 import { readAccess, readHealth, readJSON } from '@/lib/connectionProbe'
+import { backendFetch } from '@/lib/backendTransport'
 import type { ResourceTicket, SessionSnapshot, VerifiedSession } from '@shared/connectionSession'
+import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 
 export { isLocalBackendUrl } from '@/lib/api/client'
 export type ConnectionStatus = 'checking' | 'connected' | 'reconnecting' | 'disconnected' | 'pending_approval'
@@ -22,7 +24,6 @@ type ConnectionPreference = { mode: ConnectionMode; remoteUrl?: string }
 type Attempt = { url: string; revision: number; controller: AbortController }
 type Candidate = VerifiedSession & { ticket?: ResourceTicket }
 type SavedCredential = { token: string; deviceId?: string }
-const LOCAL_URL = 'http://127.0.0.1:5299'
 const PREFERENCE_KEY = 'jaz.connection'
 const bridge = ['main', 'board', 'launcher'].includes(clientRuntime.windowKind) ? clientRuntime.connectionSession : undefined
 const desktop = bridge?.read()
@@ -234,7 +235,7 @@ async function register(value: Attempt, credential: string): Promise<string | nu
   if (!current(value)) {
     return null
   }
-  const response = await serialized(value, () => fetch(value.url + '/v1/devices/register', {
+  const response = await serialized(value, () => backendFetch(value.url + '/v1/devices/register', {
     method: 'POST', redirect: 'error',
     headers: { Authorization: `Bearer ${credential}`, 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
     body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }), signal: AbortSignal.timeout(5000),
@@ -268,7 +269,7 @@ function pending(value: Attempt, pairing: PendingPairing, deviceId: string): voi
       return
     }
     try {
-      const response = await fetch(value.url + '/v1/devices/pairing-requests/' + encodeURIComponent(pairing.id), {
+      const response = await backendFetch(value.url + '/v1/devices/pairing-requests/' + encodeURIComponent(pairing.id), {
         headers: { [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM, 'X-Jaz-Pairing-Secret': pairing.secret },
         signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
       })
@@ -299,7 +300,7 @@ async function pair(value: Attempt): Promise<string | null> {
   if (!current(value)) {
     return null
   }
-  const response = await fetch(value.url + '/v1/devices/pairing-requests', {
+  const response = await backendFetch(value.url + '/v1/devices/pairing-requests', {
     method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json', [CLIENT_PLATFORM_HEADER]: CLIENT_PLATFORM },
     body: JSON.stringify({ ...profile, kind: clientRuntime.deviceKind }), signal: AbortSignal.any([value.controller.signal, AbortSignal.timeout(5000)]),
   })

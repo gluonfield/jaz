@@ -12,8 +12,8 @@ import {
   type SessionSnapshot,
 } from '@shared/connectionSession'
 import type { DeviceIdentity, DeviceMetadata } from '@main/deviceIdentity'
+import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 
-const LOCAL_URL = 'http://127.0.0.1:5299'
 type WindowDocument = { window: BrowserWindow; document: number; frame?: WebFrameMain; active: boolean }
 type Dependencies = {
   rendererPath: string
