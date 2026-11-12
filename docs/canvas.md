@@ -23,7 +23,27 @@ Deleting a page uses `{"page":"costs","delete":true}` without other changes. Del
 {"page":"costs","create":true,"name":"Costs"}
 ```
 
-Free text and Markdown or CSV files flow at their `width`: the board draws them as tall as their content and treats `height` as the most room they may take, scaling content that needs more. A missing `height` sets no limit: text the user types has none, and resizing one of these items sets its width and removes its `height`. Every other item fills its `width` and `height` exactly.
+Free text, tables and Markdown or CSV files flow at their `width`: the board draws them as tall as their content and treats `height` as the most room they may take, scaling content that needs more. A missing `height` sets no limit: text the user types has none, and resizing one of these items sets its width and removes its `height`. Every other item fills its `width` and `height` exactly.
+
+Jaz reads these fields beyond JSON Canvas 1.0. Unknown values are ignored, so a board stays readable elsewhere.
+
+| Field | On | Values |
+| --- | --- | --- |
+| `size` | `text`, `table` | `small` (14 px, default), `body` (16), `large` (28), `title` (48), `huge` (96) |
+| `textAlign` | `text` | `left`, `center`, `right` |
+| `ink` | free `text` | `gray`, `red`, `orange`, `green`, `blue`, `purple`, or a CSS colour |
+| `color` | `text` | `white`, `red`, `orange`, `yellow`, `green`, `blue`, `purple`, the JSON Canvas presets `1`–`6`, or a CSS colour; makes a sticky note, or fills a shape |
+| `shape` | `text` | `rect`, `rounded`, `pill`, `ellipse`, `diamond`, `hexagon`, `parallelogram`, `document`, `database`, `queue`, `cloud`, `person`; words inside an outline |
+| `hollow` | shaped `text` | `true` keeps the outline without a fill |
+| `rows` | `table` | array of rows, each an array of cell strings with inline Markdown |
+| `header` | `table` | `false` when the first row is not a heading |
+
+```json
+{"id":"gate","type":"text","text":"Ship?","shape":"diamond","color":"yellow","x":0,"y":0,"width":160,"height":120}
+{"id":"owners","type":"table","rows":[["Step","Owner"],["Draft","Ana"]],"x":200,"y":0,"width":320}
+```
+
+Selecting a text item or table shows its controls above it: shape, size, bold, italic, list, alignment and colour for text; size and rows and columns for a table. Double-click a table cell to edit it; Enter keeps it, Tab keeps it and moves on, Escape leaves it unchanged. The dock's Shape (`R`) and Table (`B`) tools add new ones.
 
 Agents may also edit the file directly. Re-read it before editing, change only the intended pages/items, and retain IDs. Missing names in agent-written pages default to their `Page N` position.
 

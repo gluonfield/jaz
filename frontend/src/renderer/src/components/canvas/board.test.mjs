@@ -46,13 +46,15 @@ test('server views replace the board, selected as asked, except an item being re
   expect(mergeNodes(merged, server, new Set(['free', 'new']))[0]).toBe(merged[0])
 })
 
-test('text and documents leave their height to the board, limited by what the item reserves', () => {
+test('text, tables and documents leave their height to the board, limited by what the item reserves', () => {
   const nodes = toFlowNodes(view([
     { id: 'text', type: 'text', x: 0, y: 0, width: 100, height: 300 },
     { id: 'brief', type: 'file', file: 'brief.md', x: 0, y: 0, width: 100, height: 5000 },
     { id: 'open', type: 'file', file: 'costs.csv', x: 0, y: 0, width: 100 },
     { id: 'sticky', type: 'text', color: '3', x: 0, y: 0, width: 100, height: 100 },
     { id: 'part', type: 'file', file: 'part.step', x: 0, y: 0, width: 100, height: 100 },
+    { id: 'block', type: 'text', shape: 'diamond', x: 0, y: 0, width: 100, height: 100 },
+    { id: 'grid', type: 'table', rows: [['a']], x: 0, y: 0, width: 100 },
   ]))
   expect(nodes.map((node) => [node.id, node.height, node.style?.['--canvas-reserve']])).toEqual([
     ['text', undefined, '300px'],
@@ -60,6 +62,8 @@ test('text and documents leave their height to the board, limited by what the it
     ['open', undefined, 'none'],
     ['sticky', 100, undefined],
     ['part', 100, undefined],
+    ['block', 100, undefined],
+    ['grid', undefined, 'none'],
   ])
 })
 

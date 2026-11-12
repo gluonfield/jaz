@@ -16,6 +16,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/base.css'
 import './canvas.css'
+import './canvas-format.css'
 import { Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
@@ -25,6 +26,7 @@ import {
   bounds,
   contains,
   fileName,
+  flows,
   focusable,
   growToFit,
   innermostSection,
@@ -48,6 +50,7 @@ import {
 import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
 import { ConnectorEdge, FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
+import { TableNode } from './CanvasTable'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
 import { CanvasPages } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
@@ -70,9 +73,17 @@ interface Props {
   onPrompt: (text: string) => void
 }
 
-const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode }
+const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode }
 const edgeTypes = { connector: ConnectorEdge }
-const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', X: 'connector' }
+const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector' }
+// What each tool puts down, around the point clicked. Text and tables grow
+// with what is written, so they start without a height.
+const NEW_ITEMS: Partial<Record<Tool, (x: number, y: number) => Partial<CanvasItem> & Rect>> = {
+  sticky: (x, y) => ({ type: 'text', text: '', color: 'yellow', x: x - 100, y: y - 100, width: 200, height: 200 }),
+  text: (x, y) => ({ type: 'text', text: '', x, y: y - 20, width: 240, height: 48 }),
+  shape: (x, y) => ({ type: 'text', text: '', shape: 'rounded', x: x - 100, y: y - 60, width: 200, height: 120 }),
+  table: (x, y) => ({ type: 'table', rows: [['', '', ''], ['', '', ''], ['', '', '']], x, y, width: 420, height: 132 }),
+}
 const HINTS: Record<string, string> = { link: 'Use the page', cad: 'Drag to rotate, scroll to zoom', dxf: 'Drag to pan, scroll to zoom', pdf: 'Scroll and use the page controls' }
 
 export function ThreadCanvas(props: Props) {
@@ -182,9 +193,13 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
   // Nothing from the server lands mid-drag; the drag's own result merges after.
+  // An item the user just made arrives selected, so its controls are at hand.
+  const made = useRef<string | null>(null)
   useEffect(() => {
     if (!dragging) {
-      setNodes((current) => mergeNodes(current, toFlowNodes(local), new Set(current.filter((node) => node.selected).map((node) => node.id))))
+      const fresh = made.current
+      made.current = null
+      setNodes((current) => mergeNodes(current, toFlowNodes(local), new Set(fresh ? [fresh] : current.filter((node) => node.selected).map((node) => node.id))))
     }
   }, [local, dragging, setNodes])
   useEffect(() => {
@@ -220,12 +235,11 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   const create = (kind: Tool, clientX: number, clientY: number) => {
     const at = flow.screenToFlowPosition({ x: clientX, y: clientY })
     const id = newId(kind)
-    const rect = kind === 'sticky'
-      ? { x: at.x - 100, y: at.y - 100, width: 200, height: 200 }
-      : { x: at.x, y: at.y - 20, width: 240, height: 48 }
-    // Typed text grows with what is written, so it starts without a height.
-    commit({ nodes: [{ id, type: 'text', text: '', ...rounded(rect), ...(kind === 'sticky' ? { color: '3' } : { height: null }) }, ...sectionFor(rect)] })
-    setEditing(id)
+    const item = { id, ...NEW_ITEMS[kind]!(at.x, at.y) }
+    const rect = rounded(item)
+    made.current = id
+    commit({ nodes: [{ ...item, ...rect, ...(flows(item) ? { height: null } : {}) }, ...sectionFor(rect)] })
+    if (item.type === 'text') setEditing(id)
     setTool('select')
   }
 
@@ -413,7 +427,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
         </ReactFlow>
       </CanvasContext.Provider>
 
-      {['sticky', 'text', 'section'].includes(tool) ? (
+      {tool === 'section' || NEW_ITEMS[tool] ? (
         <div
           className="canvas-tool-layer"
           onPointerDown={onLayerDown}

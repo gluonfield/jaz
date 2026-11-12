@@ -1,0 +1,387 @@
+/* What an item's fields look like: colours, shapes, text sizes, tables and
+ * the controls that set them. */
+/* Fills are paper colours, the same in both themes. */
+.canvas-fill-white {
+  --canvas-fill: #f6f5f1;
+}
+
+.canvas-fill-red {
+  --canvas-fill: #ffc7c2;
+}
+
+.canvas-fill-orange {
+  --canvas-fill: #ffd3a8;
+}
+
+.canvas-fill-yellow {
+  --canvas-fill: #ffe08a;
+}
+
+.canvas-fill-green {
+  --canvas-fill: #c4e8b8;
+}
+
+.canvas-fill-blue {
+  --canvas-fill: #b9e4f0;
+}
+
+.canvas-fill-purple {
+  --canvas-fill: #dcccff;
+}
+
+.canvas-ink-gray {
+  --canvas-ink: var(--color-ink-3);
+}
+
+.canvas-ink-red {
+  --canvas-ink: #e5484d;
+}
+
+.canvas-ink-orange {
+  --canvas-ink: #e2762a;
+}
+
+.canvas-ink-green {
+  --canvas-ink: #2f9e63;
+}
+
+.canvas-ink-blue {
+  --canvas-ink: #2f80ed;
+}
+
+.canvas-ink-purple {
+  --canvas-ink: #8b5cf6;
+}
+
+/* A block is words inside an outline. Four outlines are CSS boxes; the rest
+ * are a stretched drawing behind the words. */
+.canvas-block {
+  position: absolute;
+  inset: 0;
+  --canvas-outline: color-mix(in oklab, var(--color-ink) 22%, transparent);
+  text-align: center;
+  color: var(--color-ink);
+}
+
+.canvas-block.canvas-filled {
+  --canvas-outline: color-mix(in oklab, var(--canvas-fill) 78%, #000);
+}
+
+.canvas-block:is(.canvas-shape-rect, .canvas-shape-rounded, .canvas-shape-pill, .canvas-shape-ellipse) {
+  background: var(--canvas-fill, var(--canvas-card));
+  box-shadow: inset 0 0 0 1px var(--canvas-outline);
+}
+
+.canvas-block.hollow {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--canvas-outline);
+}
+
+.canvas-shape-rect {
+  border-radius: 2px;
+}
+
+.canvas-shape-rounded {
+  border-radius: 14px;
+}
+
+.canvas-shape-pill {
+  border-radius: 999px;
+}
+
+.canvas-shape-ellipse {
+  border-radius: 50%;
+}
+
+.canvas-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: var(--canvas-fill, var(--canvas-card));
+  stroke: var(--canvas-outline);
+  stroke-width: 1;
+}
+
+.canvas-shape path:not([d$='Z']),
+.canvas-block.hollow .canvas-shape {
+  fill: none;
+}
+
+.canvas-block.hollow .canvas-shape {
+  stroke-width: 1.5;
+}
+
+.canvas-block:has(> .canvas-shape) {
+  box-shadow: none;
+}
+
+.canvas-block-body {
+  position: absolute;
+  inset: 0;
+  padding: 10px 14px;
+}
+
+.canvas-block-body .canvas-fit {
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+}
+
+.canvas-shape-pill .canvas-block-body {
+  padding-inline: 18px;
+}
+
+.canvas-shape-ellipse .canvas-block-body {
+  inset: 12%;
+}
+
+.canvas-shape-diamond .canvas-block-body {
+  inset: 24% 22%;
+}
+
+.canvas-shape-hexagon .canvas-block-body {
+  inset: 4% 12%;
+}
+
+.canvas-shape-parallelogram .canvas-block-body {
+  inset: 4% 14%;
+}
+
+.canvas-shape-document .canvas-block-body {
+  inset: 0 0 14%;
+}
+
+.canvas-shape-database .canvas-block-body {
+  inset: 26% 0 10%;
+}
+
+.canvas-shape-queue .canvas-block-body {
+  inset: 0 16% 0 6%;
+}
+
+.canvas-shape-cloud .canvas-block-body {
+  inset: 28% 16% 14%;
+}
+
+.canvas-shape-person .canvas-block-body {
+  inset: 58% 10% 2%;
+}
+
+/* Words are small unless the item names a size, and typing matches them. */
+:is(.canvas-text, .canvas-sticky, .canvas-block, .canvas-table-card) {
+  --prose-font-size: 14px;
+  --prose-line-height: 1.6;
+  font-size: var(--prose-font-size);
+  line-height: var(--prose-line-height);
+}
+
+.canvas-size-body {
+  --prose-font-size: 16px;
+  --prose-line-height: 1.45;
+}
+
+.canvas-size-large {
+  --prose-font-size: 28px;
+  --prose-line-height: 1.3;
+}
+
+.canvas-size-title {
+  --prose-font-size: 48px;
+  --prose-line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.canvas-size-huge {
+  --prose-font-size: 96px;
+  --prose-line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.canvas-align-left {
+  text-align: left;
+}
+
+.canvas-align-center {
+  text-align: center;
+}
+
+.canvas-align-right {
+  text-align: right;
+}
+
+/* A centred or right-hand list keeps each marker beside its words. */
+:is(.canvas-align-center, .canvas-align-right) :is(ul, ol) {
+  padding-left: 0;
+  list-style-position: inside;
+}
+
+.react-flow__node.selected .canvas-block {
+  --canvas-outline: var(--canvas-accent);
+}
+
+.canvas-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.canvas-table :is(th, td) {
+  min-width: 56px;
+  height: 2.6em;
+  padding: 8px 12px;
+  border-right: 1px solid var(--canvas-line);
+  border-bottom: 1px solid var(--canvas-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.canvas-table :is(th, td):last-child {
+  border-right: 0;
+}
+
+.canvas-table tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.canvas-table th {
+  font-weight: 600;
+  background: color-mix(in oklab, var(--color-ink) 4%, transparent);
+}
+
+.canvas-table .on {
+  box-shadow: inset 0 0 0 2px var(--canvas-accent);
+}
+
+.canvas-table-add {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--color-ink-2);
+  background: var(--canvas-card);
+  box-shadow: var(--canvas-shadow);
+  scale: calc(1 / var(--canvas-zoom, 1));
+}
+
+.canvas-table-add:hover {
+  color: var(--canvas-accent);
+}
+
+.canvas-table-add.row {
+  top: calc(100% + 8px);
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.canvas-table-add.column {
+  top: 0;
+  left: calc(100% + 8px);
+  transform-origin: 0 0;
+}
+
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--color-ink-2);
+  background: var(--canvas-card);
+  box-shadow: var(--canvas-float);
+}
+
+.canvas-toolbar button {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 8px;
+  color: var(--color-ink-2);
+  transition-property: background-color, color;
+  transition-duration: 150ms;
+}
+
+.canvas-toolbar button:hover {
+  color: var(--color-ink);
+  background: var(--color-list-hover);
+}
+
+.canvas-toolbar button:is(.on, [aria-checked='true']) {
+  color: var(--canvas-accent);
+  background: color-mix(in oklab, var(--canvas-accent) 14%, transparent);
+}
+
+.canvas-toolbar-word {
+  padding: 0 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.canvas-toolbar-rule {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--canvas-line);
+}
+
+.canvas-toolbar-menu {
+  position: relative;
+}
+
+.canvas-toolbar-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1;
+  min-width: max-content;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--canvas-card);
+  box-shadow: var(--canvas-float);
+}
+
+.canvas-toolbar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 30px);
+  gap: 2px;
+}
+
+.canvas-toolbar-swatches {
+  display: flex;
+  gap: 2px;
+}
+
+.canvas-toolbar button.canvas-toolbar-row {
+  display: block;
+  width: 100%;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.canvas-toolbar .canvas-shape {
+  position: static;
+  width: 20px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.canvas-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--canvas-fill, var(--canvas-ink));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-ink) 18%, transparent);
+}
+
+.canvas-swatch.none {
+  background: linear-gradient(to top right, transparent 46%, var(--color-ink-3) 46% 54%, transparent 54%);
+}

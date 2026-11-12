@@ -317,13 +317,13 @@
   overflow: clip;
 }
 
-/* Text and documents are as tall as their content, up to the height their
- * author reserved: React Flow measures the item instead of being told. */
+/* Text, tables and documents are as tall as their content, up to the height
+ * their author reserved: React Flow measures the item instead of being told. */
 .canvas-flows :is(.canvas-card, .canvas-viewer, .canvas-viewer-body, .canvas-text) {
   position: relative;
 }
 
-.canvas-flows :is(.canvas-text-file, .canvas-text) {
+.canvas-flows :is(.canvas-text-file, .canvas-text, .canvas-table-body) {
   display: flex;
   flex-direction: column;
   max-height: var(--canvas-reserve);
@@ -438,53 +438,32 @@
   inset: 0;
 }
 
-/* Stickies stay paper-coloured in both themes, so their ink stays dark and
+/* Filled items stay paper-coloured in both themes, so their ink stays dark and
  * tables and code sit on a lighter wash of the paper. */
-.canvas-sticky {
+.canvas-sticky,
+.canvas-block.canvas-filled:not(.hollow) {
   --color-ink: oklch(0.23 0.012 264);
   --color-ink-2: oklch(0.38 0.012 264);
   --color-ink-3: oklch(0.46 0.012 264);
   --color-surface: color-mix(in oklab, #fff 50%, transparent);
   --color-surface-2: color-mix(in oklab, #fff 55%, transparent);
   --color-border: color-mix(in oklab, var(--color-ink) 16%, transparent);
+}
+
+.canvas-sticky {
   padding: 16px;
   border-radius: 4px;
-  font-size: 16px;
-  line-height: 1.4;
   color: var(--color-ink);
+  background: var(--canvas-fill);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 8px 20px rgb(0 0 0 / 0.1);
 }
 
-.canvas-sticky-1 {
-  background: #ffc7c2;
-}
-
-.canvas-sticky-2 {
-  background: #ffd3a8;
-}
-
-.canvas-sticky-3 {
-  background: #ffe08a;
-}
-
-.canvas-sticky-4 {
-  background: #c4e8b8;
-}
-
-.canvas-sticky-5 {
-  background: #b9e4f0;
-}
-
-.canvas-sticky-6 {
-  background: #dcccff;
-}
-
 .canvas-text {
+  --prose-color: var(--canvas-ink, var(--color-ink));
   padding: 2px 4px;
   border-radius: 4px;
-  font-size: 24px;
   font-weight: 500;
-  color: var(--color-ink);
+  color: var(--canvas-ink, var(--color-ink));
 }
 
 .canvas-text-editor {

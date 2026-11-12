@@ -1,17 +1,18 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import type { CSSProperties } from 'react'
 import type { CanvasBoard, CanvasDocument, CanvasItem, CanvasPagePatch, CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import { lookOf, tableRows } from './format'
 
 export type Side = 'top' | 'right' | 'bottom' | 'left'
 export type Rect = { x: number; y: number; width: number; height: number }
-export type Kind = 'text' | 'file' | 'link' | 'group'
+export type Kind = 'text' | 'file' | 'link' | 'group' | 'table'
 
 export type BoardNode = Node<{ item: CanvasItem }, Kind>
 export type BoardEdge = Edge<{ label?: string }, 'connector'>
 export type Clip = { nodes: CanvasItem[]; edges: CanvasItem[] }
 
 export const SECTION_PAD = 36
-const KINDS: Kind[] = ['text', 'file', 'link', 'group']
+const KINDS: Kind[] = ['text', 'file', 'link', 'group', 'table']
 const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
 
 export const arrow = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--canvas-edge)' }
@@ -259,6 +260,7 @@ export function itemLabel(item: CanvasItem): string {
   if (item.type === 'group') return 'Section'
   if (item.type === 'file' && typeof item.file === 'string') return fileName(item.file)
   if (item.type === 'link' && typeof item.url === 'string') return item.url
+  if (item.type === 'table') return tableRows(item)[0].filter(Boolean).join(', ') || 'Table'
   const text = typeof item.text === 'string' ? item.text.trim().split('\n')[0].replace(/^#+\s*/, '') : ''
   return text.length > 48 ? `${text.slice(0, 47)}…` : text || 'Text'
 }
@@ -301,10 +303,11 @@ export function viewerFor(path: string): Viewer {
   return VIEWERS[extension(path)] ?? 'file'
 }
 
-// Text and documents flow at their width, so the board measures their height
-// from the content. The item's own `height` is the most room it may take.
+// Text, tables and documents flow at their width, so the board measures their
+// height from the content. The item's own `height` is the most room it may take.
 export function flows(item: CanvasItem): boolean {
-  if (item.type === 'text') return !item.color
+  if (item.type === 'table') return true
+  if (item.type === 'text') return lookOf(item).kind === 'text'
   return item.type === 'file' && ['markdown', 'csv'].includes(viewerFor(String(item.file)))
 }
 

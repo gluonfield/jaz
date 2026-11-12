@@ -9,13 +9,16 @@ import {
   type EdgeProps,
   type NodeProps,
 } from '@xyflow/react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type CSSProperties, type Ref } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { extension, flows, itemLabel, rounded, viewerFor, type BoardEdge, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
+import { CSS_SHAPES, ShapeOutline } from './CanvasShapes'
+import { TextToolbar, type TextFormat } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
+import { lookOf, toggleList, toggleMark, toggleMarkAt } from './format'
 import { ViewerFrame } from './ViewerFrame'
 
 const SIDES = [
@@ -25,14 +28,14 @@ const SIDES = [
   ['left', Position.Left],
 ] as const
 
-function Handles() {
+export function Handles() {
   return SIDES.map(([side, position]) => <Handle key={side} id={side} type="source" position={position} className="canvas-dot" />)
 }
 
-function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: CanvasItem; selected: boolean; minWidth?: number; minHeight?: number }) {
+export function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: CanvasItem; selected: boolean; minWidth?: number; minHeight?: number }) {
   const { commit } = useCanvas()
   if (!selected) return null
-  // Text and documents are as tall as their content, so only their width is
+  // Text, tables and documents are as tall as their content, so only their width is
   // set by hand, which also lifts the height limit their author gave them.
   if (flows(item)) {
     return (['left', 'right'] as const).map((position) => (
@@ -57,7 +60,7 @@ function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: Can
   )
 }
 
-function Flash({ id }: { id: string }) {
+export function Flash({ id }: { id: string }) {
   const { flash } = useCanvas()
   return flash[id] ? <div key={flash[id]} className="canvas-flash" /> : null
 }
@@ -114,13 +117,13 @@ export function LinkNode({ id, data, selected }: NodeProps<BoardNode>) {
   )
 }
 
-const STICKY_COLORS = new Set(['1', '2', '3', '4', '5', '6'])
+const MARKS = { bold: '**', italic: '*' } as const
 
 export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
   const { editing, setEditing, commit, connectSource } = useCanvas()
+  const editor = useRef<TextEditorHandle>(null)
   const text = typeof data.item.text === 'string' ? data.item.text : ''
-  const color = typeof data.item.color === 'string' ? data.item.color : ''
-  const sticky = color !== ''
+  const look = lookOf(data.item)
   const finish = (value: string) => {
     setEditing(null)
     if (!value.trim() && !text) {
@@ -129,26 +132,65 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
     }
     if (value !== text) commit({ nodes: [{ id, text: value }] })
   }
-  const style = sticky && !STICKY_COLORS.has(color) ? { background: color } : undefined
+  // A control formats what is selected in the editor, or else every line.
+  const format = (kind: TextFormat) => {
+    if (editing === id) {
+      editor.current?.format(kind)
+      return
+    }
+    const next = kind === 'list' ? toggleList(text) : toggleMark(text, MARKS[kind])
+    if (next !== text) commit({ nodes: [{ id, text: next }] })
+  }
+  const base = look.kind === 'block' ? `canvas-block canvas-shape-${look.shape}` : look.kind === 'note' ? 'canvas-sticky' : 'canvas-text'
+  const classes = [
+    base,
+    look.fill ? `canvas-filled${look.fill.name ? ` canvas-fill-${look.fill.name}` : ''}` : '',
+    look.ink?.name ? `canvas-ink-${look.ink.name}` : '',
+    look.size ? `canvas-size-${look.size}` : '',
+    look.align ? `canvas-align-${look.align}` : '',
+    look.hollow ? 'hollow' : '',
+    connectSource === id ? 'canvas-connect-source' : '',
+  ].filter(Boolean).join(' ')
+  const style = { '--canvas-fill': look.fill?.custom, '--canvas-ink': look.ink?.custom } as CSSProperties
+  const body = editing === id ? <TextEditor ref={editor} initial={text} onDone={finish} /> : <FitContent><MessageMarkdown text={text} /></FitContent>
   return (
     <>
-      <Resizer item={data.item} selected={selected && editing !== id} minWidth={sticky ? 120 : 40} minHeight={100} />
+      <Resizer item={data.item} selected={selected && editing !== id} minWidth={look.kind === 'note' ? 120 : 40} minHeight={look.kind === 'note' ? 100 : 40} />
+      {selected ? <TextToolbar item={data.item} onFormat={format} /> : null}
       <Handles />
-      <div
-        className={`${sticky ? `canvas-sticky canvas-sticky-${STICKY_COLORS.has(color) ? color : 'custom'}` : 'canvas-text'}${connectSource === id ? ' canvas-connect-source' : ''}`}
-        style={style}
-        onDoubleClick={() => setEditing(id)}
-      >
-        {editing === id ? <TextEditor initial={text} onDone={finish} /> : <FitContent><MessageMarkdown text={text} /></FitContent>}
+      <div className={classes} style={style} onDoubleClick={() => setEditing(id)}>
+        {look.shape && !CSS_SHAPES.includes(look.shape) ? <ShapeOutline shape={look.shape} /> : null}
+        {look.kind === 'block' ? <div className="canvas-block-body">{body}</div> : body}
       </div>
       <Flash id={id} />
     </>
   )
 }
 
-function TextEditor({ initial, onDone }: { initial: string; onDone: (value: string) => void }) {
+interface TextEditorHandle {
+  format: (kind: TextFormat) => void
+}
+
+function TextEditor({ ref, initial, onDone }: { ref: Ref<TextEditorHandle>; initial: string; onDone: (value: string) => void }) {
   const [value, setValue] = useState(initial)
   const field = useRef<HTMLTextAreaElement>(null)
+  const selection = useRef<[number, number] | null>(null)
+  useImperativeHandle(ref, () => ({
+    format(kind) {
+      if (kind === 'list') {
+        setValue(toggleList)
+        return
+      }
+      const next = toggleMarkAt(value, field.current!.selectionStart, field.current!.selectionEnd, MARKS[kind])
+      selection.current = [next.start, next.end]
+      setValue(next.text)
+    },
+  }), [value])
+  useLayoutEffect(() => {
+    if (!selection.current) return
+    field.current!.setSelectionRange(...selection.current)
+    selection.current = null
+  }, [value])
   // React Flow mounts a new node hidden until it is measured, so focus waits
   // for it to become visible.
   useEffect(() => {
