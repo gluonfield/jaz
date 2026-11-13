@@ -26,3 +26,13 @@ export function ShapeOutline({ shape }: { shape: Shape }) {
     </svg>
   )
 }
+
+// The outline of an item about to be put down, in the box it will take. A note
+// or a table is a plain box.
+export function Ghost({ shape = 'rect', ...box }: { shape?: Shape; left: number; top: number; width: number; height: number }) {
+  return (
+    <span className="canvas-ghost" style={box}>
+      <ShapeOutline shape={shape} />
+    </span>
+  )
+}

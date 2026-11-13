@@ -54,7 +54,7 @@ export interface Look {
   hollow: boolean
 }
 
-export function lookOf(item: CanvasItem): Look {
+export function lookOf(item: Partial<CanvasItem>): Look {
   const shape = pick(SHAPES, item.shape)
   const fill = tint(FILLS, item.color)
   return {

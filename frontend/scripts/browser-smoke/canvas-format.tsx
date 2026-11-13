@@ -110,9 +110,8 @@ export async function exerciseCanvasFormat(): Promise<void> {
     const r = target!.getBoundingClientRect()
     await window.smoke.pointer('mouseMove', Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2))
   }
-  // The outline last seen under the pointer before a tool put its item down.
-  let outline: { box: DOMRect; path?: string | null } | null = null
-  // A tool on the dock, or one listed over the dock tool named by `under`.
+  // A tool on the dock, or one listed over the dock tool named by `under`. A
+  // tool that outlines its item under the pointer must put it down there.
   const place = async (tool: string, [left, right, top, bottom]: number[], check: (item: CanvasItem) => boolean, under?: string) => {
     const pane = element.getBoundingClientRect()
     const free = (x: number, y: number) => Boolean(document.elementFromPoint(x, y)?.classList.contains('react-flow__pane'))
@@ -131,12 +130,22 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => !element.querySelector('.canvas-dock-panel'), `Choosing ${tool} left the list open`)
     await window.smoke.pointer('mouseMove', spot.x, spot.y)
     await new Promise((resolve) => setTimeout(resolve, 60))
-    const seen = element.querySelector('.canvas-tool-layer .canvas-ghost')
-    outline = seen && { box: seen.getBoundingClientRect(), path: seen.querySelector('path')?.getAttribute('d') }
+    const ghost = element.querySelector('.canvas-tool-layer .canvas-ghost')
+    const outline = ghost && { box: ghost.getBoundingClientRect(), path: ghost.querySelector('path')!.getAttribute('d') }
+    if (!outline && tool !== 'Sticker') {
+      throw new Error(`Canvas format: the ${tool} tool did not outline its item under the pointer`)
+    }
     await window.smoke.pointer('mouseDown', spot.x, spot.y)
     await window.smoke.pointer('mouseUp', spot.x, spot.y)
     await until(() => view.nodes.some((item) => !known.has(item.id) && check(item)), `The ${tool} tool did not add its item`)
-    return view.nodes.find((item) => !known.has(item.id))!.id
+    const id = view.nodes.find((item) => !known.has(item.id))!.id
+    await until(() => Boolean(node(id)), `The new ${tool} was not drawn`)
+    const landed = node(id).getBoundingClientRect()
+    const drawn = node(id).querySelector('.canvas-shape path')?.getAttribute('d')
+    if (outline && ((drawn && drawn !== outline.path) || [outline.box.x - landed.x, outline.box.y - landed.y, outline.box.width - landed.width].some((gap) => Math.abs(gap) > 1.5))) {
+      throw new Error(`Canvas format: the ${tool} was not outlined where it then landed: ` + JSON.stringify([outline, landed, drawn]))
+    }
+    return id
   }
   try {
     root.render(<QueryClientProvider client={client}><Fixture /></QueryClientProvider>)
@@ -384,11 +393,6 @@ export async function exerciseCanvasFormat(): Promise<void> {
     if (view.nodes.length !== parts) throw new Error('Canvas format: a drag from a dot also added a shape')
     await press(element.querySelector('.react-flow__pane'), 'board')
     const hexagon = await place('Hexagon', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && typeof item.height === 'number', 'Shapes')
-    await until(() => Boolean(node(hexagon)), 'The hexagon was not drawn')
-    const landed = node(hexagon).getBoundingClientRect()
-    if (outline?.path !== node(hexagon).querySelector('.canvas-shape path')?.getAttribute('d') || [outline.box.x - landed.x, outline.box.y - landed.y, outline.box.width - landed.width, outline.box.height - landed.height].some((gap) => Math.abs(gap) > 1.5)) {
-      throw new Error('Canvas format: the chosen shape was not outlined under the pointer where it then landed: ' + JSON.stringify([outline, landed]))
-    }
     await window.smoke.key('Escape')
     const again = await place('Shapes', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && item.id !== hexagon)
     await window.smoke.key('Escape')
