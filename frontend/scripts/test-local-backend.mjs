@@ -48,7 +48,7 @@ try {
 `)
   const env = { ...process.env, JAZ_LOCAL_BACKEND_TEST_DIR: output, TMPDIR: output }
   delete env.ELECTRON_RENDERER_URL
-  const child = spawn(electron, [join(output, 'bootstrap.cjs')], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+  const child = spawn(electron, [join(output, 'bootstrap.cjs')], { env, stdio: ['ignore', 'pipe', 'pipe'], timeout: 35_000, killSignal: 'SIGKILL' })
   let log = ''
   child.stdout.on('data', (chunk) => { log += chunk })
   child.stderr.on('data', (chunk) => { log += chunk })

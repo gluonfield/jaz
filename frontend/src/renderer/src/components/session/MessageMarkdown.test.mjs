@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 mock.module('@/lib/clientRuntime', () => ({
   DEFAULT_API_BASE_URL: 'http://127.0.0.1:5299',
   clientRuntime: { platform: 'browser', defaultApiBaseUrl: () => 'https://jaz.example' },
+  backendFetch: (url, init) => globalThis.fetch(url, init),
+  backendTransportUrl: (url) => url,
   openExternal: () => {},
 }))
 const storage = new Map([['jaz.backendAuth.https://jaz.example', 'test-image-key']])

@@ -1,8 +1,7 @@
 import { readAPIResponse } from '@/lib/api/response'
-import { DEFAULT_API_BASE_URL, clientRuntime } from '@/lib/clientRuntime'
+import { DEFAULT_API_BASE_URL, backendFetch, backendTransportUrl, clientRuntime } from '@/lib/clientRuntime'
 import { isPreviewProxyTargetHostname } from '@shared/preview'
 import type { ResourceTicket } from '@shared/connectionSession'
-import { backendFetch, backendTransportUrl } from '@/lib/backendTransport'
 
 export { ApiError } from '@/lib/api/response'
 

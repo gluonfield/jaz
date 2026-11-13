@@ -7,6 +7,7 @@ import { gzipSync } from 'node:zlib'
 import { configureLocalBackendTransport, registerLocalBackendTransport } from '@main/localBackendTransport'
 import { configureAppPermissions } from '@main/permissions'
 import { LOCAL_BACKEND_TRANSPORT_URL, LOCAL_BACKEND_URL } from '@shared/localBackend'
+import type { SessionMessages } from '@/lib/api/types'
 
 const output = process.env.JAZ_LOCAL_BACKEND_TEST_DIR!
 if (process.platform === 'darwin') app.setActivationPolicy('prohibited')
@@ -14,10 +15,6 @@ app.disableHardwareAcceleration()
 app.setPath('userData', join(output, 'profile'))
 registerLocalBackendTransport()
 let stage = 'startup'
-const deadline = setTimeout(() => {
-  console.error('Local backend check timed out:', stage)
-  app.exit(1)
-}, 35_000)
 
 async function run() {
   let healthy = true
@@ -29,6 +26,8 @@ async function run() {
   let visibleWindows = 0
   let focusedWindows = 0
   const server = createServer(async (request, response) => {
+    const url = new URL(request.url!, 'http://fixture')
+    const path = url.pathname
     response.setHeader('Cache-Control', 'no-store')
     response.setHeader('Content-Type', 'application/json')
     const origin = request.headers.origin
@@ -44,75 +43,81 @@ async function run() {
       response.end()
       return
     }
-    if (request.url === '/health') {
+    if (path === '/health') {
       response.end(JSON.stringify({ ok: healthy, auth_required: true }))
       return
     }
-    if (request.url === '/page') {
+    if (path === '/page') {
       response.setHeader('Content-Type', 'text/html')
       response.end('<!doctype html><title>Untrusted origin</title>')
       return
     }
-    if (request.url === '/fixture/forbidden') forbiddenHits += 1
-    if (request.url === '/fixture/remote-mutate') remoteMutations += 1
-    if (request.url === '/fixture/redirected') {
+    if (path === '/fixture/forbidden') forbiddenHits += 1
+    if (path === '/fixture/remote-mutate') remoteMutations += 1
+    if (path === '/fixture/redirected') {
       redirectedAuthorization = request.headers.authorization || ''
       response.end('{"redirected":true}')
       return
     }
-    if (request.url === '/fixture/redirect') {
-      response.writeHead(302, { Location: backend.replace('127.0.0.1', 'localhost') + '/fixture/redirected' })
-      response.end()
-      return
-    }
-    if (request.url === '/fixture/local-redirect') {
-      response.writeHead(302, { Location: '/v1/sessions/stored-chat/messages' })
-      response.end()
-      return
-    }
-    if (request.url?.startsWith('/fixture/redirect-method?')) {
-      response.writeHead(Number(new URL(request.url, 'http://fixture').searchParams.get('status')), { Location: '/fixture/method' })
-      response.end()
-      return
-    }
-    if (request.url?.startsWith('/fixture/image?')) {
-      response.setHeader('Content-Type', 'image/svg+xml')
-      response.end('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>')
-      return
-    }
-    if (request.url?.startsWith('/fixture/events?')) {
-      response.setHeader('Content-Type', 'text/event-stream')
-      response.write('data: local-event\n\n')
-      return
-    }
-    if (request.headers.authorization !== 'Bearer jaz_fixture') {
+    const resource = path === '/fixture/image' || path === '/fixture/events'
+    if (resource ? url.searchParams.get('ticket') !== 'fixture-ticket' : request.headers.authorization !== 'Bearer jaz_fixture') {
       response.writeHead(401)
       response.end('{"code":"unauthorized"}')
       return
     }
-    if (request.url === '/v1/auth/check') {
+    if (path === '/fixture/redirect') {
+      response.writeHead(302, { Location: backend.replace('127.0.0.1', 'localhost') + '/fixture/redirected' })
+      response.end()
+      return
+    }
+    if (path === '/fixture/local-redirect') {
+      response.writeHead(302, { Location: '/v1/sessions/stored-chat/messages' })
+      response.end()
+      return
+    }
+    if (path === '/fixture/redirect-method') {
+      response.writeHead(Number(url.searchParams.get('status')), { Location: '/fixture/method' })
+      response.end()
+      return
+    }
+    if (path === '/fixture/image') {
+      response.setHeader('Content-Type', 'image/svg+xml')
+      response.end('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>')
+      return
+    }
+    if (path === '/fixture/events') {
+      response.setHeader('Content-Type', 'text/event-stream')
+      response.write('data: local-event\n\n')
+      return
+    }
+    if (path === '/v1/auth/check') {
       response.end(JSON.stringify({ ok: true, auth_kind: 'device', device_id: 'fixture', resource_ticket: { token: 'fixture-ticket', expires_at: new Date(Date.now() + 60_000).toISOString() } }))
       return
     }
-    if (request.url === '/v1/sessions/stored-chat/messages') {
-      const body = JSON.stringify({ session: { id: 'stored-chat' }, messages: [{ role: 'user', content: 'Stored chat on disk' }], events: [] })
+    if (path === '/v1/sessions/stored-chat/messages') {
+      const at = '2026-11-13T00:00:00Z'
+      const transcript: SessionMessages = {
+        session: { id: 'stored-chat', slug: 'stored-chat', runtime: 'acp', status: 'idle', created_at: at, updated_at: at, last_attention_at: at },
+        messages: [{ seq: 1, role: 'user', content: 'Stored chat on disk', blocks: [], created_at: at }],
+        events: [], has_earlier: false, history_revision: 1, latest_event_seq: 0,
+      }
       response.setHeader('Content-Encoding', 'gzip')
-      response.end(gzipSync(body))
+      response.end(gzipSync(JSON.stringify(transcript)))
       return
     }
-    if (request.url === '/fixture/mutate') {
+    if (path === '/fixture/mutate') {
       const chunks = []
       for await (const chunk of request) chunks.push(chunk)
       response.end(Buffer.concat(chunks).toString())
       return
     }
-    if (request.url === '/fixture/method') {
+    if (path === '/fixture/method') {
       const chunks = []
       for await (const chunk of request) chunks.push(chunk)
       response.end(JSON.stringify({ method: request.method, body: Buffer.concat(chunks).toString() }))
       return
     }
-    if (request.url === '/fixture/hang') {
+    if (path === '/fixture/hang') {
       hanging = true
       response.flushHeaders()
       response.on('close', () => { cancelled = true })
@@ -218,7 +223,6 @@ async function run() {
   window.destroy()
   server.closeAllConnections()
   server.close()
-  clearTimeout(deadline)
   app.quit()
 }
 

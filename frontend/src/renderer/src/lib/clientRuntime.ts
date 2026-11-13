@@ -125,6 +125,17 @@ function createRuntime(): ClientRuntime {
 
 export const clientRuntime = createRuntime()
 
+export function backendTransportUrl(url: string): string {
+  const transport = clientRuntime.localBackendTransport
+  return transport && url.startsWith(LOCAL_BACKEND_URL + '/')
+    ? transport + url.slice(LOCAL_BACKEND_URL.length)
+    : url
+}
+
+export function backendFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(backendTransportUrl(url), init)
+}
+
 // The macOS traffic lights only exist in the desktop app, which hides the
 // native titlebar and redraws its own; window-top headers clear them there.
 // The browser client (even on a Mac) keeps the OS title bar, so there is

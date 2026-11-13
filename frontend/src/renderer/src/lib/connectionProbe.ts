@@ -1,7 +1,6 @@
 import { CLIENT_PLATFORM, CLIENT_PLATFORM_HEADER, secureBackendConnection } from '@/lib/api/client'
-import { clientRuntime } from '@/lib/clientRuntime'
+import { backendFetch, clientRuntime } from '@/lib/clientRuntime'
 import { deviceAccess, type ResourceTicket } from '@shared/connectionSession'
-import { backendFetch } from '@/lib/backendTransport'
 
 export type ProbeFailure = { ok: false; error: string; recoverable: boolean; code?: string }
 export type Access = { ok: true; kind: 'device' | 'root'; deviceId: string; ticket?: ResourceTicket } | ProbeFailure

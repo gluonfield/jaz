@@ -6,12 +6,11 @@ import {
   setApiAuthToken, setApiBaseUrl, onApiAuthRejected,
 } from '@/lib/api/client'
 import { rememberBackend, removeKnownBackend } from '@/lib/backends'
-import { clientRuntime } from '@/lib/clientRuntime'
+import { backendFetch, clientRuntime } from '@/lib/clientRuntime'
 import { loadBrowserCredential, saveBrowserCredential, forgetBrowserCredential } from '@/lib/browserCredentials'
 import { getDeviceProfile } from '@/lib/deviceIdentity'
 import { queryClient } from '@/lib/query/queryClient'
 import { readAccess, readHealth, readJSON } from '@/lib/connectionProbe'
-import { backendFetch } from '@/lib/backendTransport'
 import type { ResourceTicket, SessionSnapshot, VerifiedSession } from '@shared/connectionSession'
 import { LOCAL_BACKEND_URL as LOCAL_URL } from '@shared/localBackend'
 
