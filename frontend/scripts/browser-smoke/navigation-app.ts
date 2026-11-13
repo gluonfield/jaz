@@ -1,6 +1,5 @@
 import { App, PostMessageTransport } from '@modelcontextprotocol/ext-apps'
 import { createMemoryHistory } from '@tanstack/react-router'
-import { z } from 'zod'
 
 const app = new App({ name: 'Navigation peer', version: '1' }, {
   availableDisplayModes: ['inline', 'fullscreen'],
@@ -16,7 +15,7 @@ const view = (event: string, detail: unknown) => window.parent.postMessage({ typ
 const text = (value: string) => [{ type: 'text' as const, text: value }]
 document.addEventListener('securitypolicyviolation', (event) => view('blocked', event.effectiveDirective))
 const paint = () => {
-  document.body.innerHTML = '<button id="person">Jim</button><button id="other">Jane</button><button id="filter">Filter</button><button id="replace">Replace</button><button id="back">Back</button><button id="thread">Chat</button><button id="message">Message</button><button id="state">State</button><button id="expand">Expand</button><button id="reach">Reach</button>'
+  document.body.innerHTML = '<button id="person">Jim</button><button id="other">Jane</button><button id="filter">Filter</button><button id="replace">Replace</button><button id="back">Back</button><button id="message">Message</button><button id="state">State</button><button id="expand">Expand</button><button id="reach">Reach</button>'
   document.getElementById('message')!.onclick = () => app.sendMessage({ role: 'user', content: text('Email Jim') }).then((result) => view('message', result.isError === true))
   document.getElementById('state')!.onclick = () => app.updateModelContext({ content: text('Jim selected') }).then(() => view('state', true))
   document.getElementById('expand')!.onclick = () => app.requestDisplayMode({ mode: 'fullscreen' }).then((result) => view('expand', result.mode))
@@ -26,10 +25,6 @@ const paint = () => {
   document.getElementById('filter')!.onclick = () => history.push('/people?tags=Advisor')
   document.getElementById('replace')!.onclick = () => history.replace('/people?tags=Customer')
   document.getElementById('back')!.onclick = () => history.back()
-  document.getElementById('thread')!.onclick = () => app.request({ method: 'jaz/threads/create', params: { prompt: 'Find the biggest city' } }, z.object({})).then(
-    () => window.parent.postMessage({ type: 'navigation-peer-thread', result: 'started' }, '*'),
-    (error: Error) => window.parent.postMessage({ type: 'navigation-peer-thread', result: error.message }, '*'),
-  )
   window.parent.postMessage({ type: 'navigation-peer', path: history.location.href, instance }, '*')
 }
 history.subscribe(({ location, action }) => {

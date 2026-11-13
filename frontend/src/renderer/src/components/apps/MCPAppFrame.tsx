@@ -14,7 +14,6 @@ import { MCPAppThreadContext } from '@/lib/mcpAppThread'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
 const navigationParams = z.object({ path: z.string().regex(/^\/(?!\/)/), replace: z.boolean(), delta: z.number().int().optional() })
-const threadParams = z.object({ prompt: z.string().trim().min(1) })
 const TEXT_ONLY = { text: {} }
 
 // The text of what a view sends; Jaz accepts no other content from views.
@@ -112,25 +111,14 @@ export function MCPAppFrame({ app, active, inline = false, file, call, deepLink,
     appPath.current = location.path
     if (active && readyFor === html) onNavigate?.(location)
   })
-  const placement = useEffectEvent((iframe: HTMLIFrameElement) => ({
+  const hostContext = useEffectEvent((iframe: HTMLIFrameElement) => ({
     ...mcpAppHostContext(displayMode, expandable ? ['inline', 'fullscreen'] : [displayMode], iframe),
     ...(thread && { 'jaz/thread': { id: thread.id } }),
-  }))
-  const hostContext = useEffectEvent((iframe: HTMLIFrameElement) => ({
-    ...placement(iframe),
     ...(onNavigate && deepLink && { 'jaz/navigation': { path: deepLink } }),
   }))
-  // Only the app the user is working in may start a thread; the new-thread
-  // page starts it with the agent, model and project selected there.
-  const createThread = useEffectEvent(({ prompt }: z.infer<typeof threadParams>) => {
-    if (document.activeElement !== frame.current) {
-      throw new Error('Only the app in use can start a chat')
-    }
-    void navigate({ to: '/new', state: { appPrompt: prompt } })
-    return {}
-  })
-  // A view's message goes to its thread as the user's; outside a thread it
-  // starts one. Only the view the user is working in may send.
+  // A view's message goes to its thread as the user's. Outside a thread it
+  // starts one on the new-thread page, with the agent, model and project
+  // selected there. Only the view the user is working in may send.
   const sendMessage = useEffectEvent((text: string) => {
     if (!text || document.activeElement !== frame.current) return { isError: true }
     if (thread) thread.send(text)
@@ -192,7 +180,7 @@ export function MCPAppFrame({ app, active, inline = false, file, call, deepLink,
       const created = new AppBridge(
         null,
         { name: 'Jaz', version: '1' },
-        { openLinks: {}, serverTools: {}, logging: {}, message: TEXT_ONLY, ...(reportsState && { updateModelContext: TEXT_ONLY }), experimental: { 'jaz/threads': {}, ...(file && { 'openai/resource': {} }), ...(navigationEnabled && { 'jaz/navigation': {} }) } },
+        { openLinks: {}, serverTools: {}, logging: {}, message: TEXT_ONLY, ...(reportsState && { updateModelContext: TEXT_ONLY }), experimental: { ...(file && { 'openai/resource': {} }), ...(navigationEnabled && { 'jaz/navigation': {} }) } },
         { hostContext: hostContext(iframe) },
       )
       created.onmessage = async ({ content }) => sendMessage(viewText(content))
@@ -206,7 +194,6 @@ export function MCPAppFrame({ app, active, inline = false, file, call, deepLink,
         return { mode: displayMode }
       }
       if (navigationEnabled) created.setNotificationHandler('jaz/notifications/navigation', { params: navigationParams }, navigated)
-      created.setRequestHandler('jaz/threads/create', { params: threadParams }, createThread)
       // The host alone attests the opened file's path, which only the app's
       // server may see; an app's own openai/resource claim never passes.
       created.oncalltool = (params) =>
@@ -268,8 +255,8 @@ export function MCPAppFrame({ app, active, inline = false, file, call, deepLink,
       return
     }
     if (!deepLink) return
-    current.setHostContext({ ...placement(iframe), 'openai/deepLink': { url: deepLink } })
-    current.setHostContext({ ...placement(iframe), 'openai/deepLink': undefined })
+    current.setHostContext({ ...hostContext(iframe), 'openai/deepLink': { url: deepLink } })
+    current.setHostContext({ ...hostContext(iframe), 'openai/deepLink': undefined })
   }, [active, deepLink, toolInput, readyFor, html])
 
   // Navigation-aware apps replace the opening input with their resulting path.

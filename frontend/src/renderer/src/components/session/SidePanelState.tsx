@@ -148,7 +148,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     openTab({
       id: `app:${view}`,
       kind: 'app',
-      app: { ...app, type: 'thread', title: points.find((point) => point.tool === app.tool)?.title ?? app.tool, icon: points[0]?.icon },
+      app: { ...app, title: points.find((point) => point.tool === app.tool)?.title ?? app.tool, icon: points[0]?.icon },
       call,
     })
   }, [entrypoints, openTab])

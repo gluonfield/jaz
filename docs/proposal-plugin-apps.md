@@ -61,6 +61,6 @@ Sizes are estimates.
 ## Decisions needed
 
 - [x] Adopt the standard display rule and change CRM's two lookup tools (item 3): yes.
-- [x] When a sidebar page sends a message, it starts a new thread. `jaz/threads/create` still works; remove it once CRM and Tasks use `ui/message`.
+- [x] When a sidebar page sends a message, it starts a new thread. The Jaz-only `jaz/threads/create` is removed; Tasks now sends the standard message.
 - [ ] Catalogue source: one Jaz-owned Git repository, or also third-party ones a user adds?
 - [ ] May a catalogue plugin install a local-process server, which runs code on the Jaz machine, or remote servers only?

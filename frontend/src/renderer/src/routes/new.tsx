@@ -143,7 +143,7 @@ function NewSessionPage() {
     }
   }
 
-  // An app's jaz/threads/create opens this page with a prompt. It starts once
+  // A sidebar app's message opens this page with a prompt. It starts once
   // the agent and model are ready, leaves the composer's draft alone and
   // replaces this page in history, so Back returns to the app.
   const appPrompt = useLocation({ select: (location) => location.state.appPrompt })

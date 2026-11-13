@@ -5,7 +5,8 @@ import type { OpenedFile } from '@/lib/mcpAppFiles'
 export type SidePanelTab =
   | { id: string; kind: 'preview' | 'terminal' | 'side-chat' | 'diff' }
   | { id: string; kind: 'file'; file: FileReference | null }
-  | { id: string; kind: 'app'; app: MCPEntrypoint; file?: OpenedFile; call?: Pick<MCPAppEvent, 'arguments' | 'result'> }
+  // An app tab shows a thread app, a file's viewer, or the call an inline view opened larger.
+  | { id: string; kind: 'app'; app: Pick<MCPEntrypoint, 'server_id' | 'tool' | 'title' | 'icon'>; file?: OpenedFile; call?: Pick<MCPAppEvent, 'arguments' | 'result'> }
 // NewSidePanelTab is what the new-tab menu opens: a built-in kind or a thread app.
 export type NewSidePanelTab = Exclude<SidePanelTab['kind'], 'app'> | MCPEntrypoint
 export type SidePanelMode = 'tabs' | 'overview'

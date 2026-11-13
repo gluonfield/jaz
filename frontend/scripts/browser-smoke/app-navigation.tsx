@@ -55,10 +55,9 @@ export async function exerciseAppNavigation() {
   const expanded: unknown[] = []
   const observe = (event: MessageEvent) => {
     if (event.data?.type === 'navigation-peer' && event.source) locations.set(event.source, event.data)
-    if (event.data?.type === 'navigation-peer-view' && event.source === document.querySelector<HTMLIFrameElement>('iframe[title="card"]')?.contentWindow) views[event.data.event] = event.data.detail
-    if (event.data?.type === 'navigation-peer-thread') {
-      thread = event.data.result
-    }
+    if (event.data?.type !== 'navigation-peer-view') return
+    if (event.source === document.querySelector<HTMLIFrameElement>('iframe[title="card"]')?.contentWindow) views[event.data.event] = event.data.detail
+    else if (event.data.event === 'message' && event.source === document.querySelector<HTMLIFrameElement>('iframe[title="tasks"]')?.contentWindow) thread = event.data.detail ? 'refused' : 'started'
   }
   const settings: AgentSettings = {
     providers: [], agents: ['codex'],
@@ -230,8 +229,8 @@ export async function exerciseAppNavigation() {
     if (!at('tasks', '/issue/CAS-2')) throw new Error('An inactive app changed Jaz navigation')
     await window.smoke.capture('app-navigation')
     frame('crm').focus()
-    frame('tasks').contentWindow!.postMessage({ type: 'navigation-peer-action', button: 'thread' }, '*')
-    await until(() => thread.includes('Only the app in use can start a chat'))
+    frame('tasks').contentWindow!.postMessage({ type: 'navigation-peer-action', button: 'message' }, '*')
+    await until(() => thread === 'refused')
     if (sessions.length) {
       throw new Error('An app the user was not using started a thread')
     }
@@ -239,13 +238,13 @@ export async function exerciseAppNavigation() {
     sessionStorage.setItem(NEW_SESSION_DRAFT_KEY, draft)
     thread = ''
     frame('tasks').focus()
-    frame('tasks').contentWindow!.postMessage({ type: 'navigation-peer-action', button: 'thread' }, '*')
+    frame('tasks').contentWindow!.postMessage({ type: 'navigation-peer-action', button: 'message' }, '*')
     await until(() => thread !== '')
     if (thread !== 'started') {
       throw new Error(`The app in use could not start a thread: ${thread}`)
     }
     await until(() => router.state.location.pathname === '/sessions/thread-smoke')
-    if (JSON.stringify(sessions) !== JSON.stringify([{ title: 'Find the biggest city', runtime: 'acp', agent: 'codex', directory: '', worktree: false, model: 'gpt', reasoning_effort: 'medium' }]) || prompts[0]?.message.text !== 'Find the biggest city') {
+    if (JSON.stringify(sessions) !== JSON.stringify([{ title: 'Email Jim', runtime: 'acp', agent: 'codex', directory: '', worktree: false, model: 'gpt', reasoning_effort: 'medium' }]) || prompts[0]?.message.text !== 'Email Jim') {
       throw new Error(`The app's thread started wrong: ${JSON.stringify({ sessions, prompts })}`)
     }
     if (sessionStorage.getItem(NEW_SESSION_DRAFT_KEY) !== draft) {
@@ -286,14 +285,6 @@ export async function exerciseAppNavigation() {
       JSON.stringify(expanded) !== JSON.stringify([{ app: { server_id: 'crm', tool: 'card' }, call: CALL }])) {
       throw new Error(`The view's thread received the wrong message or call: ${JSON.stringify({ sent, expanded })}`)
     }
-    // Outside a thread a view's message starts one.
-    await visit('tasks', { path: '/issue/CAS-2' })
-    await until(() => at('tasks', '/issue/CAS-2'))
-    frame('tasks').focus()
-    frame('tasks').contentWindow!.postMessage({ type: 'navigation-peer-action', button: 'message' }, '*')
-    await until(() => sessions.length === 2 && prompts[1]?.message.text === 'Email Jim' && router.state.location.pathname === '/sessions/thread-smoke')
-    sessions.pop()
-    prompts.pop()
     if (reads.length !== 3) throw new Error(`Opening an app again soon after read it from its server again: ${reads.join(', ')}`)
 
     // With the sidebar hidden, Chats offer a new chat in the titlebar and
