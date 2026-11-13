@@ -21,6 +21,7 @@ const (
 	AgentOpenCode    = "opencode"
 	AgentAntigravity = "antigravity"
 	AgentMuse        = "muse"
+	AgentCopilot     = "copilot"
 
 	AgentProviderModeNone          = ""
 	AgentProviderModeAgentDefaults = "agent_defaults"
@@ -302,6 +303,7 @@ var builtinAgentOrder = []string{
 	AgentOpenCode,
 	AgentAntigravity,
 	AgentMuse,
+	AgentCopilot,
 }
 
 func BuiltinAgents() AgentCatalog {
@@ -344,6 +346,10 @@ func BuiltinAgents() AgentCatalog {
 		AgentMuse: {
 			ManagedAdapter: "muse",
 			ManagedTool:    "muse",
+		},
+		AgentCopilot: {
+			Command: "copilot",
+			Args:    []string{"--acp", "--stdio"},
 		},
 	}
 }

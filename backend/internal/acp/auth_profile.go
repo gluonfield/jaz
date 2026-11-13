@@ -64,7 +64,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		return AgentAuthConfig{}, fmt.Errorf("acp agent %q auth mode %q is not supported", name, mode)
 	}
 	path := strings.TrimSpace(auth.Path)
-	if (name == AgentAntigravity || name == AgentMuse) && mode == AuthModeJazProfile {
+	if (name == AgentAntigravity || name == AgentMuse || name == AgentCopilot) && mode == AuthModeJazProfile {
 		mode = AuthModeAuto
 		path = ""
 	}
@@ -81,6 +81,9 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 	}
 	if name == AgentMuse && path != "" {
 		return AgentAuthConfig{}, fmt.Errorf("acp agent %q has no explicit profile path; use Muse's native configuration", name)
+	}
+	if name == AgentCopilot && path != "" {
+		return AgentAuthConfig{}, fmt.Errorf("acp agent %q uses its native COPILOT_HOME configuration", name)
 	}
 	return AgentAuthConfig{
 		Mode: mode,
@@ -153,6 +156,8 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 		return resolveAntigravityAuth(auth, root, env)
 	case AgentMuse:
 		return resolveMuseAuth(root, env)
+	case AgentCopilot:
+		return resolveCopilotAuth(env)
 	default:
 		return resolvedAgentAuth{Config: auth}
 	}
@@ -508,10 +513,20 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 }
 
 func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root, storagePath string) error {
+	if instructions := agentManualDisconnect(name); instructions != "" {
+		return fmt.Errorf("%s", instructions)
+	}
 	if CanonicalAgentName(name) != AgentMuse {
 		return RemoveOwnedCredential(name, storagePath, root)
 	}
 	return disconnectMuseAuth(ctx, cfg, root)
+}
+
+func agentManualDisconnect(name string) string {
+	if CanonicalAgentName(name) == AgentCopilot {
+		return "To sign out, run copilot on the Jaz server and enter /logout."
+	}
+	return ""
 }
 
 // pathUnderRoot resolves symlinks before comparing so a symlinked directory

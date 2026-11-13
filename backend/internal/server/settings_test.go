@@ -232,7 +232,7 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,muse" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,muse,copilot" {
 		t.Fatalf("unexpected seeded settings %#v", got)
 	}
 	if !hasModelProvider(got.Providers, "openai", "https://api.openai.com/v1") ||
@@ -275,6 +275,9 @@ func TestAgentSettingsAPIControlsEnabledACPAgents(t *testing.T) {
 	}
 	if got.ACP["grok"].Enabled || got.ACP["grok"].Model != "" || got.ACP["grok"].ReasoningEffort != "" {
 		t.Fatalf("unexpected grok defaults %#v", got.ACP["grok"])
+	}
+	if got.ACP["copilot"].Enabled || got.ACP["copilot"].Model != "" || !got.ACPOptions["copilot"].SupportsAuth || len(got.ACPOptions["copilot"].ReasoningEfforts) != 0 {
+		t.Fatalf("unexpected Copilot defaults: %#v, %#v", got.ACP["copilot"], got.ACPOptions["copilot"])
 	}
 	if got.ACP["opencode"].Enabled ||
 		got.ACP["opencode"].ModelProvider != "openrouter" ||
@@ -832,7 +835,7 @@ func TestAgentSettingsAPIRoundTripsConfiguredACPAgent(t *testing.T) {
 	if err := json.Unmarshal(getRes.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,muse,local_helper" {
+	if strings.Join(got.Agents, ",") != "codex,claude,kimi,grok,opencode,antigravity,muse,copilot,local_helper" {
 		t.Fatalf("agents = %#v", got.Agents)
 	}
 	if _, ok := got.ACP[acp.AgentJaz]; ok {

@@ -40,6 +40,11 @@ agent CLI you enable on the server too, for example `npm install -g @openai/code
 for Codex login. Without the CLI on the server's `PATH` the onboarding agent
 cards show "Not installed" and offer no sign-in.
 
+GitHub Copilot requires the official `copilot` CLI on the server. Its sign-in card
+runs `copilot login --device-code`: open GitHub's verification URL and enter the
+displayed code in your browser. Credentials stay in the server user's native
+Copilot credential store; a client-local Copilot login is not shared with the server.
+
 Agent OAuth on a remote backend can't use the local-loopback capture a desktop
 login relies on: the CLI runs on the server, so the browser's redirect never
 reaches it. The CLI falls back to printing an authentication code for you to

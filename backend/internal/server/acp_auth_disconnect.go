@@ -46,6 +46,10 @@ func (s *Server) handleDisconnectACPAuth(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	auth := acp.ProbeAgentAuthWithProviders(agent, cfg, s.runtimeRoot(), nil, s.modelProviders())
+	if auth.ManualDisconnect != "" {
+		writeError(w, http.StatusConflict, fmt.Errorf("%s", auth.ManualDisconnect))
+		return
+	}
 
 	if current, ok := defaults.ACP[agent]; ok {
 		current.Enabled = false

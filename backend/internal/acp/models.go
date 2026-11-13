@@ -174,6 +174,11 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			systemPromptAtLaunch: true,
 			effortOptions:        museReasoningEffortOptions,
 		}
+	case AgentCopilot:
+		return agentPolicy{
+			systemPromptAtLaunch: true,
+			unadvertisedModel:    unadvertisedModelRejected,
+		}
 	default:
 		return agentPolicy{
 			effortConfigID: sessionConfigReasoningEffort,

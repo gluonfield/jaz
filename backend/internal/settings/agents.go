@@ -56,6 +56,9 @@ func AgentDefaultsFromCatalog(catalog acp.AgentCatalog) AgentDefaults {
 }
 
 func defaultACPAgentEnabled(name string, agent acp.AgentConfig) bool {
+	if name == acp.AgentCopilot {
+		return false
+	}
 	if agent.Local || strings.TrimSpace(agent.URL) != "" {
 		return true
 	}
