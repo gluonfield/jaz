@@ -11,6 +11,9 @@ const (
 	ContextTypeBrowserAnnotation = "browser_annotation"
 	// ContextTypeCanvas names the active Page and optionally a selected item ID.
 	ContextTypeCanvas = "canvas"
+	// ContextTypeApp is what an MCP App's view, named by its tool in ID, reports
+	// of its state through ui/update-model-context.
+	ContextTypeApp = "app"
 )
 
 type MessageContext struct {
@@ -57,7 +60,7 @@ type Attachment struct {
 
 func HasMessageContent(message string, contexts []MessageContext, attachments []Attachment) bool {
 	return strings.TrimSpace(message) != "" || len(attachments) > 0 || slices.ContainsFunc(NormalizeMessageContexts(contexts), func(context MessageContext) bool {
-		return context.Type != ContextTypeCanvas || context.ID != ""
+		return context.Type != ContextTypeApp && (context.Type != ContextTypeCanvas || context.ID != "")
 	})
 }
 
@@ -101,6 +104,12 @@ func NormalizeMessageContexts(contexts []MessageContext) []MessageContext {
 					page = "page-1"
 				}
 				out = append(out, MessageContext{Type: ContextTypeCanvas, Page: page, ID: id, Text: strings.TrimSpace(context.Text)})
+			}
+		case ContextTypeApp:
+			id := strings.TrimSpace(context.ID)
+			text := strings.TrimSpace(context.Text)
+			if id != "" && text != "" {
+				out = append(out, MessageContext{Type: ContextTypeApp, ID: id, Text: text})
 			}
 		case ContextTypeBrowserAnnotation:
 			annotation := NormalizeBrowserAnnotation(context.BrowserAnnotation)

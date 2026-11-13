@@ -11,6 +11,7 @@ import { previewDisplayUrl } from '@/lib/api/preview'
 import { openedFile } from '@/lib/mcpAppFiles'
 import { useBrowserSessions, useSessionPreview } from '@/lib/browserSessions'
 import { SidebarVisibility } from '@/lib/sidebar'
+import type { MCPAppThread } from '@/lib/mcpAppThread'
 import { OVERVIEW_PANEL_WIDTH, sidePanelTabs, type NewSidePanelTab, type SidePanelMode, type SidePanelTab, type SidePanelTabs } from '@/lib/sidePanelTabs'
 
 const PANEL_MAX_WIDTH = 1180
@@ -141,6 +142,16 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     }
     return true
   }, [browsers, entrypoints, openTab, sessionId])
+  // An inline app view opens larger as a tab showing the same call.
+  const openApp = useCallback<NonNullable<MCPAppThread['expand']>>((view, app, call) => {
+    const points = (entrypoints ?? []).filter((point) => point.server_id === app.server_id)
+    openTab({
+      id: `app:${view}`,
+      kind: 'app',
+      app: { ...app, type: 'thread', title: points.find((point) => point.tool === app.tool)?.title ?? app.tool, icon: points[0]?.icon },
+      call,
+    })
+  }, [entrypoints, openTab])
   const openPreview = useCallback((url: string) => {
     const display = previewDisplayUrl(url) ?? url
     if (openFile(display)) {
@@ -205,7 +216,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     containerRef, open, mode, tabs, activeTab,
     resize, resizing, setResizing, width, widthStyle, minWidth, maxWidth,
     resizable: mode === 'tabs',
-    toggleMode, close, selectTab, reorderTabs, addTab, duplicateTab, closeTab, openFile, openPreview,
+    toggleMode, close, selectTab, reorderTabs, addTab, duplicateTab, closeTab, openFile, openPreview, openApp,
   }
 }
 

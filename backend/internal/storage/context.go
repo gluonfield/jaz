@@ -12,6 +12,7 @@ const (
 	ContextTypeSelection         = messagepayload.ContextTypeSelection
 	ContextTypeBrowserAnnotation = messagepayload.ContextTypeBrowserAnnotation
 	ContextTypeCanvas            = messagepayload.ContextTypeCanvas
+	ContextTypeApp               = messagepayload.ContextTypeApp
 )
 
 type MessageContext = messagepayload.MessageContext

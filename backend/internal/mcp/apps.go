@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -22,6 +23,14 @@ var (
 	ErrAppNotFound   = errors.New("mcp app not found")
 	ErrAppToolDenied = errors.New("tool is not available to apps")
 )
+
+// newClient connects Jaz to a server declaring the MCP Apps extension, without
+// which a server following the extension registers text-only tools.
+func newClient() *mcpsdk.Client {
+	capabilities := &mcpsdk.ClientCapabilities{RootsV2: &mcpsdk.RootCapabilities{ListChanged: true}}
+	capabilities.AddExtension("io.modelcontextprotocol/ui", map[string]any{"mimeTypes": []string{AppMIMEType}})
+	return mcpsdk.NewClient(&mcpsdk.Implementation{Name: "jaz", Version: "0.1.0"}, &mcpsdk.ClientOptions{Capabilities: capabilities})
+}
 
 // Entrypoint is an MCP App a person opens directly rather than through the
 // model, as OpenAI's MCP extensions declare in _meta["openai/ui"]: a
@@ -51,13 +60,65 @@ type toolMeta struct {
 	} `json:"openai/ui"`
 }
 
-// readToolMeta decodes a tool's _meta; a malformed field reads as unset.
-func readToolMeta(tool *mcpsdk.Tool) toolMeta {
-	var meta toolMeta
-	if data, err := json.Marshal(tool.Meta); err == nil {
-		_ = json.Unmarshal(data, &meta)
+// readMeta decodes a _meta object; a malformed field reads as unset.
+func readMeta[T any](meta mcpsdk.Meta) T {
+	var out T
+	if data, err := json.Marshal(meta); err == nil {
+		_ = json.Unmarshal(data, &out)
 	}
-	return meta
+	return out
+}
+
+// resourceMeta is what a UI resource's _meta declares: the origins its page
+// may reach.
+type resourceMeta struct {
+	UI struct {
+		CSP struct {
+			ConnectDomains  []string `json:"connectDomains"`
+			ResourceDomains []string `json:"resourceDomains"`
+			FrameDomains    []string `json:"frameDomains"`
+			BaseURIDomains  []string `json:"baseUriDomains"`
+		} `json:"csp"`
+	} `json:"ui"`
+}
+
+var (
+	// Anything a server declares that is not an origin is dropped, so a
+	// declaration cannot add directives of its own.
+	cspOrigin = regexp.MustCompile(`^(?i:https?|wss?)://(\*|(\*\.)?[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)(:(\d+|\*))?$`)
+	doctype   = regexp.MustCompile(`^(?i)\s*<!doctype[^>]*>`)
+)
+
+// policy is the Content Security Policy MCP Apps requires of a host: the page
+// reaches only the origins its resource declares, and none by default. The
+// page runs in a sandbox with no origin of its own, so 'self' is never
+// granted; data: and blob: content is the page's own.
+func (m resourceMeta) policy() string {
+	csp := m.UI.CSP
+	return strings.Join([]string{
+		"default-src 'none'",
+		"script-src" + cspSources(" 'unsafe-inline'", csp.ResourceDomains),
+		"style-src" + cspSources(" 'unsafe-inline'", csp.ResourceDomains),
+		"img-src" + cspSources(" data: blob:", csp.ResourceDomains),
+		"media-src" + cspSources(" data: blob:", csp.ResourceDomains),
+		"font-src" + cspSources(" data:", csp.ResourceDomains),
+		"connect-src" + cspSources("", csp.ConnectDomains),
+		"frame-src" + cspSources("", csp.FrameDomains),
+		"base-uri" + cspSources("", csp.BaseURIDomains),
+		"form-action 'none'",
+	}, "; ")
+}
+
+func cspSources(sources string, declared []string) string {
+	for _, origin := range declared {
+		if cspOrigin.MatchString(origin) {
+			sources += " " + origin
+		}
+	}
+	if sources == "" {
+		return " 'none'"
+	}
+	return sources
 }
 
 // visibleTo reports whether "model" or "app" may call the tool; both may when
@@ -149,7 +210,8 @@ func (m *Manager) Entrypoints(ctx context.Context) ([]Entrypoint, error) {
 	return out, nil
 }
 
-// ReadApp returns the HTML document of the MCP App a server's tool opens.
+// ReadApp returns the HTML document of the MCP App a server's tool opens. Its
+// policy comes first in the document, where it governs everything after it.
 func (m *Manager) ReadApp(ctx context.Context, serverID, tool string) (string, error) {
 	session, uri, err := m.appSession(serverID, tool)
 	if err != nil {
@@ -163,12 +225,15 @@ func (m *Manager) ReadApp(ctx context.Context, serverID, tool string) (string, e
 		if content.MIMEType != AppMIMEType {
 			continue
 		}
-		if content.Text != "" {
-			return content.Text, nil
+		html := content.Text
+		if html == "" {
+			html = string(content.Blob)
 		}
-		if len(content.Blob) > 0 {
-			return string(content.Blob), nil
+		if html == "" {
+			continue
 		}
+		at := len(doctype.FindString(html))
+		return html[:at] + `<meta http-equiv="Content-Security-Policy" content="` + readMeta[resourceMeta](content.Meta).policy() + `">` + html[at:], nil
 	}
 	return "", fmt.Errorf("mcp app %s has no %s content", uri, AppMIMEType)
 }
@@ -201,7 +266,7 @@ type sessionEventPublisher interface {
 	Publish(event sessionevents.Event)
 }
 
-// WithSessionEvents shows explicitly opened apps in the calling agent's thread.
+// WithSessionEvents shows the apps agents open in their threads.
 func WithSessionEvents(store sessionEventAppender, bus sessionEventPublisher) Option {
 	return func(m *Manager) {
 		m.eventStore = store
@@ -209,8 +274,8 @@ func WithSessionEvents(store sessionEventAppender, bus sessionEventPublisher) Op
 	}
 }
 
-// A UI declaration makes a tool renderable. An entrypoint or a returned link
-// to that UI presents it; ordinary lookups stay private.
+// proxyCall shows the view a tool declares in the calling agent's thread, as
+// MCP Apps requires of a host, and tells the agent whether the user saw it.
 func (m *Manager) proxyCall(tool remoteTool) mcpsdk.ToolHandler {
 	return func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		result, err := tool.callRaw(ctx, req)
@@ -230,15 +295,6 @@ func (m *Manager) showApp(sessionID string, tool remoteTool, arguments json.RawM
 	if session == nil || session.apps.uris[tool.remoteName] == "" {
 		return ""
 	}
-	present := slices.ContainsFunc(result.Content, func(content mcpsdk.Content) bool {
-		link, ok := content.(*mcpsdk.ResourceLink)
-		return ok && link.URI == session.apps.uris[tool.remoteName] && link.MIMEType == AppMIMEType
-	})
-	if !present && !slices.ContainsFunc(session.apps.entrypoints, func(point Entrypoint) bool {
-		return point.Tool == tool.remoteName
-	}) {
-		return ""
-	}
 	if m.eventStore == nil || sessionID == "" || (m.AppVisible != nil && !m.AppVisible(sessionID)) {
 		return "Jaz has not displayed this resource in the user's chat. Use the returned data to answer through this turn's delivery channel."
 	}
@@ -249,7 +305,7 @@ func (m *Manager) showApp(sessionID string, tool remoteTool, arguments json.RawM
 	events := []sessionevents.Event{{
 		SessionID: sessionID,
 		Type:      sessionevents.TypeMCPApp,
-		MCPApp:    &sessionevents.MCPAppEvent{ServerID: tool.serverID, Tool: tool.remoteName, Presented: present, Arguments: arguments, Result: data},
+		MCPApp:    &sessionevents.MCPAppEvent{ServerID: tool.serverID, Tool: tool.remoteName, Presented: true, Arguments: arguments, Result: data},
 		At:        time.Now().UTC(),
 	}}
 	// AppendSessionEvents assigns Seq in place; publish the stored event.
@@ -257,9 +313,6 @@ func (m *Manager) showApp(sessionID string, tool remoteTool, arguments json.RawM
 		return "Jaz could not save this app result for display. Use the returned data to answer the user."
 	}
 	m.eventBus.Publish(events[0])
-	if !present {
-		return ""
-	}
 	return "Jaz has presented this result in the user's chat. The app view is the answer; do not repeat its contents or links in a text message. Add text only for information the view does not contain."
 }
 

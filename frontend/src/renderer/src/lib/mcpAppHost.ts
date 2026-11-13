@@ -1,4 +1,4 @@
-import type { McpUiHostContext, McpUiStyleVariableKey, McpUiStyles } from '@modelcontextprotocol/ext-apps/app-bridge'
+import type { McpUiDisplayMode, McpUiHostContext, McpUiStyleVariableKey, McpUiStyles } from '@modelcontextprotocol/ext-apps/app-bridge'
 
 // MCP Apps theme through the spec's standard style keys; each is fed by the
 // Jaz token playing the same role, resolved to a concrete value.
@@ -21,7 +21,8 @@ const STYLE_TOKENS: [McpUiStyleVariableKey, string][] = [
   ['--shadow-lg', '--shadow-raised'],
 ]
 
-export function mcpAppHostContext(displayMode: 'inline' | 'fullscreen'): McpUiHostContext {
+// An inline view sets its own height; any other fills its frame.
+export function mcpAppHostContext(displayMode: 'inline' | 'fullscreen', availableDisplayModes: McpUiDisplayMode[], frame: HTMLIFrameElement): McpUiHostContext {
   const root = document.documentElement
   const style = getComputedStyle(root)
   // McpUiStyles names every key; hosts send the subset they have.
@@ -32,7 +33,8 @@ export function mcpAppHostContext(displayMode: 'inline' | 'fullscreen'): McpUiHo
     theme: root.classList.contains('dark') ? 'dark' : 'light',
     styles: { variables },
     displayMode,
-    availableDisplayModes: [displayMode],
+    availableDisplayModes,
+    containerDimensions: { width: frame.clientWidth, ...(displayMode === 'fullscreen' && { height: frame.clientHeight }) },
     platform: 'desktop',
     locale: navigator.language,
   }

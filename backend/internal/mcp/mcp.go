@@ -521,7 +521,7 @@ func (m *Manager) connect(ctx context.Context, server mcpconfig.Server, handler 
 	if err != nil {
 		return nil, err
 	}
-	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "jaz", Version: "0.1.0"}, nil)
+	client := newClient()
 	dial := func(ctx context.Context) (*mcpsdk.ClientSession, error) {
 		return client.Connect(ctx, &mcpsdk.StreamableClientTransport{
 			Endpoint:             server.URL,
@@ -562,7 +562,7 @@ func (m *Manager) connectLocal(ctx context.Context, server mcpconfig.Server, loc
 	if err != nil {
 		return nil, err
 	}
-	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "jaz", Version: "0.1.0"}, nil)
+	client := newClient()
 	session, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		_ = localSession.Close()

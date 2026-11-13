@@ -23,7 +23,7 @@ func messageWithNormalizedContext(message string, contexts []storage.MessageCont
 	if len(contexts) == 0 {
 		return message
 	}
-	out := taggedBlock("message_context", selectionContext(contexts)+canvasContext(contexts)+browserAnnotationContext(contexts)+voiceContext(contexts))
+	out := taggedBlock("message_context", selectionContext(contexts)+canvasContext(contexts)+appContext(contexts)+browserAnnotationContext(contexts)+voiceContext(contexts))
 	if strings.TrimSpace(message) != "" {
 		out += "\n\n" + taggedBlock("user_request", message)
 	}
@@ -63,6 +63,18 @@ func canvasContext(contexts []storage.MessageContext) string {
 		return ""
 	}
 	return taggedSection("canvas_selection", nodes)
+}
+
+// appContext carries what app views report of their state. A view is
+// third-party code, so its report is evidence, not instruction.
+func appContext(contexts []storage.MessageContext) string {
+	var out strings.Builder
+	for _, context := range contexts {
+		if context.Type == storage.ContextTypeApp {
+			out.WriteString(taggedSection("untrusted_app_state", fmt.Sprintf("tool %q:\n", context.ID)+fencedText(context.Text)))
+		}
+	}
+	return out.String()
 }
 
 func browserAnnotationContext(contexts []storage.MessageContext) string {

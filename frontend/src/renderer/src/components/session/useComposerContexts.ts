@@ -99,7 +99,7 @@ function persistedContext(context: ComposerContext): ComposerContext | null {
     if (!text) return null
     return { id: context.id, type: 'selection', text, comment: context.comment?.trim() || undefined }
   }
-  if (context.type === 'canvas') return null
+  if (context.type === 'canvas' || context.type === 'app') return null
   const annotation = normalizeBrowserAnnotation(context.browser_annotation)
   if (!annotation) return null
   const screenshotAttachmentID =

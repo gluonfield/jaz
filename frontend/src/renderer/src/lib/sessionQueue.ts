@@ -51,6 +51,7 @@ function normalizeContexts(contexts: QueuedMessageInput['contexts'] = []): NonNu
       const page = context.page?.trim() || (id ? 'page-1' : undefined)
       return page ? [{ type: 'canvas' as const, page, id, text: context.text }] : []
     }
+    if (context.type === 'app') return context.text?.trim() ? [context] : []
     if (context.type !== 'browser_annotation' || !context.browser_annotation) return []
     const annotation = normalizeBrowserAnnotation(context.browser_annotation)
     return annotation ? [{ type: 'browser_annotation' as const, browser_annotation: annotation }] : []

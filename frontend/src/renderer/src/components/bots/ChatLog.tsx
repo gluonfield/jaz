@@ -97,7 +97,7 @@ export function ChatLog({
             ) : entry.kind === 'activity' ? (
               <SystemEventRow event={entry.event} onOpen={entry.event.loop_created ? onOpenRoutines : undefined} />
             ) : entry.kind === 'app' ? (
-              <MCPAppFrame app={entry.app} call={entry.app} active />
+              <MCPAppFrame app={entry.app} call={entry.app} inline active />
             ) : entry.kind === 'artifact' ? (
               <ArtifactBlock artifact={entry.event.artifact} onSendPrompt={onSendPrompt} />
             ) : entry.kind === 'question' ? (

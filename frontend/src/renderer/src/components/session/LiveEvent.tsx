@@ -58,7 +58,7 @@ export const LiveEvent = memo(function LiveEvent({
       {artifact ? (
         <ArtifactBlock artifact={artifact} onSendPrompt={onArtifactPrompt} />
       ) : null}
-      {mcpApp ? <MCPAppFrame app={mcpApp} call={mcpApp} active /> : null}
+      {mcpApp ? <MCPAppFrame app={mcpApp} call={mcpApp} inline active /> : null}
       {event.content && !artifact ? (
         <AssistantMarkdown text={event.content} createdAt={event.at} showCopy={showCopy} />
       ) : null}

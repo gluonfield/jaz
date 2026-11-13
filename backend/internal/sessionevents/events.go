@@ -146,7 +146,8 @@ type ArtifactEvent struct {
 
 // MCPAppEvent shows an MCP App in the thread: an agent called a tool its
 // server links to a UI, which renders with the call's arguments and result.
-// Like ArtifactEvent it round-trips through the content column.
+// Like ArtifactEvent it round-trips through the content column. Jaz marks
+// every view it displays Presented; stored events without it predate that.
 type MCPAppEvent struct {
 	ServerID  string          `json:"server_id"`
 	Tool      string          `json:"tool"`

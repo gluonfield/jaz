@@ -3,7 +3,7 @@ import { createMemoryHistory } from '@tanstack/react-router'
 import { z } from 'zod'
 
 const app = new App({ name: 'Navigation peer', version: '1' }, {
-  availableDisplayModes: ['fullscreen'],
+  availableDisplayModes: ['inline', 'fullscreen'],
   experimental: { 'jaz/navigation': {} },
 })
 const history = createMemoryHistory({ initialEntries: ['/people'] })
@@ -12,8 +12,15 @@ const report = (replace: boolean, delta?: number) => app.notification({
   method: 'jaz/notifications/navigation',
   params: { path: history.location.href, replace, ...(delta && { delta }) },
 })
+const view = (event: string, detail: unknown) => window.parent.postMessage({ type: 'navigation-peer-view', event, detail }, '*')
+const text = (value: string) => [{ type: 'text' as const, text: value }]
+document.addEventListener('securitypolicyviolation', (event) => view('blocked', event.effectiveDirective))
 const paint = () => {
-  document.body.innerHTML = '<button id="person">Jim</button><button id="other">Jane</button><button id="filter">Filter</button><button id="replace">Replace</button><button id="back">Back</button><button id="thread">Chat</button>'
+  document.body.innerHTML = '<button id="person">Jim</button><button id="other">Jane</button><button id="filter">Filter</button><button id="replace">Replace</button><button id="back">Back</button><button id="thread">Chat</button><button id="message">Message</button><button id="state">State</button><button id="expand">Expand</button><button id="reach">Reach</button>'
+  document.getElementById('message')!.onclick = () => app.sendMessage({ role: 'user', content: text('Email Jim') }).then((result) => view('message', result.isError === true))
+  document.getElementById('state')!.onclick = () => app.updateModelContext({ content: text('Jim selected') }).then(() => view('state', true))
+  document.getElementById('expand')!.onclick = () => app.requestDisplayMode({ mode: 'fullscreen' }).then((result) => view('expand', result.mode))
+  document.getElementById('reach')!.onclick = () => void fetch('https://jaz.invalid/').catch(() => {})
   document.getElementById('person')!.onclick = () => history.push('/r/jim')
   document.getElementById('other')!.onclick = () => history.push('/r/jane')
   document.getElementById('filter')!.onclick = () => history.push('/people?tags=Advisor')
@@ -47,5 +54,6 @@ window.addEventListener('message', (event) => {
 })
 await app.connect(new PostMessageTransport(window.parent, window.parent))
 app.onhostcontextchanged(app.getHostContext()!)
+view('host', { context: app.getHostContext(), capabilities: app.getHostCapabilities() })
 paint()
 await report(true)

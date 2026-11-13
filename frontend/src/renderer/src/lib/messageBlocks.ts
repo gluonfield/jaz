@@ -18,6 +18,7 @@ export function userInputMessageBlocks(
         case 'browser_annotation':
           return [{ type: 'browser_annotation', input_json: JSON.stringify(context.browser_annotation) }]
         case 'canvas':
+        case 'app':
           return []
       }
     }),

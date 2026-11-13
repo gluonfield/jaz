@@ -20,7 +20,7 @@ func (m *Manager) connectStdio(ctx context.Context, server mcpconfig.Server) (*s
 	for name, value := range server.Env {
 		command.Env = append(command.Env, name+"="+value)
 	}
-	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "jaz", Version: "0.1.0"}, nil)
+	client := newClient()
 	session, err := client.Connect(ctx, stdioTransport{command: command}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("connect local MCP server: %w", err)

@@ -41,15 +41,23 @@ export type ComposerContext =
       node?: string
       label: string
     }
+  | {
+      // What an MCP App's view reports of its state; never stored in a draft.
+      id: string
+      type: 'app'
+      tool: string
+      text: string
+    }
 
 export type MessageContextInput =
   | { type: 'voice'; id: string; request_id: string; text: string }
   | { type: 'selection'; text: string; comment?: string }
   | { type: 'browser_annotation'; browser_annotation: BrowserAnnotation }
   | { type: 'canvas'; page: string; id?: string; text: string }
+  | { type: 'app'; id: string; text: string }
 
 export function hasMessageContextContent(contexts: MessageContextInput[]): boolean {
-  return contexts.some((context) => context.type !== 'canvas' || Boolean(context.id))
+  return contexts.some((context) => context.type !== 'app' && (context.type !== 'canvas' || Boolean(context.id)))
 }
 
 export function contextInputs(contexts: ComposerContext[] = []): MessageContextInput[] {
@@ -60,6 +68,7 @@ export function contextInputs(contexts: ComposerContext[] = []): MessageContextI
       return [{ type: 'selection' as const, text, comment: context.comment?.trim() || undefined }]
     }
     if (context.type === 'canvas') return [{ type: 'canvas' as const, page: context.page, id: context.node, text: context.label }]
+    if (context.type === 'app') return [{ type: 'app' as const, id: context.tool, text: context.text }]
     const annotation = normalizeBrowserAnnotation(context.browser_annotation)
     if (!annotation) return []
     const screenshotAttachmentID = context.screenshotAttachment?.id ?? annotation.screenshot_attachment_id
@@ -87,6 +96,7 @@ export function contextAttachmentIDs(contexts: ComposerContext[] = []): string[]
 
 export function contextLabel(context: ComposerContext): string {
   if (context.type === 'canvas') return context.label
+  if (context.type === 'app') return context.tool
   if (context.type !== 'selection') return 'Annotation'
   return context.comment?.trim() ? 'Comment' : 'Quote'
 }
@@ -96,6 +106,7 @@ export function contextPreviewText(context: ComposerContext): string {
     return [context.text, context.comment?.trim()].filter(Boolean).join('\n\n')
   }
   if (context.type === 'canvas') return context.label
+  if (context.type === 'app') return context.text
   const annotation = context.browser_annotation
   return [annotation.target, annotation.comment || annotation.requested_changes].filter(Boolean).join('\n\n')
 }

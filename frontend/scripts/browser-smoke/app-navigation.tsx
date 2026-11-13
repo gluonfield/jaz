@@ -1,7 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createHashHistory, createRoute, createRouter, RouterProvider } from '@tanstack/react-router'
-import { createElement } from 'react'
+import { createElement, useMemo } from 'react'
 import { createRoot } from 'react-dom/client'
+import { MCPAppFrame } from '@/components/apps/MCPAppFrame'
+import { useAppContexts } from '@/components/apps/useAppContexts'
+import { contextInputs } from '@/lib/messageContext'
+import { MCPAppThreadContext, type MCPAppThread } from '@/lib/mcpAppThread'
 import { Route as rootRoute } from '@/routes/__root'
 import { Route as appRoute } from '@/routes/apps.$serverId.$tool'
 import { Route as newRoute } from '@/routes/new'
@@ -11,9 +15,33 @@ import type { AgentSettings } from '@/lib/api/types'
 import { keys } from '@/lib/query/keys'
 import { NEW_SESSION_AGENT_KEY, NEW_SESSION_DIRECTORY_KEY, NEW_SESSION_DRAFT_KEY } from '@/lib/newSessionConfig'
 
+const CALL = { arguments: { record: 'jim' }, result: { content: [] } }
+// The policy Jaz's backend puts first in an app with no declared origins.
+const POLICY = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">`
+const NO_DRAFT = { contexts: [], removeContext: () => {}, replaceContexts: () => {} }
+
+// A thread's inline app view over the production frame and its state reports.
+function InlineView({ sent, expanded }: { sent: unknown[]; expanded: unknown[] }) {
+  const contexts = useAppContexts(NO_DRAFT)
+  const { report, take } = contexts
+  const thread = useMemo<MCPAppThread>(() => ({
+    id: 'view-thread',
+    send: (text) => sent.push({ text, contexts: contextInputs(take()) }),
+    setModelContext: report,
+    expand: (_view, app, call) => expanded.push({ app, call }),
+  }), [sent, expanded, report, take])
+  return (
+    <MCPAppThreadContext value={thread}>
+      <button id="elsewhere">Elsewhere</button>
+      <MCPAppFrame app={{ server_id: 'crm', tool: 'card' }} call={CALL} inline active />
+      <output>{contexts.contexts.map((context) => (context.type === 'app' ? `${context.tool}: ${context.text}` : '')).join()}</output>
+    </MCPAppThreadContext>
+  )
+}
+
 export async function exerciseAppNavigation() {
   const sourceURL = location.href
-  const html = await fetch('/navigation-app.html').then((response) => response.text())
+  const html = POLICY + await fetch('/navigation-app.html').then((response) => response.text())
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;background:var(--color-bg)'
   document.body.append(element)
@@ -21,8 +49,12 @@ export async function exerciseAppNavigation() {
   const originalFetch = window.fetch
   const locations = new Map<MessageEventSource, { path: string; instance: number }>()
   let thread = ''
+  const views: Record<string, unknown> = {}
+  const sent: unknown[] = []
+  const expanded: unknown[] = []
   const observe = (event: MessageEvent) => {
     if (event.data?.type === 'navigation-peer' && event.source) locations.set(event.source, event.data)
+    if (event.data?.type === 'navigation-peer-view' && event.source === document.querySelector<HTMLIFrameElement>('iframe[title="card"]')?.contentWindow) views[event.data.event] = event.data.detail
     if (event.data?.type === 'navigation-peer-thread') {
       thread = event.data.result
     }
@@ -89,6 +121,7 @@ export async function exerciseAppNavigation() {
       createRoute({ getParentRoute: () => rootRoute, path: '/apps/$serverId/$tool', validateSearch: appRoute.options.validateSearch }),
       createRoute({ getParentRoute: () => rootRoute, path: '/new', component: newRoute.options.component, validateSearch: newRoute.options.validateSearch }),
       createRoute({ getParentRoute: () => rootRoute, path: '/sessions/$sessionId', component: () => <p>Thread</p> }),
+      createRoute({ getParentRoute: () => rootRoute, path: '/view', component: () => <InlineView sent={sent} expanded={expanded} /> }),
       createRoute({ getParentRoute: () => rootRoute, path: '/bots', component: () => <p>Bots</p> }),
     ]),
     history,
@@ -220,6 +253,43 @@ export async function exerciseAppNavigation() {
     if (sessions.length !== 1) {
       throw new Error('Going back from the app thread started it again')
     }
+
+    // An inline view in a thread runs under the policy, knows its thread and
+    // posts to it only while the user is working in it.
+    await router.navigate({ to: '/view' })
+    const card = () => element.querySelector<HTMLIFrameElement>('iframe[title="card"]')!
+    const press = (button: string) => card().contentWindow!.postMessage({ type: 'navigation-peer-action', button }, '*')
+    await until(() => Boolean(views.host))
+    const host = views.host as { context: { displayMode: string; availableDisplayModes: string[]; containerDimensions: { width: number; height?: number }; 'jaz/thread': { id: string } }; capabilities: { message?: object; updateModelContext?: object } }
+    if (host.context['jaz/thread']?.id !== 'view-thread' || host.context.displayMode !== 'inline' || host.context.availableDisplayModes.join() !== 'inline,fullscreen' ||
+      !(host.context.containerDimensions.width > 0) || 'height' in host.context.containerDimensions || !host.capabilities.message || !host.capabilities.updateModelContext) {
+      throw new Error(`An inline view was told the wrong placement: ${JSON.stringify(host)}`)
+    }
+    press('reach')
+    await until(() => views.blocked === 'connect-src')
+    element.querySelector<HTMLButtonElement>('#elsewhere')!.focus()
+    press('message')
+    press('expand')
+    await until(() => views.message === true && views.expand === 'inline')
+    if (sent.length || expanded.length) throw new Error('A view the user was not using posted to its thread or opened a panel')
+    card().focus()
+    press('state')
+    await until(() => element.querySelector('output')?.textContent === 'card: Jim selected')
+    press('message')
+    press('expand')
+    await until(() => views.message === false && sent.length === 1 && expanded.length === 1 && element.querySelector('output')?.textContent === '')
+    if (JSON.stringify(sent) !== JSON.stringify([{ text: 'Email Jim', contexts: [{ type: 'app', id: 'card', text: 'Jim selected' }] }]) ||
+      JSON.stringify(expanded) !== JSON.stringify([{ app: { server_id: 'crm', tool: 'card' }, call: CALL }])) {
+      throw new Error(`The view's thread received the wrong message or call: ${JSON.stringify({ sent, expanded })}`)
+    }
+    // Outside a thread a view's message starts one.
+    await visit('tasks', { path: '/issue/CAS-2' })
+    await until(() => at('tasks', '/issue/CAS-2'))
+    frame('tasks').focus()
+    frame('tasks').contentWindow!.postMessage({ type: 'navigation-peer-action', button: 'message' }, '*')
+    await until(() => sessions.length === 2 && prompts[1]?.message.text === 'Email Jim' && router.state.location.pathname === '/sessions/thread-smoke')
+    sessions.pop()
+    prompts.pop()
 
     // With the sidebar hidden, Chats offer a new chat in the titlebar and
     // Bots, which start bots from their own panel, do not.

@@ -14,6 +14,7 @@ import { SelectionContextToolbar } from '@/components/session/SelectionContextTo
 import { useComposerContexts } from '@/components/session/useComposerContexts'
 import { ThreadCanvas } from '@/components/canvas/ThreadCanvas'
 import { CanvasChatToggle, useCanvasChat } from '@/components/canvas/CanvasChat'
+import { useAppContexts } from '@/components/apps/useAppContexts'
 import { useCanvasContexts } from '@/components/canvas/useCanvasContexts'
 import { FileReaderLinkProvider, MessageMarkdown, PreviewLinkProvider } from '@/components/session/MessageMarkdown'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
@@ -56,6 +57,7 @@ import {
 } from '@/lib/api/sessions'
 import type { AgentSessionState, ChatMessage, SessionEvent, SessionOverview } from '@/lib/api/types'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
+import { MCPAppThreadContext, type MCPAppThread } from '@/lib/mcpAppThread'
 import { SidePanelSlot } from '@/lib/sidePanelSlot'
 import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { type HistoryPaging, useSessionHistory } from '@/lib/hooks/useSessionHistory'
@@ -255,10 +257,20 @@ export function ThreadView({
     storage: 'local',
   })
   const canvasContexts = useCanvasContexts(composerContexts)
+  const appContexts = useAppContexts(canvasContexts)
+  // The composer sends its own contexts and clears them; any other send takes
+  // what app views reported, and on a canvas the selection too.
+  const { take: takeAppContexts } = appContexts
   const handleSend = useCallback((text: string, options: SendMessageOptions = {}) => {
     pinToBottom()
-    return sendMessage(text, { ...options, contexts: options.contexts ?? (canvas ? canvasContexts.contexts : undefined) })
-  }, [pinToBottom, sendMessage, canvas, canvasContexts.contexts])
+    return sendMessage(text, { ...options, contexts: options.contexts ?? [...(canvas ? canvasContexts.contexts : []), ...takeAppContexts()] })
+  }, [pinToBottom, sendMessage, canvas, canvasContexts.contexts, takeAppContexts])
+  const appThread = useMemo<MCPAppThread>(() => ({
+    id: sessionId,
+    send: (text) => void handleSend(text),
+    setModelContext: appContexts.report,
+    expand: sidePanel.openApp,
+  }), [sessionId, handleSend, appContexts.report, sidePanel.openApp])
   const markdownArtifacts = useMemo(() => ({ mode: 'source' as const, onSendPrompt: handleSend }), [handleSend])
   const threadFind = useThreadFind(sessionId, scrollRef, pauseFollowing)
   const [revealedMessageSeq, setRevealedMessageSeq] = useState<number>()
@@ -516,6 +528,7 @@ export function ThreadView({
   )
 
   return (
+    <MCPAppThreadContext value={appThread}>
     <MarkdownArtifactContext value={markdownArtifacts}>
     <FileReaderLinkProvider sessionId={session.id} documentPath={session.runtime_ref?.cwd ? `${session.runtime_ref.cwd}/` : undefined} onOpen={sidePanel.openFile}>
       <PreviewLinkProvider onOpen={sidePanel.openPreview}>
@@ -705,9 +718,9 @@ export function ThreadView({
                     draftStorageKey={`${SESSION_DRAFT_KEY_PREFIX}${session.id}`}
                     fileRoot={session.runtime_ref?.cwd}
                     attachmentSessionId={session.id}
-                    contexts={canvasContexts.contexts}
-                    onRemoveContext={canvasContexts.removeContext}
-                    onReplaceContexts={canvasContexts.replaceContexts}
+                    contexts={appContexts.contexts}
+                    onRemoveContext={appContexts.removeContext}
+                    onReplaceContexts={appContexts.replaceContexts}
                     onSend={handleSend}
                     onQueuePrompt={queue.onQueuePrompt}
                     onStop={stopSession}
@@ -739,5 +752,6 @@ export function ThreadView({
       </PreviewLinkProvider>
     </FileReaderLinkProvider>
     </MarkdownArtifactContext>
+    </MCPAppThreadContext>
   )
 }

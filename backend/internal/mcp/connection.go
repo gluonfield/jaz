@@ -160,7 +160,7 @@ func (c *serverConnection) loadCatalog(ctx context.Context, server mcpconfig.Ser
 			continue
 		}
 		searches = searches || isSearchTool(tool)
-		meta := readToolMeta(tool)
+		meta := readMeta[toolMeta](tool.Meta)
 		apps.add(tool, meta)
 		if !meta.visibleTo("model") {
 			continue

@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { CallToolResult } from '@modelcontextprotocol/client'
 import type { AppBridge } from '@modelcontextprotocol/ext-apps/app-bridge'
 import { useNavigate, useRouterState } from '@tanstack/react-router'
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import { use, useEffect, useEffectEvent, useId, useRef, useState } from 'react'
 import { z } from 'zod'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { callMCPAppTool, deepLinkTarget, entrypointKey, mcpAppQuery, mcpEntrypointsQuery } from '@/lib/api/mcp'
@@ -10,10 +10,17 @@ import type { MCPAppEvent, MCPEntrypoint } from '@/lib/api/types'
 import { serveFile, type OpenedFile } from '@/lib/mcpAppFiles'
 import { mcpAppHostContext } from '@/lib/mcpAppHost'
 import { mcpAppKeyboard } from '@/lib/mcpAppKeyboard'
+import { MCPAppThreadContext } from '@/lib/mcpAppThread'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
 
 const navigationParams = z.object({ path: z.string().regex(/^\/(?!\/)/), replace: z.boolean(), delta: z.number().int().optional() })
 const threadParams = z.object({ prompt: z.string().trim().min(1) })
+const TEXT_ONLY = { text: {} }
+
+// The text of what a view sends; Jaz accepts no other content from views.
+function viewText(content: { type: string; text?: string }[] = []): string {
+  return content.flatMap((block) => (block.type === 'text' && block.text ? [block.text] : [])).join('\n\n').trim()
+}
 
 // Every sidebar app stays mounted over the content card, so opening its
 // section is instant and finds the app as the user left it; only the active
@@ -61,13 +68,16 @@ export function MCPApps() {
 
 // Hosts one MCP App through the official AppBridge. An entrypoint opens by
 // calling its tool with {} or, for a file viewer, the opened file; an agent's
-// call shows inline with its own arguments and result. The app gets that
-// input and result once it initializes. Tool calls reach the app's own server
-// through Jaz, which holds the authenticated MCP session, so the sandboxed
-// page never sees a token.
-export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onNavigate, onDelivered }: {
+// call shows with its own arguments and result, inline in the transcript. The
+// app gets that input and result once it initializes. Tool calls reach the
+// app's own server through Jaz, which holds the authenticated MCP session, so
+// the sandboxed page never sees a token. Inside a thread the view can post a
+// message to it, report its state for the user's next message and, from
+// inline, open larger in the side panel.
+export function MCPAppFrame({ app, active, inline = false, file, call, deepLink, toolInput, onNavigate, onDelivered }: {
   app: Pick<MCPEntrypoint, 'server_id' | 'tool'> & { title?: string }
   active: boolean
+  inline?: boolean
   file?: OpenedFile
   call?: Pick<MCPAppEvent, 'arguments' | 'result'>
   deepLink?: string
@@ -82,9 +92,12 @@ export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onNa
   const bridge = useRef<AppBridge>(null)
   const appPath = useRef<string>(undefined)
   const html = query.data
-  const inline = call !== undefined
+  const thread = use(MCPAppThreadContext)
+  const view = useId()
   const navigationEnabled = onNavigate !== undefined
   const displayMode = inline ? 'inline' : 'fullscreen'
+  const expandable = inline && call !== undefined && thread?.expand !== undefined
+  const reportsState = thread?.setModelContext !== undefined
   // The document paints before the app has the host theme, so it stays
   // transparent until the app reports ui/notifications/initialized.
   const [readyFor, setReadyFor] = useState<string>()
@@ -100,8 +113,12 @@ export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onNa
     appPath.current = location.path
     if (active && readyFor === html) onNavigate?.(location)
   })
-  const hostContext = useEffectEvent(() => ({
-    ...mcpAppHostContext(displayMode),
+  const placement = useEffectEvent((iframe: HTMLIFrameElement) => ({
+    ...mcpAppHostContext(displayMode, expandable ? ['inline', 'fullscreen'] : [displayMode], iframe),
+    ...(thread && { 'jaz/thread': { id: thread.id } }),
+  }))
+  const hostContext = useEffectEvent((iframe: HTMLIFrameElement) => ({
+    ...placement(iframe),
     ...(onNavigate && deepLink && { 'jaz/navigation': { path: deepLink } }),
   }))
   // Only the app the user is working in may start a thread; the new-thread
@@ -112,6 +129,18 @@ export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onNa
     }
     void navigate({ to: '/new', state: { appPrompt: prompt } })
     return {}
+  })
+  // A view's message goes to its thread as the user's; outside a thread it
+  // starts one. Only the view the user is working in may send.
+  const sendMessage = useEffectEvent((text: string) => {
+    if (!text || document.activeElement !== frame.current) return { isError: true }
+    if (thread) thread.send(text)
+    else void navigate({ to: '/new', state: { appPrompt: text } })
+    return {}
+  })
+  const reportState = useEffectEvent((text: string) => thread?.setModelContext?.(view, tool, text))
+  const expand = useEffectEvent(() => {
+    if (call) thread?.expand?.(view, app, call)
   })
   const callTool = useEffectEvent((input: Record<string, unknown>) =>
     callMCPAppTool(serverId, { name: tool, arguments: input }).catch(
@@ -156,15 +185,26 @@ export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onNa
     if (!iframe || !target || html === undefined) return
     let closed = false
     let observer: MutationObserver | undefined
+    let resized: ResizeObserver | undefined
     const { input, result } = open()
     const connected = import('@modelcontextprotocol/ext-apps/app-bridge').then(async ({ AppBridge, PostMessageTransport }) => {
       if (closed) return undefined
       const created = new AppBridge(
         null,
         { name: 'Jaz', version: '1' },
-        { openLinks: {}, serverTools: {}, logging: {}, experimental: { 'jaz/threads': {}, ...(file && { 'openai/resource': {} }), ...(navigationEnabled && { 'jaz/navigation': {} }) } },
-        { hostContext: hostContext() },
+        { openLinks: {}, serverTools: {}, logging: {}, message: TEXT_ONLY, ...(reportsState && { updateModelContext: TEXT_ONLY }), experimental: { 'jaz/threads': {}, ...(file && { 'openai/resource': {} }), ...(navigationEnabled && { 'jaz/navigation': {} }) } },
+        { hostContext: hostContext(iframe) },
       )
+      created.onmessage = async ({ content }) => sendMessage(viewText(content))
+      created.onupdatemodelcontext = async ({ content }) => {
+        reportState(viewText(content))
+        return {}
+      }
+      // The expanded view is a second one in the side panel; this one stays inline.
+      created.onrequestdisplaymode = async ({ mode }) => {
+        if (mode === 'fullscreen' && expandable && document.activeElement === iframe) expand()
+        return { mode: displayMode }
+      }
       if (navigationEnabled) created.setNotificationHandler('jaz/notifications/navigation', { params: navigationParams }, navigated)
       created.setRequestHandler('jaz/threads/create', { params: threadParams }, createThread)
       // The host alone attests the opened file's path, which only the app's
@@ -185,7 +225,7 @@ export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onNa
           setUnsupported(true)
           return
         }
-        if (!created.getAppCapabilities()?.experimental?.['jaz/navigation'] || !hostContext()['jaz/navigation']) {
+        if (!created.getAppCapabilities()?.experimental?.['jaz/navigation'] || !hostContext(iframe)['jaz/navigation']) {
           void created.sendToolInput({ arguments: input })
         }
         void result.then((value) => created.sendToolResult(value))
@@ -195,8 +235,11 @@ export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onNa
       // Listen before the document loads so the app's first ui/initialize lands.
       await created.connect(new PostMessageTransport(target, target))
       iframe.srcdoc = inline ? html : html + mcpAppKeyboard
-      observer = new MutationObserver(() => created.setHostContext(hostContext()))
+      const refresh = () => created.setHostContext(hostContext(iframe))
+      observer = new MutationObserver(refresh)
       observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style'] })
+      resized = new ResizeObserver(refresh)
+      resized.observe(iframe)
       bridge.current = created
       return created
     })
@@ -204,28 +247,30 @@ export function MCPAppFrame({ app, active, file, call, deepLink, toolInput, onNa
       closed = true
       bridge.current = null
       observer?.disconnect()
+      resized?.disconnect()
       void connected.then((created) => created?.close())
     }
-  }, [html, serverId, tool, file, inline, displayMode, navigationEnabled])
+  }, [html, serverId, tool, file, inline, displayMode, expandable, reportsState, navigationEnabled])
 
   // A navigation-aware app restores the path kept in Jaz's history. Other
   // apps receive the existing one-shot deep link.
   useEffect(() => {
     const current = bridge.current
-    if (!active || !current || readyFor !== html) return
+    const iframe = frame.current
+    if (!active || !current || !iframe || readyFor !== html) return
     if (current.getAppCapabilities()?.experimental?.['jaz/navigation']) {
       if (deepLink) {
         appPath.current = deepLink
-        current.setHostContext(hostContext())
+        current.setHostContext(hostContext(iframe))
       } else if (appPath.current && !toolInput) {
         navigated({ path: appPath.current, replace: true })
       }
       return
     }
     if (!deepLink) return
-    current.setHostContext({ ...mcpAppHostContext(displayMode), 'openai/deepLink': { url: deepLink } })
-    current.setHostContext({ ...mcpAppHostContext(displayMode), 'openai/deepLink': undefined })
-  }, [active, deepLink, toolInput, readyFor, html, displayMode])
+    current.setHostContext({ ...placement(iframe), 'openai/deepLink': { url: deepLink } })
+    current.setHostContext({ ...placement(iframe), 'openai/deepLink': undefined })
+  }, [active, deepLink, toolInput, readyFor, html])
 
   // Navigation-aware apps replace the opening input with their resulting path.
   useEffect(() => {

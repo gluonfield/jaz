@@ -20,6 +20,7 @@ import { useSessionEvents } from '@/lib/hooks/useSessionEvents'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
 import { useSessionHistory } from '@/lib/hooks/useSessionHistory'
 import { useWindowEvent } from '@/lib/hooks/useWindowEvent'
+import { MCPAppThreadContext } from '@/lib/mcpAppThread'
 import { invalidateSessionLists } from '@/lib/query/invalidate'
 import { preparedSendMessage, type SendMessageOptions } from '@/lib/sendMessage'
 import { coalesceSessionEvents } from '@/lib/sessionEvents'
@@ -114,15 +115,17 @@ export function GroupChat({ group, bots }: { group: Bot; bots: Bot[] }) {
             ) : history.data && !entries.length ? (
               <EmptyState title="Say something to the group" />
             ) : (
-              <ChatLog
-                entries={entries}
-                bots={bots}
-                mentionBots={members}
-                named
-                working={working.map((bot) => ({ bot }))}
-                scrollRef={scrollRef}
-                paging={history.paging}
-              />
+              <MCPAppThreadContext value={{ id: group.id, send: (text) => void send(text) }}>
+                <ChatLog
+                  entries={entries}
+                  bots={bots}
+                  mentionBots={members}
+                  named
+                  working={working.map((bot) => ({ bot }))}
+                  scrollRef={scrollRef}
+                  paging={history.paging}
+                />
+              </MCPAppThreadContext>
             )}
           </div>
         </div>
