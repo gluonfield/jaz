@@ -23,6 +23,7 @@ export function SelectionMenu({ editor }: { editor: Editor }) {
   })
   return (
     <BubbleMenu editor={editor} shouldShow={selectsText} className="z-(--z-dropdown) flex items-center gap-0.5 rounded-full bg-surface p-1 shadow-lg ring-1 ring-border">
+      {/* A new selection starts on the marks, not on the last one's link field. */}
       <Marks key={at.range} editor={editor} marks={at.marks} link={at.link} />
     </BubbleMenu>
   )

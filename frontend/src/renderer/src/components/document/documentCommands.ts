@@ -74,25 +74,15 @@ export const tableEdits: DocumentCommand[][] = [
   ],
 ]
 
-// pickImage asks the person for a picture, which arrives after the menu has closed.
-export function documentCommands(pickImage: () => void) {
-  const image: DocumentCommand = {
-    label: 'Image',
-    icon: Image,
-    words: 'picture photo',
-    run: (chain) => {
-      pickImage()
-      return chain
-    },
-  }
-  return {
-    styles: [text, ...headings],
-    table,
-    image,
-    checklist,
-    more: [[bulleted, numbered, quote], [code, formula, date, divider]],
-    slash: [[...headings, table], [bulleted, checklist, code, date, divider, formula, image, numbered, quote]],
-  }
+const image: DocumentCommand = { label: 'Image', icon: Image, words: 'picture photo', run: (chain) => chain.pickImage() }
+
+export const documentCommands = {
+  styles: [text, ...headings],
+  table,
+  image,
+  checklist,
+  more: [[bulleted, numbered, quote], [code, formula, date, divider]],
+  slash: [[...headings, table], [bulleted, checklist, code, date, divider, formula, image, numbered, quote]],
 }
 
 // The "/words" being typed at the caret, where they start a line or a word.

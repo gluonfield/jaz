@@ -12,25 +12,26 @@
   transition:
     background-color 120ms,
     border-color 120ms;
-}
-:is(.chat-prose, .file-prose) input[type='checkbox']:disabled {
-  cursor: default;
-}
-:is(.chat-prose, .file-prose) input[type='checkbox']:enabled:not(:checked):hover {
-  border-color: var(--color-ink-2);
-  background: var(--color-list-hover);
-}
-:is(.chat-prose, .file-prose) input[type='checkbox']:checked {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-}
-:is(.chat-prose, .file-prose) input[type='checkbox']:checked::after {
-  content: '';
-  position: absolute;
-  inset: -1.5px;
-  background: var(--color-on-primary);
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.25 8.4l2.6 2.6 4.9-5.5'/%3E%3C/svg%3E")
-    center / contain no-repeat;
+
+  &:disabled {
+    cursor: default;
+  }
+  &:enabled:not(:checked):hover {
+    border-color: var(--color-ink-2);
+    background: var(--color-list-hover);
+  }
+  &:checked {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+  }
+  &:checked::after {
+    content: '';
+    position: absolute;
+    inset: -1.5px;
+    background: var(--color-on-primary);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.25 8.4l2.6 2.6 4.9-5.5'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
 }
 /* Read-only Markdown keeps the box in the line of text it starts. */
 :where(.chat-prose, .file-prose) ul.contains-task-list {
@@ -38,30 +39,32 @@
 }
 :where(.chat-prose, .file-prose) li.task-list-item {
   list-style: none;
-}
-:where(.chat-prose, .file-prose) li.task-list-item input[type='checkbox'] {
-  margin-right: 0.55em;
-  vertical-align: -0.16em;
+
+  & input[type='checkbox'] {
+    margin-right: 0.55em;
+    vertical-align: -0.16em;
+  }
 }
 /* In the editor the box sits beside the task, level with its first line, and
    a task done has that first paragraph struck through and dimmed. */
 .document-editor ul[data-type='taskList'] {
   padding-left: 0;
   list-style: none;
-}
-.document-editor ul[data-type='taskList'] > li {
-  display: flex;
-  gap: 0.55em;
-}
-.document-editor ul[data-type='taskList'] > li > label {
-  display: flex;
-  flex: none;
-  align-items: center;
-  height: 1lh;
-}
-.document-editor ul[data-type='taskList'] > li > div {
-  flex: 1;
-  min-width: 0;
+
+  & > li {
+    display: flex;
+    gap: 0.55em;
+  }
+  & > li > label {
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 1lh;
+  }
+  & > li > div {
+    flex: 1;
+    min-width: 0;
+  }
 }
 .document-editor li[data-checked='true'] > div > p:first-child {
   color: var(--color-ink-3);

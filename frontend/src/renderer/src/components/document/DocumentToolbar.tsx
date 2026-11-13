@@ -5,12 +5,12 @@ import { useState } from 'react'
 import { IconButton } from '@/components/ui/IconButton'
 import { Popover } from '@/components/ui/Popover'
 import { CommandRows } from './CommandRows'
-import { tableEdits, type documentCommands, type DocumentCommand } from './documentCommands'
+import { documentCommands as commands, tableEdits, type DocumentCommand } from './documentCommands'
 
 // The bar that stays at the foot of a document: the style of the line the
 // caret is on, and the things that can be put there. Inside a table its table
 // button edits that table instead of adding another.
-export function DocumentToolbar({ editor, commands }: { editor: Editor; commands: ReturnType<typeof documentCommands> }) {
+export function DocumentToolbar({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState('')
   const at = useEditorState({
     editor,

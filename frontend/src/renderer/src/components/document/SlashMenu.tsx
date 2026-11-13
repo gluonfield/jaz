@@ -3,19 +3,19 @@ import { useEditorState } from '@tiptap/react'
 import { useEffect, useMemo, useState } from 'react'
 import { ContextMenu } from '@/components/ui/Popover'
 import { CommandRows } from './CommandRows'
-import { matchesQuery, slashQuery, type DocumentCommand } from './documentCommands'
+import { documentCommands, matchesQuery, slashQuery, type DocumentCommand } from './documentCommands'
 
 // The height of a menu row, to tell whether the menu fits below the caret.
 const ROW = 28
 
 // The menu a "/" opens at the caret: typing narrows it, the arrows and Enter
 // pick from it, and the pick takes the place of what was typed.
-export function SlashMenu({ editor, groups }: { editor: Editor; groups: DocumentCommand[][] }) {
+export function SlashMenu({ editor }: { editor: Editor }) {
   const slash = useEditorState({ editor, selector: ({ editor }) => (editor.isFocused ? slashQuery(editor.state) : null) })
   const [closedAt, setClosedAt] = useState(-1)
   const [picked, setPicked] = useState({ query: '', index: 0 })
   const query = slash?.query ?? ''
-  const shown = useMemo(() => groups.map((group) => group.filter((command) => matchesQuery(command, query))).filter((group) => group.length), [groups, query])
+  const shown = useMemo(() => documentCommands.slash.map((group) => group.filter((command) => matchesQuery(command, query))).filter((group) => group.length), [query])
   const commands = shown.flat()
   const from = slash && slash.from !== closedAt && commands.length ? slash.from : -1
   const index = picked.query === query ? Math.min(picked.index, commands.length - 1) : 0

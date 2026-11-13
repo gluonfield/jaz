@@ -5,6 +5,7 @@ import { Placeholder } from '@tiptap/extensions'
 import { Plugin } from '@tiptap/pm/state'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
+import { documentImages, type SaveImage } from './documentImages'
 
 const INLINE_MATH = String.raw`\\\([\s\S]+?\\\)|\$\$[^\n$]+\$\$`
 const DISPLAY_MATH = String.raw` {0,3}(?:\\\[[\s\S]+?\\\]|\$\$ *\n[\s\S]+?\n {0,3}\$\$) *(?:\n+|$)`
@@ -111,12 +112,11 @@ const BLOCK_MARKDOWN = /^(?:#{1,6} |[-*+] |\d+\. |> |```|\|.+\|\s*$)/m
 const MarkdownPaste = Extension.create({
   name: 'markdownPaste',
   addProseMirrorPlugins() {
-    const paste = (event: ClipboardEvent) => {
-      const data = event.clipboardData
-      const text = data?.types.includes('text/html') ? '' : (data?.getData('text/plain') ?? '')
+    const paste = (data: DataTransfer | null) => {
+      const text = !data || data.types.includes('text/html') ? '' : data.getData('text/plain')
       return BLOCK_MARKDOWN.test(text) && this.editor.commands.insertContent(this.editor.markdown!.parse(text).content ?? [])
     }
-    return [new Plugin({ props: { handlePaste: (_view, event) => paste(event) } })]
+    return [new Plugin({ props: { handlePaste: (_view, event) => paste(event.clipboardData) } })]
   },
 })
 
@@ -134,7 +134,8 @@ export function replaceSource(editor: Editor, pos: number, markdown: string): bo
 // drawn by sourceView. Underline has no Markdown form, a trailing empty line
 // would be an edit the person never made, and links are opened by the reader
 // rather than the browser.
-export const documentKit = (sourceView?: () => NodeViewRenderer) => [
+export const documentKit = ({ sourceView, saveImage }: { sourceView?: () => NodeViewRenderer; saveImage?: SaveImage } = {}) => [
+  ...(saveImage ? [documentImages(saveImage)] : []),
   StarterKit.configure({ underline: false, trailingNode: false, codeBlock: false, link: { openOnClick: false, HTMLAttributes: { class: 'chat-prose-link', target: null, rel: null } } }),
   Markdown,
   TaskList,

@@ -1,5 +1,4 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useBlocker } from '@tanstack/react-router'
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react'
 import { Bold, Italic, List, ListOrdered } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -23,7 +22,7 @@ export function BotFileEditor({ bot, name, onClose }: { bot: Bot; name: BotFileN
 function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose: () => void }) {
   const label = BOT_FILE_LABELS[file.name]
   const queryClient = useQueryClient()
-  const { state, edited, save, touch, takeTheirs, keepMine } = useDocumentSave(file, {
+  const { state, unsaved, touch, takeTheirs, keepMine } = useDocumentSave(file, {
     read: async () => (await queryClient.fetchQuery({ ...botFilesQuery(bot.id), staleTime: 0 })).find((item) => item.name === file.name)!,
     write: async (content, version) => {
       const saved = await saveBotFile(bot.id, file.name, content, version)
@@ -45,20 +44,9 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
 
   // Closing saves first and stays open on an edit that could not be saved.
   const close = async () => {
-    await save()
-    if (edited.current && !window.confirm(`Discard your edits to ${label}?`)) return
+    if ((await unsaved()) && !window.confirm(`Discard your edits to ${label}?`)) return
     onClose()
   }
-
-  // Leaving for another page saves the edit first and stays, draft and all,
-  // when it cannot be saved; any other unmount still saves what it can.
-  useBlocker({
-    shouldBlockFn: async () => {
-      await save()
-      return edited.current
-    },
-    enableBeforeUnload: false,
-  })
 
   // A fixed height keeps the modal from resizing as the document grows or the
   // conflict choice appears.

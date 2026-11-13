@@ -181,11 +181,9 @@ export async function exerciseMarkdownDocuments() {
     await click(reader.querySelector('[aria-label="Bold"]'))
     await until(() => stored.content.includes('**A** part costs'))
     await window.smoke.key('End')
-    const picked = new DataTransfer()
-    picked.items.add(new File(['png'], 'first sketch.png', { type: 'image/png' }))
-    const picker = reader.querySelector<HTMLInputElement>('input[type="file"]')!
-    picker.files = picked.files
-    picker.dispatchEvent(new Event('change', { bubbles: true }))
+    const picture = new DataTransfer()
+    picture.items.add(new File(['png'], 'first sketch.png', { type: 'image/png' }))
+    reader.querySelector('.ProseMirror')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: picture, bubbles: true, cancelable: true }))
     await until(() => created.length === 1 && stored.content.includes(`![first sketch](${created[0].slice(created[0].indexOf('images/'))})`))
     if (!/\/images\/\w{8}-first-sketch\.png$/.test(created[0])) throw new Error('The picture was saved as ' + created[0])
     await click(paragraph('A part costs'))

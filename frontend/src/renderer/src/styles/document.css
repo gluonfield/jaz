@@ -29,7 +29,8 @@
   color: color-mix(in oklab, var(--color-ink-3) 70%, transparent);
   pointer-events: none;
 }
-/* A table shows every cell's edges, so an empty one can be seen and clicked. */
+/* A table shows every cell's edges, so an empty one can be seen and clicked;
+   the second selector outranks the prose rule that strips a row's end cells. */
 .document-editor table {
   margin: 0.75rem 0;
   table-layout: fixed;

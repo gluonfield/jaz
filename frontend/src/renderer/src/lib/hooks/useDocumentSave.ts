@@ -1,3 +1,4 @@
+import { useBlocker } from '@tanstack/react-router'
 import type { Editor } from '@tiptap/core'
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '@/lib/api/response'
@@ -16,7 +17,9 @@ export interface DocumentVersion {
 // so another writer's changes meanwhile are never overwritten unseen: write
 // fails with the conflict status when the file is no longer that version, and
 // the person then chooses between the two. read and write are the ones given
-// when the document opened.
+// when the document opened. Leaving for another page saves first and stays,
+// draft and all, when the edit cannot be saved; any other unmount still saves
+// what it can.
 export function useDocumentSave(
   file: DocumentVersion,
   { read, write, conflict, delay }: {
@@ -68,6 +71,11 @@ export function useDocumentSave(
     }
     return {
       save,
+      // unsaved saves and then tells whether an edit is still not saved.
+      unsaved: async () => {
+        await save()
+        return edited.current
+      },
       // Development's StrictMode builds the editor twice, and only the one
       // being typed in is known to be on screen, so that is the one saved.
       touch: (editor: Editor) => {
@@ -94,5 +102,6 @@ export function useDocumentSave(
     }
   })
   useEffect(() => () => void actions.save(), [actions])
-  return { state, edited, ...actions }
+  useBlocker({ shouldBlockFn: actions.unsaved, enableBeforeUnload: false })
+  return { state, ...actions }
 }

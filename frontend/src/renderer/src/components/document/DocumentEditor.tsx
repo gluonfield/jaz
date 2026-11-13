@@ -1,13 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useBlocker, useNavigate } from '@tanstack/react-router'
+import { useNavigate } from '@tanstack/react-router'
 import type { EditorView } from '@tiptap/pm/view'
 import { EditorContent, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
 import { FileText, X } from 'lucide-react'
-import { useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { FileReaderLinkProvider, usePreviewLink } from '@/components/session/MessageMarkdown'
 import { SidePanelCloseGuard } from '@/components/session/SidePanelState'
 import { Button } from '@/components/ui/Button'
-import { clipboardFiles } from '@/components/ui/fileTransfer'
 import { IconButton } from '@/components/ui/IconButton'
 import { useToast } from '@/components/ui/toast'
 import { createSessionFile, saveSessionFile, sessionFileQuery } from '@/lib/api/sessions'
@@ -16,7 +15,6 @@ import { SAVE_LABEL, useDocumentSave, type DocumentVersion } from '@/lib/hooks/u
 import { headingAnchors, markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { isPlainClick, markdownLinkTarget } from '@/lib/markdownLinks'
 import type { FileReference } from '@shared/fileReader'
-import { documentCommands } from './documentCommands'
 import { documentKit } from './documentKit'
 import { DocumentOutline } from './DocumentOutline'
 import { DocumentToolbar } from './DocumentToolbar'
@@ -33,8 +31,6 @@ export function isEditableDocument(file: SessionFileRead): file is EditableDocum
 }
 
 const versionOf = (file: EditableDocument): DocumentVersion => ({ content: file.content ?? '', version: file.version })
-
-const extensions = documentKit(() => ReactNodeViewRenderer(SourceView))
 
 export function DocumentHeader({ title, onClose, children }: { title: string; onClose: () => void; children?: ReactNode }) {
   return (
@@ -68,10 +64,8 @@ export function DocumentEditor({
   const navigate = useNavigate()
   const openPreview = usePreviewLink()
   const toast = useToast()
-  const imagePicker = useRef<HTMLInputElement>(null)
-  const commands = useMemo(() => documentCommands(() => imagePicker.current?.click()), [])
   const query = sessionFileQuery(sessionId, path)
-  const { state, edited, save, touch, follow, takeTheirs, keepMine } = useDocumentSave(versionOf(file), {
+  const { state, save, unsaved, touch, follow, takeTheirs, keepMine } = useDocumentSave(versionOf(file), {
     read: async () => versionOf((await queryClient.fetchQuery({ ...query, staleTime: 0 })) as EditableDocument),
     // A read begun before the save would put the older text back in the cache.
     write: async (content, version) => {
@@ -84,18 +78,11 @@ export function DocumentEditor({
     delay: 2000,
   })
   const registerCloseGuard = useContext(SidePanelCloseGuard)
-  const canClose = useCallback(async () => {
-    await save()
-    return !edited.current || window.confirm('Discard your edits to this document?')
-  }, [save, edited])
+  const canClose = useCallback(async () => !(await unsaved()) || window.confirm('Discard your edits to this document?'), [unsaved])
   useEffect(() => registerCloseGuard?.(canClose), [registerCloseGuard, canClose])
-  useBlocker({
-    shouldBlockFn: async () => {
-      await save()
-      return edited.current
-    },
-    enableBeforeUnload: false,
-  })
+  const close = async () => {
+    if (await canClose()) onClose()
+  }
   const openLink = (view: EditorView, link: HTMLAnchorElement) => {
     const target = markdownLinkTarget(link.getAttribute('href') ?? '', link.textContent, { sessionId, documentPath: file.path })
     switch (target?.kind) {
@@ -109,19 +96,16 @@ export function DocumentEditor({
         return openPreview ? openPreview(target.url) : void window.open(target.url, '_blank', 'noreferrer')
     }
   }
-  // A picture is saved in an images folder beside the document and shown from there.
-  const addImages = (view: EditorView, files: File[]) => {
-    const images = files.filter((image) => image.type.startsWith('image/'))
-    for (const image of images) {
-      const path = `images/${crypto.randomUUID().slice(0, 8)}-${image.name.replace(/[^\w.-]+/g, '-')}`
-      const source = `![${image.name.replace(/\.\w+$/, '').replace(/[[\]]/g, '')}](${path})`
-      createSessionFile(sessionId, file.path.replace(/[^/\\]*$/, path), image).then(
-        () => view.isDestroyed || view.dispatch(view.state.tr.replaceSelectionWith(view.state.schema.nodes.sourceInline.create({ source }))),
-        () => toast(`Could not add ${image.name}`, 'danger'),
-      )
+  const saveImage = async (beside: string, image: File) => {
+    try {
+      await createSessionFile(sessionId, file.path.replace(/[^/\\]*$/, beside), image)
+      return true
+    } catch {
+      toast(`Could not add ${image.name}`, 'danger')
+      return false
     }
-    return images.length > 0
   }
+  const [extensions] = useState(() => documentKit({ sourceView: () => ReactNodeViewRenderer(SourceView), saveImage }))
   const editor = useEditor({
     extensions,
     content: file.content,
@@ -134,7 +118,6 @@ export function DocumentEditor({
         openLink(view, link)
         return true
       },
-      handlePaste: (view, event) => !event.clipboardData?.types.includes('text/plain') && addImages(view, event.clipboardData ? clipboardFiles(event.clipboardData) : []),
     },
     onUpdate: ({ editor }) => touch(editor),
     onBlur: () => void save(),
@@ -145,7 +128,7 @@ export function DocumentEditor({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <DocumentHeader title={markdownDocumentTitle(file.content ?? '', path)} onClose={async () => { if (await canClose()) onClose() }}>
+      <DocumentHeader title={markdownDocumentTitle(file.content ?? '', path)} onClose={() => void close()}>
         <span role="status" className={`shrink-0 text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>{SAVE_LABEL[state]}</span>
         {state === 'failed' ? <Button size="sm" variant="ghost" onClick={() => void save()}>Retry</Button> : null}
         {editor ? <DocumentOutline editor={editor} /> : null}
@@ -166,21 +149,10 @@ export function DocumentEditor({
       </FileReaderLinkProvider>
       {editor ? (
         <>
-          <SlashMenu editor={editor} groups={commands.slash} />
+          <SlashMenu editor={editor} />
           <SelectionMenu editor={editor} />
           <TableMenu editor={editor} />
-          <DocumentToolbar editor={editor} commands={commands} />
-          <input
-            ref={imagePicker}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={(event) => {
-              addImages(editor.view, [...(event.target.files ?? [])])
-              event.target.value = ''
-            }}
-          />
+          <DocumentToolbar editor={editor} />
         </>
       ) : null}
     </div>
