@@ -28,23 +28,30 @@ const random = (n: number) => {
   return s - Math.floor(s)
 }
 
-// A street of towers, some with a narrower crown, each with a shaded side and
-// windows lit at random.
+// A street of towers, a few of them tall and some with a spire, each with a
+// shaded side and windows lit at random.
 const skyline = (base: number, amp: number, seed: number, density: number): Range => ({
   face: (x, depth, facing) =>
     facing > 0 ? 1 : x % 3 && depth % 4 > 1 ? Math.round(random(seed + Math.floor(x / 3) + 57 * Math.floor(depth / 4))) : density,
   tops: (cols, height) => {
     const tops = new Float32Array(cols + 2)
     for (let c = 0, block = seed; c < tops.length; block++) {
-      const width = Math.ceil(height * (0.1 + 0.2 * random(block)))
-      const top = height * (base - amp * random(block + 0.5))
+      const width = Math.ceil(height * (0.1 + 0.16 * random(block)))
+      const top = height * (base - amp * random(block + 0.5) ** 2)
       tops.fill(top, c, c + width)
-      if (random(block + 0.25) < 0.4) tops.fill(top - 0.05 * height, c + Math.ceil(width / 4), c + Math.floor((3 * width) / 4))
+      if (random(block + 0.25) < 0.35) tops[c + (width >> 1)] = top - 0.14 * height
       c += width
     }
     return tops
   },
 })
+
+// The limb of a banded planet seen from orbit, lit from the left.
+const limb: Range = {
+  face: (_, depth, facing) => (0.5 - 0.4 * facing) * (0.7 + 0.3 * Math.sin(0.12 * depth * depth ** 0.5)),
+  tops: (cols, height) =>
+    Float32Array.from({ length: cols + 2 }, (_, c) => 0.12 * height + 1.2 * cols - 1.2 * cols * Math.sqrt(1 - ((c - 1 - cols / 2) / (1.2 * cols)) ** 2)),
+}
 
 // Visits each cell the ranges cover in a band `height` rows tall, with its
 // coverage and range (0 is the farthest). Returns the highest covered row per
@@ -73,16 +80,18 @@ const ground =
     return covered
   }
 
-export const GROUNDS = {
+// A scene's ground and its sun: how far across it sits, its size, and whether
+// the sky is night whatever the theme.
+export type Scene = { ground: Ground; sky: { x: number; size: number; night?: true } }
+
+export const SCENES: Record<'blank' | 'desert' | 'city' | 'orbit', Scene | null> = {
   blank: null,
-  desert: ground([swell(0.21, 0.21, 1.3, 2.2, 0.5), swell(0.5, 0.25, 2, 0.4, 0.62), swell(0.83, 0.31, 3, 1.5, 0.85)]),
-  city: ground([skyline(0.5, 0.5, 11, 0.3), skyline(0.72, 0.42, 47, 0.55), skyline(0.95, 0.35, 83, 0.9)]),
-  sea: ground([
-    swell(0.12, 0.03, 0.12, 0.5, 0.4),
-    swell(0.27, 0.06, 0.2, 2.1, 0.5),
-    swell(0.5, 0.1, 0.32, 1.2, 0.65),
-    swell(0.82, 0.15, 0.5, 3, 0.85),
-  ]),
+  desert: {
+    ground: ground([swell(0.21, 0.21, 1.3, 2.2, 0.5), swell(0.5, 0.25, 2, 0.4, 0.62), swell(0.83, 0.31, 3, 1.5, 0.85)]),
+    sky: { x: 0.8, size: 1 },
+  },
+  city: { ground: ground([skyline(0.5, 0.5, 11, 0.4), skyline(0.85, 0.6, 47, 1)]), sky: { x: 0.4, size: 1.7 } },
+  orbit: { ground: ground([limb]), sky: { x: 0.2, size: 0.45, night: true } },
 }
 
 // Visits the cells of a sun centred on (cx, cy): by day a disc cut by bands

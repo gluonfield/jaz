@@ -1,6 +1,6 @@
 import { useReducedMotion } from 'motion/react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { type Ground, GROUNDS, sun } from '@/components/launch/scenery'
+import { type Scene, SCENES, sun } from '@/components/launch/scenery'
 import { useEffectsEnabled, useScenery } from '@/lib/appearance'
 import { useColorTheme } from '@/lib/appearanceScheme'
 import { useTheme } from '@/lib/theme'
@@ -376,7 +376,6 @@ export function DitherWordmark({ text = 'jaz', delay = 0, maxWidth = Infinity }:
 
 const TERRAIN_ROWS = 44
 const SKY_ROWS = 26
-type Sky = 'sun' | 'moon'
 
 const cell = (g: OffscreenCanvasRenderingContext2D, x: number, y: number, coverage: number) => {
   g.globalAlpha = Math.min(1, Math.max(0, coverage))
@@ -386,15 +385,16 @@ const cell = (g: OffscreenCanvasRenderingContext2D, x: number, y: number, covera
 // The scenery, in cell units, alone or under a theme-keyed sky: a banded sun by
 // day, a moon and stars by night, right of centre and behind the far crests.
 const drawScene =
-  (scenery: Ground, sky?: Sky): Silhouette =>
+  (scene: Scene, sky?: 'sun' | 'moon'): Silhouette =>
   (g, w, h) => {
     const ground = h - TERRAIN_ROWS
-    const horizon = scenery(w, TERRAIN_ROWS, (x, y, coverage) => cell(g, x, ground + y, coverage))
+    const horizon = scene.ground(w, TERRAIN_ROWS, (x, y, coverage) => cell(g, x, ground + y, coverage))
     g.globalAlpha = 1
     if (!sky) return
+    if (scene.sky.night) sky = 'moon'
     const open = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < ground + horizon[x]
-    const cx = Math.round(w * 0.82)
-    sun(cx, 18, 10, sky === 'moon', (x, y, coverage) => open(x, y) && cell(g, x, y, coverage))
+    const cx = Math.round(w * scene.sky.x)
+    sun(cx, 18, 10 * scene.sky.size, sky === 'moon', (x, y, coverage) => open(x, y) && cell(g, x, y, coverage))
     if (sky === 'moon') {
       for (let i = 0; i < 24; i++) {
         const x = hash(i * 131 + 3) % w
@@ -414,8 +414,8 @@ export function DitherTerrain({ className = '', sky = false, delay = 0 }: { clas
   const { resolved } = useTheme()
   const scenery = useScenery()
   const draw = useMemo(() => {
-    const ground = GROUNDS[scenery]
-    return ground && drawScene(ground, sky ? (resolved === 'dark' ? 'moon' : 'sun') : undefined)
+    const scene = SCENES[scenery]
+    return scene && drawScene(scene, sky ? (resolved === 'dark' ? 'moon' : 'sun') : undefined)
   }, [scenery, sky, resolved])
   const [cols, setCols] = useState(0)
   useLayoutEffect(() => {

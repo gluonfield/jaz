@@ -34,7 +34,7 @@ export interface AppearanceSettings {
   scenery: Scenery
 }
 
-export const SCENERIES = ['blank', 'desert', 'city', 'sea'] as const
+export const SCENERIES = ['blank', 'desert', 'city', 'orbit'] as const
 export type Scenery = (typeof SCENERIES)[number]
 
 export const DEFAULTS: AppearanceSettings = {

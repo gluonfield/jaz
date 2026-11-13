@@ -11,7 +11,7 @@ import {
   threshold,
   toneFor,
 } from '@/components/launch/DitherArt'
-import { type Ground, GROUNDS, sun } from '@/components/launch/scenery'
+import { type Scene, SCENES, sun } from '@/components/launch/scenery'
 import { useEffectsEnabled, useScenery } from '@/lib/appearance'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { devPreview } from '@/lib/devPreview'
@@ -70,7 +70,8 @@ const byColumn = (a: { x: number; y: number }, b: { x: number; y: number }) => a
 
 // The whole scene in grid cells. `horizon` is the far crest line: sky grains
 // below it are hidden behind the ground.
-function buildDesert(cols: number, rows: number, dark: boolean, scenery: Ground) {
+function buildDesert(cols: number, rows: number, dark: boolean, { ground, sky }: Scene) {
+  const night = dark || !!sky.night
   const palette = readPalette()
   const tones = [palette.primary, palette.strong, palette.ink, ...palette.rainbow]
   const tone = (seed: number, ambient: boolean) => tones.indexOf(toneFor(seed, ambient, palette))
@@ -80,7 +81,7 @@ function buildDesert(cols: number, rows: number, dark: boolean, scenery: Ground)
 
   // Sand pours in on a wind from the left, far range first.
   const band = Math.round(rows * 0.52)
-  const horizon = scenery(cols, rows - band, (x, row, coverage, range) => {
+  const horizon = ground(cols, rows - band, (x, row, coverage, range) => {
     const y = band + row
     const seed = hash(x + y * cols)
     if (coverage < threshold(x, y, seed)) return
@@ -99,10 +100,10 @@ function buildDesert(cols: number, rows: number, dark: boolean, scenery: Ground)
   }).map((crest) => band + crest)
 
   // The sun rises from behind the far range.
-  const radius = Math.min(rows * 0.16, cols * 0.14)
+  const radius = sky.size * Math.min(rows * 0.16, cols * 0.14)
   const sunY = rows * 0.54
   const rise = band + 0.1 * rows - (sunY - 1.5 * radius)
-  sun(cols * 0.8, sunY, radius, dark, (x, y, coverage, d) => {
+  sun(cols * sky.x, sunY, radius, night, (x, y, coverage, d) => {
     const seed = hash(x + y * cols + 0x51ed)
     if (x < 0 || x >= cols || y < 0 || y >= horizon[x] || coverage < threshold(x, y, seed)) return
     add(x, y, seed, {
@@ -121,7 +122,7 @@ function buildDesert(cols: number, rows: number, dark: boolean, scenery: Ground)
       const seed = hash(x + y * cols + 0xd057)
       const noise = (seed % 4096) / 4096
       if (noise >= 0.008) continue
-      const star = dark && noise < 0.0025
+      const star = night && noise < 0.0025
       const start = 0.3 + 0.9 * random(seed + 1)
       const alpha = star ? 0.55 + 0.35 * random(seed + 2) : 0.14
       add(x, y, seed, { tone: tone(seed, !star), start, settle: start + 1.6, alpha })
@@ -228,13 +229,13 @@ function painter(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext
 export function DesertEntrance({ ready }: { ready: boolean }) {
   const effects = useEffectsEnabled()
   const reduced = useReducedMotion()
-  const scenery = GROUNDS[useScenery()]
+  const scenery = SCENES[useScenery()]
   const [done, setDone] = useState(!plays)
   if (done || !effects || reduced || !scenery) return null
   return <Desert scenery={scenery} ready={ready} onDone={() => setDone(true)} />
 }
 
-function Desert({ scenery, ready, onDone }: { scenery: Ground; ready: boolean; onDone: () => void }) {
+function Desert({ scenery, ready, onDone }: { scenery: Scene; ready: boolean; onDone: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const readyRef = useRef(ready)
   const doneRef = useRef(onDone)
