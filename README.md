@@ -30,7 +30,7 @@ memory, and git control. Client/server split, always-on, open source end to end.
 
 | Category | Features |
 |---|---|
-| **Agents** | Codex, Claude Code, Kimi, Antigravity, Grok, Muse and OpenCode. Choose an agent and model per thread; connect existing subscriptions or API keys. |
+| **Agents** | Codex, Claude Code, Kimi, Antigravity, Grok, Muse, OpenCode and GitHub Copilot. Choose an agent and model per thread; connect existing subscriptions or API keys. |
 | **Bots** | Persistent assistants with their own identity, instructions and memory. Direct messages, group chats, mentions, activity history and delegation to coding agents. |
 | **Automation** | Scheduled bot routines and prompt loops. Run recurring work, maintain documents and continue working overnight. |
 | **Chat** | File and image attachments, streaming responses, reasoning and tool activity alongside the conversation. |
@@ -56,7 +56,7 @@ memory, and git control. Client/server split, always-on, open source end to end.
 
 ## Examples
 
-**Every coding agent, one composer.** Codex, Claude, Kimi, Grok, OpenCode, Antigravity or Muse per thread, on the plans you already pay for.
+**Every coding agent, one composer.** Codex, Claude, Kimi, Grok, OpenCode, Antigravity, Muse or GitHub Copilot per thread, on the plans you already pay for.
 
 ![Agent picker on the Jaz home screen](docs/images/readme/01-agents.webp)
 
@@ -121,7 +121,7 @@ https://github.com/user-attachments/assets/de550dc1-75cc-43bb-aca0-f34c99573d47
 Grab the latest desktop build from [**Releases**](https://github.com/gluonfield/jaz/releases/latest),
 or [run it from source](#development).
 
-Jaz runs seven coding agents over [ACP](https://agentclientprotocol.com), and you pick one per thread:
+Jaz runs eight coding agents over [ACP](https://agentclientprotocol.com), and you pick one per thread:
 
 | Agent | Provider | Sign in with |
 |---|---|---|
@@ -132,6 +132,9 @@ Jaz runs seven coding agents over [ACP](https://agentclientprotocol.com), and yo
 | **Grok** | xAI | Grok account, or xAI API key |
 | **Muse Code** | Meta | Meta account, or Meta API key |
 | **OpenCode** | Open source | OpenRouter or OpenAI API key |
+| **GitHub Copilot** | GitHub | GitHub account with Copilot access |
+
+For Copilot, install the [official CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli) on the Jaz server, then connect GitHub Copilot in Settings → Agents. Jaz uses the CLI's [OAuth device-code sign-in](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli) and existing credentials. Copilot stays disabled until connected; its native CLI owns authentication, model availability and compaction.
 
 ## Architecture
 

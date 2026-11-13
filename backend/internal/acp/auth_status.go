@@ -107,6 +107,11 @@ func AgentLoginInvocationFor(name, root string, auth AgentAuthConfig, binDir str
 		return loginInvocation(map[string]string{"KIMI_CODE_HOME": home}, false, binDir, "kimi", "login", "--region", "global")
 	case AgentGrok:
 		return loginInvocation(nil, true, binDir, "grok", "login", "--device-auth")
+	case AgentCopilot:
+		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, AgentConfig{LoginBinDir: binDir})
+		invocation := loginInvocation(probeEnv, true, binDir, "copilot", "login", "--device-code")
+		invocation.Executable, invocation.Args = launchCommand(invocation.Executable, invocation.Args)
+		return invocation
 	case AgentMuse:
 		probeEnv := NewManager(nil, Config{Root: root, Env: env}, nil).probeEnv(name, AgentConfig{LoginBinDir: binDir})
 		return museLoginInvocation(probeEnv)

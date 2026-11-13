@@ -131,6 +131,8 @@ func (m *Manager) openConn(ctx context.Context, name string, cfg AgentConfig, en
 		}
 	case AgentMuse:
 		cleanup, err = configureMusePrompt(env, systemPrompt)
+	case AgentCopilot:
+		cleanup, err = configureCopilotPrompt(m.cfg.Root, env, systemPrompt)
 	case AgentOpenCode:
 		cleanup, err = m.configureOpenCode(env, cfg, systemPrompt)
 	}
@@ -290,6 +292,10 @@ func (m *Manager) buildProcessEnv(name string, agent AgentConfig, prepare bool) 
 	normalizeEnv(env, "GEMINI_API_KEY", "GEMINI_APIKEY")
 
 	root := firstNonEmpty(m.cfg.Root, filepath.Join(os.TempDir(), "jaz"))
+	if name == AgentCopilot {
+		addPathDirsToPath(env, agent.LoginBinDir)
+		prepareCopilotEnv(env)
+	}
 	if name == AgentMuse {
 		addPathDirsToPath(env, agent.LoginBinDir)
 		prepareMuseEnv(root, env)

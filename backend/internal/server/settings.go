@@ -290,7 +290,7 @@ func enabledACPAgentRequiresAuth(name string, cfg acp.AgentConfig) bool {
 		return false
 	}
 	switch acp.CanonicalAgentName(name) {
-	case acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentGrok, acp.AgentOpenCode:
+	case acp.AgentCodex, acp.AgentClaude, acp.AgentKimi, acp.AgentGrok, acp.AgentOpenCode, acp.AgentCopilot:
 		return true
 	default:
 		return false

@@ -9,6 +9,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   grok: 'Grok',
   opencode: 'OpenCode',
   antigravity: 'Antigravity',
+  copilot: 'GitHub Copilot',
 }
 
 // Prettifies an ACP agent name for display, e.g. "claude" → "Claude".
@@ -33,6 +34,7 @@ const AUTH_PROVIDERS: Record<string, string> = {
   opencode: 'OpenRouter',
   antigravity: 'Google AI',
   muse: 'Meta',
+  copilot: 'GitHub',
 }
 
 export function authProviderLabel(value: string | undefined): string {

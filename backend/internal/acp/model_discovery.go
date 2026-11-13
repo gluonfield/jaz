@@ -37,6 +37,9 @@ func (m *Manager) DiscoverModels(ctx context.Context, agent string) (AgentModelC
 	if agent == AgentKimi {
 		return m.kimiModels(ctx, cfg)
 	}
+	if agent == AgentCopilot {
+		return copilotModels(ctx, m.probeEnv(agent, cfg))
+	}
 	if agent != AgentMuse {
 		return AgentModelCatalog{Models: (ModelCapabilities{Catalog: m.cfg.ModelCatalog}).AgentModels(agent), DefaultModel: cfg.Model}, nil
 	}

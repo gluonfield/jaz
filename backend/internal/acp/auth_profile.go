@@ -64,7 +64,7 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 		return AgentAuthConfig{}, fmt.Errorf("acp agent %q auth mode %q is not supported", name, mode)
 	}
 	path := strings.TrimSpace(auth.Path)
-	if (name == AgentAntigravity || name == AgentMuse) && mode == AuthModeJazProfile {
+	if (name == AgentAntigravity || name == AgentMuse || name == AgentCopilot) && mode == AuthModeJazProfile {
 		mode = AuthModeAuto
 		path = ""
 	}
@@ -81,6 +81,9 @@ func NormalizeAgentAuthConfig(name string, auth AgentAuthConfig) (AgentAuthConfi
 	}
 	if name == AgentMuse && path != "" {
 		return AgentAuthConfig{}, fmt.Errorf("acp agent %q has no explicit profile path; use Muse's native configuration", name)
+	}
+	if name == AgentCopilot && path != "" {
+		return AgentAuthConfig{}, fmt.Errorf("acp agent %q uses its native COPILOT_HOME configuration", name)
 	}
 	return AgentAuthConfig{
 		Mode: mode,
@@ -153,6 +156,8 @@ func resolveAgentAuthWithProviders(name string, cfg AgentConfig, root string, en
 		return resolveAntigravityAuth(auth, root, env)
 	case AgentMuse:
 		return resolveMuseAuth(root, env)
+	case AgentCopilot:
+		return resolveCopilotAuth(env)
 	default:
 		return resolvedAgentAuth{Config: auth}
 	}
