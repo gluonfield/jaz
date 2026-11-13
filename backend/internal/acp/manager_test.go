@@ -1127,6 +1127,7 @@ func TestManagerPropagatesClaudeModelRejection(t *testing.T) {
 			},
 		},
 	}, log.New(io.Discard))
+	t.Cleanup(manager.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -1174,6 +1175,7 @@ func TestManagerPassesClaudeModelAliasesUnchanged(t *testing.T) {
 					},
 				},
 			}, log.New(io.Discard))
+			t.Cleanup(manager.Close)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
@@ -1181,7 +1183,6 @@ func TestManagerPassesClaudeModelAliasesUnchanged(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
 			session, err := store.LoadSession(spawned.SessionID)
 			if err != nil {
 				t.Fatal(err)
