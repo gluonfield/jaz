@@ -1,22 +1,54 @@
 /* A document open in the reader is edited where it is read. The text fills
-   the panel so a click below it lands in the document. */
+   the panel so a click below it lands in the document, and ends above the
+   toolbar at the panel's foot. */
 .document-editor > .file-prose {
+  --prose-font-size: 1rem;
+  max-width: 44rem;
   min-height: 100%;
+  padding-bottom: 5rem;
 }
-.document-editor li > p {
+.document-editor h1 {
+  font-size: 2em;
+  letter-spacing: -0.02em;
+}
+.document-editor h2 {
+  font-size: 1.375em;
+  letter-spacing: -0.01em;
+}
+.document-editor h3 {
+  font-size: 1.125em;
+}
+.document-editor :is(li, li > div, th, td) > p {
   margin: 0;
 }
-.document-editor ul[data-type='taskList'] {
-  list-style: none;
+.document-editor p.is-editor-empty::before,
+.document-editor .ProseMirror-focused > p.is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: color-mix(in oklab, var(--color-ink-3) 70%, transparent);
+  pointer-events: none;
 }
-.document-editor ul[data-type='taskList'] > li {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5em;
+/* A table shows every cell's edges, so an empty one can be seen and clicked. */
+.document-editor table {
+  margin: 0.75rem 0;
+  table-layout: fixed;
 }
-.document-editor ul[data-type='taskList'] > li > div {
-  flex: 1;
-  min-width: 0;
+.document-editor :is(th, td),
+.document-editor :is(th, td):is(:first-child, :last-child) {
+  position: relative;
+  padding: 0.45em 0.7em;
+  border: 1px solid var(--color-border);
+}
+.document-editor th {
+  background: var(--color-surface);
+}
+.document-editor .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--color-selection);
+  pointer-events: none;
 }
 /* The caret between two blocks that hold no text of their own. */
 .document-editor .ProseMirror-gapcursor {

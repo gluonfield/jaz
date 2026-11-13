@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
@@ -88,6 +89,7 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request, sessi
 // handleWriteSessionFile replaces an existing session file with the request
 // body. With If-Match, it saves only while the file is still that version, so
 // an edit made elsewhere in the meantime is refused instead of overwritten.
+// With If-None-Match: *, it creates the file instead, and its folder with it.
 func (s *Server) handleWriteSessionFile(w http.ResponseWriter, r *http.Request) {
 	session, err := s.Store.LoadSession(r.PathValue("session"))
 	if err != nil {
@@ -106,6 +108,17 @@ func (s *Server) handleWriteSessionFile(w http.ResponseWriter, r *http.Request) 
 	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if r.Header.Get("If-None-Match") == "*" {
+		switch err := createFile(abs, data); {
+		case errors.Is(err, fs.ErrExist):
+			w.WriteHeader(http.StatusPreconditionFailed)
+		case err != nil:
+			writeError(w, http.StatusInternalServerError, err)
+		default:
+			w.WriteHeader(http.StatusCreated)
+		}
 		return
 	}
 	info, err := os.Stat(abs)
@@ -128,6 +141,18 @@ func (s *Server) handleWriteSessionFile(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("ETag", fileETag(info))
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func createFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(data)
+	return errors.Join(err, file.Close())
 }
 
 // fileETag versions a file by modification time and size, as HTTP file

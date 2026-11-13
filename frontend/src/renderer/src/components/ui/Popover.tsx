@@ -184,6 +184,7 @@ export function MenuRow({
   autoFocus,
   role,
   selected,
+  active,
   disabled,
   trailing,
   onClick,
@@ -192,6 +193,8 @@ export function MenuRow({
   autoFocus?: boolean
   role?: 'menuitem'
   selected?: boolean
+  // The row the keyboard is on, in a menu driven from somewhere else.
+  active?: boolean
   disabled?: boolean
   trailing?: ReactNode
   onClick: () => void
@@ -206,7 +209,7 @@ export function MenuRow({
       onClick={onClick}
       className={`flex h-7 w-full items-center gap-2 rounded-full px-2.5 text-left text-[13px] transition-colors duration-150 enabled:hover:bg-surface-2 disabled:cursor-default disabled:opacity-50 ${
         selected ? 'text-ink' : 'text-ink-2'
-      }`}
+      } ${active ? 'bg-surface-2' : ''}`}
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {trailing}

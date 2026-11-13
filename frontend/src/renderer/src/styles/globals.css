@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import 'katex/dist/katex.min.css';
 @import './document.css';
+@import './tasks.css';
 
 /* Class-based dark mode: tokens are redefined under :root.dark below, so the
  * `dark:` variant is only needed for the rare per-element tweak. */
@@ -364,9 +365,6 @@
 }
 :where(.chat-prose, .file-prose) ul {
   list-style: disc;
-}
-:where(.chat-prose, .file-prose) li.task-list-item {
-  list-style: none;
 }
 :where(.chat-prose, .file-prose) ol {
   list-style: decimal;

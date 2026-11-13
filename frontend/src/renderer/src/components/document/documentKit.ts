@@ -1,5 +1,8 @@
 import { Extension, InputRule, Node, type Editor, type JSONContent, type MarkdownToken, type MarkdownTokenizer, type NodeViewRenderer } from '@tiptap/core'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
+import { Table, TableKit, renderTableToMarkdown } from '@tiptap/extension-table'
+import { Placeholder } from '@tiptap/extensions'
+import { Plugin } from '@tiptap/pm/state'
 import { Markdown } from '@tiptap/markdown'
 import StarterKit from '@tiptap/starter-kit'
 
@@ -21,7 +24,7 @@ const sourceInline = (token: MarkdownToken): JSONContent => ({ type: 'sourceInli
 
 const sourceOf = (node: JSONContent) => node.attrs?.source as string
 
-// Tables, fenced code, artifacts, display maths and footnote texts stay as the
+// Fenced code, artifacts, display maths and footnote texts stay as the
 // Markdown they were written in: the reader draws them, and editing one edits
 // its source. A block opens for editing when the person has just typed its fence.
 const sourceBlockNode = (addNodeView?: () => NodeViewRenderer) =>
@@ -99,6 +102,24 @@ function tokenizer(name: string, level: 'block' | 'inline', pattern: string): Ma
   }
 }
 
+// A table is written without the blank lines the extension puts around it,
+// which the document already has.
+const MarkdownTable = Table.extend({ renderMarkdown: (node, helpers) => renderTableToMarkdown(node, helpers).trim() })
+
+// Text copied as Markdown arrives as what it says, not as its punctuation.
+const BLOCK_MARKDOWN = /^(?:#{1,6} |[-*+] |\d+\. |> |```|\|.+\|\s*$)/m
+const MarkdownPaste = Extension.create({
+  name: 'markdownPaste',
+  addProseMirrorPlugins() {
+    const paste = (event: ClipboardEvent) => {
+      const data = event.clipboardData
+      const text = data?.types.includes('text/html') ? '' : (data?.getData('text/plain') ?? '')
+      return BLOCK_MARKDOWN.test(text) && this.editor.commands.insertContent(this.editor.markdown!.parse(text).content ?? [])
+    }
+    return [new Plugin({ props: { handlePaste: (_view, event) => paste(event) } })]
+  },
+})
+
 // replaceSource puts the Markdown the person wrote in place of the source node
 // at pos, as whatever that Markdown now is: nothing, the same kind, or prose.
 export function replaceSource(editor: Editor, pos: number, markdown: string): boolean {
@@ -120,7 +141,10 @@ export const documentKit = (sourceView?: () => NodeViewRenderer) => [
   TaskItem.configure({ nested: true }),
   sourceBlockNode(sourceView),
   sourceInlineNode(sourceView),
-  kept('table', 'block'),
+  TableKit.configure({ table: false }),
+  MarkdownTable,
+  MarkdownPaste,
+  Placeholder.configure({ placeholder: 'Type / for blocks' }),
   kept('displayMath', 'block', DISPLAY_MATH),
   kept('footnoteDefinition', 'block', FOOTNOTE_DEFINITION),
   kept('inlineMath', 'inline', INLINE_MATH),

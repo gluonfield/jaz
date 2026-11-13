@@ -61,7 +61,6 @@ describe('document editor', () => {
       '\\(c = m + t\\)',
       '$$c_{max}$$',
       '[^quote]',
-      '| Route | Cost |\n| --- | ---: |\n| Press | £1 |',
       '```sh\nmake check\n  --strict\n```',
       '![the plot](<plots/first run.png> "Run 1")',
       '~~~jaz-artifact Route chart\n<svg viewBox="0 0 10 10"></svg>\n~~~',
@@ -69,7 +68,7 @@ describe('document editor', () => {
       '$$\na_1 + b_2\n$$',
       '[^quote]: The March quote, [on file](quotes/march.md).',
     ])
-    expect(editor.getJSON().content.filter((node) => node.type === 'taskList')).toHaveLength(1)
+    expect(editor.getJSON().content.filter((node) => node.type === 'taskList' || node.type === 'table')).toHaveLength(2)
     expect(savedMarkdown(editor, report)).toBe(report)
     const reopened = open(editor.getMarkdown())
     expect(reopened.getJSON()).toEqual(editor.getJSON())
@@ -88,9 +87,25 @@ describe('document editor', () => {
     editor.destroy()
   })
 
+  test('edits a table in its cells and writes it as a Markdown table', () => {
+    const editor = open(report)
+    let press = -1
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === 'Press') press = pos + node.text.length
+    })
+    editor.view.dispatch(editor.state.tr.insertText(' brake', press))
+    editor.chain().setTextSelection(press).addRowAfter().run()
+    const saved = savedMarkdown(editor, report)
+    expect(saved).toBe(report.replace('| Route | Cost |\n| --- | ---: |\n| Press | £1 |', '| Route       | Cost |\n| ----------- | ----: |\n| Press brake | £1   |\n|             |      |'))
+    const reopened = open(saved)
+    expect(reopened.getMarkdown()).toBe(editor.getMarkdown())
+    reopened.destroy()
+    editor.destroy()
+  })
+
   test('replaces a block with whatever its edited Markdown now is', () => {
     const editor = open(report)
-    replaceSource(editor, at(editor, '| Route'), '| Route | Cost |\n| --- | ---: |\n| Press | £2 |\n\nPrices are *per part*.')
+    replaceSource(editor, at(editor, '~~~jaz'), '~~~jaz-artifact Route chart\n<svg viewBox="0 0 20 20"></svg>\n~~~\n\nPrices are *per part*.')
     replaceSource(editor, at(editor, '$$c_{max}'), '\\(c_{max}\\) and **no more**')
     replaceSource(editor, at(editor, '\\['), '')
     replaceSource(editor, at(editor, '![the plot]'), 'the plot')
@@ -98,7 +113,7 @@ describe('document editor', () => {
     expect(saved).toBe(
       report
         .replace('or $$c_{max}$$ at', 'or \\(c_{max}\\) and **no more** at')
-        .replace('£1 |\n', '£2 |\n\nPrices are *per part*.\n')
+        .replace('0 0 10 10"></svg>\n~~~\n', '0 0 20 20"></svg>\n~~~\n\nPrices are *per part*.\n')
         .replace('2. Read ![the plot](<plots/first run.png> "Run 1")', '2. Read the plot')
         .replace('\\[\nE = mc^2\n\\]\n\n', ''),
     )

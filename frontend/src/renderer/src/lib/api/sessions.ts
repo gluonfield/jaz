@@ -107,6 +107,12 @@ export async function saveSessionFile(sessionId: string, path: string, content: 
   return response.headers.get('ETag')!
 }
 
+// createSessionFile writes a file that does not exist yet, with its folder.
+export async function createSessionFile(sessionId: string, path: string, content: Blob): Promise<void> {
+  const response = await apiFetch(sessionFilePath(sessionId, path), { method: 'PUT', headers: { 'If-None-Match': '*' }, body: content })
+  if (!response.ok) throw new ApiError(response.status, `could not create ${path}`)
+}
+
 export function sessionFileRawUrl(sessionId: string, path: string): string {
   return apiEmbeddedGetUrl(sessionFilePath(sessionId, path))
 }

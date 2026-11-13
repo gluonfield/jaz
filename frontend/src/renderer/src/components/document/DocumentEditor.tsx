@@ -1,19 +1,28 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import type { EditorView } from '@tiptap/pm/view'
-import { EditorContent, NodeViewWrapper, ReactNodeViewRenderer, useEditor, type ReactNodeViewProps } from '@tiptap/react'
-import { FileText, Pencil, X } from 'lucide-react'
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { FileReaderLinkProvider, RenderedMarkdown, usePreviewLink } from '@/components/session/MessageMarkdown'
+import { EditorContent, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
+import { FileText, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { FileReaderLinkProvider, usePreviewLink } from '@/components/session/MessageMarkdown'
 import { Button } from '@/components/ui/Button'
+import { clipboardFiles } from '@/components/ui/fileTransfer'
 import { IconButton } from '@/components/ui/IconButton'
-import { saveSessionFile, sessionFileQuery } from '@/lib/api/sessions'
+import { useToast } from '@/components/ui/toast'
+import { createSessionFile, saveSessionFile, sessionFileQuery } from '@/lib/api/sessions'
 import type { SessionFileRead } from '@/lib/api/types'
 import { SAVE_LABEL, useDocumentSave, type DocumentVersion } from '@/lib/hooks/useDocumentSave'
 import { headingAnchors, markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { isPlainClick, markdownLinkTarget } from '@/lib/markdownLinks'
 import type { FileReference } from '@shared/fileReader'
-import { documentKit, replaceSource } from './documentKit'
+import { documentCommands } from './documentCommands'
+import { documentKit } from './documentKit'
+import { DocumentOutline } from './DocumentOutline'
+import { DocumentToolbar } from './DocumentToolbar'
+import { SelectionMenu } from './SelectionMenu'
+import { SlashMenu } from './SlashMenu'
+import { ArtifactPreviewContext, SourceView } from './SourceView'
+import { TableMenu } from './TableMenu'
 
 export type EditableDocument = SessionFileRead & { version: string }
 
@@ -23,8 +32,6 @@ export function isEditableDocument(file: SessionFileRead): file is EditableDocum
 }
 
 const versionOf = (file: EditableDocument): DocumentVersion => ({ content: file.content ?? '', version: file.version })
-
-const ArtifactPreviewContext = createContext(false)
 
 const extensions = documentKit(() => ReactNodeViewRenderer(SourceView))
 
@@ -59,6 +66,9 @@ export function DocumentEditor({
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const openPreview = usePreviewLink()
+  const toast = useToast()
+  const imagePicker = useRef<HTMLInputElement>(null)
+  const commands = useMemo(() => documentCommands(() => imagePicker.current?.click()), [])
   const query = sessionFileQuery(sessionId, path)
   const { state, save, touch, follow, takeTheirs, keepMine } = useDocumentSave(versionOf(file), {
     read: async () => versionOf((await queryClient.fetchQuery({ ...query, staleTime: 0 })) as EditableDocument),
@@ -85,6 +95,19 @@ export function DocumentEditor({
         return openPreview ? openPreview(target.url) : void window.open(target.url, '_blank', 'noreferrer')
     }
   }
+  // A picture is saved in an images folder beside the document and shown from there.
+  const addImages = (view: EditorView, files: File[]) => {
+    const images = files.filter((image) => image.type.startsWith('image/'))
+    for (const image of images) {
+      const path = `images/${crypto.randomUUID().slice(0, 8)}-${image.name.replace(/[^\w.-]+/g, '-')}`
+      const source = `![${image.name.replace(/\.\w+$/, '').replace(/[[\]]/g, '')}](${path})`
+      createSessionFile(sessionId, file.path.replace(/[^/\\]*$/, path), image).then(
+        () => view.isDestroyed || view.dispatch(view.state.tr.replaceSelectionWith(view.state.schema.nodes.sourceInline.create({ source }))),
+        () => toast(`Could not add ${image.name}`, 'danger'),
+      )
+    }
+    return images.length > 0
+  }
   const editor = useEditor({
     extensions,
     content: file.content,
@@ -97,6 +120,7 @@ export function DocumentEditor({
         openLink(view, link)
         return true
       },
+      handlePaste: (view, event) => !event.clipboardData?.types.includes('text/plain') && addImages(view, event.clipboardData ? clipboardFiles(event.clipboardData) : []),
     },
     onUpdate: ({ editor }) => touch(editor),
     onBlur: () => void save(),
@@ -106,10 +130,11 @@ export function DocumentEditor({
   }, [editor, follow, file])
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
       <DocumentHeader title={markdownDocumentTitle(file.content ?? '', path)} onClose={onClose}>
         <span role="status" className={`shrink-0 text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>{SAVE_LABEL[state]}</span>
         {state === 'failed' ? <Button size="sm" variant="ghost" onClick={() => void save()}>Retry</Button> : null}
+        {editor ? <DocumentOutline editor={editor} /> : null}
       </DocumentHeader>
       {state === 'conflict' ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface px-3 py-2">
@@ -125,6 +150,25 @@ export function DocumentEditor({
           <EditorContent editor={editor} className="document-editor scrollbar-quiet min-h-0 flex-1 overflow-auto bg-bg" />
         </ArtifactPreviewContext>
       </FileReaderLinkProvider>
+      {editor ? (
+        <>
+          <SlashMenu editor={editor} groups={commands.slash} />
+          <SelectionMenu editor={editor} />
+          <TableMenu editor={editor} />
+          <DocumentToolbar editor={editor} commands={commands} />
+          <input
+            ref={imagePicker}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(event) => {
+              addImages(editor.view, [...(event.target.files ?? [])])
+              event.target.value = ''
+            }}
+          />
+        </>
+      ) : null}
     </div>
   )
 }
@@ -137,52 +181,4 @@ function headingElement(view: EditorView, id: string): HTMLElement | null {
     if (found < 0 && node.type.name === 'heading' && anchor(node.textContent) === id) found = pos
   })
   return found < 0 ? null : (view.nodeDOM(found) as HTMLElement)
-}
-
-// Markdown the editor keeps as source is drawn by the read-only renderer, and
-// edited as the text it is: whatever is written replaces it when focus leaves,
-// and Escape leaves it as it was.
-function SourceView({ node, editor, getPos }: ReactNodeViewProps) {
-  const source = node.attrs.source as string
-  const [editing, setEditing] = useState(node.attrs.editing as boolean)
-  const preview = useContext(ArtifactPreviewContext)
-  return (
-    <NodeViewWrapper as={node.isInline ? 'span' : 'div'} className="document-source" data-source={source}>
-      {editing ? (
-        <textarea
-          autoFocus
-          aria-label="Markdown source"
-          spellCheck={false}
-          defaultValue={source}
-          rows={source.split('\n').length}
-          onInput={(event) => {
-            event.currentTarget.rows = event.currentTarget.value.split('\n').length
-          }}
-          onFocus={(event) => {
-            const start = node.attrs.editing ? source.indexOf('\n') + 1 : source.length
-            event.target.setSelectionRange(start, start)
-          }}
-          onBlur={(event) => {
-            setEditing(false)
-            const pos = getPos()
-            if (event.target.value !== source && pos !== undefined) replaceSource(editor, pos, event.target.value)
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') event.currentTarget.value = source
-            if (event.key === 'Escape' || (event.key === 'Enter' && (node.isInline || event.metaKey || event.ctrlKey))) {
-              event.preventDefault()
-              editor.commands.focus()
-            }
-          }}
-        />
-      ) : (
-        <>
-          <RenderedMarkdown text={source} className="document-source-view" artifactPreview={preview} />
-          <button type="button" aria-label="Edit as Markdown" title="Edit as Markdown" onClick={() => setEditing(true)}>
-            <Pencil size={12} aria-hidden />
-          </button>
-        </>
-      )}
-    </NodeViewWrapper>
-  )
 }

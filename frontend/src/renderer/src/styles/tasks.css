@@ -1,0 +1,71 @@
+/* A task's box: a square that fills with the brand colour and a tick, drawn
+   the same in a document being edited and in Markdown that is only read. */
+:is(.chat-prose, .file-prose) input[type='checkbox'] {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 0.9375rem;
+  height: 0.9375rem;
+  margin: 0;
+  border: 1.5px solid color-mix(in oklab, var(--color-ink) 45%, transparent);
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    background-color 120ms,
+    border-color 120ms;
+}
+:is(.chat-prose, .file-prose) input[type='checkbox']:disabled {
+  cursor: default;
+}
+:is(.chat-prose, .file-prose) input[type='checkbox']:enabled:hover {
+  border-color: var(--color-ink-2);
+  background: var(--color-list-hover);
+}
+:is(.chat-prose, .file-prose) input[type='checkbox']:checked {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+:is(.chat-prose, .file-prose) input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  background: var(--color-on-primary);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.25 8.4l2.6 2.6 4.9-5.5'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+/* Read-only Markdown keeps the box in the line of text it starts. */
+:where(.chat-prose, .file-prose) ul.contains-task-list {
+  padding-left: 0;
+}
+:where(.chat-prose, .file-prose) li.task-list-item {
+  list-style: none;
+}
+:where(.chat-prose, .file-prose) li.task-list-item input[type='checkbox'] {
+  margin-right: 0.55em;
+  vertical-align: -0.16em;
+}
+/* In the editor the box sits beside the task, level with its first line, and
+   a task done has that first paragraph struck through and dimmed. */
+.document-editor ul[data-type='taskList'] {
+  padding-left: 0;
+  list-style: none;
+}
+.document-editor ul[data-type='taskList'] > li {
+  display: flex;
+  gap: 0.55em;
+}
+.document-editor ul[data-type='taskList'] > li > label {
+  display: flex;
+  flex: none;
+  align-items: center;
+  height: 1lh;
+}
+.document-editor ul[data-type='taskList'] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+.document-editor li[data-checked='true'] > div > p:first-child {
+  color: var(--color-ink-3);
+  text-decoration: line-through;
+  transition: color 120ms;
+}
