@@ -29,37 +29,39 @@ export function useDocumentSave(
   const version = useRef(file.version)
   const source = useRef(file.content)
   const edited = useRef(false)
-  const conflicted = useRef(false)
   const saving = useRef<Promise<void>>(Promise.resolve())
   const timer = useRef(0)
   const view = useRef<Editor | null>(null)
   const [state, setState] = useState<SaveState>('saved')
+  const status = useRef(state)
   const [actions] = useState(() => {
+    const set = (next: SaveState) => {
+      status.current = next
+      setState(next)
+    }
     const adopt = (editor: Editor, current: DocumentVersion) => {
       version.current = current.version
       source.current = current.content
       edited.current = false
-      conflicted.current = false
       editor.commands.setContent(current.content, { contentType: 'markdown', emitUpdate: false })
-      setState('saved')
+      set('saved')
     }
     // Saves are chained so each goes over the version the one before it wrote,
     // and wait for the person's choice once one has been refused.
     const save = () => {
       window.clearTimeout(timer.current)
       saving.current = saving.current.then(async () => {
-        if (!edited.current || !view.current || conflicted.current) return
+        if (!edited.current || !view.current || status.current === 'conflict') return
         edited.current = false
-        setState('saving')
+        set('saving')
         try {
           const saved = await write(savedMarkdown(view.current, source.current), version.current)
           version.current = saved.version
           source.current = saved.content
-          setState(edited.current ? 'saving' : 'saved')
+          set(edited.current ? 'saving' : 'saved')
         } catch (error) {
           edited.current = true
-          conflicted.current = error instanceof ApiError && error.status === conflict
-          setState(conflicted.current ? 'conflict' : 'failed')
+          set(error instanceof ApiError && error.status === conflict ? 'conflict' : 'failed')
         }
       })
       return saving.current
@@ -86,7 +88,7 @@ export function useDocumentSave(
       takeTheirs: async () => adopt(view.current!, await read()),
       keepMine: async () => {
         version.current = (await read()).version
-        conflicted.current = false
+        set('saving')
         await save()
       },
     }

@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useToast } from '@/components/ui/toast'
 import { getCanvas, patchCanvas, type CanvasDocument, type CanvasPagePatch, type CanvasPatch } from '@/lib/api/canvas'
+import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import { keys } from '@/lib/query/keys'
 import { applyPagePatch, invertPatch } from './board'
 
@@ -17,11 +18,7 @@ export function useCanvasSync(sessionId: string, working: boolean) {
     refetchInterval: working ? 1000 : false,
   })
   const { refetch } = canvas
-  const wasWorking = useRef(working)
-  useEffect(() => {
-    if (wasWorking.current && !working) void refetch()
-    wasWorking.current = working
-  }, [working, refetch])
+  useRefetchAfterWork(working, refetch)
 
   const view = canvas.data
   const [pending, setPending] = useState<CanvasPagePatch[]>([])

@@ -3,7 +3,7 @@ import { Editor } from '@tiptap/core'
 import { savedMarkdown } from '@/lib/savedMarkdown'
 import { documentKit, replaceSource } from './documentKit'
 
-const open = (markdown) => new Editor({ element: null, extensions: documentKit, content: markdown, contentType: 'markdown' })
+const open = (markdown) => new Editor({ element: null, extensions: documentKit(), content: markdown, contentType: 'markdown' })
 
 // sources lists the Markdown each source node holds, in document order.
 function sources(editor) {

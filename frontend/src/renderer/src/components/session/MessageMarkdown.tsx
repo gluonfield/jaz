@@ -1,5 +1,4 @@
 import { Link } from '@tanstack/react-router'
-import { canvasLink } from '@/lib/canvasNavigation'
 import { useQuery } from '@tanstack/react-query'
 import { FileText } from 'lucide-react'
 import {
@@ -10,7 +9,6 @@ import {
   useMemo,
   type ComponentProps,
   type ComponentType,
-  type MouseEvent,
   type ReactNode,
 } from 'react'
 import Markdown, { defaultUrlTransform, type Components, type ExtraProps, type Options } from 'react-markdown'
@@ -21,11 +19,12 @@ import { Favicon } from '@/components/ui/Favicon'
 import { MarkdownImage, MarkdownImageLinkContext } from '@/components/session/MarkdownImage'
 import { skillsQuery, type SkillInfo } from '@/lib/api/skills'
 import { markdownImageSource } from '@/lib/markdownImages'
+import { decoded, isPlainClick, markdownLinkTarget } from '@/lib/markdownLinks'
 import { remarkMathDelimiters } from '@/lib/markdownMath'
 import { remarkHeadingAnchors, remarkMarkdownDocuments } from '@/lib/markdownDocuments'
 import { MarkdownDocumentCard } from '@/components/session/MarkdownDocumentCard'
 import { MarkdownArtifactContext } from '@/components/session/MarkdownArtifact'
-import { findFileReferences, isMarkdownPath, parseFileReference, resolveFileLink, type FileReference } from '@shared/fileReader'
+import { findFileReferences, isMarkdownPath, parseFileReference, type FileReference } from '@shared/fileReader'
 import { CodeBlock } from './CodeBlock'
 import { ConnectCard } from './ConnectCard'
 import { encodeMention } from './mentionCodec'
@@ -79,29 +78,6 @@ function textFromChildren(children: unknown): string {
     return textFromChildren((children as { props?: { children?: unknown } }).props?.children)
   }
   return ''
-}
-
-export function localFileFromLink(href: unknown, children: unknown, documentPath?: string): FileReference | null {
-  if (typeof href === 'string') {
-    const fromHref = resolveFileLink(decodeMentionHref(href), documentPath)
-    if (fromHref) return fromHref
-  }
-  return parseFileReference(textFromChildren(children).trim())
-}
-
-export function isUrlLink(href: unknown): href is string {
-  return typeof href === 'string' && /^https?:\/\//i.test(href)
-}
-
-export function shouldPreviewLink(event: Pick<MouseEvent, 'button' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'defaultPrevented'>): boolean {
-  return (
-    event.button === 0 &&
-    !event.metaKey &&
-    !event.ctrlKey &&
-    !event.shiftKey &&
-    !event.altKey &&
-    !event.defaultPrevented
-  )
 }
 
 function escapeRegExp(value: string): string {
@@ -330,7 +306,7 @@ const MessageMarkdownLink: AnchorComponent = ({ children, href, ...props }) => {
   const label = textFromChildren(children)
   const sigil = mentionSigil(label)
   if (sigil && typeof href === 'string' && href !== '') {
-    return <MentionPill mention={{ sigil, name: label.slice(1), target: decodeMentionHref(href) }} />
+    return <MentionPill mention={{ sigil, name: label.slice(1), target: decoded(href, decodeURI) }} />
   }
   return <PlainMarkdownLink {...props} href={href}>{children}</PlainMarkdownLink>
 }
@@ -339,69 +315,64 @@ const PlainMarkdownLink: AnchorComponent = ({ node: _node, children, href, ...pr
   const openPreview = usePreviewLink()
   const openFile = useContext(FileReaderLinkContext)
   const files = useContext(MarkdownFileContext)
-  const canvas = canvasLink(href, files?.sessionId)
-  const localFile = localFileFromLink(href, children, files?.documentPath)
+  const target = markdownLinkTarget(href, textFromChildren(children), files)
   const linkedChildren = <MarkdownImageLinkContext value={true}>{children}</MarkdownImageLinkContext>
-  if (canvas) return <Link {...props} className="chat-prose-link" to="/sessions/$sessionId" params={{ sessionId: canvas.sessionId }} search={{ page: canvas.page, item: canvas.item }} state={() => ({ canvasNavigation: crypto.randomUUID() })}>{children}</Link>
-  if (href?.startsWith('#')) {
-    return <a {...props} href={href} className="chat-prose-link" onClick={(event) => {
-      if (!shouldPreviewLink(event)) return
-      event.preventDefault()
-      let id: string
-      try {
-        id = decodeURIComponent(href.slice(1))
-      } catch {
-        return
-      }
-      const root = event.currentTarget.closest('[data-markdown-root]')
-      const target = [...(root?.querySelectorAll<HTMLElement>('[id]') ?? [])].find((node) => node.id === id)
-      target?.scrollIntoView({ block: 'start' })
-    }}>{children}</a>
+  switch (target?.kind) {
+    case 'canvas':
+      return <Link {...props} className="chat-prose-link" to="/sessions/$sessionId" params={{ sessionId: target.sessionId }} search={{ page: target.page, item: target.item }} state={() => ({ canvasNavigation: crypto.randomUUID() })}>{children}</Link>
+    case 'anchor':
+      return <a {...props} href={href} className="chat-prose-link" onClick={(event) => {
+        if (!isPlainClick(event)) return
+        event.preventDefault()
+        const root = event.currentTarget.closest('[data-markdown-root]')
+        const heading = [...(root?.querySelectorAll<HTMLElement>('[id]') ?? [])].find((node) => node.id === target.id)
+        heading?.scrollIntoView({ block: 'start' })
+      }}>{children}</a>
+    case 'file':
+      // An inline link role rather than a button, so the text around it flows on.
+      return (
+        <span
+          role="link"
+          tabIndex={0}
+          className="chat-prose-link"
+          onClick={(event) => {
+            if (isPlainClick(event)) openFile?.(target.file)
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') openFile?.(target.file)
+          }}
+        >
+          <FileText
+            aria-hidden="true"
+            className="chat-prose-link-icon"
+            size={13}
+            strokeWidth={1.7}
+          />
+          {linkedChildren}
+        </span>
+      )
+    case 'url':
+      return (
+        <a
+          {...props}
+          className="chat-prose-link"
+          href={target.url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => {
+            if (openPreview && isPlainClick(event)) {
+              event.preventDefault()
+              openPreview(target.url)
+            }
+          }}
+        >
+          <Favicon url={target.url} className="chat-prose-link-icon" />
+          {linkedChildren}
+        </a>
+      )
+    default:
+      return <>{children}</>
   }
-  if (localFile && openFile) {
-    // An inline link role rather than a button, so the text around it flows on.
-    return (
-      <span
-        role="link"
-        tabIndex={0}
-        className="chat-prose-link"
-        onClick={(event) => {
-          if (shouldPreviewLink(event)) openFile(localFile)
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') openFile(localFile)
-        }}
-      >
-        <FileText
-          aria-hidden="true"
-          className="chat-prose-link-icon"
-          size={13}
-          strokeWidth={1.7}
-        />
-        {linkedChildren}
-      </span>
-    )
-  }
-  const urlLink = isUrlLink(href)
-  if (!urlLink) return <>{children}</>
-  return (
-    <a
-      {...props}
-      className="chat-prose-link"
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(event) => {
-        if (openPreview && shouldPreviewLink(event)) {
-          event.preventDefault()
-          openPreview(href)
-        }
-      }}
-    >
-      <Favicon url={href} className="chat-prose-link-icon" />
-      {linkedChildren}
-    </a>
-  )
 }
 
 export const RenderedMarkdown = memo(function RenderedMarkdown({
@@ -451,12 +422,3 @@ const TEXT_REMARK_PLUGINS = [remarkGfm]
 export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
   return <Markdown remarkPlugins={TEXT_REMARK_PLUGINS} allowedElements={[]} unwrapDisallowed>{text}</Markdown>
 })
-
-// The markdown pipeline percent-encodes hrefs; show the filesystem path.
-function decodeMentionHref(href: string): string {
-  try {
-    return decodeURI(href)
-  } catch {
-    return href
-  }
-}

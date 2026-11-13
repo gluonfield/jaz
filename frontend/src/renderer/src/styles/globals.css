@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'katex/dist/katex.min.css';
+@import './document.css';
 
 /* Class-based dark mode: tokens are redefined under :root.dark below, so the
  * `dark:` variant is only needed for the rare per-element tweak. */
@@ -549,120 +550,6 @@ img.chat-prose-link-icon {
   margin: 0.6em 0;
   overflow-x: auto;
   overflow-y: hidden;
-}
-
-/* A document open in the reader is edited where it is read. The editor fills
-   the panel so a click below the text lands in the document. */
-.document-editor {
-  display: flex;
-  min-height: 100%;
-}
-.document-editor > .file-prose {
-  flex: 1;
-}
-.document-editor li > p {
-  margin: 0;
-}
-.document-editor ul[data-type='taskList'] {
-  list-style: none;
-}
-.document-editor ul[data-type='taskList'] > li {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5em;
-}
-.document-editor ul[data-type='taskList'] > li > div {
-  flex: 1;
-  min-width: 0;
-}
-/* The caret between two blocks that hold no text of their own. */
-.document-editor .ProseMirror-gapcursor {
-  display: none;
-  position: absolute;
-  pointer-events: none;
-}
-.document-editor .ProseMirror-focused .ProseMirror-gapcursor,
-.document-editor .ProseMirror-focused.ProseMirror-gapcursor {
-  display: block;
-}
-.document-editor .ProseMirror-gapcursor::after {
-  content: '';
-  position: absolute;
-  top: -2px;
-  width: 1.25rem;
-  border-top: 1px solid var(--color-ink);
-}
-/* Markdown the editor keeps as source: drawn as the reader draws it, with a
-   control to edit its text. */
-.document-source {
-  position: relative;
-}
-span.document-source :is(.document-source-view, p) {
-  display: inline;
-  margin: 0;
-}
-/* A footnote's text draws as nothing by itself, so it shows as written. */
-.document-source:has(> .document-source-view:empty)::before {
-  content: attr(data-source);
-  color: var(--color-ink-3);
-  white-space: pre-wrap;
-}
-.ProseMirror-selectednode > .document-source {
-  border-radius: 6px;
-  outline: 2px solid var(--color-selection);
-  outline-offset: 2px;
-}
-.document-source > button {
-  position: absolute;
-  top: 0;
-  left: 0;
-  translate: -50% -50%;
-  display: grid;
-  place-items: center;
-  width: 1.375rem;
-  height: 1.375rem;
-  border-radius: 999px;
-  background: var(--color-surface);
-  box-shadow: 0 0 0 1px var(--color-border);
-  color: var(--color-ink-3);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 150ms, color 150ms;
-}
-span.document-source > button {
-  translate: 0 -100%;
-}
-.document-source:hover > button,
-.document-source > button:focus-visible {
-  opacity: 1;
-}
-.document-source > button:hover {
-  color: var(--color-ink);
-}
-.document-source > textarea {
-  display: block;
-  width: 100%;
-  margin: 0.75rem 0;
-  padding: 0.75rem 0.875rem;
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-  box-shadow: 0 0 0 1px var(--color-border);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  line-height: 1.55;
-  white-space: pre;
-  overflow-x: auto;
-  resize: none;
-  outline: none;
-}
-span.document-source > textarea {
-  display: inline-block;
-  width: auto;
-  max-width: 100%;
-  margin: 0;
-  padding: 0 0.35em;
-  border-radius: 4px;
-  vertical-align: middle;
 }
 
 /* Animated brand wordmark: a sliding 3-hue gradient clipped to the text. */

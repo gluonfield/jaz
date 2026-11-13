@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { FileText, LoaderCircle, X } from 'lucide-react'
-import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { FileText, LoaderCircle } from 'lucide-react'
+import { lazy, memo, Suspense, useEffect, useMemo, useState } from 'react'
 import { HighlightedCodeLine, useSyntaxHighlightedLines } from '@/components/session/HighlightedCode'
-import { DocumentEditor, isEditableDocument } from '@/components/document/DocumentEditor'
-import { IconButton } from '@/components/ui/IconButton'
+import { DocumentEditor, DocumentHeader, isEditableDocument } from '@/components/document/DocumentEditor'
 import { FileReaderLinkProvider, RenderedMarkdown } from '@/components/session/MessageMarkdown'
 import { ApiError } from '@/lib/api/client'
 import { healthQuery, sessionFileQuery, sessionFileRawUrl } from '@/lib/api/sessions'
+import { useRefetchAfterWork } from '@/lib/hooks/useRefetchAfterWork'
 import type { HealthResponse } from '@/lib/api/types'
 import { markdownDocumentTitle } from '@/lib/markdownDocuments'
 import { isMarkdownPath, isSpreadsheetPath, parseFileReference, type FileReference } from '@shared/fileReader'
@@ -36,13 +36,7 @@ export const FileReaderPanel = memo(function FileReaderPanel({
   const markdown = isMarkdownPath(filePath)
   // A document follows the agent while it writes, and once more when it stops.
   const file = useQuery({ ...sessionFileQuery(sessionId, filePath), enabled: visible && Boolean(filePath) && !spreadsheet, refetchInterval: markdown && working ? 2000 : false })
-  const refetch = file.refetch
-  const wasWorking = useRef(working)
-  useEffect(() => {
-    if (markdown && wasWorking.current && !working) void refetch()
-    wasWorking.current = working
-  }, [markdown, working, refetch])
-  const [saveStatus, setSaveStatus] = useState<HTMLElement | null>(null)
+  useRefetchAfterWork(markdown && working, file.refetch)
   const health = useQuery({ ...healthQuery, enabled: visible && Boolean(filePath) })
   const [draft, setDraft] = useState(filePath)
   const [inputError, setInputError] = useState('')
@@ -62,15 +56,13 @@ export const FileReaderPanel = memo(function FileReaderPanel({
     onOpenFile(next)
   }
 
+  if (markdown && file.data && isEditableDocument(file.data)) {
+    return <DocumentEditor key={`${sessionId}:${filePath}`} sessionId={sessionId} path={filePath} file={file.data} active={visible} onOpenFile={onOpenFile} onClose={onClose} />
+  }
   return (
     <div className="flex h-full min-h-0 flex-col">
       {markdown ? (
-        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
-          <FileText size={15} className="shrink-0 text-ink-3" aria-hidden />
-          <p className="min-w-0 flex-1 truncate text-[13px] font-medium">{markdownDocumentTitle(file.data?.content ?? '', filePath)}</p>
-          <span ref={setSaveStatus} className="shrink-0 text-[12px]" />
-          <IconButton size="sm" aria-label="Close document" onClick={onClose}><X size={16} /></IconButton>
-        </header>
+        <DocumentHeader title={markdownDocumentTitle(file.data?.content ?? '', filePath)} onClose={onClose} />
       ) : <form
         onSubmit={(event) => {
           event.preventDefault()
@@ -125,8 +117,6 @@ export const FileReaderPanel = memo(function FileReaderPanel({
           <PDFFileView url={sessionFileRawUrl(sessionId, filePath)} />
         ) : file.data.binary ? (
           <p className="px-3 py-4 text-[12px] text-ink-3">Binary file — no text preview.</p>
-        ) : markdown && isEditableDocument(file.data) ? (
-          <DocumentEditor key={`${sessionId}:${filePath}`} sessionId={sessionId} path={filePath} file={file.data} active={visible} status={saveStatus} onOpenFile={onOpenFile} />
         ) : (
           <FilePreview
             sessionId={sessionId}
