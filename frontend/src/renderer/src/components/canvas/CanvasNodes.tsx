@@ -84,7 +84,7 @@ export function FileNode({ id, data, selected }: NodeProps<BoardNode>) {
       <Handles />
       <ItemLabel badge={extension(path).toUpperCase() || 'FILE'} name={itemLabel(data.item)} />
       <div className={`canvas-card${connectSource === id ? ' canvas-connect-source' : ''}`}>
-        <FileViewer id={id} file={file} />
+        <FileViewer id={id} file={file} data={data.item.data} />
         {shielded(path) && !selected ? <div className="canvas-shield" /> : null}
         <Flash id={id} />
       </div>

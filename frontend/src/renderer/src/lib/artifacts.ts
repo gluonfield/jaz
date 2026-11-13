@@ -110,6 +110,33 @@ const canvasBridgeScript = `
 })();
 `
 
+// A card on the canvas keeps state on its item: `data` as it was saved, a way
+// to save it, and word of later changes from the user's undo or the agent.
+function canvasDataScript(data: unknown): string {
+  const saved = JSON.stringify(data ?? null).replace(/[<\u2028\u2029]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`)
+  return `
+(() => {
+  const listeners = new Set()
+  window.data = ${saved}
+  window.saveData = (value) => {
+    window.data = value
+    parent.postMessage({ type: 'jaz:canvas-data', data: value }, '*')
+  }
+  window.onData = (listener) => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
+  window.addEventListener('message', (event) => {
+    if (event.source !== parent || event.data?.type !== 'jaz:canvas-data') {
+      return
+    }
+    window.data = event.data.data
+    listeners.forEach((listener) => listener(window.data))
+  })
+})();
+`
+}
+
 const canvasCSS = 'html,body{overflow:hidden!important}body{transform-origin:top left}*{scrollbar-width:none}'
 
 // Tile-only extension: the widget author designs blind, so the host measures
@@ -210,9 +237,9 @@ export function buildArtifactThemeCSS(darkOverride?: boolean): string {
 export function buildArtifactDocument(
   input: ArtifactInput,
   theme: string,
-  opts: { measureLayout?: boolean; canvas?: boolean } = {},
+  opts: { measureLayout?: boolean; canvas?: { data: unknown } } = {},
 ): string {
-  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript : '')
+  const bridge = bridgeScript + (opts.measureLayout ? widgetBridgeScript : '') + (opts.canvas ? canvasBridgeScript + canvasDataScript(opts.canvas.data) : '')
   if (opts.canvas) {
     theme += canvasCSS
   }
@@ -226,7 +253,7 @@ export function buildArtifactDocument(
 
 // A canvas component is CommonJS compiled from the agent's TSX. React and any
 // other bare imports load from esm.sh, sharing one React instance.
-export function buildComponentDocument(code: string, theme: string): string {
+export function buildComponentDocument(code: string, theme: string, data: unknown): string {
   const imports: Record<string, string> = {
     react: REACT_CDN,
     'react/jsx-runtime': `${REACT_CDN}/jsx-runtime`,
@@ -247,7 +274,7 @@ const React = await import('react');
 const { createRoot } = await import('react-dom/client');
 createRoot(document.getElementById('root')).render(React.createElement(module.exports.default ?? module.exports));
 `
-  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${artifactCSS(theme)} html,body,#root{height:100%}${canvasCSS}</style><script>${bridgeScript}${canvasBridgeScript}</script><script type="importmap">${JSON.stringify({ imports })}</script></head><body><div id="root"></div><script type="module">${main}</script></body></html>`
+  return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${ARTIFACT_CSP}"><style>${artifactCSS(theme)} html,body,#root{height:100%}${canvasCSS}</style><script>${bridgeScript}${canvasBridgeScript}${canvasDataScript(data)}</script><script type="importmap">${JSON.stringify({ imports })}</script></head><body><div id="root"></div><script type="module">${main}</script></body></html>`
 }
 
 function isFullHTMLDocument(code: string): boolean {

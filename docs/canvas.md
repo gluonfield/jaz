@@ -45,6 +45,7 @@ Jaz reads these fields beyond JSON Canvas 1.0. Unknown values are ignored, so a 
 | `fromEnd`, `toEnd` | edges | `none`, `arrow`, `circle`; an edge starts plain and ends in an arrow by default |
 | `locked` | any node | `true` pins the item: it cannot be moved, resized, edited or deleted until unlocked |
 | `z` | any node | stacking order; higher is in front, negative is behind |
+| `data` | component and HTML `file` | any JSON value the card saves for itself |
 | `place` | any node | `{"below": "<id>"}` or `right`, `above`, `left`, with optional `gap` (40) and `align` (`start`, `center`, `end`) |
 
 ```json
@@ -55,6 +56,8 @@ Jaz reads these fields beyond JSON Canvas 1.0. Unknown values are ignored, so a 
 Selecting an item shows its controls above it: shape, size, bold, italic, strikethrough, code, bulleted and numbered lists, alignment and colour for text; size and rows and columns for a table; route, line, ends and colour for a connector; ink and weight for a drawn line. Every item also has Lock and, under More, Duplicate, Bring to front (`Mod+]`), Send to back (`Mod+[`) and Delete. Selecting several items offers the six alignments and the same actions for all of them.
 
 Double-clicking text opens it for typing as formatted words when it uses only paragraphs, lists, bold, italic, strikethrough, code and links; anything else, such as a heading or a quote, opens as Markdown source. Double-click a table cell to edit it; Enter keeps it, Tab keeps it and moves on, Escape leaves it unchanged. The dock's Shape (`R`) and Table (`B`) tools add new ones. The Pen (`P`) draws lines until another tool is chosen, with inks, three weights and a highlighter above the dock; the Eraser (`E`) removes each line it is dragged across.
+
+A component or HTML card keeps its state in its node's `data`. Inside the sandbox `window.data` holds the saved value when the card loads, `saveData(value)` saves a new one (up to 200,000 characters of JSON) as an edit the user can undo, and `onData(listener)` is called when the value changes outside the card, by undo or by an agent editing the file. The card is not reloaded for a change to its data.
 
 An item with a `place` gets its `x` and `y` from the measured size of the item it names once its page is on screen; the client then saves them and removes `place`. Whenever a page has drawn and gone quiet, the client also sends what it measured with `PUT /v1/sessions/{session}/canvas/layout` (`page`, `items` as `{id, x, y, width, height}`, and `issues`), and the server keeps the latest per page in `layout.json` beside `canvas.json`, one item and one issue per line. Issues name overlapping items, items across a section's edge, content shrunk to fit its box and places that could not be worked out. Agents read this file to check a layout they wrote.
 

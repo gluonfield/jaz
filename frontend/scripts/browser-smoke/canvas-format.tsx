@@ -9,7 +9,7 @@ import { keys } from '@/lib/query/keys'
 export async function exerciseCanvasFormat(): Promise<void> {
   const sessionId = 'canvas-format'
   let view: CanvasView = {
-    version: '1', dir: '/fixture', components: {}, files: {},
+    version: '1', dir: '/fixture', components: {}, files: { counter: { path: 'counter.html', version: '1' } },
     edges: [{ id: 'flow', fromNode: 'start', toNode: 'ship', label: 'ready', route: 'elbow', dash: 'dashed', color: 'blue', toEnd: 'circle' }],
     nodes: [
       { id: 'title', type: 'text', text: 'Launch plan', size: 'title', x: 0, y: 0, width: 520 },
@@ -20,12 +20,24 @@ export async function exerciseCanvasFormat(): Promise<void> {
       { id: 'cloud', type: 'text', text: 'Hosting', shape: 'cloud', color: '#fde2e4', x: 610, y: 130, width: 170, height: 120 },
       { id: 'note', type: 'text', text: '**Risk**\n- supplier slips\n- *no* spare tool', color: 'yellow', textAlign: 'left', x: 0, y: 300, width: 220, height: 160 },
       { id: 'grid', type: 'table', rows: [['Step', 'Owner', 'Due'], ['Draft', 'Ana', '**Mon**'], ['Review', 'Ben', 'Wed']], x: 280, y: 300, width: 420 },
+      { id: 'counter', type: 'file', file: 'counter.html', data: { count: 2 }, x: 0, y: 520, width: 220, height: 120 },
       { id: 'placed', type: 'text', text: 'Placed under the table', x: 0, y: 0, width: 300, place: { below: 'grid', gap: 24 } },
     ],
   }
   const snapshot = () => ({ version: view.version, dir: view.dir, pages: [{ id: 'page-1', name: 'Page 1', nodes: view.nodes, edges: view.edges, files: view.files, components: view.components }] })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   client.setQueryData(keys.sessionCanvas(sessionId), snapshot())
+  client.setQueryData([...keys.sessionFile(sessionId, 'counter.html'), '1'], { content: `
+    <button id="add" style="display:block;width:100%;height:100px"></button>
+    <script>
+      const add = document.getElementById('add')
+      const show = () => { add.textContent = 'Count ' + window.data.count }
+      show()
+      sendPrompt('loaded ' + window.data.count)
+      onData((data) => { show(); sendPrompt('heard ' + data.count) })
+      add.onclick = () => { saveData({ count: window.data.count + 1 }); show() }
+    </script>` })
+  const heard: string[] = []
   const originalFetch = window.fetch
   let layout: CanvasLayout = { page: '', items: [], issues: [] }
   window.fetch = async (input, init) => {
@@ -44,7 +56,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
   }
   function Fixture() {
     const { bindSelection, onSelect, onPage } = useCanvasContexts({ contexts: [], removeContext: () => {}, replaceContexts: () => {} })
-    return <ThreadCanvas sessionId={sessionId} inset={0} working={false} bindSelection={bindSelection} onSelect={onSelect} onPage={onPage} onPrompt={() => {}} />
+    return <ThreadCanvas sessionId={sessionId} inset={0} working={false} bindSelection={bindSelection} onSelect={onSelect} onPage={onPage} onPrompt={(text) => heard.push(text)} />
   }
   const element = document.createElement('div')
   element.style.cssText = 'position:fixed;inset:0;z-index:1;background:var(--color-bg)'
@@ -104,6 +116,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
   try {
     root.render(<QueryClientProvider client={client}><Fixture /></QueryClientProvider>)
     await until(() => Boolean(node('grid')?.querySelector('td p')), 'The table did not render its cells')
+    await until(() => heard.includes('loaded 2'), 'A card did not start with its saved data')
     const under = () => 324 + node('grid').offsetHeight
     await until(() => saved('placed').place === undefined && saved('placed').x === 280 && Math.abs(Number(saved('placed').y) - under()) <= 1, 'An item placed below the table did not take its spot from the table\'s measured height')
     const seen = (id: string) => layout.items.find((item) => item.id === id)
@@ -279,6 +292,14 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => saved(block).text === 'k', 'Words typed in a new shape were not saved')
     const table = await place('Table', [0, 430, 0, 140], (item) => item.type === 'table' && item.height === undefined)
     await until(() => node(table)?.querySelectorAll('th, td').length === 9, 'A new table did not show its nine cells')
+
+    await press(node('counter'), 'counter card')
+    await until(() => node('counter').classList.contains('selected') && !node('counter').querySelector('.canvas-shield'), 'The card did not take the pointer once selected')
+    await press(node('counter').querySelector('iframe'), 'the card\'s button')
+    await until(() => (saved('counter').data as { count: number }).count === 3, 'A card did not save its data on its item')
+    await press(element.querySelector('.react-flow__pane'), 'board')
+    await window.smoke.key('z', ['meta'])
+    await until(() => (saved('counter').data as { count: number }).count === 2 && heard.at(-1) === 'heard 2', 'A card did not hear its data change under it')
 
     const dock = (tool: string) => element.querySelector(`.canvas-dock [aria-label="${tool}"]`)
     const draw = async (from: number[], to: number[]) => {
