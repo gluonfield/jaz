@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { applyPatch, changedNodeIds, cloneItems, innermostSection, invertPatch, mergeNodes, sectionContents, toFlowEdges, toFlowNodes, withContents } from '@/components/canvas/board'
+import { applyPatch, changedNodeIds, cloneItems, innermostSection, invertPatch, mergeNodes, nextTo, sectionContents, toFlowEdges, toFlowNodes, withContents } from '@/components/canvas/board'
 
 const view = (nodes, edges = [], files = {}) => ({ version: 'v', dir: '/c', nodes, edges, files, components: {} })
 
@@ -67,7 +67,7 @@ test('text, tables and documents leave their height to the board, limited by wha
   ])
 })
 
-test('sections render behind items and edges get sides from geometry unless the agent named them', () => {
+test('sections render behind items, connectors over all of them, with sides from geometry unless the agent named them', () => {
   const board = view(
     [
       { id: 'left', type: 'text', x: 0, y: 0, width: 100, height: 100 },
@@ -83,6 +83,8 @@ test('sections render behind items and edges get sides from geometry unless the 
   )
   expect(toFlowNodes(board).map((node) => node.id)).toEqual(['section', 'left', 'right'])
   const edges = toFlowEdges(board)
+  expect(edges.map((edge) => edge.zIndex)).toEqual([1, 1])
+  expect(toFlowEdges(view([{ ...board.nodes[0], z: 7 }, board.nodes[2]], board.edges))[0].zIndex).toBe(8)
   expect(edges.map((edge) => [edge.id, edge.sourceHandle, edge.targetHandle, Boolean(edge.markerEnd)])).toEqual([
     ['auto', 'right', 'left', true],
     ['named', 'bottom', 'bottom', false],
@@ -166,4 +168,12 @@ test('a connector is a curve with an arrow at its far end unless its fields say 
   expect([styled.markerStart.color, styled.markerEnd]).toEqual(['#2f80ed', undefined])
   expect(odd.data.look).toEqual({ route: 'curve', dash: 'solid', ink: { custom: '#123456' }, fromEnd: 'none', toEnd: 'none' })
   expect(odd.markerEnd).toBeUndefined()
+})
+
+test('the next part goes a gap from its side, along it past what already stands there', () => {
+  const from = { x: 0, y: 0, width: 200, height: 120 }
+  expect(nextTo(from, 'top', [])).toEqual({ x: 0, y: -200, width: 200, height: 120 })
+  expect(nextTo(from, 'left', [{ x: 300, y: 0, width: 50, height: 50 }])).toEqual({ x: -280, y: 0, width: 200, height: 120 })
+  expect(nextTo(from, 'right', [{ x: 400, y: 100, width: 50, height: 50 }, { x: 280, y: 160, width: 200, height: 120 }])).toEqual({ x: 280, y: 320, width: 200, height: 120 })
+  expect(nextTo(from, 'bottom', [{ x: 0, y: 200, width: 200, height: 120 }])).toEqual({ x: 240, y: 200, width: 200, height: 120 })
 })

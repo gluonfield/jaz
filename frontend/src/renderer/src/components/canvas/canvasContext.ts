@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
-import type { CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import type { Rect } from './board'
 
 export interface CanvasBoard {
   sessionId: string
@@ -14,6 +15,8 @@ export interface CanvasBoard {
   dropTarget: string | null
   connectSource: string | null
   commit: (change: CanvasPatch) => void
+  // Puts a new item on the board, with the connectors that come with it.
+  add: (item: CanvasItem & Rect, edges?: Partial<CanvasItem>[]) => void
   // Copies the selection beside itself.
   duplicate: () => void
   prompt: (text: string) => void

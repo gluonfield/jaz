@@ -21,6 +21,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
       { id: 'note', type: 'text', text: '**Risk**\n- supplier slips\n- *no* spare tool', color: 'yellow', textAlign: 'left', x: 0, y: 300, width: 220, height: 160 },
       { id: 'grid', type: 'table', rows: [['Step', 'Owner', 'Due'], ['Draft', 'Ana', '**Mon**'], ['Review', 'Ben', 'Wed']], x: 280, y: 300, width: 420 },
       { id: 'counter', type: 'file', file: 'counter.html', data: { count: 2 }, x: 0, y: 520, width: 220, height: 120 },
+      { id: 'timer', type: 'timer', seconds: 300, x: 280, y: 520, width: 220, height: 120 },
       { id: 'placed', type: 'text', text: 'Placed under the table', x: 0, y: 0, width: 300, place: { below: 'grid', gap: 24 } },
     ],
   }
@@ -103,8 +104,14 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await press(options.find((button) => button.getAttribute('aria-label') === option || button.textContent === option), option)
   }
   const dockTool = (tool: string) => element.querySelector(`.canvas-dock [aria-label="${tool}"]`)
+  const boardZoom = () => Number(new DOMMatrix(getComputedStyle(element.querySelector('.react-flow__viewport')!).transform).a)
   const fontSize = (id: string, selector: string) => getComputedStyle(node(id).querySelector(selector)!).fontSize
-  const place = async (tool: string, [left, right, top, bottom]: number[], check: (item: CanvasItem) => boolean) => {
+  const hover = async (target: Element | null | undefined) => {
+    const r = target!.getBoundingClientRect()
+    await window.smoke.pointer('mouseMove', Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2))
+  }
+  // A tool on the dock, or one listed over the dock tool named by `under`.
+  const place = async (tool: string, [left, right, top, bottom]: number[], check: (item: CanvasItem) => boolean, under?: string) => {
     const pane = element.getBoundingClientRect()
     const free = (x: number, y: number) => Boolean(document.elementFromPoint(x, y)?.classList.contains('react-flow__pane'))
     const spot = Array.from({ length: 400 }, (_, i) => ({ x: pane.x + 60 + (i % 20) * 40, y: pane.y + 100 + Math.floor(i / 20) * 30 }))
@@ -113,7 +120,12 @@ export async function exerciseCanvasFormat(): Promise<void> {
       throw new Error('Canvas format: no free ground for a new ' + tool)
     }
     const known = new Set(view.nodes.map((item) => item.id))
-    await press(element.querySelector(`.canvas-dock [aria-label="${tool}"]`), tool + ' tool')
+    if (under) {
+      await hover(dockTool(under))
+      await until(() => Boolean(element.querySelector(`.canvas-dock-panel [aria-label="${tool}"]`)), `Pointing at ${under} did not list ${tool}`)
+    }
+    await press(element.querySelector(`${under ? '.canvas-dock-panel' : '.canvas-dock'} [aria-label="${tool}"]`), tool + ' tool')
+    await until(() => !element.querySelector('.canvas-dock-panel'), `Choosing ${tool} left the list open`)
     await window.smoke.pointer('mouseMove', spot.x, spot.y)
     await window.smoke.pointer('mouseDown', spot.x, spot.y)
     await window.smoke.pointer('mouseUp', spot.x, spot.y)
@@ -158,6 +170,9 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 500))
     const line = () => element.querySelector<SVGPathElement>('.react-flow__edge[data-id="flow"] path.canvas-edge')!
     await until(() => Boolean(line()), 'The connector was not drawn')
+    if (Number(getComputedStyle(line().closest('svg')!).zIndex) <= Math.max(...['start', 'ship', 'note'].map((id) => Number(getComputedStyle(node(id)).zIndex) || 0))) {
+      throw new Error('Canvas format: the connector was not drawn over the items')
+    }
     if (getComputedStyle(line()).strokeDasharray === 'none' || getComputedStyle(line()).stroke !== 'rgb(47, 128, 237)' || line().getAttribute('d')!.includes('C') || !element.querySelector('.react-flow__edge[data-id="flow"] .canvas-edge-dot')) {
       throw new Error('Canvas format: the connector lost its route, dashes, colour or round end')
     }
@@ -327,12 +342,52 @@ export async function exerciseCanvasFormat(): Promise<void> {
 
     const block = await place('Shape', [-110, 110, -70, 70], (item) => item.shape === 'rounded' && typeof item.height === 'number')
     await until(() => Boolean(document.activeElement?.classList.contains('canvas-text-editor')) && node(block).classList.contains('selected') && Boolean(control('Bold')), 'A new shape did not open for typing with its controls')
+    await window.smoke.key('Escape')
+    await until(() => !document.activeElement?.classList.contains('canvas-text-editor'), 'Escape did not leave the new shape')
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    if (saved(block)?.text !== '' || !node(block)) throw new Error('Canvas format: a shape left without words did not stay on the board')
+    const dot = () => node(block).querySelector('.canvas-next.right button')
+    await until(() => Boolean(dot()), 'A selected shape did not show the dots that add the next one')
+    await hover(dot())
+    const ghost = () => node(block).querySelector('.canvas-next-ghost')?.getBoundingClientRect()
+    await until(() => Boolean(ghost()) && Math.round(ghost()!.x - node(block).getBoundingClientRect().right) === Math.round(80 * boardZoom()), 'Pointing at a dot did not outline the next shape beside this one')
+    const before = new Set(view.nodes.map((item) => item.id))
+    await press(dot(), 'the dot on the right')
+    const grown = () => view.nodes.find((item) => !before.has(item.id))
+    await until(() => Boolean(grown()), 'A click on a dot did not add a shape')
+    const next = grown()!
+    const link = view.edges.find((edge) => edge.fromNode === block && edge.toNode === next.id)
+    if (next.shape !== 'rounded' || next.x !== Number(saved(block).x) + 280 || next.y !== saved(block).y || next.width !== 200 || next.height !== 120 || link?.fromSide !== 'right' || link.toSide !== 'left') {
+      throw new Error('Canvas format: the shape a dot added was not a copy beside the first, joined from its side: ' + JSON.stringify([next, link]))
+    }
+    await until(() => Boolean(document.activeElement?.classList.contains('canvas-text-editor')) && node(next.id).classList.contains('selected') && !node(block).querySelector('.canvas-next'), 'The added shape did not open for typing in place of the first')
     await window.smoke.key('k')
     await window.smoke.key('Escape')
-    await until(() => saved(block).text === 'k', 'Words typed in a new shape were not saved')
-    const table = await place('Table', [0, 430, 0, 140], (item) => item.type === 'table' && item.height === undefined)
+    await until(() => saved(next.id).text === 'k', 'Words typed in a new shape were not saved')
+    const tail = node(next.id).querySelector('.canvas-next.bottom button')!.getBoundingClientRect()
+    const head = node(block).getBoundingClientRect()
+    const pull = [[tail.x + tail.width / 2, tail.y + tail.height / 2], [head.x + head.width / 2, head.bottom]].map((point) => point.map(Math.round))
+    const parts = view.nodes.length
+    await window.smoke.pointer('mouseMove', pull[0][0], pull[0][1])
+    await window.smoke.pointer('mouseDown', pull[0][0], pull[0][1])
+    for (let step = 1; step <= 6; step++) {
+      await window.smoke.pointer('mouseMove', Math.round(pull[0][0] + (pull[1][0] - pull[0][0]) * step / 6), Math.round(pull[0][1] + (pull[1][1] - pull[0][1]) * step / 6))
+    }
+    await window.smoke.pointer('mouseUp', pull[1][0], pull[1][1])
+    await until(() => view.edges.some((edge) => edge.fromNode === next.id && edge.toNode === block && edge.fromSide === 'bottom' && edge.toSide === 'bottom'), 'A drag from a dot did not draw a connector from that side')
+    if (view.nodes.length !== parts) throw new Error('Canvas format: a drag from a dot also added a shape')
+    await press(element.querySelector('.react-flow__pane'), 'board')
+    const hexagon = await place('Hexagon', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && typeof item.height === 'number', 'Shape')
+    await window.smoke.key('Escape')
+    const again = await place('Shape', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && item.id !== hexagon)
+    await window.smoke.key('Escape')
+    await until(() => node(again).classList.contains('selected') && !document.activeElement?.classList.contains('canvas-text-editor'), 'Escape did not leave the second hexagon')
+    await press(element.querySelector('.react-flow__pane'), 'board')
+    const table = await place('Table', [0, 430, 0, 140], (item) => item.type === 'table' && item.height === undefined, 'Shape')
     await until(() => node(table)?.querySelectorAll('th, td').length === 9, 'A new table did not show its nine cells')
-    const timer = await place('Timer', [-120, 120, -70, 70], (item) => item.type === 'timer' && item.seconds === 300)
+    if (element.querySelector('.canvas-banner')) throw new Error('Canvas format: the items just made were announced as changed by Jaz')
+    if (['Table', 'Timer', 'Eraser'].some((tool) => dockTool(tool))) throw new Error('Canvas format: the dock still holds a tool that moved off it')
+    const timer = 'timer'
     const face = () => node(timer).querySelector('.canvas-timer-face')!.textContent
     const timerButton = (label: string) => node(timer).querySelector(`[aria-label="${label}"]`)
     await until(() => face() === '5:00', 'A new timer did not show five minutes')
@@ -344,7 +399,6 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => saved(timer).endsAt === undefined && [358, 359, 360].includes(Number(saved(timer).left)) && Boolean(timerButton('Start')), 'The timer did not pause with its time left')
     await press(timerButton('Reset'), 'Reset')
     await until(() => saved(timer).left === undefined && face() === '6:00', 'The timer did not reset')
-    if (element.querySelector('.canvas-banner')) throw new Error('Canvas format: the items just made were announced as changed by Jaz')
     await select(timer)
     await press(control('Comments'), 'Comments')
     const note = () => element.querySelector<HTMLInputElement>('.canvas-comments input')
@@ -429,7 +483,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
     const pen = () => element.querySelector('.canvas-tool-options[aria-label="Pen"]')
     await until(() => Boolean(pen()), 'The pen did not show its inks')
     const scribble = await draw(from, to)
-    const zoom = Number(new DOMMatrix(getComputedStyle(element.querySelector('.react-flow__viewport')!).transform).a)
+    const zoom = boardZoom()
     const drawn = saved(scribble)
     if (Math.abs(Number(drawn.width) - 240 / zoom) > 3 || Math.abs(Number(drawn.height) - 80 / zoom) > 3 || (drawn.points as number[][]).length < 5 || drawn.color !== undefined) {
       throw new Error('Canvas format: the line was not saved where it was drawn: ' + JSON.stringify(drawn))
@@ -462,7 +516,10 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => saved(scribble).weight === 8 && ink(scribble).strokeWidth === '8px', 'The line did not take a new weight')
     await new Promise((resolve) => setTimeout(resolve, 500))
     await window.smoke.capture('canvas-format-edited')
-    await press(dockTool('Eraser'), 'Eraser tool')
+    await press(dockTool('Pen'), 'Pen tool')
+    await until(() => Boolean(pen()), 'The pen did not show its options again')
+    await press(pen()!.querySelector('[aria-label="Eraser"]'), 'the pen\'s eraser')
+    await until(() => Boolean(element.querySelector('.canvas-eraser-layer')), 'The pen\'s eraser did not take over the board')
     await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 100)
     await window.smoke.pointer('mouseDown', from[0] + 120, from[1] + 100)
     await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 70)

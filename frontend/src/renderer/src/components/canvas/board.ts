@@ -49,6 +49,8 @@ export function toFlowNodes(view: CanvasView): BoardNode[] {
 
 export function toFlowEdges(view: CanvasView): BoardEdge[] {
   const rects = new Map(view.nodes.map((item) => [item.id, rectOfItem(item)]))
+  // Connectors are drawn over every item, so none hides a line crossing it.
+  const zIndex = Math.max(0, ...view.nodes.map((item) => number(item.z))) + 1
   return view.edges.flatMap<BoardEdge>((item) => {
     const source = item.fromNode
     const target = item.toNode
@@ -66,6 +68,7 @@ export function toFlowEdges(view: CanvasView): BoardEdge[] {
       targetHandle: side(item.toSide) ?? toSide,
       markerEnd: look.toEnd === 'arrow' ? arrow : undefined,
       markerStart: look.fromEnd === 'arrow' ? arrow : undefined,
+      zIndex,
       data: { label, look },
     }]
   })
@@ -82,6 +85,29 @@ export function sidesBetween(a: Rect, b: Rect): [Side, Side] {
     return dx >= 0 ? ['right', 'left'] : ['left', 'right']
   }
   return dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom']
+}
+
+export const OPPOSITE: Record<Side, Side> = { top: 'bottom', right: 'left', bottom: 'top', left: 'right' }
+
+// How far two boxes reach into each other each way; both above zero when
+// they overlap.
+export function overlap(a: Rect, b: Rect): [number, number] {
+  return [Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x), Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y)]
+}
+
+const NEXT_GAP = 80
+const NEXT_STEP = 40
+
+// Where a part the size of `from` goes on one of its sides: a gap away, and
+// further along that side past whatever already stands there.
+export function nextTo(from: Rect, side: Side, taken: Rect[]): Rect {
+  const across = side === 'left' || side === 'right'
+  const out = side === 'left' || side === 'top' ? -1 : 1
+  let rect = across ? { ...from, x: from.x + out * (from.width + NEXT_GAP) } : { ...from, y: from.y + out * (from.height + NEXT_GAP) }
+  while (taken.some((other) => overlap(other, rect).every((reach) => reach > 0))) {
+    rect = across ? { ...rect, y: rect.y + from.height + NEXT_STEP } : { ...rect, x: rect.x + from.width + NEXT_STEP }
+  }
+  return rect
 }
 
 // The client's optimistic copy of a patch, with the server's semantics: fields
@@ -188,6 +214,14 @@ export function innermostSection<T extends { rect: Rect }>(sections: T[], x: num
   return sections
     .filter(({ rect }) => containsPoint(rect, x, y))
     .sort((a, b) => a.rect.width * a.rect.height - b.rect.width * b.rect.height)[0]
+}
+
+// The section a new item lands in, grown to hold it.
+export function sectionGrowth(nodes: BoardNode[], rect: Rect): Partial<CanvasItem>[] {
+  const sections = nodes.filter((node) => node.type === 'group').map((node) => ({ id: node.id, rect: rectOfNode(node) }))
+  const section = innermostSection(sections, rect.x + rect.width / 2, rect.y + rect.height / 2)
+  if (!section || contains(section.rect, rect)) return []
+  return [{ id: section.id, ...rounded(growToFit(section.rect, [rect])) }]
 }
 
 export function contains(outer: Rect, inner: Rect): boolean {

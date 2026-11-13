@@ -1,5 +1,5 @@
 import { useReactFlow, useViewport, type NodeProps } from '@xyflow/react'
-import { Highlighter, Slash } from 'lucide-react'
+import { Eraser, Highlighter, Slash } from 'lucide-react'
 import { useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
 import type { BoardNode, Rect } from './board'
@@ -56,13 +56,14 @@ export function StrokeNode({ id, data, selected }: NodeProps<BoardNode>) {
   )
 }
 
-// The pen: every drag over the board becomes a line, until another tool is
-// chosen.
-export function PenLayer({ onStroke }: { onStroke: (item: Partial<CanvasItem> & Rect) => void }) {
+// The pen: every drag over the board becomes a line, or with its eraser on
+// removes the lines it crosses, until another tool is chosen.
+export function PenLayer({ onStroke, onErase }: { onStroke: (item: Partial<CanvasItem> & Rect) => void; onErase: (id: string) => void }) {
   const flow = useReactFlow()
   const { zoom } = useViewport()
   const [pen, setPen] = useState<Pen>({ weight: 4, highlight: false })
   const [straight, setStraight] = useState(false)
+  const [erasing, setErasing] = useState(false)
   const [trail, setTrail] = useState<Point[] | null>(null)
   const drawn = trail && straight ? [trail[0], trail.at(-1)!] : trail
   const at = (event: PointerEvent<HTMLDivElement>): Point => {
@@ -81,35 +82,39 @@ export function PenLayer({ onStroke }: { onStroke: (item: Partial<CanvasItem> & 
   const change = (next: Partial<Pen>) => setPen((current) => ({ ...current, ...next }))
   return (
     <>
-      <div
-        className="canvas-tool-layer canvas-pen-layer"
-        onPointerDown={(event) => {
-          event.preventDefault()
-          event.currentTarget.setPointerCapture(event.pointerId)
-          setTrail([at(event)])
-        }}
-        onPointerMove={(event) => {
-          const point = at(event)
-          setTrail((current) => current && [...current, point])
-        }}
-        onPointerUp={finish}
-        onPointerCancel={() => setTrail(null)}
-      >
-        {drawn ? <svg className="canvas-pen-trail"><path d={strokePath(drawn)} style={inkStyle(pen, zoom)} /></svg> : null}
-      </div>
+      {erasing ? <EraserLayer onErase={onErase} /> : (
+        <div
+          className="canvas-tool-layer canvas-pen-layer"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            event.currentTarget.setPointerCapture(event.pointerId)
+            setTrail([at(event)])
+          }}
+          onPointerMove={(event) => {
+            const point = at(event)
+            setTrail((current) => current && [...current, point])
+          }}
+          onPointerUp={finish}
+          onPointerCancel={() => setTrail(null)}
+        >
+          {drawn ? <svg className="canvas-pen-trail"><path d={strokePath(drawn)} style={inkStyle(pen, zoom)} /></svg> : null}
+        </div>
+      )}
       <div className="canvas-tool-options canvas-toolbar canvas-overlay" role="toolbar" aria-label="Pen">
         <Swatches kind="ink" names={INKS} value={tint(INKS, pen.color)} onPick={(color) => change({ color: color ?? undefined })} />
         <span className="canvas-toolbar-rule" />
         <Weight weight={pen.weight} onWeight={(weight) => change({ weight })} />
         <ToolButton label="Highlighter" on={pen.highlight} onClick={() => change({ highlight: !pen.highlight })}><Highlighter size={16} /></ToolButton>
         <ToolButton label="Straight line" on={straight} onClick={() => setStraight(!straight)}><Slash size={16} /></ToolButton>
+        <span className="canvas-toolbar-rule" />
+        <ToolButton label="Eraser" on={erasing} onClick={() => setErasing(!erasing)}><Eraser size={16} /></ToolButton>
       </div>
     </>
   )
 }
 
 // The eraser removes each line it is dragged across.
-export function EraserLayer({ onErase }: { onErase: (id: string) => void }) {
+function EraserLayer({ onErase }: { onErase: (id: string) => void }) {
   const gone = useRef(new Set<string>())
   const erase = (event: PointerEvent<HTMLDivElement>) => {
     if (!(event.buttons & 1)) return
