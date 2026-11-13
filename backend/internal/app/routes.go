@@ -83,6 +83,7 @@ func NewRoutes(deps routeDeps) server.Routes {
 		{Pattern: "GET /v1/sessions/{session}/canvas", Handler: http.HandlerFunc(deps.Canvas.Get)},
 		{Pattern: "PATCH /v1/sessions/{session}/canvas", Handler: http.HandlerFunc(deps.Canvas.Patch)},
 		{Pattern: "PUT /v1/sessions/{session}/canvas/layout", Handler: http.HandlerFunc(deps.Canvas.PutLayout)},
+		{Pattern: "POST /v1/sessions/{session}/canvas/files", Handler: http.HandlerFunc(deps.Canvas.PostFile)},
 		{Pattern: "GET /v1/settings/voice", Handler: http.HandlerFunc(deps.Voice.Settings)},
 		{Pattern: "PUT /v1/settings/voice", Handler: http.HandlerFunc(deps.Voice.Settings)},
 		{Pattern: "POST /v1/voice/connect", Handler: http.HandlerFunc(deps.Voice.Connect)},

@@ -1,9 +1,11 @@
 package canvas
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -36,6 +38,7 @@ func newTestServer(t *testing.T) (*http.ServeMux, string, string, *canvas.Servic
 	mux.HandleFunc("GET /v1/sessions/{session}/canvas", handler.Get)
 	mux.HandleFunc("PATCH /v1/sessions/{session}/canvas", handler.Patch)
 	mux.HandleFunc("PUT /v1/sessions/{session}/canvas/layout", handler.PutLayout)
+	mux.HandleFunc("POST /v1/sessions/{session}/canvas/files", handler.PostFile)
 	return mux, session("canvas"), session("chat"), service
 }
 
@@ -151,6 +154,40 @@ func TestLayoutIsSavedForCanvasPagesOnly(t *testing.T) {
 		t.Fatalf("unknown page status = %d", res.Code)
 	}
 	if res := serve(mux, http.MethodPut, "/v1/sessions/"+chat+"/canvas/layout", body); res.Code != http.StatusNotFound {
+		t.Fatalf("chat thread status = %d", res.Code)
+	}
+}
+
+func TestUploadedFilesLandInTheCanvasFolder(t *testing.T) {
+	mux, board, chat, service := newTestServer(t)
+	upload := func(session, field, name, content string) *httptest.ResponseRecorder {
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		part, err := form.CreateFormFile(field, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		part.Write([]byte(content))
+		form.Close()
+		req := httptest.NewRequest(http.MethodPost, "/v1/sessions/"+session+"/canvas/files", &body)
+		req.Header.Set("Content-Type", form.FormDataContentType())
+		res := httptest.NewRecorder()
+		mux.ServeHTTP(res, req)
+		return res
+	}
+
+	res := upload(board, "file", "site photo.png", "pixels")
+	if res.Code != http.StatusOK || strings.TrimSpace(res.Body.String()) != `{"file":"uploads/site-photo.png"}` {
+		t.Fatalf("status = %d, body = %s", res.Code, res.Body.String())
+	}
+	saved, err := os.ReadFile(filepath.Join(service.Dir(board), "uploads", "site-photo.png"))
+	if err != nil || string(saved) != "pixels" {
+		t.Fatalf("saved = %q, err = %v", saved, err)
+	}
+	if res := upload(board, "other", "a.png", "x"); res.Code != http.StatusBadRequest {
+		t.Fatalf("missing file field status = %d", res.Code)
+	}
+	if res := upload(chat, "file", "a.png", "x"); res.Code != http.StatusNotFound {
 		t.Fatalf("chat thread status = %d", res.Code)
 	}
 }

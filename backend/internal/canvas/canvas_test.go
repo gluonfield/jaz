@@ -432,3 +432,36 @@ func TestLayoutKeepsEachPagesLatestMeasureOnePerLine(t *testing.T) {
 		t.Fatalf("layout after deleting a page =\n%s", got)
 	}
 }
+
+func TestUploadsKeepTheirNameStayInsideTheCanvasAndNeverOverwrite(t *testing.T) {
+	service := newTestService(t)
+	save := func(name, content string) string {
+		path, err := service.SaveUpload("s1", name, strings.NewReader(content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	if got := save("plan.png", "one"); got != "uploads/plan.png" {
+		t.Fatalf("first = %q", got)
+	}
+	if got := save("plan.png", "two"); got != "uploads/plan-2.png" {
+		t.Fatalf("second = %q", got)
+	}
+	if got := save(`..\..\secrets/../../etc/pass wd`, "three"); got != "uploads/pass-wd" {
+		t.Fatalf("escaping name = %q", got)
+	}
+	if got := save("..", "four"); got != "uploads/file" {
+		t.Fatalf("empty name = %q", got)
+	}
+	for path, want := range map[string]string{"uploads/plan.png": "one", "uploads/plan-2.png": "two", "uploads/pass-wd": "three", "uploads/file": "four"} {
+		raw, err := os.ReadFile(filepath.Join(service.Dir("s1"), path))
+		if err != nil || string(raw) != want {
+			t.Fatalf("%s = %q, err = %v", path, raw, err)
+		}
+	}
+	entries, err := os.ReadDir(service.Dir("s1"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("canvas folder holds %d entries, err = %v", len(entries), err)
+	}
+}

@@ -21,6 +21,7 @@ import './canvas-format.css'
 import { Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import { useToast } from '@/components/ui/toast'
 import { apiBaseUrl } from '@/lib/api/client'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
 import { layerItems } from './arrange'
@@ -63,6 +64,7 @@ import { SelectionToolbar } from './CanvasToolbar'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
 import { CanvasPages } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
+import { uploadedItems } from './upload'
 import { useCanvasLayout } from './useCanvasLayout'
 import { useCanvasInput, type Bindings } from './useCanvasInput'
 import { useCanvasSync } from './useCanvasSync'
@@ -85,7 +87,7 @@ interface Props {
 
 const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode, stroke: StrokeNode, timer: TimerNode }
 const edgeTypes = { connector: ConnectorEdge }
-const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser', K: 'sticker', M: 'timer' }
+const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser', K: 'sticker', M: 'timer', I: 'upload' }
 // What each tool puts down, around the point clicked. Text and tables grow
 // with what is written, so they start without a height.
 const NEW_ITEMS: Partial<Record<Tool, (x: number, y: number) => Partial<CanvasItem> & Rect>> = {
@@ -201,6 +203,8 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
   const container = useRef<HTMLDivElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
+  const toast = useToast()
   const { flash, news, show, touch, settle } = useAgentFollow(view, local, container, inset, !initialViewport && !targetItem)
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
@@ -305,7 +309,25 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     setTool('select')
   }
 
+  // Pictures and files go into the canvas folder and onto the board, at the
+  // point given or the middle of the view.
+  const addFiles = async (files: File[], at?: { x: number; y: number }) => {
+    const screen = container.current!.getBoundingClientRect()
+    const centre = flow.screenToFlowPosition(at ?? { x: screen.left + screen.width / 2, y: screen.top + screen.height / 2 })
+    try {
+      const items = await uploadedItems(sessionId, files, centre)
+      made.current = items.map((item) => item.id!)
+      commit({ nodes: items })
+    } catch (error) {
+      toast(`Couldn't add the file: ${(error as Error).message}`, 'danger')
+    }
+  }
+
   const chooseTool = (next: Tool) => {
+    if (next === 'upload') {
+      picker.current?.click()
+      return
+    }
     setTool(next)
     setConnectSource(null)
   }
@@ -335,7 +357,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
       addSection(padded(bounds(picked.map(rectOfNode))))
     },
   }
-  const duplicate = useCanvasInput({ page: pageId, local, commit, replay, onSelect: select, container, keys })
+  const duplicate = useCanvasInput({ page: pageId, local, commit, replay, onSelect: select, onFiles: (files) => void addFiles(files), container, keys })
 
   useEffect(() => {
     if (!targetItem || !nodes.some((node) => node.id === targetItem)) return
@@ -372,7 +394,25 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
       onPointerDownCapture={touch}
       onWheelCapture={touch}
       onKeyDownCapture={touch}
+      onDragOver={(event) => event.dataTransfer.types.includes('Files') && event.preventDefault()}
+      onDrop={(event) => {
+        const files = [...event.dataTransfer.files]
+        if (!files.length) return
+        event.preventDefault()
+        void addFiles(files, { x: event.clientX, y: event.clientY })
+      }}
     >
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        hidden
+        aria-label="Add pictures or files"
+        onChange={(event) => {
+          void addFiles([...(event.target.files ?? [])])
+          event.target.value = ''
+        }}
+      />
       <CanvasContext.Provider value={board}>
         <ReactFlow
           nodes={nodes}

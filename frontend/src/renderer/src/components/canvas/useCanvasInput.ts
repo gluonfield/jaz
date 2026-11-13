@@ -26,12 +26,13 @@ function chord(event: KeyboardEvent): string {
 // copy, cut and paste, plus the caller's own keys. They act while the board
 // holds the user's attention: focus inside it, or a last click on it with
 // nothing focused.
-export function useCanvasInput({ page, local, commit, replay, onSelect, container, keys }: {
+export function useCanvasInput({ page, local, commit, replay, onSelect, onFiles, container, keys }: {
   page: string
   local: CanvasView
   commit: (change: CanvasPatch) => void
   replay: (from: 'undo' | 'redo') => void
   onSelect: (picks: CanvasPick[]) => void
+  onFiles: (files: File[]) => void
   container: RefObject<HTMLDivElement | null>
   keys: Bindings
 }) {
@@ -136,15 +137,20 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
 
   // A paste lands beside its original while that is in view, otherwise in the
   // middle of the view; pasting again steps further along. Files from another
-  // board keep pointing at its folder. Words from elsewhere become a text
-  // item, and a web address a page.
+  // board keep pointing at its folder. From elsewhere, pictures and files are
+  // added to the board, words become a text item, and a web address a page.
   const onPaste = useEffectEvent((event: ClipboardEvent) => {
     const raw = event.clipboardData?.getData(CLIP)
+    const files = [...(event.clipboardData?.files ?? [])]
     const words = event.clipboardData?.getData('text/plain').trim()
-    if ((!raw && !words) || !attending(event)) {
+    if ((!raw && !files.length && !words) || !attending(event)) {
       return
     }
     event.preventDefault()
+    if (!raw && files.length) {
+      onFiles(files)
+      return
+    }
     if (!raw) {
       const screen = container.current!.getBoundingClientRect()
       const middle = flow.screenToFlowPosition({ x: screen.left + screen.width / 2, y: screen.top + screen.height / 2 })

@@ -39,11 +39,17 @@ export async function exerciseCanvasFormat(): Promise<void> {
     </script>` })
   const heard: string[] = []
   const originalFetch = window.fetch
+  const uploads: string[] = []
   let layout: CanvasLayout = { page: '', items: [], issues: [] }
   window.fetch = async (input, init) => {
     if (new URL(String(input)).pathname === `/v1/sessions/${sessionId}/canvas/layout`) {
       layout = JSON.parse(String(init?.body))
       return new Response(null, { status: 204 })
+    }
+    if (new URL(String(input)).pathname === `/v1/sessions/${sessionId}/canvas/files`) {
+      const sent = (init!.body as FormData).get('file') as File
+      uploads.push(`${sent.name}:${sent.size}`)
+      return Response.json({ file: `uploads/${sent.name}` })
     }
     if (new URL(String(input)).pathname !== `/v1/sessions/${sessionId}/canvas`) {
       return originalFetch(input, init)
@@ -365,6 +371,34 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await paste('https://example.com/plan', (item) => item.type === 'link' && item.url === 'https://example.com/plan', 'A pasted address did not become a page')
     await window.smoke.key('Backspace')
     await until(() => view.nodes.at(-1)!.type !== 'link', 'The pasted page was not removed')
+    const drawing = document.createElement('canvas')
+    drawing.width = 960
+    drawing.height = 480
+    drawing.getContext('2d')!.fillRect(0, 0, 960, 480)
+    const png = await new Promise<Blob>((resolve) => drawing.toBlob((blob) => resolve(blob!), 'image/png'))
+    const carried = (name: string) => {
+      const data = new DataTransfer()
+      data.items.add(new File([png], name, { type: 'image/png' }))
+      return data
+    }
+    const pane = element.querySelector('.react-flow__pane')!
+    pane.dispatchEvent(new ClipboardEvent('paste', { clipboardData: carried('pasted.png'), bubbles: true, cancelable: true }))
+    await until(() => view.nodes.at(-1)!.file === 'uploads/pasted.png' && view.nodes.at(-1)!.width === 480 && view.nodes.at(-1)!.height === 240 && uploads.at(-1) === `pasted.png:${png.size}` && node(view.nodes.at(-1)!.id)?.classList.contains('selected'), 'A pasted picture was not uploaded and put on the board at its own shape')
+    const spot = element.getBoundingClientRect()
+    const over = pane.dispatchEvent(new DragEvent('dragover', { dataTransfer: carried('dropped.png'), bubbles: true, cancelable: true, clientX: spot.x + 300, clientY: spot.y + 300 }))
+    pane.dispatchEvent(new DragEvent('drop', { dataTransfer: carried('dropped.png'), bubbles: true, cancelable: true, clientX: spot.x + 300, clientY: spot.y + 300 }))
+    await until(() => !over && view.nodes.at(-1)!.file === 'uploads/dropped.png' && Math.abs(node(view.nodes.at(-1)!.id).getBoundingClientRect().x + node(view.nodes.at(-1)!.id).getBoundingClientRect().width / 2 - spot.x - 300) < 3, 'A dropped picture did not land where it was dropped')
+    await window.smoke.key('Backspace')
+    await until(() => view.nodes.at(-1)!.file === 'uploads/pasted.png', 'Delete did not remove the picture just dropped')
+    await window.smoke.key('z', ['meta'])
+    await until(() => view.nodes.at(-1)!.file === 'uploads/dropped.png', 'Undo did not bring the picture back')
+    const pictures = view.nodes.filter((item) => String(item.file).startsWith('uploads/')).map((item) => item.id)
+    view = { ...applyPatch(view, { remove: pictures }), version: String(Number(view.version) + 1) }
+    await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
+    await until(() => pictures.length === 2 && pictures.every((id) => !node(id)), 'The uploaded pictures were not cleared away')
+    if (!dockTool('Picture or file')) {
+      throw new Error('Canvas format: the dock has no upload tool')
+    }
     const sticker = await place('Sticker', [-90, 90, -90, 90], (item) => item.text === '👍' && item.size === 'huge')
     await until(() => node(sticker).classList.contains('selected') && !document.activeElement?.classList.contains('canvas-text-editor') && dockTool('Select')?.getAttribute('aria-pressed') === 'true', 'A sticker was not put down ready to move')
 

@@ -1,4 +1,5 @@
-import { get, patch, put } from '@/lib/api/client'
+import { apiFetch, get, patch, put } from '@/lib/api/client'
+import { readAPIResponse } from '@/lib/api/response'
 
 // A JSON Canvas 1.0 node or edge (jsoncanvas.org). Fields stay open: the agent
 // may write ones Jaz does not render, and patches must not drop them.
@@ -76,6 +77,13 @@ export interface CanvasLayout {
 
 export function putCanvasLayout(sessionId: string, layout: CanvasLayout): Promise<void> {
   return put<void>(`${canvasPath(sessionId)}/layout`, layout)
+}
+
+// Saves a file into the canvas folder and answers with its path there.
+export async function uploadCanvasFile(sessionId: string, file: File): Promise<{ file: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  return readAPIResponse<{ file: string }>(await apiFetch(`${canvasPath(sessionId)}/files`, { method: 'POST', body: form }))
 }
 
 export function patchCanvas(sessionId: string, change: CanvasPagePatch): Promise<{ version: string }> {
