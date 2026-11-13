@@ -57,7 +57,7 @@ import { TimerNode } from './CanvasTimer'
 import { CommentBadges } from './CanvasComments'
 import { SelectionToolbar } from './CanvasToolbar'
 import { ToolLayer } from './CanvasTools'
-import { fitPadding, useAgentFollow } from './useAgentFollow'
+import { fitPadding, MIN_ZOOM, useAgentFollow } from './useAgentFollow'
 import { CanvasPages, type PageTabsMemory } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
 import { uploadedItems } from './upload'
@@ -193,7 +193,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   const container = useRef<HTMLDivElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const toast = useToast()
-  const { flash, news, show, touch, settle } = useAgentFollow(view, local, container, inset, !initialViewport && !targetItem)
+  const { flash, news, show, touch, settle, opening } = useAgentFollow(view, local, container, inset, !initialViewport && !targetItem)
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
@@ -331,7 +331,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   return (
     <div
       ref={container}
-      className={`canvas tool-${tool}${busy || dragging ? ' canvas-busy' : ''}${tool === 'connector' ? ' canvas-connecting' : ''}`}
+      className={`canvas tool-${tool}${busy || dragging ? ' canvas-busy' : ''}${tool === 'connector' ? ' canvas-connecting' : ''}${opening ? ' canvas-opening' : ''}`}
       style={{ '--canvas-zoom': zoom, '--canvas-inset': `${inset}px` } as CSSProperties}
       onPointerDownCapture={touch}
       onWheelCapture={touch}
@@ -408,7 +408,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
           deleteKeyCode={['Backspace', 'Delete']}
           multiSelectionKeyCode={['Meta', 'Shift']}
           defaultViewport={initialViewport}
-          minZoom={0.1}
+          minZoom={MIN_ZOOM}
           maxZoom={4}
           proOptions={{ hideAttribution: true }}
         >

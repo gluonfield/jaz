@@ -109,6 +109,10 @@
   cursor: crosshair;
 }
 
+.canvas-opening .react-flow__viewport {
+  opacity: 0;
+}
+
 .canvas-busy .canvas-card,
 .canvas-busy .canvas-edge-label {
   pointer-events: none;

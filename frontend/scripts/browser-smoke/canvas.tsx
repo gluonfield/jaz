@@ -118,6 +118,14 @@ document.querySelector('button').onclick = () => {
   }
   try {
     window.addEventListener('message', onArtifactMessage)
+    let firstSeen = ''
+    const watchOpening = () => {
+      const pane = element.querySelector<HTMLElement>('.react-flow__viewport')
+      const seen = pane && getComputedStyle(pane).opacity !== '0' && [...pane.querySelectorAll('.react-flow__node')].some((item) => getComputedStyle(item).visibility !== 'hidden')
+      if (seen) firstSeen = viewport()
+      else requestAnimationFrame(watchOpening)
+    }
+    requestAnimationFrame(watchOpening)
     root.render(<QueryClientProvider client={client}><Fixture /></QueryClientProvider>)
     await until(() => Boolean(node('report')?.querySelector('p')))
     await until(() => node('brief').offsetHeight < 100, 'A short document kept the tall box reserved for it')
@@ -126,6 +134,8 @@ document.querySelector('button').onclick = () => {
       const items = view.nodes.map((item) => node(item.id).getBoundingClientRect())
       return zoom() > 0.5 && items.every((item) => item.left >= board.left + 50 && item.bottom <= board.bottom)
     }, 'The opening view did not fit the items at the size of their content')
+    await until(() => Boolean(firstSeen), 'The board never showed its items')
+    if (firstSeen === 'translate(0px, 0px) scale(1)') throw new Error('The board showed its items before fitting them into view')
     await until(() => Boolean(linkIdentity), 'The external canvas link did not load')
     if (linkIdentity!.referrer || linkIdentity!.request.referer || /jaz|electron/i.test(linkIdentity!.userAgent)
       || linkIdentity!.request['user-agent'] !== linkIdentity!.userAgent) {

@@ -1,10 +1,11 @@
-import { useReactFlow } from '@xyflow/react'
+import { getViewportForBounds, useReactFlow } from '@xyflow/react'
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { CanvasView } from '@/lib/api/canvas'
 import { changedNodeIds, rectOfNode, type BoardEdge, type BoardNode } from './board'
 
 // `inset` is the width of the board's left edge that the chat covers.
 export const fitPadding = (inset: number) => ({ padding: { top: '56px', bottom: '96px', left: `${56 + inset}px`, right: '56px' } }) as const
+export const MIN_ZOOM = 0.1
 // After this long without input the camera may follow the agent's edits.
 const IDLE_MS = 3000
 
@@ -19,6 +20,7 @@ export function useAgentFollow(view: CanvasView, local: CanvasView, container: R
   const shown = useRef<{ view: CanvasView; local: CanvasView } | null>(null)
   const [flash, setFlash] = useState<Record<string, number>>({})
   const [news, setNews] = useState<string[]>([])
+  const [opening, setOpening] = useState(initialFit)
   const show = useCallback((ids: string[]) => {
     setNews([])
     requestAnimationFrame(() => void flow.fitView({ nodes: ids.map((id) => ({ id })), duration: 600, maxZoom: 1, ...fitPadding(inset) }))
@@ -47,13 +49,19 @@ export function useAgentFollow(view: CanvasView, local: CanvasView, container: R
   }, [view, local, flow, show, container, inset])
 
   // Items take their size as their content loads, so the opening view fits
-  // them again each time, until the user or the agent moves on.
+  // them again each time, until the user or the agent moves on. It fits in
+  // the pass that measures them, and the board stays `opening`, its items
+  // unseen, until the first one, so they are never painted unfitted.
   const settle = useCallback(() => {
-    if (settling.current) requestAnimationFrame(() => void flow.fitView({ maxZoom: 1, ...fitPadding(inset) }))
-  }, [flow, inset])
+    setOpening(false)
+    const drawn = local.nodes.map((item) => item.id).filter((id) => flow.getInternalNode(id)?.measured.height)
+    if (!settling.current || !drawn.length) return
+    const { width, height } = container.current!.getBoundingClientRect()
+    void flow.setViewport(getViewportForBounds(flow.getNodesBounds(drawn), width, height, MIN_ZOOM, 1, fitPadding(inset).padding))
+  }, [flow, local, container, inset])
   const touch = useCallback(() => {
     touched.current = Date.now()
     settling.current = false
   }, [])
-  return { flash, news, show, touch, settle }
+  return { flash, news, show, touch, settle, opening }
 }
