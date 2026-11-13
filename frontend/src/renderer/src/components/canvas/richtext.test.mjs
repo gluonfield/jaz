@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { parseRich, richHTML, toggleRichList, toggleRichMark, writeRich } from '@/components/canvas/richtext'
+import { formatText, parseRich, richHTML, toggleRichList, toggleRichMark, writeRich } from '@/components/canvas/richtext'
 
 const again = (source) => writeRich(parseRich(source))
 
@@ -61,4 +61,12 @@ test('checklists read, write and toggle as bullets with a box', () => {
   expect(writeRich(tasks)).toBe('- [ ] one\n- [x] two')
   expect(writeRich(toggleRichList(tasks, 'ul', true))).toBe('one\n\ntwo')
   expect(writeRich(toggleRichList(tasks, 'ul'))).toBe('- one\n- two')
+})
+
+test('a format goes on the whole text, as source where the text is not rich', () => {
+  expect(formatText('one\n\ntwo', 'checklist')).toBe('- [ ] one\n- [ ] two')
+  expect(formatText('one\n\ntwo', 'numbered')).toBe('1. one\n2. two')
+  expect(formatText('# Plan\nrest', 'bold')).toBe('# **Plan**\n**rest**')
+  expect(formatText('# Plan\nrest', 'list')).toBe('- # Plan\n- rest')
+  expect(formatText('# Plan', 'strike')).toBe('# Plan')
 })

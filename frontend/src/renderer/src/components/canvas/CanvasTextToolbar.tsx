@@ -1,12 +1,11 @@
 import { useReactFlow } from '@xyflow/react'
 import { Bold, Code, Italic, List, ListChecks, ListOrdered, StickyNote, Strikethrough, TextAlignCenter, TextAlignEnd, TextAlignStart, Type, type LucideIcon } from 'lucide-react'
-import type { CSSProperties } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { useCanvas } from './canvasContext'
 import { ShapeOutline } from './CanvasShapes'
-import { Menu, ToolButton } from './CanvasMenu'
+import { Menu, Swatches, ToolButton, swatch } from './CanvasMenu'
 import { ItemToolbar } from './CanvasToolbar'
-import { ALIGNS, FILLS, INKS, SHAPES, SIZES, inkColor, lookOf, type Tint } from './format'
+import { ALIGNS, FILLS, INKS, SHAPES, SIZES, after, lookOf, title } from './format'
 import type { TextFormat } from './richtext'
 
 const ALIGN_ICONS = { left: TextAlignStart, center: TextAlignCenter, right: TextAlignEnd }
@@ -19,15 +18,6 @@ const FORMATS: [TextFormat, string, LucideIcon][] = [
   ['numbered', 'Numbered list', ListOrdered],
   ['checklist', 'Checklist', ListChecks],
 ]
-const title = (word: string) => word[0].toUpperCase() + word.slice(1)
-
-export function swatch(kind: 'fill' | 'ink', tint: Tint | undefined): { className: string; style: CSSProperties } {
-  return {
-    className: `canvas-swatch${kind === 'fill' && tint?.name ? ` canvas-fill-${tint.name}` : ''}${tint ? '' : ' none'}`,
-    style: { [`--canvas-${kind}`]: kind === 'ink' ? inkColor(tint) : tint?.custom } as CSSProperties,
-  }
-}
-
 export function SizeMenu({ item }: { item: CanvasItem }) {
   const { commit } = useCanvas()
   const size = lookOf(item).size ?? 'small'
@@ -52,6 +42,8 @@ export function TextToolbar({ item, onFormat }: { item: CanvasItem; onFormat: (f
   const align = look.align ?? (look.kind === 'block' ? 'center' : 'left')
   const AlignIcon = ALIGN_ICONS[align]
   const plain = look.kind === 'text'
+  const paint = plain ? 'ink' : 'fill'
+  const tinted = plain ? look.ink : look.fill
   return (
     <ItemToolbar label="Format" item={item}>
       <Menu label="Shape" face={look.shape ? <ShapeOutline shape={look.shape} /> : plain ? <Type size={16} /> : <StickyNote size={16} />}>
@@ -72,20 +64,11 @@ export function TextToolbar({ item, onFormat }: { item: CanvasItem; onFormat: (f
       <span className="canvas-toolbar-rule" />
       <SizeMenu item={item} />
       {FORMATS.map(([kind, label, Icon]) => <ToolButton key={kind} label={label} onClick={() => onFormat(kind)}><Icon size={16} /></ToolButton>)}
-      <ToolButton label={`Align ${align}`} onClick={() => set({ textAlign: ALIGNS[(ALIGNS.indexOf(align) + 1) % ALIGNS.length] })}><AlignIcon size={16} /></ToolButton>
+      <ToolButton label={`Align ${align}`} onClick={() => set({ textAlign: after(ALIGNS, align) })}><AlignIcon size={16} /></ToolButton>
       <span className="canvas-toolbar-rule" />
-      <Menu label={plain ? 'Text colour' : 'Fill'} face={<span {...swatch(plain ? 'ink' : 'fill', plain ? look.ink : look.fill)} />}>
+      <Menu label={plain ? 'Text colour' : 'Fill'} face={<span {...swatch(paint, tinted)} />}>
         <div className="canvas-toolbar-swatches">
-          {look.kind === 'note' ? null : (
-            <button type="button" role="menuitemradio" aria-checked={!(plain ? look.ink : look.fill)} aria-label="Default" title="Default" onClick={() => set(plain ? { ink: null } : { color: null })}>
-              <span {...swatch('fill', undefined)} />
-            </button>
-          )}
-          {(plain ? INKS : FILLS).map((name) => (
-            <button key={name} type="button" role="menuitemradio" aria-checked={(plain ? look.ink : look.fill)?.name === name} aria-label={title(name)} title={title(name)} onClick={() => set(plain ? { ink: name } : { color: name })}>
-              <span {...swatch(plain ? 'ink' : 'fill', { name })} />
-            </button>
-          ))}
+          <Swatches kind={paint} names={plain ? INKS : FILLS} value={tinted} required={look.kind === 'note'} onPick={(name) => set(plain ? { ink: name } : { color: name })} />
         </div>
         {look.kind === 'block' ? (
           <button type="button" role="menuitemcheckbox" aria-checked={look.hollow} className="canvas-toolbar-row" onClick={() => set({ hollow: look.hollow ? null : true })}>

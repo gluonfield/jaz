@@ -22,6 +22,7 @@ test('restacking lifts the picked items over the rest in their own order, once',
   expect(layerItems(items, new Set(['b']), 'front')).toEqual([])
   expect(layerItems(items, new Set(['c']), 'back')).toEqual([])
   expect(layerItems(items, new Set(['a', 'b', 'c', 'd']), 'front')).toEqual([])
+  expect(layerItems([...items, { id: 's', type: 'group', z: 9 }], new Set(['a', 's']), 'front')).toEqual([{ id: 'a', z: 5 }])
 })
 
 test('a locked item cannot be dragged or deleted, and z sets the stacking order', () => {

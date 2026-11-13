@@ -1,3 +1,5 @@
+import { toggleList, toggleMark } from './format'
+
 // The part of Markdown a board item can be typed in as formatted words:
 // paragraphs, bulleted and numbered lists, checklists, bold, italic,
 // strikethrough, code and links. Text using anything else is edited as Markdown source.
@@ -339,4 +341,21 @@ export function toggleRichList(blocks: Block[], kind: 'ul' | 'ol', tasks = false
     depth: all ? 0 : block.depth,
     ...(tasks && !all ? { checked: checked ?? false } : {}),
   }))
+}
+
+function toggleRich(blocks: Block[], kind: TextFormat): Block[] {
+  if (kind === 'list') return toggleRichList(blocks, 'ul')
+  if (kind === 'numbered') return toggleRichList(blocks, 'ol')
+  if (kind === 'checklist') return toggleRichList(blocks, 'ul', true)
+  return toggleRichMark(blocks, kind)
+}
+
+// A format put on the whole of a text, or taken off it. Text that is edited
+// as source takes only bullets, bold and italic.
+export function formatText(text: string, kind: TextFormat): string {
+  const blocks = parseRich(text)
+  if (blocks) return writeRich(toggleRich(blocks, kind))
+  if (kind === 'list') return toggleList(text)
+  if (kind === 'bold' || kind === 'italic') return toggleMark(text, kind === 'bold' ? '**' : '*')
+  return text
 }

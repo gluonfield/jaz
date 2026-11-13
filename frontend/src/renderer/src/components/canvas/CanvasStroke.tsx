@@ -5,14 +5,10 @@ import type { CanvasItem } from '@/lib/api/canvas'
 import type { BoardNode, Rect } from './board'
 import { useCanvas } from './canvasContext'
 import { Flash, Resizer } from './CanvasNodes'
-import { swatch } from './CanvasTextToolbar'
-import { Menu, ToolButton } from './CanvasMenu'
+import { Menu, Swatches, ToolButton, swatch } from './CanvasMenu'
 import { ItemToolbar } from './CanvasToolbar'
-import { INKS, inkColor, tint } from './format'
+import { INKS, after, inkColor, tint } from './format'
 import { WEIGHTS, penOf, strokeItem, strokePath, strokePoints, type Pen, type Point } from './stroke'
-
-const title = (word: string) => word[0].toUpperCase() + word.slice(1)
-const after = <T,>(options: readonly T[], value: T) => options[(options.indexOf(value) + 1) % options.length]
 
 function inkStyle(pen: Pen, zoom = 1): CSSProperties {
   return {
@@ -22,21 +18,10 @@ function inkStyle(pen: Pen, zoom = 1): CSSProperties {
   }
 }
 
-function Inks({ pen, onPen }: { pen: Pen; onPen: (pen: Partial<Pen>) => void }) {
+function Weight({ weight, onWeight }: { weight: number; onWeight: (weight: number) => void }) {
   return (
-    <>
-      <button type="button" role="menuitemradio" aria-checked={!pen.color} aria-label="Default" title="Default" onClick={() => onPen({ color: undefined })}><span {...swatch('ink', undefined)} /></button>
-      {INKS.map((name) => (
-        <button key={name} type="button" role="menuitemradio" aria-checked={pen.color === name} aria-label={title(name)} title={title(name)} onClick={() => onPen({ color: name })}><span {...swatch('ink', { name })} /></button>
-      ))}
-    </>
-  )
-}
-
-function Weight({ pen, onPen }: { pen: Pen; onPen: (pen: Partial<Pen>) => void }) {
-  return (
-    <ToolButton label={`Weight: ${pen.weight}`} onClick={() => onPen({ weight: after(WEIGHTS, pen.weight as (typeof WEIGHTS)[number]) })}>
-      <svg width="18" height="16" aria-hidden><path d="M2 8H16" stroke="currentColor" strokeWidth={pen.weight} strokeLinecap="round" /></svg>
+    <ToolButton label={`Weight: ${weight}`} onClick={() => onWeight(after<number>(WEIGHTS, weight))}>
+      <svg width="18" height="16" aria-hidden><path d="M2 8H16" stroke="currentColor" strokeWidth={weight} strokeLinecap="round" /></svg>
     </ToolButton>
   )
 }
@@ -48,16 +33,18 @@ export function StrokeNode({ id, data, selected }: NodeProps<BoardNode>) {
   const points = strokePoints(data.item)
   const pen = penOf(data.item)
   const path = strokePath(points)
-  const set = (change: Partial<Pen>) => commit({ nodes: [{ id, ...Object.fromEntries(Object.entries(change).map(([key, value]) => [key, value ?? null])) }] })
+  const set = (change: Partial<CanvasItem>) => commit({ nodes: [{ id, ...change }] })
   return (
     <>
       <Resizer item={data.item} selected={selected} minWidth={1} minHeight={1} />
       {selected ? (
         <ItemToolbar label="Drawing" item={data.item}>
           <Menu label="Ink" face={<span {...swatch('ink', tint(INKS, pen.color))} />}>
-            <div className="canvas-toolbar-swatches"><Inks pen={pen} onPen={set} /></div>
+            <div className="canvas-toolbar-swatches">
+              <Swatches kind="ink" names={INKS} value={tint(INKS, pen.color)} onPick={(color) => set({ color })} />
+            </div>
           </Menu>
-          <Weight pen={pen} onPen={set} />
+          <Weight weight={pen.weight} onWeight={(weight) => set({ weight })} />
         </ItemToolbar>
       ) : null}
       <svg className="canvas-stroke" viewBox={`0 0 ${Math.max(1, ...points.map((point) => point[0]))} ${Math.max(1, ...points.map((point) => point[1]))}`} preserveAspectRatio="none">
@@ -111,9 +98,9 @@ export function PenLayer({ onStroke }: { onStroke: (item: Partial<CanvasItem> & 
         {drawn ? <svg className="canvas-pen-trail"><path d={strokePath(drawn)} style={inkStyle(pen, zoom)} /></svg> : null}
       </div>
       <div className="canvas-tool-options canvas-toolbar canvas-overlay" role="toolbar" aria-label="Pen">
-        <Inks pen={pen} onPen={change} />
+        <Swatches kind="ink" names={INKS} value={tint(INKS, pen.color)} onPick={(color) => change({ color: color ?? undefined })} />
         <span className="canvas-toolbar-rule" />
-        <Weight pen={pen} onPen={change} />
+        <Weight weight={pen.weight} onWeight={(weight) => change({ weight })} />
         <ToolButton label="Highlighter" on={pen.highlight} onClick={() => change({ highlight: !pen.highlight })}><Highlighter size={16} /></ToolButton>
         <ToolButton label="Straight line" on={straight} onClick={() => setStraight(!straight)}><Slash size={16} /></ToolButton>
       </div>

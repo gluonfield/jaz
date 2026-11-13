@@ -1,5 +1,5 @@
 import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type Ref, type RefObject } from 'react'
-import { toggleList, toggleMarkAt } from './format'
+import { WEB_ADDRESS, toggleList, toggleMarkAt } from './format'
 import { readRich, richHTML, writeRich, type Block, type Mark, type TextFormat } from './richtext'
 
 export interface TextEditorHandle {
@@ -89,7 +89,7 @@ export function RichEditor({ ref, blocks, onDone }: { ref: Ref<TextEditorHandle>
         event.preventDefault()
         const pasted = event.clipboardData.getData('text/plain')
         // An address pasted over chosen words links them.
-        const link = /^https?:\/\/\S+$/.test(pasted.trim()) && !getSelection()!.isCollapsed
+        const link = WEB_ADDRESS.test(pasted.trim()) && !getSelection()!.isCollapsed
         document.execCommand(link ? 'createLink' : 'insertText', false, link ? pasted.trim() : pasted)
       }}
       onClick={(event) => {

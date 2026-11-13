@@ -29,11 +29,13 @@ export function alignItems(items: Placed[], to: Alignment): Partial<CanvasItem>[
 }
 
 // The picked items get a `z` above or below every other item, keeping their
-// own order. Nothing changes when they are already there.
+// own order. Nothing changes when they are already there. Sections stay
+// beneath what they hold.
 export function layerItems(items: CanvasItem[], picked: ReadonlySet<string>, to: 'front' | 'back'): Partial<CanvasItem>[] {
   const z = (item: CanvasItem) => (typeof item.z === 'number' ? item.z : 0)
-  const rest = items.filter((item) => !picked.has(item.id)).map(z)
-  const mine = items.filter((item) => picked.has(item.id))
+  const stacked = items.filter((item) => item.type !== 'group')
+  const rest = stacked.filter((item) => !picked.has(item.id)).map(z)
+  const mine = stacked.filter((item) => picked.has(item.id))
   if (!rest.length || !mine.length) return []
   const done = to === 'front' ? Math.min(...mine.map(z)) > Math.max(...rest) : Math.max(...mine.map(z)) < Math.min(...rest)
   if (done) return []

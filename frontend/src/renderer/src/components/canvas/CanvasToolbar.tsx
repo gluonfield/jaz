@@ -3,7 +3,7 @@ import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEn
 import type { ReactNode } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { ALIGNMENTS, alignItems, layerItems, styleOf, type Alignment } from './arrange'
-import { bounds, newSection, padded, rectOfNode, type BoardEdge, type BoardNode } from './board'
+import { rectOfNode, sectionAround, type BoardEdge, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { Comments } from './CanvasComments'
 import { Menu, Menus, ToolButton, hold } from './CanvasMenu'
@@ -26,7 +26,7 @@ export function ItemToolbar({ label, item, offset = 16, children }: { label: str
           </>
         )}
         <Comments item={item} />
-        <ArrangeControls ids={[item.id]} menu />
+        <ArrangeControls items={[item]} menu />
       </Menus>
     </NodeToolbar>
   )
@@ -42,14 +42,12 @@ const ALIGN_ICONS: Record<Alignment, LucideIcon> = {
 }
 
 // What the user does to whole items: lock, copy, restack, remove.
-export function ArrangeControls({ ids, menu }: { ids: string[]; menu?: boolean }) {
-  const { view, commit, duplicate } = useCanvas()
+export function ArrangeControls({ items, menu }: { items: CanvasItem[]; menu?: boolean }) {
+  const { commit, duplicate } = useCanvas()
   const flow = useReactFlow<BoardNode, BoardEdge>()
-  const picked = new Set(ids)
-  const items = view.nodes.filter((item) => picked.has(item.id))
-  const locked = items.length > 0 && items.every((item) => item.locked === true)
+  const locked = items.every((item) => item.locked === true)
   const layer = (to: 'front' | 'back') => {
-    const change = layerItems(view.nodes.filter((item) => item.type !== 'group'), picked, to)
+    const change = layerItems(flow.getNodes().map((node) => node.data.item), new Set(items.map((item) => item.id)), to)
     if (change.length) commit({ nodes: change })
   }
   const alike = style ? items.filter((item) => item.type === style!.type) : []
@@ -62,11 +60,11 @@ export function ArrangeControls({ ids, menu }: { ids: string[]; menu?: boolean }
     ...(alike.length ? [['Paste style', ClipboardPaste, () => commit({ nodes: alike.map((item) => ({ id: item.id, ...style!.look })) })] satisfies Act] : []),
     ['Bring to front', BringToFront, () => layer('front')],
     ['Send to back', SendToBack, () => layer('back')],
-    ['Delete', Trash2, () => void flow.deleteElements({ nodes: ids.map((id) => ({ id })) })],
+    ['Delete', Trash2, () => void flow.deleteElements({ nodes: items })],
   ]
   return (
     <>
-      <ToolButton label={locked ? 'Unlock' : 'Lock'} on={locked} onClick={() => commit({ nodes: ids.map((id) => ({ id, locked: locked ? null : true })) })}>
+      <ToolButton label={locked ? 'Unlock' : 'Lock'} on={locked} onClick={() => commit({ nodes: items.map(({ id }) => ({ id, locked: locked ? null : true })) })}>
         {locked ? <Lock size={16} /> : <LockOpen size={16} />}
       </ToolButton>
       {locked ? null : menu ? <Menu label="More" face={<Ellipsis size={16} />}>{acts.map(([label, Icon, act]) => (
@@ -79,23 +77,21 @@ export function ArrangeControls({ ids, menu }: { ids: string[]; menu?: boolean }
 }
 
 // The controls of several selected items, above the box around them.
-export function SelectionToolbar({ ids }: { ids: string[] }) {
+export function SelectionToolbar({ nodes }: { nodes: BoardNode[] }) {
   const { commit } = useCanvas()
-  const flow = useReactFlow<BoardNode, BoardEdge>()
   const align = (to: Alignment) => {
-    const free = flow.getNodes().filter((node) => ids.includes(node.id) && node.data.item.locked !== true)
+    const free = nodes.filter((node) => node.data.item.locked !== true)
     commit({ nodes: alignItems(free.map((node) => ({ id: node.id, ...rectOfNode(node) })), to) })
   }
-  const group = () => commit({ nodes: [newSection(padded(bounds(flow.getNodes().filter((node) => ids.includes(node.id)).map(rectOfNode))))] })
   return (
-    <NodeToolbar nodeId={ids} isVisible className="canvas-toolbar nodrag nopan nowheel" offset={16} role="toolbar" aria-label="Selection actions" onMouseDown={hold}>
+    <NodeToolbar nodeId={nodes.map((node) => node.id)} isVisible className="canvas-toolbar nodrag nopan nowheel" offset={16} role="toolbar" aria-label="Selection actions" onMouseDown={hold}>
       {ALIGNMENTS.map((to) => {
         const Icon = ALIGN_ICONS[to]
         return <ToolButton key={to} label={`Align ${to}`} onClick={() => align(to)}><Icon size={16} /></ToolButton>
       })}
       <span className="canvas-toolbar-rule" />
-      <ToolButton label="Group" onClick={group}><Group size={16} /></ToolButton>
-      <ArrangeControls ids={ids} />
+      <ToolButton label="Group" onClick={() => commit({ nodes: [sectionAround(nodes)] })}><Group size={16} /></ToolButton>
+      <ArrangeControls items={nodes.map((node) => node.data.item)} />
     </NodeToolbar>
   )
 }

@@ -1,6 +1,8 @@
+import { ViewportPortal } from '@xyflow/react'
 import { MessageSquare } from 'lucide-react'
 import { useState } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
+import { rectOfNode, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { Menu } from './CanvasMenu'
 
@@ -12,6 +14,18 @@ export interface Comment {
 export function commentsOf(item: CanvasItem): Comment[] {
   const comments = Array.isArray(item.comments) ? item.comments : []
   return comments.flatMap((comment) => (typeof comment?.text === 'string' && comment.text ? [{ by: comment.by === 'agent' ? 'agent' as const : 'user' as const, text: comment.text }] : []))
+}
+
+// How many comments each item carries, at its top right corner.
+export function CommentBadges({ nodes }: { nodes: BoardNode[] }) {
+  return (
+    <ViewportPortal>
+      {nodes.map((node) => {
+        const count = commentsOf(node.data.item).length
+        return count ? <div key={node.id} className="canvas-comment-badge" title="Comments" style={{ left: node.position.x + rectOfNode(node).width, top: node.position.y }}>{count}</div> : null
+      })}
+    </ViewportPortal>
+  )
 }
 
 // Notes pinned to an item, between the user and the agent.

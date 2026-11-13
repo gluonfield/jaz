@@ -54,7 +54,7 @@ func (s *Service) SaveLayout(sessionID, page string, layout Layout) error {
 	out.WriteString("{\n  \"pages\": {")
 	written := 0
 	for _, known := range document.Pages {
-		layout, ok := stored.Pages[known.ID]
+		saved, ok := stored.Pages[known.ID]
 		if !ok {
 			continue
 		}
@@ -64,11 +64,11 @@ func (s *Service) SaveLayout(sessionID, page string, layout Layout) error {
 		written++
 		id, _ := json.Marshal(known.ID)
 		fmt.Fprintf(&out, "\n    %s: {\"items\":[", id)
-		if err := writeLines(&out, layout.Items); err != nil {
+		if err := writeLines(&out, saved.Items); err != nil {
 			return err
 		}
 		out.WriteString("],\"issues\":[")
-		if err := writeLines(&out, layout.Issues); err != nil {
+		if err := writeLines(&out, saved.Issues); err != nil {
 			return err
 		}
 		out.WriteString("]}")

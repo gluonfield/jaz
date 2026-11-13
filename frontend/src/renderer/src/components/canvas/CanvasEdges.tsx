@@ -4,9 +4,8 @@ import type { CSSProperties } from 'react'
 import type { BoardEdge } from './board'
 import { useCanvas } from './canvasContext'
 import { LabelInput } from './CanvasNodes'
-import { swatch } from './CanvasTextToolbar'
-import { Menu, Menus, ToolButton, hold } from './CanvasMenu'
-import { DASHES, ENDS, INKS, ROUTES, inkColor, type EdgeLook } from './format'
+import { Menu, Menus, Swatches, ToolButton, hold, swatch } from './CanvasMenu'
+import { DASHES, ENDS, INKS, ROUTES, after, inkColor, type EdgeLook } from './format'
 
 const PATHS = { curve: getBezierPath, elbow: getSmoothStepPath, straight: getStraightPath }
 const DASH_ARRAYS = { solid: undefined, dashed: '8 6', dotted: '1.5 5' }
@@ -15,8 +14,6 @@ const END_ICONS: Record<'fromEnd' | 'toEnd', Record<EdgeLook['toEnd'], LucideIco
   fromEnd: { none: Minus, arrow: ArrowLeft, circle: Circle },
   toEnd: { none: Minus, arrow: ArrowRight, circle: Circle },
 }
-const after = <T,>(options: readonly T[], value: T) => options[(options.indexOf(value) + 1) % options.length]
-const title = (word: string) => word[0].toUpperCase() + word.slice(1)
 
 export function ConnectorEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd, markerStart, selected }: EdgeProps<BoardEdge>) {
   const { editing, setEditing, commit } = useCanvas()
@@ -72,10 +69,7 @@ function EdgeToolbar({ id, look, x, y }: { id: string; look: EdgeLook; x: number
         <span className="canvas-toolbar-rule" />
         <Menu label="Line colour" face={<span {...swatch('ink', look.ink)} />}>
           <div className="canvas-toolbar-swatches">
-            <button type="button" role="menuitemradio" aria-checked={!look.ink} aria-label="Default" title="Default" onClick={() => set({ color: null })}><span {...swatch('ink', undefined)} /></button>
-            {INKS.map((name) => (
-              <button key={name} type="button" role="menuitemradio" aria-checked={look.ink?.name === name} aria-label={title(name)} title={title(name)} onClick={() => set({ color: name })}><span {...swatch('ink', { name })} /></button>
-            ))}
+            <Swatches kind="ink" names={INKS} value={look.ink} onPick={(color) => set({ color })} />
           </div>
         </Menu>
         <ToolButton label="Delete" onClick={() => void flow.deleteElements({ edges: [{ id }] })}><Trash2 size={16} /></ToolButton>

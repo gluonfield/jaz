@@ -1,4 +1,5 @@
-import { createContext, use, useState, type MouseEvent, type ReactNode } from 'react'
+import { createContext, use, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
+import { inkColor, title, type Tint } from './format'
 
 // Pressing a control must not take the focus from the text being edited.
 export const hold = (event: MouseEvent) => event.preventDefault()
@@ -29,5 +30,31 @@ export function Menu({ label, face, stay, children }: { label: string; face: Rea
       </button>
       {open ? <div className="canvas-toolbar-panel" role="menu" aria-label={label} onClick={() => stay || setCurrent(null)}>{children}</div> : null}
     </div>
+  )
+}
+
+export function swatch(kind: 'fill' | 'ink', tint: Tint | undefined): { className: string; style: CSSProperties } {
+  return {
+    className: `canvas-swatch${kind === 'fill' && tint?.name ? ` canvas-fill-${tint.name}` : ''}${tint ? '' : ' none'}`,
+    style: { [`--canvas-${kind}`]: kind === 'ink' ? inkColor(tint) : tint?.custom } as CSSProperties,
+  }
+}
+
+// The colours an item may take. The first choice clears the colour, unless
+// the item must have one.
+export function Swatches({ kind, names, value, required, onPick }: { kind: 'fill' | 'ink'; names: readonly string[]; value: Tint | undefined; required?: boolean; onPick: (name: string | null) => void }) {
+  return (
+    <>
+      {required ? null : (
+        <button type="button" role="menuitemradio" aria-checked={!value} aria-label="Default" title="Default" onClick={() => onPick(null)}>
+          <span {...swatch(kind, undefined)} />
+        </button>
+      )}
+      {names.map((name) => (
+        <button key={name} type="button" role="menuitemradio" aria-checked={value?.name === name} aria-label={title(name)} title={title(name)} onClick={() => onPick(name)}>
+          <span {...swatch(kind, { name })} />
+        </button>
+      ))}
+    </>
   )
 }

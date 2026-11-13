@@ -218,6 +218,10 @@ export function newSection(rect: Rect): Partial<CanvasItem> {
   return { id: newId('section'), type: 'group', label: 'Section', ...rounded(rect) }
 }
 
+export function sectionAround(nodes: BoardNode[]): Partial<CanvasItem> {
+  return newSection(padded(bounds(nodes.map(rectOfNode))))
+}
+
 export function padded(rect: Rect): Rect {
   return { x: rect.x - SECTION_PAD, y: rect.y - SECTION_PAD, width: rect.width + 2 * SECTION_PAD, height: rect.height + 2 * SECTION_PAD }
 }
@@ -244,6 +248,18 @@ export function bounds(rects: Rect[]): Rect {
     width: Math.max(...rects.map((rect) => rect.x + rect.width)) - x,
     height: Math.max(...rects.map((rect) => rect.y + rect.height)) - y,
   }
+}
+
+export function centre(rect: Rect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+}
+
+// The part of the board showing in the element, in board coordinates.
+export function viewRect(flow: { screenToFlowPosition: (point: { x: number; y: number }) => { x: number; y: number } }, element: Element): Rect {
+  const screen = element.getBoundingClientRect()
+  const a = flow.screenToFlowPosition({ x: screen.left, y: screen.top })
+  const b = flow.screenToFlowPosition({ x: screen.right, y: screen.bottom })
+  return { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y }
 }
 
 export function rounded(rect: Rect): Rect {

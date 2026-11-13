@@ -12,8 +12,8 @@ import { ToolButton } from './CanvasMenu'
 import { ItemToolbar } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
-import { inkColor, lookOf, toggleList, toggleMark, toggleTask } from './format'
-import { parseRich, toggleRichList, toggleRichMark, writeRich, type TextFormat } from './richtext'
+import { inkColor, lookOf, toggleTask } from './format'
+import { formatText, parseRich, type TextFormat } from './richtext'
 import { ViewerFrame } from './ViewerFrame'
 
 const SIDES = [
@@ -133,10 +133,7 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
       editor.current?.format(kind)
       return
     }
-    const blocks = parseRich(text)
-    const next = blocks
-      ? writeRich(kind === 'list' || kind === 'numbered' || kind === 'checklist' ? toggleRichList(blocks, kind === 'numbered' ? 'ol' : 'ul', kind === 'checklist') : toggleRichMark(blocks, kind))
-      : kind === 'list' ? toggleList(text) : kind === 'bold' ? toggleMark(text, '**') : kind === 'italic' ? toggleMark(text, '*') : text
+    const next = formatText(text, kind)
     if (next !== text) commit({ nodes: [{ id, text: next }] })
   }
   // A click on a task's box ticks it without opening the text.

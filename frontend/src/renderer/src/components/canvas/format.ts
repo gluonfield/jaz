@@ -10,6 +10,12 @@ export const DASHES = ['solid', 'dashed', 'dotted'] as const
 export const ENDS = ['none', 'arrow', 'circle'] as const
 const INK_COLORS: Record<string, string> = { gray: 'var(--color-ink-3)', red: '#e5484d', orange: '#e2762a', green: '#2f9e63', blue: '#2f80ed', purple: '#8b5cf6' }
 
+export const WEB_ADDRESS = /^https?:\/\/\S+$/
+
+export const title = (word: string) => word[0].toUpperCase() + word.slice(1)
+// The option after this one, round to the first.
+export const after = <T,>(options: readonly T[], value: T) => options[(options.indexOf(value) + 1) % options.length]
+
 export type Size = (typeof SIZES)[number]
 export type Shape = (typeof SHAPES)[number]
 export type Align = (typeof ALIGNS)[number]

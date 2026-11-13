@@ -1,7 +1,8 @@
 import { useReactFlow } from '@xyflow/react'
 import { useCallback, useEffect, useEffectEvent, useRef, type RefObject } from 'react'
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
-import { bounds, cloneItems, itemLabel, rectOfItem, withContents, type BoardEdge, type BoardNode, type Clip } from './board'
+import { bounds, centre, cloneItems, itemLabel, rectOfItem, viewRect, withContents, type BoardEdge, type BoardNode, type Clip } from './board'
+import { WEB_ADDRESS } from './format'
 import type { CanvasPick } from './useCanvasContexts'
 
 const CLIP = 'application/x-jaz-canvas'
@@ -135,10 +136,31 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, onFiles,
     }
   })
 
-  // A paste lands beside its original while that is in view, otherwise in the
-  // middle of the view; pasting again steps further along. Files from another
-  // board keep pointing at its folder. From elsewhere, pictures and files are
-  // added to the board, words become a text item, and a web address a page.
+  // Words from elsewhere become a text item in the middle of the view, and a
+  // web address a page.
+  const pasteWords = (words: string) => {
+    const middle = centre(viewRect(flow, container.current!))
+    const item = WEB_ADDRESS.test(words) ? { type: 'link', url: words, width: 480, height: 320 } : { type: 'text', text: words, width: 320 }
+    place({ nodes: [{ id: '', ...item, x: middle.x - item.width / 2, y: middle.y - 80 }], edges: [] }, 0, 0)
+  }
+
+  // Copied items land beside their original while that is in view, otherwise
+  // in the middle of the view; pasting again steps further along. Files from
+  // another board keep pointing at its folder.
+  const pasteClip = (raw: string) => {
+    const { dir, nodes, edges } = JSON.parse(raw) as Clip & { dir: string }
+    const rebased = nodes.map((item) => (dir !== local.dir && typeof item.file === 'string' && !item.file.startsWith('/') ? { ...item, file: `${dir}/${item.file}` } : item))
+    const count = pasted.current.raw === raw ? pasted.current.count + 1 : 1
+    pasted.current = { raw, count }
+    const box = bounds(rebased.map(rectOfItem))
+    const view = viewRect(flow, container.current!)
+    const seen = box.x < view.x + view.width && box.x + box.width > view.x && box.y < view.y + view.height && box.y + box.height > view.y
+    const dx = seen ? 0 : centre(view).x - centre(box).x
+    const dy = seen ? 0 : centre(view).y - centre(box).y
+    place({ nodes: rebased, edges }, dx + OFFSET * count, dy + OFFSET * count)
+  }
+
+  // Pictures and files pasted from elsewhere are the caller's to add.
   const onPaste = useEffectEvent((event: ClipboardEvent) => {
     const raw = event.clipboardData?.getData(CLIP)
     const files = [...(event.clipboardData?.files ?? [])]
@@ -147,29 +169,9 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, onFiles,
       return
     }
     event.preventDefault()
-    if (!raw && files.length) {
-      onFiles(files)
-      return
-    }
-    if (!raw) {
-      const screen = container.current!.getBoundingClientRect()
-      const middle = flow.screenToFlowPosition({ x: screen.left + screen.width / 2, y: screen.top + screen.height / 2 })
-      const item = /^https?:\/\/\S+$/.test(words!) ? { type: 'link', url: words, width: 480, height: 320 } : { type: 'text', text: words, width: 320 }
-      place({ nodes: [{ id: '', ...item, x: middle.x - item.width / 2, y: middle.y - 80 }], edges: [] }, 0, 0)
-      return
-    }
-    const { dir, nodes, edges } = JSON.parse(raw) as Clip & { dir: string }
-    const rebased = nodes.map((item) => (dir !== local.dir && typeof item.file === 'string' && !item.file.startsWith('/') ? { ...item, file: `${dir}/${item.file}` } : item))
-    const count = pasted.current.raw === raw ? pasted.current.count + 1 : 1
-    pasted.current = { raw, count }
-    const box = bounds(rebased.map(rectOfItem))
-    const screen = container.current!.getBoundingClientRect()
-    const a = flow.screenToFlowPosition({ x: screen.left, y: screen.top })
-    const b = flow.screenToFlowPosition({ x: screen.right, y: screen.bottom })
-    const seen = box.x < b.x && box.x + box.width > a.x && box.y < b.y && box.y + box.height > a.y
-    const dx = seen ? 0 : (a.x + b.x - box.width) / 2 - box.x
-    const dy = seen ? 0 : (a.y + b.y - box.height) / 2 - box.y
-    place({ nodes: rebased, edges }, dx + OFFSET * count, dy + OFFSET * count)
+    if (raw) pasteClip(raw)
+    else if (files.length) onFiles(files)
+    else pasteWords(words!)
   })
 
   useEffect(() => {
