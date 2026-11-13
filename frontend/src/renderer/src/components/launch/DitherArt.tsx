@@ -1,7 +1,7 @@
 import { useReducedMotion } from 'motion/react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { dunes, sun } from '@/components/launch/desert'
-import { useEffectsEnabled } from '@/lib/appearance'
+import { type Scene, SCENES, sun } from '@/components/launch/scenery'
+import { type Scenery, useEffectsEnabled, useScenery } from '@/lib/appearance'
 import { useColorTheme } from '@/lib/appearanceScheme'
 import { useTheme } from '@/lib/theme'
 
@@ -376,28 +376,25 @@ export function DitherWordmark({ text = 'jaz', delay = 0, maxWidth = Infinity }:
 
 const TERRAIN_ROWS = 44
 const SKY_ROWS = 26
-type Sky = 'sun' | 'moon'
 
 const cell = (g: OffscreenCanvasRenderingContext2D, x: number, y: number, coverage: number) => {
   g.globalAlpha = Math.min(1, Math.max(0, coverage))
   g.fillRect(x, y, 1, 1)
 }
 
-const drawTerrain: Silhouette = (g, w, h) => {
-  dunes(w, h, (x, y, coverage) => cell(g, x, y, coverage))
-  g.globalAlpha = 1
-}
-
-// The dunes under a theme-keyed sky, in cell units: a banded sun by day, a moon
-// and stars by night, right of centre and behind the far crests.
+// The scenery, in cell units, alone or under a theme-keyed sky: a banded sun by
+// day, a moon and stars by night, right of centre and behind the far crests.
 const drawScene =
-  (sky: Sky): Silhouette =>
+  (scene: Scene, sky?: 'sun' | 'moon'): Silhouette =>
   (g, w, h) => {
     const ground = h - TERRAIN_ROWS
-    const horizon = dunes(w, TERRAIN_ROWS, (x, y, coverage) => cell(g, x, ground + y, coverage))
+    const horizon = scene.ground(w, TERRAIN_ROWS, (x, y, coverage) => cell(g, x, ground + y, coverage))
+    g.globalAlpha = 1
+    if (!sky) return
+    if (scene.sky.night) sky = 'moon'
     const open = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < ground + horizon[x]
-    const cx = Math.round(w * 0.82)
-    sun(cx, 18, 10, sky === 'moon', (x, y, coverage) => open(x, y) && cell(g, x, y, coverage))
+    const cx = Math.round(w * scene.sky.x)
+    sun(cx, 18, 10 * scene.sky.size, sky === 'moon', (x, y, coverage) => open(x, y) && cell(g, x, y, coverage))
     if (sky === 'moon') {
       for (let i = 0; i < 24; i++) {
         const x = hash(i * 131 + 3) % w
@@ -409,14 +406,31 @@ const drawScene =
     g.globalAlpha = 1
   }
 
-const SCENES: Record<Sky, Silhouette> = { sun: drawScene('sun'), moon: drawScene('moon') }
-
 // Full-bleed dithered brandscape for the bottom of launch/onboarding screens
 // and, under a `sky` that follows the theme, the new-thread home. Sized to its
-// container; a resize re-dissolves the terrain at the new width.
-export function DitherTerrain({ className = '', sky = false, delay = 0 }: { className?: string; sky?: boolean; delay?: number }) {
+// container; a resize re-dissolves the terrain at the new width. `scenery`
+// shows a scene other than the chosen one, for picking between them.
+export function DitherTerrain({
+  className = '',
+  sky = false,
+  delay = 0,
+  dot = 3,
+  scenery: shown,
+}: {
+  className?: string
+  sky?: boolean
+  delay?: number
+  dot?: number
+  scenery?: Scenery
+}) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const { resolved } = useTheme()
+  const chosen = useScenery()
+  const scenery = shown ?? chosen
+  const draw = useMemo(() => {
+    const scene = SCENES[scenery]
+    return scene && drawScene(scene, sky ? (resolved === 'dark' ? 'moon' : 'sun') : undefined)
+  }, [scenery, sky, resolved])
   const [cols, setCols] = useState(0)
   useLayoutEffect(() => {
     const el = wrapRef.current!
@@ -425,20 +439,21 @@ export function DitherTerrain({ className = '', sky = false, delay = 0 }: { clas
     // once on observe, so no manual initial measure.
     const observer = new ResizeObserver((entries) => {
       const width = entries[entries.length - 1].contentRect.width
-      setCols(Math.max(1, Math.floor(width / 4)))
+      setCols(Math.max(1, Math.floor(width / (dot + 1))))
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
+  }, [dot])
   return (
     <div ref={wrapRef} aria-hidden className={`pointer-events-none overflow-hidden ${className}`}>
-      {cols > 1 ? (
+      {cols > 1 && draw ? (
         <DitherArt
-          draw={sky ? SCENES[resolved === 'dark' ? 'moon' : 'sun'] : drawTerrain}
+          draw={draw}
           cols={cols}
           rows={sky ? TERRAIN_ROWS + SKY_ROWS : TERRAIN_ROWS}
+          dot={dot}
           delay={delay}
-          buildKey={sky ? `jaz-terrain-${resolved}` : 'jaz-terrain'}
+          buildKey={sky ? `jaz-terrain-${scenery}-${resolved}` : `jaz-terrain-${scenery}`}
         />
       ) : null}
     </div>

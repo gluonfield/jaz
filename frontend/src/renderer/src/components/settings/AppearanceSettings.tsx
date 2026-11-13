@@ -1,7 +1,8 @@
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
+import { DitherTerrain } from '@/components/launch/DitherArt'
 import { Switch } from '@/components/ui/Switch'
-import { FONT_SCALES, useAppearance } from '@/lib/appearance'
+import { FONT_SCALES, SCENERIES, useAppearance } from '@/lib/appearance'
 import { isHomeLogoUrl } from '@/lib/homeWordmark'
 import { ColorThemeSettings } from './ColorThemeSettings'
 import { FontPicker } from './FontPicker'
@@ -96,6 +97,30 @@ export function AppearanceSettings() {
             aria-label="Model icons"
           />
         </Row>
+        <div className="border-t border-border px-3 py-2.5">
+          <p className="text-[13px] font-medium text-ink">Scenery</p>
+          <p className="mt-0.5 text-[12px] text-ink-3">The dithered scene on the launch and new-thread screens.</p>
+          <div role="radiogroup" aria-label="Scenery" className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+            {SCENERIES.map((scenery) => {
+              const active = scenery === settings.scenery
+              return (
+                <button
+                  key={scenery}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setAppearance({ scenery })}
+                  className={`cursor-pointer rounded-control p-1 text-left text-[12px] capitalize transition-colors duration-150 ${
+                    active ? 'bg-surface-2 text-primary ring-1 ring-primary' : 'text-ink-3 hover:bg-surface-2 hover:text-ink'
+                  }`}
+                >
+                  <DitherTerrain sky scenery={scenery} dot={1} className="h-[139px] rounded-control bg-bg" />
+                  <span className="mt-1 block px-1">{scenery}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
         <Row
           title="Logo"
           description="A name for dithered text, or a direct image URL. Leave blank for “jaz”."
