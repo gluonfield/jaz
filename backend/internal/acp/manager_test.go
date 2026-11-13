@@ -1104,7 +1104,7 @@ func TestManagerUsesClaudeUltracodeSessionMeta(t *testing.T) {
 	}
 }
 
-func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
+func TestManagerPropagatesClaudeModelRejection(t *testing.T) {
 	store, err := jsonstore.New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -1119,12 +1119,15 @@ func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
 				Model:           "claude-opus-4.8",
 				ReasoningEffort: "xhigh",
 				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":  "1",
-					"JAZ_FAKE_ACP_MODELS": "default,sonnet",
+					"JAZ_FAKE_ACP_AGENT":               "1",
+					"JAZ_FAKE_ACP_MODELS":              "default,sonnet",
+					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "sonnet",
 				},
 			},
 		},
 	}, log.New(io.Discard))
+	t.Cleanup(manager.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -1132,54 +1135,63 @@ func TestManagerRejectsUnsupportedClaudeModel(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected unsupported claude model to fail")
 	}
-	if !strings.Contains(err.Error(), "available model ids: default, sonnet") {
+	if !strings.Contains(err.Error(), "expected configured model option") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if session := abandonedSession(t, store, "bad-claude-model"); !strings.Contains(session.Error, "available model ids: default, sonnet") {
+	if session := abandonedSession(t, store, "bad-claude-model"); !strings.Contains(session.Error, "expected configured model option") {
 		t.Fatalf("unsupported model session = %#v, want it to record the rejection", session)
 	}
 }
 
-func TestManagerSpawnAcceptsConfiguredClaudeModelLabel(t *testing.T) {
-	store, err := jsonstore.New(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	manager := acp.NewManager(store, acp.Config{
-		Root:         t.TempDir(),
-		Workspace:    t.TempDir(),
-		ModelCatalog: warmedManagerModelCatalog(t),
-		Agents: map[string]acp.AgentConfig{
-			"claude": {
-				Command:         os.Args[0],
-				Args:            []string{"-test.run=TestFakeACPAgentProcess"},
-				Model:           "opus",
-				ReasoningEffort: "xhigh",
-				Env: map[string]string{
-					"JAZ_FAKE_ACP_AGENT":               "1",
-					"JAZ_FAKE_ACP_MODELS":              "opus[1m],sonnet",
-					"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": "opus[1m]",
-					"JAZ_FAKE_ACP_SET_CONFIG":          "1",
-					"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
-					"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
+func TestManagerPassesClaudeModelAliasesUnchanged(t *testing.T) {
+	for _, pick := range []struct{ model, advertised string }{
+		{"fable[1m]", "claude-fable-5,claude-fable-5-1,claude-fable-5-2,opus,sonnet"},
+		{"opus[1m]", "opus,sonnet"},
+		{"opus", "opus[1m],sonnet"},
+	} {
+		t.Run(pick.model+"/"+pick.advertised, func(t *testing.T) {
+			store, err := jsonstore.New(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			manager := acp.NewManager(store, acp.Config{
+				Root:         t.TempDir(),
+				Workspace:    t.TempDir(),
+				ModelCatalog: warmedManagerModelCatalog(t),
+				Agents: map[string]acp.AgentConfig{
+					"claude": {
+						Command:         os.Args[0],
+						Args:            []string{"-test.run=TestFakeACPAgentProcess"},
+						Model:           pick.model,
+						ReasoningEffort: "xhigh",
+						Env: map[string]string{
+							"JAZ_FAKE_ACP_AGENT":               "1",
+							"JAZ_FAKE_ACP_MODELS":              pick.advertised,
+							"JAZ_FAKE_ACP_EXPECT_MODEL_CONFIG": pick.model,
+							"JAZ_FAKE_ACP_SET_CONFIG":          "1",
+							"JAZ_FAKE_ACP_EXPECT_CONFIG_ID":    "effort",
+							"JAZ_FAKE_ACP_EXPECT_EFFORT":       "xhigh",
+						},
+					},
 				},
-			},
-		},
-	}, log.New(io.Discard))
+			}, log.New(io.Discard))
+			t.Cleanup(manager.Close)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-opus-label"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _, _ = manager.Cancel(context.Background(), spawned.SessionID) }()
-	session, err := store.LoadSession(spawned.SessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if session.Model != "opus" {
-		t.Fatalf("claude model = %q, want opus", session.Model)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			spawned, err := manager.Spawn(ctx, acp.SpawnRequest{ACPAgent: "claude", Slug: "claude-opus-label"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := store.LoadSession(spawned.SessionID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if session.Model != pick.model {
+				t.Fatalf("claude model = %q, want %q", session.Model, pick.model)
+			}
+			sendAndWait(t, ctx, manager, spawned.SessionID, "hello")
+		})
 	}
 }
 

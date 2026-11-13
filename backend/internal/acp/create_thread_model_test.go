@@ -29,7 +29,6 @@ type advertisingAgent struct {
 // they do not advertise.
 var advertisingAgents = []advertisingAgent{
 	{name: AgentGrok, advertised: []string{"grok-4.5", "grok-4.6"}, missing: "grok-4.7"},
-	{name: AgentClaude, advertised: []string{"opus[1m]", "sonnet"}, missing: "haiku"},
 	{name: AgentCodex, advertised: []string{"gpt-6-sol", "gpt-6-luna"}, missing: "gpt-6-astra"},
 }
 
