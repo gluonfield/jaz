@@ -30,7 +30,12 @@ export interface AppearanceSettings {
   homeWordmark: string
   invertHomeLogoInLightMode: boolean
   invertHomeLogoInDarkMode: boolean
+  /** the scene behind the launch, onboarding and new-thread screens */
+  scenery: Scenery
 }
+
+export const SCENERIES = ['blank', 'desert', 'city', 'sea'] as const
+export type Scenery = (typeof SCENERIES)[number]
 
 export const DEFAULTS: AppearanceSettings = {
   effects: true,
@@ -44,6 +49,7 @@ export const DEFAULTS: AppearanceSettings = {
   homeWordmark: '',
   invertHomeLogoInLightMode: false,
   invertHomeLogoInDarkMode: false,
+  scenery: 'desert',
 }
 
 // Whole-UI zoom steps. The chrome is built largely with px sizes, so scaling the
@@ -88,11 +94,11 @@ const boolField = (
   normalize: (v) => v,
 })
 
-const stringField = (
+const stringField = <T extends string = string>(
   storageKey: string,
   pick: (cfg: JazDefaults) => string | undefined,
-  normalize: (value: string) => string,
-): Field<string> => ({
+  normalize: (value: string) => T,
+): Field<T> => ({
   storageKey,
   fromConfig: (cfg) => {
     const v = pick(cfg)
@@ -139,6 +145,11 @@ const FIELDS: { [K in keyof AppearanceSettings]: Field<AppearanceSettings[K]> } 
   invertHomeLogoInDarkMode: boolField(
     'jaz.appearance.invertHomeLogoInDarkMode',
     (c) => c.invertHomeLogoInDarkMode,
+  ),
+  scenery: stringField(
+    'jaz.appearance.scenery',
+    (c) => c.scenery,
+    (value) => SCENERIES.find((scenery) => scenery === value) ?? DEFAULTS.scenery,
   ),
 }
 
@@ -245,6 +256,10 @@ export function useAppearance() {
 // this with the OS prefers-reduced-motion signal at their call site.
 export function useEffectsEnabled(): boolean {
   return useSyncExternalStore(subscribe, () => current.effects)
+}
+
+export function useScenery(): Scenery {
+  return useSyncExternalStore(subscribe, () => current.scenery)
 }
 
 export function useInlineDiffs(): boolean {

@@ -1,6 +1,5 @@
 import { useReducedMotion } from 'motion/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { dunes, sun } from '@/components/launch/desert'
 import {
   WORDMARK_FONT,
   boot,
@@ -12,14 +11,15 @@ import {
   threshold,
   toneFor,
 } from '@/components/launch/DitherArt'
-import { useEffectsEnabled } from '@/lib/appearance'
+import { type Ground, GROUNDS, sun } from '@/components/launch/scenery'
+import { useEffectsEnabled, useScenery } from '@/lib/appearance'
 import { clientRuntime } from '@/lib/clientRuntime'
 import { devPreview } from '@/lib/devPreview'
 
 // Boot splash for the desktop window, in the brand's dithered grain: wind pours
-// sand into the dunes, the sun (a moon by night) climbs behind them, and the
+// sand into the chosen scenery, the sun (a moon by night) climbs behind them, and the
 // wordmark dissolves in above. Once the backend has answered, every grain flies
-// onto a dot of the boot art underneath — the screen's own wordmark and desert
+// onto a dot of the boot art underneath — the screen's own wordmark and scenery
 // — while the ground fades, so the splash folds down into the app. Any key or
 // click cuts straight to that.
 //
@@ -69,8 +69,8 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * k
 const byColumn = (a: { x: number; y: number }, b: { x: number; y: number }) => a.x - b.x || a.y - b.y
 
 // The whole scene in grid cells. `horizon` is the far crest line: sky grains
-// below it are hidden behind the dunes.
-function buildDesert(cols: number, rows: number, dark: boolean) {
+// below it are hidden behind the ground.
+function buildDesert(cols: number, rows: number, dark: boolean, scenery: Ground) {
   const palette = readPalette()
   const tones = [palette.primary, palette.strong, palette.ink, ...palette.rainbow]
   const tone = (seed: number, ambient: boolean) => tones.indexOf(toneFor(seed, ambient, palette))
@@ -80,7 +80,7 @@ function buildDesert(cols: number, rows: number, dark: boolean) {
 
   // Sand pours in on a wind from the left, far range first.
   const band = Math.round(rows * 0.52)
-  const horizon = dunes(cols, rows - band, (x, row, coverage, range) => {
+  const horizon = scenery(cols, rows - band, (x, row, coverage, range) => {
     const y = band + row
     const seed = hash(x + y * cols)
     if (coverage < threshold(x, y, seed)) return
@@ -228,12 +228,13 @@ function painter(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext
 export function DesertEntrance({ ready }: { ready: boolean }) {
   const effects = useEffectsEnabled()
   const reduced = useReducedMotion()
+  const scenery = GROUNDS[useScenery()]
   const [done, setDone] = useState(!plays)
-  if (done || !effects || reduced) return null
-  return <Desert ready={ready} onDone={() => setDone(true)} />
+  if (done || !effects || reduced || !scenery) return null
+  return <Desert scenery={scenery} ready={ready} onDone={() => setDone(true)} />
 }
 
-function Desert({ ready, onDone }: { ready: boolean; onDone: () => void }) {
+function Desert({ scenery, ready, onDone }: { scenery: Ground; ready: boolean; onDone: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const readyRef = useRef(ready)
   const doneRef = useRef(onDone)
@@ -276,7 +277,7 @@ function Desert({ ready, onDone }: { ready: boolean; onDone: () => void }) {
       const cols = Math.ceil(width / PITCH)
       const rows = Math.ceil(height / PITCH)
       const dark = document.documentElement.classList.contains('dark')
-      const { grains, horizon, streaks, tones } = buildDesert(cols, rows, dark)
+      const { grains, horizon, streaks, tones } = buildDesert(cols, rows, dark, scenery)
 
       const layer = new OffscreenCanvas(canvas.width, canvas.height)
       const layerCtx = layer.getContext('2d')!
@@ -324,7 +325,7 @@ function Desert({ ready, onDone }: { ready: boolean; onDone: () => void }) {
           const u = 1 - k
           const x = u * u * g.fx + 2 * u * k * g.cx + k * k * g.x
           const y = u * u * g.fy + 2 * u * k * g.cy + k * k * g.y
-          // sky grains still below the far crests are behind the dunes
+          // sky grains still below the far crests are behind the ground
           if (g.y < horizon[g.x] && y >= horizon[Math.round(x)]) continue
           paint.dot(g.tone, g.alpha * Math.min(1, raw * 4), Math.round(x) * PITCH, Math.round(y) * PITCH)
         }
@@ -363,7 +364,7 @@ function Desert({ ready, onDone }: { ready: boolean; onDone: () => void }) {
       window.removeEventListener('pointerdown', skip, true)
       window.removeEventListener('keydown', skip, true)
     }
-  }, [])
+  }, [scenery])
 
   return <canvas ref={canvasRef} aria-hidden className="fixed inset-0 z-[120] size-full" />
 }

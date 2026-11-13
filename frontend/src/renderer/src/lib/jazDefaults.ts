@@ -43,6 +43,7 @@ export interface JazDefaults {
   homeWordmark?: string
   invertHomeLogoInLightMode?: boolean
   invertHomeLogoInDarkMode?: boolean
+  scenery?: 'blank' | 'desert' | 'city' | 'sea'
   inlineDiffs?: boolean
   inlineShellCommands?: boolean
   composer?: ComposerConfig

@@ -1,7 +1,7 @@
 import { useReducedMotion } from 'motion/react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { dunes, sun } from '@/components/launch/desert'
-import { useEffectsEnabled } from '@/lib/appearance'
+import { type Ground, GROUNDS, sun } from '@/components/launch/scenery'
+import { useEffectsEnabled, useScenery } from '@/lib/appearance'
 import { useColorTheme } from '@/lib/appearanceScheme'
 import { useTheme } from '@/lib/theme'
 
@@ -383,18 +383,15 @@ const cell = (g: OffscreenCanvasRenderingContext2D, x: number, y: number, covera
   g.fillRect(x, y, 1, 1)
 }
 
-const drawTerrain: Silhouette = (g, w, h) => {
-  dunes(w, h, (x, y, coverage) => cell(g, x, y, coverage))
-  g.globalAlpha = 1
-}
-
-// The dunes under a theme-keyed sky, in cell units: a banded sun by day, a moon
-// and stars by night, right of centre and behind the far crests.
+// The scenery, in cell units, alone or under a theme-keyed sky: a banded sun by
+// day, a moon and stars by night, right of centre and behind the far crests.
 const drawScene =
-  (sky: Sky): Silhouette =>
+  (scenery: Ground, sky?: Sky): Silhouette =>
   (g, w, h) => {
     const ground = h - TERRAIN_ROWS
-    const horizon = dunes(w, TERRAIN_ROWS, (x, y, coverage) => cell(g, x, ground + y, coverage))
+    const horizon = scenery(w, TERRAIN_ROWS, (x, y, coverage) => cell(g, x, ground + y, coverage))
+    g.globalAlpha = 1
+    if (!sky) return
     const open = (x: number, y: number) => x >= 0 && x < w && y >= 0 && y < ground + horizon[x]
     const cx = Math.round(w * 0.82)
     sun(cx, 18, 10, sky === 'moon', (x, y, coverage) => open(x, y) && cell(g, x, y, coverage))
@@ -409,14 +406,17 @@ const drawScene =
     g.globalAlpha = 1
   }
 
-const SCENES: Record<Sky, Silhouette> = { sun: drawScene('sun'), moon: drawScene('moon') }
-
 // Full-bleed dithered brandscape for the bottom of launch/onboarding screens
 // and, under a `sky` that follows the theme, the new-thread home. Sized to its
 // container; a resize re-dissolves the terrain at the new width.
 export function DitherTerrain({ className = '', sky = false, delay = 0 }: { className?: string; sky?: boolean; delay?: number }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const { resolved } = useTheme()
+  const scenery = useScenery()
+  const draw = useMemo(() => {
+    const ground = GROUNDS[scenery]
+    return ground && drawScene(ground, sky ? (resolved === 'dark' ? 'moon' : 'sun') : undefined)
+  }, [scenery, sky, resolved])
   const [cols, setCols] = useState(0)
   useLayoutEffect(() => {
     const el = wrapRef.current!
@@ -432,13 +432,13 @@ export function DitherTerrain({ className = '', sky = false, delay = 0 }: { clas
   }, [])
   return (
     <div ref={wrapRef} aria-hidden className={`pointer-events-none overflow-hidden ${className}`}>
-      {cols > 1 ? (
+      {cols > 1 && draw ? (
         <DitherArt
-          draw={sky ? SCENES[resolved === 'dark' ? 'moon' : 'sun'] : drawTerrain}
+          draw={draw}
           cols={cols}
           rows={sky ? TERRAIN_ROWS + SKY_ROWS : TERRAIN_ROWS}
           delay={delay}
-          buildKey={sky ? `jaz-terrain-${resolved}` : 'jaz-terrain'}
+          buildKey={sky ? `jaz-terrain-${scenery}-${resolved}` : `jaz-terrain-${scenery}`}
         />
       ) : null}
     </div>

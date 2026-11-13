@@ -1,7 +1,8 @@
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useState } from 'react'
+import { Segmented } from '@/components/ui/Segmented'
 import { Switch } from '@/components/ui/Switch'
-import { FONT_SCALES, useAppearance } from '@/lib/appearance'
+import { FONT_SCALES, SCENERIES, useAppearance } from '@/lib/appearance'
 import { isHomeLogoUrl } from '@/lib/homeWordmark'
 import { ColorThemeSettings } from './ColorThemeSettings'
 import { FontPicker } from './FontPicker'
@@ -94,6 +95,14 @@ export function AppearanceSettings() {
             checked={settings.showModelIcons}
             onChange={(value) => setAppearance({ showModelIcons: value })}
             aria-label="Model icons"
+          />
+        </Row>
+        <Row title="Scenery" description="The dithered scene on the launch and new-thread screens.">
+          <Segmented
+            value={settings.scenery}
+            options={SCENERIES.map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))}
+            onChange={(value) => setAppearance({ scenery: value })}
+            layoutId="scenery-pill"
           />
         </Row>
         <Row
