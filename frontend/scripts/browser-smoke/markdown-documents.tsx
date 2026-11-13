@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { FileReaderPanel } from '@/components/session/FileReaderPanel'
 import { FileReaderLinkProvider, MessageMarkdown } from '@/components/session/MessageMarkdown'
+import { SidePanelCloseGuard } from '@/components/session/SidePanelState'
 import { keys } from '@/lib/query/keys'
 import type { SessionFileRead } from '@/lib/api/types'
 import type { FileReference } from '@shared/fileReader'
@@ -21,6 +22,8 @@ export async function exerciseMarkdownDocuments() {
   let stored: SessionFileRead = { path, content, size: content.length, version: 'v1' }
   const saves: { over: string | null; content: string }[] = []
   const created: string[] = []
+  let refuseWrites = false
+  let closeGuard: (() => Promise<boolean>) | undefined
   const originalFetch = window.fetch
   window.fetch = async (input, init) => {
     const url = new URL(String(input), location.href)
@@ -32,6 +35,7 @@ export async function exerciseMarkdownDocuments() {
     }
     const over = new Headers(init.headers).get('If-Match')
     saves.push({ over, content: String(init.body) })
+    if (refuseWrites) return new Response(null, { status: 500 })
     if (over !== stored.version) return new Response(null, { status: 412, headers: { ETag: stored.version! } })
     stored = { ...stored, content: String(init.body), version: stored.version + '+' }
     return new Response(null, { status: 204, headers: { ETag: stored.version! } })
@@ -55,7 +59,12 @@ export async function exerciseMarkdownDocuments() {
           }}><MessageMarkdown text={path} /></FileReaderLinkProvider>
         </div>
         {file ? <div className="h-[55%] min-h-0 border border-border" data-document-reader>
-          <FileReaderPanel sessionId="documents" fileRef={file} visible onOpenFile={setFile} onClose={() => setFile(null)} />
+          <SidePanelCloseGuard value={(guard) => {
+            closeGuard = guard
+            return () => { closeGuard = undefined }
+          }}>
+            <FileReaderPanel sessionId="documents" fileRef={file} visible onOpenFile={setFile} onClose={() => setFile(null)} />
+          </SidePanelCloseGuard>
         </div> : null}
       </div>
     </QueryClientProvider>
@@ -101,6 +110,22 @@ export async function exerciseMarkdownDocuments() {
       await window.smoke.key('End')
       await type(letters)
     }
+    const refuseDiscard = async () => {
+      const confirm = window.confirm
+      let asked = 0
+      window.confirm = () => {
+        asked += 1
+        return false
+      }
+      try {
+        if (!closeGuard || await closeGuard()) throw new Error('Closing the tab would discard unsaved edits')
+        await click(reader.querySelector('[aria-label="Close document"]'))
+        await until(() => asked === 2)
+        if (!reader.isConnected) throw new Error('Closing the document discarded unsaved edits')
+      } finally {
+        window.confirm = confirm
+      }
+    }
     await typeAfterPresses('Owl')
     await until(() => saves.length === 1 && reader.querySelector('[role="status"]')?.textContent === '')
     if (saves[0].over !== 'v1' || saves[0].content !== content.replace('presses.', 'presses.Owl')) throw new Error('The edit saved as ' + JSON.stringify(saves[0]))
@@ -114,6 +139,8 @@ export async function exerciseMarkdownDocuments() {
     await typeAfterPresses('Bee')
     await until(() => text().includes('changed while you were editing'))
     await window.smoke.capture('markdown-document-conflict')
+    await refuseDiscard()
+    if (!text().includes('presses.OwlBee')) throw new Error('Refusing to discard lost the conflicting edit')
     await click([...reader.querySelectorAll('button')].find((node) => node.textContent === 'Keep mine') ?? null)
     await until(() => stored.version === 'agent-2+' && !text().includes('changed while you were editing'))
     if (!stored.content.includes('presses.OwlBee')) throw new Error('Keep mine lost the edit: ' + stored.content)
@@ -203,6 +230,13 @@ export async function exerciseMarkdownDocuments() {
     await type('Call')
     await until(() => stored.content.includes('presses.OwlBee\n\n- [ ] Call\n\n```\nls'))
     await window.smoke.capture('markdown-document-edited')
+    refuseWrites = true
+    await typeAfterPresses('Fox')
+    await until(() => reader.querySelector('[role="status"]')?.textContent === "Couldn't save")
+    await refuseDiscard()
+    refuseWrites = false
+    await click([...reader.querySelectorAll('button')].find((node) => node.textContent === 'Retry') ?? null)
+    await until(() => reader.querySelector('[role="status"]')?.textContent === '' && stored.content.includes('Fox'))
   }
   const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() })
   try {

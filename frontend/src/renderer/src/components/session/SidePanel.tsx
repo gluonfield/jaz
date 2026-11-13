@@ -15,7 +15,7 @@ import { TerminalPanel } from '@/components/session/TerminalPanel'
 import { SidePanelControl } from '@/components/session/SidePanelControl'
 import { SidePanelTabMenu, SidePanelTabs } from '@/components/session/SidePanelTabs'
 import { useIsMobile } from '@/lib/hooks/useIsMobile'
-import type { useSidePanelState } from '@/components/session/SidePanelState'
+import { SidePanelCloseGuard, type useSidePanelState } from '@/components/session/SidePanelState'
 
 export function SidePanel({
   session, panel, progress, subagents, spawnedThreads, working,
@@ -100,7 +100,9 @@ export function SidePanel({
               ) : tab.kind === 'terminal' ? (
                 <TerminalPanel session={session} visible={visible} />
               ) : tab.kind === 'file' ? (
-                <FileReaderPanel sessionId={session.id} fileRef={tab.file} visible={visible} working={working} onOpenFile={panel.openFile} onClose={panel.close} />
+                <SidePanelCloseGuard value={(guard) => panel.registerCloseGuard(tab.id, guard)}>
+                  <FileReaderPanel sessionId={session.id} fileRef={tab.file} visible={visible} working={working} onOpenFile={panel.openFile} onClose={panel.close} />
+                </SidePanelCloseGuard>
               ) : tab.kind === 'diff' ? (
                 <CodeDiffPanel sessionId={session.id} visible={visible} />
               ) : tab.kind === 'app' ? (

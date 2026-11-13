@@ -1,10 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
+import { useBlocker, useNavigate } from '@tanstack/react-router'
 import type { EditorView } from '@tiptap/pm/view'
 import { EditorContent, ReactNodeViewRenderer, useEditor } from '@tiptap/react'
 import { FileText, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { FileReaderLinkProvider, usePreviewLink } from '@/components/session/MessageMarkdown'
+import { SidePanelCloseGuard } from '@/components/session/SidePanelState'
 import { Button } from '@/components/ui/Button'
 import { clipboardFiles } from '@/components/ui/fileTransfer'
 import { IconButton } from '@/components/ui/IconButton'
@@ -70,7 +71,7 @@ export function DocumentEditor({
   const imagePicker = useRef<HTMLInputElement>(null)
   const commands = useMemo(() => documentCommands(() => imagePicker.current?.click()), [])
   const query = sessionFileQuery(sessionId, path)
-  const { state, save, touch, follow, takeTheirs, keepMine } = useDocumentSave(versionOf(file), {
+  const { state, edited, save, touch, follow, takeTheirs, keepMine } = useDocumentSave(versionOf(file), {
     read: async () => versionOf((await queryClient.fetchQuery({ ...query, staleTime: 0 })) as EditableDocument),
     // A read begun before the save would put the older text back in the cache.
     write: async (content, version) => {
@@ -81,6 +82,19 @@ export function DocumentEditor({
     },
     conflict: 412,
     delay: 2000,
+  })
+  const registerCloseGuard = useContext(SidePanelCloseGuard)
+  const canClose = useCallback(async () => {
+    await save()
+    return !edited.current || window.confirm('Discard your edits to this document?')
+  }, [save, edited])
+  useEffect(() => registerCloseGuard?.(canClose), [registerCloseGuard, canClose])
+  useBlocker({
+    shouldBlockFn: async () => {
+      await save()
+      return edited.current
+    },
+    enableBeforeUnload: false,
   })
   const openLink = (view: EditorView, link: HTMLAnchorElement) => {
     const target = markdownLinkTarget(link.getAttribute('href') ?? '', link.textContent, { sessionId, documentPath: file.path })
@@ -131,7 +145,7 @@ export function DocumentEditor({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col">
-      <DocumentHeader title={markdownDocumentTitle(file.content ?? '', path)} onClose={onClose}>
+      <DocumentHeader title={markdownDocumentTitle(file.content ?? '', path)} onClose={async () => { if (await canClose()) onClose() }}>
         <span role="status" className={`shrink-0 text-[12px] ${state === 'saving' ? 'text-ink-3' : 'text-danger'}`}>{SAVE_LABEL[state]}</span>
         {state === 'failed' ? <Button size="sm" variant="ghost" onClick={() => void save()}>Retry</Button> : null}
         {editor ? <DocumentOutline editor={editor} /> : null}

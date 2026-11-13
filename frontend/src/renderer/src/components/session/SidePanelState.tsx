@@ -18,6 +18,7 @@ const PANEL_MIN_THREAD_WIDTH = 360
 
 type SavedPanel = { state: SidePanelTabs; open: boolean; mode: SidePanelMode; widthOverride?: number }
 const PanelStates = createContext<Map<string, SavedPanel> | null>(null)
+export const SidePanelCloseGuard = createContext<((guard: () => Promise<boolean>) => () => void) | null>(null)
 
 export function SidePanelStateProvider({ children }: { children: ReactNode }) {
   const [panels] = useState(() => new Map<string, SavedPanel>())
@@ -61,6 +62,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   const [mode, setMode] = useState<SidePanelMode>(saved?.mode ?? 'overview')
   const [widthOverride, setWidthOverride] = useState(saved?.widthOverride)
   const [resizing, setResizing] = useState(false)
+  const closeGuards = useRef(new Map<string, () => Promise<boolean>>())
   const tabs = useMemo(() => state.tabs.filter((tab) => tab.kind !== 'side-chat' || sideChatAvailable), [state.tabs, sideChatAvailable])
   const activeTab = tabs.find((tab) => tab.id === state.activeId) ?? tabs[0]
   const availableWidth = containerWidth - PANEL_MIN_THREAD_WIDTH
@@ -121,7 +123,13 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
   const duplicateTab = useCallback((id: string) => {
     openTab({ id: browsers.duplicate(sessionId, id), kind: 'preview' }, id)
   }, [browsers, openTab, sessionId])
-  const closeTab = useCallback((id: string) => {
+  const registerCloseGuard = useCallback((id: string, guard: () => Promise<boolean>) => {
+    closeGuards.current.set(id, guard)
+    return () => { closeGuards.current.delete(id) }
+  }, [])
+  const closeTab = useCallback(async (id: string) => {
+    const guard = closeGuards.current.get(id)
+    if (guard && !await guard()) return
     browsers.close(id)
     dispatch({ type: 'close', id })
   }, [browsers])
@@ -205,7 +213,7 @@ export function useSidePanelState(sessionId: string, { sideChatAvailable = false
     containerRef, open, mode, tabs, activeTab,
     resize, resizing, setResizing, width, widthStyle, minWidth, maxWidth,
     resizable: mode === 'tabs',
-    toggleMode, close, selectTab, reorderTabs, addTab, duplicateTab, closeTab, openFile, openPreview,
+    toggleMode, close, selectTab, reorderTabs, addTab, duplicateTab, closeTab, registerCloseGuard, openFile, openPreview,
   }
 }
 
