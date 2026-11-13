@@ -5,6 +5,10 @@ export const SHAPES = ['rect', 'rounded', 'pill', 'ellipse', 'diamond', 'hexagon
 export const FILLS = ['white', 'red', 'orange', 'yellow', 'green', 'blue', 'purple'] as const
 export const INKS = ['gray', 'red', 'orange', 'green', 'blue', 'purple'] as const
 export const ALIGNS = ['left', 'center', 'right'] as const
+export const ROUTES = ['curve', 'elbow', 'straight'] as const
+export const DASHES = ['solid', 'dashed', 'dotted'] as const
+export const ENDS = ['none', 'arrow', 'circle'] as const
+const INK_COLORS: Record<string, string> = { gray: 'var(--color-ink-3)', red: '#e5484d', orange: '#e2762a', green: '#2f9e63', blue: '#2f80ed', purple: '#8b5cf6' }
 
 export type Size = (typeof SIZES)[number]
 export type Shape = (typeof SHAPES)[number]
@@ -27,6 +31,10 @@ function tint(options: readonly string[], value: unknown): Tint | undefined {
   if (typeof value !== 'string' || !value) return undefined
   const name = pick(options, PRESETS[value] ?? value)
   return name ? { name } : { custom: value }
+}
+
+export function inkColor(ink: Tint | undefined): string | undefined {
+  return ink && (ink.custom ?? INK_COLORS[ink.name!])
 }
 
 export interface Look {
@@ -55,6 +63,25 @@ export function lookOf(item: CanvasItem): Look {
 }
 
 const MARKER = /^\s*(?:[-*+]|\d+\.)\s+/
+export interface EdgeLook {
+  route: (typeof ROUTES)[number]
+  dash: (typeof DASHES)[number]
+  ink?: Tint
+  fromEnd: (typeof ENDS)[number]
+  toEnd: (typeof ENDS)[number]
+}
+
+// A connector is a solid curve with an arrow at its far end unless it says otherwise.
+export function edgeLookOf(item: CanvasItem): EdgeLook {
+  return {
+    route: pick(ROUTES, item.route) ?? 'curve',
+    dash: pick(DASHES, item.dash) ?? 'solid',
+    ink: tint(INKS, item.color),
+    fromEnd: pick(ENDS, item.fromEnd) ?? 'none',
+    toEnd: pick(ENDS, item.toEnd) ?? 'arrow',
+  }
+}
+
 const LINE = /^(\s*(?:[-*+]|\d+\.)\s+|\s*#+\s+|\s*)(.*)$/
 
 // Bold or italic for the whole of each line, or plain again when every line

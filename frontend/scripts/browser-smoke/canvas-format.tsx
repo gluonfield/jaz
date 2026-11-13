@@ -9,7 +9,8 @@ import { keys } from '@/lib/query/keys'
 export async function exerciseCanvasFormat(): Promise<void> {
   const sessionId = 'canvas-format'
   let view: CanvasView = {
-    version: '1', dir: '/fixture', edges: [], components: {}, files: {},
+    version: '1', dir: '/fixture', components: {}, files: {},
+    edges: [{ id: 'flow', fromNode: 'start', toNode: 'ship', label: 'ready', route: 'elbow', dash: 'dashed', color: 'blue', toEnd: 'circle' }],
     nodes: [
       { id: 'title', type: 'text', text: 'Launch plan', size: 'title', x: 0, y: 0, width: 520 },
       { id: 'caption', type: 'text', text: 'Who does what, and when', size: 'small', ink: 'blue', x: 0, y: 80, width: 320 },
@@ -122,7 +123,30 @@ export async function exerciseCanvasFormat(): Promise<void> {
       throw new Error(`Canvas format: the table item is ${node('grid').offsetHeight} tall for ${tableHeight} of rows`)
     }
     await new Promise((resolve) => setTimeout(resolve, 500))
+    const line = () => element.querySelector<SVGPathElement>('.react-flow__edge[data-id="flow"] path.canvas-edge')!
+    await until(() => Boolean(line()), 'The connector was not drawn')
+    if (getComputedStyle(line()).strokeDasharray === 'none' || getComputedStyle(line()).stroke !== 'rgb(47, 128, 237)' || line().getAttribute('d')!.includes('C') || !element.querySelector('.react-flow__edge[data-id="flow"] .canvas-edge-dot')) {
+      throw new Error('Canvas format: the connector lost its route, dashes, colour or round end')
+    }
     await window.smoke.capture('canvas-format')
+    const on = line().getPointAtLength(line().getTotalLength() * 0.2)
+    const frame = line().getScreenCTM()!
+    await window.smoke.pointer('mouseMove', Math.round(on.x * frame.a + frame.e), Math.round(on.y * frame.d + frame.f))
+    await window.smoke.pointer('mouseDown', Math.round(on.x * frame.a + frame.e), Math.round(on.y * frame.d + frame.f))
+    await window.smoke.pointer('mouseUp', Math.round(on.x * frame.a + frame.e), Math.round(on.y * frame.d + frame.f))
+    const connector = (label: string) => element.querySelector(`.canvas-edge-toolbar [aria-label="${label}"]`)
+    await until(() => Boolean(connector('Route: elbow')), 'A selected connector did not show its controls')
+    await press(connector('Route: elbow'), 'Route')
+    await press(connector('Line: dashed'), 'Line')
+    await press(connector('End: circle'), 'End')
+    await press(connector('Start: none'), 'Start')
+    await until(() => view.edges[0].route === 'straight' && view.edges[0].dash === 'dotted' && view.edges[0].toEnd === 'none' && view.edges[0].fromEnd === 'arrow', 'Connector controls did not save: ' + JSON.stringify(view.edges[0]))
+    await until(() => /^M[^CQ]*$/.test(line().getAttribute('d')!) && !element.querySelector('.react-flow__edge[data-id="flow"] .canvas-edge-dot'), 'The connector was not redrawn straight without its round end')
+    await press(connector('Line colour'), 'Line colour')
+    await until(() => Boolean(connector('Green')), 'The connector colours did not open')
+    await press(connector('Green'), 'Green')
+    await until(() => view.edges[0].color === 'green' && getComputedStyle(line()).stroke !== 'rgb(47, 128, 237)', 'Connector colour did not save')
+    await press(element.querySelector('.react-flow__pane'), 'board')
 
     await select('title')
     await pick('Text size', 'Large')

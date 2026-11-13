@@ -152,3 +152,18 @@ test('copies get fresh ids and keep the connectors among them', () => {
   expect(copy.edges).toEqual([{ id: copy.edges[0].id, fromNode: ids[0], toNode: ids[1], label: 'next' }])
   expect(copy.edges[0].id).not.toBe('ab')
 })
+
+test('a connector is a curve with an arrow at its far end unless its fields say otherwise', () => {
+  const nodes = [{ id: 'a', type: 'text', x: 0, y: 0, width: 100, height: 40 }, { id: 'b', type: 'text', x: 300, y: 0, width: 100, height: 40 }]
+  const [plain, styled, odd] = toFlowEdges(view(nodes, [
+    { id: 'plain', fromNode: 'a', toNode: 'b' },
+    { id: 'styled', fromNode: 'a', toNode: 'b', route: 'elbow', dash: 'dashed', color: 'blue', fromEnd: 'arrow', toEnd: 'circle' },
+    { id: 'odd', fromNode: 'a', toNode: 'b', route: 'zigzag', dash: 7, toEnd: 'none', color: '#123456' },
+  ]))
+  expect(plain.data.look).toEqual({ route: 'curve', dash: 'solid', ink: undefined, fromEnd: 'none', toEnd: 'arrow' })
+  expect([plain.markerStart, plain.markerEnd.color]).toEqual([undefined, 'var(--canvas-edge)'])
+  expect(styled.data.look).toEqual({ route: 'elbow', dash: 'dashed', ink: { name: 'blue' }, fromEnd: 'arrow', toEnd: 'circle' })
+  expect([styled.markerStart.color, styled.markerEnd]).toEqual(['#2f80ed', undefined])
+  expect(odd.data.look).toEqual({ route: 'curve', dash: 'solid', ink: { custom: '#123456' }, fromEnd: 'none', toEnd: 'none' })
+  expect(odd.markerEnd).toBeUndefined()
+})

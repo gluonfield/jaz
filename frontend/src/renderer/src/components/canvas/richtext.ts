@@ -258,7 +258,7 @@ function isList(node: Node): node is HTMLElement {
 
 function readInline(node: Node, marks: Omit<Run, 'text'>, out: Run[]) {
   if (node.nodeType === Node.TEXT_NODE) {
-    const lines = node.textContent!.replace(/ /g, ' ').split('\n')
+    const lines = node.textContent!.replace(/\u00a0/g, ' ').split('\n')
     lines.forEach((line, index) => out.push(...(index ? [{ text: '\n' }] : []), { text: line, ...marks }))
     return
   }

@@ -29,30 +29,6 @@
   --canvas-fill: #dcccff;
 }
 
-.canvas-ink-gray {
-  --canvas-ink: var(--color-ink-3);
-}
-
-.canvas-ink-red {
-  --canvas-ink: #e5484d;
-}
-
-.canvas-ink-orange {
-  --canvas-ink: #e2762a;
-}
-
-.canvas-ink-green {
-  --canvas-ink: #2f9e63;
-}
-
-.canvas-ink-blue {
-  --canvas-ink: #2f80ed;
-}
-
-.canvas-ink-purple {
-  --canvas-ink: #8b5cf6;
-}
-
 /* A block is words inside an outline. Four outlines are CSS boxes; the rest
  * are a stretched drawing behind the words. */
 .canvas-block {
@@ -409,4 +385,16 @@
 .canvas-block-body > .canvas-text-editor {
   height: auto;
   max-height: 100%;
+}
+
+.canvas-edge-toolbar {
+  position: absolute;
+  translate: -50% calc(-100% - 14px / var(--canvas-zoom, 1));
+  scale: calc(1 / var(--canvas-zoom, 1));
+  transform-origin: 50% 100%;
+  pointer-events: all;
+}
+
+.canvas-edge-dot {
+  fill: var(--canvas-bg);
 }

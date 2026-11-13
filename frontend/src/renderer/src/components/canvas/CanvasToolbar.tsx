@@ -14,11 +14,14 @@ const OpenMenu = createContext<[string | null, (label: string | null) => void]>(
 
 // The controls of a selected item, floating above it at screen size. A locked
 // item offers only its lock.
+export function Menus({ children }: { children: ReactNode }) {
+  return <OpenMenu value={useState<string | null>(null)}>{children}</OpenMenu>
+}
+
 export function ItemToolbar({ label, item, offset = 16, children }: { label: string; item: CanvasItem; offset?: number; children?: ReactNode }) {
-  const open = useState<string | null>(null)
   return (
     <NodeToolbar className="canvas-toolbar nodrag nopan nowheel" offset={offset} role="toolbar" aria-label={label} onMouseDown={hold}>
-      <OpenMenu value={open}>
+      <Menus>
         {item.locked === true || !children ? null : (
           <>
             {children}
@@ -26,7 +29,7 @@ export function ItemToolbar({ label, item, offset = 16, children }: { label: str
           </>
         )}
         <ArrangeControls ids={[item.id]} menu />
-      </OpenMenu>
+      </Menus>
     </NodeToolbar>
   )
 }

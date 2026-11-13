@@ -1,18 +1,8 @@
-import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  Handle,
-  NodeResizeControl,
-  NodeResizer,
-  Position,
-  getBezierPath,
-  type EdgeProps,
-  type NodeProps,
-} from '@xyflow/react'
+import { Handle, NodeResizeControl, NodeResizer, Position, type NodeProps } from '@xyflow/react'
 import { useRef, useState, type CSSProperties } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import type { CanvasItem } from '@/lib/api/canvas'
-import { extension, flows, itemLabel, rounded, viewerFor, type BoardEdge, type BoardNode } from './board'
+import { extension, flows, itemLabel, rounded, viewerFor, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { CSS_SHAPES, ShapeOutline } from './CanvasShapes'
 import { RichEditor, SourceEditor, type TextEditorHandle } from './CanvasTextEditors'
@@ -20,7 +10,7 @@ import { TextToolbar } from './CanvasTextToolbar'
 import { ItemToolbar } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
-import { lookOf, toggleList, toggleMark } from './format'
+import { inkColor, lookOf, toggleList, toggleMark } from './format'
 import { parseRich, toggleRichList, toggleRichMark, writeRich, type TextFormat } from './richtext'
 import { ViewerFrame } from './ViewerFrame'
 
@@ -151,13 +141,12 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
   const classes = [
     base,
     look.fill ? `canvas-filled${look.fill.name ? ` canvas-fill-${look.fill.name}` : ''}` : '',
-    look.ink?.name ? `canvas-ink-${look.ink.name}` : '',
     look.size ? `canvas-size-${look.size}` : '',
     look.align ? `canvas-align-${look.align}` : '',
     look.hollow ? 'hollow' : '',
     connectSource === id ? 'canvas-connect-source' : '',
   ].filter(Boolean).join(' ')
-  const style = { '--canvas-fill': look.fill?.custom, '--canvas-ink': look.ink?.custom } as CSSProperties
+  const style = { '--canvas-fill': look.fill?.custom, '--canvas-ink': inkColor(look.ink) } as CSSProperties
   const rich = editing === id ? parseRich(text) : null
   const body = editing !== id
     ? <FitContent><MessageMarkdown text={text} /></FitContent>
@@ -210,7 +199,7 @@ export function GroupNode({ id, data, selected }: NodeProps<BoardNode>) {
   )
 }
 
-function LabelInput({ initial, onDone }: { initial: string; onDone: (value: string | null) => void }) {
+export function LabelInput({ initial, onDone }: { initial: string; onDone: (value: string | null) => void }) {
   const [value, setValue] = useState(initial)
   return (
     <input
@@ -226,34 +215,5 @@ function LabelInput({ initial, onDone }: { initial: string; onDone: (value: stri
       }}
       style={{ width: `${Math.max(5, value.length + 1)}ch` }}
     />
-  )
-}
-
-export function ConnectorEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd, markerStart, selected }: EdgeProps<BoardEdge>) {
-  const { editing, setEditing, commit } = useCanvas()
-  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
-  return (
-    <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} markerStart={markerStart} interactionWidth={18} className={selected ? 'canvas-edge selected' : 'canvas-edge'} />
-      {data?.label || editing === id ? (
-        <EdgeLabelRenderer>
-          <div
-            className={`canvas-edge-label nodrag nopan${selected ? ' selected' : ''}`}
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-            onDoubleClick={() => setEditing(id)}
-          >
-            {editing === id ? (
-              <LabelInput
-                initial={data?.label ?? ''}
-                onDone={(value) => {
-                  setEditing(null)
-                  if (value !== null && value.trim() !== (data?.label ?? '')) commit({ edges: [{ id, label: value.trim() || null }] })
-                }}
-              />
-            ) : data?.label}
-          </div>
-        </EdgeLabelRenderer>
-      ) : null}
-    </>
   )
 }

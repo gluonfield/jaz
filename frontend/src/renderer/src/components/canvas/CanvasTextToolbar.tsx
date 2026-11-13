@@ -5,7 +5,7 @@ import type { CanvasItem } from '@/lib/api/canvas'
 import { useCanvas } from './canvasContext'
 import { ShapeOutline } from './CanvasShapes'
 import { ItemToolbar, Menu, ToolButton } from './CanvasToolbar'
-import { ALIGNS, FILLS, INKS, SHAPES, SIZES, lookOf, type Tint } from './format'
+import { ALIGNS, FILLS, INKS, SHAPES, SIZES, inkColor, lookOf, type Tint } from './format'
 import type { TextFormat } from './richtext'
 
 const ALIGN_ICONS = { left: TextAlignStart, center: TextAlignCenter, right: TextAlignEnd }
@@ -19,10 +19,10 @@ const FORMATS: [TextFormat, string, LucideIcon][] = [
 ]
 const title = (word: string) => word[0].toUpperCase() + word.slice(1)
 
-function swatch(kind: 'fill' | 'ink', tint: Tint | undefined): { className: string; style?: CSSProperties } {
+export function swatch(kind: 'fill' | 'ink', tint: Tint | undefined): { className: string; style: CSSProperties } {
   return {
-    className: `canvas-swatch${tint?.name ? ` canvas-${kind}-${tint.name}` : ''}${tint ? '' : ' none'}`,
-    style: tint?.custom ? ({ [`--canvas-${kind}`]: tint.custom } as CSSProperties) : undefined,
+    className: `canvas-swatch${kind === 'fill' && tint?.name ? ` canvas-fill-${tint.name}` : ''}${tint ? '' : ' none'}`,
+    style: { [`--canvas-${kind}`]: kind === 'ink' ? inkColor(tint) : tint?.custom } as CSSProperties,
   }
 }
 

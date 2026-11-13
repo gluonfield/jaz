@@ -1,21 +1,19 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import type { CSSProperties } from 'react'
 import type { CanvasBoard, CanvasDocument, CanvasItem, CanvasPagePatch, CanvasPatch, CanvasView } from '@/lib/api/canvas'
-import { lookOf, tableRows } from './format'
+import { edgeLookOf, inkColor, lookOf, tableRows, type EdgeLook } from './format'
 
 export type Side = 'top' | 'right' | 'bottom' | 'left'
 export type Rect = { x: number; y: number; width: number; height: number }
 export type Kind = 'text' | 'file' | 'link' | 'group' | 'table'
 
 export type BoardNode = Node<{ item: CanvasItem }, Kind>
-export type BoardEdge = Edge<{ label?: string }, 'connector'>
+export type BoardEdge = Edge<{ label?: string; look: EdgeLook }, 'connector'>
 export type Clip = { nodes: CanvasItem[]; edges: CanvasItem[] }
 
 export const SECTION_PAD = 36
 const KINDS: Kind[] = ['text', 'file', 'link', 'group', 'table']
 const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
-
-export const arrow = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--canvas-edge)' }
 
 function number(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -57,6 +55,8 @@ export function toFlowEdges(view: CanvasView): BoardEdge[] {
     if (typeof source !== 'string' || typeof target !== 'string' || !rects.has(source) || !rects.has(target)) return []
     const [fromSide, toSide] = sidesBetween(rects.get(source)!, rects.get(target)!)
     const label = typeof item.label === 'string' && item.label ? item.label : undefined
+    const look = edgeLookOf(item)
+    const arrow = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: inkColor(look.ink) ?? 'var(--canvas-edge)' }
     return [{
       id: item.id,
       type: 'connector',
@@ -64,9 +64,9 @@ export function toFlowEdges(view: CanvasView): BoardEdge[] {
       target,
       sourceHandle: side(item.fromSide) ?? fromSide,
       targetHandle: side(item.toSide) ?? toSide,
-      markerEnd: item.toEnd === 'none' ? undefined : arrow,
-      markerStart: item.fromEnd === 'arrow' ? arrow : undefined,
-      data: { label },
+      markerEnd: look.toEnd === 'arrow' ? arrow : undefined,
+      markerStart: look.fromEnd === 'arrow' ? arrow : undefined,
+      data: { label, look },
     }]
   })
 }
