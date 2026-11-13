@@ -84,11 +84,13 @@ export const mcpEntrypointsQuery = queryOptions({
 })
 
 // Opening an entrypoint picks up a new app version; unchanged HTML keeps the
-// running app as it is.
+// running app as it is. An app is megabytes read from its server, so views
+// opened within a minute share one read.
 export function mcpAppQuery(serverId: string, tool: string) {
   return queryOptions({
     queryKey: keys.mcpApp(serverId, tool),
     queryFn: async () => (await get<{ html: string }>(`/v1/mcp/apps/${serverId}/resource?tool=${encodeURIComponent(tool)}`)).html,
+    staleTime: 60_000,
     refetchOnWindowFocus: false,
   })
 }

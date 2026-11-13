@@ -105,7 +105,6 @@ export function MCPAppFrame({ app, active, inline = false, file, call, deepLink,
   const [height, setHeight] = useState<number>()
   // An app that declares it can't render in this display mode stays hidden.
   const [unsupported, setUnsupported] = useState(false)
-  const { refetch } = query
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const delivered = useEffectEvent(() => onDelivered?.())
@@ -175,9 +174,10 @@ export function MCPAppFrame({ app, active, inline = false, file, call, deepLink,
     return { input, result }
   })
 
+  // A mounted app that is opened again reads a version older than a minute anew.
   useEffect(() => {
-    if (active) void refetch()
-  }, [active, refetch])
+    if (active) void queryClient.prefetchQuery(mcpAppQuery(serverId, tool))
+  }, [active, queryClient, serverId, tool])
 
   useEffect(() => {
     const iframe = frame.current

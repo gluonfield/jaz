@@ -51,6 +51,7 @@ export async function exerciseAppNavigation() {
   let thread = ''
   const views: Record<string, unknown> = {}
   const sent: unknown[] = []
+  const reads: string[] = []
   const expanded: unknown[] = []
   const observe = (event: MessageEvent) => {
     if (event.data?.type === 'navigation-peer' && event.source) locations.set(event.source, event.data)
@@ -93,7 +94,10 @@ export async function exerciseAppNavigation() {
       return Response.json({ path, git: path === '/fixture/repo', revision: path === '/fixture/repo' ? { branch: 'feature/current', head: 'abcdef1234567890' } : undefined, dirs: [] })
     }
     if (url.endsWith('/v1/mcp/apps')) return Response.json({ entrypoints: ['crm', 'tasks'].map((id) => ({ server_id: id, tool: 'show', title: id, type: 'global' })) })
-    if (url.includes('/resource?tool=')) return Response.json({ html })
+    if (url.includes('/resource?tool=')) {
+      reads.push(url)
+      return Response.json({ html })
+    }
     if (url.endsWith('/tools/call')) return Response.json({ content: [] })
     if (url.endsWith('/v1/settings/agents')) {
       return Response.json(settings)
@@ -290,6 +294,7 @@ export async function exerciseAppNavigation() {
     await until(() => sessions.length === 2 && prompts[1]?.message.text === 'Email Jim' && router.state.location.pathname === '/sessions/thread-smoke')
     sessions.pop()
     prompts.pop()
+    if (reads.length !== 3) throw new Error(`Opening an app again soon after read it from its server again: ${reads.join(', ')}`)
 
     // With the sidebar hidden, Chats offer a new chat in the titlebar and
     // Bots, which start bots from their own panel, do not.
