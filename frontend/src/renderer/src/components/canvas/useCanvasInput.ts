@@ -136,13 +136,22 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
 
   // A paste lands beside its original while that is in view, otherwise in the
   // middle of the view; pasting again steps further along. Files from another
-  // board keep pointing at its folder.
+  // board keep pointing at its folder. Words from elsewhere become a text
+  // item, and a web address a page.
   const onPaste = useEffectEvent((event: ClipboardEvent) => {
     const raw = event.clipboardData?.getData(CLIP)
-    if (!raw || !attending(event)) {
+    const words = event.clipboardData?.getData('text/plain').trim()
+    if ((!raw && !words) || !attending(event)) {
       return
     }
     event.preventDefault()
+    if (!raw) {
+      const screen = container.current!.getBoundingClientRect()
+      const middle = flow.screenToFlowPosition({ x: screen.left + screen.width / 2, y: screen.top + screen.height / 2 })
+      const item = /^https?:\/\/\S+$/.test(words!) ? { type: 'link', url: words, width: 480, height: 320 } : { type: 'text', text: words, width: 320 }
+      place({ nodes: [{ id: '', ...item, x: middle.x - item.width / 2, y: middle.y - 80 }], edges: [] }, 0, 0)
+      return
+    }
     const { dir, nodes, edges } = JSON.parse(raw) as Clip & { dir: string }
     const rebased = nodes.map((item) => (dir !== local.dir && typeof item.file === 'string' && !item.file.startsWith('/') ? { ...item, file: `${dir}/${item.file}` } : item))
     const count = pasted.current.raw === raw ? pasted.current.count + 1 : 1

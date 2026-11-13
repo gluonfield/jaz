@@ -355,6 +355,16 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await press([...element.querySelectorAll('.canvas-comments button')].find((button) => button.textContent === 'Resolve'), 'Resolve')
     await until(() => saved(timer).comments === undefined && !element.querySelector('.canvas-comment-badge'), 'Resolve did not clear the comments')
     await press(element.querySelector('.react-flow__pane'), 'board')
+    const paste = async (text: string, check: (item: CanvasItem) => boolean, message: string) => {
+      const data = new DataTransfer()
+      data.setData('text/plain', text)
+      element.querySelector('.react-flow__pane')!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+      await until(() => check(view.nodes.at(-1)!) && node(view.nodes.at(-1)!.id)?.classList.contains('selected'), message)
+    }
+    await paste('Pasted from elsewhere', (item) => item.type === 'text' && item.text === 'Pasted from elsewhere' && item.height === undefined, 'Pasted words did not become a text item')
+    await paste('https://example.com/plan', (item) => item.type === 'link' && item.url === 'https://example.com/plan', 'A pasted address did not become a page')
+    await window.smoke.key('Backspace')
+    await until(() => view.nodes.at(-1)!.type !== 'link', 'The pasted page was not removed')
     const sticker = await place('Sticker', [-90, 90, -90, 90], (item) => item.text === '👍' && item.size === 'huge')
     await until(() => node(sticker).classList.contains('selected') && !document.activeElement?.classList.contains('canvas-text-editor') && dockTool('Select')?.getAttribute('aria-pressed') === 'true', 'A sticker was not put down ready to move')
 
