@@ -513,10 +513,20 @@ func RemoveOwnedCredential(name, storagePath, root string) error {
 }
 
 func DisconnectAgentAuth(ctx context.Context, name string, cfg AgentConfig, root, storagePath string) error {
+	if instructions := agentManualDisconnect(name); instructions != "" {
+		return fmt.Errorf("%s", instructions)
+	}
 	if CanonicalAgentName(name) != AgentMuse {
 		return RemoveOwnedCredential(name, storagePath, root)
 	}
 	return disconnectMuseAuth(ctx, cfg, root)
+}
+
+func agentManualDisconnect(name string) string {
+	if CanonicalAgentName(name) == AgentCopilot {
+		return "To sign out, run copilot on the Jaz server and enter /logout."
+	}
+	return ""
 }
 
 // pathUnderRoot resolves symlinks before comparing so a symlinked directory

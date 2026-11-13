@@ -488,11 +488,14 @@ function AgentAuthPanel({
               {running ? 'Waiting for sign-in…' : 'Sign in again'}
             </Button>
           ) : null}
-          <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
-            {disconnecting ? <LoaderCircle size={13} className="animate-spin" /> : null}
-            Disconnect
-          </Button>
+          {!status.manual_disconnect ? (
+            <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
+              {disconnecting ? <LoaderCircle size={13} className="animate-spin" /> : null}
+              Disconnect
+            </Button>
+          ) : null}
         </div>
+        {status.manual_disconnect ? <p className="text-[12px] text-ink-3">{status.manual_disconnect}</p> : null}
         <AuthLoginStatus job={loginJob} running={running} />
       </div>
     )
@@ -502,7 +505,7 @@ function AgentAuthPanel({
     const viaKey = status.auth_kind === 'api_key'
     const noKey = status.auth_kind === 'none'
     return (
-      <div className="flex items-center justify-between gap-3 rounded-control bg-bg px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-control bg-bg px-3 py-2.5">
         <span className="flex min-w-0 items-center gap-2 text-[13px] text-ink">
           <CheckCircle2 size={16} className="shrink-0 text-primary" />
           {noKey
@@ -511,12 +514,24 @@ function AgentAuthPanel({
               ? keyCopy.connected
               : `Connected with your ${authProviderLabel(agent)} account`}
         </span>
-        {noKey ? null : (
+        {status.manual_disconnect && canLogin ? (
+          <Button variant="ghost" size="sm" disabled={disabled || running} onClick={onStartLogin}>
+            {running ? <LoaderCircle size={13} className="animate-spin" /> : null}
+            {running ? 'Waiting for sign-in…' : 'Sign in again'}
+          </Button>
+        ) : null}
+        {noKey || status.manual_disconnect ? null : (
           <Button variant="ghost" size="sm" disabled={disabled || disconnecting} onClick={onDisconnect}>
             {disconnecting ? <LoaderCircle size={13} className="animate-spin" /> : null}
             Disconnect
           </Button>
         )}
+        {status.manual_disconnect ? (
+          <div className="w-full">
+            <p className="text-[12px] text-ink-3">{status.manual_disconnect}</p>
+            <AuthLoginStatus job={loginJob} running={running} />
+          </div>
+        ) : null}
       </div>
     )
   }

@@ -26,6 +26,7 @@ type AgentAuthStatus struct {
 	LoginCommand          string
 	LoginCommandAvailable bool
 	LoginCommandReason    string
+	ManualDisconnect      string
 	RefreshOwner          string
 }
 
@@ -65,6 +66,7 @@ func ProbeAgentAuthWithProviders(name string, cfg AgentConfig, root string, env 
 	probeEnv := NewManager(nil, Config{Root: root, Env: env, Providers: providers}, nil).probeEnv(name, cfg)
 	resolved := resolveAgentAuthWithProviders(name, cfg, root, probeEnv, providers)
 	status := agentLoginCommand(name, root, resolved.Config, loginBinDirs(cfg), probeEnv)
+	status.ManualDisconnect = agentManualDisconnect(name)
 	status.RefreshOwner = RefreshOwnerAgentCLI
 	status.StoragePath = resolved.StoragePath
 	status.Authenticated = resolved.Authenticated

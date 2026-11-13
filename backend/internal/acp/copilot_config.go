@@ -9,11 +9,14 @@ func configureCopilotPrompt(root string, env map[string]string, prompt string) (
 	if prompt == "" {
 		return func() {}, nil
 	}
-	directory := filepath.Join(root, "acp")
+	directory, err := filepath.Abs(filepath.Join(root, "acp"))
+	if err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, err
 	}
-	directory, err := os.MkdirTemp(directory, "copilot-instructions-*")
+	directory, err = os.MkdirTemp(directory, "copilot-instructions-*")
 	if err != nil {
 		return nil, err
 	}

@@ -1360,6 +1360,7 @@ export interface ACPAgentAuthStatus {
   login_command?: string
   login_command_available: boolean
   login_command_reason?: string
+  manual_disconnect?: string
   refresh_owner?: string
   managed_adapter?: ACPAdapterStatus
   managed_tool?: ACPManagedToolStatus

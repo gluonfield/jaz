@@ -57,8 +57,14 @@ func TestCopilotNativeLoginAndModelDiscovery(t *testing.T) {
 		t.Fatalf("native login did not receive its profile/environment: %v", err)
 	}
 	status := ProbeAgentAuth(AgentCopilot, cfg, root, nil)
-	if !status.Authenticated || status.AuthMode != AuthModeExistingCLI || status.RefreshOwner != RefreshOwnerAgentCLI {
+	if !status.Authenticated || status.AuthMode != AuthModeExistingCLI || status.RefreshOwner != RefreshOwnerAgentCLI || status.ManualDisconnect == "" {
 		t.Fatalf("native login not reused = %#v", status)
+	}
+	if err := DisconnectAgentAuth(t.Context(), AgentCopilot, cfg, root, ""); err == nil || err.Error() != status.ManualDisconnect {
+		t.Fatalf("shared native login should require native sign-out: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "signed-in")); err != nil {
+		t.Fatalf("shared native login was removed: %v", err)
 	}
 	manager := NewManager(nil, Config{Root: root, Agents: map[string]AgentConfig{AgentCopilot: cfg}}, nil)
 	catalog, err := manager.DiscoverModels(t.Context(), AgentCopilot)
@@ -81,8 +87,9 @@ func TestCopilotNativeLoginAndModelDiscovery(t *testing.T) {
 
 func TestCopilotInstructionsAppendAndCleanup(t *testing.T) {
 	root := t.TempDir()
+	t.Chdir(root)
 	env := map[string]string{"COPILOT_CUSTOM_INSTRUCTIONS_DIRS": "/native/instructions"}
-	cleanup, err := configureCopilotPrompt(root, env, "Jaz extension")
+	cleanup, err := configureCopilotPrompt(".", env, "Jaz extension")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +98,7 @@ func TestCopilotInstructionsAppendAndCleanup(t *testing.T) {
 	if !ok || !strings.HasPrefix(env["COPILOT_CUSTOM_INSTRUCTIONS_DIRS"], "/native/instructions,") {
 		t.Fatalf("native instructions replaced: %#v", env)
 	}
+	t.Chdir(t.TempDir())
 	data, err := os.ReadFile(filepath.Join(directory, "jaz.instructions.md"))
 	if err != nil || string(data) != "Jaz extension" {
 		t.Fatalf("Jaz extension unavailable: %q, %v", data, err)

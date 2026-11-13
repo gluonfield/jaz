@@ -18,6 +18,7 @@ type acpAuthStatusResponse struct {
 	LoginCommand          string                    `json:"login_command,omitempty"`
 	LoginCommandAvailable bool                      `json:"login_command_available"`
 	LoginCommandReason    string                    `json:"login_command_reason,omitempty"`
+	ManualDisconnect      string                    `json:"manual_disconnect,omitempty"`
 	RefreshOwner          string                    `json:"refresh_owner,omitempty"`
 	ManagedAdapter        *acpAdapterStatusResponse `json:"managed_adapter,omitempty"`
 	ManagedTool           *acpToolStatusResponse    `json:"managed_tool,omitempty"`
@@ -60,6 +61,7 @@ func newACPAuthStatusResponse(auth acp.AgentAuthStatus, readiness acp.Readiness)
 		LoginCommand:          auth.LoginCommand,
 		LoginCommandAvailable: auth.LoginCommandAvailable,
 		LoginCommandReason:    auth.LoginCommandReason,
+		ManualDisconnect:      auth.ManualDisconnect,
 		RefreshOwner:          auth.RefreshOwner,
 	}
 }

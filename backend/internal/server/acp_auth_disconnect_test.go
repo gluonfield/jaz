@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/wins/jaz/backend/internal/acp"
@@ -14,6 +16,41 @@ import (
 	agentsettings "github.com/wins/jaz/backend/internal/settings"
 	sqlitestore "github.com/wins/jaz/backend/internal/storage/sqlite"
 )
+
+func TestCopilotDisconnectRequiresNativeSignOutWithoutChangingSettings(t *testing.T) {
+	root := t.TempDir()
+	store, err := sqlitestore.New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	before, err := agentsettings.SaveAgentDefaults(store, agentsettings.AgentDefaults{ACP: map[string]agentsettings.ACPAgentDefaults{
+		acp.AgentCopilot: {Enabled: true, Model: "native-model", Auth: acp.AgentAuthConfig{Mode: acp.AuthModeExistingCLI}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := disconnectTestServer(store, root, acp.AgentCopilot).Handler()
+	req := httptest.NewRequest(http.MethodPost, "/v1/acp/agents/copilot/auth/disconnect", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "/logout") {
+		t.Fatalf("manual native sign-out was not explained: %d %s", response.Code, response.Body.String())
+	}
+	after, err := agentsettings.LoadAgentDefaults(store)
+	if err != nil || !reflect.DeepEqual(before, after) {
+		t.Fatalf("unsupported disconnect changed settings: before=%#v after=%#v error=%v", before, after, err)
+	}
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/v1/settings/agents", nil))
+	var settings struct {
+		Auth map[string]acpAuthStatusResponse `json:"acp_auth"`
+	}
+	if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &settings) != nil || settings.Auth[acp.AgentCopilot].ManualDisconnect == "" {
+		t.Fatalf("native sign-out guidance missing from settings: %d %s", response.Code, response.Body.String())
+	}
+}
 
 func disconnectTestServer(store *sqlitestore.Store, root, agent string) *Server {
 	return &Server{
