@@ -214,6 +214,12 @@ func TestSessionFileWrite(t *testing.T) {
 	if read.Code != http.StatusOK || original == "" {
 		t.Fatalf("raw read = %d with ETag %q", read.Code, original)
 	}
+	var document sessionFileResponse
+	documentRead := httptest.NewRecorder()
+	handler.ServeHTTP(documentRead, httptest.NewRequest(http.MethodGet, strings.TrimSuffix(fileURL, "&raw=1"), nil))
+	if err := json.Unmarshal(documentRead.Body.Bytes(), &document); err != nil || document.Version != original {
+		t.Fatalf("document read has version %q, want %q (%v)", document.Version, original, err)
+	}
 	saved := send(http.MethodPut, "solid bb\n", original)
 	if saved.Code != http.StatusNoContent || saved.Header().Get("ETag") == original {
 		t.Fatalf("save = %d with ETag %q", saved.Code, saved.Header().Get("ETag"))

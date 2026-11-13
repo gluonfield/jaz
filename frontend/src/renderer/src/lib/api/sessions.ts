@@ -1,5 +1,5 @@
 import type { UsageWindow } from '@/lib/usageWindow'
-import { readAPIResponse } from '@/lib/api/response'
+import { ApiError, readAPIResponse } from '@/lib/api/response'
 import { queryOptions } from '@tanstack/react-query'
 import type { MessageContextInput } from '@/lib/messageContext'
 import { telemetry } from '@/lib/telemetry'
@@ -97,6 +97,14 @@ export function sendSessionSideChat(id: string, input: SideChatMessageInput): Pr
 export function sessionFilePath(sessionId: string, path: string): string {
   const params = new URLSearchParams({ path, raw: '1' })
   return `/v1/sessions/${encodeURIComponent(sessionId)}/file?${params.toString()}`
+}
+
+// saveSessionFile writes content over the version read and returns the
+// version written; a file changed since that read is refused with 412.
+export async function saveSessionFile(sessionId: string, path: string, content: string, version: string): Promise<string> {
+  const response = await apiFetch(sessionFilePath(sessionId, path), { method: 'PUT', headers: { 'If-Match': version }, body: content })
+  if (!response.ok) throw new ApiError(response.status, `could not save ${path}`)
+  return response.headers.get('ETag')!
 }
 
 export function sessionFileRawUrl(sessionId: string, path: string): string {

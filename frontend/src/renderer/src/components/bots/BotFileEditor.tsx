@@ -2,17 +2,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useBlocker } from '@tanstack/react-router'
 import { EditorContent, useEditor, useEditorState, type Editor } from '@tiptap/react'
 import { Bold, Italic, List, ListOrdered } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Modal } from '@/components/ui/Modal'
 import { botFilesQuery, saveBotFile } from '@/lib/api/bots'
-import { ApiError } from '@/lib/api/client'
 import type { Bot, BotFile, BotFileName } from '@/lib/api/types'
 import { BOT_FILE_LABELS } from '@/lib/bots'
 import { keys } from '@/lib/query/keys'
-import { markdownKit, savedMarkdown } from './markdownKit'
-
-type SaveState = 'saved' | 'saving' | 'conflict' | 'failed'
+import { SAVE_LABEL, useDocumentSave } from '@/lib/hooks/useDocumentSave'
+import { markdownKit } from './markdownKit'
 
 // A bot's BOTS.md or MEMORY.md, edited as a document in a modal. Only the
 // person's edits are saved, each over the version read, so the bot's own
@@ -25,33 +23,16 @@ export function BotFileEditor({ bot, name, onClose }: { bot: Bot; name: BotFileN
 function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose: () => void }) {
   const label = BOT_FILE_LABELS[file.name]
   const queryClient = useQueryClient()
-  const version = useRef(file.version)
-  const source = useRef(file.content)
-  const edited = useRef(false)
-  const saving = useRef<Promise<void>>(Promise.resolve())
-  const timer = useRef(0)
-  const view = useRef<Editor | null>(null)
-  const [state, setState] = useState<SaveState>('saved')
-  // Saves are chained so each goes over the version the one before it wrote.
-  const [save] = useState(() => () => {
-    window.clearTimeout(timer.current)
-    saving.current = saving.current.then(async () => {
-      if (!edited.current || !view.current) return
-      edited.current = false
-      setState('saving')
-      try {
-        const saved = await saveBotFile(bot.id, file.name, savedMarkdown(view.current, source.current), version.current)
-        version.current = saved.version
-        source.current = saved.content
-        queryClient.setQueryData(keys.botFiles(bot.id), (files: BotFile[] | undefined) => files?.map((item) => (item.name === saved.name ? saved : item)))
-        void queryClient.invalidateQueries({ queryKey: keys.botActivity(bot.id) })
-        setState(edited.current ? 'saving' : 'saved')
-      } catch (error) {
-        edited.current = true
-        setState(error instanceof ApiError && error.status === 409 ? 'conflict' : 'failed')
-      }
-    })
-    return saving.current
+  const { state, edited, save, touch, takeTheirs, keepMine } = useDocumentSave(file, {
+    read: async () => (await queryClient.fetchQuery({ ...botFilesQuery(bot.id), staleTime: 0 })).find((item) => item.name === file.name)!,
+    write: async (content, version) => {
+      const saved = await saveBotFile(bot.id, file.name, content, version)
+      queryClient.setQueryData(keys.botFiles(bot.id), (files: BotFile[] | undefined) => files?.map((item) => (item.name === saved.name ? saved : item)))
+      void queryClient.invalidateQueries({ queryKey: keys.botActivity(bot.id) })
+      return saved
+    },
+    conflict: 409,
+    delay: 800,
   })
   const editor = useEditor({
     extensions: markdownKit,
@@ -59,35 +40,12 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
     contentType: 'markdown',
     autofocus: 'end',
     editorProps: { attributes: { class: 'editor-prose outline-none', 'aria-label': label } },
-    // Development's StrictMode builds the editor twice, and only the one being
-    // typed in is known to be on screen, so that is the one saved.
-    onUpdate: ({ editor }) => {
-      view.current = editor
-      edited.current = true
-      window.clearTimeout(timer.current)
-      timer.current = window.setTimeout(() => void save(), 800)
-    },
+    onUpdate: ({ editor }) => touch(editor),
   })
 
-  const latest = async () => {
-    const files = await queryClient.fetchQuery({ ...botFilesQuery(bot.id), staleTime: 0 })
-    return files.find((item) => item.name === file.name)!
-  }
-  const takeTheirs = async () => {
-    const current = await latest()
-    version.current = current.version
-    source.current = current.content
-    edited.current = false
-    editor?.commands.setContent(current.content, { contentType: 'markdown', emitUpdate: false })
-    setState('saved')
-  }
-  const keepMine = async () => {
-    version.current = (await latest()).version
-    await save()
-  }
   // Closing saves first and stays open on an edit that could not be saved.
   const close = async () => {
-    if (state !== 'conflict') await save()
+    await save()
     if (edited.current && !window.confirm(`Discard your edits to ${label}?`)) return
     onClose()
   }
@@ -101,7 +59,6 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
     },
     enableBeforeUnload: false,
   })
-  useEffect(() => () => void save(), [save])
 
   // A fixed height keeps the modal from resizing as the document grows or the
   // conflict choice appears.
@@ -149,8 +106,6 @@ function FileDocument({ bot, file, onClose }: { bot: Bot; file: BotFile; onClose
     </Modal>
   )
 }
-
-const SAVE_LABEL: Record<SaveState, string> = { saved: '', saving: 'Saving…', conflict: 'Not saved', failed: "Couldn't save" }
 
 function Toolbar({ editor }: { editor: Editor }) {
   const active = useEditorState({

@@ -81,7 +81,7 @@ function textFromChildren(children: unknown): string {
   return ''
 }
 
-function localFileFromLink(href: unknown, children: unknown, documentPath?: string): FileReference | null {
+export function localFileFromLink(href: unknown, children: unknown, documentPath?: string): FileReference | null {
   if (typeof href === 'string') {
     const fromHref = resolveFileLink(decodeMentionHref(href), documentPath)
     if (fromHref) return fromHref
@@ -89,11 +89,11 @@ function localFileFromLink(href: unknown, children: unknown, documentPath?: stri
   return parseFileReference(textFromChildren(children).trim())
 }
 
-function isUrlLink(href: unknown): href is string {
+export function isUrlLink(href: unknown): href is string {
   return typeof href === 'string' && /^https?:\/\//i.test(href)
 }
 
-function shouldPreviewLink(event: MouseEvent<HTMLElement>): boolean {
+export function shouldPreviewLink(event: Pick<MouseEvent, 'button' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'defaultPrevented'>): boolean {
   return (
     event.button === 0 &&
     !event.metaKey &&

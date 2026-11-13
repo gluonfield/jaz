@@ -1,19 +1,37 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } from '@tanstack/react-router'
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { FileReaderPanel } from '@/components/session/FileReaderPanel'
 import { FileReaderLinkProvider, MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { keys } from '@/lib/query/keys'
+import type { SessionFileRead } from '@/lib/api/types'
 import type { FileReference } from '@shared/fileReader'
 
 export async function exerciseMarkdownDocuments() {
   const size = { width: innerWidth, height: innerHeight }
   const path = '/workspace/reports/route-comparison.md'
-  const content = '# Route comparison\n\n## Contents\n\n- [Résumé and costs](#résumé--costs)\n- [Next steps](#next-steps)\n- [More steps](#next-steps-1)\n\n' +
-    'A short paragraph explaining the manufacturing options.\n\n'.repeat(12) +
-    '## Résumé & **costs**\n\nUse the available presses.\n\n## Next steps\n\nConfirm the route.\n\n## Next steps\n\nReserve the presses.\n\n## Next steps-1\n\nKeep the deadline.'
+  const filler = 'A short paragraph explaining the manufacturing options.\n\n'.repeat(12)
+  const content = '# Route comparison\n\n## Contents\n\n- [Résumé and costs](#résumé--costs)\n- [Next steps](#next-steps)\n- [More steps](#next-steps-1)\n\n' + filler +
+    '## Résumé & **costs**\n\nUse the available presses.\n\nA part costs \\(c = m + t\\) to make.\n\n| Route | Cost |\n| --- | ---: |\n| Press | £1 |\n\n- [ ] Confirm the press\n- [x] Price the blank\n\n```sh\nmake check\n```\n\n' + filler +
+    '## Next steps\n\nConfirm the route.\n\n' + filler + '## Next steps\n\nReserve the presses.\n\n' + filler + '## Next steps-1\n\nKeep the deadline.\n\n' + filler
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
-  client.setQueryData(keys.sessionFile('documents', path), { path, content, size: content.length })
+  // The file as the backend holds it: a save is refused unless it is made over
+  // this version.
+  let stored: SessionFileRead = { path, content, size: content.length, version: 'v1' }
+  const saves: { over: string | null; content: string }[] = []
+  const originalFetch = window.fetch
+  window.fetch = async (input, init) => {
+    const url = new URL(String(input), location.href)
+    if (url.pathname !== '/v1/sessions/documents/file') return originalFetch(input, init)
+    if (init?.method !== 'PUT') return Response.json(stored)
+    const over = new Headers(init.headers).get('If-Match')
+    saves.push({ over, content: String(init.body) })
+    if (over !== stored.version) return new Response(null, { status: 412, headers: { ETag: stored.version! } })
+    stored = { ...stored, content: String(init.body), version: stored.version + '+' }
+    return new Response(null, { status: 204, headers: { ETag: stored.version! } })
+  }
+  client.setQueryData(keys.sessionFile('documents', path), stored)
   client.setQueryData(keys.health, { capabilities: { session_file_read: true } })
   client.setQueryData(keys.skills(), [])
   const host = document.createElement('div')
@@ -53,27 +71,98 @@ export async function exerciseMarkdownDocuments() {
     await window.smoke.pointer('mouseDown', x, y)
     await window.smoke.pointer('mouseUp', x, y)
   }
+  const type = async (letters: string) => {
+    for (const letter of letters) await window.smoke.key(letter)
+  }
+  // The reader is the editor: typing saves only the edited line over the
+  // version read, the agent's writes show, a refused save asks, and a block
+  // kept as Markdown is edited as its source.
+  const edit = async (reader: HTMLElement) => {
+    const text = () => reader.textContent ?? ''
+    const paragraph = (start: string) => [...reader.querySelectorAll('p')].find((node) => node.textContent?.startsWith(start)) ?? null
+    const source = (selector: string) => reader.querySelector(selector)!.closest<HTMLElement>('.document-source')!
+    const editSource = async (block: HTMLElement) => {
+      block.scrollIntoView({ block: 'center' })
+      await new Promise(requestAnimationFrame)
+      await click(block)
+      await click(block.querySelector('[aria-label="Edit as Markdown"]'))
+      await until(() => document.activeElement?.tagName === 'TEXTAREA')
+    }
+    if (!source('table').textContent?.includes('£1') || !source('pre').textContent?.includes('make check') || !source('.katex') || reader.querySelectorAll('ul[data-type="taskList"] input[type="checkbox"]').length !== 2) throw new Error('The editable document lost what the reader draws')
+    const typeAfterPresses = async (letters: string) => {
+      paragraph('Use the available')!.scrollIntoView({ block: 'center' })
+      await new Promise(requestAnimationFrame)
+      await click(paragraph('Use the available'))
+      await window.smoke.key('End')
+      await type(letters)
+    }
+    await typeAfterPresses('Owl')
+    await until(() => saves.length === 1 && reader.querySelector('[role="status"]')?.textContent === '')
+    if (saves[0].over !== 'v1' || saves[0].content !== content.replace('presses.', 'presses.Owl')) throw new Error('The edit saved as ' + JSON.stringify(saves[0]))
+    if (client.getQueryData<SessionFileRead>(keys.sessionFile('documents', path))?.version !== 'v1+') throw new Error('The saved version was not kept')
+
+    stored = { ...stored, content: stored.content + '\nThe agent added this.\n', version: 'agent' }
+    client.setQueryData(keys.sessionFile('documents', path), stored)
+    await until(() => text().includes('The agent added this.') && text().includes('presses.Owl'))
+
+    stored = { ...stored, content: stored.content + '\nThe agent wrote again.\n', version: 'agent-2' }
+    await typeAfterPresses('Bee')
+    await until(() => text().includes('changed while you were editing'))
+    await window.smoke.capture('markdown-document-conflict')
+    await click([...reader.querySelectorAll('button')].find((node) => node.textContent === 'Keep mine') ?? null)
+    await until(() => stored.version === 'agent-2+' && !text().includes('changed while you were editing'))
+    if (!stored.content.includes('presses.OwlBee')) throw new Error('Keep mine lost the edit: ' + stored.content)
+
+    const before = saves.length
+    await editSource(source('table'))
+    if ((document.activeElement as HTMLTextAreaElement).value !== '| Route | Cost |\n| --- | ---: |\n| Press | £1 |') throw new Error('The table did not open as its Markdown')
+    await type('x')
+    await window.smoke.key('Escape')
+    await until(() => document.activeElement?.tagName !== 'TEXTAREA' && Boolean(reader.querySelector('table')))
+    await editSource(source('.katex'))
+    await window.smoke.key('Left')
+    await window.smoke.key('Left')
+    await type('2')
+    await window.smoke.key('Enter')
+    await until(() => saves.length === before + 1 && Boolean(reader.querySelector('.katex')))
+    if (!stored.content.includes('costs \\(c = m + t2\\) to make.') || !stored.content.includes('| Press | £1 |')) throw new Error('Editing a formula saved as ' + stored.content)
+    await click(reader.querySelector('ul[data-type="taskList"] input[type="checkbox"]'))
+    await until(() => stored.content.includes('- [x] Confirm the press'))
+    await typeAfterPresses('')
+    await window.smoke.key('Enter')
+    await type('``` ')
+    await until(() => (document.activeElement as HTMLTextAreaElement).value === '```\n\n```')
+    await type('ls')
+    await click(paragraph('Use the available'))
+    await until(() => stored.content.includes('presses.OwlBee\n\n```\nls\n```\n\nA part costs'))
+    if ([...reader.querySelectorAll('.document-source pre')].every((node) => node.textContent !== 'ls')) throw new Error('A typed fence did not become a code block')
+    await window.smoke.capture('markdown-document-edited')
+  }
+  const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() })
   try {
-    root.render(<View />)
+    root.render(<RouterContextProvider router={router}><View /></RouterContextProvider>)
     for (const width of [1200, 390]) {
       await window.smoke.resize(width, 844)
-      await until(() => Boolean(host.querySelector('.markdown-document-card button')))
-      await click(host.querySelector('.markdown-document-card button'))
+      await until(() => Boolean(host.querySelector('.markdown-document-card > button')))
+      await click(host.querySelector('.markdown-document-card > button'))
       await until(() => Boolean(host.querySelector('[data-document-reader] h1')))
       const reader = host.querySelector<HTMLElement>('[data-document-reader]')!
       const scroll = reader.querySelector<HTMLElement>('.scrollbar-quiet')!
       const url = location.href
       const queries = client.getQueryCache().getAll().length
       const opened = opens
+      const saved = saves.length
       if (host.textContent?.includes('/workspace/') || [...host.querySelectorAll('[title]')].some((node) => node.getAttribute('title')?.includes('/workspace/'))) throw new Error('Markdown chrome exposes its filesystem path')
-      if (reader.querySelectorAll('#next-steps-1').length !== 1 || !reader.querySelector('#next-steps-1-1')) throw new Error('Duplicate heading anchors collide')
-      for (const href of ['#résumé--costs', '#next-steps', '#next-steps-1']) {
+      const headings = [...reader.querySelectorAll('h2')]
+      for (const [href, heading] of [['#résumé--costs', headings[1]], ['#next-steps', headings[2]], ['#next-steps-1', headings[3]]] as const) {
         scroll.scrollTop = 0
         await new Promise(requestAnimationFrame)
         await click([...reader.querySelectorAll('a[href]')].find((node) => decodeURIComponent(node.getAttribute('href') ?? '') === href) ?? null)
-        await until(() => scroll.scrollTop > 0)
+        await until(() => Math.abs(heading.getBoundingClientRect().top - scroll.getBoundingClientRect().top) < 48)
         if (location.href !== url || client.getQueryCache().getAll().length !== queries || opens !== opened) throw new Error('Contents navigation changed the document or thread')
       }
+      if (saves.length !== saved) throw new Error('Reading a document saved it')
+      if (width === 1200) await edit(reader)
       if (reader.scrollWidth > reader.clientWidth || document.documentElement.scrollWidth > innerWidth) throw new Error('Document reader overflows its viewport')
       scroll.scrollTop = 0
       await window.smoke.capture(width === 1200 ? 'markdown-document-desktop' : 'markdown-document-phone')
@@ -85,6 +174,7 @@ export async function exerciseMarkdownDocuments() {
     root.unmount()
     host.remove()
     client.clear()
+    window.fetch = originalFetch
     await window.smoke.resize(size.width, size.height)
   }
 }

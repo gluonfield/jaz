@@ -257,6 +257,7 @@ export interface SessionFileRead {
   size: number
   binary?: boolean
   truncated?: boolean
+  version?: string
 }
 
 export interface HealthResponse {

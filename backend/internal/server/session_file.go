@@ -28,6 +28,7 @@ type sessionFileResponse struct {
 	Size         int64  `json:"size"`
 	Binary       bool   `json:"binary,omitempty"`
 	Truncated    bool   `json:"truncated,omitempty"`
+	Version      string `json:"version"`
 }
 
 func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request, session storage.Session) {
@@ -76,6 +77,7 @@ func (s *Server) handleSessionFile(w http.ResponseWriter, r *http.Request, sessi
 		Size:         info.Size(),
 		Binary:       binary,
 		Truncated:    truncated,
+		Version:      fileETag(info),
 	}
 	if !binary {
 		resp.Content = string(data)

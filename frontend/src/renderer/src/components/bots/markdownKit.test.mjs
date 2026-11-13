@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { Editor } from '@tiptap/core'
-import { markdownKit, savedMarkdown } from './markdownKit'
+import { savedMarkdown } from '@/lib/savedMarkdown'
+import { markdownKit } from './markdownKit'
 
 const open = (markdown) => new Editor({ element: null, extensions: markdownKit, content: markdown, contentType: 'markdown' })
 
