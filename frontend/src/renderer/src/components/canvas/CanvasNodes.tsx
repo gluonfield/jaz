@@ -1,21 +1,19 @@
-import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  Handle,
-  NodeResizeControl,
-  NodeResizer,
-  Position,
-  getBezierPath,
-  type EdgeProps,
-  type NodeProps,
-} from '@xyflow/react'
-import { useEffect, useRef, useState } from 'react'
+import { Handle, NodeResizeControl, NodeResizer, Position, type NodeProps } from '@xyflow/react'
+import { Ungroup } from 'lucide-react'
+import { useRef, useState, type CSSProperties, type MouseEvent } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import type { CanvasItem } from '@/lib/api/canvas'
-import { extension, flows, itemLabel, rounded, viewerFor, type BoardEdge, type BoardNode } from './board'
+import { extension, flows, itemLabel, rounded, viewerFor, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
+import { CSS_SHAPES, ShapeOutline } from './CanvasShapes'
+import { RichEditor, SourceEditor, type TextEditorHandle } from './CanvasTextEditors'
+import { TextToolbar } from './CanvasTextToolbar'
+import { ToolButton } from './CanvasMenu'
+import { ItemToolbar } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
+import { inkColor, lookOf, toggleTask } from './format'
+import { formatText, parseRich, type TextFormat } from './richtext'
 import { ViewerFrame } from './ViewerFrame'
 
 const SIDES = [
@@ -25,14 +23,14 @@ const SIDES = [
   ['left', Position.Left],
 ] as const
 
-function Handles() {
+export function Handles() {
   return SIDES.map(([side, position]) => <Handle key={side} id={side} type="source" position={position} className="canvas-dot" />)
 }
 
-function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: CanvasItem; selected: boolean; minWidth?: number; minHeight?: number }) {
+export function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: CanvasItem; selected: boolean; minWidth?: number; minHeight?: number }) {
   const { commit } = useCanvas()
-  if (!selected) return null
-  // Text and documents are as tall as their content, so only their width is
+  if (!selected || item.locked === true) return null
+  // Text, tables and documents are as tall as their content, so only their width is
   // set by hand, which also lifts the height limit their author gave them.
   if (flows(item)) {
     return (['left', 'right'] as const).map((position) => (
@@ -57,7 +55,7 @@ function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: Can
   )
 }
 
-function Flash({ id }: { id: string }) {
+export function Flash({ id }: { id: string }) {
   const { flash } = useCanvas()
   return flash[id] ? <div key={flash[id]} className="canvas-flash" /> : null
 }
@@ -84,10 +82,11 @@ export function FileNode({ id, data, selected }: NodeProps<BoardNode>) {
   return (
     <>
       <Resizer item={data.item} selected={selected} />
+      {selected ? <ItemToolbar label="Item" item={data.item} offset={34} /> : null}
       <Handles />
       <ItemLabel badge={extension(path).toUpperCase() || 'FILE'} name={itemLabel(data.item)} />
       <div className={`canvas-card${connectSource === id ? ' canvas-connect-source' : ''}`}>
-        <FileViewer id={id} file={file} />
+        <FileViewer id={id} file={file} data={data.item.data} />
         {shielded(path) && !selected ? <div className="canvas-shield" /> : null}
         <Flash id={id} />
       </div>
@@ -102,6 +101,7 @@ export function LinkNode({ id, data, selected }: NodeProps<BoardNode>) {
   return (
     <>
       <Resizer item={data.item} selected={selected} />
+      {selected ? <ItemToolbar label="Item" item={data.item} offset={34} /> : null}
       <Handles />
       <ItemLabel badge="WEB" name={host} />
       <div className={`canvas-card${connectSource === id ? ' canvas-connect-source' : ''}`}>
@@ -114,13 +114,11 @@ export function LinkNode({ id, data, selected }: NodeProps<BoardNode>) {
   )
 }
 
-const STICKY_COLORS = new Set(['1', '2', '3', '4', '5', '6'])
-
 export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
   const { editing, setEditing, commit, connectSource } = useCanvas()
+  const editor = useRef<TextEditorHandle>(null)
   const text = typeof data.item.text === 'string' ? data.item.text : ''
-  const color = typeof data.item.color === 'string' ? data.item.color : ''
-  const sticky = color !== ''
+  const look = lookOf(data.item)
   const finish = (value: string) => {
     setEditing(null)
     if (!value.trim() && !text) {
@@ -129,49 +127,50 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
     }
     if (value !== text) commit({ nodes: [{ id, text: value }] })
   }
-  const style = sticky && !STICKY_COLORS.has(color) ? { background: color } : undefined
+  // A control formats what is selected in the editor, or else every line.
+  const format = (kind: TextFormat) => {
+    if (editing === id) {
+      editor.current?.format(kind)
+      return
+    }
+    const next = formatText(text, kind)
+    if (next !== text) commit({ nodes: [{ id, text: next }] })
+  }
+  // A click on a task's box ticks it without opening the text.
+  const tick = (event: MouseEvent<HTMLDivElement>) => {
+    const index = [...event.currentTarget.querySelectorAll('input[type="checkbox"]')].findIndex((box) => {
+      const { left, right, top, bottom } = box.getBoundingClientRect()
+      return event.clientX >= left && event.clientX <= right && event.clientY >= top && event.clientY <= bottom
+    })
+    if (index >= 0 && editing !== id && data.item.locked !== true) commit({ nodes: [{ id, text: toggleTask(text, index) }] })
+  }
+  const base = look.kind === 'block' ? `canvas-block canvas-shape-${look.shape}` : look.kind === 'note' ? 'canvas-sticky' : 'canvas-text'
+  const classes = [
+    base,
+    look.fill ? `canvas-filled${look.fill.name ? ` canvas-fill-${look.fill.name}` : ''}` : '',
+    look.size ? `canvas-size-${look.size}` : '',
+    look.align ? `canvas-align-${look.align}` : '',
+    look.hollow ? 'hollow' : '',
+    connectSource === id ? 'canvas-connect-source' : '',
+  ].filter(Boolean).join(' ')
+  const style = { '--canvas-fill': look.fill?.custom, '--canvas-ink': inkColor(look.ink) } as CSSProperties
+  const rich = editing === id ? parseRich(text) : null
+  const body = editing !== id
+    ? <FitContent><MessageMarkdown text={text} /></FitContent>
+    : rich
+      ? <RichEditor ref={editor} blocks={rich} onDone={finish} />
+      : <SourceEditor ref={editor} initial={text} onDone={finish} />
   return (
     <>
-      <Resizer item={data.item} selected={selected && editing !== id} minWidth={sticky ? 120 : 40} minHeight={100} />
+      <Resizer item={data.item} selected={selected && editing !== id} minWidth={look.kind === 'note' ? 120 : 40} minHeight={look.kind === 'note' ? 100 : 40} />
+      {selected ? <TextToolbar item={data.item} onFormat={format} /> : null}
       <Handles />
-      <div
-        className={`${sticky ? `canvas-sticky canvas-sticky-${STICKY_COLORS.has(color) ? color : 'custom'}` : 'canvas-text'}${connectSource === id ? ' canvas-connect-source' : ''}`}
-        style={style}
-        onDoubleClick={() => setEditing(id)}
-      >
-        {editing === id ? <TextEditor initial={text} onDone={finish} /> : <FitContent><MessageMarkdown text={text} /></FitContent>}
+      <div className={classes} style={style} onClick={tick} onDoubleClick={() => data.item.locked !== true && setEditing(id)}>
+        {look.shape && !CSS_SHAPES.includes(look.shape) ? <ShapeOutline shape={look.shape} /> : null}
+        {look.kind === 'block' ? <div className="canvas-block-body">{body}</div> : body}
       </div>
       <Flash id={id} />
     </>
-  )
-}
-
-function TextEditor({ initial, onDone }: { initial: string; onDone: (value: string) => void }) {
-  const [value, setValue] = useState(initial)
-  const field = useRef<HTMLTextAreaElement>(null)
-  // React Flow mounts a new node hidden until it is measured, so focus waits
-  // for it to become visible.
-  useEffect(() => {
-    let frame = 0
-    let tries = 0
-    const focus = () => {
-      field.current?.focus()
-      if (document.activeElement !== field.current && tries++ < 30) frame = requestAnimationFrame(focus)
-    }
-    frame = requestAnimationFrame(focus)
-    return () => cancelAnimationFrame(frame)
-  }, [])
-  return (
-    <textarea
-      ref={field}
-      className="canvas-text-editor nodrag nopan"
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      onBlur={() => onDone(value)}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') event.currentTarget.blur()
-      }}
-    />
   )
 }
 
@@ -182,6 +181,11 @@ export function GroupNode({ id, data, selected }: NodeProps<BoardNode>) {
   return (
     <>
       <Resizer item={data.item} selected={selected} minWidth={160} minHeight={120} />
+      {selected ? (
+        <ItemToolbar label="Section" item={data.item} offset={34}>
+          <ToolButton label="Ungroup" onClick={() => commit({ remove: [id] })}><Ungroup size={16} /></ToolButton>
+        </ItemToolbar>
+      ) : null}
       <div
         className="canvas-section-label"
         onDoubleClick={(event) => {
@@ -206,7 +210,7 @@ export function GroupNode({ id, data, selected }: NodeProps<BoardNode>) {
   )
 }
 
-function LabelInput({ initial, onDone }: { initial: string; onDone: (value: string | null) => void }) {
+export function LabelInput({ initial, onDone }: { initial: string; onDone: (value: string | null) => void }) {
   const [value, setValue] = useState(initial)
   return (
     <input
@@ -222,34 +226,5 @@ function LabelInput({ initial, onDone }: { initial: string; onDone: (value: stri
       }}
       style={{ width: `${Math.max(5, value.length + 1)}ch` }}
     />
-  )
-}
-
-export function ConnectorEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data, markerEnd, markerStart, selected }: EdgeProps<BoardEdge>) {
-  const { editing, setEditing, commit } = useCanvas()
-  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition })
-  return (
-    <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} markerStart={markerStart} interactionWidth={18} className={selected ? 'canvas-edge selected' : 'canvas-edge'} />
-      {data?.label || editing === id ? (
-        <EdgeLabelRenderer>
-          <div
-            className={`canvas-edge-label nodrag nopan${selected ? ' selected' : ''}`}
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
-            onDoubleClick={() => setEditing(id)}
-          >
-            {editing === id ? (
-              <LabelInput
-                initial={data?.label ?? ''}
-                onDone={(value) => {
-                  setEditing(null)
-                  if (value !== null && value.trim() !== (data?.label ?? '')) commit({ edges: [{ id, label: value.trim() || null }] })
-                }}
-              />
-            ) : data?.label}
-          </div>
-        </EdgeLabelRenderer>
-      ) : null}
-    </>
   )
 }

@@ -125,16 +125,20 @@ func writeDocument(dir string, document Document) error {
 		id, _ := json.Marshal(page.ID)
 		name, _ := json.Marshal(page.Name)
 		fmt.Fprintf(&out, "\n    {\"id\":%s,\"name\":%s,\"nodes\":[", id, name)
-		if err := writeItems(&out, page.Nodes); err != nil {
+		if err := writeLines(&out, page.Nodes); err != nil {
 			return err
 		}
 		out.WriteString("],\"edges\":[")
-		if err := writeItems(&out, page.Edges); err != nil {
+		if err := writeLines(&out, page.Edges); err != nil {
 			return err
 		}
 		out.WriteString("]}")
 	}
 	out.WriteString("\n  ]\n}\n")
+	return writeFile(dir, FileName, out.Bytes())
+}
+
+func writeFile(dir, name string, content []byte) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -143,18 +147,18 @@ func writeDocument(dir string, document Document) error {
 		return err
 	}
 	defer os.Remove(temp.Name())
-	if _, err := temp.Write(out.Bytes()); err != nil {
+	if _, err := temp.Write(content); err != nil {
 		temp.Close()
 		return err
 	}
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temp.Name(), filepath.Join(dir, FileName))
+	return os.Rename(temp.Name(), filepath.Join(dir, name))
 }
 
 // Markdown in text nodes stays readable: no HTML escaping of < > &.
-func writeItems(out *bytes.Buffer, items []Item) error {
+func writeLines[T any](out *bytes.Buffer, items []T) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetEscapeHTML(false)
 	for i, item := range items {

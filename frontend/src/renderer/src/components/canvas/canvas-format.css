@@ -1,0 +1,593 @@
+/* What an item's fields look like: colours, shapes, text sizes, tables and
+ * the controls that set them. */
+/* Fills are paper colours, the same in both themes. */
+.canvas-fill-white {
+  --canvas-fill: #f6f5f1;
+}
+
+.canvas-fill-red {
+  --canvas-fill: #ffc7c2;
+}
+
+.canvas-fill-orange {
+  --canvas-fill: #ffd3a8;
+}
+
+.canvas-fill-yellow {
+  --canvas-fill: #ffe08a;
+}
+
+.canvas-fill-green {
+  --canvas-fill: #c4e8b8;
+}
+
+.canvas-fill-blue {
+  --canvas-fill: #b9e4f0;
+}
+
+.canvas-fill-purple {
+  --canvas-fill: #dcccff;
+}
+
+/* A block is words inside an outline. Four outlines are CSS boxes; the rest
+ * are a stretched drawing behind the words. */
+.canvas-block {
+  position: absolute;
+  inset: 0;
+  --canvas-outline: color-mix(in oklab, var(--color-ink) 22%, transparent);
+  text-align: center;
+  color: var(--color-ink);
+}
+
+.canvas-block.canvas-filled {
+  --canvas-outline: color-mix(in oklab, var(--canvas-fill) 78%, #000);
+}
+
+.canvas-block:is(.canvas-shape-rect, .canvas-shape-rounded, .canvas-shape-pill, .canvas-shape-ellipse) {
+  background: var(--canvas-fill, var(--canvas-card));
+  box-shadow: inset 0 0 0 1px var(--canvas-outline);
+}
+
+.canvas-block.hollow {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--canvas-outline);
+}
+
+.canvas-shape-rect {
+  border-radius: 2px;
+}
+
+.canvas-shape-rounded {
+  border-radius: 14px;
+}
+
+.canvas-shape-pill {
+  border-radius: 999px;
+}
+
+.canvas-shape-ellipse {
+  border-radius: 50%;
+}
+
+.canvas-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: var(--canvas-fill, var(--canvas-card));
+  stroke: var(--canvas-outline);
+  stroke-width: 1;
+}
+
+.canvas-shape path:not([d$='Z']),
+.canvas-block.hollow .canvas-shape {
+  fill: none;
+}
+
+.canvas-block.hollow .canvas-shape {
+  stroke-width: 1.5;
+}
+
+.canvas-block:has(> .canvas-shape) {
+  box-shadow: none;
+}
+
+.canvas-block-body {
+  position: absolute;
+  inset: 0;
+  padding: 10px 14px;
+}
+
+.canvas-block-body .canvas-fit {
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+}
+
+.canvas-shape-pill .canvas-block-body {
+  padding-inline: 18px;
+}
+
+.canvas-shape-ellipse .canvas-block-body {
+  inset: 12%;
+}
+
+.canvas-shape-diamond .canvas-block-body {
+  inset: 24% 22%;
+}
+
+.canvas-shape-hexagon .canvas-block-body {
+  inset: 4% 12%;
+}
+
+.canvas-shape-parallelogram .canvas-block-body {
+  inset: 4% 14%;
+}
+
+.canvas-shape-document .canvas-block-body {
+  inset: 0 0 14%;
+}
+
+.canvas-shape-database .canvas-block-body {
+  inset: 26% 0 10%;
+}
+
+.canvas-shape-queue .canvas-block-body {
+  inset: 0 16% 0 6%;
+}
+
+.canvas-shape-cloud .canvas-block-body {
+  inset: 28% 16% 14%;
+}
+
+.canvas-shape-person .canvas-block-body {
+  inset: 58% 10% 2%;
+}
+
+/* Words are small unless the item names a size, and typing matches them. */
+:is(.canvas-text, .canvas-sticky, .canvas-block, .canvas-table-card) {
+  --prose-font-size: 14px;
+  --prose-line-height: 1.6;
+  font-size: var(--prose-font-size);
+  line-height: var(--prose-line-height);
+}
+
+.canvas-size-body {
+  --prose-font-size: 16px;
+  --prose-line-height: 1.45;
+}
+
+.canvas-size-large {
+  --prose-font-size: 28px;
+  --prose-line-height: 1.3;
+}
+
+.canvas-size-title {
+  --prose-font-size: 48px;
+  --prose-line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.canvas-size-huge {
+  --prose-font-size: 96px;
+  --prose-line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.canvas-align-left {
+  text-align: left;
+}
+
+.canvas-align-center {
+  text-align: center;
+}
+
+.canvas-align-right {
+  text-align: right;
+}
+
+/* A centred or right-hand list keeps each marker beside its words. */
+:is(.canvas-align-center, .canvas-align-right) :is(ul, ol) {
+  padding-left: 0;
+  list-style-position: inside;
+}
+
+.react-flow__node.selected .canvas-block {
+  --canvas-outline: var(--canvas-accent);
+}
+
+.canvas-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.canvas-table :is(th, td) {
+  min-width: 56px;
+  height: 2.6em;
+  padding: 8px 12px;
+  border-right: 1px solid var(--canvas-line);
+  border-bottom: 1px solid var(--canvas-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.canvas-table :is(th, td):last-child {
+  border-right: 0;
+}
+
+.canvas-table tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.canvas-table th {
+  font-weight: 600;
+  background: color-mix(in oklab, var(--color-ink) 4%, transparent);
+}
+
+.canvas-table .on {
+  box-shadow: inset 0 0 0 2px var(--canvas-accent);
+}
+
+.canvas-table-add {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  color: var(--color-ink-2);
+  background: var(--canvas-card);
+  box-shadow: var(--canvas-shadow);
+  scale: calc(1 / var(--canvas-zoom, 1));
+}
+
+.canvas-table-add:hover {
+  color: var(--canvas-accent);
+}
+
+.canvas-table-add.row {
+  top: calc(100% + 8px);
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.canvas-table-add.column {
+  top: 0;
+  left: calc(100% + 8px);
+  transform-origin: 0 0;
+}
+
+.canvas-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--color-ink-2);
+  background: var(--canvas-card);
+  box-shadow: var(--canvas-float);
+}
+
+.canvas-toolbar button {
+  display: grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 8px;
+  color: var(--color-ink-2);
+  transition-property: background-color, color;
+  transition-duration: 150ms;
+}
+
+.canvas-toolbar button:hover {
+  color: var(--color-ink);
+  background: var(--color-list-hover);
+}
+
+.canvas-toolbar button:is(.on, [aria-checked='true']) {
+  color: var(--canvas-accent);
+  background: color-mix(in oklab, var(--canvas-accent) 14%, transparent);
+}
+
+.canvas-toolbar-word {
+  padding: 0 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.canvas-toolbar-rule {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--canvas-line);
+}
+
+.canvas-toolbar-menu {
+  position: relative;
+}
+
+.canvas-toolbar-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 1;
+  min-width: max-content;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--canvas-card);
+  box-shadow: var(--canvas-float);
+}
+
+.canvas-toolbar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 30px);
+  gap: 2px;
+}
+
+.canvas-toolbar-swatches {
+  display: flex;
+  gap: 2px;
+}
+
+.canvas-toolbar button.canvas-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.canvas-toolbar .canvas-shape {
+  position: static;
+  width: 20px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.canvas-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--canvas-fill, var(--canvas-ink));
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-ink) 18%, transparent);
+}
+
+.canvas-swatch.none {
+  background: linear-gradient(to top right, transparent 46%, var(--color-ink-3) 46% 54%, transparent 54%);
+}
+
+/* Formatted typing happens in the words themselves, laid out as they will
+ * be shown. */
+.canvas-rich-editor {
+  height: auto;
+  min-height: 1lh;
+  max-height: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  cursor: text;
+  scrollbar-width: none;
+}
+
+.canvas-block-body:has(> .canvas-text-editor) {
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+}
+
+.canvas-block-body > .canvas-text-editor {
+  height: auto;
+  max-height: 100%;
+}
+
+.canvas-edge-toolbar {
+  position: absolute;
+  translate: -50% calc(-100% - 14px / var(--canvas-zoom, 1));
+  scale: calc(1 / var(--canvas-zoom, 1));
+  transform-origin: 50% 100%;
+  pointer-events: all;
+}
+
+.canvas-edge-dot {
+  fill: var(--canvas-bg);
+}
+
+/* A drawn line takes the pointer on its ink alone. */
+.canvas .react-flow__node-stroke {
+  pointer-events: none !important;
+}
+
+.canvas .react-flow__node-stroke .react-flow__resize-control {
+  pointer-events: all;
+}
+
+.canvas-stroke {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.canvas-stroke path,
+.canvas-pen-trail path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.canvas .canvas-stroke-hit {
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+}
+
+.react-flow__node.selected .canvas-stroke-hit {
+  stroke: color-mix(in oklab, var(--canvas-accent) 22%, transparent);
+}
+
+.canvas-pen-layer,
+.canvas-eraser-layer {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.canvas-pen-trail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.canvas-sticker-face {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.canvas-tool-options {
+  position: absolute;
+  bottom: 74px;
+  left: calc(50% + var(--canvas-inset) / 2);
+  translate: -50% 0;
+}
+
+/* Tasks: a box the pointer passes through on the board, so the item's own
+   click can tick it, and a drawn box while typing. */
+.canvas :is(.canvas-text, .canvas-sticky, .canvas-block) input[type='checkbox'] {
+  pointer-events: none;
+}
+
+.canvas-rich-editor li[data-checked] {
+  position: relative;
+  list-style: none;
+}
+
+.canvas-rich-editor li[data-checked]::before {
+  content: '';
+  position: absolute;
+  top: 0.32em;
+  left: -1.45em;
+  width: 0.95em;
+  height: 0.95em;
+  border: 1.5px solid color-mix(in oklab, currentColor 55%, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.canvas-rich-editor li[data-checked='true']::before {
+  border-color: var(--canvas-accent);
+  background: var(--canvas-accent) center / 80% no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.5l2.5 2.5 4.5-5.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.canvas-timer {
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  height: 100%;
+}
+
+.canvas-timer-face {
+  font-size: 34px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+  color: var(--color-ink);
+}
+
+.canvas-timer.done .canvas-timer-face {
+  color: var(--canvas-accent);
+}
+
+.canvas-timer-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.canvas-timer-controls button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  color: var(--color-ink-2);
+  transition: background-color 150ms;
+}
+
+.canvas-timer-controls button:hover {
+  background: var(--color-list-hover);
+}
+
+.canvas-timer-controls button.main {
+  width: 34px;
+  height: 34px;
+  color: white;
+  background: var(--canvas-accent);
+}
+
+.canvas-toolbar-count {
+  margin-left: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.canvas-comments {
+  display: grid;
+  gap: 6px;
+  width: 240px;
+  padding: 4px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--color-ink);
+}
+
+.canvas-comments p b {
+  margin-right: 6px;
+  color: var(--color-ink-2);
+}
+
+.canvas-comments p.agent b {
+  color: var(--canvas-accent);
+}
+
+.canvas-comments input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--canvas-line);
+  border-radius: 7px;
+  background: transparent;
+  outline: none;
+}
+
+.canvas-comments input:focus {
+  border-color: var(--canvas-accent);
+}
+
+.canvas-comment-badge {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px 10px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+  background: var(--canvas-accent);
+  translate: -6px -14px;
+  scale: calc(1 / var(--canvas-zoom, 1));
+  transform-origin: 0 100%;
+  pointer-events: none;
+}

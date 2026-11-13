@@ -381,3 +381,87 @@ func TestReferencedFilesAndComponentsAreScopedToTheirPage(t *testing.T) {
 		t.Fatal("a second-page file change must change the document version without changing the first-page file")
 	}
 }
+
+func TestLayoutKeepsEachPagesLatestMeasureOnePerLine(t *testing.T) {
+	service := newTestService(t)
+	writeCanvas(t, service, "s1", `{"pages":[{"id":"one","name":"One","nodes":[],"edges":[]},{"id":"two","name":"Two","nodes":[],"edges":[]}]}`)
+	read := func() string {
+		raw, err := os.ReadFile(filepath.Join(service.Dir("s1"), LayoutFileName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	if err := service.SaveLayout("s1", "two", Layout{Items: []Box{{ID: "b", X: 10, Y: 20, Width: 300, Height: 41.5}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SaveLayout("s1", "one", Layout{Items: []Box{{ID: "old"}}, Issues: []string{"stale"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SaveLayout("s1", "one", Layout{Items: []Box{{ID: "a", Width: 200, Height: 88}, {ID: "c", X: 240, Width: 200, Height: 60}}, Issues: []string{"`a` overlaps `c` <here>"}}); err != nil {
+		t.Fatal(err)
+	}
+	want := `{
+  "pages": {
+    "one": {"items":[
+      {"id":"a","x":0,"y":0,"width":200,"height":88},
+      {"id":"c","x":240,"y":0,"width":200,"height":60}
+    ],"issues":[
+      "` + "`a` overlaps `c` <here>" + `"
+    ]},
+    "two": {"items":[
+      {"id":"b","x":10,"y":20,"width":300,"height":41.5}
+    ],"issues":[]}
+  }
+}
+`
+	if got := read(); got != want {
+		t.Fatalf("layout =\n%s\nwant\n%s", got, want)
+	}
+
+	if _, err := service.Patch("s1", Patch{Page: "two", Delete: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SaveLayout("s1", "two", Layout{}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("layout for a deleted page: %v", err)
+	}
+	if err := service.SaveLayout("s1", "one", Layout{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); strings.Contains(got, "two") || !strings.Contains(got, `"one": {"items":[],"issues":[]}`) {
+		t.Fatalf("layout after deleting a page =\n%s", got)
+	}
+}
+
+func TestUploadsKeepTheirNameStayInsideTheCanvasAndNeverOverwrite(t *testing.T) {
+	service := newTestService(t)
+	save := func(name, content string) string {
+		path, err := service.SaveUpload("s1", name, strings.NewReader(content))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	if got := save("plan.png", "one"); got != "uploads/plan.png" {
+		t.Fatalf("first = %q", got)
+	}
+	if got := save("plan.png", "two"); got != "uploads/plan-2.png" {
+		t.Fatalf("second = %q", got)
+	}
+	if got := save(`..\..\secrets/../../etc/pass wd`, "three"); got != "uploads/pass-wd" {
+		t.Fatalf("escaping name = %q", got)
+	}
+	if got := save("..", "four"); got != "uploads/file" {
+		t.Fatalf("empty name = %q", got)
+	}
+	for path, want := range map[string]string{"uploads/plan.png": "one", "uploads/plan-2.png": "two", "uploads/pass-wd": "three", "uploads/file": "four"} {
+		raw, err := os.ReadFile(filepath.Join(service.Dir("s1"), path))
+		if err != nil || string(raw) != want {
+			t.Fatalf("%s = %q, err = %v", path, raw, err)
+		}
+	}
+	entries, err := os.ReadDir(service.Dir("s1"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("canvas folder holds %d entries, err = %v", len(entries), err)
+	}
+}

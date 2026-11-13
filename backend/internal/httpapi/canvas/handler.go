@@ -12,7 +12,10 @@ import (
 	"github.com/wins/jaz/backend/internal/visualize"
 )
 
-const maxPatchBytes = 4 << 20
+const (
+	maxPatchBytes  = 4 << 20
+	maxUploadBytes = 128 << 20
+)
 
 type SessionLoader interface {
 	LoadSession(ref string) (storage.Session, error)
@@ -62,6 +65,62 @@ func (h *Handler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpapi.WriteJSON(w, http.StatusOK, map[string]string{"version": version})
+}
+
+func (h *Handler) PutLayout(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.canvasSession(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Page string `json:"page"`
+		canvas.Layout
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPatchBytes)).Decode(&body); err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := h.canvas.SaveLayout(id, body.Page, body.Layout); err != nil {
+		fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PostFile takes one multipart `file` and answers with its path in the canvas
+// folder, ready to be a file node.
+func (h *Handler) PostFile(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.canvasSession(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	parts, err := r.MultipartReader()
+	if err != nil {
+		httpapi.WriteError(w, http.StatusBadRequest, err)
+		return
+	}
+	for {
+		part, err := parts.NextPart()
+		if err != nil {
+			httpapi.WriteError(w, http.StatusBadRequest, errors.New("file is required"))
+			return
+		}
+		if part.FormName() != "file" {
+			continue
+		}
+		path, err := h.canvas.SaveUpload(id, part.FileName(), part)
+		if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
+			httpapi.WriteError(w, http.StatusRequestEntityTooLarge, err)
+			return
+		}
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		httpapi.WriteJSON(w, http.StatusOK, map[string]string{"file": path})
+		return
+	}
 }
 
 func (h *Handler) canvasSession(w http.ResponseWriter, r *http.Request) (string, bool) {

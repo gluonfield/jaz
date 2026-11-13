@@ -1,7 +1,8 @@
 import { useReactFlow } from '@xyflow/react'
-import { useEffect, useEffectEvent, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, type RefObject } from 'react'
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
-import { bounds, cloneItems, itemLabel, rectOfItem, withContents, type BoardEdge, type BoardNode, type Clip } from './board'
+import { bounds, centre, cloneItems, itemLabel, rectOfItem, viewRect, withContents, type BoardEdge, type BoardNode, type Clip } from './board'
+import { WEB_ADDRESS } from './format'
 import type { CanvasPick } from './useCanvasContexts'
 
 const CLIP = 'application/x-jaz-canvas'
@@ -26,12 +27,13 @@ function chord(event: KeyboardEvent): string {
 // copy, cut and paste, plus the caller's own keys. They act while the board
 // holds the user's attention: focus inside it, or a last click on it with
 // nothing focused.
-export function useCanvasInput({ page, local, commit, replay, onSelect, container, keys }: {
+export function useCanvasInput({ page, local, commit, replay, onSelect, onFiles, container, keys }: {
   page: string
   local: CanvasView
   commit: (change: CanvasPatch) => void
   replay: (from: 'undo' | 'redo') => void
   onSelect: (picks: CanvasPick[]) => void
+  onFiles: (files: File[]) => void
   container: RefObject<HTMLDivElement | null>
   keys: Bindings
 }) {
@@ -48,20 +50,20 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
   }
 
   // The selection with what its sections hold and the connectors among them.
-  const picked = (): Clip => {
+  const picked = useCallback((): Clip => {
     const all = flow.getNodes()
     const ids = new Set(withContents(all.filter((node) => node.selected), all).map((node) => node.id))
     return {
       nodes: local.nodes.filter((item) => ids.has(item.id)),
       edges: local.edges.filter((edge) => ids.has(edge.fromNode as string) && ids.has(edge.toNode as string)),
     }
-  }
+  }, [flow, local])
 
-  const place = (clip: Clip, dx: number, dy: number) => {
+  const place = useCallback((clip: Clip, dx: number, dy: number) => {
     const copy = cloneItems(clip, dx, dy)
     commit(copy)
     onSelect(copy.nodes.map((item) => pick(page, item)))
-  }
+  }, [commit, onSelect, page])
 
   const withSelection = (act: (clip: Clip) => void) => () => {
     const clip = picked()
@@ -71,8 +73,16 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
     act(clip)
   }
 
+  const duplicate = useCallback(() => {
+    const clip = picked()
+    if (!clip.nodes.length) {
+      return false
+    }
+    place(clip, OFFSET, OFFSET)
+  }, [picked, place])
+
   const nudge = (dx: number, dy: number) => withSelection(({ nodes }) => {
-    commit({ nodes: nodes.map((item) => ({ id: item.id, x: rectOfItem(item).x + dx, y: rectOfItem(item).y + dy })) })
+    commit({ nodes: nodes.filter((item) => item.locked !== true).map((item) => ({ id: item.id, x: rectOfItem(item).x + dx, y: rectOfItem(item).y + dy })) })
   })
 
   // Cmd+Delete removes sections and keeps what they hold; Delete takes it all.
@@ -89,7 +99,7 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
     'Mod+Shift+Z': () => replay('redo'),
     'Mod+Y': () => replay('redo'),
     'Mod+A': () => onSelect(local.nodes.map((item) => pick(page, item))),
-    'Mod+D': withSelection((clip) => place(clip, OFFSET, OFFSET)),
+    'Mod+D': duplicate,
     'Mod+Backspace': dissolve,
     'Mod+Delete': dissolve,
     ...Object.fromEntries(Object.entries(ARROWS).flatMap(([key, [dx, dy]]) => [
@@ -126,27 +136,42 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
     }
   })
 
-  // A paste lands beside its original while that is in view, otherwise in the
-  // middle of the view; pasting again steps further along. Files from another
-  // board keep pointing at its folder.
-  const onPaste = useEffectEvent((event: ClipboardEvent) => {
-    const raw = event.clipboardData?.getData(CLIP)
-    if (!raw || !attending(event)) {
-      return
-    }
-    event.preventDefault()
+  // Words from elsewhere become a text item in the middle of the view, and a
+  // web address a page.
+  const pasteWords = (words: string) => {
+    const middle = centre(viewRect(flow, container.current!))
+    const item = WEB_ADDRESS.test(words) ? { type: 'link', url: words, width: 480, height: 320 } : { type: 'text', text: words, width: 320 }
+    place({ nodes: [{ id: '', ...item, x: middle.x - item.width / 2, y: middle.y - 80 }], edges: [] }, 0, 0)
+  }
+
+  // Copied items land beside their original while that is in view, otherwise
+  // in the middle of the view; pasting again steps further along. Files from
+  // another board keep pointing at its folder.
+  const pasteClip = (raw: string) => {
     const { dir, nodes, edges } = JSON.parse(raw) as Clip & { dir: string }
     const rebased = nodes.map((item) => (dir !== local.dir && typeof item.file === 'string' && !item.file.startsWith('/') ? { ...item, file: `${dir}/${item.file}` } : item))
     const count = pasted.current.raw === raw ? pasted.current.count + 1 : 1
     pasted.current = { raw, count }
     const box = bounds(rebased.map(rectOfItem))
-    const screen = container.current!.getBoundingClientRect()
-    const a = flow.screenToFlowPosition({ x: screen.left, y: screen.top })
-    const b = flow.screenToFlowPosition({ x: screen.right, y: screen.bottom })
-    const seen = box.x < b.x && box.x + box.width > a.x && box.y < b.y && box.y + box.height > a.y
-    const dx = seen ? 0 : (a.x + b.x - box.width) / 2 - box.x
-    const dy = seen ? 0 : (a.y + b.y - box.height) / 2 - box.y
+    const view = viewRect(flow, container.current!)
+    const seen = box.x < view.x + view.width && box.x + box.width > view.x && box.y < view.y + view.height && box.y + box.height > view.y
+    const dx = seen ? 0 : centre(view).x - centre(box).x
+    const dy = seen ? 0 : centre(view).y - centre(box).y
     place({ nodes: rebased, edges }, dx + OFFSET * count, dy + OFFSET * count)
+  }
+
+  // Pictures and files pasted from elsewhere are the caller's to add.
+  const onPaste = useEffectEvent((event: ClipboardEvent) => {
+    const raw = event.clipboardData?.getData(CLIP)
+    const files = [...(event.clipboardData?.files ?? [])]
+    const words = event.clipboardData?.getData('text/plain').trim()
+    if ((!raw && !files.length && !words) || !attending(event)) {
+      return
+    }
+    event.preventDefault()
+    if (raw) pasteClip(raw)
+    else if (files.length) onFiles(files)
+    else pasteWords(words!)
   })
 
   useEffect(() => {
@@ -169,4 +194,5 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
       document.removeEventListener('paste', paste)
     }
   }, [container])
+  return duplicate
 }

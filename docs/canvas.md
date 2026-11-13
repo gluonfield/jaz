@@ -23,7 +23,45 @@ Deleting a page uses `{"page":"costs","delete":true}` without other changes. Del
 {"page":"costs","create":true,"name":"Costs"}
 ```
 
-Free text and Markdown or CSV files flow at their `width`: the board draws them as tall as their content and treats `height` as the most room they may take, scaling content that needs more. A missing `height` sets no limit: text the user types has none, and resizing one of these items sets its width and removes its `height`. Every other item fills its `width` and `height` exactly.
+Free text, tables and Markdown or CSV files flow at their `width`: the board draws them as tall as their content and treats `height` as the most room they may take, scaling content that needs more. A missing `height` sets no limit: text the user types has none, and resizing one of these items sets its width and removes its `height`. Every other item fills its `width` and `height` exactly.
+
+Jaz reads these fields beyond JSON Canvas 1.0. Unknown values are ignored, so a board stays readable elsewhere.
+
+| Field | On | Values |
+| --- | --- | --- |
+| `size` | `text`, `table` | `small` (14 px, default), `body` (16), `large` (28), `title` (48), `huge` (96) |
+| `textAlign` | `text` | `left`, `center`, `right` |
+| `ink` | free `text` | `gray`, `red`, `orange`, `green`, `blue`, `purple`, or a CSS colour |
+| `color` | `text` | `white`, `red`, `orange`, `yellow`, `green`, `blue`, `purple`, the JSON Canvas presets `1`–`6`, or a CSS colour; makes a sticky note, or fills a shape |
+| `shape` | `text` | `rect`, `rounded`, `pill`, `ellipse`, `diamond`, `hexagon`, `parallelogram`, `document`, `database`, `queue`, `cloud`, `person`; words inside an outline |
+| `hollow` | shaped `text` | `true` keeps the outline without a fill |
+| `rows` | `table` | array of rows, each an array of cell strings with inline Markdown |
+| `header` | `table` | `false` when the first row is not a heading |
+| `points` | `stroke` | the drawn line as `[x, y]` pairs measured from the item's `x` and `y`; resizing stretches it |
+| `weight`, `highlight` | `stroke` | line width in pixels (4 by default); `true` draws it wide and translucent |
+| `color` | `stroke`, edges | an ink name or a CSS colour |
+| `route` | edges | `curve` (default), `elbow`, `straight` |
+| `dash` | edges | `solid` (default), `dashed`, `dotted` |
+| `fromEnd`, `toEnd` | edges | `none`, `arrow`, `circle`; an edge starts plain and ends in an arrow by default |
+| `seconds`, `endsAt`, `left` | `timer` | the countdown's length (300 by default), the ISO time it runs to, and the seconds left while paused |
+| `comments` | any node | notes pinned to the item, each `{"by": "user" \| "agent", "text": "…"}` |
+| `locked` | any node | `true` pins the item: it cannot be moved, resized, edited or deleted until unlocked |
+| `z` | any node | stacking order; higher is in front, negative is behind |
+| `data` | component and HTML `file` | any JSON value the card saves for itself |
+| `place` | any node | `{"below": "<id>"}` or `right`, `above`, `left`, with optional `gap` (40) and `align` (`start`, `center`, `end`) |
+
+```json
+{"id":"gate","type":"text","text":"Ship?","shape":"diamond","color":"yellow","x":0,"y":0,"width":160,"height":120}
+{"id":"owners","type":"table","rows":[["Step","Owner"],["Draft","Ana"]],"x":200,"y":0,"width":320}
+```
+
+Selecting an item shows its controls above it: shape, size, bold, italic, strikethrough, code, bulleted and numbered lists, alignment and colour and checklist for text; size, heading row and rows and columns for a table; route, line, ends and colour for a connector; ink and weight for a drawn line. Every item also has Comments, Lock and, under More, Duplicate, Copy style, Paste style (onto items of the kind the style came from), Bring to front (`Mod+]`), Send to back (`Mod+[`) and Delete. Comments are notes pinned to the item: the user's and the agent's replies are listed together, a count shows at the item's corner, and Resolve clears them. Selecting several items offers the six alignments, Group (a section around them; Ungroup on a section removes it and keeps its contents) and the same actions for all of them.
+
+Double-clicking text opens it for typing as formatted words when it uses only paragraphs, lists, bold, italic, strikethrough, code and links; anything else, such as a heading or a quote, opens as Markdown source. A web address pasted over selected words links them. A click on a task's box ticks it without opening the text. Double-click a table cell to edit it; Enter keeps it, Tab keeps it and moves on, Escape leaves it unchanged. The dock's Shape (`R`) and Table (`B`) tools add new ones. The Pen (`P`) draws lines until another tool is chosen, with inks, three weights and a highlighter above the dock; the Eraser (`E`) removes each line it is dragged across. The pen's Straight line option draws from where the drag starts to where it ends. Pasting words from elsewhere adds them as a text item, and pasting a web address adds the page. Pictures and other files are added by pasting them, dropping them on the board, or the dock's Picture or file tool (`I`). The client sends each as multipart `file` to `POST /v1/sessions/{session}/canvas/files` (up to 128 MB); the server saves it under `uploads/` in the canvas folder, numbering a name already taken, and answers `{"file": "uploads/<name>"}`, which the client puts on the board as a `file` node. A picture keeps its proportions within 480 by 360. Sticker (`K`) puts down one of twelve emoji as large text, and Timer (`M`) a five-minute countdown with start, pause, reset and one-minute steps, which chimes when it runs out.
+
+A component or HTML card keeps its state in its node's `data`. Inside the sandbox `window.data` holds the saved value when the card loads, `saveData(value)` saves a new one (up to 200,000 characters of JSON) as an edit the user can undo, and `onData(listener)` is called when the value changes outside the card, by undo or by an agent editing the file. The card is not reloaded for a change to its data.
+
+An item with a `place` gets its `x` and `y` from the measured size of the item it names once its page is on screen; the client then saves them and removes `place`. Whenever a page has drawn and gone quiet, the client also sends what it measured with `PUT /v1/sessions/{session}/canvas/layout` (`page`, `items` as `{id, x, y, width, height}`, and `issues`), and the server keeps the latest per page in `layout.json` beside `canvas.json`, one item and one issue per line. Issues name overlapping items, items across a section's edge, content shrunk to fit its box and places that could not be worked out. Agents read this file to check a layout they wrote.
 
 Agents may also edit the file directly. Re-read it before editing, change only the intended pages/items, and retain IDs. Missing names in agent-written pages default to their `Page N` position.
 

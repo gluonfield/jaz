@@ -1,0 +1,72 @@
+import { expect, test } from 'bun:test'
+import { formatText, parseRich, richHTML, toggleRichList, toggleRichMark, writeRich } from '@/components/canvas/richtext'
+
+const again = (source) => writeRich(parseRich(source))
+
+test('formatted words survive a trip through the editor model', () => {
+  for (const source of [
+    'Plain words',
+    '**Risk** and *chance*, ~~gone~~, `code`, ***both***',
+    'First paragraph\n\nSecond paragraph',
+    'A line\\\nand its break',
+    '**Risk**\n\n- supplier slips\n- *no* spare tool\n  - nested\n\n1. one\n2. two',
+    'See [the **plan**](https://example.com/a) today',
+    'snake_case and 2 \\* 3 and a \\_lone\\_ mark',
+    '1\\. not a list\n\n\\# not a heading',
+  ]) {
+    expect(again(source)).toBe(source)
+  }
+})
+
+test('other spellings of the same formatting are normalised', () => {
+  expect(again('* one\n* two')).toBe('- one\n- two')
+  expect(again('__bold__ and _italic_')).toBe('**bold** and *italic*')
+  expect(again('soft\nwrap')).toBe('soft wrap')
+  expect(again('hard  \nbreak')).toBe('hard\\\nbreak')
+  expect(again('3) three\n7) seven')).toBe('1. three\n2. seven')
+  expect(again('2 * 3 * 4')).toBe('2 \\* 3 \\* 4')
+})
+
+test('Markdown beyond formatted words is left to the source editor', () => {
+  for (const source of ['# Heading', '> quote', '| a | b |\n| --- | --- |', 'a | b\n--- | ---', '```\ncode\n```', '1. [ ] task', '![image](a.png)', 'a <b>tag</b>', '\\(x\\)', '**open', '- item\ncontinued', '    indented', '---', 'AT&amp;T']) {
+    expect(parseRich(source)).toBeNull()
+  }
+})
+
+test('the editable HTML nests lists and keeps marks, links and breaks', () => {
+  expect(richHTML(parseRich('**A** [b](u)\\\nc\n\n- one\n  1. deep\n- two\n\n1. n'))).toBe(
+    '<p><strong>A</strong> <a href="u">b</a><br>c</p><ul><li>one<ol><li>deep</li></ol></li><li>two</li></ul><ol><li>n</li></ol>',
+  )
+  expect(richHTML(parseRich('a < b & "c"'))).toBe('<p>a &lt; b &amp; &quot;c&quot;</p>')
+  expect(richHTML([])).toBe('<p><br></p>')
+})
+
+test('marks and lists toggle over every block', () => {
+  const blocks = parseRich('**Risk**\n\n- slips')
+  expect(writeRich(toggleRichMark(blocks, 'bold'))).toBe('**Risk**\n\n- **slips**')
+  expect(writeRich(toggleRichMark(toggleRichMark(blocks, 'bold'), 'bold'))).toBe('Risk\n\n- slips')
+  expect(writeRich(toggleRichMark(blocks, 'strike'))).toBe('~~**Risk**~~\n\n- ~~slips~~')
+  expect(writeRich(toggleRichList(blocks, 'ol'))).toBe('1. **Risk**\n2. slips')
+  expect(writeRich(toggleRichList(toggleRichList(blocks, 'ul'), 'ul'))).toBe('**Risk**\n\nslips')
+})
+
+test('checklists read, write and toggle as bullets with a box', () => {
+  const source = 'Before launch\n\n- [x] book the hall\n- [ ] **print** badges\n  - [ ] lanyards\n- plain'
+  const blocks = parseRich(source)
+  expect(blocks.map((block) => block.checked)).toEqual([undefined, true, false, false, undefined])
+  expect(writeRich(blocks)).toBe(source)
+  expect(richHTML(blocks)).toBe('<p>Before launch</p><ul><li data-checked="true">book the hall</li><li data-checked="false"><strong>print</strong> badges<ul><li data-checked="false">lanyards</li></ul></li><li>plain</li></ul>')
+  expect(parseRich('1. [ ] numbered task')).toBeNull()
+  const tasks = toggleRichList(parseRich('one\n\n- [x] two'), 'ul', true)
+  expect(writeRich(tasks)).toBe('- [ ] one\n- [x] two')
+  expect(writeRich(toggleRichList(tasks, 'ul', true))).toBe('one\n\ntwo')
+  expect(writeRich(toggleRichList(tasks, 'ul'))).toBe('- one\n- two')
+})
+
+test('a format goes on the whole text, as source where the text is not rich', () => {
+  expect(formatText('one\n\ntwo', 'checklist')).toBe('- [ ] one\n- [ ] two')
+  expect(formatText('one\n\ntwo', 'numbered')).toBe('1. one\n2. two')
+  expect(formatText('# Plan\nrest', 'bold')).toBe('# **Plan**\n**rest**')
+  expect(formatText('# Plan\nrest', 'list')).toBe('- # Plan\n- rest')
+  expect(formatText('# Plan', 'strike')).toBe('# Plan')
+})

@@ -46,13 +46,15 @@ test('server views replace the board, selected as asked, except an item being re
   expect(mergeNodes(merged, server, new Set(['free', 'new']))[0]).toBe(merged[0])
 })
 
-test('text and documents leave their height to the board, limited by what the item reserves', () => {
+test('text, tables and documents leave their height to the board, limited by what the item reserves', () => {
   const nodes = toFlowNodes(view([
     { id: 'text', type: 'text', x: 0, y: 0, width: 100, height: 300 },
     { id: 'brief', type: 'file', file: 'brief.md', x: 0, y: 0, width: 100, height: 5000 },
     { id: 'open', type: 'file', file: 'costs.csv', x: 0, y: 0, width: 100 },
     { id: 'sticky', type: 'text', color: '3', x: 0, y: 0, width: 100, height: 100 },
     { id: 'part', type: 'file', file: 'part.step', x: 0, y: 0, width: 100, height: 100 },
+    { id: 'block', type: 'text', shape: 'diamond', x: 0, y: 0, width: 100, height: 100 },
+    { id: 'grid', type: 'table', rows: [['a']], x: 0, y: 0, width: 100 },
   ]))
   expect(nodes.map((node) => [node.id, node.height, node.style?.['--canvas-reserve']])).toEqual([
     ['text', undefined, '300px'],
@@ -60,6 +62,8 @@ test('text and documents leave their height to the board, limited by what the it
     ['open', undefined, 'none'],
     ['sticky', 100, undefined],
     ['part', 100, undefined],
+    ['block', 100, undefined],
+    ['grid', undefined, 'none'],
   ])
 })
 
@@ -147,4 +151,19 @@ test('copies get fresh ids and keep the connectors among them', () => {
   expect(copy.nodes.map((node) => [node.type, node.x, node.y])).toEqual([['text', 24, 24], ['group', 74, 24]])
   expect(copy.edges).toEqual([{ id: copy.edges[0].id, fromNode: ids[0], toNode: ids[1], label: 'next' }])
   expect(copy.edges[0].id).not.toBe('ab')
+})
+
+test('a connector is a curve with an arrow at its far end unless its fields say otherwise', () => {
+  const nodes = [{ id: 'a', type: 'text', x: 0, y: 0, width: 100, height: 40 }, { id: 'b', type: 'text', x: 300, y: 0, width: 100, height: 40 }]
+  const [plain, styled, odd] = toFlowEdges(view(nodes, [
+    { id: 'plain', fromNode: 'a', toNode: 'b' },
+    { id: 'styled', fromNode: 'a', toNode: 'b', route: 'elbow', dash: 'dashed', color: 'blue', fromEnd: 'arrow', toEnd: 'circle' },
+    { id: 'odd', fromNode: 'a', toNode: 'b', route: 'zigzag', dash: 7, toEnd: 'none', color: '#123456' },
+  ]))
+  expect(plain.data.look).toEqual({ route: 'curve', dash: 'solid', ink: undefined, fromEnd: 'none', toEnd: 'arrow' })
+  expect([plain.markerStart, plain.markerEnd.color]).toEqual([undefined, 'var(--canvas-edge)'])
+  expect(styled.data.look).toEqual({ route: 'elbow', dash: 'dashed', ink: { name: 'blue' }, fromEnd: 'arrow', toEnd: 'circle' })
+  expect([styled.markerStart.color, styled.markerEnd]).toEqual(['#2f80ed', undefined])
+  expect(odd.data.look).toEqual({ route: 'curve', dash: 'solid', ink: { custom: '#123456' }, fromEnd: 'none', toEnd: 'none' })
+  expect(odd.markerEnd).toBeUndefined()
 })

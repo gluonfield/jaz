@@ -16,18 +16,19 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/base.css'
 import './canvas.css'
+import './canvas-format.css'
 import { Minus, Plus } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
-import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import type { CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import { useToast } from '@/components/ui/toast'
 import { apiBaseUrl } from '@/lib/api/client'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
+import { layerItems } from './arrange'
 import {
   bounds,
-  contains,
+  centre,
   fileName,
   focusable,
-  growToFit,
-  innermostSection,
   itemLabel,
   mergeEdges,
   mergeNodes,
@@ -35,22 +36,32 @@ import {
   rectOfNode,
   padded,
   rounded,
+  sectionAround,
   sectionContents,
   sidesBetween,
   toFlowEdges,
   toFlowNodes,
   viewerFor,
+  viewRect,
   withContents,
   type BoardEdge,
   type BoardNode,
-  type Rect,
 } from './board'
 import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
-import { ConnectorEdge, FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
+import { ConnectorEdge } from './CanvasEdges'
+import { FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
+import { StrokeNode } from './CanvasStroke'
+import { TableNode } from './CanvasTable'
+import { TimerNode } from './CanvasTimer'
+import { CommentBadges } from './CanvasComments'
+import { SelectionToolbar } from './CanvasToolbar'
+import { ToolLayer } from './CanvasTools'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
 import { CanvasPages } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
+import { uploadedItems } from './upload'
+import { useCanvasLayout } from './useCanvasLayout'
 import { useCanvasInput, type Bindings } from './useCanvasInput'
 import { useCanvasSync } from './useCanvasSync'
 import { useSectionDrag } from './useSectionDrag'
@@ -70,9 +81,9 @@ interface Props {
   onPrompt: (text: string) => void
 }
 
-const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode }
+const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode, stroke: StrokeNode, timer: TimerNode }
 const edgeTypes = { connector: ConnectorEdge }
-const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', X: 'connector' }
+const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser', K: 'sticker', M: 'timer' }
 const HINTS: Record<string, string> = { link: 'Use the page', cad: 'Drag to rotate, scroll to zoom', dxf: 'Drag to pan, scroll to zoom', pdf: 'Scroll and use the page controls' }
 
 export function ThreadCanvas(props: Props) {
@@ -140,6 +151,7 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
         view={view}
         local={local}
         commit={(change) => sync.commit(page.id, change)}
+        apply={(change) => sync.apply(page.id, change)}
         replay={(from) => sync.replay(page.id, from)}
         error={sync.error}
         initialViewport={viewports.current.get(page.id)}
@@ -168,23 +180,33 @@ interface BoardProps extends Props {
   view: CanvasView
   local: CanvasView
   commit: (change: CanvasPatch) => void
+  apply: (change: CanvasPatch) => void
   replay: (from: 'undo' | 'redo') => void
   error: Error | null
 }
 
-function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, view, local, commit, replay, error, initialViewport, onViewport, targetItem, onJump, children }: BoardProps) {
+function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, view, local, commit, apply, replay, error, initialViewport, onViewport, targetItem, onJump, children }: BoardProps) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
   const container = useRef<HTMLDivElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
+  const toast = useToast()
   const { flash, news, show, touch, settle } = useAgentFollow(view, local, container, inset, !initialViewport && !targetItem)
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
   // Nothing from the server lands mid-drag; the drag's own result merges after.
+  // Items the user just made arrive selected, so their controls are at hand.
+  const made = useRef<string[]>([])
   useEffect(() => {
     if (!dragging) {
-      setNodes((current) => mergeNodes(current, toFlowNodes(local), new Set(current.filter((node) => node.selected).map((node) => node.id))))
+      const fresh = made.current
+      made.current = []
+      setNodes((current) => {
+        const arriving = fresh.filter((id) => !current.some((node) => node.id === id))
+        return mergeNodes(current, toFlowNodes(local), new Set(arriving.length ? arriving : current.filter((node) => node.selected).map((node) => node.id)))
+      })
     }
   }, [local, dragging, setNodes])
   useEffect(() => {
@@ -194,6 +216,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   }, [local, dragging, setEdges])
 
   const select = useCallback((picks: CanvasPick[]) => {
+    made.current = picks.map((pick) => pick.node)
     setNodes((current) => current.map((node) => ({ ...node, selected: picks.some((pick) => pick.page === pageId && pick.node === node.id) })))
   }, [pageId, setNodes])
   useEffect(() => bindSelection(select), [bindSelection, select])
@@ -203,54 +226,11 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   const [focused, setFocused] = useState<string | null>(null)
   const [connectSource, setConnectSource] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [draft, setDraft] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
+  useCanvasLayout({ sessionId, page: pageId, local, nodes, hold: dragging || editing !== null, apply, container })
 
   const onSelectionChange = useCallback(({ nodes: picked }: OnSelectionChangeParams<BoardNode, BoardEdge>) => {
     onSelect(picked.map((node) => ({ page: pageId, node: node.id, label: itemLabel(node.data.item) })))
   }, [onSelect, pageId])
-
-  // A new item dropped inside a section grows the section around it.
-  const sectionFor = (rect: Rect): Partial<CanvasItem>[] => {
-    const sections = flow.getNodes().filter((node) => node.type === 'group').map((node) => ({ id: node.id, rect: rectOfNode(node) }))
-    const section = innermostSection(sections, rect.x + rect.width / 2, rect.y + rect.height / 2)
-    if (!section || contains(section.rect, rect)) return []
-    return [{ id: section.id, ...rounded(growToFit(section.rect, [rect])) }]
-  }
-
-  const create = (kind: Tool, clientX: number, clientY: number) => {
-    const at = flow.screenToFlowPosition({ x: clientX, y: clientY })
-    const id = newId(kind)
-    const rect = kind === 'sticky'
-      ? { x: at.x - 100, y: at.y - 100, width: 200, height: 200 }
-      : { x: at.x, y: at.y - 20, width: 240, height: 48 }
-    // Typed text grows with what is written, so it starts without a height.
-    commit({ nodes: [{ id, type: 'text', text: '', ...rounded(rect), ...(kind === 'sticky' ? { color: '3' } : { height: null }) }, ...sectionFor(rect)] })
-    setEditing(id)
-    setTool('select')
-  }
-
-  const addSection = (rect: Rect) => {
-    commit({ nodes: [{ id: newId('section'), type: 'group', label: 'Section', ...rounded(rect) }] })
-    setTool('select')
-  }
-
-  const onLayerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    if (tool === 'section') setDraft({ x0: event.clientX, y0: event.clientY, x1: event.clientX, y1: event.clientY })
-  }
-
-  const onLayerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!draft) {
-      create(tool, event.clientX, event.clientY)
-      return
-    }
-    setDraft(null)
-    const a = flow.screenToFlowPosition({ x: Math.min(draft.x0, draft.x1), y: Math.min(draft.y0, draft.y1) })
-    const b = flow.screenToFlowPosition({ x: Math.max(draft.x0, draft.x1), y: Math.max(draft.y0, draft.y1) })
-    const small = Math.abs(draft.x1 - draft.x0) < 12 && Math.abs(draft.y1 - draft.y0) < 12
-    addSection(small ? { x: a.x - 240, y: a.y - 160, width: 480, height: 320 } : { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y })
-  }
 
   const onConnect = (connection: Connection) => {
     commit({ edges: [{ id: newId('edge'), fromNode: connection.source, toNode: connection.target, fromSide: connection.sourceHandle, toSide: connection.targetHandle }] })
@@ -273,13 +253,36 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     setTool('select')
   }
 
+  // Pictures and files go into the canvas folder and onto the board, at the
+  // point given or the middle of the view.
+  const addFiles = async (files: File[], at?: { x: number; y: number }) => {
+    const middle = at ? flow.screenToFlowPosition(at) : centre(viewRect(flow, container.current!))
+    try {
+      const items = await uploadedItems(sessionId, files, middle)
+      made.current = items.map((item) => item.id!)
+      commit({ nodes: items })
+    } catch (error) {
+      toast(`Couldn't add the file: ${(error as Error).message}`, 'danger')
+    }
+  }
+
   const chooseTool = (next: Tool) => {
     setTool(next)
     setConnectSource(null)
   }
 
+  const restack = (to: 'front' | 'back') => () => {
+    const ids = new Set(flow.getNodes().filter((node) => node.selected).map((node) => node.id))
+    const change = layerItems(local.nodes, ids, to)
+    if (!change.length) return false
+    commit({ nodes: change })
+  }
+
   const keys: Bindings = {
     ...Object.fromEntries(Object.entries(TOOL_KEYS).map(([key, next]) => [key, () => chooseTool(next)])),
+    I: () => picker.current?.click(),
+    'Mod+]': restack('front'),
+    'Mod+[': restack('back'),
     Escape: () => {
       setFocused(null)
       chooseTool('select')
@@ -291,10 +294,11 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
         chooseTool('section')
         return
       }
-      addSection(padded(bounds(picked.map(rectOfNode))))
+      commit({ nodes: [sectionAround(picked)] })
+      setTool('select')
     },
   }
-  useCanvasInput({ page: pageId, local, commit, replay, onSelect: select, container, keys })
+  const duplicate = useCanvasInput({ page: pageId, local, commit, replay, onSelect: select, onFiles: (files) => void addFiles(files), container, keys })
 
   useEffect(() => {
     if (!targetItem || !nodes.some((node) => node.id === targetItem)) return
@@ -315,9 +319,11 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     dropTarget,
     connectSource,
     commit,
+    duplicate,
     prompt: onPrompt,
-  }), [sessionId, view, theme, focused, flash, editing, dropTarget, connectSource, commit, onPrompt])
+  }), [sessionId, view, theme, focused, flash, editing, dropTarget, connectSource, commit, duplicate, onPrompt])
 
+  const picked = nodes.filter((node) => node.selected)
   const focusedItem = nodes.find((node) => node.id === focused)?.data.item
   const focusedKind = focusedItem?.type === 'link' ? 'link' : viewerFor(String(focusedItem?.file ?? ''))
 
@@ -329,7 +335,25 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
       onPointerDownCapture={touch}
       onWheelCapture={touch}
       onKeyDownCapture={touch}
+      onDragOver={(event) => event.dataTransfer.types.includes('Files') && event.preventDefault()}
+      onDrop={(event) => {
+        const files = [...event.dataTransfer.files]
+        if (!files.length) return
+        event.preventDefault()
+        void addFiles(files, { x: event.clientX, y: event.clientY })
+      }}
     >
+      <input
+        ref={picker}
+        type="file"
+        multiple
+        hidden
+        aria-label="Add pictures or files"
+        onChange={(event) => {
+          void addFiles([...(event.target.files ?? [])])
+          event.target.value = ''
+        }}
+      />
       <CanvasContext.Provider value={board}>
         <ReactFlow
           nodes={nodes}
@@ -387,6 +411,8 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
           maxZoom={4}
           proOptions={{ hideAttribution: true }}
         >
+          {picked.length > 1 ? <SelectionToolbar nodes={picked} /> : null}
+          <CommentBadges nodes={nodes} />
           <Background variant={BackgroundVariant.Dots} gap={22} size={1.6} color="var(--canvas-dot)" bgColor="var(--color-bg)" />
           <Panel position="bottom-right" className="canvas-map canvas-overlay">
             <MiniMap
@@ -411,26 +437,11 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
             </div>
           </Panel>
         </ReactFlow>
+        <ToolLayer tool={tool} onMade={(id) => { made.current = [id] }} onDone={() => setTool('select')} />
       </CanvasContext.Provider>
 
-      {['sticky', 'text', 'section'].includes(tool) ? (
-        <div
-          className="canvas-tool-layer"
-          onPointerDown={onLayerDown}
-          onPointerMove={(event) => draft && setDraft({ ...draft, x1: event.clientX, y1: event.clientY })}
-          onPointerUp={onLayerUp}
-        >
-          {draft ? (
-            <div
-              className="canvas-section-draft"
-              style={{ left: Math.min(draft.x0, draft.x1) - (container.current?.getBoundingClientRect().left ?? 0), top: Math.min(draft.y0, draft.y1) - (container.current?.getBoundingClientRect().top ?? 0), width: Math.abs(draft.x1 - draft.x0), height: Math.abs(draft.y1 - draft.y0) }}
-            />
-          ) : null}
-        </div>
-      ) : null}
-
       {children}
-      <CanvasDock tool={tool} onTool={chooseTool} />
+      <CanvasDock tool={tool} onTool={chooseTool} onUpload={() => picker.current?.click()} />
 
       {focusedItem ? (
         <div className="canvas-overlay canvas-banner">

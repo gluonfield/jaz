@@ -1,20 +1,19 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import type { CSSProperties } from 'react'
 import type { CanvasBoard, CanvasDocument, CanvasItem, CanvasPagePatch, CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import { edgeLookOf, inkColor, lookOf, tableRows, type EdgeLook } from './format'
 
 export type Side = 'top' | 'right' | 'bottom' | 'left'
 export type Rect = { x: number; y: number; width: number; height: number }
-export type Kind = 'text' | 'file' | 'link' | 'group'
+export type Kind = 'text' | 'file' | 'link' | 'group' | 'table' | 'stroke' | 'timer'
 
 export type BoardNode = Node<{ item: CanvasItem }, Kind>
-export type BoardEdge = Edge<{ label?: string }, 'connector'>
+export type BoardEdge = Edge<{ label?: string; look: EdgeLook }, 'connector'>
 export type Clip = { nodes: CanvasItem[]; edges: CanvasItem[] }
 
 export const SECTION_PAD = 36
-const KINDS: Kind[] = ['text', 'file', 'link', 'group']
+const KINDS: Kind[] = ['text', 'file', 'link', 'group', 'table', 'stroke', 'timer']
 const SIDES: Side[] = ['top', 'right', 'bottom', 'left']
-
-export const arrow = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--canvas-edge)' }
 
 function number(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
@@ -42,7 +41,8 @@ export function toFlowNodes(view: CanvasView): BoardNode[] {
     const size = flows(item)
       ? { className: 'canvas-flows', style: { '--canvas-reserve': rect.height ? `${rect.height}px` : 'none' } as CSSProperties }
       : { height: rect.height }
-    return [{ id: item.id, type: kind, position: { x: rect.x, y: rect.y }, width: rect.width, ...size, data: { item } }]
+    const held = item.locked === true ? { draggable: false, deletable: false } : {}
+    return [{ id: item.id, type: kind, position: { x: rect.x, y: rect.y }, width: rect.width, zIndex: number(item.z), ...size, ...held, data: { item } }]
   })
   return [...nodes.filter((node) => node.type === 'group'), ...nodes.filter((node) => node.type !== 'group')]
 }
@@ -55,6 +55,8 @@ export function toFlowEdges(view: CanvasView): BoardEdge[] {
     if (typeof source !== 'string' || typeof target !== 'string' || !rects.has(source) || !rects.has(target)) return []
     const [fromSide, toSide] = sidesBetween(rects.get(source)!, rects.get(target)!)
     const label = typeof item.label === 'string' && item.label ? item.label : undefined
+    const look = edgeLookOf(item)
+    const arrow = { type: MarkerType.ArrowClosed, width: 16, height: 16, color: inkColor(look.ink) ?? 'var(--canvas-edge)' }
     return [{
       id: item.id,
       type: 'connector',
@@ -62,9 +64,9 @@ export function toFlowEdges(view: CanvasView): BoardEdge[] {
       target,
       sourceHandle: side(item.fromSide) ?? fromSide,
       targetHandle: side(item.toSide) ?? toSide,
-      markerEnd: item.toEnd === 'none' ? undefined : arrow,
-      markerStart: item.fromEnd === 'arrow' ? arrow : undefined,
-      data: { label },
+      markerEnd: look.toEnd === 'arrow' ? arrow : undefined,
+      markerStart: look.fromEnd === 'arrow' ? arrow : undefined,
+      data: { label, look },
     }]
   })
 }
@@ -212,6 +214,14 @@ export function withContents(nodes: BoardNode[], all: BoardNode[]): BoardNode[] 
   return [...new Map([...nodes, ...sections.flatMap((section) => sectionContents(section, all))].map((node) => [node.id, node])).values()]
 }
 
+export function newSection(rect: Rect): Partial<CanvasItem> {
+  return { id: newId('section'), type: 'group', label: 'Section', ...rounded(rect) }
+}
+
+export function sectionAround(nodes: BoardNode[]): Partial<CanvasItem> {
+  return newSection(padded(bounds(nodes.map(rectOfNode))))
+}
+
 export function padded(rect: Rect): Rect {
   return { x: rect.x - SECTION_PAD, y: rect.y - SECTION_PAD, width: rect.width + 2 * SECTION_PAD, height: rect.height + 2 * SECTION_PAD }
 }
@@ -240,6 +250,18 @@ export function bounds(rects: Rect[]): Rect {
   }
 }
 
+export function centre(rect: Rect): { x: number; y: number } {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+}
+
+// The part of the board showing in the element, in board coordinates.
+export function viewRect(flow: { screenToFlowPosition: (point: { x: number; y: number }) => { x: number; y: number } }, element: Element): Rect {
+  const screen = element.getBoundingClientRect()
+  const a = flow.screenToFlowPosition({ x: screen.left, y: screen.top })
+  const b = flow.screenToFlowPosition({ x: screen.right, y: screen.bottom })
+  return { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y }
+}
+
 export function rounded(rect: Rect): Rect {
   return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
 }
@@ -259,6 +281,9 @@ export function itemLabel(item: CanvasItem): string {
   if (item.type === 'group') return 'Section'
   if (item.type === 'file' && typeof item.file === 'string') return fileName(item.file)
   if (item.type === 'link' && typeof item.url === 'string') return item.url
+  if (item.type === 'table') return tableRows(item)[0].filter(Boolean).join(', ') || 'Table'
+  if (item.type === 'stroke') return 'Drawing'
+  if (item.type === 'timer') return 'Timer'
   const text = typeof item.text === 'string' ? item.text.trim().split('\n')[0].replace(/^#+\s*/, '') : ''
   return text.length > 48 ? `${text.slice(0, 47)}…` : text || 'Text'
 }
@@ -301,10 +326,11 @@ export function viewerFor(path: string): Viewer {
   return VIEWERS[extension(path)] ?? 'file'
 }
 
-// Text and documents flow at their width, so the board measures their height
-// from the content. The item's own `height` is the most room it may take.
+// Text, tables and documents flow at their width, so the board measures their
+// height from the content. The item's own `height` is the most room it may take.
 export function flows(item: CanvasItem): boolean {
-  if (item.type === 'text') return !item.color
+  if (item.type === 'table') return true
+  if (item.type === 'text') return lookOf(item).kind === 'text'
   return item.type === 'file' && ['markdown', 'csv'].includes(viewerFor(String(item.file)))
 }
 

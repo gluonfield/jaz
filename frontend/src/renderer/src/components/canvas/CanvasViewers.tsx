@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { buildArtifactDocument, buildComponentDocument } from '@/lib/artifacts'
 import type { CanvasFile } from '@/lib/api/canvas'
 import { readSessionFile } from '@/lib/api/sessions'
@@ -13,7 +13,7 @@ import { rawUrl, ViewerFrame } from './ViewerFrame'
 const CadViewer = lazy(() => import('./CadViewer'))
 const DxfViewer = lazy(() => import('./DxfViewer'))
 
-export function FileViewer({ id, file }: { id: string; file: CanvasFile }) {
+export function FileViewer({ id, file, data }: { id: string; file: CanvasFile; data: unknown }) {
   const { sessionId, view, focused: focusedId } = useCanvas()
   const focused = focusedId === id
   if (!file.version) {
@@ -21,7 +21,7 @@ export function FileViewer({ id, file }: { id: string; file: CanvasFile }) {
   }
   switch (viewerFor(file.path)) {
     case 'component':
-      return <ComponentFrame id={id} code={view.components[id]?.code} error={view.components[id]?.error} />
+      return <ComponentFrame id={id} code={view.components[id]?.code} error={view.components[id]?.error} data={data} />
     case 'image':
       return (
         <ViewerFrame id={id}>
@@ -49,14 +49,14 @@ export function FileViewer({ id, file }: { id: string; file: CanvasFile }) {
     case 'markdown':
     case 'csv':
     case 'html':
-      return <TextFileViewer id={id} file={file} />
+      return <TextFileViewer id={id} file={file} data={data} />
     case 'file':
       return <ViewerFrame id={id}><div className="canvas-viewer-empty">{extension(file.path).toUpperCase() || 'File'}</div></ViewerFrame>
   }
 }
 
-function TextFileViewer({ id, file }: { id: string; file: CanvasFile }) {
-  const { sessionId, theme, prompt } = useCanvas()
+function TextFileViewer({ id, file, data }: { id: string; file: CanvasFile; data: unknown }) {
+  const { sessionId, theme } = useCanvas()
   const read = useQuery({
     queryKey: [...keys.sessionFile(sessionId, file.path), file.version],
     queryFn: () => readSessionFile(sessionId, file.path),
@@ -68,7 +68,7 @@ function TextFileViewer({ id, file }: { id: string; file: CanvasFile }) {
   if (viewer === 'html') {
     return (
       <ViewerFrame id={id}>
-        <SandboxFrame title={fileName(file.path)} document={buildArtifactDocument({ title: fileName(file.path), code: text, loadingMessages: [] }, theme, { canvas: true })} onPrompt={prompt} />
+        <SandboxFrame id={id} title={fileName(file.path)} source={text + theme} data={data} build={(saved) => buildArtifactDocument({ title: fileName(file.path), code: text, loadingMessages: [] }, theme, { canvas: { data: saved } })} />
       </ViewerFrame>
     )
   }
@@ -117,14 +117,14 @@ function splitCsvLine(line: string): string[] {
   return [...cells, cell]
 }
 
-function ComponentFrame({ id, code, error }: { id: string; code?: string; error?: string }) {
-  const { theme, prompt } = useCanvas()
+function ComponentFrame({ id, code, error, data }: { id: string; code?: string; error?: string; data: unknown }) {
+  const { theme } = useCanvas()
   if (!code) {
     return <div className="canvas-card canvas-component-error">{error || 'Compiling…'}</div>
   }
   return (
     <div className="canvas-card">
-      <SandboxFrame key={id} title={id} document={buildComponentDocument(code, theme)} onPrompt={prompt} />
+      <SandboxFrame key={id} id={id} title={id} source={code + theme} data={data} build={(saved) => buildComponentDocument(code, theme, saved)} />
     </div>
   )
 }
@@ -134,22 +134,41 @@ interface FrameMessage {
   message?: string
   text?: string
   href?: string
+  data?: unknown
   wheel?: Pick<WheelEvent, 'clientX' | 'clientY' | 'deltaX' | 'deltaY' | 'deltaMode' | 'ctrlKey' | 'shiftKey'>
 }
 
+const MOST_DATA = 200_000
+
 // An opaque-origin frame: agent code runs here without access to the app,
-// talking back only through the artifact bridge's messages.
-function SandboxFrame({ title, document, onPrompt }: { title: string; document: string; onPrompt: (text: string) => void }) {
+// talking back only through the artifact bridge's messages. Its document is
+// rebuilt when its source changes; a change to the item's saved data reaches
+// the running frame as a message instead.
+function SandboxFrame({ id, title, source, data, build }: { id: string; title: string; source: string; data: unknown; build: (data: unknown) => string }) {
+  const { prompt, commit } = useCanvas()
   const frame = useRef<HTMLIFrameElement>(null)
   const [error, setError] = useState('')
-  useEffect(() => {
+  const [built, setBuilt] = useState(() => ({ source, document: build(data) }))
+  if (built.source !== source) {
+    setBuilt({ source, document: build(data) })
     setError('')
+  }
+  const tell = useCallback(() => {
+    frame.current?.contentWindow?.postMessage({ type: 'jaz:canvas-data', data: data ?? null }, '*')
+  }, [data])
+  useEffect(tell, [tell])
+  useEffect(() => {
     const onMessage = (event: MessageEvent<FrameMessage>) => {
       if (event.source !== frame.current?.contentWindow) return
       const message = event.data
       if (message?.type === 'jaz:artifact-error') setError(message.message ?? 'Component error')
       if (message?.type === 'jaz:artifact-link' && message.href) window.open(message.href, '_blank', 'noopener,noreferrer')
-      if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) onPrompt(message.text.trim())
+      if (message?.type === 'jaz:artifact-send-prompt' && message.text?.trim()) prompt(message.text.trim())
+      if (message?.type === 'jaz:canvas-data') {
+        const saved = JSON.stringify(message.data ?? null)
+        if (saved.length > MOST_DATA) setError('Saved data is too large')
+        else if (saved !== JSON.stringify(data ?? null)) commit({ nodes: [{ id, data: message.data ?? null }] })
+      }
       if (message?.type === 'jaz:canvas-wheel' && message.wheel) {
         const element = frame.current!
         const box = element.getBoundingClientRect()
@@ -162,10 +181,10 @@ function SandboxFrame({ title, document, onPrompt }: { title: string; document: 
     }
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
-  }, [document, onPrompt])
+  }, [id, data, prompt, commit])
   return (
     <>
-      <iframe ref={frame} className="canvas-frame" title={title} sandbox="allow-scripts allow-forms" referrerPolicy="no-referrer" srcDoc={document} />
+      <iframe ref={frame} className="canvas-frame" title={title} sandbox="allow-scripts allow-forms" referrerPolicy="no-referrer" srcDoc={built.document} onLoad={tell} />
       {error ? <div className="canvas-component-error overlay">{error}</div> : null}
     </>
   )
