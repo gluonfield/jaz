@@ -18,7 +18,7 @@ import '@xyflow/react/dist/base.css'
 import './canvas.css'
 import './canvas-format.css'
 import { Minus, Plus } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { CanvasPatch, CanvasView } from '@/lib/api/canvas'
 import { useToast } from '@/components/ui/toast'
 import { apiBaseUrl } from '@/lib/api/client'
@@ -57,8 +57,8 @@ import { TimerNode } from './CanvasTimer'
 import { CommentBadges } from './CanvasComments'
 import { SelectionToolbar } from './CanvasToolbar'
 import { ToolLayer } from './CanvasTools'
-import { fitPadding, MIN_ZOOM, useAgentFollow } from './useAgentFollow'
-import { CanvasPages, type PageTabsMemory } from '@/components/canvas/CanvasPages'
+import { fitPadding, useAgentFollow } from './useAgentFollow'
+import { CanvasPages } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
 import { uploadedItems } from './upload'
 import { useCanvasLayout } from './useCanvasLayout'
@@ -99,7 +99,6 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
   const [navigationError, setNavigationError] = useState('')
   const visited = useRef(location.navigation)
   const viewports = useRef(new Map<string, Viewport>())
-  const tabs = useRef<PageTabsMemory>({ scroll: 0, focus: false })
   const selectedPage = sync.local?.pages.find((page) => page.id === location.page)
   const page = selectedPage ?? sync.local?.pages[0]
   useEffect(() => {
@@ -145,29 +144,30 @@ function SessionCanvas({ storageKey, ...props }: Props & { storageKey: string })
   const local = { ...page, version: sync.local.version, dir: sync.local.dir }
   const view = { ...(sync.view.pages.find((entry) => entry.id === page.id) ?? page), version: sync.view.version, dir: sync.view.dir }
   return (
-    <ReactFlowProvider key={page.id}>
-      <Board
-        {...props}
-        pageId={page.id}
-        view={view}
-        local={local}
-        commit={(change) => sync.commit(page.id, change)}
-        apply={(change) => sync.apply(page.id, change)}
-        replay={(from) => sync.replay(page.id, from)}
-        error={sync.error}
-        initialViewport={viewports.current.get(page.id)}
-        onViewport={(viewport) => { viewports.current.set(page.id, viewport) }}
-        targetItem={jump?.page === page.id ? jump.item : undefined}
-        onJump={() => setJump((current) => current?.page === page.id && current.item === jump?.item ? null : current)}
-      >
-        <CanvasPages pages={sync.local.pages} page={page} memory={tabs} onPage={choosePage} onCreate={async () => {
-          const id = newId('page')
-          await sync.createPage(id)
-          choosePage(id)
-        }} onRename={sync.renamePage} onDelete={sync.deletePage} />
-        {navigationError ? <div className="canvas-overlay canvas-banner danger" role="alert">{navigationError}</div> : null}
-      </Board>
-    </ReactFlowProvider>
+    <div className="canvas" style={{ '--canvas-inset': `${props.inset}px` } as CSSProperties}>
+      <ReactFlowProvider key={page.id}>
+        <Board
+          {...props}
+          pageId={page.id}
+          view={view}
+          local={local}
+          commit={(change) => sync.commit(page.id, change)}
+          apply={(change) => sync.apply(page.id, change)}
+          replay={(from) => sync.replay(page.id, from)}
+          error={sync.error}
+          initialViewport={viewports.current.get(page.id)}
+          onViewport={(viewport) => { viewports.current.set(page.id, viewport) }}
+          targetItem={jump?.page === page.id ? jump.item : undefined}
+          onJump={() => setJump((current) => current?.page === page.id && current.item === jump?.item ? null : current)}
+        />
+      </ReactFlowProvider>
+      <CanvasPages pages={sync.local.pages} page={page} onPage={choosePage} onCreate={async () => {
+        const id = newId('page')
+        await sync.createPage(id)
+        choosePage(id)
+      }} onRename={sync.renamePage} onDelete={sync.deletePage} />
+      {navigationError ? <div className="canvas-overlay canvas-banner danger" role="alert">{navigationError}</div> : null}
+    </div>
   )
 }
 
@@ -177,7 +177,6 @@ interface BoardProps extends Props {
   onViewport: (viewport: Viewport) => void
   targetItem?: string
   onJump: () => void
-  children: ReactNode
   view: CanvasView
   local: CanvasView
   commit: (change: CanvasPatch) => void
@@ -186,14 +185,14 @@ interface BoardProps extends Props {
   error: Error | null
 }
 
-function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, view, local, commit, apply, replay, error, initialViewport, onViewport, targetItem, onJump, children }: BoardProps) {
+function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, view, local, commit, apply, replay, error, initialViewport, onViewport, targetItem, onJump }: BoardProps) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const { zoom } = useViewport()
   const theme = useArtifactThemeCSS()
   const container = useRef<HTMLDivElement>(null)
   const picker = useRef<HTMLInputElement>(null)
   const toast = useToast()
-  const { flash, news, show, touch, settle, opening } = useAgentFollow(view, local, container, inset, !initialViewport && !targetItem)
+  const { flash, news, show, touch, settle, opening } = useAgentFollow(local, inset, !initialViewport && !targetItem)
   const [nodes, setNodes, onNodesChange] = useNodesState<BoardNode>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
@@ -331,8 +330,8 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   return (
     <div
       ref={container}
-      className={`canvas tool-${tool}${busy || dragging ? ' canvas-busy' : ''}${tool === 'connector' ? ' canvas-connecting' : ''}${opening ? ' canvas-opening' : ''}`}
-      style={{ '--canvas-zoom': zoom, '--canvas-inset': `${inset}px` } as CSSProperties}
+      className={`canvas-board tool-${tool}${busy || dragging ? ' canvas-busy' : ''}${tool === 'connector' ? ' canvas-connecting' : ''}${opening ? ' canvas-opening' : ''}`}
+      style={{ '--canvas-zoom': zoom } as CSSProperties}
       onPointerDownCapture={touch}
       onWheelCapture={touch}
       onKeyDownCapture={touch}
@@ -408,7 +407,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
           deleteKeyCode={['Backspace', 'Delete']}
           multiSelectionKeyCode={['Meta', 'Shift']}
           defaultViewport={initialViewport}
-          minZoom={MIN_ZOOM}
+          minZoom={0.1}
           maxZoom={4}
           proOptions={{ hideAttribution: true }}
         >
@@ -441,7 +440,6 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
         <ToolLayer tool={tool} onMade={(id) => { made.current = [id] }} onDone={() => setTool('select')} />
       </CanvasContext.Provider>
 
-      {children}
       <CanvasDock tool={tool} onTool={chooseTool} onUpload={() => picker.current?.click()} />
 
       {focusedItem ? (

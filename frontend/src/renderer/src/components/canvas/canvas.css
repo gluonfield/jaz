@@ -44,6 +44,12 @@
   transition: none;
 }
 
+/* One page's board. The page tabs sit beside it, so they outlive a page switch. */
+.canvas-board {
+  position: absolute;
+  inset: 0;
+}
+
 .canvas-chat {
   transition-property: opacity, translate, scale, visibility;
   transform-origin: bottom;
@@ -96,16 +102,16 @@
 }
 
 .canvas .react-flow__pane.dragging,
-.canvas.tool-hand .react-flow__pane,
-.canvas.tool-hand .react-flow__node {
+.canvas-board.tool-hand .react-flow__pane,
+.canvas-board.tool-hand .react-flow__node {
   cursor: grab;
 }
 
-.canvas.tool-hand .react-flow__node * {
+.canvas-board.tool-hand .react-flow__node * {
   pointer-events: none;
 }
 
-.canvas.canvas-connecting .react-flow__node {
+.canvas-board.canvas-connecting .react-flow__node {
   cursor: crosshair;
 }
 
@@ -500,11 +506,11 @@
 }
 
 .canvas .react-flow__node:not(.selected):hover .canvas-dot,
-.canvas.canvas-connecting .canvas-dot {
+.canvas-board.canvas-connecting .canvas-dot {
   opacity: 1;
 }
 
-.canvas.canvas-busy:not(.canvas-connecting) .canvas-dot {
+.canvas-board.canvas-busy:not(.canvas-connecting) .canvas-dot {
   opacity: 0;
 }
 

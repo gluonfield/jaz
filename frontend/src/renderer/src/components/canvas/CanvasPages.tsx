@@ -1,23 +1,15 @@
 import { Pencil, Plus, Trash2 } from 'lucide-react'
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { ContextMenu, MenuRow } from '@/components/ui/Popover'
 import { useToast } from '@/components/ui/toast'
 import type { CanvasPage } from '@/lib/api/canvas'
 import { useContextMenuTrigger } from '@/lib/hooks/useContextMenuTrigger'
 
-// What the row of tabs keeps while a page switch draws the board afresh:
-// how far it is scrolled, and whether the chosen tab should take the focus.
-export interface PageTabsMemory {
-  scroll: number
-  focus: boolean
-}
-
 // Every page as a tab, left to right. A tab's own menu renames or deletes its
 // page.
-export function CanvasPages({ pages, page, memory, onPage, onCreate, onRename, onDelete }: {
+export function CanvasPages({ pages, page, onPage, onCreate, onRename, onDelete }: {
   pages: CanvasPage[]
   page: CanvasPage
-  memory: RefObject<PageTabsMemory>
   onPage: (id: string) => void
   onCreate: () => Promise<void>
   onRename: (id: string, name: string) => void
@@ -47,15 +39,12 @@ export function CanvasPages({ pages, page, memory, onPage, onCreate, onRename, o
     if (renaming && value && value !== pages.find((entry) => entry.id === renaming.id)?.name) onRename(renaming.id, value)
     setRenaming(null)
   }
-  // The row opens where it was left, moved only as far as shows the current tab.
+  // The row moves only as far as shows the current tab.
   useLayoutEffect(() => {
     const row = tabs.current!
     const current = row.querySelector<HTMLElement>('[aria-current]')
-    const { scroll, focus } = memory.current
-    row.scrollLeft = current ? Math.min(current.offsetLeft, Math.max(scroll, current.offsetLeft + current.offsetWidth - row.clientWidth)) : scroll
-    if (focus) current?.focus()
-    memory.current.focus = false
-  }, [page.id, memory])
+    if (current) row.scrollLeft = Math.min(current.offsetLeft, Math.max(row.scrollLeft, current.offsetLeft + current.offsetWidth - row.clientWidth))
+  }, [page.id])
   return (
     <>
       <div className="canvas-pages canvas-overlay" onClickCapture={suppressClick}>
@@ -64,7 +53,6 @@ export function CanvasPages({ pages, page, memory, onPage, onCreate, onRename, o
           className="canvas-page-tabs"
           role="group"
           aria-label="Canvas pages"
-          onScroll={(event) => { memory.current.scroll = event.currentTarget.scrollLeft }}
           onKeyDown={(event) => {
             const focused = (event.target as HTMLElement).closest<HTMLElement>('button[data-page]')
             if (!focused || !(event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10'))) return
@@ -98,7 +86,6 @@ export function CanvasPages({ pages, page, memory, onPage, onCreate, onRename, o
               {...menuTriggers}
               onClick={() => {
                 setMenu(null)
-                memory.current.focus = true
                 onPage(entry.id)
               }}
             >
