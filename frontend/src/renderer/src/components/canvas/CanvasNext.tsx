@@ -44,7 +44,7 @@ export function NextDot({ id, side }: { id: string; side: Side }) {
         <ArrowRight size={7} strokeWidth={3.5} />
       </button>
       {ghost ? (
-        <span className="canvas-next-ghost" style={{ left: ghost.x - from.x - middle[0], top: ghost.y - from.y - middle[1], width: from.width, height: from.height }}>
+        <span className="canvas-ghost" style={{ left: ghost.x - from.x - middle[0], top: ghost.y - from.y - middle[1], width: from.width, height: from.height }}>
           <ShapeOutline shape={shape ?? 'rect'} />
         </span>
       ) : null}

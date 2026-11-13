@@ -110,6 +110,8 @@ export async function exerciseCanvasFormat(): Promise<void> {
     const r = target!.getBoundingClientRect()
     await window.smoke.pointer('mouseMove', Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2))
   }
+  // The outline last seen under the pointer before a tool put its item down.
+  let outline: { box: DOMRect; path?: string | null } | null = null
   // A tool on the dock, or one listed over the dock tool named by `under`.
   const place = async (tool: string, [left, right, top, bottom]: number[], check: (item: CanvasItem) => boolean, under?: string) => {
     const pane = element.getBoundingClientRect()
@@ -123,10 +125,14 @@ export async function exerciseCanvasFormat(): Promise<void> {
     if (under) {
       await hover(dockTool(under))
       await until(() => Boolean(element.querySelector(`.canvas-dock-panel [aria-label="${tool}"]`)), `Pointing at ${under} did not list ${tool}`)
+      await until(() => getComputedStyle(element.querySelector('.canvas-dock-panel')!, '::after').content === '"Shapes  R"' && getComputedStyle(element.querySelector('.canvas-dock-panel')!, '::after').opacity === '1', `Pointing at ${under} did not show its name`)
     }
     await press(element.querySelector(`${under ? '.canvas-dock-panel' : '.canvas-dock'} [aria-label="${tool}"]`), tool + ' tool')
     await until(() => !element.querySelector('.canvas-dock-panel'), `Choosing ${tool} left the list open`)
     await window.smoke.pointer('mouseMove', spot.x, spot.y)
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    const seen = element.querySelector('.canvas-tool-layer .canvas-ghost')
+    outline = seen && { box: seen.getBoundingClientRect(), path: seen.querySelector('path')?.getAttribute('d') }
     await window.smoke.pointer('mouseDown', spot.x, spot.y)
     await window.smoke.pointer('mouseUp', spot.x, spot.y)
     await until(() => view.nodes.some((item) => !known.has(item.id) && check(item)), `The ${tool} tool did not add its item`)
@@ -340,7 +346,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await pick('More', 'Paste style')
     await until(() => saved('cloud').shape === 'pill' && saved('cloud').color === 'green' && saved('cloud').text === 'Hosting', 'Paste style did not give the item the copied look')
 
-    const block = await place('Shape', [-110, 110, -70, 70], (item) => item.shape === 'rounded' && typeof item.height === 'number')
+    const block = await place('Shapes', [-110, 110, -70, 70], (item) => item.shape === 'rounded' && typeof item.height === 'number')
     await until(() => Boolean(document.activeElement?.classList.contains('canvas-text-editor')) && node(block).classList.contains('selected') && Boolean(control('Bold')), 'A new shape did not open for typing with its controls')
     await window.smoke.key('Escape')
     await until(() => !document.activeElement?.classList.contains('canvas-text-editor'), 'Escape did not leave the new shape')
@@ -349,7 +355,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
     const dot = () => node(block).querySelector('.canvas-next.right button')
     await until(() => Boolean(dot()), 'A selected shape did not show the dots that add the next one')
     await hover(dot())
-    const ghost = () => node(block).querySelector('.canvas-next-ghost')?.getBoundingClientRect()
+    const ghost = () => node(block).querySelector('.canvas-ghost')?.getBoundingClientRect()
     await until(() => Boolean(ghost()) && Math.round(ghost()!.x - node(block).getBoundingClientRect().right) === Math.round(80 * boardZoom()), 'Pointing at a dot did not outline the next shape beside this one')
     const before = new Set(view.nodes.map((item) => item.id))
     await press(dot(), 'the dot on the right')
@@ -377,13 +383,18 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => view.edges.some((edge) => edge.fromNode === next.id && edge.toNode === block && edge.fromSide === 'bottom' && edge.toSide === 'bottom'), 'A drag from a dot did not draw a connector from that side')
     if (view.nodes.length !== parts) throw new Error('Canvas format: a drag from a dot also added a shape')
     await press(element.querySelector('.react-flow__pane'), 'board')
-    const hexagon = await place('Hexagon', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && typeof item.height === 'number', 'Shape')
+    const hexagon = await place('Hexagon', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && typeof item.height === 'number', 'Shapes')
+    await until(() => Boolean(node(hexagon)), 'The hexagon was not drawn')
+    const landed = node(hexagon).getBoundingClientRect()
+    if (outline?.path !== node(hexagon).querySelector('.canvas-shape path')?.getAttribute('d') || [outline.box.x - landed.x, outline.box.y - landed.y, outline.box.width - landed.width, outline.box.height - landed.height].some((gap) => Math.abs(gap) > 1.5)) {
+      throw new Error('Canvas format: the chosen shape was not outlined under the pointer where it then landed: ' + JSON.stringify([outline, landed]))
+    }
     await window.smoke.key('Escape')
-    const again = await place('Shape', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && item.id !== hexagon)
+    const again = await place('Shapes', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && item.id !== hexagon)
     await window.smoke.key('Escape')
     await until(() => node(again).classList.contains('selected') && !document.activeElement?.classList.contains('canvas-text-editor'), 'Escape did not leave the second hexagon')
     await press(element.querySelector('.react-flow__pane'), 'board')
-    const table = await place('Table', [0, 430, 0, 140], (item) => item.type === 'table' && item.height === undefined, 'Shape')
+    const table = await place('Table', [0, 430, 0, 140], (item) => item.type === 'table' && item.height === undefined, 'Shapes')
     await until(() => node(table)?.querySelectorAll('th, td').length === 9, 'A new table did not show its nine cells')
     if (element.querySelector('.canvas-banner')) throw new Error('Canvas format: the items just made were announced as changed by Jaz')
     if (['Table', 'Timer', 'Eraser'].some((tool) => dockTool(tool))) throw new Error('Canvas format: the dock still holds a tool that moved off it')

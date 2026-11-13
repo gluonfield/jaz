@@ -1,12 +1,13 @@
-import { useReactFlow } from '@xyflow/react'
+import { useReactFlow, useViewport } from '@xyflow/react'
 import { useState, type PointerEvent } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { newId, newSection, rounded, sectionGrowth, type BoardEdge, type BoardNode, type Rect } from './board'
 import { useCanvas } from './canvasContext'
 import type { Tool } from './CanvasDock'
+import { ShapeOutline } from './CanvasShapes'
 import { StickerLayer } from './CanvasStickers'
 import { PenLayer } from './CanvasStroke'
-import type { Shape } from './format'
+import { lookOf, type Shape } from './format'
 
 type Make = (x: number, y: number, shape: Shape) => Partial<CanvasItem> & Rect
 
@@ -19,14 +20,23 @@ const NEW_ITEMS: Partial<Record<Tool, Make>> = {
   table: (x, y) => ({ type: 'table', rows: [['', '', ''], ['', '', ''], ['', '', '']], x, y, width: 420, height: 132 }),
 }
 
+// The outline a new item is put down with. Plain text has none.
+function outlineOf(item: Partial<CanvasItem>): Shape | null {
+  if (item.type !== 'text') return 'rect'
+  const look = lookOf({ id: '', ...item })
+  return look.kind === 'text' ? null : look.shape ?? 'rect'
+}
+
 // The layer the chosen tool works on, over the board: a click puts the tool's
-// item down and a drag draws a section, while the pen and stickers bring their
-// own. `shape` is the one the shape tool puts down, and `onDone` ends a tool
-// that is used once.
+// item down, outlined under the pointer until then, and a drag draws a
+// section, while the pen and stickers bring their own. `shape` is the one the
+// shape tool puts down, and `onDone` ends a tool that is used once.
 export function ToolLayer({ tool, shape, onDone }: { tool: Tool; shape: Shape; onDone: () => void }) {
   const flow = useReactFlow<BoardNode, BoardEdge>()
   const { commit, add } = useCanvas()
+  const { zoom } = useViewport()
   const [draft, setDraft] = useState<{ left: number; top: number; x0: number; y0: number; x1: number; y1: number } | null>(null)
+  const [hover, setHover] = useState<{ left: number; top: number; x: number; y: number } | null>(null)
 
   const create = (kind: string, make: Make, clientX: number, clientY: number) => {
     const at = flow.screenToFlowPosition({ x: clientX, y: clientY })
@@ -68,13 +78,28 @@ export function ToolLayer({ tool, shape, onDone }: { tool: Tool; shape: Shape; o
     commit({ nodes: [newSection(small ? { x: a.x - 240, y: a.y - 160, width: 480, height: 320 } : { x: a.x, y: a.y, width: b.x - a.x, height: b.y - a.y })] })
     onDone()
   }
+  const move = (event: PointerEvent<HTMLDivElement>) => {
+    if (draft) setDraft({ ...draft, x1: event.clientX, y1: event.clientY })
+    if (!make) return
+    const { left, top } = event.currentTarget.getBoundingClientRect()
+    setHover({ left, top, x: event.clientX, y: event.clientY })
+  }
+  const ghost = () => {
+    if (!make || !hover) return null
+    const at = flow.screenToFlowPosition(hover)
+    const made = make(at.x, at.y, shape)
+    const outline = outlineOf(made)
+    if (!outline) return null
+    const corner = flow.flowToScreenPosition(made)
+    return (
+      <div className="canvas-ghost" style={{ left: corner.x - hover.left, top: corner.y - hover.top, width: made.width * zoom, height: made.height * zoom }}>
+        <ShapeOutline shape={outline} />
+      </div>
+    )
+  }
   return (
-    <div
-      className="canvas-tool-layer"
-      onPointerDown={down}
-      onPointerMove={(event) => draft && setDraft({ ...draft, x1: event.clientX, y1: event.clientY })}
-      onPointerUp={up}
-    >
+    <div className="canvas-tool-layer" onPointerDown={down} onPointerMove={move} onPointerLeave={() => setHover(null)} onPointerUp={up}>
+      {ghost()}
       {draft ? (
         <div
           className="canvas-section-draft"
