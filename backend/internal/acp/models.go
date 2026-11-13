@@ -73,7 +73,6 @@ type agentPolicy struct {
 	promptPersistsOnRestore bool
 	materializesOnPrompt    bool
 	unadvertisedModel       unadvertisedModelPolicy
-	resolvesContextTag      bool
 	effortOptions           []ReasoningEffortOption
 	ultracodeSetting        bool
 	systemPromptAppendMeta  bool
@@ -122,8 +121,6 @@ func agentPolicyForAgent(agentName string) agentPolicy {
 			modelConfigID:        sessionConfigModel,
 			effortConfigID:       claudeSessionConfigEffort,
 			materializesOnPrompt: true,
-			unadvertisedModel:    unadvertisedModelRejected,
-			resolvesContextTag:   true,
 			effortOptions:        claudeReasoningEffortOptions,
 			ultracodeSetting:     true,
 			promptSuggestions:    true,
@@ -663,13 +660,10 @@ func parseConfigOptionValues(raw json.RawMessage) []string {
 // requested says the request starting the session named the model.
 func (p agentPolicy) sessionModelToSend(agentName, rawModel string, state sessionModelState, requested bool) (string, error) {
 	model := configuredSessionModel(rawModel)
-	if model == "" || state.empty() {
+	if model == "" || state.empty() || p.unadvertisedModel == unadvertisedModelSent {
 		return model, nil
 	}
-	if advertised, ok := state.matchAdvertised(model); ok {
-		if p.resolvesContextTag {
-			return advertised, nil
-		}
+	if _, ok := state.matchAdvertised(model); ok {
 		return model, nil
 	}
 	switch p.unadvertisedModel {

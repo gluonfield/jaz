@@ -205,42 +205,11 @@ func TestUnadvertisedModelPolicyPerAgent(t *testing.T) {
 	if model, err := codex.sessionModelToSend(AgentCodex, "gpt-5.6-terra", state, true); err != nil || model != "gpt-5.6-terra" {
 		t.Fatalf("available codex model = %q, err %v", model, err)
 	}
-	if _, err := agentPolicyForAgent(AgentClaude).sessionModelToSend(AgentClaude, "claude-ghost-9", state, false); err == nil {
-		t.Fatal("claude must reject an unadvertised model")
+	if _, err := agentPolicyForAgent(AgentGrok).sessionModelToSend(AgentGrok, "grok-ghost-9", state, false); err == nil {
+		t.Fatal("grok must reject an unadvertised model")
 	}
 	// Agents with no policy leave the id to the agent to accept or refuse.
 	if model, err := agentPolicyForAgent(AgentKimi).sessionModelToSend(AgentKimi, "kimi-k3", state, true); err != nil || model != "kimi-k3" {
 		t.Fatalf("unpoliced model = %q, err %v", model, err)
-	}
-}
-
-func TestClaudeSendsAdvertisedContextTagSpelling(t *testing.T) {
-	// Claude Code alternates Fable's [1m] context tag between restarts; whichever
-	// spelling the catalog carries, the sent value must be the advertised one.
-	bare := parseSessionModelState(json.RawMessage(
-		`{"models":{"availableModels":[{"modelId":"claude-fable-5"},{"modelId":"default"},{"modelId":"opus[1m]"},{"modelId":"sonnet"}]}}`))
-	tagged := parseSessionModelState(json.RawMessage(
-		`{"models":{"availableModels":[{"modelId":"claude-fable-5[1m]"},{"modelId":"default"},{"modelId":"opus[1m]"},{"modelId":"sonnet"}]}}`))
-	policy := agentPolicyForAgent(AgentClaude)
-
-	for _, test := range []struct {
-		name       string
-		state      sessionModelState
-		configured string
-		want       string
-	}{
-		{"tagged config against bare advertisement", bare, "claude-fable-5[1m]", "claude-fable-5"},
-		{"bare config against tagged advertisement", tagged, "claude-fable-5", "claude-fable-5[1m]"},
-		{"exact match is unchanged", tagged, "claude-fable-5[1m]", "claude-fable-5[1m]"},
-	} {
-		got, err := policy.sessionModelToSend(AgentClaude, test.configured, test.state, false)
-		if err != nil || got != test.want {
-			t.Fatalf("%s = %q (err %v), want %q", test.name, got, err, test.want)
-		}
-	}
-
-	// A genuinely unknown model must still be rejected.
-	if _, err := policy.sessionModelToSend(AgentClaude, "claude-ghost-9", bare, false); err == nil {
-		t.Fatal("expected unknown model to fail")
 	}
 }
