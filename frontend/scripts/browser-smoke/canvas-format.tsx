@@ -170,6 +170,9 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 500))
     const line = () => element.querySelector<SVGPathElement>('.react-flow__edge[data-id="flow"] path.canvas-edge')!
     await until(() => Boolean(line()), 'The connector was not drawn')
+    if (Number(getComputedStyle(line().closest('svg')!).zIndex) <= Math.max(...['start', 'ship', 'note'].map((id) => Number(getComputedStyle(node(id)).zIndex) || 0))) {
+      throw new Error('Canvas format: the connector was not drawn over the items')
+    }
     if (getComputedStyle(line()).strokeDasharray === 'none' || getComputedStyle(line()).stroke !== 'rgb(47, 128, 237)' || line().getAttribute('d')!.includes('C') || !element.querySelector('.react-flow__edge[data-id="flow"] .canvas-edge-dot')) {
       throw new Error('Canvas format: the connector lost its route, dashes, colour or round end')
     }
@@ -361,6 +364,18 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await window.smoke.key('k')
     await window.smoke.key('Escape')
     await until(() => saved(next.id).text === 'k', 'Words typed in a new shape were not saved')
+    const tail = node(next.id).querySelector('.canvas-next.bottom button')!.getBoundingClientRect()
+    const head = node(block).getBoundingClientRect()
+    const pull = [[tail.x + tail.width / 2, tail.y + tail.height / 2], [head.x + head.width / 2, head.bottom]].map((point) => point.map(Math.round))
+    const parts = view.nodes.length
+    await window.smoke.pointer('mouseMove', pull[0][0], pull[0][1])
+    await window.smoke.pointer('mouseDown', pull[0][0], pull[0][1])
+    for (let step = 1; step <= 6; step++) {
+      await window.smoke.pointer('mouseMove', Math.round(pull[0][0] + (pull[1][0] - pull[0][0]) * step / 6), Math.round(pull[0][1] + (pull[1][1] - pull[0][1]) * step / 6))
+    }
+    await window.smoke.pointer('mouseUp', pull[1][0], pull[1][1])
+    await until(() => view.edges.some((edge) => edge.fromNode === next.id && edge.toNode === block && edge.fromSide === 'bottom' && edge.toSide === 'bottom'), 'A drag from a dot did not draw a connector from that side')
+    if (view.nodes.length !== parts) throw new Error('Canvas format: a drag from a dot also added a shape')
     await press(element.querySelector('.react-flow__pane'), 'board')
     const hexagon = await place('Hexagon', [-110, 110, -70, 70], (item) => item.shape === 'hexagon' && typeof item.height === 'number', 'Shape')
     await window.smoke.key('Escape')

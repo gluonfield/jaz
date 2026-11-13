@@ -1,55 +1,51 @@
 import { Hand, Hash, ImagePlus, MousePointer2, Pen, Smile, Spline, StickyNote, Table2, Type, type LucideIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ShapeOutline } from './CanvasShapes'
 import { SHAPES, title, type Shape } from './format'
 
 export type Tool = 'select' | 'hand' | 'sticky' | 'text' | 'shape' | 'table' | 'section' | 'connector' | 'pen' | 'sticker'
 
-// Every button chooses a tool but the last, which opens the file picker. The
-// shape tool, which also holds the table, draws itself.
-const GROUPS: ({ tool: Exclude<Tool, 'shape' | 'table'> | 'upload'; label: string; key: string; Icon: LucideIcon } | 'shape')[][] = [
-  [
-    { tool: 'select', label: 'Select', key: 'V', Icon: MousePointer2 },
-    { tool: 'hand', label: 'Hand', key: 'H', Icon: Hand },
-  ],
-  [
-    { tool: 'sticky', label: 'Sticky note', key: 'S', Icon: StickyNote },
-    { tool: 'text', label: 'Text', key: 'T', Icon: Type },
-    'shape',
-    { tool: 'section', label: 'Section', key: '⇧S', Icon: Hash },
-    { tool: 'connector', label: 'Connector', key: 'X', Icon: Spline },
-  ],
-  [
-    { tool: 'pen', label: 'Pen', key: 'P', Icon: Pen },
-    { tool: 'sticker', label: 'Sticker', key: 'K', Icon: Smile },
-    { tool: 'upload', label: 'Picture or file', key: 'I', Icon: ImagePlus },
-  ],
-]
+const TOOLS = {
+  select: ['Select', 'V', MousePointer2],
+  hand: ['Hand', 'H', Hand],
+  sticky: ['Sticky note', 'S', StickyNote],
+  text: ['Text', 'T', Type],
+  section: ['Section', '⇧S', Hash],
+  connector: ['Connector', 'X', Spline],
+  pen: ['Pen', 'P', Pen],
+  sticker: ['Sticker', 'K', Smile],
+} satisfies Partial<Record<Tool, [label: string, key: string, Icon: LucideIcon]>>
+
+function DockButton({ label, hint, on, onClick, children }: { label: string; hint?: string; on?: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" className={on ? 'on' : ''} aria-label={label} aria-pressed={on} data-tip={hint && `${label}  ${hint}`} onClick={onClick}>
+      {children}
+    </button>
+  )
+}
 
 // The shape tool shows the shape it puts down, and while the pointer is over
 // it, every shape it could put down instead, and the table.
 function ShapeTool({ tool, shape, onTool, onShape }: { tool: Tool; shape: Shape; onTool: (tool: Tool) => void; onShape: (shape: Shape) => void }) {
   const [open, setOpen] = useState(false)
-  const pick = (choose: () => void) => () => {
+  const pick = (next: Tool, kind = shape) => () => {
     setOpen(false)
-    choose()
+    onShape(kind)
+    onTool(next)
   }
   return (
     <div className="canvas-dock-menu" onPointerEnter={() => setOpen(true)} onPointerLeave={() => setOpen(false)}>
-      <button type="button" className={tool === 'shape' || tool === 'table' ? 'on' : ''} aria-label="Shape" aria-pressed={tool === 'shape'} onClick={pick(() => onTool('shape'))}>
+      <DockButton label="Shape" on={tool === 'shape' || tool === 'table'} onClick={pick('shape')}>
         {tool === 'table' ? <Table2 size={18} strokeWidth={1.7} /> : <ShapeOutline shape={shape} />}
-      </button>
+      </DockButton>
       {open ? (
         <div className="canvas-dock-panel" role="menu" aria-label="Shapes">
           {SHAPES.map((kind) => (
-            <button key={kind} type="button" role="menuitemradio" aria-checked={kind === shape} aria-label={title(kind)} onClick={pick(() => {
-              onShape(kind)
-              onTool('shape')
-            })}>
+            <button key={kind} type="button" role="menuitemradio" aria-checked={kind === shape} aria-label={title(kind)} onClick={pick('shape', kind)}>
               <ShapeOutline shape={kind} />
             </button>
           ))}
-          <button type="button" role="menuitemradio" aria-checked={tool === 'table'} aria-label="Table" onClick={pick(() => onTool('table'))}>
+          <button type="button" role="menuitemradio" aria-checked={tool === 'table'} aria-label="Table" onClick={pick('table')}>
             <Table2 size={18} strokeWidth={1.7} />
           </button>
         </div>
@@ -59,25 +55,28 @@ function ShapeTool({ tool, shape, onTool, onShape }: { tool: Tool; shape: Shape;
 }
 
 export function CanvasDock({ tool, shape, onTool, onShape, onUpload }: { tool: Tool; shape: Shape; onTool: (tool: Tool) => void; onShape: (shape: Shape) => void; onUpload: () => void }) {
+  const button = (value: keyof typeof TOOLS) => {
+    const [label, key, Icon] = TOOLS[value]
+    return <DockButton label={label} hint={key} on={tool === value} onClick={() => onTool(value)}><Icon size={18} strokeWidth={1.7} /></DockButton>
+  }
   return (
     <div className="canvas-dock canvas-overlay" role="toolbar" aria-label="Canvas tools">
-      {GROUPS.map((group, i) => (
-        <div key={i} className="canvas-dock-group">
-          {group.map((entry) => entry === 'shape' ? <ShapeTool key={entry} tool={tool} shape={shape} onTool={onTool} onShape={onShape} /> : (
-            <button
-              key={entry.tool}
-              type="button"
-              className={tool === entry.tool ? 'on' : ''}
-              aria-label={entry.label}
-              aria-pressed={tool === entry.tool}
-              data-tip={`${entry.label}  ${entry.key}`}
-              onClick={() => (entry.tool === 'upload' ? onUpload() : onTool(entry.tool))}
-            >
-              <entry.Icon size={18} strokeWidth={1.7} />
-            </button>
-          ))}
-        </div>
-      ))}
+      <div className="canvas-dock-group">
+        {button('select')}
+        {button('hand')}
+      </div>
+      <div className="canvas-dock-group">
+        {button('sticky')}
+        {button('text')}
+        <ShapeTool tool={tool} shape={shape} onTool={onTool} onShape={onShape} />
+        {button('section')}
+        {button('connector')}
+      </div>
+      <div className="canvas-dock-group">
+        {button('pen')}
+        {button('sticker')}
+        <DockButton label="Picture or file" hint="I" onClick={onUpload}><ImagePlus size={18} strokeWidth={1.7} /></DockButton>
+      </div>
     </div>
   )
 }

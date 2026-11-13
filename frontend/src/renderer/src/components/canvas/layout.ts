@@ -1,5 +1,5 @@
 import type { CanvasItem } from '@/lib/api/canvas'
-import { contains, type Rect } from './board'
+import { contains, overlap, type Rect } from './board'
 
 // An item as the page drew it: where it is saved, at the size it measured.
 export interface Drawn extends Rect {
@@ -69,10 +69,6 @@ export function resolvePlaces(items: Drawn[]): { moves: Partial<CanvasItem>[]; s
       ? `\`${item.id}\` is placed against \`${place.anchor}\`, which waits on a place itself`
       : `\`${item.id}\` is placed against \`${place.anchor}\`, which is not on this page`)),
   }
-}
-
-function overlap(a: Rect, b: Rect): [number, number] {
-  return [Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x), Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y)]
 }
 
 // What a reader would trip over: items on top of each other, items across a

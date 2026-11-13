@@ -67,7 +67,7 @@ test('text, tables and documents leave their height to the board, limited by wha
   ])
 })
 
-test('sections render behind items and edges get sides from geometry unless the agent named them', () => {
+test('sections render behind items, connectors over all of them, with sides from geometry unless the agent named them', () => {
   const board = view(
     [
       { id: 'left', type: 'text', x: 0, y: 0, width: 100, height: 100 },
@@ -83,6 +83,8 @@ test('sections render behind items and edges get sides from geometry unless the 
   )
   expect(toFlowNodes(board).map((node) => node.id)).toEqual(['section', 'left', 'right'])
   const edges = toFlowEdges(board)
+  expect(edges.map((edge) => edge.zIndex)).toEqual([1, 1])
+  expect(toFlowEdges(view([{ ...board.nodes[0], z: 7 }, board.nodes[2]], board.edges))[0].zIndex).toBe(8)
   expect(edges.map((edge) => [edge.id, edge.sourceHandle, edge.targetHandle, Boolean(edge.markerEnd)])).toEqual([
     ['auto', 'right', 'left', true],
     ['named', 'bottom', 'bottom', false],
