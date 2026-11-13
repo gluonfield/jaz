@@ -19,7 +19,7 @@ import './canvas.css'
 import './canvas-format.css'
 import { Minus, Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { CanvasPatch, CanvasView } from '@/lib/api/canvas'
+import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
 import { useToast } from '@/components/ui/toast'
 import { apiBaseUrl } from '@/lib/api/client'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
@@ -28,6 +28,7 @@ import {
   bounds,
   centre,
   fileName,
+  flows,
   focusable,
   itemLabel,
   mergeEdges,
@@ -38,6 +39,7 @@ import {
   rounded,
   sectionAround,
   sectionContents,
+  sectionGrowth,
   sidesBetween,
   toFlowEdges,
   toFlowNodes,
@@ -46,6 +48,7 @@ import {
   withContents,
   type BoardEdge,
   type BoardNode,
+  type Rect,
 } from './board'
 import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
@@ -57,6 +60,7 @@ import { TimerNode } from './CanvasTimer'
 import { CommentBadges } from './CanvasComments'
 import { SelectionToolbar } from './CanvasToolbar'
 import { ToolLayer } from './CanvasTools'
+import type { Shape } from './format'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
 import { CanvasPages } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'
@@ -83,7 +87,7 @@ interface Props {
 
 const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode, stroke: StrokeNode, timer: TimerNode }
 const edgeTypes = { connector: ConnectorEdge }
-const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser', K: 'sticker', M: 'timer' }
+const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', K: 'sticker' }
 const HINTS: Record<string, string> = { link: 'Use the page', cad: 'Drag to rotate, scroll to zoom', dxf: 'Drag to pan, scroll to zoom', pdf: 'Scroll and use the page controls' }
 
 export function ThreadCanvas(props: Props) {
@@ -222,6 +226,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   useEffect(() => bindSelection(select), [bindSelection, select])
 
   const [tool, setTool] = useState<Tool>('select')
+  const [shape, setShape] = useState<Shape>('rounded')
   const [editing, setEditing] = useState<string | null>(null)
   const [focused, setFocused] = useState<string | null>(null)
   const [connectSource, setConnectSource] = useState<string | null>(null)
@@ -271,6 +276,14 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     setConnectSource(null)
   }
 
+  // A new item arrives selected, grows the section it lands in, and opens for
+  // typing when it is text still to be written.
+  const add = useCallback((item: CanvasItem & Rect, edges: Partial<CanvasItem>[] = []) => {
+    made.current = [item.id]
+    commit({ nodes: [{ ...item, ...(flows(item) ? { height: null } : {}) }, ...sectionGrowth(flow.getNodes(), item)], edges })
+    if (item.type === 'text' && !item.text) setEditing(item.id)
+  }, [commit, flow])
+
   const restack = (to: 'front' | 'back') => () => {
     const ids = new Set(flow.getNodes().filter((node) => node.selected).map((node) => node.id))
     const change = layerItems(local.nodes, ids, to)
@@ -319,9 +332,10 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     dropTarget,
     connectSource,
     commit,
+    add,
     duplicate,
     prompt: onPrompt,
-  }), [sessionId, view, theme, focused, flash, editing, dropTarget, connectSource, commit, duplicate, onPrompt])
+  }), [sessionId, view, theme, focused, flash, editing, dropTarget, connectSource, commit, add, duplicate, onPrompt])
 
   const picked = nodes.filter((node) => node.selected)
   const focusedItem = nodes.find((node) => node.id === focused)?.data.item
@@ -437,10 +451,10 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
             </div>
           </Panel>
         </ReactFlow>
-        <ToolLayer tool={tool} onMade={(id) => { made.current = [id] }} onDone={() => setTool('select')} />
+        <ToolLayer tool={tool} shape={shape} onDone={() => setTool('select')} />
       </CanvasContext.Provider>
 
-      <CanvasDock tool={tool} onTool={chooseTool} onUpload={() => picker.current?.click()} />
+      <CanvasDock tool={tool} shape={shape} onTool={chooseTool} onShape={setShape} onUpload={() => picker.current?.click()} />
 
       {focusedItem ? (
         <div className="canvas-overlay canvas-banner">

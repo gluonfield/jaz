@@ -14,6 +14,7 @@
   --canvas-map-mask: color-mix(in oklab, var(--canvas-bg) 70%, transparent);
   /* FigJam's selection blue: the canvas reads as FigJam, not as Jaz chrome. */
   --canvas-accent: #0d99ff;
+  --canvas-next: #8b83d1;
   /* Where floating controls start, clear of the title row. */
   --canvas-top: calc(var(--titlebar-height, 0px) + 16px);
   position: absolute;
@@ -662,7 +663,7 @@
   background: var(--canvas-accent);
 }
 
-.canvas-dock button::after {
+.canvas-dock button[data-tip]::after {
   content: attr(data-tip);
   position: absolute;
   bottom: calc(100% + 10px);
@@ -679,7 +680,7 @@
   transition: opacity 150ms;
 }
 
-.canvas-dock button:hover::after {
+.canvas-dock button[data-tip]:hover::after {
   opacity: 1;
   transition-delay: 400ms;
 }

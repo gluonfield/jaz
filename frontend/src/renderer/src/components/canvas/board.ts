@@ -84,6 +84,22 @@ export function sidesBetween(a: Rect, b: Rect): [Side, Side] {
   return dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom']
 }
 
+export const OPPOSITE: Record<Side, Side> = { top: 'bottom', right: 'left', bottom: 'top', left: 'right' }
+
+// Where a part the size of `from` goes on one of its sides: a gap away, and
+// further along that side past whatever already stands there.
+export function nextTo(from: Rect, side: Side, taken: Rect[]): Rect {
+  const across = side === 'left' || side === 'right'
+  const out = side === 'left' || side === 'top' ? -1 : 1
+  const rect = { ...from, x: across ? from.x + out * (from.width + 80) : from.x, y: across ? from.y : from.y + out * (from.height + 80) }
+  const hits = (other: Rect) => other.x < rect.x + rect.width && rect.x < other.x + other.width && other.y < rect.y + rect.height && rect.y < other.y + other.height
+  while (taken.some(hits)) {
+    if (across) rect.y += from.height + 40
+    else rect.x += from.width + 40
+  }
+  return rect
+}
+
 // The client's optimistic copy of a patch, with the server's semantics: fields
 // set to null are removed, unknown ids are added, and removing a node drops
 // the edges that touch it.
@@ -188,6 +204,14 @@ export function innermostSection<T extends { rect: Rect }>(sections: T[], x: num
   return sections
     .filter(({ rect }) => containsPoint(rect, x, y))
     .sort((a, b) => a.rect.width * a.rect.height - b.rect.width * b.rect.height)[0]
+}
+
+// The section a new item lands in, grown to hold it.
+export function sectionGrowth(nodes: BoardNode[], rect: Rect): Partial<CanvasItem>[] {
+  const sections = nodes.filter((node) => node.type === 'group').map((node) => ({ id: node.id, rect: rectOfNode(node) }))
+  const section = innermostSection(sections, rect.x + rect.width / 2, rect.y + rect.height / 2)
+  if (!section || contains(section.rect, rect)) return []
+  return [{ id: section.id, ...rounded(growToFit(section.rect, [rect])) }]
 }
 
 export function contains(outer: Rect, inner: Rect): boolean {

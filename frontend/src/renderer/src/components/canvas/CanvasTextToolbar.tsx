@@ -44,8 +44,9 @@ export function TextToolbar({ item, onFormat }: { item: CanvasItem; onFormat: (f
   const plain = look.kind === 'text'
   const paint = plain ? 'ink' : 'fill'
   const tinted = plain ? look.ink : look.fill
+  // A part's controls sit clear of the dot above it.
   return (
-    <ItemToolbar label="Format" item={item}>
+    <ItemToolbar label="Format" item={item} offset={plain ? 16 : 44}>
       <Menu label="Shape" face={look.shape ? <ShapeOutline shape={look.shape} /> : plain ? <Type size={16} /> : <StickyNote size={16} />}>
         <div className="canvas-toolbar-grid">
           <button type="button" role="menuitemradio" aria-checked={plain} aria-label="Text" title="Text" onClick={() => set({ shape: null, color: null, hollow: null, height: null })}>

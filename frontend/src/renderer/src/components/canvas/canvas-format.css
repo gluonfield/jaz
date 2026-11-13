@@ -343,13 +343,48 @@
   white-space: nowrap;
 }
 
-.canvas-toolbar .canvas-shape {
+.canvas-toolbar .canvas-shape,
+.canvas-dock .canvas-shape {
   position: static;
   width: 20px;
   height: 15px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;
+}
+
+.canvas-dock-menu {
+  position: relative;
+}
+
+.canvas-dock-panel {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  display: grid;
+  grid-template-columns: repeat(5, 36px);
+  gap: 2px;
+  padding: 6px;
+  border-radius: 14px;
+  background: var(--canvas-card);
+  box-shadow: var(--canvas-float);
+  translate: -50% 0;
+}
+
+/* The gap under the panel is the panel's, so the pointer can cross it. */
+.canvas-dock-panel::before {
+  content: '';
+  position: absolute;
+  inset: 100% 0 -14px;
+}
+
+.canvas-dock .canvas-shape {
+  height: 17px;
+}
+
+.canvas-dock-panel button[aria-checked='true'] {
+  color: var(--canvas-accent);
+  background: color-mix(in oklab, var(--canvas-accent) 14%, transparent);
 }
 
 .canvas-swatch {
@@ -590,4 +625,78 @@
   scale: calc(1 / var(--canvas-zoom, 1));
   transform-origin: 0 100%;
   pointer-events: none;
+}
+
+/* A selected part hangs a dot outside each side, from a handle that stays
+   unseen. The dots keep their on-screen size at any zoom. */
+.canvas-board:not(.canvas-busy) .react-flow__node.selected .canvas-dot:has(.canvas-next) {
+  border-color: transparent;
+  background: none;
+  opacity: 1;
+}
+
+.canvas-next {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+
+.canvas-next.top {
+  --next-y: -1;
+  --next-turn: -90deg;
+}
+
+.canvas-next.right {
+  --next-x: 1;
+}
+
+.canvas-next.bottom {
+  --next-y: 1;
+  --next-turn: 90deg;
+}
+
+.canvas-next.left {
+  --next-x: -1;
+  --next-turn: 180deg;
+}
+
+.canvas-next button {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  border-radius: 50%;
+  color: transparent;
+  background: var(--canvas-next);
+  cursor: pointer;
+  translate: calc(var(--next-x, 0) * 24px / var(--canvas-zoom, 1)) calc(var(--next-y, 0) * 24px / var(--canvas-zoom, 1));
+  rotate: var(--next-turn, 0deg);
+  scale: calc(1 / var(--canvas-zoom, 1));
+  transition-property: scale, color;
+  transition-duration: 150ms;
+}
+
+.canvas-next button::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.canvas-next button:hover {
+  color: #fff;
+  scale: calc(2 / var(--canvas-zoom, 1));
+}
+
+.canvas-next-ghost {
+  position: absolute;
+  pointer-events: none;
+}
+
+.canvas-next-ghost .canvas-shape {
+  fill: color-mix(in oklab, var(--color-ink) 10%, transparent);
+  stroke: var(--canvas-edge);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
 }

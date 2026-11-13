@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { applyPatch, changedNodeIds, cloneItems, innermostSection, invertPatch, mergeNodes, sectionContents, toFlowEdges, toFlowNodes, withContents } from '@/components/canvas/board'
+import { applyPatch, changedNodeIds, cloneItems, innermostSection, invertPatch, mergeNodes, nextTo, sectionContents, toFlowEdges, toFlowNodes, withContents } from '@/components/canvas/board'
 
 const view = (nodes, edges = [], files = {}) => ({ version: 'v', dir: '/c', nodes, edges, files, components: {} })
 
@@ -166,4 +166,12 @@ test('a connector is a curve with an arrow at its far end unless its fields say 
   expect([styled.markerStart.color, styled.markerEnd]).toEqual(['#2f80ed', undefined])
   expect(odd.data.look).toEqual({ route: 'curve', dash: 'solid', ink: { custom: '#123456' }, fromEnd: 'none', toEnd: 'none' })
   expect(odd.markerEnd).toBeUndefined()
+})
+
+test('the next part goes a gap from its side, along it past what already stands there', () => {
+  const from = { x: 0, y: 0, width: 200, height: 120 }
+  expect(nextTo(from, 'top', [])).toEqual({ x: 0, y: -200, width: 200, height: 120 })
+  expect(nextTo(from, 'left', [{ x: 300, y: 0, width: 50, height: 50 }])).toEqual({ x: -280, y: 0, width: 200, height: 120 })
+  expect(nextTo(from, 'right', [{ x: 400, y: 100, width: 50, height: 50 }, { x: 280, y: 160, width: 200, height: 120 }])).toEqual({ x: 280, y: 320, width: 200, height: 120 })
+  expect(nextTo(from, 'bottom', [{ x: 0, y: 200, width: 200, height: 120 }])).toEqual({ x: 240, y: 200, width: 200, height: 120 })
 })

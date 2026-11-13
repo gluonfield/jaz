@@ -1,14 +1,15 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, type NodeProps } from '@xyflow/react'
 import { Ungroup } from 'lucide-react'
-import { useRef, useState, type CSSProperties, type MouseEvent } from 'react'
+import { useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import type { CanvasItem } from '@/lib/api/canvas'
-import { extension, flows, itemLabel, rounded, viewerFor, type BoardNode } from './board'
+import { extension, flows, itemLabel, rounded, viewerFor, type BoardNode, type Side } from './board'
 import { useCanvas } from './canvasContext'
 import { CSS_SHAPES, ShapeOutline } from './CanvasShapes'
 import { RichEditor, SourceEditor, type TextEditorHandle } from './CanvasTextEditors'
 import { TextToolbar } from './CanvasTextToolbar'
 import { ToolButton } from './CanvasMenu'
+import { NextDot } from './CanvasNext'
 import { ItemToolbar } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
@@ -23,8 +24,8 @@ const SIDES = [
   ['left', Position.Left],
 ] as const
 
-export function Handles() {
-  return SIDES.map(([side, position]) => <Handle key={side} id={side} type="source" position={position} className="canvas-dot" />)
+export function Handles({ children }: { children?: (side: Side) => ReactNode }) {
+  return SIDES.map(([side, position]) => <Handle key={side} id={side} type="source" position={position} className="canvas-dot">{children?.(side)}</Handle>)
 }
 
 export function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: CanvasItem; selected: boolean; minWidth?: number; minHeight?: number }) {
@@ -121,7 +122,8 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
   const look = lookOf(data.item)
   const finish = (value: string) => {
     setEditing(null)
-    if (!value.trim() && !text) {
+    // Plain text left unwritten has nothing to show; a note or a shape does.
+    if (!value.trim() && !text && look.kind === 'text') {
       commit({ remove: [id] })
       return
     }
@@ -164,7 +166,7 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
     <>
       <Resizer item={data.item} selected={selected && editing !== id} minWidth={look.kind === 'note' ? 120 : 40} minHeight={look.kind === 'note' ? 100 : 40} />
       {selected ? <TextToolbar item={data.item} onFormat={format} /> : null}
-      <Handles />
+      <Handles>{selected && look.kind !== 'text' && data.item.locked !== true ? (side) => <NextDot id={id} side={side} /> : undefined}</Handles>
       <div className={classes} style={style} onClick={tick} onDoubleClick={() => data.item.locked !== true && setEditing(id)}>
         {look.shape && !CSS_SHAPES.includes(look.shape) ? <ShapeOutline shape={look.shape} /> : null}
         {look.kind === 'block' ? <div className="canvas-block-body">{body}</div> : body}
