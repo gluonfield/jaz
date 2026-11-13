@@ -1,7 +1,7 @@
 import { useReducedMotion } from 'motion/react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { type Scene, SCENES, sun } from '@/components/launch/scenery'
-import { useEffectsEnabled, useScenery } from '@/lib/appearance'
+import { type Scenery, useEffectsEnabled, useScenery } from '@/lib/appearance'
 import { useColorTheme } from '@/lib/appearanceScheme'
 import { useTheme } from '@/lib/theme'
 
@@ -408,11 +408,25 @@ const drawScene =
 
 // Full-bleed dithered brandscape for the bottom of launch/onboarding screens
 // and, under a `sky` that follows the theme, the new-thread home. Sized to its
-// container; a resize re-dissolves the terrain at the new width.
-export function DitherTerrain({ className = '', sky = false, delay = 0 }: { className?: string; sky?: boolean; delay?: number }) {
+// container; a resize re-dissolves the terrain at the new width. `scenery`
+// shows a scene other than the chosen one, for picking between them.
+export function DitherTerrain({
+  className = '',
+  sky = false,
+  delay = 0,
+  dot = 3,
+  scenery: shown,
+}: {
+  className?: string
+  sky?: boolean
+  delay?: number
+  dot?: number
+  scenery?: Scenery
+}) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const { resolved } = useTheme()
-  const scenery = useScenery()
+  const chosen = useScenery()
+  const scenery = shown ?? chosen
   const draw = useMemo(() => {
     const scene = SCENES[scenery]
     return scene && drawScene(scene, sky ? (resolved === 'dark' ? 'moon' : 'sun') : undefined)
@@ -425,11 +439,11 @@ export function DitherTerrain({ className = '', sky = false, delay = 0 }: { clas
     // once on observe, so no manual initial measure.
     const observer = new ResizeObserver((entries) => {
       const width = entries[entries.length - 1].contentRect.width
-      setCols(Math.max(1, Math.floor(width / 4)))
+      setCols(Math.max(1, Math.floor(width / (dot + 1))))
     })
     observer.observe(el)
     return () => observer.disconnect()
-  }, [])
+  }, [dot])
   return (
     <div ref={wrapRef} aria-hidden className={`pointer-events-none overflow-hidden ${className}`}>
       {cols > 1 && draw ? (
@@ -437,6 +451,7 @@ export function DitherTerrain({ className = '', sky = false, delay = 0 }: { clas
           draw={draw}
           cols={cols}
           rows={sky ? TERRAIN_ROWS + SKY_ROWS : TERRAIN_ROWS}
+          dot={dot}
           delay={delay}
           buildKey={sky ? `jaz-terrain-${scenery}-${resolved}` : `jaz-terrain-${scenery}`}
         />
