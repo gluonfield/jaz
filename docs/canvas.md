@@ -11,7 +11,7 @@ A canvas thread stores `canvas.json` in its canvas directory. Pages have stable 
 }
 ```
 
-The page selector switches pages; the adjacent plus adds a page. Right-click or press and hold the selector for Rename page and Delete page. Keyboard users can press Shift+F10 on the selector. At least one page must remain. New pages default to `Page N`; renaming keeps the page ID. Page selection, viewport and editing state belong to the client, so an agent editing another page does not switch the user's page.
+Every page is a tab in a row above the board, in file order; the row scrolls sideways when the pages outgrow it, and the plus beside it adds a page. Right-click or press and hold a tab for Rename page and Delete page, which act on that tab's page without switching to it. Keyboard users can press Shift+F10 on a tab. At least one page must remain. New pages default to `Page N`; renaming keeps the page ID. Page selection, viewport and editing state belong to the client, so an agent editing another page does not switch the user's page.
 
 Existing root-level `nodes` and `edges` load as `page-1`, named `Page 1`. Reading leaves the file unchanged; the next successful patch writes the pages schema while preserving the original items. Invalid documents are reported rather than overwritten.
 

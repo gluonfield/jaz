@@ -63,7 +63,8 @@ export async function exerciseCanvasPages(): Promise<void> {
     }
   }
   const node = () => element.querySelector<HTMLElement>('.react-flow__node[data-id="same"]')
-  const control = () => element.querySelector<HTMLButtonElement>('[aria-label="Canvas page"]')!
+  const control = () => element.querySelector<HTMLButtonElement>('.canvas-pages [aria-current="page"]')!
+  const tab = (name: string) => [...element.querySelectorAll<HTMLButtonElement>('.canvas-pages [data-page]')].find((tab) => tab.textContent === name)
   const action = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find((button) => button.textContent === name)!
   const openActions = async () => {
     const rect = control().getBoundingClientRect()
@@ -89,11 +90,8 @@ export async function exerciseCanvasPages(): Promise<void> {
     await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
   }
   const choose = async (name: string) => {
-    control().click()
-    await until(() => Boolean(document.querySelector('[role="option"]')), 'Page menu did not open')
-    const option = [...document.querySelectorAll<HTMLButtonElement>('[role="option"]')].find((option) => option.textContent === name)!
-    if (!option) throw new Error('Canvas pages: no option ' + name)
-    option.click()
+    await until(() => Boolean(tab(name)), 'No tab ' + name)
+    tab(name)!.click()
     await until(() => control().textContent === name, 'Page switch did not finish')
   }
   const remount = async (key: string, name: string) => {
@@ -195,6 +193,7 @@ export async function exerciseCanvasPages(): Promise<void> {
     if (control().textContent !== 'Agent plan' || !node()?.classList.contains('selected')) throw new Error('Invalid navigation changed the page or selection')
     link('Unknown page').click()
     await until(() => Boolean(element.querySelector('[role="alert"]')?.textContent?.includes('was not found')), 'An unknown page was not rejected')
+    if (element.querySelector('.canvas-banner')!.getBoundingClientRect().top < element.querySelector('.canvas-pages')!.getBoundingClientRect().bottom) throw new Error('Canvas pages: the banner is not clear of the title row and page tabs')
     link('Unknown item').click()
     await until(() => Boolean(element.querySelector('[role="alert"]')?.textContent?.includes('Item')), 'An unknown item was not rejected')
     if (control().textContent !== 'Agent plan' || !node()?.classList.contains('selected')) throw new Error('Unknown item navigation changed the page or selection')
@@ -276,20 +275,19 @@ export async function exerciseCanvasPages(): Promise<void> {
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
     checkControls()
     await window.smoke.capture('canvas-pages-desktop')
-    control().click()
-    await until(() => Boolean(document.querySelector('[role="listbox"]')), 'Page list did not open before actions')
+    const tabs = [...element.querySelectorAll<HTMLElement>('.canvas-pages [data-page]')]
+    const pageNames = JSON.parse(await raw()).pages.map((page: { name: string }) => page.name)
+    if (tabs.length < 2 || tabs.map((tab) => tab.textContent).join() !== pageNames.join() || tabs.some((tab, index) => index > 0 && tab.getBoundingClientRect().left < tabs[index - 1].getBoundingClientRect().right)) throw new Error(`Canvas pages: tabs ${tabs.map((tab) => tab.textContent).join()} are not every page left to right (${pageNames.join()})`)
     await openActions()
-    await until(() => !document.querySelector('[role="listbox"]'), 'Page list stayed open beneath page actions')
     await new Promise((resolve) => setTimeout(resolve, 150))
     await window.smoke.capture('canvas-pages-actions')
     await choose('Overview')
     if (document.querySelector('[role="menu"]')) throw new Error('Canvas pages: switching pages retained actions for the old page')
-    control().click()
-    await until(() => Boolean(document.querySelector('[role="option"]')), 'Page list did not open for context boundary check')
-    const other = [...document.querySelectorAll('[role="option"]')].find((option) => option.textContent === 'Agent plan')!
-    other.dispatchEvent(new MouseEvent('contextmenu', { clientX: 100, clientY: 100, bubbles: true, cancelable: true }))
-    if (document.querySelector('[role="menu"]')) throw new Error('Canvas pages: right-clicking a different page opened actions for the current page')
+    tab('Agent plan')!.dispatchEvent(new MouseEvent('contextmenu', { clientX: 100, clientY: 100, bubbles: true, cancelable: true }))
+    await until(() => document.querySelector('[role="menu"]')?.getAttribute('aria-label') === 'Agent plan actions', 'Right-clicking another tab did not open that page\'s actions')
+    if (control().textContent !== 'Overview') throw new Error('Canvas pages: right-clicking another tab switched pages')
     await window.smoke.key('Escape')
+    await until(() => !document.querySelector('[role="menu"]') && document.activeElement === tab('Agent plan'), 'Closing another tab\'s actions did not return focus to it')
     control().focus()
     await window.smoke.key('F10', ['shift'])
     await until(() => document.activeElement === action('Rename page'), 'Keyboard actions did not focus Rename page')
@@ -334,13 +332,14 @@ export async function exerciseCanvasPages(): Promise<void> {
     element.querySelector<HTMLButtonElement>('button[title="Fit everything"]')!.click()
     await until(inView, 'Narrow page target is outside the viewport')
     await window.smoke.capture('canvas-pages-narrow')
-    const box = control().getBoundingClientRect()
-    const finger = new Touch({ identifier: 1, target: control(), clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 })
-    control().dispatchEvent(new TouchEvent('touchstart', { touches: [finger], changedTouches: [finger], bubbles: true, cancelable: true }))
+    const held = tab('Overview')!
+    const box = held.getBoundingClientRect()
+    const finger = new Touch({ identifier: 1, target: held, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2 })
+    held.dispatchEvent(new TouchEvent('touchstart', { touches: [finger], changedTouches: [finger], bubbles: true, cancelable: true }))
     await until(() => Boolean(action('Delete page')), 'Touch long-press did not open page actions')
-    control().dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [finger], bubbles: true, cancelable: true }))
-    control().click()
-    if (document.querySelector('[role="listbox"]')) throw new Error('Canvas pages: long-press opened the page list on release')
+    held.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [finger], bubbles: true, cancelable: true }))
+    held.click()
+    if (control().textContent !== 'Agent plan' || document.querySelector('[role="menu"]')?.getAttribute('aria-label') !== 'Overview actions') throw new Error('Canvas pages: long-press switched pages on release')
     await new Promise((resolve) => setTimeout(resolve, 150))
     await window.smoke.capture('canvas-pages-touch-actions')
     await router.navigate({ to: '/sessions/$sessionId', params: { sessionId }, search: {} })
