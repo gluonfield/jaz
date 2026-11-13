@@ -663,7 +663,7 @@
   background: var(--canvas-accent);
 }
 
-.canvas-dock button[data-tip]::after {
+.canvas-dock [data-tip]::after {
   content: attr(data-tip);
   position: absolute;
   bottom: calc(100% + 10px);
@@ -680,7 +680,8 @@
   transition: opacity 150ms;
 }
 
-.canvas-dock button[data-tip]:hover::after {
+.canvas-dock button[data-tip]:hover::after,
+.canvas-dock-menu:hover [data-tip]::after {
   opacity: 1;
   transition-delay: 400ms;
 }

@@ -25,7 +25,8 @@ function DockButton({ label, hint, on, onClick, children }: { label: string; hin
 }
 
 // The shape tool shows the shape it puts down, and while the pointer is over
-// it, every shape it could put down instead, and the table.
+// it, every shape it could put down instead, and the table. Its tip sits over
+// that list, where the other tools show theirs over themselves.
 function ShapeTool({ tool, shape, onTool, onShape }: { tool: Tool; shape: Shape; onTool: (tool: Tool) => void; onShape: (shape: Shape) => void }) {
   const [open, setOpen] = useState(false)
   const pick = (next: Tool, kind = shape) => () => {
@@ -35,11 +36,11 @@ function ShapeTool({ tool, shape, onTool, onShape }: { tool: Tool; shape: Shape;
   }
   return (
     <div className="canvas-dock-menu" onPointerEnter={() => setOpen(true)} onPointerLeave={() => setOpen(false)}>
-      <DockButton label="Shape" on={tool === 'shape' || tool === 'table'} onClick={pick('shape')}>
+      <DockButton label="Shapes" on={tool === 'shape' || tool === 'table'} onClick={pick('shape')}>
         {tool === 'table' ? <Table2 size={18} strokeWidth={1.7} /> : <ShapeOutline shape={shape} />}
       </DockButton>
       {open ? (
-        <div className="canvas-dock-panel" role="menu" aria-label="Shapes">
+        <div className="canvas-dock-panel" role="menu" aria-label="Shapes" data-tip="Shapes  R">
           {SHAPES.map((kind) => (
             <button key={kind} type="button" role="menuitemradio" aria-checked={kind === shape} aria-label={title(kind)} onClick={pick('shape', kind)}>
               <ShapeOutline shape={kind} />

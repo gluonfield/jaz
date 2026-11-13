@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { styleOf } from './arrange'
 import { OPPOSITE, newId, nextTo, rectOfNode, rounded, type BoardEdge, type BoardNode, type Rect, type Side } from './board'
 import { useCanvas } from './canvasContext'
-import { ShapeOutline } from './CanvasShapes'
+import { Ghost } from './CanvasShapes'
 import { lookOf } from './format'
 
 // A dot outside one side of the only selected part. Pointing at it outlines
@@ -43,11 +43,7 @@ export function NextDot({ id, side }: { id: string; side: Side }) {
       >
         <ArrowRight size={7} strokeWidth={3.5} />
       </button>
-      {ghost ? (
-        <span className="canvas-next-ghost" style={{ left: ghost.x - from.x - middle[0], top: ghost.y - from.y - middle[1], width: from.width, height: from.height }}>
-          <ShapeOutline shape={shape ?? 'rect'} />
-        </span>
-      ) : null}
+      {ghost ? <Ghost shape={shape} left={ghost.x - from.x - middle[0]} top={ghost.y - from.y - middle[1]} width={from.width} height={from.height} /> : null}
     </span>
   )
 }

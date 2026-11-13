@@ -689,12 +689,13 @@
   scale: calc(2 / var(--canvas-zoom, 1));
 }
 
-.canvas-next-ghost {
+/* The outline of an item about to be put down. */
+.canvas-ghost {
   position: absolute;
   pointer-events: none;
 }
 
-.canvas-next-ghost .canvas-shape {
+.canvas-ghost .canvas-shape {
   fill: color-mix(in oklab, var(--color-ink) 10%, transparent);
   stroke: var(--canvas-edge);
   stroke-width: 1.5;
