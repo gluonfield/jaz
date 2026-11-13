@@ -96,6 +96,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
     const options = [...element.querySelectorAll(`.canvas-toolbar-panel[aria-label="${menu}"] button`)]
     await press(options.find((button) => button.getAttribute('aria-label') === option || button.textContent === option), option)
   }
+  const dockTool = (tool: string) => element.querySelector(`.canvas-dock [aria-label="${tool}"]`)
   const fontSize = (id: string, selector: string) => getComputedStyle(node(id).querySelector(selector)!).fontSize
   const place = async (tool: string, [left, right, top, bottom]: number[], check: (item: CanvasItem) => boolean) => {
     const pane = element.getBoundingClientRect()
@@ -243,23 +244,41 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await press(cell(2, 0), 'cell')
     await press(control('Remove row'), 'Remove row')
     await until(() => (saved('grid').rows as string[][]).length === 3 && (saved('grid').rows as string[][])[2][0] === '', 'The row of the chosen cell was not removed')
+    await press(control('Heading row'), 'Heading row')
+    await until(() => saved('grid').header === false && !node('grid').querySelector('th'), 'The heading row did not turn off')
+    await press(control('Heading row'), 'Heading row')
+    await until(() => saved('grid').header === undefined && Boolean(node('grid').querySelector('th')), 'The heading row did not turn back on')
 
     for (let step = 0; step < 2; step++) {
       element.querySelector<HTMLButtonElement>('[aria-label="Zoom out"]')!.click()
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
-    const ship = node('ship').getBoundingClientRect()
-    const first = node('start').getBoundingClientRect()
-    const corners = [first.left - 24, Math.min(first.top, ship.top) - 16, ship.right + 16, Math.max(first.bottom, ship.bottom) + 16].map(Math.round)
-    await window.smoke.pointer('mouseMove', corners[0], corners[1])
-    await window.smoke.pointer('mouseDown', corners[0], corners[1])
-    await window.smoke.pointer('mouseMove', Math.round((corners[0] + corners[2]) / 2), Math.round((corners[1] + corners[3]) / 2))
-    await window.smoke.pointer('mouseMove', corners[2], corners[3])
-    await window.smoke.pointer('mouseUp', corners[2], corners[3])
     const many = () => element.querySelector('.canvas-toolbar[aria-label="Selection actions"]')
-    await until(() => node('start').classList.contains('selected') && node('ship').classList.contains('selected') && Boolean(many()), 'Two selected items did not show the selection controls')
+    const lasso = async () => {
+      const ship = node('ship').getBoundingClientRect()
+      const first = node('start').getBoundingClientRect()
+      const corners = [first.left - 24, Math.min(first.top, ship.top) - 16, ship.right + 16, Math.max(first.bottom, ship.bottom) + 16].map(Math.round)
+      await window.smoke.pointer('mouseMove', corners[0], corners[1])
+      await window.smoke.pointer('mouseDown', corners[0], corners[1])
+      await window.smoke.pointer('mouseMove', Math.round((corners[0] + corners[2]) / 2), Math.round((corners[1] + corners[3]) / 2))
+      await window.smoke.pointer('mouseMove', corners[2], corners[3])
+      await window.smoke.pointer('mouseUp', corners[2], corners[3])
+      await until(() => node('start').classList.contains('selected') && node('ship').classList.contains('selected') && Boolean(many()), 'Two selected items did not show the selection controls')
+    }
+    await lasso()
     await press(many()!.querySelector('[aria-label="Align top"]'), 'Align top')
     await until(() => saved('start').y === saved('ship').y, 'Align top did not line the items up')
+    const loose = view.nodes.length
+    await press(many()!.querySelector('[aria-label="Group"]'), 'Group')
+    await until(() => view.nodes.length === loose + 1 && view.nodes.at(-1)!.type === 'group' && view.nodes.at(-1)!.x === Number(saved('start').x) - 36 && view.nodes.at(-1)!.y === Number(saved('start').y) - 36, 'Group did not put a section around the selection')
+    const section = view.nodes.at(-1)!.id
+    await press(element.querySelector('.react-flow__pane'), 'board')
+    await until(() => !many(), 'A click on the board did not clear the selection')
+    await press(node(section).querySelector('.canvas-section-label'), 'section label')
+    await until(() => node(section).classList.contains('selected') && Boolean(control('Ungroup')), 'The section did not offer Ungroup')
+    await press(control('Ungroup'), 'Ungroup')
+    await until(() => view.nodes.length === loose && Boolean(saved('start')) && Boolean(saved('ship')), 'Ungroup did not remove the section alone')
+    await lasso()
     await press(many()!.querySelector('[aria-label="Lock"]'), 'Lock')
     await until(() => saved('start').locked === true && saved('ship').locked === true, 'Lock did not save')
     await press(element.querySelector('.react-flow__pane'), 'board')
@@ -284,6 +303,11 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await pick('More', 'Delete')
     await until(() => view.nodes.length === count, 'Delete did not remove the item')
     await until(() => !layout.issues.some((issue) => issue.includes('overlaps')), 'The overlap stayed reported after the copy was deleted')
+    await select('start')
+    await pick('More', 'Copy style')
+    await select('cloud')
+    await pick('More', 'Paste style')
+    await until(() => saved('cloud').shape === 'pill' && saved('cloud').color === 'green' && saved('cloud').text === 'Hosting', 'Paste style did not give the item the copied look')
 
     const block = await place('Shape', [-110, 110, -70, 70], (item) => item.shape === 'rounded' && typeof item.height === 'number')
     await until(() => Boolean(document.activeElement?.classList.contains('canvas-text-editor')) && node(block).classList.contains('selected') && Boolean(control('Bold')), 'A new shape did not open for typing with its controls')
@@ -292,6 +316,8 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => saved(block).text === 'k', 'Words typed in a new shape were not saved')
     const table = await place('Table', [0, 430, 0, 140], (item) => item.type === 'table' && item.height === undefined)
     await until(() => node(table)?.querySelectorAll('th, td').length === 9, 'A new table did not show its nine cells')
+    const sticker = await place('Sticker', [-90, 90, -90, 90], (item) => item.text === '👍' && item.size === 'huge')
+    await until(() => node(sticker).classList.contains('selected') && !document.activeElement?.classList.contains('canvas-text-editor') && dockTool('Select')?.getAttribute('aria-pressed') === 'true', 'A sticker was not put down ready to move')
 
     await press(node('counter'), 'counter card')
     await until(() => node('counter').classList.contains('selected') && !node('counter').querySelector('.canvas-shield'), 'The card did not take the pointer once selected')
@@ -301,7 +327,6 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await window.smoke.key('z', ['meta'])
     await until(() => (saved('counter').data as { count: number }).count === 2 && heard.at(-1) === 'heard 2', 'A card did not hear its data change under it')
 
-    const dock = (tool: string) => element.querySelector(`.canvas-dock [aria-label="${tool}"]`)
     const draw = async (from: number[], to: number[]) => {
       const known = new Set(view.nodes.map((item) => item.id))
       await window.smoke.pointer('mouseMove', from[0], from[1])
@@ -316,8 +341,8 @@ export async function exerciseCanvasFormat(): Promise<void> {
     const board = element.getBoundingClientRect()
     const from = [Math.round(board.x + 90), Math.round(board.y + 150)]
     const to = [from[0] + 240, from[1] + 80]
-    await press(dock('Pen'), 'Pen tool')
-    const pen = () => element.querySelector('.canvas-pen-options')
+    await press(dockTool('Pen'), 'Pen tool')
+    const pen = () => element.querySelector('.canvas-tool-options[aria-label="Pen"]')
     await until(() => Boolean(pen()), 'The pen did not show its inks')
     const scribble = await draw(from, to)
     const zoom = Number(new DOMMatrix(getComputedStyle(element.querySelector('.react-flow__viewport')!).transform).a)
@@ -331,10 +356,18 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await press(pen()!.querySelector('[aria-label="Highlighter"]'), 'Highlighter')
     const marker = await draw([from[0], from[1] + 120], [to[0], from[1] + 120])
     await until(() => saved(marker).color === 'red' && saved(marker).highlight === true && ink(marker).opacity === '0.4' && ink(marker).stroke !== ink(scribble).stroke, 'The highlighter did not draw in its ink')
-    if (dock('Pen')?.getAttribute('aria-pressed') !== 'true') {
+    if (dockTool('Pen')?.getAttribute('aria-pressed') !== 'true') {
       throw new Error('Canvas format: the pen was put down after a line')
     }
-    await press(dock('Select'), 'Select tool')
+    await press(pen()!.querySelector('[aria-label="Straight line"]'), 'Straight line')
+    const lines = view.nodes.length
+    await window.smoke.pointer('mouseMove', from[0], from[1] + 200)
+    await window.smoke.pointer('mouseDown', from[0], from[1] + 200)
+    await window.smoke.pointer('mouseMove', from[0] + 60, from[1] + 280)
+    await window.smoke.pointer('mouseMove', to[0], from[1] + 200)
+    await window.smoke.pointer('mouseUp', to[0], from[1] + 200)
+    await until(() => view.nodes.length === lines + 1 && (view.nodes.at(-1)!.points as number[][]).length === 2 && view.nodes.at(-1)!.height === 1, 'A straight line kept the wander of the pointer')
+    await press(dockTool('Select'), 'Select tool')
     await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 40)
     await window.smoke.pointer('mouseDown', from[0] + 120, from[1] + 40)
     await window.smoke.pointer('mouseUp', from[0] + 120, from[1] + 40)
@@ -345,7 +378,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => saved(scribble).weight === 8 && ink(scribble).strokeWidth === '8px', 'The line did not take a new weight')
     await new Promise((resolve) => setTimeout(resolve, 500))
     await window.smoke.capture('canvas-format-edited')
-    await press(dock('Eraser'), 'Eraser tool')
+    await press(dockTool('Eraser'), 'Eraser tool')
     await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 100)
     await window.smoke.pointer('mouseDown', from[0] + 120, from[1] + 100)
     await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 70)
@@ -353,7 +386,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await window.smoke.pointer('mouseMove', from[0] + 120, from[1] + 20)
     await window.smoke.pointer('mouseUp', from[0] + 120, from[1] + 20)
     await until(() => !view.nodes.some((item) => item.id === scribble) && view.nodes.some((item) => item.id === marker), 'The eraser did not remove the line it crossed, and only that scribble')
-    await press(dock('Select'), 'Select tool')
+    await press(dockTool('Select'), 'Select tool')
   } finally {
     root.unmount()
     client.clear()

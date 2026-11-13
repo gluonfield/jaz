@@ -1,5 +1,5 @@
 import type { NodeProps } from '@xyflow/react'
-import { Plus } from 'lucide-react'
+import { PanelTop, Plus } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import { FitContent } from '@/components/canvas/FitContent'
@@ -33,6 +33,7 @@ export function TableNode({ id, data, selected }: NodeProps<BoardNode>) {
       <Resizer item={data.item} selected={selected && !typing} minWidth={160} />
       {selected ? <ItemToolbar label="Table" item={data.item}>
         <SizeMenu item={data.item} />
+        <ToolButton label="Heading row" on={data.item.header !== false} onClick={() => commit({ nodes: [{ id, header: data.item.header === false ? null : false }] })}><PanelTop size={16} /></ToolButton>
         <span className="canvas-toolbar-rule" />
         <ToolButton label="Add row below" onClick={() => change({ addRow: at[0] + 1 })}><span className="canvas-toolbar-word">+ Row</span></ToolButton>
         <ToolButton label="Add column right" onClick={() => change({ addColumn: at[1] + 1 })}><span className="canvas-toolbar-word">+ Column</span></ToolButton>

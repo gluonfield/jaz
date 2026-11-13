@@ -447,7 +447,12 @@
   pointer-events: none;
 }
 
-.canvas-pen-options {
+.canvas-sticker-face {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.canvas-tool-options {
   position: absolute;
   bottom: 74px;
   left: calc(50% + var(--canvas-inset) / 2);

@@ -1,5 +1,5 @@
 import { useReactFlow, useViewport, type NodeProps } from '@xyflow/react'
-import { Highlighter } from 'lucide-react'
+import { Highlighter, Slash } from 'lucide-react'
 import { useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
 import type { BoardNode, Rect } from './board'
@@ -74,16 +74,18 @@ export function PenLayer({ onStroke }: { onStroke: (item: Partial<CanvasItem> & 
   const flow = useReactFlow()
   const { zoom } = useViewport()
   const [pen, setPen] = useState<Pen>({ weight: 4, highlight: false })
+  const [straight, setStraight] = useState(false)
   const [trail, setTrail] = useState<Point[] | null>(null)
+  const drawn = trail && straight ? [trail[0], trail.at(-1)!] : trail
   const at = (event: PointerEvent<HTMLDivElement>): Point => {
     const box = event.currentTarget.getBoundingClientRect()
     return [event.clientX - box.left, event.clientY - box.top]
   }
   const finish = (event: PointerEvent<HTMLDivElement>) => {
-    if (!trail) return
+    if (!drawn) return
     const box = event.currentTarget.getBoundingClientRect()
     setTrail(null)
-    onStroke(strokeItem(trail.map(([x, y]): Point => {
+    onStroke(strokeItem(drawn.map(([x, y]): Point => {
       const point = flow.screenToFlowPosition({ x: x + box.left, y: y + box.top })
       return [point.x, point.y]
     }), pen))
@@ -105,13 +107,14 @@ export function PenLayer({ onStroke }: { onStroke: (item: Partial<CanvasItem> & 
         onPointerUp={finish}
         onPointerCancel={() => setTrail(null)}
       >
-        {trail ? <svg className="canvas-pen-trail"><path d={strokePath(trail)} style={inkStyle(pen, zoom)} /></svg> : null}
+        {drawn ? <svg className="canvas-pen-trail"><path d={strokePath(drawn)} style={inkStyle(pen, zoom)} /></svg> : null}
       </div>
-      <div className="canvas-pen-options canvas-toolbar canvas-overlay" role="toolbar" aria-label="Pen">
+      <div className="canvas-tool-options canvas-toolbar canvas-overlay" role="toolbar" aria-label="Pen">
         <Inks pen={pen} onPen={change} />
         <span className="canvas-toolbar-rule" />
         <Weight pen={pen} onPen={change} />
         <ToolButton label="Highlighter" on={pen.highlight} onClick={() => change({ highlight: !pen.highlight })}><Highlighter size={16} /></ToolButton>
+        <ToolButton label="Straight line" on={straight} onClick={() => setStraight(!straight)}><Slash size={16} /></ToolButton>
       </div>
     </>
   )

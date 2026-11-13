@@ -5,6 +5,14 @@ export const ALIGNMENTS = ['left', 'center', 'right', 'top', 'middle', 'bottom']
 export type Alignment = (typeof ALIGNMENTS)[number]
 type Placed = Rect & { id: string }
 
+const STYLE = ['size', 'textAlign', 'ink', 'color', 'shape', 'hollow', 'weight', 'highlight']
+
+// An item's look as a change that gives another item the same one, clearing
+// what this item leaves unset.
+export function styleOf(item: CanvasItem): Partial<CanvasItem> {
+  return Object.fromEntries(STYLE.map((field) => [field, item[field] ?? null]))
+}
+
 // The moves that line the items up along one edge or centre line of the box
 // around them.
 export function alignItems(items: Placed[], to: Alignment): Partial<CanvasItem>[] {

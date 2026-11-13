@@ -52,6 +52,7 @@ import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
 import { ConnectorEdge } from './CanvasEdges'
 import { FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
+import { StickerLayer } from './CanvasStickers'
 import { EraserLayer, PenLayer, StrokeNode } from './CanvasStroke'
 import { TableNode } from './CanvasTable'
 import { SelectionToolbar } from './CanvasToolbar'
@@ -80,7 +81,7 @@ interface Props {
 
 const nodeTypes = { text: TextNode, file: FileNode, link: LinkNode, group: GroupNode, table: TableNode, stroke: StrokeNode }
 const edgeTypes = { connector: ConnectorEdge }
-const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser' }
+const TOOL_KEYS: Record<string, Tool> = { V: 'select', H: 'hand', S: 'sticky', T: 'text', R: 'shape', B: 'table', X: 'connector', P: 'pen', E: 'eraser', K: 'sticker' }
 // What each tool puts down, around the point clicked. Text and tables grow
 // with what is written, so they start without a height.
 const NEW_ITEMS: Partial<Record<Tool, (x: number, y: number) => Partial<CanvasItem> & Rect>> = {
@@ -244,14 +245,14 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     return [{ id: section.id, ...rounded(growToFit(section.rect, [rect])) }]
   }
 
-  const create = (kind: Tool, clientX: number, clientY: number) => {
+  const create = (kind: Tool, clientX: number, clientY: number, make = NEW_ITEMS[kind]!) => {
     const at = flow.screenToFlowPosition({ x: clientX, y: clientY })
     const id = newId(kind)
-    const item = { id, ...NEW_ITEMS[kind]!(at.x, at.y) }
+    const item = { id, ...make(at.x, at.y) }
     const rect = rounded(item)
     made.current = [id]
     commit({ nodes: [{ ...item, ...rect, ...(flows(item) ? { height: null } : {}) }, ...sectionFor(rect)] })
-    if (item.type === 'text') setEditing(id)
+    if (item.type === 'text' && kind !== 'sticker') setEditing(id)
     setTool('select')
   }
 
@@ -452,6 +453,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
       </CanvasContext.Provider>
 
       {tool === 'pen' ? <PenLayer onStroke={(item) => commit({ nodes: [{ id: newId('stroke'), ...item }, ...sectionFor(item)] })} /> : null}
+      {tool === 'sticker' ? <StickerLayer onPlace={(text, clientX, clientY) => create('sticker', clientX, clientY, (x, y) => ({ type: 'text', text, size: 'huge', textAlign: 'center', x: x - 80, y: y - 80, width: 160, height: 160 }))} /> : null}
       {tool === 'eraser' ? <EraserLayer onErase={(id) => local.nodes.find((item) => item.id === id)?.locked !== true && commit({ remove: [id] })} /> : null}
       {tool === 'section' || NEW_ITEMS[tool] ? (
         <div

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { alignItems, layerItems } from '@/components/canvas/arrange'
+import { alignItems, layerItems, styleOf } from '@/components/canvas/arrange'
 import { toFlowNodes } from '@/components/canvas/board'
 
 test('aligning moves each item to an edge or centre line of the box around them', () => {
@@ -33,4 +33,8 @@ test('a locked item cannot be dragged or deleted, and z sets the stacking order'
     ['free', undefined, undefined, 0],
     ['held', false, false, 3],
   ])
+})
+
+test('a copied style carries the look and clears what the source leaves unset', () => {
+  expect(styleOf({ id: 'a', type: 'text', text: 'Hi', x: 4, size: 'large', color: 'blue', shape: 'pill', hollow: true })).toEqual({ size: 'large', textAlign: null, ink: null, color: 'blue', shape: 'pill', hollow: true, weight: null, highlight: null })
 })

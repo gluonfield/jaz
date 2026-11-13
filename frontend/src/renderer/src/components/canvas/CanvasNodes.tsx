@@ -1,4 +1,5 @@
 import { Handle, NodeResizeControl, NodeResizer, Position, type NodeProps } from '@xyflow/react'
+import { Ungroup } from 'lucide-react'
 import { useRef, useState, type CSSProperties } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import type { CanvasItem } from '@/lib/api/canvas'
@@ -7,7 +8,7 @@ import { useCanvas } from './canvasContext'
 import { CSS_SHAPES, ShapeOutline } from './CanvasShapes'
 import { RichEditor, SourceEditor, type TextEditorHandle } from './CanvasTextEditors'
 import { TextToolbar } from './CanvasTextToolbar'
-import { ItemToolbar } from './CanvasToolbar'
+import { ItemToolbar, ToolButton } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
 import { inkColor, lookOf, toggleList, toggleMark } from './format'
@@ -174,7 +175,11 @@ export function GroupNode({ id, data, selected }: NodeProps<BoardNode>) {
   return (
     <>
       <Resizer item={data.item} selected={selected} minWidth={160} minHeight={120} />
-      {selected ? <ItemToolbar label="Item" item={data.item} offset={34} /> : null}
+      {selected ? (
+        <ItemToolbar label="Section" item={data.item} offset={34}>
+          <ToolButton label="Ungroup" onClick={() => commit({ remove: [id] })}><Ungroup size={16} /></ToolButton>
+        </ItemToolbar>
+      ) : null}
       <div
         className="canvas-section-label"
         onDoubleClick={(event) => {
