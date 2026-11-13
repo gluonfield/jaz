@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
 import { apiBaseUrl } from '@/lib/api/client'
 import { useArtifactThemeCSS } from '@/lib/hooks/useArtifactThemeCSS'
+import { layerItems } from './arrange'
 import {
   bounds,
   contains,
@@ -47,6 +48,7 @@ import {
   type BoardNode,
   type Rect,
 } from './board'
+import { SelectionToolbar } from './CanvasArrange'
 import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
 import { ConnectorEdge, FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
@@ -193,13 +195,16 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   const [edges, setEdges, onEdgesChange] = useEdgesState<BoardEdge>([])
   const { dragging, dropTarget, ...drag } = useSectionDrag(setNodes, commit)
   // Nothing from the server lands mid-drag; the drag's own result merges after.
-  // An item the user just made arrives selected, so its controls are at hand.
-  const made = useRef<string | null>(null)
+  // Items the user just made arrive selected, so their controls are at hand.
+  const made = useRef<string[]>([])
   useEffect(() => {
     if (!dragging) {
       const fresh = made.current
-      made.current = null
-      setNodes((current) => mergeNodes(current, toFlowNodes(local), new Set(fresh ? [fresh] : current.filter((node) => node.selected).map((node) => node.id))))
+      made.current = []
+      setNodes((current) => {
+        const arriving = fresh.filter((id) => !current.some((node) => node.id === id))
+        return mergeNodes(current, toFlowNodes(local), new Set(arriving.length ? arriving : current.filter((node) => node.selected).map((node) => node.id)))
+      })
     }
   }, [local, dragging, setNodes])
   useEffect(() => {
@@ -209,6 +214,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
   }, [local, dragging, setEdges])
 
   const select = useCallback((picks: CanvasPick[]) => {
+    made.current = picks.map((pick) => pick.node)
     setNodes((current) => current.map((node) => ({ ...node, selected: picks.some((pick) => pick.page === pageId && pick.node === node.id) })))
   }, [pageId, setNodes])
   useEffect(() => bindSelection(select), [bindSelection, select])
@@ -237,7 +243,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     const id = newId(kind)
     const item = { id, ...NEW_ITEMS[kind]!(at.x, at.y) }
     const rect = rounded(item)
-    made.current = id
+    made.current = [id]
     commit({ nodes: [{ ...item, ...rect, ...(flows(item) ? { height: null } : {}) }, ...sectionFor(rect)] })
     if (item.type === 'text') setEditing(id)
     setTool('select')
@@ -292,8 +298,17 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     setConnectSource(null)
   }
 
+  const restack = (to: 'front' | 'back') => () => {
+    const ids = new Set(flow.getNodes().filter((node) => node.selected).map((node) => node.id))
+    const change = layerItems(local.nodes.filter((item) => item.type !== 'group'), ids, to)
+    if (!change.length) return false
+    commit({ nodes: change })
+  }
+
   const keys: Bindings = {
     ...Object.fromEntries(Object.entries(TOOL_KEYS).map(([key, next]) => [key, () => chooseTool(next)])),
+    'Mod+]': restack('front'),
+    'Mod+[': restack('back'),
     Escape: () => {
       setFocused(null)
       chooseTool('select')
@@ -308,7 +323,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
       addSection(padded(bounds(picked.map(rectOfNode))))
     },
   }
-  useCanvasInput({ page: pageId, local, commit, replay, onSelect: select, container, keys })
+  const duplicate = useCanvasInput({ page: pageId, local, commit, replay, onSelect: select, container, keys })
 
   useEffect(() => {
     if (!targetItem || !nodes.some((node) => node.id === targetItem)) return
@@ -329,9 +344,11 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
     dropTarget,
     connectSource,
     commit,
+    duplicate,
     prompt: onPrompt,
-  }), [sessionId, view, theme, focused, flash, editing, dropTarget, connectSource, commit, onPrompt])
+  }), [sessionId, view, theme, focused, flash, editing, dropTarget, connectSource, commit, duplicate, onPrompt])
 
+  const picked = nodes.filter((node) => node.selected).map((node) => node.id)
   const focusedItem = nodes.find((node) => node.id === focused)?.data.item
   const focusedKind = focusedItem?.type === 'link' ? 'link' : viewerFor(String(focusedItem?.file ?? ''))
 
@@ -401,6 +418,7 @@ function Board({ sessionId, pageId, inset, bindSelection, onSelect, onPrompt, vi
           maxZoom={4}
           proOptions={{ hideAttribution: true }}
         >
+          {picked.length > 1 ? <SelectionToolbar ids={picked} /> : null}
           <Background variant={BackgroundVariant.Dots} gap={22} size={1.6} color="var(--canvas-dot)" bgColor="var(--color-bg)" />
           <Panel position="bottom-right" className="canvas-map canvas-overlay">
             <MiniMap

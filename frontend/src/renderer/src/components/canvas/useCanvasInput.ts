@@ -1,5 +1,5 @@
 import { useReactFlow } from '@xyflow/react'
-import { useEffect, useEffectEvent, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, type RefObject } from 'react'
 import type { CanvasItem, CanvasPatch, CanvasView } from '@/lib/api/canvas'
 import { bounds, cloneItems, itemLabel, rectOfItem, withContents, type BoardEdge, type BoardNode, type Clip } from './board'
 import type { CanvasPick } from './useCanvasContexts'
@@ -48,20 +48,20 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
   }
 
   // The selection with what its sections hold and the connectors among them.
-  const picked = (): Clip => {
+  const picked = useCallback((): Clip => {
     const all = flow.getNodes()
     const ids = new Set(withContents(all.filter((node) => node.selected), all).map((node) => node.id))
     return {
       nodes: local.nodes.filter((item) => ids.has(item.id)),
       edges: local.edges.filter((edge) => ids.has(edge.fromNode as string) && ids.has(edge.toNode as string)),
     }
-  }
+  }, [flow, local])
 
-  const place = (clip: Clip, dx: number, dy: number) => {
+  const place = useCallback((clip: Clip, dx: number, dy: number) => {
     const copy = cloneItems(clip, dx, dy)
     commit(copy)
     onSelect(copy.nodes.map((item) => pick(page, item)))
-  }
+  }, [commit, onSelect, page])
 
   const withSelection = (act: (clip: Clip) => void) => () => {
     const clip = picked()
@@ -71,8 +71,16 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
     act(clip)
   }
 
+  const duplicate = useCallback(() => {
+    const clip = picked()
+    if (!clip.nodes.length) {
+      return false
+    }
+    place(clip, OFFSET, OFFSET)
+  }, [picked, place])
+
   const nudge = (dx: number, dy: number) => withSelection(({ nodes }) => {
-    commit({ nodes: nodes.map((item) => ({ id: item.id, x: rectOfItem(item).x + dx, y: rectOfItem(item).y + dy })) })
+    commit({ nodes: nodes.filter((item) => item.locked !== true).map((item) => ({ id: item.id, x: rectOfItem(item).x + dx, y: rectOfItem(item).y + dy })) })
   })
 
   // Cmd+Delete removes sections and keeps what they hold; Delete takes it all.
@@ -89,7 +97,7 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
     'Mod+Shift+Z': () => replay('redo'),
     'Mod+Y': () => replay('redo'),
     'Mod+A': () => onSelect(local.nodes.map((item) => pick(page, item))),
-    'Mod+D': withSelection((clip) => place(clip, OFFSET, OFFSET)),
+    'Mod+D': duplicate,
     'Mod+Backspace': dissolve,
     'Mod+Delete': dissolve,
     ...Object.fromEntries(Object.entries(ARROWS).flatMap(([key, [dx, dy]]) => [
@@ -169,4 +177,5 @@ export function useCanvasInput({ page, local, commit, replay, onSelect, containe
       document.removeEventListener('paste', paste)
     }
   }, [container])
+  return duplicate
 }

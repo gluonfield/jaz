@@ -15,7 +15,7 @@ import type { CanvasItem } from '@/lib/api/canvas'
 import { extension, flows, itemLabel, rounded, viewerFor, type BoardEdge, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { CSS_SHAPES, ShapeOutline } from './CanvasShapes'
-import { TextToolbar, type TextFormat } from './CanvasToolbar'
+import { ItemToolbar, TextToolbar, type TextFormat } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
 import { lookOf, toggleList, toggleMark, toggleMarkAt } from './format'
@@ -34,7 +34,7 @@ export function Handles() {
 
 export function Resizer({ item, selected, minWidth = 120, minHeight = 60 }: { item: CanvasItem; selected: boolean; minWidth?: number; minHeight?: number }) {
   const { commit } = useCanvas()
-  if (!selected) return null
+  if (!selected || item.locked === true) return null
   // Text, tables and documents are as tall as their content, so only their width is
   // set by hand, which also lifts the height limit their author gave them.
   if (flows(item)) {
@@ -87,6 +87,7 @@ export function FileNode({ id, data, selected }: NodeProps<BoardNode>) {
   return (
     <>
       <Resizer item={data.item} selected={selected} />
+      {selected ? <ItemToolbar label="Item" item={data.item} offset={34} /> : null}
       <Handles />
       <ItemLabel badge={extension(path).toUpperCase() || 'FILE'} name={itemLabel(data.item)} />
       <div className={`canvas-card${connectSource === id ? ' canvas-connect-source' : ''}`}>
@@ -105,6 +106,7 @@ export function LinkNode({ id, data, selected }: NodeProps<BoardNode>) {
   return (
     <>
       <Resizer item={data.item} selected={selected} />
+      {selected ? <ItemToolbar label="Item" item={data.item} offset={34} /> : null}
       <Handles />
       <ItemLabel badge="WEB" name={host} />
       <div className={`canvas-card${connectSource === id ? ' canvas-connect-source' : ''}`}>
@@ -158,7 +160,7 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
       <Resizer item={data.item} selected={selected && editing !== id} minWidth={look.kind === 'note' ? 120 : 40} minHeight={look.kind === 'note' ? 100 : 40} />
       {selected ? <TextToolbar item={data.item} onFormat={format} /> : null}
       <Handles />
-      <div className={classes} style={style} onDoubleClick={() => setEditing(id)}>
+      <div className={classes} style={style} onDoubleClick={() => data.item.locked !== true && setEditing(id)}>
         {look.shape && !CSS_SHAPES.includes(look.shape) ? <ShapeOutline shape={look.shape} /> : null}
         {look.kind === 'block' ? <div className="canvas-block-body">{body}</div> : body}
       </div>
@@ -224,6 +226,7 @@ export function GroupNode({ id, data, selected }: NodeProps<BoardNode>) {
   return (
     <>
       <Resizer item={data.item} selected={selected} minWidth={160} minHeight={120} />
+      {selected ? <ItemToolbar label="Item" item={data.item} offset={34} /> : null}
       <div
         className="canvas-section-label"
         onDoubleClick={(event) => {

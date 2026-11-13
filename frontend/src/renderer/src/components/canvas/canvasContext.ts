@@ -14,6 +14,8 @@ export interface CanvasBoard {
   dropTarget: string | null
   connectSource: string | null
   commit: (change: CanvasPatch) => void
+  // Copies the selection beside itself.
+  duplicate: () => void
   prompt: (text: string) => void
 }
 

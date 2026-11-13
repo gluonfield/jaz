@@ -2,6 +2,7 @@ import { NodeToolbar, useReactFlow } from '@xyflow/react'
 import { Bold, Italic, List, StickyNote, TextAlignCenter, TextAlignEnd, TextAlignStart, Type } from 'lucide-react'
 import { createContext, use, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
+import { ArrangeControls } from './CanvasArrange'
 import { useCanvas } from './canvasContext'
 import { ShapeOutline } from './CanvasShapes'
 import { ALIGNS, FILLS, INKS, SHAPES, SIZES, lookOf, type Tint } from './format'
@@ -12,17 +13,26 @@ const ALIGN_ICONS = { left: TextAlignStart, center: TextAlignCenter, right: Text
 const title = (word: string) => word[0].toUpperCase() + word.slice(1)
 
 // Pressing a control must not take the focus from the text being edited.
-const hold = (event: MouseEvent) => event.preventDefault()
+export const hold = (event: MouseEvent) => event.preventDefault()
 
 // The label of the one open menu.
 const OpenMenu = createContext<[string | null, (label: string | null) => void]>([null, () => {}])
 
-// The controls of a selected item, floating above it at screen size.
-export function ItemToolbar({ label, children }: { label: string; children: ReactNode }) {
+// The controls of a selected item, floating above it at screen size. A locked
+// item offers only its lock.
+export function ItemToolbar({ label, item, offset = 16, children }: { label: string; item: CanvasItem; offset?: number; children?: ReactNode }) {
   const open = useState<string | null>(null)
   return (
-    <NodeToolbar className="canvas-toolbar nodrag nopan nowheel" offset={16} role="toolbar" aria-label={label} onMouseDown={hold}>
-      <OpenMenu value={open}>{children}</OpenMenu>
+    <NodeToolbar className="canvas-toolbar nodrag nopan nowheel" offset={offset} role="toolbar" aria-label={label} onMouseDown={hold}>
+      <OpenMenu value={open}>
+        {item.locked === true || !children ? null : (
+          <>
+            {children}
+            <span className="canvas-toolbar-rule" />
+          </>
+        )}
+        <ArrangeControls ids={[item.id]} />
+      </OpenMenu>
     </NodeToolbar>
   )
 }
@@ -80,7 +90,7 @@ export function TextToolbar({ item, onFormat }: { item: CanvasItem; onFormat: (f
   const AlignIcon = ALIGN_ICONS[align]
   const plain = look.kind === 'text'
   return (
-    <ItemToolbar label="Format">
+    <ItemToolbar label="Format" item={item}>
       <Menu label="Shape" face={look.shape ? <ShapeOutline shape={look.shape} /> : plain ? <Type size={16} /> : <StickyNote size={16} />}>
         <div className="canvas-toolbar-grid">
           <button type="button" role="menuitemradio" aria-checked={plain} aria-label="Text" title="Text" onClick={() => set({ shape: null, color: null, hollow: null, height: null })}>

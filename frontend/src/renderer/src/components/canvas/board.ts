@@ -43,7 +43,8 @@ export function toFlowNodes(view: CanvasView): BoardNode[] {
     const size = flows(item)
       ? { className: 'canvas-flows', style: { '--canvas-reserve': rect.height ? `${rect.height}px` : 'none' } as CSSProperties }
       : { height: rect.height }
-    return [{ id: item.id, type: kind, position: { x: rect.x, y: rect.y }, width: rect.width, ...size, data: { item } }]
+    const held = item.locked === true ? { draggable: false, deletable: false } : {}
+    return [{ id: item.id, type: kind, position: { x: rect.x, y: rect.y }, width: rect.width, zIndex: number(item.z), ...size, ...held, data: { item } }]
   })
   return [...nodes.filter((node) => node.type === 'group'), ...nodes.filter((node) => node.type !== 'group')]
 }

@@ -30,7 +30,7 @@ export function TableNode({ id, data, selected }: NodeProps<BoardNode>) {
   return (
     <>
       <Resizer item={data.item} selected={selected && !typing} minWidth={160} />
-      {selected ? <ItemToolbar label="Table">
+      {selected ? <ItemToolbar label="Table" item={data.item}>
         <SizeMenu item={data.item} />
         <span className="canvas-toolbar-rule" />
         <ToolButton label="Add row below" onClick={() => change({ addRow: at[0] + 1 })}><span className="canvas-toolbar-word">+ Row</span></ToolButton>
@@ -56,7 +56,7 @@ export function TableNode({ id, data, selected }: NodeProps<BoardNode>) {
                           onClick={() => setActive([r, c])}
                           onDoubleClick={() => {
                             setActive([r, c])
-                            setTyping(true)
+                            setTyping(data.item.locked !== true)
                           }}
                         >
                           {on && typing ? <CellEditor key={`${r}:${c}`} initial={text} onDone={(value, step) => finish([r, c], value, step)} /> : <MessageMarkdown text={text} />}
