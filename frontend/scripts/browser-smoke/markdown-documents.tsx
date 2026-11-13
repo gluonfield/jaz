@@ -133,6 +133,8 @@ export async function exerciseMarkdownDocuments() {
     if (!stored.content.includes('costs \\(c = m + t2\\) to make.') || !stored.content.includes('| Press | £1 |')) throw new Error('Editing a formula saved as ' + stored.content)
     await click(reader.querySelector('ul[data-type="taskList"] input[type="checkbox"]'))
     await until(() => stored.content.includes('- [x] Confirm the press'))
+    const ticked = getComputedStyle(reader.querySelector('ul[data-type="taskList"] input[type="checkbox"]')!)
+    if (ticked.backgroundColor !== ticked.borderTopColor || ticked.backgroundColor === 'rgba(0, 0, 0, 0)') throw new Error('A box ticked under the pointer does not show as ticked')
     const row = (label: string) => [...document.querySelectorAll('[role="menuitem"]')].find((node) => node.textContent === label) ?? null
     await click([...reader.querySelectorAll('td')].find((node) => node.textContent === '£1') ?? null)
     await window.smoke.key('End')

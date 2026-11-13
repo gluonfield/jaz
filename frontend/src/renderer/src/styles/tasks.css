@@ -1,4 +1,4 @@
-/* A task's box: a square that fills with the brand colour and a tick, drawn
+/* A task's box: a sharp square that fills with the brand colour and a tick, drawn
    the same in a document being edited and in Markdown that is only read. */
 :is(.chat-prose, .file-prose) input[type='checkbox'] {
   appearance: none;
@@ -8,7 +8,6 @@
   height: 0.9375rem;
   margin: 0;
   border: 1.5px solid color-mix(in oklab, var(--color-ink) 45%, transparent);
-  border-radius: 4px;
   cursor: pointer;
   transition:
     background-color 120ms,
@@ -17,7 +16,7 @@
 :is(.chat-prose, .file-prose) input[type='checkbox']:disabled {
   cursor: default;
 }
-:is(.chat-prose, .file-prose) input[type='checkbox']:enabled:hover {
+:is(.chat-prose, .file-prose) input[type='checkbox']:enabled:not(:checked):hover {
   border-color: var(--color-ink-2);
   background: var(--color-list-hover);
 }
