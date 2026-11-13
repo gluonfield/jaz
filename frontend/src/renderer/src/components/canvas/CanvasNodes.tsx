@@ -9,16 +9,19 @@ import {
   type EdgeProps,
   type NodeProps,
 } from '@xyflow/react'
-import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type CSSProperties, type Ref } from 'react'
+import { useRef, useState, type CSSProperties } from 'react'
 import { MessageMarkdown } from '@/components/session/MessageMarkdown'
 import type { CanvasItem } from '@/lib/api/canvas'
 import { extension, flows, itemLabel, rounded, viewerFor, type BoardEdge, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { CSS_SHAPES, ShapeOutline } from './CanvasShapes'
-import { ItemToolbar, TextToolbar, type TextFormat } from './CanvasToolbar'
+import { RichEditor, SourceEditor, type TextEditorHandle } from './CanvasTextEditors'
+import { TextToolbar } from './CanvasTextToolbar'
+import { ItemToolbar } from './CanvasToolbar'
 import { FileViewer } from './CanvasViewers'
 import { FitContent } from '@/components/canvas/FitContent'
-import { lookOf, toggleList, toggleMark, toggleMarkAt } from './format'
+import { lookOf, toggleList, toggleMark } from './format'
+import { parseRich, toggleRichList, toggleRichMark, writeRich, type TextFormat } from './richtext'
 import { ViewerFrame } from './ViewerFrame'
 
 const SIDES = [
@@ -119,8 +122,6 @@ export function LinkNode({ id, data, selected }: NodeProps<BoardNode>) {
   )
 }
 
-const MARKS = { bold: '**', italic: '*' } as const
-
 export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
   const { editing, setEditing, commit, connectSource } = useCanvas()
   const editor = useRef<TextEditorHandle>(null)
@@ -140,7 +141,10 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
       editor.current?.format(kind)
       return
     }
-    const next = kind === 'list' ? toggleList(text) : toggleMark(text, MARKS[kind])
+    const blocks = parseRich(text)
+    const next = blocks
+      ? writeRich(kind === 'list' || kind === 'numbered' ? toggleRichList(blocks, kind === 'list' ? 'ul' : 'ol') : toggleRichMark(blocks, kind))
+      : kind === 'list' ? toggleList(text) : kind === 'bold' ? toggleMark(text, '**') : kind === 'italic' ? toggleMark(text, '*') : text
     if (next !== text) commit({ nodes: [{ id, text: next }] })
   }
   const base = look.kind === 'block' ? `canvas-block canvas-shape-${look.shape}` : look.kind === 'note' ? 'canvas-sticky' : 'canvas-text'
@@ -154,7 +158,12 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
     connectSource === id ? 'canvas-connect-source' : '',
   ].filter(Boolean).join(' ')
   const style = { '--canvas-fill': look.fill?.custom, '--canvas-ink': look.ink?.custom } as CSSProperties
-  const body = editing === id ? <TextEditor ref={editor} initial={text} onDone={finish} /> : <FitContent><MessageMarkdown text={text} /></FitContent>
+  const rich = editing === id ? parseRich(text) : null
+  const body = editing !== id
+    ? <FitContent><MessageMarkdown text={text} /></FitContent>
+    : rich
+      ? <RichEditor ref={editor} blocks={rich} onDone={finish} />
+      : <SourceEditor ref={editor} initial={text} onDone={finish} />
   return (
     <>
       <Resizer item={data.item} selected={selected && editing !== id} minWidth={look.kind === 'note' ? 120 : 40} minHeight={look.kind === 'note' ? 100 : 40} />
@@ -166,56 +175,6 @@ export function TextNode({ id, data, selected }: NodeProps<BoardNode>) {
       </div>
       <Flash id={id} />
     </>
-  )
-}
-
-interface TextEditorHandle {
-  format: (kind: TextFormat) => void
-}
-
-function TextEditor({ ref, initial, onDone }: { ref: Ref<TextEditorHandle>; initial: string; onDone: (value: string) => void }) {
-  const [value, setValue] = useState(initial)
-  const field = useRef<HTMLTextAreaElement>(null)
-  const selection = useRef<[number, number] | null>(null)
-  useImperativeHandle(ref, () => ({
-    format(kind) {
-      if (kind === 'list') {
-        setValue(toggleList)
-        return
-      }
-      const next = toggleMarkAt(value, field.current!.selectionStart, field.current!.selectionEnd, MARKS[kind])
-      selection.current = [next.start, next.end]
-      setValue(next.text)
-    },
-  }), [value])
-  useLayoutEffect(() => {
-    if (!selection.current) return
-    field.current!.setSelectionRange(...selection.current)
-    selection.current = null
-  }, [value])
-  // React Flow mounts a new node hidden until it is measured, so focus waits
-  // for it to become visible.
-  useEffect(() => {
-    let frame = 0
-    let tries = 0
-    const focus = () => {
-      field.current?.focus()
-      if (document.activeElement !== field.current && tries++ < 30) frame = requestAnimationFrame(focus)
-    }
-    frame = requestAnimationFrame(focus)
-    return () => cancelAnimationFrame(frame)
-  }, [])
-  return (
-    <textarea
-      ref={field}
-      className="canvas-text-editor nodrag nopan"
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      onBlur={() => onDone(value)}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') event.currentTarget.blur()
-      }}
-    />
   )
 }
 

@@ -1,16 +1,10 @@
 import { NodeToolbar, useReactFlow } from '@xyflow/react'
-import { Bold, Italic, List, StickyNote, TextAlignCenter, TextAlignEnd, TextAlignStart, Type } from 'lucide-react'
-import { createContext, use, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
+import { AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, BringToFront, Copy, Ellipsis, Lock, LockOpen, SendToBack, Trash2, type LucideIcon } from 'lucide-react'
+import { createContext, use, useState, type MouseEvent, type ReactNode } from 'react'
 import type { CanvasItem } from '@/lib/api/canvas'
-import { ArrangeControls } from './CanvasArrange'
+import { ALIGNMENTS, alignItems, layerItems, type Alignment } from './arrange'
+import { rectOfNode, type BoardEdge, type BoardNode } from './board'
 import { useCanvas } from './canvasContext'
-import { ShapeOutline } from './CanvasShapes'
-import { ALIGNS, FILLS, INKS, SHAPES, SIZES, lookOf, type Tint } from './format'
-
-export type TextFormat = 'bold' | 'italic' | 'list'
-
-const ALIGN_ICONS = { left: TextAlignStart, center: TextAlignCenter, right: TextAlignEnd }
-const title = (word: string) => word[0].toUpperCase() + word.slice(1)
 
 // Pressing a control must not take the focus from the text being edited.
 export const hold = (event: MouseEvent) => event.preventDefault()
@@ -31,7 +25,7 @@ export function ItemToolbar({ label, item, offset = 16, children }: { label: str
             <span className="canvas-toolbar-rule" />
           </>
         )}
-        <ArrangeControls ids={[item.id]} />
+        <ArrangeControls ids={[item.id]} menu />
       </OpenMenu>
     </NodeToolbar>
   )
@@ -45,7 +39,7 @@ export function ToolButton({ label, on, onClick, children }: { label: string; on
   )
 }
 
-function Menu({ label, face, children }: { label: string; face: ReactNode; children: ReactNode }) {
+export function Menu({ label, face, children }: { label: string; face: ReactNode; children: ReactNode }) {
   const [current, setCurrent] = use(OpenMenu)
   const open = current === label
   return (
@@ -58,80 +52,62 @@ function Menu({ label, face, children }: { label: string; face: ReactNode; child
   )
 }
 
-function swatch(kind: 'fill' | 'ink', tint: Tint | undefined): { className: string; style?: CSSProperties } {
-  return {
-    className: `canvas-swatch${tint?.name ? ` canvas-${kind}-${tint.name}` : ''}${tint ? '' : ' none'}`,
-    style: tint?.custom ? ({ [`--canvas-${kind}`]: tint.custom } as CSSProperties) : undefined,
-  }
+const ALIGN_ICONS: Record<Alignment, LucideIcon> = {
+  left: AlignStartVertical,
+  center: AlignCenterVertical,
+  right: AlignEndVertical,
+  top: AlignStartHorizontal,
+  middle: AlignCenterHorizontal,
+  bottom: AlignEndHorizontal,
 }
 
-export function SizeMenu({ item }: { item: CanvasItem }) {
-  const { commit } = useCanvas()
-  const size = lookOf(item).size ?? 'small'
+// What the user does to whole items: lock, copy, restack, remove.
+export function ArrangeControls({ ids, menu }: { ids: string[]; menu?: boolean }) {
+  const { view, commit, duplicate } = useCanvas()
+  const flow = useReactFlow<BoardNode, BoardEdge>()
+  const picked = new Set(ids)
+  const items = view.nodes.filter((item) => picked.has(item.id))
+  const locked = items.length > 0 && items.every((item) => item.locked === true)
+  const layer = (to: 'front' | 'back') => {
+    const change = layerItems(view.nodes.filter((item) => item.type !== 'group'), picked, to)
+    if (change.length) commit({ nodes: change })
+  }
+  const acts: [string, LucideIcon, () => void][] = [
+    ['Duplicate', Copy, duplicate],
+    ['Bring to front', BringToFront, () => layer('front')],
+    ['Send to back', SendToBack, () => layer('back')],
+    ['Delete', Trash2, () => void flow.deleteElements({ nodes: ids.map((id) => ({ id })) })],
+  ]
   return (
-    <Menu label="Text size" face={<span className="canvas-toolbar-word">{title(size)}</span>}>
-      {SIZES.map((option) => (
-        <button key={option} type="button" role="menuitemradio" aria-checked={option === size} className="canvas-toolbar-row" onClick={() => commit({ nodes: [{ id: item.id, size: option }] })}>
-          {title(option)}
-        </button>
+    <>
+      <ToolButton label={locked ? 'Unlock' : 'Lock'} on={locked} onClick={() => commit({ nodes: ids.map((id) => ({ id, locked: locked ? null : true })) })}>
+        {locked ? <Lock size={16} /> : <LockOpen size={16} />}
+      </ToolButton>
+      {locked ? null : menu ? <Menu label="More" face={<Ellipsis size={16} />}>{acts.map(([label, Icon, act]) => (
+        <button key={label} type="button" role="menuitem" className="canvas-toolbar-row" onClick={act}><Icon size={14} />{label}</button>
+      ))}</Menu> : acts.map(([label, Icon, act]) => (
+        <ToolButton key={label} label={label} onClick={act}><Icon size={16} /></ToolButton>
       ))}
-    </Menu>
+    </>
   )
 }
 
-export function TextToolbar({ item, onFormat }: { item: CanvasItem; onFormat: (format: TextFormat) => void }) {
+// The controls of several selected items, above the box around them.
+export function SelectionToolbar({ ids }: { ids: string[] }) {
   const { commit } = useCanvas()
-  const flow = useReactFlow()
-  const look = lookOf(item)
-  const set = (fields: Partial<CanvasItem>) => commit({ nodes: [{ id: item.id, ...fields }] })
-  // Plain text has no height of its own, so a block starts at the size it shows.
-  const boxed = () => (typeof item.height === 'number' ? {} : { height: Math.max(80, Math.round((flow.getNode(item.id)?.measured?.height ?? 0) + 32)) })
-  const align = look.align ?? (look.kind === 'block' ? 'center' : 'left')
-  const AlignIcon = ALIGN_ICONS[align]
-  const plain = look.kind === 'text'
+  const flow = useReactFlow<BoardNode, BoardEdge>()
+  const align = (to: Alignment) => {
+    const free = flow.getNodes().filter((node) => ids.includes(node.id) && node.data.item.locked !== true)
+    commit({ nodes: alignItems(free.map((node) => ({ id: node.id, ...rectOfNode(node) })), to) })
+  }
   return (
-    <ItemToolbar label="Format" item={item}>
-      <Menu label="Shape" face={look.shape ? <ShapeOutline shape={look.shape} /> : plain ? <Type size={16} /> : <StickyNote size={16} />}>
-        <div className="canvas-toolbar-grid">
-          <button type="button" role="menuitemradio" aria-checked={plain} aria-label="Text" title="Text" onClick={() => set({ shape: null, color: null, hollow: null, height: null })}>
-            <Type size={16} />
-          </button>
-          <button type="button" role="menuitemradio" aria-checked={look.kind === 'note'} aria-label="Note" title="Note" onClick={() => set({ shape: null, hollow: null, color: item.color ?? 'yellow', ...boxed() })}>
-            <StickyNote size={16} />
-          </button>
-          {SHAPES.map((shape) => (
-            <button key={shape} type="button" role="menuitemradio" aria-checked={shape === look.shape} aria-label={title(shape)} title={title(shape)} onClick={() => set({ shape, ...boxed() })}>
-              <ShapeOutline shape={shape} />
-            </button>
-          ))}
-        </div>
-      </Menu>
+    <NodeToolbar nodeId={ids} isVisible className="canvas-toolbar nodrag nopan nowheel" offset={16} role="toolbar" aria-label="Selection actions" onMouseDown={hold}>
+      {ALIGNMENTS.map((to) => {
+        const Icon = ALIGN_ICONS[to]
+        return <ToolButton key={to} label={`Align ${to}`} onClick={() => align(to)}><Icon size={16} /></ToolButton>
+      })}
       <span className="canvas-toolbar-rule" />
-      <SizeMenu item={item} />
-      <ToolButton label="Bold" onClick={() => onFormat('bold')}><Bold size={16} /></ToolButton>
-      <ToolButton label="Italic" onClick={() => onFormat('italic')}><Italic size={16} /></ToolButton>
-      <ToolButton label="Bulleted list" onClick={() => onFormat('list')}><List size={16} /></ToolButton>
-      <ToolButton label={`Align ${align}`} onClick={() => set({ textAlign: ALIGNS[(ALIGNS.indexOf(align) + 1) % ALIGNS.length] })}><AlignIcon size={16} /></ToolButton>
-      <span className="canvas-toolbar-rule" />
-      <Menu label={plain ? 'Text colour' : 'Fill'} face={<span {...swatch(plain ? 'ink' : 'fill', plain ? look.ink : look.fill)} />}>
-        <div className="canvas-toolbar-swatches">
-          {look.kind === 'note' ? null : (
-            <button type="button" role="menuitemradio" aria-checked={!(plain ? look.ink : look.fill)} aria-label="Default" title="Default" onClick={() => set(plain ? { ink: null } : { color: null })}>
-              <span {...swatch('fill', undefined)} />
-            </button>
-          )}
-          {(plain ? INKS : FILLS).map((name) => (
-            <button key={name} type="button" role="menuitemradio" aria-checked={(plain ? look.ink : look.fill)?.name === name} aria-label={title(name)} title={title(name)} onClick={() => set(plain ? { ink: name } : { color: name })}>
-              <span {...swatch(plain ? 'ink' : 'fill', { name })} />
-            </button>
-          ))}
-        </div>
-        {look.kind === 'block' ? (
-          <button type="button" role="menuitemcheckbox" aria-checked={look.hollow} className="canvas-toolbar-row" onClick={() => set({ hollow: look.hollow ? null : true })}>
-            Outline only
-          </button>
-        ) : null}
-      </Menu>
-    </ItemToolbar>
+      <ArrangeControls ids={ids} />
+    </NodeToolbar>
   )
 }

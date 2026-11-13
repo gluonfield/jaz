@@ -359,10 +359,12 @@
 }
 
 .canvas-toolbar button.canvas-toolbar-row {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 0 10px;
-  text-align: left;
+  white-space: nowrap;
 }
 
 .canvas-toolbar .canvas-shape {
@@ -384,4 +386,27 @@
 
 .canvas-swatch.none {
   background: linear-gradient(to top right, transparent 46%, var(--color-ink-3) 46% 54%, transparent 54%);
+}
+
+/* Formatted typing happens in the words themselves, laid out as they will
+ * be shown. */
+.canvas-rich-editor {
+  height: auto;
+  min-height: 1lh;
+  max-height: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  cursor: text;
+  scrollbar-width: none;
+}
+
+.canvas-block-body:has(> .canvas-text-editor) {
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+}
+
+.canvas-block-body > .canvas-text-editor {
+  height: auto;
+  max-height: 100%;
 }

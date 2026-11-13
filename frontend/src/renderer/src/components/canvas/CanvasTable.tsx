@@ -6,7 +6,8 @@ import { FitContent } from '@/components/canvas/FitContent'
 import type { BoardNode } from './board'
 import { useCanvas } from './canvasContext'
 import { Flash, Handles, Resizer } from './CanvasNodes'
-import { ItemToolbar, SizeMenu, ToolButton } from './CanvasToolbar'
+import { SizeMenu } from './CanvasTextToolbar'
+import { ItemToolbar, ToolButton } from './CanvasToolbar'
 import { editTable, lookOf, tableRows, type TableEdit } from './format'
 
 type Cell = [row: number, column: number]

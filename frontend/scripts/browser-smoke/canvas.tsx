@@ -292,9 +292,9 @@ document.querySelector('button').onclick = () => {
       await window.smoke.key(key)
     }
     await until(() => {
-      const typed = view.nodes.find((item) => item.text === 'a\nb\nc')
+      const typed = view.nodes.find((item) => item.text === 'a\n\nb\n\nc')
       return Boolean(typed) && node(typed!.id)?.querySelector<HTMLElement>('.canvas-fit-content')?.style.transform === 'scale(1)'
-    }, 'Typed text was scaled down to a fixed box')
+    }, 'Typed lines were not kept as paragraphs at full size')
     await window.smoke.capture('canvas')
     root.render(<QueryClientProvider client={client}><Fixture inset={360} /></QueryClientProvider>)
     await until(() => element.querySelector<HTMLElement>('.canvas')!.style.getPropertyValue('--canvas-inset') === '360px')

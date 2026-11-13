@@ -75,7 +75,7 @@ export function toggleMark(text: string, mark: '**' | '*'): string {
 }
 
 // The same for a selection inside an editor, which keeps what was selected.
-export function toggleMarkAt(text: string, start: number, end: number, mark: '**' | '*'): { text: string; start: number; end: number } {
+export function toggleMarkAt(text: string, start: number, end: number, mark: string): { text: string; start: number; end: number } {
   const size = mark.length
   if (text.slice(start - size, start) === mark && text.slice(end, end + size) === mark) {
     return { text: text.slice(0, start - size) + text.slice(start, end) + text.slice(end + size), start: start - size, end: end - size }

@@ -48,11 +48,11 @@ import {
   type BoardNode,
   type Rect,
 } from './board'
-import { SelectionToolbar } from './CanvasArrange'
 import { CanvasContext, type CanvasBoard } from './canvasContext'
 import { CanvasDock, type Tool } from './CanvasDock'
 import { ConnectorEdge, FileNode, GroupNode, LinkNode, TextNode } from './CanvasNodes'
 import { TableNode } from './CanvasTable'
+import { SelectionToolbar } from './CanvasToolbar'
 import { fitPadding, useAgentFollow } from './useAgentFollow'
 import { CanvasPages } from '@/components/canvas/CanvasPages'
 import type { CanvasPick } from './useCanvasContexts'

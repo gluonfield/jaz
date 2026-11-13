@@ -147,12 +147,35 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await select('note')
     node('note').querySelector('.canvas-sticky')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
     await until(() => Boolean(document.activeElement?.classList.contains('canvas-text-editor')), 'The note did not open for typing')
-    const editor = document.activeElement as HTMLTextAreaElement
-    editor.setSelectionRange(11, 19)
+    const editor = document.activeElement as HTMLElement
+    if (!editor.isContentEditable || !editor.querySelector('strong') || editor.querySelectorAll('li').length !== 2 || editor.textContent!.includes('*')) {
+      throw new Error('Canvas format: typing did not start in the formatted words: ' + editor.outerHTML)
+    }
+    const words = [...editor.querySelectorAll('li')][0].firstChild!
+    const range = document.createRange()
+    range.setStart(words, 0)
+    range.setEnd(words, 8)
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(range)
     await press(control('Italic'), 'Italic')
-    await until(() => editor.value.includes('- *supplier* slips') && document.activeElement === editor && editor.selectionStart === 12 && editor.selectionEnd === 20, 'Italic did not wrap the selected words and keep them selected')
+    await until(() => editor.querySelector('li')!.firstElementChild?.textContent === 'supplier' && document.activeElement === editor && getSelection()!.toString() === 'supplier', 'Italic did not format the selected words and keep them selected')
+    await press(control('Strikethrough'), 'Strikethrough')
+    getSelection()!.selectAllChildren(editor)
+    getSelection()!.collapseToEnd()
+    for (const key of ['Enter', 'o', 'k']) {
+      await window.smoke.key(key)
+    }
     await window.smoke.key('Escape')
-    await until(() => String(saved('note').text).includes('- *supplier* slips'), 'Formatting made while typing was not saved')
+    await until(() => saved('note').text === '**Risk**\n\n- ~~*supplier*~~ slips\n- *no* spare tool\n- ok', 'Formatted typing was not saved as Markdown: ' + JSON.stringify(saved('note').text))
+    await press(control('Numbered list'), 'Numbered list')
+    await until(() => saved('note').text === '1. **Risk**\n2. ~~*supplier*~~ slips\n3. *no* spare tool\n4. ok', 'The numbered list control did not renumber the lines')
+    view = { ...applyPatch(view, { nodes: [{ id: 'caption', text: '## Heading kept as source' }] }), version: String(Number(view.version) + 1) }
+    await client.invalidateQueries({ queryKey: keys.sessionCanvas(sessionId) })
+    await until(() => Boolean(node('caption').querySelector('h2')), 'The agent heading did not render')
+    await select('caption')
+    node('caption').querySelector('.canvas-text')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    await until(() => document.activeElement instanceof HTMLTextAreaElement && document.activeElement.value === '## Heading kept as source', 'Markdown beyond formatted words did not open as source')
+    await window.smoke.key('Escape')
 
     await select('grid')
     const cell = (row: number, column: number) => node('grid').querySelectorAll('tr')[row].children[column]
@@ -201,13 +224,13 @@ export async function exerciseCanvasFormat(): Promise<void> {
     }
     await press(control('Unlock'), 'Unlock')
     await until(() => saved('start').locked === undefined && Boolean(control('Bold')), 'Unlock did not restore the controls')
-    await press(control('Bring to front'), 'Bring to front')
+    await pick('More', 'Bring to front')
     await until(() => Number(saved('start').z) > 0 && Number(getComputedStyle(node('start')).zIndex) > 0, 'Bring to front did not restack the item')
     const count = view.nodes.length
-    await press(control('Duplicate'), 'Duplicate')
+    await pick('More', 'Duplicate')
     await until(() => view.nodes.length === count + 1 && view.nodes.at(-1)!.shape === 'pill', 'Duplicate did not copy the item')
-    await until(() => Boolean(control('Delete')) && node(view.nodes.at(-1)!.id)?.classList.contains('selected'), 'The copy was not selected')
-    await press(control('Delete'), 'Delete')
+    await until(() => Boolean(control('More')) && node(view.nodes.at(-1)!.id)?.classList.contains('selected'), 'The copy was not selected')
+    await pick('More', 'Delete')
     await until(() => view.nodes.length === count, 'Delete did not remove the item')
 
     const block = await place('Shape', [-110, 110, -70, 70], (item) => item.shape === 'rounded' && typeof item.height === 'number')
