@@ -344,6 +344,7 @@ export async function exerciseCanvasFormat(): Promise<void> {
     await until(() => saved(timer).endsAt === undefined && [358, 359, 360].includes(Number(saved(timer).left)) && Boolean(timerButton('Start')), 'The timer did not pause with its time left')
     await press(timerButton('Reset'), 'Reset')
     await until(() => saved(timer).left === undefined && face() === '6:00', 'The timer did not reset')
+    if (element.querySelector('.canvas-banner')) throw new Error('Canvas format: the items just made were announced as changed by Jaz')
     await select(timer)
     await press(control('Comments'), 'Comments')
     const note = () => element.querySelector<HTMLInputElement>('.canvas-comments input')

@@ -14,6 +14,8 @@
   --canvas-map-mask: color-mix(in oklab, var(--canvas-bg) 70%, transparent);
   /* FigJam's selection blue: the canvas reads as FigJam, not as Jaz chrome. */
   --canvas-accent: #0d99ff;
+  /* Where floating controls start, clear of the title row. */
+  --canvas-top: calc(var(--titlebar-height, 0px) + 16px);
   position: absolute;
   inset: 0;
   background: var(--canvas-bg);
@@ -731,9 +733,10 @@
   background: var(--color-list-hover);
 }
 
+/* Below the row of page tabs, which can reach across the board. */
 .canvas-banner {
   position: absolute;
-  top: 12px;
+  top: calc(var(--canvas-top) + 44px);
   left: calc(50% + var(--canvas-inset) / 2);
   display: flex;
   align-items: center;
@@ -804,7 +807,7 @@
 .canvas-pages {
   --canvas-pages-left: min(calc(var(--canvas-inset) + 16px), max(16px, calc(100% - 248px)));
   position: absolute;
-  top: calc(var(--titlebar-height, 0px) + 16px);
+  top: var(--canvas-top);
   left: var(--canvas-pages-left);
   display: flex;
   align-items: center;

@@ -27,7 +27,7 @@ export function useAgentFollow(view: CanvasView, local: CanvasView, container: R
   useEffect(() => {
     const before = shown.current
     shown.current = { view, local }
-    if (!before || view === before.view) return
+    if (!before || view.version === before.view.version) return
     const changed = changedNodeIds(before.local, local)
     if (!changed.length) return
     settling.current = false

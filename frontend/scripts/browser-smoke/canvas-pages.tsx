@@ -193,6 +193,7 @@ export async function exerciseCanvasPages(): Promise<void> {
     if (control().textContent !== 'Agent plan' || !node()?.classList.contains('selected')) throw new Error('Invalid navigation changed the page or selection')
     link('Unknown page').click()
     await until(() => Boolean(element.querySelector('[role="alert"]')?.textContent?.includes('was not found')), 'An unknown page was not rejected')
+    if (element.querySelector('.canvas-banner')!.getBoundingClientRect().top < element.querySelector('.canvas-pages')!.getBoundingClientRect().bottom) throw new Error('Canvas pages: the banner is not clear of the title row and page tabs')
     link('Unknown item').click()
     await until(() => Boolean(element.querySelector('[role="alert"]')?.textContent?.includes('Item')), 'An unknown item was not rejected')
     if (control().textContent !== 'Agent plan' || !node()?.classList.contains('selected')) throw new Error('Unknown item navigation changed the page or selection')
